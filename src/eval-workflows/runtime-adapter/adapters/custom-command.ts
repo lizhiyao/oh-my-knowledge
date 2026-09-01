@@ -5,14 +5,18 @@ import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import {
   ExecutorCapabilitiesSchema,
+  EffectiveExecutionControlSchema,
   IdentifierSchema,
   JsonValueSchema,
   RuntimeIdentitySchema,
   Sha256DigestSchema,
+  TargetDefinitionSchema,
   UsageRecordSchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
+  resolveEffectiveExecutionControl,
+  type EvaluationDefinition,
   type ExecutorCapabilities,
   type JsonValue,
   type RuntimeIdentity,
@@ -37,6 +41,7 @@ import type {
   OmkBindingResourceLeaseAccess,
   OmkLeasedHostResource,
 } from '../resource-leases/types.js';
+import type { RuntimeBindingOf } from '../types.js';
 import {
   createSameProcessExecutorAdapter,
   type SameProcessOperationScope,
@@ -135,7 +140,10 @@ export const CustomCommandRequestSchema = z.object({
     executionPlanDigest: Sha256DigestSchema,
   }).strict(),
   trial: z.object({
+    sampleId: IdentifierSchema,
     targetId: IdentifierSchema,
+    executionCoordinateDigest: Sha256DigestSchema,
+    executionControl: EffectiveExecutionControlSchema,
     protocolId: z.literal('omk.invoke/v1'),
     input: JsonValueSchema,
     executionContext: JsonValueSchema.optional(),
@@ -166,15 +174,6 @@ export interface CustomCommandContentIdentityFile {
   readonly path: string;
 }
 
-export type CustomCommandWorkingDirectory =
-  | {
-      readonly workingDirectoryKind: 'ephemeral-run';
-    }
-  | {
-      readonly workingDirectoryKind: 'workspace-overlay';
-      readonly resourceId: string;
-    };
-
 export type CustomCommandEnvironmentEntry = {
   readonly value: string;
   readonly identity:
@@ -189,7 +188,6 @@ export interface CustomCommandConfiguration {
   readonly arguments?: readonly string[];
   /** Complete classified child environment. Nothing is inherited from process.env. */
   readonly environment?: Readonly<Record<string, CustomCommandEnvironmentEntry>>;
-  readonly workingDirectory: CustomCommandWorkingDirectory;
   readonly maxOutputBytes?: number;
 }
 
@@ -205,6 +203,8 @@ export interface CustomCommandRuntimeDescription {
 }
 
 export interface CreateCustomCommandExecutorAdapterInput {
+  readonly target: EvaluationDefinition['targets'][number];
+  readonly binding: RuntimeBindingOf<'executor'>;
   readonly runtime: CustomCommandRuntimeDescription;
   readonly command: CustomCommandConfiguration;
   readonly sessionIsolationKey: string;
@@ -228,13 +228,6 @@ const CustomCommandConfigurationSchema = z.object({
       ]),
     }).strict(),
   ).optional(),
-  workingDirectory: z.discriminatedUnion('workingDirectoryKind', [
-    z.object({ workingDirectoryKind: z.literal('ephemeral-run') }).strict(),
-    z.object({
-      workingDirectoryKind: z.literal('workspace-overlay'),
-      resourceId: IdentifierSchema,
-    }).strict(),
-  ]),
   maxOutputBytes: z.number().int().positive().safe().optional(),
 }).strict();
 
@@ -250,16 +243,21 @@ interface CapturedConfiguration {
   readonly arguments: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
   readonly environmentIdentity: JsonValue[];
-  readonly workingDirectory: CustomCommandWorkingDirectory;
   readonly maxOutputBytes: number;
 }
 
 interface CustomCommandRunState {
-  readonly workingDirectory: string;
+  readonly privateWorkingDirectory: string;
   readonly resources: readonly CustomCommandRequest['resources'][number][];
+  readonly executionControls: EvaluationDefinition['targets'][number]['executionControls'];
   acquireTrial(): void;
   releaseTrial(): Promise<void>;
   requestDispose(): Promise<void>;
+}
+
+interface CustomCommandTrialState {
+  readonly workingDirectory: string;
+  readonly resources: readonly CustomCommandRequest['resources'][number][];
 }
 
 function sha256Bytes(bytes: Uint8Array): Sha256Digest {
@@ -279,7 +277,6 @@ function captureConfiguration(input: Readonly<CustomCommandConfiguration>): Capt
   const environmentEntries = Object.entries(parsed.environment ?? {}).sort(([left], [right]) => (
     left < right ? -1 : left > right ? 1 : 0
   ));
-  const workingDirectory = structuredClone(parsed.workingDirectory);
   return Object.freeze({
     executablePath: parsed.executablePath,
     arguments: Object.freeze([...(parsed.arguments ?? [])]),
@@ -294,7 +291,6 @@ function captureConfiguration(input: Readonly<CustomCommandConfiguration>): Capt
         ? { value: entry.identity.value }
         : {}),
     }))),
-    workingDirectory: Object.freeze(workingDirectory),
     maxOutputBytes,
   });
 }
@@ -358,7 +354,7 @@ function identityFacets(
     value: { maxOutputBytes: configuration.maxOutputBytes },
   }, {
     facetId: 'command.working-directory',
-    value: configuration.workingDirectory,
+    value: { workingDirectoryKind: 'sample-scoped-sealed-control' },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
 }
@@ -525,14 +521,37 @@ function projectResource(resource: OmkLeasedHostResource): CustomCommandRequest[
 
 async function captureRunState(
   lease: OmkBindingResourceLease,
-  configuration: CapturedConfiguration,
+  binding: RuntimeBindingOf<'executor'>,
+  executionControls: EvaluationDefinition['targets'][number]['executionControls'],
 ): Promise<CustomCommandRunState> {
-  if (lease.consumerKind !== 'executor') {
+  if (lease.bindingId !== binding.bindingId || lease.consumerKind !== 'executor') {
     fail(
       'OMK_CUSTOM_COMMAND_RESOURCE_FORBIDDEN',
       'infrastructure',
-      'Custom-command Executor received a non-Executor resource lease.',
+      'Custom-command Executor received a resource lease outside the sealed binding.',
     );
+  }
+  const expectedResourceIds = binding.resourceLeaseRequirements
+    .map((requirement) => requirement.resourceId).sort();
+  const actualResourceIds = [...lease.resourcesByResourceId.keys()].sort();
+  if (canonicalizeJson(actualResourceIds) !== canonicalizeJson(expectedResourceIds)) {
+    fail(
+      'OMK_CUSTOM_COMMAND_RESOURCE_FORBIDDEN',
+      'infrastructure',
+      'Custom-command resource lease does not exactly cover the sealed requirements.',
+    );
+  }
+  for (const requirement of binding.resourceLeaseRequirements) {
+    const resource = lease.resourcesByResourceId.get(requirement.resourceId);
+    if (resource === undefined
+        || resource.resourceKind !== requirement.resourceRole
+        || resource.leaseMode !== requirement.leaseMode) {
+      fail(
+        'OMK_CUSTOM_COMMAND_RESOURCE_FORBIDDEN',
+        'infrastructure',
+        'Custom-command resource lease role or mode differs from the sealed requirement.',
+      );
+    }
   }
   const resources = [...lease.resourcesByResourceId.entries()]
     .sort(([left], [right]) => (
@@ -551,45 +570,27 @@ async function captureRunState(
   const capturedResources = deepFreezeCanonicalJson(
     CustomCommandResourcesSchema.parse(resources),
   );
-  let dispose = async (): Promise<void> => undefined;
-  const workingDirectory = configuration.workingDirectory.workingDirectoryKind === 'ephemeral-run'
-    ? await (async () => {
-        try {
-          const directory = await mkdtemp(join(tmpdir(), 'omk-custom-command-run-'));
-          dispose = async () => {
-            try {
-              await rm(directory, { recursive: true, force: true });
-            } catch {
-              fail(
-                'OMK_CUSTOM_COMMAND_WORKING_DIRECTORY_DISPOSE_FAILED',
-                'infrastructure',
-                'Custom-command run working directory could not be disposed.',
-              );
-            }
-          };
-          return directory;
-        } catch {
-          fail(
-            'OMK_CUSTOM_COMMAND_WORKING_DIRECTORY_CREATE_FAILED',
-            'infrastructure',
-            'Custom-command run working directory could not be created.',
-          );
-        }
-      })()
-    : (() => {
-        const workspace = lease.resourcesByResourceId.get(configuration.workingDirectory.resourceId);
-        if (
-          workspace?.resourceKind !== 'workspace'
-          || workspace.leaseMode !== 'copy-on-write-overlay'
-        ) {
-          fail(
-            'OMK_CUSTOM_COMMAND_WORKSPACE_LEASE_MISSING',
-            'infrastructure',
-            'Custom-command workspace overlay lease is missing.',
-          );
-        }
-        return workspace.overlayPath;
-      })();
+  let privateWorkingDirectory: string;
+  try {
+    privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-custom-command-run-'));
+  } catch {
+    fail(
+      'OMK_CUSTOM_COMMAND_WORKING_DIRECTORY_CREATE_FAILED',
+      'infrastructure',
+      'Custom-command run working directory could not be created.',
+    );
+  }
+  const dispose = async (): Promise<void> => {
+    try {
+      await rm(privateWorkingDirectory, { recursive: true, force: true });
+    } catch {
+      fail(
+        'OMK_CUSTOM_COMMAND_WORKING_DIRECTORY_DISPOSE_FAILED',
+        'infrastructure',
+        'Custom-command run working directory could not be disposed.',
+      );
+    }
+  };
   let activeTrials = 0;
   let disposeRequested = false;
   let disposeResult: Promise<void> | undefined;
@@ -598,8 +599,9 @@ async function captureRunState(
     return disposeResult;
   };
   return Object.freeze({
-    workingDirectory,
+    privateWorkingDirectory,
     resources: capturedResources,
+    executionControls,
     acquireTrial() {
       if (disposeRequested) {
         fail(
@@ -628,12 +630,52 @@ async function captureRunState(
   });
 }
 
+function openCustomCommandTrial(
+  runState: CustomCommandRunState,
+  trial: Readonly<ExecutorTrialContext>,
+): CustomCommandTrialState {
+  if (canonicalizeJson(trial.executionControl) !== canonicalizeJson(
+    resolveEffectiveExecutionControl(runState.executionControls, trial.sampleId),
+  )) {
+    fail(
+      'OMK_CUSTOM_COMMAND_EXECUTION_CONTROL_MISMATCH',
+      'infrastructure',
+      'Custom-command Trial control differs from the sealed Target.',
+    );
+  }
+  const workspace = trial.executionControl.workspace;
+  const workspaceResource = workspace.workspaceMode === 'not-required'
+    ? undefined
+    : runState.resources.find((resource) => (
+        resource.resourceKind === 'workspace'
+        && resource.resourceId === workspace.descriptor.resourceId
+        && canonicalizeJson(resource.descriptor) === canonicalizeJson(workspace.descriptor)
+      ));
+  if (workspace.workspaceMode === 'copy-on-write-overlay'
+      && (workspaceResource === undefined || workspaceResource.resourceKind !== 'workspace')) {
+    fail(
+      'OMK_CUSTOM_COMMAND_WORKSPACE_LEASE_MISSING',
+      'infrastructure',
+      'Custom-command Trial workspace overlay lease is missing.',
+    );
+  }
+  return Object.freeze({
+    workingDirectory: workspaceResource?.resourceKind === 'workspace'
+      ? workspaceResource.overlayPath
+      : runState.privateWorkingDirectory,
+    resources: Object.freeze(runState.resources.filter((resource) => (
+      resource.resourceKind !== 'workspace'
+      || resource.resourceId === workspaceResource?.resourceId
+    ))),
+  });
+}
+
 function requestDocument(
   run: Readonly<ExecutorRunContext>,
   trial: Readonly<ExecutorTrialContext>,
   attempt: Readonly<ExecutorAttemptContext>,
   scope: SameProcessOperationScope,
-  state: CustomCommandRunState,
+  trialState: CustomCommandTrialState,
 ): CustomCommandRequest {
   return CustomCommandRequestSchema.parse({
     schemaVersion: CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
@@ -647,7 +689,10 @@ function requestDocument(
       executionPlanDigest: run.executionPlanDigest,
     },
     trial: {
+      sampleId: trial.sampleId,
       targetId: trial.targetId,
+      executionCoordinateDigest: trial.executionCoordinateDigest,
+      executionControl: trial.executionControl,
       protocolId: trial.protocolId,
       input: trial.input,
       ...(trial.executionContext === undefined ? {} : {
@@ -664,7 +709,7 @@ function requestDocument(
       attemptId: attempt.attemptId,
       attemptNumber: attempt.attemptNumber,
     },
-    resources: state.resources,
+    resources: trialState.resources,
   });
 }
 
@@ -774,6 +819,18 @@ export async function createCustomCommandExecutorAdapter(
   }
   const forRun = input.resourceLeases.forRun.bind(input.resourceLeases);
   const resourceLeases = Object.freeze({ forRun });
+  const target = TargetDefinitionSchema.parse(structuredClone(input.target));
+  const binding = structuredClone(input.binding);
+  if (binding.targetId !== target.targetId
+      || binding.implementationId !== input.runtime.implementationId
+      || binding.protocolId !== target.protocolId
+      || binding.behaviorConfigDigest !== digestCanonicalJson(target.config ?? null)
+      || binding.executionControlsDigest !== digestCanonicalJson(target.executionControls)
+      || canonicalizeJson(binding.qualification.executionRequirements)
+        !== canonicalizeJson(target.executionRequirements)) {
+    throw new TypeError('Custom-command Target and Runtime binding are inconsistent.');
+  }
+  const executionControls = deepFreezeCanonicalJson(target.executionControls);
   const configuration = captureConfiguration(input.command);
   const runtime = structuredClone(input.runtime);
   const { identity, files } = await resolveIdentity(runtime, configuration);
@@ -783,21 +840,26 @@ export async function createCustomCommandExecutorAdapter(
     resourceLeases,
     implementation: {
       openRun({ resources }) {
-        return captureRunState(resources, configuration);
+        return captureRunState(resources, binding, executionControls);
       },
-      openTrial({ runState }) {
+      async openTrial({ runState, trial }) {
         runState.acquireTrial();
-        return undefined;
+        try {
+          return openCustomCommandTrial(runState, trial);
+        } catch (error) {
+          await runState.releaseTrial();
+          throw error;
+        }
       },
-      async execute({ run, runState, trial, attempt, scope }) {
+      async execute({ run, trial, trialState, attempt, scope }) {
         if (attempt.signal.aborted) {
           fail('OMK_CUSTOM_COMMAND_CANCELLED', 'execution', 'Custom-command execution was cancelled.');
         }
         await assertIdentityFilesUnchanged(files, attempt.signal);
         const response = await runCommand(
           configuration,
-          runState.workingDirectory,
-          requestDocument(run, trial, attempt, scope, runState),
+          trialState.workingDirectory,
+          requestDocument(run, trial, attempt, scope, trialState),
           attempt.signal,
         );
         if (response.resultStatus === 'failed') {

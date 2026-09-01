@@ -19,6 +19,7 @@ import {
   projectAnalysisCohorts,
   projectAnalysisGraph,
   projectExecutionInputs,
+  normalizeTargetExecutionControls,
   schemaIdentityKey,
   type CoreSchemaValidator,
   type ExtensionEntry,
@@ -82,6 +83,8 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'derivation', 'algorithmId', 'membershipValue', 'context', 'annotations', 'targets',
   'targetId', 'targetKind', 'protocolId', 'executorId', 'versionConstraint', 'config',
   'executionRequirements', 'systemInstructions', 'workspace', 'mcp',
+  'executionControls', 'defaults', 'sampleOverrides', 'workspaceMode', 'descriptor',
+  'resourceId', 'digest', 'mediaType', 'size', 'tools', 'toolPolicyKind', 'allowedTools',
   'mockInterception', 'toolPolicy', 'toolPolicies', 'skillDiscovery',
   'sandboxId', 'sandboxIds', 'protocols', 'inputSchema', 'outputSchema', 'traceSchema',
   'concurrency', 'safety', 'maxInFlight', 'cancellation', 'state',
@@ -1225,6 +1228,10 @@ export function normalizeEvaluationDefinition(
         analysisCohorts: projectAnalysisCohorts(definition.dataset),
       }),
     },
+    targets: definition.targets.map((target) => ({
+      ...target,
+      executionControls: normalizeTargetExecutionControls(target.executionControls),
+    })),
     evaluators: definition.evaluators.map((evaluator) => ({
       ...evaluator,
       ...(evaluator.applicableSampleIds === undefined ? {} : {

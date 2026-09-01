@@ -7,6 +7,7 @@ import {
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
+  resolveEffectiveExecutionControl,
   type EvaluationDefinition,
   type EvaluatorDefinition,
   type JsonValue,
@@ -404,15 +405,47 @@ function validateResourceReferences(
   for (const target of input.targets) {
     const prefix = `targets.${target.targetId}.behavior`;
     const sampleIds = new Set(input.dataset.samples.map((sample) => sample.sampleId));
-    if (target.behavior.allowedTools !== undefined) {
-      assertUnique(target.behavior.allowedTools, `${prefix}.allowedTools`);
-    }
     if (target.behavior.allowedSkills !== undefined) {
       assertUnique(target.behavior.allowedSkills, `${prefix}.allowedSkills`);
     }
     validateReference(target.behavior.artifact, ['artifact'], `${prefix}.artifact`);
-    if (target.behavior.workspace !== undefined) {
-      validateReference(target.behavior.workspace, ['workspace'], `${prefix}.workspace`);
+    const controlPrefix = `targets.${target.targetId}.executionControls`;
+    assertUnique(
+      target.executionControls.sampleOverrides.map((override) => override.sampleId),
+      `${controlPrefix}.sampleOverrides[].sampleId`,
+    );
+    for (const override of target.executionControls.sampleOverrides) {
+      if (!sampleIds.has(override.sampleId)) fail({
+        code: 'CLI_INPUT_INVALID',
+        fieldPath: `${controlPrefix}.sampleOverrides[].sampleId`,
+        message: 'Sample execution control override 必须引用存在的 sampleId。',
+      });
+    }
+    const workspaceControls = [
+      target.executionControls.defaults.workspace,
+      ...target.executionControls.sampleOverrides.flatMap((override) => (
+        override.workspace === undefined ? [] : [override.workspace]
+      )),
+    ];
+    for (const [controlIndex, workspace] of workspaceControls.entries()) {
+      if (workspace.workspaceMode === 'copy-on-write-overlay') {
+        validateReference(
+          workspace.descriptor as ResolvedResourceDescriptor,
+          ['workspace'],
+          `${controlPrefix}.workspace.${controlIndex}.descriptor`,
+        );
+      }
+    }
+    const toolControls = [
+      target.executionControls.defaults.tools,
+      ...target.executionControls.sampleOverrides.flatMap((override) => (
+        override.tools === undefined ? [] : [override.tools]
+      )),
+    ];
+    for (const [controlIndex, tools] of toolControls.entries()) {
+      if (tools.toolPolicyKind === 'allow-list') {
+        assertUnique(tools.allowedTools, `${controlPrefix}.tools.${controlIndex}.allowedTools`);
+      }
     }
     if (target.behavior.mcpConfig !== undefined) {
       validateReference(target.behavior.mcpConfig, ['mcp-config'], `${prefix}.mcpConfig`);
@@ -466,7 +499,6 @@ function behaviorConfig(
   return canonicalSnapshot({
     behavior: {
       artifact: descriptorSnapshot(behavior.artifact),
-      ...(behavior.workspace === undefined ? {} : { workspace: descriptorSnapshot(behavior.workspace) }),
       ...(behavior.mcpConfig === undefined ? {} : { mcpConfig: descriptorSnapshot(behavior.mcpConfig) }),
       ...(behavior.mocks === undefined ? {} : {
         mocks: behavior.mocks.map((mock) => ({
@@ -476,9 +508,6 @@ function behaviorConfig(
           // Payload order is the observable return-sequence contract.
           payloads: mock.payloads.map(descriptorSnapshot),
         })),
-      }),
-      ...(behavior.allowedTools === undefined ? {} : {
-        allowedTools: [...behavior.allowedTools].sort(compareStrings),
       }),
       ...(behavior.allowedSkills === undefined ? {} : {
         allowedSkills: [...behavior.allowedSkills].sort(compareStrings),
@@ -508,17 +537,26 @@ function behaviorConfig(
   });
 }
 
-function executionRequirementsForBehavior(
+function executionRequirementsForTarget(
   behavior: ResolvedTargetBehavior,
+  controls: ResolvedCliEvaluationInput['targets'][number]['executionControls'],
 ): TargetExecutionRequirements {
+  const effectiveControls = controls.sampleOverrides.map((override) => (
+    resolveEffectiveExecutionControl(controls, override.sampleId)
+  ));
+  effectiveControls.push(controls.defaults);
   return {
     systemInstructions: behavior.systemInstructions,
-    workspace: behavior.workspace === undefined ? 'not-required' : 'copy-on-write-overlay',
+    workspace: effectiveControls.some((control) => (
+      control.workspace.workspaceMode === 'copy-on-write-overlay'
+    )) ? 'copy-on-write-overlay' : 'not-required',
     mcp: behavior.mcpConfig === undefined ? 'not-required' : 'native-config',
     mockInterception: (behavior.mocks?.length ?? 0) === 0
       ? 'not-required'
       : 'pre-tool-call',
-    toolPolicy: behavior.allowedTools === undefined ? 'runtime-default' : 'allow-list',
+    toolPolicy: effectiveControls.some((control) => (
+      control.tools.toolPolicyKind === 'allow-list'
+    )) ? 'allow-list' : 'runtime-default',
     skillDiscovery: behavior.allowedSkills === undefined
       ? 'runtime-default'
       : behavior.allowedSkills.length === 0
@@ -680,7 +718,11 @@ function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinit
       ...(target.executor.versionConstraint === undefined
         ? {}
         : { versionConstraint: target.executor.versionConstraint }),
-      executionRequirements: executionRequirementsForBehavior(target.behavior),
+      executionRequirements: executionRequirementsForTarget(
+        target.behavior,
+        target.executionControls,
+      ),
+      executionControls: target.executionControls,
       config: behaviorConfig(target.behavior, target.executor),
     }));
   const analysisNodes = [...input.analysisGraph.nodes]
@@ -854,20 +896,29 @@ function compilePolicy(input: ResolvedCliEvaluationInput): MeasurementPolicy {
   }
 }
 
-function resourceLeaseRequirementsForBehavior(
+function resourceLeaseRequirementsForTarget(
   behavior: ResolvedTargetBehavior,
+  controls: ResolvedCliEvaluationInput['targets'][number]['executionControls'],
 ): Extract<RuntimeBinding, { runtimeKind: 'executor' }>['resourceLeaseRequirements'] {
+  const workspaces = [
+    controls.defaults.workspace,
+    ...controls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ].flatMap((workspace) => workspace.workspaceMode === 'copy-on-write-overlay'
+    ? [workspace.descriptor]
+    : []);
   const requirements = [
     {
       resourceId: behavior.artifact.resourceId,
       resourceRole: 'artifact' as const,
       leaseMode: 'immutable-snapshot' as const,
     },
-    ...(behavior.workspace === undefined ? [] : [{
-      resourceId: behavior.workspace.resourceId,
+    ...workspaces.map((workspace) => ({
+      resourceId: workspace.resourceId,
       resourceRole: 'workspace' as const,
       leaseMode: 'copy-on-write-overlay' as const,
-    }]),
+    })),
     ...(behavior.mcpConfig === undefined ? [] : [{
       resourceId: behavior.mcpConfig.resourceId,
       resourceRole: 'mcp-config' as const,
@@ -986,7 +1037,11 @@ function compileRuntimeBinding(
       ...(target.versionConstraint === undefined ? {} : { versionConstraint: target.versionConstraint }),
       protocolId: target.protocolId,
       behaviorConfigDigest: digestCanonicalJson(target.config ?? null),
-      resourceLeaseRequirements: resourceLeaseRequirementsForBehavior(resolved.behavior),
+      executionControlsDigest: digestCanonicalJson(target.executionControls),
+      resourceLeaseRequirements: resourceLeaseRequirementsForTarget(
+        resolved.behavior,
+        resolved.executionControls,
+      ),
       qualification: {
         model: resolved.executor.model,
         ...(resolved.executor.effort === undefined ? {} : { effort: resolved.executor.effort }),

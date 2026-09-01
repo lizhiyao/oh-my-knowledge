@@ -408,7 +408,11 @@ describe('compileCliEvaluationInput', () => {
 
   it.each([
     ['artifact-control', 'workspace', 'targets.control.behavior.artifact'],
-    ['workspace-tree', 'artifact', 'targets.treatment.behavior.workspace'],
+    [
+      'workspace-tree',
+      'artifact',
+      'targets.treatment.executionControls.workspace.0.descriptor',
+    ],
     ['mcp-config', 'artifact', 'targets.treatment.behavior.mcpConfig'],
     ['mock-search-response', 'content', 'targets.treatment.behavior.mocks.0.payloads.0'],
     ['rubric-correctness', 'artifact', 'evaluatorTemplates.rubric.resources.0'],
@@ -473,7 +477,10 @@ describe('compileCliEvaluationInput', () => {
         implementationId: target.executorId,
         protocolId: target.protocolId,
         behaviorConfigDigest: digestCanonicalJson(target.config ?? null),
+        executionControlsDigest: digestCanonicalJson(target.executionControls),
       });
+      expect(JSON.stringify(target.config)).not.toContain('allowedTools');
+      expect(JSON.stringify(target.config)).not.toContain('workspace');
       expect(binding).not.toHaveProperty('model');
       expect(binding).not.toHaveProperty('config');
       if (binding?.runtimeKind === 'executor') {

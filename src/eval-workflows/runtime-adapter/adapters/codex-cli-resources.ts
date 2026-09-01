@@ -12,6 +12,7 @@ import {
   captureCodexTarget,
   promptForCodexTrial,
   selectCodexSandbox,
+  workingDirectoryForCodexTrial,
   type CapturedCodexTarget,
   type CodexRunState,
   type CodexTargetConfig,
@@ -30,8 +31,22 @@ export function captureCodexCliTarget(
 
 export function selectCodexCliSandbox(
   config: CodexCliTargetConfig,
+  workspaceMode: ExecutorTrialContext['executionControl']['workspace']['workspaceMode'],
 ): 'read-only' | 'workspace-write' {
-  return selectCodexSandbox(config, CODEX_CLI_RESOURCE_PROFILE);
+  return selectCodexSandbox(config, workspaceMode, CODEX_CLI_RESOURCE_PROFILE);
+}
+
+export function workingDirectoryForCodexCliTrial(
+  trial: Readonly<ExecutorTrialContext>,
+  runState: CodexCliRunState,
+  target: CapturedCodexCliTarget,
+): string {
+  return workingDirectoryForCodexTrial(
+    trial,
+    runState,
+    CODEX_CLI_RESOURCE_PROFILE,
+    target,
+  );
 }
 
 export function captureCodexCliRunState(

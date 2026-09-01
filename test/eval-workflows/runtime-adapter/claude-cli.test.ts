@@ -27,6 +27,7 @@ import {
   executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorTrialContext,
 } from '../../../src/evaluation-core/execution/index.js';
 import {
   buildClaudeCliCoreArguments,
@@ -146,7 +147,6 @@ async function adapterFixture(options: Readonly<{
   const config = {
     behavior: {
       artifact: artifactDescriptor,
-      ...(options.workspace ? { workspace: workspaceDescriptor } : {}),
       ...(options.mcp ? { mcpConfig: mcpDescriptor } : {}),
       ...(options.mocks ? {
         mocks: [{
@@ -156,7 +156,6 @@ async function adapterFixture(options: Readonly<{
           payloads: [mockDescriptor],
         }],
       } : {}),
-      ...(options.allowedTools === undefined ? {} : { allowedTools: [...options.allowedTools] }),
       ...(options.allowedSkills === undefined ? {} : { allowedSkills: [...options.allowedSkills] }),
       ...(options.sandboxId === undefined ? {} : {
         sandbox: { sandboxId: options.sandboxId },
@@ -183,6 +182,17 @@ async function adapterFixture(options: Readonly<{
     protocolId: 'omk.invoke/v1',
     executorId: 'claude',
     executionRequirements,
+    executionControls: {
+      defaults: {
+        workspace: options.workspace
+          ? { workspaceMode: 'copy-on-write-overlay', descriptor: workspaceDescriptor }
+          : { workspaceMode: 'not-required' },
+        tools: options.allowedTools === undefined
+          ? { toolPolicyKind: 'runtime-default' }
+          : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools].sort() },
+      },
+      sampleOverrides: [],
+    },
     config,
   };
   const requirements = [{
@@ -209,6 +219,7 @@ async function adapterFixture(options: Readonly<{
     implementationId: 'claude',
     protocolId: 'omk.invoke/v1',
     behaviorConfigDigest: digest(config),
+    executionControlsDigest: digest(target.executionControls),
     resourceLeaseRequirements: requirements,
     qualification: {
       model: 'claude-test',
@@ -310,11 +321,17 @@ async function execute(
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
   sampleId = 'sample-a',
+  executionControl: ExecutorTrialContext['executionControl'] = {
+    workspace: { workspaceMode: 'not-required' },
+    tools: { toolPolicyKind: 'runtime-default' },
+  },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
     sampleId,
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ coordinate: sampleId }),
+    executionControl,
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
     executionContext: { locale: 'zh-CN' },
@@ -564,6 +581,9 @@ describe('Claude CLI Core Executor adapter', () => {
     const result = await execute(
       await createAdapter(fixture, { OMK_TEST_CAPTURE: capture }),
       fixture.target.config as JsonValue,
+      new AbortController().signal,
+      'sample-a',
+      fixture.target.executionControls.defaults,
     );
     const observed = JSON.parse(await readFile(capture, 'utf8')) as {
       settingsExists: boolean;
@@ -593,6 +613,11 @@ describe('Claude CLI Core Executor adapter', () => {
     const trial = await run.openTrial({
       sampleId: 'sample-a',
       targetId: 'target-a',
+      executionCoordinateDigest: digest({ coordinate: 'a' }),
+      executionControl: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: { toolPolicyKind: 'runtime-default' },
+      },
       protocolId: 'omk.invoke/v1',
       input: { question: 'Q' },
       targetConfig: fixture.target.config as JsonValue,
@@ -652,10 +677,13 @@ describe('Claude CLI Core Executor adapter', () => {
     await execute(
       await createAdapter(fixture, { OMK_TEST_CAPTURE: capture }),
       fixture.target.config as JsonValue,
+      new AbortController().signal,
+      'sample-a',
+      fixture.target.executionControls.defaults,
     );
     const { args } = JSON.parse(await readFile(capture, 'utf8')) as { args: string[] };
     expect(args).toContain('--tools');
-    expect(args).toContain('Read,Bash');
+    expect(args).toContain('Bash,Read');
     expect(args).toContain('--disable-slash-commands');
     expect(args).toContain('mcp__*');
     expect(args).toContain('Skill');

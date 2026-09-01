@@ -5,6 +5,7 @@ import {
   canonicalizeJson,
   deriveSchedulingTargetGroups,
   projectExecutionInputs,
+  resolveEffectiveExecutionControl,
   type AnalysisNodeDefinition,
   type EvaluationDefinition,
   type MeasurementPolicy,
@@ -160,6 +161,55 @@ function validateEvaluatorBindings(definition: EvaluationDefinition): void {
           },
         );
       }
+    }
+  }
+}
+
+function validateTargetExecutionControls(definition: EvaluationDefinition): void {
+  const sampleIds = new Set(definition.dataset.samples.map((sample) => sample.sampleId));
+  for (const target of definition.targets) {
+    const overrides = target.executionControls.sampleOverrides;
+    assertUnique(
+      overrides.map((override) => override.sampleId),
+      `target:${target.targetId}:sample-execution-control`,
+    );
+    for (const override of overrides) {
+      assertReference(
+        sampleIds,
+        override.sampleId,
+        `targets.${target.targetId}.executionControls.sampleOverrides`,
+        'EvaluationSample',
+      );
+    }
+    const toolPolicies = [
+      target.executionControls.defaults.tools,
+      ...overrides.flatMap((override) => override.tools === undefined ? [] : [override.tools]),
+    ];
+    for (const policy of toolPolicies) {
+      if (policy.toolPolicyKind === 'allow-list') {
+        assertUnique(policy.allowedTools, `target:${target.targetId}:allowed-tool`);
+      }
+    }
+    const effective = definition.dataset.samples.map((sample) => (
+      resolveEffectiveExecutionControl(target.executionControls, sample.sampleId)
+    ));
+    const expectedWorkspace = effective.some((control) => (
+      control.workspace.workspaceMode === 'copy-on-write-overlay'
+    )) ? 'copy-on-write-overlay' : 'not-required';
+    const expectedToolPolicy = effective.some((control) => (
+      control.tools.toolPolicyKind === 'allow-list'
+    )) ? 'allow-list' : 'runtime-default';
+    if (target.executionRequirements.workspace !== expectedWorkspace
+        || target.executionRequirements.toolPolicy !== expectedToolPolicy) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Target executionRequirements 必须精确覆盖所有 sample 的 effective execution control。',
+        {
+          targetId: target.targetId,
+          expectedWorkspace,
+          expectedToolPolicy,
+        },
+      );
     }
   }
 }
@@ -514,6 +564,7 @@ export function validateDefinitionSemantics(
     'analysis-result',
   );
   assertUnique(definition.comparisons.map((comparison) => comparison.comparisonId), 'comparison');
+  validateTargetExecutionControls(definition);
 
   const targetIds = new Set(definition.targets.map((target) => target.targetId));
   const metricIds = new Set(definition.metrics.map((metric) => metric.metricId));

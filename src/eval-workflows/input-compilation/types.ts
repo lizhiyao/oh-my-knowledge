@@ -11,6 +11,7 @@ import type {
   MeasurementPolicy,
   MetricDefinition,
   Sha256Digest,
+  TargetExecutionControls,
   TargetExecutionRequirements,
 } from '../../evaluation-core/contracts/index.js';
 
@@ -184,10 +185,8 @@ export interface ResolvedInlineConfig {
 export interface ResolvedTargetBehavior {
   readonly systemInstructions: TargetExecutionRequirements['systemInstructions'];
   readonly artifact: ResolvedResourceDescriptor;
-  readonly workspace?: ResolvedResourceDescriptor;
   readonly mcpConfig?: ResolvedResourceDescriptor;
   readonly mocks?: readonly ResolvedMockBinding[];
-  readonly allowedTools?: readonly string[];
   readonly allowedSkills?: readonly string[];
   readonly sandbox?: {
     readonly sandboxId: string;
@@ -208,6 +207,7 @@ export interface ResolvedCliTarget {
     readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   };
   readonly behavior: ResolvedTargetBehavior;
+  readonly executionControls: TargetExecutionControls;
 }
 
 export interface ResolvedEvaluatorTemplate {
@@ -373,6 +373,7 @@ export type RuntimeBinding =
       readonly versionConstraint?: string;
       readonly protocolId: ResolvedCliTarget['protocolId'];
       readonly behaviorConfigDigest: Sha256Digest;
+      readonly executionControlsDigest: Sha256Digest;
       readonly resourceLeaseRequirements: readonly RuntimeResourceLeaseRequirement[];
       readonly qualification: {
         readonly model: string;

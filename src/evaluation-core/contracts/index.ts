@@ -7,6 +7,7 @@ export * from './comparability.js';
 export * from './definition.js';
 export * from './digests.js';
 export * from './execution-identities.js';
+export * from './execution-controls.js';
 export * from './execution-bundle.js';
 export * from './execution-facts.js';
 export * from './evaluation-identities.js';

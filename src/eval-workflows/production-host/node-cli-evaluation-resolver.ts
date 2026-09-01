@@ -5,6 +5,7 @@ import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
   type JsonValue,
+  type TargetExecutionControls,
 } from '../../evaluation-core/contracts/index.js';
 import { loadSamples } from '../../inputs/load-samples.js';
 import { resolveArtifacts } from '../../inputs/skill-loader.js';
@@ -40,12 +41,28 @@ interface ResourceRegistry {
   add(resource: ResolvedHostResource): ResolvedResourceDescriptor;
 }
 
+type ExecutionWorkspaceDescriptor = Extract<
+  TargetExecutionControls['defaults']['workspace'],
+  { workspaceMode: 'copy-on-write-overlay' }
+>['descriptor'];
+
 function fail(input: ConstructorParameters<typeof CliEvaluationInputError>[0]): never {
   throw new CliEvaluationInputError(input);
 }
 
 function absolute(root: string, locator: string): string {
   return isAbsolute(locator) ? resolve(locator) : resolve(root, locator);
+}
+
+function executionWorkspaceDescriptor(
+  descriptor: ResolvedResourceDescriptor,
+): ExecutionWorkspaceDescriptor {
+  if (descriptor.classification === 'gold') fail({
+    code: 'CLI_INPUT_RESOLUTION_FAILED',
+    fieldPath: 'executionControls.workspace.descriptor.classification',
+    message: 'Executor workspace 不得使用 Gold classification。',
+  });
+  return descriptor as ExecutionWorkspaceDescriptor;
 }
 
 function mediaType(path: string): string {
@@ -359,27 +376,59 @@ async function resolvedMocks(
   return bindings;
 }
 
-function commonAllowedTools(samples: readonly Readonly<Sample>[]): readonly string[] | undefined {
-  const policies = samples.map((sample) => sample.allowedTools === undefined
+async function resolvedExecutionControls(
+  resources: ResourceRegistry,
+  samples: readonly Readonly<Sample>[],
+  projectRoot: string,
+  targetWorkspaceLocator: string | undefined,
+): Promise<TargetExecutionControls> {
+  const defaultWorkspace = targetWorkspaceLocator === undefined
     ? undefined
-    : [...sample.allowedTools].sort());
-  const identities = new Set(policies.map((policy) => canonicalizeJson(policy ?? null)));
-  if (identities.size > 1) fail({
-    code: 'CLI_INPUT_SAMPLE_CONTROL_CONFLICT',
-    fieldPath: 'samples[].allowedTools',
-    message: '当前 Target contract 不接受不同 sample 使用不同 allowedTools；请统一测试构造。',
-  });
-  return policies[0];
-}
-
-function commonSampleWorkspace(samples: readonly Readonly<Sample>[]): string | undefined {
-  const locators = [...new Set(samples.map((sample) => sample.cwd ?? ''))];
-  if (locators.length > 1) fail({
-    code: 'CLI_INPUT_SAMPLE_CONTROL_CONFLICT',
-    fieldPath: 'samples[].cwd',
-    message: '当前 Target contract 不接受不同 sample 使用不同 cwd；请按 workspace 拆分 evaluation。',
-  });
-  return locators[0] || undefined;
+    : await treeResource(resources, {
+        resourceKind: 'workspace',
+        path: absolute(projectRoot, targetWorkspaceLocator),
+        classification: 'sensitive',
+        mediaType: 'application/vnd.omk.workspace-tree',
+      });
+  const sampleOverrides = (await Promise.all(samples.map(async (sample) => {
+    const workspace = targetWorkspaceLocator !== undefined || sample.cwd === undefined
+      ? undefined
+      : await treeResource(resources, {
+          resourceKind: 'workspace',
+          path: absolute(projectRoot, sample.cwd),
+          classification: 'sensitive',
+          mediaType: 'application/vnd.omk.workspace-tree',
+        });
+    const tools = sample.allowedTools === undefined
+      ? undefined
+      : {
+          toolPolicyKind: 'allow-list' as const,
+          allowedTools: [...sample.allowedTools].sort(),
+        };
+    if (workspace === undefined && tools === undefined) return undefined;
+    return {
+      sampleId: sample.sample_id,
+      ...(workspace === undefined ? {} : {
+        workspace: {
+          workspaceMode: 'copy-on-write-overlay' as const,
+            descriptor: executionWorkspaceDescriptor(workspace),
+        },
+      }),
+      ...(tools === undefined ? {} : { tools }),
+    };
+  }))).filter((override) => override !== undefined);
+  return {
+    defaults: {
+      workspace: defaultWorkspace === undefined
+        ? { workspaceMode: 'not-required' }
+        : {
+            workspaceMode: 'copy-on-write-overlay',
+            descriptor: executionWorkspaceDescriptor(defaultWorkspace),
+          },
+      tools: { toolPolicyKind: 'runtime-default' },
+    },
+    sampleOverrides,
+  };
 }
 
 async function optionalFileResource(
@@ -498,10 +547,6 @@ export async function resolveNodeCliEvaluationRequest(
     loaded.baseDir,
     options.materializationRoot,
   );
-  const allowedTools = commonAllowedTools(loaded.samples);
-  const sampleWorkspace = request.values.variants.some((variant) => (
-    variant.workspaceLocator === undefined
-  )) ? commonSampleWorkspace(loaded.samples) : undefined;
   const mcpConfig = await optionalFileResource(
     resources,
     options.projectRoot,
@@ -525,15 +570,12 @@ export async function resolveNodeCliEvaluationRequest(
       variant.targetId,
       options.materializationRoot,
     );
-    const workspaceLocator = variant.workspaceLocator ?? sampleWorkspace;
-    const workspace = workspaceLocator === undefined
-      ? undefined
-      : await treeResource(resources, {
-          resourceKind: 'workspace',
-          path: absolute(options.projectRoot, workspaceLocator),
-          classification: 'sensitive',
-          mediaType: 'application/vnd.omk.workspace-tree',
-        });
+    const executionControls = await resolvedExecutionControls(
+      resources,
+      loaded.samples,
+      options.projectRoot,
+      variant.workspaceLocator,
+    );
     return {
       targetId: variant.targetId,
       experimentRole: variant.experimentRole,
@@ -547,14 +589,13 @@ export async function resolveNodeCliEvaluationRequest(
       behavior: {
         systemInstructions: artifact.content === null ? 'not-required' as const : 'required' as const,
         artifact: artifactDescriptor,
-        ...(workspace === undefined ? {} : { workspace }),
         ...(mcpConfig === undefined ? {} : { mcpConfig }),
         ...(mocks.length === 0 ? {} : { mocks }),
-        ...(allowedTools === undefined ? {} : { allowedTools }),
         ...(artifact.allowedSkills === undefined
           ? {}
           : { allowedSkills: [...artifact.allowedSkills] }),
       },
+      executionControls,
     };
   }));
 

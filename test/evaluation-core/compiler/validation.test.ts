@@ -119,6 +119,32 @@ describe('Compiler definition validation', () => {
     await expectCode(unknown, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
   });
 
+  it('rejects ambiguous or unknown sample execution-control overrides', async () => {
+    const duplicate = validDefinition();
+    duplicate.targets[0].executionControls.sampleOverrides = [
+      { sampleId: 'sample-1', tools: { toolPolicyKind: 'allow-list', allowedTools: [] } },
+      { sampleId: 'sample-1', workspace: { workspaceMode: 'not-required' } },
+    ];
+    duplicate.targets[0].executionRequirements.toolPolicy = 'allow-list';
+    await expectCode(duplicate, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const unknown = validDefinition();
+    unknown.targets[0].executionControls.sampleOverrides = [{
+      sampleId: 'missing-sample',
+      tools: { toolPolicyKind: 'allow-list', allowedTools: [] },
+    }];
+    unknown.targets[0].executionRequirements.toolPolicy = 'allow-list';
+    await expectCode(unknown, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
+
+    const duplicateTools = validDefinition();
+    duplicateTools.targets[0].executionControls.defaults.tools = {
+      toolPolicyKind: 'allow-list',
+      allowedTools: ['read', 'read'],
+    };
+    duplicateTools.targets[0].executionRequirements.toolPolicy = 'allow-list';
+    await expectCode(duplicateTools, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+  });
+
   it('requires every applicable sample to satisfy evaluator input bindings', async () => {
     const definition = validDefinition();
     definition.dataset.samples.push({
@@ -373,6 +399,22 @@ describe('Compiler definition validation', () => {
       toolPolicy: 'allow-list',
       skillDiscovery: 'disabled',
       sandboxId: 'sandbox-required',
+    };
+    required.targets[0].executionControls = {
+      defaults: {
+        workspace: {
+          workspaceMode: 'copy-on-write-overlay',
+          descriptor: {
+            resourceId: 'workspace-1',
+            digest: `sha256:${'a'.repeat(64)}`,
+            mediaType: 'application/vnd.omk.workspace-tree',
+            classification: 'sensitive',
+            size: 1,
+          },
+        },
+        tools: { toolPolicyKind: 'allow-list', allowedTools: ['read'] },
+      },
+      sampleOverrides: [],
     };
 
     await expectCode(

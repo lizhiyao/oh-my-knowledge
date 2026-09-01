@@ -52,7 +52,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     'public',
     'text/markdown',
   );
-  const workspace = descriptor('workspace-tree', { files: ['README.md'] });
+  const workspace = descriptor('workspace-tree', { files: ['README.md'] }, 'sensitive');
   const mcp = descriptor('mcp-config', { servers: ['search'] }, 'sensitive');
   const mockPayload = descriptor('mock-search-response', { answer: 'A' }, 'secret');
   const rubric = descriptor('rubric-correctness', { rubric: 'correctness' });
@@ -141,9 +141,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         behavior: {
           systemInstructions: 'required',
           artifact: treatmentArtifact,
-          workspace,
           mcpConfig: mcp,
-          allowedTools: ['search'],
           sandbox: {
             sandboxId: 'omk.local-sandbox/v1',
             config: { classification: 'public', value: { network: 'mock-only' } },
@@ -154,6 +152,16 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
             matchRules: { tool: 'search', query: { exact: 'Q' } },
             payloads: [mockPayload],
           }],
+        },
+        executionControls: {
+          defaults: {
+            workspace: {
+              workspaceMode: 'copy-on-write-overlay',
+              descriptor: { ...workspace, classification: 'sensitive' },
+            },
+            tools: { toolPolicyKind: 'allow-list', allowedTools: ['search'] },
+          },
+          sampleOverrides: [],
         },
       },
       {
@@ -170,9 +178,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         behavior: {
           systemInstructions: 'not-required',
           artifact: controlArtifact,
-          workspace,
           mcpConfig: mcp,
-          allowedTools: ['search'],
           allowedSkills: [],
           mocks: [{
             sampleIds: ['sample-2'],
@@ -180,6 +186,16 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
             matchRules: { query: { exact: 'Q' }, tool: 'search' },
             payloads: [mockPayload],
           }],
+        },
+        executionControls: {
+          defaults: {
+            workspace: {
+              workspaceMode: 'copy-on-write-overlay',
+              descriptor: { ...workspace, classification: 'sensitive' },
+            },
+            tools: { toolPolicyKind: 'allow-list', allowedTools: ['search'] },
+          },
+          sampleOverrides: [],
         },
       },
     ],

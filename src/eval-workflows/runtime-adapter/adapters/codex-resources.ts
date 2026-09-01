@@ -7,6 +7,7 @@ import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
+  resolveEffectiveExecutionControl,
   type EvaluationDefinition,
 } from '../../../evaluation-core/contracts/index.js';
 import {
@@ -53,10 +54,8 @@ const CodexDescriptorSchema = z.object({
 const CodexTargetConfigSchema = z.object({
   behavior: z.object({
     artifact: CodexDescriptorSchema,
-    workspace: CodexDescriptorSchema.optional(),
     mcpConfig: CodexDescriptorSchema.optional(),
     mocks: z.array(JsonValueSchema).optional(),
-    allowedTools: z.array(z.string().min(1)).optional(),
     allowedSkills: z.array(z.string().min(1)).optional(),
     sandbox: z.object({
       sandboxId: z.string().min(1),
@@ -85,7 +84,8 @@ export interface CapturedCodexTarget {
 }
 
 export interface CodexRunState {
-  readonly workingDirectory: string;
+  readonly privateWorkingDirectory: string;
+  readonly workspaceDirectoriesByResourceId: ReadonlyMap<string, string>;
   readonly knowledgeArtifact?: CodexKnowledgeArtifact;
   readonly classification: ExecutionContent['classification'];
   acquireTrial(): void;
@@ -136,11 +136,21 @@ export function captureCodexTarget(
     || canonicalizeJson(target.executionRequirements)
       !== canonicalizeJson(binding.qualification.executionRequirements)
     || digestCanonicalJson(target.config ?? null) !== binding.behaviorConfigDigest
+    || digestCanonicalJson(target.executionControls) !== binding.executionControlsDigest
   ) throw new TypeError(`${profile.adapterLabel} Target and Runtime binding are inconsistent.`);
   if (target.protocolId !== 'omk.invoke/v1') {
     throw new TypeError(`${profile.adapterLabel} Core adapter supports only omk.invoke/v1.`);
   }
   const config = CodexTargetConfigSchema.parse(target.config);
+  const toolControls = [
+    target.executionControls.defaults.tools,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.tools === undefined ? [] : [override.tools]
+    )),
+  ];
+  if (toolControls.some((tools) => tools.toolPolicyKind === 'allow-list')) {
+    throw new TypeError(`${profile.adapterLabel} does not support a tool allow-list.`);
+  }
   if (
     config.runtime.model !== binding.qualification.model
     || config.runtime.effort !== binding.qualification.effort
@@ -268,7 +278,6 @@ function unsupportedBehavior(config: CodexTargetConfig): string | undefined {
   const behavior = config.behavior;
   if (behavior.mcpConfig !== undefined) return 'MCP config';
   if ((behavior.mocks?.length ?? 0) > 0) return 'mock interception';
-  if (behavior.allowedTools !== undefined) return 'tool allow-list';
   if (behavior.allowedSkills !== undefined) return 'skill discovery policy';
   if (behavior.config !== undefined) return 'provider behavior config';
   if (behavior.sandbox?.config !== undefined) return 'sandbox config';
@@ -277,11 +286,12 @@ function unsupportedBehavior(config: CodexTargetConfig): string | undefined {
 
 export function selectCodexSandbox(
   config: CodexTargetConfig,
+  workspaceMode: ExecutorTrialContext['executionControl']['workspace']['workspaceMode'],
   profile: CodexResourceProfile,
 ): 'read-only' | 'workspace-write' {
   const sandboxId = config.behavior.sandbox?.sandboxId;
   if (sandboxId === undefined) {
-    return config.behavior.workspace === undefined ? 'read-only' : 'workspace-write';
+    return workspaceMode === 'not-required' ? 'read-only' : 'workspace-write';
   }
   if (sandboxId === CODEX_READ_ONLY_SANDBOX_ID) return 'read-only';
   if (sandboxId === CODEX_WORKSPACE_WRITE_SANDBOX_ID) return 'workspace-write';
@@ -336,33 +346,38 @@ export async function captureCodexRunState(
       'Target forbids system instructions but has a non-empty artifact.',
     );
   }
-  const workspaceDescriptor = target.config.behavior.workspace;
-  let workingDirectory: string;
-  let dispose = async (): Promise<void> => undefined;
-  if (workspaceDescriptor === undefined) {
-    workingDirectory = await mkdtemp(join(tmpdir(), 'omk-codex-run-'));
-    dispose = async () => {
-      try {
-        await rm(workingDirectory, { recursive: true, force: true });
-      } catch {
-        fail(
-          profile,
-          'WORKING_DIRECTORY_DISPOSE_FAILED',
-          'run working directory could not be disposed.',
-        );
-      }
-    };
-  } else {
-    const workspace = lease.resourcesByResourceId.get(workspaceDescriptor.resourceId);
+  const workspaceDirectoriesByResourceId = new Map<string, string>();
+  const workspaceControls = [
+    target.target.executionControls.defaults.workspace,
+    ...target.target.executionControls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ];
+  for (const workspaceControl of workspaceControls) {
+    if (workspaceControl.workspaceMode !== 'copy-on-write-overlay') continue;
+    const descriptor = workspaceControl.descriptor;
+    const workspace = lease.resourcesByResourceId.get(descriptor.resourceId);
     if (
       workspace?.resourceKind !== 'workspace'
       || workspace.leaseMode !== 'copy-on-write-overlay'
-      || !sameDescriptor(workspace, workspaceDescriptor)
+      || !sameDescriptor(workspace, descriptor)
     ) {
       fail(profile, 'WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
     }
-    workingDirectory = workspace.overlayPath;
+    workspaceDirectoriesByResourceId.set(descriptor.resourceId, workspace.overlayPath);
   }
+  const privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-codex-run-'));
+  const dispose = async (): Promise<void> => {
+    try {
+      await rm(privateWorkingDirectory, { recursive: true, force: true });
+    } catch {
+      fail(
+        profile,
+        'WORKING_DIRECTORY_DISPOSE_FAILED',
+        'run working directory could not be disposed.',
+      );
+    }
+  };
   let activeTrials = 0;
   let disposeRequested = false;
   let disposeResult: Promise<void> | undefined;
@@ -371,7 +386,8 @@ export async function captureCodexRunState(
     return disposeResult;
   };
   return Object.freeze({
-    workingDirectory,
+    privateWorkingDirectory,
+    workspaceDirectoriesByResourceId,
     ...(requiresInstructions && artifactProjection.knowledgeArtifact !== undefined
       ? { knowledgeArtifact: deepFreezeCanonicalJson(artifactProjection.knowledgeArtifact) }
       : {}),
@@ -394,6 +410,31 @@ export async function captureCodexRunState(
       if (activeTrials === 0) await startDispose();
     },
   });
+}
+
+export function workingDirectoryForCodexTrial(
+  trial: Readonly<ExecutorTrialContext>,
+  runState: CodexRunState,
+  profile: CodexResourceProfile,
+  target?: CapturedCodexTarget,
+): string {
+  if (target !== undefined && canonicalizeJson(trial.executionControl) !== canonicalizeJson(
+    resolveEffectiveExecutionControl(target.target.executionControls, trial.sampleId),
+  )) {
+    fail(profile, 'EXECUTION_CONTROL_MISMATCH', 'Trial control differs from the sealed Target.');
+  }
+  if (trial.executionControl.tools.toolPolicyKind !== 'runtime-default') {
+    fail(profile, 'TOOL_POLICY_UNSUPPORTED', 'received an unsupported Trial tool policy.');
+  }
+  const workspace = trial.executionControl.workspace;
+  if (workspace.workspaceMode === 'not-required') return runState.privateWorkingDirectory;
+  const workingDirectory = runState.workspaceDirectoriesByResourceId.get(
+    workspace.descriptor.resourceId,
+  );
+  if (workingDirectory === undefined) {
+    fail(profile, 'WORKSPACE_INVALID', 'Trial workspace is absent from the sealed resource lease.');
+  }
+  return workingDirectory;
 }
 
 export function promptForCodexTrial(

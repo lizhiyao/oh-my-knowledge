@@ -74,6 +74,7 @@ const ExecutionRecordIdentitySchema = z.object({
   randomizationSlotId: IdentifierSchema,
   sampleId: IdentifierSchema,
   trialIndex: z.number().int().nonnegative(),
+  executionCoordinateDigest: Sha256DigestSchema,
   trialId: Sha256DigestSchema,
   trialSeed: Sha256DigestSchema,
   schedulingBlockId: Sha256DigestSchema,

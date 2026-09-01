@@ -21,6 +21,7 @@ import {
   executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorTrialContext,
 } from '../../../src/evaluation-core/execution/index.js';
 import {
   createClaudeSdkCoreSchemaValidators,
@@ -180,7 +181,6 @@ async function fixture(options: Readonly<{
           payloads: [mockDescriptor],
         }],
       } : {}),
-      ...(options.allowedTools === undefined ? {} : { allowedTools: [...options.allowedTools] }),
       ...(options.allowedSkills === undefined ? {} : { allowedSkills: [...options.allowedSkills] }),
     },
     runtime: { model: 'claude-test', effort: 'high' as const },
@@ -203,6 +203,15 @@ async function fixture(options: Readonly<{
     protocolId: 'omk.invoke/v1',
     executorId: 'test.omk.claude-sdk/v1',
     executionRequirements,
+    executionControls: {
+      defaults: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: options.allowedTools === undefined
+          ? { toolPolicyKind: 'runtime-default' }
+          : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools] },
+      },
+      sampleOverrides: [],
+    },
     config,
   };
   const binding: RuntimeBindingOf<'executor'> = {
@@ -212,6 +221,7 @@ async function fixture(options: Readonly<{
     implementationId: 'test.omk.claude-sdk/v1',
     protocolId: 'omk.invoke/v1',
     behaviorConfigDigest: digest(config),
+    executionControlsDigest: digest(target.executionControls),
     resourceLeaseRequirements: [{
       resourceId: 'artifact-a',
       resourceRole: 'artifact',
@@ -357,11 +367,17 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
+  executionControl: ExecutorTrialContext['executionControl'] = {
+    workspace: { workspaceMode: 'not-required' },
+    tools: { toolPolicyKind: 'runtime-default' },
+  },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
     sampleId: 'sample-a',
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ coordinate: 'a' }),
+    executionControl,
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q' },
     executionContext: { locale: 'zh-CN' },
@@ -403,6 +419,8 @@ describe('Claude SDK Core Executor adapter', () => {
     const result = await execute(
       await createAdapter(value, { environment: environment('credential') }),
       value.target.config as JsonValue,
+      new AbortController().signal,
+      value.target.executionControls.defaults,
     );
     expect(result.output).toMatchObject({ value: 'fixture answer', classification: 'secret' });
     expect(result.usage).toBeUndefined();

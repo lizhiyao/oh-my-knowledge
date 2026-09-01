@@ -49,12 +49,12 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 行为身份和来源 lineage 是两条不同轴：
 
-- Target config 通过 `{resourceId, digest, mediaType, classification}` descriptor 保存会影响行为的字节／配置，并包含规范化的 workspace、tool、mock、sandbox、model 和 effort 事实；
-- Target `executionRequirements` 从 resolved behavior 纯确定地派生：显式 system instruction 使用、copy-on-write workspace、native MCP config、pre-tool-call mock interception、tool allow-list、skill discovery policy 和 sandbox ID。它进入 Definition 与 ExecutionPlan identity，只有 Core prepare 可以把它与 Runtime feature 做匹配；
+- Target config 保存 artifact、mock、sandbox、model 与 effort 等 Target-wide behavior fact。canonical `executionControls` 单独保存 workspace 与工具授权的 Target 默认值和 Sample override；其中的 workspace descriptor 不包含 locator；
+- Target `executionRequirements` 是从 resolved behavior 与全部 effective sample control 派生的聚合 capability 请求：显式 system instruction 使用、copy-on-write workspace、native MCP config、pre-tool-call mock interception、tool allow-list、skill discovery policy 和 sandbox ID。它进入 Definition 与 ExecutionPlan identity，只有 Core prepare 可以把它与 Runtime feature 做匹配；它绝不把聚合 workspace 或工具权限授予某个 Trial；
 - Host resources 保存 locator、resolved commit、仓库来源和 materialization 证据。同一内容在绝对／相对路径或不同机器间移动，不会让 execution identity 失效；
 - 行为变化会改变 Definition digest。只有 lineage 变化时，后续由显式 comparability／provenance policy 判断，不能偷偷塞进 Target config。
 
-Mock match rule 和 strict mode 进入 Target 行为，每个 binding 通过 `sampleIds` 显式限定可观察它的 Trial。`sampleId` 由 Core 交给 adapter，绝不拼入模型 prompt。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Compile 还要求每个引用角色匹配对应的宿主资源类型：artifact、workspace、MCP config、mock payload、evaluator content 和 gold dataset 即使 descriptor 恰好相同，也不能相互替代。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。在 Target contract 能表达通用 sample-scoped execution control 前，不同 sample 的 `cwd` 或 `allowedTools` 会在 Resolve 阶段失败，不能取并集后悄悄改变实验。
+Mock match rule 和 strict mode 进入 Target 行为，每个 binding 通过 `sampleIds` 显式限定可观察它的 Trial。`sampleId` 由 Core 交给 adapter，绝不拼入模型 prompt。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Compile 还要求每个引用角色匹配对应的宿主资源类型：artifact、workspace、MCP config、mock payload、evaluator content 和 gold dataset 即使 descriptor 恰好相同，也不能相互替代。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。不同 Sample 的 `cwd` 与 `allowedTools` 会编译成 canonical sample override，永远不做 union；adapter 只能收到准确的 effective Trial control。
 
 `ResolvedHostResources` v2 要求 `descriptor.size` 必填，并把 pinned Git verification 表达为 `{verificationKind, verifiedDigest, commitId}`。`commitId` 必须是规范化的 40–64 位小写十六进制对象身份，branch 或 tag 名不是 pin。仅文件的 MCP、mock 和 evaluator content 资源必须使用 `content-digest`；workspace 必须使用 `tree-digest` 或 `pinned-git`；pinned Git 仅适用于 artifact 和 workspace。`gold` classification 与 `gold-dataset` kind 必须同时成立。不完整的 v1 结构会被直接拒绝，不提供 compatibility reader。
 

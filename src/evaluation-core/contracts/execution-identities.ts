@@ -4,6 +4,17 @@ import {
   type JsonValue,
   type Sha256Digest,
 } from './json.js';
+import {
+  resolveEffectiveExecutionControl,
+  type EffectiveExecutionControl,
+} from './execution-controls.js';
+import type { ExecutionPlan, ExecutionPlanPolicy, ResolvedRuntime } from './plans.js';
+
+type DeepReadonly<Value> = Value extends readonly (infer Item)[]
+  ? readonly DeepReadonly<Item>[]
+  : Value extends object
+    ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]> }
+    : Value;
 
 function sortedUnique(values: readonly string[], field: string): string[] {
   if (values.length === 0) throw new TypeError(`${field} must not be empty`);
@@ -31,7 +42,7 @@ function assertNonEmpty(value: string, field: string): void {
 }
 
 export interface SamplingUnitIdentityInput {
-  executionPlanDigest: Sha256Digest;
+  randomizationDesignDigest: Sha256Digest;
   unitKind: 'pairing' | 'cluster' | 'stratum';
   memberSampleIds: readonly string[];
 }
@@ -39,14 +50,14 @@ export interface SamplingUnitIdentityInput {
 export function deriveSamplingUnitId(input: SamplingUnitIdentityInput): Sha256Digest {
   return digestCanonicalJson({
     derivation: 'omk.sampling-unit-id/v1',
-    executionPlanDigest: input.executionPlanDigest,
+    randomizationDesignDigest: input.randomizationDesignDigest,
     unitKind: input.unitKind,
     memberSampleIds: sortedUnique(input.memberSampleIds, 'memberSampleIds'),
   });
 }
 
 export interface SchedulingBlockIdentityInput {
-  executionPlanDigest: Sha256Digest;
+  randomizationDesignDigest: Sha256Digest;
   trialIndex: number;
   coordinates: readonly SchedulingCoordinateInput[];
   pairingBlockId?: Sha256Digest;
@@ -89,7 +100,7 @@ export function deriveSchedulingBlockId(
   assertTrialIndex(input.trialIndex);
   return digestCanonicalJson({
     derivation: 'omk.scheduling-block-id/v1',
-    executionPlanDigest: input.executionPlanDigest,
+    randomizationDesignDigest: input.randomizationDesignDigest,
     trialIndex: input.trialIndex,
     coordinates: sortedUniqueCoordinates(input.coordinates),
     ...(input.pairingBlockId !== undefined
@@ -101,7 +112,7 @@ export function deriveSchedulingBlockId(
 }
 
 export interface TrialIdentityInput {
-  executionPlanDigest: Sha256Digest;
+  executionCoordinateDigest: Sha256Digest;
   targetId: string;
   sampleId: string;
   trialIndex: number;
@@ -113,7 +124,7 @@ export function deriveTrialId(input: TrialIdentityInput): Sha256Digest {
   assertNonEmpty(input.sampleId, 'sampleId');
   return digestCanonicalJson({
     derivation: 'omk.trial-id/v1',
-    executionPlanDigest: input.executionPlanDigest,
+    executionCoordinateDigest: input.executionCoordinateDigest,
     targetId: input.targetId,
     sampleId: input.sampleId,
     trialIndex: input.trialIndex,
@@ -174,32 +185,16 @@ export function deriveAttemptId(input: AttemptIdentityInput): Sha256Digest {
 }
 
 export interface ExecutionIdentityPlanContext {
-  execution: {
-    executionPlanDigest: string;
-    randomizationDesignDigest: string;
-    samples: readonly {
-      sampleId: string;
-      input: unknown;
-      executionContext?: unknown;
-    }[];
-    targets: readonly { targetId: string }[];
-    schedulingTargetGroups: readonly (readonly string[])[];
-    experiment: {
-      trials: number;
-      seed: string;
-      randomizationSlots: readonly {
-        targetId: string;
-        randomizationSlotId: string;
-      }[];
-      sampling: {
-        pairingKey?: string;
-        clusterKey?: string;
-        stratumKey?: string;
-        resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
-        seedCoupling: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
-      };
-    };
-  };
+  execution: Pick<DeepReadonly<ExecutionPlan>,
+  | 'executionPlanDigest'
+  | 'randomizationDesignDigest'
+  | 'samples'
+  | 'targets'
+  | 'runtimes'
+  | 'policy'
+  | 'extensions'
+  | 'schedulingTargetGroups'
+  | 'experiment'>;
 }
 
 export interface PlannedExecutionCoordinate {
@@ -207,6 +202,8 @@ export interface PlannedExecutionCoordinate {
   randomizationSlotId: string;
   sampleId: string;
   trialIndex: number;
+  executionCoordinateDigest: Sha256Digest;
+  executionControl: EffectiveExecutionControl;
   trialId: Sha256Digest;
   trialSeed: Sha256Digest;
   schedulingBlockId: Sha256Digest;
@@ -258,7 +255,7 @@ function deriveMembershipBySample(
   }
   for (const members of groups.values()) {
     const unitId = deriveSamplingUnitId({
-      executionPlanDigest: plan.execution.executionPlanDigest as Sha256Digest,
+      randomizationDesignDigest: plan.execution.randomizationDesignDigest as Sha256Digest,
       unitKind,
       memberSampleIds: members,
     });
@@ -372,6 +369,47 @@ function comparePlannedCoordinates(
     || (left.targetId < right.targetId ? -1 : left.targetId > right.targetId ? 1 : 0);
 }
 
+export interface ExecutionCoordinateDigestInput {
+  randomizationDesignDigest: Sha256Digest;
+  sample: ExecutionIdentityPlanContext['execution']['samples'][number];
+  target: ExecutionIdentityPlanContext['execution']['targets'][number];
+  runtime: DeepReadonly<ResolvedRuntime>;
+  executionControl: DeepReadonly<EffectiveExecutionControl>;
+  policy: DeepReadonly<ExecutionPlanPolicy>;
+  extensions?: ExecutionIdentityPlanContext['execution']['extensions'];
+}
+
+export function deriveExecutionCoordinateDigest(
+  input: ExecutionCoordinateDigestInput,
+): Sha256Digest {
+  const { executionControls: _controls, executionRequirements, ...target } = input.target;
+  void _controls;
+  const sample = {
+    sampleId: input.sample.sampleId,
+    input: input.sample.input,
+    ...(input.sample.executionContext === undefined
+      ? {}
+      : { executionContext: input.sample.executionContext }),
+  };
+  return digestCanonicalJson({
+    derivation: 'omk.execution-coordinate/v1',
+    randomizationDesignDigest: input.randomizationDesignDigest,
+    sample,
+    target: {
+      ...target,
+      executionRequirements: {
+        ...executionRequirements,
+        workspace: input.executionControl.workspace.workspaceMode,
+        toolPolicy: input.executionControl.tools.toolPolicyKind,
+      },
+    },
+    runtime: input.runtime,
+    executionControl: input.executionControl,
+    policy: input.policy,
+    ...(input.extensions === undefined ? {} : { extensions: input.extensions }),
+  });
+}
+
 export function derivePlannedExecutionCoordinates(
   plan: ExecutionIdentityPlanContext,
 ): PlannedExecutionCoordinate[] {
@@ -388,6 +426,10 @@ export function derivePlannedExecutionCoordinates(
   const randomizationSlotByTarget = new Map(execution.experiment.randomizationSlots.map(
     (slot) => [slot.targetId, slot.randomizationSlotId],
   ));
+  const targetById = new Map(execution.targets.map((target) => [target.targetId, target]));
+  const runtimeByTarget = new Map(execution.runtimes.flatMap((runtime) => (
+    runtime.runtimeKind === 'executor' ? [[runtime.referenceId, runtime] as const] : []
+  )));
   const coordinates: PlannedExecutionCoordinate[] = [];
 
   for (let trialIndex = 0; trialIndex < execution.experiment.trials; trialIndex += 1) {
@@ -409,7 +451,7 @@ export function derivePlannedExecutionCoordinates(
           sampleId: sample.sampleId,
         }));
         const schedulingBlockId = deriveSchedulingBlockId({
-          executionPlanDigest: execution.executionPlanDigest as Sha256Digest,
+          randomizationDesignDigest: execution.randomizationDesignDigest as Sha256Digest,
           trialIndex,
           coordinates: blockCoordinates,
           ...samplingUnitIds,
@@ -419,8 +461,26 @@ export function derivePlannedExecutionCoordinates(
           if (randomizationSlotId === undefined) {
             throw new TypeError(`Missing randomization slot for Target ${targetId}`);
           }
+          const target = targetById.get(targetId);
+          const runtime = runtimeByTarget.get(targetId);
+          if (target === undefined || runtime === undefined) {
+            throw new TypeError(`Missing sealed execution identity input for Target ${targetId}`);
+          }
+          const executionControl = resolveEffectiveExecutionControl(
+            target.executionControls,
+            sampleId,
+          );
+          const executionCoordinateDigest = deriveExecutionCoordinateDigest({
+            randomizationDesignDigest: execution.randomizationDesignDigest as Sha256Digest,
+            sample,
+            target,
+            runtime,
+            executionControl,
+            policy: execution.policy,
+            ...(execution.extensions === undefined ? {} : { extensions: execution.extensions }),
+          });
           const trialId = deriveTrialId({
-            executionPlanDigest: execution.executionPlanDigest as Sha256Digest,
+            executionCoordinateDigest,
             targetId,
             sampleId,
             trialIndex,
@@ -444,6 +504,8 @@ export function derivePlannedExecutionCoordinates(
             randomizationSlotId,
             sampleId,
             trialIndex,
+            executionCoordinateDigest,
+            executionControl,
             trialId,
             trialSeed,
             schedulingBlockId,

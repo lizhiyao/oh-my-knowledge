@@ -7,6 +7,7 @@ import {
   NonEmptyStringSchema,
 } from './common.js';
 import { JsonValueSchema } from './json.js';
+import { TargetExecutionControlsSchema } from './execution-controls.js';
 
 export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v1' as const;
 export const MEASUREMENT_POLICY_SCHEMA_VERSION = 'omk.measurement-policy/v1' as const;
@@ -77,6 +78,7 @@ export const TargetDefinitionSchema = z.object({
   executorId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
   executionRequirements: TargetExecutionRequirementsSchema,
+  executionControls: TargetExecutionControlsSchema,
   config: JsonValueSchema.optional(),
 }).strict();
 

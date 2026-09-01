@@ -73,6 +73,13 @@ export function validDefinition(): EvaluationDefinition {
           toolPolicy: 'runtime-default',
           skillDiscovery: 'runtime-default',
         },
+        executionControls: {
+          defaults: {
+            workspace: { workspaceMode: 'not-required' },
+            tools: { toolPolicyKind: 'runtime-default' },
+          },
+          sampleOverrides: [],
+        },
       },
       {
         targetId: 'treatment',
@@ -87,6 +94,13 @@ export function validDefinition(): EvaluationDefinition {
           mockInterception: 'not-required',
           toolPolicy: 'runtime-default',
           skillDiscovery: 'runtime-default',
+        },
+        executionControls: {
+          defaults: {
+            workspace: { workspaceMode: 'not-required' },
+            tools: { toolPolicyKind: 'runtime-default' },
+          },
+          sampleOverrides: [],
         },
       },
     ],

@@ -153,12 +153,24 @@ function validateDshTargetSubset(
     throw new TypeError('DSH Host Core adapter does not accept opaque provider config.');
   }
   const requirements = target.executionRequirements;
-  const expectedWorkspace = behavior.workspace === undefined
-    ? 'not-required'
-    : 'copy-on-write-overlay';
-  const expectedToolPolicy = behavior.allowedTools === undefined
-    ? 'runtime-default'
-    : 'allow-list';
+  const workspaceControls = [
+    target.executionControls.defaults.workspace,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ];
+  const toolControls = [
+    target.executionControls.defaults.tools,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.tools === undefined ? [] : [override.tools]
+    )),
+  ];
+  const expectedWorkspace = workspaceControls.some((workspace) => (
+    workspace.workspaceMode === 'copy-on-write-overlay'
+  )) ? 'copy-on-write-overlay' : 'not-required';
+  const expectedToolPolicy = toolControls.some((tools) => (
+    tools.toolPolicyKind === 'allow-list'
+  )) ? 'allow-list' : 'runtime-default';
   const expectedSkillDiscovery = behavior.allowedSkills === undefined
     ? 'runtime-default'
     : Array.isArray(behavior.allowedSkills) && behavior.allowedSkills.length === 0
@@ -201,26 +213,29 @@ function effectiveToolSchemas(
   schemas: readonly CapturedToolSchema[],
   target: CapturedClaudeCliTarget,
 ): readonly CapturedToolSchema[] {
-  const allowedTools = target.config.behavior.allowedTools;
   const disableSkills = target.config.behavior.allowedSkills !== undefined;
-  if (disableSkills && allowedTools?.includes('skill')) {
-    throw new TypeError('DSH Host disabled skills conflict with the skill tool allow-list.');
-  }
   const available = new Set(schemas.map(({ name }) => name));
-  if (allowedTools?.some((name) => !available.has(name))) {
-    throw new TypeError('DSH Host tool allow-list references an unavailable host tool.');
+  const toolControls = [
+    target.target.executionControls.defaults.tools,
+    ...target.target.executionControls.sampleOverrides.flatMap((override) => (
+      override.tools === undefined ? [] : [override.tools]
+    )),
+  ];
+  for (const tools of toolControls) {
+    if (tools.toolPolicyKind !== 'allow-list') continue;
+    if (disableSkills && tools.allowedTools.includes('skill')) {
+      throw new TypeError('DSH Host disabled skills conflict with the skill tool allow-list.');
+    }
+    if (tools.allowedTools.some((name) => !available.has(name))) {
+      throw new TypeError('DSH Host tool allow-list references an unavailable host tool.');
+    }
+    if (!disableSkills && !tools.allowedTools.includes('skill')) {
+      throw new TypeError(
+        'DSH Host runtime-default skill discovery requires the skill tool in a tool allow-list.',
+      );
+    }
   }
-  if (allowedTools !== undefined
-      && target.config.behavior.allowedSkills === undefined
-      && !allowedTools.includes('skill')) {
-    throw new TypeError(
-      'DSH Host runtime-default skill discovery requires the skill tool in a tool allow-list.',
-    );
-  }
-  return Object.freeze(schemas.filter(({ name }) => (
-    (allowedTools === undefined || allowedTools.includes(name))
-    && (!disableSkills || name !== 'skill')
-  )));
+  return Object.freeze([...schemas]);
 }
 
 function captureHost(
@@ -374,9 +389,7 @@ function resolveIdentity(
       skillDiscovery: target.config.behavior.allowedSkills === undefined
         ? 'runtime-default'
         : 'disabled',
-      toolPolicy: target.config.behavior.allowedTools === undefined
-        ? 'runtime-default'
-        : 'allow-list',
+      toolPolicy: 'sample-scoped-sealed-control',
     },
   }, {
     facetId: 'runtime.binding',
@@ -388,9 +401,7 @@ function resolveIdentity(
       protocolId: target.binding.protocolId,
       providerTransportRetries: 'runtime-opaque',
       sandbox: 'none',
-      workspace: target.config.behavior.workspace === undefined
-        ? 'private-ephemeral-run'
-        : 'copy-on-write-overlay',
+      workspace: 'sample-scoped-sealed-control',
     },
   }];
   return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
@@ -581,13 +592,19 @@ async function executeDshHost(
   attempt: Readonly<ExecutorAttemptContext>,
   operationIsolationKey: string,
 ): Promise<ExecutorAttemptResult> {
-  const deniedTools = assertHostCompositionUnchanged(host, target, attempt.signal);
-  const allowedTools = target.config.behavior.allowedTools;
+  assertHostCompositionUnchanged(host, target, attempt.signal);
+  const allowedTools = trialState.allowedTools;
   const skillsDisabled = target.config.behavior.allowedSkills !== undefined;
   const effectiveToolNames = Object.freeze(
-    host.effectiveToolSchemas.map(({ name }) => name),
+    host.effectiveToolSchemas.map(({ name }) => name).filter((name) => (
+      (allowedTools === undefined || allowedTools.includes(name))
+      && (!skillsDisabled || name !== 'skill')
+    )),
   );
   const effectiveToolNameSet = new Set(effectiveToolNames);
+  const deniedTools = Object.freeze(host.effectiveToolSchemas
+    .map(({ name }) => name)
+    .filter((name) => !effectiveToolNameSet.has(name)));
   const rootSessionId = `omk-core-${digestCanonicalJson({
     derivation: 'omk.dsh-host-attempt-session/v1',
     operationIsolationKey,
@@ -698,7 +715,7 @@ async function executeDshHost(
       handle = await host.createAgent({
         sessionId: rootSessionId,
         meta: {
-          cwd: runState.workingDirectory,
+          cwd: trialState.workingDirectory,
           ...(host.parentAgentId === undefined ? {} : { parentSession: host.parentAgentId }),
           ...(host.activeAgentPreset === undefined ? {} : {
             agentPreset: host.activeAgentPreset,

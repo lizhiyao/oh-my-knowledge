@@ -204,18 +204,61 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(cli.canonicalDigests).toEqual(yaml.canonicalDigests);
   });
 
-  it('fails closed instead of flattening heterogeneous sample tool policies', async () => {
+  it('seals heterogeneous sample workspaces and tool policies without flattening them', async () => {
     const root = await fixture('controls');
+    await mkdir(join(root, 'workspace-a'));
+    await mkdir(join(root, 'workspace-b'));
+    await writeFile(join(root, 'workspace-a', 'identity.txt'), 'workspace-a');
+    await writeFile(join(root, 'workspace-b', 'identity.txt'), 'workspace-b');
     await writeFile(join(root, 'samples.json'), JSON.stringify([{
-      sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.', allowedTools: ['Read'],
+      sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
+      cwd: 'workspace-a', allowedTools: ['Read'],
     }, {
-      sample_id: 'sample-b', prompt: 'B', rubric: 'Correct.', allowedTools: ['Bash'],
+      sample_id: 'sample-b', prompt: 'B', rubric: 'Correct.',
+      cwd: 'workspace-b', allowedTools: ['Bash'],
     }]));
 
-    await expect(resolveNodeCliEvaluationRequest(request(root), {
+    const resolved = await resolveNodeCliEvaluationRequest(request(root), {
       projectRoot: root,
       materializationRoot: join(root, '.omk', 'resolved'),
-    })).rejects.toMatchObject({ code: 'CLI_INPUT_SAMPLE_CONTROL_CONFLICT' });
+    });
+    const compiled = compileCliEvaluationInput(resolved);
+    const target = compiled.definition.targets.find((candidate) => (
+      candidate.targetId === 'control'
+    ));
+    const binding = compiled.runtimeBinding.bindings.find((candidate) => (
+      candidate.runtimeKind === 'executor' && candidate.targetId === 'control'
+    ));
+    if (binding?.runtimeKind !== 'executor') throw new Error('missing control binding');
+
+    expect(target?.executionControls.defaults).toEqual({
+      workspace: { workspaceMode: 'not-required' },
+      tools: { toolPolicyKind: 'runtime-default' },
+    });
+    expect(target?.executionControls.sampleOverrides).toEqual([
+      expect.objectContaining({
+        sampleId: 'sample-a',
+        tools: { toolPolicyKind: 'allow-list', allowedTools: ['Read'] },
+      }),
+      expect.objectContaining({
+        sampleId: 'sample-b',
+        tools: { toolPolicyKind: 'allow-list', allowedTools: ['Bash'] },
+      }),
+    ]);
+    const workspaceIds = target?.executionControls.sampleOverrides.map((override) => (
+      override.workspace?.workspaceMode === 'copy-on-write-overlay'
+        ? override.workspace.descriptor.resourceId
+        : undefined
+    ));
+    expect(new Set(workspaceIds).size).toBe(2);
+    expect(binding.resourceLeaseRequirements.filter((requirement) => (
+      requirement.resourceRole === 'workspace'
+    )).map((requirement) => requirement.resourceId).sort()).toEqual(
+      [...workspaceIds as string[]].sort(),
+    );
+    expect(JSON.stringify(compiled.definition)).not.toContain(root);
+    expect(JSON.stringify(target?.executionControls)).not.toContain('locator');
+    expect(JSON.stringify(target?.executionControls)).not.toContain('Read,Bash');
   });
 
   it('keeps Gold analysis-only and outside every executor resource lease', async () => {

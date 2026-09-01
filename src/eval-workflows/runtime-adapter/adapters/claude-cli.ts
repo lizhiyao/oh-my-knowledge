@@ -414,12 +414,8 @@ function identityManifest(
       skillDiscovery: target.config.behavior.allowedSkills === undefined
         ? 'runtime-default-with-private-user-config'
         : 'disabled',
-      toolPolicy: target.config.behavior.allowedTools === undefined
-        ? 'runtime-default'
-        : 'built-in-allow-list-with-mcp-disabled',
-      workspace: target.config.behavior.workspace === undefined
-        ? 'private-ephemeral-run'
-        : 'copy-on-write-overlay',
+      toolPolicy: 'sample-scoped-sealed-control',
+      workspace: 'sample-scoped-sealed-control',
     },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
@@ -553,9 +549,9 @@ async function executeClaude(
       : { systemPromptFile }),
     mcpConfigFiles,
     ...(mockHandle?.settingsFile === undefined ? {} : { settingsFile: mockHandle.settingsFile }),
-    ...(target.config.behavior.allowedTools === undefined
+    ...(trialState.allowedTools === undefined
       ? {}
-      : { allowedTools: target.config.behavior.allowedTools }),
+      : { allowedTools: trialState.allowedTools }),
     disableSkills: target.config.behavior.allowedSkills !== undefined,
   });
   const internalAbort = new AbortController();
@@ -566,7 +562,7 @@ async function executeClaude(
       configuration.executablePath,
       args,
       {
-        cwd: runState.workingDirectory,
+        cwd: trialState.workingDirectory,
         env: {
           ...executionEnvironment(configuration, configDirectory),
           ...(mockHandle?.env ?? {}),

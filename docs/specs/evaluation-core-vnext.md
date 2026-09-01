@@ -170,6 +170,14 @@ interface TargetDefinition {
     skillDiscovery: 'runtime-default' | 'disabled' | 'allow-list';
     sandboxId?: string;
   };
+  executionControls: {
+    defaults: EffectiveExecutionControl;
+    sampleOverrides: readonly Array<{
+      sampleId: string;
+      workspace?: WorkspaceExecutionControl;
+      tools?: ToolExecutionControl;
+    }>;
+  };
   config?: JsonValue;
 }
 ```
@@ -1037,7 +1045,17 @@ Every consumed native attempt settles exactly once into the canonical ledger wit
 
 This design follows resource-quota admission practice rather than billing dashboards: reserve before starting work, account actual use after settlement, and keep limit, usage, and uncertainty separate. It also follows structured deadline/cancellation practice by preserving one Run deadline while keeping attempt timeout a narrower child boundary. GenAI telemetry conventions inform the usage facts, but provider telemetry remains an observation with explicit trust and reporting status, not the authority that grants budget admission.
 
-## 23. Industry references
+## 23. Sample-scoped execution controls
+
+[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) makes workspace and tool authority an explicit, sample-scoped Core contract. This is a `BREAKING-SCHEMA` change with no legacy reader or migration path. A Target declares canonical `executionControls.defaults` plus sparse `sampleOverrides`. Each override replaces the complete workspace field, tool field, or both; inheritance is field-by-field and never unions tool sets. `allow-list` with an empty list therefore means deny all tools, while `runtime-default` remains a distinct policy.
+
+A workspace control is either `not-required` or `copy-on-write-overlay` with a content-addressed descriptor containing only `resourceId`, digest, media type, classification, and size. Locator, credentials, bytes, and `gold` classification are forbidden in Core JSON. Host-owned resource leases bind the descriptor to the locator and verify it before use. `TargetDefinition.executionRequirements` is only the aggregate capability request across all effective sample controls; it does not grant a Trial the aggregate authority.
+
+The Compiler resolves one canonical `EffectiveExecutionControl` for every `(targetId, sampleId)` coordinate and passes exactly that frozen value to the Executor Trial. The execution-coordinate digest, Trial identity, native provenance, and v2 cache key bind that effective control. Changing sample A's workspace or tools invalidates only sample A coordinates and cache entries; sample B identity remains stable. Gold, expected values, evaluation context, annotations, other samples' workspace locators, and other samples' tool grants never enter the Trial projection.
+
+Runtime preparation separately binds the complete canonical control table through `RuntimeBinding.executionControlsDigest` and binds every required workspace through the aggregate resource lease. This prevents a host from pairing a validated Runtime with a different control table while preserving coordinate-local cache identity. An adapter must enforce the exact Trial workspace and exact tool policy, expose only the selected workspace lease, or fail closed during preparation when its backend cannot represent that policy. It may not approximate sample controls with a Target-wide union, common subset, process working directory, or best-effort filtering.
+
+## 24. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/) and [LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)

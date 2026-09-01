@@ -102,7 +102,7 @@ function assertRecordIdentities(bundle: ExecutionBundle): void {
     slotsByTarget.set(record.targetId, record.randomizationSlotId);
     targetsBySlot.set(record.randomizationSlotId, record.targetId);
     const expectedTrialId = deriveTrialId({
-      executionPlanDigest: bundle.executionPlanDigest as Sha256Digest,
+      executionCoordinateDigest: record.executionCoordinateDigest as Sha256Digest,
       targetId: record.targetId,
       sampleId: record.sampleId,
       trialIndex: record.trialIndex,
@@ -693,12 +693,11 @@ function planMismatch(message: string): never {
 }
 
 function executionCacheKey(
-  plan: ExecutionBundlePlanContext,
   coordinate: PlannedExecutionCoordinate,
 ): Sha256Digest {
   return digestCanonicalJson({
-    derivation: 'omk.execution-cache-key/v1',
-    executionPlanDigest: plan.execution.executionPlanDigest,
+    derivation: 'omk.execution-cache-key/v2',
+    executionCoordinateDigest: coordinate.executionCoordinateDigest,
     trialId: coordinate.trialId,
   });
 }
@@ -730,13 +729,13 @@ function assertExecutionCachePolicy(
     return false;
   }
 
-  const expectedCacheKey = executionCacheKey(plan, expected);
+  const expectedCacheKey = executionCacheKey(expected);
   if (mode === 'transparent-deterministic'
       && cache.cacheStatus === 'miss'
       && cache.cacheKeyDigest === expectedCacheKey
       && cache.sourceRecordDigest === undefined
       && provenance.provenanceKind !== 'replay'
-      && provenance.parentDigests.includes(plan.execution.executionPlanDigest)) {
+      && provenance.parentDigests.includes(expected.executionCoordinateDigest)) {
     return false;
   }
 
@@ -756,7 +755,7 @@ function assertExecutionCachePolicy(
       provenance: {
         provenanceKind: 'native' as const,
         trust: provenance.trust,
-        parentDigests: [plan.execution.executionPlanDigest],
+        parentDigests: [expected.executionCoordinateDigest],
       },
       cache: {
         cacheStatus: 'miss' as const,
@@ -838,7 +837,8 @@ export function assertExecutionBundleMatchesPlan(
     if (expected === undefined) {
       planMismatch('ExecutionBundle contains a coordinate outside the sealed ExecutionPlan.');
     }
-    if (record.trialId !== expected.trialId
+    if (record.executionCoordinateDigest !== expected.executionCoordinateDigest
+        || record.trialId !== expected.trialId
         || record.randomizationSlotId !== expected.randomizationSlotId
         || record.trialSeed !== expected.trialSeed
         || record.schedulingBlockId !== expected.schedulingBlockId

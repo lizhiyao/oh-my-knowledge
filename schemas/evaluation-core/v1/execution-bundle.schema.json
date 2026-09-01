@@ -416,6 +416,9 @@
               "cache": {
                 "$ref": "#/$defs/__schema52"
               },
+              "executionCoordinateDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
               "executionStatus": {
                 "const": "completed",
                 "type": "string"
@@ -468,6 +471,7 @@
               "randomizationSlotId",
               "sampleId",
               "trialIndex",
+              "executionCoordinateDigest",
               "trialId",
               "trialSeed",
               "schedulingBlockId",
@@ -492,6 +496,9 @@
               },
               "error": {
                 "$ref": "#/$defs/__schema46"
+              },
+              "executionCoordinateDigest": {
+                "$ref": "#/$defs/__schema2"
               },
               "executionStatus": {
                 "const": "failed",
@@ -542,6 +549,7 @@
               "randomizationSlotId",
               "sampleId",
               "trialIndex",
+              "executionCoordinateDigest",
               "trialId",
               "trialSeed",
               "schedulingBlockId",
@@ -567,6 +575,9 @@
               },
               "error": {
                 "$ref": "#/$defs/__schema46"
+              },
+              "executionCoordinateDigest": {
+                "$ref": "#/$defs/__schema2"
               },
               "executionStatus": {
                 "const": "cancelled",
@@ -617,6 +628,7 @@
               "randomizationSlotId",
               "sampleId",
               "trialIndex",
+              "executionCoordinateDigest",
               "trialId",
               "trialSeed",
               "schedulingBlockId",
@@ -638,6 +650,9 @@
               },
               "censoredAt": {
                 "$ref": "#/$defs/__schema9"
+              },
+              "executionCoordinateDigest": {
+                "$ref": "#/$defs/__schema2"
               },
               "executionStatus": {
                 "const": "budget-censored",
@@ -679,6 +694,7 @@
               "randomizationSlotId",
               "sampleId",
               "trialIndex",
+              "executionCoordinateDigest",
               "trialId",
               "trialSeed",
               "schedulingBlockId",

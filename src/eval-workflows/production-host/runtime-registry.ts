@@ -192,7 +192,6 @@ function snapshotConfiguration(
           ...(configuration.command.environment === undefined ? {} : {
             environment: jsonSnapshot(configuration.command.environment),
           }),
-          workingDirectory: jsonSnapshot(configuration.command.workingDirectory),
         }),
       });
   }
@@ -243,6 +242,8 @@ function executorFactory(
           message: 'Custom command Runtime identity 与注册键不一致。',
         });
         port = await createCustomCommandExecutorAdapter({
+          target: context.target,
+          binding: context.binding,
           runtime: configuration.runtime,
           command: configuration.command,
           sessionIsolationKey: context.sessionIsolationKey,
