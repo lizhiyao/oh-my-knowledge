@@ -1,5 +1,6 @@
 import type { ExecResult } from './result.js';
 import type { ExecutorRuntimeFingerprint } from './runtime.js';
+import type { Mock } from '../../inputs/contracts/mock.js';
 
 export interface ExecutorInput {
   model: string;
@@ -21,7 +22,7 @@ export interface ExecutorInput {
    *    OMK_MOCK_MCP_CONFIG_FILE / OMK_MOCKS_FILE)暴露给脚本;脚本负责消费该协议
    *  - codex / codex-sdk / *-api:不支持,executor capability gate 会拒绝,
    *    绝不静默忽略后把 mock_hit 记成模型失败 */
-  mocks?: import('../../types/eval.js').Mock[];
+  mocks?: Mock[];
   /** 解析 mock.return_file 的相对路径锚点(默认 sample 文件所在目录)。 */
   mocksBaseDir?: string;
   /** strict 模式:未命中 mock 的 tool 调用直接 deny。来源:Sample.mocksStrict。 */

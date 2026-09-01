@@ -1,5 +1,5 @@
 import { join, resolve } from 'node:path';
-import type { EvalConfig } from '../../types/index.js';
+import type { EvalConfig } from '../../inputs/contracts/config.js';
 import {
   compileCliEvaluationInput,
   parseCliEvaluationRequest,

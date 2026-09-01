@@ -13,8 +13,9 @@
  */
 
 import { resolve } from 'node:path';
+import type { Sample } from '../inputs/contracts/sample.js';
 import type { DependencyRequirements } from '../preflight/contracts.js';
-import type { Artifact, Sample } from '../types/index.js';
+import type { Artifact } from '../artifacts/contracts.js';
 
 export interface DoctorPreflightContext {
   /** 过滤掉 baseline-kind 后的 artifact 列表; doctor 只检查实际被测的 skill。 */

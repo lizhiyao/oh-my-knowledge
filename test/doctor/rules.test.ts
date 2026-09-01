@@ -13,7 +13,8 @@ import {
   getRegisteredRules,
   __resetCustomRulesForTest,
 } from '../../src/doctor/rules.js';
-import type { Artifact, Sample } from '../../src/types/index.js';
+import type { Artifact } from '../../src/artifacts/contracts.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 import type { DoctorContext, DoctorRule } from '../../src/types/doctor.js';
 
 function ctxWith(artifact: Artifact, overrides: Partial<DoctorContext> = {}): DoctorContext {

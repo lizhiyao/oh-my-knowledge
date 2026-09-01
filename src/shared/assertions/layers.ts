@@ -1,4 +1,4 @@
-import type { Assertion } from '../../types/index.js';
+import type { Assertion } from '../../inputs/contracts/assertion.js';
 
 /** Leaf assertion construct classification. `assert-set` is resolved from its leaves. */
 export const ASSERTION_LAYER: Readonly<Record<string, 'fact' | 'behavior'>> = Object.freeze({

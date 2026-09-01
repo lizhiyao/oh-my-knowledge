@@ -8,7 +8,7 @@
  * reachable 时才走 `deriveManagedState`(哈不等 → stale)。verdict / 可比性取**当前有效证据**
  * (contentHash == record.contentHash)里 recordedAt 最新那条 —— 旧内容的证据不冒充当前。
  */
-import type { ArtifactKind } from '../types/index.js';
+import type { ArtifactKind } from '../artifacts/contracts.js';
 import type { ManagedArtifactRecord, ManagedLifecycleLabel, ManagedObservation } from './contracts.js';
 import {
   currentPromoteOverride,

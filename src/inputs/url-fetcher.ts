@@ -8,7 +8,7 @@
  * (e.g., via VPN, proxy, cookies) before running the evaluation.
  */
 
-import type { Sample } from '../types/index.js';
+import type { Sample } from './contracts/sample.js';
 
 // Match URLs using RFC 3986 allowed characters (whitelist approach).
 // This avoids accidentally consuming CJK characters or punctuation adjacent to URLs.

@@ -9,7 +9,7 @@ import {
   registerHealthDimension,
   __resetHealthDimensionsForTest,
 } from '../../../src/doctor/health/dimension-registry.js';
-import type { Artifact } from '../../../src/types/index.js';
+import type { Artifact } from '../../../src/artifacts/contracts.js';
 import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import type { ExecResult } from '../../../src/executors/contracts/result.js';
 import type { DoctorContext } from '../../../src/types/doctor.js';

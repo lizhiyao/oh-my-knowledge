@@ -2,8 +2,9 @@ import { createExecutor } from '../executors/index.js';
 import { executorSupportsSampleMocks } from '../executors/core/capabilities.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../eval-workflows/evaluation-defaults.js';
 import { sampleMockReferenceKeys } from '../shared/sample-contract.js';
+import type { Sample, SampleProvenance } from '../inputs/contracts/sample.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
-import type { Assertion, Sample, SampleProvenance } from '../types/index.js';
+import type { Assertion } from '../inputs/contracts/assertion.js';
 import type { ObservationInboxItem } from '../observability/contracts/inbox.js';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。

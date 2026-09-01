@@ -1,10 +1,6 @@
-import type {
-  EvalBudget,
-  EvalConfig,
-  EvalConfigVariant,
-  JudgeConfig,
-  RemoteGitRef,
-} from '../../../src/types/index.js';
+import type { EvalBudget, EvalConfig, EvalConfigVariant } from '../../../src/inputs/contracts/config.js';
+import type { RemoteGitRef } from '../../../src/inputs/contracts/variant.js';
+import type { JudgeConfig } from '../../../src/types/index.js';
 import { EVAL_CONFIG_SCHEMA_SOURCE_PATHS } from '../../../src/inputs/eval-config.js';
 
 type SchemaPath = typeof EVAL_CONFIG_SCHEMA_SOURCE_PATHS[number];

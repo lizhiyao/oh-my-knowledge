@@ -6,6 +6,7 @@ const SRC_ROOT = resolve('src');
 const FORBIDDEN_FILES = [
   'src/types/report.ts',
   'src/types/storage.ts',
+  'src/types/eval.ts',
   'src/eval-workflows/run-evaluation.ts',
   'src/eval-workflows/evaluation-pipeline.ts',
   'src/eval-workflows/batch-evaluation-workflow.ts',
@@ -21,6 +22,7 @@ const FORBIDDEN_FILES = [
 const FORBIDDEN_SPECIFIER_FRAGMENTS = [
   '/types/report',
   '/types/storage',
+  '/types/eval',
   '/eval-workflows/run-evaluation',
   '/eval-workflows/evaluation-pipeline',
   '/server/report-store',
@@ -61,9 +63,11 @@ describe('legacy evaluation implementation removal', () => {
     const barrel = readFileSync(resolve('src/types/index.ts'), 'utf8');
     expect(barrel).not.toMatch(/['"]\.\/report\.js['"]/);
     expect(barrel).not.toMatch(/['"]\.\/storage\.js['"]/);
-    const evaluationTypes = readFileSync(resolve('src/types/eval.ts'), 'utf8');
-    expect(evaluationTypes).not.toContain('interface EvaluationJob');
-    expect(evaluationTypes).not.toContain('interface EvaluationRequest');
+    const inputContracts = sourceFiles(resolve('src/inputs/contracts'))
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n');
+    expect(inputContracts).not.toContain('interface EvaluationJob');
+    expect(inputContracts).not.toContain('interface EvaluationRequest');
   });
 
   it('does not retain legacy managed evidence compatibility', () => {

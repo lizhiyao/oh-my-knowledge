@@ -2,7 +2,8 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { buildDoctorPreflightContext } from '../../src/doctor/preflight.js';
-import type { Artifact, Sample } from '../../src/types/index.js';
+import type { Artifact } from '../../src/artifacts/contracts.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 
 const skillArtifact = (overrides: Partial<Artifact> = {}): Artifact => ({
   name: overrides.name ?? 'v1',

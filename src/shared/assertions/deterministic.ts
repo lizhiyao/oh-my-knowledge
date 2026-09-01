@@ -1,7 +1,7 @@
 import _Ajv from 'ajv';
 import type { ToolCallInfo } from '../../executors/contracts/trace.js';
 import type { SyncAssertionType } from '../assertion-types.js';
-import type { Assertion } from '../../types/index.js';
+import type { Assertion } from '../../inputs/contracts/assertion.js';
 
 const Ajv = _Ajv.default ?? _Ajv;
 const ajv = new Ajv();

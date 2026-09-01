@@ -44,7 +44,7 @@ import {
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,
   deterministicAssertionInputSourceKinds,
 } from '../../../src/shared/assertions/deterministic.js';
-import type { Assertion } from '../../../src/types/index.js';
+import type { Assertion } from '../../../src/inputs/contracts/assertion.js';
 import {
   testRuntime,
   validDefinition,

@@ -9,6 +9,13 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
   'src/skill-definition/contracts.ts',
+  'src/artifacts/contracts.ts',
+  'src/inputs/contracts/index.ts',
+  'src/inputs/contracts/assertion.ts',
+  'src/inputs/contracts/config.ts',
+  'src/inputs/contracts/mock.ts',
+  'src/inputs/contracts/sample.ts',
+  'src/inputs/contracts/variant.ts',
   'src/executors/contracts/index.ts',
   'src/executors/contracts/trace.ts',
   'src/executors/contracts/ports.ts',
@@ -30,15 +37,13 @@ const PURE_DOMAIN_TYPE_FILES = [
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set([
-  'src/executors/contracts/ports.ts::../../types/eval.js',
-  'src/managed/contracts.ts::../types/eval.js',
+  'src/inputs/contracts/config.ts::../../types/judge.js',
   'src/observability/contracts/inbox.ts::../../types/diagnosis.js',
 ]);
 
 const ALLOWED_LEGACY_TYPE_FILES = new Set([
   'diagnosis.ts',
   'doctor.ts',
-  'eval.ts',
   'index.ts',
   'judge.ts',
   'shared.ts',

@@ -22,7 +22,7 @@ import {
 } from '../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
-import type { Sample as SampleType } from '../../types/index.js';
+import type { Sample as SampleType } from '../../inputs/contracts/sample.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 interface GenerateSamplesResult {

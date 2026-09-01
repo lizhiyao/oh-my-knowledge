@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import yaml from 'js-yaml';
-import type { Sample } from '../types/index.js';
+import type { Sample } from './contracts/sample.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { ownRecordValue } from '../shared/record-count.js';
 import { parseYaml, validateSamples, type LoadSamplesResult } from './load-samples.js';

@@ -7,7 +7,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { loadSamples } from '../../src/inputs/load-samples.js';
-import type { Assertion, Sample } from '../../src/types/index.js';
+import type { Assertion } from '../../src/inputs/contracts/assertion.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 
 const execFileAsync = promisify(execFile);
 

@@ -9,7 +9,8 @@ import {
   checkDependencies,
   preflightDependencies,
 } from '../../src/preflight/dependencies.js';
-import type { Artifact, Sample } from '../../src/types/index.js';
+import type { Artifact } from '../../src/artifacts/contracts.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 
 const tmp = () => join(tmpdir(), `omk-dep-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 

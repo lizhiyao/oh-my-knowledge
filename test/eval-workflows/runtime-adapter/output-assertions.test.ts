@@ -40,7 +40,8 @@ import {
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,
   createIsolatedDeterministicAssertionEvaluator,
 } from '../../../src/shared/assertions/deterministic.js';
-import type { Assertion, AssertionDetail } from '../../../src/types/index.js';
+import type { Assertion } from '../../../src/inputs/contracts/assertion.js';
+import type { AssertionDetail } from '../../../src/types/index.js';
 import { testRuntime, validDefinition, validPolicy } from '../../evaluation-core/compiler/fixtures.js';
 
 interface ScoringFixture {
