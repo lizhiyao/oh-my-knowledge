@@ -70,11 +70,10 @@ import type {
   ExperienceTimelineTree,
   ExperienceTurnSummary,
   ObservationExperienceReport,
-  ObservationInboxItem,
-  ObservationMetricKey,
-  ObservationReviewState,
-  TraceSourceMetadata,
-} from '../types/index.js';
+} from './contracts/experience.js';
+import type { ObservationInboxItem } from './contracts/inbox.js';
+import type { ObservationMetricKey, ObservationReviewState } from './contracts/review.js';
+import type { TraceSourceMetadata } from './contracts/trace.js';
 import {
   buildExperienceProblemPatterns,
   mergeExperienceProblemPatterns,

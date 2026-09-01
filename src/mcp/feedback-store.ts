@@ -13,10 +13,8 @@ import {
 } from '../observability/review-state.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
-import type {
-  ObservationCaptureCoverage,
-  ObservationReviewStateEntry,
-} from '../types/index.js';
+import type { ObservationCaptureCoverage } from '../observability/contracts/inbox.js';
+import type { ObservationReviewStateEntry } from '../observability/contracts/review.js';
 import {
   FileObservationCaptureStore,
   type FileObservationCaptureStoreOptions,

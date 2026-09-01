@@ -1,15 +1,14 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import type { ExperienceSessionSummary, ExperienceTraceRecordRange } from './contracts/experience.js';
 import type {
-  ExperienceSessionSummary,
-  ExperienceTraceRecordRange,
   ObservationInboxReport,
   ObservationSourceRecord,
   ObservationSourceRecordArchive,
   ObservationSourceRecordArchiveRef,
   ObservationSourceRecordArchiveView,
-} from '../types/index.js';
+} from './contracts/inbox.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { normalizeTraceTimestamp } from './trace-ir.js';
 import { forEachNonEmptyUtf8Line } from './trace-source.js';

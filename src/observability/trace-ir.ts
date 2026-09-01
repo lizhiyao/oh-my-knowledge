@@ -1,12 +1,8 @@
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type {
-  ToolCallStatus,
-  ToolCallStatusSource,
-  TraceIngestionSummary,
-  TraceSourceMetadata,
-} from '../types/index.js';
+import type { ToolCallStatus, ToolCallStatusSource } from '../types/index.js';
+import type { TraceIngestionSummary, TraceSourceMetadata } from './contracts/trace.js';
 import type { TraceSourceKind } from '../types/trace.js';
 import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
 import type { NormalizedToolIdentity } from '../shared/tool-identity.js';

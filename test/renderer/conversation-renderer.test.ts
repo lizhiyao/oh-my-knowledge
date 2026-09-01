@@ -5,11 +5,11 @@ import {
   renderConversationDetailPage,
   renderConversationIndexPage,
 } from '../../src/renderer/conversation-renderer.js';
+import type { ExperienceTurnStatus } from '../../src/observability/contracts/experience.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
-  ExperienceTurnStatus,
-} from '../../src/types/index.js';
+} from '../../src/observability/view-models/conversation.js';
 
 function conversation(
   threadId: string,

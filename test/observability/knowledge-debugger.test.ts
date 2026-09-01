@@ -9,7 +9,7 @@ import {
   projectKnowledgeEvidence,
 } from '../../src/observability/knowledge-debugger.js';
 import { reconstructExperienceTurns } from '../../src/observability/turn-index.js';
-import type { ExperienceTimelineEvent } from '../../src/types/index.js';
+import type { ExperienceTimelineEvent } from '../../src/observability/contracts/experience.js';
 
 function event(
   id: string,

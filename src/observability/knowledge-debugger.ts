@@ -1,16 +1,15 @@
 import { createHash } from 'node:crypto';
+import type { ExperienceEvidenceRef, ExperienceTimelineEvent } from './contracts/experience.js';
+import type { ObservationSourceRecordArchiveView } from './contracts/inbox.js';
+import type { TraceIngestionSummary } from './contracts/trace.js';
 import type {
   DebugKnowledgeEvidence,
-  ExperienceEvidenceRef,
-  ExperienceTimelineEvent,
   KnowledgeDebuggerViewModel,
-  ObservationSourceRecordArchiveView,
   TaskTrajectorySession,
   TaskReplayIntegrityNotice,
   TaskReplayStep,
   TaskReplayStepKind,
-  TraceIngestionSummary,
-} from '../types/index.js';
+} from './view-models/knowledge-debugger.js';
 import { hasUserCorrectionSignal } from './feedback-matchers.js';
 import { resolveTaskWindow } from './task-window.js';
 

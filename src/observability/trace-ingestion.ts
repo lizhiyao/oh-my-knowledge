@@ -1,4 +1,4 @@
-import type { TraceIngestionSummary } from '../types/index.js';
+import type { TraceIngestionSummary } from './contracts/trace.js';
 import { sumRecordCounts } from '../shared/record-count.js';
 
 export interface TraceIngestionNotice {

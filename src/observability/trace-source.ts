@@ -27,7 +27,7 @@ import {
   isSyntheticUserMessageText,
   isToolResultFailureText,
 } from './text-signals.js';
-import type { TraceIngestionSummary, TraceSourceMetadata } from '../types/index.js';
+import type { TraceIngestionSummary, TraceSourceMetadata } from './contracts/trace.js';
 import type {
   TraceEvent,
   TraceCorpus,
@@ -116,7 +116,7 @@ export interface CcUserRecord {
 
 export type CcRecord = CcAssistantRecord | CcUserRecord | { type: string; [k: string]: unknown };
 
-export type { TraceSourceMetadata } from '../types/index.js';
+export type { TraceSourceMetadata } from './contracts/trace.js';
 
 // ---------- Legacy session compatibility ----------
 

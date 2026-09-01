@@ -1,7 +1,8 @@
 /** Skill segmentation and source-neutral analysis projection for loaded traces. */
 
 import { createHash } from 'node:crypto';
-import type { ToolCallInfo, TraceSourceMetadata, TurnInfo } from '../types/index.js';
+import type { ToolCallInfo, TurnInfo } from '../types/index.js';
+import type { TraceSourceMetadata } from './contracts/trace.js';
 import type { AnalysisEntry, AnalysisVariantResult } from '../analysis/contracts.js';
 import { incrementRecordCount } from '../shared/record-count.js';
 import {

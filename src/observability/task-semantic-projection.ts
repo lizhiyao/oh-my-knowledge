@@ -1,4 +1,4 @@
-import type { ExperienceTimelineEvent } from '../types/index.js';
+import type { ExperienceTimelineEvent } from './contracts/experience.js';
 
 interface SemanticUnit {
   id: string;

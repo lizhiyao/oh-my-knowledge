@@ -7,7 +7,7 @@ import type {
   TaskReplayIntegrityCode,
   TaskReplayStep,
   TaskReplayStepKind,
-} from '../types/index.js';
+} from '../observability/view-models/index.js';
 import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';
 import { icon } from './icons.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';

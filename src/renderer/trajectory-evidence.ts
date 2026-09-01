@@ -1,4 +1,4 @@
-import type { ExperienceTimelineEvent } from '../types/index.js';
+import type { ExperienceTimelineEvent } from '../observability/view-models/index.js';
 
 export interface TrajectoryEvidenceRef {
   normalizedEventId: string;
