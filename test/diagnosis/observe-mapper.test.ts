@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildObserveDiagnostics, maxLifecycle } from '../../src/diagnosis/observe-mapper.js';
 import { activeStudioDiagnostics, buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../src/diagnosis/studio-projection.js';
-import { parseDiagnosisBundle } from '../../src/shared/diagnosis-schema.js';
+import { parseDiagnosisBundle } from '../../src/diagnosis/contracts/parser.js';
 
 describe('buildObserveDiagnostics', () => {
   it('keeps prototype-shaped skill names as ordinary diagnosis groups', () => {

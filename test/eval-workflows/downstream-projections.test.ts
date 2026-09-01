@@ -18,7 +18,7 @@ import {
   type EvaluationSeriesDefinitionInput,
   type RuntimeIdentity,
 } from '../../src/index.js';
-import { parseArtifactGraphDocument } from '../../src/shared/artifact-graph.js';
+import { parseArtifactGraphDocument } from '../../src/artifact-graph/schema.js';
 import {
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,

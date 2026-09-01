@@ -3,14 +3,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { cardFileName, graphFileName, safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
-import { parseArtifactGraphDocument } from '../shared/artifact-graph.js';
+import { parseArtifactGraphDocument } from './schema.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import {
   extractMarkdownStepWorkflows,
   extractSkillHardRules,
   extractSkillWorkflows,
   parseSkillFrontmatter,
-} from '../shared/hard-rules.js';
+} from '../skill-definition/hard-rules.js';
 import type {
   DoctorReport,
   DoctorRuleResult,

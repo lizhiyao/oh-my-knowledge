@@ -4,7 +4,7 @@ import {
   type EvaluationRecord,
   type ExecutionRecord,
 } from '../../evaluation-core/contracts/index.js';
-import { parseArtifactGraphDocument } from '../../shared/artifact-graph.js';
+import { parseArtifactGraphDocument } from '../../artifact-graph/schema.js';
 import type {
   ArtifactGraphDocument,
   ArtifactGraphEdge,

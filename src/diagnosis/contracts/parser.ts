@@ -3,8 +3,8 @@ import type {
   DiagnosisBundle,
   DiagnosisEvidenceRef,
   DiagnosisOccurrence,
-} from '../diagnosis/contracts.js';
-import { isRfc3339Timestamp } from './timestamp.js';
+} from '../contracts.js';
+import { isRfc3339Timestamp } from '../../shared/timestamp.js';
 
 const DIAGNOSIS_TYPES = new Set([
   'definition_gap',

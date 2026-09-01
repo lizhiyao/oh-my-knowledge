@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { buildObserveDiagnostics } from '../../src/diagnosis/observe-mapper.js';
-import { parseDiagnosisBundle } from '../../src/shared/diagnosis-schema.js';
+import { parseDiagnosisBundle } from '../../src/diagnosis/contracts/parser.js';
 
 function validBundle() {
   return buildObserveDiagnostics({

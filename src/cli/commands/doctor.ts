@@ -14,7 +14,7 @@ import { doctorReportFileStem, isReportFileName, reportFilePath, reportFileStem 
 import { projectDoctorsDir, globalDoctorsDir } from '../../measurement-artifacts/directories.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
 import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../doctor/contracts.js';
-import { parseDoctorReport } from '../../shared/doctor-report.js';
+import { parseDoctorReport } from '../../doctor/report-parser.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 
 export default class Doctor extends BaseCommand {

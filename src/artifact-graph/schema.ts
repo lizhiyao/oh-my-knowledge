@@ -4,8 +4,8 @@ import type {
   ArtifactGraphEvidenceRef,
   ArtifactGraphNode,
   ArtifactGraphSummary,
-} from '../artifact-graph/contracts.js';
-import { normalizeRfc3339Timestamp } from './timestamp.js';
+} from './contracts.js';
+import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
 
 const SOURCE_KINDS = new Set(['doctor', 'eval', 'observe']);
 const ARTIFACT_KINDS = new Set(['skill', 'prompt', 'agent', 'workflow']);
