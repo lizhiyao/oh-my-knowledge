@@ -1,5 +1,8 @@
 import type {
+  AnalysisCoverage,
+  EvaluationCoverage,
   EvaluationStatus,
+  ExecutionCoverage,
   JsonValue,
   RuntimeIdentity,
   SeriesMemberCoverage,
@@ -9,6 +12,14 @@ export const CORE_GOLD_COMPARISON_SCHEMA_VERSION =
   'omk.core-gold-comparison/v1' as const;
 export const CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION =
   'omk.core-evolution-evidence/v1' as const;
+export const CORE_CLI_DRY_RUN_SCHEMA_VERSION =
+  'omk.cli-core-dry-run/v1' as const;
+export const CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION =
+  'omk.cli-core-run-outcome/v1' as const;
+export const CORE_CLI_BATCH_OUTCOME_SCHEMA_VERSION =
+  'omk.cli-core-batch-outcome/v1' as const;
+export const CORE_MANAGED_EVIDENCE_SCHEMA_VERSION =
+  'omk.core-managed-evidence/v1' as const;
 
 export type CoreDownstreamProjectionErrorCode =
   | 'CORE_PROJECTION_SOURCE_INVALID'
@@ -16,7 +27,11 @@ export type CoreDownstreamProjectionErrorCode =
   | 'CORE_GOLD_SCALE_INCOMPATIBLE'
   | 'CORE_GOLD_ANNOTATION_INVALID'
   | 'CORE_GOLD_OBSERVATION_AMBIGUOUS'
-  | 'CORE_SERIES_SOURCE_INVALID';
+  | 'CORE_SERIES_SOURCE_INVALID'
+  | 'CORE_CLI_PLAN_INVALID'
+  | 'CORE_CLI_OPTIONS_INVALID'
+  | 'CORE_CLI_BATCH_SOURCE_INVALID'
+  | 'CORE_MANAGED_EVIDENCE_SOURCE_INVALID';
 
 export class CoreDownstreamProjectionError extends Error {
   readonly code: CoreDownstreamProjectionErrorCode;
@@ -120,7 +135,7 @@ export type CoreEvolutionAnalysisEvidence = {
   }
 );
 
-export type CoreEvolutionDecisionEvidence =
+export type CoreDecisionProjection =
   | {
     readonly decisionStatus: 'decided';
     readonly decisionPolicyId: string;
@@ -141,6 +156,8 @@ export type CoreEvolutionDecisionEvidence =
     readonly decisionDigest: string;
   };
 
+export type CoreEvolutionDecisionEvidence = CoreDecisionProjection;
+
 export interface CoreEvolutionEvidence {
   readonly projectionKind: 'core-evolution-evidence';
   readonly schemaVersion: typeof CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION;
@@ -154,5 +171,169 @@ export interface CoreEvolutionEvidence {
   readonly coverage: SeriesMemberCoverage;
   readonly members: readonly CoreEvolutionMemberEvidence[];
   readonly analyses: readonly CoreEvolutionAnalysisEvidence[];
-  readonly decision?: CoreEvolutionDecisionEvidence;
+  readonly decision?: CoreDecisionProjection;
+}
+
+export interface CoreCliDryRunProjection {
+  readonly projectionKind: 'core-cli-dry-run';
+  readonly schemaVersion: typeof CORE_CLI_DRY_RUN_SCHEMA_VERSION;
+  readonly runContractDigest: string;
+  readonly stageDigests: {
+    readonly executionPlanDigest: string;
+    readonly evaluationPlanDigest: string;
+    readonly analysisPlanDigest: string;
+    readonly decisionPlanDigest: string;
+  };
+  readonly dataset: {
+    readonly datasetId: string;
+    readonly datasetRevisionDigest: string;
+    readonly sampleCount: number;
+  };
+  readonly experiment: {
+    readonly trials: number;
+    readonly experimentalUnit: 'sample' | 'run' | 'cluster';
+    readonly resamplingUnit: string;
+    readonly repeatedMeasures: boolean;
+  };
+  readonly targets: readonly {
+    readonly targetId: string;
+    readonly targetKind: string;
+    readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
+    readonly executorId: string;
+  }[];
+  readonly evaluation: {
+    readonly evaluatorCount: number;
+    readonly metricIds: readonly string[];
+  };
+  readonly analysis: {
+    readonly analysisMode: 'preregistered' | 'exploratory';
+    readonly nodeCount: number;
+    readonly outputResultIds: readonly string[];
+  };
+  readonly decision?: {
+    readonly decisionPolicyId: string;
+    readonly implementationId: string;
+  };
+  readonly preflight: {
+    readonly passed: number;
+    readonly skipped: number;
+    readonly notRequired: number;
+    readonly records: readonly {
+      readonly runtimeKind: string;
+      readonly bindingId: string;
+      readonly referenceId: string;
+      readonly implementationId: string;
+      readonly preflightKind: string;
+      readonly checkId: string;
+      readonly preflightStatus: 'passed' | 'skipped' | 'not-required';
+      readonly reasonCode?: string;
+    }[];
+  };
+}
+
+export type CoreCliGateProjection = {
+  readonly gateStatus: 'passed' | 'blocked' | 'skipped';
+  readonly exitCode: 0 | 1;
+  readonly reasonCodes: readonly string[];
+};
+
+export interface CoreCliRunOutcome {
+  readonly projectionKind: 'core-cli-run-outcome';
+  readonly schemaVersion: typeof CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION;
+  readonly runId: string;
+  readonly reportId: string;
+  readonly runContractDigest: string;
+  readonly reportDigest: string;
+  readonly artifactSetDigest: string;
+  readonly createdAt: string;
+  readonly status: EvaluationStatus;
+  readonly stages: {
+    readonly execution: {
+      readonly bundleDigest: string;
+      readonly stageStatus: 'completed' | 'cancelled' | 'budget-exhausted' | 'failed';
+      readonly coverage: ExecutionCoverage;
+    };
+    readonly evaluation: {
+      readonly bundleDigest: string;
+      readonly stageStatus: 'completed' | 'cancelled' | 'budget-exhausted' | 'failed';
+      readonly coverage: EvaluationCoverage;
+    };
+    readonly analysis: {
+      readonly bundleDigest: string;
+      readonly stageStatus: 'completed' | 'cancelled' | 'failed';
+      readonly coverage: AnalysisCoverage;
+    };
+  };
+  readonly usage: {
+    readonly executionInvocations: number;
+    readonly evaluationInvocations: number;
+    readonly reportedProviderCosts: readonly {
+      readonly amount: number;
+      readonly currency: string;
+    }[];
+    readonly unreportedProviderCostInvocations: number;
+  };
+  readonly decision?: CoreDecisionProjection;
+  readonly gate: CoreCliGateProjection;
+}
+
+export interface CoreCliBatchOutcome {
+  readonly projectionKind: 'core-cli-batch-outcome';
+  readonly schemaVersion: typeof CORE_CLI_BATCH_OUTCOME_SCHEMA_VERSION;
+  readonly batchId: string;
+  readonly batchManifestDigest: string;
+  readonly createdAt: string;
+  readonly children: readonly {
+    readonly itemId: string;
+    readonly ordinal: number;
+    readonly runId: string;
+    readonly outcome: CoreCliRunOutcome;
+  }[];
+  readonly gate: CoreCliGateProjection;
+}
+
+export interface CoreRuntimeIdentityReference {
+  readonly implementationId: string;
+  readonly version?: string;
+  readonly fingerprint: string;
+  readonly fingerprintBasis: 'content-derived' | 'environment-derived' | 'self-reported' | 'opaque';
+  readonly assuranceLevel: 'verified' | 'declared' | 'unknown';
+}
+
+export interface CoreManagedEvidenceProjection {
+  readonly projectionKind: 'core-managed-evidence';
+  readonly schemaVersion: typeof CORE_MANAGED_EVIDENCE_SCHEMA_VERSION;
+  readonly runId: string;
+  readonly reportId: string;
+  readonly reportDigest: string;
+  readonly runCreatedAt: string;
+  readonly status: EvaluationStatus;
+  readonly evidenceReadiness: 'decision-ready' | 'measurement-only' | 'insufficient';
+  readonly comparability: {
+    readonly runContractDigest: string;
+    readonly datasetRevisionDigest: string;
+    readonly executionPlanDigest: string;
+    readonly evaluationPlanDigest: string;
+    readonly analysisPlanDigest: string;
+    readonly decisionPlanDigest: string;
+  };
+  readonly sampleCount: number;
+  readonly targets: readonly {
+    readonly targetId: string;
+    readonly targetKind: string;
+    readonly comparisonRoles: readonly {
+      readonly comparisonId: string;
+      readonly comparisonRole: 'control' | 'treatment';
+    }[];
+    readonly managedEvidenceEligible: boolean;
+    readonly artifact: {
+      readonly resourceId: string;
+      readonly digest: string;
+      readonly mediaType: string;
+      readonly classification: 'public' | 'sensitive' | 'secret' | 'gold';
+      readonly size: number;
+    };
+    readonly executorRuntime: CoreRuntimeIdentityReference;
+  }[];
+  readonly decision?: CoreDecisionProjection;
 }

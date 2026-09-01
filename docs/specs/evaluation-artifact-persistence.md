@@ -1,6 +1,6 @@
 # Evaluation Core artifact persistence
 
-> Status: host persistence, reuse, and downstream projection contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531), slices 1–3. It does not switch `omk eval`, read legacy reports, or make transported JSON a trusted Core capability.
+> Status: host persistence, reuse, and downstream projection contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531), plus the pre-cutover CLI and managed-evidence projections from [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547). It does not switch `omk eval`, read legacy reports, or make transported JSON a trusted Core capability.
 
 ## 1. Boundary
 
@@ -75,13 +75,19 @@ Gold comparison requires the caller to select one sealed Target, Evaluator, and 
 
 Evolution evidence consumes one exact Evaluation Series Plan → SeriesAnalysisBundle → EvaluationSeriesReport chain. Series fixes `experimentalUnit = run`; the projection preserves member status, trust, comparability, analysis standards, assumptions, coverage, and registered Decision. It never ranks member runs or infers a winner from display scores. Only a `decided` Series Decision makes the view `decision-ready`; completed analysis without a Decision remains `analysis-only`.
 
+The CLI dry-run projection accepts only the in-process `SealedRunPlan` capability returned by prepare. It exposes stage digests, Dataset／Target／Evaluator／Metric counts, experimental-unit identity, Analysis outputs, Decision policy identity, and redacted preflight records. It contains no input, expected value, evaluation context, artifact config, locator, or provider secret. A transported Plan document cannot be projected as a successful prepare result.
+
+The CLI run projection accepts one fully validated stored artifact chain. Operational completion, evidence completeness, conclusion status, and registered Decision remain separate inputs to the gate. A verdict is not release authority by itself: `PROGRESS` requires the stable `release-gates-passed` reason and `SOLO` requires `solo-layer-gate-passed`. `report-only` may skip the release gate only for a completed run; cancellation, budget exhaustion, and failure remain non-zero operational outcomes. Batch projection verifies every manifest child against its exact artifact-set identity and projects independent child outcomes without pooling scores, Reports, or statistical units.
+
+Managed evidence projection binds each OMK Target to the full SHA-256 artifact descriptor sealed in Target config, its exact Executor Runtime fingerprint reference, comparison-scoped roles, Dataset revision, all stage-plan digests, Report identity, status, and registered Decision. A Target may therefore be treatment in one Comparison and control in another without making the valid Core chain unprojectable. The projection deliberately omits the legacy 12-character content hash, locator heuristics, aliases, display scores, Runtime capabilities, and implementation facets. Baseline Targets remain visible for audit but are explicitly ineligible for managed evidence. The later cutover writer must consume this projection and move managed records into the same content-identity space; it must not translate the projection back into a legacy `EvaluationReport`.
+
 ## 10. Non-goals
 
 - legacy `EvaluationReport` readers, migration, or dual writes;
 - partial-record resume or a cross-process checkpoint engine;
 - Studio projections;
-- wiring the Core projections into legacy evolve, gold, or artifact-graph CLI commands before cutover;
+- wiring the Core projections into production CLI, Studio, or managed-record consumers before cutover;
 - the production CLI cutover and old pipeline deletion;
 - artifact signatures or provenance attestation.
 
-These Core-native projections complete the #531 persistence consumer boundary. The final CLI switch remains a separate `BREAKING-SCHEMA` change under #450.
+These Core-native projections complete the consumer inputs needed by the first #547 slice. The production switch remains a separate atomic `BREAKING-SCHEMA` change: no current command reads both legacy and Core facts.
