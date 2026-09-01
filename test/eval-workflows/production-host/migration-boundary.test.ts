@@ -29,7 +29,7 @@ describe('#539 production host migration boundary', () => {
   it('pins the production CLI to the Core host and the report route to Core Studio', () => {
     const command = readFileSync('src/cli/commands/eval/index.ts', 'utf8');
     const runner = readFileSync('src/cli/lib/run-core-evaluation.ts', 'utf8');
-    const server = readFileSync('src/studio/http/report-server.ts', 'utf8');
+    const server = readFileSync('src/studio/http/request-handler.ts', 'utf8');
 
     expect(command).toContain('runCoreEvaluationCommand');
     expect(command).not.toContain('runEvaluation');

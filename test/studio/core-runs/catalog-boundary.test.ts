@@ -18,7 +18,7 @@ describe('#535 Core Studio catalog boundary', () => {
     expect(source).not.toMatch(/\.compositeScore\b/);
 
     const studioCommand = readFileSync('src/cli/commands/studio.ts', 'utf8');
-    const reportServer = readFileSync('src/studio/http/report-server.ts', 'utf8');
+    const reportServer = readFileSync('src/studio/http/request-handler.ts', 'utf8');
     expect(studioCommand).toContain('createCoreStudioCatalog');
     expect(studioCommand).toContain('createOverlayCoreRunArtifactStore');
     expect(studioCommand).not.toContain('createOverlayReportStore');
