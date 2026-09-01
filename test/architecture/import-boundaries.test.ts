@@ -487,6 +487,19 @@ describe('架构边界守门', () => {
     expect(extractSpecifiers(referenceValidator)).not.toContain('../experience.js');
   });
 
+  it('Experience 复核清单由独立模块拥有', () => {
+    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const checklist = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'review-checklist.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(facade)).toContain('./experience/review-checklist.js');
+    expect(facade).not.toContain('function goalSatisfactionChecklistItems(');
+    expect(facade).not.toContain('function expectedToolCheckForSession(');
+    expect(extractSpecifiers(checklist)).not.toContain('../experience.js');
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
