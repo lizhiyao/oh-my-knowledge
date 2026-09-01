@@ -2,6 +2,7 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
   EvaluationErrorSchema,
+  IdentifierSchema,
   RuntimeIdentitySchema,
   type AnalysisBundle,
   type DecisionResult,
@@ -12,7 +13,16 @@ import {
   type ExecutionBundle,
   type ExecutionBundleSource,
   type AnalysisBundleSource,
+  type AnalysisBundleVerificationContext,
   type DecisionResultSource,
+  type DecisionResultVerificationContext,
+  type EvaluationBundleVerificationContext,
+  type ExecutionBundleVerificationContext,
+  parseEvaluationReport,
+  verifyAnalysisBundle,
+  verifyDecisionResult,
+  verifyEvaluationBundle,
+  verifyExecutionBundle,
 } from '../contracts/index.js';
 import {
   EvaluationDefinitionError,
@@ -24,6 +34,7 @@ import {
   type RuntimeResolution,
   type SealedRunPlan,
 } from '../compiler/index.js';
+import { snapshotJson } from '../compiler/immutability.js';
 import {
   AnalysisPortFailure,
   AnalysisRuntimeConfigurationError,
@@ -62,6 +73,8 @@ import type {
   PartialEvaluationRunArtifacts,
   PreparedEvaluation,
   PreparedEvaluationRunOptions,
+  PreparedEvaluationStageSession,
+  EvaluationStageSessionErrorCode,
 } from './types.js';
 
 export * from './types.js';
@@ -544,20 +557,297 @@ function startPrepared(
   };
 }
 
+export class EvaluationStageSessionError extends TypeError {
+  readonly code: EvaluationStageSessionErrorCode;
+
+  constructor(code: EvaluationStageSessionErrorCode, message: string) {
+    super(message);
+    this.name = 'EvaluationStageSessionError';
+    this.code = code;
+  }
+}
+
+function createStageSession(
+  runtime: EvaluationEngineRuntime,
+  prepared: PreparedEngineRun,
+  inputOptions: PreparedEvaluationRunOptions,
+  activeRunIds: Set<string>,
+): PreparedEvaluationStageSession {
+  const options: PreparedEvaluationRunOptions = Object.freeze({
+    runId: inputOptions.runId,
+    ...(inputOptions.signal === undefined ? {} : { signal: inputOptions.signal }),
+    ...(inputOptions.annotations === undefined
+      ? {}
+      : { annotations: snapshotJson(inputOptions.annotations) }),
+    ...(inputOptions.summaries === undefined
+      ? {}
+      : { summaries: snapshotJson(inputOptions.summaries) }),
+    ...(inputOptions.eventWriter === undefined
+      ? {}
+      : { eventWriter: inputOptions.eventWriter }),
+    ...(inputOptions.eventBufferCapacity === undefined
+      ? {}
+      : { eventBufferCapacity: inputOptions.eventBufferCapacity }),
+  });
+  if (!IdentifierSchema.safeParse(options.runId).success) {
+    throw new EvaluationStageSessionError(
+      'EVALUATION_STAGE_SESSION_RUN_ID_INVALID',
+      '分阶段运行的 runId 不符合 Evaluation Core identifier contract。',
+    );
+  }
+  if (!isValidEventBufferCapacity(
+    options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY,
+  )) {
+    throw new EvaluationStageSessionError(
+      'EVALUATION_STAGE_SESSION_EVENT_BUFFER_CAPACITY_INVALID',
+      '分阶段运行的 eventBufferCapacity 必须是正安全整数。',
+    );
+  }
+  if (activeRunIds.has(options.runId)) {
+    throw new EvaluationStageSessionError(
+      'EVALUATION_STAGE_SESSION_RUN_ID_ACTIVE',
+      `runId "${options.runId}" 在当前 Evaluation Engine 中已有运行中的任务。`,
+    );
+  }
+
+  const sequencer = new InMemoryRuntimeEventSequencer();
+  const sessionAbort = new AbortController();
+  const signal = options.signal === undefined
+    ? sessionAbort.signal
+    : AbortSignal.any([options.signal, sessionAbort.signal]);
+  const startedStages = new Set<string>();
+  const budgetByExecutionSource = new WeakMap<object, ReturnType<typeof createRunBudgetSource>>();
+  const stageCapacity = options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY;
+  let inFlight: Promise<unknown> | undefined;
+  let closing = false;
+  let closed = false;
+  let closePromise: Promise<void> | undefined;
+
+  function close(): Promise<void> {
+    closePromise ??= (async () => {
+      closing = true;
+      sessionAbort.abort(new Error('Evaluation stage session closed by host.'));
+      if (inFlight !== undefined) await Promise.allSettled([inFlight]);
+      activeRunIds.delete(options.runId);
+      closed = true;
+    })();
+    return closePromise;
+  }
+
+  function track(completion: Promise<unknown>, terminal: boolean): void {
+    inFlight = completion;
+    void completion.then(
+      () => {
+        inFlight = undefined;
+        if (terminal) void close();
+      },
+      () => {
+        inFlight = undefined;
+        void close();
+      },
+    );
+  }
+
+  function startOnce<T>(
+    stageKind: string,
+    start: () => T,
+    completion: (run: T) => Promise<unknown>,
+    terminal = false,
+  ): T {
+    if (closed || closing) {
+      throw new EvaluationStageSessionError(
+        'EVALUATION_STAGE_SESSION_CLOSED',
+        '分阶段运行已经关闭，不能再启动新阶段。',
+      );
+    }
+    if (inFlight !== undefined) {
+      throw new EvaluationStageSessionError(
+        'EVALUATION_STAGE_SESSION_BUSY',
+        '前一个 Evaluation stage 尚未结束，不能并发启动下一阶段。',
+      );
+    }
+    if (startedStages.has(stageKind)) {
+      throw new EvaluationStageSessionError(
+        'EVALUATION_STAGE_ALREADY_STARTED',
+        `Evaluation stage "${stageKind}" 在当前 session 中已经启动过。`,
+      );
+    }
+    const run = start();
+    startedStages.add(stageKind);
+    track(completion(run), terminal);
+    return run;
+  }
+
+  const session: PreparedEvaluationStageSession = {
+    runId: options.runId,
+    execute() {
+      const run = startOnce('execution', () => startExecution(
+        prepared.plan,
+        executionPorts(runtime, prepared.bindings, sequencer, options),
+        {
+          runId: options.runId,
+          bundleId: artifactId(options.runId, 'execution'),
+          eventBufferCapacity: stageCapacity,
+          signal,
+        },
+      ), (started) => started.source);
+      void run.source.then(
+        (source) => { budgetByExecutionSource.set(source, run.budgetSource); },
+        () => undefined,
+      );
+      return run;
+    },
+    evaluate(input) {
+      const budgetSource = budgetByExecutionSource.get(input.execution);
+      return startOnce('evaluation', () => startEvaluation(
+        prepared.plan,
+        input.execution,
+        evaluationPorts(runtime, prepared.bindings, sequencer, options),
+        {
+          runId: options.runId,
+          bundleId: artifactId(options.runId, 'evaluation'),
+          eventBufferCapacity: stageCapacity,
+          ...(budgetSource === undefined ? {} : { budgetSource }),
+          signal,
+        },
+      ), (started) => started.source);
+    },
+    analyze(input) {
+      return startOnce('analysis', () => startAnalysis(
+        prepared.plan,
+        input.execution,
+        input.evaluation,
+        analysisPorts(runtime, prepared.bindings, sequencer, options),
+        {
+          runId: options.runId,
+          bundleId: artifactId(options.runId, 'analysis'),
+          eventBufferCapacity: stageCapacity,
+          signal,
+        },
+      ), (started) => started.source);
+    },
+    decide(input) {
+      return startOnce('decision', () => startDecision(
+        prepared.plan,
+        input.execution,
+        input.evaluation,
+        input.analysis,
+        analysisPorts(runtime, prepared.bindings, sequencer, options),
+        {
+          runId: options.runId,
+          eventBufferCapacity: stageCapacity,
+          signal,
+        },
+      ), (started) => started.source);
+    },
+    materializeReport(input) {
+      return startOnce('report', () => startReportMaterialization(
+        prepared.plan,
+        input.execution,
+        input.evaluation,
+        input.analysis,
+        input.decision,
+        analysisPorts(runtime, prepared.bindings, sequencer, options),
+        {
+          runId: options.runId,
+          reportId: artifactId(options.runId, 'report'),
+          eventBufferCapacity: stageCapacity,
+          ...(options.annotations === undefined ? {} : { annotations: options.annotations }),
+          ...(options.summaries === undefined ? {} : { summaries: options.summaries }),
+        },
+      ), (started) => started.result, true);
+    },
+    close,
+  };
+  activeRunIds.add(options.runId);
+  return Object.freeze(session);
+}
+
+function bindPreparedEvaluation(
+  runtime: EvaluationEngineRuntime,
+  prepared: PreparedEngineRun,
+  activeRunIds: Set<string>,
+): PreparedEvaluation {
+  const plan = prepared.plan;
+  const bound: PreparedEvaluation = {
+    plan,
+    start: (options) => startPrepared(
+      runtime,
+      async () => prepared,
+      options,
+      activeRunIds,
+    ),
+    stages: (options) => createStageSession(runtime, prepared, options, activeRunIds),
+    admitExecutionBundle(
+      value: unknown,
+      verification?: ExecutionBundleVerificationContext,
+    ) {
+      return verifyExecutionBundle(value, plan, verification);
+    },
+    admitEvaluationBundle(
+      value: unknown,
+      input: Readonly<{
+        execution: ExecutionBundleSource;
+        verification?: EvaluationBundleVerificationContext;
+      }>,
+    ) {
+      return verifyEvaluationBundle(value, plan, input.execution, input.verification);
+    },
+    admitAnalysisBundle(
+      value: unknown,
+      input: Readonly<{
+        execution: ExecutionBundleSource;
+        evaluation: EvaluationBundleSource;
+        verification?: AnalysisBundleVerificationContext;
+      }>,
+    ) {
+      return verifyAnalysisBundle(
+        value,
+        plan,
+        input.execution,
+        input.evaluation,
+        { schemaValidators: runtime.schemaValidators },
+        input.verification,
+      );
+    },
+    admitDecisionResult(
+      value: unknown,
+      input: Readonly<{
+        execution: ExecutionBundleSource;
+        evaluation: EvaluationBundleSource;
+        analysis: AnalysisBundleSource;
+        verification?: DecisionResultVerificationContext;
+      }>,
+    ) {
+      return verifyDecisionResult(
+        value,
+        plan,
+        input.execution,
+        input.evaluation,
+        input.analysis,
+        input.verification,
+      );
+    },
+    admitReport(value, input) {
+      return parseEvaluationReport(
+        value,
+        plan,
+        input.execution,
+        input.evaluation,
+        input.analysis,
+        input.decision,
+      );
+    },
+  };
+  return bound;
+}
+
 export function createEvaluationEngine(runtime: EvaluationEngineRuntime): EvaluationEngine {
   const activeRunIds = new Set<string>();
   return {
     async prepare(definition, policy): Promise<PreparedEvaluation> {
       const prepared = await prepareEngineRun(runtime, definition, policy);
-      return {
-        plan: prepared.plan,
-        start: (options) => startPrepared(
-          runtime,
-          async () => prepared,
-          options,
-          activeRunIds,
-        ),
-      };
+      return bindPreparedEvaluation(runtime, prepared, activeRunIds);
     },
     start(definition, options: EvaluationRunOptions): EvaluationRun {
       const runOptions: PreparedEvaluationRunOptions = {

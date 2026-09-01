@@ -102,7 +102,10 @@ export interface DecisionResultPlanVerification {
   readonly analysisSourceTrust: Provenance['trust'];
 }
 
+declare const decisionResultSourceBrand: unique symbol;
+
 export interface DecisionResultVerificationResult {
+  readonly [decisionResultSourceBrand]: true;
   readonly result: DecisionResult;
   readonly planVerification: DecisionResultPlanVerification;
 }
@@ -336,7 +339,7 @@ export function verifyDecisionResult(
       analysisSourceTrust: verification?.analysisSourceTrust
         ?? effectiveAnalysisBundleTrust(analysisSource),
     },
-  };
+  } as DecisionResultVerificationResult;
   decisionResultSources.add(provisional);
   const source = deepFreezeCanonicalJson(provisional);
   assertDecision(

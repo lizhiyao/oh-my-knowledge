@@ -300,7 +300,10 @@ export interface AnalysisBundlePlanVerification {
   readonly evaluationSourceTrust: Provenance['trust'];
 }
 
+declare const analysisBundleSourceBrand: unique symbol;
+
 export interface AnalysisBundleVerificationResult {
+  readonly [analysisBundleSourceBrand]: true;
   readonly bundle: AnalysisBundle;
   readonly planVerification: AnalysisBundlePlanVerification;
 }
@@ -849,7 +852,7 @@ export function verifyAnalysisBundle(
         : 'indeterminate' as const,
       evaluationSourceTrust: effectiveSourceTrust,
     },
-  };
+  } as AnalysisBundleVerificationResult;
   analysisBundleSources.add(result);
   return deepFreezeCanonicalJson(result);
 }

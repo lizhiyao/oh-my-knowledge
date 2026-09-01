@@ -480,7 +480,10 @@ export interface ExecutionBundlePlanVerification {
   readonly unverifiedCacheRecordDigests: readonly Sha256Digest[];
 }
 
+declare const executionBundleSourceBrand: unique symbol;
+
 export interface ExecutionBundleVerificationResult {
+  readonly [executionBundleSourceBrand]: true;
   readonly bundle: ExecutionBundle;
   readonly planVerification: ExecutionBundlePlanVerification;
 }
@@ -1040,7 +1043,7 @@ export function verifyExecutionBundle(
 ): ExecutionBundleVerificationResult {
   const bundle = parseExecutionBundleDocument(value);
   const planVerification = assertExecutionBundleMatchesPlan(bundle, plan, verification);
-  const source = { bundle, planVerification };
+  const source = { bundle, planVerification } as ExecutionBundleVerificationResult;
   executionBundleSources.add(source);
   return deepFreezeCanonicalJson(source);
 }

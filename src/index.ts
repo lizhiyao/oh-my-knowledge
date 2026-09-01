@@ -1,4 +1,7 @@
-export { createEvaluationEngine } from './evaluation-core/engine/index.js';
+export {
+  createEvaluationEngine,
+  EvaluationStageSessionError,
+} from './evaluation-core/engine/index.js';
 export type {
   EvaluationEngine,
   EvaluationEngineClock,
@@ -13,10 +16,12 @@ export type {
   EvaluationRunArtifacts,
   EvaluationRunOptions,
   EvaluationRunResult,
+  EvaluationStageSessionErrorCode,
   Evaluator,
   Executor,
   PreparedEvaluation,
   PreparedEvaluationRunOptions,
+  PreparedEvaluationStageSession,
   PartialEvaluationRunArtifacts,
 } from './evaluation-core/engine/index.js';
 

@@ -1,12 +1,20 @@
 import type {
   AnalysisBundle,
+  AnalysisBundleSource,
+  AnalysisBundleVerificationContext,
   DecisionResult,
+  DecisionResultSource,
+  DecisionResultVerificationContext,
   EvaluationBundle,
+  EvaluationBundleSource,
+  EvaluationBundleVerificationContext,
   EvaluationDefinition,
   EvaluationError,
   EvaluationEvent,
   EvaluationReport,
   ExecutionBundle,
+  ExecutionBundleSource,
+  ExecutionBundleVerificationContext,
   CoreSchemaValidator,
   JsonValue,
   MeasurementPolicy,
@@ -24,6 +32,9 @@ import type {
   AnalysisDecisionPolicy,
   AnalysisMissingPolicy,
   AnalysisNodeImplementation,
+  AnalysisRun as CoreAnalysisRun,
+  DecisionRun as CoreDecisionRun,
+  EvaluationReportRun as CoreEvaluationReportRun,
 } from '../analysis/index.js';
 import type {
   EvaluationCache,
@@ -31,12 +42,14 @@ import type {
   EvaluationContentResolver,
   EvaluationContentStore,
   EvaluationEvaluator,
+  EvaluationRun as CoreEvaluationStageRun,
 } from '../evaluation/index.js';
 import type {
   ExecutionCache,
   ExecutionClock,
   ExecutionContentStore,
   ExecutionExecutor,
+  ExecutionRun as CoreExecutionRun,
 } from '../execution/index.js';
 export type Executor = ExecutionExecutor;
 export type Evaluator = EvaluationEvaluator;
@@ -142,9 +155,79 @@ export interface EvaluationRun {
   result: Promise<EvaluationRunResult>;
 }
 
+export interface PreparedEvaluationStageSession {
+  readonly runId: string;
+  execute(): CoreExecutionRun;
+  evaluate(input: Readonly<{
+    execution: ExecutionBundleSource;
+  }>): CoreEvaluationStageRun;
+  analyze(input: Readonly<{
+    execution: ExecutionBundleSource;
+    evaluation: EvaluationBundleSource;
+  }>): CoreAnalysisRun;
+  decide(input: Readonly<{
+    execution: ExecutionBundleSource;
+    evaluation: EvaluationBundleSource;
+    analysis: AnalysisBundleSource;
+  }>): CoreDecisionRun;
+  materializeReport(input: Readonly<{
+    execution: ExecutionBundleSource;
+    evaluation: EvaluationBundleSource;
+    analysis: AnalysisBundleSource;
+    decision?: DecisionResultSource;
+  }>): CoreEvaluationReportRun;
+  close(): Promise<void>;
+}
+
+export type EvaluationStageSessionErrorCode =
+  | 'EVALUATION_STAGE_SESSION_RUN_ID_INVALID'
+  | 'EVALUATION_STAGE_SESSION_RUN_ID_ACTIVE'
+  | 'EVALUATION_STAGE_SESSION_EVENT_BUFFER_CAPACITY_INVALID'
+  | 'EVALUATION_STAGE_SESSION_CLOSED'
+  | 'EVALUATION_STAGE_SESSION_BUSY'
+  | 'EVALUATION_STAGE_ALREADY_STARTED';
+
 export interface PreparedEvaluation {
   readonly plan: SealedRunPlan;
   start(options: PreparedEvaluationRunOptions): EvaluationRun;
+  stages(options: PreparedEvaluationRunOptions): PreparedEvaluationStageSession;
+  admitExecutionBundle(
+    value: unknown,
+    verification?: ExecutionBundleVerificationContext,
+  ): ExecutionBundleSource;
+  admitEvaluationBundle(
+    value: unknown,
+    input: Readonly<{
+      execution: ExecutionBundleSource;
+      verification?: EvaluationBundleVerificationContext;
+    }>,
+  ): EvaluationBundleSource;
+  admitAnalysisBundle(
+    value: unknown,
+    input: Readonly<{
+      execution: ExecutionBundleSource;
+      evaluation: EvaluationBundleSource;
+      verification?: AnalysisBundleVerificationContext;
+    }>,
+  ): AnalysisBundleSource;
+  admitDecisionResult(
+    value: unknown,
+    input: Readonly<{
+      execution: ExecutionBundleSource;
+      evaluation: EvaluationBundleSource;
+      analysis: AnalysisBundleSource;
+      verification?: DecisionResultVerificationContext;
+    }>,
+  ): DecisionResultSource;
+  admitReport(
+    value: unknown,
+    input: Readonly<{
+      execution: ExecutionBundleSource;
+      evaluation: EvaluationBundleSource;
+      analysis: AnalysisBundleSource;
+      decision?: DecisionResultSource;
+    }>,
+  ): EvaluationReport;
 }
 
 export interface EvaluationEngine {

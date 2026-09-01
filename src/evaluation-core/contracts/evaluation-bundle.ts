@@ -479,7 +479,10 @@ export interface EvaluationBundlePlanVerification {
   readonly unverifiedCacheRecordDigests: readonly Sha256Digest[];
 }
 
+declare const evaluationBundleSourceBrand: unique symbol;
+
 export interface EvaluationBundleVerificationResult {
+  readonly [evaluationBundleSourceBrand]: true;
   readonly bundle: EvaluationBundle;
   readonly planVerification: EvaluationBundlePlanVerification;
 }
@@ -1391,7 +1394,7 @@ export function verifyEvaluationBundle(
     source,
     verification,
   );
-  const result = { bundle, planVerification };
+  const result = { bundle, planVerification } as EvaluationBundleVerificationResult;
   evaluationBundleSources.add(result);
   return deepFreezeCanonicalJson(result);
 }
