@@ -1,7 +1,7 @@
 import type { ExecResult, ToolCallInfo, TurnInfo } from '../types/index.js';
 import { checkedSumTokenCounts, optionalTokenCount } from '../shared/token-usage.js';
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
-import { safeSliceForJson } from '../util/safe-slice.js';
+import { safeSliceForJson } from '../shared/json-safe-truncation.js';
 
 type UnknownRecord = Record<string, unknown>;
 

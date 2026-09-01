@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { safeSliceForJson } from '../../src/util/safe-slice.js';
+import { safeSliceForJson } from '../../src/shared/json-safe-truncation.js';
 
 describe('safeSliceForJson', () => {
   it('短字符串原样返回(无 suffix)', () => {
