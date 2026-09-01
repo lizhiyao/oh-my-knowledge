@@ -75,7 +75,7 @@ export async function runStudio(
     return;
   }
 
-  const { createReportServer } = await import('../../server/report-server.js');
+  const { createReportServer } = await import('../../studio/http/report-server.js');
   const {
     createNodeCoreContentStore,
     createNodeCoreRunArtifactStore,

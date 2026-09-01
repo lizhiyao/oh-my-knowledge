@@ -33,7 +33,7 @@ import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
 } from '../../../src/observability/review-state.js';
-import { renderObservationInboxPage } from '../../../src/renderer/observation-inbox-renderer.js';
+import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
 import { businessActionTag, checklistItem, resolvedReviewSessionsForFixture } from './_helpers.js';
 
 describe('observe inbox - signal detection', () => {

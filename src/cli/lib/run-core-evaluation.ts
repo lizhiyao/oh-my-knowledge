@@ -113,7 +113,7 @@ async function announceCoreReport(
     return;
   }
   const { createCoreStudioCatalog } = await import('../../studio/core-runs/index.js');
-  const { createReportServer } = await import('../../server/report-server.js');
+  const { createReportServer } = await import('../../studio/http/report-server.js');
   const server = createReportServer({
     coreStudioCatalog: createCoreStudioCatalog(store),
   });

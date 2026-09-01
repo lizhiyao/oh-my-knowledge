@@ -51,12 +51,12 @@ describe('领域契约所有权', () => {
     expect(existsSync(resolve('src/types'))).toBe(false);
   });
 
-  it('保持已归位的 observe analysis 与 Studio application 不回退到旧目录', () => {
+  it('保持已归位的 observe analysis 与 Studio 领域不回退到旧目录', () => {
     for (const legacyPath of [
       'src/analysis',
       'src/eval-workflows/studio-catalog',
-      'src/server/skill-index.ts',
-      'src/server/skill-insights.ts',
+      'src/server',
+      'src/renderer',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }

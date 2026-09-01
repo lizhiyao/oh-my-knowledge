@@ -15,7 +15,7 @@ import {
 import {
   renderFeedbackAttributionLabel,
   renderObservationInboxPage,
-} from '../../../src/renderer/observation-inbox-renderer.js';
+} from '../../../src/studio/presentation/observation-inbox-renderer.js';
 import { resolvedReviewSessionsForFixture } from './_helpers.js';
 
 describe('observe inbox - experience report', () => {

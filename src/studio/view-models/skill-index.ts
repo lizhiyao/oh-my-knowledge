@@ -1,7 +1,7 @@
 /**
  * Skill-centric 聚合 DTO。
  *
- * Studio 的 list / detail 视图层(renderer/skill-*-renderer)只依赖这些稳定形状,
+ * Studio 的 list / detail 呈现层(presentation/skill-*-renderer)只依赖这些稳定形状,
  * 不直接 import server 装配层。runtime 函数(buildSkillIndex / detectInsights 等)
  * 运行逻辑归属于 src/studio/application/，与 HTTP host 解耦。
  */

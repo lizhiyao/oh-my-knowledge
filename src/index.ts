@@ -220,15 +220,15 @@ export type {
 export {
   renderCoreRunDetail,
   renderCoreRunList,
-} from './renderer/core-run-renderer.js';
-export type { CoreStudioRenderRoutes } from './renderer/core-run-renderer.js';
-export { createCoreStudioRouteHandler } from './server/core-studio-route-handler.js';
+} from './studio/core-runs/index.js';
+export type { CoreStudioRenderRoutes } from './studio/core-runs/index.js';
+export { createCoreStudioRouteHandler } from './studio/core-runs/index.js';
 export type {
   CoreStudioRouteHandler,
   CoreStudioRouteHandlerOptions,
   CoreStudioRouteRequest,
   CoreStudioRouteResponse,
-} from './server/core-studio-route-handler.js';
+} from './studio/core-runs/index.js';
 export type {
   CompareGoldToCoreRunInput,
   CoreCliBatchOutcome,

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { I18N, DEFAULT_LANG, t } from '../src/renderer/layout.js';
+import { I18N, DEFAULT_LANG, t } from '../src/studio/presentation/layout.js';
 
 describe('i18n dictionary parity (zh ↔ en)', () => {
   it('zh and en have identical key sets', () => {
