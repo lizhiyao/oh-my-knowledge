@@ -500,6 +500,25 @@ describe('架构边界守门', () => {
     expect(extractSpecifiers(checklist)).not.toContain('../experience.js');
   });
 
+  it('Experience 会话故事由独立模块拥有', () => {
+    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const sessionStory = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'session-story.ts'),
+      'utf-8',
+    );
+    const textSignals = readFileSync(
+      join(SRC_DIR, 'observability', 'text-signals.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(facade)).toContain('./experience/session-story.js');
+    expect(facade).not.toContain('function buildSessionStory(');
+    expect(facade).not.toContain('function sessionStoryFeedbackSignals(');
+    expect(sessionStory).not.toContain("from '../experience.js'");
+    expect(facade).not.toContain('const USER_INTERRUPTION_RE =');
+    expect(textSignals).toContain('export const USER_INTERRUPTION_RE =');
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
