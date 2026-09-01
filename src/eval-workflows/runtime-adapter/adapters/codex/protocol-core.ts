@@ -11,18 +11,18 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
-import { ExecutionPortFailure } from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
 import {
   normalizeCodexProtocolEvent,
   type CodexEvent,
-} from '../../../executors/openai/codex/protocol.js';
-import { extractCodexTrace } from '../../../executors/openai/codex/trace.js';
+} from '../../../../executors/openai/codex/protocol.js';
+import { extractCodexTrace } from '../../../../executors/openai/codex/trace.js';
 import {
   SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceWithoutMocksSchema,
-} from '../source-neutral-trace.js';
+} from '../../source-neutral-trace.js';
 
 export const CODEX_READ_ONLY_SANDBOX_ID = 'omk.codex.read-only/v1' as const;
 export const CODEX_WORKSPACE_WRITE_SANDBOX_ID =

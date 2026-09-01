@@ -1,4 +1,4 @@
-import { ExecutionPortFailure } from '../../../evaluation-core/execution/index.js';
+import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
 import {
   CODEX_READ_ONLY_SANDBOX_ID,
   CODEX_WORKSPACE_WRITE_SANDBOX_ID,
@@ -7,7 +7,7 @@ import {
   parseCodexCoreEvents,
   type CodexCoreProtocolProfile,
   type ParsedCodexCoreStream,
-} from './codex-protocol-core.js';
+} from './protocol-core.js';
 
 export const CODEX_CLI_READ_ONLY_SANDBOX_ID = CODEX_READ_ONLY_SANDBOX_ID;
 export const CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID = CODEX_WORKSPACE_WRITE_SANDBOX_ID;

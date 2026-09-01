@@ -11,30 +11,30 @@ import {
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
-import type { RuntimeBindingOf } from '../types.js';
-import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
+} from '../../../../evaluation-core/execution/index.js';
+import type { RuntimeBindingOf } from '../../types.js';
+import type { OmkBindingResourceLeaseAccess } from '../../resource-leases/types.js';
 import {
   assertCodexIdentityFilesUnchanged,
   captureCodexIdentityFiles,
   type CapturedCodexIdentityFile,
-} from './codex-content-identity.js';
+} from './content-identity.js';
 import {
   captureCodexEnvironment,
   type CodexEnvironmentEntry,
-} from './codex-environment.js';
-import { mergeOutputClassification } from './shared/classified-environment.js';
+} from './environment.js';
+import { mergeOutputClassification } from '../shared/classified-environment.js';
 import {
   codexSdkExecutorCapabilities,
   parseCodexSdkStream,
   type ParsedCodexSdkStream,
-} from './codex-sdk-protocol.js';
+} from './sdk-protocol.js';
 import {
   CODEX_SDK_RESOURCE_PROFILE,
   captureCodexRunState,
@@ -44,19 +44,19 @@ import {
   workingDirectoryForCodexTrial,
   type CapturedCodexTarget,
   type CodexRunState,
-} from './codex-resources.js';
+} from './resources.js';
 import {
   resolveInstalledCodexSdkRuntime,
   type CodexSdkRuntimeResolver,
   type ResolvedCodexSdkRuntime,
-} from './codex-sdk-runtime.js';
-import { createSameProcessExecutorAdapter } from './shared/same-process.js';
+} from './sdk-runtime.js';
+import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
 
 export {
   CODEX_SDK_READ_ONLY_SANDBOX_ID,
   CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexSdkCoreSchemaValidators,
-} from './codex-sdk-protocol.js';
+} from './sdk-protocol.js';
 export {
   resolveInstalledCodexSdkRuntime,
   type CodexSdkClient,
@@ -65,7 +65,7 @@ export {
   type CodexSdkThread,
   type CodexSdkThreadOptions,
   type ResolvedCodexSdkRuntime,
-} from './codex-sdk-runtime.js';
+} from './sdk-runtime.js';
 
 export const CODEX_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 export const DEFAULT_CODEX_SDK_MAX_EVENT_BYTES = 10 * 1024 * 1024;

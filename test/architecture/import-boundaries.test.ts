@@ -20,6 +20,12 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const SRC_DIR = join(REPO_ROOT, 'src');
 const EVALUATION_CORE_DIR = join(SRC_DIR, 'evaluation-core');
 const EVALUATION_CORE_DIR_NORMALIZED = EVALUATION_CORE_DIR.replace(/\\/g, '/');
+const RUNTIME_ADAPTERS_DIR = join(
+  SRC_DIR,
+  'eval-workflows',
+  'runtime-adapter',
+  'adapters',
+);
 
 interface ForbiddenRule {
   /** 源 layer 前缀(src-relative,以 `/` 结尾的目录或具体文件路径前缀)。 */
@@ -410,6 +416,37 @@ function collectSharedLeafViolations(): string[] {
 }
 
 describe('架构边界守门', () => {
+  it('Runtime Adapter provider 保持内聚目录与单向 shared 依赖', () => {
+    const rootSourceFiles = readdirSync(RUNTIME_ADAPTERS_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isFile()
+        && (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')))
+      .map((entry) => entry.name)
+      .sort();
+    expect(rootSourceFiles).toEqual(['index.ts']);
+
+    const providers = new Set(['anthropic', 'claude', 'codex', 'custom', 'openai']);
+    const violations: string[] = [];
+    for (const provider of providers) {
+      for (const file of listTsFiles(join(RUNTIME_ADAPTERS_DIR, provider))) {
+        for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'))) {
+          const target = resolveSpecifier(file, specifier);
+          if (target === null) continue;
+          const targetRelative = relative(RUNTIME_ADAPTERS_DIR, target).split(sep).join('/');
+          if (targetRelative.startsWith('../')) continue;
+          const targetOwner = targetRelative.split('/')[0];
+          if (targetRelative === 'index.ts'
+              || (providers.has(targetOwner) && targetOwner !== provider)) {
+            violations.push(
+              `${relative(RUNTIME_ADAPTERS_DIR, file).split(sep).join('/')} → ${targetRelative}`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it('禁止反向 / 跨层 import(规则集见本文件 RULES)', () => {
     const violations = collectViolations();
     if (violations.length > 0) {

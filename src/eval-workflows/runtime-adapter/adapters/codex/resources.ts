@@ -9,21 +9,21 @@ import {
   digestCanonicalJson,
   resolveEffectiveExecutionControl,
   type EvaluationDefinition,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionContent,
   type ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
-import type { RuntimeBindingOf } from '../types.js';
+} from '../../../../evaluation-core/execution/index.js';
+import type { RuntimeBindingOf } from '../../types.js';
 import type {
   OmkBindingResourceLease,
   OmkLeasedHostResource,
-} from '../resource-leases/types.js';
+} from '../../resource-leases/types.js';
 import {
   CODEX_READ_ONLY_SANDBOX_ID,
   CODEX_WORKSPACE_WRITE_SANDBOX_ID,
-} from './codex-protocol-core.js';
+} from './protocol-core.js';
 
 export interface CodexResourceProfile {
   readonly adapterLabel: string;

@@ -3,7 +3,7 @@ import {
   captureIdentityFiles,
   type CapturedIdentityFile,
   type ContentIdentityFile,
-} from './shared/content-identity.js';
+} from '../shared/content-identity.js';
 
 export type CodexContentIdentityFile = ContentIdentityFile;
 export type CapturedCodexIdentityFile = CapturedIdentityFile;

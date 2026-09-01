@@ -1,11 +1,11 @@
 import type {
   EvaluationDefinition,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import type {
   ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
-import type { RuntimeBindingOf } from '../types.js';
-import type { OmkBindingResourceLease } from '../resource-leases/types.js';
+} from '../../../../evaluation-core/execution/index.js';
+import type { RuntimeBindingOf } from '../../types.js';
+import type { OmkBindingResourceLease } from '../../resource-leases/types.js';
 import {
   CODEX_CLI_RESOURCE_PROFILE,
   captureCodexRunState,
@@ -16,7 +16,7 @@ import {
   type CapturedCodexTarget,
   type CodexRunState,
   type CodexTargetConfig,
-} from './codex-resources.js';
+} from './resources.js';
 
 export type CodexCliTargetConfig = CodexTargetConfig;
 export type CapturedCodexCliTarget = CapturedCodexTarget;
