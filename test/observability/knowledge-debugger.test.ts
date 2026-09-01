@@ -7,8 +7,8 @@ import { buildObservationInboxReport } from '../../src/observability/inbox/index
 import {
   buildKnowledgeDebuggerViewModel,
   projectKnowledgeEvidence,
-} from '../../src/observability/knowledge-debugger.js';
-import { reconstructExperienceTurns } from '../../src/observability/turn-index.js';
+} from '../../src/observability/conversation/knowledge-debugger.js';
+import { reconstructExperienceTurns } from '../../src/observability/conversation/turn-index.js';
 import type { ExperienceTimelineEvent } from '../../src/observability/contracts/experience.js';
 
 function event(

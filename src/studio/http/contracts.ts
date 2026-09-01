@@ -1,4 +1,4 @@
-import type { ConversationCatalog } from '../../observability/conversation-catalog.js';
+import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
 import type { CoreStudioCatalog } from '../core-runs/index.js';
 
 export interface ReportServerOptions {

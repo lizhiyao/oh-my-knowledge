@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import {
   resolveTaskWindow,
-} from '../../src/observability/task-window.js';
-import { reconstructExperienceTurns } from '../../src/observability/turn-index.js';
+} from '../../src/observability/conversation/task-window.js';
+import { reconstructExperienceTurns } from '../../src/observability/conversation/turn-index.js';
 import type {
   ExperienceSessionSummary,
   ExperienceTimelineEvent,

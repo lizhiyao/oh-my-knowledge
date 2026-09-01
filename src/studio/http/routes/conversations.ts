@@ -1,5 +1,5 @@
-import type { ConversationCatalog } from '../../../observability/conversation-catalog.js';
-import { buildKnowledgeDebuggerViewModel } from '../../../observability/knowledge-debugger.js';
+import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
+import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
 import {
   buildConversationActivitySnapshot,
   buildConversationDetailActivitySnapshot,

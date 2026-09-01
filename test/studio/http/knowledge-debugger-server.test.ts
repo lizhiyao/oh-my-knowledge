@@ -8,8 +8,8 @@ import {
   buildObservationInboxReport,
   saveObservationInboxReport,
 } from '../../../src/observability/inbox/index.js';
-import { buildKnowledgeDebuggerViewModel } from '../../../src/observability/knowledge-debugger.js';
-import { createObservationConversationCatalog } from '../../../src/observability/conversation-view-model.js';
+import { buildKnowledgeDebuggerViewModel } from '../../../src/observability/conversation/knowledge-debugger.js';
+import { createObservationConversationCatalog } from '../../../src/observability/conversation/view-model.js';
 import { renderKnowledgeDebuggerPage } from '../../../src/studio/presentation/knowledge-debugger-renderer.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import type { ExperienceEvidenceRef, ExperienceTimelineEvent } from './contracts/experience.js';
-import type { ObservationSourceRecordArchiveView } from './contracts/inbox.js';
-import type { TraceIngestionSummary } from './contracts/trace.js';
+import type { ExperienceEvidenceRef, ExperienceTimelineEvent } from '../contracts/experience.js';
+import type { ObservationSourceRecordArchiveView } from '../contracts/inbox.js';
+import type { TraceIngestionSummary } from '../contracts/trace.js';
 import type {
   DebugKnowledgeEvidence,
   KnowledgeDebuggerViewModel,
@@ -9,8 +9,8 @@ import type {
   TaskReplayIntegrityNotice,
   TaskReplayStep,
   TaskReplayStepKind,
-} from './view-models/knowledge-debugger.js';
-import { hasUserCorrectionSignal } from './inbox/feedback-matchers.js';
+} from '../view-models/knowledge-debugger.js';
+import { hasUserCorrectionSignal } from '../inbox/feedback-matchers.js';
 import { resolveTaskWindow } from './task-window.js';
 
 interface DebugKnowledgeCandidate extends Omit<DebugKnowledgeEvidence, 'id' | 'accessCount' | 'evidenceRefs'> {

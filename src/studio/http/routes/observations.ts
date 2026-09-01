@@ -5,7 +5,7 @@ import {
   queryObservationInbox,
 } from '../../../observability/inbox/index.js';
 import { buildObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
-import { buildKnowledgeDebuggerViewModel } from '../../../observability/knowledge-debugger.js';
+import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,

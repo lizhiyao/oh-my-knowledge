@@ -10,18 +10,18 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import type { ExperienceTurnStatus } from './contracts/experience.js';
-import type { ObservationSourceRecordArchiveView } from './contracts/inbox.js';
-import type { TraceIngestionSummary } from './contracts/trace.js';
+import type { ExperienceTurnStatus } from '../contracts/experience.js';
+import type { ObservationSourceRecordArchiveView } from '../contracts/inbox.js';
+import type { TraceIngestionSummary } from '../contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
-} from './view-models/conversation.js';
-import type { TaskTrajectorySession } from './view-models/knowledge-debugger.js';
-import { DEFAULT_CACHE_DIR } from '../measurement-artifacts/default-dirs.js';
-import { durationMsBetween } from '../shared/time.js';
-import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+} from '../view-models/conversation.js';
+import type { TaskTrajectorySession } from '../view-models/knowledge-debugger.js';
+import { DEFAULT_CACHE_DIR } from '../../measurement-artifacts/default-dirs.js';
+import { durationMsBetween } from '../../shared/time.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import {
   isCurrentCodexRolloutIndex,
   isReusableCodexRolloutIndex,
@@ -30,11 +30,11 @@ import {
   synchronizeCurrentCodexRolloutIndex,
   type CodexIndexedTask,
   type CodexRolloutIndex,
-} from './trace/adapters/codex/conversation-index.js';
-import { parseCodexSessionFile } from './trace/adapters/codex/trace.js';
-import { projectTraceSessionTimeline } from './experience.js';
+} from '../trace/adapters/codex/conversation-index.js';
+import { parseCodexSessionFile } from '../trace/adapters/codex/trace.js';
+import { projectTraceSessionTimeline } from '../experience.js';
 import { reconstructExperienceTurns } from './turn-index.js';
-import { observationSourceRecordFromLine } from './inbox/source-record-archive.js';
+import { observationSourceRecordFromLine } from '../inbox/source-record-archive.js';
 import {
   PollingSubscriptionHub,
   type PollingSnapshot,
@@ -446,7 +446,7 @@ class CodexConversationCatalog implements ConversationCatalog {
     return new Promise((resolve, reject) => {
       let settled = false;
       let stderr = '';
-      const processPath = fileURLToPath(new URL('./conversation-index-process.js', import.meta.url));
+      const processPath = fileURLToPath(new URL('./index-process.js', import.meta.url));
       const child = spawn(process.execPath, [processPath, row.rolloutPath, row.id, cachePath], {
         stdio: ['ignore', 'ignore', 'pipe'],
       });

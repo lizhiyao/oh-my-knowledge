@@ -19,7 +19,7 @@ import {
   projectTraceSessionTimeline,
 } from '../../../src/observability/experience.js';
 import { isInstalledSkillAssetPath } from '../../../src/observability/trace/attribution.js';
-import { reconstructExperienceTurns } from '../../../src/observability/turn-index.js';
+import { reconstructExperienceTurns } from '../../../src/observability/conversation/turn-index.js';
 
 // ---------- Helpers ----------
 
