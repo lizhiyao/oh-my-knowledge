@@ -396,6 +396,8 @@ describe('CLI', () => {
       '--skill-dir', skillDir,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--executor', CUSTOM_EXECUTOR,
+      '--no-judge',
       '--repeat', '2',
       '--no-debias-length',
       '--threshold', '3.2',
