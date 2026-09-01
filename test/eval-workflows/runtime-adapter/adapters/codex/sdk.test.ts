@@ -14,15 +14,15 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../src/evaluation-core/contracts/index.js';
-import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../../../src/evaluation-core/contracts/index.js';
+import { prepareEvaluationPlan } from '../../../../../src/evaluation-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
   executeRunPlan,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/evaluation-core/execution/index.js';
 import {
   CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexSdkCoreSchemaValidators,
@@ -36,12 +36,12 @@ import {
   type OmkLeasedHostResource,
   type ResolvedCodexSdkRuntime,
   type RuntimeBindingOf,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
 import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
+} from '../../../../evaluation-core/compiler/fixtures.js';
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);

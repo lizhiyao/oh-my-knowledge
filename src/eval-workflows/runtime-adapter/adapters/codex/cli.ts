@@ -11,35 +11,35 @@ import {
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/execution/index.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,
-} from '../../../executors/core/subprocess.js';
-import type { RuntimeBindingOf } from '../types.js';
-import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
+} from '../../../../executors/core/subprocess.js';
+import type { RuntimeBindingOf } from '../../types.js';
+import type { OmkBindingResourceLeaseAccess } from '../../resource-leases/types.js';
 import {
   assertCodexIdentityFilesUnchanged,
   captureCodexIdentityFiles,
   type CapturedCodexIdentityFile,
   type CodexContentIdentityFile,
-} from './codex-content-identity.js';
+} from './content-identity.js';
 import {
   captureCodexEnvironment,
   type CodexEnvironmentEntry,
-} from './codex-environment.js';
-import { mergeOutputClassification } from './shared/classified-environment.js';
+} from './environment.js';
+import { mergeOutputClassification } from '../shared/classified-environment.js';
 import {
   codexCliExecutorCapabilities,
   parseCodexCliStream,
   type ParsedCodexCliStream,
-} from './codex-cli-protocol.js';
+} from './cli-protocol.js';
 import {
   captureCodexCliRunState,
   captureCodexCliTarget,
@@ -48,14 +48,14 @@ import {
   workingDirectoryForCodexCliTrial,
   type CapturedCodexCliTarget,
   type CodexCliRunState,
-} from './codex-cli-resources.js';
-import { createSameProcessExecutorAdapter } from './shared/same-process.js';
+} from './cli-resources.js';
+import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
 
 export {
   CODEX_CLI_READ_ONLY_SANDBOX_ID,
   CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexCliCoreSchemaValidators,
-} from './codex-cli-protocol.js';
+} from './cli-protocol.js';
 
 export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
 export const DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;

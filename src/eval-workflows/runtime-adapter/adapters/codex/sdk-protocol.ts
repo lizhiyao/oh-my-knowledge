@@ -6,7 +6,7 @@ import {
   parseCodexCoreEvents,
   type CodexCoreProtocolProfile,
   type ParsedCodexCoreStream,
-} from './codex-protocol-core.js';
+} from './protocol-core.js';
 
 export const CODEX_SDK_READ_ONLY_SANDBOX_ID = CODEX_READ_ONLY_SANDBOX_ID;
 export const CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID = CODEX_WORKSPACE_WRITE_SANDBOX_ID;

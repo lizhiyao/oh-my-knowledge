@@ -4,7 +4,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { arch, platform } from 'node:process';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { CodexContentIdentityFile } from './codex-content-identity.js';
+import type { CodexContentIdentityFile } from './content-identity.js';
 
 const CODEX_SDK_PACKAGE = '@openai/codex-sdk';
 const CODEX_PACKAGE = '@openai/codex';
