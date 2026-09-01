@@ -9,6 +9,13 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+const CUSTOM_EXECUTOR = join(
+  PROJECT_ROOT,
+  'test',
+  'fixtures',
+  'custom-executor',
+  'core-fixture-executor.sh',
+);
 
 interface ExecError extends Error {
   code: number;
@@ -77,6 +84,8 @@ describe('removed CLI options', () => {
       '--skill-dir', SKILLS,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--executor', CUSTOM_EXECUTOR,
+      '--no-judge',
       '--dry-run',
       '--skip-connectivity',
       '--skip-doctor',
