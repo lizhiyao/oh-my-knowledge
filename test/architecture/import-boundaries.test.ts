@@ -463,6 +463,30 @@ describe('架构边界守门', () => {
     expect(extractSpecifiers(reportDerivations)).not.toContain('../experience.js');
   });
 
+  it('Experience 报告编解码与校验由独立模块拥有', () => {
+    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const codec = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'report-codec.ts'),
+      'utf-8',
+    );
+    const valueGuards = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'report-value-guards.ts'),
+      'utf-8',
+    );
+    const referenceValidator = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'report-reference-validator.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(facade)).toContain('./experience/report-codec.js');
+    expect(facade).not.toContain('function normalizeObservationExperienceReport(');
+    expect(facade).not.toContain('function compactObservationExperienceReport(');
+    expect(extractSpecifiers(codec)).toContain('./report-value-guards.js');
+    expect(extractSpecifiers(codec)).toContain('./report-reference-validator.js');
+    expect(extractSpecifiers(valueGuards)).not.toContain('../experience.js');
+    expect(extractSpecifiers(referenceValidator)).not.toContain('../experience.js');
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
