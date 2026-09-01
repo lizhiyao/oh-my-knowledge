@@ -13,7 +13,7 @@
  *   - LLM 只负责"哪些 id 归一组 + 合并后文案",**支持度 k/n 由框架算**(不信 LLM 算术)。
  */
 
-import type { HealthDimensionSpec, HealthFinding } from '../../doctor/health/dimension-spec.js';
+import type { HealthDimensionSpec, HealthFinding } from './dimension-spec.js';
 
 /** 一条带稳定 id 的采样 finding(来自第 sampleIdx 次采样、dimId 维度)。 */
 export interface TaggedFindingView {
