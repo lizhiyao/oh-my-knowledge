@@ -22,6 +22,7 @@ import {
   createProductionEvaluationHost,
   createProductionRuntimeFactoryRegistry,
   executeProductionEvaluationSeries,
+  persistCoreArtifactGraph,
   resolveNodeCliEvaluationRequest,
 } from '../eval-workflows/production-host/index.js';
 import {
@@ -31,7 +32,6 @@ import {
   type CoreCliRunOutcome,
   type CoreCliSeriesOutcome,
 } from '../eval-workflows/downstream-projections/index.js';
-import { persistCoreArtifactGraph } from '../artifact-graph/core.js';
 import { managedDir, recordCoreEvalEvidence } from '../managed/index.js';
 import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';

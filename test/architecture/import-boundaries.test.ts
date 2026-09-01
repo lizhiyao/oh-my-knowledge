@@ -81,6 +81,11 @@ const RULES: ForbiddenRule[] = [
     reason: '应用工作流产出事实与存储能力，由 Studio 单向消费；workflow 不反向依赖具体工作台。',
   },
   {
+    from: 'artifact-graph/',
+    to: 'eval-workflows/',
+    reason: 'Artifact Graph 只拥有图 contracts、schema 与领域投影；文件持久化和 Core workflow composition 由 production host 拥有。',
+  },
+  {
     from: 'observability/',
     to: 'studio/',
     reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',

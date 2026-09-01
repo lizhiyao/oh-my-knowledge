@@ -1,3 +1,4 @@
+export * from './artifact-graph-persistence.js';
 export * from './measurement-design.js';
 export * from './node-cli-composition.js';
 export * from './node-cli-evaluation-resolver.js';
