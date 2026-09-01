@@ -9,15 +9,15 @@ import {
   type ExecutorCapabilities,
   type JsonValue,
   type SchemaIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   parseClaudeMessageSequence,
   type ParsedClaudeCliStream,
-} from './claude-cli-protocol.js';
+} from './cli-protocol.js';
 import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
   SourceNeutralTraceSchema,
-} from '../source-neutral-trace.js';
+} from '../../source-neutral-trace.js';
 
 export const CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
 export type ParsedClaudeSdkStream = ParsedClaudeCliStream;

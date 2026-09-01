@@ -11,35 +11,35 @@ import {
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorAttemptResult,
-} from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/execution/index.js';
 import {
   buildSdkHookCallback,
   type SdkHookHandle,
-} from '../../../executors/mock-runtime/runtime.js';
-import type { RuntimeBindingOf } from '../types.js';
-import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
+} from '../../../../executors/mock-runtime/runtime.js';
+import type { RuntimeBindingOf } from '../../types.js';
+import type { OmkBindingResourceLeaseAccess } from '../../resource-leases/types.js';
 import {
   captureClassifiedEnvironment,
   mergeOutputClassification,
   type ClassifiedEnvironmentEntry,
-} from './shared/classified-environment.js';
+} from '../shared/classified-environment.js';
 import {
   assertIdentityFilesUnchanged,
   captureIdentityFiles,
   type CapturedIdentityFile,
-} from './shared/content-identity.js';
+} from '../shared/content-identity.js';
 import {
   CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   claudeSdkExecutorCapabilities,
   parseClaudeSdkStream,
   type ParsedClaudeSdkStream,
-} from './claude-sdk-protocol.js';
+} from './sdk-protocol.js';
 import {
   CLAUDE_SDK_RESOURCE_PROFILE,
   captureClaudeCliRunState,
@@ -49,21 +49,21 @@ import {
   type CapturedClaudeCliTarget,
   type ClaudeCliRunState,
   type ClaudeCliTrialState,
-} from './claude-cli-resources.js';
+} from './resources.js';
 import {
   resolveInstalledClaudeSdkRuntime,
   type ClaudeSdkQuery,
   type ClaudeSdkQueryOptions,
   type ClaudeSdkRuntimeResolver,
   type ResolvedClaudeSdkRuntime,
-} from './claude-sdk-runtime.js';
-import { createSameProcessExecutorAdapter } from './shared/same-process.js';
-import { attachSourceNeutralMockStats } from '../source-neutral-trace.js';
+} from './sdk-runtime.js';
+import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { attachSourceNeutralMockStats } from '../../source-neutral-trace.js';
 
 export {
   CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   createClaudeSdkCoreSchemaValidators,
-} from './claude-sdk-protocol.js';
+} from './sdk-protocol.js';
 export {
   resolveInstalledClaudeSdkRuntime,
   type ClaudeSdkQuery,
@@ -71,7 +71,7 @@ export {
   type ClaudeSdkQueryOptions,
   type ClaudeSdkRuntimeResolver,
   type ResolvedClaudeSdkRuntime,
-} from './claude-sdk-runtime.js';
+} from './sdk-runtime.js';
 
 export const MINIMUM_CLAUDE_SDK_CORE_VERSION = '0.3.143' as const;
 export const DEFAULT_CLAUDE_SDK_MAX_EVENT_BYTES = 10 * 1024 * 1024;
