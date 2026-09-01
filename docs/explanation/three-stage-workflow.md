@@ -32,7 +32,7 @@ It is also a **gate in front of eval**: `omk eval` runs the static doctor rules 
 
 ## eval — the measurement core
 
-`eval` is the heart of omk: an **offline A/B** that fixes the model and the samples, varies only the artifact (and its runtime context), and asks "did the new version beat the old one, beyond noise?". It produces the six-dimension report, the statistical machinery (bootstrap CI, length-debias, saturation, inter-judge agreement), and a one-line **verdict** (PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO) you can gate CI on.
+`eval` is the heart of omk: an **offline A/B** that fixes the model and samples, varies only the artifact and its sealed runtime context, and asks "did the new version beat the old one, beyond noise?". It produces authenticated Execution／Evaluation／Analysis evidence, Bootstrap uncertainty, coverage and agreement diagnostics, and a registered **Decision** (`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`) that can route CI.
 
 This is where omk's measurement rigor lives. Everything in [architecture](./architecture), [statistical rigor](./statistical-rigor), and the [scoring pipeline](../specs/scoring) is about making this one number trustworthy enough to support a ship/no-ship decision.
 

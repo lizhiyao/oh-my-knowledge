@@ -30,7 +30,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-`omk init` creates two skill variants and three sample cases. `--dry-run` previews the task plan and estimated calls; the real run then opens the HTML report. With only three demo samples, the verdict is often `UNDERPOWERED` — that is a normal teaching result, not a failed run.
+`omk init` creates two skill variants and three sample cases. `--dry-run` previews the sealed task plan and estimated calls; the real run then opens the Core run in Studio. With only three demo samples, the verdict is often `UNDERPOWERED` — that is a normal teaching result, not a failed run.
 
 Inside a Codex task, the shortest commands above need no runtime flags. To make Codex the default in regular terminals, add the preference to your shell profile (for example `~/.zshrc`):
 
@@ -130,7 +130,7 @@ The CLI now tries to make first-run failures actionable:
 
 The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 
-**Verdict** (cross-version conclusion): `PROGRESS` (better) / `NOISE` (diff inside the confidence band, undecidable) / `REGRESS` (worse) / `CAUTIOUS` (trends look good but confidence is thin) — plus two edge cases, `UNDERPOWERED` (too few samples to conclude) and `SOLO` (single variant, nothing to compare against). This is the one-line answer to bring to a review meeting.
+**Verdict** (cross-version conclusion): `PROGRESS` (better) / `NOISE` (diff inside the confidence band, undecidable) / `REGRESSION` (worse) / `CAUTIOUS` (trends look good but confidence is thin) — plus two edge cases, `UNDERPOWERED` (too few samples to conclude) and `SOLO` (single variant, nothing to compare against). This is the one-line answer to bring to a review meeting.
 
 **Composite score**: each variant's average on a 0–5 scale, with a `+Δ` against the control. The confidence interval next to Δ — 95% by default, raised to a higher level (Bonferroni) when several treatments share one control — is what decides where the verdict lands.
 
@@ -142,7 +142,7 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 |---|---|
 | `PROGRESS` | Ship through your normal release path. Keep the report as release evidence; if this is a managed skill installed with `omk install`, run `omk promote <name>` to record the acceptance decision. |
 | `CAUTIOUS` | Do not ship blind. Inspect the warning that fired (layer gate, judge dissent, stability, or holdout), fix the issue, then re-run; loosen the gate only after explicit human review. |
-| `REGRESS` | Do not ship. Start from the weakest layer and the failing samples, fix the artifact, then re-run the eval. |
+| `REGRESSION` | Do not ship. Start from the weakest layer and the failing samples, fix the artifact, then re-run the eval. |
 | `NOISE` | No release call yet. Add samples or sharpen the sample set so the diff can separate from noise, then re-run. |
 | `UNDERPOWERED` | Grow the sample set to roughly 20+ cases, or at least 2x the current size, then re-run. |
 | `SOLO` | Add a control, usually `omk eval --control baseline --treatment <name>`, before making a ship/no-ship call. |

@@ -1,6 +1,6 @@
 # CLI Evaluation Input Compilation
 
-> **Status**: parse, the Node production resolver, and compilation are implemented under the [Evaluation Core vNext RFC](./evaluation-core-vnext.md). The production Runtime registry, host workflow, and `omk eval` cutover remain deliberately disconnected, so this layer still does not execute or persist a Core Run.
+> **Status**: implemented production input boundary under the [Evaluation Core vNext RFC](./evaluation-core-vnext.md). Parse, resolve, compile, Runtime assembly, host workflow, Core execution, and artifact persistence now form the authoritative `omk eval` path.
 
 ## 1. Purpose and boundary
 
@@ -100,7 +100,7 @@ cache:
 
 `replay-only` is a fail-closed read path. A missing, unavailable, corrupt, or identity-mismatched coordinate terminates the run and never falls back to a live Target call. Replayed records retain the original trial identity, Runtime identity, usage, cost, and provenance; they add neither a native invocation nor an independent replicate. Until Series has an explicit effective-independent-sample model, compilation rejects every non-disabled cache mode together with an independent Series repeat. It also rejects mixing cache reuse with resume in one request. `transparent-deterministic` is available only when Core prepare verifies deterministic execution and a verified Runtime identity. Evaluation `reuse` is independent and remains bound to the complete evaluation contract, including evaluator/model/prompt variant, replicate identity, Gold-facing inputs, metrics, and evidence policy.
 
-The names reserved for the final CLI cutover are `--execution-cache-mode`, `--evaluation-cache-mode`, `--execution-cache-source`, and `--evaluation-cache-source`; `eval.yaml` will use `cache.executionMode`, `cache.evaluationMode`, `cache.executionSource`, and `cache.evaluationSource`. Resolve maps the source inputs to `orchestration.cacheSources.executionSourceLocator` and `evaluationSourceLocator`. These are not live production flags yet: the legacy pipeline remains unchanged. In the migration-only parser, omitted cache input and legacy disable-only input both normalize to the fresh double-disabled policy; an explicit legacy cache-enable request fails instead of being guessed as transparent reuse.
+The Core contract reserves `--execution-cache-mode`, `--evaluation-cache-mode`, `--execution-cache-source`, and `--evaluation-cache-source`; `eval.yaml` reserves `cache.executionMode`, `cache.evaluationMode`, `cache.executionSource`, and `cache.evaluationSource`. These explicit reuse controls are not exposed by the current production CLI. Production runs normalize omitted cache input and the disable-only `--no-cache` input to a fresh, double-disabled policy. An explicit cache-enable request fails instead of being guessed as transparent reuse.
 
 ## 5. Determinism and validation
 
@@ -112,11 +112,11 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 
 ## 6. Migration boundary
 
-This layer is additive. The production `omk eval` command continues to use `RunConfig → runEvaluation → executeEvaluationPipeline`; it does not double-run, shadow-run, persist Core Bundles, or change legacy reports. A later Runtime-adapter change may consume only the contracts emitted here and may not parse CLI inputs again.
+This layer is the production boundary. `omk eval` consumes its contracts through Runtime assembly and the Core host workflow, then persists the Core Plan, Bundles, and Report. The deleted legacy pipeline is neither double-run nor shadow-run, and no later layer reparses CLI input.
 
 The migration contracts are intentionally incompatible: resolved compiler input is `omk.resolved-cli-evaluation-input/v3`, including sample-scoped mock bindings and Evaluator-owned implementation identity; binding output is `omk.runtime-binding-request/v3`. Earlier shapes are rejected without inference or a compatibility reader. No scoring or statistical comparability invariant changes.
 
-The legacy `--no-cache`／`noCache` boolean has no faithful Core equivalent: its enabled state meant stochastic read-through execution reuse and said nothing about Evaluation cache. The registry therefore marks it for replacement rather than mapping it to `transparent-deterministic` or `reuse`. The final cutover may remove the old cache files and behavior without a compatibility reader.
+The disable-only `--no-cache`／`noCache` surface has no faithful Core cache-enable equivalent: the removed implementation used stochastic read-through execution reuse and expressed nothing about Evaluation cache. The current registry therefore normalizes only the disabled state and marks explicit cache reuse for a future, separately designed interface. Old cache files are not read.
 
 ## 7. Exhaustive input registry
 

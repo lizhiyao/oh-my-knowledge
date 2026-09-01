@@ -275,9 +275,7 @@ omk eval gold compare <run-id> --gold-dir gold-dataset
 
 <!-- omk:cli:eval:flags:end -->
 
-HTML 报告有两个 tab：
-- **📊 评分视角** — verdict 驱动的 A/B 对比（[事实/行为/judge 三层](../specs/scoring)、bootstrap CI、length-debias）。
-- **✅ 功能视角** — 每条 sample 当一条单测看：用例设计（prompt / rubric / 工具调用 mock / environment）+ 执行轨迹 + 断言结果 + 可操作的 diagnostic 建议。诊断给出归因（skill 文档模糊 / LLM 误读 / sample 设计 bug / 诱错样本 / ...）、工作流校验（rubric 每步 ✓/✗ + 证据）和失败模式标签（工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他）。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
+Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
 
 ## `omk observe`
 
@@ -461,4 +459,4 @@ omk studio --no-open
 
 启动本地知识工作台。首页直接索引本机 Codex 对话，进行中的对话优先展示；选择对话和任务后，可在四条泳道中查看任务轨迹，并在语义轨迹、规范化事件与原始日志之间相互核对。进行中的任务支持实时跟随，旧的未闭合任务会显示为「未记录结束状态」。这条浏览路径不要求先运行 `omk observe ingest`。
 
-顶部「知识载体」入口继续提供 doctor / eval / observe 报告浏览，包括 verdict、用例 diff、饱和曲线和单用例 drill-down。访问 `/observe-inbox` 可查看 observation reviewer 队列。CI gate 仍使用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），自动化读取使用 report JSON。
+顶部「知识载体」入口提供 doctor、Core eval 与 observe 视图。Core run 页面从已校验产物投影运行状态、evidence coverage、数值观测、Analysis result、Decision reason code 与 lineage。访问 `/observe-inbox` 可查看 observation reviewer 队列。CI gate 使用 `omk eval` 的 exit route，自动化应读取 Core report 产物。

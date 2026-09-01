@@ -275,9 +275,7 @@ For full descriptions: `omk eval --help`.
 
 <!-- omk:cli:eval:flags:end -->
 
-The HTML report has two tabs:
-- **📊 Score view** — the verdict-driven A/B comparison ([fact / behavior / judge layers](../specs/scoring), bootstrap CI, length-debias).
-- **✅ Functional view** — each sample as a unit test: design (prompt / rubric / mocks / environment) + execution trace + assertion results + actionable diagnostic. Diagnostic emits root cause (skill_doc_unclear / llm_misread / sample_design / tripwire_intentional / ...), workflow checks (rubric step ✓/✗ with evidence), and failure-mode tags (工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他). For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
+Studio opens the validated Core run rather than a second report model. The run detail projects operational, evidence, and conclusion status separately; shows numeric observations, Analysis results, Decision reason codes, cost, coverage, and provenance; and links every view back to immutable Core artifacts. Diagnostic post-processing is limited to authenticated Core failures, missing evidence, exclusions, and stable reason codes. For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
 
 ## `omk observe`
 
@@ -461,4 +459,4 @@ For full descriptions: `omk studio --help`.
 
 Starts the local knowledge workbench. The homepage indexes local Codex conversations directly and prioritizes running work. Select a conversation and task to inspect its four-lane Task Trajectory, then cross-check the semantic trajectory against normalized events and raw logs. Running tasks support live following; stale unclosed tasks are labeled **End status not recorded**. This browsing path does not require `omk observe ingest` first.
 
-The top-level **Knowledge artifacts** entry continues to expose doctor, eval, and observe reports, including verdicts, sample diffs, saturation curves, and per-sample drill-downs. Visit `/observe-inbox` for the observation reviewer queue. CI gates still use `omk eval`'s exit code (0 on `PROGRESS`, non-zero otherwise), while automation should read the report JSON.
+The top-level **Knowledge artifacts** entry exposes doctor, Core eval, and observe views. Core run pages project operational status, evidence coverage, numeric observations, Analysis results, Decision reason codes, and lineage from validated artifacts. Visit `/observe-inbox` for the observation reviewer queue. CI gates use `omk eval`'s exit route, while automation should read the Core report artifacts.

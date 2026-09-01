@@ -17,18 +17,15 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 
 | Term | One-line definition | Where it shows up in omk |
 |---|---|---|
-| bootstrap CI | Distribution-free 95% confidence interval, computed by resampling (1000 iterations by default) | `omk eval --bootstrap`; the "paired comparison" table on the report page |
-| Δ (delta) | Mean difference in composite score between treatment and control | hero "Δ +2.778"; paired comparison table |
-| 95% CI | The true mean falls in this interval with 95% probability. CI excluding 0 = a significant difference | hero tooltip; paired comparison table |
-| significant | CI excludes 0 (the gap is not by chance) | reliability check ✓ significant-difference badge |
-| Pearson r | Pearson correlation coefficient. 1 = perfectly aligned / 0 = unrelated / -1 = perfectly opposed | "cross-sample judge agreement" table for the multi-judge ensemble |
-| MAD | Mean absolute deviation. Average distance among judges scoring the same sample. On a 1-5 scale, < 0.5 is tight agreement, > 1.5 is large disagreement | multi-judge agreement table |
-| Krippendorff α | Interval-weighted multi-judge agreement. α ≥ 0.8 high agreement / 0.667-0.8 acceptable / < 0.4 low | Human gold section |
-| p-value | Probability that a gap this large appears by chance; smaller is more significant (0.05 is the usual threshold) | t-test section (not omk's primary path; bootstrap takes priority) |
-| effect size | The gap relative to the noise (Cohen's d / Hedges' g), putting a scale on "how big the difference is" | Cohen's d column in the variance / significance table |
-| CV | Coefficient of variation, stddev / mean, a stability metric. On a 1-5 scale, < 5% stable / 5-15% medium / > 15% unstable | stability column + hero tooltip |
-| stddev (σ) | Standard deviation, a statistic for the magnitude of value fluctuation | stability column |
-| saturation | The point where adding more samples no longer changes the conclusion (CI-width shrinkage flattens out) | reliability check "✓ saturated" badge |
+| bootstrap CI | Percentile confidence interval computed by resampling the registered sampling unit (1000 draws by default) | Core Bootstrap-family Analysis |
+| Δ (delta) | Mean difference in composite score between treatment and control | Bootstrap comparison estimate and Studio projection |
+| 95% CI | An interval from a procedure with 95% long-run coverage under its assumptions. A treatment-minus-control interval excluding 0 is directionally significant | Core Bootstrap-family Analysis |
+| significant | The registered comparison interval excludes 0 at its effective family-corrected alpha | Core Decision evidence |
+| Pearson r | Pearson correlation coefficient. 1 = perfectly aligned / 0 = unrelated / -1 = perfectly opposed | Judge-ensemble or Gold agreement diagnostics |
+| MAD | Mean absolute difference among observed judge-member means for the same sample | Judge Ensemble Analysis |
+| Krippendorff α | Agreement statistic using the registered interval-distance definition | Explicit Gold comparison or preregistered Agreement Analysis |
+| effect size | The treatment-minus-control estimate on the registered score scale | Bootstrap comparison and practical-effect gate |
+| variance | Dispersion across independent run-mean composite values | Evaluation Series Analysis |
 | holdout (set) | Independent validation samples the skill never explicitly covered, used to guard against sample-set overfitting | post-evaluation follow-up recommendations |
 | construct validity | Whether the measurement actually measures the intended thing (vs measurement error) | scoring.md: composite-score construct-validity argument |
 | ad hoc | An implementation choice made without a principled justification — typically "ship it first, justify later" | scoring.md: equal-weight composite aggregation is ad hoc |
@@ -47,19 +44,19 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | judge | An LLM scoring against a rubric | judge model parameter; evidence table |
 | rubric | The detailed criteria a judge follows when scoring (must recognize X / must include Y / at least N items / ...) | rubric field in sample config |
 | anchor | A method for calibrating the LLM judge against human standards | `--gold-dir` human anchors |
-| gate (layer gate) | Three independent layer significance tests (fact / behavior / judge); a regression in any layer triggers CAUTIOUS+ | verdict algorithm; "variance / significance" table on the report page |
-| [verdict](../specs/scoring.md#the-six-verdicts-at-a-glance) | One of six tiers: PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | hero badge; CLI verdict output |
+| gate (layer gate) | A registered treatment-layer threshold evaluated from authenticated Composite-layer evidence | Core release Decision |
+| [verdict](../specs/scoring.md#decision-boundary) | One of six conclusions: PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | Core Report, CLI route, and Studio projection |
 | sample (evaluation sample) | A single evaluation case | eval-samples.json |
 | [eval-samples](./eval-sample-format.md) | The sample config file (each entry has prompt / rubric / assertion / capability) | `omk eval --samples` |
 | baseline (reserved variant) | The control group with no skill injected; omk reserves this variant name | `--control baseline` |
 | treatment | The experiment group with the skill injected | `--treatment <name>` |
 | control | An alias for baseline | `--control <name>` |
-| [composite (score)](../specs/scoring.md) | Equal-weight mean of the fact / behavior / judge layers on a 1-5 scale | first column of the six-dimension comparison table |
-| fact (layer) | Assertion pass rate mapped to 1-5 via `1 + ratio*4` | "📋 Fact" in the six-dimension comparison table |
-| behavior (layer) | Pass rate of process-level assertions (tool calls / turns / cost caps) | "🛠️ Behavior" in the six-dimension comparison table |
-| judge (layer) | The 1-5 score the judge gives directly against the rubric | "💬 LLM judge" in the six-dimension comparison table |
-| dimension | Capability-aligned scoring dimension (not part of composite) | five-layer scoring pipeline architecture |
-| reliability check | Four evidence blocks — judge agreement / significant difference / saturation / human alignment — collapsible on the report page | details block on the report page |
+| [composite (score)](../specs/scoring.md) | Equal-weight mean of observed present fact / behavior / judge layers on a 1-5 scale; zero observed layers is missing | Core Composite table and Studio projection |
+| fact (layer) | Explicitly classified fact-criterion pass weight mapped to 1-5 | Assertion-layer Analysis |
+| behavior (layer) | Explicitly classified behavior-criterion pass weight mapped to 1-5 | Assertion-layer Analysis |
+| judge (layer) | Ensemble consensus or dimension aggregate bound as the judge source | Composite Analysis |
+| dimension | An Analysis aggregate bound one-to-one to a Metric and upstream judge-ensemble result | Dimension Analysis |
+| evidence coverage | Planned, observed, missing, invalid, failed, unavailable, and not-started evidence retained through lineage | Core Analysis and Decision gates |
 | [managed record](../specs/evidence-gated-management.md) | A `.omk/managed/<id>.json` fact record from `omk install` (source / contentHash / distribution / evidence / decisions) | `omk install`; evidence-gated management |
 | lifecycle (installed / measurable / stale) | Read-time state of a managed skill: `installed` (no valid evidence) → `measurable` (eval evidence bound) → `stale` (content drifted off its evidence) | `deriveManagedState`; `omk eval` "→ measurable" |
 | evidence (managed) | A `ManagedEvidenceRef` an eval run appends to a managed record, bound to the content fingerprint it measured (report id / sample coverage / verdict / comparability) | `omk eval` auto-write |
@@ -78,7 +75,7 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | tool call | An external function the LLM invokes during execution |
 | turn | One interaction unit of "LLM output + user/tool response" |
 | context | All the history the LLM sees while generating |
-| fingerprint | A version hash from a SHA-256 prefix (12 chars by default), used to verify consistency across runs |
+| fingerprint | A stable runtime or content identity used to verify consistency and comparability across runs |
 | session trace | The event stream of one complete AI conversation (prompt / tool calls / output / scoring), the object observe parses |
 
 ---

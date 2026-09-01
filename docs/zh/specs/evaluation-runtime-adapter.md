@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter 规范
 
-> **状态**：binding assembly、verified resource lease、Core composition root，以及生产 factory registry／support port 已实现。本层是增量架构，不切换正式 `omk eval` pipeline。
+> **状态**：本规范已成为正式生产宿主边界。binding assembly、verified resource lease、adapter preflight、非阻塞事件投影、Core composition root，以及 factory registry／support port 现已驱动 `omk eval`。
 
 ## 一、边界
 

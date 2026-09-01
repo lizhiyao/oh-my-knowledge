@@ -4,7 +4,7 @@ A factual comparison with seven other LLM evaluation tools, as of 2026-04. Corre
 
 ## TL;DR
 
-omk's moat is **[statistical rigor](../explanation/statistical-rigor)**: every conclusion is auditable by a researcher. Bootstrap CI, Krippendorff α against gold annotations, length-debias judge prompt, saturation curves — none of the other tools surveyed ship all four.
+omk's moat is **[statistical rigor](../explanation/statistical-rigor)**: every release conclusion is traceable to a sealed design, Bootstrap uncertainty, explicit Gold calibration, frozen judge prompts, and fail-closed evidence coverage.
 
 If you need a **hosted SaaS dashboard**, choose LangSmith or Confident AI.
 If you want **quick local prompt iteration without statistics**, choose promptfoo.
@@ -32,10 +32,10 @@ If you need **agent sandbox isolation** for safety evaluations, choose inspect-a
 | Bootstrap CI on variant means + diff | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Krippendorff α (judge ↔ human gold) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Length-debias judge prompt (default) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Saturation curve / sample-size diagnostic | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Missing/failed evidence preserved + coverage gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Paired-sample significance testing | ✓ (bootstrap) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
-omk is the only tool surveyed that ships all five rigour pieces. The closest comparable is lm-evaluation-harness (academic reproducibility focus), but its statistical layer is single-point-estimate.
+The omk column is anchored to its current Evaluation Core contracts and implementations. Competitor columns remain the dated comparison snapshot described at the top of this page.
 
 → These aren't marketing claims — each is documented and code-anchored: [statistical rigor](../explanation/statistical-rigor), [scoring pipeline](../specs/scoring).
 
@@ -44,15 +44,12 @@ omk is the only tool surveyed that ships all five rigour pieces. The closest com
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
 | Three-layer scoring (Fact / Behavior / Judge) isolation | ✓ | ✗ | partial | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Three-layer all-pass CI gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Layer-aware release gate + explicit evidence coverage | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Per-variant skill-discovery isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | partial |
 | Sample design metadata + structure anchors (`covers`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| One-line verdict (PROGRESS / REGRESS / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Registered Decision (PROGRESS / REGRESSION / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Knowledge gap signals (severity-weighted) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Sample quality diagnostics (7 issue kinds) | ✓ | low-discrim only | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Failure case LLM clustering | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-
-Three-layer isolation prevents single-axis regressions from being masked by composite averaging — a `fact 4.5 → 2.5` drop with `judge 3 → 5` boost looks fine in composite mean but is caught by all-pass gates.
+Layer-aware release gates and explicit coverage prevent a positive composite point estimate from overriding a missing-evidence state or a treatment layer below its registered threshold.
 
 **Per-variant skill-discovery isolation** closes a subtle construct-validity hole: a native coding-agent baseline can discover undeclared local knowledge through project files, skill registries, subagents, or ordinary cwd reads. omk defaults to `--strict-baseline`, gives every implicit baseline execution a fresh empty cwd, and adds provider controls: Codex CLI ignores user config and rules and runs ephemerally; Codex SDK gets an isolated `CODEX_HOME`; Claude blocks skill discovery and the subagent `Skill` tool. Runtime and isolation fingerprints are persisted so incompatible reports cannot masquerade as artifact-only comparisons. `--no-strict-baseline` remains an explicit escape hatch. inspect-ai can achieve comparable isolation through per-sample solver wiring; promptfoo / DeepEval / OpenAI Evals do not address this dimension directly.
 
@@ -83,33 +80,33 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 | Production session trace parsing (omk observe) | ✓ Codex / Claude Code / OpenClaw / markdown | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
 | Auto self-iteration (`omk evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml (evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | partial | ✗ | partial | ✓ |
-| CI/CD `omk eval` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
+| CI/CD `omk eval` exit-code routing | ✓ Core Decision | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
 | Hard budget caps (workflow abort) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Resume from interruption | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Multi-run variance + t-test | ✓ + bootstrap | ✗ | ✗ | ✗ | ✗ | partial | ✗ | ✗ |
+| Independent-run Series variance | ✓ | ✗ | ✗ | ✗ | ✗ | partial | ✗ | ✗ |
 
 ## Documentation & community
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
 | Full Chinese documentation | ✓ | partial (community) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| HTML report with i18n toggle | ✓ EN/ZH | partial | ✗ | ✗ | ✗ | partial | ✗ | ✗ |
+| Local Studio report views | ✓ EN/ZH | partial | ✗ | ✗ | ✗ | partial | ✗ | ✗ |
 | GitHub stars (Apr 2026) | new | 9k+ | 12k+ | 9k+ | 16k+ | (commercial) | 7.5k+ | 2k+ |
 | Cloud SaaS dashboard | ✗ | ✗ | ✓ Confident AI | ✗ | ✗ | ✓ | ✗ | ✗ |
 
 ## When to choose omk
 
-**Researchers / academia / NIST AI 800-3 alignment.** The four-piece statistical rigor is built specifically to satisfy "is this conclusion robust to small N / non-normal data / judge bias?" If you publish or audit, the bootstrap-CI + α + length-debias triple is the only off-the-shelf option.
+**Researchers / academia / NIST AI 800-3 alignment.** The statistical architecture is built to answer whether a conclusion survives resampling uncertainty, judge calibration, prompt identity, and incomplete evidence. Core artifacts preserve the design and lineage needed for audit.
 
 **ML platform teams at large companies.** When you ship a skill / prompt to production and someone in the org will ask "why should I trust this number?", omk's audit trail (judge prompt hash, three-layer scores, bootstrap CI, gold α) gives you a defensible answer that survives a postmortem.
 
-**Chinese-speaking AI engineering teams.** omk has the only complete Chinese documentation set among the surveyed tools — README, CLI help, HTML report, terminology spec, gap-signal spec, RAG-metrics spec, all native Chinese (not machine-translated).
+**Chinese-speaking AI engineering teams.** omk maintains native Chinese README, CLI help, Studio views, terminology, gap-signal, and RAG-metric documentation.
 
 **Codex and Claude Code users.** omk ships one agent-neutral skill and native executors for both families. Codex CLI is the strongest isolated measurement path; Codex SDK and Claude runtimes remain available when their project context or event streams are intentional inputs. promptfoo / DeepEval / others usually need a custom-executor shim to reach the same artifact-oriented workflow.
 
 ## When NOT to choose omk
 
-**You need a hosted SaaS dashboard with team accounts and shared dataset hubs.** Choose LangSmith or Confident AI. omk is intentionally CLI + local-HTML; we have no plan to ship a SaaS.
+**You need a hosted SaaS dashboard with team accounts and shared dataset hubs.** Choose LangSmith or Confident AI. omk is intentionally CLI + local Studio; we have no plan to ship a SaaS.
 
 **You're red-teaming and need a library of attack prompts.** Choose promptfoo. It has 67+ red-team plugins; omk is general-purpose and doesn't focus on attack libraries.
 

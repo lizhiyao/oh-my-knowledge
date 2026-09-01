@@ -4,7 +4,7 @@
 
 ## 1. Why sample design needs to be rigorous
 
-omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict) answers "is the **conclusion** computed correctly". But **the conclusion is built on the sample set** — if the samples themselves aren't rigorous, all the downstream statistical rigor is hollow.
+omk's statistical-rigor stack (Bootstrap comparison families / Gold agreement / length-debias / evidence coverage / registered Decision) answers "is the **conclusion** computed correctly". But **the conclusion is built on the sample set** — if the samples themselves aren't rigorous, all the downstream statistical rigor is hollow.
 
 The most common construct mismatch: you run baseline-vs-skill intending to measure "is the skill well written" (quality), but what the sample set actually measures is "baseline doesn't know some domain knowledge vs the skill provides it" (necessity). Both produce equally impressive verdict numbers, but they answer different questions — and without sample metadata declaring the construct assumption, that mismatch is invisible at the verdict output layer.
 
@@ -93,7 +93,7 @@ To run evals decoupled from the real external environment (databases / APIs / fi
 **Field semantics:**
 
 - **mocksStrict** (`boolean`, default `true`): a tool call that matches no mock is denied outright (the LLM sees a failure result). **Default behavior**: the `omk sample` generator force-writes `true` and the SYSTEM_PROMPT makes it explicit; for hand-written samples, the loader does not force-inject it when absent — an old sample without the field falls back to non-strict (passes through to the real call). **Strongly prefer `true` for new samples**, to avoid a missing mock letting the eval hit a real production system.
-- **tripwire** (`boolean`, default `false`): this sample is a "trap sample" whose prompt deliberately plants a lure that violates the rubric/skill (e.g. "I already know it's X, just use it"), testing whether the LLM blindly follows the user's wrong instruction. The LLM **failing is the expected outcome**; diagnostics seeing `tripwire: true` won't suggest changing the skill, and the UI uses a purple verdict pill to distinguish it from a bug.
+- **tripwire** (`boolean`, default `false`): declares that this is a trap sample whose prompt deliberately plants a lure that violates the rubric or skill. Evaluation Core preserves the declaration as Sample annotation for audit; it does not turn a failed observation into success or alter the registered Decision.
 - **environment** (`object`, optional): prompt-only task assumptions. The LLM may skip availability probes (`which X` / `test -f Y` / `echo $Z`) and go straight into the workflow, but omk does not create files, export variables, or alter `PATH`. It is not a fixture mechanism. The doctor health check can still audit declared physical paths (skippable with `--skip-doctor`).
   - `cli_available: string[]` — assumed already on `PATH`
   - `files_available: string[]` — file/script paths referenced by the task statement; use `sample.cwd` or mocks for readable bytes
@@ -112,7 +112,7 @@ To run evals decoupled from the real external environment (databases / APIs / fi
   - Every `mock_hit` must reference a declared per-tool mock ordinal. The loader rejects missing or out-of-range references before execution.
   - Mock support is an executor capability, not a trace capability. `claude` / `claude-sdk` install interception hooks; `codex`, `codex-sdk`, and direct API executors currently do not. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.
 
-**Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. tripwire only affects the diagnostic's attribution suggestion (the `tripwire_intentional` rootCause); it does not affect the layered scores or the verdict.
+**Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. `tripwire` is audit metadata and does not affect scoring or the registered Decision. The current Core diagnostic projection reports only authenticated failures, missing evidence, exclusions, and stable reason codes; it does not infer a `tripwire_intentional` recommendation.
 
 ## 3. Sample-design analysis features
 
@@ -163,10 +163,10 @@ Run through this before an eval; any "no" is a reason to stop and think:
 
 ## 5. How verdict interpretation pairs with construct
 
-`omk eval` emits a verdict of PROGRESS / NOISE / REGRESS / CAUTIOUS / UNDERPOWERED / SOLO, and **the verdict does not distinguish construct types** — but your interpretation should:
+`omk eval` emits a verdict of PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO, and **the verdict does not distinguish construct types** — but your interpretation should:
 
 - If the sample set is dominated by `construct: necessity` → PROGRESS means "the skill is necessary", and **must not be read as "the skill is well written"**. To measure quality, follow up with a skill-v1-vs-skill-v2 run (`construct: quality`).
-- If the sample set is dominated by `construct: quality` → PROGRESS / REGRESS is the genuine "skill quality comparison" signal.
+- If the sample set is dominated by `construct: quality` → PROGRESS / REGRESSION is the genuine "skill quality comparison" signal.
 
 ---
 
@@ -176,7 +176,7 @@ This appendix lays out the reasoning behind the metadata schema: how omk's sampl
 
 ### 6.1 Industry-consensus checklist & omk v1 coverage
 
-omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict) settles whether the **conclusion** is computed correctly — but the conclusion rests on the sample set. If the samples themselves aren't rigorous, all the downstream statistical rigor is built on sand. The table maps sample design to academic / industry consensus and marks omk v1's coverage.
+omk's statistical-rigor stack (Bootstrap comparison families / Gold agreement / length-debias / evidence coverage / registered Decision) settles whether the **conclusion** is computed correctly — but the conclusion rests on the sample set. If the samples themselves aren't rigorous, all the downstream statistical rigor is built on sand. The table maps sample design to academic / industry consensus and marks omk v1's coverage.
 
 | # | Industry gap | Academic / industry source | omk v1 status |
 |---|---|---|---|
@@ -196,7 +196,7 @@ omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / 
 - Adversarial mining loop
 - Production-trace natural-distribution sampling
 - HTML renderer showing sample-design coverage (v1 is CLI-only)
-- Evolve strategy upgrades (diversification signal / saturation-aware stop / health-weighted improvement)
+- Evolve strategy upgrades (diversification signal / Series-aware evidence-budget stop / health-weighted improvement)
 - Gold-dataset auto-generation (reframed as an "annotation-process standardization" doc)
 - Detailed N×D coverage-matrix visualization (v1 emits aggregate buckets + users visualize themselves)
 - Contamination-detection algorithm implementation (canary string / paraphrase detection)

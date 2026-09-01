@@ -674,6 +674,6 @@ omk studio --port 8080 --no-open
 | `provenance` | 否 | 用例来源（`omk sample` 自动打） |
 | `mocks` | 否 | 工具调用 mock 返回（sandbox 评测） |
 | `environment` | 否 | 题设环境声明（仅注入 prompt，不物化） |
-| `tripwire` | 否 | 标记为「故意诱错」样本，failed 时 diagnostic 不建议改 skill |
+| `tripwire` | 否 | 标记为「故意诱错」用例并作为 Core Sample annotation 保留；不改变评分或 Decision |
 
 完整 schema 见 [docs/specs/sample-design-spec.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/specs/sample-design-spec.md)。

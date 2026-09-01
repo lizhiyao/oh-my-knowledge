@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter
 
-> **Status**: binding assembly, verified resource leases, adapter preflight, non-blocking event projection, the Core composition root, and the production factory registry/support ports are implemented. It is additive and does not switch the production `omk eval` pipeline.
+> **Status**: implemented production host boundary. Binding assembly, verified resource leases, adapter preflight, non-blocking event projection, the Core composition root, and the factory registry／support ports now power `omk eval`.
 
 ## Boundary
 
