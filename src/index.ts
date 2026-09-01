@@ -176,12 +176,20 @@ export {
 } from './evaluation-core/analysis/index.js';
 
 export {
+  CORE_CLI_BATCH_OUTCOME_SCHEMA_VERSION,
+  CORE_CLI_DRY_RUN_SCHEMA_VERSION,
+  CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION,
   CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION,
   CORE_GOLD_COMPARISON_SCHEMA_VERSION,
+  CORE_MANAGED_EVIDENCE_SCHEMA_VERSION,
   CoreDownstreamProjectionError,
   compareGoldToCoreRun,
   projectCoreArtifactGraph,
+  projectCoreCliBatchOutcome,
+  projectCoreCliDryRun,
+  projectCoreCliRunOutcome,
   projectCoreEvolutionEvidence,
+  projectCoreManagedEvidence,
 } from './eval-workflows/downstream-projections/index.js';
 
 export {
@@ -219,6 +227,11 @@ export type {
 } from './server/core-studio-route-handler.js';
 export type {
   CompareGoldToCoreRunInput,
+  CoreCliBatchOutcome,
+  CoreCliDryRunProjection,
+  CoreCliGateProjection,
+  CoreCliRunOutcome,
+  CoreDecisionProjection,
   CoreGoldDatasetInput,
   CoreDownstreamProjectionErrorCode,
   CoreEvolutionAnalysisEvidence,
@@ -229,6 +242,11 @@ export type {
   CoreGoldAgreementResult,
   CoreGoldComparisonRow,
   CoreGoldMetricSelector,
+  CoreManagedEvidenceProjection,
+  CoreRuntimeIdentityReference,
+  ProjectCoreCliBatchOutcomeInput,
+  ProjectCoreCliDryRunInput,
+  ProjectCoreCliRunOutcomeOptions,
   ProjectCoreArtifactGraphInput,
   ProjectCoreEvolutionEvidenceInput,
 } from './eval-workflows/downstream-projections/index.js';

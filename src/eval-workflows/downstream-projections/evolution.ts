@@ -11,9 +11,9 @@ import {
   CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION,
   CoreDownstreamProjectionError,
   type CoreEvolutionAnalysisEvidence,
-  type CoreEvolutionDecisionEvidence,
   type CoreEvolutionEvidence,
 } from './contracts.js';
+import { projectCoreDecision } from './decision.js';
 
 export interface ProjectCoreEvolutionEvidenceInput {
   readonly plan: Readonly<EvaluationSeriesPlan>;
@@ -26,36 +26,6 @@ function fail(): never {
     'CORE_SERIES_SOURCE_INVALID',
     'Evolution projection requires one exact Evaluation Series Plan, Analysis Bundle, and Report chain.',
   );
-}
-
-function projectDecision(
-  decision: EvaluationSeriesReport['decision'],
-): CoreEvolutionDecisionEvidence | undefined {
-  if (decision === undefined) return undefined;
-  const base = {
-    decisionPolicyId: decision.decisionPolicyId,
-    decisionDigest: decision.decisionDigest,
-  };
-  if (decision.decisionStatus === 'decided') {
-    return {
-      ...base,
-      decisionStatus: decision.decisionStatus,
-      verdict: decision.verdict,
-      reasonCodes: [...decision.reasonCodes],
-    };
-  }
-  if (decision.decisionStatus === 'not-decided') {
-    return {
-      ...base,
-      decisionStatus: decision.decisionStatus,
-      reasonCodes: [...decision.reasonCodes],
-    };
-  }
-  return {
-    ...base,
-    decisionStatus: decision.decisionStatus,
-    errorCode: decision.error.code,
-  };
 }
 
 /**
@@ -182,7 +152,7 @@ export function projectCoreEvolutionEvidence(
       errorCode: record.error.code,
     };
   });
-  const decision = projectDecision(report.decision);
+  const decision = projectCoreDecision(report.decision);
   const evidenceReadiness = decision?.decisionStatus === 'decided'
     ? 'decision-ready'
     : analyses.some((record) => record.analysisStatus === 'completed')
