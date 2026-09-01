@@ -10,7 +10,7 @@ import {
   materializeForCliConfigDir,
   _testMakeTempConfigDir,
 } from '../../../src/executors/mock-runtime/runtime.js';
-import type { Mock } from '../../../src/types/eval.js';
+import type { Mock } from '../../../src/inputs/contracts/mock.js';
 
 describe('isMockHit', () => {
   it('matches by tool name only when no match clause', () => {

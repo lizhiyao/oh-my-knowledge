@@ -8,7 +8,7 @@ import {
 import type { EvaluatorBindingValue } from '../../../evaluation-core/evaluation/index.js';
 import { resolveAssertionLayer } from '../../../shared/assertions/layers.js';
 import { assertionContractValidationError } from '../../../shared/sample-contract.js';
-import type { Assertion } from '../../../types/index.js';
+import type { Assertion } from '../../../inputs/contracts/assertion.js';
 
 export interface AssertionCriterion {
   readonly criterionId: string;

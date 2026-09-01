@@ -11,7 +11,7 @@ import {
 import { getRegisteredRules, __resetCustomRulesForTest } from '../../../src/doctor/rules.js';
 import { isComposerRule } from '../../../src/types/doctor.js';
 import type { DoctorContext, DoctorRule } from '../../../src/types/doctor.js';
-import type { Artifact } from '../../../src/types/eval.js';
+import type { Artifact } from '../../../src/artifacts/contracts.js';
 
 let dir: string;
 const writeYaml = (body: string): string => {

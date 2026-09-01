@@ -10,7 +10,7 @@ import {
   stratifyTraceSignals,
 } from '../../src/authoring/generator.js';
 import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
-import type { Sample } from '../../src/types/index.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 
 describe('generateSamples', () => {
   it('is a function', () => {

@@ -1,13 +1,9 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, isAbsolute, join } from 'node:path';
 import { parseYaml } from './load-samples.js';
-import type {
-  EvalConfig,
-  EvalConfigVariant,
-  ExperimentRole,
-  RemoteGitRef,
-  VariantSpec,
-} from '../types/index.js';
+import type { EvalBudget, EvalConfig, EvalConfigVariant } from './contracts/config.js';
+import type { ExperimentRole } from '../artifacts/contracts.js';
+import type { RemoteGitRef, VariantSpec } from './contracts/variant.js';
 
 const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
 
@@ -286,7 +282,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   }
 
   //  — budget validation. Top-level `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`.
-  let budget: import('../types/index.js').EvalBudget | undefined;
+  let budget: EvalBudget | undefined;
   if (obj.budget !== undefined) {
     if (typeof obj.budget !== 'object' || obj.budget === null || Array.isArray(obj.budget)) {
       throw new Error(`${configPath}: budget must be an object`);

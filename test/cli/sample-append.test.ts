@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { mergeAppendSamples, appendSamplesToFile, pickAppendTargetFile } from '../../src/cli/commands/sample.js';
-import type { Sample } from '../../src/types/eval.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 
 const s = (id: string, prompt = 'p'): Sample => ({ sample_id: id, prompt }) as Sample;
 const ids = (arr: Sample[]): string[] => arr.map((x) => x.sample_id);

@@ -8,7 +8,7 @@ import {
 } from '../../src/executors/core/capabilities.js';
 import { createExecutor } from '../../src/executors/index.js';
 import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
-import type { Sample } from '../../src/types/index.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
 
 const okExecutor: ExecutorFn = async () => ({
   ok: true,

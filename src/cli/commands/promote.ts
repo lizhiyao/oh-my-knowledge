@@ -17,7 +17,7 @@ import {
   resolveManagedDir,
   type PromoteBlock,
 } from '../../managed/index.js';
-import type { ArtifactKind } from '../../types/index.js';
+import type { ArtifactKind } from '../../artifacts/contracts.js';
 import type { ManagedArtifactRecord, ManagedDecision } from '../../managed/contracts.js';
 import type { PromoteMessageKey } from '../lib/i18n-dict/promote.js';
 

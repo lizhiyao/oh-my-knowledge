@@ -13,7 +13,7 @@ import { recordObserveHealth, type ObservedSkillHealthView } from '../../src/man
 import { buildObserveReportView } from '../../src/cli/commands/observe/index.js';
 import { healthBandOf } from '../../src/observability/skill-health-analyzer.js';
 import type { SkillHealthReport } from '../../src/observability/skill-health-analyzer.js';
-import type { ArtifactKind } from '../../src/types/index.js';
+import type { ArtifactKind } from '../../src/artifacts/contracts.js';
 
 const GAP0 = { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 };
 

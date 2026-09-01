@@ -6,7 +6,8 @@ import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rul
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
 import { findFlatSkillSamplesPath, findSkillSamplesPath } from './sample-locator.js';
-import type { Artifact, RemoteGitRef } from '../types/index.js';
+import type { Artifact } from '../artifacts/contracts.js';
+import type { RemoteGitRef } from './contracts/variant.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);

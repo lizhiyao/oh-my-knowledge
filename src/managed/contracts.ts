@@ -1,4 +1,4 @@
-import type { ArtifactKind } from '../types/eval.js';
+import type { ArtifactKind } from '../artifacts/contracts.js';
 
 /**
  * 受管 artifact 记录(managed record)——证据门控管理的最小持久单元。

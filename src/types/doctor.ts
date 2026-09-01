@@ -1,4 +1,5 @@
-import type { Artifact, Sample } from './eval.js';
+import type { Artifact } from '../artifacts/contracts.js';
+import type { Sample } from '../inputs/contracts/sample.js';
 import type { DependencyRequirements } from '../preflight/contracts.js';
 
 export type DoctorSeverity = 'fatal' | 'warn' | 'info';

@@ -12,7 +12,8 @@ import { splitHoldout } from '../../shared/holdout.js';
 import { renderEnvironmentSection } from './environment.js';
 import { deterministicAssertionInputSourceKinds } from '../../shared/assertions/deterministic.js';
 import { resolveAssertionLayer } from '../../shared/assertions/layers.js';
-import type { Assertion, Sample } from '../../types/index.js';
+import type { Assertion } from '../../inputs/contracts/assertion.js';
+import type { Sample } from '../../inputs/contracts/sample.js';
 import type {
   CliEvaluationRequest,
   ResolvedEvaluatorTemplate,
