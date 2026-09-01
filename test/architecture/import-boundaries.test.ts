@@ -171,10 +171,13 @@ const RULES: ForbiddenRule[] = [
       'studio/presentation/trajectory-evidence.ts::observability/view-models/index.ts',
       // 允许的 facade 访问点(以及它们的 .ts 解析后路径)。
       'studio/presentation/observation-inbox-renderer.ts::observability/inbox/view-model.ts',
-      'studio/presentation/observation-inbox-renderer.ts::observability/inbox/feedback-projection.ts',
+      'studio/presentation/observation-inbox/experience-workspace-renderer.ts::observability/inbox/view-model.ts',
+      'studio/presentation/observation-inbox/experience-workspace-renderer.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/helpers.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/metric-renderer.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/metric-renderer.ts::observability/inbox/feedback-projection.ts',
+      'studio/presentation/observation-inbox/page-renderer.ts::observability/inbox/view-model.ts',
+      'studio/presentation/observation-inbox/process-workspace-renderer.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/review-renderer.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/review-renderer.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/reviewer-report.ts::observability/inbox/view-model.ts',
@@ -600,8 +603,8 @@ describe('架构边界守门', () => {
   });
 
   it('Observation Inbox 浏览器交互脚本与服务端 renderer 分离', () => {
-    const renderer = readFileSync(
-      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox-renderer.ts'),
+    const pageRenderer = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox', 'page-renderer.ts'),
       'utf-8',
     );
     const clientScript = readFileSync(
@@ -609,8 +612,8 @@ describe('架构边界守门', () => {
       'utf-8',
     );
 
-    expect(extractSpecifiers(renderer)).toContain('./observation-inbox/client-script.js');
-    expect(renderer).not.toContain("var observeSeverityFilter = 'all';");
+    expect(extractSpecifiers(pageRenderer)).toContain('./client-script.js');
+    expect(pageRenderer).not.toContain("var observeSeverityFilter = 'all';");
     expect(extractSpecifiers(clientScript)).not.toContain('../observation-inbox-renderer.js');
   });
 
@@ -630,8 +633,8 @@ describe('架构边界守门', () => {
   });
 
   it('Observation Inbox 时间线呈现由独立组件拥有', () => {
-    const renderer = readFileSync(
-      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox-renderer.ts'),
+    const reviewRenderer = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox', 'review-renderer.ts'),
       'utf-8',
     );
     const timeline = readFileSync(
@@ -639,10 +642,39 @@ describe('架构边界守门', () => {
       'utf-8',
     );
 
-    expect(extractSpecifiers(renderer)).toContain('./observation-inbox/timeline.js');
-    expect(renderer).not.toContain('const renderTimelinePair =');
-    expect(renderer).not.toContain('const renderExperienceTimeline =');
+    expect(extractSpecifiers(reviewRenderer)).toContain('./timeline.js');
+    expect(reviewRenderer).not.toContain('const renderExperienceTimeline =');
     expect(extractSpecifiers(timeline)).not.toContain('../observation-inbox-renderer.js');
+  });
+
+  it('Observation Inbox 入口只负责数据准备与 renderer 组合', () => {
+    const renderer = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox-renderer.ts'),
+      'utf-8',
+    );
+    const rendererSpecifiers = extractSpecifiers(renderer);
+    const componentFiles = [
+      'experience-workspace-renderer.ts',
+      'metric-renderer.ts',
+      'page-renderer.ts',
+      'process-workspace-renderer.ts',
+      'review-renderer.ts',
+      'signal-renderer.ts',
+      'skill-chain-renderer.ts',
+    ];
+
+    expect(renderer.split('\n').length).toBeLessThanOrEqual(200);
+    for (const file of componentFiles) {
+      expect(rendererSpecifiers).toContain(`./observation-inbox/${file.replace(/\.ts$/u, '.js')}`);
+      const component = readFileSync(
+        join(SRC_DIR, 'studio', 'presentation', 'observation-inbox', file),
+        'utf-8',
+      );
+      expect(extractSpecifiers(component)).not.toContain('../observation-inbox-renderer.js');
+    }
+    expect(renderer).not.toContain('<section');
+    expect(renderer).not.toContain('const skillGroups =');
+    expect(renderer).not.toContain('const experienceTopInsightHtml =');
   });
 
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
