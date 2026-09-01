@@ -3,6 +3,7 @@ import { resolve, dirname, isAbsolute, join } from 'node:path';
 import { parseYaml } from './load-samples.js';
 import type { EvalBudget, EvalConfig, EvalConfigVariant } from './contracts/config.js';
 import type { ExperimentRole } from '../artifacts/contracts.js';
+import type { JudgeConfig } from '../grading/contracts/config.js';
 import type { RemoteGitRef, VariantSpec } from './contracts/variant.js';
 
 const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
@@ -251,7 +252,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   // 1 条 = single judge (no ensemble); ≥ 2 条 = ensemble + inter-judge agreement。空数组 reject。
   // 重复 executor:model 拒绝:ensemble 聚合按 judge id 去重(参见 schema.ts buildEnsembleAggregate),
   // 重复条目会让 N 不可信、agreement 失真,而 grading 又会照样跑 N 次。
-  let judgeModelsParsed: import('../types/index.js').JudgeConfig[] | undefined;
+  let judgeModelsParsed: JudgeConfig[] | undefined;
   if (obj.judgeModels !== undefined) {
     if (!Array.isArray(obj.judgeModels)) {
       throw new Error(`${configPath}: judgeModels must be an array of {executor, model}`);

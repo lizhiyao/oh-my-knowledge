@@ -16,6 +16,9 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/inputs/contracts/mock.ts',
   'src/inputs/contracts/sample.ts',
   'src/inputs/contracts/variant.ts',
+  'src/grading/contracts/index.ts',
+  'src/grading/contracts/config.ts',
+  'src/grading/contracts/result.ts',
   'src/executors/contracts/index.ts',
   'src/executors/contracts/trace.ts',
   'src/executors/contracts/ports.ts',
@@ -37,7 +40,6 @@ const PURE_DOMAIN_TYPE_FILES = [
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set([
-  'src/inputs/contracts/config.ts::../../types/judge.js',
   'src/observability/contracts/inbox.ts::../../types/diagnosis.js',
 ]);
 
@@ -45,7 +47,6 @@ const ALLOWED_LEGACY_TYPE_FILES = new Set([
   'diagnosis.ts',
   'doctor.ts',
   'index.ts',
-  'judge.ts',
   'shared.ts',
   'skill-index.ts',
 ]);

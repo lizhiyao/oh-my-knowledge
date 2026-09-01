@@ -23,7 +23,7 @@ import { loadEvalConfig } from '../../inputs/eval-config.js';
 import { setOwnRecordValue } from '../../shared/record-count.js';
 import type { EvalConfig, EvalBudget } from '../../inputs/contracts/config.js';
 import type { VariantSpec } from '../../inputs/contracts/variant.js';
-import type { JudgeConfig } from '../../types/index.js';
+import type { JudgeConfig } from '../../grading/contracts/config.js';
 import { parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
 import { discoverSamplesPath } from './parse-run-config/samples-discovery.js';
 import { resolveVariantSpecs } from './parse-run-config/variant-resolution.js';
