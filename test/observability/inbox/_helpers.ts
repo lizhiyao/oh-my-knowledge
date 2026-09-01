@@ -1,8 +1,8 @@
-import type { ObservationInboxItem } from '../../../src/observability/inbox.js';
+import type { ObservationInboxItem } from '../../../src/observability/inbox/index.js';
 import {
   resolveObservationReviewSession,
   type ResolvedObservationReviewSession,
-} from '../../../src/observability/resolved-review.js';
+} from '../../../src/observability/inbox/resolved-review.js';
 import type {
   ExperienceChecklistItem,
   ObservationExperienceReport,

@@ -101,7 +101,7 @@ try {
   const query = JSON.parse(queryOutput);
 
   const loaderUrl = pathToFileURL(
-    join(runtime.packageRoot, 'dist/observability/inbox.js'),
+    join(runtime.packageRoot, 'dist/observability/inbox/index.js'),
   ).href;
   const { loadObservationInboxReports } = await import(loaderUrl);
   const reports = loadObservationInboxReports(outputDir);

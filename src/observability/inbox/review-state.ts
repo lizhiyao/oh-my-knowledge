@@ -12,10 +12,10 @@ import type {
   ObservationReviewStateUpdate,
   ObservationReviewTargetType,
   ObservationReviewVerdict,
-} from './contracts/review.js';
-import { writeJsonFileAtomic } from '../shared/atomic-json.js';
-import { withFileLock } from '../shared/file-lock.js';
-import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
+} from '../contracts/review.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { withFileLock } from '../../shared/file-lock.js';
+import { normalizeRfc3339Timestamp } from '../../shared/timestamp.js';
 
 export type {
   ObservationMetricKey,

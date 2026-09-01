@@ -10,7 +10,7 @@ import {
   loadObservationReviewState,
   observationReviewStateKey,
   type ObservationReviewState,
-} from '../review-state.js';
+} from '../inbox/review-state.js';
 import type {
   ResolveSkillStandardsOptions,
   ResolvedSkillStandard,

@@ -1,6 +1,6 @@
 import { e } from '../layout.js';
 import type { Lang } from '../../../shared/language.js';
-import type { ExperienceFeedbackAttribution } from '../../../observability/feedback-projection.js';
+import type { ExperienceFeedbackAttribution } from '../../../observability/inbox/feedback-projection.js';
 
 export function feedbackAttributionRoleLabel(role?: string): string {
   if (role === 'primary_fault') return '主要归因';

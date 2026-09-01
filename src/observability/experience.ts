@@ -72,8 +72,8 @@ import type { TraceSourceMetadata } from './contracts/trace.js';
 import {
   buildExperienceProblemPatterns,
   mergeExperienceProblemPatterns,
-} from './problem-patterns.js';
-import { observationMetricAnnotationVerdict } from './review-state.js';
+} from './inbox/problem-patterns.js';
+import { observationMetricAnnotationVerdict } from './inbox/review-state.js';
 import {
   correlateTraceToolEvents,
   type TraceSession,
@@ -147,7 +147,7 @@ import {
   hasPositiveFeedbackSignal,
   hasUserCorrectionSignal,
   hasUserGoalShiftSignal,
-} from './feedback-matchers.js';
+} from './inbox/feedback-matchers.js';
 
 export {
   findNegativeFeedbackMatches,
@@ -158,8 +158,8 @@ export {
   hasPositiveFeedbackSignal,
   hasUserCorrectionSignal,
   hasUserGoalShiftSignal,
-} from './feedback-matchers.js';
-export type { TextMatchRange } from './feedback-matchers.js';
+} from './inbox/feedback-matchers.js';
+export type { TextMatchRange } from './inbox/feedback-matchers.js';
 export { projectTraceSessionTimeline } from './experience/timeline.js';
 export { OBSERVATION_EXPERIENCE_SCHEMA_VERSION };
 export {

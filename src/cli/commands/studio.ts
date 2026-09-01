@@ -10,7 +10,7 @@ import {
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
   projectReportsDir, globalReportsDir,
 } from '../../measurement-artifacts/directories.js';
-import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox.js';
+import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';

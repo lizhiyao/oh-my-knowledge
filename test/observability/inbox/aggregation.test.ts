@@ -12,7 +12,7 @@ import {
   queryObservationInbox,
   saveObservationInboxReport,
   selectExploreInboxItems,
-} from '../../../src/observability/inbox.js';
+} from '../../../src/observability/inbox/index.js';
 import { baseItem, businessActionTag } from './_helpers.js';
 
 describe('observe inbox - aggregation', () => {

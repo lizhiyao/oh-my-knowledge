@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
+import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import {
   aggregateExperienceChecklistItemStatus,
   findNegativeFeedbackMatches,
@@ -18,7 +18,7 @@ import {
   isExperienceTraceInProgress,
   type ExperienceSessionSummary,
 } from '../../../src/observability/experience.js';
-import { hasExplicitFollowUpCorrectionSignal } from '../../../src/observability/feedback-matchers.js';
+import { hasExplicitFollowUpCorrectionSignal } from '../../../src/observability/inbox/feedback-matchers.js';
 import {
   hasAssistantDeliverySignalText,
   hasUserHardRuleText,
@@ -32,7 +32,7 @@ import {
 import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
-} from '../../../src/observability/review-state.js';
+} from '../../../src/observability/inbox/review-state.js';
 import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
 import { businessActionTag, checklistItem, resolvedReviewSessionsForFixture } from './_helpers.js';
 

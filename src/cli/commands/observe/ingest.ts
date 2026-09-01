@@ -96,11 +96,11 @@ export default class ObserveIngest extends BaseCommand {
         saveObservationInboxReport,
         DEFAULT_PROJECT_OBSERVATIONS_DIR,
         DEFAULT_GLOBAL_OBSERVATIONS_DIR,
-      } = await import('../../../observability/inbox.js');
+      } = await import('../../../observability/inbox/index.js');
       // 显式 --output-dir 最高;否则 --global 写全局、默认写项目(读侧 loadObservationInboxReports 会从项目兜底到全局)。
       const defaultDir = flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_PROJECT_OBSERVATIONS_DIR;
       const outDir = resolve(outDirRaw ?? defaultDir);
-      const { loadObservationReviewState } = await import('../../../observability/review-state.js');
+      const { loadObservationReviewState } = await import('../../../observability/inbox/review-state.js');
       const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
       report.diagnostics = buildObserveDiagnosticsFromReport(report);

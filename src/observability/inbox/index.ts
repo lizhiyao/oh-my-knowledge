@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isReportFileName, randomRunToken, reportFilePath } from '../measurement-artifacts/file-names.js';
-import type { ToolCallInfo } from '../executors/contracts/trace.js';
-import type { ObservationExperienceReport } from './contracts/experience.js';
+import { isReportFileName, randomRunToken, reportFilePath } from '../../measurement-artifacts/file-names.js';
+import type { ToolCallInfo } from '../../executors/contracts/trace.js';
+import type { ObservationExperienceReport } from '../contracts/experience.js';
 import type {
   BuildObservationInboxReportOptions,
   ObservationCaptureCoverage,
@@ -17,10 +17,10 @@ import type {
   ObservationSignalSubtype,
   ObservationSignalType,
   ObservationSkillRollup,
-} from './contracts/inbox.js';
-import type { ObservationSourceKind, TraceIngestionSummary } from './contracts/trace.js';
-import type { GapSignalRef } from './analysis/contracts.js';
-import { extractGapSignalsFromTrace } from './analysis/gap-analyzer.js';
+} from '../contracts/inbox.js';
+import type { ObservationSourceKind, TraceIngestionSummary } from '../contracts/trace.js';
+import type { GapSignalRef } from '../analysis/contracts.js';
+import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import {
   loadTraceSessions,
   segmentTraceBySkill,
@@ -28,41 +28,41 @@ import {
   skillSegmentTimestampObserved,
   type TraceSession,
   type SkillSegment,
-} from './trace/index.js';
-import { normalizeTraceTimestamp, type TraceEvent } from './trace/trace-ir.js';
-import { isSearchToolCall, toolCallQuery } from './trace/tool-search.js';
-import { isToolCallFailure, isToolCallSuccess } from '../executors/tool-call-status.js';
-import { isTraceSourceKind as isObservationSourceKind } from '../shared/trace-source-kind.js';
+} from '../trace/index.js';
+import { normalizeTraceTimestamp, type TraceEvent } from '../trace/trace-ir.js';
+import { isSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
+import { isToolCallFailure, isToolCallSuccess } from '../../executors/tool-call-status.js';
+import { isTraceSourceKind as isObservationSourceKind } from '../../shared/trace-source-kind.js';
 import {
   incrementRecordCount,
   ownRecordValue,
   setOwnRecordValue,
   sumRecordCounts,
-} from '../shared/record-count.js';
-import { durationMsBetween } from '../shared/time.js';
+} from '../../shared/record-count.js';
+import { durationMsBetween } from '../../shared/time.js';
 import {
   buildObservationExperienceReport,
   compactObservationExperienceReport,
   normalizeObservationExperienceReport,
   type PersistedObservationExperienceReport,
-} from './experience.js';
-import { parseDiagnosisBundle } from '../diagnosis/contracts/parser.js';
-import { parseTraceIngestionSummary } from './trace/ingestion.js';
-import { createTraceSessionIndex, traceSessionRefIdentity } from './trace/session-index.js';
-import { isInstalledSkillAssetPath } from './trace/attribution.js';
-import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+} from '../experience.js';
+import { parseDiagnosisBundle } from '../../diagnosis/contracts/parser.js';
+import { parseTraceIngestionSummary } from '../trace/ingestion.js';
+import { createTraceSessionIndex, traceSessionRefIdentity } from '../trace/session-index.js';
+import { isInstalledSkillAssetPath } from '../trace/attribution.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { writeObservationSourceRecordArchives } from './source-record-archive.js';
 import { loadExplicitObservationCaptureItems } from './explicit-capture.js';
 import { isObservationCaptureCoverage } from './capture-coverage.js';
 import {
   normalizeObservationKeyInput,
   observationInboxItemKey,
-} from './inbox-identity.js';
+} from './identity.js';
 import {
   DEFAULT_GLOBAL_OBSERVATIONS_DIR,
   DEFAULT_OBSERVATIONS_DIR,
   DEFAULT_PROJECT_OBSERVATIONS_DIR,
-} from './observation-paths.js';
+} from './paths.js';
 
 export {
   DEFAULT_GLOBAL_OBSERVATIONS_DIR,

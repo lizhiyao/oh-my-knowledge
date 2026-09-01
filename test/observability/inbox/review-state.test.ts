@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
+import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,
@@ -12,7 +12,7 @@ import {
   observationMetricScopeFor,
   observationReviewStateKey,
   updateObservationReviewState,
-} from '../../../src/observability/review-state.js';
+} from '../../../src/observability/inbox/review-state.js';
 import {
   extractSkillSoftStandards,
   loadSkillDerivedStandards,

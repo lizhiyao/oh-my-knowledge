@@ -1,6 +1,6 @@
 import type { ExperienceTimelineEvent } from './contracts/experience.js';
 import type { TaskTrajectorySession, TaskWindowScope } from './view-models/knowledge-debugger.js';
-import { hasExplicitFollowUpCorrectionSignal } from './feedback-matchers.js';
+import { hasExplicitFollowUpCorrectionSignal } from './inbox/feedback-matchers.js';
 import { projectTaskSemanticEvents } from './task-semantic-projection.js';
 
 export const TASK_SEMANTIC_EVENT_LIMIT = 240;

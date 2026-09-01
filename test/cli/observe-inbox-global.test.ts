@@ -20,7 +20,7 @@ import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import {
   buildObservationInboxReport,
   saveObservationInboxReport,
-} from '../../src/observability/inbox.js';
+} from '../../src/observability/inbox/index.js';
 import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);

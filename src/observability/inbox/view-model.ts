@@ -3,26 +3,26 @@ import {
   queryObservationInbox,
   type ObservationInboxItem,
   type ObservationInboxReport,
-} from './inbox.js';
-import type { ObservationExperienceReport } from './experience.js';
+} from './index.js';
+import type { ObservationExperienceReport } from '../experience.js';
 import { loadObservationReviewState, type ObservationReviewState } from './review-state.js';
 import {
   resolveObservationReviewSession,
   type ResolvedObservationReviewSession,
 } from './resolved-review.js';
-import { buildObservationSkillChains, type ObservationSkillChain } from './skill-chain.js';
+import { buildObservationSkillChains, type ObservationSkillChain } from '../skill-chain.js';
 import {
   loadSkillDerivedStandards,
   resolveSkillStandards,
   type ResolvedSkillStandards,
   type SkillDerivedStandards,
-} from './soft-standards/index.js';
-import { durationMsBetween } from '../shared/time.js';
+} from '../soft-standards/index.js';
+import { durationMsBetween } from '../../shared/time.js';
 import {
   incrementRecordCount,
   ownRecordValue,
   setOwnRecordValue,
-} from '../shared/record-count.js';
+} from '../../shared/record-count.js';
 
 export interface ObservationInboxViewModel {
   observationsDir?: string;
@@ -235,13 +235,13 @@ function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['ses
 // 继续直接 import observability 内部 —— 它们不是「视图」,不在 facade 收敛范围。
 // ============================================================================
 
-export { severityReasonFor } from './inbox.js';
+export { severityReasonFor } from './index.js';
 export {
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
 } from './review-state.js';
 export { resolveObservationReviewSession } from './resolved-review.js';
-export { getSkillChainAdvisory, resolveAdvisoryCommand } from './skill-chain-advisories.js';
+export { getSkillChainAdvisory, resolveAdvisoryCommand } from '../skill-chain-advisories.js';
 export {
   ASSISTANT_DELIVERABLE_ARTIFACT_RE,
   hasAssistantDeliverableArtifactText,
@@ -252,11 +252,11 @@ export {
   isScheduledTaskPromptText,
   isSyntheticUserMessageText,
   isUserInteractionMetricText,
-} from './text-signals.js';
+} from '../text-signals.js';
 
-export type { ObservationInboxItem } from './inbox.js';
+export type { ObservationInboxItem } from './index.js';
 export type { ObservationMetricKey } from './review-state.js';
 export type { ResolvedObservationReviewSession, ResolvedOwnerSuggestion } from './resolved-review.js';
-export type { SkillChainAdvisoryCode } from './skill-chain-advisories.js';
+export type { SkillChainAdvisoryCode } from '../skill-chain-advisories.js';
 export type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from './problem-patterns.js';
-export type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from './soft-standards/index.js';
+export type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../soft-standards/index.js';

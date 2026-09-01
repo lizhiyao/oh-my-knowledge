@@ -7,10 +7,10 @@ import type {
   ExperienceSessionStory,
   ExperienceSessionStoryAnswer,
   ExperienceSessionStoryAnswerKey,
-} from './experience.js';
+} from '../experience.js';
 import type { ObservationReviewState, ObservationReviewTargetType } from './review-state.js';
 import { observationReviewStateKey } from './review-state.js';
-import type { LlmEnhancedChecklistStatus, LlmEnhancedSkillType, RuntimeNodeVerdict, RuntimeStandardNodeKind, SkillLlmEnhancedReviewSections, SkillLlmTypeSpecificChecklistItem } from './soft-standards/index.js';
+import type { LlmEnhancedChecklistStatus, LlmEnhancedSkillType, RuntimeNodeVerdict, RuntimeStandardNodeKind, SkillLlmEnhancedReviewSections, SkillLlmTypeSpecificChecklistItem } from '../soft-standards/index.js';
 
 export interface ResolveObservationReviewSessionOptions {
   session: {

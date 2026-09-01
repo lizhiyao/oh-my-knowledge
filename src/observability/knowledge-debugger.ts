@@ -10,7 +10,7 @@ import type {
   TaskReplayStep,
   TaskReplayStepKind,
 } from './view-models/knowledge-debugger.js';
-import { hasUserCorrectionSignal } from './feedback-matchers.js';
+import { hasUserCorrectionSignal } from './inbox/feedback-matchers.js';
 import { resolveTaskWindow } from './task-window.js';
 
 interface DebugKnowledgeCandidate extends Omit<DebugKnowledgeEvidence, 'id' | 'accessCount' | 'evidenceRefs'> {

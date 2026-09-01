@@ -1,4 +1,4 @@
-import { loadLatestObservationInboxReports } from './inbox.js';
+import { loadLatestObservationInboxReports } from './inbox/index.js';
 import type { ExperienceSessionSummary, ExperienceTurnSummary } from './contracts/experience.js';
 import type { ObservationSourceKind } from './contracts/trace.js';
 import type {

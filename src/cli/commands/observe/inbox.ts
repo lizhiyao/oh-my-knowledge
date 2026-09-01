@@ -6,7 +6,7 @@ import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
 import { resolveRuntimeSelection } from '../../lib/runtime-defaults.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
-import type { ObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
+import type { ObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
 import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
 import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/index.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
@@ -33,13 +33,13 @@ export async function runObserveInbox(
   flags: ObserveInboxFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
+  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox/index.js');
   // 显式 --input-dir 最高;否则 --global 直读全局、默认读项目(空则 loadObservationInboxReports 兜底全局)。
   const dir = flags['input-dir']
     ? resolve(flags['input-dir'])
     : (flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_OBSERVATIONS_DIR);
   if (flags['llm-enhanced-review']) {
-    const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
+    const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
     const { extractSkillSoftStandards } = await import('../../../observability/soft-standards/index.js');
     const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
     const candidates = Object.values(view.skillChains)

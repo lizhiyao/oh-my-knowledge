@@ -16,7 +16,7 @@ import {
   MCP_APP_HTML_MIME_TYPE,
   OBSERVATION_REVIEW_RESOURCE_URI,
 } from '../../src/mcp/review-component.js';
-import { queryObservationInbox } from '../../src/observability/inbox.js';
+import { queryObservationInbox } from '../../src/observability/inbox/index.js';
 
 describe('OMK observation MCP server', () => {
   it('advertises a focused, accurately annotated capture tool', async () => {

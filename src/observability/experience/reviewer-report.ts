@@ -17,7 +17,7 @@ import type {
 } from '../contracts/review.js';
 import {
   observationReviewStateKey,
-} from '../review-state.js';
+} from '../inbox/review-state.js';
 import {
   hashParts,
 } from './primitives.js';

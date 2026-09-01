@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import { observationMetricAnnotationVerdict } from './review-state.js';
-import type { ObservationMetricKey, ObservationReviewState } from './contracts/review.js';
-import { hasUserHardRuleText, isUserInteractionMetricText } from './text-signals.js';
+import type { ObservationMetricKey, ObservationReviewState } from '../contracts/review.js';
+import { hasUserHardRuleText, isUserInteractionMetricText } from '../text-signals.js';
 import type {
   ExperienceProblemBucket,
   ExperienceProblemEvidenceRef,
   ExperienceProblemPattern,
   ExperienceProblemSignal,
   ProblemTimelineEvent,
-} from './contracts/problem-patterns.js';
+} from '../contracts/problem-patterns.js';
 
 export type {
   ExperienceProblemBucket,

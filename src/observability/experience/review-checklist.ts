@@ -18,7 +18,7 @@ import type {
 } from '../contracts/review.js';
 import {
   observationMetricAnnotationVerdict,
-} from '../review-state.js';
+} from '../inbox/review-state.js';
 import {
   isAssistantProgressUpdateText,
 } from '../text-signals.js';

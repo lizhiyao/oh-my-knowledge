@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, it } from 'vitest';
 import {
   buildObservationInboxReport,
   saveObservationInboxReport,
-} from '../../../src/observability/inbox.js';
+} from '../../../src/observability/inbox/index.js';
 import { buildKnowledgeDebuggerViewModel } from '../../../src/observability/knowledge-debugger.js';
 import { createObservationConversationCatalog } from '../../../src/observability/conversation-view-model.js';
 import { renderKnowledgeDebuggerPage } from '../../../src/studio/presentation/knowledge-debugger-renderer.js';

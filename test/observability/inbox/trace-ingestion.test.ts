@@ -9,7 +9,7 @@ import {
   inferObservationSourceKind,
   loadObservationInboxReports,
   saveObservationInboxReport,
-} from '../../../src/observability/inbox.js';
+} from '../../../src/observability/inbox/index.js';
 import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
 import { baseItem, businessActionTag, businessChannel, resolvedReviewSessionsForFixture } from './_helpers.js';
 

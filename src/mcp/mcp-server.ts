@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
   type ExplicitObservationCaptureOptions,
-} from '../observability/explicit-capture.js';
+} from '../observability/inbox/explicit-capture.js';
 import {
   type ObservationCaptureStore,
 } from './capture-store.js';
