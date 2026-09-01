@@ -207,47 +207,26 @@ The two are orthogonal:
 Rules:
 
 - **Continuous-integration internal helpers always use "gate"**: the `omk eval` gate path / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`.
-- **Confidence-interval contexts always use "CI"**: `bootstrap CI` / `diff CI` / the `bootstrapCI` field / "95% CI".
+- **Confidence-interval contexts always use "CI"**: `Bootstrap CI` / `comparison CI` / `interval` Analysis result / "95% CI".
 - Docs / comments / commit messages mentioning "CI" need no clarification — there is a single meaning, so the reader doesn't need context to disambiguate.
 
-### 6. Stability = across repeated runs (test-retest), not cross-sample spread
+### 6. Stability = across independent Runs, not cross-sample spread
 
-**The concept of stability aligns with psychometrics' test-retest reliability — score consistency of the same object across repeated runs. omk uses CV (coefficient of variation, an engineering measure of relative dispersion) as the primary metric; it is not fully equivalent to test-retest reliability in the strict psychometric sense (typically ICC or Pearson r), and is not a psychometric reliability measurement but an engineering approximation of the same family of concepts.**
+Stability is a test-retest concept: the same sealed measurement design is executed as independent Runs in an Evaluation Series. The current Series Analysis reports the unbiased sample variance of run-mean composite values. A single Run contains no cross-run stability evidence, and a Run Decision must never infer it.
 
-omk's concrete implementation: `--repeat N` runs the same (variant × sample) N times, and `report.variance.perVariant[v]` stores the score series across runs. The primary stability metric is **CV = σ / mean** (coefficient of variation, a dimensionless relative dispersion), with σ + 95% CI as secondary metrics. The thresholds `<5% / 5~15% / >15%` are empirical values on the 1-5 score scale, not figures cited from the literature.
+Cross-sample score range and success rate are not stability. Samples intentionally vary in difficulty, while success rate is an operational-health fact. Both remain separate from Series variance.
 
-**What is not stability**:
+### 7. Three composite layers: fact / behavior / judge
 
-- **The cross-sample min~max score range** is not stability. The score spread of one variant across multiple samples comes mostly from **the samples themselves differing in difficulty** (eval-samples usually deliberately cover varied tasks), not from intrinsic variant fluctuation. Calling that range "stability" is a misreading — a reader who sees "100%" would wrongly assume the variant is very stable, when in fact the sample set may just be too narrow.
-- **Success rate** is not stability. Success rate reflects "did the task complete" (execution health); "how much the score jitters across repeats" (measurement stability) is an independent concept. When success rate < 100%, it surfaces as a secondary-area alert, not as the primary stability metric.
+Core Composite Analysis binds up to three named layers: `fact`, `behavior`, and `judge`.
 
-**UI conventions**:
+| Layer | Source | Nature |
+|---|---|---|
+| Fact | explicitly classified Boolean criterion observations | rule-verifiable |
+| Behavior | explicitly classified execution-compliance criterion observations | rule-verifiable |
+| Judge | an ensemble consensus or dimension aggregate | model-evaluated |
 
-- In the six-dim comparison table, the "stability" column primary value: when variance data exists, show `CV X.X%`; when it doesn't (single-run evaluation / no `--repeat`), show `—` plus a secondary-area `需 --repeat ≥ 2`. **Honestly state what cannot be measured.**
-- Industry alignment: Anthropic / OpenAI eval docs, Braintrust, Langfuse, etc. all treat variance across repeated runs as the core stability metric, not cross-sample spread.
-
-### 7. Three scoring layers: fact / behavior / LLM judge
-
-`LayeredScores` splits the composite into three orthogonal layers, with fields `factScore` / `behaviorScore` / `judgeScore` in order, displayed in the UI as **"事实" / "行为" / "LLM 评价"** respectively.
-
-| Layer | Field | Source | Nature |
-|---|---|---|---|
-| Fact | `factScore` | pass rate of fact assertions (`contains` / `json_schema` / `fact_check`, etc.) | rule-verifiable · objective |
-| Behavior | `behaviorScore` | pass rate of behavior assertions (`tools_called` / `tool_output_contains` / `turns_max`, etc.) | rule-verifiable · objective |
-| LLM judge | `judgeScore` | the LLM judge's subjective rubric-based score (= `results.llmScore`) | model judge · subjective |
-
-**Why "LLM judge" isn't called "quality"**:
-
-- The `composite` score = arithmetic mean of the three layers; external messaging uses the base four-dimension framework (quality / cost / efficiency / accuracy), where **"quality" refers to the composite-score dimension**.
-- If `judgeScore` were also called the "quality layer", a single report would carry both a header "quality 3.85" and a detail "quality layer: 4" — two numbers with completely different meanings, and the reader couldn't tell them apart.
-- "LLM judge" makes the source (the LLM judge) explicit and contrasts semantically with the rule-verification of "fact / behavior", so the three layers sit side by side without ambiguity.
-- `judge` as a field name aligns with the existing terms `judgeExecutor` / `judgeModel`.
-
-**Code conventions**:
-
-- In user-facing docs, UI labels, and changelogs, refer to this layer as "LLM 评价" (Chinese) / "LLM judge" (English).
-- Code fields, types, and enum values uniformly use `judge` / `judgeScore` / `avgJudgeScore`.
-- Do not reintroduce `qualityScore` / `avgQualityScore` in new code (legacy v0.15 naming, removed in v0.16).
+The terms name Analysis responsibilities, not mutable report fields. New code uses qualified table entries and source bindings; it must not reintroduce deleted `LayeredScores`, `factScore`, `behaviorScore`, `judgeScore`, or `avg*Score` report-row fields. User-facing English uses "LLM judge" when referring to the evaluator source and "judge layer" when referring to Composite Analysis.
 
 ## 4. External expression conventions
 
@@ -338,15 +317,15 @@ Two caveats:
 | EvaluandKind | ArtifactKind | object category |
 | evaluands | artifacts | object list in the request |
 | task.evaluand | task.artifact | the object a single task binds to |
-| evaluandHashes | artifactHashes | whole distributable-tree content hash of the artifact (report `schemaVersion >= 2`; same space as the install managed-record `contentHash`) |
-| skillHashes | artifactHashes | unified object hash in the report |
+| evaluandHashes | Target artifact descriptor | full SHA-256 content identity sealed in Target config and managed evidence |
+| skillHashes | Target artifact descriptor | unified artifact identity in Core lineage |
 | skill as the umbrella | artifact | skill falls back to a concrete subtype |
 | agent as the umbrella | artifact / agent runtime | choose by semantics |
 | `--variants` CLI parameter | `--control` / `--treatment` | declare variants by experiment role; the flat list is gone |
 | inferring the control group from `artifactKind === 'baseline'` | read `experimentRole === 'control'` explicitly | the control group is user-declared, not inferred from artifact kind |
-| `LayeredScores.qualityScore` | `LayeredScores.judgeScore` | displayed as "LLM 评价" / "LLM judge"; avoids clashing with the "quality" header (composite) |
-| `VariantSummary.avgQualityScore` | `VariantSummary.avgJudgeScore` | same as above |
-| `VarianceLayerKey: 'quality'` | `VarianceLayerKey: 'judge'` | same as above |
+| `LayeredScores.qualityScore` | Composite `judge` layer entry | the deleted result-row field is replaced by an explicitly bound Analysis source |
+| `VariantSummary.avgQualityScore` | Studio projection from Composite Analysis | display data is rebuilt from authenticated Core artifacts |
+| `VarianceLayerKey: 'quality'` | Evaluation Series run-mean composite variance | Series does not reuse a legacy layer key |
 
 ## 7. Skill isolation (added in v0.22)
 

@@ -33,8 +33,6 @@
 | 一次真实 AI 任务中发生了什么？ | `omk observe` / Studio 任务轨迹 | 请求、可见知识、工具调用与结果、回答和用户纠正的可核验轨迹 |
 | 真实使用暴露了哪些知识缺口？ | `omk observe` / `omk sample --from-traces` | 将线上缺口生成待复核草稿，复核后再沉淀为评测样本 |
 
-![omk 报告 — verdict pill「v2 明显优于 v1，可以发布」](./assets/screenshots/report-overview-zh.png)
-
 ## 快速开始
 
 ```bash
@@ -44,7 +42,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件；`--dry-run` 预览调用次数和成本；`omk eval` 跑控制变量 A/B，约 5 分钟出 HTML 报告 + 一行 verdict。跑通后再把 skill 和用例换成你自己的。
+开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件；`--dry-run` 预览 sealed task plan 与预估调用次数；`omk eval` 跑控制变量 A/B，并在 Studio 打开经过认证的 Core run。跑通后再把 skill 和用例换成你自己的。
 
 前置：准备一个已认证的模型 runtime（Codex CLI、Claude Code 或 API 执行器，见[系统要求](#系统要求)）。在 ChatGPT desktop 的 Codex 任务里，omk 会自动使用 `codex`，从 `~/.codex/config.toml` 读取模型，并默认用同一个 Codex 模型担任评委，不依赖 Claude。
 
@@ -145,13 +143,13 @@ omk 把知识载体当作被测变量：**相同模型、相同评测用例，�
 | Bootstrap 置信区间 | ✓ 默认 | ✗ | ✗ | ✗ |
 | Krippendorff α（评委 ↔ 人工） | ✓ 加 gold 即开 | ✗ | ✗ | ✗ |
 | 长度去偏的评委 prompt | ✓ 默认 | ✗ | ✗ | ✗ |
-| 饱和曲线 | ✓ | ✗ | ✗ | ✗ |
+| 缺失证据失败关闭 | ✓ | ✗ | ✗ | ✗ |
 | 三层独立评分 | ✓ | ✗ | 部分 | ✗ |
 | 用例隔离(construct validity) | ✓ 默认 | ✗ | ✗ | ✗ |
 | 原生 Agent Skill | ✓ | ✗ | ✗ | ✗ |
 | 托管 SaaS 看板 | ✗ | ✗ | ✓ | ✓ |
 
-omk 的护城河是 **default-on 安全网** —— Bootstrap CI / 长度去偏不是 advanced flag，是默认行为；评委 ↔ 人工 α 只要给一份 gold 集就自动算。其他工具让你**手动**接置信区间；omk 让你**默认无法忽略**它。需要 SaaS 看板？选 LangSmith。要快速 prompt 迭代不要统计层？选 promptfoo。**要发到生产且会被问「为什么应该相信这个数字」？选 omk。**
+omk 的护城河是 **default-on 安全网**：Bootstrap CI 与长度去偏属于正常测量行为，缺失证据失败关闭，显式 Gold comparison 提供评委 ↔ 人工 alpha 校准。需要 SaaS 看板？选 LangSmith。要快速 prompt 迭代不要统计层？选 promptfoo。**要发到生产且会被问「为什么应该相信这个数字」？选 omk。**
 
 RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比（7 个工具 × 25+ 维度）： [docs/zh/reference/comparison.md](docs/zh/reference/comparison.md)
 
@@ -159,11 +157,11 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 | 特性 | 说明 |
 |------|------|
-| **Verdict 一行结论** | `omk eval` 六档判定 + ship 建议 + exit code 路由，与 HTML 报告 verdict pill 共享规则 |
-| **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
+| **Core 发布决定** | 六种结论 + 稳定 reason code + exit code 路由；Studio 投影同一份经过认证的 Decision |
+| **五层 evidence graph** | Assertion / LLM / Judge / Dimension / Composite 保持独立，coverage、成本、状态与 lineage 与分数正交 |
 | **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Anthropic API 及自定义命令 |
 | **30+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
-| **统计严谨性** | Bootstrap CI / 长度去偏 / 饱和曲线默认开，Krippendorff α 提供 gold 集即自动计算。[详情 →](docs/zh/explanation/statistical-rigor.md) |
+| **统计严谨性** | Bootstrap comparison family、长度去偏、缺失证据失败关闭与显式 Gold agreement 校准。[详情 →](docs/zh/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖 |
 | **LLM 健康度审计** | `omk doctor` 给 7 个内置维度独立打分；重复采样（`--repeat`）+ k/n 共识归并 |
 | **线上 session 观测** | 将 Codex、Claude Code、OpenClaw 与 markdown 日志统一为 source-neutral Trace IR，测量各 skill 的执行结果、耗时、token 使用和知识缺口信号 |
@@ -174,11 +172,11 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **证据门控管理** | `omk install` 登记受管记录；`omk eval` 按内容指纹自动写入证据，把 skill 从 `installed` 推到 `measurable`；`omk list` 查看各受管 skill 的状态（installed / measurable / promoted / stale）；`omk promote` 在证据过门禁（默认仅 PROGRESS）后把该版本接受为当前版本；`omk rollback` 撤销这次接受，让 skill 回到 `measurable`。[规范 →](docs/zh/specs/evidence-gated-management.md) |
 | **用例设计科学性** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风），studio 输出 coverage 分桶 + `rubric_clarity_low` / `capability_thin` issue。[docs/zh/specs/sample-design-spec.md](docs/zh/specs/sample-design-spec.md) |
 | **多评委 ensemble** | `--judge-models claude:opus,openai-api:gpt-4o` 跨厂商评分 + agreement 度量 |
-| **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
+| **多轮方差分析** | `--repeat N` 发布相互独立的 Core run 与 Evaluation Series 方差分析 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本用例 |
 | **可追溯性** | 报告含 CLI 版本、Node 版本、知识载体版本指纹、judge prompt hash |
-| **中英切换** | HTML 报告右上角一键切换语言 |
+| **中英视图** | 通过报告 URL 选择中英文的本地 Studio 视图 |
 
 ### 在已有 DeepSeek Harness 中运行
 
@@ -221,7 +219,7 @@ omk-mcp
 
 完整文档已发布到 **[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)** —— 可搜索，可切换英文。重点页面：
 
-- **[工作原理](docs/zh/explanation/architecture.md)** —— 交错调度、variant 解析、双通道评分、六维报告
+- **[工作原理](docs/zh/explanation/architecture.md)** —— 输入编译、sealed Core 执行、分析、持久化与 Studio projection
 - **[评测用例格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、30+ 断言类型、自定义 JS 断言
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[Evaluation Core 生产切换](docs/zh/guides/evaluation-core-cutover.md)** —— `BREAKING-SCHEMA` 存储、resume、Studio、Gold、受管证据与 evolve 迁移
@@ -231,7 +229,7 @@ omk-mcp
 - **[快速上手](docs/zh/quickstart-skill-eval.md)** —— 第一次跑评测的 5 分钟教程
 - **[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)** —— 仓库里一组可直接跑的示例，按由简到全排成上手路径
 - **[用例设计规范](docs/zh/specs/sample-design-spec.md)** —— capability / construct / provenance 元数据；行业 gap 映射
-- **[统计严谨性](docs/zh/explanation/statistical-rigor.md)** —— 为什么 Bootstrap CI / α / 长度去偏 / 饱和曲线重要
+- **[统计严谨性](docs/zh/explanation/statistical-rigor.md)** —— 为什么 Bootstrap CI / Gold agreement / 长度去偏 / evidence coverage 重要
 - **[7 工具对比](docs/zh/reference/comparison.md)** —— promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai 等 25+ 维度横评
 - **[证据门控管理](docs/zh/specs/evidence-gated-management.md)** —— 受管记录、生命周期状态（installed / measurable / promoted / stale）、install → eval → measurable → promote → rollback
 

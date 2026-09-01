@@ -207,47 +207,26 @@ Sample schema 含一组可选元数据字段，纯文档 / 诊断用，**不参�
 规则:
 
 - **持续集成场景的内部 helper 一律用 "gate"**：`omk eval` 的 gate 路径 / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
-- **置信区间场景一律用 "CI"**:`bootstrap CI` / `diff CI` / `bootstrapCI` 字段 / "95% CI"
+- **置信区间场景一律用「CI」**：`Bootstrap CI` / `comparison CI` / `interval` Analysis result / `95% CI`
 - 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义，读者不需上下文判断
 
-### 6. 稳定性 = 跨重复运行（test-retest），不是跨用例散度
+### 6. 稳定性 = 跨独立 Run，而不是跨用例散度
 
-**稳定性（stability）的概念对齐 psychometrics 的 test-retest reliability——同一对象在重复运行下的分数一致性。omk 采用 CV（变异系数，工程领域相对离散度指标）作主指标；它与 psychometrics 严格意义的 test-retest reliability（通常用 ICC 或 Pearson r）不完全等价，不是 psychometrics 标准下的 reliability 测量，而是同类概念下的工程化近似。**
+稳定性属于 test-retest 概念：同一份 sealed measurement design 作为 Evaluation Series 中的独立 Run 重复执行。当前 Series Analysis 报告 run-mean composite 的无偏样本方差。单次 Run 不包含跨 run 稳定性证据，Run Decision 也绝不能自行推断。
 
-omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`report.variance.perVariant[v]` 存多次运行的分数序列。稳定性主指标 **CV = σ / mean**（变异系数，无量纲相对散度），副指标 σ + 95% CI。阈值 `<5% / 5~15% / >15%` 为 1-5 分数量纲下的经验值，不是学术文献引用值。
+跨用例 score range 与 success rate 都不是稳定性。用例本就会有意覆盖不同难度，而 success rate 属于运行健康事实；两者都应与 Series variance 分开表达。
 
-**什么不是稳定性**：
+### 7. Composite 三层：fact / behavior / judge
 
-- **跨用例 min~max 分数范围**不是稳定性。同一 variant 在多个用例上的分数差异，大部分来自**用例难度本身不同**（eval-samples 通常有意覆盖多种任务），不是 variant 内在波动。把这个 range 叫稳定性是误读——读者看到"100%"会错以为 variant 很稳定，实际可能只是用例集太窄。
-- **成功率（success rate）**不是稳定性。成功率反映的是"任务有没有完成"（执行健康度），和"分数在重复测时抖动多大"（测量稳定性）是两个独立概念。成功率 < 100% 时在副区 alert，不作为稳定性主指标。
+Core Composite Analysis 最多绑定 `fact`、`behavior` 与 `judge` 三个具名 layer。
 
-**UI 约定**：
+| 层 | 来源 | 本质 |
+|---|---|---|
+| 事实 | 显式分类的 Boolean criterion observation | 规则可验证 |
+| 行为 | 显式分类的执行合规 criterion observation | 规则可验证 |
+| LLM 评价 | ensemble consensus 或 dimension aggregate | 模型评测 |
 
-- 六维对比表"稳定性"列主值：有 variance 数据时显示 `CV X.X%`，没有（单轮评测 / 无 `--repeat`）时显示 `—` + 副区 `需 --repeat ≥ 2`。**诚实交代测不到什么**。
-- 行业对照：Anthropic / OpenAI eval docs、Braintrust、Langfuse 等都把多次运行之间的 variance 作为稳定性核心指标，不用跨用例散度。
-
-### 7. 三层评分：事实 / 行为 / LLM 评价
-
-`LayeredScores` 把 composite（合成分）拆成三个正交层，字段依次 `factScore` / `behaviorScore` / `judgeScore`，UI 分别展示为 **"事实" / "行为" / "LLM 评价"**。
-
-| 层 | 字段 | 来源 | 本质 |
-|---|---|---|---|
-| 事实 | `factScore` | 事实类断言通过率（`contains` / `json_schema` / `fact_check` 等） | 规则可验证 · 客观 |
-| 行为 | `behaviorScore` | 行为类断言通过率（`tools_called` / `tool_output_contains` / `turns_max` 等） | 规则可验证 · 客观 |
-| LLM 评价 | `judgeScore` | LLM judge 基于 rubric 的主观评分（= `results.llmScore`） | 模型评委 · 主观 |
-
-**"LLM 评价"不叫"质量"的原因**：
-
-- `composite` 合成分 = 三层算术平均；外部推广采用基础四维框架（质量 / 成本 / 效率 / 准确性），**"质量"指代 composite 合成分这一维**
-- 如果把 `judgeScore` 也叫"质量层"，同一份报告里就会有表头"质量 3.85"与 detail"质量层: 4"两个语义完全不同的数字，读者无法区分
-- "LLM 评价"明示来源是 LLM 评委，和"事实 / 行为"的规则验证形成语义对比，三层并列无歧义
-- `judge` 作为字段名与已有术语 `judgeExecutor` / `judgeModel` 对齐
-
-**代码约定**：
-
-- 对外文档、UI label、变更记录提及这一层时用 "LLM 评价"（中文）/ "LLM judge"（英文）
-- 代码字段、类型、枚举值统一使用 `judge` / `judgeScore` / `avgJudgeScore`
-- 不要在新代码里再出现 `qualityScore` / `avgQualityScore`（属 v0.15 遗留命名，v0.16 已废除）
+这些术语表示 Analysis 职责，不是可变的 report field。新代码使用限定 table entry 与 source binding；不得重新引入已删除的 `LayeredScores`、`factScore`、`behaviorScore`、`judgeScore` 或 `avg*Score` 结果行字段。中文在指 evaluator 来源时使用「LLM 评委」，指 Composite Analysis 时使用「judge layer」。
 
 ## 四、对外表达规范
 
@@ -338,15 +317,15 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 | EvaluandKind | ArtifactKind | 对象类别 |
 | evaluands | artifacts | 请求中的对象列表 |
 | task.evaluand | task.artifact | 单个任务绑定的对象 |
-| evaluandHashes | artifactHashes | artifact 整棵可分发树的内容哈希（报告 `schemaVersion >= 2`，与 install 受管记录的 `contentHash` 同一空间）|
-| skillHashes | artifactHashes | report 中的统一对象哈希 |
+| evaluandHashes | Target artifact descriptor | Target config 与 managed evidence 中封存的完整 SHA-256 内容身份 |
+| skillHashes | Target artifact descriptor | Core lineage 中统一的 artifact identity |
 | skill 作为总称 | artifact | skill 退回为具体子类 |
 | agent 作为总称 | artifact / agent runtime | 视语义选择 |
 | `--variants` CLI 参数 | `--control` / `--treatment` | 按 experiment role 声明 variant，废除扁平列表 |
 | 从 `artifactKind === 'baseline'` 推断对照组 | 显式读 `experimentRole === 'control'` | 对照组由用户声明，不从 artifact kind 反推 |
-| `LayeredScores.qualityScore` | `LayeredScores.judgeScore` | UI 展示为 "LLM 评价" / "LLM judge"；避免与表头"质量"(composite) 重名 |
-| `VariantSummary.avgQualityScore` | `VariantSummary.avgJudgeScore` | 同上 |
-| `VarianceLayerKey: 'quality'` | `VarianceLayerKey: 'judge'` | 同上 |
+| `LayeredScores.qualityScore` | Composite `judge` layer entry | 已删除的结果行字段由显式绑定的 Analysis source 替代 |
+| `VariantSummary.avgQualityScore` | 来自 Composite Analysis 的 Studio projection | 展示数据从经过认证的 Core 产物重建 |
+| `VarianceLayerKey: 'quality'` | Evaluation Series run-mean composite variance | Series 不复用旧 layer key |
 
 ## 七、Skill Isolation(v0.22 新增)
 

@@ -1,67 +1,45 @@
 # How it works
 
-Core idea: **fix the model and the samples, vary only the artifact and runtime context**, use interleaved scheduling to cancel time drift, score via assertions + LLM judge (dual channel), then layer on knowledge-gap signals to quantify risk exposure.
+OMK keeps one source of truth for evaluation: a host compiles local inputs into a host-neutral measurement contract, Evaluation Core seals and executes that contract, and every CLI or Studio view is projected from validated Core artifacts.
 
 ```mermaid
 flowchart TD
-    subgraph Input["① Input"]
-        S["eval-samples<br/>(JSON / YAML)"]
-        A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name"]
-    end
+    I["CLI flags · eval.yaml · samples · artifacts"]
+    C["Parse → Resolve → Compile"]
+    D["EvaluationDefinition + MeasurementPolicy"]
+    H["Runtime assembly + adapter preflight"]
+    P["Core prepare → SealedRunPlan"]
+    E["ExecutionBundle"]
+    V["EvaluationBundle"]
+    A["AnalysisBundle"]
+    R["EvaluationReport"]
+    S["Atomic artifact store"]
+    X["CLI gate · Studio · Gold · resume · evolve · managed evidence"]
 
-    subgraph Prep["② Preprocess (resolve & fetch)"]
-        V["variant resolution<br/>variant → artifact + runtime context<br/>(cwd / AGENTS.md or CLAUDE.md / local skills)"]
-        U["URL fetching<br/>URLs in prompt / context<br/>MCP Server(private docs) → HTTP"]
-    end
-
-    subgraph Schedule["③ Interleaved + concurrent scheduling"]
-        Q["s1-v1 → s1-v2 → s2-v1 → s2-v2 …<br/>--concurrency N · --repeat N"]
-    end
-
-    subgraph Exec["④ Executor (fixed model)"]
-        E["claude / claude-sdk / codex / dsh-host<br/>anthropic-api / openai-api / custom"]
-        T["executor adapters normalize<br/>turns / toolCalls trace"]
-        E -.-> T
-    end
-
-    subgraph Score["⑤ Dual-channel scoring"]
-        AS["assertions<br/>content / structure / cost / latency<br/>agent: tools_called · turns_min …"]
-        LS["LLM judge<br/>rubric · dimensions (independent per-dim scores)"]
-        CS["composite score<br/>mean of present layers — fact · behavior · judge"]
-        AS --> CS
-        LS --> CS
-    end
-
-    subgraph Analyze["⑥ Auto analysis + knowledge gaps"]
-        D["low-discrimination / flat scores / all-pass or all-fail<br/>expensive samples · variance · t-test"]
-        G["knowledge-gap signals<br/>(quantify risk exposure, not completeness proof)"]
-    end
-
-    subgraph Report["⑦ Report"]
-        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · top verdict pill<br/>CLI/Node/version fingerprint traceable"]
-    end
-
-    S --> U
-    A --> V
-    V --> Q
-    U --> Q
-    Q --> E
-    T --> AS
-    E --> AS
-    E --> LS
-    CS --> D
-    CS --> G
-    D --> R
-    G --> R
+    I --> C --> D
+    D --> H --> P
+    P --> E --> V --> A --> R --> S --> X
 ```
 
-**Key design choices:**
+## The important boundaries
 
-- **Interleaved scheduling** removes time drift: different variants of the same sample are dispatched alternately rather than "all of v1 then all of v2", so model load / network jitter can't be mis-attributed to the artifact.
-- **variant = artifact + runtime context**: the `cwd` (declared via `--control-cwd`/`--treatment-cwd` or eval.yaml's `cwd:` field, separate from the artifact expression) lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
-- **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). The composite is the mean of whichever scoring layers (fact / behavior / judge) are actually present.
-- **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
-- **DSH host mode** leaves the model, credentials, tools, and sandbox with the existing DSH plugin tree. OMK only creates isolated measurement sessions, injects each variant, and consumes session events. `dsh-host` is an internal report identity, not a CLI value users select with `omk eval --executor`.
+- **The host owns effects.** File discovery, Git materialization, credentials, environment access, progress text, report directories, Studio, and browser opening stay outside Core.
+- **Core owns measurement meaning.** Dataset projection, Target behavior, evaluator instruments, metrics, sampling units, comparison families, analysis parameters, missing-evidence policy, budgets, and Decision policy are sealed before the first Target call.
+- **Runtime identity is evidence.** Provider, model, effort, tools, sandbox, protocol, skill isolation, and fingerprint assurance are explicit. An adapter that cannot satisfy a declared capability fails before measurement instead of silently dropping it.
+- **Gold is isolated.** Executors see only execution inputs. Evaluators receive only their declared evaluation projection. Gold remains analysis-only and cannot leak into generation or scoring.
+- **Events are observational.** Slow, absent, or failing progress consumers cannot change authoritative Bundles or the final Report.
+- **Persistence is immutable.** Each run publishes its Run Plan, Execution, Evaluation, and Analysis Bundles, and Evaluation Report as one digest-linked artifact set. Corruption or broken lineage fails explicitly.
+- **Studio is a projection.** UI cards and pages can be rebuilt from Core artifacts and never become a second measurement model.
+
+## Scoring and release decisions
+
+Assertions and rubric judges remain separate evaluator instruments. Analysis derives assertion layers, judge replicates and ensembles, dimensions, composite values, Bootstrap comparison families, and agreement tables without collapsing their identities.
+
+Missing, invalid, failed, unavailable, and not-started observations are not zero scores. Coverage remains explicit through the graph. `omk.release-decision/v1` requires complete evidence and exact Analysis binding before returning one of `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, or `SOLO`. A display score or point estimate never replaces the registered Decision.
+
+Cost, usage, duration, operational status, evidence status, conclusion status, and lineage are orthogonal facts rather than extra scoring dimensions. Independent `--repeat` runs form an Evaluation Series; cross-run stability is not inferred from one run.
+
+See [Composite scoring](../specs/scoring.md) and [Statistical rigor](statistical-rigor.md).
 
 ## Observation pipeline: source-neutral Trace IR
 
@@ -75,26 +53,9 @@ flowchart LR
     M["Markdown adapter"] --> IR
     IR --> A["lifecycle correlation and skill attribution"]
     A --> S["segment"]
-    S --> R["health / inbox / experience"]
+    S --> R["health · inbox · experience"]
 ```
 
-The IR distinguishes `message`, `tool_call`, `tool_result`, `usage`, `lifecycle`, and `unknown` events. User messages carry a `human`, `runtime`, `skill-context`, or `synthetic` origin, so injected `AGENTS.md`, environment context, and tool results cannot inflate human-turn metrics. Tool calls retain provider namespaces. Outcomes use four states: `success`, `failure`, `cancelled`, and `unknown`. Runtime status is authoritative; when it is absent, an adapter may infer `success` or `failure` only from source-specific, explicit terminal evidence such as an exit code. Ambiguous outcomes remain `unknown`. Failure rates use comparable outcomes (`success + failure`) as the denominator. Outcome coverage reports all resolved states (`success + failure + cancelled`) separately.
+The IR distinguishes `message`, `tool_call`, `tool_result`, `usage`, `lifecycle`, and `unknown` events. User messages carry a `human`, `runtime`, `skill-context`, or `synthetic` origin, so injected instructions, environment context, and tool results cannot inflate human-turn metrics. Tool calls retain provider namespaces. Outcomes use `success`, `failure`, `cancelled`, and `unknown`; ambiguous outcomes remain unknown.
 
-Identifiers have separate jobs: `rootRunId` groups a task tree, `runId` identifies a concrete thread, `traceId` identifies an evidence stream, and each segment gets an independent sample ID. Aggregation keys therefore never double as sample primary keys.
-
-Every load also produces an ingestion summary: source records, parsed object records, malformed records, ignored non-object values, unrecognized IR events, and intentionally filtered runtime sessions. Health and inbox reports persist this summary and surface incomplete inputs instead of silently presenting a partial trace as complete.
-
-Timeline event IDs provide the canonical order across a grouped task tree. A `messageIndex` remains local provenance inside one physical trace, so session scope stores record ranges separately for each `traceId`; it never compares record indexes from main and subagent files as if they shared a global coordinate system.
-
-## Six-dim evaluation
-
-Reports display results across six independent dimensions. The three scoring layers — Fact / Behavior / LLM-judge — are shown separately so you see **which layer regressed** instead of a single composite number:
-
-| Dimension | Metric | Description |
-|---|---|---|
-| 📋 **Fact** | fact-assertion pass rate | rule-verifiable assertions like `contains` / `json_schema` / `fact_check`, mapped to 1-5 |
-| 🛠️ **Behavior** | behavior-assertion pass rate | execution-compliance assertions like `tools_called` / `tool_output_contains` / `turns_max` |
-| 💬 **LLM-judge** | rubric score | 1-5 scored by the judge model against a predefined rubric; subjective, catches what rules miss |
-| 💰 **Cost** | total cost, input/output tokens | API cost based on token usage and model pricing |
-| ⚡ **Efficiency** | average latency (ms) | end-to-end latency from request to full response |
-| 🛡️ **Stability** | CV (coefficient of variation) | score consistency across repeated runs (`--repeat ≥ 2`); single-run shows `—`, **honestly acknowledging what can't be measured** |
+Identifiers have separate jobs: `rootRunId` groups a task tree, `runId` identifies a concrete task, `traceId` identifies an evidence stream, and each segment gets an independent sample ID. Every load also records an ingestion summary, so malformed, unrecognized, filtered, or partial source data cannot masquerade as complete observation coverage.

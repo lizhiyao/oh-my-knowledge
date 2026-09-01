@@ -118,7 +118,7 @@ omk eval --config eval.yaml
 - `--judge-models <executor:model[,...]>` 显式覆盖评委配置（Codex 默认沿用被测模型，≥ 2 条 = ensemble）
 - `--concurrency <n>` 并发数
 - `--skip-doctor` 跳过 doctor preflight 门禁（默认 doctor 会先跑一次卡掉 skill 写法大问题）
-- `--no-diagnostic` 关掉 diagnostic 诊断 LLM 调用（默认开启，给 failed sample 出「哪错了 + 怎么改」建议）
+- `--no-diagnostic` 关闭基于已认证 Core 失败、缺失证据、排除项和稳定 reason code 的诊断投影
 - `--no-judge` 关掉评委主观评分（保留断言层）
 
 ### 自动迭代改进
@@ -130,7 +130,7 @@ omk evolve skills/my-skill.md --rounds 10 --target 4.5
 omk evolve skills/my-skill.md --snapshot-only
 ```
 
-evolve 的每个候选都必须通过 Evaluation Core 的 control／treatment A/B 决策：只有带 `release-gates-passed` 的 `PROGRESS` 且候选分数确实更高才接受。写回源文件前还会重新评测原始版本与胜出快照；最终门禁失败时源文件保持不变。改动过大的候选在评测前直接判拒（`--edit-budget`，默认 0.2）。选择集不能提供无偏泛化结论；需要发布判断时，在 evolve 外保留独立验证集并运行新的 `omk eval`，不要把该验证集反馈回同一次迭代。
+evolve 的每个候选都必须通过 Evaluation Core 的 control／treatment A/B 决策：只有带 `release-gates-passed` 的 `PROGRESS` 才接受。Core Decision 是唯一接纳依据；同一次 A/B 中的分数差只用于展示，authoring loop 不会再叠加私有分数门禁或拿跨 run 分数比较。写回源文件前还会重新评测原始版本与胜出快照；最终门禁失败时源文件保持不变。改动过大的候选在评测前直接判拒（`--edit-budget`，默认 0.2）。选择集不能提供无偏泛化结论；需要发布判断时，在 evolve 外保留独立验证集并运行新的 `omk eval`，不要把该验证集反馈回同一次迭代。
 
 **重要：evolve 必须在前台运行（不要用 `run_in_background`）。** 原因：evolve 自带实时进度输出，每个 sample 执行时会打印 `[1/5] s001/... ⏳ 执行中...`，每轮完成会打印 `Round N: score=... ✓ ACCEPT / ✗ REJECT`。前台运行时用户能实时看到这些进度，无需手动询问。设置足够长的 timeout（建议 600000ms）以确保命令不会中途超时。
 

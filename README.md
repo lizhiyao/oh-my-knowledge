@@ -33,8 +33,6 @@ Observe real-world performance, measure version differences, and determine wheth
 | What happened during one real AI task? | `omk observe` / Studio Task Trajectory | a trace-backed view of the request, visible Knowledge, tool calls, results, response, and user correction |
 | What did real usage expose? | `omk observe` / `omk sample --from-traces` | production gaps drafted for review; reviewed drafts can become eval samples |
 
-![omk report — verdict pill "v2 is clearly better than v1 — ready to ship"](./assets/screenshots/report-overview.png)
-
 ## Quick start
 
 ```bash
@@ -44,7 +42,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-Runs out of the box — no edits needed first. `omk init` scaffolds two skill variants and three sample cases; `--dry-run` previews calls and cost; `omk eval` runs the controlled A/B and opens an HTML report with a one-line verdict in about five minutes. Once it runs, swap in your own skills and cases.
+Runs out of the box — no edits needed first. `omk init` scaffolds two skill variants and three sample cases; `--dry-run` previews the sealed task plan and estimated calls; `omk eval` runs the controlled A/B and opens the authenticated Core run in Studio. Once it runs, swap in your own skills and cases.
 
 Prerequisite: configure one authenticated model runtime (Codex CLI, Claude Code, or an API executor; see [Requirements](#requirements)). Inside a Codex task in the ChatGPT desktop app, omk automatically selects `codex`, reads the model from `~/.codex/config.toml`, and uses the same Codex model as the default judge. Claude is not required.
 
@@ -145,13 +143,13 @@ omk treats the knowledge artifact as the variable under test: **same model, same
 | Bootstrap CI | ✓ default | ✗ | ✗ | ✗ |
 | Krippendorff α (judge ↔ human) | ✓ with gold set | ✗ | ✗ | ✗ |
 | Length-debias judge prompt | ✓ default | ✗ | ✗ | ✗ |
-| Saturation curve | ✓ | ✗ | ✗ | ✗ |
+| Fail-closed evidence coverage | ✓ | ✗ | ✗ | ✗ |
 | Three-layer scoring isolation | ✓ | ✗ | partial | ✗ |
 | Per-variant skill isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ |
 | Native Agent Skill | ✓ | ✗ | ✗ | ✗ |
 | Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✓ |
 
-omk's moat is **default-on safety net** — Bootstrap CI and length-debias aren't advanced flags; they're the default, and judge ↔ human α comes free the moment you add a gold set. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
+omk's moat is a **default-on safety net**: Bootstrap CI and length-debias are normal measurement behavior, missing evidence fails closed, and explicit Gold comparison provides judge ↔ human alpha calibration. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
 
 RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full comparison with 7 tools across 25+ dimensions: [docs/reference/comparison.md](docs/reference/comparison.md).
 
@@ -159,11 +157,11 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 | Feature | What it does |
 |---|---|
-| **One-line verdict** | `omk eval` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
-| **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
+| **Core release decision** | Six conclusions + stable reason codes + exit-code routing; Studio projects the same authenticated Decision |
+| **Five-layer evidence graph** | Assertion / LLM / Judge / Dimension / Composite stay distinct, with coverage, cost, status, and lineage kept orthogonal |
 | **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Anthropic API / any custom command |
 | **30+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
-| **Statistical rigor** | Bootstrap CI / length-debias / saturation curve on by default; Krippendorff α auto-computed with a gold set. [Details →](docs/explanation/statistical-rigor.md) |
+| **Statistical rigor** | Bootstrap comparison families, length-debias, fail-closed evidence coverage, and explicit Gold agreement calibration. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
 | **LLM health audit** | `omk doctor` grades 7 builtin dimensions; repeats the audit (`--repeat`) and merges findings by k/n consensus |
 | **Production observability** | normalize Codex, Claude Code, OpenClaw, and markdown logs into source-neutral Trace IR; measure per-skill outcomes / latency / token use / knowledge-gap signals |
@@ -174,11 +172,11 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Evidence-gated management** | `omk install` registers a managed record; `omk eval` auto-writes evidence bound by content fingerprint, moving a skill `installed → measurable`; `omk list` surfaces each managed skill's status (installed / measurable / promoted / stale); `omk promote` accepts a version once its evidence passes the gate (default PROGRESS only); `omk rollback` revokes that acceptance, returning the skill to `measurable`. [spec →](docs/specs/evidence-gated-management.md) |
 | **Sample design science** | sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. [docs/specs/sample-design-spec.md](docs/specs/sample-design-spec.md) |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai-api:gpt-4o` cross-vendor scoring + agreement metrics |
-| **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
+| **Multi-run variance** | `--repeat N` publishes independent Core runs and an Evaluation Series variance analysis |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
 | **Traceability** | reports carry CLI version, Node version, artifact version fingerprint, judge prompt hash |
-| **EN / ZH switch** | one-click language toggle in the HTML report |
+| **EN / ZH views** | bilingual local Studio views selected through the report URL |
 
 ### Run inside an existing DeepSeek Harness
 
@@ -221,7 +219,7 @@ Every record carries `coverageStatus: partial`: OMK observes its tool boundary, 
 
 The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** — searchable, with an English / 简体中文 switcher. Key pages:
 
-- **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
+- **[How it works](docs/explanation/architecture.md)** — input compilation, sealed Core execution, analysis, persistence, and Studio projections
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
 - **[Evaluation Core cutover](docs/guides/evaluation-core-cutover.md)** — `BREAKING-SCHEMA` storage, resume, Studio, Gold, managed-evidence, and evolve migration
@@ -231,7 +229,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
 - **[Example gallery](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)** — a set of runnable examples in the repo, arranged simplest-to-richest
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
-- **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
+- **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why Bootstrap CI / Gold agreement / length-debias / evidence coverage matter
 - **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai
 - **[Evidence-gated management](docs/specs/evidence-gated-management.md)** — managed records, lifecycle states (installed / measurable / promoted / stale), install → eval → measurable → promote → rollback
 

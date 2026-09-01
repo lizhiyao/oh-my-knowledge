@@ -17,18 +17,15 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 
 | 英文 | 中文 | 一句话定义 | 在 omk 哪用到 |
 |---|---|---|---|
-| bootstrap CI | 自助法置信区间 | 不假设分布的 95% 置信区间，靠重采样（默认 1000 次）算出 | `omk eval --bootstrap`；报告页「配对对比」表 |
-| Δ (delta) | 分差 / 均值差 | treatment 与 control 的综合分均值差 | hero 「分差 +2.778」；配对对比表 |
-| 95% CI | 95% 可信区间 | 真实均值有 95% 概率落在这个区间。CI 不含 0 = 显著差异 | hero tooltip；配对对比表 |
-| significant | 显著差异 / 显著 | CI 不含 0（差距不是偶然） | 测评可信度 ✓ 差异显著 badge |
-| Pearson r | 皮尔逊（相关）系数 | 1=完全同向 / 0=无关 / -1=完全反向 | 多评委 ensemble 的「跨用例评委一致性」表 |
-| MAD | 平均绝对差 | 多个评委对同一用例打分的平均距离。1-5 制下 < 0.5 紧密一致，> 1.5 大分歧 | 多评委一致性表 |
-| Krippendorff α | Krippendorff α / 一致性系数 | 区间加权多评委一致性，α ≥ 0.8 高度一致 / 0.667-0.8 可接受 / < 0.4 低 | 人工锚点 (Human gold) section |
-| p-value | p 值 | 「这种差距碰巧出现」的概率，越小越显著（一般 0.05 阈值） | t-test 部分（omk 不主推，bootstrap 优先） |
-| effect size | 效应量 | 差距相对于波动的比例（Cohen's d / Hedges' g），刻度化「差距有多大」 | 波动 / 显著性表的 Cohen's d 列 |
-| CV | 变异系数 | stddev / mean，稳定性指标。1-5 制下 < 5% 稳 / 5-15% 中 / > 15% 不稳 | 稳定性列 + hero tooltip |
-| stddev (σ) | 标准差 | 数值波动幅度的统计量 | 稳定性列 |
-| saturation | 饱和（曲线） | 加更多用例不再让结论变化的点（CI 宽度衰减放缓） | 测评可信度「✓ 已饱和」badge |
+| bootstrap CI | 自助法置信区间 | 对已注册 sampling unit 重采样得到的 percentile 置信区间，默认 1000 次 | Core Bootstrap-family Analysis |
+| Δ (delta) | 分差 / 均值差 | treatment 与 control 的综合分均值差 | Bootstrap comparison estimate 与 Studio projection |
+| 95% CI | 95% 置信区间 | 在相应假设下，构造过程具有 95% 的长期覆盖率；treatment-minus-control 区间不含 0 时方向显著 | Core Bootstrap-family Analysis |
+| significant | 显著差异 / 显著 | 已注册 comparison interval 在 family correction 后的有效 alpha 下不含 0 | Core Decision evidence |
+| Pearson r | 皮尔逊相关系数 | 1 = 完全同向，0 = 无关，-1 = 完全反向 | Judge-ensemble 或 Gold agreement diagnostic |
+| MAD | 平均绝对差 | 同一用例上 observed judge-member mean 之间的平均绝对差 | Judge Ensemble Analysis |
+| Krippendorff α | Krippendorff α / 一致性系数 | 使用已注册 interval-distance 定义计算的一致性统计量 | 显式 Gold comparison 或预注册 Agreement Analysis |
+| effect size | 效应量 | 已注册 score scale 上的 treatment-minus-control estimate | Bootstrap comparison 与 practical-effect gate |
+| variance | 方差 | 独立 run-mean composite 之间的离散程度 | Evaluation Series Analysis |
 | holdout (set) | 外验集 | skill 显式没写过的独立验证用例，用来防样本驯化 | 评测后置工作建议 |
 | construct validity | 构造效度 | 测量是否真测了想测的东西（vs 测量误差） | scoring.md：综合分构造效度论证 |
 | ad hoc | 临时拼装 / 没有原理论证的 | 通常用来形容「先做出来再说」的实现选择 | scoring.md：综合分等权聚合是 ad hoc |
@@ -47,19 +44,19 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | judge | 评委 | LLM 当评委按 rubric 打分（zh 译作「评委」，**不要**译作「判官」） | judge model 参数；evidence 表 |
 | rubric | 评分规则 | judge 打分时遵循的细则（应识别 X / 必须包含 Y / 至少 N 项 / ...） | sample 配置的 rubric 字段 |
 | anchor | 锚点 | 用人工标准校准 LLM judge 的方法 | `--gold-dir` 人工锚点 |
-| gate (layer gate) | 闸门 / 层独立闸门 | 三层独立显著性检验（fact / behavior / judge），任一层退步即触发 CAUTIOUS+ | verdict 算法；报告页「波动 / 显著性」表 |
-| [verdict](../specs/scoring.md#六档-verdict-一览) | 判定 | PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六档 | hero badge；CLI verdict 输出 |
+| gate (layer gate) | 闸门 / 层门禁 | 根据经过认证的 Composite-layer evidence 检查已注册 treatment layer 阈值 | Core release Decision |
+| [verdict](../specs/scoring.md#decision-边界) | 判定 | PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六种结论 | Core Report、CLI 路由与 Studio projection |
 | sample (evaluation sample) | 评测用例 | omk user-facing zh 统一用「用例」（英文 sample 保留） | eval-samples.json |
 | [eval-samples](./eval-sample-format.md) | 评测用例集 / 评测用例文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
 | baseline (reserved variant) | 基线 / 对照（保留字） | 不注入 skill 的对照组，omk 保留变体名 | `--control baseline` |
 | treatment | 实验组 | 注入 skill 的对比组 | `--treatment <name>` |
 | control | 对照组 | baseline 的别名 | `--control <name>` |
-| [composite (score)](../specs/scoring.md) | 综合分 | fact / behavior / judge 三层等权均值，1-5 制 | 六维对比表第一列 |
-| fact (layer) | 事实层 | assertion 通过率经 `1 + ratio*4` 映射到 1-5 | 六维对比表「📋 事实」 |
-| behavior (layer) | 行为层 | 执行过程类断言（工具调用 / 轮次 / 成本上限）通过率 | 六维对比表「🛠️ 行为」 |
-| judge (layer) | LLM 评价层 | 评委按 rubric 直接给的 1-5 分 | 六维对比表「💬 LLM 评价」 |
-| dimension | 维度 | capability-aligned 评分维度（v0.x 后期落地，未进 composite） | 五层评分管道架构 |
-| reliability check | 测评可信度 | 评委一致 / 差异显著 / 已饱和 / 人工对齐四块证据，可折叠展开 | 报告页 details 块 |
+| [composite (score)](../specs/scoring.md) | 综合分 | observed 且 present 的 fact / behavior / judge layer 等权均值，1–5 制；零 observed layer 时为 missing | Core Composite table 与 Studio projection |
+| fact (layer) | 事实层 | 显式分类的 fact criterion 通过权重映射到 1–5 | Assertion-layer Analysis |
+| behavior (layer) | 行为层 | 显式分类的 behavior criterion 通过权重映射到 1–5 | Assertion-layer Analysis |
+| judge (layer) | LLM 评价层 | 作为 judge source 绑定的 ensemble consensus 或 dimension aggregate | Composite Analysis |
+| dimension | 维度 | 与一个 Metric 和上游 judge-ensemble result 一一绑定的 Analysis aggregate | Dimension Analysis |
+| evidence coverage | 证据覆盖 | planned、observed、missing、invalid、failed、unavailable 与 not-started evidence 沿 lineage 保留 | Core Analysis 与 Decision gate |
 | [managed record](../specs/evidence-gated-management.md) | 受管记录 | `omk install` 建的 `.omk/managed/<id>.json` 事实记录（源 / contentHash / 分发 / 证据 / 决定） | `omk install`；证据门控管理 |
 | lifecycle | 生命周期（installed / measurable / stale） | 受管 skill 的读时状态：`installed`（无有效证据）→ `measurable`（eval 证据已绑）→ `stale`（内容漂移脱离证据） | `deriveManagedState`；`omk eval`「→ measurable」 |
 | evidence (managed) | 证据 | eval 跑完追加进受管记录的 `ManagedEvidenceRef`，绑定它测的内容指纹（report id / 样本覆盖 / verdict / 可比性） | `omk eval` 自动写入 |
@@ -78,7 +75,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | tool call | 工具调用 | LLM 在执行中主动调用的外部函数 |
 | turn | 轮次 | 一次「LLM 输出 + 用户/工具响应」的交互单元 |
 | context | 上下文 | LLM 在生成时看到的全部历史信息 |
-| fingerprint | 指纹 | 用 SHA-256 前缀（默认 12 位）算的版本哈希，用于跨 run 校验 |
+| fingerprint | 指纹 | 用于跨 run 校验一致性与可比性的稳定 runtime 或 content identity |
 | session trace | 会话轨迹 | 一次完整 AI 对话的事件流（prompt / 工具调用 / 输出 / 评分），observe 解析的对象 |
 
 ---

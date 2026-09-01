@@ -32,7 +32,7 @@ omk 的第一条有用闭环，应该像一张发布检查表：
 
 ## eval —— 测量核心
 
-`eval` 是 omk 的心脏：一次**离线 A/B**，固定模型和用例，只变 artifact（及其 runtime context），问"新版本是否在噪声之外打赢了旧版本？"。它产出六维报告、统计机器（bootstrap CI、length-debias、饱和、评委间一致性），以及一行可拿来卡 CI 的 **verdict**（PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO）。
+`eval` 是 omk 的心脏：一次**离线 A/B**，固定模型和用例，只改变 artifact 与封存的 runtime context，回答「新版本是否在噪声之外打赢了旧版本？」。它产出经过认证的 Execution／Evaluation／Analysis 证据、Bootstrap uncertainty、coverage 与 agreement 诊断，以及可用于 CI 路由的已注册 **Decision**（`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`）。
 
 omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严谨性](./statistical-rigor)、[评分公式](../specs/scoring) 讲的都是怎么把这一个数字做到足以支持发布 / 不发布判断。
 

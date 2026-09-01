@@ -1,6 +1,6 @@
 # Evaluation Core 产物持久化
 
-> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 第一至第三个切片的宿主持久化、复用与下游投影契约，以及 [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547) 切换前的 CLI 与受管证据投影。本阶段不切换 `omk eval`、不读取旧报告，也不会把传输来的 JSON 伪装成可信 Core capability。
+> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 与 [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547) 的宿主持久化、复用和下游投影契约已实现。正式 `omk eval`、Studio、受管证据、Gold、resume、batch 与 evolve 现已消费这些 Core 产物。旧报告仍不可读，传输来的 JSON 也不会被伪装成可信 Core capability。
 
 ## 一、边界
 
@@ -67,7 +67,7 @@ overlay 只写 primary store，读取时 primary 优先于 fallback layer。索�
 
 ## 九、Core 原生下游投影
 
-下游 consumer 通过纯函数、无副作用的 projection 读取不可变 Core 事实。这些 API 不导入旧 Report 或结果行类型；在最终 CLI 切换前，也不会接入正式 consumer。
+下游 consumer 通过纯函数、无副作用的 projection 读取不可变 Core 事实。这些 API 不导入旧 Report 或结果行类型；原子 CLI 切换完成后，正式 consumer 已接入这些 projection。
 
 artifact graph projection 消费一组已经校验的持久化 run，输出 Run、Target、Evaluator、Metric、Execution result、Evaluation result、Analysis result 与 Decision 等限定语义节点。节点状态只来自显式 stage 状态。数值 observation 可以作为视图 metric 展示，但分数档位和展示阈值不能变成 verdict。evidence reference 绑定 Core 文档的精确 hash 与 JSON pointer；原始 input、expected、output、trace、evidence 与 error text 一律不进入图。
 
@@ -79,15 +79,13 @@ CLI dry-run projection 只接收 prepare 返回的进程内 `SealedRunPlan` capa
 
 CLI run projection 只接收一条经过完整校验的持久化 artifact chain。运行是否完成、证据是否完整、结论是否可下以及已注册 Decision 分别参与 gate，保持正交。verdict 本身不是发布授权；`PROGRESS` 必须携带稳定的 `release-gates-passed` reason，`SOLO` 必须携带 `solo-layer-gate-passed`。`report-only` 只能对 completed run 跳过发布门禁；取消、预算耗尽与失败仍是非零 operational outcome。Batch projection 必须把 manifest 中每个 child 与精确 artifact-set identity 对齐，并投影独立 child outcome，不汇总 score、Report 或统计单位。
 
-受管证据 projection 使用 Target config 中封存的完整 SHA-256 artifact descriptor、精确 Executor Runtime fingerprint reference、comparison-scoped role、Dataset revision、全部 stage-plan digest、Report identity、状态与已注册 Decision 建立绑定。因此，同一 Target 可以在一个 Comparison 中是 treatment、在另一个 Comparison 中是 control，而不会让合法 Core chain 无法投影。它明确不包含旧 12 位 content hash、locator 猜测、别名、展示分数、Runtime capabilities 或 implementation facets。baseline Target 为审计继续可见，但显式标记为不能写入受管证据。后续切换 writer 必须直接消费该 projection，并把 managed record 迁入相同的内容身份空间；禁止再把它翻译成旧 `EvaluationReport`。
+受管证据 projection 使用 Target config 中封存的完整 SHA-256 artifact descriptor、精确 Executor Runtime fingerprint reference、comparison-scoped role、Dataset revision、全部 stage-plan digest、Report identity、状态与已注册 Decision 建立绑定。因此，同一 Target 可以在一个 Comparison 中是 treatment、在另一个 Comparison 中是 control，而不会让合法 Core chain 无法投影。它明确不包含旧 12 位 content hash、locator 猜测、别名、展示分数、Runtime capabilities 或 implementation facets。baseline Target 为审计继续可见，但显式标记为不能写入受管证据。正式 writer 直接消费该 projection，并在相同的内容身份空间写入 managed record；禁止再把它翻译成旧 `EvaluationReport`。
 
 ## 十、非目标
 
 - 旧 `EvaluationReport` reader、迁移或双写；
 - partial record resume 或跨进程 checkpoint engine；
 - Studio projection；
-- 最终切换前，把 Core projection 接入生产 CLI、Studio 或 managed-record consumer；
-- 正式 CLI 切换与旧 pipeline 删除；
 - artifact 签名或 provenance attestation。
 
-这些 Core 原生 projection 补齐了 #547 第一个切片所需的 consumer 输入。生产切换仍是独立且原子的 `BREAKING-SCHEMA` 变更；当前任何命令都不会同时读取旧事实与 Core 事实。
+生产切换已作为一次原子的 `BREAKING-SCHEMA` 变更交付。当前任何命令都不会同时读取旧事实与 Core 事实。

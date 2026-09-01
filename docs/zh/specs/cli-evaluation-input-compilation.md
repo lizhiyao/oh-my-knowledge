@@ -1,6 +1,6 @@
 # CLI 评测输入编译规范
 
-> **状态**：Parse、Node 生产 resolver 与 Compile 已按 [Evaluation Core vNext RFC](./evaluation-core-vnext.md) 实现。生产 Runtime registry、宿主 workflow 与正式 `omk eval` 切换仍有意保持断开，因此本层尚不执行或持久化 Core Run。
+> **状态**：本规范已成为 [Evaluation Core vNext RFC](./evaluation-core-vnext.md) 下的正式输入边界。Parse、Resolve、Compile、Runtime 装配、宿主 workflow、Core 执行与产物持久化共同组成权威 `omk eval` 路径。
 
 ## 一、目的与边界
 
@@ -100,7 +100,7 @@ cache:
 
 `replay-only` 是 fail-closed 只读路径。coordinate 缺失、source 不可用、entry 损坏或 identity 不匹配都会终止运行，绝不回退为实时 Target 调用。Replay record 沿用原 trial identity、Runtime identity、usage、cost 和 provenance；既不新增 native invocation，也不增加独立 replicate。在 Series 具备显式 effective-independent-sample 模型前，Compile 会拒绝任何非 disabled cache mode 与独立 Series repeat 组合，也会拒绝在同一请求中混用 cache reuse 与 resume。只有 Core prepare 验证 execution 为 deterministic 且 Runtime identity 为 verified 时，才能使用 `transparent-deterministic`。Evaluation `reuse` 与 Execution 独立，并继续绑定完整 evaluation contract，包括 evaluator／model／prompt variant、replicate identity、Gold-facing input、metric 和 evidence policy。
 
-正式 CLI 切换预留名称为 `--execution-cache-mode`、`--evaluation-cache-mode`、`--execution-cache-source` 和 `--evaluation-cache-source`；`eval.yaml` 使用 `cache.executionMode`、`cache.evaluationMode`、`cache.executionSource` 和 `cache.evaluationSource`。Resolve 把 source 输入映射为 `orchestration.cacheSources.executionSourceLocator` 和 `evaluationSourceLocator`。这些暂时不是正式生产 flag，旧 pipeline 的运行行为保持不变。迁移层 Parse 中，省略 cache 输入和旧 disable-only 输入都会规范化为 fresh 双 disabled policy；显式请求旧 cache enable 则直接失败，不猜测成透明复用。
+Core contract 为 `--execution-cache-mode`、`--evaluation-cache-mode`、`--execution-cache-source` 和 `--evaluation-cache-source` 预留语义；`eval.yaml` 相应预留 `cache.executionMode`、`cache.evaluationMode`、`cache.executionSource` 和 `cache.evaluationSource`。当前正式 CLI 尚未开放这些显式复用控制。省略 cache 输入或传入 disable-only 的 `--no-cache` 都会规范化为 fresh 双 disabled policy；显式请求 cache enable 会直接失败，不猜测成透明复用。
 
 ## 五、确定性与校验
 
@@ -112,11 +112,11 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 
 ## 六、迁移边界
 
-本层是增量架构。正式 `omk eval` 仍走 `RunConfig → runEvaluation → executeEvaluationPipeline`；不双跑、不 shadow run、不持久化 Core Bundle，也不改变旧 Report。后续 Runtime adapter 只能消费这里产出的 contract，不能重新解析 CLI 输入。
+本层已经是正式生产边界。`omk eval` 把这里产出的 contract 交给 Runtime 装配与 Core 宿主 workflow，并持久化 Core Plan、Bundle 和 Report。已删除的旧 pipeline 不会双跑或 shadow run，后续层也不会重新解析 CLI 输入。
 
 迁移 contract 有意不兼容：resolved compiler input 使用 `omk.resolved-cli-evaluation-input/v3`，包含 sample-scoped mock binding 与 Evaluator 自有 implementation identity；binding output 使用 `omk.runtime-binding-request/v3`。旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。评分与统计可比性不变量不变。
 
-旧 `--no-cache`／`noCache` boolean 没有忠实的 Core 等价语义：它的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。Registry 因此把它标记为 replace，不再映射成 `transparent-deterministic` 或 `reuse`。最终切换可以直接删除旧 cache 文件与旧行为，不保留 compatibility reader。
+disable-only 的 `--no-cache`／`noCache` 没有忠实的 Core cache-enable 等价语义：已删除实现中的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。当前 Registry 只规范化 disabled 状态，并把显式 cache reuse 留给未来单独设计的接口；旧 cache 文件不会被读取。
 
 ## 七、完整输入 registry
 

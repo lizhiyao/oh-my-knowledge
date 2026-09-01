@@ -1,67 +1,45 @@
 # 工作原理
 
-核心思路：**固定模型 + 固定用例，只变 artifact 和 runtime context**，通过交错调度消除时间漂移，用断言 + LLM 评委双通道评分，再叠加知识缺口信号量化风险敞口。
+OMK 的评测只有一份事实源：宿主把本机输入编译成宿主无关的测量契约，Evaluation Core 封存并执行契约，CLI 与 Studio 的所有视图都从经过校验的 Core 产物投影得到。
 
 ```mermaid
 flowchart TD
-    subgraph Input["① 输入"]
-        S["eval-samples<br/>(JSON / YAML)"]
-        A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name"]
-    end
+    I["CLI flag · eval.yaml · sample · artifact"]
+    C["Parse → Resolve → Compile"]
+    D["EvaluationDefinition + MeasurementPolicy"]
+    H["Runtime 装配 + adapter preflight"]
+    P["Core prepare → SealedRunPlan"]
+    E["ExecutionBundle"]
+    V["EvaluationBundle"]
+    A["AnalysisBundle"]
+    R["EvaluationReport"]
+    S["原子 artifact store"]
+    X["CLI gate · Studio · Gold · resume · evolve · managed evidence"]
 
-    subgraph Prep["② 预处理(解析与抓取)"]
-        V["变体解析<br/>variant → artifact + runtime context<br/>(cwd / AGENTS.md 或 CLAUDE.md / 本地 skills)"]
-        U["URL 抓取<br/>prompt / context 中的 URL<br/>MCP Server(私有文档) → HTTP"]
-    end
-
-    subgraph Schedule["③ 交错调度 + 并发"]
-        Q["s1-v1 → s1-v2 → s2-v1 → s2-v2 …<br/>--concurrency N · --repeat N"]
-    end
-
-    subgraph Exec["④ 执行器(固定模型)"]
-        E["claude / claude-sdk / codex / dsh-host<br/>anthropic-api / openai-api / 自定义命令"]
-        T["执行器 adapter 统一<br/>turns / toolCalls trace"]
-        E -.-> T
-    end
-
-    subgraph Score["⑤ 双通道评分"]
-        AS["断言<br/>内容 / 结构 / 成本 / 延迟<br/>agent: tools_called · turns_min …"]
-        LS["LLM 评委<br/>rubric · dimensions(多维独立打分)"]
-        CS["综合分<br/>取存在层均值 — 事实 · 行为 · 评委"]
-        AS --> CS
-        LS --> CS
-    end
-
-    subgraph Analyze["⑥ 自动分析 + 知识缺口"]
-        D["低区分度断言 / 均匀分 / 全通过全失败<br/>高成本用例 · 方差 · t 检验"]
-        G["知识缺口信号<br/>(风险敞口量化, 不证明完备)"]
-    end
-
-    subgraph Report["⑦ 报告"]
-        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 顶部 verdict pill<br/>CLI/Node/版本指纹可追溯"]
-    end
-
-    S --> U
-    A --> V
-    V --> Q
-    U --> Q
-    Q --> E
-    T --> AS
-    E --> AS
-    E --> LS
-    CS --> D
-    CS --> G
-    D --> R
-    G --> R
+    I --> C --> D
+    D --> H --> P
+    P --> E --> V --> A --> R --> S --> X
 ```
 
-**关键设计：**
+## 关键边界
 
-- **交错调度**消除时间漂移：同一用例的不同 variant 交替发出，而非 v1 全跑完再跑 v2，避免模型负载/网络波动被错误归因给 artifact。
-- **variant = artifact + runtime context**：`cwd`（用 `--control-cwd`/`--treatment-cwd` 或 eval.yaml 的 `cwd:` 字段声明，与 artifact 表达式分开）让对照组可以显式声明「项目目录」这个隐性输入，把「项目级沉淀」和「显式 artifact 注入」拆开测。
-- **双通道评分互补**：断言抓确定性缺陷（必须调用某工具/必须包含某字段），LLM 评委抓主观质量（可读性/完整性）。综合分取事实 / 行为 / 评委三层里实际存在那几层的均值。
-- **知识缺口信号**不是评分的一部分，而是一个独立追踪项：它告诉你「这次评测覆盖了多少风险敞口」，用于追踪收敛，而非断言知识「完备」。
-- **DSH 宿主模式**由现有 DSH plugin tree 持有模型、凭证、工具与 sandbox；OMK 只创建隔离的测量 session、注入 variant 并消费 session event。`dsh-host` 是报告中的内部执行器身份，不是用户要在 `omk eval --executor` 中选择的 CLI 名称。
+- **宿主持有 effect。** 文件发现、Git materialization、凭证、环境读取、进度文案、报告目录、Studio 与浏览器打开都留在 Core 之外；
+- **Core 持有测量语义。** Dataset projection、Target 行为、evaluator instrument、metric、sampling unit、comparison family、analysis parameter、缺失证据 policy、预算与 Decision policy 都会在第一次 Target 调用前封存；
+- **Runtime identity 是证据。** Provider、model、effort、tool、sandbox、protocol、skill isolation 与 fingerprint assurance 都必须显式表达。Adapter 无法满足声明的 capability 时，会在测量前失败，不能静默丢弃能力；
+- **Gold 严格隔离。** Executor 只看到 execution input；evaluator 只收到已声明的 evaluation projection；Gold 仅属于 analysis，不能泄漏到生成或评分；
+- **事件只负责观测。** 进度 consumer 过慢、缺失或失败，都不能改变权威 Bundle 或最终 Report；
+- **持久化不可变。** 每个 run 会把 Run Plan、Execution／Evaluation／Analysis Bundle 与 Evaluation Report 作为一组 digest-linked 产物原子发布。损坏或 lineage 断裂必须显式失败；
+- **Studio 只是 projection。** UI 卡片与页面可以从 Core 产物重建，绝不成为第二套测量模型。
+
+## 评分与发布决定
+
+Assertion 与 rubric 评委保持为不同 evaluator instrument。Analysis 会推导 assertion layer、judge replicate／ensemble、dimension、composite、Bootstrap comparison family 与 agreement table，但不会压平它们的身份。
+
+Missing、invalid、failed、unavailable 与 not-started observation 都不是零分。Coverage 会沿整张图保持显式。`omk.release-decision/v1` 必须先确认 evidence 完整且 Analysis binding 精确，才能返回 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 或 `SOLO`。展示分数或点估计不能替代已注册 Decision。
+
+成本、usage、duration、运行状态、证据状态、结论状态与 lineage 都是正交事实，不是额外评分维度。独立的 `--repeat` run 会组成 Evaluation Series；单次 run 不能推断跨 run 稳定性。
+
+详见[综合分](../specs/scoring.md)与[统计严谨性](statistical-rigor.md)。
 
 ## 观测链路：source-neutral Trace IR
 
@@ -75,26 +53,9 @@ flowchart LR
     M["Markdown adapter"] --> IR
     IR --> A["生命周期关联与 skill 归因"]
     A --> S["segment"]
-    S --> R["health / inbox / experience"]
+    S --> R["health · inbox · experience"]
 ```
 
-Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle` 和 `unknown` 事件。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入的 `AGENTS.md`、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，调用结果统一为 `success`、`failure`、`cancelled`、`unknown` 四态。runtime 状态具有最高优先级；来源没有状态时，adapter 只能依据退出码等来源特有的明确终态证据推断 `success` 或 `failure`，无法确定的结果仍保持 `unknown`。失败率以可比较结果(`success + failure`)为分母；结果覆盖率则单独统计所有已解析状态(`success + failure + cancelled`)。
+Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle` 与 `unknown` event。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入指令、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，结果统一为 `success`、`failure`、`cancelled` 与 `unknown`；无法确定时必须保持 unknown。
 
-标识符也分层使用：`rootRunId` 聚合主任务及子任务，`runId` 标识具体线程，`traceId` 标识证据流，segment 再生成独立 sample ID。聚合标识不再兼任样本主键，因此主任务和子任务不会互相覆盖。
-
-每次加载还会生成摄取摘要：源记录数、成功解析的对象记录数、格式损坏记录数、被忽略的非对象值、未识别 IR 事件数，以及按规则过滤的运行时会话数。健康报告和 inbox 会持久化这组数据；输入不完整时必须显式提示，不能把部分 trace 静默展示成完整观测。
-
-跨任务树的规范顺序由时间线事件 ID 表达。`messageIndex` 只是单个物理 trace 内的来源定位信息，因此 session scope 按 `traceId` 分别保存 record 范围，不会把 main 与 subagent 文件中的局部序号当成同一套全局坐标。
-
-## 六维评估指标
-
-评测报告从六个维度独立展示结果。其中评分三层（事实 / 行为 / LLM 评价）分开展示，让你看到**是哪一层拉胯**，而不是只看到一个合成分：
-
-| 维度 | 指标 | 说明 |
-|------|------|------|
-| 📋 **事实** | 事实类断言通过率 | `contains` / `json_schema` / `fact_check` 等规则可验证断言的 1-5 分映射 |
-| 🛠️ **行为** | 行为类断言通过率 | `tools_called` / `tool_output_contains` / `turns_max` 等执行合规类断言 |
-| 💬 **LLM 评价** | rubric 评分 | 由评委模型按预先写好的评分规则（rubric）打的 1-5 分，主观但能抓规则断言之外的「整体好不好」 |
-| 💰 **成本** | 总成本、输入/输出 Token 数 | 基于 Token 消耗和模型定价的 API 费用 |
-| ⚡ **效率** | 平均延迟 (ms) | 从发送请求到收到完整响应的端到端耗时 |
-| 🛡️ **稳定性** | CV（变异系数） | 跨重复运行（`--repeat ≥ 2`）分数一致性；单轮评测显示 `—`，**诚实交代测不到什么** |
+不同 identifier 各司其职：`rootRunId` 聚合任务树，`runId` 标识具体任务，`traceId` 标识 evidence stream，segment 再生成独立 sample ID。每次加载还会保存 ingestion summary，确保损坏、未识别、被过滤或不完整的 source data 不能冒充完整 observation coverage。

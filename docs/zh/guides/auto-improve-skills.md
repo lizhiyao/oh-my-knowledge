@@ -19,7 +19,7 @@ omk evolve skills/my-skill.md --rounds 10 --target 4.5
 
 三个默认机制挡住自动迭代的经典翻车模式：
 
-- **Evaluation Core 决策门禁**：每个候选都作为新的 control／treatment A/B run 测量；只有 Core 返回带 `release-gates-passed` 的 `PROGRESS`，且候选分数高于当前分数时才接受。Runtime、证据、可比性、不确定性或发布策略不满足都会失败关闭，authoring loop 不能用私有分数启发式替代这项决策。
+- **Evaluation Core 决策门禁**：每个候选都作为新的 control／treatment A/B run 测量；只有 Core 返回带 `release-gates-passed` 的 `PROGRESS` 才接受。Core Decision 是唯一接纳依据；同一次 A/B 的分数差只用于展示，authoring loop 不会叠加私有分数门禁或比较跨 run 分数。Runtime、证据、可比性、不确定性或发布策略不满足都会失败关闭。
 - **编辑预算**（`--edit-budget`，默认 0.2）：一轮最多改 skill 的 20% 行。超预算的改写在**评测之前**就被拒，所以失控改写不能悄悄换掉整个 skill（你也不用花钱去测它）。`--no-edit-budget` 去掉上限。
 - **拒绝记忆**（默认开）：被拒的改写会喂回下一轮 prompt，改写器就不会反复提同一个输的编辑。`--no-reject-memory` 关掉。
 - **最终写回门禁**：修改源文件前，evolve 会重新评测未改动的原始版本与胜出快照；最终 Core 决策失败时源文件保持不变。使用 `--snapshot-only` 可只把候选保留在 `evolve/`，不写回源文件。
