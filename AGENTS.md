@@ -7,7 +7,7 @@ OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它�
 ## 开工先做
 
 - 涉及 commit、PR、分支或发版时，先看 `CONTRIBUTING.md`。
-- 交付前默认跑 `yarn lint && yarn build && yarn test`，除非用户明确要求只做更窄验证。
+- 首次 push 与交付前默认跑 `yarn ci`，除非用户明确要求只做更窄验证；后续修复成批完成并在本地复验后再一次性 push，避免把远端 CI 当作增量反馈环。
 
 ## 硬规则
 
