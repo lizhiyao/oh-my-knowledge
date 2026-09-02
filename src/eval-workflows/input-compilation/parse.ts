@@ -16,6 +16,8 @@ import {
 export interface CliEvaluationParseDefaults {
   readonly samplesLocator: string;
   readonly skillDirectoryLocator: string;
+  /** Host-discovered MCP config locator, for example project-root `.mcp.json`. */
+  readonly mcpConfigLocator?: string;
   readonly targetRuntime: CliEvaluationRequestValues['targetRuntime'];
   readonly judgeMembers: readonly CliEvaluationJudgeRequest[];
   readonly presentation: {
@@ -463,6 +465,7 @@ export function parseCliEvaluationRequest(
     normalizedField: 'values.locators.mcpConfig',
     cliKey: 'mcp-config', cliValue: nonEmptyString(flags['mcp-config'], 'mcp-config'),
     configKey: 'mcpConfig', configValue: config?.mcpConfig,
+    defaultValue: input.defaults.mcpConfigLocator, defaultSource: 'derived',
   });
   const goldLocator = pick({
     normalizedField: 'values.locators.gold',

@@ -31,7 +31,6 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/executors/contracts/trace.ts',
   'src/executors/contracts/ports.ts',
   'src/executors/contracts/result.ts',
-  'src/executors/contracts/mcp.ts',
   'src/executors/contracts/runtime.ts',
   'src/observability/contracts/index.ts',
   'src/observability/contracts/trace.ts',
