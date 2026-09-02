@@ -372,10 +372,26 @@ describe('production independent Series orchestration', () => {
     assert.equal(result.analysis.coverage.comparable, 2);
     assert.equal(result.analysis.records[0]?.analysisStatus, 'completed');
     const evolution = await series.evolution;
+    assert.ok(evolution);
     assert.equal(evolution.experimentalUnit, 'run');
     assert.deepEqual(evolution.members.map(({ memberId }) => memberId), [
       'host-repeat-member-0',
       'host-repeat-member-1',
     ]);
+
+    const controller = new AbortController();
+    controller.abort('cancel Series projection');
+    const cancelled = await executeProductionEvaluationSeries({
+      host,
+      members: [
+        { runId: 'host-cancelled-repeat-0', createdAt: '2026-09-01T04:00:00.000Z' },
+        { runId: 'host-cancelled-repeat-1', createdAt: '2026-09-01T04:00:01.000Z' },
+      ],
+      bundleId: 'host-cancelled-bundle',
+      reportId: 'host-cancelled-report',
+      seriesSignal: controller.signal,
+    });
+    await expect(cancelled.result).resolves.toMatchObject({ status: 'cancelled' });
+    await expect(cancelled.evolution).resolves.toBeUndefined();
   });
 });

@@ -825,6 +825,24 @@ describe('Evaluation Series Runtime', () => {
     expect(events.map(({ sequence }) => sequence)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
+  it('keeps event clock failures observational', async () => {
+    const fixture = await lifecycleFixture();
+    const run = startEvaluationSeries(fixture.plan, [], {
+      analysisNodesByNodeId: new Map(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
+      schemaValidators: new Map(),
+      clock: { timestamp: () => 'invalid-timestamp' },
+    }, {
+      runId: 'series-event-clock-failed',
+      bundleId: 'series-event-clock-failed-bundle',
+      reportId: 'series-event-clock-failed-report',
+    });
+
+    const result = completed(await run.result);
+    expect(result.analysis.coverage.missing).toBe(2);
+    await expect(collectEvents(run.events)).resolves.toEqual([]);
+  });
+
   it('cancels before opening Runtime sessions and emits a terminal event', async () => {
     const fixture = await lifecycleFixture();
     const controller = new AbortController();

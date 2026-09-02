@@ -71,6 +71,20 @@ type SeriesEventEmitter = RuntimeEventEmitter<
   never
 >;
 
+async function emitSeriesEvent(
+  emitter: SeriesEventEmitter,
+  eventKind: SeriesEventKind,
+  subjectKind: SeriesEventSubjectKind,
+  subjectId: string,
+  data: JsonValue,
+): Promise<void> {
+  try {
+    await emitter.emit(eventKind, subjectKind, subjectId, data);
+  } catch {
+    // Event notification is observational; artifacts and result remain authoritative.
+  }
+}
+
 export interface SeriesAnalysisNodeRunContext {
   readonly runId: string;
   readonly seriesPlanDigest: Sha256Digest;
@@ -524,7 +538,7 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
-      await events.emit(
+      await emitSeriesEvent(events,
         'series.analysis-node.inconclusive',
         'series-analysis-node',
         node.nodeId,
@@ -544,7 +558,7 @@ async function runAnalysisNodes(
         || canonicalizeJson(validator.schema) !== canonicalizeJson(candidateBinding.outputSchema)) {
       throw new TypeError('Series Analysis output schema validator is missing or mismatched.');
     }
-    await events.emit(
+    await emitSeriesEvent(events,
       'series.analysis-node.started',
       'series-analysis-node',
       node.nodeId,
@@ -612,7 +626,7 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
-      await events.emit(
+      await emitSeriesEvent(events,
         'series.analysis-node.failed',
         'series-analysis-node',
         node.nodeId,
@@ -666,7 +680,7 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
-      await events.emit(
+      await emitSeriesEvent(events,
         normalized.analysisStatus === 'completed'
           ? 'series.analysis-node.completed'
           : 'series.analysis-node.inconclusive',
@@ -689,7 +703,7 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
-      await events.emit(
+      await emitSeriesEvent(events,
         'series.analysis-node.failed',
         'series-analysis-node',
         node.nodeId,
@@ -801,7 +815,7 @@ async function makeDecision(
         'decisionDigest',
       ),
     });
-    await events.emit(
+    await emitSeriesEvent(events,
       'series.decision.not-decided',
       'series-decision-policy',
       policy.decisionPolicyId,
@@ -815,7 +829,7 @@ async function makeDecision(
     throw new TypeError('Series Decision Runtime does not match the sealed plan.');
   }
   throwIfAborted(signal);
-  await events.emit(
+  await emitSeriesEvent(events,
     'series.decision.started',
     'series-decision-policy',
     policy.decisionPolicyId,
@@ -867,7 +881,7 @@ async function makeDecision(
         'decisionDigest',
       ),
     });
-    await events.emit(
+    await emitSeriesEvent(events,
       'series.decision.failed',
       'series-decision-policy',
       policy.decisionPolicyId,
@@ -896,15 +910,13 @@ async function makeDecision(
       'decisionDigest',
     ),
   });
-  await events.emit(
+  await emitSeriesEvent(events,
     output.decisionStatus === 'decided'
       ? 'series.decision.completed'
       : 'series.decision.not-decided',
     'series-decision-policy',
     policy.decisionPolicyId,
-    output.decisionStatus === 'decided'
-      ? { verdict: output.verdict, reasonCodes: payload.reasonCodes }
-      : { reasonCodes: payload.reasonCodes },
+    { reasonCodes: payload.reasonCodes },
   );
   return decision;
 }
@@ -922,7 +934,7 @@ async function executeEvaluationSeries(
   let analysis: SeriesAnalysisBundle | undefined;
   let decision: SeriesDecisionResult | undefined;
   try {
-    await events.emit(
+    await emitSeriesEvent(events,
       'series.run.started',
       'evaluation-series-run',
       options.runId,
@@ -977,7 +989,7 @@ async function executeEvaluationSeries(
         'reportDigest',
       ),
     });
-    await events.emit(
+    await emitSeriesEvent(events,
       'series.run.completed',
       'evaluation-series-run',
       options.runId,
@@ -992,16 +1004,13 @@ async function executeEvaluationSeries(
   } catch (error) {
     if (!(error instanceof SeriesResourceDisposalError)
         && (error instanceof SeriesCancelledError || signal.aborted)) {
-      try {
-        await events.emit(
-          'series.run.cancelled',
-          'evaluation-series-run',
-          options.runId,
-          {},
-        );
-      } catch {
-        // The terminal result remains authoritative when the event clock fails.
-      }
+      await emitSeriesEvent(
+        events,
+        'series.run.cancelled',
+        'evaluation-series-run',
+        options.runId,
+        {},
+      );
       return deepFreezeCanonicalJson({
         status: 'cancelled',
         ...(analysis === undefined ? {} : { analysis }),
@@ -1015,16 +1024,13 @@ async function executeEvaluationSeries(
         stage: 'infrastructure' as const,
         message: 'Evaluation Series 运行失败。',
       };
-    try {
-      await events.emit(
-        'series.run.failed',
-        'evaluation-series-run',
-        options.runId,
-        { reasonCode: failure.code },
-      );
-    } catch {
-      // The terminal result remains authoritative when the event clock fails.
-    }
+    await emitSeriesEvent(
+      events,
+      'series.run.failed',
+      'evaluation-series-run',
+      options.runId,
+      { reasonCode: failure.code },
+    );
     return deepFreezeCanonicalJson({
       status: 'failed',
       error: failure,

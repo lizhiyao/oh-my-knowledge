@@ -195,7 +195,7 @@ export interface ProductionEvaluationSeriesRun {
     readonly error: ProductionEvaluationHostError;
   })[];
   readonly result: Promise<EvaluationSeriesRunResult>;
-  readonly evolution: Promise<CoreEvolutionEvidence>;
+  readonly evolution: Promise<CoreEvolutionEvidence | undefined>;
 }
 
 function memberCompiled(
@@ -330,7 +330,7 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
   members: readonly ProductionSeriesMemberOptions[];
   bundleId: string;
   reportId: string;
-  signal?: AbortSignal;
+  seriesSignal?: AbortSignal;
   preflight?: Readonly<OmkEvaluationPreflightOptions>;
 }>): Promise<ProductionEvaluationSeriesRun> {
   const series = input.host.compiled.orchestration.independentSeries;
@@ -430,23 +430,18 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
       runId: input.reportId,
       bundleId: input.bundleId,
       reportId: input.reportId,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      ...(input.seriesSignal === undefined ? {} : { signal: input.seriesSignal }),
     });
   });
-  const evolution = result.then((seriesResult) => {
-    if (seriesResult.status !== 'completed') {
-      throw new ProductionEvaluationHostError({
-        code: 'PRODUCTION_EVALUATION_SERIES_RUN_INCOMPLETE',
-        runId: input.reportId,
-        message: 'Evaluation Series 未完成，不能投影 evolution evidence。',
-      });
-    }
-    return projectCoreEvolutionEvidence({
-      plan,
-      analysis: seriesResult.analysis,
-      report: seriesResult.report,
-    });
-  });
+  const evolution = result.then((seriesResult) => (
+    seriesResult.status === 'completed'
+      ? projectCoreEvolutionEvidence({
+        plan,
+        analysis: seriesResult.analysis,
+        report: seriesResult.report,
+      })
+      : undefined
+  ));
   return Object.freeze({
     plan,
     members: Object.freeze(members),
