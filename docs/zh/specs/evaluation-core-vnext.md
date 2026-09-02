@@ -1056,6 +1056,11 @@ Analysis、Decision 和 Report materialization 在同一 session 中各自最多
 任意有效阶段开始，只重算必要后缀。每个方法都直接委托现有 stage runtime，因此调度、cache、预算、
 失败、取消和资源释放语义继续只有一份来源。
 
+包根会刻意把 `prepare()` 类型收窄为最小一键 `PreparedEvaluation`。
+`oh-my-knowledge/evaluation-core` 通过同一个 factory 暴露高级返回类型；它不会创建第二份
+implementation、registry 或执行路径。Studio 与 downstream projection 分别放在显式子路径中，
+未列出的入口和 `dist/*` 深层导入继续保持关闭。这样既让依赖方向清晰可见，又不分裂 Runtime authority。
+
 session 打开期间会在 Engine 内独占其 `runId`，拒绝阶段并发，并在 Report 到达终态后自动释放
 identity。宿主若有意停在更早的 Bundle，必须调用 `await stages.close()`；close 会取消仍在运行的
 阶段，等待既有 runtime 完成资源释放，再归还 identity。这样可以避免与一键 façade 产生 Event

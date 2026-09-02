@@ -190,6 +190,9 @@ export type EvaluationStageSessionErrorCode =
 export interface PreparedEvaluation {
   readonly plan: SealedRunPlan;
   start(options: PreparedEvaluationRunOptions): EvaluationRun;
+}
+
+export interface AdvancedPreparedEvaluation extends PreparedEvaluation {
   stages(options: PreparedEvaluationRunOptions): PreparedEvaluationStageSession;
   admitExecutionBundle(
     value: unknown,
@@ -239,6 +242,13 @@ export interface EvaluationEngine {
     definition: EvaluationDefinition,
     options: EvaluationRunOptions,
   ): EvaluationRun;
+}
+
+export interface AdvancedEvaluationEngine extends EvaluationEngine {
+  prepare(
+    definition: EvaluationDefinition,
+    policy: MeasurementPolicy,
+  ): Promise<AdvancedPreparedEvaluation>;
 }
 
 export type EvaluationExtensionValidationRequest = ExtensionValidationRequest;

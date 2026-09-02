@@ -12,6 +12,14 @@ import {
   digestCanonicalJson,
   resolveBuiltinAnalysisRuntime,
 } from 'oh-my-knowledge';
+import {
+  COMPARABILITY_POLICY_SCHEMA_VERSION,
+  EVALUATION_CORE_JSON_SCHEMA_FILES,
+  assessComparability,
+  createComparabilityPolicy,
+  createEvaluationEngine as createAdvancedEvaluationEngine,
+  resolveEvaluationCoreJsonSchema,
+} from 'oh-my-knowledge/evaluation-core';
 
 assert.equal(EXECUTION_FACTS_SCHEMA_VERSION, 'omk.execution-facts/v1');
 
@@ -126,6 +134,7 @@ function createHostRuntime(targetKind) {
   const executorRuntime = executorIdentity();
   const evaluatorRuntime = evaluatorIdentity(targetKind === 'rag' ? ['numeric'] : ['boolean']);
   const executorInputs = [];
+  const evaluatorInputs = [];
   const executor = {
     identity: executorRuntime,
     async openRun() {
@@ -177,6 +186,7 @@ function createHostRuntime(targetKind) {
           return {
             async evaluate(attempt) {
               if (attempt.signal.aborted) throw attempt.signal.reason;
+              evaluatorInputs.push(context.evaluationId);
               if (targetKind === 'rag') {
                 const ranking = binding(context, 'ranking');
                 const gold = binding(context, 'gold');
@@ -214,6 +224,7 @@ function createHostRuntime(targetKind) {
   const decisionPolicies = createBuiltinDecisionPolicies();
   return {
     executorInputs,
+    evaluatorInputs,
     runtime: {
       bindings: {
         resolveExecutor() {
@@ -453,3 +464,177 @@ const cancelledRun = createEvaluationEngine(cancelledHost.runtime).start(definit
 const cancelled = await consume(cancelledRun);
 assert.equal(cancelled.result.status, 'cancelled');
 assert.equal(cancelled.result.report.status.evidenceStatus, 'unresolvable');
+
+const stagedHost = createHostRuntime('function');
+const stagedEngine = createAdvancedEvaluationEngine(stagedHost.runtime);
+const initialDefinition = definition('function');
+initialDefinition.decisionPolicy = {
+  decisionPolicyId: 'release-gate',
+  implementationId: 'progress/v1',
+  analysisResultIds: ['primary-result'],
+  minimumEvidenceStatus: 'complete',
+  parameters: { threshold: 0 },
+};
+const initialPrepared = await stagedEngine.prepare(initialDefinition, policy());
+const executionStages = initialPrepared.stages({ runId: 'advanced-execution' });
+const execution = await executionStages.execute().source;
+await executionStages.close();
+assert.equal(stagedHost.executorInputs.length, 2);
+
+const executionVerification = {
+  verifiedProvenanceBundleDigests: new Set([execution.bundle.bundleDigest]),
+};
+const rescoredDefinition = structuredClone(initialDefinition);
+rescoredDefinition.dataset.samples[0].expected = { answer: 'B' };
+const rescoredPrepared = await stagedEngine.prepare(rescoredDefinition, policy());
+const rescoredExecution = rescoredPrepared.admitExecutionBundle(
+  structuredClone(execution.bundle),
+  executionVerification,
+);
+const rescoredStages = rescoredPrepared.stages({ runId: 'advanced-rescore' });
+const evaluation = await rescoredStages.evaluate({ execution: rescoredExecution }).source;
+const analysis = await rescoredStages.analyze({
+  execution: rescoredExecution,
+  evaluation,
+}).source;
+const decision = await rescoredStages.decide({
+  execution: rescoredExecution,
+  evaluation,
+  analysis,
+}).source;
+const rescoredReport = await rescoredStages.materializeReport({
+  execution: rescoredExecution,
+  evaluation,
+  analysis,
+  ...(decision === undefined ? {} : { decision }),
+}).result;
+await rescoredStages.close();
+assert.equal(stagedHost.executorInputs.length, 2);
+assert.equal(rescoredReport.bundles[0].bundleDigest, execution.bundle.bundleDigest);
+
+const evaluationVerification = {
+  verifiedProvenanceBundleDigests: new Set([evaluation.bundle.bundleDigest]),
+  executionSourceTrust: execution.bundle.provenance.trust,
+};
+const analysisDefinition = structuredClone(rescoredDefinition);
+analysisDefinition.analysisGraph.analysisMode = 'exploratory';
+const analysisPrepared = await stagedEngine.prepare(analysisDefinition, policy());
+const analysisExecution = analysisPrepared.admitExecutionBundle(
+  structuredClone(execution.bundle),
+  executionVerification,
+);
+const analysisEvaluation = analysisPrepared.admitEvaluationBundle(
+  structuredClone(evaluation.bundle),
+  { execution: analysisExecution, verification: evaluationVerification },
+);
+const evaluatorCallsBeforeReanalysis = stagedHost.evaluatorInputs.length;
+const reanalysisStages = analysisPrepared.stages({ runId: 'advanced-reanalysis' });
+const reanalysis = await reanalysisStages.analyze({
+  execution: analysisExecution,
+  evaluation: analysisEvaluation,
+}).source;
+await reanalysisStages.close();
+assert.equal(stagedHost.executorInputs.length, 2);
+assert.equal(stagedHost.evaluatorInputs.length, evaluatorCallsBeforeReanalysis);
+
+const decisionDefinition = structuredClone(analysisDefinition);
+decisionDefinition.decisionPolicy.parameters = { threshold: 1 };
+const decisionPrepared = await stagedEngine.prepare(decisionDefinition, policy());
+const decisionExecution = decisionPrepared.admitExecutionBundle(
+  structuredClone(execution.bundle),
+  executionVerification,
+);
+const decisionEvaluation = decisionPrepared.admitEvaluationBundle(
+  structuredClone(evaluation.bundle),
+  { execution: decisionExecution, verification: evaluationVerification },
+);
+const decisionAnalysis = decisionPrepared.admitAnalysisBundle(
+  structuredClone(reanalysis.bundle),
+  {
+    execution: decisionExecution,
+    evaluation: decisionEvaluation,
+    verification: {
+      verifiedProvenanceBundleDigests: new Set([reanalysis.bundle.bundleDigest]),
+      evaluationSourceTrust: evaluation.bundle.provenance.trust,
+    },
+  },
+);
+const decisionStages = decisionPrepared.stages({ runId: 'advanced-redecision' });
+const redecision = await decisionStages.decide({
+  execution: decisionExecution,
+  evaluation: decisionEvaluation,
+  analysis: decisionAnalysis,
+}).source;
+assert.notEqual(redecision, undefined);
+await decisionStages.close();
+assert.equal(stagedHost.executorInputs.length, 2);
+assert.equal(stagedHost.evaluatorInputs.length, evaluatorCallsBeforeReanalysis);
+
+const comparabilityPolicy = createComparabilityPolicy({
+  schemaVersion: COMPARABILITY_POLICY_SCHEMA_VERSION,
+  designMode: 'exact-measurement-design',
+  comparisonScope: 'evaluation',
+  subjects: [
+    { subjectId: 'control', leftTargetId: 'control', rightTargetId: 'control' },
+    { subjectId: 'treatment', leftTargetId: 'treatment', rightTargetId: 'treatment' },
+  ],
+});
+const comparability = assessComparability(
+  comparabilityPolicy,
+  initialPrepared.plan,
+  rescoredPrepared.plan,
+);
+assert.equal(
+  comparability.assessment.reasons.some(
+    (reason) => reason.reasonCode === 'comparability-design-evaluation-input-mismatch',
+  ),
+  true,
+);
+
+const tamperedExecution = structuredClone(execution.bundle);
+tamperedExecution.executionPlanDigest = `sha256:${'0'.repeat(64)}`;
+assert.throws(() => rescoredPrepared.admitExecutionBundle(tamperedExecution));
+const runtimeTamperedExecution = structuredClone(execution.bundle);
+runtimeTamperedExecution.records[0].runtime.fingerprint = `sha256:${'1'.repeat(64)}`;
+assert.throws(() => rescoredPrepared.admitExecutionBundle(runtimeTamperedExecution));
+const cacheTamperedExecution = structuredClone(execution.bundle);
+cacheTamperedExecution.records[0].cache = { cacheStatus: 'replay' };
+assert.throws(() => rescoredPrepared.admitExecutionBundle(cacheTamperedExecution));
+
+const alternateStages = initialPrepared.stages({ runId: 'advanced-alternate-execution' });
+const alternateExecution = await alternateStages.execute().source;
+await alternateStages.close();
+assert.throws(() => rescoredPrepared.admitEvaluationBundle(
+  structuredClone(evaluation.bundle),
+  { execution: alternateExecution },
+));
+
+const unverifiedExecution = rescoredPrepared.admitExecutionBundle(
+  structuredClone(execution.bundle),
+);
+const unverifiedEvaluation = rescoredPrepared.admitEvaluationBundle(
+  structuredClone(evaluation.bundle),
+  { execution: unverifiedExecution },
+);
+const unverifiedAnalysis = rescoredPrepared.admitAnalysisBundle(
+  structuredClone(analysis.bundle),
+  { execution: unverifiedExecution, evaluation: unverifiedEvaluation },
+);
+const unverifiedStages = rescoredPrepared.stages({ runId: 'advanced-unverified-decision' });
+const unverifiedDecision = await unverifiedStages.decide({
+  execution: unverifiedExecution,
+  evaluation: unverifiedEvaluation,
+  analysis: unverifiedAnalysis,
+}).source;
+await unverifiedStages.close();
+assert.equal(unverifiedDecision.result.decisionStatus, 'not-decided');
+assert.equal(
+  unverifiedDecision.result.reasonCodes.includes(
+    'decision-execution-provenance-indeterminate',
+  ),
+  true,
+);
+assert.equal(EVALUATION_CORE_JSON_SCHEMA_FILES.length, 21);
+const executionSchemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
+assert.equal(executionSchemaUrl.pathname.endsWith('/execution-bundle.schema.json'), true);
+assert.throws(() => resolveEvaluationCoreJsonSchema('../package.json'));

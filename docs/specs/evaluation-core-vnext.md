@@ -1067,6 +1067,12 @@ started once, in the suffix required by the host. Every method delegates directl
 stage runtime, so scheduling, cache, budget, failure, cancellation, and resource teardown semantics
 remain single-sourced.
 
+The package root deliberately types `prepare()` as the minimal one-call `PreparedEvaluation`.
+`oh-my-knowledge/evaluation-core` exposes the same factory with the narrower advanced return type;
+it does not create a second implementation, registry, or execution path. Studio and downstream
+projections live behind their own explicit subpaths, while unlisted and `dist/*` deep imports remain
+closed. This keeps dependency direction visible without fragmenting runtime authority.
+
 The session owns its `runId` in the Engine while it is open, rejects overlapping stages, and releases
 the identity automatically after Report termination. Hosts that intentionally stop at an earlier
 Bundle call `await stages.close()`; close aborts any in-flight stage, waits for its existing runtime

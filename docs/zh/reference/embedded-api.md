@@ -20,7 +20,17 @@ CommonJS 宿主通过动态导入使用：
 const { createEvaluationEngine } = await import('oh-my-knowledge');
 ```
 
-OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 CommonJS 构建，从而避免两个模块实例持有相互分裂的 Runtime registry。包根以下路径均为私有实现，`oh-my-knowledge/dist/*` 会被 package export map 阻断。
+OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 CommonJS 构建，从而避免两个模块实例持有相互分裂的 Runtime registry。只支持以下公共入口：
+
+| 入口 | 职责 |
+|---|---|
+| `oh-my-knowledge` | 最小一键 Engine façade 与 Core contract |
+| `oh-my-knowledge/evaluation-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
+| `oh-my-knowledge/projections` | 下游 artifact projection |
+| `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |
+| `oh-my-knowledge/mcp`／`oh-my-knowledge/dsh-plugin` | 集成专用 API |
+
+其它路径均为私有实现，包括 `oh-my-knowledge/dist/*` 在内，都会被 package export map 阻断。
 
 ## Runtime 边界
 
@@ -94,6 +104,54 @@ await collecting;
 `runId` 由宿主分配且必填。同一个 Engine 实例中，所有 active run 的 `runId` 必须唯一，因为 OMK 会据此确定性派生 Event、Bundle 与 Report identifier。并发重复会立即以 `EVALUATION_ENGINE_RUN_ID_ACTIVE` 结束；原 run 到达任意终态后可以复用该 identifier。Definition、Sample、Policy、Runtime identity、seed 与 fingerprint 都会封存进结果的证据链。
 
 如果宿主希望在调度前完成配置和 capability 校验，可以先调用 `await engine.prepare(definition, policy)`。返回的 `PreparedEvaluation` 持有不透明 `SealedRunPlan` capability 与捕获后的 binding 快照，可以用同一个不可变计划和同一组 port 启动多个相互隔离的 run。
+
+## 高级分阶段运行
+
+当宿主需要持久化某个阶段、只修改下游输入并重算受影响后缀时，从显式高级入口导入：
+
+```ts
+import { createEvaluationEngine } from 'oh-my-knowledge/evaluation-core';
+
+const original = await createEvaluationEngine(runtime).prepare(definition, policy);
+const executionSession = original.stages({ runId: 'execute-v1' });
+const execution = await executionSession.execute().source;
+await executionSession.close();
+
+const changed = await createEvaluationEngine(runtime).prepare(changedDefinition, policy);
+const admittedExecution = changed.admitExecutionBundle(
+  persistedExecutionBundle,
+  executionVerification,
+);
+const session = changed.stages({ runId: 'rescore-v2' });
+const evaluation = await session.evaluate({ execution: admittedExecution }).source;
+const analysis = await session.analyze({
+  execution: admittedExecution,
+  evaluation,
+}).source;
+const decision = await session.decide({
+  execution: admittedExecution,
+  evaluation,
+  analysis,
+}).source;
+const report = await session.materializeReport({
+  execution: admittedExecution,
+  evaluation,
+  analysis,
+  ...(decision === undefined ? {} : { decision }),
+}).result;
+```
+
+每次阶段调用都会暴露可序列化的 `.result`；除 Report materialization 外，还会暴露不可序列化的 `.source` capability。source envelope 携带对应的 `.bundle`，或 Decision `.result`。只有当前 Runtime 签发的 source，或匹配的 `admit*` 方法签发的 source，才能授权下游阶段。admission 会递归验证 plan identity 与 parent lineage；除非宿主提供有效的外部 verification fact，否则传输后的 provenance 仍保持 indeterminate。digest、Runtime identity、cache provenance 或 parent lineage 被篡改时都会 fail closed。
+
+同一 session 中每个阶段最多执行一次，阶段调用不能重叠。Report materialization 会自动关闭 session；若工作流有意提前停止，必须调用 `await session.close()`，从而取消仍在运行的阶段、等待资源释放并归还 `runId`。
+
+发布包通过白名单路径 `oh-my-knowledge/evaluation-core/schemas/v1/<file>.schema.json` 提供 JSON Schema。需要 URL 的代码无需拼接包内部路径：
+
+```ts
+import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/evaluation-core';
+
+const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
+```
 
 ## 结果与错误
 

@@ -17,6 +17,7 @@ import {
   generateWireSchemaIdentities,
   parseWireDocument,
 } from '../../../src/evaluation-core/contracts/index.js';
+import { EVALUATION_CORE_JSON_SCHEMA_FILES } from '../../../src/evaluation-core/schemas.js';
 
 const Ajv2020 = _Ajv2020 as unknown as typeof _Ajv2020.default;
 
@@ -27,6 +28,7 @@ describe('Evaluation Core wire schemas', () => {
     const files = readdirSync(schemaDir).filter((name) => name.endsWith('.schema.json')).sort();
 
     expect(files).toEqual(WIRE_SCHEMA_CATALOG.map((entry) => entry.fileName).sort());
+    expect(EVALUATION_CORE_JSON_SCHEMA_FILES).toEqual(Object.keys(generated).sort());
     for (const [fileName, schema] of Object.entries(generated)) {
       expect(schema).toMatchObject({
         $schema: 'https://json-schema.org/draft/2020-12/schema',

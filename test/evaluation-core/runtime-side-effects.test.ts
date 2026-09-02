@@ -34,7 +34,7 @@ function directorySnapshot(root: string): string[] {
 }
 
 describe('Evaluation Core 宿主副作用边界', () => {
-  it('在隔离进程导入包根并运行纯内存操作时零宿主副作用', () => {
+  it('在隔离进程导入根入口与全部公共子路径时零宿主副作用', () => {
     if (!existsSync(CORE_DIST_ENTRY)) {
       throw new Error('缺少 dist/index.js；请先运行 yarn build。');
     }

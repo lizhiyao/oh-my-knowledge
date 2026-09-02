@@ -10,7 +10,7 @@ import {
   type Executor,
   type RuntimeIdentity,
   type Sha256Digest,
-} from '../../../src/index.js';
+} from '../../../src/package-api/evaluation-core.js';
 import {
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,

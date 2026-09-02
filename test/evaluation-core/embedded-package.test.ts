@@ -58,6 +58,10 @@ describe('published embedded Evaluation Core API', () => {
     ]);
     const zodDirectory = dirname(realpathSync(join(REPO_ROOT, 'node_modules/zod/package.json')));
     symlinkSync(zodDirectory, join(projectRoot, 'node_modules/zod'), 'dir');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
+      'dist/evaluation-core/contracts/schemas/v1/execution-bundle.schema.json',
+    ), 'utf8')).title).toBe('OMK Execution Bundle v1');
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({
       name: 'independent-omk-host',
       private: true,
@@ -80,8 +84,22 @@ describe('published embedded Evaluation Core API', () => {
 const assert = require('node:assert/strict');
 (async () => {
   const api = await import('oh-my-knowledge');
+  const advanced = await import('oh-my-knowledge/evaluation-core');
+  const projections = await import('oh-my-knowledge/projections');
+  const studio = await import('oh-my-knowledge/studio');
   assert.equal(typeof api.createEvaluationEngine, 'function');
   assert.equal(typeof api.digestCanonicalJson, 'function');
+  assert.equal(api.createCoreStudioCatalog, undefined);
+  assert.equal(api.projectCoreArtifactGraph, undefined);
+  assert.equal(api.assessComparability, undefined);
+  assert.equal(typeof advanced.assessComparability, 'function');
+  assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
+  assert.equal(typeof studio.createCoreStudioCatalog, 'function');
+  const schema = await import(
+    'oh-my-knowledge/evaluation-core/schemas/v1/execution-bundle.schema.json',
+    { with: { type: 'json' } }
+  );
+  assert.equal(schema.default.title, 'OMK Execution Bundle v1');
   try {
     require('oh-my-knowledge');
     throw new Error('require() unexpectedly loaded the ESM-only package root');
@@ -105,7 +123,7 @@ const assert = require('node:assert/strict');
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
-  it('NodeNext／ESM 宿主只通过包根完成函数、RAG、多 Target 与取消验收', () => {
+  it('NodeNext／ESM 宿主完成一键运行、分阶段复用、可比性与篡改拒绝', () => {
     const result = spawnSync(process.execPath, [join(projectRoot, 'host.mjs')], {
       cwd: projectRoot,
       encoding: 'utf8',
@@ -119,7 +137,7 @@ const assert = require('node:assert/strict');
     }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
   });
 
-  it('CommonJS 通过动态 import 使用，require 与 dist 深层导入均被拒绝', () => {
+  it('CommonJS 动态导入显式子路径，require 与 dist 深层导入均被拒绝', () => {
     const result = spawnSync(process.execPath, [join(projectRoot, 'host.cjs')], {
       cwd: projectRoot,
       encoding: 'utf8',
@@ -133,7 +151,7 @@ const assert = require('node:assert/strict');
     }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
   });
 
-  it('NodeNext TypeScript 宿主从包根取得完整声明', () => {
+  it('NodeNext TypeScript 宿主获得根入口与 advanced 子路径的边界声明', () => {
     const result = spawnSync(join(REPO_ROOT, 'node_modules/.bin/tsc'), [
       '--project', join(projectRoot, 'tsconfig.json'),
     ], {
@@ -155,7 +173,14 @@ const assert = require('node:assert/strict');
       'utf8',
     )) as { exports: Record<string, unknown> };
     expect(Object.keys(packageJson.exports).sort()).toEqual([
-      '.', './dsh-plugin', './mcp', './package.json',
+      '.',
+      './dsh-plugin',
+      './evaluation-core',
+      './evaluation-core/schemas/v1/*',
+      './mcp',
+      './package.json',
+      './projections',
+      './studio',
     ]);
   });
 });
