@@ -4,6 +4,7 @@ import {
   EvaluationErrorSchema,
   IdentifierSchema,
   RuntimeIdentitySchema,
+  SchemaIdentitySchema,
   type AnalysisBundle,
   type DecisionResult,
   type EvaluationError,
@@ -18,6 +19,8 @@ import {
   type DecisionResultVerificationContext,
   type EvaluationBundleVerificationContext,
   type ExecutionBundleVerificationContext,
+  type CoreSchemaValidator,
+  type SchemaIdentity,
   parseEvaluationReport,
   verifyAnalysisBundle,
   verifyDecisionResult,
@@ -122,6 +125,7 @@ interface PreparedRuntimeBindings {
 interface PreparedEngineRun {
   readonly plan: SealedRunPlan;
   readonly bindings: PreparedRuntimeBindings;
+  readonly runtime: EvaluationEngineRuntime;
 }
 
 type MutableRuntimeBindings = {
@@ -140,6 +144,58 @@ function emptyRuntimeBindings(): MutableRuntimeBindings {
     missingPoliciesByPolicyId: new Map(),
     decisionPoliciesByDecisionPolicyId: new Map(),
   };
+}
+
+function snapshotSchemaValidators(
+  validators: ReadonlyMap<string, CoreSchemaValidator>,
+): ReadonlyMap<string, CoreSchemaValidator> {
+  return new Map([...validators].map(([key, validator]) => {
+    const schema = SchemaIdentitySchema.safeParse(validator?.schema);
+    if (!schema.success || typeof validator?.parse !== 'function') {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_RUNTIME_BINDING_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Schema validator registry 包含无效 binding。',
+        details: { referenceId: key },
+      });
+    }
+    const parse = validator.parse.bind(validator);
+    const captured: CoreSchemaValidator = Object.freeze({
+      schema: snapshotJson(schema.data) as SchemaIdentity,
+      parse,
+    });
+    return [key, captured] as const;
+  }));
+}
+
+function snapshotRuntime(runtime: EvaluationEngineRuntime): EvaluationEngineRuntime {
+  const bindings = runtime.bindings;
+  return Object.freeze({
+    bindings: Object.freeze({
+      resolveExecutor: bindings.resolveExecutor.bind(bindings),
+      resolveEvaluator: bindings.resolveEvaluator.bind(bindings),
+      resolveAnalysis: bindings.resolveAnalysis.bind(bindings),
+    }),
+    clock: runtime.clock,
+    schemaValidators: snapshotSchemaValidators(runtime.schemaValidators),
+    ...(runtime.validateExtension === undefined
+      ? {}
+      : { validateExtension: runtime.validateExtension.bind(runtime) }),
+    ...(runtime.executionCache === undefined ? {} : { executionCache: runtime.executionCache }),
+    ...(runtime.evaluationCache === undefined
+      ? {}
+      : { evaluationCache: runtime.evaluationCache }),
+    ...(runtime.executionContentStore === undefined
+      ? {}
+      : { executionContentStore: runtime.executionContentStore }),
+    ...(runtime.evaluationContentStore === undefined
+      ? {}
+      : { evaluationContentStore: runtime.evaluationContentStore }),
+    ...(runtime.contentResolver === undefined
+      ? {}
+      : { contentResolver: runtime.contentResolver }),
+  });
 }
 
 function captureBinding<T>(
@@ -254,6 +310,7 @@ async function prepareEngineRun(
   });
   return {
     plan,
+    runtime,
     bindings: {
       executorsByTargetId: new Map(captured.executorsByTargetId),
       evaluatorsByEvaluatorId: new Map(captured.evaluatorsByEvaluatorId),
@@ -394,7 +451,6 @@ function analysisPorts(
 }
 
 async function executePipeline(
-  runtime: EvaluationEngineRuntime,
   preparedPromise: Promise<PreparedEngineRun>,
   options: PreparedEvaluationRunOptions,
   events: BoundedEventStream,
@@ -404,7 +460,7 @@ async function executePipeline(
   let analysisSource: AnalysisBundleSource | undefined;
   let decisionSource: DecisionResultSource | undefined;
   try {
-    const { plan, bindings } = await preparedPromise;
+    const { plan, bindings, runtime } = await preparedPromise;
     const sequencer = new InMemoryRuntimeEventSequencer();
     const budgetSource = createRunBudgetSource(plan, options.runId, runtime.clock);
     const stageCapacity = options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY;
@@ -521,7 +577,6 @@ async function executePipeline(
 }
 
 function startPrepared(
-  runtime: EvaluationEngineRuntime,
   createPreparedRun: () => Promise<PreparedEngineRun>,
   options: PreparedEvaluationRunOptions,
   activeRunIds: Set<string>,
@@ -547,7 +602,7 @@ function startPrepared(
   activeRunIds.add(options.runId);
   const events = new BoundedEventStream(eventBufferCapacity);
   const preparedPromise = Promise.resolve().then(createPreparedRun);
-  const result = executePipeline(runtime, preparedPromise, options, events)
+  const result = executePipeline(preparedPromise, options, events)
     .finally(() => {
       activeRunIds.delete(options.runId);
     });
@@ -568,11 +623,11 @@ export class EvaluationStageSessionError extends TypeError {
 }
 
 function createStageSession(
-  runtime: EvaluationEngineRuntime,
   prepared: PreparedEngineRun,
   inputOptions: PreparedEvaluationRunOptions,
   activeRunIds: Set<string>,
 ): PreparedEvaluationStageSession {
+  const runtime = prepared.runtime;
   const options: PreparedEvaluationRunOptions = Object.freeze({
     runId: inputOptions.runId,
     ...(inputOptions.signal === undefined ? {} : { signal: inputOptions.signal }),
@@ -764,20 +819,19 @@ function createStageSession(
 }
 
 function bindPreparedEvaluation(
-  runtime: EvaluationEngineRuntime,
   prepared: PreparedEngineRun,
   activeRunIds: Set<string>,
 ): AdvancedPreparedEvaluation {
   const plan = prepared.plan;
+  const runtime = prepared.runtime;
   const bound: AdvancedPreparedEvaluation = {
     plan,
     start: (options) => startPrepared(
-      runtime,
       async () => prepared,
       options,
       activeRunIds,
     ),
-    stages: (options) => createStageSession(runtime, prepared, options, activeRunIds),
+    stages: (options) => createStageSession(prepared, options, activeRunIds),
     admitExecutionBundle(
       value: unknown,
       verification?: ExecutionBundleVerificationContext,
@@ -846,8 +900,8 @@ export function createEvaluationEngine(runtime: EvaluationEngineRuntime): Advanc
   const activeRunIds = new Set<string>();
   return {
     async prepare(definition, policy): Promise<AdvancedPreparedEvaluation> {
-      const prepared = await prepareEngineRun(runtime, definition, policy);
-      return bindPreparedEvaluation(runtime, prepared, activeRunIds);
+      const prepared = await prepareEngineRun(snapshotRuntime(runtime), definition, policy);
+      return bindPreparedEvaluation(prepared, activeRunIds);
     },
     start(definition, options: EvaluationRunOptions): EvaluationRun {
       const runOptions: PreparedEvaluationRunOptions = {
@@ -860,9 +914,15 @@ export function createEvaluationEngine(runtime: EvaluationEngineRuntime): Advanc
           ? {}
           : { eventBufferCapacity: options.eventBufferCapacity }),
       };
+      let capturedRuntime: EvaluationEngineRuntime;
+      try {
+        capturedRuntime = snapshotRuntime(runtime);
+      } catch (error) {
+        const failure = runtimeError(error);
+        return configurationFailure(failure.code, failure.message, failure.details);
+      }
       return startPrepared(
-        runtime,
-        () => prepareEngineRun(runtime, definition, options.policy),
+        () => prepareEngineRun(capturedRuntime, definition, options.policy),
         runOptions,
         activeRunIds,
       );

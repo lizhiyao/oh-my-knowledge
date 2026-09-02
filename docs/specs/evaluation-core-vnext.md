@@ -1073,6 +1073,14 @@ it does not create a second implementation, registry, or execution path. Studio 
 projections live behind their own explicit subpaths, while unlisted and `dist/*` deep imports remain
 closed. This keeps dependency direction visible without fragmenting runtime authority.
 
+Each prepare or one-call start captures the Runtime's top-level infrastructure ports, binding
+resolver functions, and an independent Schema-validator registry. Validator SchemaIdentity values
+and parse functions are captured together. A host may update its registry for a later prepare, but
+mutating the original Map, validator object, or Runtime property cannot change validation semantics
+for an already prepared RunPlan. This extends the binding snapshot rule to every executable
+validator that participates in Analysis admission without pretending to freeze host-internal client
+state.
+
 The session owns its `runId` in the Engine while it is open, rejects overlapping stages, and releases
 the identity automatically after Report termination. Hosts that intentionally stop at an earlier
 Bundle call `await stages.close()`; close aborts any in-flight stage, waits for its existing runtime
