@@ -10,6 +10,8 @@ cd demo
 omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 ```
 
+希望直接使用官方、经过难度分层的完整起步集，而不是默认 3 条流程检查用例时，运行 `omk init demo --samples 20`。
+
 ## 按任务选择
 
 | 任务 | 示例 | 演示内容 | 第一条命令 | 是否调用模型 |

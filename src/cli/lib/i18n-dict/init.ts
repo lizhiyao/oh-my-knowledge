@@ -2,10 +2,12 @@ import type { CliMessage } from './types.js';
 
 export type InitMessageKey =
   | 'cli.init.scaffolded'
+  | 'cli.init.sample_pack'
   | 'cli.init.next_steps_title'
   | 'cli.init.next_step_run'
   | 'cli.init.next_step_executor'
-  | 'cli.init.next_step_report'
+  | 'cli.init.next_step_report_quick'
+  | 'cli.init.next_step_report_full'
   | 'cli.init.next_step_customize'
   | 'cli.init.note_skill_injection';
 
@@ -13,6 +15,10 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
   'cli.init.scaffolded': {
     zh: '已初始化 omk 项目：{dir}',
     en: 'omk project initialized at: {dir}',
+  },
+  'cli.init.sample_pack': {
+    zh: '已写入 {count} 条官方人工策划用例。',
+    en: 'Wrote {count} first-party curated samples.',
   },
   'cli.init.next_steps_title': {
     zh: '下一步：',
@@ -25,9 +31,13 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
     zh: '  1. 直接跑通（无需先改任何文件）：{command}',
     en: '  1. Run it as-is (no edits needed): {command}',
   },
-  'cli.init.next_step_report': {
-    zh: '  2. 看报告里的 verdict 和“下一步”：PROGRESS 才能发布；UNDERPOWERED / NOISE 先扩样到约 20 条以上后重跑。',
-    en: '  2. Read the report verdict and Next line: PROGRESS can ship; UNDERPOWERED / NOISE means grow to roughly 20+ samples and re-run.',
+  'cli.init.next_step_report_quick': {
+    zh: '  2. 看报告里的 verdict 和“下一步”：3 条用例只用于跑通链路，出现 UNDERPOWERED 是预期结果；需要正式判断时使用 --samples 20 创建完整起步集。',
+    en: '  2. Read the report verdict and Next line: 3 samples only prove the workflow, so UNDERPOWERED is expected; use --samples 20 for the full starter set before making a real decision.',
+  },
+  'cli.init.next_step_report_full': {
+    zh: '  2. 看报告里的 verdict 和“下一步”：20 条用例达到注册样本量下限，但不保证得到 PROGRESS；仍需结合置信区间和失败样本判断。',
+    en: '  2. Read the report verdict and Next line: 20 samples meet the registered sample-size floor but do not guarantee PROGRESS; still inspect the confidence interval and failed samples.',
   },
   'cli.init.next_step_executor': {
     zh: '     executor / judge 会按运行环境选择；Codex 任务自动使用本机 Codex 配置。也可用 OMK_EXECUTOR / OMK_MODEL 固定环境偏好，详见 https://oh-my-knowledge.pages.dev/zh/reference/executors。',

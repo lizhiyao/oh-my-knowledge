@@ -133,4 +133,48 @@ describe('first-run smoke path', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('plans the 20-sample curated pack without external executor dependencies', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-first-run-full-'));
+    const project = join(root, 'demo');
+    try {
+      const init = await execFileAsync('node', [
+        CLI,
+        'init', project,
+        '--samples', '20',
+        '--lang', 'en',
+      ]);
+      assert.match(init.stdout, /Wrote 20 first-party curated samples/);
+      assert.match(init.stdout, /meet the registered sample-size floor/);
+
+      const executor = join(
+        PROJECT_ROOT,
+        'test',
+        'fixtures',
+        'custom-executor',
+        'core-fixture-executor.sh',
+      );
+      const dryRun = await execFileAsync('node', [
+        CLI,
+        'eval',
+        '--control', 'code-review-v1',
+        '--treatment', 'code-review-v2',
+        '--executor', executor,
+        '--skip-connectivity',
+        '--skip-doctor',
+        '--dry-run',
+        '--lang', 'en',
+      ], { cwd: project });
+      const dryRunReport = parseFirstJsonObject(dryRun.stdout) as {
+        projectionKind?: string;
+        dataset?: { sampleCount?: number };
+        targets?: Array<{ targetId?: string }>;
+      };
+      assert.equal(dryRunReport.projectionKind, 'core-cli-dry-run');
+      assert.equal(dryRunReport.dataset?.sampleCount, 20);
+      assert.deepEqual(dryRunReport.targets?.map((target) => target.targetId), ['code-review-v1', 'code-review-v2']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

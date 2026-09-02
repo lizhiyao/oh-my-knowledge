@@ -42,15 +42,16 @@ describe('omk init scaffold passes strict assertion conformance', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('scaffolded eval-samples.json loads without hard error in strict mode', () => {
-    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
-    const samplesPath = join(tmpDir, 'eval-samples.json');
+  for (const sampleCount of [3, 20]) {
+    it(`${sampleCount} 条 scaffolded eval-samples.json 在 strict mode 下合规`, () => {
+      execFileSync('node', [CLI, 'init', tmpDir, '--samples', String(sampleCount)], { stdio: 'pipe' });
+      const samplesPath = join(tmpDir, 'eval-samples.json');
 
-    withStrictAssertions(() => {
-      // 不抛即为合规:用户照快速开始跑的第一条 omk eval 不会在这里硬报错。
-      const result = loadSamples(samplesPath);
-      // sanity:确认校验确实跑在非空用例上(空数组会 vacuously 通过,起不到守护作用)。
-      assert.ok(result.samples.length >= 3, `expected ≥3 scaffolded samples, got ${result.samples.length}`);
+      withStrictAssertions(() => {
+        // 不抛即为合规：用户照快速开始跑的第一条 omk eval 不会在这里硬报错。
+        const result = loadSamples(samplesPath);
+        assert.equal(result.samples.length, sampleCount);
+      });
     });
-  });
+  }
 });

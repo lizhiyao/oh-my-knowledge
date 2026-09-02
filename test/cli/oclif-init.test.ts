@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import InitCommand from '../../src/cli/commands/init.js';
+import { loadSamples } from '../../src/inputs/load-samples.js';
 import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 interface ExecError extends Error {
@@ -22,6 +23,9 @@ describe('oclif init', () => {
     const stdout = await renderCommandHelp('init');
     assert.ok(stdout.includes('初始化一个 omk 项目'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('TARGETDIR'), 'stdout missing positional');
+    assert.ok(stdout.includes('--samples'), 'stdout should document the curated sample-count option');
+    assert.ok(stdout.includes('3 条用于快速跑通'), `stdout should explain the quick pack:\n${stdout}`);
+    assert.match(stdout, /20\s+条用于达到注册样本量下限/, `stdout should explain the full pack:\n${stdout}`);
   });
 
   it('--help --lang en', async () => {
@@ -40,7 +44,8 @@ describe('oclif init', () => {
         `stdout should include a copy/paste command that enters the target dir first:\n${stdout}`,
       );
       assert.ok(stdout.includes('UNDERPOWERED'), `stdout should set first-run expectation:\n${stdout}`);
-      assert.ok(stdout.includes('20 条以上'), `stdout should suggest growing the sample set before release decisions:\n${stdout}`);
+      assert.ok(stdout.includes('--samples 20'), `stdout should point to the full curated pack:\n${stdout}`);
+      assert.ok(stdout.includes('已写入 3 条官方人工策划用例'), `stdout should identify the quick pack:\n${stdout}`);
       assert.ok(stdout.includes('看报告里的 verdict'), `stdout should tell users where to make the release decision:\n${stdout}`);
       assert.ok(stdout.includes('https://oh-my-knowledge.pages.dev/zh/reference/executors'), `stdout should link zh users to public zh executor docs:\n${stdout}`);
       assert.ok(!stdout.includes('https://oh-my-knowledge.pages.dev/reference/executors'), `stdout should not link zh users to the en executor docs:\n${stdout}`);
@@ -64,6 +69,65 @@ describe('oclif init', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it('--samples 20 生成完整、分层且无薄弱 capability 的官方样本包', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-full-'));
+    try {
+      const target = join(dir, 'project');
+      const { stdout } = await runCommand(InitCommand, ['project', '--samples', '20'], { cwd: dir });
+      assert.ok(stdout.includes('已写入 20 条官方人工策划用例'), `stdout should identify the full pack:\n${stdout}`);
+      assert.ok(stdout.includes('20 条用例达到注册样本量下限'), `stdout should set an honest statistical expectation:\n${stdout}`);
+      assert.ok(!stdout.includes('20 条以上后重跑'), `full-pack guidance should not ask for the size it already has:\n${stdout}`);
+
+      const { samples } = loadSamples(join(target, 'eval-samples.json'), {
+        assertionValidationMode: 'strict',
+      });
+      assert.equal(samples.length, 20);
+      assert.equal(new Set(samples.map((sample) => sample.sample_id)).size, 20);
+      assert.ok(samples.every((sample) => sample.construct === 'quality'));
+      assert.ok(samples.every((sample) => sample.provenance === 'human'));
+      assert.ok(samples.every((sample) => sample.rubric?.startsWith('满分标准：')));
+
+      const capabilityCounts = Object.fromEntries(
+        ['security-review', 'robustness-review', 'maintainability-review', 'performance-review']
+          .map((capability) => [
+            capability,
+            samples.filter((sample) => sample.capability?.includes(capability)).length,
+          ]),
+      );
+      assert.deepEqual(capabilityCounts, {
+        'security-review': 5,
+        'robustness-review': 5,
+        'maintainability-review': 5,
+        'performance-review': 5,
+      });
+
+      const difficultyCounts = Object.fromEntries(
+        ['easy', 'medium', 'hard'].map((difficulty) => [
+          difficulty,
+          samples.filter((sample) => sample.difficulty === difficulty).length,
+        ]),
+      );
+      assert.deepEqual(difficultyCounts, { easy: 7, medium: 8, hard: 5 });
+
+      for (const id of ['s006', 's010', 's015', 's020']) {
+        assert.equal(
+          samples.find((sample) => sample.sample_id === id)?.assertions,
+          undefined,
+          `${id} should remain a judge-scored negative control instead of rewarding keyword output`,
+        );
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--samples 拒绝不受支持的样本数量', async () => {
+    await assert.rejects(
+      () => runCommand(InitCommand, ['project', '--samples', '10']),
+      /Expected --samples=10 to be one of: 3, 20/,
+    );
   });
 
   it('英文输出链接到英文 executor 文档', async () => {

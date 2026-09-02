@@ -15,14 +15,15 @@ omk init [目录]
 **Flags:**
 
 ```text
-  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --lang <value>    输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --samples <3|20>  官方人工策划用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限
 ```
 
 完整描述见 `omk init --help`。
 
 <!-- omk:cli:init:flags:end -->
 
-在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。现有两版 skill + 三条用例只是默认的 A/B 起步模板。
+在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到注册样本量下限的官方人工策划用例集。
 
 ## `omk install`
 
