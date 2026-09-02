@@ -53,7 +53,12 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     'text/markdown',
   );
   const workspace = descriptor('workspace-tree', { files: ['README.md'] }, 'sensitive');
-  const mcp = descriptor('mcp-config', { servers: ['search'] }, 'sensitive');
+  const mcp = descriptor('mcp-config', { servers: ['search'] }, 'secret');
+  const mockRule = descriptor(
+    'mock-search-rule',
+    { tool: 'search', match: { input: { query: 'Q' } } },
+    'secret',
+  );
   const mockPayload = descriptor('mock-search-response', { answer: 'A' }, 'secret');
   const rubric = descriptor('rubric-correctness', { rubric: 'correctness' });
   const gold = descriptor('gold-dataset', { version: 1 }, 'gold');
@@ -66,6 +71,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     }),
     hostResource('workspace', workspace, '/repo/workspace'),
     hostResource('mcp-config', mcp, '/repo/mcp.json'),
+    hostResource('mock-rule', mockRule, '/repo/mocks/search-rule.json'),
     hostResource('mock-payload', mockPayload, '/repo/mocks/search.json'),
     hostResource('content', rubric, '/repo/rubrics/correctness.json'),
     hostResource('gold-dataset', gold, '/repo/gold/v1'),
@@ -149,7 +155,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           mocks: [{
             sampleIds: ['sample-2'],
             strict: true,
-            matchRules: { tool: 'search', query: { exact: 'Q' } },
+            rule: mockRule,
             payloads: [mockPayload],
           }],
         },
@@ -183,7 +189,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           mocks: [{
             sampleIds: ['sample-2'],
             strict: true,
-            matchRules: { query: { exact: 'Q' }, tool: 'search' },
+            rule: mockRule,
             payloads: [mockPayload],
           }],
         },

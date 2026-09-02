@@ -162,7 +162,7 @@ function normalizeHostResources(
   const resources = [...input.resources]
     .sort((left, right) => compareStrings(left.descriptor.resourceId, right.descriptor.resourceId))
     .map((resource) => {
-      if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
+      if (!['artifact', 'workspace', 'mcp-config', 'mock-rule', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
         .includes(resource.resourceKind)
           || !['public', 'sensitive', 'secret', 'gold']
             .includes(resource.descriptor.classification)
@@ -221,7 +221,7 @@ function validateHostResourceMaterializationSemantics(
   hostResources: ResolvedHostResources,
 ): void {
   for (const resource of hostResources.resources) {
-    const fileOnly = ['mcp-config', 'mock-payload', 'runtime-implementation', 'content']
+    const fileOnly = ['mcp-config', 'mock-rule', 'mock-payload', 'runtime-implementation', 'content']
       .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact'
       || resource.resourceKind === 'workspace';
@@ -230,7 +230,11 @@ function validateHostResourceMaterializationSemantics(
           && resource.verification.verificationKind === 'content-digest')
         || (resource.verification.verificationKind === 'pinned-git' && !gitAllowed)
         || ((resource.resourceKind === 'gold-dataset')
-          !== (resource.descriptor.classification === 'gold'))) fail({
+          !== (resource.descriptor.classification === 'gold'))
+        || (['mcp-config', 'mock-rule', 'mock-payload'].includes(resource.resourceKind)
+          && resource.descriptor.classification !== 'secret')
+        || (resource.resourceKind === 'mock-rule'
+          && resource.descriptor.mediaType !== 'application/json')) fail({
       code: 'CLI_INPUT_INVALID',
       sourcePath: resource.locator,
       fieldPath: `hostResources.${resource.descriptor.resourceId}`,
@@ -459,6 +463,11 @@ function validateResourceReferences(
         fieldPath: `${prefix}.mocks.${mockIndex}.sampleIds`,
         message: 'Mock binding 必须引用至少一个存在且不重复的 sampleId。',
       });
+      validateReference(
+        mock.rule,
+        ['mock-rule'],
+        `${prefix}.mocks.${mockIndex}.rule`,
+      );
       for (const [payloadIndex, payload] of mock.payloads.entries()) {
         validateReference(
           payload,
@@ -504,7 +513,7 @@ function behaviorConfig(
       ...(behavior.mocks === undefined ? {} : {
         mocks: behavior.mocks.map((mock) => ({
           sampleIds: [...mock.sampleIds].sort(compareStrings),
-          matchRules: canonicalSnapshot(mock.matchRules),
+          rule: descriptorSnapshot(mock.rule),
           strict: mock.strict,
           // Payload order is the observable return-sequence contract.
           payloads: mock.payloads.map(descriptorSnapshot),
@@ -929,6 +938,11 @@ function resourceLeaseRequirementsForTarget(
       resourceRole: 'mcp-config' as const,
       leaseMode: 'immutable-snapshot' as const,
     }]),
+    ...(behavior.mocks ?? []).map((mock) => ({
+      resourceId: mock.rule.resourceId,
+      resourceRole: 'mock-rule' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    })),
     ...(behavior.mocks ?? []).flatMap((mock) => mock.payloads.map((payload) => ({
       resourceId: payload.resourceId,
       resourceRole: 'mock-payload' as const,

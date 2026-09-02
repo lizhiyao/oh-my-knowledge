@@ -25,6 +25,8 @@ function resourceKindForRole(
 ) {
   return role === 'mcp-config'
     ? 'mcp-config'
+    : role === 'mock-rule'
+      ? 'mock-rule'
     : role === 'mock-payload'
       ? 'mock-payload'
       : role;

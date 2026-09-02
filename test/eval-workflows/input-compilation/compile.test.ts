@@ -33,7 +33,7 @@ function expectDeepFrozen(value: unknown): void {
 describe('compileCliEvaluationInput', () => {
   it('rejects the superseded resolved-input v1 shape without inference', () => {
     const input = deepClone(validResolvedCliInput()) as { schemaVersion: string };
-    input.schemaVersion = 'omk.resolved-cli-evaluation-input/v1';
+    input.schemaVersion = 'omk.resolved-cli-evaluation-input/v3';
 
     expect(() => compileCliEvaluationInput(
       input as ReturnType<typeof validResolvedCliInput>,
@@ -381,7 +381,7 @@ describe('compileCliEvaluationInput', () => {
     }
   });
 
-  it('requires HostResource v2 size and verification identity invariants', () => {
+  it('requires HostResource v3 size, verification and secret control invariants', () => {
     const missingSize = deepClone(validResolvedCliInput());
     delete (missingSize.hostResources.resources[0].descriptor as { size?: number }).size;
     expect(() => compileCliEvaluationInput(missingSize)).toThrowError(expect.objectContaining({
@@ -404,6 +404,34 @@ describe('compileCliEvaluationInput', () => {
         fieldPath: `hostResources.${content.descriptor.resourceId}`,
       }),
     );
+
+    for (const resourceKind of ['mcp-config', 'mock-rule', 'mock-payload'] as const) {
+      const invalidClassification = deepClone(validResolvedCliInput());
+      const resource = invalidClassification.hostResources.resources.find((candidate) => (
+        candidate.resourceKind === resourceKind
+      ));
+      if (resource === undefined) throw new Error('fixture is incomplete');
+      resource.descriptor.classification = 'sensitive';
+      expect(() => compileCliEvaluationInput(invalidClassification)).toThrowError(
+        expect.objectContaining({
+          code: 'CLI_INPUT_INVALID',
+          fieldPath: `hostResources.${resource.descriptor.resourceId}`,
+        }),
+      );
+    }
+
+    const invalidMockRuleMediaType = deepClone(validResolvedCliInput());
+    const mockRule = invalidMockRuleMediaType.hostResources.resources.find((resource) => (
+      resource.resourceKind === 'mock-rule'
+    ));
+    if (mockRule === undefined) throw new Error('fixture is incomplete');
+    mockRule.descriptor.mediaType = 'text/plain';
+    expect(() => compileCliEvaluationInput(invalidMockRuleMediaType)).toThrowError(
+      expect.objectContaining({
+        code: 'CLI_INPUT_INVALID',
+        fieldPath: `hostResources.${mockRule.descriptor.resourceId}`,
+      }),
+    );
   });
 
   it.each([
@@ -414,6 +442,7 @@ describe('compileCliEvaluationInput', () => {
       'targets.treatment.executionControls.workspace.0.descriptor',
     ],
     ['mcp-config', 'artifact', 'targets.treatment.behavior.mcpConfig'],
+    ['mock-search-rule', 'content', 'targets.treatment.behavior.mocks.0.rule'],
     ['mock-search-response', 'content', 'targets.treatment.behavior.mocks.0.payloads.0'],
     ['rubric-correctness', 'artifact', 'evaluatorTemplates.rubric.resources.0'],
     ['gold-dataset', 'content', 'orchestration.gold.resourceId'],
@@ -521,7 +550,7 @@ describe('compileCliEvaluationInput', () => {
       },
     });
     const bindingJson = canonicalizeJson(result.runtimeBinding);
-    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v3');
+    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v4');
     expect(bindingJson).not.toContain('capabilities');
     expect(bindingJson).not.toContain('fingerprint');
     expect(bindingJson).not.toContain('assuranceLevel');

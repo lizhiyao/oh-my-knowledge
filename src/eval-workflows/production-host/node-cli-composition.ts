@@ -237,7 +237,8 @@ export function createNodeHostPreflightDeclarations(
     (resource) => resource.resourceKind === 'mcp-config',
   );
   const hasMockResource = compiled.hostResources.resources.some(
-    (resource) => resource.resourceKind === 'mock-payload',
+    (resource) => resource.resourceKind === 'mock-rule'
+      || resource.resourceKind === 'mock-payload',
   );
   const mcpPreflight: OmkRuntimePreflightDeclaration = hasMcpResource
     ? {
@@ -263,7 +264,8 @@ export function createNodeHostPreflightDeclarations(
         preflightDisposition: 'check',
         async run(): Promise<void> {
           await Promise.all(compiled.hostResources.resources
-            .filter((resource) => resource.resourceKind === 'mock-payload')
+            .filter((resource) => resource.resourceKind === 'mock-rule'
+              || resource.resourceKind === 'mock-payload')
             .map((resource) => access(resource.locator, constants.R_OK)));
         },
       }

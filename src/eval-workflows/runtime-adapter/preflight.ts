@@ -214,7 +214,8 @@ function assertCoverage(
       requirement.resourceRole === 'mcp-config'
     ))) requireDeclaration(entry, 'mcp-readiness', true);
     if (entry.resourceLeaseRequirements.some((requirement) => (
-      requirement.resourceRole === 'mock-payload'
+      requirement.resourceRole === 'mock-rule'
+        || requirement.resourceRole === 'mock-payload'
     ))) requireDeclaration(entry, 'mock-readiness', true);
   }
 }

@@ -43,7 +43,7 @@ async function fixture(label: string): Promise<string> {
     ],
     mocks: [{
       tool: 'Bash',
-      match: { command_glob: '*' },
+      match: { command_glob: 'printf match-secret-value*' },
       return_file: 'fixtures/secret.json',
     }],
     mocksStrict: true,
@@ -228,7 +228,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     });
   });
 
-  it('resolves real files into a compilable five-layer design without leaking secret payloads', async () => {
+  it('resolves real files into a compilable five-layer design without leaking secret mock controls', async () => {
     const root = await fixture('compile');
     const resolved = await resolveNodeCliEvaluationRequest(request(root), {
       projectRoot: root,
@@ -254,6 +254,12 @@ describe('resolveNodeCliEvaluationRequest', () => {
     );
     expect(compiled.definition.experiment.sampling.seedCoupling).toBe('uncontrolled');
     expect(JSON.stringify(compiled.definition)).not.toContain('secret-value');
+    expect(JSON.stringify(compiled.definition)).not.toContain('match-secret-value');
+    expect(compiled.hostResources.resources.some((resource) => (
+      resource.resourceKind === 'mock-rule'
+      && resource.descriptor.classification === 'secret'
+      && resource.descriptor.mediaType === 'application/json'
+    ))).toBe(true);
     expect(compiled.hostResources.resources.some((resource) => (
       resource.resourceKind === 'mock-payload'
       && resource.descriptor.classification === 'secret'
@@ -261,7 +267,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(Object.isFrozen(resolved)).toBe(true);
   });
 
-  it('materializes inline mock payloads in a private resolver-owned store', async () => {
+  it('materializes inline mock rules and payloads in a private resolver-owned store', async () => {
     const root = await fixture('private-materialization');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
@@ -276,10 +282,42 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const payload = resolved.hostResources.resources.find(
       (resource) => resource.resourceKind === 'mock-payload',
     );
+    const rule = resolved.hostResources.resources.find(
+      (resource) => resource.resourceKind === 'mock-rule',
+    );
 
     expect(payload).toBeDefined();
+    expect(rule).toBeDefined();
     expect((await stat(payload!.locator)).mode & 0o777).toBe(0o600);
+    expect((await stat(rule!.locator)).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await readFile(rule!.locator, 'utf8'))).toEqual({ tool: 'Read' });
     expect((await stat(join(root, '.omk', 'resolved', 'content'))).mode & 0o777).toBe(0o700);
+  });
+
+  it('binds secret mock-rule bytes into measurement identity', async () => {
+    const root = await fixture('mock-rule-identity');
+    const compileWith = async (commandGlob: string, suffix: string) => {
+      await writeFile(join(root, 'samples.json'), sampleSetJson([{
+        sample_id: 'sample-a',
+        prompt: 'A',
+        rubric: 'Correct.',
+        mocks: [{
+          tool: 'Bash',
+          match: { command_glob: commandGlob },
+          return: { stdout: 'stable' },
+        }],
+      }]));
+      return compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(request(root), {
+        projectRoot: root,
+        materializationRoot: join(root, '.omk', `resolved-${suffix}`),
+      }));
+    };
+    const first = await compileWith('printf first-secret*', 'first');
+    const second = await compileWith('printf second-secret*', 'second');
+
+    expect(first.canonicalDigests.definition).not.toBe(second.canonicalDigests.definition);
+    expect(JSON.stringify(first.definition)).not.toContain('first-secret');
+    expect(JSON.stringify(second.definition)).not.toContain('second-secret');
   });
 
   it('fails closed for unmatched mocked tools unless the sample explicitly opts out', async () => {

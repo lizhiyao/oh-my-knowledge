@@ -239,6 +239,12 @@ function expectedExecutorResourceRequirements(
   if (Array.isArray(behavior?.mocks)) {
     for (const mockValue of behavior.mocks) {
       const mock = record(mockValue);
+      const ruleId = descriptorResourceId(mock?.rule);
+      if (ruleId !== undefined) requirements.push({
+        resourceId: ruleId,
+        resourceRole: 'mock-rule',
+        leaseMode: 'immutable-snapshot',
+      });
       if (!Array.isArray(mock?.payloads)) continue;
       for (const payload of mock.payloads) {
         const resourceId = descriptorResourceId(payload);
@@ -274,7 +280,7 @@ function assertResourceRequirements(
       ? 'copy-on-write-overlay'
       : 'immutable-snapshot';
     const allowedRole = binding.runtimeKind === 'executor'
-      ? ['artifact', 'workspace', 'mcp-config', 'mock-payload', 'runtime-implementation']
+      ? ['artifact', 'workspace', 'mcp-config', 'mock-rule', 'mock-payload', 'runtime-implementation']
         .includes(requirement.resourceRole)
       : requirement.resourceRole === 'content';
     const key = `${requirement.resourceRole}\u0000${requirement.resourceId}`;

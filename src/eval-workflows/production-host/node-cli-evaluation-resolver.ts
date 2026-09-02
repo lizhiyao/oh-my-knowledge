@@ -425,6 +425,24 @@ async function mockPayloadDescriptors(
   }));
 }
 
+async function mockRuleDescriptor(
+  resources: ResourceRegistry,
+  mock: Readonly<Mock>,
+  materializationRoot: string,
+): Promise<ResolvedResourceDescriptor> {
+  const bytes = Buffer.from(canonicalizeJson({
+    tool: mock.tool,
+    ...(mock.match === undefined ? {} : { match: structuredClone(mock.match) as JsonValue }),
+  }));
+  const path = await materializeBytes(materializationRoot, bytes, '.json');
+  return fileResource(resources, {
+    resourceKind: 'mock-rule',
+    path,
+    classification: 'secret',
+    mediaType: 'application/json',
+  });
+}
+
 async function resolvedMocks(
   resources: ResourceRegistry,
   samples: readonly Readonly<Sample>[],
@@ -436,10 +454,7 @@ async function resolvedMocks(
     for (const mock of sample.mocks ?? []) {
       bindings.push({
         sampleIds: [sample.sample_id],
-        matchRules: {
-          tool: mock.tool,
-          ...(mock.match === undefined ? {} : { match: structuredClone(mock.match) as JsonValue }),
-        },
+        rule: await mockRuleDescriptor(resources, mock, materializationRoot),
         strict: sample.mocksStrict ?? true,
         payloads: await mockPayloadDescriptors(
           resources,

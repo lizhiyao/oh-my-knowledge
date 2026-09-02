@@ -106,6 +106,7 @@ async function completeFixture() {
   const artifactPath = join(sourceRoot, 'artifact.md');
   const workspacePath = join(sourceRoot, 'workspace');
   const mcpPath = join(sourceRoot, 'mcp.json');
+  const mockRulePath = join(sourceRoot, 'mock-rule.json');
   const mockPath = join(sourceRoot, 'mock.json');
   const contentPath = join(sourceRoot, 'rubric.json');
   const goldPath = join(sourceRoot, 'gold.json');
@@ -115,6 +116,7 @@ async function completeFixture() {
   writeFileSync(join(workspacePath, 'run.sh'), '#!/bin/sh\necho ok\n');
   chmodSync(join(workspacePath, 'run.sh'), 0o755);
   writeFileSync(mcpPath, '{"servers":["test"]}');
+  writeFileSync(mockRulePath, '{"tool":"search"}');
   writeFileSync(mockPath, '{"answer":"A"}');
   writeFileSync(contentPath, '{"rubric":"correctness"}');
   writeFileSync(goldPath, '{"answer":"gold"}');
@@ -123,6 +125,10 @@ async function completeFixture() {
     treeResource({ resourceId: 'workspace', resourceKind: 'workspace', path: workspacePath }),
     fileResource({
       resourceId: 'mcp', resourceKind: 'mcp-config', path: mcpPath,
+      classification: 'secret', mediaType: 'application/json',
+    }),
+    fileResource({
+      resourceId: 'mock-rule', resourceKind: 'mock-rule', path: mockRulePath,
       classification: 'secret', mediaType: 'application/json',
     }),
     fileResource({
@@ -156,6 +162,7 @@ describe('Verified HostResource leases', () => {
             requirement('artifact', 'artifact'),
             requirement('workspace', 'workspace'),
             requirement('mcp-config', 'mcp'),
+            requirement('mock-rule', 'mock-rule'),
             requirement('mock-payload', 'mock'),
           ],
         },
@@ -407,6 +414,60 @@ describe('Verified HostResource leases', () => {
         requirements: [requirement('artifact', 'gold')],
       }],
     })).rejects.toMatchObject({ code: 'OMK_RESOURCE_LEASE_CLASSIFICATION_DENIED' });
+    expect(readdirSync(leaseRoot)).toEqual([]);
+  });
+
+  it('defends secret mock-control invariants again at lease acquisition', async () => {
+    const fixture = await completeFixture();
+    for (const [resourceKind, resourceRole] of [
+      ['mcp-config', 'mcp-config'],
+      ['mock-rule', 'mock-rule'],
+      ['mock-payload', 'mock-payload'],
+    ] as const) {
+      const original = fixture.resources.find((resource) => (
+        resource.resourceKind === resourceKind
+      ));
+      if (original === undefined) throw new Error('missing control resource fixture');
+      const poisoned: ResolvedHostResource = {
+        ...original,
+        descriptor: { ...original.descriptor, classification: 'sensitive' },
+      };
+      await expect(materializeNodeRunResourceLeases({
+        runId: `run-${resourceKind}-classification`,
+        leaseRoot,
+        hostResources: inventory([poisoned]),
+        bindings: [{
+          consumerKind: 'executor',
+          bindingId: 'executor',
+          requirements: [requirement(resourceRole, original.descriptor.resourceId)],
+        }],
+      })).rejects.toMatchObject({
+        code: 'OMK_RESOURCE_LEASE_CLASSIFICATION_DENIED',
+        resourceId: original.descriptor.resourceId,
+      });
+    }
+
+    const mockRule = fixture.resources.find((resource) => (
+      resource.resourceKind === 'mock-rule'
+    ));
+    if (mockRule === undefined) throw new Error('missing mock rule fixture');
+    const wrongMediaType: ResolvedHostResource = {
+      ...mockRule,
+      descriptor: { ...mockRule.descriptor, mediaType: 'text/plain' },
+    };
+    await expect(materializeNodeRunResourceLeases({
+      runId: 'run-mock-rule-media-type',
+      leaseRoot,
+      hostResources: inventory([wrongMediaType]),
+      bindings: [{
+        consumerKind: 'executor',
+        bindingId: 'executor',
+        requirements: [requirement('mock-rule', mockRule.descriptor.resourceId)],
+      }],
+    })).rejects.toMatchObject({
+      code: 'OMK_RESOURCE_LEASE_INPUT_INVALID',
+      resourceId: mockRule.descriptor.resourceId,
+    });
     expect(readdirSync(leaseRoot)).toEqual([]);
   });
 
@@ -682,7 +743,7 @@ describe('Verified HostResource leases', () => {
       ...request,
       hostResources: {
         ...request.hostResources,
-        schemaVersion: 'omk.resolved-host-resources/v1',
+        schemaVersion: 'omk.resolved-host-resources/v2',
       } as unknown as ResolvedHostResources,
     })).rejects.toMatchObject({ code: 'OMK_RESOURCE_LEASE_INPUT_INVALID' });
   });

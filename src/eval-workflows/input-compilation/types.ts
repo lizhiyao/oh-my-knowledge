@@ -18,11 +18,11 @@ import type {
 export const CLI_EVALUATION_REQUEST_SCHEMA_VERSION =
   'omk.cli-evaluation-request/v1' as const;
 export const RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION =
-  'omk.resolved-cli-evaluation-input/v3' as const;
+  'omk.resolved-cli-evaluation-input/v4' as const;
 export const RESOLVED_HOST_RESOURCES_SCHEMA_VERSION =
-  'omk.resolved-host-resources/v2' as const;
+  'omk.resolved-host-resources/v3' as const;
 export const RUNTIME_BINDING_REQUEST_SCHEMA_VERSION =
-  'omk.runtime-binding-request/v3' as const;
+  'omk.runtime-binding-request/v4' as const;
 
 export type CliEvaluationFieldSource = { readonly normalizedField: string } & (
   | {
@@ -145,6 +145,7 @@ export interface ResolvedHostResource {
     | 'artifact'
     | 'workspace'
     | 'mcp-config'
+    | 'mock-rule'
     | 'mock-payload'
     | 'gold-dataset'
     | 'runtime-implementation'
@@ -173,7 +174,8 @@ export interface ResolvedHostResources {
 export interface ResolvedMockBinding {
   /** Samples whose Trial may observe this mock. Mock controls are never Target-global. */
   readonly sampleIds: readonly string[];
-  readonly matchRules: JsonValue;
+  /** Secret, digest-bound `{ tool, match? }` document resolved only by the Runtime adapter. */
+  readonly rule: ResolvedResourceDescriptor;
   readonly strict: boolean;
   readonly payloads: readonly ResolvedResourceDescriptor[];
 }
@@ -347,6 +349,7 @@ export interface RuntimeResourceLeaseRequirement {
     | 'artifact'
     | 'workspace'
     | 'mcp-config'
+    | 'mock-rule'
     | 'mock-payload'
     | 'runtime-implementation'
     | 'content';

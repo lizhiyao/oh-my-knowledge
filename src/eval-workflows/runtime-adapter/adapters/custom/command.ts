@@ -150,6 +150,7 @@ const CustomCommandResourceSchema = z.discriminatedUnion('leaseMode', [
     resourceKind: z.enum([
       'artifact',
       'mcp-config',
+      'mock-rule',
       'mock-payload',
       'runtime-implementation',
       'content',

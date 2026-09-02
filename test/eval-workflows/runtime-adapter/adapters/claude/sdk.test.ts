@@ -156,12 +156,24 @@ async function fixture(options: Readonly<{
     resourceId: 'mcp-a',
     digest: digest({ mcpText }),
     mediaType: 'application/json',
-    classification: 'sensitive' as const,
+    classification: 'secret' as const,
     size: Buffer.byteLength(mcpText),
   };
   const mockText = JSON.stringify({ result: 'mocked' });
   const mockPath = join(root, 'mock.json');
-  if (options.mocks) await writeFile(mockPath, mockText);
+  const mockRuleText = JSON.stringify({ tool: options.mockTool ?? 'Bash' });
+  const mockRulePath = join(root, 'mock-rule.json');
+  if (options.mocks) await Promise.all([
+    writeFile(mockPath, mockText),
+    writeFile(mockRulePath, mockRuleText),
+  ]);
+  const mockRuleDescriptor = {
+    resourceId: 'mock-rule-a',
+    digest: digest({ mockRuleText }),
+    mediaType: 'application/json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(mockRuleText),
+  };
   const mockDescriptor = {
     resourceId: 'mock-a',
     digest: digest({ mockText }),
@@ -176,7 +188,7 @@ async function fixture(options: Readonly<{
       ...(options.mocks ? {
         mocks: [{
           sampleIds: ['sample-a'],
-          matchRules: { tool: options.mockTool ?? 'Bash' },
+          rule: mockRuleDescriptor,
           strict: true,
           payloads: [mockDescriptor],
         }],
@@ -231,6 +243,10 @@ async function fixture(options: Readonly<{
       resourceRole: 'mcp-config' as const,
       leaseMode: 'immutable-snapshot' as const,
     }] : []), ...(options.mocks ? [{
+      resourceId: 'mock-rule-a',
+      resourceRole: 'mock-rule' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    }, {
       resourceId: 'mock-a',
       resourceRole: 'mock-payload' as const,
       leaseMode: 'immutable-snapshot' as const,
@@ -265,6 +281,14 @@ async function fixture(options: Readonly<{
     snapshotKind: 'file',
     leaseMode: 'immutable-snapshot',
     snapshotPath: mockPath,
+  });
+  if (options.mocks) resources.set('mock-rule-a', {
+    resourceId: 'mock-rule-a',
+    resourceKind: 'mock-rule',
+    descriptor: mockRuleDescriptor,
+    snapshotKind: 'file',
+    leaseMode: 'immutable-snapshot',
+    snapshotPath: mockRulePath,
   });
   const lease: OmkBindingResourceLease = Object.freeze({
     bindingId: binding.bindingId,

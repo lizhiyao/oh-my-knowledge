@@ -131,12 +131,27 @@ async function adapterFixture(options: Readonly<{
     resourceId: 'mcp-a',
     digest: digest({ mcpText }),
     mediaType: 'application/json',
-    classification: 'sensitive' as const,
+    classification: 'secret' as const,
     size: Buffer.byteLength(mcpText),
   };
   const mockPath = join(root, 'mock.json');
   const mockText = JSON.stringify({ stdout: 'mocked', exit: 0 });
-  if (options.mocks) await writeFile(mockPath, mockText);
+  const mockRulePath = join(root, 'mock-rule.json');
+  const mockRuleText = JSON.stringify({
+    tool: options.mockTool ?? 'Bash',
+    match: { command_glob: '*' },
+  });
+  if (options.mocks) await Promise.all([
+    writeFile(mockPath, mockText),
+    writeFile(mockRulePath, mockRuleText),
+  ]);
+  const mockRuleDescriptor = {
+    resourceId: 'mock-rule-a',
+    digest: digest({ mockRuleText }),
+    mediaType: 'application/json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(mockRuleText),
+  };
   const mockDescriptor = {
     resourceId: 'mock-a',
     digest: digest({ mockText }),
@@ -151,7 +166,7 @@ async function adapterFixture(options: Readonly<{
       ...(options.mocks ? {
         mocks: [{
           sampleIds: [...(options.mockSampleIds ?? ['sample-a'])],
-          matchRules: { tool: options.mockTool ?? 'Bash', match: { command_glob: '*' } },
+          rule: mockRuleDescriptor,
           strict: true,
           payloads: [mockDescriptor],
         }],
@@ -208,6 +223,10 @@ async function adapterFixture(options: Readonly<{
     resourceRole: 'mcp-config' as const,
     leaseMode: 'immutable-snapshot' as const,
   }] : []), ...(options.mocks ? [{
+    resourceId: 'mock-rule-a',
+    resourceRole: 'mock-rule' as const,
+    leaseMode: 'immutable-snapshot' as const,
+  }, {
     resourceId: 'mock-a',
     resourceRole: 'mock-payload' as const,
     leaseMode: 'immutable-snapshot' as const,
@@ -262,6 +281,14 @@ async function adapterFixture(options: Readonly<{
     snapshotKind: 'file',
     leaseMode: 'immutable-snapshot',
     snapshotPath: mockPath,
+  });
+  if (options.mocks) resources.set('mock-rule-a', {
+    resourceId: 'mock-rule-a',
+    resourceKind: 'mock-rule',
+    descriptor: mockRuleDescriptor,
+    snapshotKind: 'file',
+    leaseMode: 'immutable-snapshot',
+    snapshotPath: mockRulePath,
   });
   const lease: OmkBindingResourceLease = Object.freeze({
     bindingId: binding.bindingId,
@@ -602,6 +629,18 @@ describe('Claude CLI Core Executor adapter', () => {
       .toContain('mock-hook-node');
   });
 
+  it('rejects an invalid leased mock rule before a business process starts', async () => {
+    const fixture = await adapterFixture({ mocks: true });
+    const invocations = join(fixture.root, 'invocations');
+    const port = await createAdapter(fixture, { OMK_TEST_INVOCATIONS: invocations });
+    await writeFile(join(fixture.root, 'mock-rule.json'), '{"tool":42}');
+
+    await expect(execute(port, fixture.target.config as JsonValue)).rejects.toMatchObject({
+      evaluationError: { code: 'OMK_CLAUDE_CLI_MOCK_CONFIG_INVALID' },
+    });
+    await expect(readFile(invocations, 'utf8')).rejects.toThrow();
+  });
+
   it('isolates CLI config and mock state across retry attempts', async () => {
     const fixture = await adapterFixture({ mocks: true });
     const captureLog = join(fixture.root, 'capture.jsonl');
@@ -705,7 +744,10 @@ describe('Claude CLI Core Executor adapter', () => {
       mockTool: 'mcp__search__query',
       allowedTools: ['Read'],
     });
-    await expect(createAdapter(mockedMcpTools)).rejects.toThrow(/MCP tool mocks/);
+    await expect(execute(
+      await createAdapter(mockedMcpTools),
+      mockedMcpTools.target.config as JsonValue,
+    )).rejects.toThrow(/MCP tool mocks/);
 
     const duplicateTools = await adapterFixture({ allowedTools: ['Read', 'Read'] });
     await expect(createAdapter(duplicateTools)).rejects.toThrow(/must not contain duplicates/);
