@@ -109,17 +109,25 @@ export type {
   SeriesMemberCoverage,
   SeriesMemberReference,
 } from '../evaluation-core/contracts/index.js';
-export { runEvaluationSeries } from '../evaluation-core/series/index.js';
+export { runEvaluationSeries, startEvaluationSeries } from '../evaluation-core/series/index.js';
 export type {
+  CompletedEvaluationSeriesRunResult,
+  EvaluationSeriesClock,
+  EvaluationSeriesEventWriter,
+  EvaluationSeriesRun,
   EvaluationSeriesRunOptions,
   EvaluationSeriesRunResult,
   EvaluationSeriesRuntimePorts,
   SeriesAnalysisNodeContext,
   SeriesAnalysisNodeInput,
   SeriesAnalysisNodeOutput,
+  SeriesAnalysisNodeRun,
+  SeriesAnalysisNodeRunContext,
   SeriesAnalysisNodeRuntime,
   SeriesDecisionContext,
   SeriesDecisionOutput,
+  SeriesDecisionRun,
+  SeriesDecisionRunContext,
   SeriesDecisionRuntime,
 } from '../evaluation-core/series/index.js';
 

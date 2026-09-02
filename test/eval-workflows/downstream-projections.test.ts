@@ -388,25 +388,35 @@ describe('Evaluation Core evolution projection', () => {
       analysisNodesByNodeId: new Map([['progress-analysis', {
         identity: analysisIdentity,
         outputSchema: seriesOutputSchema,
-        async analyze(context) {
+        async openRun() {
           return {
-            analysisStatus: 'completed' as const,
-            resultType: 'scalar' as const,
-            value: context.coverage.comparable / context.coverage.planned,
-            assumptionChecks: [{
-              assumptionId: 'all-runs-comparable',
-              checkStatus: 'passed' as const,
-            }],
+            async analyze(context) {
+              return {
+                analysisStatus: 'completed' as const,
+                resultType: 'scalar' as const,
+                value: context.coverage.comparable / context.coverage.planned,
+                assumptionChecks: [{
+                  assumptionId: 'all-runs-comparable',
+                  checkStatus: 'passed' as const,
+                }],
+              };
+            },
+            dispose() {},
           };
         },
       }]]),
       decisionPoliciesByDecisionPolicyId: new Map([['evolution-gate', {
         identity: decisionIdentity,
-        async decide() {
+        async openRun() {
           return {
-            decisionStatus: 'decided' as const,
-            verdict: 'progress-supported',
-            reasonCodes: ['series-evidence-passed'],
+            async decide() {
+              return {
+                decisionStatus: 'decided' as const,
+                verdict: 'progress-supported',
+                reasonCodes: ['series-evidence-passed'],
+              };
+            },
+            dispose() {},
           };
         },
       }]]),
@@ -416,10 +426,15 @@ describe('Evaluation Core evolution projection', () => {
           return value as never;
         },
       }]]),
+      clock: { timestamp: () => '2026-01-01T00:00:00.000Z' },
     }, {
+      runId: 'evolution-series-run',
       bundleId: 'evolution-analysis',
       reportId: 'evolution-report',
     });
+
+    assert.equal(result.status, 'completed');
+    if (result.status !== 'completed') throw new Error('Expected completed Series result.');
 
     const projection = projectCoreEvolutionEvidence({
       plan,

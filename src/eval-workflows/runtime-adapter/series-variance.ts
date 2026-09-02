@@ -56,51 +56,59 @@ export function createOmkSeriesVarianceRuntime(): SeriesAnalysisNodeRuntime {
   return Object.freeze({
     identity: IDENTITY,
     outputSchema: OUTPUT_SCHEMA,
-    async analyze(context: Readonly<SeriesAnalysisNodeContext>) {
-      const values: Array<{
-        memberId: string;
-        replicateIndex: number;
-        meanComposite: number;
-      }> = context.members.flatMap((member) => {
-        const treatment = member.plan.execution.targets.find(
-          (target) => target.targetKind === 'treatment',
-        );
-        const record = member.sources.analysis.bundle.records.find((candidate) => (
-          candidate.analysisStatus === 'completed'
-            && candidate.outputSchema.schemaVersion === 'omk.composite-table/v1'
-        ));
-        if (treatment === undefined || record?.analysisStatus !== 'completed') return [];
-        const table = parseCompositeTableValue(record.value);
-        const scores = table.groups.flatMap((group) => (
-          group.targetId === treatment.targetId && group.aggregate.aggregateStatus === 'observed'
-            ? [group.aggregate.score]
-            : []
-        ));
-        if (scores.length === 0) return [];
-        return [{
-          memberId: member.reference.memberId,
-          replicateIndex: member.reference.replicateIndex,
-          meanComposite: scores.reduce((sum, score) => sum + score, 0) / scores.length,
-        }];
+    async openRun() {
+      return Object.freeze({
+        async analyze(context: Readonly<SeriesAnalysisNodeContext>) {
+          const values: Array<{
+            memberId: string;
+            replicateIndex: number;
+            meanComposite: number;
+          }> = context.members.flatMap((member) => {
+            const treatment = member.plan.execution.targets.find(
+              (target) => target.targetKind === 'treatment',
+            );
+            const record = member.sources.analysis.bundle.records.find((candidate) => (
+              candidate.analysisStatus === 'completed'
+                && candidate.outputSchema.schemaVersion === 'omk.composite-table/v1'
+            ));
+            if (treatment === undefined || record?.analysisStatus !== 'completed') return [];
+            const table = parseCompositeTableValue(record.value);
+            const scores = table.groups.flatMap((group) => (
+              group.targetId === treatment.targetId && group.aggregate.aggregateStatus === 'observed'
+                ? [group.aggregate.score]
+                : []
+            ));
+            if (scores.length === 0) return [];
+            return [{
+              memberId: member.reference.memberId,
+              replicateIndex: member.reference.replicateIndex,
+              meanComposite: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+            }];
+          });
+          if (values.length !== context.plan.definition.members.length || values.length < 2) return {
+            analysisStatus: 'inconclusive' as const,
+            reasonCodes: ['series-run-mean-evidence-incomplete'],
+          };
+          const grandMean = values.reduce(
+            (sum, member) => sum + member.meanComposite,
+            0,
+          ) / values.length;
+          const sampleVariance = values.reduce((sum, member) => (
+            sum + (member.meanComposite - grandMean) ** 2
+          ), 0) / (values.length - 1);
+          return {
+            analysisStatus: 'completed' as const,
+            resultType: 'table' as const,
+            value: ValueSchema.parse({
+              schemaVersion: OMK_SERIES_VARIANCE_SCHEMA_VERSION,
+              members: values,
+              grandMean,
+              sampleVariance,
+            }),
+          };
+        },
+        dispose() {},
       });
-      if (values.length !== context.plan.definition.members.length || values.length < 2) return {
-        analysisStatus: 'inconclusive' as const,
-        reasonCodes: ['series-run-mean-evidence-incomplete'],
-      };
-      const grandMean = values.reduce((sum, member) => sum + member.meanComposite, 0) / values.length;
-      const sampleVariance = values.reduce((sum, member) => (
-        sum + (member.meanComposite - grandMean) ** 2
-      ), 0) / (values.length - 1);
-      return {
-        analysisStatus: 'completed' as const,
-        resultType: 'table' as const,
-        value: ValueSchema.parse({
-          schemaVersion: OMK_SERIES_VARIANCE_SCHEMA_VERSION,
-          members: values,
-          grandMean,
-          sampleVariance,
-        }),
-      };
     },
   });
 }

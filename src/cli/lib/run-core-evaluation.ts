@@ -291,6 +291,7 @@ export async function runCoreEvaluationCommand(
     });
     await series.result;
     const evolution = await series.evolution;
+    if (evolution === undefined) throw new Error('Core Series 未完成，无法生成 evolution evidence。');
     const memberArtifacts = await Promise.all(series.members.map(async (member) => {
       if (member.executionStatus !== 'started') throw member.error;
       await member.run.result;

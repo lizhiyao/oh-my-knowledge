@@ -4,7 +4,6 @@ import {
   EvaluationErrorSchema,
   IdentifierSchema,
   RuntimeIdentitySchema,
-  SchemaIdentitySchema,
   type AnalysisBundle,
   type DecisionResult,
   type EvaluationError,
@@ -20,7 +19,6 @@ import {
   type EvaluationBundleVerificationContext,
   type ExecutionBundleVerificationContext,
   type CoreSchemaValidator,
-  type SchemaIdentity,
   parseEvaluationReport,
   verifyAnalysisBundle,
   verifyDecisionResult,
@@ -65,6 +63,10 @@ import {
   type ExecutionRuntimePorts,
 } from '../execution/index.js';
 import { BoundedEventStream } from '../runtime/event-stream.js';
+import {
+  RuntimeBindingSnapshotError,
+  snapshotSchemaValidators,
+} from '../runtime/snapshot.js';
 import { createRunBudgetSource } from '../budget/index.js';
 import type {
   AdvancedEvaluationEngine,
@@ -146,31 +148,23 @@ function emptyRuntimeBindings(): MutableRuntimeBindings {
   };
 }
 
-function snapshotSchemaValidators(
-  validators: ReadonlyMap<string, CoreSchemaValidator>,
-): ReadonlyMap<string, CoreSchemaValidator> {
-  return new Map([...validators].map(([key, validator]) => {
-    const schema = SchemaIdentitySchema.safeParse(validator?.schema);
-    if (!schema.success || typeof validator?.parse !== 'function') {
+function snapshotRuntime(runtime: EvaluationEngineRuntime): EvaluationEngineRuntime {
+  const bindings = runtime.bindings;
+  let schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
+  try {
+    schemaValidators = snapshotSchemaValidators(runtime.schemaValidators);
+  } catch (error) {
+    if (error instanceof RuntimeBindingSnapshotError) {
       throw new EvaluationDefinitionError({
         code: 'EVAL_DEFINITION_RUNTIME_BINDING_INVALID',
         stage: 'configuration',
         preparationStage: 'runtime-resolution',
         message: 'Schema validator registry 包含无效 binding。',
-        details: { referenceId: key },
+        details: { referenceId: error.referenceId },
       });
     }
-    const parse = validator.parse.bind(validator);
-    const captured: CoreSchemaValidator = Object.freeze({
-      schema: snapshotJson(schema.data) as SchemaIdentity,
-      parse,
-    });
-    return [key, captured] as const;
-  }));
-}
-
-function snapshotRuntime(runtime: EvaluationEngineRuntime): EvaluationEngineRuntime {
-  const bindings = runtime.bindings;
+    throw error;
+  }
   return Object.freeze({
     bindings: Object.freeze({
       resolveExecutor: bindings.resolveExecutor.bind(bindings),
@@ -178,7 +172,7 @@ function snapshotRuntime(runtime: EvaluationEngineRuntime): EvaluationEngineRunt
       resolveAnalysis: bindings.resolveAnalysis.bind(bindings),
     }),
     clock: runtime.clock,
-    schemaValidators: snapshotSchemaValidators(runtime.schemaValidators),
+    schemaValidators,
     ...(runtime.validateExtension === undefined
       ? {}
       : { validateExtension: runtime.validateExtension.bind(runtime) }),

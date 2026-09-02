@@ -195,7 +195,7 @@ export interface ProductionEvaluationSeriesRun {
     readonly error: ProductionEvaluationHostError;
   })[];
   readonly result: Promise<EvaluationSeriesRunResult>;
-  readonly evolution: Promise<CoreEvolutionEvidence>;
+  readonly evolution: Promise<CoreEvolutionEvidence | undefined>;
 }
 
 function memberCompiled(
@@ -330,6 +330,7 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
   members: readonly ProductionSeriesMemberOptions[];
   bundleId: string;
   reportId: string;
+  seriesSignal?: AbortSignal;
   preflight?: Readonly<OmkEvaluationPreflightOptions>;
 }>): Promise<ProductionEvaluationSeriesRun> {
   const series = input.host.compiled.orchestration.independentSeries;
@@ -424,13 +425,23 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
     return runEvaluationSeries(plan, sources, {
       ...seriesAssembly.ports,
       schemaValidators: validators,
-    }, { bundleId: input.bundleId, reportId: input.reportId });
+      clock: input.host.support.clock,
+    }, {
+      runId: input.reportId,
+      bundleId: input.bundleId,
+      reportId: input.reportId,
+      ...(input.seriesSignal === undefined ? {} : { signal: input.seriesSignal }),
+    });
   });
-  const evolution = result.then((seriesResult) => projectCoreEvolutionEvidence({
-    plan,
-    analysis: seriesResult.analysis,
-    report: seriesResult.report,
-  }));
+  const evolution = result.then((seriesResult) => (
+    seriesResult.status === 'completed'
+      ? projectCoreEvolutionEvidence({
+        plan,
+        analysis: seriesResult.analysis,
+        report: seriesResult.report,
+      })
+      : undefined
+  ));
   return Object.freeze({
     plan,
     members: Object.freeze(members),

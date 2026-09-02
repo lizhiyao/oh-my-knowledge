@@ -591,8 +591,8 @@ function assertPortShape(
         : binding.runtimeKind === 'decision-policy'
           ? callable('decide')
           : binding.runtimeKind === 'series-analysis-node'
-            ? callable('analyze') && SchemaIdentitySchema.safeParse(port.outputSchema).success
-            : callable('decide');
+            ? callable('openRun') && SchemaIdentitySchema.safeParse(port.outputSchema).success
+            : callable('openRun');
   if (!valid) fail({
     code: 'OMK_RUNTIME_BINDING_PORT_INVALID',
     bindingId: binding.bindingId,
