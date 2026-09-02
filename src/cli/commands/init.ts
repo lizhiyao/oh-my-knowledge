@@ -1,10 +1,15 @@
 import { resolve, join, relative, sep } from 'node:path';
-import { Args } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { projectLayout } from '../../omk-layout/index.js';
+import {
+  DEFAULT_INIT_SAMPLE_COUNT,
+  FULL_INIT_SAMPLE_COUNT,
+  serializeInitSamples,
+} from '../templates/init-samples.js';
 
 // 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
 // managed/ 治理档案 + 配置不在此列,默认 track。
@@ -14,62 +19,6 @@ const INIT_OMK_GITIGNORE = `# omk 测量 bulk 与 doctor --fix 备份（项目�
 /observe/
 /backups/
 /state/
-`;
-
-// 脚手架用例必须过 omk 自身的断言合规校验(load-samples.ts Rule A),否则新用户照
-// 快速开始跑的第一条 omk eval 会直接硬报错。约束:contains / not_contains 的 value
-// 只能是单个 ASCII token(长度 [2,40]、无内部空白、无 CJK);多词 / 中文语义匹配一律
-// 走 rubric 交评委判;regex pattern 不能含 CJK。改这里前先跑 `omk eval --dry-run`
-// (非 lenient 合规 oracle)与 test/cli/init-scaffold-conformance 回归测试。
-const INIT_SAMPLES = `{
-  "schemaVersion": "omk.eval-sample-set/v1",
-  "samples": [
-  {
-    "sample_id": "s001",
-    "prompt": "审查以下代码",
-    "context": "function authenticate(username, password) {\\n  const query = \`SELECT * FROM users WHERE name='\${username}' AND pass='\${password}'\`;\\n  return db.execute(query);\\n}",
-    "rubric": "应识别 SQL 注入风险，建议使用参数化查询；不应把这段代码判为安全无问题。",
-    "assertions": [
-      { "type": "contains", "value": "SQL", "weight": 1 },
-      { "type": "contains", "value": "injection", "weight": 1 },
-      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 0.5 }
-    ],
-    "dimensions": {
-      "security": "是否准确识别出 SQL 注入漏洞并说明其危害",
-      "actionability": "是否给出可直接使用的参数化查询修复代码"
-    }
-  },
-  {
-    "sample_id": "s002",
-    "prompt": "审查以下代码",
-    "context": "async function fetchData(url) {\\n  const res = await fetch(url);\\n  const data = await res.json();\\n  return data;\\n}",
-    "rubric": "应指出缺少错误处理（网络异常、非 JSON 响应、HTTP 错误状态码）",
-    "assertions": [
-      { "type": "regex", "pattern": "try[\\\\s\\\\S]*catch|catch|exception|error", "flags": "i", "weight": 1 },
-      { "type": "contains", "value": "status", "weight": 0.5 }
-    ],
-    "dimensions": {
-      "robustness": "是否指出了所有缺失的错误处理场景",
-      "actionability": "是否给出了完整的 try-catch 修复代码"
-    }
-  },
-  {
-    "sample_id": "s003",
-    "prompt": "审查以下代码",
-    "context": "function renderComment(comment) {\\n  document.getElementById('output').innerHTML = '<p>' + comment + '</p>';\\n}",
-    "rubric": "应识别 XSS 风险，建议使用 textContent 或转义 HTML",
-    "assertions": [
-      { "type": "contains", "value": "XSS", "weight": 1 },
-      { "type": "regex", "pattern": "textContent|escape|sanitize|sanitizer", "flags": "i", "weight": 1 },
-      { "type": "contains", "value": "innerHTML", "weight": 0.5 }
-    ],
-    "dimensions": {
-      "security": "是否准确识别出 XSS 漏洞并说明攻击方式",
-      "actionability": "是否给出使用 textContent 或转义的修复代码"
-    }
-  }
-  ]
-}
 `;
 
 // 模板带 Claude Code SKILL.md 兼容 frontmatter(name + description),让用户
@@ -137,6 +86,13 @@ export default class Init extends BaseCommand {
       }),
       command: '<%= config.bin %> init my-project',
     },
+    {
+      description: bilingual({
+        zh: '使用达到注册样本量下限的 20 条官方用例初始化',
+        en: 'Initialize with the 20 first-party samples that meet the registered sample-size floor',
+      }),
+      command: '<%= config.bin %> init my-project --samples 20',
+    },
   ];
 
   static args = {
@@ -163,21 +119,51 @@ export default class Init extends BaseCommand {
 
   static flags = {
     lang: LANG_FLAG,
+    samples: Flags.string({
+      description: bilingual({
+        zh: '官方起步用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限',
+        en: 'Number of first-party starter samples: 3 for a quick run, 20 to meet the registered sample-size floor',
+      }),
+      options: [String(DEFAULT_INIT_SAMPLE_COUNT), String(FULL_INIT_SAMPLE_COUNT)],
+      default: String(DEFAULT_INIT_SAMPLE_COUNT),
+    }),
+    force: Flags.boolean({
+      description: bilingual({
+        zh: '允许覆盖目标目录中已有的 omk 脚手架文件',
+        en: 'Allow overwriting existing project scaffold files in the target directory',
+      }),
+      default: false,
+    }),
   };
 
   async run(): Promise<void> {
-    const { args } = await this.parse(Init);
+    const { args, flags } = await this.parse(Init);
     const lang = this.lang;
     await this.runWithCliExit(async () => {
       const targetDir: string = resolve(args.targetDir || '.');
       const layout = projectLayout(targetDir);
-      const { writeFileSync, mkdirSync } = await import('node:fs');
+      const sampleCount = flags.samples === String(FULL_INIT_SAMPLE_COUNT)
+        ? FULL_INIT_SAMPLE_COUNT
+        : DEFAULT_INIT_SAMPLE_COUNT;
+      const { existsSync, writeFileSync, mkdirSync } = await import('node:fs');
+      const scaffoldFiles = [
+        join(targetDir, 'eval-samples.json'),
+        join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'),
+        join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'),
+        join(layout.root, '.gitignore'),
+      ];
+      const existingFiles = scaffoldFiles
+        .filter((path) => existsSync(path))
+        .map((path) => relative(targetDir, path));
+      if (existingFiles.length > 0 && !flags.force) {
+        throw new Error(tCli('cli.init.existing_files', lang, { paths: existingFiles.join(', ') }));
+      }
 
       // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
       // cwd 默认锚到 skill 根目录,后续可在同目录下放 assets / 子文档。
       mkdirSync(join(targetDir, 'skills', 'code-review-v1'), { recursive: true });
       mkdirSync(join(targetDir, 'skills', 'code-review-v2'), { recursive: true });
-      writeFileSync(join(targetDir, 'eval-samples.json'), INIT_SAMPLES);
+      writeFileSync(join(targetDir, 'eval-samples.json'), serializeInitSamples(sampleCount));
       writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
       writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
       // 像 dvc init 那样预置忽略规则,开发者不会误把测量 bulk 提交进库。
@@ -185,11 +171,17 @@ export default class Init extends BaseCommand {
       writeFileSync(join(layout.root, '.gitignore'), INIT_OMK_GITIGNORE);
 
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
+      console.log(tCli('cli.init.sample_pack', lang, { count: sampleCount }));
       console.log('');
       console.log(tCli('cli.init.next_steps_title', lang));
       console.log(tCli('cli.init.next_step_run', lang, { command: nextEvalCommand(targetDir) }));
       console.log(tCli('cli.init.next_step_executor', lang));
-      console.log(tCli('cli.init.next_step_report', lang));
+      console.log(tCli(
+        sampleCount === FULL_INIT_SAMPLE_COUNT
+          ? 'cli.init.next_step_report_full'
+          : 'cli.init.next_step_report_quick',
+        lang,
+      ));
       console.log(tCli('cli.init.next_step_customize', lang));
       console.log(tCli('cli.init.note_skill_injection', lang));
     });

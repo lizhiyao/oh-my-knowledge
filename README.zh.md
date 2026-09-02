@@ -42,7 +42,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件；`--dry-run` 预览 sealed task plan 与预估调用次数；`omk eval` 跑控制变量 A/B，并在 Studio 打开经过认证的 Core run。跑通后再把 skill 和用例换成你自己的。
+开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件；`--dry-run` 预览 sealed task plan 与预估调用次数；`omk eval` 跑控制变量 A/B，并在 Studio 打开经过认证的 Core run。跑通后再把 skill 和用例换成你自己的。希望首次就使用官方 20 条完整起步集时，把第一条命令换成 `omk init demo --samples 20`。
 
 前置：准备一个已认证的模型 runtime（Codex CLI、Claude Code 或 API 执行器，见[系统要求](#系统要求)）。在 ChatGPT desktop 的 Codex 任务里，omk 会自动使用 `codex`，从 `~/.codex/config.toml` 读取模型，并默认用同一个 Codex 模型担任评委，不依赖 Claude。
 
@@ -55,7 +55,7 @@ export OMK_EXECUTOR=codex
 
 不设置 `OMK_MODEL` 时，omk 会读取 `~/.codex/config.toml` 的模型。也可以继续逐次显式传 `--executor codex --model <codex-model>`。自定义评委时再传 `--judge-models` 或设置 `OMK_JUDGE_MODELS`。
 
-> 首跑只有 3 条用例，verdict 多半是「数据不足（UNDERPOWERED）」——这是正常起点而非出错；把用例加到约 20 条以上，再看「可发布」结论。
+> 默认 3 条用例是低成本流程检查，出现「数据不足（UNDERPOWERED）」符合预期。`--samples 20` 会选择经过难度分层的官方起步用例集，达到 omk 注册的样本量下限。其来源明确标记为 `llm-generated`：它适合学习统计流程，发布判断前仍应人工复核并替换为真实领域用例。
 
 > 命令行有新版本时会自动提示（每 20 小时最多一次）；想永久关闭该提醒，设环境变量 `OMK_SKIP_UPDATE_CHECK=1` 即可。
 

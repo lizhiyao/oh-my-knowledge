@@ -49,6 +49,11 @@ import {
   createSameProcessExecutorAdapter,
   type SameProcessOperationScope,
 } from '../shared/same-process.js';
+import {
+  captureClassifiedEnvironment,
+  mergeOutputClassification,
+  type ClassifiedEnvironmentEntry,
+} from '../shared/classified-environment.js';
 
 export const CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION =
   'omk.custom-command-exchange/v1' as const;
@@ -239,13 +244,7 @@ export interface CustomCommandContentIdentityFile {
   readonly path: string;
 }
 
-export type CustomCommandEnvironmentEntry = {
-  readonly value: string;
-  readonly identity:
-    | { readonly identityKind: 'behavior'; readonly value: JsonValue }
-    | { readonly identityKind: 'credential' }
-    | { readonly identityKind: 'effect-locator' };
-};
+export type CustomCommandEnvironmentEntry = ClassifiedEnvironmentEntry;
 
 export interface CustomCommandConfiguration {
   /** Absolute executable path; PATH lookup and shell parsing are intentionally unsupported. */
@@ -283,6 +282,7 @@ const CustomCommandConfigurationSchema = z.object({
     z.string().min(1).refine((value) => !value.includes('\0')),
     z.object({
       value: z.string().refine((value) => !value.includes('\0')),
+      outputTaint: z.enum(['sensitive', 'secret']).optional(),
       identity: z.discriminatedUnion('identityKind', [
         z.object({
           identityKind: z.literal('behavior'),
@@ -308,6 +308,7 @@ interface CapturedConfiguration {
   readonly arguments: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
   readonly environmentIdentity: JsonValue[];
+  readonly environmentOutputClassification: 'public' | 'sensitive' | 'secret';
   readonly maxOutputBytes: number;
 }
 
@@ -340,23 +341,13 @@ function captureConfiguration(input: Readonly<CustomCommandConfiguration>): Capt
     throw new TypeError('Custom-command executablePath must be absolute.');
   }
   const maxOutputBytes = parsed.maxOutputBytes ?? DEFAULT_CUSTOM_COMMAND_MAX_OUTPUT_BYTES;
-  const environmentEntries = Object.entries(parsed.environment ?? {}).sort(([left], [right]) => (
-    left < right ? -1 : left > right ? 1 : 0
-  ));
+  const environment = captureClassifiedEnvironment(parsed.environment);
   return Object.freeze({
     executablePath: parsed.executablePath,
     arguments: Object.freeze([...(parsed.arguments ?? [])]),
-    environment: Object.freeze(Object.fromEntries(environmentEntries.map(([key, entry]) => [
-      key,
-      entry.value,
-    ]))),
-    environmentIdentity: deepFreezeCanonicalJson(environmentEntries.map(([key, entry]) => ({
-      keyDigest: digestCanonicalJson(key),
-      identityKind: entry.identity.identityKind,
-      ...(entry.identity.identityKind === 'behavior'
-        ? { value: entry.identity.value }
-        : {}),
-    }))),
+    environment: environment.values,
+    environmentIdentity: environment.identity,
+    environmentOutputClassification: environment.outputClassification,
     maxOutputBytes,
   });
 }
@@ -955,8 +946,24 @@ export async function createCustomCommandExecutorAdapter(
         }
         const usage = reportedUsage(response.usage);
         return {
-          ...(response.output === undefined ? {} : { output: response.output as ExecutionContent }),
-          ...(response.trace === undefined ? {} : { trace: response.trace as ExecutionContent }),
+          ...(response.output === undefined ? {} : {
+            output: {
+              ...response.output,
+              classification: mergeOutputClassification(
+                response.output.classification,
+                configuration.environmentOutputClassification,
+              ),
+            } as ExecutionContent,
+          }),
+          ...(response.trace === undefined ? {} : {
+            trace: {
+              ...response.trace,
+              classification: mergeOutputClassification(
+                response.trace.classification,
+                configuration.environmentOutputClassification,
+              ),
+            } as ExecutionContent,
+          }),
           ...(usage === undefined ? {} : { usage }),
         };
       },

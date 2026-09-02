@@ -272,7 +272,9 @@ omk init [targetDir] [flags]
 
 **Flags:**
 
+- `--force` `boolean`:允许覆盖目标目录中已有的 omk 脚手架文件
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--samples` `3|20` (默认 `3`):官方起步用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限
 
 **示例:**
 
@@ -286,6 +288,12 @@ omk init
 
 ```bash
 omk init my-project
+```
+
+> 使用达到注册样本量下限的 20 条官方用例初始化
+
+```bash
+omk init my-project --samples 20
 ```
 
 ## omk install

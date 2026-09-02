@@ -42,7 +42,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-Runs out of the box — no edits needed first. `omk init` scaffolds two skill variants and three sample cases; `--dry-run` previews the sealed task plan and estimated calls; `omk eval` runs the controlled A/B and opens the authenticated Core run in Studio. Once it runs, swap in your own skills and cases.
+Runs out of the box — no edits needed first. `omk init` scaffolds two skill variants and three sample cases; `--dry-run` previews the sealed task plan and estimated calls; `omk eval` runs the controlled A/B and opens the authenticated Core run in Studio. Once it runs, swap in your own skills and cases. To start directly with the first-party 20-case pack, replace the first command with `omk init demo --samples 20`.
 
 Prerequisite: configure one authenticated model runtime (Codex CLI, Claude Code, or an API executor; see [Requirements](#requirements)). Inside a Codex task in the ChatGPT desktop app, omk automatically selects `codex`, reads the model from `~/.codex/config.toml`, and uses the same Codex model as the default judge. Claude is not required.
 
@@ -55,7 +55,7 @@ export OMK_EXECUTOR=codex
 
 Without `OMK_MODEL`, omk reads the model from `~/.codex/config.toml`. You can still pass `--executor codex --model <codex-model>` per command. Pass `--judge-models` or set `OMK_JUDGE_MODELS` only when you want a different judge.
 
-> The first run has only 3 cases, so the verdict will usually be `UNDERPOWERED` (insufficient data) — that's a normal starting point, not an error; grow to ~20+ cases before trusting a ship/no-ship call.
+> The default 3-case pack is a low-cost workflow check, so `UNDERPOWERED` is expected. `--samples 20` selects a first-party, difficulty-stratified starter pack that meets omk's registered sample-size floor. Its provenance is `llm-generated`: use it to learn the statistical workflow, then review and replace it with real domain cases before making a release decision.
 
 > The CLI notifies you when a newer version is available (at most once per 20h); set `OMK_SKIP_UPDATE_CHECK=1` to silence it permanently.
 

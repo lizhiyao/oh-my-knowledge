@@ -32,6 +32,14 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 `omk init` creates two skill variants and three sample cases. `--dry-run` previews the sealed task plan and estimated calls; the real run then opens the Core run in Studio. With only three demo samples, the verdict is often `UNDERPOWERED` — that is a normal teaching result, not a failed run.
 
+If you want the first run to meet omk's registered sample-size floor, create the demo with the first-party 20-case pack instead:
+
+```bash
+omk init demo --samples 20
+```
+
+The full pack has five security, robustness, maintainability, and performance cases each, spans easy / medium / hard difficulty, and includes no-defect controls so a reviewer is not rewarded merely for reporting more issues. It produces 40 control / treatment executions, so the 3-case default remains the fastest way to verify setup. The fixed starter cases are marked `provenance: llm-generated`: twenty samples improve statistical power, but they remain teaching data rather than production release evidence. Review them and replace them with real domain cases before trusting a ship / no-ship decision.
+
 Inside a Codex task, the shortest commands above need no runtime flags. To make Codex the default in regular terminals, add the preference to your shell profile (for example `~/.zshrc`):
 
 ```bash

@@ -44,14 +44,36 @@ const CREDENTIAL_ENVIRONMENT = new Set([
   'OPENAI_API_KEY',
 ]);
 
+const SECRET_TAINT_ENVIRONMENT = new Set([
+  'ALL_PROXY',
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'all_proxy',
+  'http_proxy',
+  'https_proxy',
+]);
+
 const EFFECT_LOCATOR_ENVIRONMENT = new Set([
+  'ALL_PROXY',
   'CODEX_HOME',
+  'CURL_CA_BUNDLE',
   'HOME',
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'NO_PROXY',
   'PATH',
+  'REQUESTS_CA_BUNDLE',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
   'TMPDIR',
   'XDG_CACHE_HOME',
   'XDG_CONFIG_HOME',
   'XDG_DATA_HOME',
+  'all_proxy',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
 ]);
 
 const BEHAVIOR_ENVIRONMENT = new Set([
@@ -90,7 +112,7 @@ export class NodeCliProductionCompositionError extends Error {
   }
 }
 
-function classifiedEnvironment(
+export function classifyNodeCliEnvironment(
   environment: NodeJS.ProcessEnv,
 ): Readonly<Record<string, ClassifiedEnvironmentEntry>> {
   const keys = new Set([
@@ -106,7 +128,11 @@ function classifiedEnvironment(
       : EFFECT_LOCATOR_ENVIRONMENT.has(key)
         ? { identityKind: 'effect-locator' }
         : { identityKind: 'behavior', value };
-    return [[key, Object.freeze({ value, identity })]];
+    return [[key, Object.freeze({
+      value,
+      identity,
+      ...(SECRET_TAINT_ENVIRONMENT.has(key) ? { outputTaint: 'secret' as const } : {}),
+    })]];
   })));
 }
 
@@ -328,7 +354,7 @@ async function executorConfiguration(
     environment,
     projectRoot,
   );
-  const capturedEnvironment = classifiedEnvironment(environment);
+  const capturedEnvironment = classifyNodeCliEnvironment(environment);
   switch (implementationId) {
     case 'codex':
       return Object.freeze({
