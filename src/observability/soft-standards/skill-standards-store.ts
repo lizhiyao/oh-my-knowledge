@@ -22,6 +22,7 @@ import type {
 } from './types.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../../shared/timestamp.js';
+import { resolveObservationsDir } from '../inbox/paths.js';
 
 export const SKILL_DERIVED_STANDARDS_SCHEMA_VERSION = 2;
 
@@ -37,7 +38,7 @@ export function loadSkillDerivedStandards(
   observationsDir: string,
   reviewState: ObservationReviewState = loadObservationReviewState(observationsDir),
 ): Record<string, SkillDerivedStandards> {
-  const dir = skillDerivedStandardsDir(observationsDir);
+  const dir = skillDerivedStandardsDir(resolveObservationsDir(observationsDir));
   if (!existsSync(dir)) return {};
   const out: Record<string, SkillDerivedStandards> = {};
   for (const file of readdirSync(dir)) {

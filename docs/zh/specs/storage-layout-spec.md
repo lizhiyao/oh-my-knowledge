@@ -104,25 +104,9 @@
 
 `omk init` 会写内部 `.omk/.gitignore`，忽略 `eval/`、`doctor/`、`observe/`、`backups/` 和 `state/`，但不忽略 `layout.json` 与 `governance/`。
 
-## 读取兼容与迁移
+## 兼容边界
 
-新写入只用 v2。迁移期内，Studio、resume、gold compare、managed evidence lookup 及项目／全局兜底仍会读取 v1：
-
-```text
-reports        → eval
-doctors        → doctor
-graphs/eval    → eval/<record-id>/derived
-graphs/doctor  → doctor/<record-id>/derived
-observe-health → observe/health
-observe-inbox  → observe/inbox
-managed        → governance/managed
-jobs           → state/jobs
-tmp            → state/tmp
-项目 tools     → 全局 state/tools
-项目 tunnel    → 全局 state/tunnels
-```
-
-`omk migrate --dry-run` 会列出全部动作、保留的未知路径和冲突。`omk migrate` 会先检查完整计划，再开始移动；它不会覆盖内容不同的目标，会删除字节相同的重复文件，支持跨磁盘移动，生成必要 manifest，并在最后写 v2 marker。重复执行是空操作。现有权威报告字节与 digest 保持不变。Evaluation Core manifest v1 继续读取 `evaluation-report.json`，新写入的 manifest v2 使用 `report.json`。
+v2 是唯一受支持的存储布局。OMK 不读取旧存储根，不提供迁移命令，也不会自动搬动或删除旧数据。已有旧 `.omk` 数据保持原样，但不会被 v2 读侧发现；用户可以先备份，再显式删除。Evaluation Core bundle 只支持 manifest v2 与 `report.json`。
 
 ## 清理契约
 

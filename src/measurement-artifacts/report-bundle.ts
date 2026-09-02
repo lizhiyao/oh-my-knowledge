@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import { ensureOwnedLayoutForPath } from '../omk-layout/index.js';
-import { isReportFileName, reportFileStem, safeArtifactFileStem } from './file-names.js';
+import { safeArtifactFileStem } from './file-names.js';
 
 export const MEASUREMENT_BUNDLE_MANIFEST_SCHEMA_VERSION =
   'omk.measurement-bundle-manifest/v1' as const;
@@ -95,8 +95,7 @@ export function writeMeasurementReportBundle(input: Readonly<{
   return Object.freeze({ bundleDir, manifestPath, reportPath });
 }
 
-/** Lists v2 bundle reports and v1 flat `*.report.json` reports during migration. */
-export function listMeasurementReportPaths(rootDir: string): string[] {
+function reportPathsInRoot(rootDir: string): string[] {
   if (!existsSync(rootDir)) return [];
   const paths: string[] = [];
   let entries;
@@ -106,10 +105,6 @@ export function listMeasurementReportPaths(rootDir: string): string[] {
     return [];
   }
   for (const entry of entries) {
-    if (entry.isFile() && isReportFileName(entry.name)) {
-      paths.push(join(rootDir, entry.name));
-      continue;
-    }
     if (!entry.isDirectory() || safeArtifactFileStem(entry.name) !== entry.name) continue;
     const reportPath = join(rootDir, entry.name, MEASUREMENT_REPORT_FILE);
     if (existsSync(reportPath)) paths.push(reportPath);
@@ -117,17 +112,19 @@ export function listMeasurementReportPaths(rootDir: string): string[] {
   return paths.sort();
 }
 
+/** Lists reports from self-contained v2 bundles. */
+export function listMeasurementReportPaths(rootDir: string): string[] {
+  return reportPathsInRoot(rootDir);
+}
+
 export function measurementRecordIdFromReportPath(path: string): string | null {
   const parts = path.split(/[\\/]/);
   const fileName = parts.at(-1);
   if (fileName === MEASUREMENT_REPORT_FILE) return parts.at(-2) ?? null;
-  return fileName === undefined ? null : reportFileStem(fileName);
+  return null;
 }
 
-export function listMeasurementDerivedPaths(rootDir: string, fileName: string): string[] {
-  if (fileName.includes('/') || fileName.includes('\\') || fileName.length === 0) {
-    throw new TypeError('Invalid derived file name.');
-  }
+function derivedPathsInRoot(rootDir: string, fileName: string): string[] {
   if (!existsSync(rootDir)) return [];
   let entries;
   try {
@@ -140,4 +137,14 @@ export function listMeasurementDerivedPaths(rootDir: string, fileName: string): 
     .map((entry) => join(rootDir, entry.name, MEASUREMENT_DERIVED_DIR, fileName))
     .filter(existsSync)
     .sort();
+}
+
+export function listMeasurementDerivedPaths(
+  rootDir: string,
+  fileName: string,
+): string[] {
+  if (fileName.includes('/') || fileName.includes('\\') || fileName.length === 0) {
+    throw new TypeError('Invalid derived file name.');
+  }
+  return derivedPathsInRoot(rootDir, fileName);
 }

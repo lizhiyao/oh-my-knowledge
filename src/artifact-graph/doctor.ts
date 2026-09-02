@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { cardFileName, graphFileName, safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
+import { safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
 import { measurementDerivedDir } from '../measurement-artifacts/report-bundle.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
 import { parseArtifactGraphDocument } from './schema.js';
@@ -62,12 +62,6 @@ function shortHash(input: string): string {
 
 function isCanonicalFileStem(id: string): boolean {
   return id.length > 0 && safeArtifactFileStem(id) === id;
-}
-
-export function doctorGraphDirForDoctorOutput(doctorOutputDir: string): string {
-  return basename(doctorOutputDir) === 'doctors' || basename(doctorOutputDir) === 'doctor'
-    ? join(dirname(doctorOutputDir), 'graphs', 'doctor')
-    : join(doctorOutputDir, 'graphs', 'doctor');
 }
 
 function normalizeRelPath(path: string): string {
@@ -739,9 +733,5 @@ export function removeDoctorGraphSidecars(doctorOutputDir: string, fileStem: str
     } catch {
       // best-effort cleanup only
     }
-  }
-  const legacyDir = doctorGraphDirForDoctorOutput(doctorOutputDir);
-  for (const file of [graphFileName(fileStem), cardFileName(fileStem)]) {
-    try { unlinkSync(join(legacyDir, file)); } catch { /* best-effort cleanup only */ }
   }
 }

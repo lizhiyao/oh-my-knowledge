@@ -1,9 +1,5 @@
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
-import {
-  legacyGlobalLayout,
-  legacyProjectLayout,
-  projectLayout,
-} from '../omk-layout/index.js';
+import { projectLayout } from '../omk-layout/index.js';
 import { listMeasurementReportPaths } from './report-bundle.js';
 
 /**
@@ -40,17 +36,13 @@ export function resolveObserveHealthDir(
   dir: string = projectObserveHealthDir(),
   global: string = globalObserveHealthDir(),
 ): string {
-  const defaults = dir === projectObserveHealthDir() && global === globalObserveHealthDir();
-  const candidates = defaults
-    ? [dir, legacyProjectLayout().observeHealthDir, global, legacyGlobalLayout().observeHealthDir]
-    : [dir, global];
-  const found = candidates.find(hasReports);
+  const found = [dir, global].find(hasReports);
   if (found !== undefined) return found;
   return dir;
 }
 
 // —— doctor（体检报告）——
-// 每份报告使用自包含 bundle（兼容期仍读取 v1 扁平 report）。
+// 每份报告使用自包含 bundle。
 
 /** 项目级 doctors 目录(相对调用时 cwd)。 */
 export function projectDoctorsDir(cwd: string = process.cwd()): string {
@@ -68,11 +60,7 @@ export function resolveDoctorsDir(
   dir: string = projectDoctorsDir(),
   global: string = globalDoctorsDir(),
 ): string {
-  const defaults = dir === projectDoctorsDir() && global === globalDoctorsDir();
-  const candidates = defaults
-    ? [dir, legacyProjectLayout().doctorDir, global, legacyGlobalLayout().doctorDir]
-    : [dir, global];
-  const found = candidates.find(hasReports);
+  const found = [dir, global].find(hasReports);
   if (found !== undefined) return found;
   return dir;
 }

@@ -73,7 +73,7 @@ describe('Evaluation Core downstream projections', () => {
       source,
       cwd: '/workspace/project',
       generatedAt: '2026-08-31T12:01:00.000Z',
-      sourcePath: '/artifacts/evaluation-report.json',
+      sourcePath: '/artifacts/report.json',
       cliVersion: '0.54.0',
     });
 

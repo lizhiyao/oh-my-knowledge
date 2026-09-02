@@ -7,8 +7,6 @@ import {
   OMK_LAYOUT_VERSION,
   ensureLayoutMarker,
   globalLayout,
-  legacyGlobalLayout,
-  legacyProjectLayout,
   projectLayout,
   readLayoutMarker,
 } from '../../src/omk-layout/index.js';
@@ -38,19 +36,6 @@ describe('OMK layout', () => {
     assert.equal(actual.managedDir, join('/omk-home', 'governance', 'managed'));
     assert.equal(actual.toolsDir, join('/omk-home', 'state', 'tools'));
     assert.equal(actual.tunnelsDir, join('/omk-home', 'state', 'tunnels'));
-  });
-
-  it('keeps all legacy path knowledge in the compatibility layout', () => {
-    const project = legacyProjectLayout('/repo');
-    assert.equal(project.evalDir, join('/repo', '.omk', 'reports'));
-    assert.equal(project.doctorDir, join('/repo', '.omk', 'doctors'));
-    assert.equal(project.observeHealthDir, join('/repo', '.omk', 'observe-health'));
-    assert.equal(project.observeInboxDir, join('/repo', '.omk', 'observe-inbox'));
-    assert.equal(project.managedDir, join('/repo', '.omk', 'managed'));
-
-    const global = legacyGlobalLayout('/omk-home');
-    assert.equal(global.evalDir, join('/omk-home', 'reports'));
-    assert.equal(global.toolsDir, join('/omk-home', 'tools'));
   });
 
   it('writes and validates a minimal layout marker idempotently', () => {

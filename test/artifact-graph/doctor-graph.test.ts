@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   buildDoctorArtifactGraph,
-  doctorGraphDirForDoctorOutput,
   persistDoctorGraphSidecars,
   removeDoctorGraphSidecars,
   renderDoctorEvidenceCard,
@@ -189,20 +188,6 @@ describe('doctor artifact graph', () => {
       removeDoctorGraphSidecars(outputDir, 'a/b');
       assert.equal(existsSync(canonical.graphPath), true);
       assert.equal(existsSync(canonical.evidenceCardPath), true);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('retains the legacy sidecar resolver for v1 cleanup', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-custom-out-'));
-    try {
-      const outputDir = join(tmp, 'custom-output');
-      assert.equal(doctorGraphDirForDoctorOutput(outputDir), join(outputDir, 'graphs', 'doctor'));
-      assert.equal(
-        doctorGraphDirForDoctorOutput(join(tmp, '.omk', 'doctors')),
-        join(tmp, '.omk', 'graphs', 'doctor'),
-      );
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

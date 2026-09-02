@@ -61,7 +61,7 @@ function inboxJsons(dir: string): string[] {
 
 function seedInbox(traceDir: string, skill: string, inboxDir: string): void {
   const report = buildObservationInboxReport(makeTrace(traceDir, skill));
-  saveObservationInboxReport(report, join(inboxDir, 'reports'));
+  saveObservationInboxReport(report, inboxDir);
 }
 
 const globalInbox = (home: string): string => join(home, 'observe', 'inbox');

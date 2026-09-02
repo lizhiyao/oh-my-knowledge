@@ -5,7 +5,6 @@ import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
 import { integerStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
 import { projectReportsDir, globalReportsDir } from '../../../../measurement-artifacts/directories.js';
-import { legacyGlobalLayout, legacyProjectLayout } from '../../../../omk-layout/index.js';
 
 export default class EvalGoldCompare extends BaseCommand {
   static description = bilingual({
@@ -97,11 +96,7 @@ export default class EvalGoldCompare extends BaseCommand {
       });
       const store = flags['reports-dir']
         ? storeOf(resolve(flags['reports-dir']))
-        : createOverlayCoreRunArtifactStore(storeOf(projectReportsDir()), [
-            storeOf(legacyProjectLayout().evalDir),
-            storeOf(globalReportsDir()),
-            storeOf(legacyGlobalLayout().evalDir),
-          ]);
+        : createOverlayCoreRunArtifactStore(storeOf(projectReportsDir()), [storeOf(globalReportsDir())]);
       const source = await store.get(runId);
       if (source === undefined) {
         console.error(lang === 'zh'

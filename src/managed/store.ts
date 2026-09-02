@@ -7,8 +7,6 @@ import { isAbsolute, join, normalize } from 'node:path';
 import { shortContentHash } from '../shared/content-hash.js';
 import {
   globalLayout,
-  legacyGlobalLayout,
-  legacyProjectLayout,
   projectLayout,
   ensureOwnedLayoutForPath,
 } from '../omk-layout/index.js';
@@ -250,22 +248,14 @@ function isManagedArtifactRecord(
 
 export function loadManagedRecord(dir: string, id: string): ManagedArtifactRecord | null {
   if (!isManagedRecordId(id)) return null;
-  const sameScopeCandidates = dir === managedDir()
-    ? [dir, legacyProjectLayout().managedDir]
-    : dir === globalManagedDir()
-      ? [dir, legacyGlobalLayout().managedDir]
-      : [dir];
-  for (const candidate of sameScopeCandidates) {
-    const path = recordPath(candidate, id);
-    if (!existsSync(path)) continue;
-    try {
-      const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
-      if (isManagedArtifactRecord(parsed, id)) return parsed;
-    } catch {
-      // Try the same-scope legacy root when the v2 record is absent or invalid.
-    }
+  const path = recordPath(dir, id);
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+    return isManagedArtifactRecord(parsed, id) ? parsed : null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function readRecordsFromDir(dir: string): ManagedArtifactRecord[] {
@@ -303,41 +293,25 @@ function withManagedRecordLock<T>(dir: string, recordId: string, operation: () =
 
 /** 读全部记录。项目目录空 → 兜底全局(镜像 observe inbox 的 project→global)。 */
 export function loadAllManagedRecords(dir: string = managedDir()): ManagedArtifactRecord[] {
-  for (const candidate of managedReadCandidates(dir)) {
-    const records = readRecordsFromDir(candidate);
-    if (records.length > 0) return records;
+  const local = readRecordsFromDir(dir);
+  if (local.length > 0) return local;
+  const global = globalManagedDir();
+  if (dir !== global) {
+    const fallback = readRecordsFromDir(global);
+    if (fallback.length > 0) return fallback;
   }
-  return [];
+  return local;
 }
 
 /**
- * 写入根始终归一到 v2。旧记录仍参与读取与合并，但任何更新都会物化到对应 v2 根，
- * 避免迁移期继续产生新的 v1 写入。
+ * 哪个 managed 目录是权威（有记录的那个）：项目目录非空取项目，否则全局非空取全局，都空回项目。
+ * 与 `loadAllManagedRecords` 的 project→global 回退同口径。
  */
 export function resolveManagedDir(dir: string = managedDir()): string {
-  const project = managedDir();
-  const legacyProject = legacyProjectLayout().managedDir;
+  if (readRecordsFromDir(dir).length > 0) return dir;
   const global = globalManagedDir();
-  const legacyGlobal = legacyGlobalLayout().managedDir;
-  for (const candidate of managedReadCandidates(dir)) {
-    if (readRecordsFromDir(candidate).length === 0) continue;
-    if (candidate === legacyProject) return project;
-    if (candidate === legacyGlobal) return global;
-    return candidate;
-  }
-  if (dir === legacyProject) return project;
-  if (dir === legacyGlobal) return global;
+  if (dir !== global && readRecordsFromDir(global).length > 0) return global;
   return dir;
-}
-
-function managedReadCandidates(dir: string): string[] {
-  const project = managedDir();
-  const global = globalManagedDir();
-  const candidates = [dir];
-  if (dir === project) candidates.push(legacyProjectLayout().managedDir);
-  if (dir !== global) candidates.push(global);
-  candidates.push(legacyGlobalLayout().managedDir);
-  return [...new Set(candidates)];
 }
 
 /**

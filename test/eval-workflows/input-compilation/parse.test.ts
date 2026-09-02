@@ -21,8 +21,8 @@ const defaults: CliEvaluationParseDefaults = {
   targetRuntime: { executorId: 'codex', model: 'gpt-example', effort: 'low' },
   judgeMembers: [{ executorId: 'codex', model: 'gpt-example' }],
   presentation: {
-    projectOutputDirectoryLocator: '.omk/reports',
-    globalOutputDirectoryLocator: '/global/reports',
+    projectOutputDirectoryLocator: '.omk/eval',
+    globalOutputDirectoryLocator: '/global/eval',
     language: 'zh',
     languageDefaultSource: 'environment-selection',
   },

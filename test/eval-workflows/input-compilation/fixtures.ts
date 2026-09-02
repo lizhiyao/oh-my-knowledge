@@ -353,7 +353,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     orchestration: {
       dryRun: false,
       batch: false,
-      resumeSourceLocator: '/repo/.omk/reports/previous.json',
+      resumeSourceLocator: '/repo/.omk/eval/previous.json',
       preflight: { doctor: 'required', connectivity: 'required' },
       diagnostic: 'enabled-outside-core',
       managedEvidence: 'append',
@@ -361,7 +361,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
       independentSeries: { repeatCount: 3, seriesInstanceId: 'repeat-series-run-20260830' },
     },
     presentation: {
-      outputDirectoryLocator: '/repo/.omk/reports',
+      outputDirectoryLocator: '/repo/.omk/eval',
       indexScope: 'project',
       language: 'zh',
       serve: true,

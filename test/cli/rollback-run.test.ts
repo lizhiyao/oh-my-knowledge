@@ -10,7 +10,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { hashArtifactSource, managedRecordId } from '../../src/managed/index.js';
@@ -27,7 +27,6 @@ describe('omk rollback command', () => {
   let home: string;
   let env: NodeJS.ProcessEnv;
   let managed: string;
-  let legacyManaged: string;
   let srcPath: string;
   let recId: string;
   let curHash: string;
@@ -44,14 +43,11 @@ describe('omk rollback command', () => {
       })],
       decisions: [],
     };
-    writeFileSync(join(legacyManaged, `${recId}.json`), JSON.stringify(rec));
+    writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));
   }
 
   function readDecisions(): Array<{ decisionKind: string; contentHash?: string; reason?: string }> {
-    const path = existsSync(join(managed, `${recId}.json`))
-      ? join(managed, `${recId}.json`)
-      : join(legacyManaged, `${recId}.json`);
-    return JSON.parse(readFileSync(path, 'utf-8')).decisions;
+    return JSON.parse(readFileSync(join(managed, `${recId}.json`), 'utf-8')).decisions;
   }
 
   const run = async (args: string[]): Promise<RunResult> => {
@@ -77,8 +73,7 @@ describe('omk rollback command', () => {
     home = mkdtempSync(join(tmpdir(), 'omk-rollback-home-'));
     env = { ...process.env, HOME: home, USERPROFILE: home };
     managed = join(proj, '.omk', 'governance', 'managed');
-    legacyManaged = join(proj, '.omk', 'managed');
-    mkdirSync(legacyManaged, { recursive: true });
+    mkdirSync(managed, { recursive: true });
     srcPath = join(proj, 'review.md');
     writeFileSync(srcPath, '# review skill\n\ndo the thing.\n');
     curHash = hashArtifactSource(srcPath, false);

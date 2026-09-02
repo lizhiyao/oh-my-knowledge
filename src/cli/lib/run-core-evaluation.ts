@@ -33,7 +33,7 @@ import { discoverBatchSkills } from '../../inputs/skill-loader.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { generateRunId } from '../../measurement-artifacts/run-id.js';
-import { globalLayout, legacyGlobalLayout, legacyProjectLayout, projectLayout } from '../../omk-layout/index.js';
+import { globalLayout, projectLayout } from '../../omk-layout/index.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';
 
@@ -56,7 +56,7 @@ export interface RunCoreEvaluationCommandResult {
   readonly outputDirectory: string;
 }
 
-function compatibleRunStore(
+function runStoreForOutput(
   outputDirectory: string,
   primaryContentResolver: EvaluationContentResolver | undefined,
 ): CoreRunArtifactStore {
@@ -67,10 +67,8 @@ function compatibleRunStore(
   const project = projectLayout();
   const global = globalLayout();
   const fallbackDirs = resolved === resolve(project.evalDir)
-    ? [legacyProjectLayout().evalDir, global.evalDir, legacyGlobalLayout().evalDir]
-    : resolved === resolve(global.evalDir)
-      ? [legacyGlobalLayout().evalDir]
-      : [];
+    ? [global.evalDir]
+    : [];
   const unique = [...new Set(fallbackDirs.map((dir) => resolve(dir)))]
     .filter((dir) => dir !== resolved);
   if (unique.length === 0) return primary;
@@ -256,7 +254,7 @@ export async function runCoreEvaluationCommand(
       return child.stored;
     });
     const contentResolver = createNodeCoreContentStore(join(outputDirectory, 'content'));
-    const runStore = input.store ?? compatibleRunStore(outputDirectory, contentResolver);
+    const runStore = input.store ?? runStoreForOutput(outputDirectory, contentResolver);
     const batchId = generateRunId(['batch']);
     const batch = await createNodeCoreBatchArtifactStore(outputDirectory, runStore).save({
       batchId,
@@ -296,7 +294,7 @@ export async function runCoreEvaluationCommand(
     outputDirectory,
     environment: input.environment,
   });
-  const store = input.store ?? compatibleRunStore(
+  const store = input.store ?? runStoreForOutput(
     outputDirectory,
     composition.support.contentResolver,
   );

@@ -12,6 +12,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { normalizeTraceTimestamp } from '../trace/trace-ir.js';
 import { forEachNonEmptyUtf8Line } from '../trace/source.js';
+import { resolveObservationsDir } from './paths.js';
 
 const ARCHIVE_SCHEMA_VERSION = 1;
 const MAX_ARCHIVE_SOURCE_BYTES = 16 * 1024 * 1024;
@@ -96,7 +97,7 @@ export function loadObservationSourceRecordArchive(
   if (!ref || ref.status === 'unavailable' || !ref.relativePath) {
     return unavailableView(ref?.reason ?? 'no_record_ranges');
   }
-  const path = safeArchivePath(observationsDir, ref.relativePath);
+  const path = safeArchivePath(resolveObservationsDir(observationsDir), ref.relativePath);
   if (!path || !existsSync(path)) return unavailableView('archive_invalid');
 
   try {

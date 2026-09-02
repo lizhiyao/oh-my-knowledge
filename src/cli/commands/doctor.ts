@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, unlinkSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -371,7 +371,7 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
   if (!Number.isSafeInteger(maxKeep) || maxKeep < 0) {
     throw new TypeError('maxKeep must be a non-negative safe integer');
   }
-  const candidates: { path: string; graphStem: string; timestamp: string; bundled: boolean }[] = [];
+  const candidates: { path: string; graphStem: string; timestamp: string }[] = [];
   for (const path of listMeasurementReportPaths(dir)) {
     try {
       const data = parseDoctorReport(JSON.parse(readFileSync(path, 'utf-8')));
@@ -383,16 +383,14 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
         path,
         graphStem: expectedStem,
         timestamp: data.timestamp,
-        bundled: path.endsWith('/report.json') || path.endsWith('\\report.json'),
       });
     } catch { /* skip corrupt / unrelated json */ }
   }
   if (candidates.length <= maxKeep) return;
   candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  for (const { path, graphStem, bundled } of candidates.slice(maxKeep)) {
+  for (const { path, graphStem } of candidates.slice(maxKeep)) {
     try {
-      if (bundled) rmSync(dirname(path), { recursive: true, force: true });
-      else unlinkSync(path);
+      rmSync(dirname(path), { recursive: true, force: true });
     } catch { /* ignore */ }
     // 连带删卡片:否则被 prune 掉的报告会经 listDoctorCards 合并在本项目 studio「复活」(正文已删、卡片还在)。
     // 卡片 id = 文件 stem(`{name}-{id}`),与 indexDoctorWrite 写入口径一致。

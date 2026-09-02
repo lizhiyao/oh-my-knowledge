@@ -35,20 +35,6 @@ export interface OmkLayout {
   readonly artifactIndexDir: string;
 }
 
-export interface LegacyOmkLayout {
-  readonly root: string;
-  readonly evalDir: string;
-  readonly doctorDir: string;
-  readonly observeHealthDir: string;
-  readonly observeInboxDir: string;
-  readonly managedDir: string;
-  readonly backupsDir: string;
-  readonly jobsDir: string;
-  readonly tmpDir: string;
-  readonly toolsDir: string;
-  readonly tunnelsDir: string;
-}
-
 export interface OmkLayoutMarker {
   readonly layoutVersion: typeof OMK_LAYOUT_VERSION;
 }
@@ -89,36 +75,12 @@ function layout(root: string): OmkLayout {
   });
 }
 
-function legacyLayout(root: string): LegacyOmkLayout {
-  return Object.freeze({
-    root,
-    evalDir: join(root, 'reports'),
-    doctorDir: join(root, 'doctors'),
-    observeHealthDir: join(root, 'observe-health'),
-    observeInboxDir: join(root, 'observe-inbox'),
-    managedDir: join(root, 'managed'),
-    backupsDir: join(root, 'backups'),
-    jobsDir: join(root, 'jobs'),
-    tmpDir: join(root, 'tmp'),
-    toolsDir: join(root, 'tools'),
-    tunnelsDir: join(root, 'tunnel'),
-  });
-}
-
 export function projectLayout(cwd: string = process.cwd()): OmkLayout {
   return layout(join(cwd, '.omk'));
 }
 
 export function globalLayout(root: string = OMK_HOME): OmkLayout {
   return layout(root);
-}
-
-export function legacyProjectLayout(cwd: string = process.cwd()): LegacyOmkLayout {
-  return legacyLayout(join(cwd, '.omk'));
-}
-
-export function legacyGlobalLayout(root: string = OMK_HOME): LegacyOmkLayout {
-  return legacyLayout(root);
 }
 
 export function readLayoutMarker(root: string): OmkLayoutMarker | undefined {

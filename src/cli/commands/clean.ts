@@ -71,14 +71,13 @@ export default class Clean extends BaseCommand {
     const { flags } = await this.parse(Clean);
     const lang = this.lang;
     await this.runWithCliExit(async () => {
-      const selected: CleanCategory[] = flags.all
-        ? ['state', 'reports', 'observations', 'backups']
-        : [
-            ...(flags.reports ? ['reports' as const] : []),
-            ...(flags.observations ? ['observations' as const] : []),
-            ...(flags.backups ? ['backups' as const] : []),
-            ...(flags.governance ? ['governance' as const] : []),
-          ];
+      const selected: CleanCategory[] = [
+        ...(flags.all ? ['state', 'reports', 'observations', 'backups'] as const : []),
+        ...(flags.reports ? ['reports' as const] : []),
+        ...(flags.observations ? ['observations' as const] : []),
+        ...(flags.backups ? ['backups' as const] : []),
+        ...(flags.governance ? ['governance' as const] : []),
+      ];
       const plan = planClean({
         scope: flags.global ? 'global' : 'project',
         categories: selected.length > 0 ? selected : ['state'],

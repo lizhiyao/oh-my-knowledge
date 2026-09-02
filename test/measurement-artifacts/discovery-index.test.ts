@@ -11,8 +11,11 @@ import {
   indexDoctorWrite, listDoctorCards, removeDoctorCard,
   indexObserveWrite, listObserveCards, removeObserveCard, artifactIndexDir,
 } from '../../src/measurement-artifacts/discovery-index.js';
-import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 import { globalDoctorsDir, globalObserveHealthDir } from '../../src/measurement-artifacts/directories.js';
+
+function reportFileName(id: string): string {
+  return join(id, 'report.json');
+}
 
 describe('artifact-index 写侧(doctor 域)', () => {
   let indexRoot: string;

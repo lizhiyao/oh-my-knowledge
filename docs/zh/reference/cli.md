@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`migrate`（升级旧存储布局）·`clean`（按生命周期清理）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`clean`（按生命周期清理）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -23,31 +23,6 @@ omk init [目录]
 <!-- omk:cli:init:flags:end -->
 
 在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。现有两版 skill + 三条用例只是默认的 A/B 起步模板。
-
-## `omk migrate`
-
-```bash
-omk migrate --dry-run
-omk migrate
-omk migrate --global
-```
-
-<!-- omk:cli:migrate:flags:start -->
-
-**Flags:**
-
-```text
-  --dry-run       只显示迁移计划，不修改文件
-  --global        迁移全局 ~/.oh-my-knowledge
-  --json          输出机器可读 JSON
-  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-```
-
-完整描述见 `omk migrate --help`。
-
-<!-- omk:cli:migrate:flags:end -->
-
-先完整检查冲突，再把 v1 旧存储迁到领域化的 v2 布局。命令可重复执行，绝不覆盖内容不同的目标；所有移动成功后才写入 `layout.json`。建议先用 `--dry-run` 检查每项移动和冲突。
 
 ## `omk clean`
 

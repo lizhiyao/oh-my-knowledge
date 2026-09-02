@@ -104,25 +104,9 @@ Project and machine durable data use the same domains. Machine-specific material
 
 `omk init` writes an internal `.omk/.gitignore` that ignores `eval/`, `doctor/`, `observe/`, `backups/`, and `state/`, while leaving `layout.json` and `governance/` trackable.
 
-## Read compatibility and migration
+## Compatibility boundary
 
-New writes use v2. During migration, Studio, resume, gold compare, managed evidence lookup, and project/global fallback also read v1 roots:
-
-```text
-reports        → eval
-doctors        → doctor
-graphs/eval    → eval/<record-id>/derived
-graphs/doctor  → doctor/<record-id>/derived
-observe-health → observe/health
-observe-inbox  → observe/inbox
-managed        → governance/managed
-jobs           → state/jobs
-tmp            → state/tmp
-project tools  → global state/tools
-project tunnel → global state/tunnels
-```
-
-`omk migrate --dry-run` prints every action, retained unknown path, and conflict. `omk migrate` preflights the entire plan before moving anything, never overwrites different content, removes byte-identical duplicates, tolerates cross-device moves, writes generated manifests, and writes the v2 marker last. Re-running it is a no-op. Existing authoritative report bytes and digests are preserved. Evaluation Core manifest v1 bundles keep reading `evaluation-report.json`; newly written manifest v2 bundles use `report.json`.
+The v2 tree is the only supported storage layout. OMK neither reads old storage roots nor provides a migration command, and it never moves or deletes old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only.
 
 ## Cleanup contract
 

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
-import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
+import { writeMeasurementReportBundle } from '../../src/measurement-artifacts/report-bundle.js';
 
 function doctorReport(skillName: string, id: string, timestamp: string) {
   return {
@@ -22,16 +22,23 @@ function doctorReport(skillName: string, id: string, timestamp: string) {
   };
 }
 
-// 制造 N 份 single-skill doctor report 文件，timestamp 严格递增，文件名按时间编号，
+// 制造 N 份 single-skill doctor report bundle，timestamp 严格递增，record id 按时间编号，
 // 方便断言保留集合是否最近的 K 份。
 function seedDoctorHistory(dir: string, skillName: string, count: number): string[] {
   const files: string[] = [];
   for (let i = 0; i < count; i++) {
     const timestamp = `2026-05-${String(10 + i).padStart(2, '0')}T00:00:00.000Z`;
     const id = `r${String(i).padStart(3, '0')}`;
-    const file = reportFileName(`${skillName}-${id}`);
-    writeFileSync(join(dir, file), JSON.stringify(doctorReport(skillName, id, timestamp)));
-    files.push(file);
+    const recordId = `${skillName}-${id}`;
+    writeMeasurementReportBundle({
+      rootDir: dir,
+      measurementDomain: 'doctor',
+      recordId,
+      reportId: id,
+      createdAt: timestamp,
+      report: doctorReport(skillName, id, timestamp),
+    });
+    files.push(recordId);
   }
   return files;
 }
@@ -53,9 +60,9 @@ describe('pruneDoctorHistory', () => {
     const remaining = readdirSync(dir).sort();
     // r007 / r008 / r009 timestamp 最新,应保留
     expect(remaining).toEqual([
-      reportFileName('code-review-r007'),
-      reportFileName('code-review-r008'),
-      reportFileName('code-review-r009'),
+      'code-review-r007',
+      'code-review-r008',
+      'code-review-r009',
     ]);
   });
 
@@ -85,8 +92,8 @@ describe('pruneDoctorHistory', () => {
     const remaining = readdirSync(dir).sort();
     expect(remaining).toContain('code-review.json');
     expect(remaining).toEqual([
-      reportFileName('code-review-r001'),
-      reportFileName('code-review-r002'),
+      'code-review-r001',
+      'code-review-r002',
       'code-review.json',
     ]);
   });
@@ -110,15 +117,16 @@ describe('pruneDoctorHistory', () => {
 
   it('正文 id 与文件名不一致时不删除，避免误删被替换文件', () => {
     seedDoctorHistory(dir, 'code-review', 3);
-    const forged = reportFileName('code-review-r999');
+    const forged = 'code-review-r999';
+    mkdirSync(join(dir, forged));
     writeFileSync(
-      join(dir, forged),
+      join(dir, forged, 'report.json'),
       JSON.stringify(doctorReport('code-review', 'different-id', '2020-01-01T00:00:00.000Z')),
     );
 
     pruneDoctorHistory(dir, 'code-review', 1);
 
     expect(readdirSync(dir)).toContain(forged);
-    expect(readdirSync(dir).filter((file) => /^code-review-r00[0-2]\.report\.json$/.test(file))).toHaveLength(1);
+    expect(readdirSync(dir).filter((file) => /^code-review-r00[0-2]$/.test(file))).toHaveLength(1);
   });
 });

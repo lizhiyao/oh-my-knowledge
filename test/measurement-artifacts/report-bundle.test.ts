@@ -38,7 +38,7 @@ describe('measurement report bundle', () => {
     assert.deepEqual(listMeasurementDerivedPaths(rootDir, 'graph.json'), [graphPath]);
   });
 
-  it('lists v2 bundle reports together with v1 flat reports', () => {
+  it('lists only self-contained v2 bundle reports', () => {
     const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-list-'));
     const current = writeMeasurementReportBundle({
       rootDir,
@@ -48,10 +48,10 @@ describe('measurement report bundle', () => {
       createdAt: '2026-09-02T00:00:00.000Z',
       report: {},
     });
-    const legacy = join(rootDir, 'observe-1.report.json');
-    writeFileSync(legacy, '{}');
-    assert.deepEqual(listMeasurementReportPaths(rootDir), [legacy, current.reportPath].sort());
-    assert.equal(measurementRecordIdFromReportPath(legacy), 'observe-1');
+    const flat = join(rootDir, 'observe-1.report.json');
+    writeFileSync(flat, '{}');
+    assert.deepEqual(listMeasurementReportPaths(rootDir), [current.reportPath]);
+    assert.equal(measurementRecordIdFromReportPath(flat), null);
     assert.equal(measurementRecordIdFromReportPath(current.reportPath), 'observe-2');
   });
 

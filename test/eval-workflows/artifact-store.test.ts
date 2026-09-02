@@ -5,7 +5,6 @@ import {
   mkdtemp,
   readFile,
   readdir,
-  rename,
   rm,
   stat,
   writeFile,
@@ -24,15 +23,12 @@ import type { SealedRunPlan } from '../../src/evaluation-core/compiler/index.js'
 import {
   CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,
   CORE_RUN_DOCUMENT_FILES,
-  LEGACY_CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,
-  LEGACY_CORE_RUN_EVALUATION_REPORT_FILE,
   CoreRunArtifactStoreError,
   CoreRunArtifactOverlayError,
   NodeCoreContentStoreError,
   createOverlayCoreRunArtifactStore,
   createNodeCoreContentStore,
   createNodeCoreRunArtifactStore,
-  materializeCoreRunArtifactManifest,
   projectCoreRunArtifactIndexCard,
 } from '../../src/eval-workflows/artifact-store/index.js';
 import {
@@ -162,35 +158,6 @@ describe('Node Core run artifact store', () => {
       expectStoreError('CORE_RUN_ARTIFACT_RUN_ID_CONFLICT'),
     );
     assert.deepEqual(await store.get('shared-run'), stored);
-  });
-
-  it('continues to authenticate and read a manifest v1 bundle', async () => {
-    const root = await temporaryDirectory();
-    const runId = 'legacy-manifest-run';
-    const result = await runConformanceScenario('function', { runId });
-    const store = createNodeCoreRunArtifactStore(root);
-    const stored = await store.save(saveRequest(result, runId));
-    const directory = await publishedRunDirectory(root);
-    await rename(
-      join(directory, CORE_RUN_DOCUMENT_FILES.evaluationReport),
-      join(directory, LEGACY_CORE_RUN_EVALUATION_REPORT_FILE),
-    );
-    const manifestPayload = { ...stored.manifest };
-    delete (manifestPayload as { manifestDigest?: string }).manifestDigest;
-    const manifest = materializeCoreRunArtifactManifest({
-      ...manifestPayload,
-      schemaVersion: LEGACY_CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,
-      documents: manifestPayload.documents.map((document) => (
-        document.documentKind === 'evaluation-report'
-          ? { ...document, fileName: LEGACY_CORE_RUN_EVALUATION_REPORT_FILE }
-          : document
-      )),
-    });
-    await writeFile(
-      join(directory, CORE_RUN_DOCUMENT_FILES.manifest),
-      JSON.stringify(manifest),
-    );
-    assert.deepEqual((await store.get(runId))?.report, result.report);
   });
 
   it('publishes one complete winner under concurrent conflicting writers', async () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
@@ -605,6 +605,9 @@ describe('DSH /omk observe command', () => {
     assert.match(listed.text ?? '', /root-session/);
     const observed = await handler({ ...invocation, rawInput: 'observe root-session' });
     assert.equal(observed.kind, 'success', observed.text);
+    const reportsDir = join(dir, '.omk', 'observe', 'inbox', 'reports');
+    assert.equal(existsSync(join(dir, '.omk', 'layout.json')), true);
+    assert.equal(readdirSync(reportsDir).some((file) => file.endsWith('.report.json')), true);
     const url = /任务轨迹：(http:\/\/[^\s]+)/u.exec(observed.text ?? '')?.[1];
     assert.ok(url);
     const response = await fetch(url);

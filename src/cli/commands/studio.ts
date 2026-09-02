@@ -10,11 +10,7 @@ import {
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
   projectReportsDir, globalReportsDir,
 } from '../../measurement-artifacts/directories.js';
-import {
-  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
-  resolveObservationsDir,
-} from '../../observability/inbox/index.js';
-import { legacyGlobalLayout, legacyProjectLayout } from '../../omk-layout/index.js';
+import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';
@@ -92,17 +88,10 @@ export async function runStudio(
   const coreStore = flags['reports-dir']
     ? coreStoreFor(reportsDirOpt!)
     : flags.global
-      ? createOverlayCoreRunArtifactStore(
-          coreStoreFor(globalReportsDir()),
-          [coreStoreFor(legacyGlobalLayout().evalDir)],
-        )
+      ? coreStoreFor(globalReportsDir())
       : createOverlayCoreRunArtifactStore(
         coreStoreFor(projectReportsDir()),
-        [
-          coreStoreFor(legacyProjectLayout().evalDir),
-          coreStoreFor(globalReportsDir()),
-          coreStoreFor(legacyGlobalLayout().evalDir),
-        ],
+        [coreStoreFor(globalReportsDir())],
       );
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
@@ -113,16 +102,11 @@ export async function runStudio(
     analysesDir: flags['analyses-dir']
       ? resolve(flags['analyses-dir'])
       : (flags.global
-          ? (): string => resolveObserveHealthDir(
-              globalObserveHealthDir(),
-              legacyGlobalLayout().observeHealthDir,
-            )
+          ? globalObserveHealthDir
           : (): string => resolveObserveHealthDir(projectObserveHealthDir())),
     doctorsDir: flags['doctors-dir']
       ? resolve(flags['doctors-dir'])
-      : (flags.global
-          ? (): string => resolveDoctorsDir(globalDoctorsDir(), legacyGlobalLayout().doctorDir)
-          : (): string => resolveDoctorsDir(projectDoctorsDir())),
+      : (flags.global ? globalDoctorsDir : (): string => resolveDoctorsDir(projectDoctorsDir())),
     // observe / doctor 仍可通过各自的索引卡片发现别项目产物；--global 或显式目录只看固定目录。
     includeObserveCards: !flags.global && !flags['analyses-dir'],
     includeDoctorCards: !flags.global && !flags['doctors-dir'],
@@ -131,7 +115,7 @@ export async function runStudio(
     ...(flags['observations-dir']
       ? { observationsDir: resolve(flags['observations-dir']) }
       : flags.global
-        ? { observationsDir: resolveObservationsDir(DEFAULT_GLOBAL_OBSERVATIONS_DIR) }
+        ? { observationsDir: DEFAULT_GLOBAL_OBSERVATIONS_DIR }
         : {}),
     // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
     // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。

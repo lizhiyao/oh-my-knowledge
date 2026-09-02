@@ -436,43 +436,6 @@ omk list --global
 omk list --json
 ```
 
-## omk migrate
-
-把旧版 OMK 存储目录迁移到领域化的 v2 布局；迁移前会完整检查冲突。
-
-**用法:**
-
-```bash
-omk migrate [flags]
-```
-
-**Flags:**
-
-- `--dry-run` `boolean`:只显示迁移计划，不修改文件
-- `--global` `boolean`:迁移全局 ~/.oh-my-knowledge
-- `--json` `boolean`:输出机器可读 JSON
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-
-**示例:**
-
-> 预览当前项目迁移
-
-```bash
-omk migrate --dry-run
-```
-
-> 迁移当前项目
-
-```bash
-omk migrate
-```
-
-> 迁移全局存储
-
-```bash
-omk migrate --global
-```
-
 ## omk observe
 
 把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show。

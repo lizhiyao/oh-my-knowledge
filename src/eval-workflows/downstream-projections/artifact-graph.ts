@@ -14,7 +14,7 @@ import type {
   ArtifactGraphNodeKind,
   ArtifactGraphStatus,
 } from '../../artifact-graph/contracts.js';
-import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
+import { CORE_RUN_DOCUMENT_FILES, type StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { CoreDownstreamProjectionError } from './contracts.js';
 import { assertCoreProjectionSource } from './source.js';
 
@@ -153,7 +153,7 @@ export function projectCoreArtifactGraph(
     evidenceRefs: evidence(
       report.reportId,
       documentHash.get('evaluation-report')!,
-      'evaluation-report.json',
+      CORE_RUN_DOCUMENT_FILES.evaluationReport,
       '',
     ),
   });
@@ -460,7 +460,7 @@ export function projectCoreArtifactGraph(
       evidenceRefs: evidence(
         report.reportId,
         documentHash.get('evaluation-report')!,
-        'evaluation-report.json',
+        CORE_RUN_DOCUMENT_FILES.evaluationReport,
         '/decision',
       ),
     });

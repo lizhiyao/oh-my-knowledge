@@ -43,7 +43,7 @@ describe('omk list command', () => {
     proj = mkdtempSync(join(tmpdir(), 'omk-list-proj-'));
     home = mkdtempSync(join(tmpdir(), 'omk-list-home-'));
     env = { ...process.env, HOME: home, USERPROFILE: home };
-    managed = join(proj, '.omk', 'managed');
+    managed = join(proj, '.omk', 'governance', 'managed');
     mkdirSync(managed, { recursive: true });
   });
   afterEach(() => { rmSync(proj, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); });

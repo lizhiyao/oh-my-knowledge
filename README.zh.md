@@ -217,7 +217,7 @@ omk-mcp
 
 ### 本地存储
 
-项目数据采用领域化的 `.omk/` v2 布局：持久证据进入 `eval/`、`doctor/`、`observe/`，治理记录进入 `governance/`，备份保持可恢复，只有可重建工作进入 `state/`。机器工具、隧道、缓存和物化副本只能进入 `~/.oh-my-knowledge/state/`，不得写进项目。升级 v1 目录前先运行 `omk migrate --dry-run`；清理前使用 `omk clean --dry-run` 预览生命周期策略，普通 `omk clean` 默认只删 `state/`。
+项目数据采用领域化的 `.omk/` v2 布局：持久证据进入 `eval/`、`doctor/`、`observe/`，治理记录进入 `governance/`，备份保持可恢复，只有可重建工作进入 `state/`。机器工具、隧道、缓存和物化副本只能进入 `~/.oh-my-knowledge/state/`，不得写进项目。本期不读取、也不迁移旧存储布局。清理前使用 `omk clean --dry-run` 预览生命周期策略，普通 `omk clean` 默认只删 `state/`。
 
 ## 文档
 
