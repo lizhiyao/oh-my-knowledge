@@ -75,7 +75,7 @@
     "lint-staged": "lint-staged",
     "test": "vitest run",
     "test:profile": "yarn build && node dist-scripts/test-profile.js",
-    "ci:quality": "run-s lint typecheck build build:docs:check",
+    "ci:quality": "run-s lint typecheck build build:docs:check docs:build",
     "ci": "run-s ci:quality test",
     "prepublishOnly": "run-s clean build",
     "prepare": "husky"
