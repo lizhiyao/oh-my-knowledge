@@ -5,8 +5,8 @@ import {
   deepFreezeCanonicalJson,
   type RuntimeIdentity,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
-import { EvaluationPortFailure } from '../../../evaluation-core/evaluation/index.js';
+} from '../../../eval-core/contracts/index.js';
+import { EvaluationPortFailure } from '../../../eval-core/evaluation/index.js';
 import type {
   OmkEvaluatorBindingContext,
   OmkRuntimePreflightDeclaration,

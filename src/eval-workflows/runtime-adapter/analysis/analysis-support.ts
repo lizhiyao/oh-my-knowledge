@@ -7,12 +7,12 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import type {
   AnalysisNodeExecutionContext,
   AnalysisNodeExecutionResult,
   AnalysisNodeImplementation,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 
 export function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;

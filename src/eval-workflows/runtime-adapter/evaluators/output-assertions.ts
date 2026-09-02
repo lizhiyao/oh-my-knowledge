@@ -5,12 +5,12 @@ import {
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import {
   EvaluationPortFailure,
   type EvaluatorBindingValue,
   type EvaluatorObservation,
-} from '../../../evaluation-core/evaluation/index.js';
+} from '../../../eval-core/evaluation/index.js';
 import {
   DETERMINISTIC_ASSERTION_ALGORITHM_VERSION,
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,

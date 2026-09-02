@@ -5,14 +5,14 @@ import {
   schemaIdentityKey,
   type JsonValue,
   type SamplingUnitIds,
-} from '../../../src/evaluation-core/contracts/index.js';
-import { AnalysisNodeCapabilitiesSchema } from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/contracts/index.js';
+import { AnalysisNodeCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
   AnalysisNodeExecutionResult,
   AnalysisNodeInput,
-} from '../../../src/evaluation-core/analysis/index.js';
+} from '../../../src/eval-core/analysis/index.js';
 import {
   ASSERTION_LAYER_ANALYSIS_IDENTITY,
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,

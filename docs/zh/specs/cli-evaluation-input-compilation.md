@@ -1,6 +1,6 @@
 # CLI 评测输入编译规范
 
-> **状态**：本规范已成为 [Evaluation Core vNext RFC](./evaluation-core-vnext.md) 下的正式输入边界。Parse、Resolve、Compile、Runtime 装配、宿主 workflow、Core 执行与产物持久化共同组成权威 `omk eval` 路径。
+> **状态**：本规范已成为 [Evaluation Core vNext RFC](./eval-core-vnext.md) 下的正式输入边界。Parse、Resolve、Compile、Runtime 装配、宿主 workflow、Core 执行与产物持久化共同组成权威 `omk eval` 路径。
 
 ## 一、目的与边界
 

@@ -10,7 +10,7 @@ import { basename, join } from 'node:path';
 import {
   canonicalizeJson,
   digestCanonicalJson,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import { KeyedMutex } from '../../shared/keyed-mutex.js';
 import {
   CORE_BATCH_MANIFEST_FILE,

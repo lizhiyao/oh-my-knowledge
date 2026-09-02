@@ -7,7 +7,7 @@ import {
   createBuiltinAnalysisNodes,
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
-} from '../../evaluation-core/analysis/index.js';
+} from '../../eval-core/analysis/index.js';
 import { createSameProcessEvaluatorAdapter } from './adapters/shared/same-process.js';
 import {
   createOutputAssertionEvaluatorImplementation,

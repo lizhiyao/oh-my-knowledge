@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/shared/statistics/bootstrap.js';
-import type { DecisionPolicyContext } from '../../../src/evaluation-core/analysis/index.js';
+import type { DecisionPolicyContext } from '../../../src/eval-core/analysis/index.js';
 import {
   canonicalizeJson,
   digestCanonicalJson,
   type JsonValue,
-} from '../../../src/evaluation-core/contracts/index.js';
-import { DecisionPolicyCapabilitiesSchema } from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/contracts/index.js';
+import { DecisionPolicyCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,

@@ -13,8 +13,8 @@ import {
   verifyExecutionBundle,
   type CoreSchemaValidator,
   type Provenance,
-} from '../../evaluation-core/contracts/index.js';
-import { assertSealedRunPlan } from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/contracts/index.js';
+import { assertSealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
   CoreRunArtifactStoreError,
   type CoreRunArtifactStore,

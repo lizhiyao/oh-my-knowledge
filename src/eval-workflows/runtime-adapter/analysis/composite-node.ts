@@ -1,9 +1,9 @@
 import {
   canonicalizeJson,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import type {
   AnalysisNodeImplementation,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 import {
   parseCompositeParameters,
   type CompositeParameters,

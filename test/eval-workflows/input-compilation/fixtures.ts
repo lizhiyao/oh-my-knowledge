@@ -2,7 +2,7 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
   type JsonValue,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION,
   RESOLVED_HOST_RESOURCES_SCHEMA_VERSION,

@@ -6,7 +6,7 @@ import type {
   JsonValue,
   RuntimeIdentity,
   SeriesMemberCoverage,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export const CORE_GOLD_COMPARISON_SCHEMA_VERSION =
   'omk.core-gold-comparison/v1' as const;

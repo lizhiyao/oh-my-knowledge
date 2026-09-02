@@ -11,13 +11,13 @@ import {
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
   type UsageRecord,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorTrialContext,
-} from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/execution/index.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,

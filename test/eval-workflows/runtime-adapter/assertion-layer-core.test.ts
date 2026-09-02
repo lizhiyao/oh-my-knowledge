@@ -5,12 +5,12 @@ import {
   schemaIdentityKey,
   verifyAnalysisBundle,
   type RuntimeIdentity,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
   type AnalysisRuntimeRequirement,
   type PreparationRuntime,
-} from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/compiler/index.js';
 import {
   analyzeEvaluationBundleSource,
   createBuiltinAnalysisSchemaValidators,
@@ -18,17 +18,17 @@ import {
   resolveBuiltinAnalysisRuntime,
   type AnalysisNodeImplementation,
   type AnalysisNodeRunContext,
-} from '../../../src/evaluation-core/analysis/index.js';
+} from '../../../src/eval-core/analysis/index.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundleSource,
   type EvaluationEvaluator,
-} from '../../../src/evaluation-core/evaluation/index.js';
+} from '../../../src/eval-core/evaluation/index.js';
 import {
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
   createAssertionLayerAnalysisNodes,
@@ -65,7 +65,7 @@ import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
+} from '../../eval-core/compiler/fixtures.js';
 
 class FakeClock implements ExecutionClock {
   #now = 0;

@@ -6,7 +6,7 @@ import {
   type EvaluationSample,
   type JsonValue,
   type MetricDefinition,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import { DEFAULT_BOOTSTRAP_SEED } from '../../shared/statistics/bootstrap.js';
 import { splitHoldout } from '../../shared/holdout.js';
 import { renderEnvironmentSection } from './environment.js';

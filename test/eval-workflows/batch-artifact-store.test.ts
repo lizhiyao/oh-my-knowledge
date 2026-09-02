@@ -22,7 +22,7 @@ import {
 import {
   runConformanceScenario,
   type ConformanceResult,
-} from '../evaluation-core/conformance/harness.js';
+} from '../eval-core/conformance/harness.js';
 
 const temporaryDirectories: string[] = [];
 

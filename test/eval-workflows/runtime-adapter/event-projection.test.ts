@@ -3,11 +3,11 @@ import {
   EVALUATION_EVENT_SCHEMA_VERSION,
   EvaluationEventSchema,
   type EvaluationEvent,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import type {
   EvaluationRun,
   EvaluationRunResult,
-} from '../../../src/evaluation-core/engine/index.js';
+} from '../../../src/eval-core/engine/index.js';
 import {
   attachOmkEvaluationProgressProjection,
   captureOmkEvaluationProgressProjection,

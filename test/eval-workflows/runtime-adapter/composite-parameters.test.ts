@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { schemaIdentityKey } from '../../../src/evaluation-core/contracts/index.js';
+import { schemaIdentityKey } from '../../../src/eval-core/contracts/index.js';
 import {
   COMPOSITE_PARAMETERS_SCHEMA,
   createCompositeParameterSchemaValidators,

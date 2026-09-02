@@ -20,8 +20,8 @@ import {
   runConformanceScenario,
   type ConformanceHarnessOptions,
   type ConformanceTarget,
-} from '../../evaluation-core/conformance/harness.js';
-import { ConformanceFaultInjector } from '../../evaluation-core/conformance/fault-injector.js';
+} from '../../eval-core/conformance/harness.js';
+import { ConformanceFaultInjector } from '../../eval-core/conformance/fault-injector.js';
 
 const temporaryDirectories: string[] = [];
 

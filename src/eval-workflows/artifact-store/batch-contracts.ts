@@ -7,7 +7,7 @@ import {
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export const CORE_BATCH_MANIFEST_SCHEMA_VERSION =
   'omk.core-batch-manifest/v1' as const;

@@ -1,9 +1,9 @@
 import type {
   EvaluationDefinition,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import type {
   ExecutorTrialContext,
-} from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/execution/index.js';
 import type { RuntimeBindingOf } from '../../types.js';
 import type { OmkBindingResourceLease } from '../../resource-leases/types.js';
 import {

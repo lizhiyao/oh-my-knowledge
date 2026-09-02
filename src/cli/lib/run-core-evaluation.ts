@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { EvalConfig } from '../../inputs/contracts/config.js';
-import type { EvaluationContentResolver } from '../../evaluation-core/evaluation/index.js';
+import type { EvaluationContentResolver } from '../../eval-core/evaluation/index.js';
 import {
   compileCliEvaluationInput,
   parseCliEvaluationRequest,

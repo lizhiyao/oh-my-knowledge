@@ -1,4 +1,4 @@
-import type { SchemaIdentity } from '../../../evaluation-core/contracts/index.js';
+import type { SchemaIdentity } from '../../../eval-core/contracts/index.js';
 import {
   COMPOSITE_TABLE_SCHEMA,
   parseCompositeTableEnvelope,

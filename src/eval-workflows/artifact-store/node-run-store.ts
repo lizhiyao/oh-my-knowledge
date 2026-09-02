@@ -30,8 +30,8 @@ import {
   type ContentDescriptor,
   type RunPlan,
   type Sha256Digest,
-} from '../../evaluation-core/contracts/index.js';
-import type { EvaluationContentResolver } from '../../evaluation-core/evaluation/index.js';
+} from '../../eval-core/contracts/index.js';
+import type { EvaluationContentResolver } from '../../eval-core/evaluation/index.js';
 import { KeyedMutex } from '../../shared/keyed-mutex.js';
 import {
   CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,

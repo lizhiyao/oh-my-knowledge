@@ -4,7 +4,7 @@ import {
   digestCanonicalJson,
   type RuntimeIdentity,
   type Sha256Digest,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import type {
   EvaluationEvaluator,
   EvaluationEvaluatorRecord,
@@ -13,7 +13,7 @@ import type {
   EvaluatorAttemptResult,
   EvaluatorRecordContext,
   EvaluatorRunContext,
-} from '../../../../evaluation-core/evaluation/index.js';
+} from '../../../../eval-core/evaluation/index.js';
 import type {
   ExecutionExecutor,
   ExecutionExecutorRun,
@@ -22,7 +22,7 @@ import type {
   ExecutorAttemptResult,
   ExecutorRunContext,
   ExecutorTrialContext,
-} from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/execution/index.js';
 import type {
   OmkBindingResourceLease,
   OmkBindingResourceLeaseAccess,

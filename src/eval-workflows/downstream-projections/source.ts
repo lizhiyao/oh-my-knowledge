@@ -1,7 +1,7 @@
 import {
   canonicalizeJson,
   digestCanonicalJson,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { CoreDownstreamProjectionError } from './contracts.js';
 

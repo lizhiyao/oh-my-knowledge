@@ -9,7 +9,7 @@ import {
   type ExecutorCapabilities,
   type JsonValue,
   type SchemaIdentity,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import {
   parseClaudeMessageSequence,
   type ParsedClaudeCliStream,

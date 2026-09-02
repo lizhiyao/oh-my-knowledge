@@ -2,8 +2,8 @@ import {
   UsageRecordSchema,
   type JsonValue,
   type UsageRecord,
-} from '../../../../evaluation-core/contracts/index.js';
-import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../../eval-core/execution/index.js';
 import {
   createStatelessApiCoreSchemaValidators,
   statelessApiExecutorCapabilities,

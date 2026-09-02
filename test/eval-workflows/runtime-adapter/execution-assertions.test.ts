@@ -9,7 +9,7 @@ import {
   type ExecutionFacts,
   type JsonValue,
   type RuntimeIdentity,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   evaluateExecutionBundle,
   type EvaluationCache,
@@ -17,16 +17,16 @@ import {
   type EvaluationClock,
   type EvaluationEvaluator,
   type EvaluatorBindingValue,
-} from '../../../src/evaluation-core/evaluation/index.js';
+} from '../../../src/eval-core/evaluation/index.js';
 import {
   prepareEvaluationPlan,
   type PreparationRuntime,
-} from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/compiler/index.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionExecutor,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../src/eval-core/execution/index.js';
 import {
   createBuiltinOmkScoringBindingFactories,
   createExecutionAssertionEvaluatorImplementation,
@@ -49,7 +49,7 @@ import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
+} from '../../eval-core/compiler/fixtures.js';
 
 interface ScoringFixture {
   deterministicAssertions: {
@@ -60,7 +60,7 @@ interface ScoringFixture {
 }
 
 const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
-  '../../fixtures/evaluation-core/scoring-equivalence-v1.json',
+  '../../fixtures/eval-core/scoring-equivalence-v1.json',
   import.meta.url,
 )), 'utf8')) as ScoringFixture;
 

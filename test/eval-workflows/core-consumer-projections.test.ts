@@ -22,12 +22,12 @@ import {
 } from '../../src/eval-workflows/downstream-projections/index.js';
 import { projectCompletedCoreCliGate } from '../../src/eval-workflows/downstream-projections/cli-gate.js';
 import { projectCoreStudioRunDetail } from '../../src/studio/core-runs/index.js';
-import { digestCanonicalJson } from '../../src/evaluation-core/contracts/index.js';
+import { digestCanonicalJson } from '../../src/eval-core/contracts/index.js';
 import {
   prepareConformancePlan,
   runConformanceScenario,
   type ConformanceTarget,
-} from '../evaluation-core/conformance/harness.js';
+} from '../eval-core/conformance/harness.js';
 
 const temporaryDirectories: string[] = [];
 type ConformanceMutator = NonNullable<Parameters<typeof prepareConformancePlan>[1]>;

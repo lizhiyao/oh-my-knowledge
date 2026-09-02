@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { digestCanonicalJson } from '../../../src/evaluation-core/contracts/index.js';
+import { digestCanonicalJson } from '../../../src/eval-core/contracts/index.js';
 import { classifyNodeCliEnvironment } from '../../../src/eval-workflows/production-host/node-cli-composition.js';
 import { captureClassifiedEnvironment } from '../../../src/eval-workflows/runtime-adapter/adapters/shared/classified-environment.js';
 

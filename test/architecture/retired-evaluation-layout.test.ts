@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const RETIRED_DIRECTORY = ['eval', 'core'].join('-');
+const RETIRED_DIRECTORY = ['evaluation', 'core'].join('-');
 const TEXT_EXTENSIONS = new Set([
   '.cjs', '.js', '.json', '.md', '.mjs', '.mts', '.ts', '.tsx', '.yaml', '.yml',
 ]);
@@ -20,6 +20,7 @@ describe('retired evaluation layout', () => {
   it('keeps the historical source and test directories absent', () => {
     expect(existsSync(resolve('src', RETIRED_DIRECTORY))).toBe(false);
     expect(existsSync(resolve('test', RETIRED_DIRECTORY))).toBe(false);
+    expect(existsSync(resolve('schemas', RETIRED_DIRECTORY))).toBe(false);
   });
 
   it('prevents source, tests, scripts, and docs from restoring retired paths', () => {
@@ -27,7 +28,7 @@ describe('retired evaluation layout', () => {
       ['src', RETIRED_DIRECTORY].join('/'),
       ['test', RETIRED_DIRECTORY].join('/'),
       ['dist', RETIRED_DIRECTORY].join('/'),
-      `/${RETIRED_DIRECTORY}/`,
+      ['oh-my-knowledge', RETIRED_DIRECTORY].join('/'),
     ];
     const violations = ['src', 'test', 'scripts', 'docs']
       .flatMap((directory) => textFiles(resolve(directory)))

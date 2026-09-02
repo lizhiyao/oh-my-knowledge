@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   deepFreezeCanonicalJson,
   type JsonValue,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {
   isValidMockStats,
   isValidToolCallInfo,

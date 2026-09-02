@@ -3,7 +3,7 @@ import {
   type AnalysisRecord,
   type EvaluationRecord,
   type ExecutionRecord,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import { parseArtifactGraphDocument } from '../../artifact-graph/schema.js';
 import type {
   ArtifactGraphDocument,

@@ -37,7 +37,7 @@
 
 ## 我想贡献 / 看设计 spec
 
-- [Evaluation Core vNext RFC](./specs/evaluation-core-vnext.md)
+- [Evaluation Core vNext RFC](./specs/eval-core-vnext.md)
 - [CLI 评测输入编译规范](./specs/cli-evaluation-input-compilation.md)
 - [用例设计科学性指南](./specs/sample-design-spec.md)
 - [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)

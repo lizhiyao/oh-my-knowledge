@@ -5,12 +5,12 @@ import {
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import type {
   AnalysisNodeExecutionContext,
   AnalysisNodeImplementation,
   AnalysisNodeInput,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 import {
   DIMENSION_PARAMETERS_SCHEMA,
   parseDimensionParameters,

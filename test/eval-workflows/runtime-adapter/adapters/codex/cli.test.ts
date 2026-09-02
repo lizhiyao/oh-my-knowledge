@@ -19,15 +19,15 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../../../src/evaluation-core/contracts/index.js';
+} from '../../../../../src/eval-core/contracts/index.js';
 import {
   InMemoryRuntimeEventSequencer,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
   executeRunPlan,
-} from '../../../../../src/evaluation-core/execution/index.js';
-import { prepareEvaluationPlan } from '../../../../../src/evaluation-core/compiler/index.js';
+} from '../../../../../src/eval-core/execution/index.js';
+import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {
   CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
   buildCodexCliCoreArguments,
@@ -44,7 +44,7 @@ import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../../../evaluation-core/compiler/fixtures.js';
+} from '../../../../eval-core/compiler/fixtures.js';
 
 const FIXTURE = fileURLToPath(new URL(
   '../../../../fixtures/codex-cli-core-runtime.mjs',

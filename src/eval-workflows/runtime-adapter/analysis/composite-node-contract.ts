@@ -5,8 +5,8 @@ import {
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
-} from '../../../evaluation-core/contracts/index.js';
-import type { AnalysisNodeInput } from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/contracts/index.js';
+import type { AnalysisNodeInput } from '../../../eval-core/analysis/index.js';
 import {
   COMPOSITE_PARAMETERS_SCHEMA,
   type CompositeLayerParameter,

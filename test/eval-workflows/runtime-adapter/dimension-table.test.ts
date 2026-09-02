@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
   schemaIdentityKey,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA_VERSION,

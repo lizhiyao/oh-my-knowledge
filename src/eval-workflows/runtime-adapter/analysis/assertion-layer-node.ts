@@ -5,13 +5,13 @@ import {
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
   AnalysisNodeImplementation,
   AnalysisNodeInput,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 import {
   ASSERTION_LAYER_PARAMETERS_SCHEMA,
   parseAssertionLayerParameters,

@@ -18,7 +18,7 @@ import ts from 'typescript';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const SRC_DIR = join(REPO_ROOT, 'src');
-const EVALUATION_CORE_DIR = join(SRC_DIR, 'evaluation-core');
+const EVALUATION_CORE_DIR = join(SRC_DIR, 'eval-core');
 const EVALUATION_CORE_DIR_NORMALIZED = EVALUATION_CORE_DIR.replace(/\\/g, '/');
 const RUNTIME_ADAPTERS_DIR = join(
   SRC_DIR,
@@ -42,42 +42,42 @@ interface ForbiddenRule {
 
 const RULES: ForbiddenRule[] = [
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'measurement-artifacts/',
     reason: 'Evaluation Core vNext 是纯计算内核，不依赖文件命名、目录布局或产物发现。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'preflight/',
     reason: 'Evaluation Core vNext 是宿主无关内核，不依赖宿主环境与依赖探测。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'shared/statistics/',
     reason: 'Evaluation Core vNext 的 Analysis 自持统计语义，不反向依赖应用层兼容工具。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'eval-workflows/',
     reason: 'Evaluation Core vNext 是宿主无关内核，不依赖旧 workflow 装配层。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'cli/',
     reason: 'Evaluation Core vNext 不得依赖 CLI、配置或命令装配。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'executors/',
     reason: 'Contracts 只描述 Runtime identity 与 capability，不依赖具体 executor 实现。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'grading/',
     reason: 'Evaluation Core vNext 的 Evaluator／Metric 契约不复用旧 grading pipeline。',
   },
   {
-    from: 'evaluation-core/',
+    from: 'eval-core/',
     to: 'studio/',
     reason: 'Evaluation Core vNext 是纯计算内核，不依赖 Studio 的查询投影、HTTP 或呈现能力。',
   },

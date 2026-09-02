@@ -25,7 +25,7 @@ Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does 
 | Entry point | Ownership |
 |---|---|
 | `oh-my-knowledge` | minimal one-call Engine façade and Core contracts |
-| `oh-my-knowledge/evaluation-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
+| `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
 | `oh-my-knowledge/projections` | downstream artifact projections |
 | `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
 | `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |
@@ -110,7 +110,7 @@ Use `await engine.prepare(definition, policy)` when the host wants configuration
 Import the explicit advanced entry point when a host must persist a stage, change only downstream inputs, and recompute the affected suffix:
 
 ```ts
-import { createEvaluationEngine } from 'oh-my-knowledge/evaluation-core';
+import { createEvaluationEngine } from 'oh-my-knowledge/eval-core';
 
 const original = await createEvaluationEngine(runtime).prepare(definition, policy);
 const executionSession = original.stages({ runId: 'execute-v1' });
@@ -145,13 +145,17 @@ Each stage call exposes a serializable `.result` and, except for Report material
 
 A session allows each stage at most once and never permits overlapping stage calls. Report materialization closes it automatically. If a workflow intentionally stops earlier, call `await session.close()` to cancel any in-flight stage, wait for teardown, and release the `runId`.
 
-Shipped JSON Schemas are available through the allowlisted path `oh-my-knowledge/evaluation-core/schemas/v1/<file>.schema.json`. Code that needs a URL can avoid constructing package internals:
+Shipped JSON Schemas are available through the allowlisted path `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`. Code that needs a URL can avoid constructing package internals:
 
 ```ts
-import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/evaluation-core';
+import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
+
+The published files retain their existing `$id` values as stable document identities. Use the
+`eval-core` package subpath or catalog directory for retrieval; do not derive a fetch location from
+`$id`.
 
 ## Results and errors
 
@@ -176,4 +180,4 @@ For lossless persistence, configure `MeasurementPolicy.eventDelivery` and inject
 
 Importing the package root does not read user configuration, initialize CLI or Studio components, create files, write output, or register process hooks. A pure-memory run accesses only the ports supplied by the host. OMK does not provide queues, tenant isolation, cross-process retries, or untrusted-code sandboxing through this API.
 
-See the complete independent-host acceptance fixture in [`test/evaluation-core/fixtures/embedded-host.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/evaluation-core/fixtures/embedded-host.mjs).
+See the complete independent-host acceptance fixture in [`test/eval-core/fixtures/embedded-host.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-core/fixtures/embedded-host.mjs).

@@ -1,7 +1,7 @@
 import {
   digestCanonicalJson,
   type EvaluationRecord,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type { GoldDataset } from '../../grading/gold-dataset.js';
 import {
   computeAgreementWithCI,

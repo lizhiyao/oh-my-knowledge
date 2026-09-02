@@ -4,7 +4,7 @@ import {
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type JsonValue,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 
 const ApiTransportIdentitySchema = z.object({
   transportId: z.string().min(1),

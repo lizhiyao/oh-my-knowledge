@@ -226,7 +226,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[How it works](docs/explanation/architecture.md)** — input compilation, sealed Core execution, analysis, persistence, and Studio projections
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
-- **[Evaluation Core cutover](docs/guides/evaluation-core-cutover.md)** — `BREAKING-SCHEMA` storage, resume, Studio, Gold, managed-evidence, and evolve migration
+- **[Evaluation Core cutover](docs/guides/eval-core-cutover.md)** — `BREAKING-SCHEMA` storage, resume, Studio, Gold, managed-evidence, and evolve migration
 - **[Storage layout v2](docs/specs/storage-layout-spec.md)** — project/global domains, compatibility boundary, and Git policy
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)

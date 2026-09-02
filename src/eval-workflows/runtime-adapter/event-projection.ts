@@ -1,5 +1,5 @@
-import type { EvaluationEvent } from '../../evaluation-core/contracts/index.js';
-import type { EvaluationRun } from '../../evaluation-core/engine/index.js';
+import type { EvaluationEvent } from '../../eval-core/contracts/index.js';
+import type { EvaluationRun } from '../../eval-core/engine/index.js';
 
 const DEFAULT_PROGRESS_BUFFER_CAPACITY = 64;
 const DEFAULT_EVENT_MIRROR_CAPACITY = 256;

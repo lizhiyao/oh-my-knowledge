@@ -7,7 +7,7 @@ import {
   projectAnalysisInputs,
   projectEvaluationInputs,
   projectExecutionInputs,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   CliEvaluationInputError,
   compileCliEvaluationInput,

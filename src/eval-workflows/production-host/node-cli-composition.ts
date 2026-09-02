@@ -9,7 +9,7 @@ import {
   type CoreSchemaValidator,
   type RuntimeIdentity,
   type UsageRecord,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import { checkDependencies } from '../../preflight/dependencies.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';

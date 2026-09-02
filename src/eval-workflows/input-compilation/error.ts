@@ -1,4 +1,4 @@
-import type { JsonValue } from '../../evaluation-core/contracts/index.js';
+import type { JsonValue } from '../../eval-core/contracts/index.js';
 
 export type CliEvaluationInputErrorCode =
   | 'CLI_INPUT_INVALID'

@@ -13,7 +13,7 @@ import type {
   Sha256Digest,
   TargetExecutionControls,
   TargetExecutionRequirements,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export const CLI_EVALUATION_REQUEST_SCHEMA_VERSION =
   'omk.cli-evaluation-request/v1' as const;

@@ -9,8 +9,8 @@ import {
   schemaIdentityKey,
   type EvaluationSeriesDefinition,
   type RuntimeIdentity,
-} from '../../../src/evaluation-core/contracts/index.js';
-import type { EvaluationRunResult } from '../../../src/evaluation-core/engine/index.js';
+} from '../../../src/eval-core/contracts/index.js';
+import type { EvaluationRunResult } from '../../../src/eval-core/engine/index.js';
 import {
   createNodeCoreBatchArtifactStore,
   createNodeCoreRunArtifactStore,
@@ -29,7 +29,7 @@ import {
   prepareConformancePlan,
   runConformanceScenario,
   type ConformanceResult,
-} from '../../evaluation-core/conformance/harness.js';
+} from '../../eval-core/conformance/harness.js';
 
 const roots: string[] = [];
 

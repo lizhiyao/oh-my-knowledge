@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalizeJson,
   digestCanonicalJson,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   ASSERTION_LAYER_TABLE_SCHEMA,
   ASSERTION_LAYER_TABLE_SCHEMA_VERSION,

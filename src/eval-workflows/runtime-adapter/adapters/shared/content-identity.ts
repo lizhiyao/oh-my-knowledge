@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
-import type { Sha256Digest } from '../../../../evaluation-core/contracts/index.js';
-import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
+import type { Sha256Digest } from '../../../../eval-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../../eval-core/execution/index.js';
 
 export interface ContentIdentityFile {
   readonly facetId: string;

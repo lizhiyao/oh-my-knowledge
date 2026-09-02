@@ -12,13 +12,13 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
   AnalysisNodeImplementation,
   AnalysisNodeInput,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 import {
   analysisJsonSchema,
   analysisSchemaIdentity,

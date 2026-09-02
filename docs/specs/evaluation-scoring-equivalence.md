@@ -164,7 +164,7 @@ Host diagnostics that do not affect a Metric or decision remain post-processing.
 
 ## 10. Conformance evidence
 
-The first baseline is `test/fixtures/evaluation-core/scoring-equivalence-v1.json`, anchored to commit `38648427`. It freezes:
+The first baseline is `test/fixtures/eval-core/scoring-equivalence-v1.json`, anchored to commit `38648427`. It freezes:
 
 - all six scoring prompt hashes;
 - deterministic assertions, nested same-layer and mixed-layer `assert-set` behavior, weighting, layer mapping, and rounding;
@@ -180,8 +180,8 @@ The semantic/RAG conformance vectors additionally freeze the intentional failure
 The final offline differential harness was delivered by
 [#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528) and removed with its legacy oracle
 after cutover. Its immutable input fixture remains at
-`test/fixtures/evaluation-core/scoring-equivalence-v1.json`. Current Core and production-boundary
-coverage lives under `test/evaluation-core/conformance/` and
+`test/fixtures/eval-core/scoring-equivalence-v1.json`. Current Core and production-boundary
+coverage lives under `test/eval-core/conformance/` and
 `test/eval-workflows/production-host/`. The differential harness prepared and executed one
 real sealed plan across two Targets and four paired samples, then traversed
 `Execution -> Evaluation -> Analysis -> Decision` through the public engine facade. The plan
