@@ -150,7 +150,7 @@ export default class Init extends BaseCommand {
         join(targetDir, 'eval-samples.json'),
         join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'),
         join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'),
-        join(targetDir, '.omk', '.gitignore'),
+        join(layout.root, '.gitignore'),
       ];
       const existingFiles = scaffoldFiles
         .filter((path) => existsSync(path))
