@@ -4,9 +4,9 @@ import { describe, it } from 'vitest';
 import {
   globalLayout,
   projectLayout,
-} from '../../src/omk-layout/index.js';
+} from '../../src/shared/storage-layout.js';
 
-describe('OMK layout', () => {
+describe('OMK storage layout', () => {
   it('derives every project v2 path from one root', () => {
     const actual = projectLayout('/repo');
     assert.equal(actual.root, join('/repo', '.omk'));
