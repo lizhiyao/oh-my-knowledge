@@ -54,7 +54,7 @@ async function runShortPath(args: string[]): Promise<string> {
       timeout: SHORT_PATH_TIMEOUT_MS,
     });
     assert.equal(
-      existsSync(join(home, '.oh-my-knowledge', 'update-check.json')),
+      existsSync(join(home, '.oh-my-knowledge', 'state', 'cache', 'update-check.json')),
       false,
       `${args.join(' ')} should skip checkUpdate and not write update-check cache`,
     );

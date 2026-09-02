@@ -16,13 +16,14 @@ import {
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../eval-workflows/artifact-store/index.js';
+import { globalLayout, projectLayout } from '../omk-layout/index.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createNodeHostPreflightDeclarations,
   createProductionEvaluationHost,
   createProductionRuntimeFactoryRegistry,
   executeProductionEvaluationSeries,
-  persistCoreArtifactGraph,
+  persistCoreArtifactSidecars,
   resolveNodeCliEvaluationRequest,
 } from '../eval-workflows/production-host/index.js';
 import {
@@ -232,7 +233,7 @@ async function persistDshCoreConsumers(
   projectRoot: string,
   appendEvidence: boolean,
 ): Promise<void> {
-  await persistCoreArtifactGraph({ source: artifacts, outputDirectory, cwd: projectRoot });
+  await persistCoreArtifactSidecars({ source: artifacts, outputDirectory, cwd: projectRoot });
   if (!appendEvidence) return;
   try {
     recordCoreEvalEvidence(projectCoreManagedEvidence(artifacts), {
@@ -252,7 +253,9 @@ export async function runDshCoreEvaluation(input: Readonly<{
   projectRoot: string;
 }>): Promise<DshCoreEvaluationCommandResult> {
   const projectRoot = resolve(input.projectRoot);
-  const outputDirectory = join(projectRoot, '.omk', 'reports');
+  const layout = projectLayout(projectRoot);
+  const machineLayout = globalLayout();
+  const outputDirectory = layout.evalDir;
   const model = input.config.model?.trim() || input.parentAgent.options.model?.trim();
   if (!model) throw new TypeError('当前 DSH session 没有可继承的模型，且 eval.yaml 未配置 model。');
   if (input.config.judgeModels?.some((judge) => judge.executor === DSH_HOST_IMPLEMENTATION_ID)) {
@@ -288,7 +291,7 @@ export async function runDshCoreEvaluation(input: Readonly<{
   });
   const resolved = await resolveNodeCliEvaluationRequest(request, {
     projectRoot,
-    materializationRoot: join(outputDirectory, 'resolved-inputs'),
+    materializationRoot: machineLayout.resolvedInputsDir,
     ...(request.values.orchestration.repeatCount > 1
       ? { seriesInstanceId: generateRunId(['dsh-series']) }
       : {}),
@@ -313,7 +316,7 @@ export async function runDshCoreEvaluation(input: Readonly<{
     compiled,
     factories: factories({ compiled, host: input.host, parentAgent: input.parentAgent, projectRoot }),
     support,
-    resources: { leaseRoot: join(outputDirectory, 'runtime-leases') },
+    resources: { leaseRoot: machineLayout.resourceLeasesDir },
     artifactStore,
   };
   const independentSeries = compiled.orchestration.independentSeries;

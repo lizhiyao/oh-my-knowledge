@@ -37,7 +37,7 @@ Evaluation Core 继续保持纯内存。宿主为每个 run 持久化一组不�
 
 ## 四、Manifest 与索引
 
-`omk.core-run-artifact-manifest/v1` 使用限定判别字段 `manifestKind` 与 `documentKind`。五个文档引用具有固定相对文件名、schema identity、原生 identity digest 和完整文档 canonical digest；manifest 另行记录 run／report identity、run-contract digest、Report 三轴状态、Execution／Evaluation replayability、创建时间与 captured content 的最高分级。
+`omk.core-run-artifact-manifest/v2` 使用限定判别字段 `manifestKind` 与 `documentKind`。五个文档引用具有固定相对文件名、schema identity、原生 identity digest 和完整文档 canonical digest；manifest 另行记录 run／report identity、run-contract digest、Report 三轴状态、Execution／Evaluation replayability、创建时间与 captured content 的最高分级。目录布局 v2 把权威报告命名为 `report.json`；旧版 manifest bundle 不再读取。
 
 索引卡片只是已校验 manifest 的纯 projection。列表重建卡片时可以不解析大 content，因为列表不声称 evidence 可用；完整读取 run 时必须闭合 descriptor，缺 resolver 或 content 损坏都会失败，不能投影为空证据。
 

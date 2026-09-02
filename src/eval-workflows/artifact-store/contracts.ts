@@ -22,14 +22,14 @@ import {
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 
 export const CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION =
-  'omk.core-run-artifact-manifest/v1' as const;
+  'omk.core-run-artifact-manifest/v2' as const;
 
 export const CORE_RUN_DOCUMENT_FILES = Object.freeze({
   runPlan: 'run-plan.json',
   executionBundle: 'execution-bundle.json',
   evaluationBundle: 'evaluation-bundle.json',
   analysisBundle: 'analysis-bundle.json',
-  evaluationReport: 'evaluation-report.json',
+  evaluationReport: 'report.json',
   manifest: 'manifest.json',
 });
 

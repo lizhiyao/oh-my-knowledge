@@ -6,6 +6,7 @@ import {
   loadExplicitObservationCaptureRecords,
   type ExplicitObservationCaptureRecord,
 } from '../observability/inbox/explicit-capture.js';
+import { observationDraftsDir } from '../observability/inbox/paths.js';
 import {
   loadObservationReviewState,
   observationReviewStateKey,
@@ -194,7 +195,7 @@ export class FileObservationFeedbackStore
     }
 
     const draft = prepareSampleDraft(input, records, this.now?.() ?? new Date());
-    const path = join(observationsDir, 'drafts', `${draft.draftId}.sample-draft.json`);
+    const path = join(observationDraftsDir(observationsDir), `${draft.draftId}.sample-draft.json`);
     try {
       return withFileLock(`${path}.lock`, () => {
         const existing = loadSampleDraft(path);

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import type { DoctorReport } from '../../../doctor/contracts.js';
@@ -14,10 +14,9 @@ import {
   listObserveCards,
 } from '../../../measurement-artifacts/discovery-index.js';
 import {
-  isReportFileName,
-  reportFilePath,
-  reportFileStem,
-} from '../../../measurement-artifacts/file-names.js';
+  listMeasurementReportPaths,
+  measurementRecordIdFromReportPath,
+} from '../../../measurement-artifacts/report-bundle.js';
 import {
   confidenceOf,
   toolStabilityOf,
@@ -73,27 +72,27 @@ function loadChartJsBundle(): string | null {
 
 function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
   const items: AnalysisListItem[] = [];
-  // live 扫描 dir 存在才做;dir 不存在(默认机器级模式下当前项目还没 .omk/observe-health、全局也空)时 live 为空,
+  const seenLiveIds = new Set<string>();
+  // live 扫描 dir 存在才做;dir 不存在(默认机器级模式下当前项目还没 .omk/observe/health、全局也空)时 live 为空,
   // 但**不能早退** —— 后面仍要按 includeCards 合并别项目卡片,否则 observe 列表会与合卡片的 /api/skills 口径分裂。
-  if (existsSync(dir)) {
-    for (const file of readdirSync(dir)) {
-      const id = reportFileStem(file);
-      if (!id) continue;
-      try {
-        const data = parseSkillHealthReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
-        if (!data) continue;
-        items.push({
-          id,
-          generatedAt: data.meta.generatedAt,
-          sessionCount: data.meta.sessionCount,
-          segmentCount: data.meta.segmentCount,
-          skillCount: Object.keys(data.bySkill || {}).length,
-          healthBand: data.overall.healthBand,
-          // 旧 JSON 缺 confidence 时按 segmentCount 兜底,跟 Studio / CLI 口径一致。
-          confidence: data.overall.confidence ?? confidenceOf(data.meta.segmentCount),
-        });
-      } catch { /* skip corrupt */ }
-    }
+  for (const path of listMeasurementReportPaths(dir, 'observe-health')) {
+    const id = measurementRecordIdFromReportPath(path);
+    if (!id || seenLiveIds.has(id)) continue;
+    try {
+      const data = parseSkillHealthReport(JSON.parse(readFileSync(path, 'utf-8')));
+      if (!data) continue;
+      items.push({
+        id,
+        generatedAt: data.meta.generatedAt,
+        sessionCount: data.meta.sessionCount,
+        segmentCount: data.meta.segmentCount,
+        skillCount: Object.keys(data.bySkill || {}).length,
+        healthBand: data.overall.healthBand,
+        // 旧 JSON 缺 confidence 时按 segmentCount 兜底,跟 Studio / CLI 口径一致。
+        confidence: data.overall.confidence ?? confidenceOf(data.meta.segmentCount),
+      });
+      seenLiveIds.add(id);
+    } catch { /* skip corrupt */ }
   }
   // 别项目的 observe 卡片(当前 dir live 扫不到的项目)→ list item,dedup by id(live 盖卡片)。
   // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeCards=false,只看该目录(逃生舱语义)。
@@ -126,8 +125,9 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
 }
 
 function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealthReport | null {
-  const path = reportFilePath(dir, id);
-  if (existsSync(path)) {
+  const path = listMeasurementReportPaths(dir, 'observe-health')
+    .find((candidate) => measurementRecordIdFromReportPath(candidate) === id);
+  if (path !== undefined) {
     try {
       const report = parseSkillHealthReport(JSON.parse(readFileSync(path, 'utf-8')));
       if (report) return report;
@@ -150,16 +150,17 @@ function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealt
  *  优先返回含该 skill 的那份；都不含时回退首个 id 命中（单 skill / 无参行为不变）。 */
 function loadDoctorReport(dir: string, id: string, skillName?: string, includeCards = false): DoctorReport | null {
   let fallback: DoctorReport | null = null;
-  if (existsSync(dir)) {
-    for (const file of readdirSync(dir)) {
-      if (!isReportFileName(file)) continue;
-      try {
-        const data = parseDoctorReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
-        if (!data || data.id !== id) continue;
-        if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
-        fallback ??= data;
-      } catch { /* skip */ }
-    }
+  const seenRecords = new Set<string>();
+  for (const path of listMeasurementReportPaths(dir, 'doctor')) {
+    const recordId = measurementRecordIdFromReportPath(path);
+    if (recordId === null || seenRecords.has(recordId)) continue;
+    try {
+      const data = parseDoctorReport(JSON.parse(readFileSync(path, 'utf-8')));
+      if (!data || data.id !== id) continue;
+      seenRecords.add(recordId);
+      if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
+      fallback ??= data;
+    } catch { /* skip */ }
   }
   if (fallback) return fallback;
   // 仅机器级模式兜底;固定 --doctors-dir / --global 不回源别项目卡片(逃生舱语义)。
@@ -633,7 +634,7 @@ export function createKnowledgeRoutes({
   includeObserveCards,
   includeDoctorCards,
 }: KnowledgeRoutesOptions): KnowledgeRouteHandler {
-  // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉:Studio 启动时项目 .omk/managed
+  // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉：Studio 启动时项目 .omk/governance/managed
   // 还空、回退到 global,随后用户在项目里首次 omk install,omk list 下次会切到 project,而冻结了 root 的 Studio
   // 仍盯着旧 global,页面与 CLI 不一致。cwd 在进程内不变,变的是目录里有没有记录,故每次请求重判。
   //   - 传函数 → 直接当解析器,每次请求调用(测试可注入受控解析器复现 project↔global 切换);

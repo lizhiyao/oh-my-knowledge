@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `clean` (apply lifecycle-aware cleanup) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -23,6 +23,38 @@ For full descriptions: `omk init --help`.
 <!-- omk:cli:init:flags:end -->
 
 Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` / `list` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The managed registry (`install` / `list` / `promote`, optionally global) is a separate layer `init` does not touch. The two starter skill variants + three sample cases are just the default A/B template.
+
+## `omk clean`
+
+```bash
+omk clean --dry-run
+omk clean
+omk clean --reports
+omk clean --observations --force
+```
+
+<!-- omk:cli:clean:flags:start -->
+
+**Flags:**
+
+```text
+  --all           Clean state, reports, observations, and backups; excludes governance
+  --backups       Clean doctor fix backups
+  --dry-run       Show paths and space without deleting
+  --force         Confirm deletion of sensitive or non-reproducible data
+  --global        Clean global ~/.oh-my-knowledge storage
+  --governance    Clean managed governance records; requires --force
+  --json          Print machine-readable JSON
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --observations  Clean observation inbox, drafts, and archive; requires --force
+  --reports       Clean eval, doctor, and observe health reports
+```
+
+For full descriptions: `omk clean --help`.
+
+<!-- omk:cli:clean:flags:end -->
+
+Deletes only `.omk/state/` by default. Reports, observations, backups, and governance records require explicit category flags; deleting observations or governance records additionally requires `--force`. `--all` excludes governance records.
 
 ## `omk install`
 
@@ -55,15 +87,15 @@ For full descriptions: `omk install --help`.
 
 Installs a knowledge input (skill) and distributes it to local supported coding-agent targets. Three sources: the built-in id `omk-agent-skill` (onboarding for the official omk Agent Skill), a local skill path (a directory or a `.md`), and `git:<ref>:<spec>` (a skill at a ref of the current repo). A `registry` / `marketplace` (resolving package names against a registry) is a non-goal.
 
-Installing **your own** skill (local path or git source) also writes a **managed record** to `.omk/managed/<id>.json` — the entry point of the "management" pillar, so evidence travels with the artifact through doctor / eval / promote. The `git:` source is the most reproducible: a SHA is immutable and content-addressed (anyone can re-fetch and verify), while a branch gives real drift semantics.
+Installing **your own** skill (local path or git source) also writes a **managed record** to `.omk/governance/managed/<id>.json` — the entry point of the "management" pillar, so evidence travels with the artifact through doctor / eval / promote. The `git:` source is the most reproducible: a SHA is immutable and content-addressed (anyone can re-fetch and verify), while a branch gives real drift semantics.
 
 The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
 ## `omk list`
 
 ```bash
-omk list                 # managed skills in the current project (.omk/managed)
-omk list --global        # globally managed skills (~/.oh-my-knowledge/managed)
+omk list                 # managed skills in the current project (.omk/governance/managed)
+omk list --global        # globally managed skills (~/.oh-my-knowledge/governance/managed)
 omk list --json          # machine-readable output with full comparability markers
 ```
 
@@ -72,7 +104,7 @@ omk list --json          # machine-readable output with full comparability marke
 **Flags:**
 
 ```text
-  --global        Show the global managed dir (~/.oh-my-knowledge/managed) instead of project .omk/managed
+  --global        Show the global managed dir (~/.oh-my-knowledge/governance/managed) instead of project .omk/governance/managed
   --json          Output JSON (with full comparability markers) for scripts
   --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
 ```
@@ -99,7 +131,7 @@ omk promote review --force --reason "manually reviewed"   # override the gate, r
   --accept-cautious  also accept CAUTIOUS (default PROGRESS only)
   --actor <value>    decision actor (defaults to git config user.name)
   --force            override forceable gate blocks and force-promote, recorded as a human override (still refused with no current evidence or changed source hash)
-  --global           operate on the global managed dir instead of project .omk/managed
+  --global           operate on the global managed dir instead of project .omk/governance/managed
   --json             output JSON (versioned envelope) for scripts
   --kind <value>     artifact kind (only skill today)
   --lang <value>     Output language zh|en. Priority: CLI > OMK_LANG env > zh.
@@ -125,7 +157,7 @@ omk rollback review --reason "regression found in prod"   # roll back and record
 
 ```text
   --actor <value>   decision actor (defaults to git config user.name)
-  --global          operate on the global managed dir instead of project .omk/managed
+  --global          operate on the global managed dir instead of project .omk/governance/managed
   --json            output JSON (versioned envelope) for scripts
   --kind <value>    artifact kind (only skill today)
   --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > zh.
@@ -160,11 +192,11 @@ omk doctor --static-only                 # static checks only: no LLM, no sample
   --executor <value>     Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference. A test fixture path is also accepted in tests.
   --fix                  Interactive fix: use LLM agent to fix skill issues reported by doctor.
   --gate                 Silent mode: only emit stderr summary on fail. Exit code carries the signal.
-  --global               Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors
+  --global               Write to global ~/.oh-my-knowledge/doctor instead of project .omk/doctor
   --json                 JSON output to stdout, for CI / external script consumption.
   --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>        LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
-  --output-dir <value>   Report output dir, default project-level .omk/doctors (--global for global).
+  --output-dir <value>   Report output dir, default project-level .omk/doctor (--global for global).
   --repeat <value>       Health-check repeat count (self-consistency). Default 2: runs 2 passes in parallel, unions findings, merges same root cause via an LLM pass, tags k/N support. Set 1 for a single quick pass (no sampling/merge, cheapest).
   --static-only          Static checks only (no LLM, no samples.json): readability / frontmatter / existence of scripts·CLI·files·env referenced in the skill body. For CI without LLM creds / offline.
   --timeout <value>      Single-session LLM timeout sec, default 600 (10 min).
@@ -236,7 +268,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
   --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
-  --global                        Write report to global ~/.oh-my-knowledge/reports instead of project .omk/
+  --global                        Write report to global ~/.oh-my-knowledge/eval instead of project .omk/eval
   --gold-dir <value>              Gold dataset dir
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting
   --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.
@@ -253,7 +285,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --no-judge                      Skip LLM judge
   --no-serve                      Do not start report server
   --no-strict-baseline            Disable baseline isolation
-  --output-dir <value>            Report output dir (default project .omk/reports)
+  --output-dir <value>            Report output dir (default project .omk/eval)
   --repeat <value>                Repeat each sample N times
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
   --resume <value>                Reuse a fully verified Core runId; fail closed when rejected
@@ -302,11 +334,11 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```text
   --feedback            Feed production-health observations back to managed skills of the same name (--no-feedback to disable)
   --from <value>        Start time ISO, overrides --last
-  --global              Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/observe-health
+  --global              Write to global ~/.oh-my-knowledge/observe/health instead of project .omk/observe/health
   --kb <value>          KB root, enables KB-aware analysis
   --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --last <value>        Time window (7d / 24h / 30m)
-  --output-dir <value>  Health report output dir, default project-level .omk/observe-health (--global for global)
+  --output-dir <value>  Health report output dir, default project-level .omk/observe/health (--global for global)
   --skills <value>      Filter to specific skills, comma-separated
   --to <value>          End time ISO
 ```
@@ -322,7 +354,7 @@ Normalizes real Codex rollouts, Claude Code and OpenClaw sessions, and markdown 
 Parses, aggregates, and de-noises real session traces into a per-observation list a human can review. The base pipeline is local-only and LLM-free; `--llm-enhanced-review` is an explicit optional model call.
 
 ```bash
-# 1. Parse traces, aggregate signals, write to .omk/observe-inbox/
+# 1. Parse traces, aggregate signals, write to .omk/observe/inbox/
 omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
@@ -414,7 +446,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>             Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --no-mock                   Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.
-  --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe-inbox.
+  --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe/inbox.
   --skill <value>             Only draft from observe-inbox signals for the specified skill (from-traces mode only).
   --skill-dir <value>         Skill root dir, default skills. Used by batch mode.
 ```
@@ -431,8 +463,8 @@ One-shot generation. Auto-stamps `provenance` on generated cases. Generated asse
 omk studio
 omk studio --port 7799
 omk studio --host 0.0.0.0                          # LAN access (default: 127.0.0.1)
-omk studio --reports-dir ~/.oh-my-knowledge/reports
-omk studio --observations-dir .omk/observe-inbox    # observe inbox data directory
+omk studio --reports-dir ~/.oh-my-knowledge/eval
+omk studio --observations-dir .omk/observe/inbox    # observe inbox data directory
 omk studio --no-open
 ```
 
@@ -441,14 +473,14 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe-health, falls back to global)
+  --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe/health, falls back to global)
   --dev                       Dev mode: child process with hot reload
-  --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctors, falls back to global)
-  --global                    View only global reports / observe-health / doctors / observe-inbox dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed
+  --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctor, falls back to global)
+  --global                    View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/; does not affect governance/managed
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --no-open                   Do not auto-open browser
-  --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe-inbox)
+  --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe/inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
   --reports-dir <value>       View only this Core reports dir (optional; default aggregates current project + global)
 ```

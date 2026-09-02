@@ -300,12 +300,12 @@ export default class Eval extends BaseCommand {
       }),
     }),
     'output-dir': Flags.string({
-      description: bilingual({ zh: '报告输出目录（默认项目级 .omk/reports）', en: 'Report output dir (default project .omk/reports)' }),
+      description: bilingual({ zh: '报告输出目录（默认项目级 .omk/eval）', en: 'Report output dir (default project .omk/eval)' }),
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/',
-        en: 'Write report to global ~/.oh-my-knowledge/reports instead of project .omk/',
+        zh: '报告写全局 ~/.oh-my-knowledge/eval，而非项目 .omk/eval',
+        en: 'Write report to global ~/.oh-my-knowledge/eval instead of project .omk/eval',
       }),
     }),
     // ── 评测 toggle ──

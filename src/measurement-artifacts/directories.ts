@@ -1,7 +1,6 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
-import { isReportFileName } from './file-names.js';
+import { projectLayout } from '../omk-layout/index.js';
+import { listMeasurementReportPaths, type MeasurementDomain } from './report-bundle.js';
 
 /**
  * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
@@ -13,22 +12,17 @@ import { isReportFileName } from './file-names.js';
  * 冻结的常量），studio 长会话 per-request 解析才正确。
  */
 
-/** dir 里是否有至少一个满足 match 的文件(短路,不读文件内容)。 */
-function hasMatchingFile(dir: string, match: (name: string) => boolean): boolean {
-  if (!existsSync(dir)) return false;
-  try {
-    return readdirSync(dir).some(match);
-  } catch {
-    return false;
-  }
+/** dir 里是否有至少一个 manifest 完整且领域匹配的 v2 bundle。 */
+function hasReports(dir: string, domain: MeasurementDomain): boolean {
+  return listMeasurementReportPaths(dir, domain).length > 0;
 }
 
-// —— observe-health(skill 健康度报告)——
-// 文件名 `{run}.report.json`,目录已表达 observe-health 域。
+// —— observe/health（skill 健康度报告）——
+// 每份报告使用自包含 bundle，目录已表达 observe health 域。
 
 /** 项目级 observe-health 目录(相对调用时 cwd)。 */
 export function projectObserveHealthDir(cwd: string = process.cwd()): string {
-  return join(cwd, '.omk', 'observe-health');
+  return projectLayout(cwd).observeHealthDir;
 }
 
 /** 全局 observe-health 目录。 */
@@ -42,18 +36,17 @@ export function resolveObserveHealthDir(
   dir: string = projectObserveHealthDir(),
   global: string = globalObserveHealthDir(),
 ): string {
-  const has = (d: string): boolean => hasMatchingFile(d, isReportFileName);
-  if (has(dir)) return dir;
-  if (dir !== global && has(global)) return global;
+  const found = [dir, global].find((candidate) => hasReports(candidate, 'observe-health'));
+  if (found !== undefined) return found;
   return dir;
 }
 
-// —— doctors(体检报告)——
-// 文件名 `{skill}-{run}.report.json`,谓词用 report 后缀即可(真解析在下游 scanDoctorReports)。
+// —— doctor（体检报告）——
+// 每份报告使用自包含 bundle。
 
 /** 项目级 doctors 目录(相对调用时 cwd)。 */
 export function projectDoctorsDir(cwd: string = process.cwd()): string {
-  return join(cwd, '.omk', 'doctors');
+  return projectLayout(cwd).doctorDir;
 }
 
 /** 全局 doctors 目录。 */
@@ -67,21 +60,20 @@ export function resolveDoctorsDir(
   dir: string = projectDoctorsDir(),
   global: string = globalDoctorsDir(),
 ): string {
-  const has = (d: string): boolean => hasMatchingFile(d, isReportFileName);
-  if (has(dir)) return dir;
-  if (dir !== global && has(global)) return global;
+  const found = [dir, global].find((candidate) => hasReports(candidate, 'doctor'));
+  if (found !== undefined) return found;
   return dir;
 }
 
-// —— reports(eval 评测报告)——
-// reports 与 observe-health / doctors 不同:它不是「选一个权威目录」就够的展示列表,而是按 id
+// —— eval（评测报告）——
+// eval 与 observe health / doctor 不同：它不是「选一个权威目录」就够的展示列表，而是按 id
 // 寻址的 store(get(id) / findByArtifactHash 被 resume / gold-compare / baseline 复用依赖)。
 // 故记录优先在消费层合并项目与全局目录，此处只给写入侧与 --global
 // 用的项目 / 全局目录 getter,不给 resolveReportsDir(单目录二选一会让目标 id 在另一目录时 get 落空)。
 
 /** 项目级 reports 目录(相对调用时 cwd)。 */
 export function projectReportsDir(cwd: string = process.cwd()): string {
-  return join(cwd, '.omk', 'reports');
+  return projectLayout(cwd).evalDir;
 }
 
 /** 全局 reports 目录。 */

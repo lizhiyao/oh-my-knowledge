@@ -62,12 +62,17 @@ import {
   DEFAULT_GLOBAL_OBSERVATIONS_DIR,
   DEFAULT_OBSERVATIONS_DIR,
   DEFAULT_PROJECT_OBSERVATIONS_DIR,
+  observationDraftsDir,
+  observationReportsDir,
+  resolveObservationsDir,
 } from './paths.js';
 
 export {
   DEFAULT_GLOBAL_OBSERVATIONS_DIR,
   DEFAULT_OBSERVATIONS_DIR,
   DEFAULT_PROJECT_OBSERVATIONS_DIR,
+  observationDraftsDir,
+  resolveObservationsDir,
   normalizeObservationKeyInput,
 };
 
@@ -93,7 +98,7 @@ export type PersistedObservationInboxReport = Omit<ObservationInboxReport, 'expe
 
 // observe inbox（观测收件箱）产物根目录。导出名沿用 *_OBSERVATIONS_DIR 以少动 importer,
 // 但落盘目录已统一到 observe-inbox 词根(命令 omk observe inbox / kind observe-inbox)。
-// 项目级 .omk/observe-inbox 优先、全局兜底 —— 这套 project/global 归属是既有正常行为,本次只改名不改归属。
+// 项目级 .omk/observe/inbox 优先、全局兜底 —— 这套 project/global 归属是既有正常行为,本次只改名不改归属。
 const OBSERVATION_INBOX_SCHEMA_VERSION = 2;
 const UNOBSERVED_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
@@ -759,11 +764,12 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
   if (!normalizeObservationInboxReport(compact)) {
     throw new Error('拒绝写入无法回读的 observe inbox 报告。');
   }
-  mkdirSync(outDir, { recursive: true });
+  const reportsDir = observationReportsDir(outDir);
+  mkdirSync(reportsDir, { recursive: true });
   // 保留毫秒并追加随机段；即使同一毫秒生成两份 report，也不能静默互相覆盖。
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
-  const path = reportFilePath(outDir, `${stamp}-${randomRunToken()}`);
+  const path = reportFilePath(reportsDir, `${stamp}-${randomRunToken()}`);
   const sourceRecordArchives = writeObservationSourceRecordArchives(report, outDir, path);
   const persisted = sourceRecordArchives.length > 0
     ? { ...compact, meta: { ...compact.meta, sourceRecordArchives } }
@@ -788,17 +794,14 @@ export function compactObservationInboxReport(
 }
 
 export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxReport[] {
-  if (!existsSync(dir)) {
-    if (dir === DEFAULT_PROJECT_OBSERVATIONS_DIR && existsSync(DEFAULT_GLOBAL_OBSERVATIONS_DIR)) {
-      return loadObservationInboxReports(DEFAULT_GLOBAL_OBSERVATIONS_DIR);
-    }
-    return [];
-  }
-  return readdirSync(dir)
+  const resolvedDir = resolveObservationsDir(dir);
+  const reportsDir = observationReportsDir(resolvedDir);
+  if (!existsSync(reportsDir)) return [];
+  return readdirSync(reportsDir)
     .filter(isReportFileName)
     .map((file) => {
       try {
-        const report = normalizeObservationInboxReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+        const report = normalizeObservationInboxReport(JSON.parse(readFileSync(join(reportsDir, file), 'utf-8')));
         if (!report) return null;
         report.items = report.items.map((item) => {
           return {

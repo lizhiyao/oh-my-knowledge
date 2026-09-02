@@ -92,7 +92,7 @@ function fail(code: CoreRunArtifactStoreErrorCode, message: string): never {
   throw new CoreRunArtifactStoreError(code, message);
 }
 
-function runDirectoryName(runId: string): string {
+export function coreRunArtifactDirectoryName(runId: string): string {
   return `run-${createHash('sha256').update(runId).digest('hex')}`;
 }
 
@@ -101,7 +101,7 @@ function sha256(value: string): Sha256Digest {
 }
 
 function runDirectoryPath(rootDir: string, runId: string): string {
-  return join(rootDir, runDirectoryName(runId));
+  return join(rootDir, coreRunArtifactDirectoryName(runId));
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -541,7 +541,7 @@ export function createNodeCoreRunArtifactStore(
       );
     }
     if ((expectedRunId !== undefined && manifest.runId !== expectedRunId)
-        || runDirectoryName(manifest.runId) !== basename(directory)) {
+        || coreRunArtifactDirectoryName(manifest.runId) !== basename(directory)) {
       fail(
         'CORE_RUN_ARTIFACT_MANIFEST_INVALID',
         'Core run artifact manifest identity differs from its locator.',
@@ -619,7 +619,7 @@ export function createNodeCoreRunArtifactStore(
       await ensurePrivateDirectory(rootDir);
       const staging = join(
         rootDir,
-        `.${runDirectoryName(request.runId)}.${process.pid}.${randomUUID()}.tmp`,
+        `.${coreRunArtifactDirectoryName(request.runId)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await mkdir(staging, { mode: 0o700 });
       try {

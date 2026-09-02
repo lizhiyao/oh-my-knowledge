@@ -72,7 +72,7 @@ describe('omk rollback command', () => {
     proj = mkdtempSync(join(tmpdir(), 'omk-rollback-proj-'));
     home = mkdtempSync(join(tmpdir(), 'omk-rollback-home-'));
     env = { ...process.env, HOME: home, USERPROFILE: home };
-    managed = join(proj, '.omk', 'managed');
+    managed = join(proj, '.omk', 'governance', 'managed');
     mkdirSync(managed, { recursive: true });
     srcPath = join(proj, 'review.md');
     writeFileSync(srcPath, '# review skill\n\ndo the thing.\n');

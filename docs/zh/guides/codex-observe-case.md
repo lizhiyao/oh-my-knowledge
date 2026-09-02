@@ -38,7 +38,7 @@ npm exec --yes --package=oh-my-knowledge@latest -- \
 }
 ```
 
-验证过程确定性执行，不调用模型。设置 `OMK_KEEP_OUTPUT=1` 可保留生成的 `.omk/observe-inbox` 报告。
+验证过程确定性执行，不调用模型。设置 `OMK_KEEP_OUTPUT=1` 可保留生成的 `.omk/observe/inbox` 报告。
 
 ## 这个案例证明什么
 

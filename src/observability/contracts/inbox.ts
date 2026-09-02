@@ -138,8 +138,8 @@ export type ObservationSourceRecordArchiveReason =
 
 /**
  * A report only retains a relative pointer to its bounded source-record archive.
- * The archive itself stays beside the report so Studio never follows an
- * arbitrary absolute path supplied by report JSON.
+ * The archive itself stays below the observation archive root so Studio never
+ * follows an arbitrary absolute path supplied by report JSON.
  */
 export interface ObservationSourceRecordArchiveRef {
   experienceSessionId: string;

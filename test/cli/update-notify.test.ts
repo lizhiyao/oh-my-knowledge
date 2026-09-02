@@ -8,6 +8,7 @@ const spawnMock = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 
 import {
+  defaultCachePath,
   isStale,
   padToWidth,
   planUpdateActions,
@@ -80,6 +81,13 @@ describe('readCache / writeCache', () => {
     writeCache(path, { latestVersion: '0.33.0', lastCheckedAt: hoursAgo(1) });
     const leftover = readdirSync(dir).filter((f) => f.includes('.tmp.'));
     expect(leftover).toEqual([]);
+  });
+});
+
+describe('defaultCachePath', () => {
+  it('places the update cache below global state/cache', () => {
+    const root = join(tmpdir(), 'omk-machine-root');
+    expect(defaultCachePath(root)).toBe(join(root, 'state', 'cache', 'update-check.json'));
   });
 });
 

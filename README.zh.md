@@ -199,7 +199,7 @@ observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JS
 
 > **定位：OMK MCP 是主动知识反馈接口，不是对话监听器。** 仅靠 OMK MCP 无法自动监听或订阅 Codex、ChatGPT 等客户端的完整对话。只有客户端、模型或 component 主动调用 `save_observation` 并提交授权内容后，OMK 才能收到并保存这条反馈。Agent Skill 可以自动识别潜在反馈时机，但识别结果仍须经过用户确认和一次显式 MCP 工具调用。
 
-`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。客户端只在用户明确要求记录时调用 `save_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
+`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。客户端只在用户明确要求记录时调用 `save_observation`，把反馈和可选证据追加到 `.omk/observe/inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
 
 在 Codex 中可以显式调用 OMK Skill 快捷提交当前知识反馈：
 
@@ -215,6 +215,10 @@ omk-mcp
 
 每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。需要持续监听时，必须由有权访问事件流的宿主系统主动转交事件，这属于宿主集成能力，不属于 OMK MCP 自身能力。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。私有宿主的 Streamable HTTP 组合方式见[组合 OMK MCP 集成](docs/zh/guides/mcp-integration.md)。
 
+### 本地存储
+
+项目数据采用领域化的 `.omk/` v2 布局：持久证据进入 `eval/`、`doctor/`、`observe/`，治理记录进入 `governance/`，备份保持可恢复，只有可重建工作进入 `state/`。机器工具、隧道、缓存和物化副本只能进入 `~/.oh-my-knowledge/state/`，不得写进项目。本期不读取、也不迁移旧存储布局。清理前使用 `omk clean --dry-run` 预览生命周期策略，普通 `omk clean` 默认只删 `state/`。
+
 ## 文档
 
 完整文档已发布到 **[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)** —— 可搜索，可切换英文。重点页面：
@@ -223,6 +227,7 @@ omk-mcp
 - **[评测用例格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、30+ 断言类型、自定义 JS 断言
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[Evaluation Core 生产切换](docs/zh/guides/evaluation-core-cutover.md)** —— `BREAKING-SCHEMA` 存储、resume、Studio、Gold、受管证据与 evolve 迁移
+- **[存储布局 v2](docs/zh/specs/storage-layout-spec.md)** —— 项目／全局领域、迁移兼容、Git 策略与安全清理
 - **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）
 - **[观测与任务轨迹](docs/zh/guides/observe-production.md)** —— 浏览本机 Codex 对话，下钻一次任务，并实时跟随可观测执行过程

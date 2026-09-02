@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { EvalConfig } from '../../inputs/contracts/config.js';
+import type { EvaluationContentResolver } from '../../evaluation-core/evaluation/index.js';
 import {
   compileCliEvaluationInput,
   parseCliEvaluationRequest,
@@ -10,6 +11,7 @@ import {
   createNodeCoreBatchArtifactStore,
   createNodeCoreContentStore,
   createNodeCoreRunArtifactStore,
+  createOverlayCoreRunArtifactStore,
   type CoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../../eval-workflows/artifact-store/index.js';
@@ -17,7 +19,7 @@ import {
   createNodeCliProductionComposition,
   createProductionEvaluationHost,
   executeProductionEvaluationSeries,
-  persistCoreArtifactGraph,
+  persistCoreArtifactSidecars,
   resolveNodeCliEvaluationRequest,
 } from '../../eval-workflows/production-host/index.js';
 import {
@@ -31,6 +33,7 @@ import { discoverBatchSkills } from '../../inputs/skill-loader.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { generateRunId } from '../../measurement-artifacts/run-id.js';
+import { globalLayout, projectLayout } from '../../omk-layout/index.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';
 
@@ -51,6 +54,29 @@ export interface RunCoreEvaluationCommandResult {
   readonly output: unknown;
   readonly stored?: StoredCoreRunArtifacts;
   readonly outputDirectory: string;
+}
+
+function runStoreForOutput(
+  outputDirectory: string,
+  primaryContentResolver: EvaluationContentResolver | undefined,
+): CoreRunArtifactStore {
+  const primary = createNodeCoreRunArtifactStore(outputDirectory, {
+    contentResolver: primaryContentResolver,
+  });
+  const resolved = resolve(outputDirectory);
+  const project = projectLayout();
+  const global = globalLayout();
+  const fallbackDirs = resolved === resolve(project.evalDir)
+    ? [global.evalDir]
+    : [];
+  const unique = [...new Set(fallbackDirs.map((dir) => resolve(dir)))]
+    .filter((dir) => dir !== resolved);
+  if (unique.length === 0) return primary;
+  return createOverlayCoreRunArtifactStore(primary, unique.map((dir) => (
+    createNodeCoreRunArtifactStore(dir, {
+      contentResolver: createNodeCoreContentStore(join(dir, 'content')),
+    })
+  )));
 }
 
 function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string): CliEvaluationRequest {
@@ -156,7 +182,7 @@ async function persistArtifactGraph(
   outputDirectory: string,
   cwd: string,
 ): Promise<void> {
-  await persistCoreArtifactGraph({ source: stored, outputDirectory, cwd });
+  await persistCoreArtifactSidecars({ source: stored, outputDirectory, cwd });
 }
 
 function resumeRunId(request: CliEvaluationRequest): string | undefined {
@@ -173,6 +199,7 @@ export async function runCoreEvaluationCommand(
   input: Readonly<RunCoreEvaluationCommandInput>,
 ): Promise<RunCoreEvaluationCommandResult> {
   const projectRoot = resolve(input.projectRoot ?? process.cwd());
+  const machineLayout = globalLayout(input.environment?.OMK_HOME);
   const request = requestFor(input, projectRoot);
   if (request.values.orchestration.preflight.doctor === 'skip') {
     process.stderr.write(input.lang === 'zh'
@@ -228,7 +255,7 @@ export async function runCoreEvaluationCommand(
       return child.stored;
     });
     const contentResolver = createNodeCoreContentStore(join(outputDirectory, 'content'));
-    const runStore = input.store ?? createNodeCoreRunArtifactStore(outputDirectory, { contentResolver });
+    const runStore = input.store ?? runStoreForOutput(outputDirectory, contentResolver);
     const batchId = generateRunId(['batch']);
     const batch = await createNodeCoreBatchArtifactStore(outputDirectory, runStore).save({
       batchId,
@@ -255,7 +282,7 @@ export async function runCoreEvaluationCommand(
   const outputDirectory = resolve(projectRoot, request.values.presentation.outputDirectoryLocator);
   const resolved = await resolveNodeCliEvaluationRequest(request, {
     projectRoot,
-    materializationRoot: join(outputDirectory, 'resolved-inputs'),
+    materializationRoot: machineLayout.resolvedInputsDir,
     ...(input.environment === undefined ? {} : { environment: input.environment }),
     ...(request.values.orchestration.repeatCount > 1
       ? { seriesInstanceId: generateRunId(['series']) }
@@ -266,11 +293,13 @@ export async function runCoreEvaluationCommand(
     compiled,
     projectRoot,
     outputDirectory,
+    resourceLeaseRoot: machineLayout.resourceLeasesDir,
     environment: input.environment,
   });
-  const store = input.store ?? createNodeCoreRunArtifactStore(outputDirectory, {
-    contentResolver: composition.support.contentResolver,
-  });
+  const store = input.store ?? runStoreForOutput(
+    outputDirectory,
+    composition.support.contentResolver,
+  );
   const host = {
     compiled,
     ...composition,

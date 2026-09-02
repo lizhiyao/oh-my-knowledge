@@ -42,7 +42,7 @@ Expected summary:
 
 The run is deterministic and makes no model calls. Set
 `OMK_KEEP_OUTPUT=1` if you want to inspect the generated
-`.omk/observe-inbox` report.
+`.omk/observe/inbox` report.
 
 ## Why this case matters
 

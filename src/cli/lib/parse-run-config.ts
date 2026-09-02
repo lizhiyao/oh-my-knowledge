@@ -162,7 +162,7 @@ export function parseRunConfig(
     ?? evalConfig?.judgeModels
     ?? parsedEnvJudges
     ?? [{ executor: executorName, model: runtime.judgeModel }];
-  // 报告默认落项目 `.omk/reports`(绑用例集,construct validity);--global 写全局;--output-dir 最高优先。
+  // 报告默认落项目 `.omk/eval`(绑用例集,construct validity);--global 写全局;--output-dir 最高优先。
   // 同 observe / doctor 写入侧口径。读取侧(studio / resume / gold-compare / 复用)走 overlay 项目→全局兜底。
   const outputDir = resolve(
     (values['output-dir'] as string | undefined)

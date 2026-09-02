@@ -9,7 +9,7 @@ import {
   projectReportsDir, globalReportsDir,
 } from '../../src/measurement-artifacts/directories.js';
 import { OMK_HOME } from '../../src/measurement-artifacts/default-dirs.js';
-import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
+import { writeMeasurementReportBundle } from '../../src/measurement-artifacts/report-bundle.js';
 
 function mkTmp(tag: string): string {
   const d = join(tmpdir(), `omk-mdir-${tag}-${Date.now()}-${Math.round(performance.now())}`);
@@ -17,21 +17,32 @@ function mkTmp(tag: string): string {
   return d;
 }
 
+function writeBundle(rootDir: string, measurementDomain: 'doctor' | 'observe-health', id: string): void {
+  writeMeasurementReportBundle({
+    rootDir,
+    measurementDomain,
+    recordId: id,
+    reportId: id,
+    createdAt: '2026-09-02T00:00:00.000Z',
+    report: {},
+  });
+}
+
 describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
   it('project/global getter 路径', () => {
-    assert.equal(projectObserveHealthDir('/x'), join('/x', '.omk', 'observe-health'));
-    assert.equal(projectDoctorsDir('/x'), join('/x', '.omk', 'doctors'));
-    assert.equal(projectReportsDir('/x'), join('/x', '.omk', 'reports'));
+    assert.equal(projectObserveHealthDir('/x'), join('/x', '.omk', 'observe', 'health'));
+    assert.equal(projectDoctorsDir('/x'), join('/x', '.omk', 'doctor'));
+    assert.equal(projectReportsDir('/x'), join('/x', '.omk', 'eval'));
     // 全局目录从 OMK_HOME 派生(OMK_HOME 可被 env 整体重定向,故不硬编码 .oh-my-knowledge)。
-    assert.equal(globalObserveHealthDir(), join(OMK_HOME, 'observe-health'));
-    assert.equal(globalDoctorsDir(), join(OMK_HOME, 'doctors'));
-    assert.equal(globalReportsDir(), join(OMK_HOME, 'reports'));
+    assert.equal(globalObserveHealthDir(), join(OMK_HOME, 'observe', 'health'));
+    assert.equal(globalDoctorsDir(), join(OMK_HOME, 'doctor'));
+    assert.equal(globalReportsDir(), join(OMK_HOME, 'eval'));
   });
 
   it('reports 不给 resolveReportsDir(记录优先在 overlay store 层做,见 report-store)', () => {
     // 故意只暴露 project/global getter:单目录二选一会让目标 id 在另一目录时 get 落空,
     // reports 的项目→全局兜底必须在 store 层(createOverlayReportStore),不在 dir 解析层。
-    assert.equal(projectReportsDir(), join(process.cwd(), '.omk', 'reports'));
+    assert.equal(projectReportsDir(), join(process.cwd(), '.omk', 'eval'));
   });
 
   it('observe-health:项目有报告→项目;项目空+全局有→全局;都空→项目', () => {
@@ -41,10 +52,10 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
       // 都空 → 回项目
       assert.equal(resolveObserveHealthDir(proj, glob), proj, '都空回项目');
       // 仅全局有 → 全局
-      writeFileSync(join(glob, reportFileName('20260101T000000-a111')), '{}');
+      writeBundle(glob, 'observe-health', '20260101T000000-a111');
       assert.equal(resolveObserveHealthDir(proj, glob), glob, '项目空+全局有→全局');
       // 项目也有 → 项目优先
-      writeFileSync(join(proj, reportFileName('20260202T000000-b222')), '{}');
+      writeBundle(proj, 'observe-health', '20260202T000000-b222');
       assert.equal(resolveObserveHealthDir(proj, glob), proj, '项目有→项目优先');
     } finally {
       rmSync(proj, { recursive: true, force: true });
@@ -63,7 +74,7 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
         bySkill: {},
         overall: {},
       }));
-      writeFileSync(join(glob, reportFileName('20260101T000000-a111')), '{}');
+      writeBundle(glob, 'observe-health', '20260101T000000-a111');
       // 项目只有旧裸 JSON → 不算当前报告、也不改用户文件 → 回退全局。
       assert.equal(resolveObserveHealthDir(proj, glob), glob, '后缀不匹配不算报告');
       assert.deepEqual(readdirSync(proj), [legacyName]);
@@ -78,9 +89,9 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
     const glob = mkTmp('d-glob');
     try {
       assert.equal(resolveDoctorsDir(proj, glob), proj, '都空回项目');
-      writeFileSync(join(glob, reportFileName('some-skill-id')), '{}');
+      writeBundle(glob, 'doctor', 'some-skill-id');
       assert.equal(resolveDoctorsDir(proj, glob), glob, '项目空+全局有→全局');
-      writeFileSync(join(proj, reportFileName('another-skill-id')), '{}');
+      writeBundle(proj, 'doctor', 'another-skill-id');
       assert.equal(resolveDoctorsDir(proj, glob), proj, '项目有→项目优先');
     } finally {
       rmSync(proj, { recursive: true, force: true });

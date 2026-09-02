@@ -4,7 +4,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildSkillIndex, _resetSkillIndexCache } from '../../../src/studio/application/index.js';
@@ -13,12 +13,16 @@ import {
   indexObserveWrite as writeObserveIndex,
   listDoctorCards,
 } from '../../../src/measurement-artifacts/discovery-index.js';
-import { reportFileName } from '../../../src/measurement-artifacts/file-names.js';
+import { writeMeasurementReportBundle } from '../../../src/measurement-artifacts/report-bundle.js';
 import { pruneDoctorHistory } from '../../../src/cli/commands/doctor.js';
 import type { DoctorReport } from '../../../src/doctor/contracts.js';
 
 type DoctorCardInput = Parameters<typeof writeDoctorIndex>[0];
 type ObserveSource = Parameters<typeof writeObserveIndex>[0];
+
+function reportFileName(id: string): string {
+  return join(id, 'report.json');
+}
 
 function indexDoctorWrite(card: DoctorCardInput, outputDir: string): void {
   const results = [
@@ -76,7 +80,15 @@ function indexDoctorWrite(card: DoctorCardInput, outputDir: string): void {
       total: card.passCount + card.warnCount + card.failCount,
     },
   };
-  writeFileSync(card.path, JSON.stringify(report));
+  const bundle = writeMeasurementReportBundle({
+    rootDir: outputDir,
+    measurementDomain: 'doctor',
+    recordId: card.id,
+    reportId: card.reportId,
+    createdAt: card.timestamp,
+    report,
+  });
+  assert.equal(bundle.reportPath, card.path);
   writeDoctorIndex(card, outputDir);
 }
 
@@ -187,7 +199,15 @@ function indexObserveWrite(
       confidence: source.overall.confidence ?? 'high',
     },
   };
-  writeFileSync(sourcePath, JSON.stringify(report));
+  const bundle = writeMeasurementReportBundle({
+    rootDir: outputDir,
+    measurementDomain: 'observe-health',
+    recordId: id,
+    reportId: id,
+    createdAt: source.meta.generatedAt,
+    report,
+  });
+  assert.equal(bundle.reportPath, sourcePath);
   writeObserveIndex(report, sourcePath, outputDir, id);
 }
 
@@ -214,8 +234,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('别项目 doctor 卡片 + observe 卡片 → buildSkillIndex 看到对应 skill', () => {
     // 卡片真身(悬空过滤要求 card.path 存在;buildSkillIndex 合并只读卡片本身,真身内容随意)。
-    writeFileSync(join(proj, reportFileName('foo-20260614-1-aa11')), '{}');
-    writeFileSync(join(proj, reportFileName('o-20260614-aa11')), '{}');
     indexDoctorWrite({
       id: 'foo-20260614-1-aa11', path: join(proj, reportFileName('foo-20260614-1-aa11')), skillName: 'foo',
       reportId: 'doctor-20260614-1-aa11', timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 2, warnCount: 0, failCount: 0,
@@ -238,7 +256,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('observe 卡片保留未知工具结果状态，但不把不可测当成健康告警', () => {
     const path = join(proj, reportFileName('o-unknown'));
-    writeFileSync(path, '{}');
     indexObserveWrite({
       meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 3, segmentCount: 30 },
       overall: { healthBand: 'yellow', confidence: 'high' },
@@ -273,7 +290,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('可判定工具结果不足时把 observe 总览保留为未充分测量', () => {
     const path = join(proj, reportFileName('o-partial-outcomes'));
-    writeFileSync(path, '{}');
     indexObserveWrite({
       meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 3, segmentCount: 30 },
       overall: { healthBand: 'green', confidence: 'high' },
@@ -302,7 +318,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('少量可判定结果不足以把高失败率标成红色或黄色', () => {
     const path = join(proj, reportFileName('o-underpowered-failures'));
-    writeFileSync(path, '{}');
     indexObserveWrite({
       meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 20, segmentCount: 20 },
       overall: { healthBand: 'yellow', confidence: 'high' },
@@ -332,7 +347,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('极少未知结果不污染高覆盖率 observe 的健康色带', () => {
     const path = join(proj, reportFileName('o-high-outcome-coverage'));
-    writeFileSync(path, '{}');
     indexObserveWrite({
       meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 30, segmentCount: 30 },
       overall: { healthBand: 'green', confidence: 'high' },
@@ -372,8 +386,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
   });
 
   it('悬空检测穿透 buildSkillIndex 缓存:先 build 可见、仅删真身(卡片目录不变、不 reset 缓存)→ 再 build 应消失', () => {
-    writeFileSync(join(proj, reportFileName('fd')), '{}');
-    writeFileSync(join(proj, reportFileName('fo')), '{}');
     indexDoctorWrite({ id: 'fd', path: join(proj, reportFileName('fd')), skillName: 'cf', reportId: 'doctor-cf-1',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
@@ -391,7 +403,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('固定目录模式(include 默认 false):索引里有别项目卡片但 buildSkillIndex 不合并 → skill 索引为空', () => {
     // 模拟 --analyses-dir/--doctors-dir/--global 逃生舱:有卡片(别项目),但 live 目录空且不开 include。
-    indexDoctorWrite({ id: 'x-1-aa', path: join(proj, reportFileName('x')), skillName: 'x', reportId: 'doctor-1-aa',
+    indexDoctorWrite({ id: 'x-1-aa', path: join(proj, reportFileName('x-1-aa')), skillName: 'x', reportId: 'doctor-1-aa',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
       overall: { healthBand: 'green', confidence: 'high' },
@@ -403,16 +415,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
   });
 
   it('同项目 live 正文 + 同 id 卡片 → dedup,live 盖卡片(不双计;机器级总览的 no-double-count 核心不变量)', () => {
-    // doctor:live 正文(results 非空)写进 doctorsDir + 同 stem 卡片(本项目 persist 时既写正文又写卡片的稳态)。
+    // doctor：live 正文(results 非空)写进 doctor bundle + 同 stem 卡片(本项目 persist 时既写正文又写卡片的稳态）。
     const dStem = 'd-rd';
-    const liveDoctor: DoctorReport = {
-      kind: 'doctor', schemaVersion: '3.0.0', id: 'rd', timestamp: '2026-06-14T00:00:00Z', cliVersion: 't', cwd: '/x',
-      executorName: 'claude', model: 'm', outcome: 'passed',
-      skills: [{ skillName: 'd', skillPath: '/x/d', status: 'pass',
-        results: [{ ruleId: 'r1', severity: 'warn', labelKey: 'k', status: 'pass', message: 'ok', durationMs: 1 }] }],
-      totals: { pass: 1, warn: 0, fail: 0 }, ruleStats: { pass: 1, warn: 0, fail: 0, skipped: 0, total: 1 },
-    };
-    writeFileSync(join(emptyDoctors, reportFileName(dStem)), JSON.stringify(liveDoctor));
     indexDoctorWrite({ id: dStem, path: join(emptyDoctors, reportFileName(dStem)), skillName: 'd', reportId: 'rd',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, emptyDoctors);
 
@@ -426,7 +430,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
         stability: 'stable' as const, confidence: 'high' as const, gap: { gapRate: 0, weightedGapRate: 0, signals: [{ h: 1 }] } } },
       overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green' as const, confidence: 'high' as const },
     };
-    writeFileSync(join(emptyAnalyses, reportFileName(oid)), JSON.stringify(liveObs));
     indexObserveWrite(liveObs, join(emptyAnalyses, reportFileName(oid)), emptyAnalyses, oid);
 
     const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
@@ -438,17 +441,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
   });
 
   it('doctor prune 删正文连带删卡片 → 被 prune 的报告不经卡片复活', () => {
-    function singleSkillReport(id: string, ts: string): DoctorReport {
-      return {
-        kind: 'doctor', schemaVersion: '3.0.0', id, timestamp: ts, cliVersion: 't', cwd: '/x',
-        executorName: 'claude', model: 'm', outcome: 'passed',
-        skills: [{ skillName: 'p', skillPath: '/x/p', status: 'pass', results: [] }],
-        totals: { pass: 1, warn: 0, fail: 0 }, ruleStats: { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 },
-      } as DoctorReport;
-    }
-    // 两份同 skill 的 per-skill 报告(老 t1 / 新 t2)+ 各自卡片(id=文件 stem)。
+    // 两份同 skill 的 per-skill 报告(老 t1 / 新 t2)+ 各自卡片(id=record id）。
     for (const [stem, rid, ts] of [['p-r1', 'r1', '2026-06-01T00:00:00Z'], ['p-r2', 'r2', '2026-06-14T00:00:00Z']] as const) {
-      writeFileSync(join(emptyDoctors, reportFileName(stem)), JSON.stringify(singleSkillReport(rid, ts)));
       indexDoctorWrite({ id: stem, path: join(emptyDoctors, reportFileName(stem)), skillName: 'p', reportId: rid, timestamp: ts,
         status: 'pass', passCount: 0, warnCount: 0, failCount: 0 }, emptyDoctors);
     }

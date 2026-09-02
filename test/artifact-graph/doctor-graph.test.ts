@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   buildDoctorArtifactGraph,
-  doctorGraphDirForDoctorOutput,
   persistDoctorGraphSidecars,
   removeDoctorGraphSidecars,
   renderDoctorEvidenceCard,
@@ -88,7 +87,7 @@ describe('doctor artifact graph', () => {
       const graph = buildDoctorArtifactGraph({
         report,
         skill: report.skills[0],
-        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-test.report.json'),
+        sourcePath: join(tmp, '.omk', 'doctor', 'review-skill-test', 'report.json'),
         generatedAt: '2026-06-19T00:00:00.000Z',
       });
 
@@ -135,7 +134,7 @@ describe('doctor artifact graph', () => {
       const skillPath = join(skillRoot, 'SKILL.md');
       writeFileSync(skillPath, '# Skill\n\n这个 skill 内容足够长，用于测试 graph sidecar。');
       const report = makeReport(tmp, skillPath);
-      const outputDir = join(tmp, '.omk', 'doctors');
+      const outputDir = join(tmp, '.omk', 'doctor');
       const result = persistDoctorGraphSidecars({
         report,
         skill: report.skills[0],
@@ -147,8 +146,8 @@ describe('doctor artifact graph', () => {
 
       assert.ok(existsSync(result.graphPath));
       assert.ok(existsSync(result.evidenceCardPath));
-      assert.equal(result.graphPath, join(doctorGraphDirForDoctorOutput(outputDir), 'review-skill-doctor-test.graph.json'));
-      assert.equal(result.evidenceCardPath, join(doctorGraphDirForDoctorOutput(outputDir), 'review-skill-doctor-test.card.md'));
+      assert.equal(result.graphPath, join(outputDir, 'review-skill-doctor-test', 'derived', 'graph.json'));
+      assert.equal(result.evidenceCardPath, join(outputDir, 'review-skill-doctor-test', 'derived', 'card.md'));
       const graph = JSON.parse(readFileSync(result.graphPath, 'utf-8')) as { documentKind: string };
       assert.equal(graph.documentKind, 'artifact-graph');
       assert.ok(readFileSync(result.evidenceCardPath, 'utf-8').includes('知识图谱摘要'));
@@ -165,7 +164,7 @@ describe('doctor artifact graph', () => {
       const skillPath = join(skillRoot, 'SKILL.md');
       writeFileSync(skillPath, '# Skill\n\n这个 skill 内容足够长，用于测试 graph sidecar。');
       const report = makeReport(tmp, skillPath);
-      const outputDir = join(tmp, '.omk', 'doctors');
+      const outputDir = join(tmp, '.omk', 'doctor');
       const canonical = persistDoctorGraphSidecars({
         report,
         skill: report.skills[0],
@@ -194,20 +193,6 @@ describe('doctor artifact graph', () => {
     }
   });
 
-  it('puts graph sidecars inside non-standard custom output dirs', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-custom-out-'));
-    try {
-      const outputDir = join(tmp, 'custom-output');
-      assert.equal(doctorGraphDirForDoctorOutput(outputDir), join(outputDir, 'graphs', 'doctor'));
-      assert.equal(
-        doctorGraphDirForDoctorOutput(join(tmp, '.omk', 'doctors')),
-        join(tmp, '.omk', 'graphs', 'doctor'),
-      );
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
   it('treats zero eval samples as missing in the evidence card', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-zero-samples-'));
     try {
@@ -220,7 +205,7 @@ describe('doctor artifact graph', () => {
       const graph = buildDoctorArtifactGraph({
         report,
         skill: report.skills[0],
-        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-test.report.json'),
+        sourcePath: join(tmp, '.omk', 'doctor', 'review-skill-test', 'report.json'),
         generatedAt: '2026-06-19T00:00:00.000Z',
       });
 

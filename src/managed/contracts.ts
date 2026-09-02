@@ -115,7 +115,7 @@ export interface ManagedArtifactSource {
   isDirectorySkill: boolean;
 }
 
-/** 一条记录一个文件 `.omk/managed/<id>.json`,自带 recordKind + schemaVersion 便于单独迁移。 */
+/** 一条记录一个文件 `.omk/governance/managed/<id>.json`,自带 recordKind + schemaVersion 便于单独迁移。 */
 export interface ManagedArtifactRecord {
   recordKind: 'managed-artifact';
   /** v3 仅接受 Evaluation Core 认证证据；旧记录不迁移。 */

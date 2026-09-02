@@ -57,7 +57,7 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | judge (layer) | Ensemble consensus or dimension aggregate bound as the judge source | Composite Analysis |
 | dimension | An Analysis aggregate bound one-to-one to a Metric and upstream judge-ensemble result | Dimension Analysis |
 | evidence coverage | Planned, observed, missing, invalid, failed, unavailable, and not-started evidence retained through lineage | Core Analysis and Decision gates |
-| [managed record](../specs/evidence-gated-management.md) | A `.omk/managed/<id>.json` fact record from `omk install` (source / contentHash / distribution / evidence / decisions) | `omk install`; evidence-gated management |
+| [managed record](../specs/evidence-gated-management.md) | A `.omk/governance/managed/<id>.json` fact record from `omk install` (source / contentHash / distribution / evidence / decisions) | `omk install`; evidence-gated management |
 | lifecycle (installed / measurable / stale) | Read-time state of a managed skill: `installed` (no valid evidence) → `measurable` (eval evidence bound) → `stale` (content drifted off its evidence) | `deriveManagedState`; `omk eval` "→ measurable" |
 | evidence (managed) | A `ManagedEvidenceRef` an eval run appends to a managed record, bound to the content fingerprint it measured (report id / sample coverage / verdict / comparability) | `omk eval` auto-write |
 

@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`clean`（按生命周期清理）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -23,6 +23,38 @@ omk init [目录]
 <!-- omk:cli:init:flags:end -->
 
 在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。现有两版 skill + 三条用例只是默认的 A/B 起步模板。
+
+## `omk clean`
+
+```bash
+omk clean --dry-run
+omk clean
+omk clean --reports
+omk clean --observations --force
+```
+
+<!-- omk:cli:clean:flags:start -->
+
+**Flags:**
+
+```text
+  --all           清理 state、报告、observation 和备份，不包含治理记录
+  --backups       清理 doctor fix 备份
+  --dry-run       只显示将删除的路径与空间
+  --force         确认删除敏感或不可重建的数据
+  --global        清理全局 ~/.oh-my-knowledge
+  --governance    清理 managed 治理记录，必须配合 --force
+  --json          输出机器可读 JSON
+  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --observations  清理 observation inbox、草稿和归档，必须配合 --force
+  --reports       清理 eval、doctor 和 observe health 报告
+```
+
+完整描述见 `omk clean --help`。
+
+<!-- omk:cli:clean:flags:end -->
+
+默认只删除 `.omk/state/`。报告、observation、备份和治理记录都必须显式选择类别；删除 observation 或治理记录还必须传入 `--force`。`--all` 不包含治理记录。
 
 ## `omk install`
 
@@ -55,15 +87,15 @@ omk install ./skills/review --dest ~/.my-agent/skills
 
 安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
 
-安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/managed/<id>.json` —— 这是「管理」支柱的入口，让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验，分支则给真实漂移语义。
+安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/governance/managed/<id>.json` —— 这是「管理」支柱的入口，让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验，分支则给真实漂移语义。
 
 默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
 
 ## `omk list`
 
 ```bash
-omk list                 # 当前项目的受管 skill（.omk/managed）
-omk list --global        # 全局受管 skill（~/.oh-my-knowledge/managed）
+omk list                 # 当前项目的受管 skill（.omk/governance/managed）
+omk list --global        # 全局受管 skill（~/.oh-my-knowledge/governance/managed）
 omk list --json          # 机器可读输出，含完整可比性 marker
 ```
 
@@ -72,7 +104,7 @@ omk list --json          # 机器可读输出，含完整可比性 marker
 **Flags:**
 
 ```text
-  --global        看全局受管目录（~/.oh-my-knowledge/managed）而非项目 .omk/managed
+  --global        看全局受管目录（~/.oh-my-knowledge/governance/managed）而非项目 .omk/governance/managed
   --json          输出 JSON（含完整可比性 marker），供脚本消费
   --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 ```
@@ -99,7 +131,7 @@ omk promote review --force --reason "已人工复核"   # 越门，记为人工�
   --accept-cautious  把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
   --actor <value>    决定的 actor（默认取 git config user.name）
   --force            越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
-  --global           操作全局受管目录而非项目 .omk/managed
+  --global           操作全局受管目录而非项目 .omk/governance/managed
   --json             输出 JSON（版本化信封）供脚本消费
   --kind <value>     artifact 类型（当前仅 skill）
   --lang <value>     输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
@@ -125,7 +157,7 @@ omk rollback review --reason "线上发现回归"   # 回退并记录理由
 
 ```text
   --actor <value>   决定的 actor（默认取 git config user.name）
-  --global          操作全局受管目录而非项目 .omk/managed
+  --global          操作全局受管目录而非项目 .omk/governance/managed
   --json            输出 JSON（版本化信封）供脚本消费
   --kind <value>    artifact 类型（当前仅 skill）
   --lang <value>    输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
@@ -160,11 +192,11 @@ omk doctor --static-only                 # 只跑静态检测：不调 LLM、不
   --executor <value>     执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。指定为测试 fixture 路径可在测试里跑。
   --fix                  交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
   --gate                 静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
-  --global               写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors
+  --global               写全局 ~/.oh-my-knowledge/doctor，而非项目 .omk/doctor
   --json                 JSON 输出到 stdout，适合 CI / 外部脚本消费。
   --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>        LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
-  --output-dir <value>   报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
+  --output-dir <value>   报告输出目录，默认项目级 .omk/doctor（--global 写全局）。
   --repeat <value>       健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。
   --static-only          只跑静态检测（不调 LLM、不读 samples.json）：skill 可读性 / frontmatter 合法性 / 正文引用的脚本·CLI·文件·env 是否存在。CI 无 LLM 凭证或断网时用。
   --timeout <value>      单次 LLM 会话超时秒数，默认 600(10 分钟）。
@@ -236,7 +268,7 @@ omk eval gold compare <run-id> --gold-dir gold-dataset
   --dry-run                       只 plan 不实跑
   --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
   --executor <value>              执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
-  --global                        报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
+  --global                        报告写全局 ~/.oh-my-knowledge/eval，而非项目 .omk/eval
   --gold-dir <value>              gold dataset 目录
   --holdout-ratio <value>         留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
   --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。
@@ -253,7 +285,7 @@ omk eval gold compare <run-id> --gold-dir gold-dataset
   --no-judge                      跳过 LLM judge
   --no-serve                      不启 report server
   --no-strict-baseline            关闭 baseline 隔离
-  --output-dir <value>            报告输出目录（默认项目级 .omk/reports）
+  --output-dir <value>            报告输出目录（默认项目级 .omk/eval）
   --repeat <value>                每个 sample 重复跑 N 次
   --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
   --resume <value>                复用经过完整契约校验的 Core runId；拒绝时失败关闭
@@ -302,11 +334,11 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```text
   --feedback            把生产健康观测反哺已纳管的同名 skill（--no-feedback 关闭）
   --from <value>        起始时间 ISO，优先级高于 --last
-  --global              写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health
+  --global              写全局 ~/.oh-my-knowledge/observe/health，而非项目 .omk/observe/health
   --kb <value>          知识库 root，启用 KB-aware 分析
   --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --last <value>        时间窗(7d / 24h / 30m）
-  --output-dir <value>  健康报告输出目录，默认项目级 .omk/observe-health（--global 写全局）
+  --output-dir <value>  健康报告输出目录，默认项目级 .omk/observe/health（--global 写全局）
   --skills <value>      只看指定 skill，逗号分隔
   --to <value>          结束时间 ISO
 ```
@@ -322,7 +354,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 把真实 session trace 解析、聚合、降噪，输出可逐条 review 的 observation 列表。基础链路纯本地、零 LLM；`--llm-enhanced-review` 是显式开启的可选模型调用。
 
 ```bash
-# 1. 把 trace 解析、聚合、落盘到 .omk/observe-inbox/
+# 1. 把 trace 解析、聚合、落盘到 .omk/observe/inbox/
 omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
@@ -414,7 +446,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>             生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
   --no-mock                   不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
-  --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
+  --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe/inbox。
   --skill <value>             仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
   --skill-dir <value>         skill 根目录，默认 skills。batch 模式扫此目录。
 ```
@@ -431,8 +463,8 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 omk studio
 omk studio --port 7799
 omk studio --host 0.0.0.0                          # 局域网访问（默认 127.0.0.1）
-omk studio --reports-dir ~/.oh-my-knowledge/reports
-omk studio --observations-dir .omk/observe-inbox    # observe inbox 数据目录
+omk studio --reports-dir ~/.oh-my-knowledge/eval
+omk studio --observations-dir .omk/observe/inbox    # observe inbox 数据目录
 omk studio --no-open
 ```
 
@@ -441,14 +473,14 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
+  --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe/health，空则全局兜底）
   --dev                       dev 模式：子进程启动 + 热更新
-  --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
-  --global                    只看全局 reports / observe-health / doctors / observe-inbox 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed 不受影响
+  --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）
+  --global                    只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先；governance/managed 不受影响
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --no-open                   不自动打开浏览器
-  --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe-inbox）
+  --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe/inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
   --reports-dir <value>       只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
 ```

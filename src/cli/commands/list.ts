@@ -84,7 +84,7 @@ export default class List extends BaseCommand {
   static flags = {
     lang: LANG_FLAG,
     global: Flags.boolean({
-      description: bilingual({ zh: '看全局受管目录（~/.oh-my-knowledge/managed）而非项目 .omk/managed', en: 'Show the global managed dir (~/.oh-my-knowledge/managed) instead of project .omk/managed' }),
+      description: bilingual({ zh: '看全局受管目录（~/.oh-my-knowledge/governance/managed）而非项目 .omk/governance/managed', en: 'Show the global managed dir (~/.oh-my-knowledge/governance/managed) instead of project .omk/governance/managed' }),
     }),
     json: Flags.boolean({
       description: bilingual({ zh: '输出 JSON（含完整可比性 marker），供脚本消费', en: 'Output JSON (with full comparability markers) for scripts' }),

@@ -6,12 +6,16 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { indexDoctorWrite, indexObserveWrite } from '../../../src/measurement-artifacts/discovery-index.js';
-import { reportFileName } from '../../../src/measurement-artifacts/file-names.js';
+import { writeMeasurementReportBundle } from '../../../src/measurement-artifacts/report-bundle.js';
+
+function reportFileName(id: string): string {
+  return join(id, 'report.json');
+}
 
 interface Srv { stop(): Promise<void> }
 
@@ -29,7 +33,14 @@ describe('卡片合并 include 开关(server 级)', () => {
       ['rp', 'an', 'dr', 'ob', 'jb', 'mg', 'pj'].map((t) => mkdtempSync(join(tmpdir(), `omk-cg-${t}-`)));
     dirs.push(idxRoot, emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, emptyManaged, proj);
     // 别项目卡片各一张(live 目录扫不到,只能靠卡片发现);真身写出来,免得被悬空过滤掉。
-    writeFileSync(join(proj, reportFileName('cg-1-aa')), '{}');
+    writeMeasurementReportBundle({
+      rootDir: proj,
+      measurementDomain: 'doctor',
+      recordId: 'cg-1-aa',
+      reportId: 'doctor-cg-1-aa',
+      createdAt: '2026-06-14T00:00:00Z',
+      report: {},
+    });
     indexDoctorWrite({ id: 'cg-1-aa', path: join(proj, reportFileName('cg-1-aa')), skillName: 'cg-skill', reportId: 'doctor-cg-1-aa',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     const obsReport = { kind: 'observe-health',
@@ -39,7 +50,14 @@ describe('卡片合并 include 开关(server 级)', () => {
         toolFailureRate: 0, stability: 'stable', confidence: 'low', gap: { gapRate: 0, weightedGapRate: 0, signals: [] } } },
       overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'low' } };
     // 同时写「真身文件」(供 loadAnalysis 按 card.path 回源,如 skill-trend 详情)+ 卡片。
-    writeFileSync(join(proj, reportFileName('cg-observe')), JSON.stringify(obsReport));
+    writeMeasurementReportBundle({
+      rootDir: proj,
+      measurementDomain: 'observe-health',
+      recordId: 'cg-observe',
+      reportId: 'cg-observe',
+      createdAt: '2026-06-14T01:00:00Z',
+      report: obsReport,
+    });
     indexObserveWrite(obsReport as never, join(proj, reportFileName('cg-observe')), proj, 'cg-observe');
   });
   afterEach(() => {
@@ -78,7 +96,7 @@ describe('卡片合并 include 开关(server 级)', () => {
   });
 
   it('include=true 且 live analyses 目录不存在:/api/observe-health 与 /api/skill-trend 仍合并卡片(不早退)', async () => {
-    // 默认机器级模式下当前项目还没 .omk/observe-health、全局也空 → 传给 server 的是不存在的目录。
+    // 默认机器级模式下当前项目还没 .omk/observe/health、全局也空 → 传给 server 的是不存在的目录。
     const missing = join(emptyAnalyses, 'does-not-exist');
     const srv = createReportServer({
       port: 0, analysesDir: missing, doctorsDir: emptyDoctors,

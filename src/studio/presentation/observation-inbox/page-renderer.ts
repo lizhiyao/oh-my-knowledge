@@ -55,7 +55,7 @@ export function renderObservationInboxDocument({
   } = processWorkspace;
   const { renderConfidenceHeader } = reviewRenderers;
   const recyclableObservationCount = allItems.filter((item) => item.severity !== 'noise').reduce((sum, item) => sum + item.occurrences, 0);
-  const sampleFromTracesBaseCommand = `omk sample --from-traces --observations-dir ${shellQuoteArg(observationsDir || '.omk/observe-inbox')}`;
+  const sampleFromTracesBaseCommand = `omk sample --from-traces --observations-dir ${shellQuoteArg(observationsDir || '.omk/observe/inbox')}`;
   const sampleFromTracesCommand = activeSkill
     ? `${sampleFromTracesBaseCommand} --skill ${shellQuoteArg(activeSkill)}`
     : sampleFromTracesBaseCommand;

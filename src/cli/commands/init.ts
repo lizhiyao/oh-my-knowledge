@@ -4,16 +4,16 @@ import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
+import { projectLayout } from '../../omk-layout/index.js';
 
 // 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
 // managed/ 治理档案 + 配置不在此列,默认 track。
-const INIT_OMK_GITIGNORE = `# omk 测量 bulk + doctor --fix 备份(项目本地)——不入库;前导 / 锚定 .omk/ 顶层,不误伤嵌套同名目录。
-/observe-health/
-/doctors/
-/graphs/
-/observe-inbox/
-/reports/
+const INIT_OMK_GITIGNORE = `# omk 测量 bulk 与 doctor --fix 备份（项目本地）——不入库；前导 / 锚定 .omk/ 顶层，不误伤嵌套同名目录。
+/eval/
+/doctor/
+/observe/
 /backups/
+/state/
 `;
 
 // 脚手架用例必须过 omk 自身的断言合规校验(load-samples.ts Rule A),否则新用户照
@@ -170,6 +170,7 @@ export default class Init extends BaseCommand {
     const lang = this.lang;
     await this.runWithCliExit(async () => {
       const targetDir: string = resolve(args.targetDir || '.');
+      const layout = projectLayout(targetDir);
       const { writeFileSync, mkdirSync } = await import('node:fs');
 
       // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
@@ -180,8 +181,8 @@ export default class Init extends BaseCommand {
       writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
       writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
       // 像 dvc init 那样预置忽略规则,开发者不会误把测量 bulk 提交进库。
-      mkdirSync(join(targetDir, '.omk'), { recursive: true });
-      writeFileSync(join(targetDir, '.omk', '.gitignore'), INIT_OMK_GITIGNORE);
+      mkdirSync(layout.root, { recursive: true });
+      writeFileSync(join(layout.root, '.gitignore'), INIT_OMK_GITIGNORE);
 
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
       console.log('');

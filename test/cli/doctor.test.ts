@@ -145,7 +145,7 @@ describe('omk doctor command', () => {
       ].join('\n'));
       writeFileSync(join(skillRoot, 'references', 'rules.md'), 'rules');
 
-      const outputDir = join(tmp, '.omk', 'doctors');
+      const outputDir = join(tmp, '.omk', 'doctor');
       await runDoctorCommand([
         skillRoot,
         '--repeat', '1',
@@ -153,21 +153,19 @@ describe('omk doctor command', () => {
         '--output-dir', outputDir,
       ], { cwd: tmp });
 
-      const graphDir = join(tmp, '.omk', 'graphs', 'doctor');
-      assert.ok(existsSync(graphDir), 'graph sidecar dir should exist');
+      const doctorDir = join(tmp, '.omk', 'doctor');
+      const recordDir = readdirSync(doctorDir).find((entry) => entry.startsWith('review-'));
+      assert.ok(recordDir, 'doctor report bundle should exist');
+      const graphDir = join(doctorDir, recordDir, 'derived');
+      assert.ok(existsSync(graphDir), 'derived sidecar dir should exist');
       const files = readdirSync(graphDir);
-      const jsonFile = files.find((file) => file.endsWith('.graph.json'));
-      const mdFile = files.find((file) => file.endsWith('.card.md'));
-      assert.ok(jsonFile, `expected graph json, got: ${files.join(', ')}`);
-      assert.ok(mdFile, `expected evidence card markdown, got: ${files.join(', ')}`);
-      assert.match(jsonFile, /^review-\d{8}T\d{6}-[a-z0-9]{4}\.graph\.json$/);
-      assert.equal(mdFile, jsonFile.replace(/\.graph\.json$/, '.card.md'));
-      const graph = JSON.parse(readFileSync(join(graphDir, jsonFile), 'utf-8'));
+      assert.deepEqual(files.sort(), ['card.md', 'graph.json']);
+      const graph = JSON.parse(readFileSync(join(graphDir, 'graph.json'), 'utf-8'));
       assert.equal(graph.documentKind, 'artifact-graph');
       assert.equal(graph.source.sourceKind, 'doctor');
       assert.ok(graph.nodes.some((node: { nodeKind: string; label: string }) => node.nodeKind === 'reference' && node.label === 'references/rules.md'));
       assert.ok(!graph.edges.some((edge: { edgeKind: string }) => edge.edgeKind === 'covers'));
-      const card = readFileSync(join(graphDir, mdFile), 'utf-8');
+      const card = readFileSync(join(graphDir, 'card.md'), 'utf-8');
       assert.ok(card.includes('知识图谱摘要'));
       assert.ok(card.includes('eval 未测量'));
     } finally {

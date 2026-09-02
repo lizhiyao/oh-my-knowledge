@@ -1,6 +1,7 @@
 /**
  * 升级检查的后台刷新 worker。由 update-check.ts 的 fetchAndStore 以 detached + unref
- * spawn,独立于父 CLI 进程运行:抓 registry latest 写回 ~/.oh-my-knowledge/update-check.json,
+ * spawn,独立于父 CLI 进程运行:抓 registry latest 写回
+ * ~/.oh-my-knowledge/state/cache/update-check.json,
  * 供下次运行展示用。父进程不等它,所以这里阻塞式 await fetch 没关系。全程 fail-silent。
  *
  * argv: [node, update-fetch-worker.js, cachePath, registry, pkgName]

@@ -27,7 +27,7 @@ This integration captures only user-authorized feedback submitted through the to
 
 | Shape | Identity and storage | Intended use |
 | --- | --- | --- |
-| Local stdio | Fixed local principal and the `.omk/observe-inbox` v1 File Store | One developer using OMK locally |
+| Local stdio | Fixed local principal and the `.omk/observe/inbox` v1 File Store | One developer using OMK locally |
 | Private host | Host-provided `PrincipalResolver` and `ObservationCaptureStore` over Streamable HTTP | Multiple users behind a host-owned authentication and persistence boundary |
 | Hosted OMK service | Not provided | Possible future service; do not infer it from the current package |
 

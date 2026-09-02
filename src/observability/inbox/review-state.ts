@@ -16,6 +16,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { normalizeRfc3339Timestamp } from '../../shared/timestamp.js';
+import { resolveObservationsDir } from './paths.js';
 
 export type {
   ObservationMetricKey,
@@ -138,7 +139,7 @@ export function emptyObservationReviewState(now = new Date().toISOString()): Obs
 }
 
 export function loadObservationReviewState(observationsDir: string): ObservationReviewState {
-  const path = observationReviewStatePath(observationsDir);
+  const path = observationReviewStatePath(resolveObservationsDir(observationsDir));
   if (!existsSync(path)) return emptyObservationReviewState();
   let parsed: unknown;
   try {

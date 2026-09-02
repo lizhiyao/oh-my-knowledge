@@ -57,7 +57,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | judge (layer) | LLM 评价层 | 作为 judge source 绑定的 ensemble consensus 或 dimension aggregate | Composite Analysis |
 | dimension | 维度 | 与一个 Metric 和上游 judge-ensemble result 一一绑定的 Analysis aggregate | Dimension Analysis |
 | evidence coverage | 证据覆盖 | planned、observed、missing、invalid、failed、unavailable 与 not-started evidence 沿 lineage 保留 | Core Analysis 与 Decision gate |
-| [managed record](../specs/evidence-gated-management.md) | 受管记录 | `omk install` 建的 `.omk/managed/<id>.json` 事实记录（源 / contentHash / 分发 / 证据 / 决定） | `omk install`；证据门控管理 |
+| [managed record](../specs/evidence-gated-management.md) | 受管记录 | `omk install` 建的 `.omk/governance/managed/<id>.json` 事实记录（源 / contentHash / 分发 / 证据 / 决定） | `omk install`；证据门控管理 |
 | lifecycle | 生命周期（installed / measurable / stale） | 受管 skill 的读时状态：`installed`（无有效证据）→ `measurable`（eval 证据已绑）→ `stale`（内容漂移脱离证据） | `deriveManagedState`；`omk eval`「→ measurable」 |
 | evidence (managed) | 证据 | eval 跑完追加进受管记录的 `ManagedEvidenceRef`，绑定它测的内容指纹（report id / 样本覆盖 / verdict / 可比性） | `omk eval` 自动写入 |
 

@@ -1,8 +1,10 @@
 import { confirm, select, input } from '@inquirer/prompts';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createExecutor } from '../executors/index.js';
 import type { DoctorReport, DoctorRuleResult } from './contracts.js';
+import { projectLayout } from '../omk-layout/index.js';
 
 interface FixIssue {
   id: string;
@@ -285,14 +287,25 @@ async function collectChoices(plan: FixPlan): Promise<Record<string, string>> {
   return choices;
 }
 
-function backupSkillFiles(issues: FixIssue[]): void {
+function backupRelativePath(projectRoot: string, path: string): string {
+  const rel = relative(projectRoot, path);
+  if (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\')) {
+    return rel;
+  }
+  const hash = createHash('sha256').update(path).digest('hex').slice(0, 12);
+  return join('external', hash, basename(path));
+}
+
+function backupSkillFiles(issues: FixIssue[], projectRoot: string): void {
   const stamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
   const paths = [...new Set(issues.map((i) => resolve(i.skillPath)))];
+  const layout = projectLayout(projectRoot);
+  const backupDir = join(layout.doctorFixBackupsDir, stamp);
   for (const abs of paths) {
     if (!existsSync(abs)) continue;
-    const backupDir = join(dirname(abs), '.omk', 'backups', `doctor-fix-${stamp}`);
-    mkdirSync(backupDir, { recursive: true });
-    copyFileSync(abs, join(backupDir, abs.split('/').pop() || 'file'));
+    const target = join(backupDir, backupRelativePath(projectRoot, abs));
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(abs, target);
   }
 }
 
@@ -339,7 +352,7 @@ export async function runDoctorFix(opts: FixOptions): Promise<boolean> {
     return false;
   }
 
-  backupSkillFiles(chosenIssues);
+  backupSkillFiles(chosenIssues, opts.report.cwd);
   const changed = await applyFixWithAgent(issues, choices, plan, opts.executorName, opts.model, opts.timeoutMs, opts.effort);
 
   if (changed && opts.verify) {

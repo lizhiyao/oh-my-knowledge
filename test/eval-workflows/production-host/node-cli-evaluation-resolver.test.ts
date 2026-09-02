@@ -62,7 +62,7 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
       model: 'claude-test',
       'judge-models': 'anthropic-api:judge-test',
       'no-serve': true,
-      'output-dir': '.omk/reports',
+      'output-dir': '.omk/eval',
       ...additionalFlags,
     },
     defaults: {
@@ -71,8 +71,8 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
       targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
       judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
       presentation: {
-        projectOutputDirectoryLocator: join(root, '.omk', 'reports'),
-        globalOutputDirectoryLocator: join(root, '.omk-global', 'reports'),
+        projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
+        globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),
         language: 'zh',
         languageDefaultSource: 'environment-selection',
       },
@@ -457,8 +457,8 @@ describe('resolveNodeCliEvaluationRequest', () => {
         targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
         judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
         presentation: {
-          projectOutputDirectoryLocator: join(root, '.omk', 'reports'),
-          globalOutputDirectoryLocator: join(root, '.omk-global', 'reports'),
+          projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
+          globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),
           language: 'zh',
           languageDefaultSource: 'environment-selection',
         },

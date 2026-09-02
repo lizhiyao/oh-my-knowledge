@@ -69,7 +69,7 @@ export default class Promote extends BaseCommand {
     force: Flags.boolean({ description: bilingual({ zh: '越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）', en: 'override forceable gate blocks and force-promote, recorded as a human override (still refused with no current evidence or changed source hash)' }) }),
     reason: Flags.string({ description: bilingual({ zh: 'promote / 越门的理由（写入决定）', en: 'reason for the promotion / override (stored on the decision)' }) }),
     actor: Flags.string({ description: bilingual({ zh: '决定的 actor（默认取 git config user.name）', en: 'decision actor (defaults to git config user.name)' }) }),
-    global: Flags.boolean({ description: bilingual({ zh: '操作全局受管目录而非项目 .omk/managed', en: 'operate on the global managed dir instead of project .omk/managed' }) }),
+    global: Flags.boolean({ description: bilingual({ zh: '操作全局受管目录而非项目 .omk/governance/managed', en: 'operate on the global managed dir instead of project .omk/governance/managed' }) }),
     json: Flags.boolean({ description: bilingual({ zh: '输出 JSON（版本化信封）供脚本消费', en: 'output JSON (versioned envelope) for scripts' }) }),
   };
 

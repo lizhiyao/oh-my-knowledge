@@ -5,7 +5,10 @@ import {
 } from 'node:fs';
 import { isAbsolute, join, normalize } from 'node:path';
 import { shortContentHash } from '../shared/content-hash.js';
-import { OMK_HOME } from '../measurement-artifacts/default-dirs.js';
+import {
+  globalLayout,
+  projectLayout,
+} from '../omk-layout/index.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
@@ -22,7 +25,7 @@ import type {
 } from './contracts.js';
 
 /**
- * 受管记录的 per-record 文件存储。一条记录一个 `.omk/managed/<id>.json`，采用
+ * 受管记录的 per-record 文件存储。一条记录一个 `.omk/governance/managed/<id>.json`，采用
  * 成熟模式(原子 tmp+rename):每次 install 只碰自己那个文件,independent write、不丢别人、
  * 天然可扩展。无数据库——这个规模(每项目几十条、CLI 单写者)JSON 文件足够,且保住"可读可
  * grep 可 diff"的透明价值。
@@ -33,11 +36,11 @@ import type {
  */
 
 export function managedDir(cwd: string = process.cwd()): string {
-  return join(cwd, '.omk', 'managed');
+  return projectLayout(cwd).managedDir;
 }
 
 export function globalManagedDir(): string {
-  return join(OMK_HOME, 'managed');
+  return globalLayout().managedDir;
 }
 
 export function recordPath(dir: string, id: string): string {
@@ -299,9 +302,8 @@ export function loadAllManagedRecords(dir: string = managedDir()): ManagedArtifa
 }
 
 /**
- * 哪个 managed 目录是权威(有记录的那个):项目目录非空取项目,否则全局非空取全局,都空回项目。
- * 与 `loadAllManagedRecords` 的 project→global 回退**同口径** —— 写方(append evidence)据此写回
- * 读方实际取记录的同一目录,避免"读全局、写项目"把证据落到空目录。
+ * 哪个 managed 目录是权威（有记录的那个）：项目目录非空取项目，否则全局非空取全局，都空回项目。
+ * 与 `loadAllManagedRecords` 的 project→global 回退同口径。
  */
 export function resolveManagedDir(dir: string = managedDir()): string {
   if (readRecordsFromDir(dir).length > 0) return dir;

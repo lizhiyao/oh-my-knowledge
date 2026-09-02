@@ -28,7 +28,7 @@ Scope the window with `--last 7d` / `--from … --to …`, and narrow to specifi
 When you want to triage observations one by one, use the inbox. Steps 1-3 below are local-only and LLM-free; drafting regression samples is a separate optional authoring step that calls a generation model.
 
 ```bash
-# 1. Parse traces, aggregate + de-noise signals, write to .omk/observe-inbox/
+# 1. Parse traces, aggregate + de-noise signals, write to .omk/observe/inbox/
 omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 
@@ -116,7 +116,7 @@ This command calls the sample generator through your configured executor and mod
 omk sample --from-traces
 ```
 
-It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review queue: inspect the draft, keep only reproducible cases, then merge the accepted ones into your real `eval-samples` file.
+It writes `.omk/observe/drafts/sample-drafts.json`. Treat the file as a review queue: inspect the draft, keep only reproducible cases, then merge the accepted ones into your real `eval-samples` file.
 
 ## Related
 

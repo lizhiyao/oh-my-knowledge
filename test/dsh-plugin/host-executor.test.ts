@@ -440,8 +440,7 @@ describe('DSH plugin config boundary', () => {
         rawInput: 'eval eval.yaml',
         signal: new AbortController().signal,
       }) as { kind: string; text?: string };
-      const reportsDir = join(dir, '.omk', 'reports');
-      const graphsDir = join(dir, '.omk', 'graphs', 'eval');
+      const reportsDir = join(dir, '.omk', 'eval');
       return {
         ...result,
         created: host.created.length,
@@ -449,8 +448,10 @@ describe('DSH plugin config boundary', () => {
         artifactFiles: existsSync(reportsDir)
           ? readdirSync(reportsDir, { recursive: true, encoding: 'utf8' }).sort()
           : [],
-        graphFiles: existsSync(graphsDir)
-          ? readdirSync(graphsDir, { recursive: true, encoding: 'utf8' }).sort()
+        graphFiles: existsSync(reportsDir)
+          ? readdirSync(reportsDir, { recursive: true, encoding: 'utf8' })
+            .filter((file) => file.endsWith('derived/graph.json'))
+            .sort()
           : [],
         managedEvidenceCount: loadManagedRecord(
           managed,
@@ -498,9 +499,10 @@ variants:
     assert.equal(result.kind, 'success', result.text);
     assert.equal(result.created, 1);
     assert.ok(result.artifactFiles.some((file) => file.endsWith('manifest.json')));
-    assert.ok(result.artifactFiles.some((file) => file.endsWith('evaluation-report.json')));
-    assert.equal(result.artifactFiles.some((file) => /(^|\/)r?eports?\.json$/u.test(file)), false);
-    assert.equal(result.graphFiles.filter((file) => file.endsWith('.graph.json')).length, 1);
+    assert.ok(result.artifactFiles.some((file) => file.endsWith('report.json')));
+    assert.ok(result.artifactFiles.some((file) => file.endsWith('derived/card.md')));
+    assert.equal(result.artifactFiles.some((file) => /(^|\/)reports\.json$/u.test(file)), false);
+    assert.equal(result.graphFiles.filter((file) => file.endsWith('graph.json')).length, 1);
     assert.equal(result.managedEvidenceCount, 1);
   });
 

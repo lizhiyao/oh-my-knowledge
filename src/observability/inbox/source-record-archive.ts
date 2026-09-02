@@ -12,6 +12,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { normalizeTraceTimestamp } from '../trace/trace-ir.js';
 import { forEachNonEmptyUtf8Line } from '../trace/source.js';
+import { observationArchiveDir, resolveObservationsDir } from './paths.js';
 
 const ARCHIVE_SCHEMA_VERSION = 1;
 const MAX_ARCHIVE_SOURCE_BYTES = 16 * 1024 * 1024;
@@ -43,8 +44,9 @@ interface SourceArchiveTarget {
 }
 
 /**
- * Persist bounded source records beside a report. Absolute source paths are
- * consumed only during trusted ingest; Studio later reads relative sidecars.
+ * Persist bounded source records in the observation archive. Absolute source
+ * paths are consumed only during trusted ingest; Studio later reads relative
+ * sidecars rooted in that archive.
  */
 export function writeObservationSourceRecordArchives(
   report: ObservationInboxReport,
@@ -54,7 +56,8 @@ export function writeObservationSourceRecordArchives(
   const sessions = report.experience?.sessions ?? [];
   if (sessions.length === 0) return [];
   const reportStem = basename(reportPath).replace(/\.report\.json$/u, '');
-  const archiveDir = join(outDir, 'source-records', reportStem);
+  const archiveRoot = observationArchiveDir(outDir);
+  const archiveDir = join(archiveRoot, 'source-records', reportStem);
   const builders = sessions.map((session): SessionArchiveBuilder => ({
     session,
     groupedRanges: groupRecordRanges(session.timelineScope.sessionRecordRanges),
@@ -83,7 +86,7 @@ export function writeObservationSourceRecordArchives(
   return builders.map((builder) => persistSessionArchive(
     builder,
     archiveDir,
-    outDir,
+    archiveRoot,
     report.meta.generatedAt,
   ));
 }
@@ -95,7 +98,8 @@ export function loadObservationSourceRecordArchive(
   if (!ref || ref.status === 'unavailable' || !ref.relativePath) {
     return unavailableView(ref?.reason ?? 'no_record_ranges');
   }
-  const path = safeArchivePath(observationsDir, ref.relativePath);
+  const archiveRoot = observationArchiveDir(resolveObservationsDir(observationsDir));
+  const path = safeArchivePath(archiveRoot, ref.relativePath);
   if (!path || !existsSync(path)) return unavailableView('archive_invalid');
 
   try {
@@ -215,7 +219,7 @@ function markSourceUnavailable(
 function persistSessionArchive(
   builder: SessionArchiveBuilder,
   archiveDir: string,
-  outDir: string,
+  referenceRoot: string,
   generatedAt: string,
 ): ObservationSourceRecordArchiveRef {
   const { session, records, omittedRecordCount, byteCount, failure } = builder;
@@ -234,7 +238,7 @@ function persistSessionArchive(
   const fileName = `${createHash('sha256').update(session.id).digest('hex').slice(0, 24)}.json`;
   const archivePath = join(archiveDir, fileName);
   writeJsonFileAtomic(archivePath, archive);
-  const relativePath = relative(outDir, archivePath).split('\\').join('/');
+  const relativePath = relative(referenceRoot, archivePath).split('\\').join('/');
   const partial = archive.truncated || failure !== undefined;
   return {
     experienceSessionId: session.id,
@@ -311,13 +315,13 @@ function groupRecordRanges(ranges: ExperienceTraceRecordRange[]): Map<string, Me
   return grouped;
 }
 
-function safeArchivePath(observationsDir: string, relativePath: string): string | undefined {
+function safeArchivePath(archiveRoot: string, relativePath: string): string | undefined {
   if (!relativePath || isAbsolute(relativePath)) return undefined;
-  const candidate = resolve(observationsDir, relativePath);
-  const lexicalRelative = relative(resolve(observationsDir), candidate);
+  const candidate = resolve(archiveRoot, relativePath);
+  const lexicalRelative = relative(resolve(archiveRoot), candidate);
   if (lexicalRelative.startsWith('..') || isAbsolute(lexicalRelative)) return undefined;
   try {
-    const root = realpathSync(observationsDir);
+    const root = realpathSync(archiveRoot);
     const resolved = realpathSync(candidate);
     const resolvedRelative = relative(root, resolved);
     if (resolvedRelative.startsWith('..') || isAbsolute(resolvedRelative)) return undefined;

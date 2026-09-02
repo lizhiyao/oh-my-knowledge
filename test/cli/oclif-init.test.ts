@@ -48,14 +48,19 @@ describe('oclif init', () => {
       assert.ok(stdout.includes('omk sample <skill-path>'), `stdout should route users with no samples back to sample generation:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
       assert.ok(existsSync(join(target, 'eval-samples.json')), 'eval-samples.json not created');
-      // 预置 .omk/.gitignore:测量 bulk 不入库,managed/ 不被忽略(默认 track)。
+      // 预置 .omk/.gitignore：测量 bulk 不入库，governance/ 不被忽略（默认 track）。
       const gitignorePath = join(target, '.omk', '.gitignore');
       assert.ok(existsSync(gitignorePath), '.omk/.gitignore not created');
       const gi = readFileSync(gitignorePath, 'utf8');
-      for (const d of ['observe-health/', 'doctors/', 'observe-inbox/', 'reports/', 'backups/']) {
+      for (const d of ['/eval/', '/doctor/', '/observe/', '/backups/', '/state/']) {
         assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
       }
-      assert.ok(!/^managed\/?$/m.test(gi), '.omk/.gitignore must not ignore managed/');
+      assert.ok(!/^\/governance\/?$/m.test(gi), '.omk/.gitignore must not ignore governance/');
+      assert.equal(
+        existsSync(join(target, '.omk', 'layout.json')),
+        false,
+        'pure v2 layout must not write a redundant root marker',
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

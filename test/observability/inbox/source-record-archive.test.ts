@@ -12,6 +12,7 @@ import {
   loadObservationSourceRecordArchive,
   writeObservationSourceRecordArchives,
 } from '../../../src/observability/inbox/source-record-archive.js';
+import { observationArchiveDir } from '../../../src/observability/inbox/paths.js';
 import { forEachNonEmptyUtf8Line } from '../../../src/observability/trace/source.js';
 import type { ObservationSourceRecordArchiveRef } from '../../../src/observability/contracts/inbox.js';
 
@@ -93,6 +94,7 @@ describe('observation source-record archives', () => {
     const ref = persisted.meta.sourceRecordArchives?.[0];
     assert.ok(ref?.relativePath);
     assert.equal(ref.status, 'available');
+    assert.match(ref.relativePath, /^source-records\//u);
 
     const view = loadObservationSourceRecordArchive(ref, observationsDir);
     assert.equal(view.status, 'available');
@@ -102,7 +104,7 @@ describe('observation source-record archives', () => {
     assert.doesNotMatch(JSON.stringify(view), /ciphertext-must-not-leave-the-source/);
     assert.match(JSON.stringify(view), /opaque encrypted content omitted/);
     assert.doesNotMatch(
-      readFileSync(join(observationsDir, ref.relativePath), 'utf8'),
+      readFileSync(join(observationArchiveDir(observationsDir), ref.relativePath), 'utf8'),
       /ciphertext-must-not-leave-the-source/,
     );
   });

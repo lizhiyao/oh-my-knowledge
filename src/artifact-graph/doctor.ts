@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { cardFileName, graphFileName, safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
+import { safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
+import { measurementDerivedDir } from '../measurement-artifacts/report-bundle.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
 import { parseArtifactGraphDocument } from './schema.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
@@ -61,12 +62,6 @@ function shortHash(input: string): string {
 
 function isCanonicalFileStem(id: string): boolean {
   return id.length > 0 && safeArtifactFileStem(id) === id;
-}
-
-export function doctorGraphDirForDoctorOutput(doctorOutputDir: string): string {
-  return basename(doctorOutputDir) === 'doctors'
-    ? join(dirname(doctorOutputDir), 'graphs', 'doctor')
-    : join(doctorOutputDir, 'graphs', 'doctor');
 }
 
 function normalizeRelPath(path: string): string {
@@ -715,16 +710,15 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
 }
 
 export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): PersistDoctorGraphResult {
-  const dir = doctorGraphDirForDoctorOutput(options.outputDir);
-  mkdirSync(dir, { recursive: true });
   if (!isCanonicalFileStem(options.fileStem)) {
     throw new Error('invalid doctor graph file stem');
   }
+  const dir = measurementDerivedDir(options.outputDir, options.fileStem);
+  mkdirSync(dir, { recursive: true });
   const graph = parseArtifactGraphDocument(buildDoctorArtifactGraph(options));
   if (!graph) throw new Error('invalid doctor artifact graph');
-  const fileStem = options.fileStem;
-  const graphPath = join(dir, graphFileName(fileStem));
-  const evidenceCardPath = join(dir, cardFileName(fileStem));
+  const graphPath = join(dir, 'graph.json');
+  const evidenceCardPath = join(dir, 'card.md');
   writeJsonFileAtomic(graphPath, graph);
   writeFileSync(evidenceCardPath, renderDoctorEvidenceCard(graph, options.skill, options.lang), 'utf8');
   return { graphPath, evidenceCardPath };
@@ -732,10 +726,10 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
 
 export function removeDoctorGraphSidecars(doctorOutputDir: string, fileStem: string): void {
   if (!isCanonicalFileStem(fileStem)) return;
-  const dir = doctorGraphDirForDoctorOutput(doctorOutputDir);
-  for (const ext of ['graph.json', 'card.md']) {
+  const currentDir = measurementDerivedDir(doctorOutputDir, fileStem);
+  for (const file of ['graph.json', 'card.md']) {
     try {
-      unlinkSync(join(dir, `${fileStem}.${ext}`));
+      unlinkSync(join(currentDir, file));
     } catch {
       // best-effort cleanup only
     }

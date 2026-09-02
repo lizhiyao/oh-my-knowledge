@@ -30,8 +30,8 @@ export default class ObserveShow extends BaseCommand {
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '直接读取全局 ~/.oh-my-knowledge/observe-inbox（跳过项目级与兜底）。',
-        en: 'Read directly from global ~/.oh-my-knowledge/observe-inbox (skip project-local and fallback).',
+        zh: '直接读取全局 ~/.oh-my-knowledge/observe/inbox（跳过项目级与兜底）。',
+        en: 'Read directly from global ~/.oh-my-knowledge/observe/inbox (skip project-local and fallback).',
       }),
       default: false,
     }),

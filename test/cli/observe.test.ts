@@ -1,15 +1,21 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runObserveInbox } from '../../src/cli/commands/observe/inbox.js';
 import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 
+function writeInboxReport(dir: string, report: unknown): void {
+  const reportsDir = join(dir, 'reports');
+  mkdirSync(reportsDir, { recursive: true });
+  writeFileSync(join(reportsDir, reportFileName('20260507T000000-a111')), JSON.stringify(report, null, 2));
+}
+
 describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
-    writeFileSync(join(dir, reportFileName('20260507T000000-a111')), JSON.stringify({
+    writeInboxReport(dir, {
       kind: 'observe-inbox',
       schemaVersion: 2,
       meta: {
@@ -42,7 +48,7 @@ describe('observe CLI', () => {
         recentSessionIds: ['s1'],
         representativeEvidence: [{ tool: 'Grep', query: 'schema' }],
       }],
-    }, null, 2));
+    });
 
     const logs: string[] = [];
     const originalLog = console.log;
@@ -73,7 +79,7 @@ describe('observe CLI', () => {
 
   it('prints the observe → sample draft command for recyclable signals', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
-    writeFileSync(join(dir, reportFileName('20260507T000000-a111')), JSON.stringify({
+    writeInboxReport(dir, {
       kind: 'observe-inbox',
       schemaVersion: 2,
       meta: {
@@ -103,7 +109,7 @@ describe('observe CLI', () => {
         recentSessionIds: ['s1'],
         representativeEvidence: [{ tool: 'Grep', query: 'schema' }],
       }],
-    }, null, 2));
+    });
 
     const logs: string[] = [];
     const originalLog = console.log;
@@ -134,7 +140,7 @@ describe('observe CLI', () => {
 
   it('prints a skill-scoped sample draft command when inbox is filtered by skill', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
-    writeFileSync(join(dir, reportFileName('20260507T000000-a111')), JSON.stringify({
+    writeInboxReport(dir, {
       kind: 'observe-inbox',
       schemaVersion: 2,
       meta: {
@@ -164,7 +170,7 @@ describe('observe CLI', () => {
         recentSessionIds: ['s1'],
         representativeEvidence: [{ tool: 'Grep', query: 'schema' }],
       }],
-    }, null, 2));
+    });
 
     const logs: string[] = [];
     const originalLog = console.log;
