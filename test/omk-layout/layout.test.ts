@@ -25,7 +25,9 @@ describe('OMK layout', () => {
       'tunnelsDir',
       'treesDir',
       'isolatedCwdDir',
+      'resolvedInputsDir',
       'artifactIndexDir',
+      'resourceLeasesDir',
     ]) {
       assert.equal(machineOnly in actual, false, `${machineOnly} must not exist in project layout`);
     }
@@ -40,5 +42,17 @@ describe('OMK layout', () => {
     assert.equal(actual.managedDir, join('/omk-home', 'governance', 'managed'));
     assert.equal(actual.toolsDir, join('/omk-home', 'state', 'tools'));
     assert.equal(actual.tunnelsDir, join('/omk-home', 'state', 'tunnels'));
+    assert.equal(actual.resolvedInputsDir, join(
+      '/omk-home',
+      'state',
+      'isolated-cwd',
+      'resolved-inputs',
+    ));
+    assert.equal(actual.resourceLeasesDir, join(
+      '/omk-home',
+      'state',
+      'tmp',
+      'resource-leases',
+    ));
   });
 });

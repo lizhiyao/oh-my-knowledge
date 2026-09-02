@@ -40,6 +40,7 @@
 │   │   └── review-state.json
 │   ├── drafts/
 │   └── archive/
+│       └── source-records/
 ├── governance/
 │   └── managed/
 ├── backups/
@@ -71,13 +72,16 @@
     ├── tunnels/
     ├── trees/
     ├── isolated-cwd/
+    │   └── resolved-inputs/
+    │       └── content/
     ├── artifact-index/
     ├── jobs/
     ├── locks/
     └── tmp/
+        └── resource-leases/
 ```
 
-项目与机器的持久数据使用同一套领域结构。机器专属内容不得进入项目 `.omk`。Codex、Claude、DSH 的原始 trace 继续留在来源位置；OMK 默认只读分析，不复制进项目。
+项目与机器的持久数据使用同一套领域结构。机器专属内容不得进入项目 `.omk`。resolver 持有的输入副本写入 `state/isolated-cwd/resolved-inputs/`；run-scoped resource 副本与 overlay 写入 `state/tmp/resource-leases/`，并在 lease 结束时删除。Codex、Claude、DSH 的原始 trace 继续留在来源位置；OMK 默认只读分析，不复制进项目。
 
 ## 生命周期与 Git 策略
 
@@ -88,6 +92,7 @@
 | `observe/health/` | 从真实 trace 聚合的健康度 | 否 | 忽略 |
 | `observe/inbox/` | 待复核 observation 与人工状态 | 否 | 忽略，可能含敏感信息 |
 | `observe/drafts/` | 从 observation 生成的样本草稿 | 否 | 忽略 |
+| `observe/archive/` | inbox 报告引用的不可变原始记录归档 | 否 | 忽略，可能含敏感信息 |
 | `governance/managed/` | install／evidence／promote／rollback 历史 | 否 | 默认追踪 |
 | `backups/` | 自动修改前的恢复副本 | 否 | 忽略 |
 | `state/` | 任务、锁、临时文件及全局可重建缓存 | 是 | 忽略 |

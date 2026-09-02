@@ -33,7 +33,9 @@ export interface GlobalOmkLayout extends OmkLayout {
   readonly tunnelsDir: string;
   readonly treesDir: string;
   readonly isolatedCwdDir: string;
+  readonly resolvedInputsDir: string;
   readonly artifactIndexDir: string;
+  readonly resourceLeasesDir: string;
 }
 
 function layout(root: string): OmkLayout {
@@ -71,13 +73,17 @@ export function projectLayout(cwd: string = process.cwd()): ProjectOmkLayout {
 
 export function globalLayout(root: string = OMK_HOME): GlobalOmkLayout {
   const base = layout(root);
+  const isolatedCwdDir = join(base.stateDir, 'isolated-cwd');
+  const tmpDir = base.tmpDir;
   return Object.freeze({
     ...base,
     cacheDir: join(base.stateDir, 'cache'),
     toolsDir: join(base.stateDir, 'tools'),
     tunnelsDir: join(base.stateDir, 'tunnels'),
     treesDir: join(base.stateDir, 'trees'),
-    isolatedCwdDir: join(base.stateDir, 'isolated-cwd'),
+    isolatedCwdDir,
+    resolvedInputsDir: join(isolatedCwdDir, 'resolved-inputs'),
     artifactIndexDir: join(base.stateDir, 'artifact-index'),
+    resourceLeasesDir: join(tmpDir, 'resource-leases'),
   });
 }

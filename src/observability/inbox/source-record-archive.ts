@@ -12,7 +12,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { normalizeTraceTimestamp } from '../trace/trace-ir.js';
 import { forEachNonEmptyUtf8Line } from '../trace/source.js';
-import { resolveObservationsDir } from './paths.js';
+import { observationArchiveDir, resolveObservationsDir } from './paths.js';
 
 const ARCHIVE_SCHEMA_VERSION = 1;
 const MAX_ARCHIVE_SOURCE_BYTES = 16 * 1024 * 1024;
@@ -44,19 +44,20 @@ interface SourceArchiveTarget {
 }
 
 /**
- * Persist bounded source records beside a report. Absolute source paths are
- * consumed only during trusted ingest; Studio later reads relative sidecars.
+ * Persist bounded source records in the observation archive. Absolute source
+ * paths are consumed only during trusted ingest; Studio later reads relative
+ * sidecars rooted in that archive.
  */
 export function writeObservationSourceRecordArchives(
   report: ObservationInboxReport,
   outDir: string,
   reportPath: string,
-  referenceRoot: string = outDir,
 ): ObservationSourceRecordArchiveRef[] {
   const sessions = report.experience?.sessions ?? [];
   if (sessions.length === 0) return [];
   const reportStem = basename(reportPath).replace(/\.report\.json$/u, '');
-  const archiveDir = join(outDir, 'source-records', reportStem);
+  const archiveRoot = observationArchiveDir(outDir);
+  const archiveDir = join(archiveRoot, 'source-records', reportStem);
   const builders = sessions.map((session): SessionArchiveBuilder => ({
     session,
     groupedRanges: groupRecordRanges(session.timelineScope.sessionRecordRanges),
@@ -85,7 +86,7 @@ export function writeObservationSourceRecordArchives(
   return builders.map((builder) => persistSessionArchive(
     builder,
     archiveDir,
-    referenceRoot,
+    archiveRoot,
     report.meta.generatedAt,
   ));
 }
@@ -97,7 +98,8 @@ export function loadObservationSourceRecordArchive(
   if (!ref || ref.status === 'unavailable' || !ref.relativePath) {
     return unavailableView(ref?.reason ?? 'no_record_ranges');
   }
-  const path = safeArchivePath(resolveObservationsDir(observationsDir), ref.relativePath);
+  const archiveRoot = observationArchiveDir(resolveObservationsDir(observationsDir));
+  const path = safeArchivePath(archiveRoot, ref.relativePath);
   if (!path || !existsSync(path)) return unavailableView('archive_invalid');
 
   try {
@@ -313,13 +315,13 @@ function groupRecordRanges(ranges: ExperienceTraceRecordRange[]): Map<string, Me
   return grouped;
 }
 
-function safeArchivePath(observationsDir: string, relativePath: string): string | undefined {
+function safeArchivePath(archiveRoot: string, relativePath: string): string | undefined {
   if (!relativePath || isAbsolute(relativePath)) return undefined;
-  const candidate = resolve(observationsDir, relativePath);
-  const lexicalRelative = relative(resolve(observationsDir), candidate);
+  const candidate = resolve(archiveRoot, relativePath);
+  const lexicalRelative = relative(resolve(archiveRoot), candidate);
   if (lexicalRelative.startsWith('..') || isAbsolute(lexicalRelative)) return undefined;
   try {
-    const root = realpathSync(observationsDir);
+    const root = realpathSync(archiveRoot);
     const resolved = realpathSync(candidate);
     const resolvedRelative = relative(root, resolved);
     if (resolvedRelative.startsWith('..') || isAbsolute(resolvedRelative)) return undefined;

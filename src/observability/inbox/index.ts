@@ -770,7 +770,7 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
   const path = reportFilePath(reportsDir, `${stamp}-${randomRunToken()}`);
-  const sourceRecordArchives = writeObservationSourceRecordArchives(report, reportsDir, path, outDir);
+  const sourceRecordArchives = writeObservationSourceRecordArchives(report, outDir, path);
   const persisted = sourceRecordArchives.length > 0
     ? { ...compact, meta: { ...compact.meta, sourceRecordArchives } }
     : compact;

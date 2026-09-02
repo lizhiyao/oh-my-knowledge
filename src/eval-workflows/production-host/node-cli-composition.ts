@@ -70,6 +70,7 @@ export interface CreateNodeCliProductionCompositionInput {
   readonly compiled: CliEvaluationCompileResult;
   readonly projectRoot: string;
   readonly outputDirectory: string;
+  readonly resourceLeaseRoot: string;
   readonly environment?: NodeJS.ProcessEnv;
 }
 
@@ -538,6 +539,9 @@ export async function createNodeCliProductionComposition(
   if (!isAbsolute(input.outputDirectory)) {
     throw new TypeError('outputDirectory 必须是绝对路径。');
   }
+  if (!isAbsolute(input.resourceLeaseRoot)) {
+    throw new TypeError('resourceLeaseRoot 必须是绝对路径。');
+  }
   const environment = Object.freeze({ ...(input.environment ?? process.env) });
   const implementationIds = [...new Set(input.compiled.runtimeBinding.bindings.flatMap((binding) => (
     binding.runtimeKind === 'executor' ? [binding.implementationId] : []
@@ -564,7 +568,7 @@ export async function createNodeCliProductionComposition(
     }),
     support,
     resources: Object.freeze({
-      leaseRoot: join(input.outputDirectory, 'runtime-leases'),
+      leaseRoot: input.resourceLeaseRoot,
     }),
   });
 }

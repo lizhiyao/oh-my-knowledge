@@ -48,6 +48,12 @@ export function observationDraftsDir(observationsDir: string): string {
   return join(observationsDir, 'drafts');
 }
 
+/** Canonical inbox roots place immutable source records in `observe/archive/`. */
+export function observationArchiveDir(observationsDir: string): string {
+  if (isV2ObservationInboxDir(observationsDir)) return join(dirname(observationsDir), 'archive');
+  return join(observationsDir, 'archive');
+}
+
 export function resolveObservationsDir(dir: string = DEFAULT_PROJECT_OBSERVATIONS_DIR): string {
   if (resolve(dir) === resolve(DEFAULT_PROJECT_OBSERVATIONS_DIR)
       && !hasObservationData(dir)

@@ -32,4 +32,18 @@ describe('OMK layout path assembly guard', () => {
     });
     assert.deepEqual(violations, []);
   });
+
+  it('keeps eval materialization and lease directory names in the global layout', () => {
+    const violations = sourceFiles(SOURCE_ROOT).flatMap((path) => {
+      const projectPath = relative(ROOT, path).split('\\').join('/');
+      if (projectPath === 'src/omk-layout/index.ts') return [];
+      const lines = readFileSync(path, 'utf8').split('\n');
+      return lines.flatMap((line, index) => (
+        /['"](?:resolved-inputs|runtime-leases|resource-leases)['"]/u.test(line)
+          ? [`${projectPath}:${index + 1}`]
+          : []
+      ));
+    });
+    assert.deepEqual(violations, []);
+  });
 });

@@ -199,6 +199,7 @@ export async function runCoreEvaluationCommand(
   input: Readonly<RunCoreEvaluationCommandInput>,
 ): Promise<RunCoreEvaluationCommandResult> {
   const projectRoot = resolve(input.projectRoot ?? process.cwd());
+  const machineLayout = globalLayout(input.environment?.OMK_HOME);
   const request = requestFor(input, projectRoot);
   if (request.values.orchestration.preflight.doctor === 'skip') {
     process.stderr.write(input.lang === 'zh'
@@ -281,7 +282,7 @@ export async function runCoreEvaluationCommand(
   const outputDirectory = resolve(projectRoot, request.values.presentation.outputDirectoryLocator);
   const resolved = await resolveNodeCliEvaluationRequest(request, {
     projectRoot,
-    materializationRoot: join(outputDirectory, 'resolved-inputs'),
+    materializationRoot: machineLayout.resolvedInputsDir,
     ...(input.environment === undefined ? {} : { environment: input.environment }),
     ...(request.values.orchestration.repeatCount > 1
       ? { seriesInstanceId: generateRunId(['series']) }
@@ -292,6 +293,7 @@ export async function runCoreEvaluationCommand(
     compiled,
     projectRoot,
     outputDirectory,
+    resourceLeaseRoot: machineLayout.resourceLeasesDir,
     environment: input.environment,
   });
   const store = input.store ?? runStoreForOutput(

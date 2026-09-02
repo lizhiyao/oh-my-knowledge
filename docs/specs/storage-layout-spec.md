@@ -40,6 +40,7 @@
 │   │   └── review-state.json
 │   ├── drafts/
 │   └── archive/
+│       └── source-records/
 ├── governance/
 │   └── managed/
 ├── backups/
@@ -71,13 +72,16 @@ The directory-skill authoring convention `<skill>/.omk/eval-samples.{json,yaml}`
     ├── tunnels/
     ├── trees/
     ├── isolated-cwd/
+    │   └── resolved-inputs/
+    │       └── content/
     ├── artifact-index/
     ├── jobs/
     ├── locks/
     └── tmp/
+        └── resource-leases/
 ```
 
-Project and machine durable data use the same domains. Machine-specific material never belongs in project `.omk`. Original Codex, Claude, and DSH traces stay at their source; OMK reads them rather than copying them into a project by default.
+Project and machine durable data use the same domains. Machine-specific material never belongs in project `.omk`. Resolver-owned input copies live under `state/isolated-cwd/resolved-inputs/`; run-scoped resource copies and overlays live under `state/tmp/resource-leases/` and are removed when their lease closes. Original Codex, Claude, and DSH traces stay at their source; OMK reads them rather than copying them into a project by default.
 
 ## Lifecycle and Git policy
 
@@ -88,6 +92,7 @@ Project and machine durable data use the same domains. Machine-specific material
 | `observe/health/` | health aggregated from real traces | No | ignored |
 | `observe/inbox/` | candidate observations and human review state | No | ignored; may be sensitive |
 | `observe/drafts/` | sample drafts derived from observations | No | ignored |
+| `observe/archive/` | immutable source-record sidecars referenced by inbox reports | No | ignored; may be sensitive |
 | `governance/managed/` | install/evidence/promote/rollback history | No | tracked by default |
 | `backups/` | recovery copies made before automatic edits | No | ignored |
 | `state/` | jobs, locks, temporary files, and global rebuildable caches | Yes | ignored |
