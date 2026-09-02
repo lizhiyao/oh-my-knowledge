@@ -122,7 +122,9 @@ samples:
 }
 ```
 
-运行时，URL 会被替换为实际文档内容。获取顺序：先通过 MCP Server 获取匹配的 URL（如 SSO 保护的私有文档），再通过 HTTP 获取剩余 URL。MCP 已成功的 URL 不会重复 HTTP 抓取。
+宿主会在 Resolve 阶段解析 URL，并在编译 Evaluation Core Dataset **之前**替换为实际内容。每个规范 URL 只解析一次；规范化后的 UTF-8 字节会封存为按摘要寻址的 `content` 资源，同一份字节同时进入 Dataset input 与 Definition digest。HTTP／MCP 等传输细节只保留在非规范 lineage 中，因此仅切换传输方式不会改变测量身份。
+
+解析顺序是：匹配 URL 优先使用 MCP（例如受 SSO 保护的私有文档），其余 URL 或 MCP 失败的 URL 再使用安全 HTTP。解析采用失败关闭：任何非占位 URL 无法解析时，本次评测直接停止，不会静默退回原始 URL 继续测量，避免临时网络状态改变实际测量 construct。
 
 **私有文档 URL**：在项目目录放一个 `.mcp.json` 配置文件，或通过 `--mcp-config` 指定路径：
 
@@ -147,7 +149,10 @@ samples:
 }
 ```
 
-**公网 URL**：直接 HTTP 获取，如果需要认证请确保命令行环境已配置好网络访问（VPN、代理等）。
+**公网 URL**：通过有界 HTTP resolver 获取。每次重定向都会重新校验目标；loopback／私网／link-local 地址会被拒绝；只接受文本型 UTF-8 响应，并限制响应大小。私网或需要认证的文档必须显式配置 MCP resolver；URL authority 中携带凭证会被拒绝。`example.com` 等 RFC 占位域名保持字面量，永不发起请求。
+
+项目根目录的 `.mcp.json` 会被自动发现，`--mcp-config` 或 `eval.yaml.mcpConfig` 可显式覆盖。resolver 启动的 MCP 客户端只存活于单次 Resolve 会话，并且会在继续编译 Core 之前全部关闭。
+`urlPatterns` 是 hostname allowlist：使用 `docs.example.com` 这样的精确 host，或 `*.example.com` 这样的显式子域通配；不允许按 path／query 子串匹配。
 
 ## 评分策略
 

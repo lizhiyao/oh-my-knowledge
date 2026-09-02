@@ -97,6 +97,21 @@ function resolveWithDeterministicTestResources(
 }
 
 describe('parseCliEvaluationRequest', () => {
+  it('records a host-discovered project MCP config as a derived locator', () => {
+    const parsed = parseCliEvaluationRequest({
+      explicitCliFlags: { control: 'control', treatment: 'treatment' },
+      defaults: { ...defaults, mcpConfigLocator: '/project/.mcp.json' },
+    });
+
+    expect(parsed.values.locators.mcpConfig).toBe('/project/.mcp.json');
+    expect(parsed.fieldSources).toContainEqual({
+      normalizedField: 'values.locators.mcpConfig',
+      sourceKind: 'host-default',
+      sourceKey: 'values.locators.mcpConfig',
+      defaultSource: 'derived',
+    });
+  });
+
   it('normalizes equivalent explicit CLI and eval.yaml sources to the same request values', () => {
     const cliRequest = parseCliEvaluationRequest({
       explicitCliFlags: {

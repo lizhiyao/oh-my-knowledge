@@ -28,6 +28,14 @@ import {
 } from '../runtime-adapter/resource-leases/node.js';
 import { BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID } from '../runtime-adapter/analysis/index.js';
 import { buildProductionMeasurementDesign } from './measurement-design.js';
+import { createNodeSampleContentResolver } from './node-sample-content-resolver.js';
+import {
+  SampleContentResolutionError,
+  hasResolvableSampleUrls,
+  resolveSampleContents,
+  type ResolvedSampleContentRecord,
+  type SampleContentResolverSession,
+} from './sample-content-resolution.js';
 
 export interface ResolveNodeCliEvaluationRequestOptions {
   /** Absolute semantic root for relative CLI／eval.yaml locators. */
@@ -40,6 +48,10 @@ export interface ResolveNodeCliEvaluationRequestOptions {
   readonly hostExecutorImplementationIds?: readonly string[];
   /** Host Runtime implementations whose reasoning configuration is provider-owned. */
   readonly hostOwnedEffortImplementationIds?: readonly string[];
+  /** Environment inherited by resolver-owned MCP subprocesses. */
+  readonly environment?: Readonly<NodeJS.ProcessEnv>;
+  /** Test／embedding seam. The Resolve stage owns and closes the supplied one-shot session. */
+  readonly sampleContentResolver?: SampleContentResolverSession;
 }
 
 interface ResourceRegistry {
@@ -540,6 +552,72 @@ async function optionalFileResource(
   });
 }
 
+async function resolvedSampleContentResources(
+  resources: ResourceRegistry,
+  contents: readonly ResolvedSampleContentRecord[],
+  materializationRoot: string,
+): Promise<readonly {
+  readonly resourceId: string;
+  readonly sourceUrlDigest: `sha256:${string}`;
+  readonly contentDigest: `sha256:${string}`;
+  readonly transportKind: 'http' | 'mcp';
+  readonly sampleIds: readonly string[];
+  readonly fields: readonly ('prompt' | 'context')[];
+}[]> {
+  return Promise.all(contents.map(async (content) => {
+    const path = await materializeBytes(
+      materializationRoot,
+      Buffer.from(content.content),
+      content.mediaType === 'application/json' ? '.json' : '.txt',
+    );
+    const descriptor = await fileResource(resources, {
+      resourceKind: 'content',
+      path,
+      classification: content.classification,
+      mediaType: content.mediaType,
+      identityScope: content.sourceUrlDigest,
+      lineage: {
+        lineageKind: 'sample-url-content',
+        sourceUrlDigest: content.sourceUrlDigest,
+        transportKind: content.transportKind,
+        sampleIds: [...content.sampleIds],
+        fields: [...content.fields],
+      },
+    });
+    if (descriptor.digest !== content.contentDigest) fail({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      fieldPath: 'samples.externalContent',
+      message: 'Sample URL 内容在解析与封存之间发生摘要漂移。',
+    });
+    return {
+      resourceId: descriptor.resourceId,
+      sourceUrlDigest: content.sourceUrlDigest,
+      contentDigest: content.contentDigest,
+      transportKind: content.transportKind,
+      sampleIds: content.sampleIds,
+      fields: content.fields,
+    };
+  }));
+}
+
+async function closeSampleContentResolver(
+  session: SampleContentResolverSession,
+  resolutionFailure: unknown,
+): Promise<never | void> {
+  try {
+    await session.close();
+  } catch (cleanupFailure) {
+    if (resolutionFailure !== undefined) {
+      throw new AggregateError(
+        [resolutionFailure, cleanupFailure],
+        'Sample content resolution and resolver cleanup both failed',
+      );
+    }
+    throw cleanupFailure;
+  }
+  if (resolutionFailure !== undefined) throw resolutionFailure;
+}
+
 /** Production effect resolver. It never creates Runtime, runId, Plan, or persisted Run artifacts. */
 export async function resolveNodeCliEvaluationRequest(
   request: Readonly<CliEvaluationRequest>,
@@ -627,7 +705,68 @@ export async function resolveNodeCliEvaluationRequest(
     message: 'Artifact resolver 返回数量与 variant request 不一致。',
   });
 
+  let containsResolvableUrls: boolean;
+  try {
+    containsResolvableUrls = hasResolvableSampleUrls(loaded.samples);
+  } catch (cause) {
+    const contentError = cause instanceof SampleContentResolutionError ? cause : undefined;
+    return fail({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      fieldPath: 'samples.externalContent',
+      ...(contentError?.sourceLabel === undefined ? {} : { sourcePath: contentError.sourceLabel }),
+      message: contentError?.message ?? '无法扫描 sample 外部内容引用。',
+      cause,
+    });
+  }
+  let resolvedSamples: readonly Sample[] = loaded.samples;
+  let resolvedContents: readonly ResolvedSampleContentRecord[] = [];
+  if (containsResolvableUrls) {
+    let session: SampleContentResolverSession;
+    try {
+      session = options.sampleContentResolver ?? await createNodeSampleContentResolver({
+        ...(request.values.locators.mcpConfig === undefined ? {} : {
+          mcpConfigPath: absolute(options.projectRoot, request.values.locators.mcpConfig),
+        }),
+        ...(options.environment === undefined ? {} : { environment: options.environment }),
+      });
+    } catch (cause) {
+      return fail({
+        code: 'CLI_INPUT_RESOLUTION_FAILED',
+        fieldPath: 'samples.externalContent',
+        message: '无法创建 sample content resolver session。',
+        cause,
+      });
+    }
+    let resolutionFailure: unknown;
+    try {
+      const result = await resolveSampleContents(loaded.samples, session);
+      resolvedSamples = result.samples;
+      resolvedContents = result.contents;
+    } catch (cause) {
+      resolutionFailure = cause;
+    }
+    try {
+      await closeSampleContentResolver(session, resolutionFailure);
+    } catch (cause) {
+      const contentError = cause instanceof SampleContentResolutionError ? cause : undefined;
+      return fail({
+        code: 'CLI_INPUT_RESOLUTION_FAILED',
+        fieldPath: 'samples.externalContent',
+        ...(contentError?.sourceLabel === undefined ? {} : { sourcePath: contentError.sourceLabel }),
+        message: contentError?.sampleIds === undefined
+          ? '无法解析并封存 sample 外部内容；详情已保留在受控 cause 中。'
+          : `无法解析 sample 外部内容（samples：${contentError.sampleIds.join('、')}）；不会退回原始 URL 继续测量。`,
+        cause,
+      });
+    }
+  }
+
   const resources = registry();
+  const sampleContentRecords = await resolvedSampleContentResources(
+    resources,
+    resolvedContents,
+    options.materializationRoot,
+  );
   const targetRuntime = await resolveTargetRuntime(
     resources,
     options.projectRoot,
@@ -636,7 +775,7 @@ export async function resolveNodeCliEvaluationRequest(
   );
   const mocks = await resolvedMocks(
     resources,
-    loaded.samples,
+    resolvedSamples,
     loaded.baseDir,
     options.materializationRoot,
   );
@@ -665,7 +804,7 @@ export async function resolveNodeCliEvaluationRequest(
     );
     const executionControls = await resolvedExecutionControls(
       resources,
-      loaded.samples,
+      resolvedSamples,
       options.projectRoot,
       variant.workspaceLocator,
     );
@@ -697,7 +836,7 @@ export async function resolveNodeCliEvaluationRequest(
     };
   }));
 
-  const design = buildProductionMeasurementDesign(request, loaded.samples);
+  const design = buildProductionMeasurementDesign(request, resolvedSamples);
   const repeatCount = request.values.orchestration.repeatCount;
   if (repeatCount > 1 && (options.seriesInstanceId?.trim() ?? '') === '') fail({
     code: 'CLI_INPUT_RESOLUTION_FAILED',
@@ -783,6 +922,9 @@ export async function resolveNodeCliEvaluationRequest(
       annotations: {
         inputSources: structuredClone(request.fieldSources) as unknown as JsonValue,
         sampleSourceCount: loaded.sourceFiles.length,
+        ...(sampleContentRecords.length === 0 ? {} : {
+          sampleContentResolution: structuredClone(sampleContentRecords) as unknown as JsonValue,
+        }),
       },
     },
   };

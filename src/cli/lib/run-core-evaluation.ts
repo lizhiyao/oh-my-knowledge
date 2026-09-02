@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { EvalConfig } from '../../inputs/contracts/config.js';
 import {
@@ -52,13 +53,15 @@ export interface RunCoreEvaluationCommandResult {
   readonly outputDirectory: string;
 }
 
-function requestFor(input: RunCoreEvaluationCommandInput): CliEvaluationRequest {
+function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string): CliEvaluationRequest {
+  const projectMcpConfig = join(projectRoot, '.mcp.json');
   return parseCliEvaluationRequest({
     explicitCliFlags: input.flags,
     ...(input.evalConfig === null ? {} : { evalConfig: input.evalConfig }),
     defaults: {
       samplesLocator: input.config.samplesPath,
       skillDirectoryLocator: input.config.skillDir,
+      ...(existsSync(projectMcpConfig) ? { mcpConfigLocator: projectMcpConfig } : {}),
       targetRuntime: {
         executorId: input.config.executorName,
         model: input.config.model,
@@ -170,7 +173,7 @@ export async function runCoreEvaluationCommand(
   input: Readonly<RunCoreEvaluationCommandInput>,
 ): Promise<RunCoreEvaluationCommandResult> {
   const projectRoot = resolve(input.projectRoot ?? process.cwd());
-  const request = requestFor(input);
+  const request = requestFor(input, projectRoot);
   if (request.values.orchestration.preflight.doctor === 'skip') {
     process.stderr.write(input.lang === 'zh'
       ? '警告：--skip-doctor 已开启，Core 静态健康检查已跳过；依赖正确性由用户负责。\n'
@@ -253,6 +256,7 @@ export async function runCoreEvaluationCommand(
   const resolved = await resolveNodeCliEvaluationRequest(request, {
     projectRoot,
     materializationRoot: join(outputDirectory, 'resolved-inputs'),
+    ...(input.environment === undefined ? {} : { environment: input.environment }),
     ...(request.values.orchestration.repeatCount > 1
       ? { seriesInstanceId: generateRunId(['series']) }
       : {}),

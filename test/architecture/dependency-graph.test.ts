@@ -183,8 +183,6 @@ function stronglyConnectedComponents(edges: ModuleEdge[]): string[][] {
 }
 
 const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> = {
-  [domainPair('executors', 'inputs')]: (edge) =>
-    edge.typeOnly && isContractBoundary(edge.target),
   [domainPair('grading', 'inputs')]: (edge) =>
     edge.importerDomain === 'grading'
       ? edge.targetDomain === 'inputs'

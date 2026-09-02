@@ -122,7 +122,9 @@ URLs in `prompt` and `context` are auto-fetched before evaluation and inlined in
 }
 ```
 
-At runtime, URLs are replaced with the actual content. Fetch order: MCP Server first for matching URLs (e.g. SSO-protected private docs), then plain HTTP for the rest. URLs already resolved by MCP are not re-fetched via HTTP.
+During the host Resolve stage, URLs are replaced with the resolved content **before** the Evaluation Core Dataset is compiled. Each canonical URL is resolved once, its normalized UTF-8 bytes are sealed as a digest-addressed `content` resource, and those same bytes enter the Dataset input and Definition digest. Transport details (HTTP vs MCP) remain non-canonical lineage, so changing transport alone does not change the measurement identity.
+
+Resolution order is MCP first for matching URLs (for example SSO-protected private docs), then safe HTTP for the rest or as an MCP fallback. Resolution is fail-closed: if any non-placeholder URL cannot be resolved, the evaluation does not continue with the raw URL. This prevents transient network state from silently changing the construct being measured.
 
 **Private-doc URLs**: drop a `.mcp.json` config file into the project dir, or pass `--mcp-config <path>`:
 
@@ -147,7 +149,10 @@ At runtime, URLs are replaced with the actual content. Fetch order: MCP Server f
 }
 ```
 
-**Public URLs**: fetched via plain HTTP. If they require auth, make sure the shell already has network access configured (VPN, proxy, etc.).
+**Public URLs**: fetched through a bounded HTTP resolver. Redirect targets are revalidated, loopback/private/link-local destinations are rejected, only textual UTF-8 responses are accepted, and response size is capped. Private-network or authenticated documents must use an explicitly configured MCP resolver; credentials in URL authorities are rejected. RFC placeholder domains such as `example.com` remain literal and are never fetched.
+
+The project-root `.mcp.json` is auto-discovered. `--mcp-config` or `eval.yaml.mcpConfig` overrides it. Resolver-owned MCP clients live for one Resolve session only and are always closed before Core compilation continues.
+`urlPatterns` entries are hostname allowlists: use an exact host such as `docs.example.com` or an explicit subdomain wildcard such as `*.example.com`; path/query substring matching is not allowed.
 
 ## Scoring strategy
 

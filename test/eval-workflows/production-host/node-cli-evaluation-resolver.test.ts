@@ -81,6 +81,129 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
 }
 
 describe('resolveNodeCliEvaluationRequest', () => {
+  it('resolves URL content before Dataset compilation and seals provenance outside measurement identity', async () => {
+    const root = await fixture('sample-content');
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
+      sample_id: 'sample-a',
+      prompt: 'Use https://docs.acme.dev/spec twice: https://docs.acme.dev/spec.',
+      context: 'Context https://docs.acme.dev/spec',
+      rubric: 'Correct.',
+    }]));
+    const resolveContent = vi.fn(async () => ({
+      content: 'Authoritative specification bytes.',
+      mediaType: 'text/plain',
+      transportKind: 'mcp' as const,
+      classification: 'sensitive' as const,
+    }));
+    const close = vi.fn(async () => undefined);
+    const resolved = await resolveNodeCliEvaluationRequest(request(root), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+      sampleContentResolver: { resolve: resolveContent, close },
+    });
+    const content = resolved.hostResources.resources.find((resource) => (
+      resource.resourceKind === 'content'
+    ));
+    const datasetInput = resolved.dataset.samples[0]?.input;
+    if (typeof datasetInput !== 'string') throw new Error('expected string Dataset input');
+
+    expect(resolveContent).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(datasetInput.match(/Authoritative specification bytes\./g)).toHaveLength(3);
+    expect(content).toBeDefined();
+    expect(content?.descriptor.classification).toBe('sensitive');
+    expect(await readFile(content!.locator, 'utf8')).toBe('Authoritative specification bytes.');
+    expect(JSON.stringify(content?.lineage)).not.toContain('https://docs.acme.dev/spec');
+    expect(content?.lineage).toMatchObject({
+      lineageKind: 'sample-url-content',
+      sourceUrlDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      transportKind: 'mcp',
+      sampleIds: ['sample-a'],
+      fields: ['context', 'prompt'],
+    });
+    expect(resolved.staticRunMetadata?.annotations).toMatchObject({
+      sampleContentResolution: [expect.objectContaining({
+        resourceId: content?.descriptor.resourceId,
+        contentDigest: content?.descriptor.digest,
+      })],
+    });
+  });
+
+  it('binds resolved URL bytes into the Definition digest but not the transport', async () => {
+    const root = await fixture('sample-content-identity');
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
+      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: 'Correct.',
+    }]));
+    const compileWith = async (content: string, transportKind: 'http' | 'mcp') => (
+      compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(request(root), {
+        projectRoot: root,
+        materializationRoot: join(root, '.omk', `resolved-${content.length}-${transportKind}`),
+        sampleContentResolver: {
+          resolve: async () => ({
+            content,
+            mediaType: 'text/plain',
+            transportKind,
+            classification: transportKind === 'mcp' ? 'sensitive' : 'public',
+          }),
+          close: async () => undefined,
+        },
+      }))
+    );
+    const [mcp, http, changed] = await Promise.all([
+      compileWith('same bytes', 'mcp'),
+      compileWith('same bytes', 'http'),
+      compileWith('changed bytes', 'mcp'),
+    ]);
+
+    expect(mcp.canonicalDigests.definition).toBe(http.canonicalDigests.definition);
+    expect(mcp.canonicalDigests.definition).not.toBe(changed.canonicalDigests.definition);
+    expect(mcp.hostResources.resources.find((item) => item.resourceKind === 'content')
+      ?.descriptor.classification).toBe('sensitive');
+    expect(http.hostResources.resources.find((item) => item.resourceKind === 'content')
+      ?.descriptor.classification).toBe('public');
+  });
+
+  it('fails closed and still closes the one-shot resolver session', async () => {
+    const root = await fixture('sample-content-failure');
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
+      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: 'Correct.',
+    }]));
+    const close = vi.fn(async () => undefined);
+
+    await expect(resolveNodeCliEvaluationRequest(request(root), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+      sampleContentResolver: {
+        resolve: async () => { throw new Error('network unavailable'); },
+        close,
+      },
+    })).rejects.toMatchObject({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      fieldPath: 'samples.externalContent',
+      message: expect.stringContaining('不会退回原始 URL'),
+    });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes unsafe URL syntax failures into the stable CLI resolution envelope', async () => {
+    const root = await fixture('sample-content-credentials');
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
+      sample_id: 'sample-a',
+      prompt: 'Use https://user:secret@docs.acme.dev/spec',
+      rubric: 'Correct.',
+    }]));
+
+    await expect(resolveNodeCliEvaluationRequest(request(root), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    })).rejects.toMatchObject({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      fieldPath: 'samples.externalContent',
+      sourcePath: 'https://docs.acme.dev/spec',
+      message: expect.stringContaining('用户名或密码'),
+    });
+  });
+
   it('resolves real files into a compilable five-layer design without leaking secret payloads', async () => {
     const root = await fixture('compile');
     const resolved = await resolveNodeCliEvaluationRequest(request(root), {
