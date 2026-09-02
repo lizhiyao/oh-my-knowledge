@@ -1,5 +1,7 @@
 # Codex 父子任务 observe 案例
 
+[English](./README.md)
+
 这个可执行案例把两条脱敏后的 Codex Desktop rollout 交给 `omk observe`：
 
 - 父任务加载 `repo-review` skill，并发生一次搜索失败；
@@ -12,7 +14,7 @@
 在仓库根目录运行：
 
 ```bash
-npm exec --yes --package=oh-my-knowledge@0.49.0 -- \
+npm exec --yes --package=oh-my-knowledge@latest -- \
   node examples/codex-observe-router/verify.mjs
 ```
 
@@ -43,4 +45,6 @@ node examples/codex-observe-router/verify.mjs
 - 搜索失败生成一个 `failed_search` inbox 信号；
 - 紧凑落盘的报告回读后不丢失 Trace IR 图。
 
-这是协议与持久化案例，不是质量 benchmark，也不表示已经覆盖 Codex 历史上的所有 rollout 变体。
+## 证据边界
+
+这是协议与持久化案例，不是质量 benchmark，也不表示已经覆盖 Codex 历史上的所有 rollout 变体。`@latest` 用于验证当前发布版 CLI；需要复现历史结果时，应显式固定当时的 package 版本。

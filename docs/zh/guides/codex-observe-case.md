@@ -16,7 +16,7 @@ fixture 位于
 克隆仓库后，在仓库根目录运行：
 
 ```bash
-npm exec --yes --package=oh-my-knowledge@0.49.0 -- \
+npm exec --yes --package=oh-my-knowledge@latest -- \
   node examples/codex-observe-router/verify.mjs
 ```
 

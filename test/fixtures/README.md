@@ -36,6 +36,16 @@ load-bearing 值：
 - `test/runner.test.ts` 的「no-judge 确定性断言分」：断言 `results[0]`（即 `s001`）`assertions.total === 1`、`passed === 0`、`score === 1`。**s001 必须恰好 1 条断言，且该断言对固定输出 `fixture output` 不通过**。改断言时要保持这个关系。
 - `test/cli.test.ts`：用 echo 跑 **非 dry-run** eval / batch（`--no-judge`），靠整体低分得出 verdict → 退出码 1；不 pin 具体分数。
 
+## mcp-observation/
+
+OMK MCP 主动知识反馈的行为契约 fixture。它覆盖显式保存、`$omk feedback` 快捷入口、间接纠正等待确认、确认后保存、假设性负例，以及未经人工复核不得生成候选样本。
+
+消费方与 load-bearing 值：
+
+- `test/mcp/trigger-samples.test.ts` 固定 7 条用例及关键 tool assertion，保护 consent boundary 与 review gate。
+- 这组用例依赖能够暴露规范化 MCP 工具轨迹的 agent executor；普通文本 executor 无法证明工具是否被调用，因此它不是独立可运行的用户示例。
+- 修改 MCP 工具名、确认字段或 review lifecycle 时，必须同步检查 `.agents/skills/omk/SKILL.md` 和中英文 MCP integration guide。
+
 ## multi-skills/
 
 批量评测 fixture（`omk eval --batch`）。`skills/` 下的 `summarizer/`、`translator/`、`classifier/` 均采用目录 skill，并将私有用例放在 `.omk/eval-samples.json`，锁定 batch 的 canonical 发现路径。

@@ -28,3 +28,7 @@ node dist/cli/index.js studio \
 ```
 
 Open the task trajectory from the Observe Inbox. The semantic trajectory spaces operations evenly and aligns Knowledge, action, and result cards in the same operation column. Scroll horizontally through the full sequence; intervals longer than one minute without observable events are compressed and labeled. Select an operation for related evidence, switch to **Normalized events** to inspect Trace IR, or use **Raw logs** to verify the archived JSONL input.
+
+## Evidence boundary
+
+This fixture proves that one redacted task can round-trip through ingestion and presentation while retaining observable evidence. It does not prove complete coverage of Codex event variants, infer hidden reasoning, or establish whether the captured product answer is still current.

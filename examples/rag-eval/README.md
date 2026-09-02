@@ -1,23 +1,31 @@
 # RAG evaluation
 
-这个示例展示 omk 的 RAG 专用断言：
+[中文说明](./README.zh.md)
+
+## Purpose
+
+This example demonstrates OMK's RAG-specific assertions:
 
 - `faithfulness`
 - `answer_relevancy`
 - `context_recall`
 
-先预览任务计划，不调用模型：
+The samples embed retrieval context in `eval-samples.yaml`. The treatment skill should answer only from that context, decline unsupported claims, and stay concise.
+
+## Run
+
+Preview the sealed task plan without calling a model:
 
 ```bash
-omk eval --control baseline --treatment rag-answerer --dry-run
+omk eval --control context-answerer --treatment rag-answerer --dry-run
 ```
 
-样本把上下文直接放在 `eval-samples.yaml` 里。被测 skill 应该基于上下文回答、拒绝上下文未支持的信息，并保持简洁。
-
-这三个 RAG 断言需要语义评估，真实运行时请配置可用的执行器和 LLM 评委；它们不是 `--no-judge` 离线烟测用例。
-
-配置好执行器和评委后，再跑真实 RAG eval：
+The three RAG assertions require semantic evaluation. After configuring a task executor and an LLM judge, run the real comparison:
 
 ```bash
-omk eval --control baseline --treatment rag-answerer
+omk eval --control context-answerer --treatment rag-answerer
 ```
+
+## Evidence boundary
+
+The explicit control can use the supplied information but has no grounding discipline; the treatment adds the context-only contract. This is an assertion-protocol example, not a retrieval-system benchmark: its context is supplied directly rather than retrieved. The three samples are too small for a release decision and do not measure retriever recall, ranking quality, or production corpus drift.

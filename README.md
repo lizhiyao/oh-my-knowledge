@@ -59,7 +59,7 @@ Without `OMK_MODEL`, omk reads the model from `~/.codex/config.toml`. You can st
 
 > The CLI notifies you when a newer version is available (at most once per 20h); set `OMK_SKIP_UPDATE_CHECK=1` to silence it permanently.
 
-Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users; includes demo → own skill → verdict actions). More runnable examples (Skill Map, A/B, offline executor, agent runtime, RAG) live in the repo's [example gallery](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples).
+Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users; includes demo → own skill → verdict actions). More runnable examples (Skill Map, offline executor, agent runtime, RAG, Observe) live in the repo's [example gallery](examples/README.md).
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
