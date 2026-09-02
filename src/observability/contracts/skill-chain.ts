@@ -1,4 +1,4 @@
-import type { SkillHardRule, SkillWorkflow } from '../../skill-definition/contracts.js';
+import type { SkillHardRule, SkillWorkflow } from '../../knowledge-artifacts/skills/contracts.js';
 import type { ExperienceEvidenceRef } from './experience.js';
 import type { SkillChainAdvisoryCode } from './skill-chain-advisories.js';
 

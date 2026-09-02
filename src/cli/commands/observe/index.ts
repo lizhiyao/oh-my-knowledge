@@ -63,7 +63,7 @@ export function buildObserveReportView(
   report: SkillHealthReport,
   reportId: string,
   healthBandOf: (weightedGapRate: number) => 'green' | 'yellow' | 'red',
-): import('../../../managed/index.js').ObserveReportView {
+): import('../../../knowledge-artifacts/governance/index.js').ObserveReportView {
   return {
     reportId,
     observedAt: report.meta.timeRange?.to || report.meta.generatedAt,
@@ -87,7 +87,7 @@ export function buildObserveReportView(
 async function recordObserveFeedback(report: SkillHealthReport, reportId: string, lang: CliLang): Promise<void> {
   try {
     const { healthBandOf } = await import('../../../observability/skill-health/analyzer.js');
-    const { recordObserveHealth } = await import('../../../managed/index.js');
+    const { recordObserveHealth } = await import('../../../knowledge-artifacts/governance/index.js');
     const written = recordObserveHealth(buildObserveReportView(report, reportId, healthBandOf));
     for (const w of written) {
       process.stdout.write(w.isProductionGap

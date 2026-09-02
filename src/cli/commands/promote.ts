@@ -16,9 +16,9 @@ import {
   managedRecordId,
   resolveManagedDir,
   type PromoteBlock,
-} from '../../managed/index.js';
+} from '../../knowledge-artifacts/governance/index.js';
 import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
-import type { ManagedArtifactRecord, ManagedDecision } from '../../managed/contracts.js';
+import type { ManagedArtifactRecord, ManagedDecision } from '../../knowledge-artifacts/governance/contracts.js';
 import type { PromoteMessageKey } from '../lib/i18n-dict/promote.js';
 
 const SUPPORTED_KINDS: ArtifactKind[] = ['skill'];

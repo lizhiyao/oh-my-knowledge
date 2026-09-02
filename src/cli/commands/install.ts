@@ -7,9 +7,9 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveInstallSource, resolveRemoteGitSource, SourceResolveError } from '../../inputs/source-resolver.js';
-import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../managed/index.js';
+import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../knowledge-artifacts/governance/index.js';
 import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
-import type { ManagedDistributionTarget } from '../../managed/contracts.js';
+import type { ManagedDistributionTarget } from '../../knowledge-artifacts/governance/contracts.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';

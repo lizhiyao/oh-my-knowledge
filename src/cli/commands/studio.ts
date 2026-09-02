@@ -4,7 +4,7 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
-import { resolveManagedDir, managedDir } from '../../managed/index.js';
+import { resolveManagedDir, managedDir } from '../../knowledge-artifacts/governance/index.js';
 import {
   resolveObserveHealthDir, projectObserveHealthDir, globalObserveHealthDir,
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,

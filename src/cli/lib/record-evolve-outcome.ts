@@ -5,14 +5,14 @@ import {
   loadAllManagedRecords,
   rebaselineManagedContentHash,
   probeSourceState,
-} from '../../managed/index.js';
-import type { ManagedArtifactRecord } from '../../managed/contracts.js';
+} from '../../knowledge-artifacts/governance/index.js';
+import type { ManagedArtifactRecord } from '../../knowledge-artifacts/governance/contracts.js';
 import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store/index.js';
 import { projectCoreManagedEvidence } from '../../eval-workflows/downstream-projections/index.js';
 import {
   coreEvidenceTargetForContentHash,
   recordCoreEvalEvidenceForRecord,
-} from '../../managed/evidence.js';
+} from '../../knowledge-artifacts/governance/evidence.js';
 
 export interface EvolveOutcomeResult {
   name: string;

@@ -40,6 +40,17 @@ function sourceRelative(path: string): string {
   return relative(SRC_DIR, path).split(sep).join('/');
 }
 
+function moduleDomain(path: string): string {
+  const [topLevel, subdomain] = path.split('/');
+  if (
+    topLevel === 'knowledge-artifacts'
+    && ['authoring', 'doctor', 'governance', 'skills'].includes(subdomain)
+  ) {
+    return `${topLevel}/${subdomain}`;
+  }
+  return topLevel;
+}
+
 function resolveLocalModule(importer: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null;
   const unresolved = normalize(resolve(dirname(importer), specifier));
@@ -74,8 +85,8 @@ function collectModuleEdges(): ModuleEdge[] {
     if (!target || !target.startsWith(`${SRC_DIR}${sep}`)) return;
     const importerRelative = sourceRelative(importer);
     const targetRelative = sourceRelative(target);
-    const importerDomain = importerRelative.split('/')[0];
-    const targetDomain = targetRelative.split('/')[0];
+    const importerDomain = moduleDomain(importerRelative);
+    const targetDomain = moduleDomain(targetRelative);
     if (importerDomain === targetDomain || !importerRelative.includes('/')) return;
     edges.push({
       importer: importerRelative,
@@ -189,14 +200,14 @@ const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> 
       : edge.typeOnly && isContractBoundary(edge.target),
   [domainPair('inputs', 'preflight')]: (edge) =>
     edge.typeOnly && isContractBoundary(edge.target),
-  [domainPair('doctor', 'measurement-artifacts')]: (edge) => {
-    if (edge.importerDomain === 'doctor') {
-      return edge.importer === 'doctor/index.ts'
+  [domainPair('knowledge-artifacts/doctor', 'measurement-artifacts')]: (edge) => {
+    if (edge.importerDomain === 'knowledge-artifacts/doctor') {
+      return edge.importer === 'knowledge-artifacts/doctor/index.ts'
         && edge.target === 'measurement-artifacts/file-names.ts';
     }
     return edge.importer === 'measurement-artifacts/discovery-index.ts'
       && edge.typeOnly
-      && edge.target === 'doctor/contracts.ts';
+      && edge.target === 'knowledge-artifacts/doctor/contracts.ts';
   },
   [domainPair('diagnosis', 'observability')]: (edge) => {
     if (edge.importerDomain === 'observability') {
@@ -209,6 +220,12 @@ const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> 
 
 describe('src 依赖图', () => {
   const edges = collectModuleEdges();
+
+  it('按稳定子域而非粗粒度物理顶层分析知识载体依赖', () => {
+    expect(moduleDomain('knowledge-artifacts/contracts.ts')).toBe('knowledge-artifacts');
+    expect(moduleDomain('knowledge-artifacts/doctor/index.ts')).toBe('knowledge-artifacts/doctor');
+    expect(moduleDomain('knowledge-artifacts/governance/store.ts')).toBe('knowledge-artifacts/governance');
+  });
 
   it('delivery composition root 只装配领域，不被领域反向依赖', () => {
     const violations = edges

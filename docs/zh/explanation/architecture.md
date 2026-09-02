@@ -41,6 +41,20 @@ flowchart TD
 
 `shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
+知识载体生命周期能力归入同一个所有权边界：
+
+```text
+knowledge-artifacts/
+├── contracts.ts  # artifact 身份与实验角色
+├── skills/       # skill frontmatter、硬规则与 workflow 定义
+├── doctor/       # 静态与模型辅助的 artifact 健康检查
+├── authoring/    # sample 生成与受控 skill 演进
+└── governance/   # 安装记录、证据门禁、promote 与 rollback 状态
+```
+
+Governance 只消费经过认证的评测与观测证据，不重新计算 Core 分数或决定。各能力仍保持独立
+子域，共享生命周期所有者不等于把 `knowledge-artifacts` 变成通用工具层。
+
 Diagnosis 与 Observability 是一个显式建模的边界：Observability 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observability 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
 
 ## Observability 子域

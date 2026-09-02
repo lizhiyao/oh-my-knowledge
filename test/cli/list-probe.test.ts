@@ -12,8 +12,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync, linkSync, r
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { sanitizeCell } from '../../src/cli/commands/list.js';
-import { probeSourceState, hashArtifactSource } from '../../src/managed/index.js';
-import type { ManagedArtifactRecord, ManagedArtifactSource } from '../../src/managed/contracts.js';
+import { probeSourceState, hashArtifactSource } from '../../src/knowledge-artifacts/governance/index.js';
+import type { ManagedArtifactRecord, ManagedArtifactSource } from '../../src/knowledge-artifacts/governance/contracts.js';
 
 function record(source: ManagedArtifactSource, contentHash = 'pinnedHash00'): ManagedArtifactRecord {
   return {

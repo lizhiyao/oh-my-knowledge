@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync, statSync, realpathSync, mkdtempS
 import { resolve, join, relative, dirname, basename, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { extractSkillHardRules, extractSkillWorkflows } from '../skill-definition/hard-rules.js';
+import { extractSkillHardRules, extractSkillWorkflows } from '../knowledge-artifacts/skills/hard-rules.js';
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
 import { findSkillSamplesPath } from './sample-locator.js';

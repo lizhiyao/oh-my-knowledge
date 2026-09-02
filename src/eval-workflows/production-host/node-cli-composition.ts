@@ -230,8 +230,8 @@ function dependencyDoctor(
         }
         const artifacts = await doctorArtifacts(compiled);
         if (artifacts.length === 0) return;
-        const { runDoctor } = await import('../../doctor/index.js');
-        const { renderDoctorReportText } = await import('../../doctor/renderer.js');
+        const { runDoctor } = await import('../../knowledge-artifacts/doctor/index.js');
+        const { renderDoctorReportText } = await import('../../knowledge-artifacts/doctor/renderer.js');
         const { tEvalWorkflowMessage } = await import('../messages.js');
         const language = compiled.presentation.language;
         const report = await runDoctor({

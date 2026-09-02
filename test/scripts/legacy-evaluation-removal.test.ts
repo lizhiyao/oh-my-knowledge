@@ -22,7 +22,7 @@ const FORBIDDEN_FILES = [
   'src/renderer/html-renderer.ts',
   'src/renderer/test-view.ts',
   'src/artifact-graph/eval.ts',
-  'src/managed/version-scores.ts',
+  'src/knowledge-artifacts/governance/version-scores.ts',
 ] as const;
 
 const FORBIDDEN_SPECIFIER_FRAGMENTS = [
@@ -78,7 +78,7 @@ describe('legacy evaluation implementation removal', () => {
   });
 
   it('does not retain legacy managed evidence compatibility', () => {
-    const managed = readFileSync(resolve('src/managed/contracts.ts'), 'utf8');
+    const managed = readFileSync(resolve('src/knowledge-artifacts/governance/contracts.ts'), 'utf8');
     expect(managed).toContain("evidenceSource: 'evaluation-core'");
     expect(managed).not.toContain("evidenceSource?: 'evaluation-core'");
     expect(managed).not.toContain('comparability?:');

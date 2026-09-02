@@ -1,13 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import type { DoctorReport } from '../../../doctor/contracts.js';
+import type { DoctorReport } from '../../../knowledge-artifacts/doctor/contracts.js';
 import {
   listManagedRows,
   loadAllManagedRecords,
   managedDir as projectManagedDir,
   resolveManagedDir,
-} from '../../../managed/index.js';
+} from '../../../knowledge-artifacts/governance/index.js';
 import {
   listDoctorCards,
   listLiveObserveCards,
@@ -24,7 +24,7 @@ import {
   type SkillHealthReport,
 } from '../../../observability/skill-health/analyzer.js';
 import { parseSkillHealthReport } from '../../../observability/skill-health/report.js';
-import { parseDoctorReport } from '../../../doctor/report-parser.js';
+import { parseDoctorReport } from '../../../knowledge-artifacts/doctor/report-parser.js';
 import type { Lang } from '../../../shared/language.js';
 import { buildSkillIndex } from '../../application/index.js';
 import { renderDoctorDetail } from '../../presentation/doctor-detail-renderer.js';

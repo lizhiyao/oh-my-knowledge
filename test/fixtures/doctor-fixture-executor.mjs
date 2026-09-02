@@ -2,7 +2,7 @@
 //
 // Reads { model, system, prompt } from stdin (script-executor protocol)
 // and writes { output, ... } to stdout. The `output` is a deterministic
-// JSON payload shaped for src/doctor/health/parser.ts: 7 builtin dimensions
+// JSON payload shaped for src/knowledge-artifacts/doctor/health/parser.ts: 7 builtin dimensions
 // with checklist + summary.overall_health.
 //
 // Outcome is controlled via OMK_DOCTOR_FIXTURE_OUTCOME env:
