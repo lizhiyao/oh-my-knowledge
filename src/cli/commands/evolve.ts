@@ -8,6 +8,7 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { createEvalSampleSetDocument } from '../../inputs/schemas/sample-set.js';
+import { stringifySampleDocument } from '../../inputs/sample-document.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type {
   CoreEvolveOutcomeInput,
@@ -91,14 +92,14 @@ export function sampleSourceExists(p: string): boolean {
 }
 
 /** 自动生成时的落盘目标:已存在的目录(含带点目录名,如 samples.v2/)→ 写进目录内的
- *  samples.json;已存在的文件 → 覆盖该文件;不存在 → 按扩展名(有扩展名当文件,无扩展名
- *  当目录,落 samples.json)。与 sampleSourceExists 同用 statSync 判型,不被带点目录名
+ *  eval-samples.json;已存在的文件 → 覆盖该文件;不存在 → 按扩展名(有扩展名当文件,无扩展名
+ *  当目录,落 eval-samples.json)。与 sampleSourceExists 同用 statSync 判型,不被带点目录名
  *  误当成文件(否则 writeFileSync 撞 EISDIR)。 */
 export function resolveSampleOutFile(samplesAbs: string): string {
   try {
-    return statSync(samplesAbs).isDirectory() ? join(samplesAbs, 'samples.json') : samplesAbs;
+    return statSync(samplesAbs).isDirectory() ? join(samplesAbs, 'eval-samples.json') : samplesAbs;
   } catch {
-    return extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'samples.json');
+    return extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'eval-samples.json');
   }
 }
 
@@ -165,7 +166,7 @@ export async function runEvolve(
     try {
       const { generateSamples } = await import('../../authoring/generator.js');
       const skillContent = readFileSync(resolve(skillPath), 'utf-8');
-      // outFile:已存在目录写进内部 samples.json,已存在文件覆盖,不存在按扩展名 —— statSync
+      // outFile:已存在目录写进内部 eval-samples.json,已存在文件覆盖,不存在按扩展名 —— statSync
       // 判型,不被带点目录名(samples.v2/)骗。loadSamples 目录模式会自动发现生成的文件。
       const outFile = resolveSampleOutFile(samplesAbs);
       // sourceExists 为真 = 用例源存在但解析出 0 条(合法空 [])→ 明示"重新生成覆盖空文件",
@@ -193,7 +194,7 @@ export async function runEvolve(
       mkdirSync(dirname(outFile), { recursive: true });
       writeFileSync(
         outFile,
-        JSON.stringify(createEvalSampleSetDocument(samples), null, 2),
+        stringifySampleDocument(outFile, createEvalSampleSetDocument(samples)),
       );
       const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       process.stderr.write(lang === 'zh'

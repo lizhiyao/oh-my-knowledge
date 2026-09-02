@@ -74,7 +74,7 @@ describe('materialize-copy', () => {
   it('排除 .omk / evolve(与 install 分发同 filter):副本不含、不影响 hash', () => {
     const src = mkDirSkill('c', 'asset\n');
     mkdirSync(join(src, '.omk'), { recursive: true });
-    writeFileSync(join(src, '.omk', 'samples.json'), '[]\n');
+    writeFileSync(join(src, '.omk', 'eval-samples.json'), '[]\n');
     mkdirSync(join(src, 'evolve'), { recursive: true });
     writeFileSync(join(src, 'evolve', 'cand.md'), 'x\n');
     const copy = materializeIsolatedCopy(src, true, 'c');

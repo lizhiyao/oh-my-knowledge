@@ -4,20 +4,17 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  defaultFlatSkillSamplesFile,
   defaultSkillLocalSamplesFile,
-  findDeprecatedSkillSamplesHint,
   findDoctorSamplesPath,
-  findDoctorDeprecatedSamplesHint,
-  findFlatSkillSamplesPath,
   findNamedSkillSamplesPath,
+  findProjectSamplesFile,
   findSkillSamplesPath,
-  findSingleTreatmentDeprecatedSamplesHint,
   findSingleTreatmentSamplesPath,
   hasUsableSamplesPath,
+  SampleFileAmbiguityError,
 } from '../../src/inputs/sample-locator.js';
 
-describe('sample-locator', () => {
+describe('sample-locator canonical discovery', () => {
   let root: string;
 
   beforeEach(() => {
@@ -28,157 +25,114 @@ describe('sample-locator', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('目录 skill 只从 .omk 读取 skill-local samples', () => {
-    const skillRoot = join(root, 'skills', 'review');
-    mkdirSync(join(skillRoot, '.omk'), { recursive: true });
-    writeFileSync(join(skillRoot, 'SKILL.md'), '# review\n');
-    writeFileSync(join(skillRoot, 'eval-samples.json'), '[]\n');
-    writeFileSync(join(skillRoot, '.omk', 'samples.json'), '[]\n');
+  it('项目级 JSON 与 YAML 都是一等 canonical 格式', () => {
+    const json = join(root, 'eval-samples.json');
+    writeFileSync(json, '{}\n');
+    assert.equal(findProjectSamplesFile(root), json);
 
-    assert.equal(findSkillSamplesPath(skillRoot), join(skillRoot, '.omk'));
+    rmSync(json);
+    const yaml = join(root, 'eval-samples.yaml');
+    writeFileSync(yaml, '{}\n');
+    assert.equal(findProjectSamplesFile(root), yaml);
   });
 
-  it('目录 skill 下的 eval-samples 不再作为 skill-local 兼容路径', () => {
+  it('同一作用域 JSON 与 YAML 并存时拒绝静默选优先级', () => {
+    writeFileSync(join(root, 'eval-samples.json'), '{}\n');
+    writeFileSync(join(root, 'eval-samples.yaml'), '{}\n');
+    assert.throws(() => findProjectSamplesFile(root), (error: unknown) => {
+      assert.ok(error instanceof SampleFileAmbiguityError);
+      assert.deepEqual(error.paths, [
+        join(root, 'eval-samples.json'),
+        join(root, 'eval-samples.yaml'),
+      ]);
+      return true;
+    });
+  });
+
+  it('自动发现忽略 .yml、samples.* 与扁平 sidecar 旧命名', () => {
+    writeFileSync(join(root, 'eval-samples.yml'), '{}\n');
+    writeFileSync(join(root, 'samples.json'), '{}\n');
+    writeFileSync(join(root, 'review.eval-samples.json'), '{}\n');
+    assert.equal(findProjectSamplesFile(root), null);
+  });
+
+  it('目录 skill 只发现 .omk/eval-samples.{json,yaml} 单文件', () => {
     const skillRoot = join(root, 'skills', 'review');
     mkdirSync(join(skillRoot, '.omk'), { recursive: true });
     writeFileSync(join(skillRoot, 'SKILL.md'), '# review\n');
-    writeFileSync(join(skillRoot, 'eval-samples.yaml'), '[]\n');
-
+    writeFileSync(join(skillRoot, 'eval-samples.json'), '{}\n');
+    writeFileSync(join(skillRoot, '.omk', 'samples.json'), '{}\n');
     assert.equal(findSkillSamplesPath(skillRoot), null);
+
+    const canonical = join(skillRoot, '.omk', 'eval-samples.yaml');
+    writeFileSync(canonical, '{}\n');
+    assert.equal(findSkillSamplesPath(skillRoot), canonical);
+    assert.equal(findNamedSkillSamplesPath(join(root, 'skills'), 'review'), canonical);
   });
 
-  it('目录 skill 下的旧 eval-samples 会返回迁移提示', () => {
+  it('目录 skill 私有 JSON 与 YAML 并存时同样拒绝歧义', () => {
     const skillRoot = join(root, 'skills', 'review');
-    mkdirSync(skillRoot, { recursive: true });
+    mkdirSync(join(skillRoot, '.omk'), { recursive: true });
     writeFileSync(join(skillRoot, 'SKILL.md'), '# review\n');
-    writeFileSync(join(skillRoot, 'eval-samples.yaml'), '[]\n');
-
-    assert.deepEqual(findDeprecatedSkillSamplesHint(skillRoot), {
-      oldPath: join(skillRoot, 'eval-samples.yaml'),
-      newPath: join(skillRoot, '.omk', 'samples.json'),
-    });
-    assert.deepEqual(findSingleTreatmentDeprecatedSamplesHint('review', join(root, 'skills'), root), {
-      oldPath: join(skillRoot, 'eval-samples.yaml'),
-      newPath: join(skillRoot, '.omk', 'samples.json'),
-    });
-    assert.deepEqual(findDoctorDeprecatedSamplesHint(skillRoot, root), {
-      oldPath: join(skillRoot, 'eval-samples.yaml'),
-      newPath: join(skillRoot, '.omk', 'samples.json'),
-    });
+    writeFileSync(join(skillRoot, '.omk', 'eval-samples.json'), '{}\n');
+    writeFileSync(join(skillRoot, '.omk', 'eval-samples.yaml'), '{}\n');
+    assert.throws(() => findSkillSamplesPath(skillRoot), SampleFileAmbiguityError);
   });
 
-  it('目录 skill 用 .omk,扁平 skill 兼容 sidecar', () => {
+  it('同名 flat / directory skill 时遵循 file-first，不误读目录 skill 私有用例', () => {
     const skillDir = join(root, 'skills');
-    const dirSkill = join(skillDir, 'classifier');
+    const dirSkill = join(skillDir, 'dual');
     mkdirSync(join(dirSkill, '.omk'), { recursive: true });
-    writeFileSync(join(dirSkill, 'SKILL.md'), '# classifier\n');
-    writeFileSync(join(dirSkill, '.omk', 'cases.yaml'), '[]\n');
-
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, 'summarizer.md'), '# summarizer\n');
-    writeFileSync(join(skillDir, 'summarizer.eval-samples.yml'), '[]\n');
-
-    assert.equal(findNamedSkillSamplesPath(skillDir, 'classifier'), join(dirSkill, '.omk'));
-    assert.equal(findFlatSkillSamplesPath(skillDir, 'summarizer'), join(skillDir, 'summarizer.eval-samples.yml'));
-  });
-
-  it('只有目录 skill 时不读取同名 paired sidecar', () => {
-    const skillDir = join(root, 'skills');
-    const skillRoot = join(skillDir, 'classifier');
-    mkdirSync(skillRoot, { recursive: true });
-    writeFileSync(join(skillRoot, 'SKILL.md'), '# classifier\n');
-    writeFileSync(join(skillDir, 'classifier.eval-samples.json'), '[]\n');
-
-    assert.equal(findNamedSkillSamplesPath(skillDir, 'classifier'), null);
-  });
-
-  it('短名解析命中扁平 skill 时不回退读取同名目录 .omk', () => {
-    const skillDir = join(root, 'skills');
-    mkdirSync(join(skillDir, 'dual', '.omk'), { recursive: true });
-    writeFileSync(join(skillDir, 'dual.md'), '# dual file\n');
-    writeFileSync(join(skillDir, 'dual', 'SKILL.md'), '# dual dir\n');
-    writeFileSync(join(skillDir, 'dual', '.omk', 'samples.json'), '[]\n');
-
+    writeFileSync(join(skillDir, 'dual.md'), '# flat\n');
+    writeFileSync(join(dirSkill, 'SKILL.md'), '# directory\n');
+    writeFileSync(join(dirSkill, '.omk', 'eval-samples.json'), '{}\n');
     assert.equal(findNamedSkillSamplesPath(skillDir, 'dual'), null);
   });
 
-  it('短名解析命中扁平 skill 时使用扁平 paired sidecar', () => {
+  it('单 treatment 目录 skill 优先私有文件，扁平 skill 留给项目级回退', () => {
     const skillDir = join(root, 'skills');
-    mkdirSync(join(skillDir, 'dual', '.omk'), { recursive: true });
-    writeFileSync(join(skillDir, 'dual.md'), '# dual file\n');
-    writeFileSync(join(skillDir, 'dual', 'SKILL.md'), '# dual dir\n');
-    writeFileSync(join(skillDir, 'dual', '.omk', 'samples.json'), '[]\n');
-    writeFileSync(join(skillDir, 'dual.eval-samples.json'), '[]\n');
+    const dirSkill = join(skillDir, 'release');
+    mkdirSync(join(dirSkill, '.omk'), { recursive: true });
+    writeFileSync(join(dirSkill, 'SKILL.md'), '# release\n');
+    const local = join(dirSkill, '.omk', 'eval-samples.json');
+    writeFileSync(local, '{}\n');
+    assert.equal(findSingleTreatmentSamplesPath('release', skillDir, root), local);
 
-    assert.equal(findNamedSkillSamplesPath(skillDir, 'dual'), join(skillDir, 'dual.eval-samples.json'));
+    writeFileSync(join(skillDir, 'flat.md'), '# flat\n');
+    writeFileSync(join(skillDir, 'flat.eval-samples.json'), '{}\n');
+    assert.equal(findSingleTreatmentSamplesPath('flat', skillDir, root), null);
   });
 
-  it('短名解析命中扁平 skill 时不提示同名目录旧 eval-samples', () => {
-    const skillDir = join(root, 'skills');
-    mkdirSync(join(skillDir, 'dual'), { recursive: true });
-    writeFileSync(join(skillDir, 'dual.md'), '# dual file\n');
-    writeFileSync(join(skillDir, 'dual', 'SKILL.md'), '# dual dir\n');
-    writeFileSync(join(skillDir, 'dual', 'eval-samples.json'), '[]\n');
-
-    assert.equal(findSingleTreatmentDeprecatedSamplesHint('dual', skillDir, root), null);
-  });
-
-  it('扁平 skill 不再读取同名目录下的 .omk', () => {
-    const skillDir = join(root, 'skills');
-    mkdirSync(join(skillDir, 'summarizer', '.omk'), { recursive: true });
-    writeFileSync(join(skillDir, 'summarizer.md'), '# summarizer\n');
-    writeFileSync(join(skillDir, 'summarizer', '.omk', 'samples.json'), '[]\n');
-
-    assert.equal(findFlatSkillSamplesPath(skillDir, 'summarizer'), null);
-  });
-
-  it('单 treatment 自动发现短名对应的 skill-local samples', () => {
-    const skillDir = join(root, 'skills');
-    const skillRoot = join(skillDir, 'release');
-    mkdirSync(join(skillRoot, '.omk'), { recursive: true });
-    writeFileSync(join(skillRoot, 'SKILL.md'), '# release\n');
-    writeFileSync(join(skillRoot, '.omk', 'samples.json'), '[]\n');
-    writeFileSync(join(root, 'eval-samples.json'), '[]\n');
-
-    assert.equal(findSingleTreatmentSamplesPath('release', skillDir, root), join(skillRoot, '.omk'));
-  });
-
-  it('doctor 针对 skill target 时优先使用 skill-local,针对 skills 目录时回到项目级', () => {
+  it('doctor 的 skill target 优先私有文件，skills 目录 target 回到项目级', () => {
     const skillRoot = join(root, 'skills', 'review');
     mkdirSync(join(skillRoot, '.omk'), { recursive: true });
     writeFileSync(join(skillRoot, 'SKILL.md'), '# review\n');
-    writeFileSync(join(skillRoot, '.omk', 'samples.json'), '[]\n');
-    writeFileSync(join(root, 'eval-samples.json'), '[]\n');
+    const local = join(skillRoot, '.omk', 'eval-samples.json');
+    const project = join(root, 'eval-samples.yaml');
+    writeFileSync(local, '{}\n');
+    writeFileSync(project, '{}\n');
 
-    assert.equal(findDoctorSamplesPath(skillRoot, root), join(skillRoot, '.omk'));
-    assert.equal(findDoctorSamplesPath(join(root, 'skills'), root), join(root, 'eval-samples.json'));
+    assert.equal(findDoctorSamplesPath(skillRoot, root), local);
+    assert.equal(findDoctorSamplesPath(join(root, 'skills'), root), project);
   });
 
-  it('doctor 针对目录 skill target 时不会读取该 skill 根下的旧 eval-samples', () => {
-    const skillRoot = join(root, 'skills', 'review');
-    mkdirSync(skillRoot, { recursive: true });
-    writeFileSync(join(skillRoot, 'SKILL.md'), '# review\n');
-    writeFileSync(join(skillRoot, 'eval-samples.json'), '[]\n');
-    writeFileSync(join(root, 'eval-samples.json'), '[]\n');
-
-    assert.equal(findDoctorSamplesPath(skillRoot, root), join(root, 'eval-samples.json'));
+  it('默认私有写入路径使用 canonical JSON 名', () => {
+    assert.equal(
+      defaultSkillLocalSamplesFile(join(root, 'skills', 'review')),
+      join(root, 'skills', 'review', '.omk', 'eval-samples.json'),
+    );
   });
 
-  it('默认写入路径区分目录 skill 与扁平 skill', () => {
-    assert.equal(defaultSkillLocalSamplesFile(join(root, 'skills', 'review')), join(root, 'skills', 'review', '.omk', 'samples.json'));
-    assert.equal(defaultFlatSkillSamplesFile(join(root, 'skills'), 'review'), join(root, 'skills', 'review.eval-samples.json'));
-  });
-
-  it('hasUsableSamplesPath 区分可加载样本目录与空目录', () => {
+  it('显式 --samples 仍允许单文件或含可加载分片的目录', () => {
     const emptyDir = join(root, 'empty');
-    const samplesDir = join(root, 'samples');
+    const samplesDir = join(root, 'custom-shards');
     mkdirSync(emptyDir, { recursive: true });
     mkdirSync(samplesDir, { recursive: true });
     writeFileSync(join(samplesDir, 'report.json'), '{}\n');
     assert.equal(hasUsableSamplesPath(emptyDir), false);
     assert.equal(hasUsableSamplesPath(samplesDir), false);
 
-    writeFileSync(join(samplesDir, 'samples.json'), '[]\n');
+    writeFileSync(join(samplesDir, 'cases.yml'), '{}\n');
     assert.equal(hasUsableSamplesPath(samplesDir), true);
   });
 });

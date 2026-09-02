@@ -26,7 +26,7 @@ describe('source-resolver git', () => {
     writeFileSync(join(repo, 'skills', 'review', 'SKILL.md'), '# review\n');
     writeFileSync(join(repo, 'skills', 'review', 'references', 'cmd.md'), 'asset\n');
     mkdirSync(join(repo, 'skills', 'review', '.omk'), { recursive: true });
-    writeFileSync(join(repo, 'skills', 'review', '.omk', 'samples.json'), '[]\n');
+    writeFileSync(join(repo, 'skills', 'review', '.omk', 'eval-samples.json'), '[]\n');
     writeFileSync(join(repo, 'notes.md'), '# notes\n');
     git(repo, ['add', '-A']);
     git(repo, ['commit', '-q', '-m', 'init']);

@@ -69,19 +69,19 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 | 查看受管 skill 状态 | → `omk list` |
 | 按证据接受 / 回退某版本 | → `omk promote` / `omk rollback` |
 
-如果用户意图不明确，先扫描当前项目结构（skills/ 目录、项目级 eval-samples 文件、skill 私有 `.omk/samples.*`），然后推荐最合适的操作。
+如果用户意图不明确，先扫描当前项目结构（skills/ 目录、项目级 eval-samples 文件、目录 skill 私有 `.omk/eval-samples.*`），然后推荐最合适的操作。
 
 ## 第三步：检测项目结构
 
 使用 Glob 和 Read 工具检查：
 
 1. `skills/` 目录下有哪些 skill 文件（`.md` 或 `*/SKILL.md`）
-2. 是否存在项目级 `eval-samples.json` / `eval-samples.yaml` / `eval-samples.yml`，或目录 skill 私有的 `<skill>/.omk/samples.json`
-3. 是否有 `skills/*.eval-samples.json`（扁平 skill 的每 skill 配对文件 → `--batch` 模式）
+2. 是否存在项目级 `eval-samples.json` / `eval-samples.yaml`，或目录 skill 私有的 `<skill>/.omk/eval-samples.json` / `eval-samples.yaml`
+3. 同一作用域是否同时存在 JSON 与 YAML（这是歧义，必须先让用户保留其中一个）
 
 根据检测结果决定：
 
-- 多个 skill + 各自的 `.omk/samples.*` 或扁平 skill paired eval-samples → 建议 `--batch` 批量模式
+- 多个目录 skill + 各自的 `.omk/eval-samples.*` → 建议 `--batch` 批量模式
 - 多个 skill + 共享项目级 eval-samples → 建议版本对比模式
 - 只有一个 skill → 建议 `baseline` 对照（`omk eval --control baseline --treatment <skill>`）或 `omk evolve` 改进
 - 没有 eval-samples → 先 `omk sample <skill>` 生成
@@ -152,7 +152,7 @@ omk sample --batch
 
 目标执行器不支持工具拦截时，`omk sample` 会自动生成无 mock 用例。当前 `codex` / `codex-sdk` 属于这种情况；不要手工补 `mocks` 或 `mock_hit`。已有 mocks 用例会被 `omk eval` 在模型调用前拒绝，避免把执行器能力缺口误判成模型失败。`environment.files_available` 只提供题设上下文，不会在 `cwd` 物化文件。
 
-输出位置：目录 skill（`<skill>/SKILL.md`）→ `<skill>/.omk/samples.json`（标准）；扁平 `.md` 单次生成 → 当前目录 `eval-samples.json`（项目级兜底）；扁平 `.md` 的 `--batch` 兼容生成 `<skill-dir>/<name>.eval-samples.json`。
+输出位置：目录 skill（`<skill>/SKILL.md`）→ `<skill>/.omk/eval-samples.json`；扁平 `.md` 单次生成 → 当前目录 `eval-samples.json`（项目级共享）。`--batch` 只处理目录 skill；需要私有用例的扁平 skill 应先迁移为目录 skill。手写 YAML 时使用同作用域的 `eval-samples.yaml`，不要让 JSON 与 YAML 并存。
 
 ### 观测真实使用
 

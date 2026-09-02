@@ -23,14 +23,12 @@ package-lock.json
 .omk/
 !examples/**/.omk/
 examples/**/.omk/*
-!examples/**/.omk/samples.json
-!examples/**/.omk/samples.yaml
-!examples/**/.omk/samples.yml
+!examples/**/.omk/eval-samples.json
+!examples/**/.omk/eval-samples.yaml
 !test/fixtures/**/.omk/
 test/fixtures/**/.omk/*
-!test/fixtures/**/.omk/samples.json
-!test/fixtures/**/.omk/samples.yaml
-!test/fixtures/**/.omk/samples.yml
+!test/fixtures/**/.omk/eval-samples.json
+!test/fixtures/**/.omk/eval-samples.yaml
 # Codex / 其它 agent CLI 的本地 hook / config 是个人偏好,不进仓库
 # —— 项目共享的 agent 入场清单走 AGENTS.md,skill 单一来源放 .claude/skills/,
 #    其它 agent 用户按 AGENTS.md「omk 自带 skill 安装」段引导自取

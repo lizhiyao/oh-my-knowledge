@@ -10,7 +10,7 @@ export type CommonMessageKey =
   | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
   | 'cli.common.warn_load_samples_failed'
-  | 'cli.common.deprecated_skill_samples_path'
+  | 'cli.common.ambiguous_sample_files'
   | 'cli.common.samples_not_found'
   | 'cli.common.samples_not_found_hint'
   | 'cli.update.new_version_available'
@@ -65,13 +65,13 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
     en: '⚠ Failed to load samples file ({path}): {message}\n',
   },
-  'cli.common.deprecated_skill_samples_path': {
-    zh: '⚠ 发现旧的目录 skill 用例位置：{oldPath}。目录 skill 的私有用例已改放到 {newPath}，请迁移。\n',
-    en: '⚠ Found deprecated directory skill samples path: {oldPath}. Directory skill samples now live at {newPath}; please migrate.\n',
+  'cli.common.ambiguous_sample_files': {
+    zh: '评测用例文件存在歧义：{paths}。同一作用域只能保留 eval-samples.json 或 eval-samples.yaml 其中一个。',
+    en: 'Ambiguous eval sample files: {paths}. Keep only one of eval-samples.json or eval-samples.yaml in the same scope.',
   },
   'cli.common.samples_not_found': {
-    zh: '未找到评测用例：{path}。请通过 --samples 指定文件，或创建项目级 eval-samples.json；单 treatment 目录 skill 请使用 <skill>/.omk/samples.json。',
-    en: 'Eval samples not found: {path}. Pass --samples, create project-level eval-samples.json, or use <skill>/.omk/samples.json for a single-treatment directory skill.',
+    zh: '未找到评测用例：{path}。请通过 --samples 指定文件，或创建项目级 eval-samples.json / eval-samples.yaml；单 treatment 目录 skill 请使用 <skill>/.omk/eval-samples.json / eval-samples.yaml。',
+    en: 'Eval samples not found: {path}. Pass --samples, create project-level eval-samples.json / eval-samples.yaml, or use <skill>/.omk/eval-samples.json / eval-samples.yaml for a single-treatment directory skill.',
   },
   'cli.common.samples_not_found_hint': {
     zh: '下一步：先运行 {command} 生成用例，人工 review 后再重跑 omk eval。',

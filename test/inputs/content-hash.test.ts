@@ -58,7 +58,7 @@ describe('content-hash', () => {
     writeFileSync(join(root, 'references', 'a.md'), 'asset\n');
     const base = hashArtifactSource(root, true);
     mkdirSync(join(root, '.omk'), { recursive: true });
-    writeFileSync(join(root, '.omk', 'samples.json'), '[]\n');
+    writeFileSync(join(root, '.omk', 'eval-samples.json'), '[]\n');
     mkdirSync(join(root, 'evolve'), { recursive: true });
     writeFileSync(join(root, 'evolve', 'sk.r1.md'), 'cand\n');
     assert.equal(hashArtifactSource(root, true), base, '.omk / evolve 不该计入 artifact hash');
@@ -82,7 +82,7 @@ describe('content-hash', () => {
     assert.equal(isDistributablePath([]), true, '源根永远算');
     assert.equal(isDistributablePath(['SKILL.md']), true);
     assert.equal(isDistributablePath(['references', 'cmd.md']), true);
-    assert.equal(isDistributablePath(['.omk', 'samples.json']), false, '扁平路径里 .omk 段也要拦');
+    assert.equal(isDistributablePath(['.omk', 'eval-samples.json']), false, '扁平路径里 .omk 段也要拦');
     assert.equal(isDistributablePath(['node_modules', 'x', 'y.js']), false);
     assert.equal(isDistributablePath(['evolve', 'cand.md']), false, '源根第一层 evolve 排除');
     assert.equal(isDistributablePath(['references', 'evolve', 'guide.md']), true, '嵌套 evolve 是合法资产');

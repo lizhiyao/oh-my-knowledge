@@ -70,9 +70,9 @@ describe('resolveSampleOutFile', () => {
     assert.equal(resolveSampleOutFile(f), f);
   });
 
-  it('不存在 + 无扩展名 → 目录内 samples.json(当目录)', () => {
+  it('不存在 + 无扩展名 → 目录内 eval-samples.json(当目录)', () => {
     const p = join(dir, 'omk-out');
-    assert.equal(resolveSampleOutFile(p), join(p, 'samples.json'));
+    assert.equal(resolveSampleOutFile(p), join(p, 'eval-samples.json'));
   });
 
   it('已存在的文件 → 原路径(覆盖)', () => {
@@ -81,13 +81,13 @@ describe('resolveSampleOutFile', () => {
     assert.equal(resolveSampleOutFile(f), f);
   });
 
-  it('已存在的普通目录 → 目录内 samples.json', () => {
-    assert.equal(resolveSampleOutFile(dir), join(dir, 'samples.json'));
+  it('已存在的普通目录 → 目录内 eval-samples.json', () => {
+    assert.equal(resolveSampleOutFile(dir), join(dir, 'eval-samples.json'));
   });
 
-  it('已存在的带点目录名(samples.v2/)→ 目录内 samples.json,不被当文件(防 EISDIR)', () => {
+  it('已存在的带点目录名(samples.v2/)→ 目录内 eval-samples.json,不被当文件(防 EISDIR)', () => {
     const sub = join(dir, 'samples.v2');
     mkdirSync(sub);
-    assert.equal(resolveSampleOutFile(sub), join(sub, 'samples.json'));
+    assert.equal(resolveSampleOutFile(sub), join(sub, 'eval-samples.json'));
   });
 });

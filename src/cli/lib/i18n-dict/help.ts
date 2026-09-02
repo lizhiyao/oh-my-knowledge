@@ -181,9 +181,9 @@ omk sample——生成或补齐 eval-samples 评测用例
   omk sample --batch [--skill-dir <dir>] [options]
 
 输出位置（默认）：
-  目录 skill（<skill>/SKILL.md） → <skill>/.omk/samples.json（omk 标准约定）
+  目录 skill（<skill>/SKILL.md） → <skill>/.omk/eval-samples.json（也支持 .yaml）
   扁平 .md（单次）               → 当前目录的 eval-samples.json（项目级兜底）
-  扁平 .md（--batch）            → <skill-dir>/<name>.eval-samples.json（兼容 paired 布局）
+  扁平 .md（--batch）            → 跳过；私有用例请迁移为目录 skill
 
 选项：
   --count <n>                         强制生成 N 条（不指定时由 LLM 按 skill 类型自动判断：
@@ -206,9 +206,9 @@ Usage:
   omk sample --batch [--skill-dir <dir>] [options]
 
 Output path (default):
-  directory skill (<skill>/SKILL.md) → <skill>/.omk/samples.json (omk standard layout)
+  directory skill (<skill>/SKILL.md) → <skill>/.omk/eval-samples.json (.yaml also supported)
   flat .md (single)                  → ./eval-samples.json in current directory (project fallback)
-  flat .md (--batch)                 → <skill-dir>/<name>.eval-samples.json (compatible paired layout)
+  flat .md (--batch)                 → skipped; migrate to a directory skill for private samples
 
 Options:
   --count <n>                         Force N samples (omit to let LLM auto-decide by skill type:

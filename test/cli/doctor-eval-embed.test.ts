@@ -42,15 +42,16 @@ function setupBrokenSkillDir(): string {
   return tmp;
 }
 
-/** Batch 模式:skills/<name>.md + skills/<name>.eval-samples.json 配对。
- *  broken.md 内容过短, healthy.md 正常。--batch 自动发现两者, doctor 应卡 broken。 */
+/** Batch 模式：每个目录 skill 使用 `.omk/eval-samples.json` 私有用例。
+ * broken 内容过短，healthy 正常。--batch 自动发现两者，doctor 应卡 broken。 */
 function setupBatchMixedSkillDir(): string {
   const tmp = mkdtempSync(join(tmpdir(), 'eval-batch-doctor-'));
   const skillDir = join(tmp, 'skills');
   mkdirSync(skillDir);
-  // broken: 内容过短, doctor skill_readable 必 fail
-  writeFileSync(join(skillDir, 'broken.md'), 'hi');
-  writeFileSync(join(skillDir, 'broken.eval-samples.json'), JSON.stringify({
+  // broken：内容过短，doctor skill_readable 必 fail
+  mkdirSync(join(skillDir, 'broken', '.omk'), { recursive: true });
+  writeFileSync(join(skillDir, 'broken', 'SKILL.md'), 'hi');
+  writeFileSync(join(skillDir, 'broken', '.omk', 'eval-samples.json'), JSON.stringify({
     schemaVersion: 'omk.eval-sample-set/v1',
     samples: [{
       sample_id: 'b1',
@@ -58,9 +59,10 @@ function setupBatchMixedSkillDir(): string {
       assertions: [{ type: 'contains', value: 'test' }],
     }],
   }));
-  // healthy: batch 至少有一个 entry; 单独跑会 pass
-  writeFileSync(join(skillDir, 'healthy.md'), '你是一个版本健康的 skill, 内容足够长以通过 skill_readable rule。');
-  writeFileSync(join(skillDir, 'healthy.eval-samples.json'), JSON.stringify({
+  // healthy：batch 至少有一个 entry；单独跑会 pass
+  mkdirSync(join(skillDir, 'healthy', '.omk'), { recursive: true });
+  writeFileSync(join(skillDir, 'healthy', 'SKILL.md'), '你是一个版本健康的 skill, 内容足够长以通过 skill_readable rule。');
+  writeFileSync(join(skillDir, 'healthy', '.omk', 'eval-samples.json'), JSON.stringify({
     schemaVersion: 'omk.eval-sample-set/v1',
     samples: [{
       sample_id: 'h1',

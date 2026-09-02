@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { extractSkillHardRules, extractSkillWorkflows } from '../skill-definition/hard-rules.js';
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
-import { findFlatSkillSamplesPath, findSkillSamplesPath } from './sample-locator.js';
+import { findSkillSamplesPath } from './sample-locator.js';
 import type { Artifact } from '../artifacts/contracts.js';
 import type { RemoteGitRef } from './contracts/variant.js';
 
@@ -424,20 +424,10 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
 
   const entries = readdirSync(skillDir);
   const skills: Array<{ name: string; skillPath: string; samplesPath: string }> = [];
-  const warned: string[] = [];
 
   for (const entry of entries) {
     const entryPath = join(skillDir, entry);
-    const mdMatch = entry.endsWith('.md') && !entry.endsWith('.eval-samples.json');
-
-    if (mdMatch) {
-      const name = entry.slice(0, -3);
-      const samplesPath = findFlatSkillSamplesPath(skillDir, name);
-      if (samplesPath) {
-        skills.push({ name, skillPath: join(skillDir, entry), samplesPath });
-      } else {
-        warned.push(name);
-      }
+    if (entry.endsWith('.md')) {
       continue;
     }
 
@@ -448,14 +438,8 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
       const samplesPath = findSkillSamplesPath(entryPath);
       if (samplesPath) {
         skills.push({ name: entry, skillPath: skillMd, samplesPath });
-      } else {
-        warned.push(entry);
       }
     }
-  }
-
-  for (const name of warned) {
-    process.stderr.write(`⚠️  skipping ${name}: paired eval-samples not found\n`);
   }
 
   skills.sort((a, b) => a.name.localeCompare(b.name));
