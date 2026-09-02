@@ -1,6 +1,6 @@
 import type { Artifact } from '../contracts.js';
-import type { Sample } from '../../inputs/contracts/sample.js';
-import type { DependencyRequirements } from '../../preflight/contracts.js';
+import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
+import type { DependencyRequirements } from '../../executors/preflight/contracts.js';
 
 export type DoctorSeverity = 'fatal' | 'warn' | 'info';
 export type DoctorRuleStatus = 'pass' | 'warn' | 'fail' | 'skipped';

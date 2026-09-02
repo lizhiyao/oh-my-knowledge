@@ -8,25 +8,25 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { listSampleFilesInDir } from '../../inputs/load-samples.js';
+import { listSampleFilesInDir } from '../../eval-workflows/inputs/load-samples.js';
 import {
   getSamplesArray,
   parseSampleDocument,
   stringifySampleDocument,
-} from '../../inputs/sample-document.js';
+} from '../../eval-workflows/inputs/sample-document.js';
 import {
   defaultSkillLocalSamplesFile,
   findCanonicalSamplesFile,
   findSkillSamplesPath,
-} from '../../inputs/sample-locator.js';
+} from '../../eval-workflows/inputs/sample-locator.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { withLocalizedSampleDiscovery } from '../lib/localized-sample-discovery.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
 import type {
   EvalSampleSetDocument,
   Sample as SampleType,
-} from '../../inputs/contracts/sample.js';
-import { createEvalSampleSetDocument } from '../../inputs/schemas/sample-set.js';
+} from '../../eval-workflows/inputs/contracts/sample.js';
+import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 interface GenerateSamplesResult {

@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from 'node:fs
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
+import { resolveArtifacts } from '../../src/eval-workflows/inputs/skill-loader.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

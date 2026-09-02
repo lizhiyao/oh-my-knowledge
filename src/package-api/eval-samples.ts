@@ -1,11 +1,11 @@
 export type {
   Assertion,
-} from '../inputs/contracts/assertion.js';
+} from '../eval-workflows/inputs/contracts/assertion.js';
 export type {
   Mock,
   MockMatch,
   MockReturn,
-} from '../inputs/contracts/mock.js';
+} from '../eval-workflows/inputs/contracts/mock.js';
 export type {
   EvalSampleSetDocument,
   Sample,
@@ -14,11 +14,11 @@ export type {
   SampleDifficulty,
   SampleEnvironment,
   SampleProvenance,
-} from '../inputs/contracts/sample.js';
+} from '../eval-workflows/inputs/contracts/sample.js';
 export {
   EVAL_SAMPLE_SET_SCHEMA_VERSION,
   createEvalSampleSetDocument,
-} from '../inputs/schemas/sample-set.js';
+} from '../eval-workflows/inputs/schemas/sample-set.js';
 
 export const EVAL_SAMPLE_JSON_SCHEMA_FILES = [
   'eval-sample-set.schema.json',
@@ -33,5 +33,5 @@ export function resolveEvalSampleJsonSchema(fileName: EvalSampleJsonSchemaFile):
   if (!schemaFiles.has(fileName)) {
     throw new TypeError(`Unknown Eval Sample JSON Schema: ${String(fileName)}`);
   }
-  return new URL(`../inputs/contracts/schemas/v1/${fileName}`, import.meta.url);
+  return new URL(`../eval-workflows/inputs/contracts/schemas/v1/${fileName}`, import.meta.url);
 }

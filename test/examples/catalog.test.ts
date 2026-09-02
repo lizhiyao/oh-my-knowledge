@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, it } from 'vitest';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
-import { loadSamples } from '../../src/inputs/load-samples.js';
+import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
 import { runCommand } from '../helpers/run-command.js';
 
 const examplesRoot = resolve('examples');

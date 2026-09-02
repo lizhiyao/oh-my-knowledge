@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { loadSamples } from '../../src/inputs/load-samples.js';
+import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, '..', '..', 'dist', 'cli', 'index.js');

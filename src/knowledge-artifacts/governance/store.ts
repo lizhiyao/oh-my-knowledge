@@ -55,7 +55,11 @@ export function managedRecordId(kind: ArtifactKind, name: string): string {
 
 // 内容指纹工具已下沉到 inputs 层(install 与 eval 共用同一处,保证指纹同空间);此处 re-export
 // 保持 governance 公共入口不破(install 仍从 governance 取 hashArtifactSource / isDistributablePath)。
-export { hashArtifactSource, isDistributablePath, distributableCopyFilter } from '../../inputs/content-hash.js';
+export {
+  hashArtifactSource,
+  isDistributablePath,
+  distributableCopyFilter,
+} from '../sources/content-hash.js';
 
 function isStringField(v: unknown): v is string {
   return typeof v === 'string';

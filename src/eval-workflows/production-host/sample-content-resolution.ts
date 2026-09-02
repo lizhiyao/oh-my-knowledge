@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ResourceClassification } from '../input-compilation/index.js';
-import type { Sample } from '../../inputs/contracts/sample.js';
+import type { Sample } from '../inputs/contracts/sample.js';
 
 const URL_PATTERN = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/gi;
 const TRAILING_PUNCTUATION = /[.,;!?，。；！？、：]+$/u;

@@ -49,12 +49,36 @@ knowledge-artifacts/
 ├── skills/       # skill frontmatter, hard rules, and workflow definitions
 ├── doctor/       # static and model-assisted artifact health checks
 ├── authoring/    # sample generation and controlled skill evolution
-└── governance/   # install records, evidence gates, promote, and rollback state
+├── governance/   # install records, evidence gates, promote, and rollback state
+└── sources/      # canonical source fingerprints and distributable-tree identity
 ```
 
 Governance consumes authenticated evaluation and observation evidence; it does not recompute Core
 scores or decisions. These capabilities remain separate subdomains so that sharing one lifecycle
 owner does not turn `knowledge-artifacts` into a generic utility layer.
+
+Evaluation workflow inputs and grading adapters share the workflow boundary, while effectful
+runtime readiness belongs to executors:
+
+```text
+eval-workflows/
+├── inputs/             # config, sample, artifact-source resolution, and schemas
+├── grading/            # judge invocation, judge trace, and human-gold calibration adapters
+├── input-compilation/  # host inputs → host-neutral measurement definition
+├── runtime-adapter/    # binding assembly and declared-preflight admission
+└── production-host/    # Node host composition and effect orchestration
+
+executors/
+├── contracts/          # executor ports, runtime identity, result, and trace facts
+├── preflight/          # host tool, file, environment, and custom-command readiness
+└── <provider>/         # provider-specific runtime implementations
+```
+
+`eval-workflows/grading` does not own measurement meaning: it adapts judge execution and gold
+calibration into the instruments and analysis contracts owned by Core. Likewise,
+`executors/preflight` reports environment readiness facts, while
+`eval-workflows/runtime-adapter/preflight.ts` decides workflow admission from binding declarations.
+These subdomains remain separate dependency-graph vertices even though they are physically grouped.
 
 Diagnosis and Observability have an explicit boundary. Observability produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observability facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
 

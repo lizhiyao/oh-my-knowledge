@@ -5,7 +5,7 @@ import {
   defaultSkillLocalSamplesFile,
   findProjectSamplesFile,
   findSkillSamplesPath,
-} from '../../inputs/sample-locator.js';
+} from '../../eval-workflows/inputs/sample-locator.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 
 export interface ResolvedSkillInput {

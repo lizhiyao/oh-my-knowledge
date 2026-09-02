@@ -12,7 +12,7 @@
  * 没有唯一答案),只回到项目级 samples 兜底。
  */
 
-import { findProjectSamplesFile, findSingleTreatmentSamplesPath } from '../../../inputs/sample-locator.js';
+import { findProjectSamplesFile, findSingleTreatmentSamplesPath } from '../../../eval-workflows/inputs/sample-locator.js';
 import { withLocalizedSampleDiscovery } from '../localized-sample-discovery.js';
 import type { CliLang } from '../i18n.js';
 

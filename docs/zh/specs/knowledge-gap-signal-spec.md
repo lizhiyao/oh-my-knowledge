@@ -133,7 +133,7 @@ type HedgingVerdict = {
 
 async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
-  executor: LlmExecutor,         // 复用 src/grading/judge.ts 的 executor
+  executor: LlmExecutor,         // 复用 src/eval-workflows/grading/judge.ts 的 executor
   opts?: { maxCandidates?: number; model?: string },
 ): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
 ```

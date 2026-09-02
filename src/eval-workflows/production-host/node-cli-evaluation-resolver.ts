@@ -7,11 +7,11 @@ import {
   type JsonValue,
   type TargetExecutionControls,
 } from '../../eval-core/contracts/index.js';
-import { loadSamples } from '../../inputs/load-samples.js';
-import { resolveArtifacts } from '../../inputs/skill-loader.js';
+import { loadSamples } from '../inputs/load-samples.js';
+import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';
-import type { Mock } from '../../inputs/contracts/mock.js';
-import type { Sample } from '../../inputs/contracts/sample.js';
+import type { Mock } from '../inputs/contracts/mock.js';
+import type { Sample } from '../inputs/contracts/sample.js';
 import {
   RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION,
   RESOLVED_HOST_RESOURCES_SCHEMA_VERSION,

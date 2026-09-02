@@ -14,7 +14,7 @@ import {
   __resetCustomRulesForTest,
 } from '../../../src/knowledge-artifacts/doctor/rules.js';
 import type { Artifact } from '../../../src/knowledge-artifacts/contracts.js';
-import type { Sample } from '../../../src/inputs/contracts/sample.js';
+import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 import type { DoctorContext, DoctorRule } from '../../../src/knowledge-artifacts/doctor/contracts.js';
 
 function ctxWith(artifact: Artifact, overrides: Partial<DoctorContext> = {}): DoctorContext {

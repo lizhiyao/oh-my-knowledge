@@ -37,7 +37,7 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 
 ## Prompt 形态 (1-5 评分锚)
 
-三个 metric 的判分锚点(从 `src/grading/assertions.ts` 的 `runRagJudge` 抽取):
+三个 metric 的判分锚点(从 `src/eval-workflows/grading/assertions.ts` 的 `runRagJudge` 抽取):
 
 ### faithfulness
 - 5 = 全部陈述都有 context 支持，无编造

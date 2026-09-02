@@ -49,11 +49,33 @@ knowledge-artifacts/
 ├── skills/       # skill frontmatter、硬规则与 workflow 定义
 ├── doctor/       # 静态与模型辅助的 artifact 健康检查
 ├── authoring/    # sample 生成与受控 skill 演进
-└── governance/   # 安装记录、证据门禁、promote 与 rollback 状态
+├── governance/   # 安装记录、证据门禁、promote 与 rollback 状态
+└── sources/      # 规范化来源指纹与可分发目录身份
 ```
 
 Governance 只消费经过认证的评测与观测证据，不重新计算 Core 分数或决定。各能力仍保持独立
 子域，共享生命周期所有者不等于把 `knowledge-artifacts` 变成通用工具层。
+
+评测工作流输入与评分类适配共享 workflow 边界；带副作用的 Runtime 就绪检查归 executors 所有：
+
+```text
+eval-workflows/
+├── inputs/             # 配置、sample、知识载体来源解析与 schema
+├── grading/            # 评委调用、评委 trace 与 human-gold 校准适配
+├── input-compilation/  # 宿主输入 → 宿主无关测量定义
+├── runtime-adapter/    # binding 装配与声明式 preflight 准入
+└── production-host/    # Node 宿主组合与副作用编排
+
+executors/
+├── contracts/          # executor 端口、Runtime 身份、结果与 trace 事实
+├── preflight/          # 宿主工具、文件、环境变量与自定义命令就绪检查
+└── <provider>/         # provider 专属 Runtime 实现
+```
+
+`eval-workflows/grading` 不拥有测量含义；它把评委执行与 gold 校准适配到 Core 所拥有的 instrument
+和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
+`eval-workflows/runtime-adapter/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
+这些子域即使在物理目录上聚合，仍作为独立节点参与依赖图检查。
 
 Diagnosis 与 Observability 是一个显式建模的边界：Observability 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observability 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
 

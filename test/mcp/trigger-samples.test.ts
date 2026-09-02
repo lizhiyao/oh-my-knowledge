@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, it } from 'vitest';
-import { loadSamples } from '../../src/inputs/load-samples.js';
+import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
 
 const samplePath = resolve('test/fixtures/mcp-observation/eval-samples.json');
 

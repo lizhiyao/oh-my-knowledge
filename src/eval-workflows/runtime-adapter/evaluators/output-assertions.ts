@@ -18,7 +18,7 @@ import {
   createIsolatedDeterministicAssertionEvaluator,
   type DeterministicAssertionContext,
 } from '../../assertions/deterministic.js';
-import type { Assertion } from '../../../inputs/contracts/assertion.js';
+import type { Assertion } from '../../inputs/contracts/assertion.js';
 import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
 import {
   assertionDetail,

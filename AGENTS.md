@@ -13,7 +13,7 @@ OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它�
 
 - 遵守 `CONTRIBUTING.md` 的 GitHub Flow：`main` 是唯一长期分支；feature / fix / docs / chore 从 `main` 切短分支，通过 PR 回 `main`；release / hotfix 也通过短分支 PR 回 `main`，再由 tag 触发发版。
 - 不要直接在 `main` 上提交；不要再把新工作提交到 `develop`。
-- commit 格式：`type(scope): 中文 subject`。scope 用稳定模块名，如 `cli` / `i18n` / `eval-core` / `eval-workflows` / `knowledge-artifacts` / `artifact-graph` / `measurement-artifacts` / `measurement-governance` / `observability` / `studio` / `inputs` / `executors` / `grading` / `release` / `agents-md`（早期 git history 用过 `claude-md`，rename 后统一用 `agents-md`）。
+- commit 格式：`type(scope): 中文 subject`。scope 用稳定模块名，如 `cli` / `i18n` / `eval-core` / `eval-workflows` / `knowledge-artifacts` / `artifact-graph` / `measurement-artifacts` / `measurement-governance` / `observability` / `studio` / `executors` / `release` / `agents-md`（早期 git history 用过 `claude-md`，rename 后统一用 `agents-md`）。
 - 不要在给用户看的 URL 里硬编码 report server 端口；使用 `server.start()` 返回的实际 URL。
 - 判别字段命名：新建或可安全改名的字段中，裸 `kind` 默认只表示 `Artifact.kind: ArtifactKind`（baseline / skill / prompt / agent / workflow）。例外是已经发布并落盘/对外暴露的 public schema（如 report / doctor / observe / diagnosis 的顶层 `kind`），这些既有 `kind` 字段不要顺手改成限定名；确需改名时单独做 schema / data migration，并保持读取旧文件。其它新判别字段用限定名（`eventKind` / `runtimeKind` / `standardKind` 等）。细节见 `docs/specs/terminology-spec.md` §5.4，CI 有 `test/scripts/kind-semantics-guard.test.ts` 拦新裸 `kind`。
 

@@ -44,7 +44,7 @@ import {
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,
   deterministicAssertionInputSourceKinds,
 } from '../../../src/eval-workflows/assertions/deterministic.js';
-import type { Assertion } from '../../../src/inputs/contracts/assertion.js';
+import type { Assertion } from '../../../src/eval-workflows/inputs/contracts/assertion.js';
 import {
   testRuntime,
   validDefinition,

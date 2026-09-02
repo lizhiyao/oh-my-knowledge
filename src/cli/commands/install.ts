@@ -6,7 +6,7 @@ import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
-import { resolveInstallSource, resolveRemoteGitSource, SourceResolveError } from '../../inputs/source-resolver.js';
+import { resolveInstallSource, resolveRemoteGitSource, SourceResolveError } from '../../eval-workflows/inputs/source-resolver.js';
 import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../knowledge-artifacts/governance/index.js';
 import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
 import type { ManagedDistributionTarget } from '../../knowledge-artifacts/governance/contracts.js';

@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
-import { generateEvalSampleSetJsonSchema } from '../dist/inputs/schemas/json-schema.js';
+import { generateEvalSampleSetJsonSchema } from '../dist/eval-workflows/inputs/schemas/json-schema.js';
 
 const mode = process.argv[2];
 if (mode !== '--write' && mode !== '--check') {

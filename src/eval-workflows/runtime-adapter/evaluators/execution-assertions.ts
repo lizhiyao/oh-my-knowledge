@@ -24,7 +24,7 @@ import {
   type DeterministicAssertionInputSourceKind,
 } from '../../assertions/deterministic.js';
 import type { ToolCallInfo } from '../../../executors/contracts/trace.js';
-import type { Assertion } from '../../../inputs/contracts/assertion.js';
+import type { Assertion } from '../../inputs/contracts/assertion.js';
 import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
 import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,

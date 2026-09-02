@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadEvalConfig, configVariantsToSpecs } from '../src/inputs/eval-config.js';
+import { loadEvalConfig, configVariantsToSpecs } from '../src/eval-workflows/inputs/eval-config.js';
 
 function makeTmpDir(): string {
   return mkdtempSync(join(tmpdir(), 'omk-eval-config-'));

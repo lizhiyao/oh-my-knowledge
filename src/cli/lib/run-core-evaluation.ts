@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { EvalConfig } from '../../inputs/contracts/config.js';
+import type { EvalConfig } from '../../eval-workflows/inputs/contracts/config.js';
 import type { EvaluationContentResolver } from '../../eval-core/evaluation/index.js';
 import {
   compileCliEvaluationInput,
@@ -29,7 +29,7 @@ import {
   projectCoreCliSeriesOutcome,
   projectCoreManagedEvidence,
 } from '../../eval-workflows/downstream-projections/index.js';
-import { discoverBatchSkills } from '../../inputs/skill-loader.js';
+import { discoverBatchSkills } from '../../eval-workflows/inputs/skill-loader.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { generateRunId } from '../../measurement-artifacts/run-id.js';

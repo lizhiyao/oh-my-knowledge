@@ -9,8 +9,8 @@ import {
 import { resolveNodeCliEvaluationRequest } from '../../../src/eval-workflows/production-host/index.js';
 import {
   createEvalSampleSetDocument,
-} from '../../../src/inputs/schemas/sample-set.js';
-import type { Sample } from '../../../src/inputs/contracts/sample.js';
+} from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
+import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
 const roots: string[] = [];
 

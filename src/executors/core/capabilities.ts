@@ -1,5 +1,5 @@
 import type { ExecutorFn, ExecutorInput } from '../contracts/ports.js';
-import type { Sample } from '../../inputs/contracts/sample.js';
+import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
 import {
   getExecutorDescriptor,
   type ExecutorCapabilities,

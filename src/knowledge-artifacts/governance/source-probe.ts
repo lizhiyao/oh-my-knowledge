@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync, type Dirent } from 'node:fs';
 import { isAbsolute, resolve, join } from 'node:path';
-import { resolveInstallSource } from '../../inputs/source-resolver.js';
-import { hashArtifactSource, isDistributablePath } from '../../inputs/content-hash.js';
+import { resolveInstallSource } from '../../eval-workflows/inputs/source-resolver.js';
+import { hashArtifactSource, isDistributablePath } from '../sources/content-hash.js';
 import type { SourceProbe } from './list-view.js';
 import type { ManagedArtifactRecord } from './contracts.js';
 

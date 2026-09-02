@@ -32,7 +32,7 @@ export default class EvalGoldValidate extends BaseCommand {
         console.error('Usage: omk eval gold validate <dir>');
         throw new CliExit(1);
       }
-      const { validateGoldDataset } = await import('../../../../grading/gold-cli.js');
+      const { validateGoldDataset } = await import('../../../../eval-workflows/grading/gold-cli.js');
       const result = validateGoldDataset(dir);
       if (result.ok) {
         console.log(lang === 'zh'
