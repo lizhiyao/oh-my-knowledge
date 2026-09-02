@@ -14,7 +14,6 @@
 
 ```text
 .omk/
-├── layout.json
 ├── .gitignore
 ├── eval/
 │   └── <record-id>/
@@ -53,14 +52,6 @@
 
 `<record-id>` is the collision-safe filesystem identity of one report bundle. A manifest carries the public report/run identity. Evaluation Core bundles also retain their sealed plan and execution/evaluation/analysis documents beside `report.json`; those documents remain part of the authenticated bundle.
 
-`layout.json` contains only:
-
-```json
-{
-  "layoutVersion": 2
-}
-```
-
 The directory-skill authoring convention `<skill>/.omk/eval-samples.{json,yaml}` is intentionally unchanged.
 
 ## Machine layout
@@ -69,7 +60,6 @@ The directory-skill authoring convention `<skill>/.omk/eval-samples.{json,yaml}`
 
 ```text
 ~/.oh-my-knowledge/
-├── layout.json
 ├── eval/
 ├── doctor/
 ├── observe/
@@ -102,7 +92,7 @@ Project and machine durable data use the same domains. Machine-specific material
 | `backups/` | recovery copies made before automatic edits | No | ignored |
 | `state/` | jobs, locks, temporary files, and global rebuildable caches | Yes | ignored |
 
-`omk init` writes an internal `.omk/.gitignore` that ignores `eval/`, `doctor/`, `observe/`, `backups/`, and `state/`, while leaving `layout.json` and `governance/` trackable.
+`omk init` writes an internal `.omk/.gitignore` that ignores `eval/`, `doctor/`, `observe/`, `backups/`, and `state/`, while leaving `.gitignore` and `governance/` trackable.
 
 ## Compatibility boundary
 

@@ -1,8 +1,7 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
-import { ensureOwnedLayoutForPath } from '../omk-layout/index.js';
 import { safeArtifactFileStem } from './file-names.js';
 
 export const MEASUREMENT_BUNDLE_MANIFEST_SCHEMA_VERSION =
@@ -78,7 +77,6 @@ export function writeMeasurementReportBundle(input: Readonly<{
   if (input.reportId.length === 0 || !isRfc3339Timestamp(input.createdAt)) {
     throw new TypeError('Invalid measurement bundle identity.');
   }
-  ensureOwnedLayoutForPath(input.rootDir);
   const bundleDir = measurementBundleDir(input.rootDir, input.recordId);
   const reportPath = join(bundleDir, MEASUREMENT_REPORT_FILE);
   const manifestPath = join(bundleDir, MEASUREMENT_MANIFEST_FILE);
@@ -95,7 +93,10 @@ export function writeMeasurementReportBundle(input: Readonly<{
   return Object.freeze({ bundleDir, manifestPath, reportPath });
 }
 
-function reportPathsInRoot(rootDir: string): string[] {
+function bundleDirectoriesInRoot(
+  rootDir: string,
+  measurementDomain: MeasurementDomain,
+): string[] {
   if (!existsSync(rootDir)) return [];
   const paths: string[] = [];
   let entries;
@@ -106,15 +107,31 @@ function reportPathsInRoot(rootDir: string): string[] {
   }
   for (const entry of entries) {
     if (!entry.isDirectory() || safeArtifactFileStem(entry.name) !== entry.name) continue;
+    const manifestPath = join(rootDir, entry.name, MEASUREMENT_MANIFEST_FILE);
     const reportPath = join(rootDir, entry.name, MEASUREMENT_REPORT_FILE);
-    if (existsSync(reportPath)) paths.push(reportPath);
+    if (!existsSync(manifestPath) || !existsSync(reportPath)) continue;
+    try {
+      const manifest = parseMeasurementBundleManifest(
+        JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown,
+      );
+      if (manifest?.measurementDomain !== measurementDomain
+          || manifest.recordId !== entry.name) continue;
+      paths.push(join(rootDir, entry.name));
+    } catch {
+      // Incomplete or corrupt bundles are not published v2 records.
+    }
   }
   return paths.sort();
 }
 
-/** Lists reports from self-contained v2 bundles. */
-export function listMeasurementReportPaths(rootDir: string): string[] {
-  return reportPathsInRoot(rootDir);
+/** Lists reports from complete, manifest-validated v2 bundles in one domain. */
+export function listMeasurementReportPaths(
+  rootDir: string,
+  measurementDomain: MeasurementDomain,
+): string[] {
+  return bundleDirectoriesInRoot(rootDir, measurementDomain)
+    .map((bundleDir) => join(bundleDir, MEASUREMENT_REPORT_FILE))
+    .filter(existsSync);
 }
 
 export function measurementRecordIdFromReportPath(path: string): string | null {
@@ -124,27 +141,24 @@ export function measurementRecordIdFromReportPath(path: string): string | null {
   return null;
 }
 
-function derivedPathsInRoot(rootDir: string, fileName: string): string[] {
-  if (!existsSync(rootDir)) return [];
-  let entries;
-  try {
-    entries = readdirSync(rootDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  return entries
-    .filter((entry) => entry.isDirectory() && safeArtifactFileStem(entry.name) === entry.name)
-    .map((entry) => join(rootDir, entry.name, MEASUREMENT_DERIVED_DIR, fileName))
+function derivedPathsInRoot(
+  rootDir: string,
+  measurementDomain: MeasurementDomain,
+  fileName: string,
+): string[] {
+  return bundleDirectoriesInRoot(rootDir, measurementDomain)
+    .map((bundleDir) => join(bundleDir, MEASUREMENT_DERIVED_DIR, fileName))
     .filter(existsSync)
     .sort();
 }
 
 export function listMeasurementDerivedPaths(
   rootDir: string,
+  measurementDomain: MeasurementDomain,
   fileName: string,
 ): string[] {
   if (fileName.includes('/') || fileName.includes('\\') || fileName.length === 0) {
     throw new TypeError('Invalid derived file name.');
   }
-  return derivedPathsInRoot(rootDir, fileName);
+  return derivedPathsInRoot(rootDir, measurementDomain, fileName);
 }

@@ -1,14 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
-import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { join } from 'node:path';
 
-export const OMK_LAYOUT_VERSION = 2 as const;
 export const OMK_HOME: string = process.env.OMK_HOME || join(homedir(), '.oh-my-knowledge');
 
 export interface OmkLayout {
   readonly root: string;
-  readonly markerPath: string;
   readonly evalDir: string;
   readonly doctorDir: string;
   readonly observeDir: string;
@@ -35,10 +31,6 @@ export interface OmkLayout {
   readonly artifactIndexDir: string;
 }
 
-export interface OmkLayoutMarker {
-  readonly layoutVersion: typeof OMK_LAYOUT_VERSION;
-}
-
 function layout(root: string): OmkLayout {
   const observeDir = join(root, 'observe');
   const governanceDir = join(root, 'governance');
@@ -47,7 +39,6 @@ function layout(root: string): OmkLayout {
   const observeInboxDir = join(observeDir, 'inbox');
   return Object.freeze({
     root,
-    markerPath: join(root, 'layout.json'),
     evalDir: join(root, 'eval'),
     doctorDir: join(root, 'doctor'),
     observeDir,
@@ -81,49 +72,4 @@ export function projectLayout(cwd: string = process.cwd()): OmkLayout {
 
 export function globalLayout(root: string = OMK_HOME): OmkLayout {
   return layout(root);
-}
-
-export function readLayoutMarker(root: string): OmkLayoutMarker | undefined {
-  const markerPath = join(root, 'layout.json');
-  if (!existsSync(markerPath)) return undefined;
-  let value: unknown;
-  try {
-    value = JSON.parse(readFileSync(markerPath, 'utf8')) as unknown;
-  } catch {
-    throw new TypeError(`Invalid OMK layout marker: ${markerPath}`);
-  }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TypeError(`Invalid OMK layout marker: ${markerPath}`);
-  }
-  const keys = Object.keys(value);
-  const version = (value as { layoutVersion?: unknown }).layoutVersion;
-  if (keys.length !== 1 || keys[0] !== 'layoutVersion' || version !== OMK_LAYOUT_VERSION) {
-    throw new TypeError(`Unsupported OMK layout version in ${markerPath}`);
-  }
-  return Object.freeze({ layoutVersion: OMK_LAYOUT_VERSION });
-}
-
-export function ensureLayoutMarker(root: string): OmkLayoutMarker {
-  const existing = readLayoutMarker(root);
-  if (existing !== undefined) return existing;
-  const marker = Object.freeze({ layoutVersion: OMK_LAYOUT_VERSION });
-  writeJsonFileAtomic(join(root, 'layout.json'), marker);
-  return marker;
-}
-
-function contains(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path));
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`));
-}
-
-/** Ensures a marker only for OMK-owned project/global paths; custom output directories stay untouched. */
-export function ensureOwnedLayoutForPath(
-  path: string,
-  cwd: string = process.cwd(),
-): OmkLayoutMarker | undefined {
-  const project = projectLayout(cwd);
-  if (contains(project.root, path)) return ensureLayoutMarker(project.root);
-  const global = globalLayout();
-  if (contains(global.root, path)) return ensureLayoutMarker(global.root);
-  return undefined;
 }

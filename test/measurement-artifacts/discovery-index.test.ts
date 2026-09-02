@@ -12,6 +12,7 @@ import {
   indexObserveWrite, listObserveCards, removeObserveCard, artifactIndexDir,
 } from '../../src/measurement-artifacts/discovery-index.js';
 import { globalDoctorsDir, globalObserveHealthDir } from '../../src/measurement-artifacts/directories.js';
+import { writeMeasurementReportBundle } from '../../src/measurement-artifacts/report-bundle.js';
 
 function reportFileName(id: string): string {
   return join(id, 'report.json');
@@ -36,8 +37,17 @@ describe('artifact-index 写侧(doctor 域)', () => {
   });
 
   function doctorCard(id = 'sk-20260614-1-ab12', skillName = 'sk') {
-    return { id, path: join(projDir, reportFileName(id)), skillName, reportId: 'doctor-20260614-1-ab12',
+    const card = { id, path: join(projDir, reportFileName(id)), skillName, reportId: 'doctor-20260614-1-ab12',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass' as const, passCount: 3, warnCount: 0, failCount: 0 };
+    writeMeasurementReportBundle({
+      rootDir: projDir,
+      measurementDomain: 'doctor',
+      recordId: card.id,
+      reportId: card.reportId,
+      createdAt: card.timestamp,
+      report: {},
+    });
+    return card;
   }
 
   it('项目写 → 落卡片(带 skillName/reportId/计数,无 results)', () => {
@@ -48,6 +58,21 @@ describe('artifact-index 写侧(doctor 域)', () => {
     assert.equal(cards[0].reportId, 'doctor-20260614-1-ab12');
     assert.equal(cards[0].passCount, 3);
     assert.ok(!('results' in cards[0]), '卡片不含逐规则 results 重体');
+  });
+
+  it('没有完整 v2 bundle manifest 时不写卡片', () => {
+    indexDoctorWrite({
+      id: 'missing-manifest',
+      path: join(projDir, reportFileName('missing-manifest')),
+      skillName: 'sk',
+      reportId: 'doctor-missing',
+      timestamp: '2026-06-14T00:00:00Z',
+      status: 'pass',
+      passCount: 1,
+      warnCount: 0,
+      failCount: 0,
+    }, projDir);
+    assert.equal(listDoctorCards().length, 0);
   });
 
   it('全局写 → 不落卡片(shouldIndexDir false)', () => {
@@ -115,8 +140,22 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     };
   }
 
+  function indexObserveBundle(id: string): void {
+    const report = observeReport();
+    const path = join(projDir, reportFileName(id));
+    writeMeasurementReportBundle({
+      rootDir: projDir,
+      measurementDomain: 'observe-health',
+      recordId: id,
+      reportId: id,
+      createdAt: report.meta.generatedAt,
+      report,
+    });
+    indexObserveWrite(report, path, projDir, id);
+  }
+
   it('项目写 → 落卡片(meta+overall+per-skill 标量,剥掉 gap.signals 重体)', () => {
-    indexObserveWrite(observeReport(), join(projDir, reportFileName('a')), projDir, 'a');
+    indexObserveBundle('a');
     const cards = listObserveCards();
     assert.equal(cards.length, 1);
     assert.equal(cards[0].overall.healthBand, 'green');
@@ -130,13 +169,23 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     assert.ok(!('signals' in (cards[0].bySkill.sk.gap ?? {})), '卡片剥掉 gap.signals 重体');
   });
 
+  it('没有完整 v2 bundle manifest 时不写卡片', () => {
+    indexObserveWrite(
+      observeReport(),
+      join(projDir, reportFileName('missing-manifest')),
+      projDir,
+      'missing-manifest',
+    );
+    assert.equal(listObserveCards().length, 0);
+  });
+
   it('全局写 → 不落卡片', () => {
     indexObserveWrite(observeReport(), join(globalObserveHealthDir(), reportFileName('g')), globalObserveHealthDir(), 'g');
     assert.equal(listObserveCards().length, 0);
   });
 
   it('removeObserveCard 幂等', () => {
-    indexObserveWrite(observeReport(), join(projDir, reportFileName('x')), projDir, 'x');
+    indexObserveBundle('x');
     assert.equal(removeObserveCard('x'), true);
     assert.equal(listObserveCards().length, 0);
     assert.equal(removeObserveCard('x'), false);
@@ -175,7 +224,7 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     writeFileSync(join(dir, 'b9.json'), JSON.stringify({ domain: 'observe-health', id: 'b9', path: '/x',
       meta: { generatedAt: 't', sessionCount: 1, segmentCount: 2 }, overall: { healthBand: 'green' },
       bySkill: { s: { toolFailureRate: 0, segmentCount: 1 } } }));
-    indexObserveWrite(observeReport(), join(projDir, reportFileName('ok')), projDir, 'ok');
+    indexObserveBundle('ok');
     assert.deepEqual(listObserveCards().map((c) => c.id), ['ok'], '只收枚举、计数、比率和结果分母均合法的卡片');
   });
 });

@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import type { ObservationCaptureCoverage, ObservationEvidence, ObservationInboxItem } from '../contracts/inbox.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
-import { ensureOwnedLayoutForPath } from '../../omk-layout/index.js';
 import {
   buildExplicitObservationCaptureCoverage,
   isObservationCaptureCoverage,
@@ -77,7 +76,6 @@ export function captureExplicitObservation(
 ): ExplicitObservationCaptureResult {
   const record = prepareExplicitObservationCaptureRecord(rawInput, options);
   const observationsDir = options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR;
-  ensureOwnedLayoutForPath(observationsDir);
   const recordPath = explicitCaptureRecordPath(observationsDir, record.captureId);
 
   return withFileLock(`${recordPath}.lock`, () => {

@@ -111,7 +111,7 @@ function doctorSnapshot(report: DoctorReport, skillName: string): SkillDoctorSna
 function scanDoctorReports(directory: string): Record<string, SkillDoctorSnapshot[]> {
   const bySkill: Record<string, SkillDoctorSnapshot[]> = Object.create(null);
   const seenRecords = new Set<string>();
-  for (const path of listMeasurementReportPaths(directory)) {
+  for (const path of listMeasurementReportPaths(directory, 'doctor')) {
     const recordId = measurementRecordIdFromReportPath(path);
     if (recordId === null || seenRecords.has(recordId)) continue;
     try {
@@ -164,7 +164,7 @@ function observeSnapshot(
 function scanObserveReports(directory: string): Record<string, SkillObserveSnapshot[]> {
   const bySkill: Record<string, SkillObserveSnapshot[]> = Object.create(null);
   const seenRecords = new Set<string>();
-  for (const path of listMeasurementReportPaths(directory)) {
+  for (const path of listMeasurementReportPaths(directory, 'observe-health')) {
     const id = measurementRecordIdFromReportPath(path);
     if (id === null || seenRecords.has(id)) continue;
     try {
@@ -294,9 +294,9 @@ export function buildSkillIndex(
 ): SkillIndex {
   const includeObserveCards = options.includeObserveCards ?? false;
   const includeDoctorCards = options.includeDoctorCards ?? false;
-  const graphPaths = listMeasurementDerivedPaths(doctorsDir, 'graph.json');
-  const doctorReportPaths = listMeasurementReportPaths(doctorsDir);
-  const observeReportPaths = listMeasurementReportPaths(analysesDir);
+  const graphPaths = listMeasurementDerivedPaths(doctorsDir, 'doctor', 'graph.json');
+  const doctorReportPaths = listMeasurementReportPaths(doctorsDir, 'doctor');
+  const observeReportPaths = listMeasurementReportPaths(analysesDir, 'observe-health');
   const fingerprint = [
     pathsFingerprint(observeReportPaths),
     pathsFingerprint(doctorReportPaths),

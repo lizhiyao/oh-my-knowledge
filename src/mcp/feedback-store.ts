@@ -14,7 +14,6 @@ import {
 } from '../observability/inbox/review-state.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
-import { ensureOwnedLayoutForPath } from '../omk-layout/index.js';
 import type { ObservationCaptureCoverage } from '../observability/contracts/inbox.js';
 import type { ObservationReviewStateEntry } from '../observability/contracts/review.js';
 import {
@@ -197,7 +196,6 @@ export class FileObservationFeedbackStore
 
     const draft = prepareSampleDraft(input, records, this.now?.() ?? new Date());
     const path = join(observationDraftsDir(observationsDir), `${draft.draftId}.sample-draft.json`);
-    ensureOwnedLayoutForPath(path);
     try {
       return withFileLock(`${path}.lock`, () => {
         const existing = loadSampleDraft(path);

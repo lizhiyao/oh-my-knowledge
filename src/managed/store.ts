@@ -8,7 +8,6 @@ import { shortContentHash } from '../shared/content-hash.js';
 import {
   globalLayout,
   projectLayout,
-  ensureOwnedLayoutForPath,
 } from '../omk-layout/index.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
@@ -278,7 +277,6 @@ function persistManagedRecord(dir: string, record: ManagedArtifactRecord): void 
   if (!isManagedArtifactRecord(record, record.id)) {
     throw new TypeError('invalid managed artifact record');
   }
-  ensureOwnedLayoutForPath(dir);
   writeJsonFileAtomic(recordPath(dir, record.id), record);
 }
 

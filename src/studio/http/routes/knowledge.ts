@@ -75,7 +75,7 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
   const seenLiveIds = new Set<string>();
   // live 扫描 dir 存在才做;dir 不存在(默认机器级模式下当前项目还没 .omk/observe/health、全局也空)时 live 为空,
   // 但**不能早退** —— 后面仍要按 includeCards 合并别项目卡片,否则 observe 列表会与合卡片的 /api/skills 口径分裂。
-  for (const path of listMeasurementReportPaths(dir)) {
+  for (const path of listMeasurementReportPaths(dir, 'observe-health')) {
     const id = measurementRecordIdFromReportPath(path);
     if (!id || seenLiveIds.has(id)) continue;
     try {
@@ -125,7 +125,7 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
 }
 
 function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealthReport | null {
-  const path = listMeasurementReportPaths(dir)
+  const path = listMeasurementReportPaths(dir, 'observe-health')
     .find((candidate) => measurementRecordIdFromReportPath(candidate) === id);
   if (path !== undefined) {
     try {
@@ -151,7 +151,7 @@ function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealt
 function loadDoctorReport(dir: string, id: string, skillName?: string, includeCards = false): DoctorReport | null {
   let fallback: DoctorReport | null = null;
   const seenRecords = new Set<string>();
-  for (const path of listMeasurementReportPaths(dir)) {
+  for (const path of listMeasurementReportPaths(dir, 'doctor')) {
     const recordId = measurementRecordIdFromReportPath(path);
     if (recordId === null || seenRecords.has(recordId)) continue;
     try {

@@ -56,9 +56,11 @@ describe('oclif init', () => {
         assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
       }
       assert.ok(!/^\/governance\/?$/m.test(gi), '.omk/.gitignore must not ignore governance/');
-      assert.deepEqual(JSON.parse(readFileSync(join(target, '.omk', 'layout.json'), 'utf8')), {
-        layoutVersion: 2,
-      });
+      assert.equal(
+        existsSync(join(target, '.omk', 'layout.json')),
+        false,
+        'pure v2 layout must not write a redundant root marker',
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

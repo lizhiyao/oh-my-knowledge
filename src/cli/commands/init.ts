@@ -4,7 +4,7 @@ import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
-import { ensureLayoutMarker, projectLayout } from '../../omk-layout/index.js';
+import { projectLayout } from '../../omk-layout/index.js';
 
 // 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
 // managed/ 治理档案 + 配置不在此列,默认 track。
@@ -183,7 +183,6 @@ export default class Init extends BaseCommand {
       // 像 dvc init 那样预置忽略规则,开发者不会误把测量 bulk 提交进库。
       mkdirSync(layout.root, { recursive: true });
       writeFileSync(join(layout.root, '.gitignore'), INIT_OMK_GITIGNORE);
-      ensureLayoutMarker(layout.root);
 
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
       console.log('');

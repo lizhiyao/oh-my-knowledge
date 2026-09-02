@@ -372,7 +372,7 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
     throw new TypeError('maxKeep must be a non-negative safe integer');
   }
   const candidates: { path: string; graphStem: string; timestamp: string }[] = [];
-  for (const path of listMeasurementReportPaths(dir)) {
+  for (const path of listMeasurementReportPaths(dir, 'doctor')) {
     try {
       const data = parseDoctorReport(JSON.parse(readFileSync(path, 'utf-8')));
       if (!data || data.skills.length !== 1) continue;

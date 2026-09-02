@@ -147,8 +147,6 @@ export async function runSampleFromTraces(
 
   const { observationDraftsDir } = await import('../../observability/inbox/index.js');
   const outPath = join(observationDraftsDir(obsDir), 'sample-drafts.json');
-  const { ensureOwnedLayoutForPath } = await import('../../omk-layout/index.js');
-  ensureOwnedLayoutForPath(outPath);
   if (existsSync(outPath)) {
     console.error(lang === 'zh'
       ? `草稿已存在: ${outPath}，请先 review 并合入正式集（或删除）后再生成`

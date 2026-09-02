@@ -4,7 +4,7 @@ import { existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createExecutor } from '../executors/index.js';
 import type { DoctorReport, DoctorRuleResult } from './contracts.js';
-import { ensureLayoutMarker, projectLayout } from '../omk-layout/index.js';
+import { projectLayout } from '../omk-layout/index.js';
 
 interface FixIssue {
   id: string;
@@ -300,7 +300,6 @@ function backupSkillFiles(issues: FixIssue[], projectRoot: string): void {
   const stamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
   const paths = [...new Set(issues.map((i) => resolve(i.skillPath)))];
   const layout = projectLayout(projectRoot);
-  ensureLayoutMarker(layout.root);
   const backupDir = join(layout.doctorFixBackupsDir, stamp);
   for (const abs of paths) {
     if (!existsSync(abs)) continue;

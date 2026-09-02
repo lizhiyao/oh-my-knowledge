@@ -14,7 +14,6 @@
 
 ```text
 .omk/
-├── layout.json
 ├── .gitignore
 ├── eval/
 │   └── <record-id>/
@@ -53,14 +52,6 @@
 
 `<record-id>` 是一份报告 bundle 的防碰撞文件系统身份；manifest 保存公开的 report／run 身份。Evaluation Core bundle 还会把封存的 plan、execution、evaluation、analysis 文档跟 `report.json` 放在同一目录，这些文档仍属于经过认证的 bundle。
 
-`layout.json` 只包含：
-
-```json
-{
-  "layoutVersion": 2
-}
-```
-
 目录 skill 的 authoring 约定 `<skill>/.omk/eval-samples.{json,yaml}` 本期明确不变。
 
 ## 机器级布局
@@ -69,7 +60,6 @@
 
 ```text
 ~/.oh-my-knowledge/
-├── layout.json
 ├── eval/
 ├── doctor/
 ├── observe/
@@ -102,7 +92,7 @@
 | `backups/` | 自动修改前的恢复副本 | 否 | 忽略 |
 | `state/` | 任务、锁、临时文件及全局可重建缓存 | 是 | 忽略 |
 
-`omk init` 会写内部 `.omk/.gitignore`，忽略 `eval/`、`doctor/`、`observe/`、`backups/` 和 `state/`，但不忽略 `layout.json` 与 `governance/`。
+`omk init` 会写内部 `.omk/.gitignore`，忽略 `eval/`、`doctor/`、`observe/`、`backups/` 和 `state/`，但不忽略 `.gitignore` 与 `governance/`。
 
 ## 兼容边界
 

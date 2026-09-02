@@ -18,7 +18,11 @@ import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import { safeArtifactFileStem } from './file-names.js';
-import { measurementReportPath } from './report-bundle.js';
+import {
+  measurementManifestPath,
+  measurementReportPath,
+  parseMeasurementBundleManifest,
+} from './report-bundle.js';
 
 export type ArtifactDomain = 'doctor' | 'observe-health';
 
@@ -48,10 +52,22 @@ function isCanonicalCardId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && safeFileName(value) === value;
 }
 
-function isCanonicalCardPath(path: unknown, id: string): path is string {
-  return typeof path === 'string'
-    && resolve(path) === path
-    && measurementReportPath(dirname(dirname(path)), id) === path;
+function isCanonicalCardPath(
+  path: unknown,
+  id: string,
+  domain: ArtifactDomain,
+): path is string {
+  if (typeof path !== 'string' || resolve(path) !== path) return false;
+  const rootDir = dirname(dirname(path));
+  if (measurementReportPath(rootDir, id) !== path) return false;
+  try {
+    const manifest = parseMeasurementBundleManifest(JSON.parse(
+      readFileSync(measurementManifestPath(rootDir, id), 'utf8'),
+    ) as unknown);
+    return manifest?.measurementDomain === domain && manifest.recordId === id;
+  } catch {
+    return false;
+  }
 }
 
 // 卡片读侧小 guard:索引是可重生 scratch,坏卡片(脏文件 / 别域误落 / 字段缺失)读侧从严跳过,
@@ -160,6 +176,7 @@ export interface DoctorIndexCard {
 export function indexDoctorWrite(card: Omit<DoctorIndexCard, 'domain'>, outputDir: string): void {
   try {
     if (!shouldIndexDir(outputDir, globalDoctorsDir())) return;
+    if (!isCanonicalCardPath(card.path, card.id, 'doctor')) return;
     writeCard('doctor', card.id, {
       domain: 'doctor',
       ...card,
@@ -173,7 +190,7 @@ export function listDoctorCards(): DoctorIndexCard[] {
   return readArtifactCards('doctor', (c): c is DoctorIndexCard => {
     const card = c as Partial<DoctorIndexCard>;
     return !!card && card.domain === 'doctor' && isCanonicalCardId(card.id)
-      && isCanonicalCardPath(card.path, card.id)
+      && isCanonicalCardPath(card.path, card.id, 'doctor')
       && typeof card.skillName === 'string' && card.skillName.length > 0
       && typeof card.reportId === 'string' && card.reportId.length > 0
       && isRfc3339Timestamp(card.timestamp)
@@ -239,6 +256,7 @@ export interface ObserveIndexCard {
 export function indexObserveWrite(report: ObserveSource, sourcePath: string, outputDir: string, id: string): void {
   try {
     if (!shouldIndexDir(outputDir, globalObserveHealthDir())) return;
+    if (!isCanonicalCardPath(sourcePath, id, 'observe-health')) return;
     const bySkill: Record<string, ObserveCardSkill> = {};
     for (const [name, h] of Object.entries(report.bySkill || {})) {
       setOwnRecordValue(bySkill, name, {
@@ -272,7 +290,7 @@ export function listObserveCards(): ObserveIndexCard[] {
       !card
       || card.domain !== 'observe-health'
       || !isCanonicalCardId(card.id)
-      || !isCanonicalCardPath(card.path, card.id)
+      || !isCanonicalCardPath(card.path, card.id, 'observe-health')
     ) return false;
     const meta = card.meta; const overall = card.overall; const bySkill = card.bySkill;
     if (

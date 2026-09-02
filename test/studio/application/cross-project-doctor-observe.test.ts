@@ -4,8 +4,8 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildSkillIndex, _resetSkillIndexCache } from '../../../src/studio/application/index.js';
 import {
@@ -13,6 +13,7 @@ import {
   indexObserveWrite as writeObserveIndex,
   listDoctorCards,
 } from '../../../src/measurement-artifacts/discovery-index.js';
+import { writeMeasurementReportBundle } from '../../../src/measurement-artifacts/report-bundle.js';
 import { pruneDoctorHistory } from '../../../src/cli/commands/doctor.js';
 import type { DoctorReport } from '../../../src/doctor/contracts.js';
 
@@ -79,8 +80,15 @@ function indexDoctorWrite(card: DoctorCardInput, outputDir: string): void {
       total: card.passCount + card.warnCount + card.failCount,
     },
   };
-  mkdirSync(dirname(card.path), { recursive: true });
-  writeFileSync(card.path, JSON.stringify(report));
+  const bundle = writeMeasurementReportBundle({
+    rootDir: outputDir,
+    measurementDomain: 'doctor',
+    recordId: card.id,
+    reportId: card.reportId,
+    createdAt: card.timestamp,
+    report,
+  });
+  assert.equal(bundle.reportPath, card.path);
   writeDoctorIndex(card, outputDir);
 }
 
@@ -191,8 +199,15 @@ function indexObserveWrite(
       confidence: source.overall.confidence ?? 'high',
     },
   };
-  mkdirSync(dirname(sourcePath), { recursive: true });
-  writeFileSync(sourcePath, JSON.stringify(report));
+  const bundle = writeMeasurementReportBundle({
+    rootDir: outputDir,
+    measurementDomain: 'observe-health',
+    recordId: id,
+    reportId: id,
+    createdAt: source.meta.generatedAt,
+    report,
+  });
+  assert.equal(bundle.reportPath, sourcePath);
   writeObserveIndex(report, sourcePath, outputDir, id);
 }
 
@@ -388,7 +403,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
 
   it('固定目录模式(include 默认 false):索引里有别项目卡片但 buildSkillIndex 不合并 → skill 索引为空', () => {
     // 模拟 --analyses-dir/--doctors-dir/--global 逃生舱:有卡片(别项目),但 live 目录空且不开 include。
-    indexDoctorWrite({ id: 'x-1-aa', path: join(proj, reportFileName('x')), skillName: 'x', reportId: 'doctor-1-aa',
+    indexDoctorWrite({ id: 'x-1-aa', path: join(proj, reportFileName('x-1-aa')), skillName: 'x', reportId: 'doctor-1-aa',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
       overall: { healthBand: 'green', confidence: 'high' },

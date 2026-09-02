@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from 'node:path';
-import { ensureLayoutMarker, projectLayout } from '../omk-layout/index.js';
+import { projectLayout } from '../omk-layout/index.js';
 import { loadEvalConfig } from '../inputs/eval-config.js';
 import {
   type DshAgentLike,
@@ -243,7 +243,6 @@ async function executeObserveCommand(
   }
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const observationsDir = projectLayout(cwd).observeInboxDir;
-  ensureLayoutMarker(projectLayout(cwd).root);
   const {
     buildObservationInboxReportFromTraceSessions,
     saveObservationInboxReport,

@@ -1,6 +1,6 @@
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
 import { projectLayout } from '../omk-layout/index.js';
-import { listMeasurementReportPaths } from './report-bundle.js';
+import { listMeasurementReportPaths, type MeasurementDomain } from './report-bundle.js';
 
 /**
  * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
@@ -12,9 +12,9 @@ import { listMeasurementReportPaths } from './report-bundle.js';
  * 冻结的常量），studio 长会话 per-request 解析才正确。
  */
 
-/** dir 里是否有至少一个满足 match 的文件(短路,不读文件内容)。 */
-function hasReports(dir: string): boolean {
-  return listMeasurementReportPaths(dir).length > 0;
+/** dir 里是否有至少一个 manifest 完整且领域匹配的 v2 bundle。 */
+function hasReports(dir: string, domain: MeasurementDomain): boolean {
+  return listMeasurementReportPaths(dir, domain).length > 0;
 }
 
 // —— observe/health（skill 健康度报告）——
@@ -36,7 +36,7 @@ export function resolveObserveHealthDir(
   dir: string = projectObserveHealthDir(),
   global: string = globalObserveHealthDir(),
 ): string {
-  const found = [dir, global].find(hasReports);
+  const found = [dir, global].find((candidate) => hasReports(candidate, 'observe-health'));
   if (found !== undefined) return found;
   return dir;
 }
@@ -60,7 +60,7 @@ export function resolveDoctorsDir(
   dir: string = projectDoctorsDir(),
   global: string = globalDoctorsDir(),
 ): string {
-  const found = [dir, global].find(hasReports);
+  const found = [dir, global].find((candidate) => hasReports(candidate, 'doctor'));
   if (found !== undefined) return found;
   return dir;
 }

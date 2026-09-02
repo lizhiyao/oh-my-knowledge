@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tCli, type CliLang } from './i18n.js';
-import { ensureOwnedLayoutForPath, globalLayout, OMK_HOME } from '../../omk-layout/index.js';
+import { globalLayout, OMK_HOME } from '../../omk-layout/index.js';
 
 /** 严格按 SemVer 2.0 precedence 判断 `a > b`(只覆盖本仓库实际使用的形态:
  *  MAJOR.MINOR.PATCH 可选 `-prerelease`)。非法字符串直接返回 false,update-check
@@ -121,7 +121,6 @@ export function readCache(path: string): UpdateCache | null {
  *  整体静默失败 — 退化为「每次后台重抓」,不崩。 */
 export function writeCache(path: string, data: UpdateCache): void {
   try {
-    ensureOwnedLayoutForPath(path);
     mkdirSync(dirname(path), { recursive: true });
     const tmp = `${path}.tmp.${process.pid}`;
     writeFileSync(tmp, JSON.stringify(data, null, 2));

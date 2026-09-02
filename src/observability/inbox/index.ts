@@ -53,7 +53,6 @@ import { isInstalledSkillAssetPath } from '../trace/attribution.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { writeObservationSourceRecordArchives } from './source-record-archive.js';
 import { loadExplicitObservationCaptureItems } from './explicit-capture.js';
-import { ensureOwnedLayoutForPath } from '../../omk-layout/index.js';
 import { isObservationCaptureCoverage } from './capture-coverage.js';
 import {
   normalizeObservationKeyInput,
@@ -765,7 +764,6 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
   if (!normalizeObservationInboxReport(compact)) {
     throw new Error('拒绝写入无法回读的 observe inbox 报告。');
   }
-  ensureOwnedLayoutForPath(outDir);
   const reportsDir = observationReportsDir(outDir);
   mkdirSync(reportsDir, { recursive: true });
   // 保留毫秒并追加随机段；即使同一毫秒生成两份 report，也不能静默互相覆盖。

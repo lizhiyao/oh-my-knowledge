@@ -35,10 +35,10 @@ describe('measurement report bundle', () => {
     const graphPath = join(result.bundleDir, 'derived', 'graph.json');
     mkdirSync(join(result.bundleDir, 'derived'));
     writeFileSync(graphPath, '{}');
-    assert.deepEqual(listMeasurementDerivedPaths(rootDir, 'graph.json'), [graphPath]);
+    assert.deepEqual(listMeasurementDerivedPaths(rootDir, 'doctor', 'graph.json'), [graphPath]);
   });
 
-  it('lists only self-contained v2 bundle reports', () => {
+  it('lists only complete self-contained v2 bundles from the requested domain', () => {
     const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-list-'));
     const current = writeMeasurementReportBundle({
       rootDir,
@@ -50,7 +50,25 @@ describe('measurement report bundle', () => {
     });
     const flat = join(rootDir, 'observe-1.report.json');
     writeFileSync(flat, '{}');
-    assert.deepEqual(listMeasurementReportPaths(rootDir), [current.reportPath]);
+    const incompleteDir = join(rootDir, 'observe-incomplete');
+    mkdirSync(incompleteDir);
+    writeFileSync(join(incompleteDir, 'report.json'), '{}');
+    mkdirSync(join(incompleteDir, 'derived'));
+    writeFileSync(join(incompleteDir, 'derived', 'graph.json'), '{}');
+    const wrongDomain = writeMeasurementReportBundle({
+      rootDir,
+      measurementDomain: 'doctor',
+      recordId: 'doctor-1',
+      reportId: 'doctor-1',
+      createdAt: '2026-09-02T00:00:00.000Z',
+      report: {},
+    });
+    assert.deepEqual(
+      listMeasurementReportPaths(rootDir, 'observe-health'),
+      [current.reportPath],
+    );
+    assert.deepEqual(listMeasurementReportPaths(rootDir, 'doctor'), [wrongDomain.reportPath]);
+    assert.deepEqual(listMeasurementDerivedPaths(rootDir, 'observe-health', 'graph.json'), []);
     assert.equal(measurementRecordIdFromReportPath(flat), null);
     assert.equal(measurementRecordIdFromReportPath(current.reportPath), 'observe-2');
   });
