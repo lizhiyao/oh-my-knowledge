@@ -44,6 +44,15 @@ const CREDENTIAL_ENVIRONMENT = new Set([
   'OPENAI_API_KEY',
 ]);
 
+const SECRET_TAINT_ENVIRONMENT = new Set([
+  'ALL_PROXY',
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'all_proxy',
+  'http_proxy',
+  'https_proxy',
+]);
+
 const EFFECT_LOCATOR_ENVIRONMENT = new Set([
   'ALL_PROXY',
   'CODEX_HOME',
@@ -119,7 +128,11 @@ export function classifyNodeCliEnvironment(
       : EFFECT_LOCATOR_ENVIRONMENT.has(key)
         ? { identityKind: 'effect-locator' }
         : { identityKind: 'behavior', value };
-    return [[key, Object.freeze({ value, identity })]];
+    return [[key, Object.freeze({
+      value,
+      identity,
+      ...(SECRET_TAINT_ENVIRONMENT.has(key) ? { outputTaint: 'secret' as const } : {}),
+    })]];
   })));
 }
 

@@ -306,6 +306,9 @@ describe('custom-command Core Executor adapter', () => {
     expect(port.identity.implementationManifest.coverageKind).toBe('fingerprint-plus-facets');
     expect(JSON.stringify(port.identity)).not.toContain('do-not-persist-this-secret');
     expect(JSON.stringify(port.identity)).not.toContain('OMK_TEST_SECRET');
+    const credentialTaintedResult = await execute(port);
+    expect(credentialTaintedResult.output?.classification).toBe('secret');
+    expect(credentialTaintedResult.trace?.classification).toBe('secret');
 
     const rotatedCredential = await createAdapter(cwd, {
       environment: { OMK_TEST_SECRET: 'rotated-secret' },

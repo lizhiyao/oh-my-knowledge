@@ -8,6 +8,8 @@ import {
 
 export type ClassifiedEnvironmentEntry = {
   readonly value: string;
+  /** Raises output/trace handling independently from the value's Runtime identity role. */
+  readonly outputTaint?: 'sensitive' | 'secret';
   readonly identity:
     | { readonly identityKind: 'behavior'; readonly value: JsonValue }
     | { readonly identityKind: 'credential' }
@@ -32,6 +34,7 @@ const EnvironmentSchema = z.record(
   z.string().min(1).refine((value) => !value.includes('\0')),
   z.object({
     value: z.string().refine((value) => !value.includes('\0')),
+    outputTaint: z.enum(['sensitive', 'secret']).optional(),
     identity: z.discriminatedUnion('identityKind', [
       z.object({
         identityKind: z.literal('behavior'),
@@ -62,11 +65,18 @@ export function captureClassifiedEnvironment(
       ...(entry.identity.identityKind === 'effect-locator'
         ? { valueDigest: digestCanonicalJson(entry.value) }
         : {}),
+      ...(entry.outputTaint === undefined ? {} : { outputTaint: entry.outputTaint }),
     }))),
-    outputClassification: entries.some(([, entry]) => entry.identity.identityKind === 'credential')
-      ? 'secret'
-      : entries.some(([, entry]) => entry.identity.identityKind === 'effect-locator')
-        ? 'sensitive'
-        : 'public',
+    outputClassification: entries.reduce<'public' | 'sensitive' | 'secret'>((result, [, entry]) => (
+      mergeOutputClassification(
+        result,
+        entry.outputTaint
+          ?? (entry.identity.identityKind === 'credential'
+            ? 'secret'
+            : entry.identity.identityKind === 'effect-locator'
+              ? 'sensitive'
+              : 'public'),
+      )
+    ), 'public'),
   });
 }

@@ -23,6 +23,7 @@ describe('Node CLI production environment', () => {
     expect(classified.https_proxy).toEqual({
       value: proxy,
       identity: { identityKind: 'effect-locator' },
+      outputTaint: 'secret',
     });
     expect(classified.NODE_OPTIONS).toBeUndefined();
 
@@ -32,9 +33,10 @@ describe('Node CLI production environment', () => {
       keyDigest: digestCanonicalJson('https_proxy'),
       identityKind: 'effect-locator',
       valueDigest: digestCanonicalJson(proxy),
+      outputTaint: 'secret',
     });
     expect(JSON.stringify(captured.identity)).not.toContain(proxy);
-    expect(captured.outputClassification).toBe('sensitive');
+    expect(captured.outputClassification).toBe('secret');
   });
 
   it('supports conventional upper- and lower-case proxy variables without broad inheritance', () => {
