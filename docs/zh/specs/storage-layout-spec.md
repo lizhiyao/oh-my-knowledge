@@ -1,157 +1,147 @@
-# omk 存储布局规范
+# OMK 存储布局 v2
 
-> **范围**: 这篇写给 omk 维护者，讲清 omk 跑出来的各种文件到底放哪、为什么这么放、什么时候清。涉及两个地方：你电脑上的全局目录 `~/.oh-my-knowledge/`，和每个项目自己的 `<project>/.omk/`。中英双版并存（`docs/specs/` 英文 / `docs/zh/specs/` 中文）。具体目录名以源码（`src/measurement-artifacts/default-dirs.ts` 等）为准，这篇只讲「为什么」。日常怎么用看 [README](../README.md)。
+> **范围：**项目级与机器级存储的正式契约。所有路径由 `src/omk-layout/` 统一生成，业务模块不得自行拼项目根 `.omk`。本次只改变存储位置，不改变报告 schema、评分语义、prompt、统计公式或长度去偏。
 
-## 一、放文件这件事，要同时满足三条
+## 设计原则
 
-看着简单，其实缺一条就埋雷：
+- 顶层名称跟用户看得见的产品域一致：`eval`、`doctor`、`observe`。
+- 每份持久测量记录独占一个自包含目录。`report.json` 是权威数据，可重建视图放进 `derived/`。
+- 路径直接表达生命周期。持久证据、observation、治理、备份与可重建 `state` 不再平铺混放。
+- 绑项目的证据默认写入 `<project>/.omk`。机器工具、缓存、隧道、物化树和跨项目索引只能进入全局 `state/`。
+- 记录身份来自报告 ID 与内容 digest，不依赖绝对路径；搬迁不会改变报告 JSON 或 digest。
 
-- **同一类东西得有同一个家**。不能报告这类默认丢全局、治理档案那类放项目，两套规则——用户根本猜不到自己的报告在哪、`omk studio` 该去哪读。
-- **列表可以跨项目看，但分数不能跨项目比**。一份报告只在它自己那套测试用例下才说得通，换套用例分数就变。两个项目用例不一样，分数摆一起比就是耍流氓（专业叫 construct validity，见 [who-omk-is-for](../explanation/who-omk-is-for.md)）。要是所有项目的报告默认全堆进一个全局文件夹，`omk studio` 从哪个目录打开都是一锅粥、分不清哪份属于哪个项目，等于把「拿 A 班的分跟 B 班比」这种错焊死在「文件怎么存」上。
-- **草稿别跟正经数据混**。`cache` / `trees` / `isolated-cwd` / `jobs` 这些是草稿，删了程序自己能重建。它们要是跟报告这种正经数据平铺、长得还一样，你想清磁盘时根本不敢删，怕误伤。
+## 项目级布局
 
-## 二、一条规则决定每样东西放哪
-
-就问两个问题，外加一条贯穿规则：
-
-- **问题一 · 删了能自己长回来吗？** 能 → 草稿，扔进专门的 `state/` 文件夹，「这一坨随便删」一眼可见；不能、得留着 → 放正经数据区。
-- **问题二 · 它只在某个项目里才有意义吗？** 是（比如报告，绑着那套用例）→ 放进那个项目的 `.omk/` 抽屉；不是、哪个项目都能共用（缓存、临时副本）→ 放电脑的全局目录。
-- **贯穿规则 · 用身份证认东西，不靠它在哪个文件夹**。每样东西用自己的 `id + 内容指纹`当身份，搬家只改指路牌，不会把引用它的链接弄断。
-
-照这个，omk 的东西各就各位：
-
-| 产物 | 删了能重建？ | 绑项目吗？ | 放哪 |
-|---|---|---|---|
-| `reports` / `observe-health` / `doctors` / `observe-inbox` | 不能，要留 | 绑用例集 | 项目本地 `.omk/` 默认，全局兜底读 |
-| `graphs` | 不能，要留 | 绑它的来源 run | 跟随主写入命令的 `.omk/` 根目录 |
-| `managed` | 不能，要留 | 绑被治理 skill 装在哪 | 项目优先 → 全局兜底 |
-| `cache` / `trees` / `isolated-cwd` | 能 | 哪个项目都能共用 | 全局 `state/` 子树 |
-| `jobs` / `artifact-index` | 能 | 从测量派生出来的 | 全局 `state/` 子树 |
-
-一句话：要留 + 绑项目 → 放本地；删了能重建 → 扔进可整删的 `state/` 子树（哪都能用的留全局）。**最容易犯的错，就是把「要留 + 绑项目」的测量结论，当成「哪都能用」的缓存来放——global-default 正是这个错。**
-
-第一行测量产物放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore）。主写入命令用 `--global` 写全局：`reports` / `observe-health` / `doctors` 拿标准用例集跑分时写全局（见第四节），`observe-inbox` 也支持（`omk observe ingest --global` 写、`omk observe inbox --global` 读），补全全局 skill 的观测闭环。`graphs` 这类 sidecar 跟随产生它的主产物输出根目录，不另起一套路由。`managed` 是例外，不靠开关，按被治理 skill 装在哪自动走。
-
-doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors` → `.omk/graphs/doctor`，`.omk/reports` → `.omk/graphs/eval`。如果用户传入的自定义 `--output-dir` 不是对应主写入命令的标准目录，graph sidecar 留在显式目录内部，例如 `<output-dir>/graphs/doctor` 或 `<output-dir>/graphs/eval`。
-
-## 三、最终长这样
-
-```
-~/.oh-my-knowledge/             # 电脑全局目录（认 OMK_HOME，可整体搬走）
-  reports/ observe-health/ doctors/ observe-inbox/ graphs/   # 只有 omk ... --global 主动跑时才写这里
-  managed/                      # 全局装的 skill 的治理档案
-  update-check.json
-  state/                        # 草稿区 · 随时可整删
-    cache/  isolated-cwd/  trees/  jobs/
-    artifact-index/<domain>/<id>.json   # 跨项目总览用的索引卡片（见第六节）
-
-<项目>/.omk/                    # 项目本地 · 要留 · 绑这个项目的用例集
-  reports/  observe-health/  doctors/  observe-inbox/  graphs/   # 测量产物、收件箱与 sidecar —— 默认 gitignore，不进库
-  backups/                      # doctor --fix 改 skill 前存的原件（撤销用）—— 默认 gitignore，不进库
-  managed/                      # 项目自带 skill 的治理档案 —— 可以提交（决策史）
-  eval-samples.yaml / eval.yaml # 测量定义 —— 提交
-```
-
-`OMK_HOME` 是这棵全局树的总开关：改一处，`reports` / `doctors` / `observe-health` / `graphs` / `state`（含里面的 `cache` / `trees` / `jobs` / `artifact-index`）一起搬。整盘迁移靠它，测试也靠它一把把整棵树指到临时目录、不脏你真实的 home。
-
-### 文件命名语法
-
-目录和文件名各自承载不同含义：
-
-- **目录表达产品域**。例如 `.omk/doctors/` 已经说明这是 doctor，`.omk/graphs/doctor/` 已经说明这是 doctor 产生的图谱 sidecar；文件名不再重复这些 domain 词。
-- **所有 run-derived artifact 都用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名（eval 取主评测对象，也就是非 baseline treatment，而不是完整 control-vs-treatment 关系），`runSuffix` 是让本次运行唯一的时间戳 + 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
-- **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
-- **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/eval-samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
-
-Evaluation Core 按 `runId` 一次一个目录存储；manifest 与 sealed documents 在目录内使用固定 schema 文件名。读取侧只发现当前规范产物：Core run 目录，以及 `doctors`／`observe-health`／`observe-inbox` 的 `.report.json` 文件。旧的扁平 JSON 既不读取，也不自动改名。
-
-示例：
-
-```
-.omk/reports/01JY.../manifest.json
-.omk/reports/01JY.../evaluation-report.json
-.omk/doctors/service-guide-20260620T105109-aqgq.report.json
-.omk/observe-health/20260620T105109-aqgq.report.json
-.omk/observe-inbox/20260620T105109-aqgq.report.json
-.omk/graphs/eval/service-guide-20260620T105109-aqgq.graph.json
-.omk/graphs/doctor/service-guide-20260620T051909-aqgq.graph.json
-.omk/graphs/doctor/service-guide-20260620T051909-aqgq.card.md
+```text
+.omk/
+├── layout.json
+├── .gitignore
+├── eval/
+│   └── <record-id>/
+│       ├── manifest.json
+│       ├── report.json
+│       └── derived/
+│           ├── graph.json
+│           └── card.md
+├── doctor/
+│   └── <record-id>/
+│       ├── manifest.json
+│       ├── report.json
+│       └── derived/
+│           ├── graph.json
+│           └── card.md
+├── observe/
+│   ├── health/
+│   │   └── <record-id>/
+│   │       ├── manifest.json
+│   │       └── report.json
+│   ├── inbox/
+│   │   ├── reports/
+│   │   ├── captures/
+│   │   └── review-state.json
+│   ├── drafts/
+│   └── archive/
+├── governance/
+│   └── managed/
+├── backups/
+│   └── doctor-fix/
+└── state/
+    ├── jobs/
+    ├── locks/
+    └── tmp/
 ```
 
-## 四、skill、测量、治理是三层，别混成一栏
+`<record-id>` 是一份报告 bundle 的防碰撞文件系统身份；manifest 保存公开的 report／run 身份。Evaluation Core bundle 还会把封存的 plan、execution、evaluation、analysis 文档跟 `report.json` 放在同一目录，这些文档仍属于经过认证的 bundle。
 
-有人会问：skill 装在全局，那还管得住吗？这问题点破一件事——skill 本身、对它的测量、对它的治理，是三层，各归各的：
+`layout.json` 只包含：
 
-- **skill 本身 = 全局资产**。装在 `~/.claude/skills` 那种，全局认它。这层不动。
-- **测量结果（`reports` / `observe-health` / `doctors` / `graphs`）= 绑用例集**。同一个 skill 换套用例分数就变，所以报告及其 sidecar 跟项目走。
-- **治理档案（`managed`，记着「这个 skill 凭什么准上线」）= 跟 skill 装在哪走**，不跟测量走。全局装的 skill，治理档案放全局；项目里自带的，放项目。
+```json
+{
+  "layoutVersion": 2
+}
+```
 
-**怎么连起来**：治理档案里不存报告的文件路径，而是把要用的字段（报告 `id`、内容指纹、结论）直接抄一份进去（专业叫 denormalize）。所以哪怕报告是项目本地的、治理档案是全局的，上线门禁照样查、报告搬家也不受影响。想给全局 skill 一个「全局成绩」：挑一套代表通用用法的标准用例集（golden set），用 `omk eval --global` 专门跑它、写全局——这比把各项目八竿子打不着的用例硬倒进一个桶假装全局成绩，要诚实得多。`--global` 在这套布局里是正经的一等模式，没被砍。
+目录 skill 的 authoring 约定 `<skill>/.omk/eval-samples.{json,yaml}` 本期明确不变。
 
-## 五、放进项目文件夹 ≠ 提交进 git
+## 机器级布局
 
-有人担心：`.omk/` 放在 repo 里会不会污染 git？不会。它像 `node_modules` / `.pytest_cache` / `mlruns` 那样——住在你项目文件夹里，但默认不进版本库。三种放法：
+`OMK_HOME` 默认是 `~/.oh-my-knowledge`，并整体重定向这棵树：
 
-- **全局桶**（如 promptfoo）：不脏 repo，但分不清哪份是哪个项目的。
-- **项目文件夹 + 默认 gitignore**（MLflow `./mlruns`、Inspect `./logs`、HELM `benchmark_output`）：分得清归属，又不进 PR / diff。**这套布局走这种。**
-- **项目文件夹 + 故意提交**（DVC）：要分享时只提交一小份元数据。
+```text
+~/.oh-my-knowledge/
+├── layout.json
+├── eval/
+├── doctor/
+├── observe/
+├── governance/
+├── backups/
+└── state/
+    ├── cache/
+    ├── tools/
+    ├── tunnels/
+    ├── trees/
+    ├── isolated-cwd/
+    ├── artifact-index/
+    ├── jobs/
+    ├── locks/
+    └── tmp/
+```
 
-`.omk/` 里面也分两类：
+项目与机器的持久数据使用同一套领域结构。机器专属内容不得进入项目 `.omk`。Codex、Claude、DSH 的原始 trace 继续留在来源位置；OMK 默认只读分析，不复制进项目。
 
-- 会越长越大的 `reports` / `observe-health` / `doctors` / `observe-inbox` / `graphs` → 默认 gitignore，不提交。
-- 小而重要的治理决策 `managed` → 可以提交，像 CHANGELOG / ADR 那样，队友 clone 下来就看到「当初凭什么放行这个版本」。
-- 用例集 / `eval.yaml` → 提交。
+## 生命周期与 Git 策略
 
-`omk init` 会自动写一个 `.omk/.gitignore`（挡住会涨的目录、放行 `managed` 和配置），像 `dvc init` 那样，你不会手滑提交。全队想看完整报告？走 `--global` / 搭个共享 server / 导出证据包——跟 MLflow「本地不提交、要分享就起个 server」一个路子。
+| 路径 | 语义 | 默认删除？ | 项目 Git 策略 |
+|---|---|---:|---|
+| `eval/` | A/B 评测证据与发布判断 | 否 | 忽略 |
+| `doctor/` | skill 体检报告 | 否 | 忽略 |
+| `observe/health/` | 从真实 trace 聚合的健康度 | 否 | 忽略 |
+| `observe/inbox/` | 待复核 observation 与人工状态 | 否 | 忽略，可能含敏感信息 |
+| `observe/drafts/` | 从 observation 生成的样本草稿 | 否 | 忽略 |
+| `governance/managed/` | install／evidence／promote／rollback 历史 | 否 | 默认追踪 |
+| `backups/` | 自动修改前的恢复副本 | 否 | 忽略 |
+| `state/` | 任务、锁、临时文件及全局可重建缓存 | 是 | 忽略 |
 
-## 六、测量产物保持项目归属
+`omk init` 会写内部 `.omk/.gitignore`，忽略 `eval/`、`doctor/`、`observe/`、`backups/` 和 `state/`，但不忽略 `layout.json` 与 `governance/`。
 
-Evaluation Core run 正文只存在于一个项目本地目录，或用户显式选择的全局目录。Studio 扫描所选的项目 / 全局根目录，并在列出前验证 Core manifest。它不使用旧 evaluation report 索引，不打开扁平报告文件，也不重建跨项目分数曲线。
+## 读取兼容与迁移
 
-Doctor 与 observe-health 仍保留轻量全局索引卡，因为它们独立的报告 schema 仍采用这套发现模型。卡片位于 `state/artifact-index/<domain>/<id>.json`，其中 `domain` 仅为 `doctor` 或 `observe-health`。Evaluation 与 observe-inbox 都有意排除在外。
+新写入只用 v2。迁移期内，Studio、resume、gold compare、managed evidence lookup 及项目／全局兜底仍会读取 v1：
 
-几条要点：
+```text
+reports        → eval
+doctors        → doctor
+graphs/eval    → eval/<record-id>/derived
+graphs/doctor  → doctor/<record-id>/derived
+observe-health → observe/health
+observe-inbox  → observe/inbox
+managed        → governance/managed
+jobs           → state/jobs
+tmp            → state/tmp
+项目 tools     → 全局 state/tools
+项目 tunnel    → 全局 state/tunnels
+```
 
-- **evaluation 不回填**：旧的扁平 evaluation report 永远不会生成 Core run 或索引卡。
-- **全局写不留卡片**：全局 doctor / observe 根目录本来就会被直接扫描。
-- **doctor / observe 卡片尽力写入**：正文始终是权威来源。
-- **卡片是活指针**：正文已经消失的卡片会从发现结果中过滤。
-- **显式根目录不合并卡片**：只读取用户点名的位置。
+`omk migrate --dry-run` 会列出全部动作、保留的未知路径和冲突。`omk migrate` 会先检查完整计划，再开始移动；它不会覆盖内容不同的目标，会删除字节相同的重复文件，支持跨磁盘移动，生成必要 manifest，并在最后写 v2 marker。重复执行是空操作。现有权威报告字节与 digest 保持不变。Evaluation Core manifest v1 继续读取 `evaluation-report.json`，新写入的 manifest v2 使用 `report.json`。
 
-Core `runId` 与独立的 doctor / observe id 都具备防碰撞身份。id 只是标签，不是算出来的分数，因此不影响跨版本可比性。
+## 清理契约
 
-## 七、什么自动清、什么永远留
+- `omk clean --dry-run` 预览精确路径与预计释放空间。
+- `omk clean` 只删除 `state/`。
+- `--reports` 选择 `eval/`、`doctor/`、`observe/health/`。
+- `--observations` 选择 inbox、drafts 和 archive，并要求 `--force`。
+- `--backups` 选择备份。
+- `--governance` 是独立选项，并要求 `--force`。
+- `--all` 选择 state、报告、observation 与备份，但不含治理记录。
 
-按「删了能不能重建」分：
+递归删除前，清理器会同时校验目标位于选定 OMK 根内，并且属于固定类别白名单。
 
-- **已经在自动清的（草稿）**：`doctor` 每个 skill 留最近 50 份；`cache` 最多 2000 条；`trees` / `isolated-cwd` 最多 200 条（带正在用的进程锁保护）。三个都能用环境变量调。
-- **故意不清的（数据）**：`reports` / `observe-health` / `observe-inbox` 永不后台删。两个理由：(1) `reports` 被治理档案和任务记录按 `id` 引着，自动删会断链；(2) 报告的全部价值就是「拿历史比新版」，自动删等于偷偷毁掉比较的底子。也就几个 json，不占地方。
-- **暂时没上限的**：`backups`（doctor --fix 每次改 skill 前存的原件）是撤销安全网，删早了就没法回退；只有确实膨胀时才应增加宽松上限。
+## 为什么这样命名
 
-## 八、这套不是拍脑袋，业界都这么干
+不设顶层 `runs`：它容易被理解成可随时删除的执行状态，而 eval 与 doctor 是持久证据。不设顶层 `measurements`：它会遮住用户已经熟悉的 CLI 产品域。不设顶层 `observations`：健康报告与待复核 observation 是共同 `observe` 域下的兄弟管线。选择 `derived` 而不是 `projections`，因为其中内容是由一份权威报告派生、可重建的物化结果，不是独立产品域。
 
-| 惯例 | 谁这么干 | 对应本规范 |
-|---|---|---|
-| 项目本地优先、全局兜底 | git（`.git/` + `~/.gitconfig`）、cargo（`target/`）、pytest（`.pytest_cache`）、terraform | 问题二：绑项目的跟项目走 |
-| 数据 / 状态 / 缓存分层 | XDG Base Directory Spec | 问题一：正经数据 vs `state/` 草稿 |
-| 源码和编译产物分开 | Bazel（`bazel-out`）、Cargo（`target/`）、Make | 问题一：草稿「一眼可删」且跟数据物理隔开 |
-| 实验按项目 / experiment 归组 | MLflow `./mlruns`、W&B、DVC、Inspect `./logs`、HELM | 问题二 construct validity：报告只在自己上下文里可比 |
-| 用内容指纹当身份 | git（content-addressed）、Nix（store path = hash） | 贯穿规则：身份靠 `id + 指纹`，搬家不断引用 |
+## 相关文档
 
-唯一对「维持全局默认」有利的现实是：不少工具确实留全局缓存 / registry（cargo `~/.cargo`、npm cache）。但它们放全局的都是**删了能重建、哪个项目都能共用**的东西（缓存、依赖包），不是「测量结论」这种绑上下文的数据——正好落在「能重建且共用 → 全局」那格，跟本规范一致。
-
-## 九、几个关键决策
-
-- **测量产物默认放项目**（reports / observe-health / doctors / graphs 默认 `.omk/`，主写入命令通过 `--global` 主动写全局，sidecar 跟随该根目录）。理由：跟 omk 的项目模型（用例集就是上下文）一致；让「放对地方」成为默认行为，而不是一条容易被忘的约定。
-- **Evaluation Core 按 `runId` 从通过认证的 run 目录读取**。项目与全局根可以共同搜索，但绝不会从旧报告或索引卡合成 run。
-- **Studio 列出通过认证的 Core run，以及独立的 doctor / observe 域**，不合并旧 evaluation 卡片。
-- **项目级保留全局兜底**（`.omk/x` 不存在就读全局），不是纯项目级。跟 `observe-inbox` 一个样，迁移更平滑。
-- **`managed` 跟 skill 装在哪走**，不跟测量走。三层解耦：测量绑用例集、治理绑 skill、中间靠内容指纹连。
-
-整套布局**不影响跨版本可比性**：只改了默认放哪 / 搬了位置 / 加了一层索引，没碰报告格式、评委 prompt、observe 复盘 prompt，也没碰任何算出来的数字。
-
-## 相关
-
-- [who-omk-is-for](../explanation/who-omk-is-for.md)——「不能跨用例集比分」和「omk 为谁做」，是这套归属设计的上游依据。
-- [terminology-spec](terminology-spec.md)——`artifact` / `kind` / `domain` 这些词的命名归档。
-- [evidence-gated-management](evidence-gated-management.md)——`managed` 治理档案与通过认证的 Core evidence projection。
+- [OMK 为谁而做](../explanation/who-omk-is-for.md)
+- [术语规范](terminology-spec.md)
+- [证据门控管理](evidence-gated-management.md)

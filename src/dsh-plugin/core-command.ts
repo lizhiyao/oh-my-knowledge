@@ -16,6 +16,7 @@ import {
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../eval-workflows/artifact-store/index.js';
+import { ensureLayoutMarker, projectLayout } from '../omk-layout/index.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createNodeHostPreflightDeclarations,
@@ -252,7 +253,9 @@ export async function runDshCoreEvaluation(input: Readonly<{
   projectRoot: string;
 }>): Promise<DshCoreEvaluationCommandResult> {
   const projectRoot = resolve(input.projectRoot);
-  const outputDirectory = join(projectRoot, '.omk', 'reports');
+  const layout = projectLayout(projectRoot);
+  ensureLayoutMarker(layout.root);
+  const outputDirectory = layout.evalDir;
   const model = input.config.model?.trim() || input.parentAgent.options.model?.trim();
   if (!model) throw new TypeError('当前 DSH session 没有可继承的模型，且 eval.yaml 未配置 model。');
   if (input.config.judgeModels?.some((judge) => judge.executor === DSH_HOST_IMPLEMENTATION_ID)) {

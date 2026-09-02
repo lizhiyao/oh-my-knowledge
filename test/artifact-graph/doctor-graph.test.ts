@@ -147,8 +147,8 @@ describe('doctor artifact graph', () => {
 
       assert.ok(existsSync(result.graphPath));
       assert.ok(existsSync(result.evidenceCardPath));
-      assert.equal(result.graphPath, join(doctorGraphDirForDoctorOutput(outputDir), 'review-skill-doctor-test.graph.json'));
-      assert.equal(result.evidenceCardPath, join(doctorGraphDirForDoctorOutput(outputDir), 'review-skill-doctor-test.card.md'));
+      assert.equal(result.graphPath, join(outputDir, 'review-skill-doctor-test', 'derived', 'graph.json'));
+      assert.equal(result.evidenceCardPath, join(outputDir, 'review-skill-doctor-test', 'derived', 'card.md'));
       const graph = JSON.parse(readFileSync(result.graphPath, 'utf-8')) as { documentKind: string };
       assert.equal(graph.documentKind, 'artifact-graph');
       assert.ok(readFileSync(result.evidenceCardPath, 'utf-8').includes('知识图谱摘要'));
@@ -194,7 +194,7 @@ describe('doctor artifact graph', () => {
     }
   });
 
-  it('puts graph sidecars inside non-standard custom output dirs', () => {
+  it('retains the legacy sidecar resolver for v1 cleanup', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-custom-out-'));
     try {
       const outputDir = join(tmp, 'custom-output');

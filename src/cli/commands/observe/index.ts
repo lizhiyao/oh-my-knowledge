@@ -1,4 +1,3 @@
-import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
@@ -8,20 +7,25 @@ import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../measurement-artifacts/directories.js';
 import { indexObserveWrite } from '../../../measurement-artifacts/discovery-index.js';
-import { reportFilePath, runFileSuffix } from '../../../measurement-artifacts/file-names.js';
+import { runFileSuffix } from '../../../measurement-artifacts/file-names.js';
+import { writeMeasurementReportBundle } from '../../../measurement-artifacts/report-bundle.js';
 import type { SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
-import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 
 /**
- * observe-health 报告落盘:id / 文件名加 4 位随机段,根治「同秒两次 omk observe 直接覆盖、数据丢失」的 bug。
- * 文件名统一为 `{run}.report.json`:目录表达 observe-health 域,文件表达这是可读报告。
+ * observe health 报告落盘：id 加 4 位随机段，根治「同秒两次 omk observe 覆盖」的数据丢失。
+ * 每份报告使用自包含 bundle，权威正文固定为 report.json。
  * 落盘后 best-effort 追加全局轻卡片,让 studio 跨项目聚合。
  */
 export function persistObserveHealthReport(report: SkillHealthReport, outDir: string): { id: string; jsonPath: string } {
-  mkdirSync(outDir, { recursive: true });
   const id = runFileSuffix();
-  const jsonPath = reportFilePath(outDir, id);
-  writeJsonFileAtomic(jsonPath, report);
+  const { reportPath: jsonPath } = writeMeasurementReportBundle({
+    rootDir: outDir,
+    measurementDomain: 'observe-health',
+    recordId: id,
+    reportId: id,
+    createdAt: report.meta.generatedAt,
+    report,
+  });
   indexObserveWrite(report, jsonPath, outDir, id);
   return { id, jsonPath };
 }
@@ -146,14 +150,14 @@ export default class Observe extends BaseCommand {
     }),
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '健康报告输出目录，默认项目级 .omk/observe-health（--global 写全局）',
-        en: 'Health report output dir, default project-level .omk/observe-health (--global for global)',
+        zh: '健康报告输出目录，默认项目级 .omk/observe/health（--global 写全局）',
+        en: 'Health report output dir, default project-level .omk/observe/health (--global for global)',
       }),
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health',
-        en: 'Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/observe-health',
+        zh: '写全局 ~/.oh-my-knowledge/observe/health，而非项目 .omk/observe/health',
+        en: 'Write to global ~/.oh-my-knowledge/observe/health instead of project .omk/observe/health',
       }),
     }),
     feedback: Flags.boolean({

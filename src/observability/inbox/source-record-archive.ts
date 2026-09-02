@@ -50,6 +50,7 @@ export function writeObservationSourceRecordArchives(
   report: ObservationInboxReport,
   outDir: string,
   reportPath: string,
+  referenceRoot: string = outDir,
 ): ObservationSourceRecordArchiveRef[] {
   const sessions = report.experience?.sessions ?? [];
   if (sessions.length === 0) return [];
@@ -83,7 +84,7 @@ export function writeObservationSourceRecordArchives(
   return builders.map((builder) => persistSessionArchive(
     builder,
     archiveDir,
-    outDir,
+    referenceRoot,
     report.meta.generatedAt,
   ));
 }
@@ -215,7 +216,7 @@ function markSourceUnavailable(
 function persistSessionArchive(
   builder: SessionArchiveBuilder,
   archiveDir: string,
-  outDir: string,
+  referenceRoot: string,
   generatedAt: string,
 ): ObservationSourceRecordArchiveRef {
   const { session, records, omittedRecordCount, byteCount, failure } = builder;
@@ -234,7 +235,7 @@ function persistSessionArchive(
   const fileName = `${createHash('sha256').update(session.id).digest('hex').slice(0, 24)}.json`;
   const archivePath = join(archiveDir, fileName);
   writeJsonFileAtomic(archivePath, archive);
-  const relativePath = relative(outDir, archivePath).split('\\').join('/');
+  const relativePath = relative(referenceRoot, archivePath).split('\\').join('/');
   const partial = archive.truncated || failure !== undefined;
   return {
     experienceSessionId: session.id,

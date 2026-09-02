@@ -55,16 +55,17 @@ function box(): { home: string; project: string; base: string; env: NodeJS.Proce
 }
 
 function inboxJsons(dir: string): string[] {
-  return existsSync(dir) ? readdirSync(dir).filter(isReportFileName) : [];
+  const reportsDir = existsSync(join(dir, 'reports')) ? join(dir, 'reports') : dir;
+  return existsSync(reportsDir) ? readdirSync(reportsDir).filter(isReportFileName) : [];
 }
 
 function seedInbox(traceDir: string, skill: string, inboxDir: string): void {
   const report = buildObservationInboxReport(makeTrace(traceDir, skill));
-  saveObservationInboxReport(report, inboxDir);
+  saveObservationInboxReport(report, join(inboxDir, 'reports'));
 }
 
-const globalInbox = (home: string): string => join(home, 'observe-inbox');
-const projectInbox = (project: string): string => join(project, '.omk', 'observe-inbox');
+const globalInbox = (home: string): string => join(home, 'observe', 'inbox');
+const projectInbox = (project: string): string => join(project, '.omk', 'observe', 'inbox');
 
 async function cli(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
   const { stdout } = await execFileAsync('node', [CLI, ...args], { cwd, env });
@@ -124,7 +125,7 @@ describe('observe-inbox --global', () => {
     const s = box();
     try {
       seedInbox(join(s.base, 'tg'), 'gskill', globalInbox(s.home));
-      // 项目从未写过 → .omk/observe-inbox 不存在 → loadObservationInboxReports 兜底全局。
+      // 项目从未写过 → .omk/observe/inbox 不存在 → loadObservationInboxReports 兜底全局。
       assert.ok(!existsSync(projectInbox(s.project)), '前提:项目 inbox 目录不存在');
       const d = skillNames(await cli(['observe', 'inbox', '--json'], s.project, s.env));
       assert.ok(d.includes('gskill'), '默认兜底读到全局');

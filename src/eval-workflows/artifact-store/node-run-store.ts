@@ -33,6 +33,7 @@ import {
 } from '../../evaluation-core/contracts/index.js';
 import type { EvaluationContentResolver } from '../../evaluation-core/evaluation/index.js';
 import { KeyedMutex } from '../../shared/keyed-mutex.js';
+import { ensureOwnedLayoutForPath } from '../../omk-layout/index.js';
 import {
   CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,
   CORE_RUN_DOCUMENT_FILES,
@@ -92,7 +93,7 @@ function fail(code: CoreRunArtifactStoreErrorCode, message: string): never {
   throw new CoreRunArtifactStoreError(code, message);
 }
 
-function runDirectoryName(runId: string): string {
+export function coreRunArtifactDirectoryName(runId: string): string {
   return `run-${createHash('sha256').update(runId).digest('hex')}`;
 }
 
@@ -101,7 +102,7 @@ function sha256(value: string): Sha256Digest {
 }
 
 function runDirectoryPath(rootDir: string, runId: string): string {
-  return join(rootDir, runDirectoryName(runId));
+  return join(rootDir, coreRunArtifactDirectoryName(runId));
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -452,6 +453,10 @@ function documents(input: ParsedCoreRunArtifacts): CoreRunDocumentReference[] {
   ];
 }
 
+function documentContentIdentity(documentsToCompare: readonly CoreRunDocumentReference[]): string {
+  return canonicalizeJson(documentsToCompare.map(({ fileName: _fileName, ...document }) => document));
+}
+
 function parseArtifactSet(input: {
   plan: unknown;
   execution: unknown;
@@ -506,9 +511,7 @@ function assertManifestMatchesArtifacts(
     );
   }
   const expected = documents(artifacts);
-  if (manifest.documents.some((document, index) => (
-    canonicalizeJson(document) !== canonicalizeJson(expected[index])
-  ))) {
+  if (documentContentIdentity(manifest.documents) !== documentContentIdentity(expected)) {
     fail(
       'CORE_RUN_ARTIFACT_DOCUMENT_DIGEST_MISMATCH',
       'Core run artifact document digest differs from its published manifest.',
@@ -541,7 +544,7 @@ export function createNodeCoreRunArtifactStore(
       );
     }
     if ((expectedRunId !== undefined && manifest.runId !== expectedRunId)
-        || runDirectoryName(manifest.runId) !== basename(directory)) {
+        || coreRunArtifactDirectoryName(manifest.runId) !== basename(directory)) {
       fail(
         'CORE_RUN_ARTIFACT_MANIFEST_INVALID',
         'Core run artifact manifest identity differs from its locator.',
@@ -565,7 +568,9 @@ export function createNodeCoreRunArtifactStore(
         'CORE_RUN_ARTIFACT_DOCUMENT_MISSING',
       ),
       report: await readJson(
-        join(directory, CORE_RUN_DOCUMENT_FILES.evaluationReport),
+        join(directory, manifest.documents.find((document) => (
+          document.documentKind === 'evaluation-report'
+        ))!.fileName),
         'CORE_RUN_ARTIFACT_DOCUMENT_MISSING',
       ),
     });
@@ -607,7 +612,8 @@ export function createNodeCoreRunArtifactStore(
       await assertContentClosure(artifacts, options.contentResolver);
       const existing = await get(request.runId);
       if (existing !== undefined) {
-        if (canonicalizeJson(documents(existing)) === canonicalizeJson(documents(artifacts))) {
+        if (documentContentIdentity(existing.manifest.documents)
+            === documentContentIdentity(documents(artifacts))) {
           return existing;
         }
         fail(
@@ -616,10 +622,11 @@ export function createNodeCoreRunArtifactStore(
         );
       }
 
+      ensureOwnedLayoutForPath(rootDir);
       await ensurePrivateDirectory(rootDir);
       const staging = join(
         rootDir,
-        `.${runDirectoryName(request.runId)}.${process.pid}.${randomUUID()}.tmp`,
+        `.${coreRunArtifactDirectoryName(request.runId)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await mkdir(staging, { mode: 0o700 });
       try {
@@ -668,8 +675,8 @@ export function createNodeCoreRunArtifactStore(
         if (outcome === 'exists') {
           const concurrent = await get(request.runId);
           if (concurrent !== undefined
-              && canonicalizeJson(documents(concurrent))
-                === canonicalizeJson(documents(artifacts))) return concurrent;
+              && documentContentIdentity(concurrent.manifest.documents)
+                === documentContentIdentity(documents(artifacts))) return concurrent;
           fail(
             'CORE_RUN_ARTIFACT_RUN_ID_CONFLICT',
             'Core run id was concurrently published with different artifacts.',

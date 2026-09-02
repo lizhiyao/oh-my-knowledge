@@ -42,14 +42,14 @@ export default class ObserveIngest extends BaseCommand {
     lang: LANG_FLAG,
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd；--global 写全局）。',
-        en: 'Output dir, default .omk/observe-inbox (project-local, relative to cwd; --global writes global).',
+        zh: '输出目录，默认 .omk/observe/inbox（项目级，相对于 cwd；--global 写全局）。',
+        en: 'Output dir, default .omk/observe/inbox (project-local, relative to cwd; --global writes global).',
       }),
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '写入全局 ~/.oh-my-knowledge/observe-inbox，而非项目 .omk/observe-inbox。',
-        en: 'Write to global ~/.oh-my-knowledge/observe-inbox instead of project .omk/observe-inbox.',
+        zh: '写入全局 ~/.oh-my-knowledge/observe/inbox，而非项目 .omk/observe/inbox。',
+        en: 'Write to global ~/.oh-my-knowledge/observe/inbox instead of project .omk/observe/inbox.',
       }),
       default: false,
     }),

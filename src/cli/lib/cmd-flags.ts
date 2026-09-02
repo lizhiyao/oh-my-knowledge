@@ -87,7 +87,7 @@ export interface EvalFlags {
   executor?: string;
   'judge-models'?: string;
   'output-dir'?: string;
-  /** 报告写全局而非项目 .omk/reports(写入侧 escape;读取侧 studio / 复用走 overlay 兜底)。 */
+  /** 报告写全局而非项目 .omk/eval(写入侧 escape;读取侧 studio / 复用走 overlay 兜底)。 */
   global?: boolean;
   // 下面 17 个 boolean 都没在 Eval Command 上设 `default: false`,oclif 运行时
   // absent → undefined,业务在 parseRunConfig() / runEval() 里靠 undefined vs

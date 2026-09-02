@@ -122,7 +122,7 @@ omk install git:<ref>:skills/review    # 当前仓库某个 ref 上的 skill
 omk install --git-url <url> --git-ref <ref> skills/review   # 远端 git 仓库的 skill
 ```
 
-内置 id 是保留的 onboarding skill，不是 registry 包，也不是用户自己的被测 artifact。安装**用户自己的** skill（本地路径、`git:` 或远端 `--git-url`）时，除分发到已检测的 agent 目标外，还会写一条管理记录到 `.omk/managed/<id>.json`。远端源会记录结构化 `url` 加**钉死的 SHA**（分支 / tag 会漂，SHA 可复现）。远端 URL 以结构化 `url`/`ref`/`spec` 字段流转，绝不拼进 `git:<ref>:<spec>` 的冒号语法（其 `:` / `@` 会切碎 `https://` 或 `git@host:` 形式的 URL）。eval 侧经 `eval.yaml`（`variants[].git: { url, ref, spec }`）接受对称的结构化写法；eval CLI 的 `--control`/`--treatment` 会拒绝远端 URL 字符串并指向 `eval.yaml`，因为它们的逗号 / `@cwd` 解析无法安全携带 URL。
+内置 id 是保留的 onboarding skill，不是 registry 包，也不是用户自己的被测 artifact。安装**用户自己的** skill（本地路径、`git:` 或远端 `--git-url`）时，除分发到已检测的 agent 目标外，还会写一条管理记录到 `.omk/governance/managed/<id>.json`。远端源会记录结构化 `url` 加**钉死的 SHA**（分支 / tag 会漂，SHA 可复现）。远端 URL 以结构化 `url`/`ref`/`spec` 字段流转，绝不拼进 `git:<ref>:<spec>` 的冒号语法（其 `:` / `@` 会切碎 `https://` 或 `git@host:` 形式的 URL）。eval 侧经 `eval.yaml`（`variants[].git: { url, ref, spec }`）接受对称的结构化写法；eval CLI 的 `--control`/`--treatment` 会拒绝远端 URL 字符串并指向 `eval.yaml`，因为它们的逗号 / `@cwd` 解析无法安全携带 URL。
 
 未来受管输入范围（尚不支持 —— 当前 `install` 对非 skill kind 直接报错）：
 
@@ -215,7 +215,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 ## 9. 已定决策
 
-- managed 记录使用 per-record 文件 `.omk/managed/<id>.json` 与原子写入，不使用单一聚合文件。
+- managed 记录使用 per-record 文件 `.omk/governance/managed/<id>.json` 与原子写入，不使用单一聚合文件。
 - schema v3 是干净的 Core-only 边界。schema v2 记录不迁移；用户需要 reinstall 并重新运行 Core 评测。
 - Artifact 内容身份锚定 executor 实际测量的输入。目录 skill 使用隔离的整树内容寻址副本，文件 skill 对文件字节做 hash。
 - `eval` 只向已纳管记录追加通过认证的 Core projection。匹配优先使用精确 target name，其次只在 content hash 在所有 managed 记录中唯一时回退。证据保持 append-only，并按 Core run / report 身份与内容去重。

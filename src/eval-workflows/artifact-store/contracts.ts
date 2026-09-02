@@ -21,17 +21,21 @@ import {
 } from '../../evaluation-core/contracts/index.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 
-export const CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION =
+export const LEGACY_CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION =
   'omk.core-run-artifact-manifest/v1' as const;
+export const CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION =
+  'omk.core-run-artifact-manifest/v2' as const;
 
 export const CORE_RUN_DOCUMENT_FILES = Object.freeze({
   runPlan: 'run-plan.json',
   executionBundle: 'execution-bundle.json',
   evaluationBundle: 'evaluation-bundle.json',
   analysisBundle: 'analysis-bundle.json',
-  evaluationReport: 'evaluation-report.json',
+  evaluationReport: 'report.json',
   manifest: 'manifest.json',
 });
+
+export const LEGACY_CORE_RUN_EVALUATION_REPORT_FILE = 'evaluation-report.json' as const;
 
 const RunPlanDocumentReferenceSchema = z.object({
   documentKind: z.literal('run-plan'),
@@ -67,7 +71,10 @@ const AnalysisBundleDocumentReferenceSchema = z.object({
 
 const EvaluationReportDocumentReferenceSchema = z.object({
   documentKind: z.literal('evaluation-report'),
-  fileName: z.literal(CORE_RUN_DOCUMENT_FILES.evaluationReport),
+  fileName: z.union([
+    z.literal(CORE_RUN_DOCUMENT_FILES.evaluationReport),
+    z.literal(LEGACY_CORE_RUN_EVALUATION_REPORT_FILE),
+  ]),
   schemaVersion: z.literal(EVALUATION_REPORT_SCHEMA_VERSION),
   identityDigest: Sha256DigestSchema,
   documentDigest: Sha256DigestSchema,
@@ -82,7 +89,10 @@ export const CoreRunDocumentReferenceSchema = z.discriminatedUnion('documentKind
 ]);
 
 export const CoreRunArtifactManifestSchema = z.object({
-  schemaVersion: z.literal(CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION),
+  schemaVersion: z.union([
+    z.literal(CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION),
+    z.literal(LEGACY_CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION),
+  ]),
   manifestKind: z.literal('evaluation-core-run-artifacts'),
   runId: IdentifierSchema,
   reportId: IdentifierSchema,
@@ -165,6 +175,13 @@ export function parseCoreRunArtifactManifestDocument(
     document.documentKind !== DOCUMENT_ORDER[index]
   ))) {
     throw new TypeError('Core run artifact manifest documents are not canonically ordered.');
+  }
+  const report = manifest.documents.find((document) => document.documentKind === 'evaluation-report');
+  const expectedReportFile = manifest.schemaVersion === LEGACY_CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION
+    ? LEGACY_CORE_RUN_EVALUATION_REPORT_FILE
+    : CORE_RUN_DOCUMENT_FILES.evaluationReport;
+  if (report?.fileName !== expectedReportFile) {
+    throw new TypeError('Core run artifact manifest report filename does not match its version.');
   }
   const { manifestDigest, ...payload } = manifest;
   if (digestCanonicalJson(payload) !== manifestDigest) {

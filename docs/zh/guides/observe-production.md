@@ -28,7 +28,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分
 当你想逐条 triage observation，用 inbox。下面步骤 1-3 纯本地、零 LLM；生成评测用例草稿是单独的可选 authoring 步骤，会调用生成模型。
 
 ```bash
-# 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observe-inbox/
+# 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observe/inbox/
 omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 
@@ -116,7 +116,7 @@ observe 确认的缺口，正是你 eval 集缺的那些失败。`omk sample --f
 omk sample --from-traces
 ```
 
-它会写 `.omk/observe-inbox/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件。
+它会写 `.omk/observe/drafts/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件。
 
 ## 相关
 

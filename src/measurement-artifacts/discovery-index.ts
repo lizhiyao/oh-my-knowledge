@@ -18,6 +18,7 @@ import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import { reportFilePath, safeArtifactFileStem } from './file-names.js';
+import { measurementReportPath } from './report-bundle.js';
 
 export type ArtifactDomain = 'doctor' | 'observe-health';
 
@@ -50,7 +51,10 @@ function isCanonicalCardId(value: unknown): value is string {
 function isCanonicalCardPath(path: unknown, id: string): path is string {
   return typeof path === 'string'
     && resolve(path) === path
-    && reportFilePath(dirname(path), id) === path;
+    && (
+      reportFilePath(dirname(path), id) === path
+      || measurementReportPath(dirname(dirname(path)), id) === path
+    );
 }
 
 // 卡片读侧小 guard:索引是可重生 scratch,坏卡片(脏文件 / 别域误落 / 字段缺失)读侧从严跳过,

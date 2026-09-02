@@ -78,7 +78,7 @@ dsh --profile web
 /omk observe <session-id>
 ```
 
-`eval.yaml` 相对当前 DSH session 的 `cwd` 解析。配置中应省略顶层 `executor`，被测执行器始终是当前 DSH 宿主。被测模型默认继承当前 session；也可以在配置中显式写 `model`。评委需要复用当前 DSH 时，可使用面向用户的 `executor: dsh` 别名；`dsh-host` 是 OMK 内部标识，不能写入用户配置。插件为每条 sample 创建新的 DSH agent／session，复用当前 profile 已配置的 provider、凭证、工具、sandbox 与持久化，同时用 complete system-prompt section 注入 control／treatment、关闭 runtime context 和环境 `skill` 工具。DSH 的 `session/event` 按宿主观测顺序映射为 OMK 的 token、turn、tool call 与子 agent 证据，报告写入项目的 `.omk/reports`。
+`eval.yaml` 相对当前 DSH session 的 `cwd` 解析。配置中应省略顶层 `executor`，被测执行器始终是当前 DSH 宿主。被测模型默认继承当前 session；也可以在配置中显式写 `model`。评委需要复用当前 DSH 时，可使用面向用户的 `executor: dsh` 别名；`dsh-host` 是 OMK 内部标识，不能写入用户配置。插件为每条 sample 创建新的 DSH agent／session，复用当前 profile 已配置的 provider、凭证、工具、sandbox 与持久化，同时用 complete system-prompt section 注入 control／treatment、关闭 runtime context 和环境 `skill` 工具。DSH 的 `session/event` 按宿主观测顺序映射为 OMK 的 token、turn、tool call 与子 agent 证据，报告写入项目的 `.omk/eval`。
 
 插件会先从发起命令的 session 组合 active agent preset，再叠加 OMK 的测量隔离。继承当前 session 模型且评委均复用同一个 DSH 模型时，当前交互 session 本身即作为连通性证据，不会额外创建探测 session；显式覆盖被测模型、使用不同 DSH 评委模型或外部评委时仍会执行连通性预检。宿主模式的配置应省略 `effort`：DSH 的 reasoning effort 是 provider-owned 枚举，无法与 OMK 的五档通用级别无损映射；需要在 DSH profile 中固定目标推理配置。`goldDir` 仍受支持，并会把人工 gold 一致性写回持久化报告。
 

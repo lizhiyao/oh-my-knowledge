@@ -1,15 +1,8 @@
-import { basename, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
+import { coreRunArtifactDirectoryName, type StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { projectCoreArtifactGraph } from '../downstream-projections/index.js';
-import { graphFileName } from '../../measurement-artifacts/file-names.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
-
-function coreEvalGraphDirectory(outputDirectory: string): string {
-  return basename(outputDirectory) === 'reports'
-    ? join(dirname(outputDirectory), 'graphs', 'eval')
-    : join(outputDirectory, 'graphs', 'eval');
-}
 
 /** Persists only the privacy-safe graph projection reconstructed from exact Core artifacts. */
 export async function persistCoreArtifactGraph(input: Readonly<{
@@ -17,9 +10,13 @@ export async function persistCoreArtifactGraph(input: Readonly<{
   outputDirectory: string;
   cwd: string;
 }>): Promise<string> {
-  const directory = coreEvalGraphDirectory(input.outputDirectory);
+  const directory = join(
+    input.outputDirectory,
+    coreRunArtifactDirectoryName(input.source.manifest.runId),
+    'derived',
+  );
   await mkdir(directory, { recursive: true });
-  const path = join(directory, graphFileName(input.source.manifest.runId));
+  const path = join(directory, 'graph.json');
   const graph = projectCoreArtifactGraph({
     source: input.source,
     cwd: input.cwd,

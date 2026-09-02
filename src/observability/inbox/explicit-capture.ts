@@ -4,15 +4,15 @@ import { join } from 'node:path';
 import type { ObservationCaptureCoverage, ObservationEvidence, ObservationInboxItem } from '../contracts/inbox.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
+import { ensureOwnedLayoutForPath } from '../../omk-layout/index.js';
 import {
   buildExplicitObservationCaptureCoverage,
   isObservationCaptureCoverage,
 } from './capture-coverage.js';
 import { aggregateObservationInboxItemId } from './identity.js';
 import {
-  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
   DEFAULT_OBSERVATIONS_DIR,
-  DEFAULT_PROJECT_OBSERVATIONS_DIR,
+  resolveObservationsDir,
 } from './paths.js';
 
 const CAPTURE_SCHEMA_VERSION = 1;
@@ -77,6 +77,7 @@ export function captureExplicitObservation(
 ): ExplicitObservationCaptureResult {
   const record = prepareExplicitObservationCaptureRecord(rawInput, options);
   const observationsDir = options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR;
+  ensureOwnedLayoutForPath(observationsDir);
   const recordPath = explicitCaptureRecordPath(observationsDir, record.captureId);
 
   return withFileLock(`${recordPath}.lock`, () => {
@@ -144,14 +145,8 @@ export function assertCompatibleExplicitObservationCapture(
 export function loadExplicitObservationCaptureRecords(
   observationsDir: string = DEFAULT_OBSERVATIONS_DIR,
 ): ExplicitObservationCaptureRecord[] {
-  const capturesDir = join(observationsDir, CAPTURES_DIR_NAME);
-  if (!existsSync(capturesDir)) {
-    if (
-      observationsDir === DEFAULT_PROJECT_OBSERVATIONS_DIR
-      && !existsSync(observationsDir)
-    ) return loadExplicitObservationCaptureRecords(DEFAULT_GLOBAL_OBSERVATIONS_DIR);
-    return [];
-  }
+  const capturesDir = join(resolveObservationsDir(observationsDir), CAPTURES_DIR_NAME);
+  if (!existsSync(capturesDir)) return [];
   return readdirSync(capturesDir)
     .filter((file) => file.endsWith(CAPTURE_FILE_SUFFIX))
     .sort()

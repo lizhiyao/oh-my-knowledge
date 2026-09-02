@@ -132,7 +132,7 @@ omk install git:<ref>:skills/review    # a skill at a ref of the current repo
 omk install --git-url <url> --git-ref <ref> skills/review   # a skill from a remote git repo
 ```
 
-The built-in id is a reserved onboarding skill, not a registry package and not the user's evaluated artifact. Installing a **user** skill (local path, `git:`, or remote `--git-url`) both distributes it to the detected agent targets and writes a managed record at `.omk/managed/<id>.json`. A remote source records the structured `url` plus the **pinned SHA** (a branch/tag drifts; the SHA is reproducible). Remote URLs flow as structured `url`/`ref`/`spec` fields, never spliced into the `git:<ref>:<spec>` colon syntax (whose `:` / `@` would corrupt an `https://` or `git@host:` URL). The eval side accepts the symmetric structured form via `eval.yaml` (`variants[].git: { url, ref, spec }`); the eval CLI `--control`/`--treatment` reject remote URL strings and point to `eval.yaml`, since their comma/`@cwd` parsing cannot carry a URL safely.
+The built-in id is a reserved onboarding skill, not a registry package and not the user's evaluated artifact. Installing a **user** skill (local path, `git:`, or remote `--git-url`) both distributes it to the detected agent targets and writes a managed record at `.omk/governance/managed/<id>.json`. A remote source records the structured `url` plus the **pinned SHA** (a branch/tag drifts; the SHA is reproducible). Remote URLs flow as structured `url`/`ref`/`spec` fields, never spliced into the `git:<ref>:<spec>` colon syntax (whose `:` / `@` would corrupt an `https://` or `git@host:` URL). The eval side accepts the symmetric structured form via `eval.yaml` (`variants[].git: { url, ref, spec }`); the eval CLI `--control`/`--treatment` reject remote URL strings and point to `eval.yaml`, since their comma/`@cwd` parsing cannot carry a URL safely.
 
 Future managed-input scope (not yet supported — `install` hard-rejects non-skill kinds today):
 
@@ -228,7 +228,7 @@ Done in #208 / PR #207:
 
 ## 9. Settled decisions
 
-- Management records live in per-record files `.omk/managed/<id>.json` with atomic writes, not a single aggregate file.
+- Management records live in per-record files `.omk/governance/managed/<id>.json` with atomic writes, not a single aggregate file.
 - Schema v3 is a clean Core-only boundary. Schema-v2 records are rejected without migration; users reinstall and run a new Core evaluation.
 - Artifact content identity is keyed on what the executor actually measures. Directory skills are materialized as isolated whole-tree, content-addressed copies; file skills hash their bytes.
 - `eval` appends authenticated Core projections only to already-managed records. Matching prefers an exact target name, then a content hash that is unique among managed records. Evidence is append-only and deduplicated by Core run/report identity plus content.

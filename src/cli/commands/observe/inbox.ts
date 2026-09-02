@@ -234,14 +234,14 @@ export default class ObserveInbox extends BaseCommand {
     lang: LANG_FLAG,
     'input-dir': Flags.string({
       description: bilingual({
-        zh: 'inbox 数据目录，默认 .omk/observe-inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe-inbox。',
-        en: 'Inbox data dir, default .omk/observe-inbox (project-local); falls back to ~/.oh-my-knowledge/observe-inbox when missing.',
+        zh: 'inbox 数据目录，默认 .omk/observe/inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe/inbox。',
+        en: 'Inbox data dir, default .omk/observe/inbox (project-local); falls back to ~/.oh-my-knowledge/observe/inbox when missing.',
       }),
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '直接读取全局 ~/.oh-my-knowledge/observe-inbox（跳过项目级与兜底）。',
-        en: 'Read directly from global ~/.oh-my-knowledge/observe-inbox (skip project-local and fallback).',
+        zh: '直接读取全局 ~/.oh-my-knowledge/observe/inbox（跳过项目级与兜底）。',
+        en: 'Read directly from global ~/.oh-my-knowledge/observe/inbox (skip project-local and fallback).',
       }),
       default: false,
     }),

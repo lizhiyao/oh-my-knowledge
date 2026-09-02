@@ -302,7 +302,7 @@ describe('oclif install', () => {
   }
 
   async function readSoleManagedRecord(projectDir: string): Promise<Record<string, unknown>> {
-    const dir = join(projectDir, '.omk', 'managed');
+    const dir = join(projectDir, '.omk', 'governance', 'managed');
     const files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
     assert.equal(files.length, 1, `expected exactly one managed record, got ${files.length}`);
     return JSON.parse(await readFile(join(dir, files[0]), 'utf8'));
@@ -369,7 +369,7 @@ describe('oclif install', () => {
         env: cliEnv(),
       });
       assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
-      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'dry-run must not write managed record');
+      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'dry-run must not write managed record');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -479,7 +479,7 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'should fall back to unknown_input');
       }
-      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'must not register a junk file as a skill');
+      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'must not register a junk file as a skill');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -516,7 +516,7 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('skill'), 'error should mention skill-only support');
       }
-      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'unsupported kind must not register');
+      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'unsupported kind must not register');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -579,7 +579,7 @@ describe('oclif install', () => {
       const dest = join(repo, 'dist-skills');
       const { stdout } = await runInstallCommand(['git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
       assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
-      assert.ok(!existsSync(join(repo, '.omk', 'managed')), 'dry-run must not register');
+      assert.ok(!existsSync(join(repo, '.omk', 'governance', 'managed')), 'dry-run must not register');
       assert.ok(stdout.includes('将安装 skill review'), `plan 文案应源中性:\n${stdout}`);
       assert.ok(!stdout.includes('omk Agent Skill'), 'user skill 的 dry-run 不应提 omk Agent Skill');
     } finally {
@@ -624,7 +624,7 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('git'), 'error should mention git repo');
       }
-      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'must not register on error');
+      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'must not register on error');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

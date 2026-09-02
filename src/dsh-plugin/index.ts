@@ -1,4 +1,5 @@
 import { dirname, join, resolve } from 'node:path';
+import { ensureLayoutMarker, projectLayout } from '../omk-layout/index.js';
 import { loadEvalConfig } from '../inputs/eval-config.js';
 import {
   type DshAgentLike,
@@ -168,24 +169,24 @@ async function studioUrl(
 ): Promise<string> {
   if (state.serverUrl) return state.serverUrl;
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
-  const omkDir = join(cwd, '.omk');
+  const layout = projectLayout(cwd);
   const { createReportServer } = await import('../studio/http/report-server.js');
   const {
     createNodeCoreContentStore,
     createNodeCoreRunArtifactStore,
   } = await import('../eval-workflows/artifact-store/index.js');
   const { createCoreStudioCatalog } = await import('../studio/core-runs/index.js');
-  const reportsDir = join(omkDir, 'reports');
+  const reportsDir = layout.evalDir;
   const contentStore = createNodeCoreContentStore(join(reportsDir, 'content'));
   state.server = createReportServer({
     port: 0,
     coreStudioCatalog: createCoreStudioCatalog(createNodeCoreRunArtifactStore(reportsDir, {
       contentResolver: contentStore,
     })),
-    analysesDir: join(omkDir, 'observe-health'),
-    doctorsDir: join(omkDir, 'doctors'),
-    observationsDir: join(omkDir, 'observe-inbox'),
-    managedDir: join(omkDir, 'managed'),
+    analysesDir: layout.observeHealthDir,
+    doctorsDir: layout.doctorDir,
+    observationsDir: layout.observeInboxDir,
+    managedDir: layout.managedDir,
     conversationCatalog: state.catalog,
   });
   state.serverUrl = await state.server.start();
@@ -241,7 +242,8 @@ async function executeObserveCommand(
     throw new Error(`DSH session group 无法形成完整任务轨迹：${details}。`);
   }
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
-  const observationsDir = join(cwd, '.omk', 'observe-inbox');
+  const observationsDir = projectLayout(cwd).observeInboxDir;
+  ensureLayoutMarker(projectLayout(cwd).root);
   const {
     buildObservationInboxReportFromTraceSessions,
     saveObservationInboxReport,

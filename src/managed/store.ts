@@ -5,7 +5,13 @@ import {
 } from 'node:fs';
 import { isAbsolute, join, normalize } from 'node:path';
 import { shortContentHash } from '../shared/content-hash.js';
-import { OMK_HOME } from '../measurement-artifacts/default-dirs.js';
+import {
+  globalLayout,
+  legacyGlobalLayout,
+  legacyProjectLayout,
+  projectLayout,
+  ensureOwnedLayoutForPath,
+} from '../omk-layout/index.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
@@ -22,7 +28,7 @@ import type {
 } from './contracts.js';
 
 /**
- * 受管记录的 per-record 文件存储。一条记录一个 `.omk/managed/<id>.json`，采用
+ * 受管记录的 per-record 文件存储。一条记录一个 `.omk/governance/managed/<id>.json`，采用
  * 成熟模式(原子 tmp+rename):每次 install 只碰自己那个文件,independent write、不丢别人、
  * 天然可扩展。无数据库——这个规模(每项目几十条、CLI 单写者)JSON 文件足够,且保住"可读可
  * grep 可 diff"的透明价值。
@@ -33,11 +39,11 @@ import type {
  */
 
 export function managedDir(cwd: string = process.cwd()): string {
-  return join(cwd, '.omk', 'managed');
+  return projectLayout(cwd).managedDir;
 }
 
 export function globalManagedDir(): string {
-  return join(OMK_HOME, 'managed');
+  return globalLayout().managedDir;
 }
 
 export function recordPath(dir: string, id: string): string {
@@ -244,14 +250,22 @@ function isManagedArtifactRecord(
 
 export function loadManagedRecord(dir: string, id: string): ManagedArtifactRecord | null {
   if (!isManagedRecordId(id)) return null;
-  const path = recordPath(dir, id);
-  if (!existsSync(path)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
-    return isManagedArtifactRecord(parsed, id) ? parsed : null;
-  } catch {
-    return null;
+  const sameScopeCandidates = dir === managedDir()
+    ? [dir, legacyProjectLayout().managedDir]
+    : dir === globalManagedDir()
+      ? [dir, legacyGlobalLayout().managedDir]
+      : [dir];
+  for (const candidate of sameScopeCandidates) {
+    const path = recordPath(candidate, id);
+    if (!existsSync(path)) continue;
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+      if (isManagedArtifactRecord(parsed, id)) return parsed;
+    } catch {
+      // Try the same-scope legacy root when the v2 record is absent or invalid.
+    }
   }
+  return null;
 }
 
 function readRecordsFromDir(dir: string): ManagedArtifactRecord[] {
@@ -274,6 +288,7 @@ function persistManagedRecord(dir: string, record: ManagedArtifactRecord): void 
   if (!isManagedArtifactRecord(record, record.id)) {
     throw new TypeError('invalid managed artifact record');
   }
+  ensureOwnedLayoutForPath(dir);
   writeJsonFileAtomic(recordPath(dir, record.id), record);
 }
 
@@ -288,26 +303,41 @@ function withManagedRecordLock<T>(dir: string, recordId: string, operation: () =
 
 /** 读全部记录。项目目录空 → 兜底全局(镜像 observe inbox 的 project→global)。 */
 export function loadAllManagedRecords(dir: string = managedDir()): ManagedArtifactRecord[] {
-  const local = readRecordsFromDir(dir);
-  if (local.length > 0) return local;
-  const global = globalManagedDir();
-  if (dir !== global) {
-    const fallback = readRecordsFromDir(global);
-    if (fallback.length > 0) return fallback;
+  for (const candidate of managedReadCandidates(dir)) {
+    const records = readRecordsFromDir(candidate);
+    if (records.length > 0) return records;
   }
-  return local;
+  return [];
 }
 
 /**
- * 哪个 managed 目录是权威(有记录的那个):项目目录非空取项目,否则全局非空取全局,都空回项目。
- * 与 `loadAllManagedRecords` 的 project→global 回退**同口径** —— 写方(append evidence)据此写回
- * 读方实际取记录的同一目录,避免"读全局、写项目"把证据落到空目录。
+ * 写入根始终归一到 v2。旧记录仍参与读取与合并，但任何更新都会物化到对应 v2 根，
+ * 避免迁移期继续产生新的 v1 写入。
  */
 export function resolveManagedDir(dir: string = managedDir()): string {
-  if (readRecordsFromDir(dir).length > 0) return dir;
+  const project = managedDir();
+  const legacyProject = legacyProjectLayout().managedDir;
   const global = globalManagedDir();
-  if (dir !== global && readRecordsFromDir(global).length > 0) return global;
+  const legacyGlobal = legacyGlobalLayout().managedDir;
+  for (const candidate of managedReadCandidates(dir)) {
+    if (readRecordsFromDir(candidate).length === 0) continue;
+    if (candidate === legacyProject) return project;
+    if (candidate === legacyGlobal) return global;
+    return candidate;
+  }
+  if (dir === legacyProject) return project;
+  if (dir === legacyGlobal) return global;
   return dir;
+}
+
+function managedReadCandidates(dir: string): string[] {
+  const project = managedDir();
+  const global = globalManagedDir();
+  const candidates = [dir];
+  if (dir === project) candidates.push(legacyProjectLayout().managedDir);
+  if (dir !== global) candidates.push(global);
+  candidates.push(legacyGlobalLayout().managedDir);
+  return [...new Set(candidates)];
 }
 
 /**

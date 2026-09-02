@@ -10,7 +10,11 @@ import {
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
   projectReportsDir, globalReportsDir,
 } from '../../measurement-artifacts/directories.js';
-import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
+import {
+  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
+  resolveObservationsDir,
+} from '../../observability/inbox/index.js';
+import { legacyGlobalLayout, legacyProjectLayout } from '../../omk-layout/index.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';
@@ -85,11 +89,20 @@ export async function runStudio(
   const coreStoreFor = (directory: string) => createNodeCoreRunArtifactStore(directory, {
     contentResolver: createNodeCoreContentStore(resolve(directory, 'content')),
   });
-  const coreStore = reportsDirOpt !== undefined
-    ? coreStoreFor(reportsDirOpt)
-    : createOverlayCoreRunArtifactStore(
+  const coreStore = flags['reports-dir']
+    ? coreStoreFor(reportsDirOpt!)
+    : flags.global
+      ? createOverlayCoreRunArtifactStore(
+          coreStoreFor(globalReportsDir()),
+          [coreStoreFor(legacyGlobalLayout().evalDir)],
+        )
+      : createOverlayCoreRunArtifactStore(
         coreStoreFor(projectReportsDir()),
-        [coreStoreFor(globalReportsDir())],
+        [
+          coreStoreFor(legacyProjectLayout().evalDir),
+          coreStoreFor(globalReportsDir()),
+          coreStoreFor(legacyGlobalLayout().evalDir),
+        ],
       );
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
@@ -99,10 +112,17 @@ export async function runStudio(
     // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
     analysesDir: flags['analyses-dir']
       ? resolve(flags['analyses-dir'])
-      : (flags.global ? globalObserveHealthDir : (): string => resolveObserveHealthDir(projectObserveHealthDir())),
+      : (flags.global
+          ? (): string => resolveObserveHealthDir(
+              globalObserveHealthDir(),
+              legacyGlobalLayout().observeHealthDir,
+            )
+          : (): string => resolveObserveHealthDir(projectObserveHealthDir())),
     doctorsDir: flags['doctors-dir']
       ? resolve(flags['doctors-dir'])
-      : (flags.global ? globalDoctorsDir : (): string => resolveDoctorsDir(projectDoctorsDir())),
+      : (flags.global
+          ? (): string => resolveDoctorsDir(globalDoctorsDir(), legacyGlobalLayout().doctorDir)
+          : (): string => resolveDoctorsDir(projectDoctorsDir())),
     // observe / doctor 仍可通过各自的索引卡片发现别项目产物；--global 或显式目录只看固定目录。
     includeObserveCards: !flags.global && !flags['analyses-dir'],
     includeDoctorCards: !flags.global && !flags['doctors-dir'],
@@ -111,7 +131,7 @@ export async function runStudio(
     ...(flags['observations-dir']
       ? { observationsDir: resolve(flags['observations-dir']) }
       : flags.global
-        ? { observationsDir: DEFAULT_GLOBAL_OBSERVATIONS_DIR }
+        ? { observationsDir: resolveObservationsDir(DEFAULT_GLOBAL_OBSERVATIONS_DIR) }
         : {}),
     // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
     // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
@@ -170,26 +190,26 @@ export default class Studio extends BaseCommand {
     }),
     'analyses-dir': Flags.string({
       description: bilingual({
-        zh: '观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）',
-        en: 'Observe-health reports dir (optional, default project .omk/observe-health, falls back to global)',
+        zh: '观测健康报告目录（可选，默认项目级 .omk/observe/health，空则全局兜底）',
+        en: 'Observe-health reports dir (optional, default project .omk/observe/health, falls back to global)',
       }),
     }),
     'doctors-dir': Flags.string({
       description: bilingual({
-        zh: '体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）',
-        en: 'Doctor reports dir (optional, default project .omk/doctors, falls back to global)',
+        zh: '体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）',
+        en: 'Doctor reports dir (optional, default project .omk/doctor, falls back to global)',
       }),
     }),
     'observations-dir': Flags.string({
       description: bilingual({
-        zh: '观测收件箱数据目录（可选，默认 .omk/observe-inbox）',
-        en: 'Observe-inbox data dir (optional, default .omk/observe-inbox)',
+        zh: '观测收件箱数据目录（可选，默认 .omk/observe/inbox）',
+        en: 'Observe-inbox data dir (optional, default .omk/observe/inbox)',
       }),
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '只看全局 reports / observe-health / doctors / observe-inbox 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed 不受影响',
-        en: 'View only global reports / observe-health / doctors / observe-inbox dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed',
+        zh: '只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先；governance/managed 不受影响',
+        en: 'View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/; does not affect governance/managed',
       }),
     }),
     'no-open': Flags.boolean({

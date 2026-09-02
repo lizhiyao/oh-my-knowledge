@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tCli, type CliLang } from './i18n.js';
+import { ensureOwnedLayoutForPath, globalLayout, OMK_HOME } from '../../omk-layout/index.js';
 
 /** 严格按 SemVer 2.0 precedence 判断 `a > b`(只覆盖本仓库实际使用的形态:
  *  MAJOR.MINOR.PATCH 可选 `-prerelease`)。非法字符串直接返回 false,update-check
@@ -92,10 +92,9 @@ interface BoxParts {
   silenceHint: string;
 }
 
-/** 缓存落盘走仓库既有约定 `~/.oh-my-knowledge/<...>`（见
- *  `measurement-artifacts/default-dirs.ts`）。home 可注入，方便测试传 tmp 目录。 */
-export function defaultCachePath(home: string = homedir()): string {
-  return join(home, '.oh-my-knowledge', 'update-check.json');
+/** 更新检查属于可重建机器缓存，统一落在全局 `state/cache/`。root 可注入供测试隔离。 */
+export function defaultCachePath(root: string = OMK_HOME): string {
+  return join(globalLayout(root).cacheDir, 'update-check.json');
 }
 
 /** 读缓存。缺失 / 损坏 / 非对象 / 缺时间锚点一律返回 null,调用方按「无缓存」处理。
@@ -122,6 +121,7 @@ export function readCache(path: string): UpdateCache | null {
  *  整体静默失败 — 退化为「每次后台重抓」,不崩。 */
 export function writeCache(path: string, data: UpdateCache): void {
   try {
+    ensureOwnedLayoutForPath(path);
     mkdirSync(dirname(path), { recursive: true });
     const tmp = `${path}.tmp.${process.pid}`;
     writeFileSync(tmp, JSON.stringify(data, null, 2));

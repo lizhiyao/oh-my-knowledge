@@ -9,7 +9,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { persistObserveHealthReport } from '../../src/cli/commands/observe/index.js';
 import { listObserveCards } from '../../src/measurement-artifacts/discovery-index.js';
-import { isReportFileName } from '../../src/measurement-artifacts/file-names.js';
 import type { SkillHealthReport } from '../../src/observability/skill-health/analyzer.js';
 
 function mkReport(): SkillHealthReport {
@@ -42,13 +41,13 @@ describe('persistObserveHealthReport', () => {
     const b = persistObserveHealthReport(mkReport(), outDir);
     assert.notEqual(a.id, b.id, '两次 id 不同(随机段)');
     assert.notEqual(a.jsonPath, b.jsonPath);
-    assert.equal(readdirSync(outDir).filter(isReportFileName).length, 2, '两份都在,无覆盖');
+    assert.equal(readdirSync(outDir).length, 2, '两份 bundle 都在，无覆盖');
   });
 
-  it('文件名使用 .report.json 后缀,目录承载 observe-health 域', () => {
+  it('每份报告使用自包含目录与固定 report.json', () => {
     const { id, jsonPath } = persistObserveHealthReport(mkReport(), outDir);
     assert.match(id, /^\d{8}T\d{6}-[a-z0-9]{4}$/);
-    assert.ok(jsonPath.endsWith(`${id}.report.json`));
+    assert.equal(jsonPath, join(outDir, id, 'report.json'));
   });
 
   it('落盘后写 observe 索引卡片(非全局目录)', () => {

@@ -1,7 +1,7 @@
 /**
  * eval 报告写入默认目录(parseRunConfig.outputDir)三态:
- *   - 默认 → 项目级 .omk/reports(绑用例集,construct validity)
- *   - --global → 全局 ~/.oh-my-knowledge/reports
+ *   - 默认 → 项目级 .omk/eval(绑用例集,construct validity)
+ *   - --global → 全局 ~/.oh-my-knowledge/eval
  *   - --output-dir → 显式目录(最高优先)
  * 纯文件落点,不动任何评分;读取侧 studio / resume / gold-compare / 复用走 overlay 兜底(见 report-store)。
  */
@@ -20,17 +20,17 @@ const BASE_FLAGS = {
 };
 
 describe('eval 报告写入默认目录', () => {
-  it('默认 → 项目级 .omk/reports', () => {
+  it('默认 → 项目级 .omk/eval', () => {
     const { config } = parseRunConfig({ ...BASE_FLAGS });
     assert.equal(config.outputDir, projectReportsDir());
-    assert.ok(config.outputDir.endsWith(join('.omk', 'reports')), '应落项目 .omk/reports');
+    assert.ok(config.outputDir.endsWith(join('.omk', 'eval')), '应落项目 .omk/eval');
   });
 
   it('--global → 全局 reports', () => {
     const { config } = parseRunConfig({ ...BASE_FLAGS, global: true });
     assert.equal(config.outputDir, globalReportsDir());
     // 全局目录从 OMK_HOME 派生(可被 env 整体重定向),不硬编码 .oh-my-knowledge。
-    assert.equal(config.outputDir, join(OMK_HOME, 'reports'));
+    assert.equal(config.outputDir, join(OMK_HOME, 'eval'));
   });
 
   it('--output-dir 最高优先(压过默认与 --global)', () => {

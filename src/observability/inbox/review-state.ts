@@ -16,6 +16,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { normalizeRfc3339Timestamp } from '../../shared/timestamp.js';
+import { ensureOwnedLayoutForPath } from '../../omk-layout/index.js';
 
 export type {
   ObservationMetricKey,
@@ -157,6 +158,7 @@ export function updateObservationReviewState(
   now?: string,
 ): ObservationReviewState {
   assertReviewStateUpdate(update);
+  ensureOwnedLayoutForPath(observationsDir);
   const path = observationReviewStatePath(observationsDir);
   return withFileLock(`${path}.lock`, () => {
     const reviewedAt = normalizedTimestamp(now ?? new Date().toISOString());
@@ -230,6 +232,7 @@ export function deleteObservationReviewState(
 ): ObservationReviewState {
   if (!isReviewTargetType(targetType)) throw new ObservationReviewStateValidationError('invalid review targetType');
   if (typeof targetId !== 'string' || targetId.trim() === '') throw new ObservationReviewStateValidationError('invalid review targetId');
+  ensureOwnedLayoutForPath(observationsDir);
   const path = observationReviewStatePath(observationsDir);
   return withFileLock(`${path}.lock`, () => {
     const updatedAt = normalizedTimestamp(now ?? new Date().toISOString());

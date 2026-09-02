@@ -37,7 +37,7 @@ Directories use owner-only permissions and files use owner read/write permission
 
 ## 4. Manifest and index
 
-`omk.core-run-artifact-manifest/v1` uses qualified discriminants (`manifestKind`, `documentKind`). Its five references have fixed relative filenames, schema identity, native identity digest, and a canonical full-document digest. It also records run/report identity, run-contract digest, orthogonal Report status, Execution/Evaluation replayability, creation time, and maximum captured-content classification.
+`omk.core-run-artifact-manifest/v2` uses qualified discriminants (`manifestKind`, `documentKind`). Its five references have fixed relative filenames, schema identity, native identity digest, and a canonical full-document digest. It also records run/report identity, run-contract digest, orthogonal Report status, Execution/Evaluation replayability, creation time, and maximum captured-content classification. Layout v2 names the authoritative report `report.json`; readers continue to authenticate manifest v1 bundles whose report is named `evaluation-report.json`.
 
 An index card is a pure projection of a validated manifest. Listing may rebuild cards without resolving large content because it does not claim evidence availability. Loading a full run requires descriptor closure; a missing resolver or corrupt content fails instead of projecting empty evidence.
 

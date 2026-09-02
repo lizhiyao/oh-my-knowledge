@@ -4,9 +4,12 @@ import { doctorGraphDirForDoctorOutput } from '../../artifact-graph/doctor.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../diagnosis/studio-projection.js';
 import {
   GRAPH_FILE_SUFFIX,
-  isReportFileName,
-  reportFileStem,
 } from '../../measurement-artifacts/file-names.js';
+import {
+  listMeasurementDerivedPaths,
+  listMeasurementReportPaths,
+  measurementRecordIdFromReportPath,
+} from '../../measurement-artifacts/report-bundle.js';
 import {
   artifactIndexDir,
   cardTargetSentinel,
@@ -67,6 +70,17 @@ function directoryFingerprint(directory: string, suffix: string): string {
   }
 }
 
+function pathsFingerprint(paths: readonly string[]): string {
+  return paths.map((path) => {
+    try {
+      const stat = statSync(path);
+      return `${path}:${stat.mtimeMs}:${stat.size}`;
+    } catch {
+      return `${path}:?`;
+    }
+  }).sort().join(',');
+}
+
 function unique(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
 }
@@ -100,11 +114,9 @@ function doctorSnapshot(report: DoctorReport, skillName: string): SkillDoctorSna
 
 function scanDoctorReports(directory: string): Record<string, SkillDoctorSnapshot[]> {
   const bySkill: Record<string, SkillDoctorSnapshot[]> = Object.create(null);
-  if (!existsSync(directory)) return bySkill;
-  for (const file of readdirSync(directory)) {
-    if (!isReportFileName(file)) continue;
+  for (const path of listMeasurementReportPaths(directory)) {
     try {
-      const report = parseDoctorReport(JSON.parse(readFileSync(join(directory, file), 'utf8')));
+      const report = parseDoctorReport(JSON.parse(readFileSync(path, 'utf8')));
       if (report === null) continue;
       for (const skill of report.skills) {
         const snapshot = doctorSnapshot(report, skill.skillName);
@@ -151,12 +163,11 @@ function observeSnapshot(
 
 function scanObserveReports(directory: string): Record<string, SkillObserveSnapshot[]> {
   const bySkill: Record<string, SkillObserveSnapshot[]> = Object.create(null);
-  if (!existsSync(directory)) return bySkill;
-  for (const file of readdirSync(directory)) {
-    const id = reportFileStem(file);
+  for (const path of listMeasurementReportPaths(directory)) {
+    const id = measurementRecordIdFromReportPath(path);
     if (id === null) continue;
     try {
-      const report = parseSkillHealthReport(JSON.parse(readFileSync(join(directory, file), 'utf8')));
+      const report = parseSkillHealthReport(JSON.parse(readFileSync(path, 'utf8')));
       if (report === null) continue;
       for (const [skillName, health] of Object.entries(report.bySkill)) {
         (bySkill[skillName] ??= []).push(observeSnapshot(id, report.meta.generatedAt, health));
@@ -196,16 +207,13 @@ function nodePreview(node: ArtifactGraphNode) {
 function doctorGraphForSkill(
   skillName: string,
   reportId: string | undefined,
-  graphDirectories: readonly string[],
+  graphPaths: readonly string[],
 ): SkillGraphSnapshot | undefined {
-  const candidates = graphDirectories.flatMap((directory) => {
-    if (!existsSync(directory)) return [];
-    return readdirSync(directory)
-      .filter((file) => file.endsWith(GRAPH_FILE_SUFFIX))
-      .map((file) => ({ path: join(directory, file), graph: readDoctorGraph(join(directory, file)) }))
+  const candidates = graphPaths
+      .map((path) => ({ path, graph: readDoctorGraph(path) }))
       .filter((entry): entry is { path: string; graph: ArtifactGraphDocument } => entry.graph !== null)
-      .filter(({ graph }) => (!reportId || graph.source.sourceId === reportId) && graphSkillNames(graph).includes(skillName));
-  }).sort((a, b) => a.graph.generatedAt.localeCompare(b.graph.generatedAt));
+      .filter(({ graph }) => (!reportId || graph.source.sourceId === reportId) && graphSkillNames(graph).includes(skillName))
+      .sort((a, b) => a.graph.generatedAt.localeCompare(b.graph.generatedAt));
   const latest = candidates.at(-1);
   if (latest === undefined) return undefined;
   const graph = latest.graph;
@@ -285,15 +293,26 @@ export function buildSkillIndex(
 ): SkillIndex {
   const includeObserveCards = options.includeObserveCards ?? false;
   const includeDoctorCards = options.includeDoctorCards ?? false;
-  const graphDirectories = unique([
+  const legacyGraphDirectories = unique([
     doctorGraphDirForDoctorOutput(doctorsDir),
     ...(options.doctorGraphDirs ?? []),
   ]);
+  const graphPaths = unique([
+    ...listMeasurementDerivedPaths(doctorsDir, 'graph.json'),
+    ...legacyGraphDirectories.flatMap((directory) => {
+      if (!existsSync(directory)) return [];
+      return readdirSync(directory)
+        .filter((file) => file.endsWith(GRAPH_FILE_SUFFIX))
+        .map((file) => join(directory, file));
+    }),
+  ]);
+  const doctorReportPaths = listMeasurementReportPaths(doctorsDir);
+  const observeReportPaths = listMeasurementReportPaths(analysesDir);
   const fingerprint = [
-    directoryFingerprint(analysesDir, '.report.json'),
-    directoryFingerprint(doctorsDir, '.report.json'),
+    pathsFingerprint(observeReportPaths),
+    pathsFingerprint(doctorReportPaths),
     directoryFingerprint(observationsDir, '.report.json'),
-    ...graphDirectories.map((directory) => directoryFingerprint(directory, GRAPH_FILE_SUFFIX)),
+    pathsFingerprint(graphPaths),
     cardFingerprint(includeObserveCards, includeDoctorCards),
   ].join('|');
   if (indexCache?.fingerprint === fingerprint) return indexCache.result;
@@ -369,7 +388,7 @@ export function buildSkillIndex(
       if (insights.some((insight) => insight.severity === 'high')) entry.band = 'red';
       else if (insights.some((insight) => insight.severity === 'medium')) entry.band = 'yellow';
     }
-    const graph = doctorGraphForSkill(entry.skillName, entry.doctor?.reportId, graphDirectories);
+    const graph = doctorGraphForSkill(entry.skillName, entry.doctor?.reportId, graphPaths);
     if (graph !== undefined) entry.graph = graph;
   }
 

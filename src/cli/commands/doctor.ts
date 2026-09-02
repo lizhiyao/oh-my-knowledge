@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, rmSync, unlinkSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -10,12 +10,16 @@ import { makeDoctorProgress } from '../lib/progress.js';
 import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import { DEFAULT_DOCTORS_DIR } from '../../measurement-artifacts/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../measurement-artifacts/discovery-index.js';
-import { doctorReportFileStem, isReportFileName, reportFilePath, reportFileStem } from '../../measurement-artifacts/file-names.js';
+import { doctorReportFileStem } from '../../measurement-artifacts/file-names.js';
+import {
+  listMeasurementReportPaths,
+  measurementRecordIdFromReportPath,
+  writeMeasurementReportBundle,
+} from '../../measurement-artifacts/report-bundle.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../measurement-artifacts/directories.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
 import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../doctor/contracts.js';
 import { parseDoctorReport } from '../../doctor/report-parser.js';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
@@ -101,14 +105,14 @@ export default class Doctor extends BaseCommand {
     }),
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '报告输出目录，默认项目级 .omk/doctors（--global 写全局）。',
-        en: 'Report output dir, default project-level .omk/doctors (--global for global).',
+        zh: '报告输出目录，默认项目级 .omk/doctor（--global 写全局）。',
+        en: 'Report output dir, default project-level .omk/doctor (--global for global).',
       }),
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors',
-        en: 'Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors',
+        zh: '写全局 ~/.oh-my-knowledge/doctor，而非项目 .omk/doctor',
+        en: 'Write to global ~/.oh-my-knowledge/doctor instead of project .omk/doctor',
       }),
     }),
     dimensions: Flags.string({
@@ -295,7 +299,6 @@ const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
 
 function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh' | 'en' = 'zh'): void {
   const dir = outputDir ?? DEFAULT_DOCTORS_DIR;
-  mkdirSync(dir, { recursive: true });
   for (const skill of report.skills) {
     const counts: Pick<DoctorReport['ruleStats'], 'pass' | 'warn' | 'fail' | 'skipped'> = {
       pass: 0,
@@ -326,10 +329,16 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
       outcome,
     };
     const cardId = doctorReportFileStem(skill.skillName, report.id);
-    const filePath = reportFilePath(dir, cardId);
     const parsed = parseDoctorReport(perSkill);
     if (!parsed) throw new Error('invalid doctor report');
-    writeJsonFileAtomic(filePath, parsed);
+    const { reportPath: filePath } = writeMeasurementReportBundle({
+      rootDir: dir,
+      measurementDomain: 'doctor',
+      recordId: cardId,
+      reportId: report.id,
+      createdAt: report.timestamp,
+      report: parsed,
+    });
     // 产物发现索引:per-skill 报告落项目本地后,best-effort 追加全局轻卡片,让 studio 跨项目聚合。
     indexDoctorWrite({
       id: cardId, path: filePath, skillName: skill.skillName, reportId: report.id, timestamp: report.timestamp,
@@ -362,26 +371,32 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
   if (!Number.isSafeInteger(maxKeep) || maxKeep < 0) {
     throw new TypeError('maxKeep must be a non-negative safe integer');
   }
-  const candidates: { file: string; graphStem: string; timestamp: string }[] = [];
-  for (const file of readdirSync(dir)) {
-    if (!isReportFileName(file)) continue;
+  const candidates: { path: string; graphStem: string; timestamp: string; bundled: boolean }[] = [];
+  for (const path of listMeasurementReportPaths(dir)) {
     try {
-      const data = parseDoctorReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+      const data = parseDoctorReport(JSON.parse(readFileSync(path, 'utf-8')));
       if (!data || data.skills.length !== 1) continue;
       if (data.skills[0].skillName !== skillName) continue;
       const expectedStem = doctorReportFileStem(skillName, data.id);
-      if (reportFileStem(file) !== expectedStem) continue;
-      candidates.push({ file, graphStem: expectedStem, timestamp: data.timestamp });
+      if (measurementRecordIdFromReportPath(path) !== expectedStem) continue;
+      candidates.push({
+        path,
+        graphStem: expectedStem,
+        timestamp: data.timestamp,
+        bundled: path.endsWith('/report.json') || path.endsWith('\\report.json'),
+      });
     } catch { /* skip corrupt / unrelated json */ }
   }
   if (candidates.length <= maxKeep) return;
   candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  for (const { file, graphStem } of candidates.slice(maxKeep)) {
-    try { unlinkSync(join(dir, file)); } catch { /* ignore */ }
+  for (const { path, graphStem, bundled } of candidates.slice(maxKeep)) {
+    try {
+      if (bundled) rmSync(dirname(path), { recursive: true, force: true });
+      else unlinkSync(path);
+    } catch { /* ignore */ }
     // 连带删卡片:否则被 prune 掉的报告会经 listDoctorCards 合并在本项目 studio「复活」(正文已删、卡片还在)。
     // 卡片 id = 文件 stem(`{name}-{id}`),与 indexDoctorWrite 写入口径一致。
-    const doctorStem = file.replace(/\.report\.json$/, '');
-    removeDoctorCard(doctorStem);
+    removeDoctorCard(graphStem);
     removeDoctorGraphSidecars(dir, graphStem);
   }
 }

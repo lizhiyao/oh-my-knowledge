@@ -199,7 +199,7 @@ Observe uses the profile's `sessionPersistence` directly, so users do not export
 
 > **Positioning: OMK MCP is an active knowledge-feedback interface, not a conversation monitor.** OMK MCP alone cannot automatically monitor or subscribe to complete conversations in Codex, ChatGPT, or another client. OMK receives a record only after the client, model, or component actively calls `save_observation` with authorized content. An Agent Skill may automatically recognize a potential feedback moment, but saving it still requires user confirmation and an explicit MCP tool call.
 
-`omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. The client calls `save_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
+`omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. The client calls `save_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe/inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
 
 In Codex, explicitly invoke the OMK Skill to submit the current knowledge feedback:
 
@@ -215,6 +215,10 @@ omk-mcp
 
 Every record carries `coverageStatus: partial`: OMK observes its tool boundary, submitted feedback, and optional evidence, but not the full conversation, other tool calls, or hidden reasoning. Continuous monitoring requires a host that is authorized to access an event stream and actively forwards those events; that is a host-integration capability, not an OMK MCP capability. Conversation IDs, turn IDs, and idempotency keys are hashed rather than persisted verbatim. For a private-host Streamable HTTP integration, see [Compose the OMK MCP integration](docs/guides/mcp-integration.md).
 
+### Local storage
+
+Project data uses the domain-oriented `.omk/` v2 layout: durable evidence lives under `eval/`, `doctor/`, and `observe/`; governance records live under `governance/`; backups remain recoverable; and only rebuildable work belongs in `state/`. Machine tools, tunnels, caches, and materialized copies stay under `~/.oh-my-knowledge/state/`, never in a project. Run `omk migrate --dry-run` before upgrading a v1 tree, and use `omk clean --dry-run` to preview lifecycle-aware cleanup (`omk clean` removes only `state/` by default).
+
 ## Documentation
 
 The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** — searchable, with an English / 简体中文 switcher. Key pages:
@@ -223,6 +227,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
 - **[Evaluation Core cutover](docs/guides/evaluation-core-cutover.md)** — `BREAKING-SCHEMA` storage, resume, Studio, Gold, managed-evidence, and evolve migration
+- **[Storage layout v2](docs/specs/storage-layout-spec.md)** — project/global domains, migration compatibility, Git policy, and safe cleanup
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Observe & inspect task trajectories](docs/guides/observe-production.md)** — browse local Codex conversations, drill into one task, and follow its observable execution live

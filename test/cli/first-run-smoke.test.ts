@@ -107,7 +107,8 @@ describe('first-run smoke path', () => {
       assert.equal(report.usage?.executionInvocations, 6);
       assert.equal(report.gate?.gateStatus, 'skipped');
       const runDirectory = `run-${createHash('sha256').update(report.runId).digest('hex')}`;
-      assert.ok(existsSync(join(project, '.omk', 'reports', runDirectory, 'manifest.json')));
+      assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'manifest.json')));
+      assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'report.json')));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

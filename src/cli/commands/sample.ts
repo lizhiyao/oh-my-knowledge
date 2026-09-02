@@ -145,7 +145,10 @@ export async function runSampleFromTraces(
     return;
   }
 
-  const outPath = join(obsDir, 'sample-drafts.json');
+  const { observationDraftsDir } = await import('../../observability/inbox/index.js');
+  const outPath = join(observationDraftsDir(obsDir), 'sample-drafts.json');
+  const { ensureOwnedLayoutForPath } = await import('../../omk-layout/index.js');
+  ensureOwnedLayoutForPath(outPath);
   if (existsSync(outPath)) {
     console.error(lang === 'zh'
       ? `草稿已存在: ${outPath}，请先 review 并合入正式集（或删除）后再生成`
@@ -478,8 +481,8 @@ export default class Sample extends BaseCommand {
     }),
     'observations-dir': Flags.string({
       description: bilingual({
-        zh: 'observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。',
-        en: 'Observe inbox dir (from-traces mode), default project .omk/observe-inbox.',
+        zh: 'observe inbox 目录（from-traces 模式用），默认项目 .omk/observe/inbox。',
+        en: 'Observe inbox dir (from-traces mode), default project .omk/observe/inbox.',
       }),
     }),
     skill: Flags.string({

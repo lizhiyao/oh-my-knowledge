@@ -27,7 +27,7 @@ Agent Skill 可以根据当前可见上下文自动识别潜在的知识缺口�
 
 | 形态 | 身份与存储 | 用途 |
 | --- | --- | --- |
-| 本地 stdio | 固定本地主体和 `.omk/observe-inbox` v1 File Store | 单个开发者在本机使用 OMK |
+| 本地 stdio | 固定本地主体和 `.omk/observe/inbox` v1 File Store | 单个开发者在本机使用 OMK |
 | 私有宿主 | 宿主提供 `PrincipalResolver` 和 `ObservationCaptureStore`，通过 Streamable HTTP 提供服务 | 多用户共享宿主自己的认证和持久化边界 |
 | OMK 托管服务 | 当前未提供 | 可能的未来服务；不能从当前 npm 包推断其存在 |
 
