@@ -256,11 +256,16 @@ describe('production independent Series orchestration', () => {
         analysisNodesByNodeId: new Map([['host-run-variance', {
           identity,
           outputSchema: seriesOutputSchema,
-          async analyze(context) {
+          async openRun() {
             return {
-              analysisStatus: 'completed' as const,
-              resultType: 'scalar' as const,
-              value: context.coverage.comparable,
+              async analyze(context) {
+                return {
+                  analysisStatus: 'completed' as const,
+                  resultType: 'scalar' as const,
+                  value: context.coverage.comparable,
+                };
+              },
+              dispose() {},
             };
           },
         }]]),
@@ -305,7 +310,7 @@ describe('production independent Series orchestration', () => {
       } as unknown as ProductionEvaluationHostInput['compiled'],
       factories: {} as ProductionEvaluationHostInput['factories'],
       support: {
-        clock: {} as never,
+        clock: { timestamp: () => '2026-09-01T03:00:00.000Z' } as never,
         schemaValidators: new Map([[schemaIdentityKey(seriesOutputSchema), validator]]),
       },
       resources: { leaseRoot: '/not-used-by-series-fixture' },
@@ -360,6 +365,8 @@ describe('production independent Series orchestration', () => {
       },
     })));
     const result = await series.result;
+    assert.equal(result.status, 'completed');
+    if (result.status !== 'completed') throw new Error('Expected completed Series result.');
     assert.equal(result.analysis.coverage.planned, 2);
     assert.equal(result.analysis.coverage.completed, 2);
     assert.equal(result.analysis.coverage.comparable, 2);

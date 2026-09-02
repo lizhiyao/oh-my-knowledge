@@ -5,6 +5,10 @@ import {
   SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
   SeriesAnalysisRecordSchema,
   SeriesDecisionResultSchema,
+  IdentifierSchema,
+  JsonValueSchema,
+  RuntimeIdentitySchema,
+  SchemaIdentitySchema,
   assertEvaluationSeriesMemberSource,
   canonicalizeJson,
   createComparabilityPolicy,
@@ -20,6 +24,7 @@ import {
   schemaIdentityKey,
   type CoreSchemaValidator,
   type EvaluationError,
+  type EvaluationEvent,
   type EvaluationSeriesMemberSource,
   type EvaluationSeriesPlan,
   type EvaluationSeriesReport,
@@ -32,6 +37,47 @@ import {
   type SeriesDecisionResult,
   type Sha256Digest,
 } from '../contracts/index.js';
+import { BoundedEventStream } from '../runtime/event-stream.js';
+import {
+  InMemoryRuntimeEventSequencer,
+  RuntimeEventEmitter,
+} from '../runtime/events.js';
+import { snapshotSchemaValidators } from '../runtime/snapshot.js';
+
+const DEFAULT_EVENT_BUFFER_CAPACITY = 256;
+
+type SeriesEventKind =
+  | 'series.run.started'
+  | 'series.analysis-node.started'
+  | 'series.analysis-node.completed'
+  | 'series.analysis-node.inconclusive'
+  | 'series.analysis-node.failed'
+  | 'series.decision.started'
+  | 'series.decision.completed'
+  | 'series.decision.not-decided'
+  | 'series.decision.failed'
+  | 'series.run.completed'
+  | 'series.run.cancelled'
+  | 'series.run.failed';
+
+type SeriesEventSubjectKind =
+  | 'evaluation-series-run'
+  | 'series-analysis-node'
+  | 'series-decision-policy';
+
+type SeriesEventEmitter = RuntimeEventEmitter<
+  SeriesEventKind,
+  SeriesEventSubjectKind,
+  never
+>;
+
+export interface SeriesAnalysisNodeRunContext {
+  readonly runId: string;
+  readonly seriesPlanDigest: Sha256Digest;
+  readonly bundleId: string;
+  readonly nodeId: string;
+  readonly analysisMode: EvaluationSeriesPlan['definition']['analysisMode'];
+}
 
 export interface SeriesAnalysisNodeContext {
   readonly plan: EvaluationSeriesPlan;
@@ -39,6 +85,7 @@ export interface SeriesAnalysisNodeContext {
   readonly members: readonly EvaluationSeriesMemberSource[];
   readonly coverage: SeriesAnalysisBundle['coverage'];
   readonly inputs: readonly SeriesAnalysisNodeInput[];
+  readonly signal: AbortSignal;
 }
 
 export type SeriesAnalysisNodeInput = {
@@ -51,27 +98,47 @@ export type SeriesAnalysisNodeInput = {
   readonly record: Extract<SeriesAnalysisRecord, { analysisStatus: 'completed' }>;
 };
 
-export type SeriesAnalysisNodeOutput = {
-  analysisStatus: 'completed';
-  resultType: Extract<SeriesAnalysisRecord, { analysisStatus: 'completed' }>['resultType'];
-  value: JsonValue;
-  assumptionChecks?: readonly Omit<z.infer<typeof AssumptionCheckSchema>, 'nodeId'>[];
-} | {
-  analysisStatus: 'inconclusive';
-  reasonCodes: readonly string[];
-  assumptionChecks?: readonly Omit<z.infer<typeof AssumptionCheckSchema>, 'nodeId'>[];
-};
+const SeriesPortAssumptionCheckSchema = AssumptionCheckSchema.omit({ nodeId: true });
+
+const SeriesAnalysisNodeOutputSchema = z.discriminatedUnion('analysisStatus', [
+  z.object({
+    analysisStatus: z.literal('completed'),
+    resultType: z.enum(['scalar', 'interval', 'distribution', 'table', 'matrix', 'curve']),
+    value: JsonValueSchema,
+    assumptionChecks: z.array(SeriesPortAssumptionCheckSchema).optional(),
+  }).strict(),
+  z.object({
+    analysisStatus: z.literal('inconclusive'),
+    reasonCodes: z.array(IdentifierSchema).min(1),
+    assumptionChecks: z.array(SeriesPortAssumptionCheckSchema).optional(),
+  }).strict(),
+]);
+
+export type SeriesAnalysisNodeOutput = z.infer<typeof SeriesAnalysisNodeOutputSchema>;
+
+export interface SeriesAnalysisNodeRun {
+  analyze(context: Readonly<SeriesAnalysisNodeContext>): Promise<SeriesAnalysisNodeOutput>;
+  dispose(): void | Promise<void>;
+}
 
 export interface SeriesAnalysisNodeRuntime {
   readonly identity: RuntimeIdentity;
   readonly outputSchema: SchemaIdentity;
-  analyze(context: Readonly<SeriesAnalysisNodeContext>): Promise<SeriesAnalysisNodeOutput>;
+  openRun(context: Readonly<SeriesAnalysisNodeRunContext>): Promise<SeriesAnalysisNodeRun>;
+}
+
+export interface SeriesDecisionRunContext {
+  readonly runId: string;
+  readonly seriesPlanDigest: Sha256Digest;
+  readonly analysisBundleDigest: Sha256Digest;
+  readonly decisionPolicyId: string;
 }
 
 export interface SeriesDecisionContext {
   readonly plan: EvaluationSeriesPlan;
   readonly bundle: SeriesAnalysisBundle;
   readonly records: readonly Extract<SeriesAnalysisRecord, { analysisStatus: 'completed' }>[];
+  readonly signal: AbortSignal;
 }
 
 export type SeriesDecisionOutput = {
@@ -95,26 +162,61 @@ const SeriesDecisionOutputSchema = z.discriminatedUnion('decisionStatus', [
   }).strict(),
 ]);
 
+export interface SeriesDecisionRun {
+  decide(context: Readonly<SeriesDecisionContext>): Promise<SeriesDecisionOutput>;
+  dispose(): void | Promise<void>;
+}
+
 export interface SeriesDecisionRuntime {
   readonly identity: RuntimeIdentity;
-  decide(context: Readonly<SeriesDecisionContext>): Promise<SeriesDecisionOutput>;
+  openRun(context: Readonly<SeriesDecisionRunContext>): Promise<SeriesDecisionRun>;
 }
 
 export interface EvaluationSeriesRuntimePorts {
   readonly analysisNodesByNodeId: ReadonlyMap<string, SeriesAnalysisNodeRuntime>;
   readonly decisionPoliciesByDecisionPolicyId: ReadonlyMap<string, SeriesDecisionRuntime>;
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
+  readonly clock: EvaluationSeriesClock;
+}
+
+export interface EvaluationSeriesClock {
+  timestamp(): string;
+}
+
+export interface EvaluationSeriesEventWriter {
+  write(event: Readonly<EvaluationEvent>): Promise<void>;
 }
 
 export interface EvaluationSeriesRunOptions {
+  readonly runId: string;
   readonly bundleId: string;
   readonly reportId: string;
+  readonly signal?: AbortSignal;
+  readonly eventWriter?: EvaluationSeriesEventWriter;
+  readonly eventBufferCapacity?: number;
 }
 
-export interface EvaluationSeriesRunResult {
+export interface CompletedEvaluationSeriesRunResult {
+  readonly status: 'completed';
   readonly analysis: SeriesAnalysisBundle;
   readonly decision?: SeriesDecisionResult;
   readonly report: EvaluationSeriesReport;
+}
+
+export type EvaluationSeriesRunResult = CompletedEvaluationSeriesRunResult | {
+  readonly status: 'cancelled';
+  readonly analysis?: SeriesAnalysisBundle;
+  readonly decision?: SeriesDecisionResult;
+} | {
+  readonly status: 'failed';
+  readonly error: EvaluationError;
+  readonly analysis?: SeriesAnalysisBundle;
+  readonly decision?: SeriesDecisionResult;
+};
+
+export interface EvaluationSeriesRun {
+  readonly events: AsyncIterable<EvaluationEvent>;
+  readonly result: Promise<EvaluationSeriesRunResult>;
 }
 
 function safeError(runtimeKind: 'analysis' | 'decision'): EvaluationError {
@@ -123,6 +225,72 @@ function safeError(runtimeKind: 'analysis' | 'decision'): EvaluationError {
     stage: 'analysis',
     message: 'Evaluation Series Runtime 执行失败。',
   };
+}
+
+function configurationError(code: string): EvaluationError {
+  return {
+    code,
+    stage: 'configuration',
+    message: 'Evaluation Series 配置或 Runtime binding 无效。',
+  };
+}
+
+class SeriesCancelledError extends Error {
+  constructor() {
+    super('Evaluation Series run cancelled.');
+    this.name = 'SeriesCancelledError';
+  }
+}
+
+class SeriesResourceDisposalError extends Error {
+  readonly evaluationError: EvaluationError;
+
+  constructor(runtimeKind: 'analysis' | 'decision') {
+    super('Evaluation Series Runtime resource disposal failed.');
+    this.name = 'SeriesResourceDisposalError';
+    this.evaluationError = {
+      code: `series-${runtimeKind}-runtime-dispose-failed`,
+      stage: 'infrastructure',
+      message: 'Evaluation Series Runtime 资源释放失败。',
+    };
+  }
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new SeriesCancelledError();
+}
+
+function snapshotSeriesRuntimePorts(
+  ports: EvaluationSeriesRuntimePorts,
+): EvaluationSeriesRuntimePorts {
+  const analysisNodesByNodeId = new Map(
+    [...ports.analysisNodesByNodeId].map(([nodeId, runtime]) => {
+      if (typeof runtime?.openRun !== 'function') throw new TypeError('Invalid Series Analysis binding.');
+      return [nodeId, Object.freeze({
+        identity: deepFreezeCanonicalJson(RuntimeIdentitySchema.parse(runtime.identity)),
+        outputSchema: deepFreezeCanonicalJson(SchemaIdentitySchema.parse(runtime.outputSchema)),
+        openRun: runtime.openRun.bind(runtime),
+      })] as const;
+    }),
+  );
+  const decisionPoliciesByDecisionPolicyId = new Map(
+    [...ports.decisionPoliciesByDecisionPolicyId].map(([policyId, runtime]) => {
+      if (typeof runtime?.openRun !== 'function') throw new TypeError('Invalid Series Decision binding.');
+      return [policyId, Object.freeze({
+        identity: deepFreezeCanonicalJson(RuntimeIdentitySchema.parse(runtime.identity)),
+        openRun: runtime.openRun.bind(runtime),
+      })] as const;
+    }),
+  );
+  if (typeof ports.clock?.timestamp !== 'function') {
+    throw new TypeError('Invalid Evaluation Series clock binding.');
+  }
+  return Object.freeze({
+    analysisNodesByNodeId,
+    decisionPoliciesByDecisionPolicyId,
+    schemaValidators: snapshotSchemaValidators(ports.schemaValidators),
+    clock: Object.freeze({ timestamp: ports.clock.timestamp.bind(ports.clock) }),
+  });
 }
 
 function compareStrings(left: string, right: string): number {
@@ -287,11 +455,15 @@ async function runAnalysisNodes(
   comparableIds: ReadonlySet<string>,
   coverage: SeriesAnalysisBundle['coverage'],
   ports: EvaluationSeriesRuntimePorts,
+  options: Pick<EvaluationSeriesRunOptions, 'runId' | 'bundleId'>,
+  signal: AbortSignal,
+  events: SeriesEventEmitter,
 ): Promise<SeriesAnalysisRecord[]> {
   const comparable = members.filter((member) => comparableIds.has(member.reference.memberId));
   const records: SeriesAnalysisRecord[] = [];
   const recordsByResult = new Map<string, SeriesAnalysisRecord>();
   for (const node of topologicalSeriesNodes(plan)) {
+    throwIfAborted(signal);
     const eligible = comparable.filter((member) => (
       member.reference.status.runStatus === 'completed'
       && (member.reference.status.evidenceStatus === 'complete'
@@ -352,6 +524,12 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
+      await events.emit(
+        'series.analysis-node.inconclusive',
+        'series-analysis-node',
+        node.nodeId,
+        { reasonCodes: payload.reasonCodes },
+      );
       continue;
     }
     const runtime = ports.analysisNodesByNodeId.get(node.nodeId);
@@ -366,14 +544,83 @@ async function runAnalysisNodes(
         || canonicalizeJson(validator.schema) !== canonicalizeJson(candidateBinding.outputSchema)) {
       throw new TypeError('Series Analysis output schema validator is missing or mismatched.');
     }
+    await events.emit(
+      'series.analysis-node.started',
+      'series-analysis-node',
+      node.nodeId,
+      {},
+    );
+    let session: SeriesAnalysisNodeRun | undefined;
+    let output: SeriesAnalysisNodeOutput | undefined;
+    let failure: EvaluationError | undefined;
+    let cancellation: SeriesCancelledError | undefined;
     try {
-      const output = await runtime.analyze(deepFreezeCanonicalJson({
-        plan,
-        node,
-        members: eligible,
-        coverage,
-        inputs,
-      }) as unknown as SeriesAnalysisNodeContext);
+      session = await runtime.openRun(Object.freeze({
+        runId: options.runId,
+        seriesPlanDigest: plan.seriesPlanDigest as Sha256Digest,
+        bundleId: options.bundleId,
+        nodeId: node.nodeId,
+        analysisMode: plan.definition.analysisMode,
+      }));
+      if (typeof session?.analyze !== 'function' || typeof session?.dispose !== 'function') {
+        throw new TypeError('Series Analysis openRun returned an invalid session.');
+      }
+      throwIfAborted(signal);
+      const runtimeInputs = Object.freeze(inputs.map((input) => Object.freeze(
+        input.seriesInputKind === 'members'
+          ? { ...input, members: Object.freeze([...input.members]) }
+          : { ...input },
+      )));
+      output = parseWireDocument(
+        SeriesAnalysisNodeOutputSchema,
+        await session.analyze(Object.freeze({
+          plan,
+          node,
+          members: Object.freeze([...eligible]),
+          coverage,
+          inputs: runtimeInputs,
+          signal,
+        })),
+      );
+      throwIfAborted(signal);
+    } catch (error) {
+      if (error instanceof SeriesCancelledError || signal.aborted) {
+        cancellation = new SeriesCancelledError();
+      } else {
+        failure = safeError('analysis');
+      }
+    } finally {
+      if (session !== undefined) {
+        try {
+          await session.dispose();
+        } catch {
+          throw new SeriesResourceDisposalError('analysis');
+        }
+      }
+    }
+    if (cancellation !== undefined) throw cancellation;
+    if (failure !== undefined || output === undefined) {
+      const payload = {
+        ...base,
+        runtimeExecutionStatus: 'executed' as const,
+        analysisStatus: 'failed' as const,
+        error: failure ?? safeError('analysis'),
+      };
+      const record = parseWireDocument(SeriesAnalysisRecordSchema, {
+        ...payload,
+        recordDigest: recordDigest(payload),
+      });
+      records.push(record);
+      recordsByResult.set(record.resultId, record);
+      await events.emit(
+        'series.analysis-node.failed',
+        'series-analysis-node',
+        node.nodeId,
+        { reasonCode: payload.error.code },
+      );
+      continue;
+    }
+    try {
       const checks = (output.assumptionChecks ?? []).map((check) => parseWireDocument(
         AssumptionCheckSchema,
         { ...check, nodeId: node.nodeId },
@@ -419,6 +666,16 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
+      await events.emit(
+        normalized.analysisStatus === 'completed'
+          ? 'series.analysis-node.completed'
+          : 'series.analysis-node.inconclusive',
+        'series-analysis-node',
+        node.nodeId,
+        normalized.analysisStatus === 'completed'
+          ? { resultId: record.resultId }
+          : { reasonCodes: normalized.reasonCodes },
+      );
     } catch {
       const payload = {
         ...base,
@@ -432,6 +689,12 @@ async function runAnalysisNodes(
       });
       records.push(record);
       recordsByResult.set(record.resultId, record);
+      await events.emit(
+        'series.analysis-node.failed',
+        'series-analysis-node',
+        node.nodeId,
+        { reasonCode: payload.error.code },
+      );
     }
   }
   return records.sort((left, right) => compareStrings(left.nodeId, right.nodeId));
@@ -476,6 +739,9 @@ async function makeDecision(
   plan: EvaluationSeriesPlan,
   bundle: SeriesAnalysisBundle,
   ports: EvaluationSeriesRuntimePorts,
+  options: Pick<EvaluationSeriesRunOptions, 'runId'>,
+  signal: AbortSignal,
+  events: SeriesEventEmitter,
 ): Promise<SeriesDecisionResult | undefined> {
   const policy = plan.definition.decisionPolicy;
   if (policy === undefined) return undefined;
@@ -528,38 +794,86 @@ async function makeDecision(
       decisionStatus: 'not-decided' as const,
       reasonCodes: ['series-coverage-or-assumption-gate-failed'],
     };
-    return parseWireDocument(SeriesDecisionResultSchema, {
+    const decision = parseWireDocument(SeriesDecisionResultSchema, {
       ...payload,
       decisionDigest: digestSeriesArtifact(
         payload as unknown as Record<string, JsonValue>,
         'decisionDigest',
       ),
     });
+    await events.emit(
+      'series.decision.not-decided',
+      'series-decision-policy',
+      policy.decisionPolicyId,
+      { reasonCodes: payload.reasonCodes },
+    );
+    return decision;
   }
   const runtime = ports.decisionPoliciesByDecisionPolicyId.get(policy.decisionPolicyId);
   if (runtime === undefined
       || canonicalizeJson(binding.identity) !== canonicalizeJson(runtime.identity)) {
     throw new TypeError('Series Decision Runtime does not match the sealed plan.');
   }
-  let output: SeriesDecisionOutput;
+  throwIfAborted(signal);
+  await events.emit(
+    'series.decision.started',
+    'series-decision-policy',
+    policy.decisionPolicyId,
+    {},
+  );
+  let session: SeriesDecisionRun | undefined;
+  let output: SeriesDecisionOutput | undefined;
+  let cancellation: SeriesCancelledError | undefined;
   try {
-    output = parseWireDocument(SeriesDecisionOutputSchema, await runtime.decide(
-      deepFreezeCanonicalJson({ plan, bundle, records }) as unknown as SeriesDecisionContext,
+    session = await runtime.openRun(Object.freeze({
+      runId: options.runId,
+      seriesPlanDigest: plan.seriesPlanDigest as Sha256Digest,
+      analysisBundleDigest: bundle.bundleDigest as Sha256Digest,
+      decisionPolicyId: policy.decisionPolicyId,
+    }));
+    if (typeof session?.decide !== 'function' || typeof session?.dispose !== 'function') {
+      throw new TypeError('Series Decision openRun returned an invalid session.');
+    }
+    throwIfAborted(signal);
+    output = parseWireDocument(SeriesDecisionOutputSchema, await session.decide(
+      Object.freeze({ plan, bundle, records, signal }),
     ));
-  } catch {
+    throwIfAborted(signal);
+  } catch (error) {
+    if (error instanceof SeriesCancelledError || signal.aborted) {
+      cancellation = new SeriesCancelledError();
+    }
+  } finally {
+    if (session !== undefined) {
+      try {
+        await session.dispose();
+      } catch {
+        throw new SeriesResourceDisposalError('decision');
+      }
+    }
+  }
+  if (cancellation !== undefined) throw cancellation;
+  if (output === undefined) {
     const payload = {
       ...base,
       policyExecutionStatus: 'executed' as const,
       decisionStatus: 'failed' as const,
       error: safeError('decision'),
     };
-    return parseWireDocument(SeriesDecisionResultSchema, {
+    const decision = parseWireDocument(SeriesDecisionResultSchema, {
       ...payload,
       decisionDigest: digestSeriesArtifact(
         payload as unknown as Record<string, JsonValue>,
         'decisionDigest',
       ),
     });
+    await events.emit(
+      'series.decision.failed',
+      'series-decision-policy',
+      policy.decisionPolicyId,
+      { reasonCode: payload.error.code },
+    );
+    return decision;
   }
   const payload = output.decisionStatus === 'decided'
     ? {
@@ -575,11 +889,249 @@ async function makeDecision(
       decisionStatus: 'not-decided' as const,
       reasonCodes: [...output.reasonCodes].sort(compareStrings),
     };
-  return parseWireDocument(SeriesDecisionResultSchema, {
+  const decision = parseWireDocument(SeriesDecisionResultSchema, {
     ...payload,
     decisionDigest: digestSeriesArtifact(
       payload as unknown as Record<string, JsonValue>,
       'decisionDigest',
+    ),
+  });
+  await events.emit(
+    output.decisionStatus === 'decided'
+      ? 'series.decision.completed'
+      : 'series.decision.not-decided',
+    'series-decision-policy',
+    policy.decisionPolicyId,
+    output.decisionStatus === 'decided'
+      ? { verdict: output.verdict, reasonCodes: payload.reasonCodes }
+      : { reasonCodes: payload.reasonCodes },
+  );
+  return decision;
+}
+
+async function executeEvaluationSeries(
+  plan: EvaluationSeriesPlan,
+  members: readonly EvaluationSeriesMemberSource[],
+  comparability: ReturnType<typeof comparableMembers>,
+  coverage: SeriesAnalysisBundle['coverage'],
+  ports: EvaluationSeriesRuntimePorts,
+  options: EvaluationSeriesRunOptions,
+  signal: AbortSignal,
+  events: SeriesEventEmitter,
+): Promise<EvaluationSeriesRunResult> {
+  let analysis: SeriesAnalysisBundle | undefined;
+  let decision: SeriesDecisionResult | undefined;
+  try {
+    await events.emit(
+      'series.run.started',
+      'evaluation-series-run',
+      options.runId,
+      { seriesPlanDigest: plan.seriesPlanDigest },
+    );
+    throwIfAborted(signal);
+    const records = await runAnalysisNodes(
+      plan,
+      members,
+      comparability.memberIds,
+      coverage,
+      ports,
+      options,
+      signal,
+      events,
+    );
+    analysis = makeBundle(
+      plan,
+      members,
+      coverage,
+      records,
+      comparability.assessments,
+      options.bundleId,
+    );
+    throwIfAborted(signal);
+    decision = await makeDecision(plan, analysis, ports, options, signal, events);
+    throwIfAborted(signal);
+    const payload = {
+      schemaVersion: EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
+      reportId: options.reportId,
+      seriesPlanDigest: plan.seriesPlanDigest,
+      analysisBundleDigest: analysis.bundleDigest,
+      ...(decision !== undefined ? { decision } : {}),
+      provenance: {
+        provenanceKind: 'derived' as const,
+        trust: minimumTrust([
+          analysis.provenance.trust,
+          ...(decision?.policyExecutionStatus === 'executed'
+            ? [decision.implementation.assuranceLevel]
+            : []),
+        ]),
+        parentDigests: [
+          analysis.bundleDigest,
+          ...(decision === undefined ? [] : [decision.decisionDigest]),
+        ],
+      },
+    };
+    const report = parseEvaluationSeriesReportDocument({
+      ...payload,
+      reportDigest: digestSeriesArtifact(
+        payload as unknown as Record<string, JsonValue>,
+        'reportDigest',
+      ),
+    });
+    await events.emit(
+      'series.run.completed',
+      'evaluation-series-run',
+      options.runId,
+      { reportDigest: report.reportDigest },
+    );
+    return deepFreezeCanonicalJson({
+      status: 'completed',
+      analysis,
+      ...(decision !== undefined ? { decision } : {}),
+      report,
+    });
+  } catch (error) {
+    if (!(error instanceof SeriesResourceDisposalError)
+        && (error instanceof SeriesCancelledError || signal.aborted)) {
+      try {
+        await events.emit(
+          'series.run.cancelled',
+          'evaluation-series-run',
+          options.runId,
+          {},
+        );
+      } catch {
+        // The terminal result remains authoritative when the event clock fails.
+      }
+      return deepFreezeCanonicalJson({
+        status: 'cancelled',
+        ...(analysis === undefined ? {} : { analysis }),
+        ...(decision === undefined ? {} : { decision }),
+      });
+    }
+    const failure = error instanceof SeriesResourceDisposalError
+      ? error.evaluationError
+      : {
+        code: 'series-run-failed',
+        stage: 'infrastructure' as const,
+        message: 'Evaluation Series 运行失败。',
+      };
+    try {
+      await events.emit(
+        'series.run.failed',
+        'evaluation-series-run',
+        options.runId,
+        { reasonCode: failure.code },
+      );
+    } catch {
+      // The terminal result remains authoritative when the event clock fails.
+    }
+    return deepFreezeCanonicalJson({
+      status: 'failed',
+      error: failure,
+      ...(analysis === undefined ? {} : { analysis }),
+      ...(decision === undefined ? {} : { decision }),
+    });
+  } finally {
+    events.close();
+  }
+}
+
+function configurationFailureRun(code: string): EvaluationSeriesRun {
+  const events = new BoundedEventStream(DEFAULT_EVENT_BUFFER_CAPACITY);
+  events.close();
+  return Object.freeze({
+    events,
+    result: Promise.resolve(deepFreezeCanonicalJson({
+      status: 'failed' as const,
+      error: configurationError(code),
+    })),
+  });
+}
+
+export function startEvaluationSeries(
+  planInput: unknown,
+  memberInputs: readonly EvaluationSeriesMemberSource[],
+  inputPorts: EvaluationSeriesRuntimePorts,
+  inputOptions: EvaluationSeriesRunOptions,
+): EvaluationSeriesRun {
+  if (inputOptions === null || typeof inputOptions !== 'object') {
+    return configurationFailureRun('series-run-options-invalid');
+  }
+  if (inputOptions.signal !== undefined
+      && (typeof inputOptions.signal.aborted !== 'boolean'
+        || typeof inputOptions.signal.addEventListener !== 'function')) {
+    return configurationFailureRun('series-run-signal-invalid');
+  }
+  if (inputOptions.eventWriter !== undefined
+      && typeof inputOptions.eventWriter.write !== 'function') {
+    return configurationFailureRun('series-event-writer-invalid');
+  }
+  const capacity = inputOptions.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY;
+  if (!Number.isSafeInteger(capacity) || capacity < 1) {
+    return configurationFailureRun('series-event-buffer-capacity-invalid');
+  }
+  if (!IdentifierSchema.safeParse(inputOptions.runId).success
+      || !IdentifierSchema.safeParse(inputOptions.bundleId).success
+      || !IdentifierSchema.safeParse(inputOptions.reportId).success) {
+    return configurationFailureRun('series-run-identity-invalid');
+  }
+  let plan: EvaluationSeriesPlan;
+  let members: EvaluationSeriesMemberSource[];
+  let ports: EvaluationSeriesRuntimePorts;
+  let comparability: ReturnType<typeof comparableMembers>;
+  let coverage: SeriesAnalysisBundle['coverage'];
+  try {
+    plan = parseEvaluationSeriesPlan(planInput);
+    const memberSnapshot = deepFreezeCanonicalJson(
+      memberInputs as unknown as JsonValue,
+    ) as unknown as readonly EvaluationSeriesMemberSource[];
+    members = validateMembers(plan, memberSnapshot);
+    ports = snapshotSeriesRuntimePorts(inputPorts);
+    comparability = comparableMembers(plan, members);
+    coverage = deriveSeriesMemberCoverage(plan, members, comparability.memberIds);
+  } catch {
+    return configurationFailureRun('series-run-configuration-invalid');
+  }
+  const options: EvaluationSeriesRunOptions = Object.freeze({
+    runId: inputOptions.runId,
+    bundleId: inputOptions.bundleId,
+    reportId: inputOptions.reportId,
+    ...(inputOptions.signal === undefined ? {} : { signal: inputOptions.signal }),
+    ...(inputOptions.eventWriter === undefined ? {} : { eventWriter: inputOptions.eventWriter }),
+    eventBufferCapacity: capacity,
+  });
+  const stream = new BoundedEventStream(capacity);
+  const emitter = new RuntimeEventEmitter(
+    ports.clock,
+    new InMemoryRuntimeEventSequencer(),
+    options.eventWriter,
+    {
+      runId: options.runId,
+      writerMode: options.eventWriter === undefined ? 'disabled' : 'optional',
+      writerFailureMode: 'ignore',
+      writerFailureReason: 'series-event-writer-failed',
+      writerFailureError: {
+        code: 'series-event-writer-failed',
+        stage: 'infrastructure',
+        message: 'Evaluation Series EventWriter 执行失败。',
+      },
+      recoveryEventKinds: [],
+    },
+    stream,
+    () => undefined,
+  );
+  const signal = options.signal ?? new AbortController().signal;
+  return Object.freeze({
+    events: stream,
+    result: executeEvaluationSeries(
+      plan,
+      members,
+      comparability,
+      coverage,
+      ports,
+      options,
+      signal,
+      emitter,
     ),
   });
 }
@@ -590,56 +1142,5 @@ export async function runEvaluationSeries(
   ports: EvaluationSeriesRuntimePorts,
   options: EvaluationSeriesRunOptions,
 ): Promise<EvaluationSeriesRunResult> {
-  const plan = parseEvaluationSeriesPlan(planInput);
-  const members = validateMembers(plan, memberInputs);
-  const comparability = comparableMembers(plan, members);
-  const coverage = deriveSeriesMemberCoverage(plan, members, comparability.memberIds);
-  const records = await runAnalysisNodes(
-    plan,
-    members,
-    comparability.memberIds,
-    coverage,
-    ports,
-  );
-  const analysis = makeBundle(
-    plan,
-    members,
-    coverage,
-    records,
-    comparability.assessments,
-    options.bundleId,
-  );
-  const decision = await makeDecision(plan, analysis, ports);
-  const payload = {
-    schemaVersion: EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
-    reportId: options.reportId,
-    seriesPlanDigest: plan.seriesPlanDigest,
-    analysisBundleDigest: analysis.bundleDigest,
-    ...(decision !== undefined ? { decision } : {}),
-    provenance: {
-      provenanceKind: 'derived' as const,
-      trust: minimumTrust([
-        analysis.provenance.trust,
-        ...(decision?.policyExecutionStatus === 'executed'
-          ? [decision.implementation.assuranceLevel]
-          : []),
-      ]),
-      parentDigests: [
-        analysis.bundleDigest,
-        ...(decision === undefined ? [] : [decision.decisionDigest]),
-      ],
-    },
-  };
-  const report = parseEvaluationSeriesReportDocument({
-    ...payload,
-    reportDigest: digestSeriesArtifact(
-      payload as unknown as Record<string, JsonValue>,
-      'reportDigest',
-    ),
-  });
-  return deepFreezeCanonicalJson({
-    analysis,
-    ...(decision !== undefined ? { decision } : {}),
-    report,
-  });
+  return startEvaluationSeries(planInput, memberInputs, ports, options).result;
 }

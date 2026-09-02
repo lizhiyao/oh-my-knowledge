@@ -330,6 +330,7 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
   members: readonly ProductionSeriesMemberOptions[];
   bundleId: string;
   reportId: string;
+  signal?: AbortSignal;
   preflight?: Readonly<OmkEvaluationPreflightOptions>;
 }>): Promise<ProductionEvaluationSeriesRun> {
   const series = input.host.compiled.orchestration.independentSeries;
@@ -424,13 +425,28 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
     return runEvaluationSeries(plan, sources, {
       ...seriesAssembly.ports,
       schemaValidators: validators,
-    }, { bundleId: input.bundleId, reportId: input.reportId });
+      clock: input.host.support.clock,
+    }, {
+      runId: input.reportId,
+      bundleId: input.bundleId,
+      reportId: input.reportId,
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    });
   });
-  const evolution = result.then((seriesResult) => projectCoreEvolutionEvidence({
-    plan,
-    analysis: seriesResult.analysis,
-    report: seriesResult.report,
-  }));
+  const evolution = result.then((seriesResult) => {
+    if (seriesResult.status !== 'completed') {
+      throw new ProductionEvaluationHostError({
+        code: 'PRODUCTION_EVALUATION_SERIES_RUN_INCOMPLETE',
+        runId: input.reportId,
+        message: 'Evaluation Series 未完成，不能投影 evolution evidence。',
+      });
+    }
+    return projectCoreEvolutionEvidence({
+      plan,
+      analysis: seriesResult.analysis,
+      report: seriesResult.report,
+    });
+  });
   return Object.freeze({
     plan,
     members: Object.freeze(members),

@@ -503,7 +503,14 @@ function factoriesFor(
         const port: SeriesAnalysisNodeRuntime = {
           identity,
           outputSchema: schema,
-          async analyze() { return { analysisStatus: 'inconclusive', reasonCodes: ['test-only'] }; },
+          async openRun() {
+            return {
+              async analyze() {
+                return { analysisStatus: 'inconclusive', reasonCodes: ['test-only'] };
+              },
+              dispose() {},
+            };
+          },
         };
         return { port, satisfiesVersionConstraint: true, preflightDeclarations: [] };
       });
