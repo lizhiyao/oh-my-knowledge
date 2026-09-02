@@ -6,7 +6,7 @@ import { extractSkillHardRules, extractSkillWorkflows } from '../skill-definitio
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
 import { findSkillSamplesPath } from './sample-locator.js';
-import type { Artifact } from '../artifacts/contracts.js';
+import type { Artifact } from '../knowledge-artifacts/contracts.js';
 import type { RemoteGitRef } from './contracts/variant.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {

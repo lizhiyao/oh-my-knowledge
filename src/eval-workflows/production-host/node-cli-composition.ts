@@ -13,7 +13,7 @@ import {
 import { checkDependencies } from '../../preflight/dependencies.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
-import type { Artifact } from '../../artifacts/contracts.js';
+import type { Artifact } from '../../knowledge-artifacts/contracts.js';
 import type { CliEvaluationCompileResult } from '../input-compilation/index.js';
 import type {
   OmkLlmJudgeInvocationBinding,

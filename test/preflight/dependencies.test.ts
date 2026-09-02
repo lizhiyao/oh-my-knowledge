@@ -9,7 +9,7 @@ import {
   checkDependencies,
   preflightDependencies,
 } from '../../src/preflight/dependencies.js';
-import type { Artifact } from '../../src/artifacts/contracts.js';
+import type { Artifact } from '../../src/knowledge-artifacts/contracts.js';
 import {
   type EvalSampleSetDocument,
   type Sample,

@@ -1,5 +1,5 @@
 import type { JudgeConfig } from '../../grading/contracts/config.js';
-import type { ExperimentRole } from '../../artifacts/contracts.js';
+import type { ExperimentRole } from '../../knowledge-artifacts/contracts.js';
 import type { RemoteGitRef } from './variant.js';
 
 export interface EvalConfigVariant {

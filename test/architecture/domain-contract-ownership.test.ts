@@ -11,7 +11,7 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
   'src/skill-definition/contracts.ts',
-  'src/artifacts/contracts.ts',
+  'src/knowledge-artifacts/contracts.ts',
   'src/inputs/contracts/index.ts',
   'src/inputs/contracts/assertion.ts',
   'src/inputs/contracts/config.ts',
@@ -55,6 +55,7 @@ describe('领域契约所有权', () => {
   it('保持已归位的领域实现不回退到旧路径', () => {
     for (const legacyPath of [
       'src/analysis',
+      'src/artifacts',
       'src/eval-workflows/studio-catalog',
       'src/server',
       'src/renderer',

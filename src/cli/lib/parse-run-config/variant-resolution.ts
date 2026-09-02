@@ -22,7 +22,7 @@
 import { discoverVariants, variantExprToSkillName, variantIdentity, parseVariantCwd } from '../../../inputs/skill-loader.js';
 import { configVariantsToSpecs } from '../../../inputs/eval-config.js';
 import type { EvalConfig } from '../../../inputs/contracts/config.js';
-import type { ExperimentRole } from '../../../artifacts/contracts.js';
+import type { ExperimentRole } from '../../../knowledge-artifacts/contracts.js';
 import type { VariantSpec } from '../../../inputs/contracts/variant.js';
 
 /** CLI 的 --control / --treatment 只收 artifact 身份。`name@cwd` 语法已移除:撞到就抛迁移错误,

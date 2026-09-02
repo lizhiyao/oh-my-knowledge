@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runDoctor, resolveDoctorTargets } from '../../src/doctor/index.js';
 import { registerRule, __resetCustomRulesForTest } from '../../src/doctor/rules.js';
-import type { Artifact } from '../../src/artifacts/contracts.js';
+import type { Artifact } from '../../src/knowledge-artifacts/contracts.js';
 import type { ComposerRule, DoctorRule, DoctorProgressInfo } from '../../src/doctor/contracts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
