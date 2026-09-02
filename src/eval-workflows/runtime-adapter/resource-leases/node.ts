@@ -327,6 +327,8 @@ function roleResourceKind(role: RuntimeResourceLeaseRequirement['resourceRole'])
       ? 'workspace' as const
       : role === 'mcp-config'
         ? 'mcp-config' as const
+        : role === 'mock-rule'
+          ? 'mock-rule' as const
         : role === 'mock-payload'
           ? 'mock-payload' as const
           : role === 'runtime-implementation'
@@ -371,6 +373,7 @@ function snapshotBindingRequests(
         'artifact',
         'workspace',
         'mcp-config',
+        'mock-rule',
         'mock-payload',
         'runtime-implementation',
         'content',
@@ -423,7 +426,7 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'HostResource inventory 包含重复 resourceId。',
     });
-    if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
+    if (!['artifact', 'workspace', 'mcp-config', 'mock-rule', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
       .includes(resource.resourceKind)
         || !['public', 'sensitive', 'secret', 'gold'].includes(descriptor.classification)
         || !['content-digest', 'tree-digest', 'pinned-git']
@@ -448,7 +451,19 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'Gold classification 只能用于 gold-dataset，且 gold-dataset 必须标记为 gold。',
     });
-    const fileOnly = ['mcp-config', 'mock-payload', 'runtime-implementation', 'content']
+    if (['mcp-config', 'mock-rule', 'mock-payload'].includes(resource.resourceKind)
+        && descriptor.classification !== 'secret') fail({
+      code: 'OMK_RESOURCE_LEASE_CLASSIFICATION_DENIED',
+      resourceId: descriptor.resourceId,
+      message: 'MCP config 与 mock control 资源必须标记为 secret。',
+    });
+    if (resource.resourceKind === 'mock-rule'
+        && descriptor.mediaType !== 'application/json') fail({
+      code: 'OMK_RESOURCE_LEASE_INPUT_INVALID',
+      resourceId: descriptor.resourceId,
+      message: 'Mock rule 必须使用 application/json media type。',
+    });
+    const fileOnly = ['mcp-config', 'mock-rule', 'mock-payload', 'runtime-implementation', 'content']
       .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact' || resource.resourceKind === 'workspace';
     if ((fileOnly && verification.verificationKind !== 'content-digest')

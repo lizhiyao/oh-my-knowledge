@@ -36,7 +36,7 @@ Assembly 要求以下每个引用都有且只有一个 binding：
 
 Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Sampling Estimator 不再从 AnalysisGraph node 猜测，也不能由 fallback registry 静默解析。
 
-完整结构使用 `omk.runtime-binding-request/v3`。已被取代的 v2 request 缺少 canonical Target execution requirement，会被直接拒绝，不增加 compatibility 分支。
+完整结构使用 `omk.runtime-binding-request/v4`。已被取代的 v3 request 可能暴露内联 mock match rule，会被直接拒绝，不增加 compatibility 分支。
 
 调用任何 factory 前，assembly 会验证 binding ID／reference key 唯一性、Definition／Series 精确覆盖、implementation／version、executor protocol／model／effort／behavior digest、evaluator measurement／config digest，以及 resource lease requirement。验证失败时 factory 调用次数必须为零。
 
@@ -86,7 +86,7 @@ RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 loca
 
 | 角色 | Lease mode |
 |---|---|
-| artifact、MCP config、mock payload、evaluator content | immutable snapshot |
+| artifact、MCP config、mock rule、mock payload、evaluator content | immutable snapshot |
 | workspace | verified base + copy-on-write overlay |
 
 这些只是 acquisition requirement。后续 Verified HostResource lease 层仍须在 port 打开 run 前验证 kind、classification、size、digest、实际字节／目录树、隔离和 exactly-once release。Gold resource 不得出现在 executor 或 evaluator binding requirement 中。

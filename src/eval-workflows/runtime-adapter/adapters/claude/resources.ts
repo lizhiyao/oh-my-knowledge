@@ -60,7 +60,7 @@ const ClaudeTargetConfigSchema = z.object({
     mcpConfig: DescriptorSchema.optional(),
     mocks: z.array(z.object({
       sampleIds: z.array(z.string().min(1)).min(1),
-      matchRules: JsonValueSchema,
+      rule: DescriptorSchema,
       strict: z.boolean(),
       payloads: z.array(DescriptorSchema),
     }).strict()).optional(),
@@ -205,19 +205,19 @@ export function captureClaudeCliTarget(
       workspace.workspaceMode === 'copy-on-write-overlay' ? [workspace.descriptor] : []
     )),
     ...(config.behavior.mcpConfig === undefined ? [] : [config.behavior.mcpConfig]),
-    ...(config.behavior.mocks ?? []).flatMap((mock) => mock.payloads),
+    ...(config.behavior.mocks ?? []).flatMap((mock) => [mock.rule, ...mock.payloads]),
   ];
   if (configuredDescriptors.some((descriptor) => descriptor.classification === 'gold')) {
     throw new TypeError(`${profile.adapterLabel} Executor Target must not reference Gold resources.`);
   }
   const expectedRequirements = new Map<string, {
     resourceId: string;
-    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-payload';
+    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-rule' | 'mock-payload';
     leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay';
   }>();
   const addRequirement = (
     resourceId: string,
-    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-payload',
+    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-rule' | 'mock-payload',
     leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay',
   ): void => {
     const next = { resourceId, resourceRole, leaseMode } as const;
@@ -241,6 +241,7 @@ export function captureClaudeCliTarget(
     addRequirement(config.behavior.mcpConfig.resourceId, 'mcp-config', 'immutable-snapshot');
   }
   for (const mock of config.behavior.mocks ?? []) {
+    addRequirement(mock.rule.resourceId, 'mock-rule', 'immutable-snapshot');
     for (const payload of mock.payloads) {
       addRequirement(payload.resourceId, 'mock-payload', 'immutable-snapshot');
     }
@@ -268,6 +269,17 @@ export function captureClaudeCliTarget(
     throw new TypeError(`${profile.adapterLabel} Core adapter does not accept opaque provider config.`);
   }
   const mockBindings = config.behavior.mocks ?? [];
+  if (config.behavior.mcpConfig !== undefined
+      && config.behavior.mcpConfig.classification !== 'secret') {
+    throw new TypeError(`${profile.adapterLabel} MCP config must use secret classification.`);
+  }
+  if (mockBindings.some((mock) => (
+    mock.rule.classification !== 'secret'
+      || mock.rule.mediaType !== 'application/json'
+      || mock.payloads.some((payload) => payload.classification !== 'secret')
+  ))) {
+    throw new TypeError(`${profile.adapterLabel} mock rules and payloads must be secret resources.`);
+  }
   if (mockBindings.some((mock) => new Set(mock.sampleIds).size !== mock.sampleIds.length)) {
     throw new TypeError(`${profile.adapterLabel} mock binding sampleIds must be unique.`);
   }
@@ -281,34 +293,12 @@ export function captureClaudeCliTarget(
       strictBySampleId.set(sampleId, mock.strict);
     }
   }
-  if (mockBindings.some((mock) => !ClaudeMockRulesSchema.safeParse(mock.matchRules).success)) {
-    throw new TypeError(`${profile.adapterLabel} mock matchRules do not satisfy the hook contract.`);
-  }
-  if (mockBindings.some((mock) => {
-    const rules = ClaudeMockRulesSchema.safeParse(mock.matchRules);
-    return rules.success
-      && rules.data.tool.startsWith('mcp__')
-      && mockMcpServerName(rules.data.tool) === undefined;
-  })) {
-    throw new TypeError(`${profile.adapterLabel} MCP mock tool names must identify one server and tool.`);
-  }
   const toolAllowLists = toolControls.flatMap((control) => (
     control.toolPolicyKind === 'allow-list' ? [control.allowedTools] : []
   ));
   if (config.behavior.mcpConfig !== undefined && toolAllowLists.length > 0) {
     throw new TypeError(
       `${profile.adapterLabel} cannot enforce one complete tool allow-list across built-in and dynamic MCP tools.`,
-    );
-  }
-  if (
-    toolAllowLists.length > 0
-    && mockBindings.some((mock) => {
-      const rules = ClaudeMockRulesSchema.safeParse(mock.matchRules);
-      return rules.success && rules.data.tool.startsWith('mcp__');
-    })
-  ) {
-    throw new TypeError(
-      `${profile.adapterLabel} cannot combine a built-in tool allow-list with MCP tool mocks.`,
     );
   }
   if (toolAllowLists.some((tools) => new Set(tools).size !== tools.length)) {
@@ -552,6 +542,37 @@ async function readMockPayload(
   return text;
 }
 
+async function readMockRule(
+  profile: ClaudeResourceProjectionProfile,
+  resource: OmkLeasedHostResource,
+  expected: z.infer<typeof DescriptorSchema>,
+): Promise<z.infer<typeof ClaudeMockRulesSchema>> {
+  if (
+    resource.resourceKind !== 'mock-rule'
+    || resource.leaseMode !== 'immutable-snapshot'
+    || resource.snapshotKind !== 'file'
+    || resource.descriptor.classification !== 'secret'
+    || resource.descriptor.mediaType !== 'application/json'
+    || !sameDescriptor(resource, expected)
+  ) fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule lease does not match the sealed Target.');
+  const text = await readTextFile(
+    profile,
+    resource.snapshotPath,
+    'MOCK_CONFIG_INVALID',
+    'mock rule',
+  );
+  try {
+    const rules = ClaudeMockRulesSchema.parse(JSON.parse(text) as unknown);
+    if (rules.tool.startsWith('mcp__') && mockMcpServerName(rules.tool) === undefined) {
+      fail(profile, 'MOCK_CONFIG_INVALID', 'MCP mock tool must identify one server and tool.');
+    }
+    return rules;
+  } catch (error) {
+    if (error instanceof ExecutionPortFailure) throw error;
+    fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule is not a valid hook contract.');
+  }
+}
+
 async function projectMocks(
   profile: ClaudeResourceProjectionProfile,
   lease: OmkBindingResourceLease,
@@ -572,12 +593,13 @@ async function projectMocks(
   }>();
   const mcpServerNames = new Set<string>();
   for (const binding of bindings) {
-    const rules = ClaudeMockRulesSchema.safeParse(binding.matchRules);
-    if (!rules.success) {
-      fail(profile, 'MOCK_CONFIG_INVALID', 'mock matchRules do not satisfy the Claude hook contract.');
+    const ruleResource = lease.resourcesByResourceId.get(binding.rule.resourceId);
+    if (ruleResource === undefined) {
+      fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule resource is missing.');
     }
+    const rules = await readMockRule(profile, ruleResource, binding.rule);
     const returns: MockReturn[] = [];
-    const mcpServerName = mockMcpServerName(rules.data.tool);
+    const mcpServerName = mockMcpServerName(rules.tool);
     if (mcpServerName !== undefined) mcpServerNames.add(mcpServerName);
     for (const descriptor of binding.payloads) {
       const resource = lease.resourcesByResourceId.get(descriptor.resourceId);
@@ -587,8 +609,8 @@ async function projectMocks(
       returns.push(await readMockPayload(profile, resource));
     }
     const mock: Mock = {
-      tool: rules.data.tool,
-      ...(rules.data.match === undefined ? {} : { match: rules.data.match as MockMatch }),
+      tool: rules.tool,
+      ...(rules.match === undefined ? {} : { match: rules.match as MockMatch }),
       ...(returns.length === 0
         ? { return: '' }
         : returns.length === 1
@@ -606,14 +628,14 @@ async function projectMocks(
           strict: binding.strict,
           classification: binding.payloads.reduce<ExecutionContent['classification']>(
             (current, descriptor) => higherClassification(current, descriptor.classification),
-            'public',
+            binding.rule.classification,
           ),
         });
       } else {
         existing.mocks.push(mock);
         existing.classification = binding.payloads.reduce<ExecutionContent['classification']>(
           (current, descriptor) => higherClassification(current, descriptor.classification),
-          existing.classification,
+          higherClassification(existing.classification, binding.rule.classification),
         );
       }
     }
@@ -698,6 +720,21 @@ export async function captureClaudeCliRunState(
         mcpDescriptor,
       );
   const mockProjection = await projectMocks(profile, lease, target.config);
+  const toolAllowLists = [
+    target.target.executionControls.defaults.tools,
+    ...target.target.executionControls.sampleOverrides.flatMap((override) => (
+      override.tools === undefined ? [] : [override.tools]
+    )),
+  ].flatMap((control) => (
+    control.toolPolicyKind === 'allow-list' ? [control.allowedTools] : []
+  ));
+  if (toolAllowLists.length > 0 && mockProjection.mcpServerNames.length > 0) {
+    fail(
+      profile,
+      'MOCK_CONFIG_INVALID',
+      'built-in tool allow-list cannot be combined with MCP tool mocks.',
+    );
+  }
   if (profile.mcpMockMode === 'synthetic-server') {
     if (mcpConfig !== undefined && mockProjection.mcpServerNames.some((serverName) => (
       mcpConfig.serverNames.includes(serverName)
@@ -767,7 +804,7 @@ export async function captureClaudeCliRunState(
       ...(mcpConfig === undefined ? {} : { mcpServers: mcpConfig.servers }),
       mockControlsBySampleId: mockProjection.bySampleId,
       classification: maxClassification(resources.filter((resource) => (
-        resource.resourceKind !== 'mock-payload'
+        resource.resourceKind !== 'mock-rule' && resource.resourceKind !== 'mock-payload'
       ))),
       acquireTrial() {
         if (disposeRequested) fail(profile, 'RUN_DISPOSED', 'run is disposing.');

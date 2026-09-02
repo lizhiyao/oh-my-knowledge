@@ -798,6 +798,7 @@ describe('OMK Evaluation Runtime binding assembly', () => {
       'artifact:immutable-snapshot',
       'mcp-config:immutable-snapshot',
       'mock-payload:immutable-snapshot',
+      'mock-rule:immutable-snapshot',
       'workspace:copy-on-write-overlay',
     ]);
     const leaseRequests = resourceLeaseRequestsFromBindingEntries(
@@ -891,12 +892,12 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     expect(calls).toEqual([]);
   });
 
-  it('rejects the superseded v2 binding request without compatibility inference', async () => {
+  it('rejects the superseded v3 binding request without compatibility inference', async () => {
     const input = runtimeAssemblyInput();
     delete input.orchestration.independentSeries;
     const compiled = compileCliEvaluationInput(input);
     const request = clone(compiled.runtimeBinding) as { schemaVersion: string };
-    request.schemaVersion = 'omk.runtime-binding-request/v2';
+    request.schemaVersion = 'omk.runtime-binding-request/v3';
     const calls: string[] = [];
 
     await expect(assembleOmkRuntimeBindings({

@@ -52,6 +52,7 @@ interface OmkLeasedHostResourceBase {
     | 'artifact'
     | 'workspace'
     | 'mcp-config'
+    | 'mock-rule'
     | 'mock-payload'
     | 'gold-dataset'
     | 'runtime-implementation'
