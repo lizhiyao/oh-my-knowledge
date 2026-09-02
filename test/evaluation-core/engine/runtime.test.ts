@@ -8,6 +8,7 @@ import {
   type EvaluationRunResult,
   type Evaluator,
   type Executor,
+  type CoreSchemaValidator,
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../../../src/package-api/evaluation-core.js';
@@ -608,6 +609,78 @@ describe('embedded Evaluation Engine', () => {
 
     expect(result.status).toBe('completed');
     expect(attempts).toEqual(['prepared', 'prepared']);
+  });
+
+  it('captures validator schemas and functions for runtime and admission', async () => {
+    const fixture = await createRuntime();
+    const mutableValidators = new Map<string, CoreSchemaValidator>(
+      [...fixture.runtime.schemaValidators].map(([key, validator]) => [key, {
+        schema: structuredClone(validator.schema),
+        parse: validator.parse.bind(validator),
+      }]),
+    );
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      schemaValidators: mutableValidators,
+    };
+    const engine = createEvaluationEngine(runtime);
+    const prepared = await engine.prepare(fixture.definition, fixture.policy);
+
+    for (const validator of mutableValidators.values()) {
+      const mutable = validator as {
+        schema: { schemaVersion: string };
+        parse: CoreSchemaValidator['parse'];
+      };
+      mutable.schema.schemaVersion = 'mutated-after-prepare';
+      mutable.parse = () => {
+        throw new Error('mutated validator must not run');
+      };
+    }
+
+    const stages = prepared.stages({ runId: 'embedded-validator-snapshot' });
+    const execution = await stages.execute().source;
+    const evaluation = await stages.evaluate({ execution }).source;
+    const analysis = await stages.analyze({ execution, evaluation }).source;
+    const admitted = prepared.admitAnalysisBundle(structuredClone(analysis.bundle), {
+      execution,
+      evaluation,
+    });
+    await stages.close();
+
+    expect(analysis.bundle.analysisBundleStatus).toBe('completed');
+    expect(admitted.bundle.bundleDigest).toBe(analysis.bundle.bundleDigest);
+
+    mutableValidators.clear();
+    await expect(engine.prepare(fixture.definition, fixture.policy)).rejects.toMatchObject({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+    });
+  });
+
+  it('returns malformed Runtime snapshot failures through the one-call result channel', async () => {
+    const fixture = await createRuntime();
+    const runtime = {
+      ...fixture.runtime,
+      schemaValidators: new Map([['invalid-validator', {
+        schema: null,
+        parse: undefined,
+      }]]),
+    } as unknown as EvaluationEngineRuntime;
+
+    const run = createEvaluationEngine(runtime).start(fixture.definition, {
+      policy: fixture.policy,
+      runId: 'embedded-invalid-runtime-snapshot',
+    });
+
+    await expect(run.result).resolves.toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'EVAL_DEFINITION_RUNTIME_BINDING_INVALID',
+        stage: 'configuration',
+      },
+    });
+    await expect(collectEvents(run.events)).resolves.toEqual([]);
   });
 
   it('isolates Evaluator sessions for multiple bindings of one implementation', async () => {

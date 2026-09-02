@@ -1061,6 +1061,12 @@ Analysis、Decision 和 Report materialization 在同一 session 中各自最多
 implementation、registry 或执行路径。Studio 与 downstream projection 分别放在显式子路径中，
 未列出的入口和 `dist/*` 深层导入继续保持关闭。这样既让依赖方向清晰可见，又不分裂 Runtime authority。
 
+每次 prepare 或一键 start 都会捕获 Runtime 顶层 infrastructure port、binding resolver 函数与独立的
+Schema-validator registry，并把 validator 的 SchemaIdentity 与 parse 函数作为一个整体捕获。宿主可以为
+后续 prepare 更新 registry，但修改原始 Map、validator object 或 Runtime property，不能改变已经 prepared
+的 RunPlan 所使用的验证语义。这样把 binding snapshot 规则扩展到参与 Analysis admission 的全部可执行
+validator，同时不伪装成能够冻结宿主 client 的内部状态。
+
 session 打开期间会在 Engine 内独占其 `runId`，拒绝阶段并发，并在 Report 到达终态后自动释放
 identity。宿主若有意停在更早的 Bundle，必须调用 `await stages.close()`；close 会取消仍在运行的
 阶段，等待既有 runtime 完成资源释放，再归还 identity。这样可以避免与一键 façade 产生 Event
