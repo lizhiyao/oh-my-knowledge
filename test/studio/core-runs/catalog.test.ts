@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
 import {
-  CoreDownstreamProjectionError,
   createCoreStudioCatalog,
-  digestCanonicalJson,
   projectCoreStudioRunDetail,
-} from '../../../src/index.js';
+} from '../../../src/studio/public.js';
+import { digestCanonicalJson } from '../../../src/index.js';
+import { CoreDownstreamProjectionError } from '../../../src/eval-workflows/downstream-projections/index.js';
 import {
   CoreRunArtifactOverlayError,
   createNodeCoreRunArtifactStore,

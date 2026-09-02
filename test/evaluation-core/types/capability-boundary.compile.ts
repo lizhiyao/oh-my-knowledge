@@ -12,8 +12,9 @@ import type {
 } from '../../../src/evaluation-core/evaluation/index.js';
 import type {
   ExecutionBundle,
+  PreparedEvaluationStageSession,
   SealedRunPlan,
-} from '../../../src/index.js';
+} from '../../../src/package-api/evaluation-core.js';
 import type { RunPlan } from '../../../src/evaluation-core/contracts/index.js';
 
 declare const executorContext: ExecutorTrialContext;
@@ -35,7 +36,7 @@ declare const wireExecution: ExecutionBundle;
 const forgedPlan: SealedRunPlan = wirePlan;
 void forgedPlan;
 
-declare const stageSession: import('../../../src/index.js').PreparedEvaluationStageSession;
+declare const stageSession: PreparedEvaluationStageSession;
 // @ts-expect-error 裸 ExecutionBundle 不是 plan-aware admission 签发的 source capability。
 stageSession.evaluate({ execution: wireExecution });
 

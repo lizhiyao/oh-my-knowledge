@@ -389,7 +389,7 @@ export const ComparabilityReasonSchema = z.object({
   scope: ComparisonScopeSchema,
 }).strict();
 
-type ComparabilityReasonCode = z.infer<typeof ComparabilityReasonCodeSchema>;
+export type ComparabilityReasonCode = z.infer<typeof ComparabilityReasonCodeSchema>;
 
 const REASON_CLASSIFICATION: Record<
 ComparabilityReasonCode,

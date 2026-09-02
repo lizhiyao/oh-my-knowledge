@@ -11,7 +11,7 @@ import {
   type EvaluationSeriesDefinitionInput,
   type EvaluationSeriesMemberSource,
   type RuntimeIdentity,
-} from '../../../src/index.js';
+} from '../../../src/package-api/evaluation-core.js';
 import {
   importConformanceResult,
   prepareConformancePlan,

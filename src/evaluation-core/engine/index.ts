@@ -64,14 +64,14 @@ import {
 import { BoundedEventStream } from '../runtime/event-stream.js';
 import { createRunBudgetSource } from '../budget/index.js';
 import type {
-  EvaluationEngine,
+  AdvancedEvaluationEngine,
+  AdvancedPreparedEvaluation,
   EvaluationEngineRuntime,
   EvaluationRun,
   EvaluationRunArtifacts,
   EvaluationRunOptions,
   EvaluationRunResult,
   PartialEvaluationRunArtifacts,
-  PreparedEvaluation,
   PreparedEvaluationRunOptions,
   PreparedEvaluationStageSession,
   EvaluationStageSessionErrorCode,
@@ -767,9 +767,9 @@ function bindPreparedEvaluation(
   runtime: EvaluationEngineRuntime,
   prepared: PreparedEngineRun,
   activeRunIds: Set<string>,
-): PreparedEvaluation {
+): AdvancedPreparedEvaluation {
   const plan = prepared.plan;
-  const bound: PreparedEvaluation = {
+  const bound: AdvancedPreparedEvaluation = {
     plan,
     start: (options) => startPrepared(
       runtime,
@@ -842,10 +842,10 @@ function bindPreparedEvaluation(
   return bound;
 }
 
-export function createEvaluationEngine(runtime: EvaluationEngineRuntime): EvaluationEngine {
+export function createEvaluationEngine(runtime: EvaluationEngineRuntime): AdvancedEvaluationEngine {
   const activeRunIds = new Set<string>();
   return {
-    async prepare(definition, policy): Promise<PreparedEvaluation> {
+    async prepare(definition, policy): Promise<AdvancedPreparedEvaluation> {
       const prepared = await prepareEngineRun(runtime, definition, policy);
       return bindPreparedEvaluation(runtime, prepared, activeRunIds);
     },

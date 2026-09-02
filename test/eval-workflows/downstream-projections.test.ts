@@ -4,20 +4,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
 import {
-  CoreDownstreamProjectionError,
   createEvaluationSeriesDefinition,
   createEvaluationSeriesMemberSource,
   digestCanonicalJson,
   prepareEvaluationSeriesPlan,
-  projectCoreArtifactGraph,
-  compareGoldToCoreRun,
-  projectCoreEvolutionEvidence,
   runEvaluationSeries,
   schemaIdentityKey,
   type EvaluationSeriesDefinition,
   type EvaluationSeriesDefinitionInput,
   type RuntimeIdentity,
-} from '../../src/index.js';
+} from '../../src/package-api/evaluation-core.js';
+import {
+  CoreDownstreamProjectionError,
+  compareGoldToCoreRun,
+  projectCoreArtifactGraph,
+  projectCoreEvolutionEvidence,
+} from '../../src/eval-workflows/downstream-projections/index.js';
 import { parseArtifactGraphDocument } from '../../src/artifact-graph/schema.js';
 import {
   createNodeCoreRunArtifactStore,

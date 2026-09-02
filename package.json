@@ -9,6 +9,19 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./evaluation-core": {
+      "types": "./dist/package-api/evaluation-core.d.ts",
+      "import": "./dist/package-api/evaluation-core.js"
+    },
+    "./evaluation-core/schemas/v1/*": "./dist/evaluation-core/contracts/schemas/v1/*",
+    "./projections": {
+      "types": "./dist/eval-workflows/downstream-projections/index.d.ts",
+      "import": "./dist/eval-workflows/downstream-projections/index.js"
+    },
+    "./studio": {
+      "types": "./dist/studio/public.d.ts",
+      "import": "./dist/studio/public.js"
+    },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
       "import": "./dist/mcp/index.js"

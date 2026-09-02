@@ -20,7 +20,17 @@ CommonJS hosts use dynamic import:
 const { createEvaluationEngine } = await import('oh-my-knowledge');
 ```
 
-Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does not ship a second CommonJS build, avoiding two module instances with diverging runtime registries. Paths below the package root, including `oh-my-knowledge/dist/*`, are private and blocked by the package export map.
+Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does not ship a second CommonJS build, avoiding two module instances with diverging runtime registries. Only these public entry points are supported:
+
+| Entry point | Ownership |
+|---|---|
+| `oh-my-knowledge` | minimal one-call Engine façade and Core contracts |
+| `oh-my-knowledge/evaluation-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
+| `oh-my-knowledge/projections` | downstream artifact projections |
+| `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
+| `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |
+
+All other paths, including `oh-my-knowledge/dist/*`, are private and blocked by the package export map.
 
 ## Runtime boundary
 
@@ -94,6 +104,54 @@ await collecting;
 `runId` is host-assigned and required. It must be unique among active runs on the same engine instance because OMK derives Event, Bundle, and Report identifiers deterministically from it. A concurrent duplicate ends immediately with `EVALUATION_ENGINE_RUN_ID_ACTIVE`; the identifier can be reused after the original run reaches any terminal state. Definitions, samples, policies, runtime identities, seeds, and fingerprints are sealed into the resulting evidence chain.
 
 Use `await engine.prepare(definition, policy)` when the host wants configuration and capability validation before scheduling. The returned `PreparedEvaluation` contains an opaque `SealedRunPlan` capability and the captured binding snapshot, and can start multiple isolated runs with the same immutable plan and ports.
+
+## Advanced staged runs
+
+Import the explicit advanced entry point when a host must persist a stage, change only downstream inputs, and recompute the affected suffix:
+
+```ts
+import { createEvaluationEngine } from 'oh-my-knowledge/evaluation-core';
+
+const original = await createEvaluationEngine(runtime).prepare(definition, policy);
+const executionSession = original.stages({ runId: 'execute-v1' });
+const execution = await executionSession.execute().source;
+await executionSession.close();
+
+const changed = await createEvaluationEngine(runtime).prepare(changedDefinition, policy);
+const admittedExecution = changed.admitExecutionBundle(
+  persistedExecutionBundle,
+  executionVerification,
+);
+const session = changed.stages({ runId: 'rescore-v2' });
+const evaluation = await session.evaluate({ execution: admittedExecution }).source;
+const analysis = await session.analyze({
+  execution: admittedExecution,
+  evaluation,
+}).source;
+const decision = await session.decide({
+  execution: admittedExecution,
+  evaluation,
+  analysis,
+}).source;
+const report = await session.materializeReport({
+  execution: admittedExecution,
+  evaluation,
+  analysis,
+  ...(decision === undefined ? {} : { decision }),
+}).result;
+```
+
+Each stage call exposes a serializable `.result` and, except for Report materialization, a non-serializable `.source` capability. The source envelope carries the matching `.bundle` or Decision `.result`. Only a source issued by the current runtime or by the matching `admit*` method can authorize a downstream stage. Admission recursively verifies plan identity and parent lineage; transported provenance remains indeterminate unless the host supplies valid external verification facts. Tampered digests, Runtime identity, cache provenance, or parent lineage fail closed.
+
+A session allows each stage at most once and never permits overlapping stage calls. Report materialization closes it automatically. If a workflow intentionally stops earlier, call `await session.close()` to cancel any in-flight stage, wait for teardown, and release the `runId`.
+
+Shipped JSON Schemas are available through the allowlisted path `oh-my-knowledge/evaluation-core/schemas/v1/<file>.schema.json`. Code that needs a URL can avoid constructing package internals:
+
+```ts
+import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/evaluation-core';
+
+const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
+```
 
 ## Results and errors
 

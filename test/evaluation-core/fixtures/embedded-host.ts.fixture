@@ -10,6 +10,11 @@ import {
   type Executor,
   type MeasurementPolicy,
 } from 'oh-my-knowledge';
+import {
+  createEvaluationEngine as createAdvancedEvaluationEngine,
+  resolveEvaluationCoreJsonSchema,
+  type ExecutionBundleSource,
+} from 'oh-my-knowledge/evaluation-core';
 
 declare const runtime: EvaluationEngineRuntime;
 declare const definition: EvaluationDefinition;
@@ -43,6 +48,23 @@ const engine = createEvaluationEngine({
 });
 const run = engine.start(definition, { policy, runId: 'typescript-host' });
 
+async function rootBoundary(): Promise<void> {
+  const prepared = await engine.prepare(definition, policy);
+  // @ts-expect-error 分阶段 API 只属于显式 evaluation-core 子路径。
+  prepared.stages({ runId: 'root-must-stay-minimal' });
+}
+
+async function advancedBoundary(source: ExecutionBundleSource): Promise<void> {
+  const advanced = createAdvancedEvaluationEngine(runtime);
+  const prepared = await advanced.prepare(definition, policy);
+  const stages = prepared.stages({ runId: 'typescript-advanced-host' });
+  const evaluation = stages.evaluate({ execution: source });
+  await evaluation.source;
+  await stages.close();
+  const schema: URL = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
+  void schema;
+}
+
 async function consume(): Promise<EvaluationRunResult> {
   for await (const event of run.events) {
     const serialized: EvaluationEvent = event;
@@ -52,3 +74,5 @@ async function consume(): Promise<EvaluationRunResult> {
 }
 
 void consume;
+void rootBoundary;
+void advancedBoundary;

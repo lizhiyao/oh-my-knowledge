@@ -19,7 +19,12 @@ function restoreHostCapabilities() {
 }
 
 try {
-  const core = await import('oh-my-knowledge');
+  const [core, advanced, projections, studio] = await Promise.all([
+    import('oh-my-knowledge'),
+    import('oh-my-knowledge/evaluation-core'),
+    import('oh-my-knowledge/projections'),
+    import('oh-my-knowledge/studio'),
+  ]);
 
   // Node 的 ESM loader 自身会读取环境变量；外层测试以隔离 HOME 和目录快照检查
   // 导入期副作用。加载完成后再封锁宿主能力，验证公开纯内存操作的运行期边界。
@@ -42,7 +47,10 @@ try {
   const digest = core.digestCanonicalJson({ z: 1, a: ['memory-only'] });
   if (canonical !== '{"a":["memory-only"],"z":1}'
       || !digest.startsWith('sha256:')
-      || typeof core.createEvaluationEngine !== 'function') {
+      || typeof core.createEvaluationEngine !== 'function'
+      || typeof advanced.assessComparability !== 'function'
+      || typeof projections.projectCoreArtifactGraph !== 'function'
+      || typeof studio.createCoreStudioCatalog !== 'function') {
     throw new Error('Evaluation Core pure-memory contract operation failed');
   }
 
