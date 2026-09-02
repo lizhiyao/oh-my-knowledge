@@ -64,6 +64,7 @@ describe('public examples catalog', () => {
 
   it('keeps the documented evaluation dry-runs compilable', async () => {
     const outputDirectory = await mkdtemp(resolve(tmpdir(), 'omk-example-dry-run-'));
+    const offlineExecutor = resolve(examplesRoot, 'custom-executor', 'echo-executor.sh');
     const cases = [
       {
         directory: 'agent-runtime',
@@ -83,6 +84,7 @@ describe('public examples catalog', () => {
       for (const example of cases) {
         const { stdout } = await runCommand(EvalCommand, [
           ...example.args,
+          '--executor', offlineExecutor,
           '--output-dir', outputDirectory,
         ], {
           cwd: resolve(examplesRoot, example.directory),
