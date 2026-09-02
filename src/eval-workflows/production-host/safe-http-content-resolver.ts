@@ -51,11 +51,32 @@ export function isPublicNetworkAddress(address: string, family: 4 | 6): boolean 
   return !blockedAddresses.check(address, family === 4 ? 'ipv4' : 'ipv6');
 }
 
-async function pinnedPublicAddress(hostname: string): Promise<{ address: string; family: 4 | 6 }> {
+function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    operation.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (cause) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(cause);
+      },
+    );
+  });
+}
+
+async function pinnedPublicAddress(
+  hostname: string,
+  signal: AbortSignal,
+): Promise<{ address: string; family: 4 | 6 }> {
   const normalized = hostname.replace(/^\[/, '').replace(/\]$/, '');
   const literalFamily = isIP(normalized);
   const addresses = literalFamily === 0
-    ? await lookup(normalized, { all: true, verbatim: true })
+    ? await abortable(lookup(normalized, { all: true, verbatim: true }), signal)
     : [{ address: normalized, family: literalFamily }];
   if (addresses.length === 0 || addresses.some((item) => (
     (item.family !== 4 && item.family !== 6)
@@ -158,6 +179,7 @@ export async function resolveSafeHttpSampleContent(
   urlString: string,
 ): Promise<SampleContentResolution> {
   let current = new URL(urlString);
+  const signal = AbortSignal.timeout(HTTP_TIMEOUT_MS);
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     if (current.protocol !== 'http:' && current.protocol !== 'https:') {
       throw new Error('HTTP resolver 只接受 http／https URL。');
@@ -169,19 +191,19 @@ export async function resolveSafeHttpSampleContent(
     if (current.port !== '' && current.port !== expectedPort) {
       throw new Error('安全 HTTP resolver 只允许协议默认端口；其它端口请通过 MCP resolver。');
     }
-    const address = await pinnedPublicAddress(current.hostname);
-    const response = await responseFor(current, address, AbortSignal.timeout(HTTP_TIMEOUT_MS));
+    const address = await pinnedPublicAddress(current.hostname, signal);
+    const response = await responseFor(current, address, signal);
     const status = response.statusCode ?? 0;
     if (status >= 300 && status < 400) {
       const location = response.headers.location;
-      response.resume();
+      response.destroy();
       if (location === undefined) throw new Error(`HTTP ${status} 缺少 Location。`);
       if (redirect === MAX_REDIRECTS) throw new Error(`HTTP redirect 超过 ${MAX_REDIRECTS} 次。`);
       current = new URL(location, current);
       continue;
     }
     if (status < 200 || status >= 300) {
-      response.resume();
+      response.destroy();
       throw new Error(`HTTP 内容解析失败，状态码 ${status}。`);
     }
     let mediaType: string;

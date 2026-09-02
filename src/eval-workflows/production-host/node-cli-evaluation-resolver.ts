@@ -548,7 +548,7 @@ async function optionalFileResource(
   return fileResource(resources, {
     resourceKind,
     path,
-    classification: resourceKind === 'gold-dataset' ? 'gold' : 'sensitive',
+    classification: resourceKind === 'gold-dataset' ? 'gold' : 'secret',
   });
 }
 

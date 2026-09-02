@@ -70,6 +70,38 @@ describe('resolveSampleContents', () => {
     ]);
   });
 
+  it('does not recursively rewrite URLs found inside already resolved content', async () => {
+    const result = await resolveSampleContents([{
+      sample_id: 's1',
+      prompt: 'Read https://a.acme.dev/doc and https://b.acme.dev/doc.',
+    }], session(async (url) => ({
+      content: url.includes('a.acme.dev')
+        ? 'A references https://b.acme.dev/doc without embedding it.'
+        : 'B authoritative content.',
+      mediaType: 'text/plain',
+      transportKind: 'http',
+      classification: 'public',
+    })));
+
+    expect(result.samples[0]?.prompt.match(/B authoritative content\./g)).toHaveLength(1);
+    expect(result.samples[0]?.prompt).toContain(
+      'A references https://b.acme.dev/doc without embedding it.',
+    );
+  });
+
+  it('bounds repeated inline expansion rather than only unique fetched bytes', async () => {
+    const repeated = Array.from({ length: 9 }, () => 'https://docs.acme.dev/large').join(' ');
+    await expect(resolveSampleContents([{
+      sample_id: 's1',
+      prompt: repeated,
+    }], session(async () => ({
+      content: 'x'.repeat(1024 * 1024),
+      mediaType: 'text/plain',
+      transportKind: 'http',
+      classification: 'public',
+    })))).rejects.toThrow(/内联后的外部解析内容总量/);
+  });
+
   it('orders unique resolution calls deterministically', async () => {
     const calls: string[] = [];
     await resolveSampleContents([{
@@ -107,7 +139,7 @@ describe('resolveSampleContents', () => {
       throw new Error('offline');
     }))).rejects.toMatchObject({
       message: expect.stringContaining('不会退回原始 URL'),
-      sourceLabel: 'https://docs.acme.dev/a',
+      sourceLabel: 'https://docs.acme.dev',
       sampleIds: ['s1'],
     });
   });

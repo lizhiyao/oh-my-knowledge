@@ -139,7 +139,7 @@ export function safeUrlLabel(url: string): string {
   try {
     const parsed = new URL(url);
     const port = parsed.port === '' ? '' : `:${parsed.port}`;
-    return `${parsed.protocol}//${parsed.hostname}${port}${parsed.pathname}`;
+    return `${parsed.protocol}//${parsed.hostname}${port}`;
   } catch {
     return '<invalid-url>';
   }
@@ -210,13 +210,16 @@ function replacement(rawUrl: string, content: string): string {
   return `${rawUrl}\n\n--- OMK resolved content ---\n${content}\n--- end OMK resolved content ---`;
 }
 
-function replaceResolvedUrlOccurrences(text: string, fetchUrl: string, content: string): string {
+function replaceResolvedUrlOccurrences(
+  text: string,
+  contentsByFetchUrl: ReadonlyMap<string, string>,
+): string {
   return text.replace(URL_PATTERN, (matched) => {
     const rawUrl = stripUnbalancedClosingPunctuation(matched);
     const trailing = matched.slice(rawUrl.length);
-    return normalizedHttpUrl(rawUrl) === fetchUrl
-      ? `${replacement(rawUrl, content)}${trailing}`
-      : matched;
+    const fetchUrl = normalizedHttpUrl(rawUrl);
+    const content = fetchUrl === undefined ? undefined : contentsByFetchUrl.get(fetchUrl);
+    return content === undefined ? matched : `${replacement(rawUrl, content)}${trailing}`;
   });
 }
 
@@ -276,30 +279,30 @@ export async function resolveSampleContents(
     }>
   ).value);
 
-  const totalSize = resolved.reduce((sum, item) => sum + item.contentSize, 0);
+  const totalSize = resolved.reduce(
+    (sum, item) => sum + item.contentSize * item.group.occurrences.length,
+    0,
+  );
   if (totalSize > MAX_TOTAL_CONTENT_BYTES) {
     throw new SampleContentResolutionError({
-      message: `单个 sample set 的外部解析内容总量超过 ${MAX_TOTAL_CONTENT_BYTES} bytes 上限。`,
+      message: `单个 sample set 内联后的外部解析内容总量超过 ${MAX_TOTAL_CONTENT_BYTES} bytes 上限。`,
     });
   }
 
   const cloned = samples.map((sample) => structuredClone(sample) as Sample);
+  const contentsByFetchUrl = new Map(resolved.map((item) => [
+    item.group.fetchUrl,
+    item.result.content,
+  ]));
+  for (const sample of cloned) {
+    for (const field of ['prompt', 'context'] as const) {
+      const current = sample[field];
+      if (typeof current !== 'string') continue;
+      sample[field] = replaceResolvedUrlOccurrences(current, contentsByFetchUrl);
+    }
+  }
   const records: ResolvedSampleContentRecord[] = [];
   for (const item of resolved) {
-    const affectedFields = new Map<string, Pick<UrlOccurrence, 'sampleIndex' | 'field'>>();
-    for (const occurrence of item.group.occurrences) {
-      affectedFields.set(`${occurrence.sampleIndex}\0${occurrence.field}`, occurrence);
-    }
-    for (const affected of affectedFields.values()) {
-      const sample = cloned[affected.sampleIndex]!;
-      const current = sample[affected.field];
-      if (typeof current !== 'string') continue;
-      sample[affected.field] = replaceResolvedUrlOccurrences(
-        current,
-        item.group.fetchUrl,
-        item.result.content,
-      );
-    }
     records.push({
       ...item.result,
       sourceUrlDigest: sha256(item.group.fetchUrl),

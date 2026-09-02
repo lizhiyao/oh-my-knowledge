@@ -81,6 +81,30 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
 }
 
 describe('resolveNodeCliEvaluationRequest', () => {
+  it('classifies MCP config as secret because it may contain credentials', async () => {
+    const root = await fixture('mcp-config-classification');
+    await writeFile(join(root, 'mcp.json'), JSON.stringify({
+      mcpServers: {
+        docs: {
+          command: 'node',
+          env: { DOCS_TOKEN: 'credential' },
+        },
+      },
+    }));
+
+    const resolved = await resolveNodeCliEvaluationRequest(request(root, {
+      'mcp-config': 'mcp.json',
+    }), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    });
+    const mcpConfig = resolved.hostResources.resources.find((resource) => (
+      resource.resourceKind === 'mcp-config'
+    ));
+
+    expect(mcpConfig?.descriptor.classification).toBe('secret');
+  });
+
   it('resolves URL content before Dataset compilation and seals provenance outside measurement identity', async () => {
     const root = await fixture('sample-content');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
@@ -199,7 +223,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     })).rejects.toMatchObject({
       code: 'CLI_INPUT_RESOLUTION_FAILED',
       fieldPath: 'samples.externalContent',
-      sourcePath: 'https://docs.acme.dev/spec',
+      sourcePath: 'https://docs.acme.dev',
       message: expect.stringContaining('用户名或密码'),
     });
   });
