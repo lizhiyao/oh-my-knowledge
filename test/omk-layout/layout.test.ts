@@ -19,6 +19,16 @@ describe('OMK layout', () => {
     assert.equal(actual.managedDir, join('/repo', '.omk', 'governance', 'managed'));
     assert.equal(actual.jobsDir, join('/repo', '.omk', 'state', 'jobs'));
     assert.equal(actual.tmpDir, join('/repo', '.omk', 'state', 'tmp'));
+    for (const machineOnly of [
+      'cacheDir',
+      'toolsDir',
+      'tunnelsDir',
+      'treesDir',
+      'isolatedCwdDir',
+      'artifactIndexDir',
+    ]) {
+      assert.equal(machineOnly in actual, false, `${machineOnly} must not exist in project layout`);
+    }
   });
 
   it('mirrors the durable global domains and keeps machine state under state', () => {

@@ -23,6 +23,11 @@ export interface OmkLayout {
   readonly jobsDir: string;
   readonly locksDir: string;
   readonly tmpDir: string;
+}
+
+export type ProjectOmkLayout = OmkLayout;
+
+export interface GlobalOmkLayout extends OmkLayout {
   readonly cacheDir: string;
   readonly toolsDir: string;
   readonly tunnelsDir: string;
@@ -57,19 +62,22 @@ function layout(root: string): OmkLayout {
     jobsDir: join(stateDir, 'jobs'),
     locksDir: join(stateDir, 'locks'),
     tmpDir: join(stateDir, 'tmp'),
-    cacheDir: join(stateDir, 'cache'),
-    toolsDir: join(stateDir, 'tools'),
-    tunnelsDir: join(stateDir, 'tunnels'),
-    treesDir: join(stateDir, 'trees'),
-    isolatedCwdDir: join(stateDir, 'isolated-cwd'),
-    artifactIndexDir: join(stateDir, 'artifact-index'),
   });
 }
 
-export function projectLayout(cwd: string = process.cwd()): OmkLayout {
+export function projectLayout(cwd: string = process.cwd()): ProjectOmkLayout {
   return layout(join(cwd, '.omk'));
 }
 
-export function globalLayout(root: string = OMK_HOME): OmkLayout {
-  return layout(root);
+export function globalLayout(root: string = OMK_HOME): GlobalOmkLayout {
+  const base = layout(root);
+  return Object.freeze({
+    ...base,
+    cacheDir: join(base.stateDir, 'cache'),
+    toolsDir: join(base.stateDir, 'tools'),
+    tunnelsDir: join(base.stateDir, 'tunnels'),
+    treesDir: join(base.stateDir, 'trees'),
+    isolatedCwdDir: join(base.stateDir, 'isolated-cwd'),
+    artifactIndexDir: join(base.stateDir, 'artifact-index'),
+  });
 }
