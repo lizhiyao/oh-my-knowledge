@@ -44,8 +44,17 @@ function moduleDomain(path: string): string {
   const [topLevel, subdomain] = path.split('/');
   if (
     topLevel === 'knowledge-artifacts'
-    && ['authoring', 'doctor', 'governance', 'skills'].includes(subdomain)
+    && ['authoring', 'doctor', 'governance', 'skills', 'sources'].includes(subdomain)
   ) {
+    return `${topLevel}/${subdomain}`;
+  }
+  if (
+    topLevel === 'eval-workflows'
+    && ['grading', 'inputs'].includes(subdomain)
+  ) {
+    return `${topLevel}/${subdomain}`;
+  }
+  if (topLevel === 'executors' && subdomain === 'preflight') {
     return `${topLevel}/${subdomain}`;
   }
   return topLevel;
@@ -194,11 +203,11 @@ function stronglyConnectedComponents(edges: ModuleEdge[]): string[][] {
 }
 
 const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> = {
-  [domainPair('grading', 'inputs')]: (edge) =>
-    edge.importerDomain === 'grading'
-      ? edge.targetDomain === 'inputs'
+  [domainPair('eval-workflows/grading', 'eval-workflows/inputs')]: (edge) =>
+    edge.importerDomain === 'eval-workflows/grading'
+      ? edge.targetDomain === 'eval-workflows/inputs'
       : edge.typeOnly && isContractBoundary(edge.target),
-  [domainPair('inputs', 'preflight')]: (edge) =>
+  [domainPair('eval-workflows/inputs', 'executors/preflight')]: (edge) =>
     edge.typeOnly && isContractBoundary(edge.target),
   [domainPair('knowledge-artifacts/doctor', 'measurement-artifacts')]: (edge) => {
     if (edge.importerDomain === 'knowledge-artifacts/doctor') {
@@ -221,10 +230,14 @@ const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> 
 describe('src 依赖图', () => {
   const edges = collectModuleEdges();
 
-  it('按稳定子域而非粗粒度物理顶层分析知识载体依赖', () => {
+  it('按稳定子域而非粗粒度物理顶层分析聚合领域依赖', () => {
     expect(moduleDomain('knowledge-artifacts/contracts.ts')).toBe('knowledge-artifacts');
     expect(moduleDomain('knowledge-artifacts/doctor/index.ts')).toBe('knowledge-artifacts/doctor');
     expect(moduleDomain('knowledge-artifacts/governance/store.ts')).toBe('knowledge-artifacts/governance');
+    expect(moduleDomain('knowledge-artifacts/sources/content-hash.ts')).toBe('knowledge-artifacts/sources');
+    expect(moduleDomain('eval-workflows/inputs/load-samples.ts')).toBe('eval-workflows/inputs');
+    expect(moduleDomain('eval-workflows/grading/judge.ts')).toBe('eval-workflows/grading');
+    expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
   });
 
   it('delivery composition root 只装配领域，不被领域反向依赖', () => {

@@ -19,7 +19,7 @@ import {
   managedRecordId,
   upsertManagedRecord,
 } from '../../src/knowledge-artifacts/governance/index.js';
-import { createEvalSampleSetDocument } from '../../src/inputs/schemas/sample-set.js';
+import { createEvalSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 type UnknownRecord = Record<string, unknown>;
 

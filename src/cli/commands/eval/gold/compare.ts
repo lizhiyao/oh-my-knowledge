@@ -73,7 +73,7 @@ export default class EvalGoldCompare extends BaseCommand {
         console.error('--gold-dir is required');
         throw new CliExit(1);
       }
-      const { loadGoldDataset } = await import('../../../../grading/gold-dataset.js');
+      const { loadGoldDataset } = await import('../../../../eval-workflows/grading/gold-dataset.js');
       const {
         createNodeCoreContentStore,
         createNodeCoreRunArtifactStore,

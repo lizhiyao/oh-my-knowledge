@@ -70,7 +70,7 @@ describe('legacy evaluation implementation removal', () => {
   });
 
   it('keeps input contracts free of the legacy evaluation job schemas', () => {
-    const inputContracts = sourceFiles(resolve('src/inputs/contracts'))
+    const inputContracts = sourceFiles(resolve('src/eval-workflows/inputs/contracts'))
       .map((file) => readFileSync(file, 'utf8'))
       .join('\n');
     expect(inputContracts).not.toContain('interface EvaluationJob');

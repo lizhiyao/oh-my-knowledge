@@ -1,5 +1,5 @@
-import type { Sample } from '../../inputs/contracts/sample.js';
-import { createEvalSampleSetDocument } from '../../inputs/schemas/sample-set.js';
+import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
+import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
 
 export const DEFAULT_INIT_SAMPLE_COUNT = 3 as const;
 export const FULL_INIT_SAMPLE_COUNT = 20 as const;

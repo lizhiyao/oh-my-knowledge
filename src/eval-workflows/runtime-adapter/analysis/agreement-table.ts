@@ -8,7 +8,7 @@ import {
   computePearson,
   computeWeightedKappa,
   type RatingPair,
-} from '../../../grading/human-gold.js';
+} from '../../grading/human-gold.js';
 import {
   IdentifierSchema,
   Sha256DigestSchema,

@@ -13,7 +13,7 @@ import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store
 import { parseCompositeTableValue } from '../../eval-workflows/runtime-adapter/analysis/composite-table.js';
 import { createExecutor } from '../../executors/index.js';
 import { buildImprovementPrompt, computeEditDelta } from './improvement.js';
-import { distributableCopyFilter } from '../../inputs/content-hash.js';
+import { distributableCopyFilter } from '../sources/content-hash.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请依据真实评测弱项对 skill 做最小、可审查的修改。保留有效内容，不重排无关结构，不添加泛化空话。直接输出改进后的完整 skill，不要添加代码围栏或解释。`;
 const IMPROVE_AGENT_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请使用 Edit 工具对指定 skill 文件做最小、可审查的修改，只处理真实评测暴露的问题，不重写无关内容。`;

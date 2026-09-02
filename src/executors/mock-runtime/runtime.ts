@@ -18,7 +18,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Mock, MockReturn } from '../../inputs/contracts/mock.js';
+import type { Mock, MockReturn } from '../../eval-workflows/inputs/contracts/mock.js';
 import { incrementRecordCount, setOwnRecordValue } from '../../shared/record-count.js';
 import { toolIdentityMatches } from '../../shared/tool-identity.js';
 

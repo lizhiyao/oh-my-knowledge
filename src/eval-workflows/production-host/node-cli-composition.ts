@@ -10,7 +10,7 @@ import {
   type RuntimeIdentity,
   type UsageRecord,
 } from '../../eval-core/contracts/index.js';
-import { checkDependencies } from '../../preflight/dependencies.js';
+import { checkDependencies } from '../../executors/preflight/dependencies.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';

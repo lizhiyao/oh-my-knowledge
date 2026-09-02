@@ -42,8 +42,8 @@ import type {
   OmkLlmJudgeInvocationRequest,
   OmkRuntimeBindingFactories,
 } from '../eval-workflows/runtime-adapter/index.js';
-import type { EvalConfig } from '../inputs/contracts/config.js';
-import type { JudgeConfig } from '../grading/contracts/config.js';
+import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
+import type { JudgeConfig } from '../eval-workflows/grading/contracts/config.js';
 import { generateRunId } from '../measurement-artifacts/run-id.js';
 import {
   createDshHostCoreExecutorAdapter,

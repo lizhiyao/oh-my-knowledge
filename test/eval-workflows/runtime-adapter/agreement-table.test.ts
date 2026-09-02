@@ -7,7 +7,7 @@ import {
 import {
   computeAgreementWithCI,
   computeKrippendorffAlpha,
-} from '../../../src/grading/human-gold.js';
+} from '../../../src/eval-workflows/grading/human-gold.js';
 import {
   digestCanonicalJson,
   schemaIdentityKey,

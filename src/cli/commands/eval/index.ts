@@ -13,7 +13,7 @@ import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../../eval-workflows/evaluation-defaults.js';
 import {
   hasUsableSamplesPath,
-} from '../../../inputs/sample-locator.js';
+} from '../../../eval-workflows/inputs/sample-locator.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import { executorNamesForFamily } from '../../../executors/core/registry.js';
 import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../eval-workflows/evaluation-defaults.js';

@@ -41,13 +41,13 @@ import {
   type OmkLlmJudgeInvocationResult,
   type RubricJudgeTracePolicy,
 } from '../../../src/eval-workflows/runtime-adapter/index.js';
-import { llmJudge } from '../../../src/grading/judge.js';
+import { llmJudge } from '../../../src/eval-workflows/grading/judge.js';
 import {
   buildJudgePrompt,
   getJudgePromptHash,
   JUDGE_SYSTEM_PROMPT,
 } from '../../../src/shared/llm-prompts/judge-prompts.js';
-import { buildJudgeTraceSummary } from '../../../src/grading/judge-trace.js';
+import { buildJudgeTraceSummary } from '../../../src/eval-workflows/grading/judge-trace.js';
 import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
 

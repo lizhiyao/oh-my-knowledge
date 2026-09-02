@@ -4,7 +4,7 @@ import type {
   RuntimeResourceLeaseRequirement,
 } from '../../input-compilation/index.js';
 
-export { OMK_TREE_DIGEST_ALGORITHM } from '../../../inputs/content-hash.js';
+export { OMK_TREE_DIGEST_ALGORITHM } from '../../../knowledge-artifacts/sources/content-hash.js';
 
 export type OmkBindingResourceLeaseRequest =
   | {

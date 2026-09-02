@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExecutor } from '../src/executors/index.js';
-import type { Mock } from '../src/inputs/contracts/mock.js';
+import type { Mock } from '../src/eval-workflows/inputs/contracts/mock.js';
 
 describe('createExecutor', () => {
   it('returns a function for claude', () => {

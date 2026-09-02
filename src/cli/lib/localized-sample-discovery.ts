@@ -1,4 +1,4 @@
-import { SampleFileAmbiguityError } from '../../inputs/sample-locator.js';
+import { SampleFileAmbiguityError } from '../../eval-workflows/inputs/sample-locator.js';
 import { tCli, type CliLang } from './i18n.js';
 
 /** 将纯 inputs 层的结构化发现错误映射为 CLI 语言，不让领域模块依赖 i18n。 */

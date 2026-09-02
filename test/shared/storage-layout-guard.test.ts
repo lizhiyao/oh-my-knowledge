@@ -8,7 +8,7 @@ const SOURCE_ROOT = join(ROOT, 'src');
 const ALLOWED = new Set([
   'src/shared/storage-layout.ts',
   // Artifact-scoped authoring metadata is explicitly outside project-root layout v2.
-  'src/inputs/sample-locator.ts',
+  'src/eval-workflows/inputs/sample-locator.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

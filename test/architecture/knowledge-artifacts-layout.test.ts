@@ -14,7 +14,7 @@ describe('knowledge-artifacts 领域布局', () => {
   it('以生命周期子域表达稳定所有权', () => {
     const entries = readdirSync(DOMAIN_ROOT, { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['authoring', 'doctor', 'governance', 'skills']);
+      .toEqual(['authoring', 'doctor', 'governance', 'skills', 'sources']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual(['contracts.ts']);
   });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { buildDoctorPreflightContext } from '../../../src/knowledge-artifacts/doctor/preflight.js';
 import type { Artifact } from '../../../src/knowledge-artifacts/contracts.js';
-import type { Sample } from '../../../src/inputs/contracts/sample.js';
+import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
 const skillArtifact = (overrides: Partial<Artifact> = {}): Artifact => ({
   name: overrides.name ?? 'v1',

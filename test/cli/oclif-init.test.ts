@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import InitCommand from '../../src/cli/commands/init.js';
-import { loadSamples } from '../../src/inputs/load-samples.js';
+import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
 import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 interface ExecError extends Error {

@@ -7,8 +7,8 @@ import { enumStringParser, integerStringParser, numberStringParser } from '../oc
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
-import { createEvalSampleSetDocument } from '../../inputs/schemas/sample-set.js';
-import { stringifySampleDocument } from '../../inputs/sample-document.js';
+import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
+import { stringifySampleDocument } from '../../eval-workflows/inputs/sample-document.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type {
   CoreEvolveOutcomeInput,
@@ -146,7 +146,7 @@ export async function runEvolve(
   let hasSamples = false;
   let loadErr: Error | null = null;
   try {
-    const { loadSamples } = await import('../../inputs/load-samples.js');
+    const { loadSamples } = await import('../../eval-workflows/inputs/load-samples.js');
     hasSamples = loadSamples(samplesAbs).samples.length > 0;
   } catch (err) { loadErr = err as Error; }
 

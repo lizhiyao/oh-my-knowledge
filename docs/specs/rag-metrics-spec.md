@@ -37,7 +37,7 @@ For scenarios that need RAGAS-grade granularity: implement statement-decompositi
 
 ## Prompt shape (1-5 scoring anchors)
 
-The scoring anchors for the three metrics (extracted from `runRagJudge` in `src/grading/assertions.ts`):
+The scoring anchors for the three metrics (extracted from `runRagJudge` in `src/eval-workflows/grading/assertions.ts`):
 
 ### faithfulness
 - 5 = every statement is supported by the context, no fabrication

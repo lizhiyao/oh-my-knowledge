@@ -2,11 +2,11 @@ import {
   digestCanonicalJson,
   type EvaluationRecord,
 } from '../../eval-core/contracts/index.js';
-import type { GoldDataset } from '../../grading/gold-dataset.js';
+import type { GoldDataset } from '../grading/gold-dataset.js';
 import {
   computeAgreementWithCI,
   type RatingPair,
-} from '../../grading/human-gold.js';
+} from '../grading/human-gold.js';
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import {
   CORE_GOLD_COMPARISON_SCHEMA_VERSION,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EvalConfig } from '../../../src/inputs/contracts/config.js';
+import type { EvalConfig } from '../../../src/eval-workflows/inputs/contracts/config.js';
 import {
   compileCliEvaluationInput,
   parseCliEvaluationRequest,

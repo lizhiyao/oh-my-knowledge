@@ -64,7 +64,7 @@ describe('published embedded Evaluation Core API', () => {
     ), 'utf8')).title).toBe('OMK Execution Bundle v1');
     expect(JSON.parse(readFileSync(join(
       packageDirectory,
-      'dist/inputs/contracts/schemas/v1/eval-sample-set.schema.json',
+      'dist/eval-workflows/inputs/contracts/schemas/v1/eval-sample-set.schema.json',
     ), 'utf8')).title).toBe('OMK Eval Sample Set v1');
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({
       name: 'independent-omk-host',

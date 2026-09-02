@@ -55,7 +55,7 @@ samples:
 - Skill Map 声明锚点（`covers`）
 - `report.analysis.sampleQuality` 聚合数据（供工具读）
 
-**绝对不进 judge prompt**（`buildJudgePrompt(prompt, rubric, output, traceSummary)` signature 不含 sample 对象，且有 `test/grading/judge-prompt-isolation.test.ts` 防御回归）。**绝对不影响 verdict 算法**。这是构造效度保护的硬要求 —— judge 看到 "construct: necessity" 等于知道试题答案。
+**绝对不进 judge prompt**（`buildJudgePrompt(prompt, rubric, output, traceSummary)` signature 不含 sample 对象，且有 `test/eval-workflows/grading/judge-prompt-isolation.test.ts` 防御回归）。**绝对不影响 verdict 算法**。这是构造效度保护的硬要求 —— judge 看到 "construct: necessity" 等于知道试题答案。
 
 ### 沙箱评测字段（mocks / environment / tripwire / mocksStrict）
 
@@ -223,7 +223,7 @@ omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / lengt
 
 **加任何新字段前的硬约束**
 
-- 不进 `buildJudgePrompt` signature（`test/grading/judge-prompt-isolation.test.ts` 防御回归）
+- 不进 `buildJudgePrompt` signature（`test/eval-workflows/grading/judge-prompt-isolation.test.ts` 防御回归）
 - 默认必须进入完整契约的 `sampleHash`。唯一排除项是作为 map key 的 `sample_id`；任何会改变执行或结果解释的字段，都必须让复用和跨报告可比性失效。
 - 不进 verdict / Δ 算法
 - 跟现有元数据字段 + `rubric` / `assertions` 语义不重叠

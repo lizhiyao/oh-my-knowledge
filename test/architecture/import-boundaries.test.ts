@@ -48,11 +48,6 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'eval-core/',
-    to: 'preflight/',
-    reason: 'Evaluation Core vNext 是宿主无关内核，不依赖宿主环境与依赖探测。',
-  },
-  {
-    from: 'eval-core/',
     to: 'shared/statistics/',
     reason: 'Evaluation Core vNext 的 Analysis 自持统计语义，不反向依赖应用层兼容工具。',
   },
@@ -70,11 +65,6 @@ const RULES: ForbiddenRule[] = [
     from: 'eval-core/',
     to: 'executors/',
     reason: 'Contracts 只描述 Runtime identity 与 capability，不依赖具体 executor 实现。',
-  },
-  {
-    from: 'eval-core/',
-    to: 'grading/',
-    reason: 'Evaluation Core vNext 的 Evaluator／Metric 契约不复用旧 grading pipeline。',
   },
   {
     from: 'eval-core/',
@@ -148,8 +138,8 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'shared/',
-    to: 'inputs/',
-    reason: 'shared 是跨领域叶子依赖；断言树算法由 eval-workflows 消费 inputs contracts。',
+    to: 'eval-workflows/',
+    reason: 'shared 是跨领域叶子依赖；输入编译、评分类适配与工作流装配均由 eval-workflows 拥有。',
   },
   {
     from: 'shared/',

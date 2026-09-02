@@ -11,7 +11,7 @@ import {
   resolveSampleContents,
   type SampleContentResolverSession,
 } from '../../../src/eval-workflows/production-host/index.js';
-import type { Sample } from '../../../src/inputs/contracts/sample.js';
+import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 import { isPublicNetworkAddress } from '../../../src/eval-workflows/production-host/safe-http-content-resolver.js';
 
 const roots: string[] = [];

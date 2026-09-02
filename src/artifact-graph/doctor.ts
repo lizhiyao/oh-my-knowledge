@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
 import { measurementDerivedDir } from '../measurement-artifacts/report-bundle.js';
-import { hashArtifactSource } from '../inputs/content-hash.js';
+import { hashArtifactSource } from '../knowledge-artifacts/sources/content-hash.js';
 import { parseArtifactGraphDocument } from './schema.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import {

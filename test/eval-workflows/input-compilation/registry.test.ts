@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import Eval from '../../../src/cli/commands/eval/index.js';
 import { parseRunConfig } from '../../../src/cli/lib/parse-run-config.js';
 import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../src/eval-workflows/evaluation-defaults.js';
-import { EVAL_CONFIG_SCHEMA_SOURCE_PATHS } from '../../../src/inputs/eval-config.js';
+import { EVAL_CONFIG_SCHEMA_SOURCE_PATHS } from '../../../src/eval-workflows/inputs/eval-config.js';
 import {
   CLI_EVALUATION_INPUT_REGISTRY,
   cliEvaluationRegistrySourceKeys,

@@ -21,7 +21,7 @@ import {
 import {
   buildJudgeTraceSummary,
   JUDGE_TRACE_SUMMARY_ALGORITHM_VERSION,
-} from '../../../grading/judge-trace.js';
+} from '../../grading/judge-trace.js';
 import type { ToolCallInfo, TurnInfo } from '../../../executors/contracts/trace.js';
 import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
 import { createSameProcessEvaluatorAdapter } from '../adapters/shared/same-process.js';
