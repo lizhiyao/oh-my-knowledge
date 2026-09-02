@@ -146,9 +146,9 @@ export function resolveMockReturn(
   hitCount: number,
   baseDir?: string,
 ): string {
-  // return_seq 优先,按 hit 序号取(超出长度 fallback 到 return / return_file)
-  if (mock.return_seq && hitCount < mock.return_seq.length) {
-    return stringifyReturn(mock.return_seq[hitCount]);
+  // return_seq 按 hit 序号取；超出长度后保持最后一个状态。
+  if (mock.return_seq && mock.return_seq.length > 0) {
+    return stringifyReturn(mock.return_seq[Math.min(hitCount, mock.return_seq.length - 1)]);
   }
   if (mock.return !== undefined) {
     return stringifyReturn(mock.return);
@@ -538,7 +538,9 @@ function isMockHit(mock, toolName, toolInput) {
 }
 function stringifyReturn(r) { return typeof r === 'string' ? r : JSON.stringify(r); }
 function resolveMockReturn(mock, hitCount, baseDir) {
-  if (mock.return_seq && hitCount < mock.return_seq.length) return stringifyReturn(mock.return_seq[hitCount]);
+  if (mock.return_seq && mock.return_seq.length > 0) {
+    return stringifyReturn(mock.return_seq[Math.min(hitCount, mock.return_seq.length - 1)]);
+  }
   if (mock.return !== undefined) return stringifyReturn(mock.return);
   if (mock.return_file) {
     const fpath = path.isAbsolute(mock.return_file) ? mock.return_file : path.resolve(baseDir || process.cwd(), mock.return_file);

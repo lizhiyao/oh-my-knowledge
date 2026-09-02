@@ -19,6 +19,7 @@ import {
   managedRecordId,
   upsertManagedRecord,
 } from '../../src/managed/index.js';
+import { createEvalSampleSetDocument } from '../../src/inputs/schemas/sample-set.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -402,11 +403,11 @@ describe('DSH plugin config boundary', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
       writeFileSync(join(dir, 'eval.yaml'), yaml);
-      writeFileSync(join(dir, 'samples.json'), JSON.stringify([{
+      writeFileSync(join(dir, 'samples.json'), JSON.stringify(createEvalSampleSetDocument([{
         sample_id: 's1',
         prompt: 'test',
         assertions: [{ type: 'contains', value: 'host' }],
-      }]));
+      }])));
       mkdirSync(join(dir, 'skills'));
       const skillPath = join(dir, 'skills', 'review.md');
       writeFileSync(skillPath, '# Review\nReturn a host-backed answer.\n');

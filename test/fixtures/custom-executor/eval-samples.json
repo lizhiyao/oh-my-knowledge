@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "s001",
     "prompt": "What is two plus two?",
@@ -13,4 +15,5 @@
       { "type": "contains", "value": "hello", "weight": 1 }
     ]
   }
-]
+  ]
+}

@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "tr001",
     "prompt": "请将以下中文翻译为英文",
@@ -9,4 +11,5 @@
       { "type": "not_contains", "value": "untranslated", "weight": 0.5 }
     ]
   }
-]
+  ]
+}

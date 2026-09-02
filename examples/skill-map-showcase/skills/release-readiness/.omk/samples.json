@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "release-risk-summary",
     "prompt": "We are shipping a payment flow change tomorrow. Summarize the release risk and decide whether to proceed.",
@@ -117,4 +119,5 @@
       }
     ]
   }
-]
+  ]
+}

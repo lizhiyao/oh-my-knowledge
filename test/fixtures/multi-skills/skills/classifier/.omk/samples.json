@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "cls001",
     "prompt": "请分类以下文本",
@@ -19,4 +21,5 @@
       { "type": "regex", "pattern": "central bank|monetary policy", "flags": "i", "weight": 0.5 }
     ]
   }
-]
+  ]
+}

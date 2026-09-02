@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "echo-green",
     "prompt": "Return exactly this word: GREEN",
@@ -34,4 +36,5 @@
       { "type": "contains_all", "values": ["DONE", "NOW"] }
     ]
   }
-]
+  ]
+}

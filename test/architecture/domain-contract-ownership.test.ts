@@ -22,6 +22,7 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/grading/contracts/config.ts',
   'src/grading/contracts/result.ts',
   'src/shared/language.ts',
+  'src/shared/contracts/assertion.ts',
   'src/shared/contracts/trace-source.ts',
   'src/studio/view-models/index.ts',
   'src/studio/view-models/insight.ts',

@@ -1,3 +1,4 @@
+schemaVersion: omk.eval-sample-set/v1
 samples:
   - sample_id: refund-window
     prompt: "What is the refund window for the Pro plan?"

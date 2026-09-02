@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "sql-injection-review",
     "prompt": "Review this handler:\n\napp.get('/user', async (req, res) => {\n  const rows = await db.query(`select * from users where id = ${req.query.id}`);\n  res.json(rows[0]);\n});",
@@ -29,4 +31,5 @@
     "capability": ["privacy", "secure-code-review"],
     "construct": "capability"
   }
-]
+  ]
+}

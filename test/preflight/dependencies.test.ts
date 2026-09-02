@@ -10,9 +10,17 @@ import {
   preflightDependencies,
 } from '../../src/preflight/dependencies.js';
 import type { Artifact } from '../../src/artifacts/contracts.js';
-import type { Sample } from '../../src/inputs/contracts/sample.js';
+import {
+  type EvalSampleSetDocument,
+  type Sample,
+} from '../../src/inputs/contracts/sample.js';
+import { createEvalSampleSetDocument } from '../../src/inputs/schemas/sample-set.js';
 
 const tmp = () => join(tmpdir(), `omk-dep-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+const sampleSetJson = (
+  samples: Sample[],
+  requires?: EvalSampleSetDocument['requires'],
+): string => JSON.stringify(createEvalSampleSetDocument(samples, requires));
 
 describe('extractDependencies', () => {
   it('从 skill 内容提取 CLI 工具', () => {
@@ -283,17 +291,17 @@ describe('extractFilesByBase', () => {
   });
 });
 
-describe('loadSamples 对象包装格式', async () => {
+describe('loadSamples 版本化对象格式', async () => {
   const { loadSamples } = await import('../../src/inputs/load-samples.js');
   const cleanups: string[] = [];
 
-  it('支持 { requires, samples } 格式', () => {
+  it('支持 { schemaVersion, requires, samples } 格式', () => {
     const p = join(tmpdir(), `omk-dep-wrapper-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify({
-      requires: { tools: ['foo-cli'], env: ['FOO_TOKEN'] },
-      samples: [{ sample_id: 's1', prompt: '测试' }],
-    }));
+    writeFileSync(p, sampleSetJson(
+      [{ sample_id: 's1', prompt: '测试' }],
+      { tools: ['foo-cli'], env: ['FOO_TOKEN'] },
+    ));
     const result = loadSamples(p);
     assert.equal(result.samples.length, 1);
     assert.deepEqual(result.requires?.tools, ['foo-cli']);
@@ -302,10 +310,10 @@ describe('loadSamples 对象包装格式', async () => {
     cleanups.length = 0;
   });
 
-  it('数组格式向后兼容（无 requires）', () => {
+  it('无 requires 时保持未声明状态', () => {
     const p = join(tmpdir(), `omk-dep-array-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{ sample_id: 's1', prompt: '测试' }]));
+    writeFileSync(p, sampleSetJson([{ sample_id: 's1', prompt: '测试' }]));
     const result = loadSamples(p);
     assert.equal(result.samples.length, 1);
     assert.equal(result.requires, undefined);
@@ -316,7 +324,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('拒绝 tools_not_called values 为空数组', () => {
     const p = join(tmpdir(), `omk-noise-assertion-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'tools_not_called', values: [], weight: 0 }],
     }]));
@@ -328,7 +336,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('拒绝 tools_called values 缺失', () => {
     const p = join(tmpdir(), `omk-noise-assertion-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'tools_called', weight: 1 }],
     }]));
@@ -340,7 +348,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('拒绝 tool_input_not_contains 缺 Tool: 前缀', () => {
     const p = join(tmpdir(), `omk-bad-value-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'tool_input_not_contains', value: '--force', weight: 1 }],
     }]));
@@ -352,7 +360,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('拒绝 tool_input_contains 冒号位置在末尾', () => {
     const p = join(tmpdir(), `omk-bad-value-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'tool_input_contains', value: 'Bash:', weight: 1 }],
     }]));
@@ -377,7 +385,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('rule A loader (strict): 拒绝 contains 含 CJK 字符', () => {
     const p = join(tmpdir(), `omk-cjk-value-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'contains', value: '留档', weight: 1 }],
     }]));
@@ -389,7 +397,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('rule A loader (strict): 拒绝 contains_any 数组中含全角标点元素', () => {
     const p = join(tmpdir(), `omk-fw-value-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'contains_any', values: ['ECONNREFUSED', '【失败】'], weight: 1 }],
     }]));
@@ -401,7 +409,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('rule A loader (strict): 拒绝 contains 含内部空格的短语', () => {
     const p = join(tmpdir(), `omk-phrase-value-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'contains', value: 'task completed', weight: 1 }],
     }]));
@@ -413,7 +421,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('rule A loader: 接受 ASCII token-style contains (in any mode)', () => {
     const p = join(tmpdir(), `omk-ok-value-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [
         { type: 'contains', value: 'ECONNREFUSED', weight: 1 },
@@ -433,7 +441,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('rule A loader: lenient mode (OMK_LENIENT_ASSERTIONS=1) downgrades throws to stderr warn', () => {
     const p = join(tmpdir(), `omk-lenient-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [
         { type: 'contains', value: '留档', weight: 1 }, // would throw in strict mode
@@ -468,7 +476,7 @@ describe('loadSamples 对象包装格式', async () => {
   it('rule A loader (strict): 拒绝 regex pattern 含 CJK', () => {
     const p = join(tmpdir(), `omk-regex-cjk-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, JSON.stringify([{
+    writeFileSync(p, sampleSetJson([{
       sample_id: 's1', prompt: 'p',
       assertions: [{ type: 'regex', pattern: '风险等级:\\s*(高|中|低)', weight: 1 }],
     }]));

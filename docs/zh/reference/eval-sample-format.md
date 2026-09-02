@@ -1,6 +1,6 @@
 # 评测用例格式
 
-**eval-samples** 文件是 `omk eval` / `omk doctor` 跑的用例集 —— 一组用例，每条一个 `prompt`，外加可选的 `rubric`、`assertions` 和元数据。支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`），YAML 手写更省事。
+**eval-samples** 文件是 `omk eval` / `omk doctor` 使用的版本化用例集文档。它的 `samples` 数组包含具体用例，每条一个 `prompt`，外加可选的 `rubric`、`assertions` 和元数据。支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`），YAML 手写更省事。
 
 想知道怎么**设计**一套严谨用例（测什么、测几条、元数据字段），见[用例设计](../specs/sample-design-spec)；本页是逐字段的格式参考。
 
@@ -15,25 +15,32 @@
 
 兼容说明：omk 仍支持扁平 skill 的 `skills/<name>.eval-samples.json` 这类 sidecar 文件。目录 skill 不再读取 `<skill>/eval-samples.*`；skill 私有用例统一放在 `<skill>/.omk/samples.json`。
 
+每个文件都必须声明 `schemaVersion: omk.eval-sample-set/v1`，历史顶层数组格式会被拒绝。根文档、sample、assertion、mock 及其嵌套契约都采用严格校验；未知字段会在执行前报错，不会被静默忽略。发布的 JSON Schema 位于 [`schemas/eval-samples/v1/eval-sample-set.schema.json`](../../../schemas/eval-samples/v1/eval-sample-set.schema.json)。
+
 ```json
-[
-  {
-    "sample_id": "s001",
-    "prompt": "审查这段代码的安全性",
-    "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-    "rubric": "应识别 SQL 注入风险并建议参数化查询",
-    "assertions": [
-      { "type": "contains", "value": "SQL 注入", "weight": 1 },
-      { "type": "contains", "value": "参数化", "weight": 1 },
-      { "type": "not_contains", "value": "没有问题", "weight": 0.5 }
-    ],
-    "dimensions": {
-      "security": "是否识别出注入漏洞",
-      "actionability": "是否给出可直接使用的修复代码"
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
+    {
+      "sample_id": "s001",
+      "prompt": "审查这段代码的安全性",
+      "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
+      "rubric": "应识别 SQL 注入风险并建议参数化查询",
+      "assertions": [
+        { "type": "contains", "value": "SQL", "weight": 1 },
+        { "type": "contains", "value": "parameterized", "weight": 1 },
+        { "type": "not_contains", "value": "safe", "weight": 0.5 }
+      ],
+      "dimensions": {
+        "security": "是否识别出注入漏洞",
+        "actionability": "是否给出可直接使用的修复代码"
+      }
     }
-  }
-]
+  ]
+}
 ```
+
+根文档还可以声明 `requires`，其中包含 `tools`、`files`、`env`、`preflight` 字符串数组；除此之外不接受其它根字段。
 
 ## 字段说明
 
@@ -73,7 +80,7 @@ loader 会在任何模型调用前校验完整契约。不支持的断言类型�
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
 | `covers` | `{ targetKind, ref }[]` | 可选声明的 skill 结构锚点，建议先用于关键用例；仅用于 Skill Map |
 | `mocks` | `object[]` | 工具调用拦截列表 —— 要求执行器支持 mock 拦截 |
-| `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `false`） |
+| `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `true`；只有显式允许透传时才设为 `false`） |
 | `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
 | `environment` | `object` | 仅作 prompt 上下文的前置：`cli_available` / `files_available` / `notes`；不会物化文件或环境变量 |
 
@@ -86,15 +93,17 @@ loader 还会校验跨字段引用。每条 `mock_hit: "Tool:N"` 必须指向该
 Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节点时，会显示该结构关系是否由 `sample.covers` 显式声明。
 
 ```yaml
-- sample_id: release-risk-summary
-  prompt: "总结发布风险和回滚方案。"
-  covers:
-    - targetKind: reference
-      ref: references/release-policy.md
-    - targetKind: workflow
-      ref: release
-    - targetKind: workflow_node
-      ref: release.check
+schemaVersion: omk.eval-sample-set/v1
+samples:
+  - sample_id: release-risk-summary
+    prompt: "总结发布风险和回滚方案。"
+    covers:
+      - targetKind: reference
+        ref: references/release-policy.md
+      - targetKind: workflow
+        ref: release
+      - targetKind: workflow_node
+        ref: release.check
 ```
 
 `targetKind` 支持 `skill`、`skill_file`、`frontmatter`、`reference`、`script`、`hard_rule`、`workflow`、`workflow_node`。`reference` / `script` 的 `ref` 是相对 skill 根目录的路径；`hard_rule` / `workflow` 使用规则或 workflow id；`workflow_node` 使用 `workflowId.nodeId`。这个字段不进入 grading、评委 prompt、verdict，也不进入 sample 指纹。
@@ -105,8 +114,11 @@ Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节�
 
 ```json
 {
-  "sample_id": "s001",
-  "prompt": "请根据以下 PRD 文档生成评测用例：https://wiki.example.com/prd/feature-x"
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [{
+    "sample_id": "s001",
+    "prompt": "请根据以下 PRD 文档生成评测用例：https://wiki.example.com/prd/feature-x"
+  }]
 }
 ```
 

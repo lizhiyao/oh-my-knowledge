@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "find-owner",
     "prompt": "Which team owns the billing webhook, and what file proves it?",
@@ -21,4 +23,5 @@
     "capability": ["repo-navigation", "runbook-summary"],
     "construct": "quality"
   }
-]
+  ]
+}

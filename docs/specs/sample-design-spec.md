@@ -12,6 +12,7 @@ The most common construct mismatch: you run baseline-vs-skill intending to measu
 
 ```yaml
 # eval-samples.yaml
+schemaVersion: omk.eval-sample-set/v1
 samples:
   - sample_id: s001
     prompt: "Draw a line chart in React; data is date + value, give minimal runnable code"
@@ -61,38 +62,40 @@ These metadata fields are used only for:
 To run evals decoupled from the real external environment (databases / APIs / filesystem / actual git push, etc.), a sample also carries a group of sandbox fields. The omk runtime matches mocks before a tool call; on a hit it returns fake data instead of really invoking the underlying tool.
 
 ```yaml
-- sample_id: s002
-  prompt: "Use antlogs-query to count ERROR logs in the last 1 hour"
-  rubric: "Must call the logstore_query tool, filter containing 'ERROR', time window 1 hour"
-  assertions:
-    - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
-    - { type: mock_hit, value: "Bash:1", weight: 1 }
-  mocksStrict: true              # default true (generator-enforced); an unmatched tool call is denied outright, never passed through to the real call
-  tripwire: false                # whether this sample is a "trap sample" (deliberately lures the LLM into the wrong move; failing is expected); default false
-  environment:                   # prompt-only task assumptions; no files or env vars are materialized
-    cli_available: ["log-cli"]
-    files_available: ["~/.config/log-cli.json"]
-    notes: "log-cli is authenticated, token in env var"
-  mocks:
-    - tool: Bash                            # intercepted tool name: Bash / Read / Edit / Write / WebFetch / Grep / Glob, etc.
-      match:
-        command_glob: "*log-cli query --filter ERROR*"   # Bash uses command_glob (* wildcard, spans newlines)
-      return:
-        stdout: '{"count": 42}'
-        exit: 0
-    - tool: Read
-      match:
-        file_path_endswith: "tasks/state.json"           # recommended: suffix match, hits whether the LLM uses an absolute or relative path
-      return: '{"status":"running"}'
-    - tool: WebFetch
-      match:
-        url_glob: "https://internal.example.com/api/*"
-      return: "ok"
+schemaVersion: omk.eval-sample-set/v1
+samples:
+  - sample_id: s002
+    prompt: "Use antlogs-query to count ERROR logs in the last 1 hour"
+    rubric: "Must call the logstore_query tool, filter containing 'ERROR', time window 1 hour"
+    assertions:
+      - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
+      - { type: mock_hit, value: "Bash:1", weight: 1 }
+    mocksStrict: true              # default true; unmatched tool calls are denied, never passed through
+    tripwire: false                # whether this sample is a "trap sample"; default false
+    environment:                   # prompt-only assumptions; no files or env vars are materialized
+      cli_available: ["log-cli"]
+      files_available: ["~/.config/log-cli.json"]
+      notes: "log-cli is authenticated, token in env var"
+    mocks:
+      - tool: Bash
+        match:
+          command_glob: "*log-cli query --filter ERROR*"
+        return:
+          stdout: '{"count": 42}'
+          exit: 0
+      - tool: Read
+        match:
+          file_path_endswith: "tasks/state.json"
+        return: '{"status":"running"}'
+      - tool: WebFetch
+        match:
+          url_glob: "https://internal.example.com/api/*"
+        return: "ok"
 ```
 
 **Field semantics:**
 
-- **mocksStrict** (`boolean`, default `true`): a tool call that matches no mock is denied outright (the LLM sees a failure result). **Default behavior**: the `omk sample` generator force-writes `true` and the SYSTEM_PROMPT makes it explicit; for hand-written samples, the loader does not force-inject it when absent — an old sample without the field falls back to non-strict (passes through to the real call). **Strongly prefer `true` for new samples**, to avoid a missing mock letting the eval hit a real production system.
+- **mocksStrict** (`boolean`, default `true`): a tool call that matches no mock is denied outright (the LLM sees a failure result). The production resolver applies this fail-closed default to generated and hand-written samples alike. Set `false` only when the sample intentionally allows unmatched calls to reach the real runtime.
 - **tripwire** (`boolean`, default `false`): declares that this is a trap sample whose prompt deliberately plants a lure that violates the rubric or skill. Evaluation Core preserves the declaration as Sample annotation for audit; it does not turn a failed observation into success or alter the registered Decision.
 - **environment** (`object`, optional): prompt-only task assumptions. The LLM may skip availability probes (`which X` / `test -f Y` / `echo $Z`) and go straight into the workflow, but omk does not create files, export variables, or alter `PATH`. It is not a fixture mechanism. The doctor health check can still audit declared physical paths (skippable with `--skip-doctor`).
   - `cli_available: string[]` — assumed already on `PATH`
@@ -107,7 +110,7 @@ To run evals decoupled from the real external environment (databases / APIs / fi
     - `command_glob: string` — for Bash, `*` wildcards across newlines (so the LLM's multi-line commands still hit).
     - `input: object` — generic deep-equal subset match (any tool_input field).
     - `input_contains: string` — recursively scans all string values in tool_input; a hit if any contains the substring (case-insensitive). **Pair with `tool: "*"` for intent-level mocking**: when the LLM searches code it might use Bash grep / the Grep tool / Glob / Read / Agent / any tool; use `input_contains` to match intent by keyword instead of enumerating tools one by one. Example: `{tool: "*", match: {input_contains: "MyServiceName"}, return: "<service .../>"}` — any tool hits as long as its input mentions MyServiceName.
-  - **`return` has three forms**: string / `{stdout, stderr, exit}` (simulates Bash) / `return_file` external file / `return_seq[]` state machine (the Nth hit on the same mock returns in order, falling back to `return` once exhausted).
+  - **return source**: every mock declares exactly one of `return`, `return_file`, or `return_seq`. `return` accepts a string or `{stdout, stderr, exit}`; `return_file` loads an external fixture; `return_seq[]` is a state machine whose Nth hit returns the Nth value and remains at the final value after the sequence is exhausted.
 - **assertion-side mock_hit / tool_input_contains**: used together with mocks. `mock_hit: "Bash:2"` means "the 2nd Bash mock must be hit at least once", proving the LLM reached that step. `tool_input_contains: "Bash:logstore_query"` checks that the Bash command string contains `logstore_query`.
   - Every `mock_hit` must reference a declared per-tool mock ordinal. The loader rejects missing or out-of-range references before execution.
   - Mock support is an executor capability, not a trace capability. `claude` / `claude-sdk` install interception hooks; `codex`, `codex-sdk`, and direct API executors currently do not. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.

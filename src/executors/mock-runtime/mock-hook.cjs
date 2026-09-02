@@ -164,8 +164,8 @@ function stringifyReturn(r) {
 }
 
 function resolveMockReturn(mock, hitCount, baseDir) {
-  if (mock.return_seq && hitCount < mock.return_seq.length) {
-    return stringifyReturn(mock.return_seq[hitCount]);
+  if (mock.return_seq && mock.return_seq.length > 0) {
+    return stringifyReturn(mock.return_seq[Math.min(hitCount, mock.return_seq.length - 1)]);
   }
   if (mock.return !== undefined) return stringifyReturn(mock.return);
   if (mock.return_file) {

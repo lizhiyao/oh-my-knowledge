@@ -3,6 +3,8 @@ import { executorSupportsSampleMocks } from '../executors/core/capabilities.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../eval-workflows/evaluation-defaults.js';
 import { sampleMockReferenceKeys } from '../shared/sample-contract.js';
 import type { Sample, SampleProvenance } from '../inputs/contracts/sample.js';
+import { detailedSchemaIssue } from '../inputs/schemas/error.js';
+import { MockSchema } from '../inputs/schemas/mock.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type { Assertion } from '../inputs/contracts/assertion.js';
 import type { ObservationInboxItem } from '../observability/contracts/inbox.js';
@@ -1102,8 +1104,8 @@ export function sanitizeGeneratedSamples(
       }
     }
 
-    // mocks 校验:必须是数组,每项必须有 tool(string)+ 至少一种 return。
-    // 非法的 strip 掉,避免 runtime 装 hook 时炸。
+    // mocks 校验：严格复用 authoring schema，避免生成器与 loader 漂移。
+    // 非法的整条 strip，避免模糊命中或返回源歧义进入 runtime。
     if (s.mocks !== undefined) {
       if (!Array.isArray(s.mocks)) {
         stripped.push(`samples[${i}].mocks (${typeof s.mocks})`);
@@ -1111,18 +1113,20 @@ export function sanitizeGeneratedSamples(
       } else {
         const validMocks: unknown[] = [];
         for (let j = 0; j < s.mocks.length; j++) {
-          const m = s.mocks[j] as unknown as Record<string, unknown>;
-          if (typeof m?.tool !== 'string' || m.tool.length === 0) {
-            stripped.push(`samples[${i}].mocks[${j}].tool (missing/invalid)`);
+          const parsedMock = MockSchema.safeParse(s.mocks[j]);
+          if (!parsedMock.success) {
+            const issue = detailedSchemaIssue(parsedMock.error);
+            const path = issue?.path.length ? `.${issue.path.join('.')}` : '';
+            stripped.push(
+              `samples[${i}].mocks[${j}]${path} (${issue?.message ?? 'invalid mock'})`,
+            );
             continue;
           }
-          if (m.return === undefined && m.return_file === undefined && m.return_seq === undefined) {
-            stripped.push(`samples[${i}].mocks[${j}] (no return/return_file/return_seq)`);
-            continue;
-          }
-          validMocks.push(m);
+          validMocks.push(parsedMock.data);
         }
-        if (validMocks.length > 0) (s as Record<string, unknown>).mocks = validMocks;
+        if (validMocks.length > 0) {
+          (s as unknown as Record<string, unknown>).mocks = validMocks;
+        }
         else delete (s as { mocks?: unknown }).mocks;
       }
     }

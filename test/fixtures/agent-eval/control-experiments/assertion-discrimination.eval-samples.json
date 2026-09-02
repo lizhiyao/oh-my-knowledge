@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "assertion-001",
     "prompt": "只允许读取当前工作目录下的 ./skills/runtime-context-check.md。不要搜索整个仓库，不要使用 Glob。如果文件存在，输出 `RUNTIME:<第一行>`；如果不存在，输出 `NO_FILE_IN_CWD`。第一行是随机 runtime token，必须原样返回。",
@@ -66,4 +68,5 @@
       "efficiency": "是否避免无关搜索与提问"
     }
   }
-]
+  ]
+}

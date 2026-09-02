@@ -14,6 +14,11 @@
       "import": "./dist/package-api/evaluation-core.js"
     },
     "./evaluation-core/schemas/v1/*": "./dist/evaluation-core/contracts/schemas/v1/*",
+    "./eval-samples": {
+      "types": "./dist/package-api/eval-samples.d.ts",
+      "import": "./dist/package-api/eval-samples.js"
+    },
+    "./eval-samples/schemas/v1/*": "./dist/inputs/contracts/schemas/v1/*",
     "./projections": {
       "types": "./dist/eval-workflows/downstream-projections/index.d.ts",
       "import": "./dist/eval-workflows/downstream-projections/index.js"
@@ -53,8 +58,12 @@
     "build:src": "tsc -p tsconfig.build.json",
     "build:scripts": "tsc -p tsconfig.scripts.json",
     "build:schemas": "run-s build:src schemas:write",
-    "schemas:write": "node scripts/build-evaluation-core-schemas.mjs --write",
-    "schemas:check": "node scripts/build-evaluation-core-schemas.mjs --check",
+    "schemas:write": "run-s schemas:write:core schemas:write:samples",
+    "schemas:write:core": "node scripts/build-evaluation-core-schemas.mjs --write",
+    "schemas:write:samples": "node scripts/build-eval-sample-schema.mjs --write",
+    "schemas:check": "run-s schemas:check:core schemas:check:samples",
+    "schemas:check:core": "node scripts/build-evaluation-core-schemas.mjs --check",
+    "schemas:check:samples": "node scripts/build-eval-sample-schema.mjs --check",
     "build:assets": "node scripts/copy-assets.cjs",
     "build:docs": "node dist-scripts/build-docs.js --write",
     "build:docs:check": "node dist-scripts/build-docs.js --check",

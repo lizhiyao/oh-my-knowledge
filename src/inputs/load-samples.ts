@@ -2,11 +2,10 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Sample } from './contracts/sample.js';
+import { detailedSchemaIssue } from './schemas/error.js';
+import { EvalSampleSetDocumentSchema, SampleSchema } from './schemas/sample-set.js';
 import type { DependencyRequirements } from '../preflight/contracts.js';
-import {
-  dependencyRequirementsValidationError,
-  sampleContractValidationError,
-} from '../shared/sample-contract.js';
+import { sampleContractValidationError } from '../shared/sample-contract.js';
 import { setOwnRecordValue } from '../shared/record-count.js';
 
 interface YamlErrorLike {
@@ -52,8 +51,7 @@ export interface LoadSamplesOptions {
  * Load samples from a single file OR a directory of sample files.
  *
  * File mode (.json / .yaml / .yml):
- * - Array: `[ { sample_id, prompt, ... } ]` (legacy)
- * - Object wrapper: `{ requires?: { tools, files, env }, samples: [...] }`
+ * - Versioned object: `{ schemaVersion: 'omk.eval-sample-set/v1', requires?, samples }`
  *
  * Directory mode (e.g. `<skill>/.omk/`):
  * - Glob `*.{json,yaml,yml}` minus reserved prefixes (report*, health*, _*)
@@ -175,6 +173,14 @@ export function validateSamples(
   const firstIndexBySampleId = new Map<string, number>();
 
   for (const [i, sample] of samples.entries()) {
+    const structural = SampleSchema.safeParse(sample);
+    if (!structural.success) {
+      const issue = detailedSchemaIssue(structural.error);
+      const field = issue?.path.length ? `.${issue.path.join('.')}` : '';
+      throw new Error(
+        `samples[${i}] invalid sample contract${field}: ${issue?.message ?? 'invalid shape'}`,
+      );
+    }
     if (!sample || typeof sample !== 'object' || Array.isArray(sample)) {
       throw new Error(`samples[${i}] invalid sample contract: sample must be an object`);
     }
@@ -354,30 +360,16 @@ function loadSampleFile(
   const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
   const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
 
-  let samples: Sample[];
-  let requires: DependencyRequirements | undefined;
-
-  if (Array.isArray(parsed)) {
-    // Legacy array format
-    samples = parsed as Sample[];
-  } else if (typeof parsed === 'object' && parsed !== null && 'samples' in parsed) {
-    // Object wrapper format
-    const wrapper = parsed as { samples: Sample[]; requires?: DependencyRequirements };
-    samples = wrapper.samples;
-    requires = wrapper.requires;
-    if (requires !== undefined) {
-      const requiresError = dependencyRequirementsValidationError(requires);
-      if (requiresError) {
-        throw new Error(`invalid samples file: ${samplesPath}: ${requiresError}`);
-      }
-    }
-  } else {
-    throw new Error(`invalid samples file shape: ${samplesPath} (expected an array or an object with a 'samples' field)`);
+  const document = EvalSampleSetDocumentSchema.safeParse(parsed);
+  if (!document.success) {
+    const issue = detailedSchemaIssue(document.error);
+    const field = issue?.path.length ? issue.path.join('.') : '$';
+    throw new Error(
+      `invalid samples file: ${samplesPath}: ${field}: ${issue?.message ?? 'invalid shape'}`,
+    );
   }
-
-  if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error(`invalid samples file: ${samplesPath}`);
-  }
+  const samples = document.data.samples;
+  const requires = document.data.requires as DependencyRequirements | undefined;
 
   validateSamples(samples, options);
 

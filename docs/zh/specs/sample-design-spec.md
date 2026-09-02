@@ -12,6 +12,7 @@ omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / lengt
 
 ```yaml
 # eval-samples.yaml
+schemaVersion: omk.eval-sample-set/v1
 samples:
   - sample_id: s001
     prompt: "用 React 画一个折线图，数据是日期 + 数值，给最小可运行代码"
@@ -61,38 +62,40 @@ samples:
 为了让评测脱离真实外部环境（数据库/API/文件系统/真 git push 等），Sample 还有一组沙箱字段。omk runtime 在工具调用前匹配 mocks，命中即返回假数据，不真调底层。
 
 ```yaml
-- sample_id: s002
-  prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
-  rubric: "应调 logstore_query 工具，filter 含 'ERROR'，时间窗口 1 小时"
-  assertions:
-    - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
-    - { type: mock_hit, value: "Bash:1", weight: 1 }
-  mocksStrict: true              # 默认 true（generator 强制）；未命中的工具调用直接 deny，不透传真调
-  tripwire: false                # 此 sample 是否「诱错样本」（故意诱导 LLM 走错，fail 是预期）；默认 false
-  environment:                   # 仅作 prompt 上下文的题设环境声明，不物化文件或环境变量
-    cli_available: ["log-cli"]
-    files_available: ["~/.config/log-cli.json"]
-    notes: "log-cli 已认证，token 在环境变量"
-  mocks:
-    - tool: Bash                            # 拦的工具名：Bash / Read / Edit / Write / WebFetch / Grep / Glob 等
-      match:
-        command_glob: "*log-cli query --filter ERROR*"   # Bash 用 command_glob (* 通配，跨换行)
-      return:
-        stdout: '{"count": 42}'
-        exit: 0
-    - tool: Read
-      match:
-        file_path_endswith: "tasks/state.json"           # 推荐：后缀匹配，LLM 用绝对/相对路径都能命中
-      return: '{"status":"running"}'
-    - tool: WebFetch
-      match:
-        url_glob: "https://internal.example.com/api/*"
-      return: "ok"
+schemaVersion: omk.eval-sample-set/v1
+samples:
+  - sample_id: s002
+    prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
+    rubric: "应调 logstore_query 工具，filter 含 'ERROR'，时间窗口 1 小时"
+    assertions:
+      - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
+      - { type: mock_hit, value: "Bash:1", weight: 1 }
+    mocksStrict: true              # 默认 true；未命中的工具调用直接 deny，不透传真调
+    tripwire: false                # 是否为诱错样本；默认 false
+    environment:                   # 仅作 prompt 上下文，不物化文件或环境变量
+      cli_available: ["log-cli"]
+      files_available: ["~/.config/log-cli.json"]
+      notes: "log-cli 已认证，token 在环境变量"
+    mocks:
+      - tool: Bash
+        match:
+          command_glob: "*log-cli query --filter ERROR*"
+        return:
+          stdout: '{"count": 42}'
+          exit: 0
+      - tool: Read
+        match:
+          file_path_endswith: "tasks/state.json"
+        return: '{"status":"running"}'
+      - tool: WebFetch
+        match:
+          url_glob: "https://internal.example.com/api/*"
+        return: "ok"
 ```
 
 **字段语义**：
 
-- **mocksStrict**（boolean，默认 true）：未命中任何 mock 的工具调用直接 `deny`（LLM 看到失败结果）。**默认行为**：`omk sample` 生成器强制写 true，SYSTEM_PROMPT 明确；手写 sample 缺位时 sample 加载层不强制注入 —— 老 sample 不写默认走非 strict（透传真调）。**新写 sample 强烈建议 true**，避免漏 mock 导致评测打到真生产系统。
+- **mocksStrict**（boolean，默认 `true`）：未命中任何 mock 的工具调用直接 `deny`（LLM 看到失败结果）。production resolver 对生成和手写用例采用同一个 fail-closed 默认值；只有用例明确允许未命中调用进入真实 runtime 时才设为 `false`。
 - **tripwire**（boolean，默认 false）：声明这是一条诱错用例，prompt 有意加入违反 rubric 或 skill 的诱导。Evaluation Core 会把该声明作为 Sample annotation 保留供审计；它不会把 failed observation 变成 success，也不会改写已注册 Decision。
 - **environment**（object，可选）：仅作 prompt 上下文的题设环境声明。LLM 可以据此跳过可用性探测（`which X` / `test -f Y` / `echo $Z`）直接进工作流，但 omk 不会创建文件、导出环境变量或修改 `PATH`。它不是 fixture 机制。doctor 仍可审计声明的物理路径（可用 `--skip-doctor` 跳过）。
   - `cli_available: string[]` —— 假定已在 PATH 上
@@ -107,7 +110,7 @@ samples:
     - `command_glob: string` —— Bash 用，`*` 通配跨换行（LLM 多行命令也命中）。
     - `input: object` —— 通用 deep-equal 子集匹配（可写任意 tool_input 字段）。
     - `input_contains: string` —— 递归扫描 tool_input 所有 string 值，任一含该子串即命中（大小写不敏感）。**配合 `tool: "*"` 做 intent-level mock**：LLM 搜代码时可能用 Bash grep / Grep 工具 / Glob / Read / Agent 等任意工具，用 `input_contains` 按关键词匹配意图，不用逐个枚举工具。示例：`{tool: "*", match: {input_contains: "MyServiceName"}, return: "<service .../>"}` —— 任何工具只要输入提到 MyServiceName 就命中。
-  - **`return` 三种形式**：string / `{stdout, stderr, exit}`（模拟 Bash）/ `return_file` 外置文件 / `return_seq[]` 状态机（同 mock 第 N 次命中按序返回，超出回退 `return`）。
+  - **返回源**：每条 mock 必须且只能声明 `return`、`return_file`、`return_seq` 之一。`return` 接受 string 或 `{stdout, stderr, exit}`；`return_file` 加载外置 fixture；`return_seq[]` 是按命中次数取值的状态机，序列耗尽后保持最后一个值。
 - **断言侧的 mock_hit / tool_input_contains**：配合 mocks 使用。`mock_hit: "Bash:2"` 表示「第 2 条 Bash mock 必须被命中至少一次」，证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
   - 每条 `mock_hit` 必须指向该工具已经声明的 mock 序号。引用不存在或越界时，loader 会在执行前拒绝用例。
   - mock 支持是执行器能力，不是 trace 能力。`claude` / `claude-sdk` 会安装拦截 hooks；`codex`、`codex-sdk` 和 API 直调执行器目前不支持。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。

@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "sum001",
     "prompt": "请摘要以下内容",
@@ -10,4 +12,5 @@
       { "type": "regex", "pattern": "95%|60%", "weight": 0.5 }
     ]
   }
-]
+  ]
+}

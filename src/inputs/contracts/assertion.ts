@@ -1,5 +1,7 @@
+import type { SupportedAssertionType } from '../../shared/contracts/assertion.js';
+
 export interface Assertion {
-  type: string;
+  type: SupportedAssertionType;
   value?: string | number;
   values?: string[];
   pattern?: string;

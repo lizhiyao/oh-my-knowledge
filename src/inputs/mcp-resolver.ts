@@ -126,7 +126,10 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
   if (!mcpServers) return resolved;
 
   // 1. Collect unique URLs and track which sample/field they belong to
-  const urlMap = new Map<string, Array<{ sample: Sample; field: string }>>(); // url -> [{sample, field}]
+  const urlMap = new Map<string, Array<{
+    sample: Sample;
+    field: 'prompt' | 'context';
+  }>>();
   for (const sample of samples) {
     for (const field of ['prompt', 'context'] as const) {
       const text = sample[field] as string | undefined;

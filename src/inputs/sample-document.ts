@@ -9,14 +9,12 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import yaml from 'js-yaml';
-import type { Sample } from './contracts/sample.js';
+import type { EvalSampleSetDocument, Sample } from './contracts/sample.js';
+import { detailedSchemaIssue } from './schemas/error.js';
+import { EvalSampleSetDocumentSchema } from './schemas/sample-set.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { ownRecordValue } from '../shared/record-count.js';
 import { parseYaml, validateSamples, type LoadSamplesResult } from './load-samples.js';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isYamlPath(filePath: string): boolean {
   return /\.(ya?ml)$/i.test(filePath);
@@ -28,14 +26,11 @@ export function parseSampleDocument(filePath: string): unknown {
 }
 
 export function getSamplesArray(document: unknown, filePath: string): Sample[] {
-  if (Array.isArray(document)) return document as Sample[];
-  if (isRecord(document) && Array.isArray(document.samples)) {
-    return document.samples as Sample[];
-  }
-  throw new Error(
-    `invalid samples file shape: ${filePath} `
-    + `(expected an array or an object with a 'samples' field)`,
-  );
+  const parsed = EvalSampleSetDocumentSchema.safeParse(document);
+  if (parsed.success) return parsed.data.samples;
+  const issue = detailedSchemaIssue(parsed.error);
+  const field = issue?.path.length ? issue.path.join('.') : '$';
+  throw new Error(`invalid samples file shape: ${filePath}: ${field}: ${issue?.message ?? 'invalid shape'}`);
 }
 
 export function stringifySampleDocument(filePath: string, document: unknown): string {
@@ -70,8 +65,7 @@ function atomicWriteFile(filePath: string, content: string): void {
 
 /**
  * Persist only changed samples back to the source file that originally owned each
- * sample_id. JSON/YAML and array/wrapper shapes are retained, including `requires`
- * and any other wrapper metadata.
+ * sample_id. JSON/YAML encoding and the versioned wrapper are retained.
  */
 export function writeFixedSamplesToSources(
   loaded: Pick<LoadSamplesResult, 'sourceFiles' | 'sampleSourceById'>,
@@ -111,9 +105,10 @@ export function writeFixedSamplesToSources(
         ids.has(sample.sample_id) ? fixedById.get(sample.sample_id)! : sample
       ));
       validateSamples(nextSamples);
-      const nextDocument = Array.isArray(document)
-        ? nextSamples
-        : { ...(document as Record<string, unknown>), samples: nextSamples };
+      const nextDocument: EvalSampleSetDocument = {
+        ...(document as EvalSampleSetDocument),
+        samples: nextSamples,
+      };
       atomicWriteFile(filePath, stringifySampleDocument(filePath, nextDocument));
     });
   }

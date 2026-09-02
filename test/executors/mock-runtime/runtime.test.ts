@@ -205,9 +205,9 @@ describe('resolveMockReturn', () => {
     assert.equal(resolveMockReturn(m, 2), 'third');
   });
 
-  it('return_seq fallback to return when hitCount overflows', () => {
-    const m: Mock = { tool: 'Bash', return_seq: ['a'], return: 'fallback' };
-    assert.equal(resolveMockReturn(m, 5), 'fallback');
+  it('return_seq saturates at the last state when hitCount overflows', () => {
+    const m: Mock = { tool: 'Bash', return_seq: ['pending', 'success'] };
+    assert.equal(resolveMockReturn(m, 5), 'success');
   });
 
   it('return_file reads from baseDir', () => {
@@ -275,10 +275,12 @@ describe('buildSdkHookCallback', () => {
     const r1 = (await call('echo a')) as { hookSpecificOutput?: { permissionDecisionReason?: string } };
     const r2 = (await call('echo b')) as { hookSpecificOutput?: { permissionDecisionReason?: string } };
     const r3 = (await call('echo c')) as { hookSpecificOutput?: { permissionDecisionReason?: string } };
+    const r4 = (await call('echo d')) as { hookSpecificOutput?: { permissionDecisionReason?: string } };
     // wrap 后只验证内容包含原始字符串,前后带说明文字。
     assert.match(r1.hookSpecificOutput?.permissionDecisionReason || '', /one/);
     assert.match(r2.hookSpecificOutput?.permissionDecisionReason || '', /two/);
     assert.match(r3.hookSpecificOutput?.permissionDecisionReason || '', /three/);
+    assert.match(r4.hookSpecificOutput?.permissionDecisionReason || '', /three/);
   });
 });
 

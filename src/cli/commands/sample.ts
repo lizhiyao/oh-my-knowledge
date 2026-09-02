@@ -22,11 +22,15 @@ import {
 } from '../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
-import type { Sample as SampleType } from '../../inputs/contracts/sample.js';
+import type {
+  EvalSampleSetDocument,
+  Sample as SampleType,
+} from '../../inputs/contracts/sample.js';
+import { createEvalSampleSetDocument } from '../../inputs/schemas/sample-set.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 interface GenerateSamplesResult {
-  samples: unknown[];
+  samples: SampleType[];
   costUSD: number;
 }
 
@@ -98,7 +102,7 @@ export function pickAppendTargetFile(dir: string): string | null {
 }
 
 /** 把新用例追加进已有 sample 文件:读 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与
- *  `{samples:[...]}` wrapper 写回。返回合并后总条数。 */
+ *  versioned wrapper 写回。返回合并后总条数。 */
 export function appendSamplesToFile(
   existingFile: string,
   fresh: SampleType[],
@@ -106,7 +110,10 @@ export function appendSamplesToFile(
 ): number {
   const doc = parseSampleDocument(existingFile);
   const merged = mergeAppendSamples(getSamplesArray(doc, existingFile), fresh, reserved);
-  const nextDoc = Array.isArray(doc) ? merged : { ...(doc as Record<string, unknown>), samples: merged };
+  const nextDoc: EvalSampleSetDocument = {
+    ...(doc as EvalSampleSetDocument),
+    samples: merged,
+  };
   writeFileSync(existingFile, stringifySampleDocument(existingFile, nextDoc));
   return merged.length;
 }
@@ -175,7 +182,7 @@ export async function runSampleFromTraces(
       return;
     }
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify(samples, null, 2));
+    writeFileSync(outPath, JSON.stringify(createEvalSampleSetDocument(samples), null, 2));
     process.stderr.write(lang === 'zh'
       ? `\n✅ 生成 ${samples.length} 条草稿用例 → ${outPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
       : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
@@ -272,7 +279,10 @@ async function runSample(
         const { samples, costUSD }: GenerateSamplesResult =
           await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
         mkdirSync(dirname(samplesPath), { recursive: true });
-        writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
+        writeFileSync(
+          samplesPath,
+          JSON.stringify(createEvalSampleSetDocument(samples), null, 2),
+        );
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
         process.stderr.write(tCli('cli.gen.skill_done', lang, {
           name, n: samples.length, path: samplesPath, cost,
@@ -351,7 +361,10 @@ async function runSample(
         }));
       } else {
         mkdirSync(dirname(outputPath), { recursive: true });
-        writeFileSync(outputPath, JSON.stringify(samples, null, 2));
+        writeFileSync(
+          outputPath,
+          JSON.stringify(createEvalSampleSetDocument(samples), null, 2),
+        );
         process.stderr.write(tCli('cli.gen.single_done', lang, {
           n: samples.length, path: outputPath, cost,
         }));
