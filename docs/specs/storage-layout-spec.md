@@ -103,18 +103,6 @@ Project and machine durable data use the same domains. Machine-specific material
 
 The v2 tree is the only supported storage layout. OMK neither reads old storage roots nor provides a migration command, and it never moves or deletes old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only.
 
-## Cleanup contract
-
-- `omk clean --dry-run` previews exact paths and reclaimable bytes.
-- `omk clean` deletes only `state/`.
-- `--reports` selects `eval/`, `doctor/`, and `observe/health/`.
-- `--observations` selects inbox, drafts, and archive, and requires `--force`.
-- `--backups` selects backups.
-- `--governance` is separate and requires `--force`.
-- `--all` selects state, reports, observations, and backups, but excludes governance.
-
-Cleanup validates every target against the selected OMK root and a fixed category allowlist before recursive deletion.
-
 ## Why these names
 
 There is no top-level `runs`: it suggests disposable execution state, while evaluation and doctor records are durable evidence. There is no top-level `measurements`: it obscures the CLI domain users already know. There is no top-level `observations`: health reports and reviewable observations are sibling pipelines under the shared `observe` product domain. `derived` is used instead of `projections` because the directory holds rebuildable materializations owned by one authoritative report, not a distinct product domain.

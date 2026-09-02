@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `clean` (apply lifecycle-aware cleanup) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -23,38 +23,6 @@ For full descriptions: `omk init --help`.
 <!-- omk:cli:init:flags:end -->
 
 Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` / `list` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The managed registry (`install` / `list` / `promote`, optionally global) is a separate layer `init` does not touch. The two starter skill variants + three sample cases are just the default A/B template.
-
-## `omk clean`
-
-```bash
-omk clean --dry-run
-omk clean
-omk clean --reports
-omk clean --observations --force
-```
-
-<!-- omk:cli:clean:flags:start -->
-
-**Flags:**
-
-```text
-  --all           Clean state, reports, observations, and backups; excludes governance
-  --backups       Clean doctor fix backups
-  --dry-run       Show paths and space without deleting
-  --force         Confirm deletion of sensitive or non-reproducible data
-  --global        Clean global ~/.oh-my-knowledge storage
-  --governance    Clean managed governance records; requires --force
-  --json          Print machine-readable JSON
-  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --observations  Clean observation inbox, drafts, and archive; requires --force
-  --reports       Clean eval, doctor, and observe health reports
-```
-
-For full descriptions: `omk clean --help`.
-
-<!-- omk:cli:clean:flags:end -->
-
-Deletes only `.omk/state/` by default. Reports, observations, backups, and governance records require explicit category flags; deleting observations or governance records additionally requires `--force`. `--all` excludes governance records.
 
 ## `omk install`
 

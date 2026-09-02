@@ -4,7 +4,7 @@ description: |
   OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。观测真实表现，受控测量 prompt / RAG / skill / agent / workflow 的版本差异，判断改动是否有效、版本能否发布，并支持自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"知识反馈"、"feedback"、"omk"。
 user-invocable: true
-argument-hint: "<clean|doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
+argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
 ---
 
 # OMK — Observe. Measure. Know.
@@ -29,7 +29,7 @@ argument-hint: "<clean|doctor|eval|evolve|init|install|list|observe|promote|roll
 npm i oh-my-knowledge -g
 ```
 
-omk CLI 顶层命令包括：`init` / `clean` / `install` / `list` / `promote` / `rollback` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
+omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
 ### 在 Codex / 支持 MCP 的客户端中
 
@@ -66,7 +66,6 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 | 体检 skill 写法 | → `omk doctor` |
 | 浏览对话、任务轨迹与报告 | → `omk studio`（启动本地知识工作台） |
 | 看真实使用 trace | → `omk observe` |
-| 清理本地 OMK 数据 | → `omk clean`（默认只清可重建 state） |
 | 查看受管 skill 状态 | → `omk list` |
 | 按证据接受 / 回退某版本 | → `omk promote` / `omk rollback` |
 

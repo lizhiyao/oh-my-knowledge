@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`clean`（按生命周期清理）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -23,38 +23,6 @@ omk init [目录]
 <!-- omk:cli:init:flags:end -->
 
 在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。现有两版 skill + 三条用例只是默认的 A/B 起步模板。
-
-## `omk clean`
-
-```bash
-omk clean --dry-run
-omk clean
-omk clean --reports
-omk clean --observations --force
-```
-
-<!-- omk:cli:clean:flags:start -->
-
-**Flags:**
-
-```text
-  --all           清理 state、报告、observation 和备份，不包含治理记录
-  --backups       清理 doctor fix 备份
-  --dry-run       只显示将删除的路径与空间
-  --force         确认删除敏感或不可重建的数据
-  --global        清理全局 ~/.oh-my-knowledge
-  --governance    清理 managed 治理记录，必须配合 --force
-  --json          输出机器可读 JSON
-  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --observations  清理 observation inbox、草稿和归档，必须配合 --force
-  --reports       清理 eval、doctor 和 observe health 报告
-```
-
-完整描述见 `omk clean --help`。
-
-<!-- omk:cli:clean:flags:end -->
-
-默认只删除 `.omk/state/`。报告、observation、备份和治理记录都必须显式选择类别；删除 observation 或治理记录还必须传入 `--force`。`--all` 不包含治理记录。
 
 ## `omk install`
 
