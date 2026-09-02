@@ -41,17 +41,19 @@ git pull --ff-only
 # cut a topic branch from main
 git checkout -b feat/my-feature
 
-# build / test / lint
+# Batch the intended changes, then run the complete local gate once before pushing.
 yarn install
-yarn build
-yarn test      # must pass
-yarn lint      # must pass
+yarn ci
 
 git commit -m "feat(cli): 中文 subject"
 git push -u origin feat/my-feature
 
 # open a PR against **main**
 ```
+
+Avoid using remote CI as an incremental feedback loop. Batch related fixes, run
+`yarn ci` locally, and push the verified commit set once. If review finds more
+issues, finish the related fixes and rerun the local gate before the next push.
 
 ### Releasing a new version
 
