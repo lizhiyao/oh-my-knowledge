@@ -127,8 +127,8 @@ export function parseRunConfig(
 
   // 2) Resolve samples path: CLI > config > single-treatment skill-local discovery > cwd project default.
   // Skill-local discovery only fires when exactly one --treatment is given, so omk knows
-  // which skill's bundled samples to use. The `<skill>/.omk/` dir form (loadSamples handles
-  // both file + dir) means a skill can split samples across multiple files.
+  // which skill's private canonical file to use. Explicit --samples / eval.yaml values may
+  // still point at a custom JSON / YAML file or a split directory.
   const cliSamples = values.samples as string | undefined;
   let samplesFile: string;
   if (cliSamples) {
@@ -136,7 +136,7 @@ export function parseRunConfig(
   } else if (evalConfig?.samples) {
     samplesFile = evalConfig.samples;  // already resolved against config file dir
   } else {
-    samplesFile = discoverSamplesPath(values, skillDir);
+    samplesFile = discoverSamplesPath(values, skillDir, runtimeOptions.lang ?? 'zh');
   }
 
   // 3) Resolve variantSpecs: CLI > config > batch > error。dedup 在 helper 里。

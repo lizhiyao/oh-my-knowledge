@@ -27,6 +27,7 @@ import {
   projectCoreManagedEvidence,
 } from '../../eval-workflows/downstream-projections/index.js';
 import { discoverBatchSkills } from '../../inputs/skill-loader.js';
+import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { generateRunId } from '../../measurement-artifacts/run-id.js';
 import type { RunConfig } from './parse-run-config.js';
@@ -176,9 +177,14 @@ export async function runCoreEvaluationCommand(
       : 'Warning: --skip-doctor is enabled; Core static health checks were skipped and dependency correctness is user-owned.\n');
   }
   if (request.values.orchestration.batch) {
-    const entries = discoverBatchSkills(resolve(projectRoot, request.values.locators.skillDirectory));
+    const entries = withLocalizedSampleDiscovery(
+      () => discoverBatchSkills(resolve(projectRoot, request.values.locators.skillDirectory)),
+      input.lang,
+    );
     if (entries.length === 0) {
-      throw new TypeError(`没有找到带配对样本的 skill：${request.values.locators.skillDirectory}`);
+      throw new TypeError(input.lang === 'zh'
+        ? `没有找到带 canonical 私有用例的目录 skill：${request.values.locators.skillDirectory}。每个 skill 应使用 <skill>/.omk/eval-samples.json 或 eval-samples.yaml。`
+        : `No directory skill with canonical private samples found in ${request.values.locators.skillDirectory}. Use <skill>/.omk/eval-samples.json or eval-samples.yaml for each skill.`);
     }
     if (request.values.orchestration.resumeSourceLocator !== undefined) {
       throw new TypeError('Batch resume 必须按 child runId 显式执行，不能复用旧聚合报告。');

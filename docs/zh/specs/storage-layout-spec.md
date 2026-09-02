@@ -61,7 +61,7 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 - **目录表达产品域**。例如 `.omk/doctors/` 已经说明这是 doctor，`.omk/graphs/doctor/` 已经说明这是 doctor 产生的图谱 sidecar；文件名不再重复这些 domain 词。
 - **所有 run-derived artifact 都用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名（eval 取主评测对象，也就是非 baseline treatment，而不是完整 control-vs-treatment 关系），`runSuffix` 是让本次运行唯一的时间戳 + 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
 - **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
-- **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
+- **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/eval-samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
 
 Evaluation Core 按 `runId` 一次一个目录存储；manifest 与 sealed documents 在目录内使用固定 schema 文件名。读取侧只发现当前规范产物：Core run 目录，以及 `doctors`／`observe-health`／`observe-inbox` 的 `.report.json` 文件。旧的扁平 JSON 既不读取，也不自动改名。
 

@@ -15,12 +15,12 @@ import {
   stringifySampleDocument,
 } from '../../inputs/sample-document.js';
 import {
-  defaultFlatSkillSamplesFile,
   defaultSkillLocalSamplesFile,
-  findFlatSkillSamplesPath,
+  findCanonicalSamplesFile,
   findSkillSamplesPath,
 } from '../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
+import { withLocalizedSampleDiscovery } from '../lib/localized-sample-discovery.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
 import type {
   EvalSampleSetDocument,
@@ -90,15 +90,9 @@ function collectDirSampleIds(dir: string): Set<string> {
   return ids;
 }
 
-/** 目录模式 append 选写回目标:复用 listSampleFilesInDir 的排序/过滤(与 eval 目录合并同口径),
- *  优先 canonical `samples.json`,否则排序后第一个 —— 确定性、不依赖文件系统枚举顺序,
- *  用户可预测改哪个文件。无候选返回 null。 */
+/** 目录模式 append 选写回目标：canonical JSON / YAML 二选一；并存时 fail closed。 */
 export function pickAppendTargetFile(dir: string): string | null {
-  let files: string[];
-  try { files = listSampleFilesInDir(dir); } catch { return null; }
-  if (files.length === 0) return null;
-  const chosen = files.includes('samples.json') ? 'samples.json' : files[0];
-  return join(dir, chosen);
+  return findCanonicalSamplesFile(dir);
 }
 
 /** 把新用例追加进已有 sample 文件:读 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与
@@ -247,11 +241,10 @@ async function runSample(
       let existingSamplesPath: string | null;
       const fullPath: string = join(skillDir, entry);
 
-      if (entry.endsWith('.md') && !entry.endsWith('.eval-samples.json')) {
-        name = entry.slice(0, -3);
-        skillPath = fullPath;
-        samplesPath = defaultFlatSkillSamplesFile(skillDir, name);
-        existingSamplesPath = findFlatSkillSamplesPath(skillDir, name);
+      if (entry.endsWith('.md')) {
+        const flatName = entry.slice(0, -3);
+        process.stderr.write(`⚠️  skipping ${flatName}: flat skills have no private sample namespace; migrate to ${flatName}/SKILL.md\n`);
+        continue;
       } else if (statSync(fullPath).isDirectory()) {
         const skillMd: string = join(fullPath, 'SKILL.md');
         if (!existsSync(skillMd)) continue;
@@ -259,7 +252,7 @@ async function runSample(
         name = entry;
         skillPath = skillMd;
         samplesPath = defaultSkillLocalSamplesFile(fullPath);
-        existingSamplesPath = findSkillSamplesPath(fullPath);
+        existingSamplesPath = withLocalizedSampleDiscovery(() => findSkillSamplesPath(fullPath), lang);
       } else {
         continue;
       }
@@ -327,9 +320,9 @@ async function runSample(
     if (!extname(resolved.samplesPath)) {
       const dir = resolved.samplesPath;
       if (existsSync(dir) && statSync(dir).isDirectory()) {
-        existingFile = pickAppendTargetFile(dir);
+        existingFile = withLocalizedSampleDiscovery(() => pickAppendTargetFile(dir), lang);
       }
-      outputPath = existingFile ?? join(dir, 'samples.json');
+      outputPath = existingFile ?? join(dir, 'eval-samples.json');
     } else {
       outputPath = resolved.samplesPath;
       if (existsSync(outputPath)) existingFile = outputPath;

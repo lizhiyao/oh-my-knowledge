@@ -31,7 +31,7 @@ const ROOT_ONLY_EXCLUDED_NAMES = new Set<string>(['evolve']);
  * git 物化共用此一处,保证三者完全一致。
  *
  * 关键:检查**每一段**而非只看叶子。本地 walk / cpSync 是逐层下降、命中目录即剪枝,只看叶子也够;
- * 但 git ls-tree 给的是**扁平路径**(如 `.omk/samples.json`),只看叶子 `samples.json` 会让 `.omk`
+ * 但 git ls-tree 给的是**扁平路径**(如 `.omk/eval-samples.json`),只看叶子 `eval-samples.json` 会让 `.omk`
  * 内容漏过。故:任一段命中全局排除即排除;首段命中 root-only(evolve)即排除(嵌套同名是合法资产)。
  */
 export function isDistributablePath(segments: string[]): boolean {

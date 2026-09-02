@@ -49,8 +49,8 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     en: '❌ {name}: {message}\n',
   },
   'cli.gen.batch_none_needed': {
-    zh: '没有需要生成的 eval-samples (所有 skill 都已有配对文件)',
-    en: 'No eval-samples need generating (all skills already have paired files)',
+    zh: '没有需要生成的 eval-samples（所有目录 skill 都已有 canonical 文件）',
+    en: 'No eval-samples need generating (all directory skills already have canonical files)',
   },
   'cli.gen.batch_failed_summary': {
     zh: '\n生成未完成：已生成 {generated} 份，失败 {failed} 份。请按上面的错误提示修复后重试；全部生成成功后再运行 omk eval --batch --dry-run。',

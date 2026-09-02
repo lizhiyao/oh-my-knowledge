@@ -1,6 +1,6 @@
 # 评测用例格式
 
-**eval-samples** 文件是 `omk eval` / `omk doctor` 使用的版本化用例集文档。它的 `samples` 数组包含具体用例，每条一个 `prompt`，外加可选的 `rubric`、`assertions` 和元数据。支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`），YAML 手写更省事。
+**eval-samples** 文件是 `omk eval` / `omk doctor` 使用的版本化用例集文档。它的 `samples` 数组包含具体用例，每条一个 `prompt`，外加可选的 `rubric`、`assertions` 和元数据。JSON 与 YAML 都是一等格式：生成结果默认使用 `eval-samples.json`，手写时可使用 `eval-samples.yaml`。
 
 想知道怎么**设计**一套严谨用例（测什么、测几条、元数据字段），见[用例设计](../specs/sample-design-spec)；本页是逐字段的格式参考。
 
@@ -8,12 +8,12 @@
 
 推荐把项目共享用例和 skill 私有用例分开：
 
-- 项目共享用例：放在项目根目录的 `eval-samples.json`、`eval-samples.yaml` 或 `eval-samples.yml`。适合多个 variant 做 A/B 对比，保证它们跑同一套测试集。
-- skill 私有用例：放在 `<skill>/.omk/samples.json`、`<skill>/.omk/samples.yaml` 或 `<skill>/.omk/samples.yml`。目录模式也支持在同一个 `.omk/` 下拆成多个 sample 文件。
+- 项目共享用例：放在项目根目录的 `eval-samples.json` 或 `eval-samples.yaml`。适合多个 variant 做 A/B 对比，保证它们跑同一套测试集。
+- skill 私有用例：放在 `<skill>/.omk/eval-samples.json` 或 `<skill>/.omk/eval-samples.yaml`。因此，私有用例要求使用目录 skill（`<skill>/SKILL.md`）。
 
 `omk eval` 只会在单 treatment 且能明确定位到某个 skill 时自动发现 skill 私有用例。多版本对比建议使用项目共享用例，或显式传 `--samples`。
 
-兼容说明：omk 仍支持扁平 skill 的 `skills/<name>.eval-samples.json` 这类 sidecar 文件。目录 skill 不再读取 `<skill>/eval-samples.*`；skill 私有用例统一放在 `<skill>/.omk/samples.json`。
+自动发现只识别以上两个 canonical 文件名。同一作用域同时存在 JSON 与 YAML 时，omk 会报告歧义并停止，不会静默选择其中一个。`.yml`、`samples.*`、`<name>.eval-samples.*` 扁平 sidecar 和分片目录均不参与自动发现；仍可通过 `--samples` 显式读取自定义 JSON / YAML 文件或分片目录。
 
 每个文件都必须声明 `schemaVersion: omk.eval-sample-set/v1`，历史顶层数组格式会被拒绝。根文档、sample、assertion、mock 及其嵌套契约都采用严格校验；未知字段会在执行前报错，不会被静默忽略。发布的 JSON Schema 位于 [`schemas/eval-samples/v1/eval-sample-set.schema.json`](../../../schemas/eval-samples/v1/eval-sample-set.schema.json)。
 

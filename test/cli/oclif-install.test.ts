@@ -490,7 +490,7 @@ describe('oclif install', () => {
     try {
       await makeDirSkill(dir, 'review');
       await mkdir(join(dir, 'skills', 'review', '.omk'), { recursive: true });
-      await writeFile(join(dir, 'skills', 'review', '.omk', 'samples.json'), '[]\n');
+      await writeFile(join(dir, 'skills', 'review', '.omk', 'eval-samples.json'), '[]\n');
       const dest = join(dir, 'dist-skills');
       await runInstallCommand(['skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'skill distributed');

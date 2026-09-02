@@ -12,7 +12,6 @@ import { looksLikeModelUnavailableFailure } from '../../lib/llm-failure-classifi
 import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../../eval-workflows/evaluation-defaults.js';
 import {
-  findSingleTreatmentDeprecatedSamplesHint,
   hasUsableSamplesPath,
 } from '../../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
@@ -180,16 +179,7 @@ async function runEval(
   if (!values.batch && !hasUsableSamplesPath(config.samplesPath)) {
     const treatmentRaw = typeof values.treatment === 'string' ? values.treatment : '';
     const treatments = treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean);
-    const deprecatedSamplesHint = !values.samples && !evalConfig?.samples && treatments.length === 1
-      ? findSingleTreatmentDeprecatedSamplesHint(treatments[0], config.skillDir, process.cwd())
-      : null;
-    if (deprecatedSamplesHint) {
-      process.stderr.write(tCli('cli.common.deprecated_skill_samples_path', lang, {
-        oldPath: deprecatedSamplesHint.oldPath,
-        newPath: deprecatedSamplesHint.newPath,
-      }));
-    }
-    const sampleCommand = !deprecatedSamplesHint && !values.samples && !evalConfig?.samples && treatments.length === 1
+    const sampleCommand = !values.samples && !evalConfig?.samples && treatments.length === 1
       ? sampleCommandForSingleTreatment(treatments[0], config.skillDir)
       : null;
     const missingSamplesMessage = [
@@ -286,8 +276,8 @@ export default class Eval extends BaseCommand {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。',
-        en: 'Samples path. Defaults to project-level eval-samples.json (also .yaml/.yml); single-treatment runs can auto-discover <skill>/.omk/.',
+        zh: '用例路径。自动发现项目级或单 treatment 目录 skill 下的 eval-samples.json / eval-samples.yaml；显式路径可为 JSON / YAML 文件或分片目录。',
+        en: 'Samples path. Auto-discovers eval-samples.json / eval-samples.yaml at project scope or for a single directory-skill treatment; an explicit path may be a JSON / YAML file or split directory.',
       }),
     }),
     'skill-dir': Flags.string({

@@ -25,7 +25,7 @@ describe('Core evolve artifact snapshots', () => {
     mkdirSync(join(evolveDirectory, 'review.r1'), { recursive: true });
     writeFileSync(join(skillDirectory, 'SKILL.md'), 'old skill');
     writeFileSync(join(skillDirectory, 'references', 'rules.md'), 'rules');
-    writeFileSync(join(skillDirectory, '.omk', 'samples.json'), '[]');
+    writeFileSync(join(skillDirectory, '.omk', 'eval-samples.json'), '[]');
     writeFileSync(join(evolveDirectory, 'review.r1', 'stale.md'), 'stale');
 
     const snapshot = materializeCoreEvolveSnapshot({

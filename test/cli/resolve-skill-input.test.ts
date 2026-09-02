@@ -27,7 +27,7 @@ describe('resolveSkillInput isDirectorySkill', () => {
     assert.equal(r.isDirectorySkill, true);
     assert.equal(r.skillPath, join(skillRoot, 'SKILL.md'));
     assert.equal(r.skillDir, skillRoot);
-    assert.equal(r.samplesPath, join(skillRoot, '.omk'));
+    assert.equal(r.samplesPath, join(skillRoot, '.omk', 'eval-samples.json'));
   });
 
   it('传内部 SKILL.md 文件路径 → 仍 isDirectorySkill=true(与传目录等价)', () => {
@@ -35,6 +35,16 @@ describe('resolveSkillInput isDirectorySkill', () => {
     assert.equal(r.isDirectorySkill, true, '帮助文档鼓励的写法,必须判为目录-skill');
     assert.equal(r.skillPath, join(skillRoot, 'SKILL.md'));
     assert.equal(r.skillDir, skillRoot);
+  });
+
+  it('目录 skill 的 JSON 与 YAML 并存时按 CLI 语言报告歧义', () => {
+    mkdirSync(join(skillRoot, '.omk'), { recursive: true });
+    writeFileSync(join(skillRoot, '.omk', 'eval-samples.json'), '{}\n');
+    writeFileSync(join(skillRoot, '.omk', 'eval-samples.yaml'), '{}\n');
+    assert.throws(
+      () => resolveSkillInput(skillRoot, 'en'),
+      /Ambiguous eval sample files.*eval-samples\.json.*eval-samples\.yaml/,
+    );
   });
 
   it('传扁平 .md → isDirectorySkill=false', () => {
@@ -45,10 +55,10 @@ describe('resolveSkillInput isDirectorySkill', () => {
     assert.equal(r.samplesPath, 'eval-samples.json');
   });
 
-  it('传扁平 .md 且 paired sidecar 存在 → samplesPath 指向 sidecar', () => {
+  it('传扁平 .md 时忽略 paired sidecar，统一回退项目级路径', () => {
     writeFileSync(join(proj, 'flat.eval-samples.json'), '[]\n');
     const r = resolveSkillInput(join(proj, 'flat.md'), 'zh');
     assert.equal(r.isDirectorySkill, false);
-    assert.equal(r.samplesPath, join(proj, 'flat.eval-samples.json'));
+    assert.equal(r.samplesPath, 'eval-samples.json');
   });
 });

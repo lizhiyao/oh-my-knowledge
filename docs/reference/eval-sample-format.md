@@ -1,6 +1,6 @@
 # Eval sample format
 
-An **eval-samples** file is the versioned test-set document `omk eval` / `omk doctor` run against. Its `samples` array contains cases, each with a `prompt` plus optional `rubric`, `assertions`, and metadata. JSON and YAML are supported (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`); YAML is easier to hand-write.
+An **eval-samples** file is the versioned test-set document `omk eval` / `omk doctor` run against. Its `samples` array contains cases, each with a `prompt` plus optional `rubric`, `assertions`, and metadata. JSON and YAML are first-class formats: use `eval-samples.json` for generated output or `eval-samples.yaml` for hand authoring.
 
 For *designing* a rigorous sample set (what to test, how many, the metadata fields), see [sample design](../specs/sample-design-spec) — this page is the field-by-field format reference.
 
@@ -8,12 +8,12 @@ For *designing* a rigorous sample set (what to test, how many, the metadata fiel
 
 Recommended layouts:
 
-- Project-shared samples: put `eval-samples.json`, `eval-samples.yaml`, or `eval-samples.yml` at the project root. Use this for A/B comparisons where variants must run on the same test set.
-- Skill-local samples: put `samples.json`, `samples.yaml`, or `samples.yml` under `<skill>/.omk/`. Directory mode also supports multiple sample files in the same `.omk/` folder.
+- Project-shared samples: put `eval-samples.json` or `eval-samples.yaml` at the project root. Use this for A/B comparisons where variants must run on the same test set.
+- Skill-local samples: put `eval-samples.json` or `eval-samples.yaml` under `<skill>/.omk/`. A private sample set therefore requires a directory skill (`<skill>/SKILL.md`).
 
 `omk eval` auto-discovers skill-local samples only when exactly one treatment identifies a skill. Multi-variant comparisons should use project-shared samples or an explicit `--samples` path.
 
-Compatibility note: flat-skill sidecars such as `skills/<name>.eval-samples.json` are still supported. Directory skills do not read `<skill>/eval-samples.*`; use `<skill>/.omk/samples.json` for skill-local samples.
+Auto-discovery recognizes only those two canonical names. If both JSON and YAML exist in the same scope, omk fails with an ambiguity error rather than silently choosing one. `.yml`, `samples.*`, flat-skill sidecars such as `<name>.eval-samples.*`, and split directories are not auto-discovered. You can still load a custom JSON / YAML file or a split directory explicitly with `--samples`.
 
 Every file must declare `schemaVersion: omk.eval-sample-set/v1`. Legacy top-level arrays are rejected. The root document, every sample, assertion, mock, and nested contract are strict: unknown fields fail before execution instead of being ignored. The published JSON Schema is [`schemas/eval-samples/v1/eval-sample-set.schema.json`](../../schemas/eval-samples/v1/eval-sample-set.schema.json).
 

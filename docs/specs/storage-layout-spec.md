@@ -66,7 +66,7 @@ Directories and filenames deliberately carry different bits of meaning:
 - **The directory carries the product domain.** For example, `.omk/doctors/` already says "doctor", and `.omk/graphs/doctor/` already says "doctor graph sidecar"; filenames do not repeat those domain words.
 - **Every run-derived artifact uses `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name (for eval, the primary non-baseline treatment rather than the full control-vs-treatment relationship), `runSuffix` is the timestamp + random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
 - **Human and machine twins must differ before the extension.** Prefer `.graph.json`, `.card.md`, `.summary.json`, etc. over sibling files that only differ by `.json` versus `.md`.
-- **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
+- **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/eval-samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
 
 Evaluation Core stores one directory per `runId`; its manifest and sealed
 documents keep their fixed schema filenames inside that directory. Readers only

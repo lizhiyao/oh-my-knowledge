@@ -135,7 +135,7 @@ describe('oclif eval', () => {
     }
   });
 
-  it('eval 发现目录 skill 旧 eval-samples 路径时提示迁移到 .omk/samples.json', async () => {
+  it('eval 忽略目录 skill 根部的非 canonical 私有路径并提示生成 canonical 文件', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-eval-deprecated-samples-'));
     try {
       const skillRoot = join(dir, 'skills', 'review');
@@ -157,10 +157,8 @@ describe('oclif eval', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
-          assert.ok(e.stderr.includes('发现旧的目录 skill 用例位置'), e.stderr);
-          assert.ok(e.stderr.includes(join(skillRoot, 'eval-samples.json')), e.stderr);
-          assert.ok(e.stderr.includes(join(skillRoot, '.omk', 'samples.json')), e.stderr);
-          assert.ok(!e.stderr.includes('omk sample skills/review'), e.stderr);
+          assert.ok(e.stderr.includes('<skill>/.omk/eval-samples.json'), e.stderr);
+          assert.ok(e.stderr.includes('omk sample skills/review'), e.stderr);
           assert.ok(!e.stderr.includes('ENOENT'), e.stderr);
           return true;
         },
