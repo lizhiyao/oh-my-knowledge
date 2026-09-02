@@ -43,13 +43,8 @@ interface ForbiddenRule {
 const RULES: ForbiddenRule[] = [
   {
     from: 'eval-core/',
-    to: 'measurement-artifacts/',
+    to: 'evidence/',
     reason: 'Evaluation Core vNext 是纯计算内核，不依赖文件命名、目录布局或产物发现。',
-  },
-  {
-    from: 'eval-core/',
-    to: 'shared/statistics/',
-    reason: 'Evaluation Core vNext 的 Analysis 自持统计语义，不反向依赖应用层兼容工具。',
   },
   {
     from: 'eval-core/',
@@ -77,9 +72,19 @@ const RULES: ForbiddenRule[] = [
     reason: '应用工作流产出事实与存储能力，由 Studio 单向消费；workflow 不反向依赖具体工作台。',
   },
   {
-    from: 'artifact-graph/',
+    from: 'evidence/graph/',
     to: 'eval-workflows/',
-    reason: 'Artifact Graph 只拥有图 contracts、schema 与领域投影；文件持久化和 Core workflow composition 由 production host 拥有。',
+    reason: 'Evidence Graph 只拥有图 contracts、schema、持久化与跨来源关联；Core workflow composition 由 production host 拥有。',
+  },
+  {
+    from: 'executors/',
+    to: 'eval-workflows/',
+    reason: 'Executor 是跨宿主运行能力，不依赖具体 eval workflow、sample 或应用编排。',
+  },
+  {
+    from: 'executors/',
+    to: 'knowledge-artifacts/',
+    reason: 'Executor 只消费自身 contracts 描述的结构事实，不依赖知识载体生命周期实现。',
   },
   {
     from: 'executors/',
@@ -87,9 +92,19 @@ const RULES: ForbiddenRule[] = [
     reason: 'Executor 负责 Runtime 与工具结果事实，不得反向依赖由这些事实派生的 Observability 投影。',
   },
   {
-    from: 'measurement-artifacts/',
+    from: 'evidence/storage/',
     to: 'observability/',
-    reason: 'Measurement Artifacts 只拥有产物命名、目录、索引与定位能力；跨域 prompt 冻结属于 CI 测量治理。',
+    reason: 'Evidence Storage 只拥有产物命名、目录、索引与定位能力；跨域 prompt 冻结属于 CI 测量治理。',
+  },
+  {
+    from: 'evidence/',
+    to: 'diagnosis/',
+    reason: 'Evidence 保存、验证与关联事实，不派生诊断。',
+  },
+  {
+    from: 'evidence/',
+    to: 'knowledge-artifacts/governance/',
+    reason: 'Evidence 不拥有知识载体生命周期或发布治理策略。',
   },
   {
     from: 'observability/',
@@ -113,8 +128,8 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'shared/',
-    to: 'artifact-graph/',
-    reason: 'shared 是跨领域叶子依赖；Artifact Graph parser 由 artifact-graph 领域拥有。',
+    to: 'evidence/',
+    reason: 'shared 是跨领域叶子依赖；存储布局、产物定位与 Evidence Graph 由 evidence 领域拥有。',
   },
   {
     from: 'shared/',
@@ -125,11 +140,6 @@ const RULES: ForbiddenRule[] = [
     from: 'shared/',
     to: 'knowledge-artifacts/',
     reason: 'shared 是跨领域叶子依赖；Artifact、Skill、Doctor、Authoring 与 Governance 均由 knowledge-artifacts 领域拥有。',
-  },
-  {
-    from: 'shared/',
-    to: 'measurement-artifacts/',
-    reason: 'shared 是跨领域叶子依赖；run id 分配依赖产物命名策略，应由 measurement-artifacts 拥有。',
   },
   {
     from: 'shared/',
@@ -383,7 +393,10 @@ function collectEvaluationCoreCapabilityViolations(): CoreCapabilityViolation[] 
       }
       if (ts.isMetaProperty(node)
           && node.keywordToken === ts.SyntaxKind.ImportKeyword) {
-        report('访问了宿主模块位置：import.meta');
+        const packageSchemaResolver = fileName === 'eval-core/schema-url.ts'
+          && ts.isPropertyAccessExpression(node.parent)
+          && node.parent.name.text === 'url';
+        if (!packageSchemaResolver) report('访问了宿主模块位置：import.meta');
       }
       ts.forEachChild(node, visit);
     };

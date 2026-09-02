@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tCli, type CliLang } from './i18n.js';
-import { globalLayout, OMK_HOME } from '../../shared/storage-layout.js';
+import { globalLayout, OMK_HOME } from '../../evidence/storage/layout.js';
 
 /** 严格按 SemVer 2.0 precedence 判断 `a > b`(只覆盖本仓库实际使用的形态:
  *  MAJOR.MINOR.PATCH 可选 `-prerelease`)。非法字符串直接返回 false,update-check

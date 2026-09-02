@@ -1,5 +1,5 @@
 import type { Assertion } from './assertion.js';
-import type { Mock } from './mock.js';
+import type { Mock } from '../../../executors/contracts/mock.js';
 
 /** sample provenance(数据来源)。`evolved` / `mixed` 留 follow-up
  *  跟 evolver 升级一起做。 */

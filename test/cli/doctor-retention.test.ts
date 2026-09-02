@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
-import { writeMeasurementReportBundle } from '../../src/measurement-artifacts/report-bundle.js';
+import { writeMeasurementReportBundle } from '../../src/evidence/storage/report-bundle.js';
 
 function doctorReport(skillName: string, id: string, timestamp: string) {
   return {

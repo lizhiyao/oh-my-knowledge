@@ -19,8 +19,8 @@ import {
   optionalTokenCount,
   splitInclusiveInputTokens,
   tokenCount,
-} from '../../../../shared/token-usage.js';
-import { normalizeToolIdentity } from '../../../../shared/tool-identity.js';
+} from '../../../../executors/core/token-usage.js';
+import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
 import { extractCodexExecCommands } from './exec-command.js';
 import {
   codexUserAttachments,

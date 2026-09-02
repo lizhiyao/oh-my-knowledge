@@ -8,6 +8,7 @@ const COMPOSITION_ROOT_PREFIXES = [
   'cli/',
   'dsh-plugin/',
   'eval-workflows/production-host/',
+  'mcp/',
   'studio/',
 ] as const;
 const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
@@ -50,8 +51,11 @@ function moduleDomain(path: string): string {
   }
   if (
     topLevel === 'eval-workflows'
-    && ['grading', 'inputs'].includes(subdomain)
+    && ['analysis', 'gold', 'inputs', 'instruments'].includes(subdomain)
   ) {
+    return `${topLevel}/${subdomain}`;
+  }
+  if (topLevel === 'evidence' && ['graph', 'storage'].includes(subdomain)) {
     return `${topLevel}/${subdomain}`;
   }
   if (topLevel === 'executors' && subdomain === 'preflight') {
@@ -203,18 +207,11 @@ function stronglyConnectedComponents(edges: ModuleEdge[]): string[][] {
 }
 
 const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> = {
-  [domainPair('eval-workflows/grading', 'eval-workflows/inputs')]: (edge) =>
-    edge.importerDomain === 'eval-workflows/grading'
-      ? edge.targetDomain === 'eval-workflows/inputs'
-      : edge.typeOnly && isContractBoundary(edge.target),
-  [domainPair('eval-workflows/inputs', 'executors/preflight')]: (edge) =>
-    edge.typeOnly && isContractBoundary(edge.target),
-  [domainPair('knowledge-artifacts/doctor', 'measurement-artifacts')]: (edge) => {
+  [domainPair('evidence/storage', 'knowledge-artifacts/doctor')]: (edge) => {
     if (edge.importerDomain === 'knowledge-artifacts/doctor') {
-      return edge.importer === 'knowledge-artifacts/doctor/index.ts'
-        && edge.target === 'measurement-artifacts/file-names.ts';
+      return edge.targetDomain === 'evidence/storage';
     }
-    return edge.importer === 'measurement-artifacts/discovery-index.ts'
+    return edge.importer === 'evidence/storage/discovery-index.ts'
       && edge.typeOnly
       && edge.target === 'knowledge-artifacts/doctor/contracts.ts';
   },
@@ -236,7 +233,11 @@ describe('src 依赖图', () => {
     expect(moduleDomain('knowledge-artifacts/governance/store.ts')).toBe('knowledge-artifacts/governance');
     expect(moduleDomain('knowledge-artifacts/sources/content-hash.ts')).toBe('knowledge-artifacts/sources');
     expect(moduleDomain('eval-workflows/inputs/load-samples.ts')).toBe('eval-workflows/inputs');
-    expect(moduleDomain('eval-workflows/grading/judge.ts')).toBe('eval-workflows/grading');
+    expect(moduleDomain('eval-workflows/instruments/judge.ts')).toBe('eval-workflows/instruments');
+    expect(moduleDomain('eval-workflows/gold/human.ts')).toBe('eval-workflows/gold');
+    expect(moduleDomain('eval-workflows/analysis/bootstrap.ts')).toBe('eval-workflows/analysis');
+    expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
+    expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
   });
 

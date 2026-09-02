@@ -5,17 +5,17 @@ import {
   listMeasurementDerivedPaths,
   listMeasurementReportPaths,
   measurementRecordIdFromReportPath,
-} from '../../measurement-artifacts/report-bundle.js';
+} from '../../evidence/storage/report-bundle.js';
 import {
   artifactIndexDir,
   cardTargetSentinel,
   listLiveDoctorCards,
   listLiveObserveCards,
-} from '../../measurement-artifacts/discovery-index.js';
+} from '../../evidence/storage/discovery-index.js';
 import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health/analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox/index.js';
 import { parseSkillHealthReport } from '../../observability/skill-health/report.js';
-import { parseArtifactGraphDocument } from '../../artifact-graph/schema.js';
+import { parseArtifactGraphDocument } from '../../evidence/graph/schema.js';
 import { parseDoctorReport } from '../../knowledge-artifacts/doctor/report-parser.js';
 import { ownRecordValue } from '../../shared/record-count.js';
 import type {
@@ -29,7 +29,7 @@ import type {
 } from '../view-models/index.js';
 import type { Diagnosis } from '../../diagnosis/contracts.js';
 import type { DoctorReport } from '../../knowledge-artifacts/doctor/contracts.js';
-import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../artifact-graph/contracts.js';
+import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../evidence/graph/contracts.js';
 import { detectInsights } from './skill-insights.js';
 
 export type {

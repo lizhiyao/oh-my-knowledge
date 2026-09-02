@@ -1,7 +1,7 @@
 import type { ExecResult } from '../executors/contracts/result.js';
 import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
-import { checkedSumTokenCounts, optionalTokenCount } from '../shared/token-usage.js';
-import { normalizeToolIdentity } from '../shared/tool-identity.js';
+import { checkedSumTokenCounts, optionalTokenCount } from '../executors/core/token-usage.js';
+import { normalizeToolIdentity } from '../executors/core/tool-identity.js';
 import { safeSliceForJson } from '../shared/json-safe-truncation.js';
 
 type UnknownRecord = Record<string, unknown>;

@@ -8,16 +8,16 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
 import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { DEFAULT_DOCTORS_DIR } from '../../measurement-artifacts/default-dirs.js';
-import { indexDoctorWrite, removeDoctorCard } from '../../measurement-artifacts/discovery-index.js';
-import { doctorReportFileStem } from '../../measurement-artifacts/file-names.js';
+import { DEFAULT_DOCTORS_DIR } from '../../evidence/storage/default-dirs.js';
+import { indexDoctorWrite, removeDoctorCard } from '../../evidence/storage/discovery-index.js';
+import { doctorReportFileStem } from '../../evidence/storage/file-names.js';
 import {
   listMeasurementReportPaths,
   measurementRecordIdFromReportPath,
   writeMeasurementReportBundle,
-} from '../../measurement-artifacts/report-bundle.js';
-import { projectDoctorsDir, globalDoctorsDir } from '../../measurement-artifacts/directories.js';
-import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
+} from '../../evidence/storage/report-bundle.js';
+import { projectDoctorsDir, globalDoctorsDir } from '../../evidence/storage/directories.js';
+import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../evidence/graph/doctor.js';
 import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../knowledge-artifacts/doctor/contracts.js';
 import { parseDoctorReport } from '../../knowledge-artifacts/doctor/report-parser.js';
 

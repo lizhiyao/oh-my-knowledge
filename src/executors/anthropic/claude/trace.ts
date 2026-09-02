@@ -2,7 +2,7 @@ import type { ToolCallInfo, TurnInfo } from '../../contracts/trace.js';
 import type { ClaudeMessage } from './protocol.js';
 import { safeSliceForJson } from '../../../shared/json-safe-truncation.js';
 import { isToolResultFailureText } from '../../tool-call-status.js';
-import { normalizeToolIdentity } from '../../../shared/tool-identity.js';
+import { normalizeToolIdentity } from '../../core/tool-identity.js';
 
 export function isClaudeResultMessage(message: ClaudeMessage): boolean {
   return message.type === 'result';

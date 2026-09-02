@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
-import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
+import { readPromptDocument } from '../../src/observability/prompts/document.js';
 import { PROMPTS_DIR } from '../../src/observability/soft-standards/index.js';
 
 // llm-enhanced-review prompt 的 byte-level 冻结已统一进 test/measurement-governance/prompt-registry-freeze.test.ts

@@ -22,7 +22,7 @@ describe('Studio observation route boundary', () => {
   it('keeps generic request validation independent from domain code', () => {
     const requestErrors = readFileSync('src/studio/http/request-errors.ts', 'utf8');
 
-    expect(requestErrors).not.toMatch(/\.\.\/.*(?:observability|diagnosis|doctor|managed|measurement-artifacts)/);
+    expect(requestErrors).not.toMatch(/\.\.\/.*(?:observability|diagnosis|doctor|managed|evidence)/);
     expect(requestErrors).not.toContain('ObservationReviewState');
   });
 });

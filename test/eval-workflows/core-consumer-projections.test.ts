@@ -19,8 +19,8 @@ import {
   projectCoreDiagnostics,
   projectCoreManagedEvidence,
   type CoreEvolutionEvidence,
-} from '../../src/eval-workflows/downstream-projections/index.js';
-import { projectCompletedCoreCliGate } from '../../src/eval-workflows/downstream-projections/cli-gate.js';
+} from '../../src/eval-workflows/projections/index.js';
+import { projectCompletedCoreCliGate } from '../../src/eval-workflows/projections/cli-gate.js';
 import { projectCoreStudioRunDetail } from '../../src/studio/core-runs/index.js';
 import { digestCanonicalJson } from '../../src/eval-core/contracts/index.js';
 import {

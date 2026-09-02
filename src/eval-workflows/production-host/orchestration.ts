@@ -38,8 +38,8 @@ import {
 } from '../runtime-adapter/index.js';
 import {
   projectCoreEvolutionEvidence,
-  type CoreEvolutionEvidence,
-} from '../downstream-projections/index.js';
+} from '../projections/evolution.js';
+import type { CoreEvolutionEvidence } from '../projections/contracts.js';
 import {
   bindProductionPreparedEvaluation,
   ProductionEvaluationHostError,
@@ -451,4 +451,5 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
 }
 
 /** Exact delegates for post-persistence consumers; no legacy row interpretation. */
-export { compareGoldToCoreRun, projectCoreArtifactGraph } from '../downstream-projections/index.js';
+export { compareGoldToCoreRun } from '../projections/gold.js';
+export { projectCoreArtifactGraph } from '../projections/artifact-graph.js';

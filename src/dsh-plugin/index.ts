@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from 'node:path';
-import { projectLayout } from '../shared/storage-layout.js';
+import { projectLayout } from '../evidence/storage/layout.js';
 import { loadEvalConfig } from '../eval-workflows/inputs/eval-config.js';
 import {
   type DshAgentLike,

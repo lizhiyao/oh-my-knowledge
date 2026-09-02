@@ -1,4 +1,4 @@
-import type { TraceSourceKind } from '../../shared/contracts/trace-source.js';
+import type { TraceSourceKind } from './trace-source.js';
 
 export type ToolCallStatus = 'success' | 'failure' | 'cancelled' | 'unknown';
 export type ToolCallStatusSource = 'runtime' | 'tool-output' | 'inferred' | 'unknown';

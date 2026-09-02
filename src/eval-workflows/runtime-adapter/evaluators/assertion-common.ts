@@ -7,7 +7,7 @@ import {
 } from '../../../eval-core/contracts/index.js';
 import type { EvaluatorBindingValue } from '../../../eval-core/evaluation/index.js';
 import { resolveAssertionLayer } from '../../assertions/layers.js';
-import { assertionContractValidationError } from '../../../shared/sample-contract.js';
+import { assertionContractValidationError } from '../../inputs/sample-contract.js';
 import type { Assertion } from '../../inputs/contracts/assertion.js';
 
 export interface AssertionCriterion {

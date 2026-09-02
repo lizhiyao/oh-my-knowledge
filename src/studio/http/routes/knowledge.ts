@@ -12,11 +12,11 @@ import {
   listDoctorCards,
   listLiveObserveCards,
   listObserveCards,
-} from '../../../measurement-artifacts/discovery-index.js';
+} from '../../../evidence/storage/discovery-index.js';
 import {
   listMeasurementReportPaths,
   measurementRecordIdFromReportPath,
-} from '../../../measurement-artifacts/report-bundle.js';
+} from '../../../evidence/storage/report-bundle.js';
 import {
   confidenceOf,
   toolStabilityOf,

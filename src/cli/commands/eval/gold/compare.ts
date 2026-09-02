@@ -4,7 +4,7 @@ import { BaseCommand } from '../../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
 import { integerStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
-import { projectReportsDir, globalReportsDir } from '../../../../measurement-artifacts/directories.js';
+import { projectReportsDir, globalReportsDir } from '../../../../evidence/storage/directories.js';
 
 export default class EvalGoldCompare extends BaseCommand {
   static description = bilingual({
@@ -73,14 +73,14 @@ export default class EvalGoldCompare extends BaseCommand {
         console.error('--gold-dir is required');
         throw new CliExit(1);
       }
-      const { loadGoldDataset } = await import('../../../../eval-workflows/grading/gold-dataset.js');
+      const { loadGoldDataset } = await import('../../../../eval-workflows/gold/dataset.js');
       const {
         createNodeCoreContentStore,
         createNodeCoreRunArtifactStore,
         createOverlayCoreRunArtifactStore,
       } = await import('../../../../eval-workflows/artifact-store/index.js');
       const { compareGoldToCoreRun } = await import(
-        '../../../../eval-workflows/downstream-projections/index.js'
+        '../../../../eval-workflows/projections/gold.js'
       );
 
       const { dataset, issues } = loadGoldDataset(goldDir);

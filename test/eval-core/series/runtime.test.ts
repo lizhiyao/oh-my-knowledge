@@ -14,7 +14,7 @@ import {
   type EvaluationSeriesRunResult,
   type CompletedEvaluationSeriesRunResult,
   type RuntimeIdentity,
-} from '../../../src/package-api/eval-core.js';
+} from '../../../src/eval-core/index.js';
 import {
   importConformanceResult,
   prepareConformancePlan,

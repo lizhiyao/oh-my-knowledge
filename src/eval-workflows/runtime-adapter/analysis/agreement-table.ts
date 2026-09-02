@@ -2,13 +2,13 @@ import { z } from 'zod';
 import {
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../../../shared/statistics/bootstrap.js';
+} from '../../analysis/bootstrap.js';
 import {
   computeKrippendorffAlpha,
   computePearson,
   computeWeightedKappa,
   type RatingPair,
-} from '../../grading/human-gold.js';
+} from '../../gold/human.js';
 import {
   IdentifierSchema,
   Sha256DigestSchema,

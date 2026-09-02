@@ -37,14 +37,14 @@ import type {
   TraceSourceKind,
   TraceUsageEvent,
 } from './trace-ir.js';
-import { normalizeToolIdentity } from '../../shared/tool-identity.js';
+import { normalizeToolIdentity } from '../../executors/core/tool-identity.js';
 import {
   correlateTraceToolEvents,
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
 } from './trace-ir.js';
-import { nonNegativeMetric, tokenCount } from '../../shared/token-usage.js';
+import { nonNegativeMetric, tokenCount } from '../../executors/core/token-usage.js';
 import {
   emptyTraceIngestionSummary,
   mergeTraceIngestionSummaries,

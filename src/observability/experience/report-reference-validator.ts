@@ -1,6 +1,6 @@
 import {
   isTraceSourceKind as isObservationSourceKind,
-} from '../../shared/trace-source-kind.js';
+} from '../../executors/core/trace-source-kind.js';
 import type {
   ExperienceGoalSlice,
   ExperienceInvocation,

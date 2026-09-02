@@ -1,6 +1,6 @@
-import type { TraceSourceKind } from '../../shared/contracts/trace-source.js';
+import type { TraceSourceKind } from '../../executors/contracts/trace-source.js';
 
-export type { TraceSourceKind } from '../../shared/contracts/trace-source.js';
+export type { TraceSourceKind } from '../../executors/contracts/trace-source.js';
 
 export interface TraceIngestionSummary {
   fileCount: number;

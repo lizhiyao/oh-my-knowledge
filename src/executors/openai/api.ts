@@ -1,6 +1,6 @@
 import type { ExecResult } from '../contracts/result.js';
 import type { ExecutorInput } from '../contracts/ports.js';
-import { optionalTokenCount, splitInclusiveInputTokens } from '../../shared/token-usage.js';
+import { optionalTokenCount, splitInclusiveInputTokens } from '../core/token-usage.js';
 import { DEFAULT_TIMEOUT_MS } from '../core/limits.js';
 import { readJsonResponse, responseBodyPreview } from '../core/http.js';
 import { asErrorLike, errorMessage } from '../core/runtime.js';

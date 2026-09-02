@@ -5,7 +5,7 @@ import type { Sample } from './contracts/sample.js';
 import { detailedSchemaIssue } from './schemas/error.js';
 import { EvalSampleSetDocumentSchema, SampleSchema } from './schemas/sample-set.js';
 import type { DependencyRequirements } from '../../executors/preflight/contracts.js';
-import { sampleContractValidationError } from '../../shared/sample-contract.js';
+import { sampleContractValidationError } from './sample-contract.js';
 import { setOwnRecordValue } from '../../shared/record-count.js';
 
 interface YamlErrorLike {

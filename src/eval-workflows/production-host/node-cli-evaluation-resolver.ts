@@ -10,7 +10,7 @@ import {
 import { loadSamples } from '../inputs/load-samples.js';
 import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';
-import type { Mock } from '../inputs/contracts/mock.js';
+import type { Mock } from '../../executors/contracts/mock.js';
 import type { Sample } from '../inputs/contracts/sample.js';
 import {
   RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION,

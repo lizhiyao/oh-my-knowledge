@@ -1,5 +1,5 @@
 import { createExecutor } from '../../executors/index.js';
-import { readPromptDocument } from '../../shared/llm-prompts/index.js';
+import { readPromptDocument } from '../prompts/document.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import type {
   ObservationSkillChain,

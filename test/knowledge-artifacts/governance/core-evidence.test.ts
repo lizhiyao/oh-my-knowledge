@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CoreManagedEvidenceProjection } from '../../../src/eval-workflows/downstream-projections/index.js';
-import { CORE_MANAGED_EVIDENCE_SCHEMA_VERSION } from '../../../src/eval-workflows/downstream-projections/index.js';
+import type { CoreManagedEvidenceProjection } from '../../../src/eval-workflows/projections/index.js';
+import { CORE_MANAGED_EVIDENCE_SCHEMA_VERSION } from '../../../src/eval-workflows/projections/index.js';
 import {
   coreEvidenceTargetForContentHash,
   recordCoreEvalEvidence,

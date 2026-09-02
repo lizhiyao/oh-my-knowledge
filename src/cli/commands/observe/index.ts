@@ -5,10 +5,10 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
-import { projectObserveHealthDir, globalObserveHealthDir } from '../../../measurement-artifacts/directories.js';
-import { indexObserveWrite } from '../../../measurement-artifacts/discovery-index.js';
-import { runFileSuffix } from '../../../measurement-artifacts/file-names.js';
-import { writeMeasurementReportBundle } from '../../../measurement-artifacts/report-bundle.js';
+import { projectObserveHealthDir, globalObserveHealthDir } from '../../../evidence/storage/directories.js';
+import { indexObserveWrite } from '../../../evidence/storage/discovery-index.js';
+import { runFileSuffix } from '../../../evidence/storage/file-names.js';
+import { writeMeasurementReportBundle } from '../../../evidence/storage/report-bundle.js';
 import type { SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
 
 /**

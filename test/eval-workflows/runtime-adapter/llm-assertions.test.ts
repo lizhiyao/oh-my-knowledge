@@ -42,7 +42,7 @@ import {
 import {
   getRagJudgePromptHash,
   getSemanticPromptHash,
-} from '../../../src/shared/llm-prompts/judge-prompts.js';
+} from '../../../src/eval-workflows/instruments/prompts/judge-prompts.js';
 import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
 
 const PROVIDER_IMPLEMENTATION_ID = 'test.llm-provider/v1';

@@ -57,15 +57,18 @@ Governance consumes authenticated evaluation and observation evidence; it does n
 scores or decisions. These capabilities remain separate subdomains so that sharing one lifecycle
 owner does not turn `knowledge-artifacts` into a generic utility layer.
 
-Evaluation workflow inputs and grading adapters share the workflow boundary, while effectful
+Evaluation inputs, evaluator instruments, and Gold calibration share the workflow boundary, while effectful
 runtime readiness belongs to executors:
 
 ```text
 eval-workflows/
+├── analysis/           # reusable workflow-owned statistical primitives
 ├── inputs/             # config, sample, artifact-source resolution, and schemas
-├── grading/            # judge invocation, judge trace, and human-gold calibration adapters
+├── instruments/        # judge invocation, judge trace, and instrument contracts
+├── gold/               # human-gold datasets, calibration, and CLI support
 ├── input-compilation/  # host inputs → host-neutral measurement definition
 ├── runtime-adapter/    # binding assembly and declared-preflight admission
+├── projections/        # authenticated downstream views of Core artifacts
 └── production-host/    # Node host composition and effect orchestration
 
 executors/
@@ -74,11 +77,24 @@ executors/
 └── <provider>/         # provider-specific runtime implementations
 ```
 
-`eval-workflows/grading` does not own measurement meaning: it adapts judge execution and gold
-calibration into the instruments and analysis contracts owned by Core. Likewise,
+`eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
+judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,
 `executors/preflight` reports environment readiness facts, while
 `eval-workflows/runtime-adapter/preflight.ts` decides workflow admission from binding declarations.
 These subdomains remain separate dependency-graph vertices even though they are physically grouped.
+
+Evidence persistence and cross-source association have one non-decision boundary:
+
+```text
+evidence/
+├── storage/  # canonical layout, names, bundles, discovery, and integrity checks
+└── graph/    # doctor, eval, and observe evidence relationships
+```
+
+Evidence stores, validates, locates, and links facts. It does not score outputs, derive diagnoses,
+or decide knowledge lifecycle actions. Public package entrypoints live at their owning domains'
+natural `index.ts` or semantic file; `package.json#exports` is the only publication allowlist.
+Internal production modules import concrete domain files rather than those package barrels.
 
 Diagnosis and Observability have an explicit boundary. Observability produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observability facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
 

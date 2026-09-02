@@ -5,7 +5,7 @@ import {
   projectObserveHealthDir,
   resolveDoctorsDir,
   resolveObserveHealthDir,
-} from '../../measurement-artifacts/directories.js';
+} from '../../evidence/storage/directories.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';

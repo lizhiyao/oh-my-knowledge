@@ -19,7 +19,7 @@ import type {
   ConversationTaskItem,
 } from '../view-models/conversation.js';
 import type { TaskTrajectorySession } from '../view-models/knowledge-debugger.js';
-import { DEFAULT_CACHE_DIR } from '../../measurement-artifacts/default-dirs.js';
+import { DEFAULT_CACHE_DIR } from '../../evidence/storage/default-dirs.js';
 import { durationMsBetween } from '../../shared/time.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import {

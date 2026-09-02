@@ -13,7 +13,7 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
-} from '../../../src/package-api/eval-core.js';
+} from '../../../src/eval-core/index.js';
 import { RuntimeIdentitySchema } from '../../../src/eval-core/contracts/index.js';
 import type {
   AnalysisDecisionPolicy,

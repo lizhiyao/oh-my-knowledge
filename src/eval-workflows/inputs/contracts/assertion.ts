@@ -1,4 +1,4 @@
-import type { SupportedAssertionType } from '../../../shared/contracts/assertion.js';
+import type { SupportedAssertionType } from './assertion-kind.js';
 
 export interface Assertion {
   type: SupportedAssertionType;

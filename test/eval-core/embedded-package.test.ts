@@ -56,8 +56,27 @@ describe('published embedded Evaluation Core API', () => {
       '-C',
       packageDirectory,
     ]);
-    const zodDirectory = dirname(realpathSync(join(REPO_ROOT, 'node_modules/zod/package.json')));
-    symlinkSync(zodDirectory, join(projectRoot, 'node_modules/zod'), 'dir');
+    const repositoryPackage = JSON.parse(readFileSync(
+      join(REPO_ROOT, 'package.json'),
+      'utf8',
+    )) as { dependencies: Record<string, string> };
+    for (const packageName of Object.keys(repositoryPackage.dependencies)) {
+      const dependencyDirectory = dirname(realpathSync(join(
+        REPO_ROOT,
+        'node_modules',
+        packageName,
+        'package.json',
+      )));
+      const installedDirectory = join(projectRoot, 'node_modules', packageName);
+      mkdirSync(dirname(installedDirectory), { recursive: true });
+      symlinkSync(dependencyDirectory, installedDirectory, 'dir');
+    }
+    const nodeTypesDirectory = dirname(realpathSync(join(
+      REPO_ROOT,
+      'node_modules/@types/node/package.json',
+    )));
+    mkdirSync(join(projectRoot, 'node_modules/@types'), { recursive: true });
+    symlinkSync(nodeTypesDirectory, join(projectRoot, 'node_modules/@types/node'), 'dir');
     expect(JSON.parse(readFileSync(join(
       packageDirectory,
       'dist/eval-core/contracts/schemas/v1/execution-bundle.schema.json',
@@ -81,6 +100,7 @@ describe('published embedded Evaluation Core API', () => {
         strict: true,
         noEmit: true,
         skipLibCheck: false,
+        types: ['node'],
       },
       include: ['host.ts'],
     }));
@@ -92,6 +112,8 @@ const assert = require('node:assert/strict');
   const evalSamples = await import('oh-my-knowledge/eval-samples');
   const projections = await import('oh-my-knowledge/projections');
   const studio = await import('oh-my-knowledge/studio');
+  const mcp = await import('oh-my-knowledge/mcp');
+  const dshPlugin = await import('oh-my-knowledge/dsh-plugin');
   assert.equal(typeof api.createEvaluationEngine, 'function');
   assert.equal(typeof api.digestCanonicalJson, 'function');
   assert.equal(api.createCoreStudioCatalog, undefined);
@@ -102,6 +124,10 @@ const assert = require('node:assert/strict');
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
   assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
   assert.equal(typeof studio.createCoreStudioCatalog, 'function');
+  assert.equal(typeof mcp.createObservationMcpServer, 'function');
+  assert.equal(mcp.LOCAL_OBSERVATION_PRINCIPAL.principalId, 'local-user');
+  assert.equal(dshPlugin.name, 'omk-dsh-plugin');
+  assert.equal(typeof dshPlugin.apply, 'function');
   const schema = await import(
     'oh-my-knowledge/eval-core/schemas/v1/execution-bundle.schema.json',
     { with: { type: 'json' } }
@@ -185,7 +211,7 @@ const assert = require('node:assert/strict');
     }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
   });
 
-  it('NodeNext TypeScript 宿主获得根入口与 advanced 子路径的边界声明', () => {
+  it('NodeNext TypeScript 宿主获得全部公开代码入口的边界声明', () => {
     const result = spawnSync(join(REPO_ROOT, 'node_modules/.bin/tsc'), [
       '--project', join(projectRoot, 'tsconfig.json'),
     ], {

@@ -16,7 +16,7 @@ import {
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../eval-workflows/artifact-store/index.js';
-import { globalLayout, projectLayout } from '../shared/storage-layout.js';
+import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createNodeHostPreflightDeclarations,
@@ -29,10 +29,12 @@ import {
 import {
   projectCoreCliRunOutcome,
   projectCoreCliSeriesOutcome,
-  projectCoreManagedEvidence,
-  type CoreCliRunOutcome,
-  type CoreCliSeriesOutcome,
-} from '../eval-workflows/downstream-projections/index.js';
+} from '../eval-workflows/projections/cli.js';
+import type {
+  CoreCliRunOutcome,
+  CoreCliSeriesOutcome,
+} from '../eval-workflows/projections/contracts.js';
+import { projectCoreManagedEvidence } from '../eval-workflows/projections/managed.js';
 import { managedDir, recordCoreEvalEvidence } from '../knowledge-artifacts/governance/index.js';
 import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
@@ -43,8 +45,8 @@ import type {
   OmkRuntimeBindingFactories,
 } from '../eval-workflows/runtime-adapter/index.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
-import type { JudgeConfig } from '../eval-workflows/grading/contracts/config.js';
-import { generateRunId } from '../measurement-artifacts/run-id.js';
+import type { JudgeConfig } from '../eval-workflows/instruments/contracts/config.js';
+import { generateRunId } from '../evidence/storage/run-id.js';
 import {
   createDshHostCoreExecutorAdapter,
   createDshHostCoreSchemaValidators,

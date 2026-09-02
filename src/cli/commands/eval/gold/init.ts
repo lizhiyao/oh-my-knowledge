@@ -30,7 +30,7 @@ export default class EvalGoldInit extends BaseCommand {
     const { flags } = await this.parse(EvalGoldInit);
     const lang = this.lang;
     await this.runWithCliExit(async () => {
-      const { initGoldDataset } = await import('../../../../eval-workflows/grading/gold-cli.js');
+      const { initGoldDataset } = await import('../../../../eval-workflows/gold/cli.js');
       try {
         const written = initGoldDataset(flags.out, {
           annotator: flags.annotator,

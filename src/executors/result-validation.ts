@@ -2,9 +2,9 @@ import type { ExecResult } from './contracts/result.js';
 import type { ToolCallInfo, TurnInfo } from './contracts/trace.js';
 import { isJsonValue } from '../shared/json-value.js';
 import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
-import { checkedSumTokenCounts, optionalTokenCount } from '../shared/token-usage.js';
-import { normalizeToolIdentity } from '../shared/tool-identity.js';
-import { isTraceSourceKind } from '../shared/trace-source-kind.js';
+import { checkedSumTokenCounts, optionalTokenCount } from './core/token-usage.js';
+import { normalizeToolIdentity } from './core/tool-identity.js';
+import { isTraceSourceKind } from './core/trace-source-kind.js';
 
 const TOOL_STATUSES = new Set(['success', 'failure', 'cancelled', 'unknown']);
 const TOOL_STATUS_SOURCES = new Set(['runtime', 'tool-output', 'inferred', 'unknown']);

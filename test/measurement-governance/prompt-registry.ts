@@ -2,8 +2,8 @@ import {
   getJudgePromptHash,
   getRagJudgePromptHash,
   getSemanticPromptHash,
-} from '../../src/shared/llm-prompts/judge-prompts.js';
-import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
+} from '../../src/eval-workflows/instruments/prompts/judge-prompts.js';
+import { readPromptDocument } from '../../src/observability/prompts/document.js';
 import {
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,
@@ -42,42 +42,42 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   {
     promptId: 'rubric-judge-debias-on',
     purpose: 'rubric 主评委(length-debias 开,默认)',
-    module: 'src/shared/llm-prompts/judge-prompts.ts',
+    module: 'src/eval-workflows/instruments/prompts/judge-prompts.ts',
     measurementInvariant: true,
     getHash: () => getJudgePromptHash(true),
   },
   {
     promptId: 'rubric-judge-debias-off',
     purpose: 'rubric 主评委(--no-debias-length,length-debias 关)',
-    module: 'src/shared/llm-prompts/judge-prompts.ts',
+    module: 'src/eval-workflows/instruments/prompts/judge-prompts.ts',
     measurementInvariant: true,
     getHash: () => getJudgePromptHash(false),
   },
   {
     promptId: 'semantic-similarity',
     purpose: 'semantic_similarity 断言评委',
-    module: 'src/shared/llm-prompts/judge-prompts.ts',
+    module: 'src/eval-workflows/instruments/prompts/judge-prompts.ts',
     measurementInvariant: true,
     getHash: () => getSemanticPromptHash(),
   },
   {
     promptId: 'rag-faithfulness',
     purpose: 'RAG faithfulness(输出是否被 context 支持)',
-    module: 'src/shared/llm-prompts/judge-prompts.ts',
+    module: 'src/eval-workflows/instruments/prompts/judge-prompts.ts',
     measurementInvariant: true,
     getHash: () => getRagJudgePromptHash('faithfulness'),
   },
   {
     promptId: 'rag-answer-relevancy',
     purpose: 'RAG answer_relevancy(是否切题)',
-    module: 'src/shared/llm-prompts/judge-prompts.ts',
+    module: 'src/eval-workflows/instruments/prompts/judge-prompts.ts',
     measurementInvariant: true,
     getHash: () => getRagJudgePromptHash('answer_relevancy'),
   },
   {
     promptId: 'rag-context-recall',
     purpose: 'RAG context_recall(关键事实覆盖率)',
-    module: 'src/shared/llm-prompts/judge-prompts.ts',
+    module: 'src/eval-workflows/instruments/prompts/judge-prompts.ts',
     measurementInvariant: true,
     getHash: () => getRagJudgePromptHash('context_recall'),
   },
