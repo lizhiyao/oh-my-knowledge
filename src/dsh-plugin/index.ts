@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from 'node:path';
-import { projectLayout } from '../omk-layout/index.js';
+import { projectLayout } from '../shared/storage-layout.js';
 import { loadEvalConfig } from '../inputs/eval-config.js';
 import {
   type DshAgentLike,

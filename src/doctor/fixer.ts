@@ -4,7 +4,7 @@ import { existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createExecutor } from '../executors/index.js';
 import type { DoctorReport, DoctorRuleResult } from './contracts.js';
-import { projectLayout } from '../omk-layout/index.js';
+import { projectLayout } from '../shared/storage-layout.js';
 
 interface FixIssue {
   id: string;

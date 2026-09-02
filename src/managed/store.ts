@@ -8,7 +8,7 @@ import { shortContentHash } from '../shared/content-hash.js';
 import {
   globalLayout,
   projectLayout,
-} from '../omk-layout/index.js';
+} from '../shared/storage-layout.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';

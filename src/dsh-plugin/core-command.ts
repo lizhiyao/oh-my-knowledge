@@ -16,7 +16,7 @@ import {
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../eval-workflows/artifact-store/index.js';
-import { globalLayout, projectLayout } from '../omk-layout/index.js';
+import { globalLayout, projectLayout } from '../shared/storage-layout.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createNodeHostPreflightDeclarations,

@@ -6,7 +6,7 @@ import { describe, it } from 'vitest';
 const ROOT = process.cwd();
 const SOURCE_ROOT = join(ROOT, 'src');
 const ALLOWED = new Set([
-  'src/omk-layout/index.ts',
+  'src/shared/storage-layout.ts',
   // Artifact-scoped authoring metadata is explicitly outside project-root layout v2.
   'src/inputs/sample-locator.ts',
 ]);
@@ -18,7 +18,7 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-describe('OMK layout path assembly guard', () => {
+describe('OMK storage layout path assembly guard', () => {
   it('keeps project/global root construction in the layout module', () => {
     const violations = sourceFiles(SOURCE_ROOT).flatMap((path) => {
       const projectPath = relative(ROOT, path).split('\\').join('/');
@@ -36,7 +36,7 @@ describe('OMK layout path assembly guard', () => {
   it('keeps eval materialization and lease directory names in the global layout', () => {
     const violations = sourceFiles(SOURCE_ROOT).flatMap((path) => {
       const projectPath = relative(ROOT, path).split('\\').join('/');
-      if (projectPath === 'src/omk-layout/index.ts') return [];
+      if (projectPath === 'src/shared/storage-layout.ts') return [];
       const lines = readFileSync(path, 'utf8').split('\n');
       return lines.flatMap((line, index) => (
         /['"](?:resolved-inputs|runtime-leases|resource-leases)['"]/u.test(line)

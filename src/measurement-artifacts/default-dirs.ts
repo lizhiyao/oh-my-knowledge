@@ -1,4 +1,4 @@
-import { globalLayout, OMK_HOME } from '../omk-layout/index.js';
+import { globalLayout, OMK_HOME } from '../shared/storage-layout.js';
 
 /**
  * omk 所有默认产物的用户级根目录 —— 全部 `~/.oh-my-knowledge/*` 默认目录的单一基准,

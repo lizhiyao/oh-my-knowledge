@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { globalLayout, projectLayout } from '../../omk-layout/index.js';
+import { globalLayout, projectLayout } from '../../shared/storage-layout.js';
 import { isReportFileName } from '../../measurement-artifacts/file-names.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = projectLayout().observeInboxDir;

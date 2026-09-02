@@ -1,5 +1,5 @@
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
-import { projectLayout } from '../omk-layout/index.js';
+import { projectLayout } from '../shared/storage-layout.js';
 import { listMeasurementReportPaths, type MeasurementDomain } from './report-bundle.js';
 
 /**

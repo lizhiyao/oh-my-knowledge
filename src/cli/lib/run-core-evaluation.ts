@@ -33,7 +33,7 @@ import { discoverBatchSkills } from '../../inputs/skill-loader.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { generateRunId } from '../../measurement-artifacts/run-id.js';
-import { globalLayout, projectLayout } from '../../omk-layout/index.js';
+import { globalLayout, projectLayout } from '../../shared/storage-layout.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';
 
