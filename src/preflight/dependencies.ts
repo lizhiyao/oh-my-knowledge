@@ -9,7 +9,7 @@
 import { existsSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
-import type { Artifact } from '../artifacts/contracts.js';
+import type { Artifact } from '../knowledge-artifacts/contracts.js';
 import type { Sample } from '../inputs/contracts/sample.js';
 import type {
   DependencyCheckResult,

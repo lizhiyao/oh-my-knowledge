@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeEndpointRule } from '../../src/doctor/endpoint-rule.js';
 import type { DoctorContext } from '../../src/doctor/contracts.js';
-import type { Artifact } from '../../src/artifacts/contracts.js';
+import type { Artifact } from '../../src/knowledge-artifacts/contracts.js';
 
 const artifact: Artifact = {
   name: 'my-skill',

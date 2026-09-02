@@ -9,7 +9,7 @@ import {
 } from '../../evaluation-core/contracts/index.js';
 import { loadSamples } from '../../inputs/load-samples.js';
 import { resolveArtifacts } from '../../inputs/skill-loader.js';
-import type { Artifact } from '../../artifacts/contracts.js';
+import type { Artifact } from '../../knowledge-artifacts/contracts.js';
 import type { Mock } from '../../inputs/contracts/mock.js';
 import type { Sample } from '../../inputs/contracts/sample.js';
 import {

@@ -1,4 +1,4 @@
-import type { Artifact } from '../artifacts/contracts.js';
+import type { Artifact } from '../knowledge-artifacts/contracts.js';
 import type { Sample } from '../inputs/contracts/sample.js';
 import type { DependencyRequirements } from '../preflight/contracts.js';
 

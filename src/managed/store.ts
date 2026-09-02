@@ -12,7 +12,7 @@ import {
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
-import type { ArtifactKind } from '../artifacts/contracts.js';
+import type { ArtifactKind } from '../knowledge-artifacts/contracts.js';
 import type {
   DeriveManagedStateInput,
   DerivedManagedState,

@@ -8,7 +8,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveInstallSource, resolveRemoteGitSource, SourceResolveError } from '../../inputs/source-resolver.js';
 import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../managed/index.js';
-import type { ArtifactKind } from '../../artifacts/contracts.js';
+import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
 import type { ManagedDistributionTarget } from '../../managed/contracts.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
 
