@@ -103,18 +103,6 @@
 
 v2 是唯一受支持的存储布局。OMK 不读取旧存储根，不提供迁移命令，也不会自动搬动或删除旧数据。已有旧 `.omk` 数据保持原样，但不会被 v2 读侧发现；用户可以先备份，再显式删除。Evaluation Core bundle 只支持 manifest v2 与 `report.json`。
 
-## 清理契约
-
-- `omk clean --dry-run` 预览精确路径与预计释放空间。
-- `omk clean` 只删除 `state/`。
-- `--reports` 选择 `eval/`、`doctor/`、`observe/health/`。
-- `--observations` 选择 inbox、drafts 和 archive，并要求 `--force`。
-- `--backups` 选择备份。
-- `--governance` 是独立选项，并要求 `--force`。
-- `--all` 选择 state、报告、observation 与备份，但不含治理记录。
-
-递归删除前，清理器会同时校验目标位于选定 OMK 根内，并且属于固定类别白名单。
-
 ## 为什么这样命名
 
 不设顶层 `runs`：它容易被理解成可随时删除的执行状态，而 eval 与 doctor 是持久证据。不设顶层 `measurements`：它会遮住用户已经熟悉的 CLI 产品域。不设顶层 `observations`：健康报告与待复核 observation 是共同 `observe` 域下的兄弟管线。选择 `derived` 而不是 `projections`，因为其中内容是由一份权威报告派生、可重建的物化结果，不是独立产品域。

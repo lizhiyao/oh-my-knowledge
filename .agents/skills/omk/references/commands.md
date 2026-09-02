@@ -4,55 +4,6 @@
 <!-- 此段由 scripts/build-docs.ts 从 src/cli/commands/ 自动生成。
      改 CLI 后跑 `yarn build:docs` 同步,CI `yarn build:docs:check` 会拦截 drift。-->
 
-## omk clean
-
-按生命周期安全清理 OMK 项目或全局存储；默认只删除可重建的 state。
-
-**用法:**
-
-```bash
-omk clean [flags]
-```
-
-**Flags:**
-
-- `--all` `boolean`:清理 state、报告、observation 和备份，不包含治理记录
-- `--backups` `boolean`:清理 doctor fix 备份
-- `--dry-run` `boolean`:只显示将删除的路径与空间
-- `--force` `boolean`:确认删除敏感或不可重建的数据
-- `--global` `boolean`:清理全局 ~/.oh-my-knowledge
-- `--governance` `boolean`:清理 managed 治理记录，必须配合 --force
-- `--json` `boolean`:输出机器可读 JSON
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--observations` `boolean`:清理 observation inbox、草稿和归档，必须配合 --force
-- `--reports` `boolean`:清理 eval、doctor 和 observe health 报告
-
-**示例:**
-
-> 预览默认清理
-
-```bash
-omk clean --dry-run
-```
-
-> 只清理可重建 state
-
-```bash
-omk clean
-```
-
-> 清理历史报告
-
-```bash
-omk clean --reports
-```
-
-> 清理全部非治理本地数据
-
-```bash
-omk clean --all --force
-```
-
 ## omk doctor
 
 体检 omk 工作目录：先跑静态规则，再对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。

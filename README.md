@@ -217,7 +217,7 @@ Every record carries `coverageStatus: partial`: OMK observes its tool boundary, 
 
 ### Local storage
 
-Project data uses the domain-oriented `.omk/` v2 layout: durable evidence lives under `eval/`, `doctor/`, and `observe/`; governance records live under `governance/`; backups remain recoverable; and only rebuildable work belongs in `state/`. Machine tools, tunnels, caches, and materialized copies stay under `~/.oh-my-knowledge/state/`, never in a project. This release neither reads nor migrates the earlier storage layout. Use `omk clean --dry-run` to preview lifecycle-aware cleanup (`omk clean` removes only `state/` by default).
+Project data uses the domain-oriented `.omk/` v2 layout: durable evidence lives under `eval/`, `doctor/`, and `observe/`; governance records live under `governance/`; backups remain recoverable; and only rebuildable work belongs in `state/`. Machine tools, tunnels, caches, and materialized copies stay under `~/.oh-my-knowledge/state/`, never in a project. This release neither reads nor migrates the earlier storage layout.
 
 ## Documentation
 
@@ -227,7 +227,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
 - **[Evaluation Core cutover](docs/guides/evaluation-core-cutover.md)** — `BREAKING-SCHEMA` storage, resume, Studio, Gold, managed-evidence, and evolve migration
-- **[Storage layout v2](docs/specs/storage-layout-spec.md)** — project/global domains, compatibility boundary, Git policy, and safe cleanup
+- **[Storage layout v2](docs/specs/storage-layout-spec.md)** — project/global domains, compatibility boundary, and Git policy
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Observe & inspect task trajectories](docs/guides/observe-production.md)** — browse local Codex conversations, drill into one task, and follow its observable execution live
