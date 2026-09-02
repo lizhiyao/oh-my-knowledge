@@ -71,7 +71,7 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 
 已有 observation 时，模型先调用 `get_observation`，再调用 `review_observation`。用户在 component 内选择「真实问题」后，component 调用 `record_observation_review`；只有服务端确认结论为 `real_issue` 后，才允许调用 `draft_sample_from_observation`。草稿仍与正式 eval sample 隔离。
 
-仓库在 `examples/mcp-observation/eval-samples.json` 提供 direct／indirect／negative 行为用例。它们必须在能够暴露 MCP 工具轨迹的宿主中运行；普通文本执行器看不到工具调用，不能用于验证这组边界。
+仓库在 `test/fixtures/mcp-observation/eval-samples.json` 保存 direct／indirect／negative conformance 用例。这份测试专用 fixture 用于守卫触发契约，不是独立的用户示例。它们只能在能够暴露 MCP 工具轨迹的宿主中运行；普通文本 executor 看不到工具调用，不能验证这些边界。
 
 ## 本地 stdio
 

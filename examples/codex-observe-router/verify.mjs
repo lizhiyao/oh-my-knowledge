@@ -41,7 +41,7 @@ function resolveRuntime() {
   const cli = explicit ?? (existsSync(localCli) ? localCli : null);
   assert.ok(
     cli,
-    'omk was not found. Run through npm exec --package=oh-my-knowledge@0.49.0 or set OMK_BIN.',
+    'omk was not found. Run through npm exec --package=oh-my-knowledge@latest or set OMK_BIN.',
   );
 
   const realCli = realpathSync(cli);

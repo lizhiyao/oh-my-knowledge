@@ -14,27 +14,6 @@
     "assertions": [
       { "type": "contains_all", "values": ["READY", "EVAL"] }
     ]
-  },
-  {
-    "sample_id": "echo-blue",
-    "prompt": "Return exactly this word: BLUE",
-    "assertions": [
-      { "type": "contains", "value": "BLUE" }
-    ]
-  },
-  {
-    "sample_id": "echo-ship",
-    "prompt": "Return exactly this word: SHIP",
-    "assertions": [
-      { "type": "contains", "value": "SHIP" }
-    ]
-  },
-  {
-    "sample_id": "echo-done",
-    "prompt": "Return exactly this phrase: DONE NOW",
-    "assertions": [
-      { "type": "contains_all", "values": ["DONE", "NOW"] }
-    ]
   }
   ]
 }

@@ -1,5 +1,7 @@
 # Codex parent/subagent observe case
 
+[中文说明](./README.zh.md)
+
 This executable case feeds two sanitized Codex Desktop rollout files into
 `omk observe`:
 
@@ -17,7 +19,7 @@ contains no credentials or private repository data.
 From the repository root:
 
 ```bash
-npm exec --yes --package=oh-my-knowledge@0.49.0 -- \
+npm exec --yes --package=oh-my-knowledge@latest -- \
   node examples/codex-observe-router/verify.mjs
 ```
 
@@ -50,5 +52,9 @@ The script exits non-zero unless all of these properties hold:
 - the failed search becomes one `failed_search` inbox signal;
 - the compact persisted report reloads without losing the Trace IR graph.
 
+## Evidence boundary
+
 This is a protocol and persistence case, not a quality benchmark. It does not
-claim that every historical Codex rollout variant is covered.
+claim that every historical Codex rollout variant is covered. Using `@latest`
+exercises the current published CLI; pin an explicit package version when
+reproducing a historical result.

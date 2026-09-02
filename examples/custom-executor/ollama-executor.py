@@ -1,22 +1,64 @@
 #!/usr/bin/env python3
-"""
-自定义 executor 示例：通过 Ollama 调用本地模型
-用法：omk eval --executor "python ollama-executor.py" --model llama3
-
-前置要求：
-  - 安装 Ollama：https://ollama.com
-  - 拉取模型：ollama pull llama3
-"""
+"""OMK custom-command exchange v1 adapter for a local Ollama model."""
 
 import json
 import sys
 import urllib.request
 
+SCHEMA_VERSION = "omk.custom-command-exchange/v1"
+
+
+def artifact(request):
+    target = request.get("trial", {}).get("targetConfig", {})
+    return target.get("behavior", {}).get("artifact", {})
+
+
+def artifact_instructions(request):
+    resource_id = artifact(request).get("resourceId")
+    if not resource_id:
+        return ""
+    for resource in request.get("resources", []):
+        if resource.get("resourceId") == resource_id:
+            path = resource.get("snapshotPath")
+            if path:
+                with open(path, encoding="utf-8") as source:
+                    return source.read()
+    return ""
+
+
+def completed(output, classification):
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "resultStatus": "completed",
+        "output": {
+            "value": output,
+            "classification": classification,
+            "mediaType": "text/plain",
+        },
+    }
+
+
+def failed():
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "resultStatus": "failed",
+        "error": {
+            "code": "ollama-request-failed",
+            "stage": "execution",
+        },
+    }
+
+
 def main():
     req = json.load(sys.stdin)
-    model = req.get("model", "llama3")
-    system = req.get("system", "")
-    prompt = req.get("prompt", "")
+    trial = req.get("trial", {})
+    target = trial.get("targetConfig", {})
+    model = target.get("runtime", {}).get("model", "llama3")
+    prompt = trial.get("input", "")
+    if not isinstance(prompt, str):
+        prompt = json.dumps(prompt, ensure_ascii=False)
+    system = artifact_instructions(req)
+    classification = artifact(req).get("classification", "public")
 
     messages = []
     if system:
@@ -34,17 +76,10 @@ def main():
         with urllib.request.urlopen(http_req, timeout=120) as resp:
             data = json.load(resp)
             output = data.get("message", {}).get("content", "")
-            tokens = data.get("eval_count", 0)
-            prompt_tokens = data.get("prompt_eval_count", 0)
-            print(json.dumps({
-                "output": output,
-                "inputTokens": prompt_tokens,
-                "outputTokens": tokens,
-            }))
+            print(json.dumps(completed(output, classification)))
     except Exception as e:
-        print(json.dumps({"output": ""}), file=sys.stdout)
+        print(json.dumps(failed()), file=sys.stdout)
         print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()

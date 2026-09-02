@@ -1,37 +1,34 @@
 # Skill Map showcase
 
-这个示例用于展示：一个目录式 skill 可以怎样为后续 Skill Information Graph 提供结构化输入。
+[中文说明](./README.zh.md)
 
-skill 目录包含：
+## Purpose
 
-- `SKILL.md`：包含 frontmatter、`hardRules` 和 `workflows`
-- `references/`：存放策略和 runbook 材料
-- `scripts/`：存放确定性的 preflight 检查脚本
-- `.omk/eval-samples.json`：与 skill 源码一同维护的私有评测用例
+This example shows how a directory skill supplies structured evidence to Doctor and Skill Map. It contains:
 
-`.omk/eval-samples.json` 也演示了 `covers` 的推荐用法：只给关键用例声明它主要触达的 reference、hard rule、workflow 或 workflow node。它不是全量维护清单；未声明只表示 Skill Map 里暂时没有这条显式结构边，不代表该节点一定没有被测到。
+- `SKILL.md` with frontmatter, `hardRules`, and `workflows`;
+- `references/` with policy and runbook sources;
+- `scripts/` with a deterministic preflight check;
+- `.omk/eval-samples.json` with versioned, skill-private samples.
 
-先跑静态 doctor：
+Selected samples use `covers` to declare their primary reference, hard-rule, workflow, or workflow-node coverage. An omitted edge means only that no explicit coverage claim was registered; it does not prove that the node is untested.
+
+## Run
+
+Run static Doctor without calling a model:
 
 ```bash
 omk doctor skills/release-readiness --static-only
 ```
 
-预期输出：
-
-- `.omk/doctors/<skill>-<run>.report.json`
-
-这里的 `.omk/doctors` 是项目级运行产物；skill 目录里的 `.omk/eval-samples.json` 是与 skill 一同入库的源数据。启用 Skill Information Graph 支持后，同一条命令还会写入：
-
-- `.omk/graphs/doctor/<skill>-<run>.graph.json`
-- `.omk/graphs/doctor/<skill>-<run>.card.md`
-
-Markdown 文件是可分享的图谱摘要。它应该展示 references、scripts、workflows、workflow nodes、sample count 和 doctor status。
-
-继续进入评测前，先预览任务计划：
+Doctor writes its report and graph sidecars under the project-level `.omk/` directory. Then preview an evaluation plan:
 
 ```bash
-omk eval --control baseline --treatment release-readiness --dry-run
+omk eval --control release-checklist --treatment release-readiness --dry-run
 ```
 
-真正跑完 eval 后，Studio 的 Skill Map 会把 sample 里的 `covers` 渲染成声明锚点。你应该能看到 release 决策用例连到 `release-review`、release policy 和 rollback runbook；线上事故用例连到 `incident-response` workflow 和 rollback runbook。
+After a real evaluation, Studio projects the sample `covers` declarations into Skill Map. Release-decision samples should connect to the release-review workflow, release policy, and rollback runbook; incident samples should connect to incident response and rollback evidence.
+
+## Evidence boundary
+
+The explicit control is a generic release checklist; the treatment adds structured policy, workflow, and rollback knowledge. Declared `covers` edges are author claims, not proof that a sample adequately tests the target. Doctor and Skill Map expose structure and missing declarations; they do not replace human review of sample quality or a statistically powered evaluation.

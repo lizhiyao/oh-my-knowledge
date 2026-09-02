@@ -71,7 +71,7 @@ The user only says, “That is wrong: the refund window is 30 days, not 7.” Th
 
 For an existing observation, the model calls `get_observation` and then `review_observation`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
 
-The repository provides direct, indirect, and negative behavior cases in `examples/mcp-observation/eval-samples.json`. Run them only in an MCP host that exposes tool traces; a text-only executor cannot validate these boundaries.
+The repository keeps direct, indirect, and negative conformance cases in `test/fixtures/mcp-observation/eval-samples.json`. This test-owned fixture protects the trigger contract; it is not a standalone user example. Run it only in an MCP host that exposes tool traces, because a text-only executor cannot validate these boundaries.
 
 ## Local stdio
 

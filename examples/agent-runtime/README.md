@@ -1,19 +1,27 @@
 # Agent runtime context
 
-这个示例用于演示「artifact 必须进入项目目录才能完成任务」的评测。
+[中文说明](./README.zh.md)
 
-样本使用 `cwd: "./workspace"`，让 executor 看到一个小型仓库目录。treatment skill 会要求 agent 回答前先检查目录内容。
+## Purpose
 
-先预览任务计划，不调用模型：
+This example evaluates an artifact whose task can only be completed by inspecting a project directory. Each sample sets `cwd: "./workspace"`; the treatment skill instructs the agent to inspect that workspace before answering.
+
+Use this pattern for coding agents, repository assistants, and operational runbooks whose evidence lives in local files.
+
+## Run
+
+Preview the sealed task plan without calling a model:
 
 ```bash
-omk eval --control baseline --treatment repo-navigator --dry-run
+omk eval --control repo-answerer --treatment repo-navigator --dry-run
 ```
 
-配置好执行器后，再跑真实对比：
+After configuring an agent executor that can read the sample working directory, run the comparison:
 
 ```bash
-omk eval --control baseline --treatment repo-navigator
+omk eval --control repo-answerer --treatment repo-navigator
 ```
 
-这个示例适合评测 coding agent、仓库助手，或依赖本地文件的运维 runbook。
+## Evidence boundary
+
+The explicit control gives only generic answering guidance; the treatment requires file inspection and citations. This avoids treating ambient runtime knowledge as a trustworthy empty baseline. The two checked-in samples prove that OMK propagates a sample-scoped working directory and can evaluate file-backed answers. They do not establish the quality of a production repository agent or provide enough statistical power for a release decision.
