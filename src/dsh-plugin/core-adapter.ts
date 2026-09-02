@@ -10,13 +10,13 @@ import {
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
   type UsageRecord,
-} from '../evaluation-core/contracts/index.js';
+} from '../eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorAttemptResult,
-} from '../evaluation-core/execution/index.js';
+} from '../eval-core/execution/index.js';
 import { createDshHostRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import {
   captureClaudeCliRunState,

@@ -18,8 +18,8 @@ import {
   type EvaluationBundle,
   type EvaluationReport,
   type RunPlan,
-} from '../../src/evaluation-core/contracts/index.js';
-import type { SealedRunPlan } from '../../src/evaluation-core/compiler/index.js';
+} from '../../src/eval-core/contracts/index.js';
+import type { SealedRunPlan } from '../../src/eval-core/compiler/index.js';
 import {
   CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,
   CORE_RUN_DOCUMENT_FILES,
@@ -36,7 +36,7 @@ import {
   runConformanceScenario,
   type ConformanceResult,
   type ConformanceTarget,
-} from '../evaluation-core/conformance/harness.js';
+} from '../eval-core/conformance/harness.js';
 
 const temporaryDirectories: string[] = [];
 

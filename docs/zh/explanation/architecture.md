@@ -39,7 +39,7 @@ flowchart TD
 - **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的 type-only contract 回边才成立，新增双向关系会被架构测试拒绝；
 - **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/production-host` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
 
-`shared` 是跨领域叶子，只依赖自身。`evaluation-core` 是宿主无关的测量内核。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
+`shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
 Diagnosis 与 Observability 是一个显式建模的边界：Observability 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observability 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
 

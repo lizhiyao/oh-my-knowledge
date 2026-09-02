@@ -37,7 +37,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 
 ## I want to contribute / read design specs
 
-- [Evaluation Core vNext RFC](./specs/evaluation-core-vnext.md)
+- [Evaluation Core vNext RFC](./specs/eval-core-vnext.md)
 - [Evaluation scoring equivalence RFC](./specs/evaluation-scoring-equivalence.md)
 - [CLI evaluation input compilation](./specs/cli-evaluation-input-compilation.md)
 - [Sample design spec](./specs/sample-design-spec.md)

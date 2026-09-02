@@ -7,11 +7,11 @@ import {
   type CoreSchemaValidator,
   type RuntimeIdentity,
   type SchemaIdentity,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   SeriesAnalysisNodeContext,
   SeriesAnalysisNodeRuntime,
-} from '../../evaluation-core/series/index.js';
+} from '../../eval-core/series/index.js';
 import { parseCompositeTableValue } from './analysis/composite-table.js';
 
 export const OMK_SERIES_VARIANCE_IMPLEMENTATION_ID = 'omk.series.variance/v1';

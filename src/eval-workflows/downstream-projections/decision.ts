@@ -1,7 +1,7 @@
 import type {
   DecisionResult,
   SeriesDecisionResult,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type { CoreDecisionProjection } from './contracts.js';
 
 /** Keeps all downstream views on one exact Decision status projection. */

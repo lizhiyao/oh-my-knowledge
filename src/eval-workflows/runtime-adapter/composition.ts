@@ -10,8 +10,8 @@ import {
   schemaIdentityKey,
   type CoreSchemaValidator,
   type JsonValue,
-} from '../../evaluation-core/contracts/index.js';
-import { createBuiltinAnalysisSchemaValidators } from '../../evaluation-core/analysis/index.js';
+} from '../../eval-core/contracts/index.js';
+import { createBuiltinAnalysisSchemaValidators } from '../../eval-core/analysis/index.js';
 import { createJudgeAggregationSchemaValidators } from './analysis/judge-aggregation.js';
 import { createAssertionLayerParameterSchemaValidators } from './analysis/assertion-layer-parameters.js';
 import { createAssertionLayerTableSchemaValidators } from './analysis/assertion-layer.js';
@@ -30,23 +30,23 @@ import { createAgreementTableSchemaValidators } from './analysis/agreement-table
 import {
   createReleaseDecisionParameterSchemaValidators,
 } from './analysis/release-decision-parameters.js';
-import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
+import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
   createEvaluationEngine,
   type EvaluationEngineClock,
   type EvaluationEngineEventWriter,
   type EvaluationRun,
   type PreparedEvaluation,
-} from '../../evaluation-core/engine/index.js';
+} from '../../eval-core/engine/index.js';
 import type {
   EvaluationCache,
   EvaluationContentResolver,
   EvaluationContentStore,
-} from '../../evaluation-core/evaluation/index.js';
+} from '../../eval-core/evaluation/index.js';
 import type {
   ExecutionCache,
   ExecutionContentStore,
-} from '../../evaluation-core/execution/index.js';
+} from '../../eval-core/execution/index.js';
 import type {
   CliEvaluationCompileResult,
   ResolvedHostResources,

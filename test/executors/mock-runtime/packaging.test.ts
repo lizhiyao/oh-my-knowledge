@@ -57,16 +57,18 @@ describe('packaging — mock-hook ships with omk package', () => {
   // dist/ 扁平化(rootDir=src,outDir=dist)后,任何 dist/src/** 都是旧产物
   // 残留;dist-scripts/ 是内部脚本构建产物不该发包;tsbuildinfo 是 tsc
   // incremental cache,出现在 tarball 都是 build 链路 / files 字段出问题的信号。
-  it('npm pack 清单不含旧产物残留(dist/src/、dist-scripts/、tsbuildinfo)', () => {
+  it('npm pack 清单包含 eval-core，且不含旧产物残留', () => {
     if (!existsSync('dist/executors/mock-runtime/runtime.js')) {
       console.warn('[skip] dist/ 缺失,先 `yarn build` 再跑');
       return;
     }
+    expect(packedPaths!.some((path) => path.startsWith('dist/eval-core/'))).toBe(true);
+    const retiredCoreDirectory = ['dist', ['evaluation', 'core'].join('-')].join('/') + '/';
     const leaks = packedPaths!.filter((path) =>
       path.startsWith('dist/src/') ||
       path.startsWith('dist-scripts/') ||
       path.endsWith('.tsbuildinfo') ||
-      path.includes(['dist', ['eval', 'core'].join('-')].join('/') + '/')
+      path.includes(retiredCoreDirectory)
     );
     expect(leaks).toEqual([]);
   });

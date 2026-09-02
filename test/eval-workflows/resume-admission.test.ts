@@ -3,13 +3,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { createBuiltinAnalysisSchemaValidators } from '../../src/evaluation-core/analysis/index.js';
-import type { SealedRunPlan } from '../../src/evaluation-core/compiler/index.js';
+import { createBuiltinAnalysisSchemaValidators } from '../../src/eval-core/analysis/index.js';
+import type { SealedRunPlan } from '../../src/eval-core/compiler/index.js';
 import type {
   EvaluationDefinition,
   MeasurementPolicy,
   Sha256Digest,
-} from '../../src/evaluation-core/contracts/index.js';
+} from '../../src/eval-core/contracts/index.js';
 import {
   createNodeCoreRunArtifactStore,
 } from '../../src/eval-workflows/artifact-store/index.js';
@@ -25,7 +25,7 @@ import {
   prepareConformancePlan,
   runConformanceScenario,
   type ConformanceResult,
-} from '../evaluation-core/conformance/harness.js';
+} from '../eval-core/conformance/harness.js';
 
 const temporaryDirectories: string[] = [];
 

@@ -1,15 +1,15 @@
 import {
   TimestampSchema,
   type CoreSchemaValidator,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {
   assertSealedRunPlan,
   type SealedRunPlan,
-} from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/compiler/index.js';
 import type {
   EvaluationRun,
   EvaluationRunResult,
-} from '../../evaluation-core/engine/index.js';
+} from '../../eval-core/engine/index.js';
 import type { CliEvaluationCompileResult } from '../input-compilation/index.js';
 import {
   type CoreRunArtifactStore,

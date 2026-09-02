@@ -6,25 +6,25 @@ import type {
   JsonValue,
   MeasurementPolicy,
   RuntimeIdentity,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   RuntimeIdentitySchema,
   digestCanonicalJson,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
   type PreparationRuntime,
-} from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/compiler/index.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundle,
   type EvaluationEvaluator,
-} from '../../../src/evaluation-core/evaluation/index.js';
+} from '../../../src/eval-core/evaluation/index.js';
 import {
   createSameProcessEvaluatorAdapter,
   createBuiltinOmkScoringBindingFactories,
@@ -41,7 +41,7 @@ import {
   createIsolatedDeterministicAssertionEvaluator,
 } from '../../../src/eval-workflows/assertions/deterministic.js';
 import type { Assertion } from '../../../src/inputs/contracts/assertion.js';
-import { testRuntime, validDefinition, validPolicy } from '../../evaluation-core/compiler/fixtures.js';
+import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
 
 interface ScoringFixture {
   deterministicAssertions: {
@@ -52,7 +52,7 @@ interface ScoringFixture {
 }
 
 const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
-  '../../fixtures/evaluation-core/scoring-equivalence-v1.json',
+  '../../fixtures/eval-core/scoring-equivalence-v1.json',
   import.meta.url,
 )), 'utf8')) as ScoringFixture;
 

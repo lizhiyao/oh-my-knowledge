@@ -13,7 +13,7 @@ import {
   type EvaluationSeriesDefinition,
   type EvaluationSeriesDefinitionInput,
   type RuntimeIdentity,
-} from '../../src/package-api/evaluation-core.js';
+} from '../../src/package-api/eval-core.js';
 import {
   CoreDownstreamProjectionError,
   compareGoldToCoreRun,
@@ -33,7 +33,7 @@ import {
   type ConformanceResult,
   type ConformanceHarnessOptions,
   type ConformanceTarget,
-} from '../evaluation-core/conformance/harness.js';
+} from '../eval-core/conformance/harness.js';
 
 const temporaryDirectories: string[] = [];
 

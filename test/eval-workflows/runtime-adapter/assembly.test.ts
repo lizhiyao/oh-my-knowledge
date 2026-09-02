@@ -13,20 +13,20 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
-} from '../../../src/package-api/evaluation-core.js';
-import { RuntimeIdentitySchema } from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/package-api/eval-core.js';
+import { RuntimeIdentitySchema } from '../../../src/eval-core/contracts/index.js';
 import type {
   AnalysisDecisionPolicy,
   AnalysisMissingPolicy,
   AnalysisNodeImplementation,
-} from '../../../src/evaluation-core/analysis/index.js';
+} from '../../../src/eval-core/analysis/index.js';
 import type {
   AnalysisRuntimeRequirement,
   RuntimeResolution,
-} from '../../../src/evaluation-core/compiler/index.js';
-import type { EvaluationEvaluator } from '../../../src/evaluation-core/evaluation/index.js';
-import type { ExecutionExecutor } from '../../../src/evaluation-core/execution/index.js';
-import type { SeriesAnalysisNodeRuntime } from '../../../src/evaluation-core/series/index.js';
+} from '../../../src/eval-core/compiler/index.js';
+import type { EvaluationEvaluator } from '../../../src/eval-core/evaluation/index.js';
+import type { ExecutionExecutor } from '../../../src/eval-core/execution/index.js';
+import type { SeriesAnalysisNodeRuntime } from '../../../src/eval-core/series/index.js';
 import {
   assembleOmkRuntimeBindings,
   createBuiltinOmkAnalysisBindingFactories,
@@ -64,7 +64,7 @@ import {
   type ResolvedHostResources,
   type RuntimeBinding,
 } from '../../../src/eval-workflows/input-compilation/index.js';
-import { testRuntime } from '../../evaluation-core/compiler/fixtures.js';
+import { testRuntime } from '../../eval-core/compiler/fixtures.js';
 import { validResolvedCliInput } from '../input-compilation/fixtures.js';
 
 type Mutable<Value> = Value extends readonly (infer Item)[]

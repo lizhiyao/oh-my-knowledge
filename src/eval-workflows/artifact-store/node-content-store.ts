@@ -11,15 +11,15 @@ import {
   parseWireDocument,
   type ContentDescriptor,
   type JsonValue,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   ExecutionContent,
   ExecutionContentStoreRequest,
-} from '../../evaluation-core/execution/index.js';
+} from '../../eval-core/execution/index.js';
 import type {
   EvaluationContent,
   EvaluationContentStoreRequest,
-} from '../../evaluation-core/evaluation/index.js';
+} from '../../eval-core/evaluation/index.js';
 import {
   ensurePrivateDirectory,
   publishPrivateJsonExclusive,

@@ -1,10 +1,10 @@
 import { isAbsolute } from 'node:path';
-import type { EvaluationEngineClock } from '../../evaluation-core/engine/index.js';
-import type { ExecutionExecutor } from '../../evaluation-core/execution/index.js';
+import type { EvaluationEngineClock } from '../../eval-core/engine/index.js';
+import type { ExecutionExecutor } from '../../eval-core/execution/index.js';
 import {
   deepFreezeCanonicalJson,
   type JsonValue,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import { createNodeCoreContentStore } from '../artifact-store/node-content-store.js';
 import {
   createAnthropicApiExecutorAdapter,

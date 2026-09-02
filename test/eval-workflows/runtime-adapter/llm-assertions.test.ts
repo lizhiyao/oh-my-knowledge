@@ -5,26 +5,26 @@ import type {
   MeasurementPolicy,
   RuntimeIdentity,
   UsageRecord,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   RuntimeIdentitySchema,
   digestCanonicalJson,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
   type PreparationRuntime,
-} from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/compiler/index.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundle,
   type EvaluationCache,
   type EvaluationCacheEntry,
-} from '../../../src/evaluation-core/evaluation/index.js';
+} from '../../../src/eval-core/evaluation/index.js';
 import {
   createLlmAssertionEvaluatorBindingFactory,
   createLlmAssertionEvaluatorIdentity,
@@ -43,7 +43,7 @@ import {
   getRagJudgePromptHash,
   getSemanticPromptHash,
 } from '../../../src/shared/llm-prompts/judge-prompts.js';
-import { testRuntime, validDefinition, validPolicy } from '../../evaluation-core/compiler/fixtures.js';
+import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
 
 const PROVIDER_IMPLEMENTATION_ID = 'test.llm-provider/v1';
 const METRIC_ID = 'llm-assertion-pass';

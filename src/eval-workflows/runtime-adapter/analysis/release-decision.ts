@@ -3,7 +3,7 @@ import type {
   AnalysisDecisionPolicy,
   DecisionPolicyContext,
   DecisionPolicyOutput,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 import {
   RuntimeIdentitySchema,
   canonicalizeJson,
@@ -12,7 +12,7 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
 } from './bootstrap-family-node-contract.js';

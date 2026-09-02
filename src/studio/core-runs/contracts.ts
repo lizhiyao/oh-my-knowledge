@@ -5,7 +5,7 @@ import type {
   EvaluationStatus,
   ExecutionCoverage,
   EvaluationCoverage,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export const CORE_STUDIO_RUN_CARD_SCHEMA_VERSION =
   'omk.studio-core-run-card/v1' as const;

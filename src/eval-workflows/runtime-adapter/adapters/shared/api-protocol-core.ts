@@ -9,7 +9,7 @@ import {
   type ExecutorCapabilities,
   type JsonValue,
   type SchemaIdentity,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import {
   SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
   SourceNeutralTraceWithoutMocksSchema,

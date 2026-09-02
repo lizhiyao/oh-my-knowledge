@@ -6,7 +6,7 @@ import {
   deepFreezeCanonicalJson,
   type JsonValue,
   type TargetExecutionControls,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import { loadSamples } from '../../inputs/load-samples.js';
 import { resolveArtifacts } from '../../inputs/skill-loader.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';

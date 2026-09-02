@@ -4,11 +4,11 @@ import {
   digestCanonicalJson,
   IdentifierSchema,
   type JsonValue,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {
   assertSealedRunPlan,
   type SealedRunPlan,
-} from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/compiler/index.js';
 import type {
   StoredCoreBatch,
   StoredCoreRunArtifacts,

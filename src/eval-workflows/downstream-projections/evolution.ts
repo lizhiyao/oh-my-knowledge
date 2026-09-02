@@ -6,7 +6,7 @@ import {
   type EvaluationSeriesPlan,
   type EvaluationSeriesReport,
   type SeriesAnalysisBundle,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {
   CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION,
   CoreDownstreamProjectionError,

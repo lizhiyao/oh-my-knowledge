@@ -39,7 +39,7 @@ Directories under `src` express domain ownership rather than one mechanical repo
 - **Contract edges** share stable data shapes across domains. A bidirectional domain relationship is valid only when its type-only contract return edge has been audited and registered; architecture tests reject new bidirectional relationships.
 - **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-workflows/production-host`. They may assemble domains and effects, while domain implementations may not import delivery composition.
 
-`shared` is a cross-domain leaf and depends only on itself. `evaluation-core` is the host-neutral measurement kernel. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
+`shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
 
 Diagnosis and Observability have an explicit boundary. Observability produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observability facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
 

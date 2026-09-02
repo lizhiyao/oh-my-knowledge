@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdentifierSchema } from '../../evaluation-core/contracts/index.js';
+import { IdentifierSchema } from '../../eval-core/contracts/index.js';
 import type {
   AnalysisBundleVerificationContext,
   AnalysisBundleSource,
@@ -11,8 +11,8 @@ import type {
   ExecutionBundleSource,
   ExecutionBundleVerificationContext,
   Provenance,
-} from '../../evaluation-core/contracts/index.js';
-import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/contracts/index.js';
+import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
 
 export const CoreResumeAdmissionPolicySchema = z.object({

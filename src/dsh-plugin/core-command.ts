@@ -6,7 +6,7 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type UsageRecord,
-} from '../evaluation-core/contracts/index.js';
+} from '../eval-core/contracts/index.js';
 import {
   compileCliEvaluationInput,
   parseCliEvaluationRequest,

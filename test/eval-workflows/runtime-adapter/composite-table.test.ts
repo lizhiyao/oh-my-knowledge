@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { digestCanonicalJson, schemaIdentityKey } from '../../../src/evaluation-core/contracts/index.js';
+import { digestCanonicalJson, schemaIdentityKey } from '../../../src/eval-core/contracts/index.js';
 import {
   COMPOSITE_TABLE_SCHEMA,
   COMPOSITE_TABLE_SCHEMA_VERSION,

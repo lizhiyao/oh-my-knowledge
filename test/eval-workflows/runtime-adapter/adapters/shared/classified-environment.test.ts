@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { digestCanonicalJson } from '../../../../../src/evaluation-core/contracts/index.js';
+import { digestCanonicalJson } from '../../../../../src/eval-core/contracts/index.js';
 import { captureClassifiedEnvironment } from '../../../../../src/eval-workflows/runtime-adapter/adapters/shared/classified-environment.js';
 
 describe('classified environment', () => {

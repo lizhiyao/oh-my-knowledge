@@ -1,5 +1,5 @@
-import type { AnalysisNodeExecutionContext } from '../../../evaluation-core/analysis/index.js';
-import type { SchemaIdentity } from '../../../evaluation-core/contracts/index.js';
+import type { AnalysisNodeExecutionContext } from '../../../eval-core/analysis/index.js';
+import type { SchemaIdentity } from '../../../eval-core/contracts/index.js';
 import type { AgreementParameters } from './agreement-parameters.js';
 import type { AgreementPair } from './agreement-table.js';
 import { round } from './analysis-support.js';

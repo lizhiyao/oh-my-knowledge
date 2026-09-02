@@ -18,8 +18,8 @@ import {
   type EvaluationReport,
   type ExecutionBundle,
   type RunPlan,
-} from '../../evaluation-core/contracts/index.js';
-import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/contracts/index.js';
+import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 
 export const CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION =
   'omk.core-run-artifact-manifest/v2' as const;

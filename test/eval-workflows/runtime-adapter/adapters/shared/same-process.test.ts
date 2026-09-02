@@ -10,11 +10,11 @@ import {
 import type {
   EvaluatorRecordContext,
   EvaluatorRunContext,
-} from '../../../../../src/evaluation-core/evaluation/index.js';
+} from '../../../../../src/eval-core/evaluation/index.js';
 import type {
   ExecutorRunContext,
   ExecutorTrialContext,
-} from '../../../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/eval-core/execution/index.js';
 import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,

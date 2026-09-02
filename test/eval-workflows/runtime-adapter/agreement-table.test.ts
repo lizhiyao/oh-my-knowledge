@@ -11,7 +11,7 @@ import {
 import {
   digestCanonicalJson,
   schemaIdentityKey,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   AGREEMENT_TABLE_SCHEMA,
   buildAgreementTable,

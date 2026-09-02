@@ -11,12 +11,12 @@ import {
   resolveEffectiveExecutionControl,
   type EvaluationDefinition,
   type JsonValue,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionContent,
   type ExecutorTrialContext,
-} from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/execution/index.js';
 import type { CliMockHandle } from '../../../../executors/mock-runtime/runtime.js';
 import type { Mock, MockMatch, MockReturn } from '../../../../inputs/contracts/mock.js';
 import type { RuntimeBindingOf } from '../../types.js';

@@ -1,4 +1,4 @@
-import type { JsonValue } from '../../evaluation-core/contracts/index.js';
+import type { JsonValue } from '../../eval-core/contracts/index.js';
 import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../evaluation-defaults.js';
 
 export type CliInputRegistryOwner =

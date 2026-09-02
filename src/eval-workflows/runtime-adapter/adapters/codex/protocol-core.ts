@@ -11,8 +11,8 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type UsageRecord,
-} from '../../../../evaluation-core/contracts/index.js';
-import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../../eval-core/execution/index.js';
 import {
   normalizeCodexProtocolEvent,
   type CodexEvent,

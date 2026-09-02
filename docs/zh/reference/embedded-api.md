@@ -25,7 +25,7 @@ OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 C
 | 入口 | 职责 |
 |---|---|
 | `oh-my-knowledge` | 最小一键 Engine façade 与 Core contract |
-| `oh-my-knowledge/evaluation-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
+| `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
 | `oh-my-knowledge/projections` | 下游 artifact projection |
 | `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |
 | `oh-my-knowledge/mcp`／`oh-my-knowledge/dsh-plugin` | 集成专用 API |
@@ -110,7 +110,7 @@ await collecting;
 当宿主需要持久化某个阶段、只修改下游输入并重算受影响后缀时，从显式高级入口导入：
 
 ```ts
-import { createEvaluationEngine } from 'oh-my-knowledge/evaluation-core';
+import { createEvaluationEngine } from 'oh-my-knowledge/eval-core';
 
 const original = await createEvaluationEngine(runtime).prepare(definition, policy);
 const executionSession = original.stages({ runId: 'execute-v1' });
@@ -145,13 +145,16 @@ const report = await session.materializeReport({
 
 同一 session 中每个阶段最多执行一次，阶段调用不能重叠。Report materialization 会自动关闭 session；若工作流有意提前停止，必须调用 `await session.close()`，从而取消仍在运行的阶段、等待资源释放并归还 `runId`。
 
-发布包通过白名单路径 `oh-my-knowledge/evaluation-core/schemas/v1/<file>.schema.json` 提供 JSON Schema。需要 URL 的代码无需拼接包内部路径：
+发布包通过白名单路径 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json` 提供 JSON Schema。需要 URL 的代码无需拼接包内部路径：
 
 ```ts
-import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/evaluation-core';
+import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
+
+已发布文件继续保留既有 `$id`，将其视为稳定的文档身份。获取 Schema 时应使用
+`eval-core` package subpath 或 catalog 目录，不要从 `$id` 推导下载位置。
 
 ## 结果与错误
 
@@ -176,4 +179,4 @@ const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json'
 
 导入包根不会读取用户配置、初始化 CLI 或 Studio、创建文件、写输出，也不会注册进程 hook。纯内存运行只访问宿主显式注入的 port。这个 API 不提供队列、租户隔离、跨进程重试或不可信代码 sandbox。
 
-完整的独立宿主验收示例见 [`test/evaluation-core/fixtures/embedded-host.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/evaluation-core/fixtures/embedded-host.mjs)。
+完整的独立宿主验收示例见 [`test/eval-core/fixtures/embedded-host.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-core/fixtures/embedded-host.mjs)。

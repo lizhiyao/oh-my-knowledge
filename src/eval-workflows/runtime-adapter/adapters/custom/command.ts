@@ -26,7 +26,7 @@ import {
   type SchemaIdentity,
   type Sha256Digest,
   type UsageRecord,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionContent,
@@ -34,7 +34,7 @@ import {
   type ExecutorAttemptContext,
   type ExecutorRunContext,
   type ExecutorTrialContext,
-} from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/execution/index.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,

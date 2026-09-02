@@ -1,4 +1,4 @@
-import type { AnalysisNodeImplementation } from '../../../evaluation-core/analysis/index.js';
+import type { AnalysisNodeImplementation } from '../../../eval-core/analysis/index.js';
 import { createStatelessAnalysisImplementation } from './analysis-support.js';
 import { parseAgreementParameters } from './agreement-parameters.js';
 import { extractAgreementPairs } from './agreement-source-adapter.js';

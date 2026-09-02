@@ -8,13 +8,13 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
-} from '../../../../evaluation-core/contracts/index.js';
+} from '../../../../eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorAttemptResult,
-} from '../../../../evaluation-core/execution/index.js';
+} from '../../../../eval-core/execution/index.js';
 import type { RuntimeBindingOf } from '../../types.js';
 import type { OmkBindingResourceLeaseAccess } from '../../resource-leases/types.js';
 import {

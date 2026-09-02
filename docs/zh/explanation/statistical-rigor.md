@@ -83,4 +83,4 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 每个持久化 run 都包含精确的 Run Plan、Execution Bundle、Evaluation Bundle、Analysis Bundle 和 Evaluation Report，并由 digest 串成 lineage。Studio 只是这些产物上的可重建 projection，不是第二份测量真相。冻结 prompt、五层评分语义、Bootstrap 公式、Krippendorff alpha、缺失证据处理或 length-debias 语义发生变化时，必须经过显式 `BREAKING-COMPARABILITY` 评审。
 
-另见：[综合分](../specs/scoring.md)、[用例设计](../specs/sample-design-spec.md)与 [Evaluation Core 生产切换](../guides/evaluation-core-cutover.md)。
+另见：[综合分](../specs/scoring.md)、[用例设计](../specs/sample-design-spec.md)与 [Evaluation Core 生产切换](../guides/eval-core-cutover.md)。

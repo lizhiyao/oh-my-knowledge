@@ -7,13 +7,13 @@ import {
   type EvaluationDefinition,
   type EvaluationSeriesDefinition,
   type RuntimeIdentity,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   AnalysisRuntimeRequirement,
   EvaluatorRuntimeRequirement,
   ExecutorRuntimeRequirement,
   RuntimeResolution,
-} from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/compiler/index.js';
 import {
   RUNTIME_BINDING_REQUEST_SCHEMA_VERSION,
   type RuntimeBinding,

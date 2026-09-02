@@ -9,11 +9,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./evaluation-core": {
-      "types": "./dist/package-api/evaluation-core.d.ts",
-      "import": "./dist/package-api/evaluation-core.js"
+    "./eval-core": {
+      "types": "./dist/package-api/eval-core.d.ts",
+      "import": "./dist/package-api/eval-core.js"
     },
-    "./evaluation-core/schemas/v1/*": "./dist/evaluation-core/contracts/schemas/v1/*",
+    "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
     "./eval-samples": {
       "types": "./dist/package-api/eval-samples.d.ts",
       "import": "./dist/package-api/eval-samples.js"
@@ -59,10 +59,10 @@
     "build:scripts": "tsc -p tsconfig.scripts.json",
     "build:schemas": "run-s build:src schemas:write",
     "schemas:write": "run-s schemas:write:core schemas:write:samples",
-    "schemas:write:core": "node scripts/build-evaluation-core-schemas.mjs --write",
+    "schemas:write:core": "node scripts/build-eval-core-schemas.mjs --write",
     "schemas:write:samples": "node scripts/build-eval-sample-schema.mjs --write",
     "schemas:check": "run-s schemas:check:core schemas:check:samples",
-    "schemas:check:core": "node scripts/build-evaluation-core-schemas.mjs --check",
+    "schemas:check:core": "node scripts/build-eval-core-schemas.mjs --check",
     "schemas:check:samples": "node scripts/build-eval-sample-schema.mjs --check",
     "build:assets": "node scripts/copy-assets.cjs",
     "build:docs": "node dist-scripts/build-docs.js --write",

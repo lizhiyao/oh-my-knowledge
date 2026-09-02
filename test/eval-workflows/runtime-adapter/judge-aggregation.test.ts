@@ -10,13 +10,13 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SamplingUnitIds,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import {
   AnalysisNodeCapabilitiesSchema,
   prepareEvaluationPlan,
   type AnalysisRuntimeRequirement,
   type PreparationRuntime,
-} from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../src/eval-core/compiler/index.js';
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
@@ -24,25 +24,25 @@ import type {
   AnalysisNodeImplementation,
   AnalysisNodeInput,
   AnalysisNodeRunContext,
-} from '../../../src/evaluation-core/analysis/index.js';
+} from '../../../src/eval-core/analysis/index.js';
 import {
   analyzeEvaluationBundleSource,
   createBuiltinAnalysisSchemaValidators,
   createBuiltinMissingPolicies,
   decideAnalysisSource,
   resolveBuiltinAnalysisRuntime,
-} from '../../../src/evaluation-core/analysis/index.js';
+} from '../../../src/eval-core/analysis/index.js';
 import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/shared/statistics/bootstrap.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundleSource,
   type EvaluationEvaluator,
-} from '../../../src/evaluation-core/evaluation/index.js';
+} from '../../../src/eval-core/evaluation/index.js';
 import {
   createJudgeAggregationAnalysisNodes,
   createJudgeAggregationSchemaValidators,
@@ -76,7 +76,7 @@ import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
+} from '../../eval-core/compiler/fixtures.js';
 
 const ANALYSIS_PLAN_DIGEST = digestCanonicalJson({ fixture: 'analysis-plan' });
 const EVALUATION_BUNDLE_DIGEST = digestCanonicalJson({ fixture: 'evaluation-bundle' });
@@ -101,7 +101,7 @@ interface ScoringFixture {
 }
 
 const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
-  '../../fixtures/evaluation-core/scoring-equivalence-v1.json',
+  '../../fixtures/eval-core/scoring-equivalence-v1.json',
   import.meta.url,
 )), 'utf8')) as ScoringFixture;
 

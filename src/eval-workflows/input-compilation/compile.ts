@@ -14,12 +14,12 @@ import {
   type MeasurementPolicy,
   type Sha256Digest,
   type TargetExecutionRequirements,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {
   EvaluationDefinitionError,
   normalizeEvaluationDefinition,
   validateDefinitionSemantics,
-} from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/compiler/index.js';
 import { CliEvaluationInputError } from './error.js';
 import {
   RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION,

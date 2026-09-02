@@ -1,4 +1,4 @@
-import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
+import { ExecutionPortFailure } from '../../../../eval-core/execution/index.js';
 import {
   CODEX_READ_ONLY_SANDBOX_ID,
   CODEX_WORKSPACE_WRITE_SANDBOX_ID,

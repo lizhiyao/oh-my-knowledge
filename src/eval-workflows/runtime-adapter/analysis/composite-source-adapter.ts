@@ -1,4 +1,4 @@
-import type { SchemaIdentity } from '../../../evaluation-core/contracts/index.js';
+import type { SchemaIdentity } from '../../../eval-core/contracts/index.js';
 import {
   ASSERTION_LAYER_TABLE_SCHEMA,
   parseAssertionLayerTableEnvelope,

@@ -5,11 +5,11 @@ import {
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import type {
   AnalysisNodeExecutionContext,
   AnalysisNodeInput,
-} from '../../../evaluation-core/analysis/index.js';
+} from '../../../eval-core/analysis/index.js';
 import {
   AGREEMENT_PARAMETERS_SCHEMA,
   type AgreementParameters,

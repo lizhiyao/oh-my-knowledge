@@ -83,4 +83,4 @@ Statistical machinery cannot rescue a contaminated experiment. Strict baseline i
 
 Each persisted run contains the exact Run Plan, Execution Bundle, Evaluation Bundle, Analysis Bundle, and Evaluation Report, linked by digests. Studio is a rebuildable projection over those artifacts, not a second source of measurement truth. Changes to frozen prompts, five-layer scoring semantics, Bootstrap formulas, Krippendorff alpha, missing-evidence treatment, or length-debias semantics require an explicit `BREAKING-COMPARABILITY` review.
 
-See also [Composite scoring](../specs/scoring.md), [Sample design](../specs/sample-design-spec.md), and the [Evaluation Core cutover guide](../guides/evaluation-core-cutover.md).
+See also [Composite scoring](../specs/scoring.md), [Sample design](../specs/sample-design-spec.md), and the [Evaluation Core cutover guide](../guides/eval-core-cutover.md).

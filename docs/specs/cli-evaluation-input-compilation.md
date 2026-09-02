@@ -1,6 +1,6 @@
 # CLI Evaluation Input Compilation
 
-> **Status**: implemented production input boundary under the [Evaluation Core vNext RFC](./evaluation-core-vnext.md). Parse, resolve, compile, Runtime assembly, host workflow, Core execution, and artifact persistence now form the authoritative `omk eval` path.
+> **Status**: implemented production input boundary under the [Evaluation Core vNext RFC](./eval-core-vnext.md). Parse, resolve, compile, Runtime assembly, host workflow, Core execution, and artifact persistence now form the authoritative `omk eval` path.
 
 ## 1. Purpose and boundary
 

@@ -18,12 +18,12 @@ import {
   type EvaluationSeriesPlan,
   type JsonValue,
   type Sha256Digest,
-} from '../../evaluation-core/contracts/index.js';
-import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/contracts/index.js';
+import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
   runEvaluationSeries,
   type EvaluationSeriesRunResult,
-} from '../../evaluation-core/series/index.js';
+} from '../../eval-core/series/index.js';
 import {
   type CoreBatchArtifactStore,
   type StoredCoreBatch,

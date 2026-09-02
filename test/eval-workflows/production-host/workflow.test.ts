@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Sha256Digest } from '../../../src/evaluation-core/contracts/index.js';
-import type { EvaluationRunResult } from '../../../src/evaluation-core/engine/index.js';
+import type { Sha256Digest } from '../../../src/eval-core/contracts/index.js';
+import type { EvaluationRunResult } from '../../../src/eval-core/engine/index.js';
 import {
   createNodeCoreRunArtifactStore,
   type CoreRunArtifactStore,
@@ -21,7 +21,7 @@ import {
   runConformanceScenario,
   type ConformanceResult,
   type ConformanceTarget,
-} from '../../evaluation-core/conformance/harness.js';
+} from '../../eval-core/conformance/harness.js';
 
 const roots: string[] = [];
 

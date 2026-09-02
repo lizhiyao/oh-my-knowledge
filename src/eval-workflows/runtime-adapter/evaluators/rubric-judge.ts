@@ -7,12 +7,12 @@ import {
   type RuntimeIdentity,
   type SchemaIdentity,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../eval-core/contracts/index.js';
 import {
   EvaluationPortFailure,
   type EvaluatorBindingValue,
   type EvaluatorObservation,
-} from '../../../evaluation-core/evaluation/index.js';
+} from '../../../eval-core/evaluation/index.js';
 import {
   buildJudgePrompt,
   getJudgePromptHash,

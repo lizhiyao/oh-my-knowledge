@@ -2,24 +2,24 @@ import type {
   EvaluationDefinition,
   EvaluationSeriesDefinition,
   RuntimeIdentity,
-} from '../../evaluation-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   AnalysisRuntimeRequirement,
   RuntimeResolution,
-} from '../../evaluation-core/compiler/index.js';
+} from '../../eval-core/compiler/index.js';
 import type {
   AnalysisDecisionPolicy,
   AnalysisMissingPolicy,
   AnalysisNodeImplementation,
-} from '../../evaluation-core/analysis/index.js';
-import type { EvaluationEngineRuntimeBindings } from '../../evaluation-core/engine/index.js';
-import type { EvaluationEvaluator } from '../../evaluation-core/evaluation/index.js';
-import type { ExecutionExecutor } from '../../evaluation-core/execution/index.js';
+} from '../../eval-core/analysis/index.js';
+import type { EvaluationEngineRuntimeBindings } from '../../eval-core/engine/index.js';
+import type { EvaluationEvaluator } from '../../eval-core/evaluation/index.js';
+import type { ExecutionExecutor } from '../../eval-core/execution/index.js';
 import type {
   EvaluationSeriesRuntimePorts,
   SeriesAnalysisNodeRuntime,
   SeriesDecisionRuntime,
-} from '../../evaluation-core/series/index.js';
+} from '../../eval-core/series/index.js';
 import type {
   RuntimeBinding,
   RuntimeBindingRequest,

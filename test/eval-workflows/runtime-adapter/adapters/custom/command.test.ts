@@ -24,7 +24,7 @@ import {
 import type {
   EvaluationDefinition,
   TargetExecutionControls,
-} from '../../../../../src/evaluation-core/contracts/index.js';
+} from '../../../../../src/eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   InMemoryRuntimeEventSequencer,
@@ -32,7 +32,7 @@ import {
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
-} from '../../../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/eval-core/execution/index.js';
 import {
   CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
   createCustomCommandExecutorAdapter,
@@ -44,8 +44,8 @@ import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../../../evaluation-core/compiler/fixtures.js';
-import { prepareEvaluationPlan } from '../../../../../src/evaluation-core/compiler/index.js';
+} from '../../../../eval-core/compiler/fixtures.js';
+import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 
 const FIXTURE = fileURLToPath(new URL(
   '../../../../fixtures/custom-command-core-runtime.mjs',
