@@ -46,7 +46,6 @@ export interface Sample {
   assertions?: Assertion[];
   dimensions?: Record<string, string>;
   allowedTools?: string[];
-  expectedTools?: string[];
   /** 该 sample 测试的能力维度,可多维。free-form string,suggested
    *  values 见 docs/specs/sample-design-spec.md。aggregate 时大小写不敏感。
    *  纯文档 / 诊断用,不参与 grading / judge / verdict。 */
@@ -74,11 +73,21 @@ export interface Sample {
    *  详见 docs/sample-mocks.md(命中规则、状态机、fixture 文件)。 */
   mocks?: Mock[];
   /** mocks 严格模式。
-   *  - false / undefined(default):未命中的 tool 调用透传(继续真跑底层)
-   *  - true:未命中即 deny(防意外真调外部接口/CLI/MCP/写状态)。
-   *  全 mock 评测场景建议 true,部分 mock 探索场景留 false。 */
+   *  - true / undefined(default):未命中即 deny(防意外真调外部接口/CLI/MCP/写状态)
+   *  - false:显式允许未命中的 tool 调用透传(继续真跑底层)。
+   *  部分 mock 探索场景才应显式写 false。 */
   mocksStrict?: boolean;
   /** 题设环境声明,仅作 prompt 上下文。详见 SampleEnvironment。 */
   environment?: SampleEnvironment;
-  [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
+}
+
+export interface EvalSampleSetDocument {
+  schemaVersion: 'omk.eval-sample-set/v1';
+  requires?: {
+    tools?: string[];
+    files?: string[];
+    env?: string[];
+    preflight?: string[];
+  };
+  samples: Sample[];
 }

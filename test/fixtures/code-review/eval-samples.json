@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "code-review-sql-injection",
     "prompt": "请审查以下登录代码，指出主要风险并给出修复建议。",
@@ -104,4 +106,5 @@
     "construct": "日志中的敏感信息泄露审查",
     "provenance": "human"
   }
-]
+  ]
+}

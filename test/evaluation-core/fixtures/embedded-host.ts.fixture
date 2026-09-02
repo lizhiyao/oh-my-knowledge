@@ -15,6 +15,11 @@ import {
   resolveEvaluationCoreJsonSchema,
   type ExecutionBundleSource,
 } from 'oh-my-knowledge/evaluation-core';
+import {
+  createEvalSampleSetDocument,
+  resolveEvalSampleJsonSchema,
+  type EvalSampleSetDocument,
+} from 'oh-my-knowledge/eval-samples';
 
 declare const runtime: EvaluationEngineRuntime;
 declare const definition: EvaluationDefinition;
@@ -25,6 +30,14 @@ declare const executionFacts: ExecutionFacts;
 
 const executionFactsVersion: typeof EXECUTION_FACTS_SCHEMA_VERSION = executionFacts.schemaVersion;
 void executionFactsVersion;
+
+const sampleSet: EvalSampleSetDocument = createEvalSampleSetDocument([{
+  sample_id: 'typescript-host',
+  prompt: 'Verify the package contract.',
+}]);
+const sampleSchema: URL = resolveEvalSampleJsonSchema('eval-sample-set.schema.json');
+void sampleSet;
+void sampleSchema;
 
 const engine = createEvaluationEngine({
   ...runtime,

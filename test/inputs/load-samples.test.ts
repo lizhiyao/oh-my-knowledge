@@ -4,6 +4,11 @@ import { writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSamples } from '../../src/inputs/load-samples.js';
+import type { Sample } from '../../src/inputs/contracts/sample.js';
+import {
+  EVAL_SAMPLE_SET_SCHEMA_VERSION,
+  createEvalSampleSetDocument,
+} from '../../src/inputs/schemas/sample-set.js';
 
 const tmp = (name: string) => join(tmpdir(), `omk-test-${Date.now()}-${name}`);
 
@@ -16,8 +21,8 @@ describe('loadSamples', () => {
     const file = writeSampleFile(
       `duplicate.${format}`,
       format === 'json'
-        ? JSON.stringify(samples)
-        : '- sample_id: shared\n  prompt: first\n- sample_id: shared\n  prompt: second\n',
+        ? JSON.stringify(createEvalSampleSetDocument(samples))
+        : `schemaVersion: ${EVAL_SAMPLE_SET_SCHEMA_VERSION}\nsamples:\n  - sample_id: shared\n    prompt: first\n  - sample_id: shared\n    prompt: second\n`,
     );
     assert.throws(
       () => loadSamples(file),
@@ -35,8 +40,17 @@ describe('loadSamples', () => {
   }
 
   function writeJsonSamples(name: string, value: unknown): string {
-    return writeSampleFile(name, JSON.stringify(value));
+    const document = Array.isArray(value)
+      ? createEvalSampleSetDocument(value as Sample[])
+      : typeof value === 'object' && value !== null && 'samples' in value
+        ? { schemaVersion: EVAL_SAMPLE_SET_SCHEMA_VERSION, ...value }
+        : value;
+    return writeSampleFile(name, JSON.stringify(document));
   }
+
+  const jsonSet = (samples: Sample[], requires?: Record<string, string[]>): string => (
+    JSON.stringify(createEvalSampleSetDocument(samples, requires))
+  );
 
   afterEach(() => {
     for (const f of cleanups) {
@@ -57,19 +71,63 @@ describe('loadSamples', () => {
   });
 
   it('加载 YAML 用例文件', () => {
-    const p = writeSampleFile('samples.yaml', `- sample_id: y1\n  prompt: hello\n- sample_id: y2\n  prompt: world\n`);
+    const p = writeSampleFile(
+      'samples.yaml',
+      `schemaVersion: ${EVAL_SAMPLE_SET_SCHEMA_VERSION}\nsamples:\n  - sample_id: y1\n    prompt: hello\n  - sample_id: y2\n    prompt: world\n`,
+    );
     const { samples } = loadSamples(p);
     assert.equal(samples.length, 2);
     assert.equal(samples[0].sample_id, 'y1');
     assert.equal(samples[1].prompt, 'world');
   });
 
+  it('拒绝未版本化的历史数组格式', () => {
+    const p = writeSampleFile('legacy-array.json', JSON.stringify([
+      { sample_id: 's1', prompt: 'hello' },
+    ]));
+    assert.throws(() => loadSamples(p), /invalid samples file.*expected object.*array/);
+  });
+
+  it('拒绝缺失或错误的 schemaVersion', () => {
+    const missing = writeSampleFile('missing-version.json', JSON.stringify({
+      samples: [{ sample_id: 's1', prompt: 'hello' }],
+    }));
+    const wrong = writeSampleFile('wrong-version.json', JSON.stringify({
+      schemaVersion: 'omk.eval-sample-set/v2',
+      samples: [{ sample_id: 's1', prompt: 'hello' }],
+    }));
+    assert.throws(() => loadSamples(missing), /schemaVersion.*expected.*omk\.eval-sample-set\/v1/);
+    assert.throws(() => loadSamples(wrong), /schemaVersion.*expected.*omk\.eval-sample-set\/v1/);
+  });
+
+  it('拒绝根、sample 与 assertion 上的未知字段', () => {
+    const root = writeSampleFile('unknown-root.json', JSON.stringify({
+      ...createEvalSampleSetDocument([{ sample_id: 's1', prompt: 'hello' }]),
+      typo: true,
+    }));
+    const sample = writeSampleFile('unknown-sample.json', JSON.stringify({
+      schemaVersion: EVAL_SAMPLE_SET_SCHEMA_VERSION,
+      samples: [{ sample_id: 's1', prompt: 'hello', mockStrict: true }],
+    }));
+    const assertion = writeSampleFile('unknown-assertion.json', JSON.stringify({
+      schemaVersion: EVAL_SAMPLE_SET_SCHEMA_VERSION,
+      samples: [{
+        sample_id: 's1',
+        prompt: 'hello',
+        assertions: [{ type: 'contains', value: 'token', typo: true }],
+      }],
+    }));
+    assert.throws(() => loadSamples(root), /Unrecognized key.*typo/);
+    assert.throws(() => loadSamples(sample), /samples\.0.*Unrecognized key.*mockStrict/);
+    assert.throws(() => loadSamples(assertion), /samples\.0\.assertions\.0.*Unrecognized key.*typo/);
+  });
+
   const invalidShapeCases = [
     { name: 'empty array', file: 'empty.json', value: [], error: /invalid samples file/ },
     { name: 'non-array content', file: 'invalid.json', value: 'not an array', error: /invalid samples file/ },
-    { name: 'missing sample_id', file: 'no-id.json', value: [{ prompt: 'hello' }], error: /required field: sample_id/ },
-    { name: 'missing prompt', file: 'no-prompt.json', value: [{ sample_id: 'x' }], error: /required field: prompt/ },
-    { name: 'non-string prompt', file: 'bad-prompt-type.json', value: [{ sample_id: 'x', prompt: 123 }], error: /invalid required field: prompt/ },
+    { name: 'missing sample_id', file: 'no-id.json', value: [{ prompt: 'hello' }], error: /samples\.0\.sample_id.*expected string/ },
+    { name: 'missing prompt', file: 'no-prompt.json', value: [{ sample_id: 'x' }], error: /samples\.0\.prompt.*expected string/ },
+    { name: 'non-string prompt', file: 'bad-prompt-type.json', value: [{ sample_id: 'x', prompt: 123 }], error: /samples\.0\.prompt.*expected string.*number/ },
   ];
 
   it.each(invalidShapeCases)('rejects invalid sample file shape: $name', ({ file, value, error }) => {
@@ -82,12 +140,12 @@ describe('loadSamples', () => {
       {
         name: 'dimensions must contain non-empty rubric text',
         sample: { dimensions: { quality: '' } },
-        error: /dimensions.*non-empty string rubrics/,
+        error: /samples\.0\.dimensions\.quality.*expected string.*>=1/,
       },
       {
         name: 'unknown assertion type',
         sample: { assertions: [{ type: 'containz', value: 'token' }] },
-        error: /unsupported assertion type.*containz/,
+        error: /samples\.0\.assertions\.0\.type.*Invalid option/,
       },
       {
         name: 'zero-weight assertion',
@@ -118,12 +176,28 @@ describe('loadSamples', () => {
             return: 'ok',
           }],
         },
-        error: /match.*unsupported field/,
+        error: /samples\.0\.mocks\.0\.match.*Unrecognized key.*command_globb/,
       },
       {
         name: 'mock must define a return',
         sample: { mocks: [{ tool: 'Bash' }] },
         error: /mock requires.*return/,
+      },
+      {
+        name: 'mock return sources are mutually exclusive',
+        sample: { mocks: [{ tool: 'Bash', return: 'ok', return_file: 'ok.txt' }] },
+        error: /exactly one of .*return.*return_file.*return_seq/,
+      },
+      {
+        name: 'mock URL match forms are mutually exclusive',
+        sample: {
+          mocks: [{
+            tool: 'WebFetch',
+            match: { url: 'https://example.com', url_glob: 'https://example.com/*' },
+            return: 'ok',
+          }],
+        },
+        error: /samples\.0\.mocks\.0\.match.*Unrecognized key.*url|url_glob/,
       },
       {
         name: 'mock_hit must reference an existing mock',
@@ -152,12 +226,12 @@ describe('loadSamples', () => {
       {
         name: 'environment rejects unknown fields',
         sample: { environment: { cli_available: ['git'], typo: true } },
-        error: /environment.*invalid shape/,
+        error: /samples\.0\.environment.*Unrecognized key.*typo/,
       },
       {
         name: 'allowedTools must be a string array',
         sample: { allowedTools: ['Read', 1] },
-        error: /allowedTools.*array of non-empty strings/,
+        error: /samples\.0\.allowedTools\.1.*expected string.*number/,
       },
       {
         name: 'mocksStrict must be boolean',
@@ -176,9 +250,9 @@ describe('loadSamples', () => {
     });
 
     const invalidRequiresCases = [
-      { name: 'null', requires: null, error: /requires.*must be an object/ },
-      { name: 'unknown field', requires: { tool: ['git'] }, error: /requires.*unsupported field/ },
-      { name: 'non-string item', requires: { tools: ['git', 1] }, error: /requires\.tools.*non-empty strings/ },
+      { name: 'null', requires: null, error: /requires.*expected object.*null/ },
+      { name: 'unknown field', requires: { tool: ['git'] }, error: /requires.*Unrecognized key.*tool/ },
+      { name: 'non-string item', requires: { tools: ['git', 1] }, error: /requires\.tools\.1.*expected string.*number/ },
     ];
 
     it.each(invalidRequiresCases)('rejects invalid requires: $name', ({ name, requires, error }) => {
@@ -216,8 +290,8 @@ describe('loadSamples', () => {
       ]);
     });
 
-    it('老 sample(无新字段)仍正常解析', () => {
-      const p = writeJsonSamples('legacy.json', [{ sample_id: 's1', prompt: 'p' }]);
+    it('最小 sample（无可选字段）正常解析', () => {
+      const p = writeJsonSamples('minimal.json', [{ sample_id: 's1', prompt: 'p' }]);
       const { samples } = loadSamples(p);
       assert.equal(samples[0].capability, undefined);
       assert.equal(samples[0].difficulty, undefined);
@@ -230,43 +304,43 @@ describe('loadSamples', () => {
         name: 'difficulty invalid value includes sample_id',
         file: 'bad-difficulty.json',
         value: [{ sample_id: 's7', prompt: 'p', difficulty: 'easy?' }],
-        error: /s7.*invalid difficulty.*easy\?.*easy, medium, hard/,
+        error: /samples\.0\.difficulty.*Invalid option/,
       },
       {
         name: 'provenance invalid value',
         file: 'bad-prov.json',
         value: [{ sample_id: 's1', prompt: 'p', provenance: 'random' }],
-        error: /invalid provenance/,
+        error: /samples\.0\.provenance.*Invalid option/,
       },
       {
         name: 'capability single string',
         file: 'bad-cap.json',
         value: [{ sample_id: 's1', prompt: 'p', capability: 'api-selection' }],
-        error: /invalid capability.*string array/,
+        error: /samples\.0\.capability.*expected array.*string/,
       },
       {
         name: 'capability array contains non-string',
         file: 'bad-cap-elem.json',
         value: [{ sample_id: 's1', prompt: 'p', capability: ['ok', 123] }],
-        error: /capability\[1\] must be a non-empty string/,
+        error: /samples\.0\.capability\.1.*expected string.*number/,
       },
       {
         name: 'covers is not array',
         file: 'bad-covers.json',
         value: [{ sample_id: 's1', prompt: 'p', covers: 'references/a.md' }],
-        error: /invalid covers.*array/,
+        error: /samples\.0\.covers.*expected array.*string/,
       },
       {
         name: 'covers targetKind invalid',
         file: 'bad-covers-kind.json',
         value: [{ sample_id: 's1', prompt: 'p', covers: [{ targetKind: 'file', ref: 'references/a.md' }] }],
-        error: /covers\[0\] invalid targetKind/,
+        error: /samples\.0\.covers\.0\.targetKind.*Invalid option/,
       },
       {
         name: 'covers ref empty',
         file: 'bad-covers-ref.json',
         value: [{ sample_id: 's1', prompt: 'p', covers: [{ targetKind: 'reference', ref: '' }] }],
-        error: /covers\[0\] invalid ref/,
+        error: /samples\.0\.covers\.0\.ref.*expected string.*>=1/,
       },
     ];
 
@@ -301,9 +375,9 @@ describe('loadSamples', () => {
 
     it('merges samples from multiple json files in deterministic name-sorted order', () => {
       const d = makeDir('multi');
-      writeFileSync(join(d, 'workflow.json'), JSON.stringify([{ sample_id: 's001', prompt: 'a' }]));
-      writeFileSync(join(d, 'platform.json'), JSON.stringify([{ sample_id: 's002', prompt: 'b' }]));
-      writeFileSync(join(d, 'ironlaw.json'),  JSON.stringify([{ sample_id: 's003', prompt: 'c' }]));
+      writeFileSync(join(d, 'workflow.json'), jsonSet([{ sample_id: 's001', prompt: 'a' }]));
+      writeFileSync(join(d, 'platform.json'), jsonSet([{ sample_id: 's002', prompt: 'b' }]));
+      writeFileSync(join(d, 'ironlaw.json'), jsonSet([{ sample_id: 's003', prompt: 'c' }]));
       const { samples } = loadSamples(d);
       // sorted: ironlaw < platform < workflow
       assert.deepEqual(samples.map((s) => s.sample_id), ['s003', 's002', 's001']);
@@ -311,18 +385,18 @@ describe('loadSamples', () => {
 
     it('skips reserved file prefixes (report*, health*, _*)', () => {
       const d = makeDir('reserved');
-      writeFileSync(join(d, 'samples.json'),       JSON.stringify([{ sample_id: 's1', prompt: 'a' }]));
-      writeFileSync(join(d, 'report-2026.json'),    JSON.stringify([{ sample_id: 'should-skip-1', prompt: 'x' }]));
-      writeFileSync(join(d, 'health.json'),         JSON.stringify([{ sample_id: 'should-skip-2', prompt: 'x' }]));
-      writeFileSync(join(d, '_scratch.json'),       JSON.stringify([{ sample_id: 'should-skip-3', prompt: 'x' }]));
+      writeFileSync(join(d, 'samples.json'), jsonSet([{ sample_id: 's1', prompt: 'a' }]));
+      writeFileSync(join(d, 'report-2026.json'), jsonSet([{ sample_id: 'should-skip-1', prompt: 'x' }]));
+      writeFileSync(join(d, 'health.json'), jsonSet([{ sample_id: 'should-skip-2', prompt: 'x' }]));
+      writeFileSync(join(d, '_scratch.json'), jsonSet([{ sample_id: 'should-skip-3', prompt: 'x' }]));
       const { samples } = loadSamples(d);
       assert.deepEqual(samples.map((s) => s.sample_id), ['s1']);
     });
 
     it('rejects duplicate sample_id across files', () => {
       const d = makeDir('dup');
-      writeFileSync(join(d, 'a.json'), JSON.stringify([{ sample_id: 'shared', prompt: 'one' }]));
-      writeFileSync(join(d, 'b.json'), JSON.stringify([{ sample_id: 'shared', prompt: 'two' }]));
+      writeFileSync(join(d, 'a.json'), jsonSet([{ sample_id: 'shared', prompt: 'one' }]));
+      writeFileSync(join(d, 'b.json'), jsonSet([{ sample_id: 'shared', prompt: 'two' }]));
       assert.throws(() => loadSamples(d), /duplicate sample_id "shared"/);
     });
 
@@ -332,11 +406,11 @@ describe('loadSamples', () => {
       const constructorPath = join(d, 'b.json');
       writeFileSync(
         protoPath,
-        JSON.stringify([{ sample_id: '__proto__', prompt: 'one' }]),
+        jsonSet([{ sample_id: '__proto__', prompt: 'one' }]),
       );
       writeFileSync(
         constructorPath,
-        JSON.stringify([{ sample_id: 'constructor', prompt: 'two' }]),
+        jsonSet([{ sample_id: 'constructor', prompt: 'two' }]),
       );
 
       const loaded = loadSamples(d);
@@ -348,20 +422,20 @@ describe('loadSamples', () => {
 
     it('errors when directory has no eligible sample files', () => {
       const d = makeDir('empty');
-      writeFileSync(join(d, 'report.json'), JSON.stringify([{ sample_id: 's1', prompt: 'p' }]));
+      writeFileSync(join(d, 'report.json'), jsonSet([{ sample_id: 's1', prompt: 'p' }]));
       assert.throws(() => loadSamples(d), /no sample files found in directory/);
     });
 
     it('unions requires from object-wrapper format across files', () => {
       const d = makeDir('requires-merge');
-      writeFileSync(join(d, 'a.json'), JSON.stringify({
-        requires: { tools: ['integration-tool'], env: ['FOO'] },
-        samples: [{ sample_id: 's1', prompt: 'a' }],
-      }));
-      writeFileSync(join(d, 'b.json'), JSON.stringify({
-        requires: { tools: ['integration-tool', 'git'], files: ['x.txt'] },
-        samples: [{ sample_id: 's2', prompt: 'b' }],
-      }));
+      writeFileSync(join(d, 'a.json'), jsonSet(
+        [{ sample_id: 's1', prompt: 'a' }],
+        { tools: ['integration-tool'], env: ['FOO'] },
+      ));
+      writeFileSync(join(d, 'b.json'), jsonSet(
+        [{ sample_id: 's2', prompt: 'b' }],
+        { tools: ['integration-tool', 'git'], files: ['x.txt'] },
+      ));
       const { requires } = loadSamples(d);
       assert.deepEqual(new Set(requires?.tools), new Set(['integration-tool', 'git']));
       assert.deepEqual(requires?.env, ['FOO']);
@@ -371,8 +445,8 @@ describe('loadSamples', () => {
     // P2-1 source-aware:目录模式下 baseDir = 目录自身,sourceFiles 列所有合并的文件
     it('directory mode: baseDir 等于目录自身;sourceFiles 含所有合并文件(已排序)', () => {
       const d = makeDir('source-aware');
-      writeFileSync(join(d, 'b.json'), JSON.stringify([{ sample_id: 's1', prompt: 'a' }]));
-      writeFileSync(join(d, 'a.json'), JSON.stringify([{ sample_id: 's2', prompt: 'b' }]));
+      writeFileSync(join(d, 'b.json'), jsonSet([{ sample_id: 's1', prompt: 'a' }]));
+      writeFileSync(join(d, 'a.json'), jsonSet([{ sample_id: 's2', prompt: 'b' }]));
       const { baseDir, sourceFiles } = loadSamples(d);
       assert.equal(baseDir, d);
       assert.equal(sourceFiles.length, 2);
@@ -384,7 +458,7 @@ describe('loadSamples', () => {
     it('single-file mode: baseDir 等于 dirname(file);sourceFiles = [file]', () => {
       const d = makeDir('singlefile');
       const f = join(d, 'samples.json');
-      writeFileSync(f, JSON.stringify([{ sample_id: 's1', prompt: 'a' }]));
+      writeFileSync(f, jsonSet([{ sample_id: 's1', prompt: 'a' }]));
       const { baseDir, sourceFiles } = loadSamples(f);
       assert.equal(baseDir, d);
       assert.deepEqual(sourceFiles, [f]);

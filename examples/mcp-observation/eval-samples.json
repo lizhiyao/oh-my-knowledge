@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "direct-explicit-capture",
     "prompt": "刚才你把退款期限说成了 7 天，但正确规则是 30 天。请把这个问题记录到 OMK，并只提交这段纠正所需的最小证据。",
@@ -92,4 +94,5 @@
     "provenance": "human",
     "tripwire": true
   }
-]
+  ]
+}

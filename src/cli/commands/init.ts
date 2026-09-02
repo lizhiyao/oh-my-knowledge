@@ -21,7 +21,9 @@ const INIT_OMK_GITIGNORE = `# omk 测量 bulk + doctor --fix 备份(项目本地
 // 只能是单个 ASCII token(长度 [2,40]、无内部空白、无 CJK);多词 / 中文语义匹配一律
 // 走 rubric 交评委判;regex pattern 不能含 CJK。改这里前先跑 `omk eval --dry-run`
 // (非 lenient 合规 oracle)与 test/cli/init-scaffold-conformance 回归测试。
-const INIT_SAMPLES = `[
+const INIT_SAMPLES = `{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "s001",
     "prompt": "审查以下代码",
@@ -66,7 +68,8 @@ const INIT_SAMPLES = `[
       "actionability": "是否给出使用 textContent 或转义的修复代码"
     }
   }
-]
+  ]
+}
 `;
 
 // 模板带 Claude Code SKILL.md 兼容 frontmatter(name + description),让用户

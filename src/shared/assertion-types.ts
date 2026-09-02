@@ -1,3 +1,14 @@
+import type {
+  AsyncAssertionType,
+  SyncAssertionType,
+} from './contracts/assertion.js';
+
+export type {
+  AsyncAssertionType,
+  SupportedAssertionType,
+  SyncAssertionType,
+} from './contracts/assertion.js';
+
 export const SYNC_ASSERTION_TYPE_NAMES = [
   'contains',
   'not_contains',
@@ -30,7 +41,7 @@ export const SYNC_ASSERTION_TYPE_NAMES = [
   'levenshtein_max',
   'bleu_min',
   'assert-set',
-] as const;
+] as const satisfies readonly SyncAssertionType[];
 
 export const ASYNC_ASSERTION_TYPE_NAMES = [
   'semantic_similarity',
@@ -38,11 +49,7 @@ export const ASYNC_ASSERTION_TYPE_NAMES = [
   'faithfulness',
   'answer_relevancy',
   'context_recall',
-] as const;
-
-export type SyncAssertionType = typeof SYNC_ASSERTION_TYPE_NAMES[number];
-export type AsyncAssertionType = typeof ASYNC_ASSERTION_TYPE_NAMES[number];
-export type SupportedAssertionType = SyncAssertionType | AsyncAssertionType;
+] as const satisfies readonly AsyncAssertionType[];
 
 export const SYNC_ASSERTION_TYPES: ReadonlySet<string> = new Set(SYNC_ASSERTION_TYPE_NAMES);
 export const ASYNC_ASSERTION_TYPES: ReadonlySet<string> = new Set(ASYNC_ASSERTION_TYPE_NAMES);

@@ -50,7 +50,10 @@ function asNetworkError(err: unknown): NetworkErrorLike {
  */
 export async function resolveUrls(samples: Sample[], skipUrls?: Set<string>): Promise<void> {
   // 1. Collect all unique URLs across all samples, tracking which sample they belong to
-  const urlMap = new Map<string, Array<{ sample: Sample; field: string }>>(); // url -> [{sample, field}]
+  const urlMap = new Map<string, Array<{
+    sample: Sample;
+    field: 'prompt' | 'context';
+  }>>();
   for (const sample of samples) {
     for (const field of ['prompt', 'context'] as const) {
       const text = sample[field] as string | undefined;

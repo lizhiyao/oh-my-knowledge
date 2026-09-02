@@ -428,7 +428,7 @@ async function resolvedMocks(
           tool: mock.tool,
           ...(mock.match === undefined ? {} : { match: structuredClone(mock.match) as JsonValue }),
         },
-        strict: sample.mocksStrict ?? false,
+        strict: sample.mocksStrict ?? true,
         payloads: await mockPayloadDescriptors(
           resources,
           mock,

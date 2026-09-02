@@ -1,5 +1,5 @@
 /** Mock 命中规则(所有字段 AND,字段未填即不限制)。 */
-export interface MockMatch {
+interface MockMatchBase {
   /** 精确匹配 file_path(用于 Read / Edit / Write,支持 ~ 自动展开)。
    *  注意:claude-cli / claude-sdk 的 PreToolUse hook 拿到的 file_path 是 LLM 调
    *  Read/Edit/Write 时实际传入的字符串。LLM 经常把相对路径写成 cwd 绝对路径
@@ -11,10 +11,6 @@ export interface MockMatch {
    *  '/abs/cwd/tasks/foo/state.json' / '~/proj/tasks/foo/state.json' 但不命中
    *  'bad-state.json'。`~` 自动展开。**绝对路径 cwd 不可预测时首选这个字段**。 */
   file_path_endswith?: string;
-  /** 精确匹配 url(用于 WebFetch / WebSearch)。 */
-  url?: string;
-  /** glob 匹配 url(支持 *)。url 与 url_glob 二选一。 */
-  url_glob?: string;
   /** glob 匹配 command(用于 Bash 拦 mcporter / cli;支持 *)。 */
   command_glob?: string;
   /** 通用匹配:对 tool_input 任意字段做 deep equal,优先级高于上面的 sugar 字段。 */
@@ -25,26 +21,44 @@ export interface MockMatch {
   input_contains?: string;
 }
 
+export type MockMatch = MockMatchBase & (
+  | { url: string; url_glob?: never }
+  | { url?: never; url_glob: string }
+  | { url?: never; url_glob?: never }
+);
+
 /** Mock 返回值(三选一)。 */
 export type MockReturn =
   | { stdout?: string; stderr?: string; exit?: number; [k: string]: unknown }
   | string;
 
-/** 单条 Mock 规则。runtime 拦到匹配的 tool 调用即返回 mocked 结果,不放出去。 */
-export interface Mock {
+interface MockBase {
   /** source-neutral 工具身份,如 "Read" / "Bash" / "WebFetch" / "Edit" / "Write" / "Grep" / "Glob"。
    *  executor adapter 会把 runtime-native 名称（如 exec_command / apply_patch）映射后匹配。
    *  特殊值 `"*"`:通配,匹配任何工具名(配合 match.input_contains 做 intent-level mock)。 */
   tool: string;
   /** 命中规则。所有字段 AND,字段未填即不限制。 */
   match?: MockMatch;
-  /** 返回内容(LLM 看到的 tool_result),与 return_file / return_seq 三选一。
-   *  - string:直接当字符串返回
-   *  - { stdout, stderr, exit }:模拟 Bash 工具结果(若 exit !=0 表示失败) */
-  return?: MockReturn;
-  /** 从外部 fixture 文件读返回内容(路径相对 sample 目录;大响应建议外置)。 */
-  return_file?: string;
-  /** 同 mock 多次命中按序返回(状态机场景:第 1 次 PENDING → 第 2 次 SUCCESS)。
-   *  超出序列长度时回退到 return / return_file。 */
-  return_seq?: MockReturn[];
 }
+
+/** 单条 Mock 规则。runtime 拦到匹配的 tool 调用即返回 mocked 结果,不放出去。 */
+export type Mock = MockBase & (
+  | {
+      /** 返回内容(LLM 看到的 tool_result)。string 直接返回；object 可模拟 Bash。 */
+      return: MockReturn;
+      return_file?: never;
+      return_seq?: never;
+    }
+  | {
+      /** 从外部 fixture 文件读返回内容(路径相对 sample 目录;大响应建议外置)。 */
+      return?: never;
+      return_file: string;
+      return_seq?: never;
+    }
+  | {
+      /** 同 mock 多次命中按序返回；超过序列长度后保持最后一个状态。 */
+      return?: never;
+      return_file?: never;
+      return_seq: MockReturn[];
+    }
+);

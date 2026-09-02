@@ -7,8 +7,17 @@ import {
   parseCliEvaluationRequest,
 } from '../../../src/eval-workflows/input-compilation/index.js';
 import { resolveNodeCliEvaluationRequest } from '../../../src/eval-workflows/production-host/index.js';
+import {
+  createEvalSampleSetDocument,
+} from '../../../src/inputs/schemas/sample-set.js';
+import type { Sample } from '../../../src/inputs/contracts/sample.js';
 
 const roots: string[] = [];
+
+const sampleSetJson = (
+  samples: Sample[],
+  requires?: Parameters<typeof createEvalSampleSetDocument>[1],
+): string => JSON.stringify(createEvalSampleSetDocument(samples, requires));
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -23,7 +32,7 @@ async function fixture(label: string): Promise<string> {
   await writeFile(join(root, 'skills', 'control.md'), '# Control\nAnswer directly.\n');
   await writeFile(join(root, 'skills', 'treatment.md'), '# Treatment\nUse the supplied knowledge.\n');
   await writeFile(join(root, 'fixtures', 'secret.json'), JSON.stringify({ token: 'secret-value' }));
-  await writeFile(join(root, 'samples.json'), JSON.stringify([{
+  await writeFile(join(root, 'samples.json'), sampleSetJson([{
     sample_id: 'sample-a',
     prompt: 'Return a concise JSON answer.',
     rubric: 'The response is correct and concise.',
@@ -107,7 +116,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
 
   it('materializes inline mock payloads in a private resolver-owned store', async () => {
     const root = await fixture('private-materialization');
-    await writeFile(join(root, 'samples.json'), JSON.stringify([{
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
       prompt: 'A',
       rubric: 'Correct.',
@@ -124,6 +133,36 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(payload).toBeDefined();
     expect((await stat(payload!.locator)).mode & 0o777).toBe(0o600);
     expect((await stat(join(root, '.omk', 'resolved', 'content'))).mode & 0o777).toBe(0o700);
+  });
+
+  it('fails closed for unmatched mocked tools unless the sample explicitly opts out', async () => {
+    const root = await fixture('mock-strict-default');
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
+      sample_id: 'sample-default',
+      prompt: 'A',
+      rubric: 'Correct.',
+      mocks: [{ tool: 'Read', return: 'default' }],
+    }, {
+      sample_id: 'sample-opt-out',
+      prompt: 'B',
+      rubric: 'Correct.',
+      mocks: [{ tool: 'Read', return: 'opt-out' }],
+      mocksStrict: false,
+    }]));
+
+    const resolved = await resolveNodeCliEvaluationRequest(request(root), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    });
+    const bindings = resolved.targets[0]?.behavior.mocks;
+
+    expect(bindings?.map((binding) => ({
+      sampleIds: binding.sampleIds,
+      strict: binding.strict,
+    }))).toEqual([
+      { sampleIds: ['sample-default'], strict: true },
+      { sampleIds: ['sample-opt-out'], strict: false },
+    ]);
   });
 
   it('binds a custom Runtime implementation into every sealed executor lease', async () => {
@@ -259,7 +298,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     await mkdir(join(root, 'workspace-b'));
     await writeFile(join(root, 'workspace-a', 'identity.txt'), 'workspace-a');
     await writeFile(join(root, 'workspace-b', 'identity.txt'), 'workspace-b');
-    await writeFile(join(root, 'samples.json'), JSON.stringify([{
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
       cwd: 'workspace-a', allowedTools: ['Read'],
     }, {
@@ -336,7 +375,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
 
   it('groups record-scoped evaluators across multiple samples without missing bindings', async () => {
     const root = await fixture('multi-sample');
-    await writeFile(join(root, 'samples.json'), JSON.stringify([
+    await writeFile(join(root, 'samples.json'), sampleSetJson([
       {
         sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
         assertions: [
@@ -372,7 +411,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
 
   it('seals partial LLM and rubric applicability instead of scoring unintended samples', async () => {
     const root = await fixture('partial-applicability');
-    await writeFile(join(root, 'samples.json'), JSON.stringify([
+    await writeFile(join(root, 'samples.json'), sampleSetJson([
       {
         sample_id: 'sample-a', prompt: 'A', dimensions: { accuracy: 'Correct.' },
         assertions: [{ type: 'semantic_similarity', reference: 'A' }],
@@ -411,7 +450,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
 
   it('keeps production sample validation strict despite the legacy ambient escape hatch', async () => {
     const root = await fixture('strict-loader');
-    await writeFile(join(root, 'samples.json'), JSON.stringify([{
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
       assertions: [{ type: 'contains', value: 'X' }],
     }]));
@@ -425,15 +464,15 @@ describe('resolveNodeCliEvaluationRequest', () => {
 
   it('preserves normalized sample dependency requirements for host preflight', async () => {
     const root = await fixture('dependencies');
-    await writeFile(join(root, 'samples.json'), JSON.stringify({
-      requires: {
+    await writeFile(join(root, 'samples.json'), sampleSetJson(
+      [{ sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.' }],
+      {
         tools: ['git', 'node'],
         files: ['./fixtures/input.json'],
         env: ['TOKEN'],
         preflight: ['node --version'],
       },
-      samples: [{ sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.' }],
-    }));
+    ));
 
     const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(
       request(root),

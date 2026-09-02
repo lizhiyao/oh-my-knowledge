@@ -7,6 +7,7 @@ import { enumStringParser, integerStringParser, numberStringParser } from '../oc
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
+import { createEvalSampleSetDocument } from '../../inputs/schemas/sample-set.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type {
   CoreEvolveOutcomeInput,
@@ -190,7 +191,10 @@ export async function runEvolve(
         throw new CliExit(1);
       }
       mkdirSync(dirname(outFile), { recursive: true });
-      writeFileSync(outFile, JSON.stringify(samples, null, 2));
+      writeFileSync(
+        outFile,
+        JSON.stringify(createEvalSampleSetDocument(samples), null, 2),
+      );
       const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       process.stderr.write(lang === 'zh'
         ? `已生成 ${samples.length} 条用例${cost}，开始自迭代。\n`

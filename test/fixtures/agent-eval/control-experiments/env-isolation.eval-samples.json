@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "env-001",
     "prompt": "只允许读取当前工作目录下的 ./skills/runtime-context-check.md 第一行，并原样输出第一行里的 runtime token。不要搜索整个仓库，不要使用 Glob。如果文件不存在，直接输出 NO_FILE_IN_CWD。",
@@ -56,4 +58,5 @@
       "runtime_context_sensitivity": "切换 cwd 后是否输出不同 runtime marker"
     }
   }
-]
+  ]
+}

@@ -1,0 +1,620 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.eval-sample-set/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "additionalProperties": false,
+      "properties": {
+        "env": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "files": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "preflight": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tools": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "__schema10": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema11": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema12": {
+      "additionalProperties": {
+        "$ref": "#/$defs/__schema13"
+      },
+      "propertyNames": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "__schema13": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema14": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema15": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema16"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema16": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema16"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema16"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema2": {
+      "items": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "allowedTools": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "assertions": {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "type": "array"
+        },
+        "capability": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "construct": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        },
+        "covers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "targetKind": {
+                "enum": [
+                  "skill",
+                  "skill_file",
+                  "frontmatter",
+                  "reference",
+                  "script",
+                  "hard_rule",
+                  "workflow",
+                  "workflow_node"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "targetKind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "cwd": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "difficulty": {
+          "enum": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "type": "string"
+        },
+        "dimensions": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "environment": {
+          "additionalProperties": false,
+          "properties": {
+            "cli_available": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "files_available": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "mocks": {
+          "items": {
+            "$ref": "#/$defs/__schema6"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "mocksStrict": {
+          "type": "boolean"
+        },
+        "prompt": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "provenance": {
+          "enum": [
+            "human",
+            "llm-generated",
+            "production-trace"
+          ],
+          "type": "string"
+        },
+        "rubric": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sample_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tripwire": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sample_id",
+        "prompt"
+      ],
+      "type": "object"
+    },
+    "__schema4": {
+      "additionalProperties": false,
+      "properties": {
+        "children": {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "type": "array"
+        },
+        "flags": {
+          "type": "string"
+        },
+        "fn": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "any",
+            "all"
+          ],
+          "type": "string"
+        },
+        "n": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "not": {
+          "type": "boolean"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "schema": {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "threshold": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "number"
+        },
+        "type": {
+          "enum": [
+            "contains",
+            "not_contains",
+            "regex",
+            "min_length",
+            "max_length",
+            "json_valid",
+            "json_schema",
+            "starts_with",
+            "ends_with",
+            "equals",
+            "not_equals",
+            "word_count_min",
+            "word_count_max",
+            "contains_all",
+            "contains_any",
+            "cost_max",
+            "latency_max",
+            "turns_max",
+            "turns_min",
+            "tools_called",
+            "tools_not_called",
+            "tools_count_max",
+            "tools_count_min",
+            "tool_output_contains",
+            "tool_input_contains",
+            "tool_input_not_contains",
+            "mock_hit",
+            "rouge_n_min",
+            "levenshtein_max",
+            "bleu_min",
+            "assert-set",
+            "semantic_similarity",
+            "custom",
+            "faithfulness",
+            "answer_relevancy",
+            "context_recall"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "number"
+            }
+          ]
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "weight": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "number"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema6": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "match": {
+              "$ref": "#/$defs/__schema8"
+            },
+            "return": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "tool": {
+              "$ref": "#/$defs/__schema7"
+            }
+          },
+          "required": [
+            "tool",
+            "return"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "match": {
+              "$ref": "#/$defs/__schema8"
+            },
+            "return_file": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool": {
+              "$ref": "#/$defs/__schema7"
+            }
+          },
+          "required": [
+            "tool",
+            "return_file"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "match": {
+              "$ref": "#/$defs/__schema8"
+            },
+            "return_seq": {
+              "items": {
+                "$ref": "#/$defs/__schema15"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "tool": {
+              "$ref": "#/$defs/__schema7"
+            }
+          },
+          "required": [
+            "tool",
+            "return_seq"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema7": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema8": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_glob": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "file_path": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "file_path_endswith": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "input": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "input_contains": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "url": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_glob": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "file_path": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "file_path_endswith": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "input": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "input_contains": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "url_glob": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "url_glob"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "command_glob": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "file_path": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "file_path_endswith": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "input": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "input_contains": {
+              "$ref": "#/$defs/__schema14"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema9": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-samples/v1/eval-sample-set.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "requires": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "samples": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "samples"
+  ],
+  "title": "OMK Eval Sample Set v1",
+  "type": "object"
+}

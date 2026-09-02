@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { mergeAppendSamples, appendSamplesToFile, pickAppendTargetFile } from '../../src/cli/commands/sample.js';
 import type { Sample } from '../../src/inputs/contracts/sample.js';
+import { createEvalSampleSetDocument } from '../../src/inputs/schemas/sample-set.js';
 
 const s = (id: string, prompt = 'p'): Sample => ({ sample_id: id, prompt }) as Sample;
 const ids = (arr: Sample[]): string[] => arr.map((x) => x.sample_id);
@@ -55,33 +56,38 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-append-')); });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('纯数组 json:追加并撞 id 去重,仍是数组', () => {
+  it('版本化 JSON：追加并撞 id 去重，保留协议包装', () => {
     const f = join(dir, 'eval-samples.json');
-    writeFileSync(f, JSON.stringify([s('s001'), s('s002')], null, 2));
+    writeFileSync(f, JSON.stringify(createEvalSampleSetDocument([s('s001'), s('s002')]), null, 2));
     const total = appendSamplesToFile(f, [s('s001'), s('s003')]);
     assert.equal(total, 4);
     const parsed = JSON.parse(readFileSync(f, 'utf-8'));
-    assert.ok(Array.isArray(parsed));
-    assert.deepEqual(parsed.map((x: Sample) => x.sample_id), ['s001', 's002', 's001-2', 's003']);
+    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v1');
+    assert.deepEqual(parsed.samples.map((x: Sample) => x.sample_id), ['s001', 's002', 's001-2', 's003']);
   });
 
-  it('wrapper object:保留 samples 外的其它顶层字段', () => {
+  it('版本化 JSON：保留 requires', () => {
     const f = join(dir, 'eval-samples.json');
-    writeFileSync(f, JSON.stringify({ version: 2, note: 'keep me', samples: [s('s001')] }, null, 2));
+    writeFileSync(f, JSON.stringify(createEvalSampleSetDocument(
+      [s('s001')],
+      { tools: ['git'] },
+    ), null, 2));
     appendSamplesToFile(f, [s('s002')]);
     const parsed = JSON.parse(readFileSync(f, 'utf-8'));
-    assert.equal(parsed.version, 2);
-    assert.equal(parsed.note, 'keep me');
+    assert.deepEqual(parsed.requires, { tools: ['git'] });
     assert.deepEqual(parsed.samples.map((x: Sample) => x.sample_id), ['s001', 's002']);
   });
 
-  it('yaml 文件:round-trip 保留 yaml 格式', () => {
+  it('YAML 文件：round-trip 保留 YAML 与版本化包装', () => {
     const f = join(dir, 'eval-samples.yaml');
-    writeFileSync(f, yaml.dump([s('s001')]));
+    writeFileSync(f, yaml.dump(createEvalSampleSetDocument([s('s001')])));
     appendSamplesToFile(f, [s('s002')]);
-    const parsed = yaml.load(readFileSync(f, 'utf-8')) as Sample[];
-    assert.ok(Array.isArray(parsed));
-    assert.deepEqual(parsed.map((x) => x.sample_id), ['s001', 's002']);
+    const parsed = yaml.load(readFileSync(f, 'utf-8')) as {
+      schemaVersion: string;
+      samples: Sample[];
+    };
+    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v1');
+    assert.deepEqual(parsed.samples.map((x) => x.sample_id), ['s001', 's002']);
   });
 });
 

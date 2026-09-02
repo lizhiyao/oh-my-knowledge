@@ -1,4 +1,6 @@
-[
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
   {
     "sample_id": "artifact-001",
     "prompt": "先确定当前工作目录，再读取当前工作目录下的 ./skills/runtime-context-check.md，返回第一行里的随机 runtime token 和文件总行数。不要搜索整个仓库，不要解释。",
@@ -87,4 +89,5 @@
       "discipline": "是否遵守 artifact 规定的受控输出格式"
     }
   }
-]
+  ]
+}

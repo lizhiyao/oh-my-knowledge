@@ -217,11 +217,11 @@ function mockValidationError(value: unknown): string | undefined {
       || !value.return_seq.every(isMockReturn)
     )
   ) return '"return_seq" must be a non-empty array of mock returns';
-  if (
-    value.return === undefined
-    && value.return_file === undefined
-    && value.return_seq === undefined
-  ) return 'mock requires "return", "return_file", or "return_seq"';
+  const returnSources = [value.return, value.return_file, value.return_seq]
+    .filter((candidate) => candidate !== undefined).length;
+  if (returnSources !== 1) {
+    return 'mock requires exactly one of "return", "return_file", or "return_seq"';
+  }
   if (value.match === undefined) return undefined;
   if (!isRecord(value.match)) return '"match" must be an object when present';
   const matchFields = [
@@ -234,6 +234,9 @@ function mockValidationError(value: unknown): string | undefined {
   ] as const;
   if (!hasOnlyKeys(value.match, [...matchFields, 'input'])) {
     return '"match" contains an unsupported field';
+  }
+  if (value.match.url !== undefined && value.match.url_glob !== undefined) {
+    return '"match.url" and "match.url_glob" are mutually exclusive';
   }
   for (const field of matchFields) {
     if (value.match[field] !== undefined && !isNonEmptyString(value.match[field])) {
@@ -277,19 +280,6 @@ function mockHitReferenceValidationError(
     }
     const childError = mockHitReferenceValidationError(assertion.children, mockKeys);
     if (childError) return childError;
-  }
-  return undefined;
-}
-
-export function dependencyRequirementsValidationError(value: unknown): string | undefined {
-  if (!isRecord(value)) return '"requires" must be an object';
-  if (!hasOnlyKeys(value, ['tools', 'files', 'env', 'preflight'])) {
-    return '"requires" contains an unsupported field';
-  }
-  for (const field of ['tools', 'files', 'env', 'preflight'] as const) {
-    if (value[field] !== undefined && !isStringArray(value[field])) {
-      return `"requires.${field}" must be an array of non-empty strings`;
-    }
   }
   return undefined;
 }
@@ -349,7 +339,10 @@ export function sampleContractValidationError(
   if (value.mocksStrict !== undefined && typeof value.mocksStrict !== 'boolean') {
     return '"mocksStrict" must be boolean when present';
   }
-  for (const field of ['allowedTools', 'expectedTools', 'capability'] as const) {
+  if (value.mocksStrict !== undefined && !Array.isArray(value.mocks)) {
+    return '"mocksStrict" requires a non-empty "mocks" array';
+  }
+  for (const field of ['allowedTools', 'capability'] as const) {
     if (value[field] !== undefined && !isStringArray(value[field])) {
       return `"${field}" must be an array of non-empty strings`;
     }

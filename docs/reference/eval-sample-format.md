@@ -1,6 +1,6 @@
 # Eval sample format
 
-An **eval-samples** file is the test set `omk eval` / `omk doctor` run against — a list of cases, each a `prompt` plus optional `rubric`, `assertions`, and metadata. Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`); YAML is easier to hand-write.
+An **eval-samples** file is the versioned test-set document `omk eval` / `omk doctor` run against. Its `samples` array contains cases, each with a `prompt` plus optional `rubric`, `assertions`, and metadata. JSON and YAML are supported (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`); YAML is easier to hand-write.
 
 For *designing* a rigorous sample set (what to test, how many, the metadata fields), see [sample design](../specs/sample-design-spec) — this page is the field-by-field format reference.
 
@@ -15,25 +15,32 @@ Recommended layouts:
 
 Compatibility note: flat-skill sidecars such as `skills/<name>.eval-samples.json` are still supported. Directory skills do not read `<skill>/eval-samples.*`; use `<skill>/.omk/samples.json` for skill-local samples.
 
+Every file must declare `schemaVersion: omk.eval-sample-set/v1`. Legacy top-level arrays are rejected. The root document, every sample, assertion, mock, and nested contract are strict: unknown fields fail before execution instead of being ignored. The published JSON Schema is [`schemas/eval-samples/v1/eval-sample-set.schema.json`](../../schemas/eval-samples/v1/eval-sample-set.schema.json).
+
 ```json
-[
-  {
-    "sample_id": "s001",
-    "prompt": "Review this code for security issues",
-    "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-    "rubric": "Should identify SQL injection risk and recommend parameterized queries",
-    "assertions": [
-      { "type": "contains", "value": "SQL injection", "weight": 1 },
-      { "type": "contains", "value": "parameterized", "weight": 1 },
-      { "type": "not_contains", "value": "looks fine", "weight": 0.5 }
-    ],
-    "dimensions": {
-      "security": "did it identify the injection vulnerability?",
-      "actionability": "did it give directly usable fix code?"
+{
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [
+    {
+      "sample_id": "s001",
+      "prompt": "Review this code for security issues",
+      "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
+      "rubric": "Should identify SQL injection risk and recommend parameterized queries",
+      "assertions": [
+        { "type": "contains", "value": "SQL", "weight": 1 },
+        { "type": "contains", "value": "parameterized", "weight": 1 },
+        { "type": "not_contains", "value": "safe", "weight": 0.5 }
+      ],
+      "dimensions": {
+        "security": "did it identify the injection vulnerability?",
+        "actionability": "did it give directly usable fix code?"
+      }
     }
-  }
-]
+  ]
+}
 ```
+
+The root may also contain `requires` with `tools`, `files`, `env`, and `preflight` string arrays. No other root fields are accepted.
 
 ## Fields
 
@@ -73,7 +80,7 @@ A sample can also carry **metadata** (documentation / diagnostics only — these
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | data source |
 | `covers` | `{ targetKind, ref }[]` | optional declared skill-structure anchors for high-value samples; used by Skill Map only |
 | `mocks` | `object[]` | tool-call interception list — requires an executor with mock-interception support |
-| `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `false`) |
+| `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `true`; set `false` only to explicitly allow pass-through) |
 | `tripwire` | `boolean` | trap sample: the LLM is **expected** to fail (default `false`) |
 | `environment` | `object` | prompt-only preconditions: `cli_available` / `files_available` / `notes`; does not materialize files or env vars |
 
@@ -86,15 +93,17 @@ The loader also validates cross-field references. Every `mock_hit: "Tool:N"` mus
 Studio also surfaces this declaration in the Skill Map node detail panel: selecting a node shows whether its structure relation is explicitly declared by `sample.covers`.
 
 ```yaml
-- sample_id: release-risk-summary
-  prompt: "Summarize release risk and rollback plan."
-  covers:
-    - targetKind: reference
-      ref: references/release-policy.md
-    - targetKind: workflow
-      ref: release
-    - targetKind: workflow_node
-      ref: release.check
+schemaVersion: omk.eval-sample-set/v1
+samples:
+  - sample_id: release-risk-summary
+    prompt: "Summarize release risk and rollback plan."
+    covers:
+      - targetKind: reference
+        ref: references/release-policy.md
+      - targetKind: workflow
+        ref: release
+      - targetKind: workflow_node
+        ref: release.check
 ```
 
 Allowed `targetKind` values are `skill`, `skill_file`, `frontmatter`, `reference`, `script`, `hard_rule`, `workflow`, and `workflow_node`. For `reference` / `script`, `ref` is the path relative to the skill root. For `hard_rule` / `workflow`, use the rule or workflow id. For `workflow_node`, use `workflowId.nodeId`. This field never enters grading, the judge prompt, the verdict, or the sample fingerprint.
@@ -105,8 +114,11 @@ URLs in `prompt` and `context` are auto-fetched before evaluation and inlined in
 
 ```json
 {
-  "sample_id": "s001",
-  "prompt": "Generate test cases from this PRD: https://wiki.example.com/prd/feature-x"
+  "schemaVersion": "omk.eval-sample-set/v1",
+  "samples": [{
+    "sample_id": "s001",
+    "prompt": "Generate test cases from this PRD: https://wiki.example.com/prd/feature-x"
+  }]
 }
 ```
 
