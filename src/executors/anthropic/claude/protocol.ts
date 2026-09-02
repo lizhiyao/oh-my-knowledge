@@ -3,7 +3,7 @@ import {
   checkedSumTokenCounts,
   nonNegativeMetric,
   optionalTokenCount,
-} from '../../../shared/token-usage.js';
+} from '../../core/token-usage.js';
 import { extractClaudeTrace, isClaudeResultMessage } from './trace.js';
 
 interface ClaudeTokenUsage {

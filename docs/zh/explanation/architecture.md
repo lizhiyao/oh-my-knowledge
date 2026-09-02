@@ -56,14 +56,17 @@ knowledge-artifacts/
 Governance 只消费经过认证的评测与观测证据，不重新计算 Core 分数或决定。各能力仍保持独立
 子域，共享生命周期所有者不等于把 `knowledge-artifacts` 变成通用工具层。
 
-评测工作流输入与评分类适配共享 workflow 边界；带副作用的 Runtime 就绪检查归 executors 所有：
+评测输入、evaluator instrument 与 Gold 校准共享 workflow 边界；带副作用的 Runtime 就绪检查归 executors 所有：
 
 ```text
 eval-workflows/
+├── analysis/           # workflow 所有的可复用统计原语
 ├── inputs/             # 配置、sample、知识载体来源解析与 schema
-├── grading/            # 评委调用、评委 trace 与 human-gold 校准适配
+├── instruments/        # 评委调用、评委 trace 与 instrument contracts
+├── gold/               # human-gold 数据集、校准与 CLI 支持
 ├── input-compilation/  # 宿主输入 → 宿主无关测量定义
 ├── runtime-adapter/    # binding 装配与声明式 preflight 准入
+├── projections/        # 基于认证 Core 产物的下游视图
 └── production-host/    # Node 宿主组合与副作用编排
 
 executors/
@@ -72,10 +75,22 @@ executors/
 └── <provider>/         # provider 专属 Runtime 实现
 ```
 
-`eval-workflows/grading` 不拥有测量含义；它把评委执行与 gold 校准适配到 Core 所拥有的 instrument
-和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
+`eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
+适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
 `eval-workflows/runtime-adapter/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
 这些子域即使在物理目录上聚合，仍作为独立节点参与依赖图检查。
+
+Evidence 持久化与跨来源关联属于同一个不做决策的边界：
+
+```text
+evidence/
+├── storage/  # 规范布局、命名、bundle、发现与完整性检查
+└── graph/    # doctor、eval 与 observe evidence 关联
+```
+
+Evidence 只保存、验证、定位和关联事实，不评分、不派生诊断，也不决定知识生命周期动作。
+公开 package 入口位于所属领域的自然 `index.ts` 或语义文件，`package.json#exports` 是唯一公开清单。
+内部生产模块直接依赖具体领域文件，不经这些 package barrel 跨域。
 
 Diagnosis 与 Observability 是一个显式建模的边界：Observability 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observability 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
 

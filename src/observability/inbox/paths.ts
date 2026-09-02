@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { globalLayout, projectLayout } from '../../shared/storage-layout.js';
-import { isReportFileName } from '../../measurement-artifacts/file-names.js';
+import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
+import { isReportFileName } from '../../evidence/storage/file-names.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = projectLayout().observeInboxDir;
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = globalLayout().observeInboxDir;

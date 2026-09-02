@@ -20,6 +20,16 @@ import {
   resolveEvalSampleJsonSchema,
   type EvalSampleSetDocument,
 } from 'oh-my-knowledge/eval-samples';
+import { projectCoreArtifactGraph } from 'oh-my-knowledge/projections';
+import { createCoreStudioCatalog } from 'oh-my-knowledge/studio';
+import {
+  createObservationMcpServer,
+  LOCAL_OBSERVATION_PRINCIPAL,
+} from 'oh-my-knowledge/mcp';
+import {
+  apply as applyDshPlugin,
+  name as dshPluginName,
+} from 'oh-my-knowledge/dsh-plugin';
 
 declare const runtime: EvaluationEngineRuntime;
 declare const definition: EvaluationDefinition;
@@ -38,6 +48,12 @@ const sampleSet: EvalSampleSetDocument = createEvalSampleSetDocument([{
 const sampleSchema: URL = resolveEvalSampleJsonSchema('eval-sample-set.schema.json');
 void sampleSet;
 void sampleSchema;
+void projectCoreArtifactGraph;
+void createCoreStudioCatalog;
+void createObservationMcpServer;
+void LOCAL_OBSERVATION_PRINCIPAL;
+void applyDshPlugin;
+void dshPluginName;
 
 const engine = createEvaluationEngine({
   ...runtime,

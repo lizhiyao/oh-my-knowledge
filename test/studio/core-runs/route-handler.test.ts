@@ -9,7 +9,7 @@ import {
   type CoreStudioCatalog,
   type CoreStudioRunCard,
   type CoreStudioRunDetail,
-} from '../../../src/studio/public.js';
+} from '../../../src/studio/index.js';
 
 const digest = (seed: string): string => `${seed}-${'a'.repeat(64)}`;
 

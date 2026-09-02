@@ -10,22 +10,22 @@
       "import": "./dist/index.js"
     },
     "./eval-core": {
-      "types": "./dist/package-api/eval-core.d.ts",
-      "import": "./dist/package-api/eval-core.js"
+      "types": "./dist/eval-core/index.d.ts",
+      "import": "./dist/eval-core/index.js"
     },
     "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
     "./eval-samples": {
-      "types": "./dist/package-api/eval-samples.d.ts",
-      "import": "./dist/package-api/eval-samples.js"
+      "types": "./dist/eval-workflows/inputs/eval-samples.d.ts",
+      "import": "./dist/eval-workflows/inputs/eval-samples.js"
     },
     "./eval-samples/schemas/v1/*": "./dist/eval-workflows/inputs/contracts/schemas/v1/*",
     "./projections": {
-      "types": "./dist/eval-workflows/downstream-projections/index.d.ts",
-      "import": "./dist/eval-workflows/downstream-projections/index.js"
+      "types": "./dist/eval-workflows/projections/index.d.ts",
+      "import": "./dist/eval-workflows/projections/index.js"
     },
     "./studio": {
-      "types": "./dist/studio/public.d.ts",
-      "import": "./dist/studio/public.js"
+      "types": "./dist/studio/index.d.ts",
+      "import": "./dist/studio/index.js"
     },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",

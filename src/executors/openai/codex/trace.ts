@@ -1,7 +1,7 @@
 import type { ToolCallInfo, TurnInfo } from '../../contracts/trace.js';
 import { safeSliceForJson } from '../../../shared/json-safe-truncation.js';
 import type { CodexEvent } from './protocol.js';
-import { normalizeToolIdentity } from '../../../shared/tool-identity.js';
+import { normalizeToolIdentity } from '../../core/tool-identity.js';
 
 // Codex CLI(codex 0.125)`exec --json` 与 SDK ThreadEvent 共用的 omk trace 抽取器。
 // 跟 Claude message trace 不同源:

@@ -1,11 +1,15 @@
 import type { ExecutorFn, ExecutorInput } from '../contracts/ports.js';
-import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
 import {
   getExecutorDescriptor,
   type ExecutorCapabilities,
 } from './registry.js';
 
 export type { ExecutorCapabilities, SampleMockSupport } from './registry.js';
+
+interface SampleMockDeclaration {
+  readonly sample_id: string;
+  readonly mocks?: readonly unknown[];
+}
 
 /**
  * Custom script executors receive the OMK_MOCK_* protocol environment and own
@@ -48,7 +52,7 @@ function unsupportedMocksMessage(
 }
 
 export function assertSamplesCompatibleWithExecutor(
-  samples: Sample[],
+  samples: readonly SampleMockDeclaration[],
   executorName: string,
   lang: 'zh' | 'en' = 'zh',
 ): void {

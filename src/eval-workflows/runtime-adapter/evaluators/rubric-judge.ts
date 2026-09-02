@@ -17,11 +17,11 @@ import {
   buildJudgePrompt,
   getJudgePromptHash,
   JUDGE_SYSTEM_PROMPT,
-} from '../../../shared/llm-prompts/judge-prompts.js';
+} from '../../instruments/prompts/judge-prompts.js';
 import {
   buildJudgeTraceSummary,
   JUDGE_TRACE_SUMMARY_ALGORITHM_VERSION,
-} from '../../grading/judge-trace.js';
+} from '../../instruments/judge-trace.js';
 import type { ToolCallInfo, TurnInfo } from '../../../executors/contracts/trace.js';
 import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
 import { createSameProcessEvaluatorAdapter } from '../adapters/shared/same-process.js';

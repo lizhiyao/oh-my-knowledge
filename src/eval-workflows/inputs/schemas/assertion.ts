@@ -3,7 +3,7 @@ import type { Assertion } from '../contracts/assertion.js';
 import {
   ASYNC_ASSERTION_TYPE_NAMES,
   SYNC_ASSERTION_TYPE_NAMES,
-} from '../../../shared/assertion-types.js';
+} from '../assertion-types.js';
 
 const JsonObjectSchema = z.record(z.string(), z.json());
 

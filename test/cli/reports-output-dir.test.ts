@@ -9,8 +9,8 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { parseRunConfig } from '../../src/cli/lib/parse-run-config.js';
-import { globalReportsDir, projectReportsDir } from '../../src/measurement-artifacts/directories.js';
-import { OMK_HOME } from '../../src/measurement-artifacts/default-dirs.js';
+import { globalReportsDir, projectReportsDir } from '../../src/evidence/storage/directories.js';
+import { OMK_HOME } from '../../src/evidence/storage/default-dirs.js';
 
 const BASE_FLAGS = {
   'skill-dir': 'test/fixtures/code-review/skills',

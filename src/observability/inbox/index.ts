@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isReportFileName, randomRunToken, reportFilePath } from '../../measurement-artifacts/file-names.js';
+import { isReportFileName, randomRunToken, reportFilePath } from '../../evidence/storage/file-names.js';
 import type { ToolCallInfo } from '../../executors/contracts/trace.js';
 import type { ObservationExperienceReport } from '../contracts/experience.js';
 import type {
@@ -32,7 +32,7 @@ import {
 import { normalizeTraceTimestamp, type TraceEvent } from '../trace/trace-ir.js';
 import { isSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
 import { isToolCallFailure, isToolCallSuccess } from '../../executors/tool-call-status.js';
-import { isTraceSourceKind as isObservationSourceKind } from '../../shared/trace-source-kind.js';
+import { isTraceSourceKind as isObservationSourceKind } from '../../executors/core/trace-source-kind.js';
 import {
   incrementRecordCount,
   ownRecordValue,

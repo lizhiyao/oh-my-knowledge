@@ -14,7 +14,7 @@ import type {
   ExecutionBundle,
   PreparedEvaluationStageSession,
   SealedRunPlan,
-} from '../../../src/package-api/eval-core.js';
+} from '../../../src/eval-core/index.js';
 import type { RunPlan } from '../../../src/eval-core/contracts/index.js';
 
 declare const executorContext: ExecutorTrialContext;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Mock, MockMatch, MockReturn } from '../contracts/mock.js';
+import type { Mock, MockMatch, MockReturn } from '../../../executors/contracts/mock.js';
 
 const mockMatchBaseShape = {
   file_path: z.string().min(1).optional(),

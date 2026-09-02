@@ -133,7 +133,7 @@ type HedgingVerdict = {
 
 async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
-  executor: LlmExecutor,         // reuses the executor from src/eval-workflows/grading/judge.ts
+  executor: LlmExecutor,         // reuses the executor from src/eval-workflows/instruments/judge.ts
   opts?: { maxCandidates?: number; model?: string },
 ): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
 ```

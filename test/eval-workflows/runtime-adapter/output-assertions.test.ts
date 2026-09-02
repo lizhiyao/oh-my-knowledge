@@ -34,7 +34,7 @@ import {
   OUTPUT_ASSERTION_EVALUATOR_IDENTITY,
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
 } from '../../../src/eval-workflows/runtime-adapter/index.js';
-import { SYNC_ASSERTION_TYPE_NAMES } from '../../../src/shared/assertion-types.js';
+import { SYNC_ASSERTION_TYPE_NAMES } from '../../../src/eval-workflows/inputs/assertion-types.js';
 import {
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,

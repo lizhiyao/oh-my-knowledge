@@ -3,11 +3,11 @@ import {
   bootstrapWithMetric,
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../../../src/shared/statistics/bootstrap.js';
+} from '../../../src/eval-workflows/analysis/bootstrap.js';
 import {
   computeAgreementWithCI,
   computeKrippendorffAlpha,
-} from '../../../src/eval-workflows/grading/human-gold.js';
+} from '../../../src/eval-workflows/gold/human.js';
 import {
   digestCanonicalJson,
   schemaIdentityKey,

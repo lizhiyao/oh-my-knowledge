@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { coreRunArtifactDirectoryName, type StoredCoreRunArtifacts } from '../artifact-store/index.js';
-import { projectCoreArtifactGraph } from '../downstream-projections/index.js';
+import { projectCoreArtifactGraph } from '../projections/artifact-graph.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 
 export interface PersistedCoreArtifactSidecars {

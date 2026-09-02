@@ -10,8 +10,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
-import { indexDoctorWrite, indexObserveWrite } from '../../../src/measurement-artifacts/discovery-index.js';
-import { writeMeasurementReportBundle } from '../../../src/measurement-artifacts/report-bundle.js';
+import { indexDoctorWrite, indexObserveWrite } from '../../../src/evidence/storage/discovery-index.js';
+import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 
 function reportFileName(id: string): string {
   return join(id, 'report.json');

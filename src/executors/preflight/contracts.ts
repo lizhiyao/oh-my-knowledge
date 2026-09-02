@@ -27,3 +27,23 @@ export interface DependencyCheckResult {
   ok: boolean;
   missing: DependencyIssue[];
 }
+
+/** Minimum artifact facts required by generic host dependency preflight. */
+export interface PreflightArtifact {
+  readonly content?: string | null;
+  readonly skillRoot?: string;
+  readonly cwd?: string;
+  readonly execRoot?: string;
+  readonly locator?: string;
+  readonly source?: string;
+  readonly metadata?: {
+    readonly preflight?: unknown;
+  };
+}
+
+/** Minimum sample facts required for dependency extraction from assertion values. */
+export interface PreflightSample {
+  readonly assertions?: readonly {
+    readonly value?: unknown;
+  }[];
+}

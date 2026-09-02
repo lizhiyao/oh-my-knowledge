@@ -9,12 +9,12 @@
 import { existsSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
-import type { Artifact } from '../../knowledge-artifacts/contracts.js';
-import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
 import type {
   DependencyCheckResult,
   DependencyIssue,
   DependencyRequirements,
+  PreflightArtifact,
+  PreflightSample,
 } from './contracts.js';
 
 export type {
@@ -22,6 +22,8 @@ export type {
   DependencyIssue,
   DependencyReasonCode,
   DependencyRequirements,
+  PreflightArtifact,
+  PreflightSample,
 } from './contracts.js';
 
 // ---------------------------------------------------------------------------
@@ -112,7 +114,7 @@ function extractFromText(text: string): { tools: Set<string>; files: Set<string>
  */
 export function extractDependencies(
   skillContents: string[],
-  samples: Sample[],
+  samples: readonly PreflightSample[],
 ): DependencyRequirements {
   const tools = new Set<string>();
   const files = new Set<string>();
@@ -158,7 +160,7 @@ export function extractDependencies(
  * 互相错位,导致大量 false-positive missing。
  */
 export function extractFilesByBase(
-  artifacts: Artifact[],
+  artifacts: readonly PreflightArtifact[],
   defaultCwd: string,
 ): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
@@ -193,7 +195,7 @@ function isToolAvailable(tool: string, env?: NodeJS.ProcessEnv): boolean {
 /**
  * Build an env with skill directories' node_modules/.bin prepended to PATH.
  */
-function buildPreflightEnv(artifacts?: Artifact[]): NodeJS.ProcessEnv {
+function buildPreflightEnv(artifacts?: readonly PreflightArtifact[]): NodeJS.ProcessEnv {
   if (!artifacts) return process.env;
   const extraPaths: string[] = [];
   for (const a of artifacts) {
@@ -286,7 +288,7 @@ const PREFLIGHT_TIMEOUT_MS = 10_000;
 /**
  * Extract preflight commands from artifact metadata (parsed from SKILL.md frontmatter).
  */
-function extractPreflightFromArtifacts(artifacts: Artifact[]): string[] {
+function extractPreflightFromArtifacts(artifacts: readonly PreflightArtifact[]): string[] {
   const commands: string[] = [];
   for (const artifact of artifacts) {
     const pf = artifact.metadata?.preflight;
@@ -366,10 +368,10 @@ function checkFilesByBase(filesByBase: Map<string, Set<string>>): DependencyIssu
  */
 export async function preflightDependencies(
   skillContents: string[],
-  samples: Sample[],
+  samples: readonly PreflightSample[],
   cwd: string,
   explicitRequires?: DependencyRequirements,
-  artifacts?: Artifact[],
+  artifacts?: readonly PreflightArtifact[],
 ): Promise<DependencyCheckResult> {
   const env = buildPreflightEnv(artifacts);
   const autoDetected = extractDependencies(skillContents, samples);

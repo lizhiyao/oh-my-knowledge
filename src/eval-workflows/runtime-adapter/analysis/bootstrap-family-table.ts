@@ -3,7 +3,7 @@ import {
   bootstrapDiffCI,
   bootstrapMeanCI,
   bootstrapPairedDiffCI,
-} from '../../../shared/statistics/bootstrap.js';
+} from '../../analysis/bootstrap.js';
 import {
   IdentifierSchema,
   SamplingUnitIdsSchema,

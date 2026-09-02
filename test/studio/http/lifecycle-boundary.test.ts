@@ -14,7 +14,7 @@ describe('Studio HTTP lifecycle boundary', () => {
       './contracts.js',
     ]);
     expect(listener).not.toMatch(/studio\/(?:application|core-runs|presentation)/);
-    expect(listener).not.toMatch(/\.\.\/(?:\.\.\/)?(?:diagnosis|doctor|managed|measurement-artifacts|observability|shared)\//);
+    expect(listener).not.toMatch(/\.\.\/(?:\.\.\/)?(?:diagnosis|doctor|managed|evidence|observability|shared)\//);
   });
 
   it('keeps request composition independent from port binding and takeover', () => {

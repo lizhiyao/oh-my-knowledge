@@ -4,7 +4,7 @@ import {
   optionalTokenCount,
   splitInclusiveInputTokens,
   sumTokenCounts,
-} from '../../../shared/token-usage.js';
+} from '../../core/token-usage.js';
 import { extractCodexTrace, isCodexResultEvent } from './trace.js';
 
 // Codex CLI `codex exec --json` 事件流 schema（基于 codex 0.125 实测）。

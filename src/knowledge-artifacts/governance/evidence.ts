@@ -1,4 +1,4 @@
-import type { CoreManagedEvidenceProjection } from '../../eval-workflows/downstream-projections/index.js';
+import type { CoreManagedEvidenceProjection } from '../../eval-workflows/projections/contracts.js';
 import type { ManagedEvidenceRef } from './contracts.js';
 import {
   appendManagedEvidence,

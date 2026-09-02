@@ -1,7 +1,7 @@
 import { createExecutor } from '../../executors/index.js';
 import { executorSupportsSampleMocks } from '../../executors/core/capabilities.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../eval-workflows/evaluation-defaults.js';
-import { sampleMockReferenceKeys } from '../../shared/sample-contract.js';
+import { sampleMockReferenceKeys } from '../../eval-workflows/inputs/sample-contract.js';
 import type { Sample, SampleProvenance } from '../../eval-workflows/inputs/contracts/sample.js';
 import { detailedSchemaIssue } from '../../eval-workflows/inputs/schemas/error.js';
 import { MockSchema } from '../../eval-workflows/inputs/schemas/mock.js';

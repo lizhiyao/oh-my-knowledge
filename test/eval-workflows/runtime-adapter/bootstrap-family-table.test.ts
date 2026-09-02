@@ -4,7 +4,7 @@ import {
   bootstrapDiffCI,
   bootstrapMeanCI,
   bootstrapPairedDiffCI,
-} from '../../../src/shared/statistics/bootstrap.js';
+} from '../../../src/eval-workflows/analysis/bootstrap.js';
 import {
   digestCanonicalJson,
   schemaIdentityKey,

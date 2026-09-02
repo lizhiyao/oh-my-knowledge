@@ -18,7 +18,7 @@ import {
   type ExecutorTrialContext,
 } from '../../../../eval-core/execution/index.js';
 import type { CliMockHandle } from '../../../../executors/mock-runtime/runtime.js';
-import type { Mock, MockMatch, MockReturn } from '../../../inputs/contracts/mock.js';
+import type { Mock, MockMatch, MockReturn } from '../../../../executors/contracts/mock.js';
 import type { RuntimeBindingOf } from '../../types.js';
 import type {
   OmkBindingResourceLease,

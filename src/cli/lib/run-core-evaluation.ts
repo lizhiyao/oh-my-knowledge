@@ -27,13 +27,13 @@ import {
   projectCoreCliBatchOutcome,
   projectCoreCliRunOutcome,
   projectCoreCliSeriesOutcome,
-  projectCoreManagedEvidence,
-} from '../../eval-workflows/downstream-projections/index.js';
+} from '../../eval-workflows/projections/cli.js';
+import { projectCoreManagedEvidence } from '../../eval-workflows/projections/managed.js';
 import { discoverBatchSkills } from '../../eval-workflows/inputs/skill-loader.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
-import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
-import { generateRunId } from '../../measurement-artifacts/run-id.js';
-import { globalLayout, projectLayout } from '../../shared/storage-layout.js';
+import { projectReportsDir, globalReportsDir } from '../../evidence/storage/directories.js';
+import { generateRunId } from '../../evidence/storage/run-id.js';
+import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';
 

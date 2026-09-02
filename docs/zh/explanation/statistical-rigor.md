@@ -36,7 +36,7 @@ Bootstrap uncertainty 回答的是观测差异能否与重采样噪声区分，�
 
 事后 Gold comparison 属于 exploratory calibration，不会反向改写预注册的 release Decision。
 
-实现：显式 projection 位于 `src/eval-workflows/downstream-projections/gold.ts`；预注册 Core Analysis node 位于 `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`。
+实现：显式 projection 位于 `src/eval-workflows/projections/gold.ts`；预注册 Core Analysis node 位于 `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`。
 
 ## 三、评委去偏与 prompt identity
 

@@ -36,7 +36,7 @@ The projection reports:
 
 Post-hoc Gold comparison is exploratory calibration. It does not retroactively rewrite the preregistered release Decision.
 
-Implementation: the explicit projection is `src/eval-workflows/downstream-projections/gold.ts`; the preregistered Core Analysis node is `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`.
+Implementation: the explicit projection is `src/eval-workflows/projections/gold.ts`; the preregistered Core Analysis node is `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`.
 
 ## 3. Judge debiasing and prompt identity
 

@@ -1,6 +1,6 @@
 import type { ExecResult } from './result.js';
 import type { ExecutorRuntimeFingerprint } from './runtime.js';
-import type { Mock } from '../../eval-workflows/inputs/contracts/mock.js';
+import type { Mock } from './mock.js';
 
 export interface ExecutorInput {
   model: string;
