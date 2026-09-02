@@ -1,4 +1,4 @@
-import type { ManagedEvidenceRef } from '../../src/managed/contracts.js';
+import type { ManagedEvidenceRef } from '../../src/knowledge-artifacts/governance/contracts.js';
 
 const DIGEST_A = `sha256:${'a'.repeat(64)}`;
 const DIGEST_B = `sha256:${'b'.repeat(64)}`;

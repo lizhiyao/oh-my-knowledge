@@ -4,7 +4,7 @@ import { listMeasurementReportPaths, type MeasurementDomain } from './report-bun
 
 /**
  * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
- * (src/managed/store.ts)。测量产物绑用例集上下文(construct validity,不可全局化),
+ * (src/knowledge-artifacts/governance/store.ts)。测量产物绑用例集上下文(construct validity,不可全局化),
  * 默认落项目 `.omk/`,全局作显式 opt-in。
  *
  * 「记录优先」—— 目录里有匹配 report 文件才算数（不是「目录存在」），与 managed 同口径，

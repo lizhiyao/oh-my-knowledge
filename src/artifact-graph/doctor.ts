@@ -11,12 +11,12 @@ import {
   extractSkillHardRules,
   extractSkillWorkflows,
   parseSkillFrontmatter,
-} from '../skill-definition/hard-rules.js';
+} from '../knowledge-artifacts/skills/hard-rules.js';
 import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillReport,
-} from '../doctor/contracts.js';
+} from '../knowledge-artifacts/doctor/contracts.js';
 import type { Lang } from '../shared/language.js';
 import type {
   ArtifactGraphBinding,

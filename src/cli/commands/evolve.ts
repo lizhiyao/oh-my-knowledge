@@ -164,7 +164,7 @@ export async function runEvolve(
 
   if (!hasSamples) {
     try {
-      const { generateSamples } = await import('../../authoring/generator.js');
+      const { generateSamples } = await import('../../knowledge-artifacts/authoring/generator.js');
       const skillContent = readFileSync(resolve(skillPath), 'utf-8');
       // outFile:已存在目录写进内部 eval-samples.json,已存在文件覆盖,不存在按扩展名 —— statSync
       // 判型,不被带点目录名(samples.v2/)骗。loadSamples 目录模式会自动发现生成的文件。
@@ -210,7 +210,7 @@ export async function runEvolve(
     }
   }
 
-  const { evolveSkillCore } = await import('../../authoring/core-evolver.js');
+  const { evolveSkillCore } = await import('../../knowledge-artifacts/authoring/core-evolver.js');
   const { runCoreEvaluationCommand } = await import('../lib/run-core-evaluation.js');
   const evolveEffort = flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined;
   const evaluatePair = async (control: string, treatment: string) => {

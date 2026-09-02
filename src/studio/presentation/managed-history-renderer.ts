@@ -10,8 +10,8 @@
  */
 import { layout, e, fmtLocalTime } from './layout.js';
 import type { Lang } from '../../shared/language.js';
-import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../../managed/contracts.js';
-import type { ManagedListRow } from '../../managed/index.js';
+import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../../knowledge-artifacts/governance/contracts.js';
+import type { ManagedListRow } from '../../knowledge-artifacts/governance/index.js';
 
 const shortHash = (h: string): string => h.slice(0, 12);
 const L = (lang: Lang) => (zh: string, en: string): string => (lang === 'zh' ? zh : en);

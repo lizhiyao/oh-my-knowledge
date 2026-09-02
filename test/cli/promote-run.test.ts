@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { hashArtifactSource, managedRecordId } from '../../src/managed/index.js';
+import { hashArtifactSource, managedRecordId } from '../../src/knowledge-artifacts/governance/index.js';
 import PromoteCommand from '../../src/cli/commands/promote.js';
 import ListCommand from '../../src/cli/commands/list.js';
 import { runCommand } from '../helpers/run-command.js';

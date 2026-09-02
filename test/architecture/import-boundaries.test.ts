@@ -133,13 +133,8 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'shared/',
-    to: 'doctor/',
-    reason: 'shared 是跨领域叶子依赖；Doctor parser 与 prompt 由 doctor 领域拥有。',
-  },
-  {
-    from: 'shared/',
-    to: 'skill-definition/',
-    reason: 'shared 是跨领域叶子依赖；skill frontmatter 与 hard rules 由 skill-definition 领域拥有。',
+    to: 'knowledge-artifacts/',
+    reason: 'shared 是跨领域叶子依赖；Artifact、Skill、Doctor、Authoring 与 Governance 均由 knowledge-artifacts 领域拥有。',
   },
   {
     from: 'shared/',

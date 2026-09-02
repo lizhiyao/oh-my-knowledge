@@ -9,7 +9,7 @@ import {
   removeDoctorGraphSidecars,
   renderDoctorEvidenceCard,
 } from '../../src/artifact-graph/doctor.js';
-import type { DoctorReport } from '../../src/doctor/contracts.js';
+import type { DoctorReport } from '../../src/knowledge-artifacts/doctor/contracts.js';
 
 function makeReport(cwd: string, skillPath: string): DoctorReport {
   return {

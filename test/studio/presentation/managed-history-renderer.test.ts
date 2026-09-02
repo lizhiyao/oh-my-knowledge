@@ -4,9 +4,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import { renderManagedList, renderManagedHistory } from '../../../src/studio/presentation/managed-history-renderer.js';
-import { buildManagedListRows, type ManagedListRow } from '../../../src/managed/index.js';
+import { buildManagedListRows, type ManagedListRow } from '../../../src/knowledge-artifacts/governance/index.js';
 import type { Lang } from '../../../src/shared/language.js';
-import type { ManagedArtifactRecord } from '../../../src/managed/contracts.js';
+import type { ManagedArtifactRecord } from '../../../src/knowledge-artifacts/governance/contracts.js';
 import { coreManagedEvidence } from '../../helpers/core-managed-evidence.js';
 
 // 只快照 <main> 结构块:剥掉 layout 全局壳与 CSS（在别处测）—— 快照聚焦受管渲染的结构/文案,

@@ -117,7 +117,7 @@ export async function runSampleFromTraces(
   lang: CliLang,
 ): Promise<void> {
   const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/index.js');
-  const { generateSamplesFromTraces } = await import('../../authoring/generator.js');
+  const { generateSamplesFromTraces } = await import('../../knowledge-artifacts/authoring/generator.js');
   const model = flags.model;
   const executorName = flags.executor;
   if (!model || !executorName) {
@@ -209,7 +209,7 @@ async function runSample(
     await runSampleFromTraces(flags, lang);
     return;
   }
-  const { generateSamples } = await import('../../authoring/generator.js');
+  const { generateSamples } = await import('../../knowledge-artifacts/authoring/generator.js');
   const count: number | undefined = flags.count !== undefined
     ? Math.max(1, Number(flags.count) || 5)
     : undefined;

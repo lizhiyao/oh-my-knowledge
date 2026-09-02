@@ -164,7 +164,7 @@ async function appendManagedEvidenceSafely(
 ): Promise<void> {
   if (!enabled) return;
   try {
-    const { recordCoreEvalEvidence } = await import('../../managed/evidence.js');
+    const { recordCoreEvalEvidence } = await import('../../knowledge-artifacts/governance/evidence.js');
     const written = recordCoreEvalEvidence(projectCoreManagedEvidence(stored));
     if (written.length > 0) process.stderr.write(lang === 'zh'
       ? `已写入 ${written.length} 条 Core 受管证据。\n`

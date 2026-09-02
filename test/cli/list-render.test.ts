@@ -6,7 +6,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderTable, dispWidth, truncate } from '../../src/cli/commands/list.js';
-import type { ManagedListRow } from '../../src/managed/index.js';
+import type { ManagedListRow } from '../../src/knowledge-artifacts/governance/index.js';
 
 function row(over: Partial<ManagedListRow> = {}): ManagedListRow {
   return {

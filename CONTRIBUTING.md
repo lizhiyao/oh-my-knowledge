@@ -190,7 +190,7 @@ omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**
 
 - 简单业务 inline 到 `Command.run()` body
 - 测试需要 in-process import 验证的业务,作为 module-level helper(如 `runStudio` / `runEvolve` / `runObserveInbox` / 3 个 sample-fix helper)export from 同一个 Command file
-- 跨命令共享的 utility 进 `src/cli/lib/`;跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/doctor/index.ts:runDoctor`)
+- 跨命令共享的 utility 进 `src/cli/lib/`;跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/knowledge-artifacts/doctor/index.ts:runDoctor`)
 
 双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `lib/i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。lang 解析 source-of-truth 是 `resolveLang(process.argv)`(scan raw argv + env fallback);**不要**读 `flags.lang`(oclif `default: 'zh'` 会盖掉 `OMK_LANG=en`)。
 

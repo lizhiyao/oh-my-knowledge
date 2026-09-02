@@ -16,7 +16,7 @@ import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../obs
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox/index.js';
 import { parseSkillHealthReport } from '../../observability/skill-health/report.js';
 import { parseArtifactGraphDocument } from '../../artifact-graph/schema.js';
-import { parseDoctorReport } from '../../doctor/report-parser.js';
+import { parseDoctorReport } from '../../knowledge-artifacts/doctor/report-parser.js';
 import { ownRecordValue } from '../../shared/record-count.js';
 import type {
   Insight,
@@ -28,7 +28,7 @@ import type {
   SkillObserveSnapshot,
 } from '../view-models/index.js';
 import type { Diagnosis } from '../../diagnosis/contracts.js';
-import type { DoctorReport } from '../../doctor/contracts.js';
+import type { DoctorReport } from '../../knowledge-artifacts/doctor/contracts.js';
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../artifact-graph/contracts.js';
 import { detectInsights } from './skill-insights.js';
 

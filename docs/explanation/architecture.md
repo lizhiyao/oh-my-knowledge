@@ -41,6 +41,21 @@ Directories under `src` express domain ownership rather than one mechanical repo
 
 `shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
 
+Knowledge artifact lifecycle capabilities share one ownership boundary:
+
+```text
+knowledge-artifacts/
+├── contracts.ts  # artifact identity and experiment roles
+├── skills/       # skill frontmatter, hard rules, and workflow definitions
+├── doctor/       # static and model-assisted artifact health checks
+├── authoring/    # sample generation and controlled skill evolution
+└── governance/   # install records, evidence gates, promote, and rollback state
+```
+
+Governance consumes authenticated evaluation and observation evidence; it does not recompute Core
+scores or decisions. These capabilities remain separate subdomains so that sharing one lifecycle
+owner does not turn `knowledge-artifacts` into a generic utility layer.
+
 Diagnosis and Observability have an explicit boundary. Observability produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observability facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
 
 ## Observability subdomains

@@ -9,7 +9,7 @@ import {
   managedDir,
   resolveManagedDir,
   type ManagedListRow,
-} from '../../managed/index.js';
+} from '../../knowledge-artifacts/governance/index.js';
 import type { CliLang } from '../lib/i18n.js';
 
 /** CJK 全角字符 + 星平面 emoji 按 2 列计宽,使含中文表头 / emoji 标记(如 🔬)的列也能对齐。

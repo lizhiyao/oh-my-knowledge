@@ -15,7 +15,7 @@ import {
 } from '../../../src/measurement-artifacts/discovery-index.js';
 import { writeMeasurementReportBundle } from '../../../src/measurement-artifacts/report-bundle.js';
 import { pruneDoctorHistory } from '../../../src/cli/commands/doctor.js';
-import type { DoctorReport } from '../../../src/doctor/contracts.js';
+import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
 
 type DoctorCardInput = Parameters<typeof writeDoctorIndex>[0];
 type ObserveSource = Parameters<typeof writeObserveIndex>[0];

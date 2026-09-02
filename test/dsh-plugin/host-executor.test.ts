@@ -18,7 +18,7 @@ import {
   managedDir,
   managedRecordId,
   upsertManagedRecord,
-} from '../../src/managed/index.js';
+} from '../../src/knowledge-artifacts/governance/index.js';
 import { createEvalSampleSetDocument } from '../../src/inputs/schemas/sample-set.js';
 
 type UnknownRecord = Record<string, unknown>;

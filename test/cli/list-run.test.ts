@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { managedRecordId } from '../../src/managed/index.js';
+import { managedRecordId } from '../../src/knowledge-artifacts/governance/index.js';
 import ListCommand from '../../src/cli/commands/list.js';
 import { runCommand } from '../helpers/run-command.js';
 

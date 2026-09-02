@@ -15,7 +15,7 @@
 - `test/runner.test.ts`：dry-run 断言 `totalTasks === 10`（**5 样本 × 2 变体**）+ 一条**逐条列出 5 个 sample_id 的 interleaved 调度顺序** deepEqual。增删样本会同时打破这两处。
 - `test/cli.test.ts` 的 `eval --dry-run`：依赖 **N=5 落在「N 5–19 中度欠检验力（非 exploration-only）」这一档**的功率警告文案（`只能识别很大的效果`）。**样本数降到 5 以下会跨进「N<5 仅探索」档、改变警告文案**——所以 5 条是刻意保留的，不是冗余。
 - `test/runner.test.ts` 的 `git:` 系列：`loadSkills` 用 `git:v1` / `git:HEAD:v1` 从 **HEAD** 读 `v1.md`，所以这些文件必须已 commit 才过。
-- `test/inputs/skill-loader.test.ts` / `test/doctor/*` / `test/cli/{effort-flag,reports-output-dir,judge-models-validation,doctor,doctor-eval-embed,strict-unknown-options}.test.ts`：用它当可解析的 skill-dir（`v1` / `v2` / `baseline`）。
+- `test/inputs/skill-loader.test.ts` / `test/knowledge-artifacts/doctor/*` / `test/cli/{effort-flag,reports-output-dir,judge-models-validation,doctor,doctor-eval-embed,strict-unknown-options}.test.ts`：用它当可解析的 skill-dir（`v1` / `v2` / `baseline`）。
 - `test/inputs/yaml-parser.test.ts`：只校验 JSON 结构（数组、非空、有 `sample_id`），不 pin 计数/断言值。
 
 ## agent-eval/
@@ -54,4 +54,4 @@ load-bearing 值：
 - `test/runner.test.ts`：`discoverVariants` 断言能发现 `classifier`；batch dry-run 按 `sampleCount × 2` 算 `taskCount`。
 - `test/cli.test.ts` 的 batch 测试：断言「批量评测结论：未通过」+ `UNDERPOWERED:`（依赖每个 skill 的小样本量）。三个 skill 都得在、各自样本量小，别删。
 - `classifier` 保留 2 条样本以覆盖 batch 的 `UNDERPOWERED` 分支；其余 skill 只保留 1 条。这些夹具验证 batch 发现、任务规划和聚合门禁，不验证领域用例多样性；增加样本会按「skill × 样本 × 2 variants」放大子进程数量。
-- `src/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。
+- `src/knowledge-artifacts/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。

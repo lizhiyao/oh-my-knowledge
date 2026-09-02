@@ -5,8 +5,8 @@ import {
   extractMarkdownStepWorkflows,
   validateSkillHardRules,
   validateSkillWorkflows,
-} from '../../skill-definition/hard-rules.js';
-import type { SkillHardRule, SkillWorkflow } from '../../skill-definition/contracts.js';
+} from '../../knowledge-artifacts/skills/hard-rules.js';
+import type { SkillHardRule, SkillWorkflow } from '../../knowledge-artifacts/skills/contracts.js';
 import { incrementRecordCount } from '../../shared/record-count.js';
 import type {
   ExperienceInvocation,

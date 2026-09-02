@@ -33,7 +33,7 @@ import {
   type CoreCliRunOutcome,
   type CoreCliSeriesOutcome,
 } from '../eval-workflows/downstream-projections/index.js';
-import { managedDir, recordCoreEvalEvidence } from '../managed/index.js';
+import { managedDir, recordCoreEvalEvidence } from '../knowledge-artifacts/governance/index.js';
 import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type {
