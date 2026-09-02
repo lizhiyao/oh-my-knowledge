@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
@@ -22,9 +22,11 @@ import {
 } from '../../src/eval-workflows/downstream-projections/index.js';
 import { parseArtifactGraphDocument } from '../../src/artifact-graph/schema.js';
 import {
+  coreRunArtifactDirectoryName,
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../../src/eval-workflows/artifact-store/index.js';
+import { persistCoreArtifactSidecars } from '../../src/eval-workflows/production-host/index.js';
 import {
   prepareConformancePlan,
   runConformanceScenario,
@@ -107,6 +109,30 @@ describe('Evaluation Core downstream projections', () => {
       }),
       expectProjectionError('CORE_PROJECTION_SOURCE_INVALID'),
     );
+  });
+
+  it('persists graph and evidence card inside the owning run bundle', async () => {
+    const source = await storedScenario('rag');
+    const outputDirectory = await mkdtemp(join(tmpdir(), 'omk-core-sidecars-'));
+    temporaryDirectories.push(outputDirectory);
+
+    const result = await persistCoreArtifactSidecars({
+      source,
+      outputDirectory,
+      cwd: '/workspace/project',
+    });
+    const derivedDir = join(
+      outputDirectory,
+      coreRunArtifactDirectoryName(source.manifest.runId),
+      'derived',
+    );
+    assert.equal(result.graphPath, join(derivedDir, 'graph.json'));
+    assert.equal(result.evidenceCardPath, join(derivedDir, 'card.md'));
+    const card = await readFile(result.evidenceCardPath, 'utf8');
+    assert.match(card, new RegExp(source.manifest.runId, 'u'));
+    assert.match(card, new RegExp(source.report.reportDigest, 'u'));
+    assert.match(card, /\.\.\/manifest\.json/u);
+    assert.doesNotMatch(card, /captured content|source-neutral-trace/iu);
   });
 
   it('compares an explicitly selected numeric observation to matching gold', async () => {

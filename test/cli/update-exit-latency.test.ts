@@ -46,10 +46,11 @@ afterAll(() => {
 describe('update check background refresh must not delay CLI exit', () => {
   it(`stale cache + 黑洞 registry 下,非短路径命令仍在 ${EXIT_BUDGET_MS}ms 内退出`, async () => {
     const home = mkdtempSync(join(tmpdir(), 'omk-exit-'));
-    mkdirSync(join(home, '.oh-my-knowledge'), { recursive: true });
+    const cacheDir = join(home, '.oh-my-knowledge', 'state', 'cache');
+    mkdirSync(cacheDir, { recursive: true });
     // stale(lastCheckedAt 很旧)→ 触发刷新;latestVersion 很低 → 不触发提示,只测退出时延
     writeFileSync(
-      join(home, '.oh-my-knowledge', 'update-check.json'),
+      join(cacheDir, 'update-check.json'),
       JSON.stringify({ latestVersion: '0.0.1', lastCheckedAt: '2020-01-01T00:00:00.000Z' }),
     );
 

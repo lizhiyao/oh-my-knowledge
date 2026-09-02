@@ -23,7 +23,7 @@ import {
   createProductionEvaluationHost,
   createProductionRuntimeFactoryRegistry,
   executeProductionEvaluationSeries,
-  persistCoreArtifactGraph,
+  persistCoreArtifactSidecars,
   resolveNodeCliEvaluationRequest,
 } from '../eval-workflows/production-host/index.js';
 import {
@@ -233,7 +233,7 @@ async function persistDshCoreConsumers(
   projectRoot: string,
   appendEvidence: boolean,
 ): Promise<void> {
-  await persistCoreArtifactGraph({ source: artifacts, outputDirectory, cwd: projectRoot });
+  await persistCoreArtifactSidecars({ source: artifacts, outputDirectory, cwd: projectRoot });
   if (!appendEvidence) return;
   try {
     recordCoreEvalEvidence(projectCoreManagedEvidence(artifacts), {

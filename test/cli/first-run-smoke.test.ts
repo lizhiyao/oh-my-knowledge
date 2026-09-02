@@ -48,8 +48,10 @@ describe('first-run smoke path', () => {
   it('runs init -> eval dry-run -> offline eval and writes a report', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omk-first-run-smoke-'));
     const project = join(root, 'demo');
+    const machineRoot = join(root, 'machine');
+    const env = { ...process.env, OMK_HOME: machineRoot };
     try {
-      const init = await execFileAsync('node', [CLI, 'init', project, '--lang', 'zh']);
+      const init = await execFileAsync('node', [CLI, 'init', project, '--lang', 'zh'], { env });
       assert.match(init.stdout, /直接跑通/);
       assert.match(init.stdout, /看报告里的 verdict/);
 
@@ -74,7 +76,7 @@ describe('first-run smoke path', () => {
         '--lang', 'zh',
       ];
 
-      const dryRun = await execFileAsync('node', [CLI, ...baseArgs, '--dry-run'], { cwd: project });
+      const dryRun = await execFileAsync('node', [CLI, ...baseArgs, '--dry-run'], { cwd: project, env });
       const dryRunReport = parseFirstJsonObject(dryRun.stdout) as {
         projectionKind?: string;
         dataset?: { sampleCount?: number };
@@ -83,6 +85,18 @@ describe('first-run smoke path', () => {
       assert.equal(dryRunReport.projectionKind, 'core-cli-dry-run');
       assert.equal(dryRunReport.dataset?.sampleCount, 3);
       assert.deepEqual(dryRunReport.targets?.map((target) => target.targetId), ['code-review-v1', 'code-review-v2']);
+
+      await execFileAsync('node', [
+        CLI,
+        'eval',
+        '--control', 'baseline',
+        '--treatment', 'code-review-v2',
+        '--executor', executor,
+        '--skip-connectivity',
+        '--skip-doctor',
+        '--dry-run',
+        '--lang', 'zh',
+      ], { cwd: project, env });
 
       const run = await execFileAsync('node', [
         CLI,
@@ -93,7 +107,7 @@ describe('first-run smoke path', () => {
         '--bootstrap-samples', '100',
         '--no-cache',
         '--report-only',
-      ], { cwd: project });
+      ], { cwd: project, env });
       const report = parseFirstJsonObject(run.stdout) as {
         projectionKind?: string;
         runId: string;
@@ -109,6 +123,12 @@ describe('first-run smoke path', () => {
       const runDirectory = `run-${createHash('sha256').update(report.runId).digest('hex')}`;
       assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'manifest.json')));
       assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'report.json')));
+      assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'derived', 'graph.json')));
+      assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'derived', 'card.md')));
+      assert.ok(existsSync(join(machineRoot, 'state', 'isolated-cwd', 'resolved-inputs')));
+      assert.ok(existsSync(join(machineRoot, 'state', 'tmp', 'resource-leases')));
+      assert.equal(existsSync(join(project, '.omk', 'eval', 'resolved-inputs')), false);
+      assert.equal(existsSync(join(project, '.omk', 'eval', 'runtime-leases')), false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

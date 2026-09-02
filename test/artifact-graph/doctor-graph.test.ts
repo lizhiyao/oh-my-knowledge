@@ -87,7 +87,7 @@ describe('doctor artifact graph', () => {
       const graph = buildDoctorArtifactGraph({
         report,
         skill: report.skills[0],
-        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-test.report.json'),
+        sourcePath: join(tmp, '.omk', 'doctor', 'review-skill-test', 'report.json'),
         generatedAt: '2026-06-19T00:00:00.000Z',
       });
 
@@ -134,7 +134,7 @@ describe('doctor artifact graph', () => {
       const skillPath = join(skillRoot, 'SKILL.md');
       writeFileSync(skillPath, '# Skill\n\n这个 skill 内容足够长，用于测试 graph sidecar。');
       const report = makeReport(tmp, skillPath);
-      const outputDir = join(tmp, '.omk', 'doctors');
+      const outputDir = join(tmp, '.omk', 'doctor');
       const result = persistDoctorGraphSidecars({
         report,
         skill: report.skills[0],
@@ -164,7 +164,7 @@ describe('doctor artifact graph', () => {
       const skillPath = join(skillRoot, 'SKILL.md');
       writeFileSync(skillPath, '# Skill\n\n这个 skill 内容足够长，用于测试 graph sidecar。');
       const report = makeReport(tmp, skillPath);
-      const outputDir = join(tmp, '.omk', 'doctors');
+      const outputDir = join(tmp, '.omk', 'doctor');
       const canonical = persistDoctorGraphSidecars({
         report,
         skill: report.skills[0],
@@ -205,7 +205,7 @@ describe('doctor artifact graph', () => {
       const graph = buildDoctorArtifactGraph({
         report,
         skill: report.skills[0],
-        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-test.report.json'),
+        sourcePath: join(tmp, '.omk', 'doctor', 'review-skill-test', 'report.json'),
         generatedAt: '2026-06-19T00:00:00.000Z',
       });
 

@@ -19,7 +19,7 @@ import {
   createNodeCliProductionComposition,
   createProductionEvaluationHost,
   executeProductionEvaluationSeries,
-  persistCoreArtifactGraph,
+  persistCoreArtifactSidecars,
   resolveNodeCliEvaluationRequest,
 } from '../../eval-workflows/production-host/index.js';
 import {
@@ -182,7 +182,7 @@ async function persistArtifactGraph(
   outputDirectory: string,
   cwd: string,
 ): Promise<void> {
-  await persistCoreArtifactGraph({ source: stored, outputDirectory, cwd });
+  await persistCoreArtifactSidecars({ source: stored, outputDirectory, cwd });
 }
 
 function resumeRunId(request: CliEvaluationRequest): string | undefined {

@@ -18,7 +18,7 @@ export const OMK_TREE_DIGEST_ALGORITHM = 'omk.tree-sha256/v1' as const;
  * 不进 artifact「可分发树」的条目 —— omk 的评测 / 迭代 / VCS / 系统产物,既不该被拷进 agent
  * skill 目录,也不该计入 artifact contentHash。区分两类语义,避免误伤合法嵌套资产:
  *   - **任意层级排除**:隐藏元数据 / VCS / 系统 / 依赖目录,任何深度出现都是噪声
- *     (`.omk` = samples / managed / observations;`.git`;`node_modules`;OS 垃圾);
+ *     (`.omk` = 私有 samples、测量与治理产物；`.git`；`node_modules`；OS 垃圾)；
  *   - **仅源根第一层排除**:omk 保留的工作目录,只在 skill 根有保留语义,嵌套同名是用户合法资产
  *     (`evolve` 是 `<skillDir>/evolve/` 候选快照;但 `references/evolve/guide.md` 应正常分发并计入 hash)。
  * spec 里 artifact content hash 与 sample-set hash 是分开的证据轴,故只补样本(.omk)不该改 hash。

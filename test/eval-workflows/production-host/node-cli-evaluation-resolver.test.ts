@@ -457,8 +457,8 @@ describe('resolveNodeCliEvaluationRequest', () => {
         targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
         judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
         presentation: {
-          projectOutputDirectoryLocator: join(root, '.omk', 'reports'),
-          globalOutputDirectoryLocator: join(root, '.omk-global', 'reports'),
+          projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
+          globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),
           language: 'zh',
           languageDefaultSource: 'environment-selection',
         },

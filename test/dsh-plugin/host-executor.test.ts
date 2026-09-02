@@ -500,6 +500,7 @@ variants:
     assert.equal(result.created, 1);
     assert.ok(result.artifactFiles.some((file) => file.endsWith('manifest.json')));
     assert.ok(result.artifactFiles.some((file) => file.endsWith('report.json')));
+    assert.ok(result.artifactFiles.some((file) => file.endsWith('derived/card.md')));
     assert.equal(result.artifactFiles.some((file) => /(^|\/)reports\.json$/u.test(file)), false);
     assert.equal(result.graphFiles.filter((file) => file.endsWith('graph.json')).length, 1);
     assert.equal(result.managedEvidenceCount, 1);
