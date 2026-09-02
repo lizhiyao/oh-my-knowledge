@@ -1109,4 +1109,59 @@ describe('Evaluation Series Runtime', () => {
     const events = await collectEvents(run.events);
     expect(events.at(-1)?.eventKind).toBe('series.run.failed');
   });
+
+  it('keeps completed Analysis when Decision resource disposal fails', async () => {
+    const fixture = await lifecycleFixture();
+    const run = startEvaluationSeries(fixture.plan, fixture.sources, {
+      analysisNodesByNodeId: new Map([['stability', {
+        identity: fixture.analysisIdentity,
+        outputSchema: seriesOutputSchema,
+        async openRun() {
+          return {
+            async analyze() {
+              return {
+                analysisStatus: 'completed' as const,
+                resultType: 'scalar' as const,
+                value: 1,
+              };
+            },
+            dispose() {},
+          };
+        },
+      }]]),
+      decisionPoliciesByDecisionPolicyId: new Map([['series-release-gate', {
+        identity: fixture.decisionIdentity,
+        async openRun() {
+          return {
+            async decide() {
+              return {
+                decisionStatus: 'decided' as const,
+                verdict: 'must-not-publish',
+                reasonCodes: ['decision-dispose-failed'],
+              };
+            },
+            dispose() { throw new Error('decision dispose secret'); },
+          };
+        },
+      }]]),
+      schemaValidators: seriesSchemaValidators,
+      clock: seriesClock,
+    }, {
+      runId: 'series-decision-dispose-failed',
+      bundleId: 'series-decision-dispose-failed-bundle',
+      reportId: 'series-decision-dispose-failed-report',
+    });
+
+    const result = await run.result;
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'series-decision-runtime-dispose-failed',
+        stage: 'infrastructure',
+      },
+      analysis: { bundleId: 'series-decision-dispose-failed-bundle' },
+    });
+    expect(result.decision).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('decision dispose secret');
+  });
 });
