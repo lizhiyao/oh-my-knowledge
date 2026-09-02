@@ -10,7 +10,7 @@ cd demo
 omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 ```
 
-希望直接使用官方、经过难度分层的完整起步集，而不是默认 3 条流程检查用例时，运行 `omk init demo --samples 20`。
+希望直接使用官方、经过难度分层的完整起步集，而不是默认 3 条流程检查用例时，运行 `omk init demo --samples 20`。这些起步用例是 `llm-generated` 教学数据，作为发布证据前应人工复核或替换。
 
 ## 按任务选择
 

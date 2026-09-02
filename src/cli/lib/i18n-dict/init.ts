@@ -3,6 +3,7 @@ import type { CliMessage } from './types.js';
 export type InitMessageKey =
   | 'cli.init.scaffolded'
   | 'cli.init.sample_pack'
+  | 'cli.init.existing_files'
   | 'cli.init.next_steps_title'
   | 'cli.init.next_step_run'
   | 'cli.init.next_step_executor'
@@ -17,8 +18,12 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
     en: 'omk project initialized at: {dir}',
   },
   'cli.init.sample_pack': {
-    zh: '已写入 {count} 条官方人工策划用例。',
-    en: 'Wrote {count} first-party curated samples.',
+    zh: '已写入 {count} 条官方起步用例。',
+    en: 'Wrote {count} first-party starter samples.',
+  },
+  'cli.init.existing_files': {
+    zh: '目标目录已有 omk 脚手架文件，已停止以避免覆盖：{paths}。请改用新的空目录，或确认要重建后显式传 --force。',
+    en: 'Existing project scaffold files would be overwritten: {paths}. Use a new empty directory, or pass --force only after confirming a rebuild.',
   },
   'cli.init.next_steps_title': {
     zh: '下一步：',
@@ -32,12 +37,12 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
     en: '  1. Run it as-is (no edits needed): {command}',
   },
   'cli.init.next_step_report_quick': {
-    zh: '  2. 看报告里的 verdict 和“下一步”：3 条用例只用于跑通链路，出现 UNDERPOWERED 是预期结果；需要正式判断时使用 --samples 20 创建完整起步集。',
-    en: '  2. Read the report verdict and Next line: 3 samples only prove the workflow, so UNDERPOWERED is expected; use --samples 20 for the full starter set before making a real decision.',
+    zh: '  2. 看报告里的 verdict 和“下一步”：3 条用例只用于跑通链路，出现 UNDERPOWERED 是预期结果；需要完整起步集时，在新的空目录使用 --samples 20。',
+    en: '  2. Read the report verdict and Next line: 3 samples only prove the workflow, so UNDERPOWERED is expected; use --samples 20 in a new empty directory for the full starter set.',
   },
   'cli.init.next_step_report_full': {
-    zh: '  2. 看报告里的 verdict 和“下一步”：20 条用例达到注册样本量下限，但不保证得到 PROGRESS；仍需结合置信区间和失败样本判断。',
-    en: '  2. Read the report verdict and Next line: 20 samples meet the registered sample-size floor but do not guarantee PROGRESS; still inspect the confidence interval and failed samples.',
+    zh: '  2. 看报告里的 verdict 和“下一步”：20 条用例达到注册样本量下限，但来源是 llm-generated；用于理解统计流程，发布前应人工复核并替换为真实领域用例。',
+    en: '  2. Read the report verdict and Next line: 20 samples meet the registered sample-size floor but are llm-generated; use them to learn the statistical workflow, then review and replace them with real domain cases before release.',
   },
   'cli.init.next_step_executor': {
     zh: '     executor / judge 会按运行环境选择；Codex 任务自动使用本机 Codex 配置。也可用 OMK_EXECUTOR / OMK_MODEL 固定环境偏好，详见 https://oh-my-knowledge.pages.dev/zh/reference/executors。',

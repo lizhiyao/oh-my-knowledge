@@ -55,7 +55,7 @@ export OMK_EXECUTOR=codex
 
 不设置 `OMK_MODEL` 时，omk 会读取 `~/.codex/config.toml` 的模型。也可以继续逐次显式传 `--executor codex --model <codex-model>`。自定义评委时再传 `--judge-models` 或设置 `OMK_JUDGE_MODELS`。
 
-> 默认 3 条用例是低成本流程检查，出现「数据不足（UNDERPOWERED）」符合预期。`--samples 20` 会选择经过人工策划和难度分层的完整用例集，达到 omk 注册的样本量下限；它能提高统计功效，但不保证一定得到明确 verdict。
+> 默认 3 条用例是低成本流程检查，出现「数据不足（UNDERPOWERED）」符合预期。`--samples 20` 会选择经过难度分层的官方起步用例集，达到 omk 注册的样本量下限。其来源明确标记为 `llm-generated`：它适合学习统计流程，发布判断前仍应人工复核并替换为真实领域用例。
 
 > 命令行有新版本时会自动提示（每 20 小时最多一次）；想永久关闭该提醒，设环境变量 `OMK_SKIP_UPDATE_CHECK=1` 即可。
 

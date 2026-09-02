@@ -10,7 +10,7 @@ cd demo
 omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 ```
 
-Use `omk init demo --samples 20` when you want the first-party, difficulty-stratified starter pack instead of the default three-case workflow check.
+Use `omk init demo --samples 20` when you want the first-party, difficulty-stratified starter pack instead of the default three-case workflow check. The starter cases are `llm-generated` teaching data; review or replace them before using the result as release evidence.
 
 ## Choose by task
 

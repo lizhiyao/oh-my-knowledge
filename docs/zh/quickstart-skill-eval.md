@@ -38,7 +38,7 @@ omk eval --control code-review-v1 --treatment code-review-v2
 omk init demo --samples 20
 ```
 
-完整用例集在安全、健壮性、可维护性、性能四个维度各有 5 条，覆盖 easy／medium／hard 难度，并包含无缺陷对照，避免把「报告更多问题」误当成更好的审查。它会产生 40 次 control／treatment 执行，因此默认 3 条仍然是验证环境最省成本的入口。20 条能提高统计功效，但不保证一定得到 `PROGRESS`，也不能替代对置信区间和失败样本的审阅。
+完整用例集在安全、健壮性、可维护性、性能四个维度各有 5 条，覆盖 easy／medium／hard 难度，并包含无缺陷对照，避免把「报告更多问题」误当成更好的审查。它会产生 40 次 control／treatment 执行，因此默认 3 条仍然是验证环境最省成本的入口。固定起步用例明确标记为 `provenance: llm-generated`：20 条能提高统计功效，但仍是教学数据而非生产发布证据。信任 ship／no-ship 判断前，应人工复核并替换为真实领域用例。
 
 在 Codex 任务里，上面的最短命令无需添加 runtime 参数。普通终端想固定使用 Codex，可以把偏好加入 shell 配置，例如 `~/.zshrc`：
 

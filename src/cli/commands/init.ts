@@ -121,11 +121,18 @@ export default class Init extends BaseCommand {
     lang: LANG_FLAG,
     samples: Flags.string({
       description: bilingual({
-        zh: '官方人工策划用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限',
-        en: 'Number of first-party curated samples: 3 for a quick run, 20 to meet the registered sample-size floor',
+        zh: '官方起步用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限',
+        en: 'Number of first-party starter samples: 3 for a quick run, 20 to meet the registered sample-size floor',
       }),
       options: [String(DEFAULT_INIT_SAMPLE_COUNT), String(FULL_INIT_SAMPLE_COUNT)],
       default: String(DEFAULT_INIT_SAMPLE_COUNT),
+    }),
+    force: Flags.boolean({
+      description: bilingual({
+        zh: '允许覆盖目标目录中已有的 omk 脚手架文件',
+        en: 'Allow overwriting existing project scaffold files in the target directory',
+      }),
+      default: false,
     }),
   };
 
@@ -138,7 +145,19 @@ export default class Init extends BaseCommand {
       const sampleCount = flags.samples === String(FULL_INIT_SAMPLE_COUNT)
         ? FULL_INIT_SAMPLE_COUNT
         : DEFAULT_INIT_SAMPLE_COUNT;
-      const { writeFileSync, mkdirSync } = await import('node:fs');
+      const { existsSync, writeFileSync, mkdirSync } = await import('node:fs');
+      const scaffoldFiles = [
+        join(targetDir, 'eval-samples.json'),
+        join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'),
+        join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'),
+        join(targetDir, '.omk', '.gitignore'),
+      ];
+      const existingFiles = scaffoldFiles
+        .filter((path) => existsSync(path))
+        .map((path) => relative(targetDir, path));
+      if (existingFiles.length > 0 && !flags.force) {
+        throw new Error(tCli('cli.init.existing_files', lang, { paths: existingFiles.join(', ') }));
+      }
 
       // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
       // cwd 默认锚到 skill 根目录,后续可在同目录下放 assets / 子文档。

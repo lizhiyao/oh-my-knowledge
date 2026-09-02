@@ -15,15 +15,16 @@ omk init [dir]
 **Flags:**
 
 ```text
+  --force           Allow overwriting existing project scaffold files in the target directory
   --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --samples <3|20>  Number of first-party curated samples: 3 for a quick run, 20 to meet the registered sample-size floor
+  --samples <3|20>  Number of first-party starter samples: 3 for a quick run, 20 to meet the registered sample-size floor
 ```
 
 For full descriptions: `omk init --help`.
 
 <!-- omk:cli:init:flags:end -->
 
-Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` / `list` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The managed registry (`install` / `list` / `promote`, optionally global) is a separate layer `init` does not touch. The default three-case A/B template is a low-cost workflow check; `--samples 20` selects the first-party curated pack that meets the registered sample-size floor.
+Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` / `list` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The managed registry (`install` / `list` / `promote`, optionally global) is a separate layer `init` does not touch. The default three-case A/B template is a low-cost workflow check; `--samples 20` selects the first-party starter pack that meets the registered sample-size floor. Starter samples are marked `llm-generated` and must be reviewed or replaced before serving as release evidence. Existing scaffold files are never overwritten unless `--force` is explicit.
 
 ## `omk install`
 

@@ -144,8 +144,8 @@ describe('first-run smoke path', () => {
         '--samples', '20',
         '--lang', 'en',
       ]);
-      assert.match(init.stdout, /Wrote 20 first-party curated samples/);
-      assert.match(init.stdout, /meet the registered sample-size floor/);
+      assert.match(init.stdout, /Wrote 20 first-party starter samples/);
+      assert.match(init.stdout, /are llm-generated/);
 
       const executor = join(
         PROJECT_ROOT,
