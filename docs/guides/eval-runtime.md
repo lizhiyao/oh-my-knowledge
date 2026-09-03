@@ -12,6 +12,8 @@ Use `oh-my-knowledge/eval-runtime` when your service already owns business invoc
 
 `eval-runtime` is an adoption layer, not a service framework. Your host still owns authentication, tenant isolation, model gateways, queues, databases, and operational controls. Importing it does not load the CLI, Studio, MCP, provider adapters, or user configuration.
 
+> **`1.0.0-beta` migration:** the canonical entry now exports only everyday host APIs. Import lifecycle adapters, support-port types, raw Rubric factories, clock helpers, and the legacy `ExecutorFn` bridge from `oh-my-knowledge/eval-runtime/advanced`. Import source-neutral trace and Rubric wire schemas from `oh-my-knowledge/eval-runtime/contracts`. Deep implementation paths remain private.
+
 ## Ten-minute exact-match comparison
 
 The package is ESM-only and requires Node.js 22 or newer. Install it in the service:
@@ -82,7 +84,7 @@ const runtime = createEvaluationRuntime({
 });
 ```
 
-Parser return types flow into `invoke`, so no `as` casts are needed. Parsers also form the runtime trust boundary: invalid sample input, Target config, output, usage, or trace becomes a stable redacted execution failure. Parsers may validate and narrow but may not coerce, add defaults, or drop fields; any JSON transform is rejected so the effective invocation cannot drift silently under the same Runtime identity. Perform an intentional transform inside `invoke`, with the corresponding implementation revision covered by identity. Hosts that already implement OMK's existing `ExecutorFn` can continue to use `createExecutorFnAdapter` as a bridge; it is not the recommended entry for a new service integration.
+Parser return types flow into `invoke`, so no `as` casts are needed. Parsers also form the runtime trust boundary: invalid sample input, Target config, output, usage, or trace becomes a stable redacted execution failure. Parsers may validate and narrow but may not coerce, add defaults, or drop fields; any JSON transform is rejected so the effective invocation cannot drift silently under the same Runtime identity. Perform an intentional transform inside `invoke`, with the corresponding implementation revision covered by identity. Hosts that already implement OMK's existing `ExecutorFn` can continue to import `createExecutorFnAdapter` from `oh-my-knowledge/eval-runtime/advanced`; it is not the recommended entry for a new service integration.
 
 Build the serializable Definition and Policy. Defaults are materialized into immutable values; the seed is mandatory and never inferred from time, randomness, or environment state:
 
@@ -163,12 +165,7 @@ The host provides one model invocation port. OMK owns the frozen prompt, output 
 
 ```ts
 import {
-  createRubricJudgeCriterion,
-  createRubricJudgeEvaluatorDefinition,
-  createRubricJudgeEvaluatorRegistration,
-  createRubricJudgeInstrument,
-  createRubricJudgeMetricDefinition,
-  createRubricJudgeRuntimeConfig,
+  createRubricJudgeKit,
   createRuntimeIdentity,
   type OmkLlmJudgeInvocationPort,
 } from 'oh-my-knowledge/eval-runtime';
@@ -179,19 +176,6 @@ const gatewayIdentity = createRuntimeIdentity({
   capabilities: { invocation: 'single-call', cancellation: 'cooperative' },
   fingerprintFacets: { deploymentRevision: 'sha256:...' },
 });
-const instrument = createRubricJudgeInstrument();
-const judgeRuntime = createRubricJudgeRuntimeConfig({
-  executorId: gatewayIdentity.implementationId,
-  model: 'judge-model',
-  effort: 'low',
-  instrument,
-});
-const criterion = createRubricJudgeCriterion({
-  criterionId: 'correctness',
-  prompt: 'Capital of France?',
-  rubric: 'The answer must state Paris.',
-});
-
 const invocation: OmkLlmJudgeInvocationPort = {
   identity: gatewayIdentity,
   providerCost: { reporting: 'optional' },
@@ -205,39 +189,58 @@ const invocation: OmkLlmJudgeInvocationPort = {
     return { invocationStatus: 'completed', output: response.text, usage: response.usage };
   },
 };
-```
-
-Put `criterion` at a stable path in each sample's `evaluationContext`, then add the matching serializable fragments to the Definition:
-
-```ts
-const evaluator = createRubricJudgeEvaluatorDefinition({
+const judge = createRubricJudgeKit({
   evaluatorId: 'correctness-judge',
   metricId: 'correctness-score',
-  instrument,
-  runtime: judgeRuntime,
-  criterionPointer: '/correctness',
+  model: 'judge-model',
+  effort: 'low',
+  invocation,
 });
-const metric = createRubricJudgeMetricDefinition('correctness-score');
-
-const runtime = createEvaluationRuntime({
-  executors: [/* business Target registrations */],
-  evaluators: [createRubricJudgeEvaluatorRegistration([{
-    evaluatorId: evaluator.evaluatorId,
-    instrument,
-    runtime: judgeRuntime,
-    invocation,
-  }])],
+const criterion = judge.createCriterion({
+  criterionId: 'correctness',
+  prompt: 'Capital of France?',
+  rubric: 'The answer must state Paris.',
 });
 ```
 
-Use `tracePolicy: 'source-neutral'` only when every Target produces the public `SourceNeutralTrace` contract; otherwise keep the default `none`. Invalid JSON, malformed or out-of-range scores, and missing reasons become structured invalid observations rather than zero scores. Provider failures retain accounting facts but redact provider-private details. Omitting the Judge registration performs no provider discovery, credential lookup, or preflight.
+Let the kit place `criterion` at its sealed path in each sample's `evaluationContext`, then use the matching serializable fragments and Runtime registration:
+
+```ts
+const runtime = createEvaluationRuntime({
+  executors: [/* business Target registrations */],
+  evaluators: [judge.evaluatorRegistration],
+});
+
+const definition = createPairedComparisonDefinition({
+  datasetId: 'rubric-release-gate',
+  seed: 'rubric-release-42',
+  samples: samples.map((sample) => ({
+    ...sample,
+    evaluationContext: judge.createEvaluationContext(criterion),
+  })),
+  control: {
+    targetId: 'control',
+    executorId: identity.implementationId,
+    config: { deployment: 'baseline' },
+  },
+  treatment: {
+    targetId: 'treatment',
+    executorId: identity.implementationId,
+    config: { deployment: 'candidate' },
+  },
+  evaluator: judge.evaluatorDefinition,
+  metric: judge.metricDefinition,
+});
+```
+
+The kit captures one provider identity and invocation method, then derives its instrument, prompt hash, criterion JSON Pointer, runtime config, Evaluator identity, Metric and registration from that frozen setup. `createEvaluationContext()` materializes the exact context shape, so the host never synchronizes that pointer by hand. When one Definition contains multiple Rubric evaluators, use `createRubricJudgeRegistration([firstKit, secondKit])` for the Runtime and `createRubricJudgeEvaluationContext([{ kit: firstKit, criterion: first }, { kit: secondKit, criterion: second }])` for each sample. Use `tracePolicy: 'source-neutral'` only when every Target produces the public `SourceNeutralTrace` contract from `oh-my-knowledge/eval-runtime/contracts`; otherwise keep the default `none`. Invalid JSON, malformed or out-of-range scores, and missing reasons become structured invalid observations rather than zero scores. Provider failures retain accounting facts but redact provider-private details. Omitting the Judge registration performs no provider discovery, credential lookup, or preflight.
 
 ## Advanced hosts
 
 Register raw Core Executor or Evaluator ports with `{ port }` when one Definition binding owns them. Register `{ implementationId, createPort }` when multiple Targets or Evaluators share an implementation; each binding then gets an isolated run lifecycle. A declared `versionConstraint` fails closed unless its registration supplies `satisfiesVersionConstraint`.
 
-Use `createSameProcessExecutorAdapter` and `createSameProcessEvaluatorAdapter` for custom in-process ports. Use the advanced APIs from `oh-my-knowledge/eval-core` when you need staged execution, persisted artifact admission, custom Analysis Runtime implementations, or explicit cross-run comparability. See [Embedded Evaluation Core API](/reference/embedded-api).
+Use `createSameProcessExecutorAdapter` and `createSameProcessEvaluatorAdapter` from `oh-my-knowledge/eval-runtime/advanced` for custom in-process ports. That subpath also contains the legacy `createExecutorFnAdapter`, raw Rubric assembly factories, clock and registration SPI. Runtime wire contracts and schema descriptors live at `oh-my-knowledge/eval-runtime/contracts`. Use `oh-my-knowledge/eval-core` when you need staged execution, persisted artifact admission, custom Analysis Runtime implementations, or explicit cross-run comparability. Deep imports outside `package.json#exports` are unsupported. See [Embedded Evaluation Core API](/reference/embedded-api) and the [eval-runtime API layers](/reference/eval-runtime-api).
 
-Before accepting a new Executor adapter, run `runExecutorConformance({ implementationId, createExecutor, input, expected })` from `oh-my-knowledge/eval-runtime`. It exercises isolated control and treatment lifecycles, repeated invocations, exact-match observation, paired analysis, and Decision through the real Core pipeline. Use `assertExecutorConformance(result)` in an adapter test to fail with stable check IDs. The probe is intentionally framework-neutral and performs no filesystem, network, credential, or environment discovery by itself.
+Before accepting a new Executor adapter, run `runExecutorConformance({ implementationId, createExecutor, success, failure, cancellation })` from `oh-my-knowledge/eval-runtime`. It exercises distinct binding instances, balanced run／trial cleanup, the original `AbortSignal`, telemetry declarations, stable structured failures, exact-match observation, paired analysis, and Decision through three real Core runs. The cancellation callback must remain bounded if it ignores cancellation because the in-process probe does not isolate hostile code. Use `assertExecutorConformance(result)` in an adapter test to fail with stable check IDs. The probe performs no filesystem, network, credential, or environment discovery by itself.
 
 Start with the runnable [minimal public example](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime). Package fixtures additionally cover a [host-owned Rubric Judge gateway](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/rubric-judge-host.mjs) and an [advanced five-stage host](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/advanced-host.mjs). CI executes the public example and fixtures against the packed package from an isolated home directory.

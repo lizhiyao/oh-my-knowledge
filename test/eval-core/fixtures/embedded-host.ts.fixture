@@ -24,6 +24,15 @@ import {
   createJsonExecutorAdapter,
   createPairedComparisonDefinition,
   createMeasurementPolicy,
+  createRubricJudgeKit,
+  createRubricJudgeRegistration,
+  type OmkLlmJudgeInvocationPort,
+  type ExecutorConformanceProbeInput,
+  assertExecutorConformance,
+  runExecutorConformance,
+  runEvaluation,
+} from 'oh-my-knowledge/eval-runtime';
+import {
   createRubricJudgeCriterion,
   createRubricJudgeEvaluator,
   createRubricJudgeEvaluatorDefinition,
@@ -31,13 +40,8 @@ import {
   createRubricJudgeInstrument,
   createRubricJudgeMetricDefinition,
   createRubricJudgeRuntimeConfig,
-  type OmkLlmJudgeInvocationPort,
-  type ExecutorConformanceProbeInput,
   type RuntimePortRegistration,
-  assertExecutorConformance,
-  runExecutorConformance,
-  runEvaluation,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge/eval-runtime/advanced';
 import {
   createEvalSampleSetDocument,
   resolveEvalSampleJsonSchema,
@@ -141,6 +145,17 @@ createJsonExecutorAdapter({
     return { invocationStatus: 'completed', output: 42 };
   },
 });
+createJsonExecutorAdapter({
+  identity: jsonIdentity,
+  inputParser: z.string(),
+  targetConfigParser: z.undefined(),
+  outputParser: z.string(),
+  outputClassification: 'public',
+  // @ts-expect-error A structured failure must include a stable errorCode.
+  async invoke() {
+    return { invocationStatus: 'failed', usage: { totalTokens: 1 } };
+  },
+});
 const jsonRuntime = createEvaluationRuntime({
   executors: [{ port: jsonExecutor }],
   evaluators: [{ port: evaluator }],
@@ -169,8 +184,9 @@ const genericDefinition = createPairedComparisonDefinition({
 const conformanceInput: ExecutorConformanceProbeInput = {
   implementationId: executor.identity.implementationId,
   createExecutor: () => executor,
-  input: 'probe',
-  expected: 'probe',
+  success: { input: 'probe', expected: 'probe' },
+  failure: { input: 'failure-probe', expectedErrorCode: 'expected-failure' },
+  cancellation: { input: 'cancellation-probe' },
 };
 async function conformanceBoundary(): Promise<void> {
   const result = await runExecutorConformance(conformanceInput);
@@ -212,10 +228,39 @@ const rubricRegistration = createRubricJudgeEvaluatorRegistration([{
   runtime: rubricRuntime,
   invocation: judgeInvocation,
 }]);
+const rubricKit = createRubricJudgeKit({
+  evaluatorId: 'quality-kit-judge',
+  metricId: 'quality-kit-score',
+  model: 'judge-model',
+  invocation: judgeInvocation,
+});
+const rubricKitCriterion = rubricKit.createCriterion({
+  criterionId: 'quality',
+  prompt: 'Answer.',
+  rubric: 'Be correct.',
+});
+// @ts-expect-error A Rubric criterion requires explicit rubric text.
+rubricKit.createCriterion({ criterionId: 'invalid', prompt: 'Answer.' });
+const rubricKitDefinition = createPairedComparisonDefinition({
+  datasetId: 'typescript-rubric-kit',
+  seed: 'typescript-rubric-kit-seed',
+  samples: [{
+    sampleId: 'one',
+    input: 'question',
+    evaluationContext: rubricKit.createEvaluationContext(rubricKitCriterion),
+  }],
+  control: { targetId: 'control', executorId: executor.identity.implementationId },
+  treatment: { targetId: 'treatment', executorId: executor.identity.implementationId },
+  evaluator: rubricKit.evaluatorDefinition,
+  metric: rubricKit.metricDefinition,
+});
+const combinedRubricRegistration = createRubricJudgeRegistration([rubricKit]);
 void rubricCriterion;
 void rubricDefinition;
 void rubricEvaluator;
 void rubricRegistration;
+void rubricKitDefinition;
+void combinedRubricRegistration;
 
 const engine = createEvaluationEngine({
   ...runtime,

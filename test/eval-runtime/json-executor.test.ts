@@ -143,6 +143,66 @@ describe('source-neutral JSON Executor adapter', () => {
     expect(JSON.stringify(failures)).not.toContain('provider-private-payload');
   });
 
+  it('fails closed on invalid Target config without invoking the host', async () => {
+    const runtimeIdentity = identity();
+    let invocations = 0;
+    const runtime = createEvaluationRuntime({
+      executors: [{
+        implementationId: runtimeIdentity.implementationId,
+        createPort: () => createJsonExecutorAdapter({
+          identity: runtimeIdentity,
+          inputParser: z.string(),
+          targetConfigParser: z.object({ deployment: z.string() }).strict(),
+          outputParser: z.string(),
+          outputClassification: 'public',
+          async invoke() {
+            invocations += 1;
+            return { invocationStatus: 'completed', output: 'unreachable' };
+          },
+        }),
+      }],
+      evaluators: [{ port: createExactMatchEvaluator() }],
+    });
+    const definition = createExactMatchDefinition({
+      datasetId: 'invalid-target-config',
+      seed: 'invalid-target-config-seed',
+      samples: [
+        { sampleId: 'one', input: 'question', expected: 'answer' },
+        { sampleId: 'two', input: 'question', expected: 'answer' },
+      ],
+      control: {
+        targetId: 'control',
+        executorId: runtimeIdentity.implementationId,
+        config: { privateCredential: 'must-not-persist' },
+      },
+      treatment: {
+        targetId: 'treatment',
+        executorId: runtimeIdentity.implementationId,
+        config: { deployment: 'candidate' },
+      },
+      bootstrap: { resamples: 100 },
+    });
+    const result = await runEvaluation({
+      runtime,
+      definition,
+      policy: createMeasurementPolicy({ maxConcurrency: 1 }),
+      runId: 'invalid-target-config',
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    const control = result.artifacts.execution.records.filter((record) => (
+      record.targetId === 'control'
+    ));
+    expect(control).toHaveLength(2);
+    expect(control.every((record) => (
+      record.executionStatus === 'failed'
+      && record.error.code === 'EVAL_RUNTIME_EXECUTOR_TARGET_CONFIG_INVALID'
+    ))).toBe(true);
+    expect(JSON.stringify(control)).not.toContain('must-not-persist');
+    expect(invocations).toBe(2);
+  });
+
   it('rejects parser transforms that would change measurement under the same identity', async () => {
     const runtimeIdentity = identity();
     const createExecutor = () => createJsonExecutorAdapter({
@@ -316,6 +376,34 @@ describe('source-neutral JSON Executor adapter', () => {
         providerCost: { amount: 0.01, currency: 'USD', reportedByProvider: true },
       },
     });
+
+    const unsupportedFailureTelemetryIdentity = identity({ usage: 'unsupported' });
+    const unsupportedFailureTelemetry = await execute(
+      () => createJsonExecutorAdapter({
+        identity: unsupportedFailureTelemetryIdentity,
+        inputParser: z.string(),
+        targetConfigParser: z.object({ deployment: z.string() }),
+        outputParser: z.string(),
+        outputClassification: 'public',
+        async invoke() {
+          return {
+            invocationStatus: 'failed',
+            errorCode: 'gateway-unavailable',
+            usage: { totalTokens: 1 },
+          };
+        },
+      }),
+      unsupportedFailureTelemetryIdentity,
+      'question',
+      'answer',
+    );
+    expect(unsupportedFailureTelemetry.status).toBe('completed');
+    if (unsupportedFailureTelemetry.status !== 'completed') return;
+    expect(unsupportedFailureTelemetry.artifacts.execution.records[0]).toMatchObject({
+      executionStatus: 'failed',
+      error: { code: 'EVAL_RUNTIME_EXECUTOR_CONTRACT_VIOLATION' },
+    });
+    expect(unsupportedFailureTelemetry.artifacts.execution.records[0]).not.toHaveProperty('usage');
   });
 
   it('rejects invalid usage and a missing required trace with stable codes', async () => {

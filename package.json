@@ -17,6 +17,14 @@
       "types": "./dist/eval-runtime/index.d.ts",
       "import": "./dist/eval-runtime/index.js"
     },
+    "./eval-runtime/advanced": {
+      "types": "./dist/eval-runtime/advanced.d.ts",
+      "import": "./dist/eval-runtime/advanced.js"
+    },
+    "./eval-runtime/contracts": {
+      "types": "./dist/eval-runtime/contracts.d.ts",
+      "import": "./dist/eval-runtime/contracts.js"
+    },
     "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
     "./eval-core/schemas/v2/*": "./dist/eval-core/contracts/schemas/v2/*",
     "./eval-samples": {

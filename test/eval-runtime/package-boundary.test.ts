@@ -4,7 +4,11 @@ import { init, parse } from 'es-module-lexer';
 import { describe, expect, it } from 'vitest';
 
 const DIST_ROOT = resolve('dist');
-const ENTRY = resolve(DIST_ROOT, 'eval-runtime/index.js');
+const ENTRIES = [
+  'eval-runtime/index.js',
+  'eval-runtime/advanced.js',
+  'eval-runtime/contracts.js',
+] as const;
 
 async function moduleGraph(entry: string): Promise<{
   modules: string[];
@@ -39,19 +43,38 @@ async function moduleGraph(entry: string): Promise<{
 }
 
 describe('published eval-runtime dependency boundary', () => {
-  it('does not load product workflows, delivery surfaces, or provider implementations', async () => {
-    if (!existsSync(ENTRY)) throw new Error('缺少 dist/eval-runtime/index.js；请先运行 yarn build。');
-    const { modules, externalImports } = await moduleGraph(ENTRY);
+  for (const entry of ENTRIES) {
+    it(`${entry} does not load products, delivery surfaces, or providers`, async () => {
+      const resolvedEntry = resolve(DIST_ROOT, entry);
+      if (!existsSync(resolvedEntry)) throw new Error(`缺少 ${entry}；请先运行 yarn build。`);
+      const { modules, externalImports } = await moduleGraph(resolvedEntry);
 
-    expect(modules).toContain('eval-runtime/index.js');
-    expect(modules.some((file) => file.startsWith('eval-core/'))).toBe(true);
-    expect(modules.filter((file) => /^(?:cli|studio|mcp|dsh-plugin|eval-workflows)\//.test(file)))
-      .toEqual([]);
-    expect(modules.filter((file) => /^executors\/(?!contracts\/)/.test(file))).toEqual([]);
-    expect(externalImports.filter((specifier) => (
-      specifier.startsWith('@anthropic-ai/')
-      || specifier.startsWith('@openai/')
-      || specifier.startsWith('@modelcontextprotocol/')
+      expect(modules).toContain(entry);
+      expect(modules.some((file) => file.startsWith('eval-core/'))).toBe(true);
+      expect(modules.filter((file) => /^(?:cli|studio|mcp|dsh-plugin|eval-workflows)\//.test(file)))
+        .toEqual([]);
+      expect(modules.filter((file) => /^executors\/(?!contracts\/)/.test(file))).toEqual([]);
+      expect(externalImports.filter((specifier) => (
+        specifier.startsWith('@anthropic-ai/')
+        || specifier.startsWith('@openai/')
+        || specifier.startsWith('@modelcontextprotocol/')
+      ))).toEqual([]);
+    });
+  }
+
+  it('keeps legacy and lifecycle SPI out of the canonical entry graph', async () => {
+    const { modules } = await moduleGraph(resolve(DIST_ROOT, 'eval-runtime/index.js'));
+    expect(modules).not.toContain('eval-runtime/advanced.js');
+    expect(modules).not.toContain('eval-runtime/adapters/executor-fn.js');
+  });
+
+  it('keeps implementation modules out of the contracts entry graph', async () => {
+    const { modules } = await moduleGraph(resolve(DIST_ROOT, 'eval-runtime/contracts.js'));
+    expect(modules.filter((file) => (
+      file.startsWith('eval-runtime/adapters/')
+      || file === 'eval-runtime/runtime.js'
+      || file === 'eval-runtime/runner.js'
+      || file === 'eval-runtime/judges/rubric-judge.js'
     ))).toEqual([]);
   });
 });
