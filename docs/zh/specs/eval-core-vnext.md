@@ -891,7 +891,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/eval-core/contracts/`，不导入 CLI、executor、grading、renderer、server 或其它应用层；历史评测实现已经删除。
 
-Catalog 当前在 `schemas/eval-core/v1/` 发布二十个 JSON Schema 2020-12 根契约：ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、BudgetSummary、三个单 Run Bundle、EvaluationReport，以及四个 Evaluation Series 契约。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
+Catalog 当前在 `schemas/eval-core/v1/` 发布二十一个 JSON Schema 2020-12 根契约：ExecutionFacts、ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、BudgetSummary、三个单 Run Bundle、EvaluationReport，以及四个 Evaluation Series 契约。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
 
 Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
 

@@ -153,8 +153,9 @@ import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
 
-已发布文件继续保留既有 `$id`，将其视为稳定的文档身份。获取 Schema 时应使用
-`eval-core` package subpath 或 catalog 目录，不要从 `$id` 推导下载位置。
+每个已发布文件都以 `schemas/eval-core/v1/` 下的 canonical raw catalog URL 作为 `$id`，JSON
+Schema 工具因此可以解析这份文档身份。Node.js 宿主仍应优先使用 `eval-core` package subpath
+或 `resolveEvaluationCoreJsonSchema()`，直接读取已安装 package 中的 Schema。
 
 ## 结果与错误
 

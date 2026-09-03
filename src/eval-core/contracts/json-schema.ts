@@ -181,9 +181,9 @@ export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
   },
 ] as const;
 
-// `$id` is the stable document identity established by the published v1 contract. It is
-// intentionally independent from the current catalog retrieval path under `schemas/eval-core`.
-const SCHEMA_BASE_URI = 'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1';
+// Keep the public identity aligned with the canonical catalog location so schema tooling can
+// resolve the identifier instead of treating a stale repository path as an opaque URI.
+const SCHEMA_BASE_URI = 'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v1';
 
 function assertNoEmptySchemaNode(value: unknown, path = '$'): void {
   if (Array.isArray(value)) {
