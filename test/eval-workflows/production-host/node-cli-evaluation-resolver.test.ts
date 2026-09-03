@@ -228,6 +228,38 @@ describe('resolveNodeCliEvaluationRequest', () => {
     });
   });
 
+  it('reports actionable storage guidance without exposing artifact paths', async () => {
+    const root = await fixture('artifact-storage-failure');
+    for (const name of ['control-dir', 'treatment-dir']) {
+      await mkdir(join(root, 'skills', name));
+      await writeFile(join(root, 'skills', name, 'SKILL.md'), `# ${name}\nSafe content.\n`);
+    }
+    const unavailableRoot = join(root, 'not-a-directory');
+    await writeFile(unavailableRoot, 'blocks directory materialization');
+    vi.stubEnv('OMK_TREES_DIR', unavailableRoot);
+
+    const failure = await resolveNodeCliEvaluationRequest(request(root, {
+      control: 'control-dir',
+      treatment: 'treatment-dir',
+    }), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    }).catch((cause: unknown) => cause);
+
+    expect(failure).toMatchObject({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      fieldPath: 'variants',
+      details: {
+        resolutionFailureKind: 'artifact-materialization-storage',
+        systemCode: 'EEXIST',
+      },
+    });
+    expect((failure as Error).message).toContain('OMK_HOME');
+    expect((failure as Error).message).toContain('OMK_TREES_DIR');
+    expect((failure as Error).message).toContain('EEXIST');
+    expect((failure as Error).message).not.toContain(root);
+  });
+
   it('resolves real files into a compilable five-layer design without leaking secret mock controls', async () => {
     const root = await fixture('compile');
     const resolved = await resolveNodeCliEvaluationRequest(request(root), {

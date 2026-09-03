@@ -21,6 +21,14 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
+const CUSTOM_EXECUTOR = join(
+  PROJECT_ROOT,
+  'test',
+  'fixtures',
+  'custom-executor',
+  'core-fixture-executor.sh',
+);
 
 interface ExecError extends Error {
   code?: number;
@@ -127,6 +135,45 @@ describe('oclif eval', () => {
           assert.ok(e.stderr.includes('下一步'), e.stderr);
           assert.ok(e.stderr.includes('omk sample skills/review'), e.stderr);
           assert.ok(!e.stderr.includes('ENOENT'), e.stderr);
+          return true;
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('eval 无法写入评测隔离目录时给出可操作提示且不泄露路径', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-eval-trees-permission-'));
+    const blockedTreesPath = join(dir, 'blocked-trees');
+    try {
+      await mkdir(join(dir, 'skills', 'control'), { recursive: true });
+      await mkdir(join(dir, 'skills', 'treatment'), { recursive: true });
+      await writeFile(join(dir, 'skills', 'control', 'SKILL.md'), '# Control\nAnswer directly.\n');
+      await writeFile(join(dir, 'skills', 'treatment', 'SKILL.md'), '# Treatment\nUse the supplied knowledge.\n');
+      await writeFile(blockedTreesPath, 'not a directory');
+
+      await assert.rejects(
+        () => runCommand(EvalCommand, [
+          '--samples', EXAMPLE_SAMPLES,
+          '--skill-dir', 'skills',
+          '--control', 'control',
+          '--treatment', 'treatment',
+          '--executor', CUSTOM_EXECUTOR,
+          '--no-judge',
+          '--dry-run',
+          '--skip-doctor',
+          '--skip-connectivity',
+          '--lang', 'zh',
+        ], { cwd: dir, env: { OMK_TREES_DIR: blockedTreesPath } }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+          assert.ok(e.stderr.includes('knowledge artifact 的评测隔离副本'), e.stderr);
+          assert.ok(e.stderr.includes('EEXIST'), e.stderr);
+          assert.ok(e.stderr.includes('OMK_HOME'), e.stderr);
+          assert.ok(e.stderr.includes('OMK_TREES_DIR'), e.stderr);
+          assert.ok(!e.stderr.includes(dir), e.stderr);
           return true;
         },
       );

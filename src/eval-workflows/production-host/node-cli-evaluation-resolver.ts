@@ -72,6 +72,22 @@ function absolute(root: string, locator: string): string {
   return isAbsolute(locator) ? resolve(locator) : resolve(root, locator);
 }
 
+const ARTIFACT_STORAGE_ERROR_CODES = new Set([
+  'EACCES',
+  'EDQUOT',
+  'EEXIST',
+  'ENOSPC',
+  'ENOTDIR',
+  'EPERM',
+  'EROFS',
+]);
+
+function systemErrorCode(cause: unknown): string | undefined {
+  if (cause === null || typeof cause !== 'object') return undefined;
+  const code = (cause as NodeJS.ErrnoException).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
 function executionWorkspaceDescriptor(
   descriptor: ResolvedResourceDescriptor,
 ): ExecutionWorkspaceDescriptor {
@@ -671,12 +687,23 @@ export async function resolveNodeCliEvaluationRequest(
     message: 'Batch request 必须由 production host workflow 展开为独立 child evaluation。',
   });
   let loaded: ReturnType<typeof loadSamples>;
-  let artifacts: Artifact[];
   try {
     loaded = loadSamples(
       absolute(options.projectRoot, request.values.locators.samples),
       { assertionValidationMode: 'strict' },
     );
+  } catch (cause) {
+    return fail({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      sourcePath: request.values.locators.samples,
+      fieldPath: 'samples',
+      message: '无法读取或解析 samples；请检查用例路径、文件权限和内容格式。',
+      cause,
+    });
+  }
+
+  let artifacts: Artifact[];
+  try {
     const skillDirectory = absolute(options.projectRoot, request.values.locators.skillDirectory);
     artifacts = resolveArtifacts(skillDirectory, request.values.variants.map((variant) => (
       variant.artifactSource.artifactSourceKind === 'remote-git'
@@ -707,10 +734,22 @@ export async function resolveNodeCliEvaluationRequest(
       materialize: true,
     });
   } catch (cause) {
+    const code = systemErrorCode(cause);
+    const storageFailure = code !== undefined && ARTIFACT_STORAGE_ERROR_CODES.has(code);
     return fail({
       code: 'CLI_INPUT_RESOLUTION_FAILED',
-      sourcePath: request.values.locators.samples,
-      message: '无法解析 samples 或 knowledge artifact；详情已保留在受控 cause 中。',
+      fieldPath: 'variants',
+      message: storageFailure
+        ? `无法创建 knowledge artifact 的评测隔离副本（${code}）。请检查源 skill 的读取权限，以及 \`OMK_HOME\` 或 \`OMK_TREES_DIR\` 指向目录的写入权限和剩余空间。`
+        : '无法解析或物化 knowledge artifact；请检查 variant 表达式、skill 路径和文件内容。',
+      ...(storageFailure
+        ? {
+            details: {
+              resolutionFailureKind: 'artifact-materialization-storage',
+              systemCode: code,
+            },
+          }
+        : {}),
       cause,
     });
   }
