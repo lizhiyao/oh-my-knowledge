@@ -2,22 +2,35 @@
 
 OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它面向 prompt / RAG / skill / agent / workflow 观测真实表现、受控测量版本差异，并判断改动是否有效、版本能否发布。它固定模型只变知识载体，三阶段 doctor / eval / observe 输出统计可比的诊断，配套 sample / evolve 做用例生成与自动迭代。所有改动都要优先保护测量可比性。
 
-本文件是 [agents.md](https://agents.md) 开放标准约定的多 agent 入场清单，跨 Claude Code / Codex / Cursor / Aider / Gemini CLI 等工具通用。Claude Code 用户：本仓库的 `CLAUDE.md` 通过 `@AGENTS.md` import 同一份内容，无需重复维护。
+本文件是 [agents.md](https://agents.md) 开放标准约定的多 agent 入场清单，内容兼容 Claude Code / Codex / Cursor / Aider / Gemini CLI 等工具。Codex 原生加载；Claude Code 通过 `CLAUDE.md` import；Aider 与 Gemini CLI 分别由仓库内 `.aider.conf.yml` 和 `.gemini/settings.json` 显式接入。其它工具是否自动加载以各自对 agents.md 的支持为准，不为单一工具复制第二份规则。
 
 ## 开工先做
 
 - 涉及 commit、PR、分支或发版时，先看 `CONTRIBUTING.md`。
+- 修改子目录前，检查从仓库根到目标文件路径上的 `AGENTS.md`；距离目标最近的文件补充或覆盖上层规则。
 - 首次 push 与交付前默认跑 `yarn ci`，除非用户明确要求只做更窄验证；后续修复成批完成并在本地复验后再一次性 push，避免把远端 CI 当作增量反馈环。
 
 ## 自主 CR 与完成定义
 
 - 任何会改变行为、契约、打包、文档承诺或仓库规则的改动，在首次 push／交付前都必须由当前 Agent 自主完成一次 CR；不要等待用户再问「CR 了吗」。纯机械改动也要快速复核，但审查深度应与风险匹配。
-- 开工时先识别需求／非目标、受影响边界和风险等级；实现结束后切换到审查者视角，只读检查完整 diff、调用链、公开契约和验证证据。能使用独立 reviewer 时可以使用，不能使用时做 fresh-pass 自审，不得以工具不可用为由跳过。
-- CR 至少按相关性覆盖：需求范围、架构与依赖、正确性与失败路径、测量学不变量、公开 API／Schema／存储与迁移、安全与隐私、状态／并发／资源生命周期、用户体验与 i18n、测试可信度、打包／文档／发布。Eval Core、Schema、持久化、执行器、安全边界和发版改动属于高风险，必须覆盖完整矩阵并做相应真实验收。
-- Finding 必须给出可定位证据、失效机制、影响、修复方向和回归验证，按 P0～P3 分级；不要为显得全面而制造猜测性问题。无 finding 时明确报告 no findings，并说明已检查的高风险面。
+- 开工时先识别需求／非目标、受影响边界和风险等级；实现结束后必须完整阅读 [`CODE_REVIEW.md`](./CODE_REVIEW.md)，再以审查者视角只读检查完整 diff、调用链、契约和验证证据。能使用独立 reviewer 时可以使用，不能使用时做 fresh-pass 自审，不得跳过。
 - P0～P2 必须在交付前解决；P3 要么解决，要么明确登记为 follow-up。修复后复查最终 diff，并重跑受影响验证；只有最终复查不再产生新的 P0～P2，且所需门禁与真实用户路径通过，任务才算完成。
 - 只有架构／公开行为发生实质变化、CI 暴露新问题、重要 rebase 冲突或外部审查提出新高风险方向时，才重新做完整 CR；普通小修只复查受影响面，避免无限循环审查。
-- 执行 CR 时必须完整阅读 [`CODE_REVIEW.md`](./CODE_REVIEW.md)，按其中的风险分级、审查矩阵、finding 格式和停止标准落实。用户显式要求 `cr`／`review` 时，仍按「写作规则」把结论直接发到对应 PR。
+- Finding 的证据、优先级与输出格式以 `CODE_REVIEW.md` 为准；无 finding 时明确报告 no findings，不制造猜测性问题。用户显式要求 `cr`／`review` 时，仍按「写作规则」把结论直接发到对应 PR。
+
+## Code Review Rules
+
+### 测量可比性与公开身份
+
+- 必须拦截任何静默改变评分口径、统计语义、prompt 字节、Schema identity 或持久化契约的改动，否则历史报告会被错误当作可比。安全路径：保持不变量，或显式版本化并在 PR 标题／描述标记对应 `BREAKING-*`、迁移和测量影响。
+
+### Core 与宿主边界
+
+- 必须拦截 `eval-core` 对 CLI、文件系统、网络、环境变量、执行器或 Studio 的反向依赖，否则 Core 会失去宿主无关性和可重放性。安全路径：Core 只表达纯契约与确定性变换，副作用放在 `eval-workflows` 或对应 adapter。
+
+### 用户与测试状态
+
+- 必须拦截未授权的仓库文件、用户目录或全局状态写入，以及失败／中断后未清理的临时资源。安全路径：测试使用显式临时根和环境隔离，生产写入只落到公开存储契约允许的位置，并覆盖 cleanup 路径。
 
 ## 硬规则
 
@@ -27,18 +40,6 @@ OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它�
 - 不要在给用户看的 URL 里硬编码 report server 端口；使用 `server.start()` 返回的实际 URL。
 - 判别字段命名：新建或可安全改名的字段中，裸 `kind` 默认只表示 `Artifact.kind: ArtifactKind`（baseline / skill / prompt / agent / workflow）。例外是已经发布并落盘/对外暴露的 public schema（如 report / doctor / observe / diagnosis 的顶层 `kind`），这些既有 `kind` 字段不要顺手改成限定名；确需改名时单独做 schema / data migration，并保持读取旧文件。其它新判别字段用限定名（`eventKind` / `runtimeKind` / `standardKind` 等）。细节见 `docs/specs/terminology-spec.md` §5.4，CI 有 `test/scripts/kind-semantics-guard.test.ts` 拦新裸 `kind`。
 
-## 测量学不变量
-
-这些是跨版本报告可比性的锚点，不要静默修改：
-
-- `src/eval-core/contracts/artifacts.ts` 里的 `EvaluationReportSchema` 字段语义。
-- `test/measurement-governance/prompt-registry-freeze.test.ts` 冻结的全部评分类 prompt hash（rubric 评委 / RAG / semantic / observe LLM 增强复盘），由同目录 `prompt-registry.ts` 的 `PROMPT_REGISTRY` 驱动；评分类 prompt 文本统一在 `src/eval-workflows/instruments/prompts/`。
-- 五层评分管道语义：assertion / llm / judge / dimension / composite。
-- Bootstrap CI 和 Krippendorff alpha 公式。
-- Length-debias toggle 语义：`--no-debias-length` 关掉 rubric 评委的长度去偏（debias-off prompt 变体）；排版 / 语气中性化不受其影响、恒开。
-
-确实需要改不变量时，必须在 PR 标题 / description 明确标 `BREAKING-COMPARABILITY`（GitHub Release notes 会从 PR title 自动汇总），并按 `CONTRIBUTING.md` 的版本规则处理。
-
 ## 写作规则
 
 - CLI / 报告 UI / 错误信息等 user-facing 文案中文优先。
@@ -47,42 +48,15 @@ OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它�
 - LLM judge 译为 `评委`，不要译为 `判官`。
 - PR description 写用户影响、迁移说明、construct-validity 或测量学 caveat，链接相关 issue / 前置 PR。不要写行号、测试用例清单或嵌套实现细节 — 那些 git diff 里都有。
 
-## UI / Judge 改动
+## omk skill 单一来源
 
-- 改任何评分类 prompt 文本前（rubric 评委 / RAG / semantic，均在 `src/eval-workflows/instruments/prompts/`），先确认 `test/measurement-governance/prompt-registry-freeze.test.ts` 的影响，不要随手更新冻结 hash。
-- 改 observe LLM 增强复盘 prompt 文本前，先确认同一冻结测试里 `observe-llm-enhanced-review` 条目的影响；如果 runtimeAssessment 可比性会变化，PR 标题 / description 必须标 `BREAKING-COMPARABILITY`。
-- 改报告 UI 后，先 review `test/__snapshots__/html-renderer.test.ts.snap` diff，再决定是否更新 snapshot。
-
-## omk 自带 skill 安装（跨 agent）
-
-仓库根 `.agents/skills/omk/` 是 omk 智能代理 skill 的**单一来源**——中性路径，跟 [AGENTS.md 标准](https://agents.md/)同源。在本仓库里 clone 即用，无需额外操作：
-
-- **Codex**：原生加载 `.agents/skills/omk/`（Codex 从 cwd 向上扫到仓库根的 `.agents/skills/`）。
-- **Claude Code**：通过软链 `.claude/skills/omk` → `.agents/skills/omk` 加载。
-
-用户安装 npm 包后，推荐用内置安装命令把 omk 官方 Agent Skill 装到本机 agent 工具：
-
-```bash
-omk install omk-agent-skill
-```
-
-默认只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。需要强制写入当前 omk 已知的全部目标时，用 `--to all`；需要自定义 skill 根目录时，用 `--dest`。
-
-仓库开发或手动复用时，也可以把 `.agents/skills/omk/` 整目录拷到对应工具的 skill 目录：
-
-```bash
-# Claude Code（全局）
-cp -r .agents/skills/omk ~/.claude/skills/omk
-# Codex（全局）
-cp -r .agents/skills/omk ~/.agents/skills/omk
-# Cursor / Aider / Gemini CLI 等：按各工具文档放到对应 skill 目录
-```
-
-skill 内容跟 agent 解耦（不依赖任何工具专属能力），可在任意支持 markdown skill 的 agent 里工作。跨多个评测项目大规模复用时，再考虑抽成 plugin / 独立发布包。
+- 仓库根 `.agents/skills/omk/` 是 omk 官方 Agent Skill 的单一来源；`.claude/skills/omk` 只是指向它的软链，不要复制维护第二份内容。
+- npm 用户的安装方式见 `README.md` / `README.zh.md` 和 `docs/quickstart-skill-eval.md`；本文件不复制用户教程。
 
 ## 参考
 
 - 用户文档：`README.md` / `README.zh.md`
 - omk skill 入场：`.agents/skills/omk/SKILL.md`（单一来源，见上节）
+- 自主代码审查：`CODE_REVIEW.md`
 - 设计 spec：`docs/`
 - 分支 / 发版 / 贡献细节：`CONTRIBUTING.md`

@@ -125,3 +125,13 @@ Finding 必须定位到可操作代码或契约。风格偏好、没有触发机
 有 findings 时，按严重度排序，先给问题再给总评。无 findings 时明确写 `No findings`，随后简述已检查的高风险面、验证证据和残余风险。不要用测试清单掩盖尚未分析的架构或测量问题。
 
 自主 CR 的结论写入 PR 描述；用户显式要求对已存在 PR 做 `cr`／`review` 时，按 `AGENTS.md` 要求把审查评论直接发布到对应 PR。
+
+## 指令发现 Smoke
+
+修改 `AGENTS.md`、嵌套领域规则或 Agent 接入配置时，除静态治理测试外做一次低成本人工验证：
+
+1. 从仓库根启动本机可用的 Agent，请它列出当前仓库规则来源，确认能发现根 `AGENTS.md` 与 `CODE_REVIEW.md`。
+2. 以有嵌套规则的目录为工作目录启动 Agent，确认根规则与距离该目录最近的领域 `AGENTS.md` 同时生效。
+3. Codex 走原生 agents.md 发现，Claude Code 走 `CLAUDE.md` import，Aider 走 `.aider.conf.yml`，Gemini CLI 走 `.gemini/settings.json`。其它工具按其官方 agents.md 支持方式验收。
+
+CI 只验证配置存在、语法和关键规则锚点，不在测试中启动第三方 Agent，也不把静态检查误当成实际指令加载证明。
