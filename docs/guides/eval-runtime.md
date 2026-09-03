@@ -24,13 +24,13 @@ Create one identity for the deployed invocation implementation. Every field belo
 
 ```ts
 import {
-  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
   createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
+  runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
 
 const identity = createInvokeExecutorIdentity({
@@ -114,20 +114,22 @@ const definition = createExactMatchDefinition({
 const policy = createMeasurementPolicy({ maxConcurrency: 4 });
 ```
 
-Prepare before scheduling, then consume events concurrently with the terminal result:
+Use `runEvaluation` by default. It owns the bounded event-stream consumer; omit `onEvent` when progress is not needed, or provide it for ordered progress updates:
 
 ```ts
-const prepared = await createEvaluationEngine(runtime).prepare(definition, policy);
-const run = prepared.start({ runId: crypto.randomUUID(), eventBufferCapacity: 256 });
-const draining = (async () => {
-  for await (const event of run.events) await publishProgress(event);
-})();
-const result = await run.result;
-await draining;
+const result = await runEvaluation({
+  runtime,
+  definition,
+  policy,
+  runId: crypto.randomUUID(),
+  onEvent: publishProgress,
+});
 
 if (result.status === 'failed') throw new Error(result.error.code);
 await reportStore.put(result.report);
 ```
+
+`onEvent` is an ordered progress observer, not durable delivery. Its failure does not change the measurement result: the helper stops subsequent callbacks, keeps draining and cleans up the Runtime, then throws `EvaluationEventConsumptionError` with the terminal Core `runResult`. Only the caller's `AbortSignal` cancels the evaluation. Use `eventWriter` for durable delivery governed by Core failure policy. Hosts that need to inspect the sealed plan before scheduling can still call `createEvaluationEngine(runtime).prepare(definition, policy)`.
 
 The random `runId` distinguishes executions and affects artifact identity; it is not part of the measurement plan. Rebuilding the same Definition, Policy, and Runtime identity with the same explicit seed produces the same `runContractDigest`.
 

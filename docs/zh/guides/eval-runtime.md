@@ -24,13 +24,13 @@ npm install oh-my-knowledge
 
 ```ts
 import {
-  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
   createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
+  runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
 
 const identity = createInvokeExecutorIdentity({
@@ -114,20 +114,22 @@ const definition = createExactMatchDefinition({
 const policy = createMeasurementPolicy({ maxConcurrency: 4 });
 ```
 
-调度前先 prepare，并与终态结果并发消费 event：
+默认使用 `runEvaluation`。它负责完整消费有界事件流；不关心进度时无需编写 drain 代码，需要进度时传入可选的 `onEvent`：
 
 ```ts
-const prepared = await createEvaluationEngine(runtime).prepare(definition, policy);
-const run = prepared.start({ runId: crypto.randomUUID(), eventBufferCapacity: 256 });
-const draining = (async () => {
-  for await (const event of run.events) await publishProgress(event);
-})();
-const result = await run.result;
-await draining;
+const result = await runEvaluation({
+  runtime,
+  definition,
+  policy,
+  runId: crypto.randomUUID(),
+  onEvent: publishProgress,
+});
 
 if (result.status === 'failed') throw new Error(result.error.code);
 await reportStore.put(result.report);
 ```
+
+`onEvent` 是按顺序调用的进度观察器，不承担持久化。观察器失败不会改变测量结果；helper 会停止后续回调、继续 drain 并清理 Runtime，随后抛出 `EvaluationEventConsumptionError`，其中的 `runResult` 保留 Core 终态。只有调用方 `AbortSignal` 负责取消评测。需要带 Core failure policy 的持久事件写入时使用 `eventWriter`。需要调度前审阅 sealed plan 时，仍可调用 `createEvaluationEngine(runtime).prepare(definition, policy)`。
 
 随机 `runId` 用于区分执行，并影响 artifact identity，但不属于测量计划。同一份 Definition、Policy、Runtime identity 与显式 seed 会生成相同的 `runContractDigest`。
 

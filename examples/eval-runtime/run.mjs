@@ -1,11 +1,11 @@
 import {
-  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
   createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
+  runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
 
 const identity = createInvokeExecutorIdentity({
@@ -75,16 +75,12 @@ const definition = createExactMatchDefinition({
   bootstrap: { resamples: 100 },
 });
 
-const prepared = await createEvaluationEngine(runtime).prepare(
+const result = await runEvaluation({
+  runtime,
   definition,
-  createMeasurementPolicy({ maxConcurrency: 2 }),
-);
-const run = prepared.start({ runId: 'eval-runtime-example', eventBufferCapacity: 128 });
-const draining = (async () => {
-  for await (const event of run.events) void event;
-})();
-const result = await run.result;
-await draining;
+  policy: createMeasurementPolicy({ maxConcurrency: 2 }),
+  runId: 'eval-runtime-example',
+});
 if (result.status !== 'completed') throw new Error(result.error.code);
 
 process.stdout.write(`${JSON.stringify({

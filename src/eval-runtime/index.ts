@@ -1,5 +1,13 @@
 export { createNodeEvaluationClock } from './clock.js';
 export { createEvaluationEngine } from './engine.js';
+export {
+  EvaluationEventConsumptionError,
+  runEvaluation,
+} from './runner.js';
+export type {
+  EvaluationEventObserver,
+  RunEvaluationInput,
+} from './runner.js';
 export { createExactMatchDefinition } from './builders/exact-match.js';
 export type {
   ExactMatchDefinitionBuilderInput,
