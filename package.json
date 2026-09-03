@@ -13,6 +13,10 @@
       "types": "./dist/eval-core/index.d.ts",
       "import": "./dist/eval-core/index.js"
     },
+    "./eval-runtime": {
+      "types": "./dist/eval-runtime/index.d.ts",
+      "import": "./dist/eval-runtime/index.js"
+    },
     "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
     "./eval-core/schemas/v2/*": "./dist/eval-core/contracts/schemas/v2/*",
     "./eval-samples": {

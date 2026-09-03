@@ -228,6 +228,7 @@ omk-mcp
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[迁移到 1.0 预览版](docs/zh/guides/v1-preview-migration.md)** —— 从 `0.54` 升级时的安装渠道、存储重建、用例协议、CLI 自动化与嵌入式 API 变化
 - **[Evaluation Core 生产切换](docs/zh/guides/eval-core-cutover.md)** —— `BREAKING-SCHEMA` 存储、resume、Studio、Gold、受管证据与 evolve 迁移
+- **[在服务中嵌入 OMK](docs/zh/guides/eval-runtime.md)** —— 面向 Node.js 与 FaaS 宿主的轻量 `eval-runtime` 装配
 - **[存储布局 v2](docs/zh/specs/storage-layout-spec.md)** —— 项目／全局领域、迁移兼容与 Git 策略
 - **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）

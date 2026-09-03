@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path';
 import type { EvaluationEngineClock } from '../../eval-core/engine/index.js';
+import { createNodeEvaluationClock } from '../../eval-runtime/clock.js';
 import type { ExecutionExecutor } from '../../eval-core/execution/index.js';
 import {
   deepFreezeCanonicalJson,
@@ -325,29 +326,7 @@ export function createProductionRuntimeFactoryRegistry(
   });
 }
 
-export function createNodeEvaluationClock(): EvaluationEngineClock {
-  return Object.freeze({
-    monotonicNow: () => performance.now(),
-    timestamp: () => new Date().toISOString(),
-    sleep(delayMs: number, signal: AbortSignal): Promise<void> {
-      if (!Number.isFinite(delayMs) || delayMs < 0) {
-        return Promise.reject(new TypeError('Clock delayMs 必须是有限非负数。'));
-      }
-      if (signal.aborted) return Promise.reject(signal.reason);
-      return new Promise((resolve, reject) => {
-        const abort = (): void => {
-          clearTimeout(timer);
-          reject(signal.reason);
-        };
-        const timer = setTimeout(() => {
-          signal.removeEventListener('abort', abort);
-          resolve();
-        }, delayMs);
-        signal.addEventListener('abort', abort, { once: true });
-      });
-    },
-  });
-}
+export { createNodeEvaluationClock } from '../../eval-runtime/clock.js';
 
 /** Node support ports share one digest-verifying content store instance. */
 export function createNodeEvaluationRuntimeSupportPorts(input: Readonly<{

@@ -50,7 +50,7 @@ import {
   type CodexSdkRuntimeResolver,
   type ResolvedCodexSdkRuntime,
 } from './sdk-runtime.js';
-import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { createSameProcessExecutorAdapter } from '../shared/omk-resource-same-process.js';
 
 export {
   CODEX_SDK_READ_ONLY_SANDBOX_ID,

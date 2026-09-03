@@ -251,6 +251,18 @@ describe('src 依赖图', () => {
     expect(violations).toEqual([]);
   });
 
+  it('eval-runtime 只依赖 Core 与 type-only Executor contracts', () => {
+    const violations = edges.filter((edge) => edge.importerDomain === 'eval-runtime')
+      .filter((edge) => (
+        edge.targetDomain !== 'eval-core'
+        && !(edge.targetDomain === 'executors'
+          && edge.typeOnly
+          && edge.target.startsWith('executors/contracts/'))
+      ))
+      .map(describeEdge);
+    expect(violations).toEqual([]);
+  });
+
   it('运行时实现依赖图保持无环', () => {
     const runtimeImplementationEdges = edges.filter(
       (edge) => !edge.typeOnly && !isContractBoundary(edge.target),

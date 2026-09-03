@@ -5,4 +5,4 @@ export * from './codex/cli.js';
 export * from './codex/sdk.js';
 export * from './custom/command.js';
 export * from './openai/api.js';
-export * from './shared/same-process.js';
+export * from './shared/omk-resource-same-process.js';

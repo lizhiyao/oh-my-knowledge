@@ -57,7 +57,7 @@ import {
   type ClaudeSdkRuntimeResolver,
   type ResolvedClaudeSdkRuntime,
 } from './sdk-runtime.js';
-import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { createSameProcessExecutorAdapter } from '../shared/omk-resource-same-process.js';
 import { attachSourceNeutralMockStats } from '../../source-neutral-trace.js';
 
 export {

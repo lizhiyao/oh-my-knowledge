@@ -19,7 +19,7 @@ import {
   type DeterministicAssertionContext,
 } from '../../assertions/deterministic.js';
 import type { Assertion } from '../../inputs/contracts/assertion.js';
-import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
+import type { SameProcessEvaluatorImplementation } from '../adapters/shared/omk-resource-same-process.js';
 import {
   assertionDetail,
   assertionSchemaIdentity,

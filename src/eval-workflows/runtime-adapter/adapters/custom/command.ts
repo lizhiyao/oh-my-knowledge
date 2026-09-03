@@ -48,7 +48,7 @@ import type { RuntimeBindingOf } from '../../types.js';
 import {
   createSameProcessExecutorAdapter,
   type SameProcessOperationScope,
-} from '../shared/same-process.js';
+} from '../shared/omk-resource-same-process.js';
 import {
   captureClassifiedEnvironment,
   mergeOutputClassification,
