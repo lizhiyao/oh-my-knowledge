@@ -73,7 +73,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "lint-staged": "lint-staged",
-    "test": "vitest run",
+    "test": "node scripts/run-tests-hermetic.mjs",
     "test:profile": "yarn build && node dist-scripts/test-profile.js",
     "ci:quality": "run-s lint typecheck build build:docs:check docs:build",
     "ci": "run-s ci:quality test",

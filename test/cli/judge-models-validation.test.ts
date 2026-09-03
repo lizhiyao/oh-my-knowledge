@@ -1,5 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Command, Config } from '@oclif/core';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
 import EvolveCommand from '../../src/cli/commands/evolve.js';
@@ -21,17 +23,20 @@ interface ExecError extends Error {
 // eval 通过 parseRunConfig 解析 judgeModels,需要 control/treatment 才能跑到参数解析。
 // evolve 直接调 parseJudgeModelsArgOrExit,无前置依赖。
 type CommandClass = { new (argv: string[], config: Config): Command; id: string; name: string };
+const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const SKILLS_DIR = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
+const V1_SKILL = join(SKILLS_DIR, 'v1.md');
 
 const CASES: Array<{ name: string; command: CommandClass; argv: string[] }> = [
   {
     name: 'eval',
     command: EvalCommand,
-    argv: ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'test/fixtures/code-review/skills', '--dry-run'],
+    argv: ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run'],
   },
   {
     name: 'evolve',
     command: EvolveCommand,
-    argv: ['test/fixtures/code-review/skills/v1.md', '--rounds', '1'],
+    argv: [V1_SKILL, '--rounds', '1'],
   },
 ];
 
@@ -64,7 +69,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
   it('omk evolve 拒绝多评委时,error 用新命令名而非旧 improve skill', async () => {
     await assert.rejects(
       () => runCommand(EvolveCommand, [
-        'test/fixtures/code-review/skills/v1.md',
+        V1_SKILL,
         '--rounds', '1',
         '--judge-models', 'claude:haiku,claude:sonnet',
       ]),
@@ -86,7 +91,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models <missing executor> exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'test/fixtures/code-review/skills', '--dry-run', '--judge-models', ':haiku']),
+      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', ':haiku']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -99,7 +104,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models "" (empty) exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'test/fixtures/code-review/skills', '--dry-run', '--judge-models', '']),
+      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', '']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);

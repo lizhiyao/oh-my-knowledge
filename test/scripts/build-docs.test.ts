@@ -13,7 +13,16 @@ import { beforeAll, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Config } from '@oclif/core';
@@ -33,6 +42,25 @@ const BUILD_DOCS = join(PROJECT_ROOT, 'dist-scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
 const MARKER_END = '<!-- omk:cli:end -->';
+const GENERATED_DOC_TARGETS = [
+  '.agents/skills/omk/references/commands.md',
+  'docs/reference/cli.md',
+  'docs/zh/reference/cli.md',
+  'docs/specs/cli-evaluation-input-compilation.md',
+  'docs/zh/specs/cli-evaluation-input-compilation.md',
+] as const;
+
+function createBuildDocsFixture(): string {
+  const root = mkdtempSync(join(tmpdir(), 'omk-build-docs-check-'));
+  copyFileSync(join(PROJECT_ROOT, 'package.json'), join(root, 'package.json'));
+  symlinkSync(join(PROJECT_ROOT, 'dist'), join(root, 'dist'), 'dir');
+  for (const relativePath of GENERATED_DOC_TARGETS) {
+    const target = join(root, relativePath);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(PROJECT_ROOT, relativePath), target);
+  }
+  return root;
+}
 
 function readFlagsBlock(content: string, id: string): string {
   const start = `<!-- omk:cli:${id}:flags:start -->`;
@@ -135,22 +163,17 @@ describe('scripts/build-docs codegen', () => {
   }, 30000);
 
   it('--check mode fails on drift and prints diff', async () => {
-    const original = readFileSync(COMMANDS_MD, 'utf8');
-    // 注入一处明显 drift:在 marker body 里加一行
-    const drifted = original.replace(
-      MARKER_START,
-      `${MARKER_START}\n<!-- DRIFT INJECTED FOR TEST -->`,
-    );
-    // 额外 safety net:如果 vitest 在 finally 之前被 SIGINT/SIGTERM 杀掉,
-    // process.on('exit') 同步回写 original,防止 drift 残留进 git commit。
-    const restore = (): void => {
-      try { writeFileSync(COMMANDS_MD, original, 'utf8'); } catch { /* best-effort */ }
-    };
-    process.once('exit', restore);
-    writeFileSync(COMMANDS_MD, drifted, 'utf8');
+    const fixtureRoot = createBuildDocsFixture();
     try {
+      const fixtureCommands = join(fixtureRoot, '.agents/skills/omk/references/commands.md');
+      const original = readFileSync(fixtureCommands, 'utf8');
+      writeFileSync(
+        fixtureCommands,
+        original.replace(MARKER_START, `${MARKER_START}\n<!-- DRIFT INJECTED FOR TEST -->`),
+        'utf8',
+      );
       await assert.rejects(
-        () => execFileAsync('node', [BUILD_DOCS, '--check'], { cwd: PROJECT_ROOT }),
+        () => execFileAsync('node', [BUILD_DOCS, '--check'], { cwd: fixtureRoot }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1, `expected exit 1 on drift, got ${e.code}`);
@@ -159,8 +182,7 @@ describe('scripts/build-docs codegen', () => {
         },
       );
     } finally {
-      writeFileSync(COMMANDS_MD, original, 'utf8');
-      process.off('exit', restore);
+      rmSync(fixtureRoot, { recursive: true, force: true });
     }
   }, 30000);
 
