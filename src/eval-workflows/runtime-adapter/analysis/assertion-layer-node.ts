@@ -65,7 +65,7 @@ const ASSERTION_LAYER_CAPABILITIES: JsonValue = {
 export const ASSERTION_LAYER_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
-    version: '1.0.0',
+    version: '2.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_VERSION,
@@ -77,6 +77,7 @@ export const ASSERTION_LAYER_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCano
       missingPolicyId: 'exclude/v1',
       metricContract: { scope: 'sample', direction: 'higher-is-better' },
       structuralNotApplicableReason: ASSERTION_NOT_APPLICABLE_REASON,
+      coreCoverageSemantics: 'structural-not-applicable/v1',
       samplingUnitLineage: 'preserved-from-analysis-metric-rows',
       criterionDesign: 'sealed-explicit-parameters',
       outputSchema: ASSERTION_LAYER_TABLE_SCHEMA,
@@ -278,12 +279,18 @@ export function createAssertionLayerAnalysisNodes(): ReadonlyMap<
           ? [row.rowId]
           : []
       ))).sort(compareStrings);
+      const notApplicableRowIds = inputs.flatMap((input) => input.rows.flatMap((row) => (
+        row.rowStatus === 'missing' && row.reasonCode === ASSERTION_NOT_APPLICABLE_REASON
+          ? [row.rowId]
+          : []
+      ))).sort(compareStrings);
       return {
         analysisStatus: 'completed',
         resultType: 'table',
         value: table,
         includedRowIds,
         comparableRowIds: includedRowIds,
+        notApplicableRowIds,
         assumptionChecks: [{
           assumptionId: 'assertion-layer-contract',
           checkStatus: 'passed',

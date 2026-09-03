@@ -33,7 +33,7 @@ For one Target／Sample／Trial coordinate, an observed assertion layer is:
 layerScore = 1 + passedObservedWeight / observedWeight × 4
 ```
 
-The result is rounded to two decimals on a 1–5 scale. Structural non-applicability is excluded from planned coverage. Missing, invalid, failed, unavailable, and not-started observations remain explicit coverage states and never become `false`. If no weight was observed, the layer is missing rather than zero.
+The result is rounded to two decimals on a 1–5 scale. Structural non-applicability is excluded from assertion scoring coverage. Analysis Bundle v2 still retains the rectangular input coordinate, classifies it separately as `notApplicable`, and authenticates its row identity and reason through `notApplicableRows`, so it does not degrade evidence completeness. Missing, invalid, failed, unavailable, and not-started observations remain explicit coverage states and never become `false`. If no weight was observed, the layer is missing rather than zero.
 
 Implementation: `omk.assertion-layer-table/v1` in `src/eval-workflows/runtime-adapter/analysis/assertion-layer.ts`.
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -8,14 +9,22 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateWireJsonSchemas } from '../dist/eval-core/contracts/json-schema.js';
+import {
+  WIRE_SCHEMA_CATALOG,
+  wireSchemaCatalogVersion,
+} from '../dist/eval-core/contracts/json-schema.js';
 
 const mode = process.argv[2];
 if (mode !== '--write' && mode !== '--check') {
   throw new Error('Usage: node scripts/build-eval-core-schemas.mjs <--write|--check>');
 }
 
-const schemaDir = resolve('schemas/eval-core/v1');
+const schemaRoot = resolve('schemas/eval-core');
 const schemas = generateWireJsonSchemas();
+const historicalSchemaDigests = new Map([
+  ['v1/analysis-bundle.schema.json', '92e49a22dd3d3c4c91b710afe20018a76c5709773c4f06d8c39fbc3c89e3eb97'],
+  ['v1/evaluation-report.schema.json', '57089f7538da7347870426ed9b499adc289660500b8931f278eb2640d39fee8a'],
+]);
 
 function sortJson(value) {
   if (Array.isArray(value)) return value.map(sortJson);
@@ -25,40 +34,63 @@ function sortJson(value) {
   );
 }
 
-const rendered = Object.fromEntries(
-  Object.entries(schemas).map(([fileName, schema]) => [
-    fileName,
-    `${JSON.stringify(sortJson(schema), null, 2)}\n`,
-  ]),
-);
+const rendered = Object.fromEntries(WIRE_SCHEMA_CATALOG.map((entry) => {
+  const relativePath = `${wireSchemaCatalogVersion(entry)}/${entry.fileName}`;
+  return [relativePath, `${JSON.stringify(sortJson(schemas[entry.fileName]), null, 2)}\n`];
+}));
+
+function existingSchemaPaths() {
+  if (!existsSync(schemaRoot)) return [];
+  return readdirSync(schemaRoot, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isDirectory() || !/^v[1-9]\d*$/.test(entry.name)) return [];
+    return readdirSync(resolve(schemaRoot, entry.name))
+      .filter((fileName) => fileName.endsWith('.schema.json'))
+      .map((fileName) => `${entry.name}/${fileName}`);
+  }).sort();
+}
+
+function historicalSchemaErrors() {
+  return [...historicalSchemaDigests].flatMap(([relativePath, expectedDigest]) => {
+    const filePath = resolve(schemaRoot, relativePath);
+    if (!existsSync(filePath)) return [`historical schema is missing: ${relativePath}`];
+    const actualDigest = createHash('sha256').update(readFileSync(filePath)).digest('hex');
+    return actualDigest === expectedDigest
+      ? []
+      : [`historical schema changed: ${relativePath}`];
+  });
+}
 
 if (mode === '--write') {
-  mkdirSync(schemaDir, { recursive: true });
-  const expected = new Set(Object.keys(rendered));
-  for (const fileName of readdirSync(schemaDir)) {
-    if (fileName.endsWith('.schema.json') && !expected.has(fileName)) {
-      rmSync(resolve(schemaDir, fileName));
+  const historicalErrors = historicalSchemaErrors();
+  if (historicalErrors.length > 0) {
+    throw new Error(historicalErrors.join('\n'));
+  }
+  mkdirSync(schemaRoot, { recursive: true });
+  const expected = new Set([...Object.keys(rendered), ...historicalSchemaDigests.keys()]);
+  for (const relativePath of existingSchemaPaths()) {
+    if (!expected.has(relativePath)) {
+      rmSync(resolve(schemaRoot, relativePath));
     }
   }
-  for (const [fileName, contents] of Object.entries(rendered)) {
-    writeFileSync(resolve(schemaDir, fileName), contents);
+  for (const [relativePath, contents] of Object.entries(rendered)) {
+    const filePath = resolve(schemaRoot, relativePath);
+    mkdirSync(resolve(filePath, '..'), { recursive: true });
+    writeFileSync(filePath, contents);
   }
   console.log(`Generated ${Object.keys(rendered).length} Evaluation Core schemas.`);
   process.exit(0);
 }
 
-const errors = [];
-const actualFiles = existsSync(schemaDir)
-  ? readdirSync(schemaDir).filter((fileName) => fileName.endsWith('.schema.json')).sort()
-  : [];
-const expectedFiles = Object.keys(rendered).sort();
+const errors = historicalSchemaErrors();
+const actualFiles = existingSchemaPaths();
+const expectedFiles = [...Object.keys(rendered), ...historicalSchemaDigests.keys()].sort();
 if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
   errors.push(`schema file set differs: expected ${expectedFiles.join(', ')}, found ${actualFiles.join(', ')}`);
 }
-for (const [fileName, contents] of Object.entries(rendered)) {
-  const filePath = resolve(schemaDir, fileName);
+for (const [relativePath, contents] of Object.entries(rendered)) {
+  const filePath = resolve(schemaRoot, relativePath);
   if (!existsSync(filePath)) continue;
-  if (readFileSync(filePath, 'utf8') !== contents) errors.push(`${fileName} is stale`);
+  if (readFileSync(filePath, 'utf8') !== contents) errors.push(`${relativePath} is stale`);
 }
 if (errors.length > 0) {
   console.error(errors.join('\n'));

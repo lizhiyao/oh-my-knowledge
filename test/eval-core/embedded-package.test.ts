@@ -83,6 +83,10 @@ describe('published embedded Evaluation Core API', () => {
     ), 'utf8')).title).toBe('OMK Execution Bundle v1');
     expect(JSON.parse(readFileSync(join(
       packageDirectory,
+      'dist/eval-core/contracts/schemas/v2/analysis-bundle.schema.json',
+    ), 'utf8')).title).toBe('OMK Analysis Bundle v2');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
       'dist/eval-workflows/inputs/contracts/schemas/v1/eval-sample-set.schema.json',
     ), 'utf8')).title).toBe('OMK Eval Sample Set v1');
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({
@@ -133,6 +137,11 @@ const assert = require('node:assert/strict');
     { with: { type: 'json' } }
   );
   assert.equal(schema.default.title, 'OMK Execution Bundle v1');
+  const analysisSchema = await import(
+    'oh-my-knowledge/eval-core/schemas/v2/analysis-bundle.schema.json',
+    { with: { type: 'json' } }
+  );
+  assert.equal(analysisSchema.default.title, 'OMK Analysis Bundle v2');
   const sampleSchema = await import(
     'oh-my-knowledge/eval-samples/schemas/v1/eval-sample-set.schema.json',
     { with: { type: 'json' } }
@@ -237,6 +246,7 @@ const assert = require('node:assert/strict');
       './dsh-plugin',
       './eval-core',
       './eval-core/schemas/v1/*',
+      './eval-core/schemas/v2/*',
       './eval-samples',
       './eval-samples/schemas/v1/*',
       './mcp',

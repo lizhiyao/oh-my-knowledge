@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import _Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
@@ -16,29 +16,39 @@ import {
   generateRunContractSchemaIdentities,
   generateWireSchemaIdentities,
   parseWireDocument,
+  wireSchemaCatalogVersion,
 } from '../../../src/eval-core/contracts/index.js';
-import { EVALUATION_CORE_JSON_SCHEMA_FILES } from '../../../src/eval-core/schemas.js';
+import {
+  EVALUATION_CORE_JSON_SCHEMA_FILES,
+  evaluationCoreJsonSchemaLocation,
+  type EvaluationCoreJsonSchemaFile,
+} from '../../../src/eval-core/schemas.js';
 
 const Ajv2020 = _Ajv2020 as unknown as typeof _Ajv2020.default;
 
 describe('Evaluation Core wire schemas', () => {
   it('exports every catalog entry as deterministic JSON Schema 2020-12', () => {
     const generated = generateWireJsonSchemas();
-    const schemaCatalogPath = 'schemas/eval-core/v1';
+    const schemaCatalogPath = 'schemas/eval-core';
     const schemaDir = resolve(schemaCatalogPath);
     const stableIdentityBase =
       `https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/${schemaCatalogPath}`;
-    const files = readdirSync(schemaDir).filter((name) => name.endsWith('.schema.json')).sort();
 
     expect(WIRE_SCHEMA_CATALOG).toHaveLength(21);
-    expect(files).toEqual(WIRE_SCHEMA_CATALOG.map((entry) => entry.fileName).sort());
     expect(EVALUATION_CORE_JSON_SCHEMA_FILES).toEqual(Object.keys(generated).sort());
-    for (const [fileName, schema] of Object.entries(generated)) {
+    for (const entry of WIRE_SCHEMA_CATALOG) {
+      const { fileName } = entry;
+      const schema = generated[fileName];
+      const catalogVersion = wireSchemaCatalogVersion(entry);
       expect(schema).toMatchObject({
-        $id: `${stableIdentityBase}/${fileName}`,
+        $id: `${stableIdentityBase}/${catalogVersion}/${fileName}`,
         $schema: 'https://json-schema.org/draft/2020-12/schema',
       });
-      expect(JSON.parse(readFileSync(resolve(schemaDir, fileName), 'utf8'))).toEqual(schema);
+      expect(evaluationCoreJsonSchemaLocation(fileName as EvaluationCoreJsonSchemaFile)).toBe(
+        `${catalogVersion}/${fileName}`,
+      );
+      expect(JSON.parse(readFileSync(resolve(schemaDir, catalogVersion, fileName), 'utf8')))
+        .toEqual(schema);
       expect(canonicalizeJson(schema)).not.toContain(':{}');
     }
   });

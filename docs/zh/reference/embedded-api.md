@@ -145,7 +145,7 @@ const report = await session.materializeReport({
 
 同一 session 中每个阶段最多执行一次，阶段调用不能重叠。Report materialization 会自动关闭 session；若工作流有意提前停止，必须调用 `await session.close()`，从而取消仍在运行的阶段、等待资源释放并归还 `runId`。
 
-发布包通过白名单路径 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json` 提供 JSON Schema。需要 URL 的代码无需拼接包内部路径：
+发布的 JSON Schema 使用带版本的 package 路径。代码不应自行拼接 package 内部路径，而应通过 current-contract resolver 获取：
 
 ```ts
 import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
@@ -153,9 +153,7 @@ import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
 
-每个已发布文件都以 `schemas/eval-core/v1/` 下的 canonical raw catalog URL 作为 `$id`，JSON
-Schema 工具因此可以解析这份文档身份。Node.js 宿主仍应优先使用 `eval-core` package subpath
-或 `resolveEvaluationCoreJsonSchema()`，直接读取已安装 package 中的 Schema。
+每个已发布文件都以 canonical raw catalog URL 作为 `$id`，JSON Schema 工具可以解析其 document identity。当前 Analysis Bundle 与 Evaluation Report 已升为 v2，其余十九个根契约仍为 v1；对应 package 路径分别是 `oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` 与 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`。冻结的 v1 Analysis Bundle 与 Evaluation Report 仍保留在源码 catalog 中供历史 identity 解析，但 runtime 不再读取。Node.js 宿主仍应优先使用 `eval-core` package subpath 或 `resolveEvaluationCoreJsonSchema()`，以定位已安装 package 内的当前契约。
 
 ## 结果与错误
 

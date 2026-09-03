@@ -392,20 +392,31 @@ function observationCoverage(
   rows: readonly AnalysisMetricRow[],
   includedRowIds: readonly Sha256Digest[],
   comparableRowIds: readonly Sha256Digest[],
+  notApplicableRowIds: readonly Sha256Digest[] = [],
 ): AnalysisObservationCoverage {
   const included = new Set(includedRowIds);
   const comparable = new Set(comparableRowIds);
+  const notApplicable = new Set(notApplicableRowIds);
   const known = new Set(rows.map((row) => row.rowId));
   if (included.size !== includedRowIds.length
       || comparable.size !== comparableRowIds.length
+      || notApplicable.size !== notApplicableRowIds.length
       || [...included].some((rowId) => !known.has(rowId))
-      || [...comparable].some((rowId) => !included.has(rowId))) {
+      || [...comparable].some((rowId) => !included.has(rowId))
+      || [...notApplicable].some((rowId) => !known.has(rowId) || included.has(rowId))) {
     throw new TypeError('Analysis implementation returned invalid row membership.');
+  }
+  if (rows.some((row) => (
+    notApplicable.has(row.rowId)
+      && (row.rowStatus !== 'missing' || row.censored)
+  ))) {
+    throw new TypeError('Analysis implementation marked an ineligible row as not applicable.');
   }
   const coverage: AnalysisObservationCoverage = {
     planned: rows.length,
     observed: 0,
     missing: 0,
+    notApplicable: notApplicable.size,
     invalid: 0,
     evaluationFailed: 0,
     sourceUnavailable: 0,
@@ -416,6 +427,7 @@ function observationCoverage(
     comparable: comparable.size,
   };
   for (const row of rows) {
+    if (notApplicable.has(row.rowId)) continue;
     if (row.rowStatus === 'observed') coverage.observed += 1;
     else if (row.rowStatus === 'missing') coverage.missing += 1;
     else if (row.rowStatus === 'invalid') coverage.invalid += 1;
@@ -449,6 +461,22 @@ function exclusionFacts(
         ? row.censored ? 'analysis-row-censored' : 'analysis-estimator-excluded'
         : row.reasonCode,
     }))
+    .sort((left, right) => compareStrings(left.rowId, right.rowId));
+}
+
+function notApplicableFacts(
+  rows: readonly AnalysisMetricRow[],
+  notApplicableRowIds: readonly Sha256Digest[],
+): Array<{ rowId: Sha256Digest; reasonCode: string }> {
+  const notApplicable = new Set(notApplicableRowIds);
+  return rows
+    .filter((row) => notApplicable.has(row.rowId))
+    .map((row) => {
+      if (row.rowStatus === 'observed') {
+        throw new TypeError('Observed Analysis rows cannot be structurally not applicable.');
+      }
+      return { rowId: row.rowId, reasonCode: row.reasonCode };
+    })
     .sort((left, right) => compareStrings(left.rowId, right.rowId));
 }
 
@@ -800,6 +828,7 @@ async function runAnalysis(
       inputReferences: binding.node.inputs,
       coverage: emptyCoverage(rows),
       exclusions: exclusionFacts(rows, []),
+      notApplicableRows: [],
       assumptionChecks: [],
       analysisMode: plan.analysis.analysisGraph.analysisMode,
       derivedAt: ports.clock.timestamp(),
@@ -969,9 +998,15 @@ async function runAnalysis(
       .map((row) => row.rowId);
     const includedRowIds = output.includedRowIds ?? observedRowIds;
     const comparableRowIds = output.comparableRowIds ?? includedRowIds;
+    const notApplicableRowIds = output.notApplicableRowIds ?? [];
     let coverage: AnalysisObservationCoverage;
     try {
-      coverage = observationCoverage(rows, includedRowIds, comparableRowIds);
+      coverage = observationCoverage(
+        rows,
+        includedRowIds,
+        comparableRowIds,
+        notApplicableRowIds,
+      );
     } catch (error) {
       const evaluationError = safeError(error);
       const record = buildRecord(base, runtimeDependencies, {
@@ -1020,6 +1055,7 @@ async function runAnalysis(
             ...base,
             coverage,
             exclusions: exclusionFacts(rows, includedRowIds),
+            notApplicableRows: notApplicableFacts(rows, notApplicableRowIds),
             assumptionChecks: checks,
           },
           runtimeDependencies,
@@ -1075,6 +1111,7 @@ async function runAnalysis(
           ...base,
           coverage,
           exclusions: exclusionFacts(rows, includedRowIds),
+          notApplicableRows: notApplicableFacts(rows, notApplicableRowIds),
           assumptionChecks: checks,
         },
         runtimeDependencies,
@@ -1098,6 +1135,7 @@ async function runAnalysis(
           ...base,
           coverage,
           exclusions: exclusionFacts(rows, includedRowIds),
+          notApplicableRows: notApplicableFacts(rows, notApplicableRowIds),
           assumptionChecks: checks,
         },
         runtimeDependencies,

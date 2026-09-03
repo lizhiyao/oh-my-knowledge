@@ -210,6 +210,7 @@ function detail(run: CoreStudioRunCard = card()): CoreStudioRunDetail {
             planned: 2,
             observed: 1,
             missing: 0,
+            notApplicable: 0,
             invalid: 0,
             evaluationFailed: 0,
             sourceUnavailable: 1,
@@ -241,8 +242,8 @@ function detail(run: CoreStudioRunCard = card()): CoreStudioRunDetail {
       ['run-plan', 'omk.run-plan/v1', 'plan'],
       ['execution-bundle', 'omk.execution-bundle/v1', 'execution'],
       ['evaluation-bundle', 'omk.evaluation-bundle/v1', 'evaluation'],
-      ['analysis-bundle', 'omk.analysis-bundle/v1', 'analysis'],
-      ['evaluation-report', 'omk.evaluation-report/v1', 'report'],
+      ['analysis-bundle', 'omk.analysis-bundle/v2', 'analysis'],
+      ['evaluation-report', 'omk.evaluation-report/v2', 'report'],
     ].map(([documentKind, schemaVersion, seed]) => ({
       documentKind: documentKind as CoreStudioRunDetail['lineage'][number]['documentKind'],
       schemaVersion,

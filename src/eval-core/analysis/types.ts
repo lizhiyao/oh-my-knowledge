@@ -131,12 +131,14 @@ export type AnalysisNodeExecutionResult = {
   value: JsonValue;
   includedRowIds?: readonly Sha256Digest[];
   comparableRowIds?: readonly Sha256Digest[];
+  notApplicableRowIds?: readonly Sha256Digest[];
   assumptionChecks?: readonly Omit<AssumptionCheck, 'nodeId'>[];
 } | {
   analysisStatus: 'inconclusive';
   reasonCodes: readonly string[];
   includedRowIds?: readonly Sha256Digest[];
   comparableRowIds?: readonly Sha256Digest[];
+  notApplicableRowIds?: readonly Sha256Digest[];
   assumptionChecks?: readonly Omit<AssumptionCheck, 'nodeId'>[];
 };
 
@@ -149,6 +151,7 @@ export const AnalysisNodeExecutionResultSchema = z.discriminatedUnion('analysisS
     value: JsonValueSchema,
     includedRowIds: z.array(Sha256DigestSchema).optional(),
     comparableRowIds: z.array(Sha256DigestSchema).optional(),
+    notApplicableRowIds: z.array(Sha256DigestSchema).optional(),
     assumptionChecks: z.array(PortAssumptionCheckSchema).optional(),
   }).strict(),
   z.object({
@@ -156,6 +159,7 @@ export const AnalysisNodeExecutionResultSchema = z.discriminatedUnion('analysisS
     reasonCodes: z.array(IdentifierSchema).min(1),
     includedRowIds: z.array(Sha256DigestSchema).optional(),
     comparableRowIds: z.array(Sha256DigestSchema).optional(),
+    notApplicableRowIds: z.array(Sha256DigestSchema).optional(),
     assumptionChecks: z.array(PortAssumptionCheckSchema).optional(),
   }).strict(),
 ]);

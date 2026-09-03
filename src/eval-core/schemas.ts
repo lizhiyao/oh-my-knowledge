@@ -24,3 +24,12 @@ export const EVALUATION_CORE_JSON_SCHEMA_FILES = Object.freeze([
 
 export type EvaluationCoreJsonSchemaFile =
   typeof EVALUATION_CORE_JSON_SCHEMA_FILES[number];
+
+export function evaluationCoreJsonSchemaLocation(
+  fileName: EvaluationCoreJsonSchemaFile,
+): `v${number}/${EvaluationCoreJsonSchemaFile}` {
+  return fileName === 'analysis-bundle.schema.json'
+    || fileName === 'evaluation-report.schema.json'
+    ? `v2/${fileName}`
+    : `v1/${fileName}`;
+}

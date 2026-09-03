@@ -67,6 +67,18 @@ export interface WireSchemaCatalogEntry {
   includedInRunContract?: false;
 }
 
+export type WireSchemaCatalogVersion = `v${number}`;
+
+export function wireSchemaCatalogVersion(
+  entry: Pick<WireSchemaCatalogEntry, 'schemaVersion'>,
+): WireSchemaCatalogVersion {
+  const version = entry.schemaVersion.match(/\/(v[1-9]\d*)$/)?.[1];
+  if (version === undefined) {
+    throw new Error(`Wire schema version is not explicitly versioned: ${entry.schemaVersion}`);
+  }
+  return version as WireSchemaCatalogVersion;
+}
+
 export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
   {
     fileName: 'execution-facts.schema.json',
@@ -183,7 +195,8 @@ export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
 
 // Keep the public identity aligned with the canonical catalog location so schema tooling can
 // resolve the identifier instead of treating a stale repository path as an opaque URI.
-const SCHEMA_BASE_URI = 'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v1';
+const SCHEMA_BASE_URI =
+  'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core';
 
 function assertNoEmptySchemaNode(value: unknown, path = '$'): void {
   if (Array.isArray(value)) {
@@ -206,7 +219,7 @@ export function generateWireJsonSchemas(): Readonly<Record<string, JsonValue>> {
       cycles: 'ref',
       reused: 'ref',
     });
-    const schemaUri = `${SCHEMA_BASE_URI}/${entry.fileName}`;
+    const schemaUri = `${SCHEMA_BASE_URI}/${wireSchemaCatalogVersion(entry)}/${entry.fileName}`;
     const schema = { ...generated, $id: schemaUri };
     assertNoEmptySchemaNode(schema);
     return [entry.fileName, schema as unknown as JsonValue];
