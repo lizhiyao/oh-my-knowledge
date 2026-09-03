@@ -19,6 +19,14 @@ import {
   createEvaluationRuntime,
   createExactMatchDefinition,
   createMeasurementPolicy,
+  createRubricJudgeCriterion,
+  createRubricJudgeEvaluator,
+  createRubricJudgeEvaluatorDefinition,
+  createRubricJudgeEvaluatorRegistration,
+  createRubricJudgeInstrument,
+  createRubricJudgeMetricDefinition,
+  createRubricJudgeRuntimeConfig,
+  type OmkLlmJudgeInvocationPort,
   type RuntimePortRegistration,
 } from 'oh-my-knowledge/eval-runtime';
 import {
@@ -81,6 +89,42 @@ void publicRuntime;
 void publicDefinition;
 void publicPolicy;
 void registration;
+
+declare const judgeInvocation: OmkLlmJudgeInvocationPort;
+const rubricInstrument = createRubricJudgeInstrument();
+const rubricRuntime = createRubricJudgeRuntimeConfig({
+  executorId: judgeInvocation.identity.implementationId,
+  model: 'judge-model',
+  instrument: rubricInstrument,
+});
+const rubricCriterion = createRubricJudgeCriterion({
+  criterionId: 'quality',
+  prompt: 'Answer.',
+  rubric: 'Be correct.',
+});
+const rubricMetric = createRubricJudgeMetricDefinition('quality-score');
+const rubricDefinition = createRubricJudgeEvaluatorDefinition({
+  evaluatorId: 'quality-judge',
+  metricId: rubricMetric.metricId,
+  instrument: rubricInstrument,
+  runtime: rubricRuntime,
+  criterionPointer: '/quality',
+});
+const rubricEvaluator = createRubricJudgeEvaluator({
+  instrument: rubricInstrument,
+  runtime: rubricRuntime,
+  invocation: judgeInvocation,
+});
+const rubricRegistration = createRubricJudgeEvaluatorRegistration([{
+  evaluatorId: rubricDefinition.evaluatorId,
+  instrument: rubricInstrument,
+  runtime: rubricRuntime,
+  invocation: judgeInvocation,
+}]);
+void rubricCriterion;
+void rubricDefinition;
+void rubricEvaluator;
+void rubricRegistration;
 
 const engine = createEvaluationEngine({
   ...runtime,
