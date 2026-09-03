@@ -4,7 +4,7 @@
 
 ## 领域不变量
 
-- 评分类 prompt 文本统一位于 `instruments/prompts/`，并由 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 登记、冻结。
+- OMK 产品工作流的评分类 prompt 位于 `instruments/prompts/`；公共 Rubric Judge prompt 的单一来源位于 `eval-runtime/judges/rubric-prompt.ts`，本层仅复用。所有 prompt 均由 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 登记、冻结。
 - 五层评分管道的语义固定为 assertion／llm／judge／dimension／composite。Bootstrap CI 和 Krippendorff alpha 公式不得静默变化。
 - `--no-debias-length` 只关闭 rubric 评委的长度去偏 prompt 变体；排版和语气中性化始终开启。
 - 工作流可以编排副作用，但必须通过显式 adapter 接入，不能把宿主状态泄漏进 Core 契约。

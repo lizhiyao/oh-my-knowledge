@@ -131,10 +131,85 @@ await reportStore.put(result.report);
 
 The random `runId` distinguishes executions and affects artifact identity; it is not part of the measurement plan. Rebuilding the same Definition, Policy, and Runtime identity with the same explicit seed produces the same `runContractDigest`.
 
+## Add a Rubric Judge through an internal model gateway
+
+The host provides one model invocation port. OMK owns the frozen prompt, output parsing, 1–5 metric contract, evidence, failure semantics, and Evaluator identity. The port must not retry: Core already owns retry, timeout, budget, cache, and cancellation.
+
+```ts
+import {
+  createRubricJudgeCriterion,
+  createRubricJudgeEvaluatorDefinition,
+  createRubricJudgeEvaluatorRegistration,
+  createRubricJudgeInstrument,
+  createRubricJudgeMetricDefinition,
+  createRubricJudgeRuntimeConfig,
+  createRuntimeIdentity,
+  type OmkLlmJudgeInvocationPort,
+} from 'oh-my-knowledge/eval-runtime';
+
+const gatewayIdentity = createRuntimeIdentity({
+  implementationId: 'acme.model-gateway/v1',
+  version: '2026.09.03',
+  capabilities: { invocation: 'single-call', cancellation: 'cooperative' },
+  fingerprintFacets: { deploymentRevision: 'sha256:...' },
+});
+const instrument = createRubricJudgeInstrument();
+const judgeRuntime = createRubricJudgeRuntimeConfig({
+  executorId: gatewayIdentity.implementationId,
+  model: 'judge-model',
+  effort: 'low',
+  instrument,
+});
+const criterion = createRubricJudgeCriterion({
+  criterionId: 'correctness',
+  prompt: 'Capital of France?',
+  rubric: 'The answer must state Paris.',
+});
+
+const invocation: OmkLlmJudgeInvocationPort = {
+  identity: gatewayIdentity,
+  providerCost: { reporting: 'optional' },
+  async invoke(request) {
+    const response = await internalGateway.generate({
+      model: request.model,
+      system: request.system,
+      prompt: request.prompt,
+      signal: request.signal,
+    });
+    return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+  },
+};
+```
+
+Put `criterion` at a stable path in each sample's `evaluationContext`, then add the matching serializable fragments to the Definition:
+
+```ts
+const evaluator = createRubricJudgeEvaluatorDefinition({
+  evaluatorId: 'correctness-judge',
+  metricId: 'correctness-score',
+  instrument,
+  runtime: judgeRuntime,
+  criterionPointer: '/correctness',
+});
+const metric = createRubricJudgeMetricDefinition('correctness-score');
+
+const runtime = createEvaluationRuntime({
+  executors: [/* business Target registrations */],
+  evaluators: [createRubricJudgeEvaluatorRegistration([{
+    evaluatorId: evaluator.evaluatorId,
+    instrument,
+    runtime: judgeRuntime,
+    invocation,
+  }])],
+});
+```
+
+Use `tracePolicy: 'source-neutral'` only when every Target produces the public `SourceNeutralTrace` contract; otherwise keep the default `none`. Invalid JSON, malformed or out-of-range scores, and missing reasons become structured invalid observations rather than zero scores. Provider failures retain accounting facts but redact provider-private details. Omitting the Judge registration performs no provider discovery, credential lookup, or preflight.
+
 ## Advanced hosts
 
 Register raw Core Executor or Evaluator ports with `{ port }` when one Definition binding owns them. Register `{ implementationId, createPort }` when multiple Targets or Evaluators share an implementation; each binding then gets an isolated run lifecycle. A declared `versionConstraint` fails closed unless its registration supplies `satisfiesVersionConstraint`.
 
 Use `createSameProcessExecutorAdapter` and `createSameProcessEvaluatorAdapter` for custom in-process ports. Use the advanced APIs from `oh-my-knowledge/eval-core` when you need staged execution, persisted artifact admission, custom Analysis Runtime implementations, or explicit cross-run comparability. See [Embedded Evaluation Core API](/reference/embedded-api).
 
-The complete runnable package fixture is in [`test/eval-runtime/fixtures/embedded-host.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/embedded-host.mjs).
+Runnable package fixtures cover [exact match](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/embedded-host.mjs) and a [host-owned Rubric Judge gateway](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/rubric-judge-host.mjs).

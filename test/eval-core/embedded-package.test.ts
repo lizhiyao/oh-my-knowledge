@@ -28,6 +28,10 @@ const RUNTIME_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/embedded-host.mjs',
 );
+const RUBRIC_JUDGE_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-runtime/fixtures/rubric-judge-host.mjs',
+);
 
 describe('published embedded Evaluation Core API', () => {
   let projectRoot: string;
@@ -101,6 +105,7 @@ describe('published embedded Evaluation Core API', () => {
     }));
     copyFileSync(HOST_FIXTURE, join(projectRoot, 'host.mjs'));
     copyFileSync(RUNTIME_HOST_FIXTURE, join(projectRoot, 'runtime-host.mjs'));
+    copyFileSync(RUBRIC_JUDGE_HOST_FIXTURE, join(projectRoot, 'rubric-judge-host.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
     writeFileSync(join(projectRoot, 'tsconfig.json'), JSON.stringify({
       compilerOptions: {
@@ -213,6 +218,35 @@ const assert = require('node:assert/strict');
     const isolatedCache = join(projectRoot, 'runtime-cache');
     for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
     const result = spawnSync(process.execPath, [join(projectRoot, 'runtime-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({
+      status: result.status,
+      signal: result.signal,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
+  it('独立 FaaS 宿主只注入一次模型调用 Port 即可运行公共 Rubric Judge', () => {
+    const isolatedHome = join(projectRoot, 'rubric-home');
+    const isolatedConfig = join(projectRoot, 'rubric-config');
+    const isolatedCache = join(projectRoot, 'rubric-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'rubric-judge-host.mjs')], {
       cwd: projectRoot,
       encoding: 'utf8',
       timeout: 30_000,

@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import {
-  LENGTH_DEBIAS_INSTRUCTION,
-  PRESENTATION_NEUTRALITY_INSTRUCTION,
-  RAG_LENGTH_DEBIAS,
-  RAG_PRESENTATION_NEUTRALITY,
-} from './debias-instructions.js';
+import { RAG_LENGTH_DEBIAS, RAG_PRESENTATION_NEUTRALITY } from './debias-instructions.js';
+export {
+  buildJudgePrompt,
+  getJudgePromptHash,
+  JUDGE_SYSTEM_PROMPT,
+} from '../../../eval-runtime/judges/rubric-prompt.js';
 
-// 评分类 prompt 单一来源 —— 直接决定分数的 LLM 评委 prompt（rubric 主评委 + RAG + 语义相似度）。
+// 评分类 prompt 稳定 façade。公共 rubric 主评委的单一来源位于 eval-runtime；
+// RAG 与语义相似度等 OMK 产品工作流 prompt 仍由本模块拥有。
 // 这些是测量学不变量:文本字节决定可比性,改动须配合 prompt-registry 的冻结 hash bump
 // (BREAKING-COMPARABILITY)。执行器调用 / JSON 解析逻辑位于 Evaluation Core runtime adapter。
 
@@ -38,69 +39,6 @@ import {
 //                          偏向更长的回答,还隐性偏向排版精致(标题 / 列表 / 加粗)与语气自信 / 自我
 //                          表扬(谄媚 / 权威偏置)的回答;显式指令要求评委只对照评分标准核内容。
 //                          同时借此把命名统一成单一主序号(v5)+ feature 后缀,`-len` 仍是开关那条。
-const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v5-cot-toolargs-fmt';
-const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v5-cot-toolargs-fmt-len';
-
-export const JUDGE_SYSTEM_PROMPT = '你是一个严格的 AI 输出质量评审员。先逐条对照评分标准做推理，再给最终分数。只返回 JSON，不要其他内容。';
-
-export function buildJudgePrompt(
-  prompt: string,
-  rubric: string,
-  output: string,
-  traceSummary: string | null,
-  lengthDebias = true,
-): string {
-  const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
-  const traceSection = traceSummary
-    ? ['', '## Agent 执行过程', traceSummary, '', '请同时考虑执行过程的合理性（工具选择、步骤效率、错误恢复）。']
-    : [];
-  // 排版 / 语气中性化始终开启(不受 --no-debias-length 影响);length-debias 仍受开关控。
-  const neutralitySection = ['', PRESENTATION_NEUTRALITY_INSTRUCTION];
-  const debiasSection = lengthDebias ? ['', LENGTH_DEBIAS_INSTRUCTION] : [];
-
-  return [
-    `请对以下 AI 输出进行质量评分（template ${version}）。`,
-    '',
-    '## 原始任务',
-    prompt,
-    '',
-    '## 评分标准',
-    rubric,
-    '',
-    '## AI 输出',
-    output,
-    ...traceSection,
-    ...neutralitySection,
-    ...debiasSection,
-    '',
-    '## 评分流程',
-    '1. 逐条对照评分标准，先做推理（reasoning）：列出 AI 输出哪些点对应哪条标准，哪些缺失，哪些有歧义。',
-    '2. 基于推理给出最终分数（1-5 的整数）和简短理由。',
-    '',
-    '请返回 JSON（不要包含 markdown 代码块标记）：',
-    '{"reasoning": "<对照标准的逐条推理>", "score": <1-5的整数>, "reason": "<最终结论的简短理由>"}',
-    '',
-    '评分标准：1=完全不达标, 2=部分涉及, 3=基本达标, 4=较好, 5=优秀',
-  ].join('\n');
-}
-
-/**
- * Stable hash of the judge prompt template. Evaluation Core incorporates it into evaluator
- * instrument identity so plan and report authentication can detect a changed instrument.
- *
- * `lengthDebias` defaults to true. Pass false (via `--no-debias-length`) to drop the
- * length-debias instruction; that produces the debias-off prompt variant, whose hash
- * differs from the default so the two are never compared blind.
- */
-export function getJudgePromptHash(lengthDebias = true): string {
-  const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
-  // Hash the template-shaping function source + the version tag together. We hash a
-  // deterministic stringified form of the template (with placeholder inputs) so any
-  // structural edit shows up.
-  const sample = buildJudgePrompt('<P>', '<R>', '<O>', '<T>', lengthDebias);
-  return createHash('sha256').update(version + '\n' + sample).digest('hex').slice(0, 12);
-}
-
 // ===========================================================================
 // 语义相似度评委 prompt（semantic_similarity 断言）
 // ===========================================================================
