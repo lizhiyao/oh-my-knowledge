@@ -153,9 +153,9 @@ import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
 
-The published files retain their existing `$id` values as stable document identities. Use the
-`eval-core` package subpath or catalog directory for retrieval; do not derive a fetch location from
-`$id`.
+Each published file uses its canonical raw catalog URL under `schemas/eval-core/v1/` as `$id`, so
+JSON Schema tooling can resolve the document identity. Node.js hosts should still prefer the
+`eval-core` package subpath or `resolveEvaluationCoreJsonSchema()` to use the installed package.
 
 ## Results and errors
 

@@ -24,14 +24,13 @@ const Ajv2020 = _Ajv2020 as unknown as typeof _Ajv2020.default;
 describe('Evaluation Core wire schemas', () => {
   it('exports every catalog entry as deterministic JSON Schema 2020-12', () => {
     const generated = generateWireJsonSchemas();
-    const schemaDir = resolve('schemas/eval-core/v1');
-    const stableIdentityBase = [
-      'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas',
-      ['evaluation', 'core'].join('-'),
-      'v1',
-    ].join('/');
+    const schemaCatalogPath = 'schemas/eval-core/v1';
+    const schemaDir = resolve(schemaCatalogPath);
+    const stableIdentityBase =
+      `https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/${schemaCatalogPath}`;
     const files = readdirSync(schemaDir).filter((name) => name.endsWith('.schema.json')).sort();
 
+    expect(WIRE_SCHEMA_CATALOG).toHaveLength(21);
     expect(files).toEqual(WIRE_SCHEMA_CATALOG.map((entry) => entry.fileName).sort());
     expect(EVALUATION_CORE_JSON_SCHEMA_FILES).toEqual(Object.keys(generated).sort());
     for (const [fileName, schema] of Object.entries(generated)) {
