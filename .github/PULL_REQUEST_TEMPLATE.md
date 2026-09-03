@@ -1,41 +1,29 @@
 <!--
-Thanks for the contribution! Filling in each section helps reviewers understand the change quickly.
-Before opening a PR, read CLAUDE.md plus CONTRIBUTING.md for the current branch model,
-commit-message convention, and validation requirements.
+Before opening a PR, read AGENTS.md, CONTRIBUTING.md, and CODE_REVIEW.md.
+Write conclusions and evidence, not a restatement of the diff. Remove instructional
+comments, but keep every heading; use "无" when a section does not apply.
 -->
 
-## Purpose
+## 用户影响
 
-<!-- What problem does this PR solve? Why does it matter? Link the issue if there is one: `Fixes #123`. -->
+<!-- 解决什么用户问题？可链接 issue，例如 Closes #123。 -->
 
-## Changes
+## 迁移／兼容决策
 
-<!-- Bullet list of what actually changed. Code-level, not narrative. -->
+<!-- 是否需要迁移？是否保留兼容？说明明确决策，不要默认添加 shim。 -->
 
--
--
+## 测量学影响
 
-## Testing
+<!-- 是否影响 construct validity、Schema identity、评分、统计、prompt 或报告可比性？ -->
 
-<!-- How did you verify this works? -->
+## 自主 CR
 
-- [ ] `yarn lint` passes
-- [ ] `yarn build` passes
-- [ ] `yarn test` passes
-- [ ] Added / updated tests covering new behavior (or explained why none needed)
-- [ ] Manually exercised the feature end-to-end if it touches CLI / reports
+<!-- 风险等级、已审查的高风险面、finding 处理情况与最终结论。不要用复选框代替证据。 -->
 
-## Checklist
+## 验证
 
-- [ ] Read `CLAUDE.md`
-- [ ] Branch is `feat/*`, `fix/*`, `docs/*`, or `chore/*`, cut from `main` (GitHub Flow)
-- [ ] Target branch is `main`
-- [ ] Commit message follows the repo convention (`type(scope): subject`)
-- [ ] PR title / description note user-facing impact + migration if BREAKING (release notes are auto-generated from PR list)
-- [ ] No secrets / internal URLs / personal data in the diff
-- [ ] If CLI surface or user-facing behavior changed: README.md / README.zh.md / `.agents/skills/omk/SKILL.md` (+ `references/commands.md`) / quickstart docs all updated as needed
-- [ ] Bilingual parity: en (`README.md`, `docs/*.md`) and zh (`README.zh.md`, `docs/zh/*.md`) versions stay in sync — never update one language without the other
+<!-- 定向验证、yarn ci，以及与风险匹配的真实用户路径／clean-room／UI 验收证据。 -->
 
-## Additional context
+## 未解决风险
 
-<!-- Screenshots, report HTML snippets, tradeoffs you considered, follow-ups. -->
+<!-- 已接受的 P3、外部阻塞或 follow-up；没有则写「无」。 -->

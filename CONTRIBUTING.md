@@ -43,6 +43,8 @@ git checkout -b feat/my-feature
 
 # Batch the intended changes, then run the complete local gate once before pushing.
 yarn install
+# Review the complete diff and risk-specific evidence first.
+# See CODE_REVIEW.md.
 yarn ci
 
 git commit -m "feat(cli): 中文 subject"
@@ -54,6 +56,25 @@ git push -u origin feat/my-feature
 Avoid using remote CI as an incremental feedback loop. Batch related fixes, run
 `yarn ci` locally, and push the verified commit set once. If review finds more
 issues, finish the related fixes and rerun the local gate before the next push.
+
+## Code review and definition of done
+
+Every behavior, contract, packaging, documentation-promise, or repository-policy
+change receives a risk-proportionate self-review before its first push or handoff.
+Do not wait for a maintainer to ask whether CR happened. Follow
+[`CODE_REVIEW.md`](./CODE_REVIEW.md) for the risk levels, review dimensions,
+finding format, validation ladder, and stopping rules.
+
+A green test suite is necessary but not sufficient. High-risk changes involving
+Evaluation Core, public schemas or APIs, persisted storage, executors, security
+boundaries, concurrency, or releases also require the relevant real user path or
+clean-room package check. Resolve every P0–P2 finding before handoff; either
+resolve P3 findings or link a deliberate follow-up.
+
+The pull request description records user impact, the migration or compatibility
+decision, measurement caveats, the autonomous CR conclusion, real validation
+evidence, and any accepted residual risk. Keep code-level change lists in the
+diff rather than duplicating them in the description.
 
 ### Releasing a new version
 
