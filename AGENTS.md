@@ -2,7 +2,7 @@
 
 OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它面向 prompt / RAG / skill / agent / workflow 观测真实表现、受控测量版本差异，并判断改动是否有效、版本能否发布。它固定模型只变知识载体，三阶段 doctor / eval / observe 输出统计可比的诊断，配套 sample / evolve 做用例生成与自动迭代。所有改动都要优先保护测量可比性。
 
-本文件是 [agents.md](https://agents.md) 开放标准约定的多 agent 入场清单，内容兼容 Claude Code / Codex / Cursor / Aider / Gemini CLI 等工具。Codex 原生加载；Claude Code 通过 `CLAUDE.md` import；Aider 与 Gemini CLI 分别由仓库内 `.aider.conf.yml` 和 `.gemini/settings.json` 显式接入。其它工具是否自动加载以各自对 agents.md 的支持为准，不为单一工具复制第二份规则。
+本文件是 [agents.md](https://agents.md) 开放标准约定的工具中立入场清单。Codex 原生加载；Claude Code 通过 `CLAUDE.md` import；Gemini CLI 由仓库内 `.gemini/settings.json` 显式接入。其它工具是否自动加载以各自对 agents.md 的支持为准，仅在仓库实际使用并完成验证时增加工具专属配置，不复制第二份规则。
 
 ## 开工先做
 

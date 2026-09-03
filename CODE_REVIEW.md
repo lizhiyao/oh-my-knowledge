@@ -132,6 +132,6 @@ Finding 必须定位到可操作代码或契约。风格偏好、没有触发机
 
 1. 从仓库根启动本机可用的 Agent，请它列出当前仓库规则来源，确认能发现根 `AGENTS.md` 与 `CODE_REVIEW.md`。
 2. 以有嵌套规则的目录为工作目录启动 Agent，确认根规则与距离该目录最近的领域 `AGENTS.md` 同时生效。
-3. Codex 走原生 agents.md 发现，Claude Code 走 `CLAUDE.md` import，Aider 走 `.aider.conf.yml`，Gemini CLI 走 `.gemini/settings.json`。其它工具按其官方 agents.md 支持方式验收。
+3. Codex 走原生 agents.md 发现，Claude Code 走 `CLAUDE.md` import，Gemini CLI 走 `.gemini/settings.json`。其它工具只在仓库实际使用时增加接入配置，并按其官方发现机制验收。
 
 CI 只验证配置存在、语法和关键规则锚点，不在测试中启动第三方 Agent，也不把静态检查误当成实际指令加载证明。
