@@ -13,7 +13,11 @@ import {
   type ExecutorAttemptResult,
 } from '../../eval-core/execution/index.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
-import { invokeProtocol, validateInvokeTelemetry } from './invoke-contract.js';
+import {
+  invokeProtocol,
+  validateInvokeFailureTelemetry,
+  validateInvokeTelemetry,
+} from './invoke-contract.js';
 
 export interface RuntimeValueParser<Value> {
   /** Validate and narrow only; changing the canonical JSON value fails closed. */
@@ -197,6 +201,7 @@ export function createJsonExecutorAdapter<
           ? undefined
           : parse(UsageRecordSchema, hostResult.usage, 'EVAL_RUNTIME_EXECUTOR_USAGE_INVALID');
         if (hostResult.invocationStatus === 'failed') {
+          validateInvokeFailureTelemetry(protocol, usage);
           const parsedCode = IdentifierSchema.safeParse(hostResult.errorCode);
           if (!parsedCode.success) {
             return structuredFailure('EVAL_RUNTIME_EXECUTOR_FAILURE_CODE_INVALID', usage);

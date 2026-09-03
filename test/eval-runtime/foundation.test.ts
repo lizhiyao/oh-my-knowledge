@@ -6,14 +6,16 @@ import {
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
-  createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createJsonExecutorAdapter,
   createMeasurementPolicy,
   createPairedComparisonDefinition,
   runExecutorConformance,
-  type ExecResult,
 } from '../../src/eval-runtime/index.js';
+import {
+  createExecutorFnAdapter,
+  type ExecResult,
+} from '../../src/eval-runtime/advanced.js';
 
 function result(output: string): ExecResult {
   return {
@@ -266,44 +268,55 @@ describe('eval-runtime foundation', () => {
 
   it('offers a framework-neutral Executor conformance probe through the real pipeline', async () => {
     const identity = executorIdentity();
+    const createProbeExecutor = (options: Readonly<{
+      successOutput: string;
+      reportFailure?: boolean;
+      honorCancellation?: boolean;
+      reportUsage?: boolean;
+    }>) => () => createJsonExecutorAdapter({
+      identity,
+      inputParser: z.string(),
+      targetConfigParser: z.undefined(),
+      outputParser: z.string(),
+      outputClassification: 'public',
+      async invoke({ input, signal }) {
+        if (input === 'failure' && options.reportFailure !== false) {
+          return { invocationStatus: 'failed', errorCode: 'expected-probe-failure' };
+        }
+        if (input === 'cancellation' && options.honorCancellation !== false) {
+          await new Promise<void>((_resolve, reject) => {
+            const abort = () => reject(signal.reason);
+            if (signal.aborted) abort();
+            else signal.addEventListener('abort', abort, { once: true });
+          });
+        }
+        return {
+          invocationStatus: 'completed',
+          output: options.successOutput,
+          ...(options.reportUsage === false
+            ? {}
+            : { usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }),
+        };
+      },
+    });
     const conformance = await runExecutorConformance({
       implementationId: identity.implementationId,
-      createExecutor: () => createJsonExecutorAdapter({
-        identity,
-        inputParser: z.string(),
-        targetConfigParser: z.undefined(),
-        outputParser: z.string(),
-        outputClassification: 'public',
-        invoke: async () => ({
-          invocationStatus: 'completed',
-          output: 'expected',
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-        }),
-      }),
-      input: 'probe',
-      expected: 'expected',
+      createExecutor: createProbeExecutor({ successOutput: 'expected' }),
+      success: { input: 'success', expected: 'expected' },
+      failure: { input: 'failure', expectedErrorCode: 'expected-probe-failure' },
+      cancellation: { input: 'cancellation' },
     });
 
-    expect(conformance.conformant).toBe(true);
+    expect(conformance.conformant, JSON.stringify(conformance.checks)).toBe(true);
     expect(conformance.checks.every((check) => check.checkStatus === 'passed')).toBe(true);
     expect(() => assertExecutorConformance(conformance)).not.toThrow();
 
     const failed = await runExecutorConformance({
       implementationId: identity.implementationId,
-      createExecutor: () => createJsonExecutorAdapter({
-        identity,
-        inputParser: z.string(),
-        targetConfigParser: z.undefined(),
-        outputParser: z.string(),
-        outputClassification: 'public',
-        invoke: async () => ({
-          invocationStatus: 'completed',
-          output: 'unexpected',
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-        }),
-      }),
-      input: 'probe',
-      expected: 'expected',
+      createExecutor: createProbeExecutor({ successOutput: 'unexpected' }),
+      success: { input: 'success', expected: 'expected' },
+      failure: { input: 'failure', expectedErrorCode: 'expected-probe-failure' },
+      cancellation: { input: 'cancellation' },
     });
     expect(failed.conformant).toBe(false);
     expect(failed.checks).toContainEqual({
@@ -317,5 +330,67 @@ describe('eval-runtime foundation', () => {
         failedCheckIds: ['evaluation-observation'],
       }),
     );
+
+    const ignoredCancellation = await runExecutorConformance({
+      implementationId: identity.implementationId,
+      createExecutor: createProbeExecutor({
+        successOutput: 'expected',
+        honorCancellation: false,
+      }),
+      success: { input: 'success', expected: 'expected' },
+      failure: { input: 'failure', expectedErrorCode: 'expected-probe-failure' },
+      cancellation: { input: 'cancellation' },
+    });
+    expect(ignoredCancellation.checks).toContainEqual({
+      checkId: 'cancellation-contract',
+      checkStatus: 'failed',
+      reasonCode: 'runtime-conformance-cancellation-ignored',
+    });
+
+    const invalidFailure = await runExecutorConformance({
+      implementationId: identity.implementationId,
+      createExecutor: createProbeExecutor({
+        successOutput: 'expected',
+        reportFailure: false,
+      }),
+      success: { input: 'success', expected: 'expected' },
+      failure: { input: 'failure', expectedErrorCode: 'expected-probe-failure' },
+      cancellation: { input: 'cancellation' },
+    });
+    expect(invalidFailure.checks).toContainEqual({
+      checkId: 'failure-contract',
+      checkStatus: 'failed',
+      reasonCode: 'runtime-conformance-failure-contract-invalid',
+    });
+
+    const invalidTelemetry = await runExecutorConformance({
+      implementationId: identity.implementationId,
+      createExecutor: createProbeExecutor({
+        successOutput: 'expected',
+        reportUsage: false,
+      }),
+      success: { input: 'success', expected: 'expected' },
+      failure: { input: 'failure', expectedErrorCode: 'expected-probe-failure' },
+      cancellation: { input: 'cancellation' },
+    });
+    expect(invalidTelemetry.checks).toContainEqual({
+      checkId: 'telemetry-contract',
+      checkStatus: 'failed',
+      reasonCode: 'runtime-conformance-telemetry-invalid',
+    });
+
+    const sharedExecutor = createProbeExecutor({ successOutput: 'expected' })();
+    const sharedBinding = await runExecutorConformance({
+      implementationId: identity.implementationId,
+      createExecutor: () => sharedExecutor,
+      success: { input: 'success', expected: 'expected' },
+      failure: { input: 'failure', expectedErrorCode: 'expected-probe-failure' },
+      cancellation: { input: 'cancellation' },
+    });
+    expect(sharedBinding.checks).toContainEqual({
+      checkId: 'binding-isolation',
+      checkStatus: 'failed',
+      reasonCode: 'runtime-conformance-binding-not-isolated',
+    });
   });
 });

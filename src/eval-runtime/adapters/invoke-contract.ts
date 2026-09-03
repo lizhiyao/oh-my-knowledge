@@ -58,3 +58,26 @@ export function validateInvokeTelemetry(
     executorContractViolation('Executor 返回了 Runtime identity 声明为 unsupported 的 provider cost。');
   }
 }
+
+/** Failed invocations may lack telemetry, but must never contradict unsupported declarations. */
+export function validateInvokeFailureTelemetry(
+  protocol: ReturnType<typeof invokeProtocol>,
+  usage: UsageRecord | undefined,
+): void {
+  const telemetry = protocol.execution.telemetry;
+  const reportsUsage = usage !== undefined && (
+    usage.inputTokens !== undefined
+    || usage.outputTokens !== undefined
+    || usage.totalTokens !== undefined
+    || usage.details !== undefined
+  );
+  if (telemetry.usage === 'unsupported' && reportsUsage) {
+    executorContractViolation('Executor failure 返回了 Runtime identity 声明为 unsupported 的 usage。');
+  }
+  const costReporting = telemetry.providerCost?.reporting ?? 'unsupported';
+  if (costReporting === 'unsupported' && usage?.providerCost !== undefined) {
+    executorContractViolation(
+      'Executor failure 返回了 Runtime identity 声明为 unsupported 的 provider cost。',
+    );
+  }
+}

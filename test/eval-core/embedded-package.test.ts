@@ -32,6 +32,10 @@ const RUBRIC_JUDGE_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/rubric-judge-host.mjs',
 );
+const CLEAN_ROOM_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-runtime/fixtures/clean-room-host.mjs',
+);
 const ADVANCED_RUNTIME_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/advanced-host.mjs',
@@ -111,6 +115,7 @@ describe('published embedded Evaluation Core API', () => {
     copyFileSync(HOST_FIXTURE, join(projectRoot, 'host.mjs'));
     copyFileSync(RUNTIME_HOST_FIXTURE, join(projectRoot, 'runtime-host.mjs'));
     copyFileSync(RUBRIC_JUDGE_HOST_FIXTURE, join(projectRoot, 'rubric-judge-host.mjs'));
+    copyFileSync(CLEAN_ROOM_HOST_FIXTURE, join(projectRoot, 'clean-room-host.mjs'));
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
@@ -132,6 +137,8 @@ const assert = require('node:assert/strict');
   const api = await import('oh-my-knowledge');
   const advanced = await import('oh-my-knowledge/eval-core');
   const evalRuntime = await import('oh-my-knowledge/eval-runtime');
+  const evalRuntimeAdvanced = await import('oh-my-knowledge/eval-runtime/advanced');
+  const evalRuntimeContracts = await import('oh-my-knowledge/eval-runtime/contracts');
   const evalSamples = await import('oh-my-knowledge/eval-samples');
   const projections = await import('oh-my-knowledge/projections');
   const studio = await import('oh-my-knowledge/studio');
@@ -144,9 +151,13 @@ const assert = require('node:assert/strict');
   assert.equal(api.assessComparability, undefined);
   assert.equal(typeof advanced.assessComparability, 'function');
   assert.equal(typeof evalRuntime.createEvaluationRuntime, 'function');
-  assert.equal(typeof evalRuntime.createExecutorFnAdapter, 'function');
+  assert.equal(evalRuntime.createExecutorFnAdapter, undefined);
   assert.equal(typeof evalRuntime.createJsonExecutorAdapter, 'function');
+  assert.equal(typeof evalRuntime.createRubricJudgeKit, 'function');
   assert.equal(typeof evalRuntime.runEvaluation, 'function');
+  assert.equal(typeof evalRuntimeAdvanced.createExecutorFnAdapter, 'function');
+  assert.equal(typeof evalRuntimeAdvanced.createSameProcessExecutorAdapter, 'function');
+  assert.equal(typeof evalRuntimeContracts.SourceNeutralTraceSchema.safeParse, 'function');
   assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v1');
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
   assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
@@ -179,6 +190,12 @@ const assert = require('node:assert/strict');
   try {
     await import('oh-my-knowledge/dist/eval-core/contracts/index.js');
     throw new Error('deep dist import unexpectedly succeeded');
+  } catch (error) {
+    assert.equal(error.code, 'ERR_PACKAGE_PATH_NOT_EXPORTED');
+  }
+  try {
+    await import('oh-my-knowledge/eval-runtime/adapters/json-executor');
+    throw new Error('eval-runtime deep import unexpectedly succeeded');
   } catch (error) {
     assert.equal(error.code, 'ERR_PACKAGE_PATH_NOT_EXPORTED');
   }
@@ -275,6 +292,34 @@ const assert = require('node:assert/strict');
       runStatus: 'completed',
       estimate: 2 / 3,
       decisionStatus: 'decided',
+    });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
+  it('tarball clean-room 覆盖事件、失败、取消、telemetry 与生命周期契约', () => {
+    const isolatedHome = join(projectRoot, 'clean-room-home');
+    const isolatedConfig = join(projectRoot, 'clean-room-config');
+    const isolatedCache = join(projectRoot, 'clean-room-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'clean-room-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({ status: result.status, signal: result.signal, stderr: result.stderr }).toEqual({
+      status: 0,
+      signal: null,
+      stderr: '',
     });
     expect([
       ...readdirSync(isolatedHome),
@@ -391,6 +436,8 @@ const assert = require('node:assert/strict');
       './eval-core/schemas/v1/*',
       './eval-core/schemas/v2/*',
       './eval-runtime',
+      './eval-runtime/advanced',
+      './eval-runtime/contracts',
       './eval-samples',
       './eval-samples/schemas/v1/*',
       './mcp',

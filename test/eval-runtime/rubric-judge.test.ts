@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { EvaluationPortFailure } from '../../src/eval-core/evaluation/index.js';
 import {
+  createRubricJudgeEvaluationContext,
+  createRubricJudgeKit,
+  createRubricJudgeRegistration,
+  createRuntimeIdentity,
+} from '../../src/eval-runtime/index.js';
+import {
   createRubricJudgeCriterion,
   createRubricJudgeEvaluator,
   createRubricJudgeEvaluatorDefinition,
   createRubricJudgeInstrument,
   createRubricJudgeMetricDefinition,
   createRubricJudgeRuntimeConfig,
-  createRuntimeIdentity,
+} from '../../src/eval-runtime/advanced.js';
+import {
   SourceNeutralTraceSchema,
-} from '../../src/eval-runtime/index.js';
+} from '../../src/eval-runtime/contracts.js';
 import { isValidToolCallInfo } from '../../src/executors/result-validation.js';
 import {
   createRubricJudgeInstrument as createWorkflowInstrument,
@@ -25,6 +32,196 @@ function gatewayIdentity(revision = 'one') {
 }
 
 describe('public eval-runtime Rubric Judge', () => {
+  it('creates the same frozen Core fragments and Runtime identity as manual assembly', () => {
+    const invocation = {
+      identity: gatewayIdentity(),
+      providerCost: { reporting: 'unsupported' as const },
+      invoke: async () => ({ invocationStatus: 'completed' as const, output: '{}' }),
+    };
+    const kit = createRubricJudgeKit({
+      evaluatorId: 'correctness-judge',
+      metricId: 'correctness-score',
+      model: 'judge-model',
+      effort: 'low',
+      invocation,
+      lengthDebias: false,
+      actualPointer: '/answer',
+    });
+    const instrument = createRubricJudgeInstrument({ lengthDebias: false });
+    const runtime = createRubricJudgeRuntimeConfig({
+      executorId: invocation.identity.implementationId,
+      model: 'judge-model',
+      effort: 'low',
+      instrument,
+    });
+    const evaluatorDefinition = createRubricJudgeEvaluatorDefinition({
+      evaluatorId: 'correctness-judge',
+      metricId: 'correctness-score',
+      instrument,
+      runtime,
+      criterionPointer: '/rubricJudge/correctness-judge',
+      actualPointer: '/answer',
+    });
+
+    expect(kit.instrument).toEqual(instrument);
+    expect(kit.runtime).toEqual(runtime);
+    expect(kit.evaluatorDefinition).toEqual(evaluatorDefinition);
+    expect(kit.metricDefinition).toEqual(
+      createRubricJudgeMetricDefinition('correctness-score'),
+    );
+    const criterion = kit.createCriterion({
+      criterionId: 'correctness',
+      prompt: 'Answer.',
+      rubric: 'Be correct.',
+    });
+    expect(criterion).toEqual(createRubricJudgeCriterion({
+      criterionId: 'correctness',
+      prompt: 'Answer.',
+      rubric: 'Be correct.',
+    }));
+    expect(kit.createEvaluationContext(criterion)).toEqual({
+      rubricJudge: { 'correctness-judge': criterion },
+    });
+    expect(Object.isFrozen(kit)).toBe(true);
+
+    if (kit.evaluatorRegistration.createPort === undefined) {
+      throw new Error('Expected a Rubric Judge evaluator factory.');
+    }
+    const fromKit = kit.evaluatorRegistration.createPort({
+      referenceId: 'correctness-judge',
+      implementationId: 'omk.rubric-judge/v1',
+    });
+    const manual = createRubricJudgeEvaluator({ instrument, runtime, invocation });
+    expect(fromKit.identity).toEqual(manual.identity);
+  });
+
+  it('combines sealed kits without exposing or resynchronizing evaluator bindings', () => {
+    const invocation = {
+      identity: gatewayIdentity(),
+      providerCost: { reporting: 'unsupported' as const },
+      invoke: async () => ({ invocationStatus: 'completed' as const, output: '{}' }),
+    };
+    const first = createRubricJudgeKit({
+      evaluatorId: 'correctness-judge',
+      metricId: 'correctness-score',
+      model: 'judge-model',
+      invocation,
+    });
+    const second = createRubricJudgeKit({
+      evaluatorId: 'safety-judge',
+      metricId: 'safety-score',
+      model: 'judge-model',
+      invocation,
+    });
+    const registration = createRubricJudgeRegistration([first, second]);
+    const context = createRubricJudgeEvaluationContext([
+      {
+        kit: first,
+        criterion: first.createCriterion({
+          criterionId: 'correctness',
+          prompt: 'Answer.',
+          rubric: 'Be correct.',
+        }),
+      },
+      {
+        kit: second,
+        criterion: second.createCriterion({
+          criterionId: 'safety',
+          prompt: 'Answer.',
+          rubric: 'Be safe.',
+        }),
+      },
+    ], { tenant: 'test' });
+    if (registration.createPort === undefined) {
+      throw new Error('Expected a Rubric Judge evaluator factory.');
+    }
+
+    expect(registration.createPort({
+      referenceId: first.evaluatorDefinition.evaluatorId,
+      implementationId: first.evaluatorDefinition.implementationId,
+    }).identity).toEqual(registration.createPort({
+      referenceId: second.evaluatorDefinition.evaluatorId,
+      implementationId: second.evaluatorDefinition.implementationId,
+    }).identity);
+    expect(context).toMatchObject({
+      tenant: 'test',
+      rubricJudge: {
+        'correctness-judge': { criterionId: 'correctness' },
+        'safety-judge': { criterionId: 'safety' },
+      },
+    });
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(() => createRubricJudgeEvaluationContext([
+      {
+        kit: first,
+        criterion: first.createCriterion({
+          criterionId: 'one',
+          prompt: 'Answer.',
+          rubric: 'Be correct.',
+        }),
+      },
+      {
+        kit: first,
+        criterion: first.createCriterion({
+          criterionId: 'two',
+          prompt: 'Answer.',
+          rubric: 'Be safe.',
+        }),
+      },
+    ])).toThrow(/duplicated/);
+  });
+
+  it('captures the provider identity and fails closed on evaluator version constraints', () => {
+    const originalInvoke = async () => ({ invocationStatus: 'completed' as const, output: '{}' });
+    const originalIdentity = gatewayIdentity();
+    const invocation = {
+      identity: originalIdentity,
+      providerCost: { reporting: 'unsupported' as const },
+      invoke: originalInvoke,
+    };
+    const kit = createRubricJudgeKit({
+      evaluatorId: 'versioned-judge',
+      metricId: 'versioned-score',
+      evaluatorVersionConstraint: '^1.0.0',
+      satisfiesEvaluatorVersionConstraint: (constraint) => constraint === '^1.0.0',
+      model: 'judge-model',
+      invocation,
+    });
+    invocation.invoke = async () => {
+      throw new Error('mutated provider method must not run');
+    };
+    invocation.identity = gatewayIdentity('mutated');
+    expect(kit.evaluatorDefinition.versionConstraint).toBe('^1.0.0');
+    expect(kit.evaluatorRegistration.satisfiesVersionConstraint?.('^1.0.0')).toBe(true);
+    expect(kit.evaluatorRegistration.satisfiesVersionConstraint?.('^2.0.0')).toBe(false);
+    if (kit.evaluatorRegistration.createPort === undefined) {
+      throw new Error('Expected a Rubric Judge evaluator factory.');
+    }
+    const evaluator = kit.evaluatorRegistration.createPort({
+      referenceId: 'versioned-judge',
+      implementationId: 'omk.rubric-judge/v1',
+      versionConstraint: '^1.0.0',
+    });
+    expect(evaluator.identity).toEqual(createRubricJudgeEvaluator({
+      instrument: kit.instrument,
+      runtime: kit.runtime,
+      invocation: {
+        identity: originalIdentity,
+        providerCost: { reporting: 'unsupported' },
+        invoke: originalInvoke,
+      },
+    }).identity);
+
+    const noVerifier = createRubricJudgeKit({
+      evaluatorId: 'unverified-judge',
+      metricId: 'unverified-score',
+      evaluatorVersionConstraint: '^1.0.0',
+      model: 'judge-model',
+      invocation,
+    });
+    expect(noVerifier.evaluatorRegistration.satisfiesVersionConstraint).toBeUndefined();
+  });
+
   it('builds deeply immutable Core definition fragments with no hidden defaults', () => {
     const instrument = createRubricJudgeInstrument();
     const runtime = createRubricJudgeRuntimeConfig({

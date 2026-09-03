@@ -4,12 +4,14 @@ import {
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
-  createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
   runEvaluation,
-  type ExecResult,
 } from '../../src/eval-runtime/index.js';
+import {
+  createExecutorFnAdapter,
+  type ExecResult,
+} from '../../src/eval-runtime/advanced.js';
 
 function executionResult(output: string): ExecResult {
   return {
@@ -83,7 +85,7 @@ describe('eval-runtime high-level runner', () => {
       runId: 'runner-events',
       eventBufferCapacity: 1,
       async onEvent(event) {
-        await Promise.resolve();
+        await new Promise<void>((resolve) => setImmediate(resolve));
         sequences.push(event.sequence);
       },
     });
@@ -91,6 +93,22 @@ describe('eval-runtime high-level runner', () => {
     expect(result.status).toBe('completed');
     expect(sequences.length).toBeGreaterThan(1);
     expect(sequences).toEqual(sequences.map((_, index) => index));
+  });
+
+  it('completes with a one-event buffer when no observer is registered', async () => {
+    const { runtime, definition, policy } = fixture();
+    const result = await runEvaluation({
+      runtime: runtime(),
+      definition,
+      policy,
+      runId: 'runner-no-observer',
+      eventBufferCapacity: 1,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.artifacts.execution.records).toHaveLength(4);
+    expect(result.report.status.runStatus).toBe('completed');
   });
 
   it('matches the ordinary Core run result for the same sealed inputs', async () => {

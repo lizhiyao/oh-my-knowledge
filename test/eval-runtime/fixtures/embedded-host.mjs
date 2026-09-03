@@ -69,7 +69,7 @@ assert.equal(
 
 const run = prepared.start({ runId: 'embedded-faas', eventBufferCapacity: 128 });
 const draining = (async () => {
-  for await (const _event of run.events) { /* drain */ }
+  for await (const event of run.events) void event;
 })();
 const result = await run.result;
 await draining;

@@ -12,6 +12,8 @@
 
 `eval-runtime` 是接入层，不是企业服务框架。认证、租户隔离、模型网关、队列、数据库和运维控制仍由宿主负责。导入它不会加载 CLI、Studio、MCP、provider adapter 或用户配置。
 
+> **`1.0.0-beta` 迁移：**canonical 入口现在只导出日常宿主 API。生命周期 adapter、support-port type、Rubric 手工 factory、clock helper 和旧 `ExecutorFn` bridge 改从 `oh-my-knowledge/eval-runtime/advanced` 导入；source-neutral trace 与 Rubric wire schema 改从 `oh-my-knowledge/eval-runtime/contracts` 导入。实现深路径仍是私有边界。
+
 ## 十分钟完成 exact-match 对比
 
 该入口仅提供 ESM，要求 Node.js 22 或更高版本。先在服务中安装：
@@ -82,7 +84,7 @@ const runtime = createEvaluationRuntime({
 });
 ```
 
-Parser 的返回类型会自动贯穿 `invoke`，因此这里不需要 `as`。Parser 同时承担运行时信任边界：不合法的 sample input、Target config、output、usage 或 trace 会成为稳定且脱敏的结构化 execution failure。Parser 只能校验并收窄，不能 coercion、补默认值或删除字段；任何 JSON transform 都会被拒绝，避免同一 Runtime identity 下静默改变实际调用。需要变换时，在 identity 已覆盖相应实现 revision 的 `invoke` 内显式完成。若宿主已经实现 OMK 既有 `ExecutorFn`，仍可使用 `createExecutorFnAdapter` 作为 bridge；它不是新服务接入的推荐入口。
+Parser 的返回类型会自动贯穿 `invoke`，因此这里不需要 `as`。Parser 同时承担运行时信任边界：不合法的 sample input、Target config、output、usage 或 trace 会成为稳定且脱敏的结构化 execution failure。Parser 只能校验并收窄，不能 coercion、补默认值或删除字段；任何 JSON transform 都会被拒绝，避免同一 Runtime identity 下静默改变实际调用。需要变换时，在 identity 已覆盖相应实现 revision 的 `invoke` 内显式完成。若宿主已经实现 OMK 既有 `ExecutorFn`，仍可从 `oh-my-knowledge/eval-runtime/advanced` 导入 `createExecutorFnAdapter` 作为 bridge；它不是新服务接入的推荐入口。
 
 构造可序列化的 Definition 与 Policy。所有默认值都会写入不可变结果；seed 必填，且不会从时间、随机数或环境状态推断：
 
@@ -163,12 +165,7 @@ const definition = createPairedComparisonDefinition({
 
 ```ts
 import {
-  createRubricJudgeCriterion,
-  createRubricJudgeEvaluatorDefinition,
-  createRubricJudgeEvaluatorRegistration,
-  createRubricJudgeInstrument,
-  createRubricJudgeMetricDefinition,
-  createRubricJudgeRuntimeConfig,
+  createRubricJudgeKit,
   createRuntimeIdentity,
   type OmkLlmJudgeInvocationPort,
 } from 'oh-my-knowledge/eval-runtime';
@@ -179,19 +176,6 @@ const gatewayIdentity = createRuntimeIdentity({
   capabilities: { invocation: 'single-call', cancellation: 'cooperative' },
   fingerprintFacets: { deploymentRevision: 'sha256:...' },
 });
-const instrument = createRubricJudgeInstrument();
-const judgeRuntime = createRubricJudgeRuntimeConfig({
-  executorId: gatewayIdentity.implementationId,
-  model: 'judge-model',
-  effort: 'low',
-  instrument,
-});
-const criterion = createRubricJudgeCriterion({
-  criterionId: 'correctness',
-  prompt: '法国的首都是哪里？',
-  rubric: '答案必须指出巴黎。',
-});
-
 const invocation: OmkLlmJudgeInvocationPort = {
   identity: gatewayIdentity,
   providerCost: { reporting: 'optional' },
@@ -205,39 +189,58 @@ const invocation: OmkLlmJudgeInvocationPort = {
     return { invocationStatus: 'completed', output: response.text, usage: response.usage };
   },
 };
-```
-
-把 `criterion` 放入各 sample 的 `evaluationContext` 稳定路径，再把匹配的普通 Core 片段加入 Definition：
-
-```ts
-const evaluator = createRubricJudgeEvaluatorDefinition({
+const judge = createRubricJudgeKit({
   evaluatorId: 'correctness-judge',
   metricId: 'correctness-score',
-  instrument,
-  runtime: judgeRuntime,
-  criterionPointer: '/correctness',
+  model: 'judge-model',
+  effort: 'low',
+  invocation,
 });
-const metric = createRubricJudgeMetricDefinition('correctness-score');
-
-const runtime = createEvaluationRuntime({
-  executors: [/* 业务 Target registrations */],
-  evaluators: [createRubricJudgeEvaluatorRegistration([{
-    evaluatorId: evaluator.evaluatorId,
-    instrument,
-    runtime: judgeRuntime,
-    invocation,
-  }])],
+const criterion = judge.createCriterion({
+  criterionId: 'correctness',
+  prompt: '法国的首都是哪里？',
+  rubric: '答案必须指出巴黎。',
 });
 ```
 
-只有当所有 Target 都产出公共 `SourceNeutralTrace` 契约时，才使用 `tracePolicy: 'source-neutral'`；否则保留默认值 `none`。非 JSON、格式错误、越界分数或缺失理由都会成为结构化 invalid observation，而不是降级成 `0` 分。Provider failure 会保留计量事实并脱敏 provider 私有细节。未注册 Judge 时，不会发现 provider、读取凭证或执行 preflight。
+由 kit 把 `criterion` 放入每个 sample 的 `evaluationContext` 封存路径，再使用它生成的匹配 Core 片段与 Runtime registration：
+
+```ts
+const runtime = createEvaluationRuntime({
+  executors: [/* 业务 Target registrations */],
+  evaluators: [judge.evaluatorRegistration],
+});
+
+const definition = createPairedComparisonDefinition({
+  datasetId: 'rubric-release-gate',
+  seed: 'rubric-release-42',
+  samples: samples.map((sample) => ({
+    ...sample,
+    evaluationContext: judge.createEvaluationContext(criterion),
+  })),
+  control: {
+    targetId: 'control',
+    executorId: identity.implementationId,
+    config: { deployment: 'baseline' },
+  },
+  treatment: {
+    targetId: 'treatment',
+    executorId: identity.implementationId,
+    config: { deployment: 'candidate' },
+  },
+  evaluator: judge.evaluatorDefinition,
+  metric: judge.metricDefinition,
+});
+```
+
+Kit 会捕获一份 provider identity 与调用方法，再从这份冻结配置派生 instrument、prompt hash、criterion JSON Pointer、runtime config、Evaluator identity、Metric 和 registration。`createEvaluationContext()` 会物化与 pointer 完全匹配的 context，宿主不再手工同步路径。一个 Definition 包含多个 Rubric evaluator 时，Runtime 使用 `createRubricJudgeRegistration([firstKit, secondKit])`，每个 sample 使用 `createRubricJudgeEvaluationContext([{ kit: firstKit, criterion: first }, { kit: secondKit, criterion: second }])`。只有当所有 Target 都产出 `oh-my-knowledge/eval-runtime/contracts` 中的公共 `SourceNeutralTrace` 契约时，才使用 `tracePolicy: 'source-neutral'`；否则保留默认值 `none`。非 JSON、格式错误、越界分数或缺失理由都会成为结构化 invalid observation，而不是降级成 `0` 分。Provider failure 会保留计量事实并脱敏 provider 私有细节。未注册 Judge 时，不会发现 provider、读取凭证或执行 preflight。
 
 ## 高级宿主
 
 当一个 Definition binding 独占 Core Executor 或 Evaluator port 时，使用 `{ port }` 注册；多个 Target 或 Evaluator 复用同一个 implementation 时，使用 `{ implementationId, createPort }`，让每个 binding 获得隔离的 run 生命周期。若 Definition 声明了 `versionConstraint`，而 registration 没有提供 `satisfiesVersionConstraint`，Runtime 会 fail closed。
 
-自定义进程内 port 时，使用 `createSameProcessExecutorAdapter` 与 `createSameProcessEvaluatorAdapter`。需要分阶段执行、持久化 artifact admission、自定义 Analysis Runtime 或显式跨 run 可比性时，使用 `oh-my-knowledge/eval-core` 的高级 API。参见[嵌入式 Evaluation Core API](/zh/reference/embedded-api)。
+自定义进程内 port 时，使用 `oh-my-knowledge/eval-runtime/advanced` 中的 `createSameProcessExecutorAdapter` 与 `createSameProcessEvaluatorAdapter`。该 subpath 也包含旧 `createExecutorFnAdapter`、Rubric 手工装配 factory、clock 和 registration SPI；Runtime wire contract 与 schema descriptor 位于 `oh-my-knowledge/eval-runtime/contracts`。需要分阶段执行、持久化 artifact admission、自定义 Analysis Runtime 或显式跨 run 可比性时，使用 `oh-my-knowledge/eval-core`。`package.json#exports` 之外的深路径不受支持。参见[嵌入式 Evaluation Core API](/zh/reference/embedded-api)与 [eval-runtime API 分层](/zh/reference/eval-runtime-api)。
 
-接纳新的 Executor adapter 前，从 `oh-my-knowledge/eval-runtime` 调用 `runExecutorConformance({ implementationId, createExecutor, input, expected })`。它会通过真实 Core pipeline 检查隔离的 control／treatment 生命周期、重复调用、exact-match observation、配对分析与 Decision。Adapter 测试可调用 `assertExecutorConformance(result)`，以稳定 check ID 报错。该探针与框架无关，自身不会发现文件系统、网络、凭证或环境配置。
+接纳新的 Executor adapter 前，从 `oh-my-knowledge/eval-runtime` 调用 `runExecutorConformance({ implementationId, createExecutor, success, failure, cancellation })`。它通过三次真实 Core run 检查独立 binding、run／trial 清理、原始 `AbortSignal`、telemetry 声明、稳定结构化失败、exact-match observation、配对分析与 Decision。若实现忽略取消，cancellation callback 仍须自行保证有界，因为进程内探针不会隔离恶意代码。Adapter 测试可调用 `assertExecutorConformance(result)`，以稳定 check ID 报错。探针自身不会发现文件系统、网络、凭证或环境配置。
 
 建议从可运行的[最小公开示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime)开始。Package fixture 还覆盖[宿主持有的 Rubric Judge 网关](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/rubric-judge-host.mjs)和[高级五阶段宿主](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/advanced-host.mjs)。CI 会在隔离的用户目录中，使用打包后的产物执行公开示例与这些 fixture。
