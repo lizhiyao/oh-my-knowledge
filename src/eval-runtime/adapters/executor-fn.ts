@@ -1,5 +1,4 @@
 import {
-  ExecutorCapabilitiesSchema,
   type JsonValue,
   type RuntimeIdentity,
   type UsageRecord,
@@ -12,6 +11,7 @@ import {
 import type { ExecutorFn, ExecutorInput } from '../../executors/contracts/ports.js';
 import type { ExecResult } from '../../executors/contracts/result.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
+import { invokeProtocol, validateInvokeTelemetry } from './invoke-contract.js';
 
 export type ExecutorFnInputMapper = (
   context: Readonly<ExecutorTrialContext>,
@@ -49,14 +49,6 @@ function reportedUsage(result: Readonly<ExecResult>): UsageRecord | undefined {
   return Object.keys(usage).length === 0 ? undefined : usage;
 }
 
-function contractViolation(message: string, usage?: UsageRecord): never {
-  throw new ExecutionPortFailure({
-    code: 'EVAL_RUNTIME_EXECUTOR_CONTRACT_VIOLATION',
-    stage: 'execution',
-    message,
-  }, usage);
-}
-
 /**
  * Adapts OMK's existing `ExecutorFn` invocation protocol to the Core Executor port.
  * Core remains responsible for retries, timeouts, budgets, and cancellation.
@@ -64,13 +56,7 @@ function contractViolation(message: string, usage?: UsageRecord): never {
 export function createExecutorFnAdapter(
   input: Readonly<CreateExecutorFnAdapterInput>,
 ) {
-  const capabilities = ExecutorCapabilitiesSchema.parse(input.identity.capabilities);
-  const protocol = capabilities.protocols.find((candidate) => (
-    candidate.protocolId === 'omk.invoke/v1'
-  ));
-  if (protocol === undefined) {
-    throw new TypeError('ExecutorFn adapter identity 必须声明 omk.invoke/v1 capability。');
-  }
+  const protocol = invokeProtocol(input.identity);
   const executor = input.executor;
   const mapInput = input.mapInput;
   const mapResult = input.mapResult;
@@ -110,23 +96,7 @@ export function createExecutorFnAdapter(
               }),
           ...(usage === undefined ? {} : { usage }),
         };
-        const telemetry = protocol.execution.telemetry;
-        if (telemetry.trace === 'required' && mapped.trace === undefined) {
-          return contractViolation('ExecutorFn 未返回 Runtime identity 声明为 required 的 trace。', usage);
-        }
-        if (telemetry.trace === 'unsupported' && mapped.trace !== undefined) {
-          return contractViolation('ExecutorFn 返回了 Runtime identity 声明为 unsupported 的 trace。', usage);
-        }
-        if (telemetry.usage === 'required' && mapped.usage === undefined) {
-          return contractViolation('ExecutorFn 未返回 Runtime identity 声明为 required 的 usage。');
-        }
-        const costReporting = telemetry.providerCost?.reporting ?? 'unsupported';
-        if (costReporting === 'required' && mapped.usage?.providerCost === undefined) {
-          return contractViolation('ExecutorFn 未返回 Runtime identity 声明为 required 的 provider cost。');
-        }
-        if (costReporting === 'unsupported' && mapped.usage?.providerCost !== undefined) {
-          return contractViolation('ExecutorFn 返回了 Runtime identity 声明为 unsupported 的 provider cost。');
-        }
+        validateInvokeTelemetry(protocol, mapped);
         return mapped;
       },
       disposeTrial: () => undefined,

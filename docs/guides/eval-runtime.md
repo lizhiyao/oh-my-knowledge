@@ -17,18 +17,19 @@ Use `oh-my-knowledge/eval-runtime` when your service already owns business invoc
 The package is ESM-only and requires Node.js 22 or newer. Install it in the service:
 
 ```bash
-npm install oh-my-knowledge
+npm install oh-my-knowledge zod
 ```
 
 Create one identity for the deployed invocation implementation. Every field below is measurement-relevant and becomes part of the sealed Runtime fingerprint:
 
 ```ts
+import { z } from 'zod';
 import {
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
-  createExecutorFnAdapter,
   createInvokeExecutorIdentity,
+  createJsonExecutorAdapter,
   createMeasurementPolicy,
   runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
@@ -45,40 +46,31 @@ const identity = createInvokeExecutorIdentity({
 });
 ```
 
-Adapt the existing OMK `ExecutorFn`. The adapter passes Core's `AbortSignal`; it does not add another invocation protocol. Use a factory because both Targets bind the same implementation but require independent lifecycle scopes:
+Use any runtime schema with a `parse(unknown)` method to narrow input, Target config, and output. This example uses Zod. The adapter passes Core's `AbortSignal`, continues to use `omk.invoke/v1`, and does not add another invocation protocol. Use a factory because both Targets bind the same implementation but require independent lifecycle scopes:
 
 ```ts
-const executorFn = async ({ model, prompt, abortSignal }) => {
-  const response = await modelGateway.generate({
-    deployment: model,
-    prompt,
-    signal: abortSignal,
-  });
-  return {
-    ok: true,
-    output: response.text,
-    durationMs: response.durationMs,
-    durationApiMs: response.durationMs,
-    inputTokens: response.inputTokens,
-    outputTokens: response.outputTokens,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-    tokenUsageReportedByExecutor: true,
-    costUSD: 0,
-    costReportedByExecutor: false,
-    stopReason: response.stopReason,
-    numTurns: 1,
-  };
-};
-
-const createExecutor = () => createExecutorFnAdapter({
+const createExecutor = () => createJsonExecutorAdapter({
   identity,
-  executor: executorFn,
+  inputParser: z.object({ prompt: z.string() }).strict(),
+  targetConfigParser: z.object({ deployment: z.string() }).strict(),
+  outputParser: z.string(),
   outputClassification: 'sensitive',
-  mapInput: ({ targetConfig, input }) => ({
-    model: (targetConfig as { deployment: string }).deployment,
-    prompt: (input as { prompt: string }).prompt,
-  }),
+  async invoke({ input, targetConfig, signal }) {
+    const response = await modelGateway.generate({
+      deployment: targetConfig.deployment,
+      prompt: input.prompt,
+      signal,
+    });
+    return {
+      invocationStatus: 'completed',
+      output: response.text,
+      usage: {
+        inputTokens: response.inputTokens,
+        outputTokens: response.outputTokens,
+        totalTokens: response.inputTokens + response.outputTokens,
+      },
+    };
+  },
 });
 
 const runtime = createEvaluationRuntime({
@@ -89,6 +81,8 @@ const runtime = createEvaluationRuntime({
   evaluators: [{ port: createExactMatchEvaluator() }],
 });
 ```
+
+Parser return types flow into `invoke`, so no `as` casts are needed. Parsers also form the runtime trust boundary: invalid sample input, Target config, output, usage, or trace becomes a stable redacted execution failure. Parsers may validate and narrow but may not coerce, add defaults, or drop fields; any JSON transform is rejected so the effective invocation cannot drift silently under the same Runtime identity. Perform an intentional transform inside `invoke`, with the corresponding implementation revision covered by identity. Hosts that already implement OMK's existing `ExecutorFn` can continue to use `createExecutorFnAdapter` as a bridge; it is not the recommended entry for a new service integration.
 
 Build the serializable Definition and Policy. Defaults are materialized into immutable values; the seed is mandatory and never inferred from time, randomness, or environment state:
 

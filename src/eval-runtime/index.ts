@@ -57,6 +57,13 @@ export type {
   ExecutorFnResultMapper,
   ExecutorInput,
 } from './adapters/executor-fn.js';
+export { createJsonExecutorAdapter } from './adapters/json-executor.js';
+export type {
+  CreateJsonExecutorAdapterInput,
+  JsonExecutorInvocation,
+  JsonExecutorInvocationResult,
+  RuntimeValueParser,
+} from './adapters/json-executor.js';
 export {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,

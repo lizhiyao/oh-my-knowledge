@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { z } from 'zod';
 import {
   createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
-  createExecutorFnAdapter,
   createInvokeExecutorIdentity,
+  createJsonExecutorAdapter,
   createMeasurementPolicy,
 } from 'oh-my-knowledge/eval-runtime';
 
@@ -24,32 +25,20 @@ const answers = {
   control: { one: 'A', two: 'incorrect', three: 'incorrect' },
   treatment: { one: 'A', two: 'B', three: 'C' },
 };
-const executorFn = async ({ model, prompt, abortSignal }) => {
-  abortSignal?.throwIfAborted();
-  return {
-    ok: true,
-    output: answers[model][prompt],
-    durationMs: 1,
-    durationApiMs: 1,
-    inputTokens: 1,
-    outputTokens: 1,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-    tokenUsageReportedByExecutor: true,
-    costUSD: 0,
-    costReportedByExecutor: false,
-    stopReason: 'completed',
-    numTurns: 1,
-  };
-};
-const createExecutor = () => createExecutorFnAdapter({
+const createExecutor = () => createJsonExecutorAdapter({
   identity,
-  executor: executorFn,
+  inputParser: z.object({ prompt: z.string() }).strict(),
+  targetConfigParser: z.undefined(),
+  outputParser: z.string(),
   outputClassification: 'public',
-  mapInput: ({ targetId, input }) => ({
-    model: targetId,
-    prompt: input.prompt,
-  }),
+  async invoke({ targetId, input, signal }) {
+    signal.throwIfAborted();
+    return {
+      invocationStatus: 'completed',
+      output: answers[targetId][input.prompt],
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    };
+  },
 });
 const runtime = createEvaluationRuntime({
   executors: [{ implementationId: identity.implementationId, createPort: createExecutor }],

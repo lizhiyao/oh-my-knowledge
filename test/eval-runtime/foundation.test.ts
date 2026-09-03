@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { createEvaluationEngine } from '../../src/eval-core/index.js';
 import {
@@ -7,6 +8,7 @@ import {
   createExactMatchEvaluator,
   createExecutorFnAdapter,
   createInvokeExecutorIdentity,
+  createJsonExecutorAdapter,
   createMeasurementPolicy,
   createPairedComparisonDefinition,
   runExecutorConformance,
@@ -266,11 +268,17 @@ describe('eval-runtime foundation', () => {
     const identity = executorIdentity();
     const conformance = await runExecutorConformance({
       implementationId: identity.implementationId,
-      createExecutor: () => createExecutorFnAdapter({
+      createExecutor: () => createJsonExecutorAdapter({
         identity,
+        inputParser: z.string(),
+        targetConfigParser: z.undefined(),
+        outputParser: z.string(),
         outputClassification: 'public',
-        mapInput: ({ input }) => ({ model: 'probe', prompt: String(input) }),
-        executor: async () => result('expected'),
+        invoke: async () => ({
+          invocationStatus: 'completed',
+          output: 'expected',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        }),
       }),
       input: 'probe',
       expected: 'expected',
@@ -282,11 +290,17 @@ describe('eval-runtime foundation', () => {
 
     const failed = await runExecutorConformance({
       implementationId: identity.implementationId,
-      createExecutor: () => createExecutorFnAdapter({
+      createExecutor: () => createJsonExecutorAdapter({
         identity,
+        inputParser: z.string(),
+        targetConfigParser: z.undefined(),
+        outputParser: z.string(),
         outputClassification: 'public',
-        mapInput: ({ input }) => ({ model: 'probe', prompt: String(input) }),
-        executor: async () => result('unexpected'),
+        invoke: async () => ({
+          invocationStatus: 'completed',
+          output: 'unexpected',
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        }),
       }),
       input: 'probe',
       expected: 'expected',
