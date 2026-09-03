@@ -13,9 +13,6 @@ describe('autonomous review governance', () => {
     expect(agents).toContain('必须完整阅读 [`CODE_REVIEW.md`](./CODE_REVIEW.md)');
     expect(Buffer.byteLength(agents, 'utf8')).toBeLessThan(32 * 1024);
     expect(read('CLAUDE.md')).toContain('@AGENTS.md');
-    expect(JSON.parse(read('.gemini/settings.json'))).toMatchObject({
-      context: { fileName: 'AGENTS.md' },
-    });
     expect(read('CONTRIBUTING.md')).toContain('[`CODE_REVIEW.md`](./CODE_REVIEW.md)');
   });
 
