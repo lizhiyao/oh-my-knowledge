@@ -226,6 +226,7 @@ omk-mcp
 - **[工作原理](docs/zh/explanation/architecture.md)** —— 输入编译、sealed Core 执行、分析、持久化与 Studio projection
 - **[评测用例格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、30+ 断言类型、自定义 JS 断言
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
+- **[迁移到 1.0 预览版](docs/zh/guides/v1-preview-migration.md)** —— 从 `0.54` 升级时的安装渠道、存储重建、用例协议、CLI 自动化与嵌入式 API 变化
 - **[Evaluation Core 生产切换](docs/zh/guides/eval-core-cutover.md)** —— `BREAKING-SCHEMA` 存储、resume、Studio、Gold、受管证据与 evolve 迁移
 - **[存储布局 v2](docs/zh/specs/storage-layout-spec.md)** —— 项目／全局领域、迁移兼容与 Git 策略
 - **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
