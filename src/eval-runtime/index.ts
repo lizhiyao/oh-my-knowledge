@@ -1,5 +1,5 @@
 export { createNodeEvaluationClock } from './clock.js';
-export { createEvaluationEngine } from '../eval-core/engine/index.js';
+export { createEvaluationEngine } from './engine.js';
 export { createExactMatchDefinition } from './builders/exact-match.js';
 export type {
   ExactMatchDefinitionBuilderInput,

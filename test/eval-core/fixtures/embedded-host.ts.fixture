@@ -189,6 +189,12 @@ async function rootBoundary(): Promise<void> {
   prepared.stages({ runId: 'root-must-stay-minimal' });
 }
 
+async function runtimeBoundary(): Promise<void> {
+  const prepared = await publicEngine.prepare(publicDefinition, publicPolicy);
+  // @ts-expect-error eval-runtime 同样只公开标准一键 façade。
+  prepared.stages({ runId: 'runtime-must-stay-minimal' });
+}
+
 async function advancedBoundary(source: ExecutionBundleSource): Promise<void> {
   const advanced = createAdvancedEvaluationEngine(runtime);
   const prepared = await advanced.prepare(definition, policy);
@@ -210,4 +216,5 @@ async function consume(): Promise<EvaluationRunResult> {
 
 void consume;
 void rootBoundary;
+void runtimeBoundary;
 void advancedBoundary;
