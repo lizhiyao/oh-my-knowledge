@@ -1,9 +1,10 @@
+import { z } from 'zod';
 import {
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
-  createExecutorFnAdapter,
   createInvokeExecutorIdentity,
+  createJsonExecutorAdapter,
   createMeasurementPolicy,
   runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
@@ -23,29 +24,18 @@ const answers = {
   baseline: { one: 'A', two: 'incorrect', three: 'incorrect' },
   candidate: { one: 'A', two: 'B', three: 'C' },
 };
-const createExecutor = () => createExecutorFnAdapter({
+const createExecutor = () => createJsonExecutorAdapter({
   identity,
+  inputParser: z.object({ prompt: z.string() }).strict(),
+  targetConfigParser: z.object({ deployment: z.string() }).strict(),
+  outputParser: z.string(),
   outputClassification: 'public',
-  mapInput: ({ targetConfig, input }) => ({
-    model: targetConfig.deployment,
-    prompt: input.prompt,
-  }),
-  executor: async ({ model, prompt, abortSignal }) => {
-    abortSignal?.throwIfAborted();
+  async invoke({ input, targetConfig, signal }) {
+    signal.throwIfAborted();
     return {
-      ok: true,
-      output: answers[model][prompt],
-      durationMs: 1,
-      durationApiMs: 1,
-      inputTokens: 1,
-      outputTokens: 1,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      tokenUsageReportedByExecutor: true,
-      costUSD: 0,
-      costReportedByExecutor: false,
-      stopReason: 'completed',
-      numTurns: 1,
+      invocationStatus: 'completed',
+      output: answers[targetConfig.deployment][input.prompt],
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
     };
   },
 });

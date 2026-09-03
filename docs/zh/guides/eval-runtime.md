@@ -17,18 +17,19 @@
 该入口仅提供 ESM，要求 Node.js 22 或更高版本。先在服务中安装：
 
 ```bash
-npm install oh-my-knowledge
+npm install oh-my-knowledge zod
 ```
 
 为已部署的调用实现创建一份 identity。下面每个字段都会影响测量，并进入封存的 Runtime fingerprint：
 
 ```ts
+import { z } from 'zod';
 import {
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
-  createExecutorFnAdapter,
   createInvokeExecutorIdentity,
+  createJsonExecutorAdapter,
   createMeasurementPolicy,
   runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
@@ -45,40 +46,31 @@ const identity = createInvokeExecutorIdentity({
 });
 ```
 
-适配 OMK 现有的 `ExecutorFn`。adapter 会透传 Core 的 `AbortSignal`，不会增加第三套调用协议。两个 Target 复用同一个 implementation 时要使用 factory，以获得相互隔离的生命周期：
+使用任意带 `parse(unknown)` 方法的运行时 schema 收窄 input、Target config 和 output。下面使用 Zod；adapter 会透传 Core 的 `AbortSignal`，并继续使用 `omk.invoke/v1`，不会增加第三套调用协议。两个 Target 复用同一个 implementation 时要使用 factory，以获得相互隔离的生命周期：
 
 ```ts
-const executorFn = async ({ model, prompt, abortSignal }) => {
-  const response = await modelGateway.generate({
-    deployment: model,
-    prompt,
-    signal: abortSignal,
-  });
-  return {
-    ok: true,
-    output: response.text,
-    durationMs: response.durationMs,
-    durationApiMs: response.durationMs,
-    inputTokens: response.inputTokens,
-    outputTokens: response.outputTokens,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-    tokenUsageReportedByExecutor: true,
-    costUSD: 0,
-    costReportedByExecutor: false,
-    stopReason: response.stopReason,
-    numTurns: 1,
-  };
-};
-
-const createExecutor = () => createExecutorFnAdapter({
+const createExecutor = () => createJsonExecutorAdapter({
   identity,
-  executor: executorFn,
+  inputParser: z.object({ prompt: z.string() }).strict(),
+  targetConfigParser: z.object({ deployment: z.string() }).strict(),
+  outputParser: z.string(),
   outputClassification: 'sensitive',
-  mapInput: ({ targetConfig, input }) => ({
-    model: (targetConfig as { deployment: string }).deployment,
-    prompt: (input as { prompt: string }).prompt,
-  }),
+  async invoke({ input, targetConfig, signal }) {
+    const response = await modelGateway.generate({
+      deployment: targetConfig.deployment,
+      prompt: input.prompt,
+      signal,
+    });
+    return {
+      invocationStatus: 'completed',
+      output: response.text,
+      usage: {
+        inputTokens: response.inputTokens,
+        outputTokens: response.outputTokens,
+        totalTokens: response.inputTokens + response.outputTokens,
+      },
+    };
+  },
 });
 
 const runtime = createEvaluationRuntime({
@@ -89,6 +81,8 @@ const runtime = createEvaluationRuntime({
   evaluators: [{ port: createExactMatchEvaluator() }],
 });
 ```
+
+Parser 的返回类型会自动贯穿 `invoke`，因此这里不需要 `as`。Parser 同时承担运行时信任边界：不合法的 sample input、Target config、output、usage 或 trace 会成为稳定且脱敏的结构化 execution failure。Parser 只能校验并收窄，不能 coercion、补默认值或删除字段；任何 JSON transform 都会被拒绝，避免同一 Runtime identity 下静默改变实际调用。需要变换时，在 identity 已覆盖相应实现 revision 的 `invoke` 内显式完成。若宿主已经实现 OMK 既有 `ExecutorFn`，仍可使用 `createExecutorFnAdapter` 作为 bridge；它不是新服务接入的推荐入口。
 
 构造可序列化的 Definition 与 Policy。所有默认值都会写入不可变结果；seed 必填，且不会从时间、随机数或环境状态推断：
 

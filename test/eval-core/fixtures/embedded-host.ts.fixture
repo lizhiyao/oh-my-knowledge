@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   createEvaluationEngine,
   EXECUTION_FACTS_SCHEMA_VERSION,
@@ -19,6 +20,8 @@ import {
   createEvaluationEngine as createRuntimeEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
+  createInvokeExecutorIdentity,
+  createJsonExecutorAdapter,
   createPairedComparisonDefinition,
   createMeasurementPolicy,
   createRubricJudgeCriterion,
@@ -33,6 +36,7 @@ import {
   type RuntimePortRegistration,
   assertExecutorConformance,
   runExecutorConformance,
+  runEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
 import {
   createEvalSampleSetDocument,
@@ -96,6 +100,58 @@ void publicDefinition;
 void publicPolicy;
 void publicEngine.prepare(publicDefinition, publicPolicy);
 void registration;
+
+const jsonIdentity = createInvokeExecutorIdentity({
+  implementationId: 'test.typescript-json/v1',
+  version: '1.0.0',
+  determinism: 'deterministic',
+  cancellation: 'cooperative',
+  concurrency: { safety: 'parallel-safe' },
+  seedControl: 'unsupported',
+  telemetry: { trace: 'unsupported', usage: 'required' },
+  fingerprintFacets: { revision: 'typescript-fixture' },
+});
+const jsonExecutor = createJsonExecutorAdapter({
+  identity: jsonIdentity,
+  inputParser: z.object({ question: z.string() }),
+  targetConfigParser: z.object({ deployment: z.string() }),
+  outputParser: z.object({ answer: z.string() }),
+  outputClassification: 'public',
+  async invoke({ input, targetConfig, signal }) {
+    const question: string = input.question;
+    const deployment: string = targetConfig.deployment;
+    signal.throwIfAborted();
+    // @ts-expect-error Parser-derived input does not expose undeclared fields.
+    void input.missing;
+    return {
+      invocationStatus: 'completed',
+      output: { answer: `${question}:${deployment}` },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    };
+  },
+});
+createJsonExecutorAdapter({
+  identity: jsonIdentity,
+  inputParser: z.string(),
+  targetConfigParser: z.undefined(),
+  outputParser: z.string(),
+  outputClassification: 'public',
+  // @ts-expect-error Output must match the parser-derived string contract.
+  async invoke() {
+    return { invocationStatus: 'completed', output: 42 };
+  },
+});
+const jsonRuntime = createEvaluationRuntime({
+  executors: [{ port: jsonExecutor }],
+  evaluators: [{ port: evaluator }],
+});
+void runEvaluation({
+  runtime: jsonRuntime,
+  definition: publicDefinition,
+  policy: publicPolicy,
+  runId: 'typed-json-runtime',
+});
+void jsonExecutor;
 
 const genericDefinition = createPairedComparisonDefinition({
   datasetId: 'typescript-service-host',

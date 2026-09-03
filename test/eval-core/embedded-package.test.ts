@@ -145,6 +145,8 @@ const assert = require('node:assert/strict');
   assert.equal(typeof advanced.assessComparability, 'function');
   assert.equal(typeof evalRuntime.createEvaluationRuntime, 'function');
   assert.equal(typeof evalRuntime.createExecutorFnAdapter, 'function');
+  assert.equal(typeof evalRuntime.createJsonExecutorAdapter, 'function');
+  assert.equal(typeof evalRuntime.runEvaluation, 'function');
   assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v1');
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
   assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
