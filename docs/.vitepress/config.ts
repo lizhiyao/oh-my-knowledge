@@ -37,6 +37,7 @@ export default defineConfig({
             text: 'Use omk',
             items: [
               { text: 'Quickstart', link: '/quickstart-skill-eval' },
+              { text: 'Migrate to the 1.0 preview', link: '/guides/v1-preview-migration' },
               { text: 'CLI reference', link: '/reference/cli' },
               { text: 'Embedded API', link: '/reference/embedded-api' },
               { text: 'Eval sample format', link: '/reference/eval-sample-format' },
@@ -104,6 +105,7 @@ export default defineConfig({
             text: '我想用 omk',
             items: [
               { text: '快速上手', link: '/zh/quickstart-skill-eval' },
+              { text: '迁移到 1.0 预览版', link: '/zh/guides/v1-preview-migration' },
               { text: 'CLI 参考', link: '/zh/reference/cli' },
               { text: '嵌入式 API', link: '/zh/reference/embedded-api' },
               { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },

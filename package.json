@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.54.0",
+  "version": "1.0.0-beta.0",
   "packageManager": "yarn@4.16.0",
   "description": "OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.",
   "type": "module",
