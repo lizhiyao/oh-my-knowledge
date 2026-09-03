@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { createEvaluationEngine } from 'oh-my-knowledge/eval-core';
 import {
+  createEvaluationEngine,
   createEvaluationRuntime,
-  createExactMatchDefinition,
   createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
+  createPairedComparisonDefinition,
   createRubricJudgeCriterion,
   createRubricJudgeEvaluatorDefinition,
   createRubricJudgeEvaluatorRegistration,
@@ -46,29 +46,39 @@ const criterion = createRubricJudgeCriterion({
 });
 const metricId = 'rubric-score';
 
-const base = createExactMatchDefinition({
+const evaluator = createRubricJudgeEvaluatorDefinition({
+  evaluatorId: 'rubric-judge',
+  metricId,
+  instrument,
+  runtime: judgeRuntime,
+  criterionPointer: '/rubricJudge',
+});
+const metric = createRubricJudgeMetricDefinition(metricId);
+const definition = createPairedComparisonDefinition({
   datasetId: 'faas-rubric-example',
   seed: 'explicit-seed',
   samples: [{
     sampleId: 'capital',
     input: { prompt: 'What is the capital of France?' },
     expected: 'Paris',
+    evaluationContext: { rubricJudge: criterion },
   }],
-  control: { targetId: 'control', executorId: targetIdentity.implementationId },
-  treatment: { targetId: 'treatment', executorId: targetIdentity.implementationId },
-  metricId,
+  control: {
+    targetId: 'control',
+    targetKind: 'rag',
+    executorId: targetIdentity.implementationId,
+    config: { retrievalRevision: 'baseline' },
+  },
+  treatment: {
+    targetId: 'treatment',
+    targetKind: 'rag',
+    executorId: targetIdentity.implementationId,
+    config: { retrievalRevision: 'candidate' },
+  },
+  evaluator,
+  metric,
   bootstrap: { resamples: 100 },
 });
-const definition = structuredClone(base);
-definition.dataset.samples[0].evaluationContext = { rubricJudge: criterion };
-definition.evaluators = [createRubricJudgeEvaluatorDefinition({
-  evaluatorId: 'rubric-judge',
-  metricId,
-  instrument,
-  runtime: judgeRuntime,
-  criterionPointer: '/rubricJudge',
-})];
-definition.metrics = [createRubricJudgeMetricDefinition(metricId)];
 
 const requests = [];
 const invocation = {

@@ -14,6 +14,7 @@ const publicExamples = [
   'codex-observe-router',
   'codex-task-trajectory',
   'custom-executor',
+  'eval-runtime',
   'rag-eval',
   'skill-map-showcase',
 ] as const;

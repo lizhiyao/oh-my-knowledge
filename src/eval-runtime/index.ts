@@ -1,4 +1,5 @@
 export { createNodeEvaluationClock } from './clock.js';
+export { createEvaluationEngine } from '../eval-core/engine/index.js';
 export { createExactMatchDefinition } from './builders/exact-match.js';
 export type {
   ExactMatchDefinitionBuilderInput,
@@ -6,6 +7,11 @@ export type {
 } from './builders/exact-match.js';
 export { createMeasurementPolicy } from './builders/policy.js';
 export type { MeasurementPolicyBuilderInput } from './builders/policy.js';
+export { createPairedComparisonDefinition } from './builders/paired-comparison.js';
+export type {
+  EvaluationRuntimeTarget,
+  PairedComparisonDefinitionBuilderInput,
+} from './builders/paired-comparison.js';
 export {
   EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
   createExactMatchEvaluator,
@@ -101,6 +107,16 @@ export {
   attachSourceNeutralMockStats,
   parseSourceNeutralTrace,
 } from './traces/source-neutral.js';
+export {
+  RuntimeConformanceError,
+  assertExecutorConformance,
+  runExecutorConformance,
+} from './conformance/executor.js';
+export type {
+  ExecutorConformanceProbeInput,
+  ExecutorConformanceResult,
+  RuntimeConformanceCheck,
+} from './conformance/executor.js';
 export type {
   SourceNeutralMockStats,
   SourceNeutralTrace,

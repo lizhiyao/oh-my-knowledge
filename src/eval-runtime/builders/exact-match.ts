@@ -1,12 +1,10 @@
 import {
-  EVALUATION_DEFINITION_SCHEMA_VERSION,
-  EvaluationDefinitionSchema,
-  deepFreezeCanonicalJson,
   type EvaluationDefinition,
   type EvaluationSample,
   type JsonValue,
 } from '../../eval-core/contracts/index.js';
 import { EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID } from '../evaluators/exact-match.js';
+import { createPairedComparisonDefinition } from './paired-comparison.js';
 
 export interface ExactMatchTarget {
   readonly targetId: string;
@@ -40,45 +38,22 @@ export function createExactMatchDefinition(
   input: Readonly<ExactMatchDefinitionBuilderInput>,
 ): EvaluationDefinition {
   const metricId = input.metricId ?? 'correct';
-  const comparisonId = 'control-vs-treatment';
-  const resultId = 'paired-correctness-difference';
-  const targets = [input.control, input.treatment].map((target) => ({
-    targetId: target.targetId,
-    targetKind: target.targetKind ?? 'function',
-    protocolId: 'omk.invoke/v1' as const,
-    executorId: target.executorId,
-    executionRequirements: {
-      systemInstructions: 'not-required' as const,
-      workspace: 'not-required' as const,
-      mcp: 'not-required' as const,
-      mockInterception: 'not-required' as const,
-      toolPolicy: 'runtime-default' as const,
-      skillDiscovery: 'runtime-default' as const,
+  return createPairedComparisonDefinition({
+    datasetId: input.datasetId,
+    samples: input.samples,
+    control: input.control,
+    treatment: input.treatment,
+    seed: input.seed,
+    trials: input.trials,
+    bootstrap: input.bootstrap,
+    decision: input.decision,
+    identities: {
+      comparisonId: 'control-vs-treatment',
+      analysisNodeId: 'paired-correctness-bootstrap',
+      analysisResultId: 'paired-correctness-difference',
+      decisionPolicyId: 'progress-decision',
     },
-    executionControls: {
-      defaults: {
-        workspace: { workspaceMode: 'not-required' as const },
-        tools: { toolPolicyKind: 'runtime-default' as const },
-      },
-      sampleOverrides: [],
-    },
-    ...(target.config === undefined ? {} : { config: structuredClone(target.config) }),
-  }));
-  const randomizationSlots = targets.map((target) => ({
-    targetId: target.targetId,
-    randomizationSlotId: `slot-${target.targetId}`,
-  })).sort((left, right) => (
-    left.randomizationSlotId < right.randomizationSlotId ? -1
-      : left.randomizationSlotId > right.randomizationSlotId ? 1 : 0
-  ));
-  const definition = EvaluationDefinitionSchema.parse({
-    schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,
-    dataset: {
-      datasetId: input.datasetId,
-      samples: structuredClone(input.samples),
-    },
-    targets,
-    evaluators: [{
+    evaluator: {
       evaluatorId: 'exact-match',
       evaluatorKind: 'assertion',
       implementationId: EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
@@ -93,66 +68,13 @@ export function createExactMatchDefinition(
         { bindingId: 'actual', sourceKind: 'output', pointer: '' },
         { bindingId: 'expected', sourceKind: 'expected', pointer: '' },
       ],
-    }],
-    metrics: [{
+    },
+    metric: {
       metricId,
       valueType: 'boolean',
       scope: 'sample',
       direction: 'higher-is-better',
       missingPolicyId: 'exclude/v1',
-    }],
-    experiment: {
-      trials: input.trials ?? 1,
-      seed: input.seed,
-      randomizationSlots,
-      sampling: {
-        experimentalUnit: 'sample',
-        pairingKey: '/sampleId',
-        repeatedMeasures: (input.trials ?? 1) > 1,
-        resamplingUnit: 'paired-block',
-        estimatorId: 'bootstrap.paired-difference-percentile/v1',
-        seedCoupling: 'shared-within-block',
-      },
-      scheduling: { schedulingKind: 'interleaved' },
-    },
-    analysisGraph: {
-      analysisMode: 'preregistered',
-      nodes: [{
-        analysisNodeKind: 'estimator',
-        nodeId: 'paired-correctness-bootstrap',
-        implementationId: 'bootstrap.paired-difference-percentile/v1',
-        inputs: [
-          { inputKind: 'metric-observations', referenceId: metricId },
-          {
-            inputKind: 'comparison',
-            referenceId: comparisonId,
-            treatmentTargetId: input.treatment.targetId,
-            metricId,
-          },
-        ],
-        outputResultId: resultId,
-        parameters: {
-          resamples: input.bootstrap?.resamples ?? 1_000,
-          alpha: input.bootstrap?.alpha ?? 0.05,
-        },
-      }],
-    },
-    comparisons: [{
-      comparisonId,
-      controlTargetId: input.control.targetId,
-      treatmentTargetIds: [input.treatment.targetId],
-      metricIds: [metricId],
-    }],
-    decisionPolicy: {
-      decisionPolicyId: 'progress-decision',
-      implementationId: 'progress/v1',
-      analysisResultIds: [resultId],
-      minimumEvidenceStatus: input.decision?.minimumEvidenceStatus ?? 'complete',
-      parameters: {
-        threshold: input.decision?.threshold ?? 0,
-        equivalence: input.decision?.equivalence ?? 0,
-      },
     },
   });
-  return deepFreezeCanonicalJson(definition);
 }
