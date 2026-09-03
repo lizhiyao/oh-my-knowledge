@@ -1,4 +1,6 @@
 import { Config, type Command } from '@oclif/core';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { format } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,6 +93,13 @@ export async function runCommand(
   const previousCwd = process.cwd();
   const previousEnv = { ...process.env };
   const previousExitCode = process.exitCode;
+  // A command may gain persistence as it evolves. Keep callers that only test
+  // parsing/output hermetic by default instead of silently inheriting the repo
+  // root as their writable project. Tests that need a specific project must
+  // opt into it with options.cwd.
+  const isolatedCwd = options.cwd === undefined
+    ? mkdtempSync(join(tmpdir(), 'omk-command-test-'))
+    : undefined;
   let stdout = '';
   let stderr = '';
 
@@ -111,7 +120,7 @@ export async function runCommand(
 
   try {
     process.argv = [process.execPath, 'omk', ...argv];
-    if (options.cwd) process.chdir(options.cwd);
+    process.chdir(options.cwd ?? isolatedCwd!);
     if (options.env) Object.assign(process.env, options.env);
 
     const command = new CommandType(argv, await commandConfig());
@@ -132,6 +141,9 @@ export async function runCommand(
     process.argv = previousArgv;
     process.exitCode = previousExitCode;
     process.chdir(previousCwd);
+    if (isolatedCwd !== undefined) {
+      rmSync(isolatedCwd, { recursive: true, force: true });
+    }
     for (const key of Object.keys(process.env)) delete process.env[key];
     Object.assign(process.env, previousEnv);
     stdoutWrite.mockRestore();

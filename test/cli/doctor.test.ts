@@ -1,5 +1,7 @@
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import DoctorCommand from '../../src/cli/commands/doctor.js';
@@ -12,12 +14,25 @@ const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review',
 // Fixture executor bypasses real LLM calls; outcome is steered via
 // OMK_DOCTOR_FIXTURE_OUTCOME env (pass/fail).
 const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
+let isolatedCwd = '';
+
+beforeEach(() => {
+  isolatedCwd = mkdtempSync(join(tmpdir(), 'omk-doctor-cli-test-'));
+});
+
+afterEach(() => {
+  rmSync(isolatedCwd, { recursive: true, force: true });
+  isolatedCwd = '';
+});
 
 async function runDoctorCommand(
   args: string[],
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ stdout: string; stderr: string }> {
-  return runCommand(DoctorCommand, args, options);
+  return runCommand(DoctorCommand, args, {
+    ...options,
+    cwd: options.cwd ?? isolatedCwd,
+  });
 }
 
 interface ExecError extends Error {
@@ -44,6 +59,10 @@ describe('omk doctor command', () => {
     assert.ok(ids.includes('dependencies_present'));
     assert.ok(!ids.includes('samples_contract_aligned'), 'samples-contract 不归 CLI 默认 doctor');
     assert.ok(ids.some((id) => id.startsWith('skill_health')), 'default doctor should run LLM health audit');
+    assert.ok(
+      existsSync(join(isolatedCwd, '.omk', 'doctor')),
+      'default doctor persistence should stay inside the isolated test project',
+    );
   });
 
   it('--static-only runs offline (no executor) with static rules only, no LLM / samples-contract', async () => {

@@ -1,9 +1,23 @@
 import { Command } from '@oclif/core';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { describe, it } from 'vitest';
 import { runCommand, type CommandRunError } from './run-command.js';
 
 describe('runCommand', () => {
+  it('未指定 cwd 时使用并清理临时项目目录', async () => {
+    class CwdCommand extends Command {
+      async run(): Promise<void> {
+        await this.parse(CwdCommand);
+        this.log(process.cwd());
+      }
+    }
+
+    const commandCwd = (await runCommand(CwdCommand, [])).stdout.trim();
+    assert.notEqual(commandCwd, process.cwd());
+    assert.equal(existsSync(commandCwd), false, 'temporary command cwd should be removed after the run');
+  });
+
   it('执行完整 Oclif init → run → finally 生命周期', async () => {
     const events: string[] = [];
     class LifecycleCommand extends Command {
