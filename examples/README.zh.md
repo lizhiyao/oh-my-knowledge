@@ -16,6 +16,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 
 | 任务 | 示例 | 演示内容 | 第一条命令 | 是否调用模型 |
 |---|---|---|---|---|
+| 在服务中嵌入 OMK | [eval-runtime](./eval-runtime/README.zh.md) | 公共 ESM Runtime 装配、宿主调用注入、确定性评分与内存报告物化 | `yarn build && node examples/eval-runtime/run.mjs` | 否 |
 | 检查目录式 skill | [skill-map-showcase](./skill-map-showcase/README.zh.md) | Frontmatter、references、scripts、workflows、私有用例、Doctor 与 Skill Map | `cd examples/skill-map-showcase && omk doctor skills/release-readiness --static-only` | 否 |
 | 评测基于上下文的回答 | [rag-eval](./rag-eval/README.zh.md) | `faithfulness`、`answer_relevancy` 与 `context_recall` 断言 | `cd examples/rag-eval && omk eval --control context-answerer --treatment rag-answerer --dry-run` | dry-run 否；真实评测是 |
 | 评测理解仓库的 agent | [agent-runtime](./agent-runtime/README.zh.md) | 用例级工作目录与基于文件的任务证据 | `cd examples/agent-runtime && omk eval --control repo-answerer --treatment repo-navigator --dry-run` | dry-run 否；真实评测是 |

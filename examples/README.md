@@ -16,6 +16,7 @@ Use `omk init demo --samples 20` when you want the first-party, difficulty-strat
 
 | Task | Example | What it demonstrates | First command | Model call |
 |---|---|---|---|---|
+| Embed OMK in a service | [eval-runtime](./eval-runtime) | Public ESM Runtime assembly, host invocation injection, deterministic scoring, and in-memory report materialization | `yarn build && node examples/eval-runtime/run.mjs` | No |
 | Inspect a directory skill | [skill-map-showcase](./skill-map-showcase) | Frontmatter, references, scripts, workflows, private samples, Doctor, and Skill Map | `cd examples/skill-map-showcase && omk doctor skills/release-readiness --static-only` | No |
 | Evaluate grounded answers | [rag-eval](./rag-eval) | `faithfulness`, `answer_relevancy`, and `context_recall` assertions | `cd examples/rag-eval && omk eval --control context-answerer --treatment rag-answerer --dry-run` | No for dry-run; yes for evaluation |
 | Evaluate repository-aware agents | [agent-runtime](./agent-runtime) | A sample-scoped working directory and file-backed task evidence | `cd examples/agent-runtime && omk eval --control repo-answerer --treatment repo-navigator --dry-run` | No for dry-run; yes for evaluation |

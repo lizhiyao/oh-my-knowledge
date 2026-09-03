@@ -16,8 +16,10 @@ import {
   type ExecutionBundleSource,
 } from 'oh-my-knowledge/eval-core';
 import {
+  createEvaluationEngine as createRuntimeEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
+  createPairedComparisonDefinition,
   createMeasurementPolicy,
   createRubricJudgeCriterion,
   createRubricJudgeEvaluator,
@@ -27,7 +29,10 @@ import {
   createRubricJudgeMetricDefinition,
   createRubricJudgeRuntimeConfig,
   type OmkLlmJudgeInvocationPort,
+  type ExecutorConformanceProbeInput,
   type RuntimePortRegistration,
+  assertExecutorConformance,
+  runExecutorConformance,
 } from 'oh-my-knowledge/eval-runtime';
 import {
   createEvalSampleSetDocument,
@@ -84,11 +89,41 @@ const publicDefinition = createExactMatchDefinition({
   treatment: { targetId: 'treatment', executorId: executor.identity.implementationId },
 });
 const publicPolicy = createMeasurementPolicy();
+const publicEngine = createRuntimeEvaluationEngine(publicRuntime);
 const registration: RuntimePortRegistration<Executor> = { port: executor };
 void publicRuntime;
 void publicDefinition;
 void publicPolicy;
+void publicEngine.prepare(publicDefinition, publicPolicy);
 void registration;
+
+const genericDefinition = createPairedComparisonDefinition({
+  datasetId: 'typescript-service-host',
+  seed: 'explicit-service-seed',
+  samples: publicDefinition.dataset.samples,
+  control: { targetId: 'control', targetKind: 'rag', executorId: executor.identity.implementationId },
+  treatment: {
+    targetId: 'treatment',
+    targetKind: 'rag',
+    executorId: executor.identity.implementationId,
+  },
+  evaluator: publicDefinition.evaluators[0],
+  metric: publicDefinition.metrics[0],
+});
+const conformanceInput: ExecutorConformanceProbeInput = {
+  implementationId: executor.identity.implementationId,
+  createExecutor: () => executor,
+  input: 'probe',
+  expected: 'probe',
+};
+async function conformanceBoundary(): Promise<void> {
+  const result = await runExecutorConformance(conformanceInput);
+  assertExecutorConformance(result);
+  const conformant: true = result.conformant;
+  void conformant;
+}
+void genericDefinition;
+void conformanceBoundary;
 
 declare const judgeInvocation: OmkLlmJudgeInvocationPort;
 const rubricInstrument = createRubricJudgeInstrument();

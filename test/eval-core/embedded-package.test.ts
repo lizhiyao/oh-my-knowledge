@@ -32,6 +32,11 @@ const RUBRIC_JUDGE_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/rubric-judge-host.mjs',
 );
+const ADVANCED_RUNTIME_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-runtime/fixtures/advanced-host.mjs',
+);
+const PUBLIC_RUNTIME_EXAMPLE = join(REPO_ROOT, 'examples/eval-runtime/run.mjs');
 
 describe('published embedded Evaluation Core API', () => {
   let projectRoot: string;
@@ -106,6 +111,8 @@ describe('published embedded Evaluation Core API', () => {
     copyFileSync(HOST_FIXTURE, join(projectRoot, 'host.mjs'));
     copyFileSync(RUNTIME_HOST_FIXTURE, join(projectRoot, 'runtime-host.mjs'));
     copyFileSync(RUBRIC_JUDGE_HOST_FIXTURE, join(projectRoot, 'rubric-judge-host.mjs'));
+    copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
+    copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
     writeFileSync(join(projectRoot, 'tsconfig.json'), JSON.stringify({
       compilerOptions: {
@@ -241,12 +248,74 @@ const assert = require('node:assert/strict');
     ]).toEqual([]);
   });
 
+  it('公开最小示例可从 tarball 独立运行且不写用户状态', () => {
+    const isolatedHome = join(projectRoot, 'public-example-home');
+    const isolatedConfig = join(projectRoot, 'public-example-config');
+    const isolatedCache = join(projectRoot, 'public-example-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'public-runtime-example.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({ status: result.status, signal: result.signal, stderr: result.stderr }).toEqual({
+      status: 0,
+      signal: null,
+      stderr: '',
+    });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      runStatus: 'completed',
+      estimate: 2 / 3,
+      decisionStatus: 'decided',
+    });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
   it('独立 FaaS 宿主只注入一次模型调用 Port 即可运行公共 Rubric Judge', () => {
     const isolatedHome = join(projectRoot, 'rubric-home');
     const isolatedConfig = join(projectRoot, 'rubric-config');
     const isolatedCache = join(projectRoot, 'rubric-cache');
     for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
     const result = spawnSync(process.execPath, [join(projectRoot, 'rubric-judge-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({
+      status: result.status,
+      signal: result.signal,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
+  it('独立高级宿主复用 eval-runtime 装配并显式完成五阶段运行', () => {
+    const isolatedHome = join(projectRoot, 'advanced-runtime-home');
+    const isolatedConfig = join(projectRoot, 'advanced-runtime-config');
+    const isolatedCache = join(projectRoot, 'advanced-runtime-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'advanced-runtime-host.mjs')], {
       cwd: projectRoot,
       encoding: 'utf8',
       timeout: 30_000,

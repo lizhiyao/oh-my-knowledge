@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createEvaluationEngine } from '../../src/eval-core/index.js';
 import {
+  assertExecutorConformance,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
   createExecutorFnAdapter,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
+  createPairedComparisonDefinition,
+  runExecutorConformance,
   type ExecResult,
 } from '../../src/eval-runtime/index.js';
 
@@ -187,5 +190,118 @@ describe('eval-runtime foundation', () => {
       'EVAL_RUNTIME_EXECUTOR_FAILED',
     ].sort());
     expect(JSON.stringify(failures)).not.toContain('provider secret');
+  });
+
+  it('builds a generic service/RAG comparison as the ordinary Core contract', () => {
+    const exact = createExactMatchDefinition({
+      datasetId: 'generic-comparison',
+      seed: 'generic-seed',
+      samples: [{ sampleId: 'one', input: { query: 'q' }, expected: 'answer' }],
+      control: { targetId: 'control', executorId: 'service/v1' },
+      treatment: { targetId: 'treatment', executorId: 'service/v1' },
+    });
+    const definition = createPairedComparisonDefinition({
+      datasetId: 'generic-comparison',
+      seed: 'generic-seed',
+      samples: exact.dataset.samples,
+      control: {
+        targetId: 'control',
+        targetKind: 'rag',
+        executorId: 'service/v1',
+        config: { indexRevision: 'baseline' },
+      },
+      treatment: {
+        targetId: 'treatment',
+        targetKind: 'rag',
+        executorId: 'service/v1',
+        config: { indexRevision: 'candidate' },
+      },
+      evaluator: exact.evaluators[0],
+      metric: exact.metrics[0],
+    });
+
+    expect(definition.targets).toMatchObject([
+      { targetKind: 'rag', config: { indexRevision: 'baseline' } },
+      { targetKind: 'rag', config: { indexRevision: 'candidate' } },
+    ]);
+    expect(definition.analysisGraph.nodes[0]).toMatchObject({
+      implementationId: 'bootstrap.paired-difference-percentile/v1',
+      inputs: [
+        { inputKind: 'metric-observations', referenceId: 'correct' },
+        { inputKind: 'comparison', metricId: 'correct' },
+      ],
+    });
+    expect(Object.isFrozen(definition.targets[0].config)).toBe(true);
+
+    expect(() => createPairedComparisonDefinition({
+      datasetId: 'invalid-comparison',
+      seed: 'invalid-seed',
+      samples: exact.dataset.samples,
+      control: { targetId: 'same', executorId: 'service/v1' },
+      treatment: { targetId: 'same', executorId: 'service/v1' },
+      evaluator: exact.evaluators[0],
+      metric: exact.metrics[0],
+    })).toThrow(/targetId must differ/);
+    expect(() => createPairedComparisonDefinition({
+      datasetId: 'invalid-metric',
+      seed: 'invalid-seed',
+      samples: exact.dataset.samples,
+      control: { targetId: 'control', executorId: 'service/v1' },
+      treatment: { targetId: 'treatment', executorId: 'service/v1' },
+      evaluator: exact.evaluators[0],
+      metric: { ...exact.metrics[0], direction: 'lower-is-better' },
+    })).toThrow(/higher-is-better/);
+    expect(() => createPairedComparisonDefinition({
+      datasetId: 'invalid-binding',
+      seed: 'invalid-seed',
+      samples: exact.dataset.samples,
+      control: { targetId: 'control', executorId: 'service/v1' },
+      treatment: { targetId: 'treatment', executorId: 'service/v1' },
+      evaluator: { ...exact.evaluators[0], metricIds: ['another-metric'] },
+      metric: exact.metrics[0],
+    })).toThrow(/matching metric/);
+  });
+
+  it('offers a framework-neutral Executor conformance probe through the real pipeline', async () => {
+    const identity = executorIdentity();
+    const conformance = await runExecutorConformance({
+      implementationId: identity.implementationId,
+      createExecutor: () => createExecutorFnAdapter({
+        identity,
+        outputClassification: 'public',
+        mapInput: ({ input }) => ({ model: 'probe', prompt: String(input) }),
+        executor: async () => result('expected'),
+      }),
+      input: 'probe',
+      expected: 'expected',
+    });
+
+    expect(conformance.conformant).toBe(true);
+    expect(conformance.checks.every((check) => check.checkStatus === 'passed')).toBe(true);
+    expect(() => assertExecutorConformance(conformance)).not.toThrow();
+
+    const failed = await runExecutorConformance({
+      implementationId: identity.implementationId,
+      createExecutor: () => createExecutorFnAdapter({
+        identity,
+        outputClassification: 'public',
+        mapInput: ({ input }) => ({ model: 'probe', prompt: String(input) }),
+        executor: async () => result('unexpected'),
+      }),
+      input: 'probe',
+      expected: 'expected',
+    });
+    expect(failed.conformant).toBe(false);
+    expect(failed.checks).toContainEqual({
+      checkId: 'evaluation-observation',
+      checkStatus: 'failed',
+      reasonCode: 'runtime-conformance-output-mismatch',
+    });
+    expect(() => assertExecutorConformance(failed)).toThrowError(
+      expect.objectContaining({
+        code: 'EVAL_RUNTIME_CONFORMANCE_FAILED',
+        failedCheckIds: ['evaluation-observation'],
+      }),
+    );
   });
 });

@@ -23,8 +23,8 @@ npm install oh-my-knowledge
 Create one identity for the deployed invocation implementation. Every field below is measurement-relevant and becomes part of the sealed Runtime fingerprint:
 
 ```ts
-import { createEvaluationEngine } from 'oh-my-knowledge/eval-core';
 import {
+  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
@@ -131,6 +131,36 @@ await reportStore.put(result.report);
 
 The random `runId` distinguishes executions and affects artifact identity; it is not part of the measurement plan. Rebuilding the same Definition, Policy, and Runtime identity with the same explicit seed produces the same `runContractDigest`.
 
+## Build a service or RAG comparison
+
+`createExactMatchDefinition` is the shortest path when output equality is the metric. For service or RAG evaluations with a custom deterministic metric or Rubric Judge, use `createPairedComparisonDefinition`. It accepts one Evaluator fragment and its matching Metric fragment, and returns the ordinary serializable Core `EvaluationDefinition` rather than a second runtime-specific contract:
+
+```ts
+import { createPairedComparisonDefinition } from 'oh-my-knowledge/eval-runtime';
+
+const definition = createPairedComparisonDefinition({
+  datasetId: 'retrieval-regression',
+  seed: 'index-release-42',
+  samples,
+  control: {
+    targetId: 'control',
+    targetKind: 'rag',
+    executorId: identity.implementationId,
+    config: { indexRevision: 'baseline' },
+  },
+  treatment: {
+    targetId: 'treatment',
+    targetKind: 'rag',
+    executorId: identity.implementationId,
+    config: { indexRevision: 'candidate' },
+  },
+  evaluator,
+  metric,
+});
+```
+
+The builder deliberately supports one higher-is-better numeric or boolean metric with `exclude/v1`. Use the lower-level `oh-my-knowledge/eval-core` contract for multi-metric graphs, lower-is-better metrics, or a different missing-data policy instead of silently approximating those designs.
+
 ## Add a Rubric Judge through an internal model gateway
 
 The host provides one model invocation port. OMK owns the frozen prompt, output parsing, 1–5 metric contract, evidence, failure semantics, and Evaluator identity. The port must not retry: Core already owns retry, timeout, budget, cache, and cancellation.
@@ -212,4 +242,6 @@ Register raw Core Executor or Evaluator ports with `{ port }` when one Definitio
 
 Use `createSameProcessExecutorAdapter` and `createSameProcessEvaluatorAdapter` for custom in-process ports. Use the advanced APIs from `oh-my-knowledge/eval-core` when you need staged execution, persisted artifact admission, custom Analysis Runtime implementations, or explicit cross-run comparability. See [Embedded Evaluation Core API](/reference/embedded-api).
 
-Runnable package fixtures cover [exact match](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/embedded-host.mjs) and a [host-owned Rubric Judge gateway](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/rubric-judge-host.mjs).
+Before accepting a new Executor adapter, run `runExecutorConformance({ implementationId, createExecutor, input, expected })` from `oh-my-knowledge/eval-runtime`. It exercises isolated control and treatment lifecycles, repeated invocations, exact-match observation, paired analysis, and Decision through the real Core pipeline. Use `assertExecutorConformance(result)` in an adapter test to fail with stable check IDs. The probe is intentionally framework-neutral and performs no filesystem, network, credential, or environment discovery by itself.
+
+Start with the runnable [minimal public example](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime). Package fixtures additionally cover a [host-owned Rubric Judge gateway](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/rubric-judge-host.mjs) and an [advanced five-stage host](https://github.com/lizhiyao/oh-my-knowledge/blob/main/test/eval-runtime/fixtures/advanced-host.mjs). CI executes the public example and fixtures against the packed package from an isolated home directory.
