@@ -67,6 +67,31 @@ const RULES: ForbiddenRule[] = [
     reason: 'Evaluation Core vNext 是纯计算内核，不依赖 Studio 的查询投影、HTTP 或呈现能力。',
   },
   {
+    from: 'eval-runtime/',
+    to: 'eval-workflows/',
+    reason: 'eval-runtime 是轻量宿主接入层，不得反向依赖 OMK 产品 workflow。',
+  },
+  {
+    from: 'eval-runtime/',
+    to: 'cli/',
+    reason: 'eval-runtime 不读取 CLI 配置或装配交付入口。',
+  },
+  {
+    from: 'eval-runtime/',
+    to: 'studio/',
+    reason: 'eval-runtime 不依赖 Studio 查询、HTTP 或呈现能力。',
+  },
+  {
+    from: 'eval-runtime/',
+    to: 'mcp/',
+    reason: 'eval-runtime 不装配 MCP delivery surface。',
+  },
+  {
+    from: 'eval-runtime/',
+    to: 'dsh-plugin/',
+    reason: 'eval-runtime 不反向依赖具体宿主插件。',
+  },
+  {
     from: 'eval-workflows/',
     to: 'studio/',
     reason: '应用工作流产出事实与存储能力，由 Studio 单向消费；workflow 不反向依赖具体工作台。',
@@ -150,6 +175,11 @@ const RULES: ForbiddenRule[] = [
     from: 'shared/',
     to: 'eval-workflows/',
     reason: 'shared 是跨领域叶子依赖；输入编译、评分类适配与工作流装配均由 eval-workflows 拥有。',
+  },
+  {
+    from: 'shared/',
+    to: 'eval-runtime/',
+    reason: 'shared 是跨领域叶子依赖；宿主 Runtime 装配由 eval-runtime 拥有。',
   },
   {
     from: 'shared/',

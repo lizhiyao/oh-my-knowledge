@@ -8,7 +8,7 @@ import {
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
 } from '../../eval-core/analysis/index.js';
-import { createSameProcessEvaluatorAdapter } from './adapters/shared/same-process.js';
+import { createSameProcessEvaluatorAdapter } from './adapters/shared/omk-resource-same-process.js';
 import {
   createOutputAssertionEvaluatorImplementation,
   OUTPUT_ASSERTION_EVALUATOR_IDENTITY,

@@ -26,6 +26,7 @@ Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does 
 |---|---|
 | `oh-my-knowledge` | minimal one-call Engine façade and Core contracts |
 | `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
+| `oh-my-knowledge/eval-runtime` | lightweight host assembly, Runtime identities, `ExecutorFn` bridge, and sealed Definition/Policy builders |
 | `oh-my-knowledge/projections` | downstream artifact projections |
 | `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
 | `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |
@@ -33,6 +34,8 @@ Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does 
 All other paths, including `oh-my-knowledge/dist/*`, are private and blocked by the package export map.
 
 ## Runtime boundary
+
+For the standard service-host path, start with the [eval-runtime guide](/guides/eval-runtime). The lower-level assembly below is for hosts that need custom Analysis implementations or infrastructure ports.
 
 An engine receives implementations and infrastructure ports. Functions stay in memory and never enter the serializable Definition:
 

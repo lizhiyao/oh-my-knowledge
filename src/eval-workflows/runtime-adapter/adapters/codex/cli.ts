@@ -49,7 +49,7 @@ import {
   type CapturedCodexCliTarget,
   type CodexCliRunState,
 } from './cli-resources.js';
-import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { createSameProcessExecutorAdapter } from '../shared/omk-resource-same-process.js';
 
 export {
   CODEX_CLI_READ_ONLY_SANDBOX_ID,

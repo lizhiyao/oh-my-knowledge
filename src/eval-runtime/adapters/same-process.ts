@@ -4,7 +4,7 @@ import {
   digestCanonicalJson,
   type RuntimeIdentity,
   type Sha256Digest,
-} from '../../../../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   EvaluationEvaluator,
   EvaluationEvaluatorRecord,
@@ -13,7 +13,7 @@ import type {
   EvaluatorAttemptResult,
   EvaluatorRecordContext,
   EvaluatorRunContext,
-} from '../../../../eval-core/evaluation/index.js';
+} from '../../eval-core/evaluation/index.js';
 import type {
   ExecutionExecutor,
   ExecutionExecutorRun,
@@ -22,11 +22,7 @@ import type {
   ExecutorAttemptResult,
   ExecutorRunContext,
   ExecutorTrialContext,
-} from '../../../../eval-core/execution/index.js';
-import type {
-  OmkBindingResourceLease,
-  OmkBindingResourceLeaseAccess,
-} from '../../resource-leases/types.js';
+} from '../../eval-core/execution/index.js';
 
 type MaybePromise<Value> = Value | Promise<Value>;
 
@@ -39,18 +35,23 @@ export interface SameProcessOperationScope extends SameProcessRunScope {
   readonly operationIsolationKey: Sha256Digest;
 }
 
-export interface SameProcessExecutorImplementation<RunState, TrialState> {
+/** Run-scoped host state supplied to an in-process Runtime implementation. */
+export interface SameProcessResourceLeaseAccess<ResourceLease> {
+  forRun(runId: string): ResourceLease;
+}
+
+export interface SameProcessExecutorImplementation<RunState, TrialState, ResourceLease = undefined> {
   openRun(context: Readonly<{
     run: Readonly<ExecutorRunContext>;
     scope: SameProcessRunScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<RunState>;
   openTrial(context: Readonly<{
     run: Readonly<ExecutorRunContext>;
     runState: RunState;
     trial: Readonly<ExecutorTrialContext>;
     scope: SameProcessOperationScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<TrialState>;
   execute(context: Readonly<{
     run: Readonly<ExecutorRunContext>;
@@ -59,7 +60,7 @@ export interface SameProcessExecutorImplementation<RunState, TrialState> {
     trialState: TrialState;
     attempt: Readonly<ExecutorAttemptContext>;
     scope: SameProcessOperationScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): Promise<ExecutorAttemptResult>;
   disposeTrial(context: Readonly<{
     run: Readonly<ExecutorRunContext>;
@@ -67,28 +68,28 @@ export interface SameProcessExecutorImplementation<RunState, TrialState> {
     trial: Readonly<ExecutorTrialContext>;
     trialState: TrialState;
     scope: SameProcessOperationScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<void>;
   disposeRun(context: Readonly<{
     run: Readonly<ExecutorRunContext>;
     runState: RunState;
     scope: SameProcessRunScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<void>;
 }
 
-export interface SameProcessEvaluatorImplementation<RunState, RecordState> {
+export interface SameProcessEvaluatorImplementation<RunState, RecordState, ResourceLease = undefined> {
   openRun(context: Readonly<{
     run: Readonly<EvaluatorRunContext>;
     scope: SameProcessRunScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<RunState>;
   openRecord(context: Readonly<{
     run: Readonly<EvaluatorRunContext>;
     runState: RunState;
     record: Readonly<EvaluatorRecordContext>;
     scope: SameProcessOperationScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<RecordState>;
   evaluate(context: Readonly<{
     run: Readonly<EvaluatorRunContext>;
@@ -97,7 +98,7 @@ export interface SameProcessEvaluatorImplementation<RunState, RecordState> {
     recordState: RecordState;
     attempt: Readonly<EvaluatorAttemptContext>;
     scope: SameProcessOperationScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): Promise<EvaluatorAttemptResult>;
   disposeRecord(context: Readonly<{
     run: Readonly<EvaluatorRunContext>;
@@ -105,28 +106,28 @@ export interface SameProcessEvaluatorImplementation<RunState, RecordState> {
     record: Readonly<EvaluatorRecordContext>;
     recordState: RecordState;
     scope: SameProcessOperationScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<void>;
   disposeRun(context: Readonly<{
     run: Readonly<EvaluatorRunContext>;
     runState: RunState;
     scope: SameProcessRunScope;
-    resources: OmkBindingResourceLease;
+    resources: ResourceLease;
   }>): MaybePromise<void>;
 }
 
-export interface CreateSameProcessExecutorAdapterInput<RunState, TrialState> {
+export interface CreateSameProcessExecutorAdapterInput<RunState, TrialState, ResourceLease = undefined> {
   readonly identity: RuntimeIdentity;
   readonly sessionIsolationKey: string;
-  readonly resourceLeases: OmkBindingResourceLeaseAccess;
-  readonly implementation: SameProcessExecutorImplementation<RunState, TrialState>;
+  readonly resourceLeases: SameProcessResourceLeaseAccess<ResourceLease>;
+  readonly implementation: SameProcessExecutorImplementation<RunState, TrialState, ResourceLease>;
 }
 
-export interface CreateSameProcessEvaluatorAdapterInput<RunState, RecordState> {
+export interface CreateSameProcessEvaluatorAdapterInput<RunState, RecordState, ResourceLease = undefined> {
   readonly identity: RuntimeIdentity;
   readonly sessionIsolationKey: string;
-  readonly resourceLeases: OmkBindingResourceLeaseAccess;
-  readonly implementation: SameProcessEvaluatorImplementation<RunState, RecordState>;
+  readonly resourceLeases: SameProcessResourceLeaseAccess<ResourceLease>;
+  readonly implementation: SameProcessEvaluatorImplementation<RunState, RecordState, ResourceLease>;
 }
 
 function captureIdentity(identity: RuntimeIdentity): RuntimeIdentity {
@@ -194,8 +195,8 @@ function bindMethod<Arguments extends readonly unknown[], Result>(
  * Bridges a binding-local in-process implementation into the Core Executor port.
  * Core remains the only owner of retries, timeouts, budgets, and cancellation.
  */
-export function createSameProcessExecutorAdapter<RunState, TrialState>(
-  input: Readonly<CreateSameProcessExecutorAdapterInput<RunState, TrialState>>,
+export function createSameProcessExecutorAdapter<RunState, TrialState, ResourceLease = undefined>(
+  input: Readonly<CreateSameProcessExecutorAdapterInput<RunState, TrialState, ResourceLease>>,
 ): ExecutionExecutor {
   assertSessionIsolationKey(input.sessionIsolationKey);
   const identity = captureIdentity(input.identity);
@@ -223,7 +224,7 @@ export function createSameProcessExecutorAdapter<RunState, TrialState>(
       const releaseRunReservation = (): void => {
         if (runDisposed && activeTrials.size === 0) activeRuns.delete(run.runId);
       };
-      let resources: OmkBindingResourceLease;
+      let resources: ResourceLease;
       let runState: RunState;
       try {
         resources = resolveResources(run.runId);
@@ -328,8 +329,8 @@ export function createSameProcessExecutorAdapter<RunState, TrialState>(
  * Bridges a binding-local in-process implementation into the Core Evaluator port.
  * Returned observations and optional usage stay untouched for Core validation.
  */
-export function createSameProcessEvaluatorAdapter<RunState, RecordState>(
-  input: Readonly<CreateSameProcessEvaluatorAdapterInput<RunState, RecordState>>,
+export function createSameProcessEvaluatorAdapter<RunState, RecordState, ResourceLease = undefined>(
+  input: Readonly<CreateSameProcessEvaluatorAdapterInput<RunState, RecordState, ResourceLease>>,
 ): EvaluationEvaluator {
   assertSessionIsolationKey(input.sessionIsolationKey);
   const identity = captureIdentity(input.identity);
@@ -357,7 +358,7 @@ export function createSameProcessEvaluatorAdapter<RunState, RecordState>(
       const releaseRunReservation = (): void => {
         if (runDisposed && activeRecords.size === 0) activeRuns.delete(run.runId);
       };
-      let resources: OmkBindingResourceLease;
+      let resources: ResourceLease;
       let runState: RunState;
       try {
         resources = resolveResources(run.runId);

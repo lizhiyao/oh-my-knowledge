@@ -55,7 +55,7 @@ import {
   type ClaudeCliRunState,
   type ClaudeCliTrialState,
 } from './resources.js';
-import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { createSameProcessExecutorAdapter } from '../shared/omk-resource-same-process.js';
 import { attachSourceNeutralMockStats } from '../../source-neutral-trace.js';
 
 export {

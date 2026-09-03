@@ -45,7 +45,7 @@ import {
   type StatelessApiRunState,
   type StatelessApiTrialState,
 } from '../shared/stateless-api-resources.js';
-import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { createSameProcessExecutorAdapter } from '../shared/omk-resource-same-process.js';
 
 export {
   ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,

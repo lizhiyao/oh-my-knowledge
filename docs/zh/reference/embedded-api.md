@@ -26,6 +26,7 @@ OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 C
 |---|---|
 | `oh-my-knowledge` | 最小一键 Engine façade 与 Core contract |
 | `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
+| `oh-my-knowledge/eval-runtime` | 轻量宿主装配、Runtime identity、`ExecutorFn` 桥接和封存的 Definition／Policy builder |
 | `oh-my-knowledge/projections` | 下游 artifact projection |
 | `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |
 | `oh-my-knowledge/mcp`／`oh-my-knowledge/dsh-plugin` | 集成专用 API |
@@ -33,6 +34,8 @@ OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 C
 其它路径均为私有实现，包括 `oh-my-knowledge/dist/*` 在内，都会被 package export map 阻断。
 
 ## Runtime 边界
+
+标准服务宿主优先参考[eval-runtime 接入指南](/zh/guides/eval-runtime)。下面的底层装配适用于需要自定义 Analysis implementation 或基础设施 port 的宿主。
 
 Engine 接收实现与基础设施 port。函数实现只存在于内存，不会进入可序列化 Definition：
 

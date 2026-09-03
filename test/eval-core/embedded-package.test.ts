@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -22,6 +23,10 @@ const HOST_FIXTURE = join(
 const TYPESCRIPT_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-core/fixtures/embedded-host.ts.fixture',
+);
+const RUNTIME_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-runtime/fixtures/embedded-host.mjs',
 );
 
 describe('published embedded Evaluation Core API', () => {
@@ -95,6 +100,7 @@ describe('published embedded Evaluation Core API', () => {
       type: 'module',
     }));
     copyFileSync(HOST_FIXTURE, join(projectRoot, 'host.mjs'));
+    copyFileSync(RUNTIME_HOST_FIXTURE, join(projectRoot, 'runtime-host.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
     writeFileSync(join(projectRoot, 'tsconfig.json'), JSON.stringify({
       compilerOptions: {
@@ -113,6 +119,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const api = await import('oh-my-knowledge');
   const advanced = await import('oh-my-knowledge/eval-core');
+  const evalRuntime = await import('oh-my-knowledge/eval-runtime');
   const evalSamples = await import('oh-my-knowledge/eval-samples');
   const projections = await import('oh-my-knowledge/projections');
   const studio = await import('oh-my-knowledge/studio');
@@ -124,6 +131,8 @@ const assert = require('node:assert/strict');
   assert.equal(api.projectCoreArtifactGraph, undefined);
   assert.equal(api.assessComparability, undefined);
   assert.equal(typeof advanced.assessComparability, 'function');
+  assert.equal(typeof evalRuntime.createEvaluationRuntime, 'function');
+  assert.equal(typeof evalRuntime.createExecutorFnAdapter, 'function');
   assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v1');
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
   assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
@@ -198,6 +207,35 @@ const assert = require('node:assert/strict');
     }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
   });
 
+  it('独立 Node.js ESM 宿主通过 eval-runtime 完成双 Target 对比', () => {
+    const isolatedHome = join(projectRoot, 'runtime-home');
+    const isolatedConfig = join(projectRoot, 'runtime-config');
+    const isolatedCache = join(projectRoot, 'runtime-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'runtime-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({
+      status: result.status,
+      signal: result.signal,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
   it('不再提供旧 evaluation-core 子路径兼容层', () => {
     const retiredSubpath = ['oh-my-knowledge', 'evaluation-core'].join('/');
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
@@ -247,6 +285,7 @@ const assert = require('node:assert/strict');
       './eval-core',
       './eval-core/schemas/v1/*',
       './eval-core/schemas/v2/*',
+      './eval-runtime',
       './eval-samples',
       './eval-samples/schemas/v1/*',
       './mcp',

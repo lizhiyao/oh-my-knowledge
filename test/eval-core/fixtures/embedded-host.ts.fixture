@@ -16,6 +16,12 @@ import {
   type ExecutionBundleSource,
 } from 'oh-my-knowledge/eval-core';
 import {
+  createEvaluationRuntime,
+  createExactMatchDefinition,
+  createMeasurementPolicy,
+  type RuntimePortRegistration,
+} from 'oh-my-knowledge/eval-runtime';
+import {
   createEvalSampleSetDocument,
   resolveEvalSampleJsonSchema,
   type EvalSampleSetDocument,
@@ -54,6 +60,27 @@ void createObservationMcpServer;
 void LOCAL_OBSERVATION_PRINCIPAL;
 void applyDshPlugin;
 void dshPluginName;
+
+const publicRuntime = createEvaluationRuntime({
+  executors: [{ port: executor }],
+  evaluators: [{ port: evaluator }],
+});
+const publicDefinition = createExactMatchDefinition({
+  datasetId: 'typescript-runtime-host',
+  seed: 'explicit-seed',
+  samples: [
+    { sampleId: 'one', input: 'one', expected: 'one' },
+    { sampleId: 'two', input: 'two', expected: 'two' },
+  ],
+  control: { targetId: 'control', executorId: executor.identity.implementationId },
+  treatment: { targetId: 'treatment', executorId: executor.identity.implementationId },
+});
+const publicPolicy = createMeasurementPolicy();
+const registration: RuntimePortRegistration<Executor> = { port: executor };
+void publicRuntime;
+void publicDefinition;
+void publicPolicy;
+void registration;
 
 const engine = createEvaluationEngine({
   ...runtime,

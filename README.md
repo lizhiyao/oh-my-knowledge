@@ -228,6 +228,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
 - **[Migrate to the 1.0 preview](docs/guides/v1-preview-migration.md)** — install channel, storage reset, sample protocol, CLI automation, and embedded API changes since 0.54
 - **[Evaluation Core cutover](docs/guides/eval-core-cutover.md)** — `BREAKING-SCHEMA` storage, resume, Studio, Gold, managed-evidence, and evolve migration
+- **[Embed OMK in a service](docs/guides/eval-runtime.md)** — lightweight `eval-runtime` assembly for Node.js and FaaS hosts
 - **[Storage layout v2](docs/specs/storage-layout-spec.md)** — project/global domains, compatibility boundary, and Git policy
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)

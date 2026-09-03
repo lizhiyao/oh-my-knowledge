@@ -8,6 +8,7 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'diagnosis',
   'dsh-plugin',
   'eval-core',
+  'eval-runtime',
   'eval-workflows',
   'evidence',
   'executors',
@@ -22,6 +23,7 @@ const PACKAGE_ENTRYPOINTS = new Set([
   'index.ts',
   'dsh-plugin/index.ts',
   'eval-core/index.ts',
+  'eval-runtime/index.ts',
   'eval-workflows/inputs/eval-samples.ts',
   'eval-workflows/projections/index.ts',
   'mcp/index.ts',
@@ -84,7 +86,7 @@ function resolveLocalModule(importer: string, specifier: string): string | undef
 }
 
 describe('src 最终领域地图', () => {
-  it('一级目录和文件与 #617 的稳定领域地图完全一致', () => {
+  it('一级目录和文件与稳定领域地图完全一致', () => {
     const entries = readdirSync(SRC_ROOT, { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
       .toEqual([...EXPECTED_ROOT_DIRECTORIES].sort());
@@ -156,6 +158,10 @@ describe('src 最终领域地图', () => {
     expect(manifest.exports['./eval-core']).toEqual({
       types: './dist/eval-core/index.d.ts',
       import: './dist/eval-core/index.js',
+    });
+    expect(manifest.exports['./eval-runtime']).toEqual({
+      types: './dist/eval-runtime/index.d.ts',
+      import: './dist/eval-runtime/index.js',
     });
     expect(manifest.exports['./eval-samples']).toEqual({
       types: './dist/eval-workflows/inputs/eval-samples.d.ts',

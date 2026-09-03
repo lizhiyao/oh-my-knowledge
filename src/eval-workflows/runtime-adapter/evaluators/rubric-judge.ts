@@ -23,8 +23,8 @@ import {
   JUDGE_TRACE_SUMMARY_ALGORITHM_VERSION,
 } from '../../instruments/judge-trace.js';
 import type { ToolCallInfo, TurnInfo } from '../../../executors/contracts/trace.js';
-import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
-import { createSameProcessEvaluatorAdapter } from '../adapters/shared/same-process.js';
+import type { SameProcessEvaluatorImplementation } from '../adapters/shared/omk-resource-same-process.js';
+import { createSameProcessEvaluatorAdapter } from '../adapters/shared/omk-resource-same-process.js';
 import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
   SourceNeutralTraceSchema,
