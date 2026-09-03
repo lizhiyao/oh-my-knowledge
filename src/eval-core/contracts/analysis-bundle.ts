@@ -66,6 +66,7 @@ function compareStrings(left: string, right: string): number {
 function assertObservationCoverage(coverage: AnalysisObservationCoverage): void {
   if (coverage.planned !== coverage.observed
       + coverage.missing
+      + coverage.notApplicable
       + coverage.invalid
       + coverage.evaluationFailed
       + coverage.sourceUnavailable
@@ -113,6 +114,29 @@ function assertRecords(bundle: AnalysisBundle): void {
         'ANALYSIS_BUNDLE_COVERAGE_INVALID',
         'Analysis exclusions must account for every excluded observation row.',
       );
+    }
+    if (record.notApplicableRows.length !== record.coverage.notApplicable) {
+      throw new AnalysisBundleValidationError(
+        'ANALYSIS_BUNDLE_COVERAGE_INVALID',
+        'Analysis not-applicable rows must account for structural coverage.',
+      );
+    }
+    const exclusionById = new Map(record.exclusions.map((entry) => [entry.rowId, entry]));
+    for (let index = 0; index < record.notApplicableRows.length; index += 1) {
+      const fact = record.notApplicableRows[index];
+      const previousFact = record.notApplicableRows[index - 1];
+      if (previousFact !== undefined && compareStrings(previousFact.rowId, fact.rowId) >= 0) {
+        throw new AnalysisBundleValidationError(
+          'ANALYSIS_BUNDLE_COVERAGE_INVALID',
+          'Analysis not-applicable rows must use unique canonical row order.',
+        );
+      }
+      if (exclusionById.get(fact.rowId)?.reasonCode !== fact.reasonCode) {
+        throw new AnalysisBundleValidationError(
+          'ANALYSIS_BUNDLE_COVERAGE_INVALID',
+          'Every not-applicable row must be retained as a matching exclusion fact.',
+        );
+      }
     }
     for (let exclusionIndex = 0; exclusionIndex < record.exclusions.length; exclusionIndex += 1) {
       const exclusion = record.exclusions[exclusionIndex];
@@ -510,10 +534,14 @@ function assertSourceCoverage(
   record: AnalysisRecord,
   rows: readonly ExpectedAnalysisRow[],
 ): void {
+  const notApplicableIds = new Set(record.notApplicableRows.map((entry) => entry.rowId));
   const expected = {
     planned: rows.length,
     observed: rows.filter((row) => row.rowStatus === 'observed').length,
-    missing: rows.filter((row) => row.rowStatus === 'missing').length,
+    missing: rows.filter((row) => (
+      row.rowStatus === 'missing' && !notApplicableIds.has(row.rowId)
+    )).length,
+    notApplicable: record.notApplicableRows.length,
     invalid: rows.filter((row) => row.rowStatus === 'invalid').length,
     evaluationFailed: rows.filter((row) => row.rowStatus === 'evaluation-failed').length,
     sourceUnavailable: rows.filter((row) => row.rowStatus === 'source-unavailable').length,
@@ -524,6 +552,7 @@ function assertSourceCoverage(
     planned: record.coverage.planned,
     observed: record.coverage.observed,
     missing: record.coverage.missing,
+    notApplicable: record.coverage.notApplicable,
     invalid: record.coverage.invalid,
     evaluationFailed: record.coverage.evaluationFailed,
     sourceUnavailable: record.coverage.sourceUnavailable,
@@ -539,6 +568,12 @@ function assertSourceCoverage(
   const byId = new Map(rows.map((row) => [row.rowId, row]));
   const exclusionById = new Map(record.exclusions.map((entry) => [entry.rowId, entry]));
   if (record.exclusions.some((entry) => !byId.has(entry.rowId))
+      || record.notApplicableRows.some((entry) => {
+        const row = byId.get(entry.rowId);
+        return row?.rowStatus !== 'missing'
+          || row.censored
+          || row.reasonCode !== entry.reasonCode;
+      })
       || rows.some((row) => row.rowStatus !== 'observed'
         && (exclusionById.get(row.rowId)?.reasonCode !== row.reasonCode))) {
     throw new AnalysisBundleValidationError(

@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -111,16 +111,48 @@ describe('first-run smoke path', () => {
       const report = parseFirstJsonObject(run.stdout) as {
         projectionKind?: string;
         runId: string;
-        status?: { runStatus?: string };
+        status?: { runStatus?: string; evidenceStatus?: string; conclusionStatus?: string };
         usage?: { executionInvocations?: number };
         gate?: { gateStatus?: string };
+        decision?: {
+          decisionStatus?: string;
+          decisionPolicyId?: string;
+          verdict?: string;
+          reasonCodes?: string[];
+        };
       };
 
       assert.equal(report.projectionKind, 'core-cli-run-outcome');
       assert.equal(report.status?.runStatus, 'completed');
+      assert.equal(report.status?.evidenceStatus, 'complete');
+      assert.equal(report.status?.conclusionStatus, 'conclusive');
+      assert.equal(report.decision?.decisionStatus, 'decided');
+      assert.equal(report.decision?.verdict, 'UNDERPOWERED');
+      assert.deepEqual(report.decision?.reasonCodes, [
+        'comparison-interval-overlaps-zero',
+        'comparison-sample-size-below-minimum',
+      ]);
       assert.equal(report.usage?.executionInvocations, 6);
       assert.equal(report.gate?.gateStatus, 'skipped');
       const runDirectory = `run-${createHash('sha256').update(report.runId).digest('hex')}`;
+      const analysis = JSON.parse(readFileSync(
+        join(project, '.omk', 'eval', runDirectory, 'analysis-bundle.json'),
+        'utf8',
+      )) as {
+        records?: Array<{
+          coverage?: { missing?: number; notApplicable?: number };
+          notApplicableRows?: unknown[];
+        }>;
+      };
+      const structuralRecord = analysis.records?.find(
+        (record) => (record.coverage?.notApplicable ?? 0) > 0,
+      );
+      assert.equal(structuralRecord?.coverage?.missing, 0);
+      assert.ok((structuralRecord?.coverage?.notApplicable ?? 0) > 0);
+      assert.equal(
+        structuralRecord?.notApplicableRows?.length,
+        structuralRecord?.coverage?.notApplicable,
+      );
       assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'manifest.json')));
       assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'report.json')));
       assert.ok(existsSync(join(project, '.omk', 'eval', runDirectory, 'derived', 'graph.json')));

@@ -33,7 +33,7 @@ criterion observation          raw rubric reading
 layerScore = 1 + passedObservedWeight / observedWeight × 4
 ```
 
-结果在 1–5 量尺上保留两位小数。结构性不适用不进入 planned coverage；missing、invalid、failed、unavailable 与 not-started observation 会保持为显式 coverage 状态，绝不变成 `false`。没有任何权重被观测到时，该层为 missing，不是零分。
+结果在 1–5 量尺上保留两位小数。结构性不适用不进入 assertion 计分的 planned coverage；Analysis Bundle v2 仍保留矩形输入坐标，将其单列到 `notApplicable`，并通过 `notApplicableRows` 认证行身份与原因，因此不会把它误判为不完整证据。missing、invalid、failed、unavailable 与 not-started observation 会保持为显式 coverage 状态，绝不变成 `false`。没有任何权重被观测到时，该层为 missing，不是零分。
 
 实现：`src/eval-workflows/runtime-adapter/analysis/assertion-layer.ts` 中的 `omk.assertion-layer-table/v1`。
 

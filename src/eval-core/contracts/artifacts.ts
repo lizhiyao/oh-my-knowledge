@@ -19,8 +19,8 @@ import { BudgetSummarySchema } from './budget.js';
 export const EVALUATION_EVENT_SCHEMA_VERSION = 'omk.evaluation-event/v1' as const;
 export const EXECUTION_BUNDLE_SCHEMA_VERSION = 'omk.execution-bundle/v1' as const;
 export const EVALUATION_BUNDLE_SCHEMA_VERSION = 'omk.evaluation-bundle/v1' as const;
-export const ANALYSIS_BUNDLE_SCHEMA_VERSION = 'omk.analysis-bundle/v1' as const;
-export const EVALUATION_REPORT_SCHEMA_VERSION = 'omk.evaluation-report/v1' as const;
+export const ANALYSIS_BUNDLE_SCHEMA_VERSION = 'omk.analysis-bundle/v2' as const;
+export const EVALUATION_REPORT_SCHEMA_VERSION = 'omk.evaluation-report/v2' as const;
 
 export const TimingRecordSchema = z.object({
   startedAt: TimestampSchema,
@@ -330,6 +330,7 @@ export const AnalysisObservationCoverageSchema = z.object({
   planned: z.number().int().nonnegative(),
   observed: z.number().int().nonnegative(),
   missing: z.number().int().nonnegative(),
+  notApplicable: z.number().int().nonnegative(),
   invalid: z.number().int().nonnegative(),
   evaluationFailed: z.number().int().nonnegative(),
   sourceUnavailable: z.number().int().nonnegative(),
@@ -386,6 +387,7 @@ const AnalysisRecordBaseSchema = z.object({
   ])).min(1),
   coverage: AnalysisObservationCoverageSchema,
   exclusions: z.array(AnalysisExclusionSchema),
+  notApplicableRows: z.array(AnalysisExclusionSchema),
   assumptionChecks: z.array(AssumptionCheckSchema),
   runtimeDependencies: z.array(AnalysisRuntimeDependencySchema),
   analysisMode: z.enum(['preregistered', 'exploratory']),
@@ -455,7 +457,7 @@ export const AnalysisBundleSchema = z.object({
   bundleDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Analysis Bundle v1',
+  title: 'OMK Analysis Bundle v2',
 });
 
 export const EvaluationStatusSchema = z.object({
@@ -514,7 +516,7 @@ export const EvaluationReportSchema = z.object({
   reportDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Evaluation Report v1',
+  title: 'OMK Evaluation Report v2',
 });
 
 export const EvaluationEventSchema = z.object({

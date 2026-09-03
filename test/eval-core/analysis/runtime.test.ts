@@ -332,6 +332,50 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     )).toThrowError(expect.objectContaining({ code: 'DECISION_RUNTIME_IDENTITY_MISMATCH' }));
   });
 
+  it('fails closed when an Analysis node marks an observed row as not applicable', async () => {
+    const fixture = await makeAnalysisFixture('invalid-not-applicable');
+    const original = fixture.ports.analysisNodesByNodeId.get('mean-correct');
+    if (original === undefined) throw new Error('missing builtin analysis node');
+    const analysis = await analyzeEvaluationBundleSource(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodesByNodeId: new Map([['mean-correct', {
+          identity: original.identity,
+          outputSchema: original.outputSchema,
+          async openRun(context) {
+            const run = await original.openRun(context);
+            return {
+              async execute(executionContext) {
+                const output = await run.execute(executionContext);
+                const metricInput = executionContext.inputs.find(
+                  (input) => input.inputKind === 'metric-observations',
+                );
+                if (metricInput?.inputKind !== 'metric-observations'
+                    || metricInput.rows[0] === undefined) {
+                  throw new Error('missing observed Analysis row');
+                }
+                return { ...output, notApplicableRowIds: [metricInput.rows[0].rowId] };
+              },
+              dispose: () => run.dispose(),
+            };
+          },
+        }]]),
+      },
+      { runId: 'run-invalid-not-applicable', bundleId: 'analysis-invalid-not-applicable' },
+    );
+
+    expect(analysis.bundle.analysisBundleStatus).toBe('failed');
+    expect(analysis.bundle.records[0]).toMatchObject({
+      analysisStatus: 'failed',
+      error: { code: 'analysis-runtime-failed', stage: 'analysis' },
+      coverage: { notApplicable: 0 },
+      notApplicableRows: [],
+    });
+  });
+
   it('keeps cohort context out of Executor and Evaluator projections but exposes it to Analysis', async () => {
     const secretMarker = 'analysis-only-marker';
     const plan = await makePlan((definition) => {

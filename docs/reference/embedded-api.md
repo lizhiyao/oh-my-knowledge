@@ -145,7 +145,7 @@ Each stage call exposes a serializable `.result` and, except for Report material
 
 A session allows each stage at most once and never permits overlapping stage calls. Report materialization closes it automatically. If a workflow intentionally stops earlier, call `await session.close()` to cancel any in-flight stage, wait for teardown, and release the `runId`.
 
-Shipped JSON Schemas are available through the allowlisted path `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`. Code that needs a URL can avoid constructing package internals:
+Shipped JSON Schemas use versioned package paths. Code should avoid constructing package internals and use the current-contract resolver:
 
 ```ts
 import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
@@ -153,9 +153,14 @@ import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
 
-Each published file uses its canonical raw catalog URL under `schemas/eval-core/v1/` as `$id`, so
-JSON Schema tooling can resolve the document identity. Node.js hosts should still prefer the
-`eval-core` package subpath or `resolveEvaluationCoreJsonSchema()` to use the installed package.
+Each published file uses its canonical raw catalog URL as `$id`, so JSON Schema tooling can
+resolve the document identity. The current Analysis Bundle and Evaluation Report are v2; the
+other nineteen roots remain v1. Their package paths are respectively
+`oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` and
+`oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`. The frozen v1 Analysis Bundle and
+Evaluation Report remain in the source catalog for historical resolution, but the runtime does
+not read them. Node.js hosts should prefer the `eval-core` package subpath or
+`resolveEvaluationCoreJsonSchema()` to use the installed current contract.
 
 ## Results and errors
 

@@ -269,6 +269,7 @@ describe('assertion-layer Analysis node', () => {
       }],
     });
     expect(result.includedRowIds).toEqual([]);
+    expect(result.notApplicableRowIds).toHaveLength(1);
   });
 
   it.each([{

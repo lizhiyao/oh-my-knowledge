@@ -1,10 +1,12 @@
 import {
   EVALUATION_CORE_JSON_SCHEMA_FILES,
+  evaluationCoreJsonSchemaLocation,
   type EvaluationCoreJsonSchemaFile,
 } from './schemas.js';
 
 export {
   EVALUATION_CORE_JSON_SCHEMA_FILES,
+  evaluationCoreJsonSchemaLocation,
   type EvaluationCoreJsonSchemaFile,
 };
 
@@ -17,5 +19,5 @@ export function resolveEvaluationCoreJsonSchema(
   if (!schemaFiles.has(fileName)) {
     throw new TypeError(`Unknown Evaluation Core JSON Schema: ${String(fileName)}`);
   }
-  return new URL(`./contracts/schemas/v1/${fileName}`, import.meta.url);
+  return new URL(`./contracts/schemas/${evaluationCoreJsonSchemaLocation(fileName)}`, import.meta.url);
 }
