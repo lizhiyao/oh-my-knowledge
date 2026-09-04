@@ -237,7 +237,7 @@ OMK 不会根据 `Function#toString()` 推导 provenance，因此 identity 必�
 
 ## Rubric 评委评测
 
-输出不适合做完全相等判断时，使用 `evaluatorKind: 'rubric-judge'`。宿主只负责一次模型调用；冻结 prompt、输出解析、1～5 分指标、evidence、重试、超时、预算和取消语义均由 OMK 负责：
+输出不适合做完全相等判断时，使用 `evaluatorKind: 'rubric-judge'`，并显式声明一个或多个评委成员及其聚合方式。每次 callback 只负责一次模型调用；冻结 prompt、输出解析、1～5 分指标、evidence、重试、超时、预算、取消与聚合语义均由 OMK 负责：
 
 ```ts
 const result = await evaluate({
@@ -247,28 +247,33 @@ const result = await evaluate({
     evaluatorKind: 'rubric-judge',
     evaluatorId: 'correctness-judge',
     metricId: 'correctness-score',
-    model: 'judge-model',
-    effort: 'low',
     rubric: {
       criterionId: 'correctness',
       prompt: '判断答案在事实层面是否正确。',
       rubric: '完全正确为 5 分，完全错误为 1 分。',
     },
-    judge: {
-      judgeId: 'acme.model-gateway/v1',
-      version: '2026.09.04',
-      providerCost: { reporting: 'optional' },
-      fingerprintFacets: { deploymentRevision: 'sha256:...' },
-      async invoke(request) {
-        const response = await internalGateway.generate({
-          model: request.model,
-          system: request.system,
-          prompt: request.prompt,
-          signal: request.signal,
-        });
-        return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+    judges: [{
+      memberId: 'primary',
+      model: 'judge-model',
+      effort: 'low',
+      replicateCount: 2,
+      judge: {
+        judgeId: 'acme.model-gateway/v1',
+        version: '2026.09.04',
+        providerCost: { reporting: 'optional' },
+        fingerprintFacets: { deploymentRevision: 'sha256:...' },
+        async invoke(request) {
+          const response = await internalGateway.generate({
+            model: request.model,
+            system: request.system,
+            prompt: request.prompt,
+            signal: request.signal,
+          });
+          return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+        },
       },
-    },
+    }],
+    aggregation: { method: 'mean', missing: 'require-complete' },
   }],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
@@ -283,7 +288,7 @@ const result = await evaluate({
 });
 ```
 
-评委 callback 只执行一次 provider 调用，不得自行重试。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge/eval-runtime/contracts` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
+评委 callback 只执行一次 provider 调用，不得自行重试。`replicateCount` 只重复评测，不重复 Target 执行，也不增加 Bootstrap 样本量。存在多个成员时，`mean` 会在各成员的 replicate 先求均值后赋予成员等权；`weighted-mean` 要求为每个 `memberId` 显式提供正权重，且总和为 1。`require-complete` 会在任一计划坐标不可用时排除整个 Target × Sample × Trial panel 读数。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge/eval-runtime/contracts` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
 
 ## 认证 Executor
 

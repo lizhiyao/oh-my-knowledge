@@ -7,6 +7,8 @@ import {
   type Clock,
   type CustomEvaluator,
   type Executor,
+  type Evaluator,
+  type RubricJudgeEvaluator,
   type Variant,
 } from '../../src/eval-runtime/index.js';
 import {
@@ -959,24 +961,28 @@ describe('canonical eval-runtime API', () => {
           evaluatorKind: 'rubric-judge',
           evaluatorId: 'quality-judge',
           metricId: 'quality-score',
-          model: 'judge-model',
           rubric: {
             criterionId: 'quality',
             prompt: 'Judge answer quality.',
             rubric: '5 is correct; 1 is incorrect.',
           },
-          judge: {
-            judgeId: 'test.judge/v1',
-            version: '1.0.0',
-            providerCost: { reporting: 'optional' },
-            async invoke(request) {
-              judgeCalls.push(request.promptId);
-              return {
-                invocationStatus: 'completed',
-                output: '{"score":5,"reason":"correct"}',
-              };
+          judges: [{
+            memberId: 'primary',
+            model: 'judge-model',
+            judge: {
+              judgeId: 'test.judge/v1',
+              version: '1.0.0',
+              providerCost: { reporting: 'optional' },
+              async invoke(request) {
+                judgeCalls.push(request.promptId);
+                return {
+                  invocationStatus: 'completed',
+                  output: '{"score":5,"reason":"correct"}',
+                };
+              },
             },
-          },
+          }],
+          aggregation: { method: 'mean', missing: 'require-complete' },
         },
         numericCustomEvaluator('length', ({ bindings }) => ({
           resultKind: 'score',
@@ -1008,7 +1014,7 @@ describe('canonical eval-runtime API', () => {
       clock: fixedClock,
     });
 
-    expect(result.status).toBe('completed');
+    expect(result.status, JSON.stringify(result)).toBe('completed');
     if (result.status !== 'completed') return;
     expect(result.definition.targets.map((target) => target.executorId)).toEqual([
       'test.answer-executor/v1',
@@ -1018,7 +1024,7 @@ describe('canonical eval-runtime API', () => {
     expect(result.definition.evaluators.map((evaluator) => evaluator.evaluatorId)).toEqual([
       'exact-match',
       'length',
-      'quality-judge',
+      'quality-judge/primary/replicate-0',
     ]);
     expect(result.definition.metrics.map((metric) => metric.metricId)).toEqual([
       'correct',
@@ -1035,6 +1041,234 @@ describe('canonical eval-runtime API', () => {
     expect(result.artifacts.evaluation.records).toHaveLength(18);
     expect(result.artifacts.analysis.records).toHaveLength(6);
     expect(judgeCalls).toHaveLength(6);
+  });
+
+  it('runs evaluator replicates without repeating Target executions or statistical units', async () => {
+    let targetCalls = 0;
+    const declaration = executor(async ({ input, config }) => {
+      targetCalls += 1;
+      return { output: config.answers[input.prompt] };
+    });
+    const judgeCalls: string[] = [];
+    const judge = {
+      judgeId: 'test.panel-judge/v1',
+      version: '1.0.0',
+      providerCost: { reporting: 'optional' as const },
+      async invoke(request: Parameters<RubricJudgeEvaluator['judges'][number]['judge']['invoke']>[0]) {
+        judgeCalls.push(request.model);
+        return {
+          invocationStatus: 'completed' as const,
+          output: request.model === 'judge-a'
+            ? '{"score":1,"reason":"a"}'
+            : '{"score":5,"reason":"b"}',
+        };
+      },
+    };
+    const panel = {
+      evaluatorKind: 'rubric-judge',
+      evaluatorId: 'quality-panel',
+      metricId: 'quality-score',
+      rubric: {
+        criterionId: 'quality',
+        prompt: 'Judge quality.',
+        rubric: '5 is best; 1 is worst.',
+      },
+      judges: [
+        { memberId: 'judge-a', model: 'judge-a', judge, replicateCount: 2 },
+        { memberId: 'judge-b', model: 'judge-b', judge, replicateCount: 1 },
+      ],
+      aggregation: {
+        method: 'weighted-mean',
+        missing: 'require-complete',
+        weights: { 'judge-a': 0.25, 'judge-b': 0.75 },
+      },
+    } satisfies RubricJudgeEvaluator;
+    const result = await evaluate({
+      dataset: pairedInput().dataset,
+      variants: [variant(declaration, treatmentSpec)],
+      evaluators: [panel],
+      comparisons: [],
+      analysis: { bootstrap: { resamples: 32 } },
+      experiment: { seed: 'panel-seed', trials: 2, sampling: { samplingKind: 'solo' } },
+      decision: undefined,
+      policy: { maxConcurrency: 2 },
+      runId: 'rubric-panel',
+      clock: fixedClock,
+    });
+
+    expect(result.status, JSON.stringify(result)).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(targetCalls).toBe(4);
+    expect(judgeCalls).toHaveLength(12);
+    expect(judgeCalls.filter((model) => model === 'judge-a')).toHaveLength(8);
+    expect(judgeCalls.filter((model) => model === 'judge-b')).toHaveLength(4);
+    expect(result.definition.evaluators.map((evaluator) => evaluator.measurement)).toEqual([
+      {
+        instrumentId: 'rubric-judge-debias-on-trace-none',
+        ensembleMemberId: 'judge-a',
+        replicateGroupId: 'quality-panel',
+        replicateIndex: 0,
+      },
+      {
+        instrumentId: 'rubric-judge-debias-on-trace-none',
+        ensembleMemberId: 'judge-a',
+        replicateGroupId: 'quality-panel',
+        replicateIndex: 1,
+      },
+      {
+        instrumentId: 'rubric-judge-debias-on-trace-none',
+        ensembleMemberId: 'judge-b',
+        replicateGroupId: 'quality-panel',
+        replicateIndex: 0,
+      },
+    ]);
+    expect(result.artifacts.execution.records).toHaveLength(4);
+    expect(result.artifacts.evaluation.records).toHaveLength(12);
+    expect(result.artifacts.analysis.records[0]).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 4, unitCount: 2 },
+    });
+  });
+
+  it('rejects incomplete panel weights before the first Target call', async () => {
+    const executeTarget = vi.fn(async () => ({ output: 'A' }));
+    const declaration = executor(executeTarget);
+    await expect(evaluate({
+      dataset: pairedInput().dataset,
+      variants: [variant(declaration, treatmentSpec)],
+      evaluators: [{
+        evaluatorKind: 'rubric-judge',
+        evaluatorId: 'invalid-panel',
+        metricId: 'quality-score',
+        rubric: { criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.' },
+        judges: [{
+          memberId: 'judge-a',
+          model: 'judge-a',
+          judge: {
+            judgeId: 'test.invalid-panel/v1',
+            version: '1.0.0',
+            providerCost: { reporting: 'optional' },
+            async invoke() {
+              return { invocationStatus: 'completed', output: '{"score":5,"reason":"ok"}' };
+            },
+          },
+        }],
+        aggregation: {
+          method: 'weighted-mean',
+          missing: 'require-complete',
+          weights: { unknown: 1 },
+        },
+      }],
+      comparisons: [],
+      experiment: { seed: 'invalid-panel-seed', sampling: { samplingKind: 'solo' } },
+      policy: {},
+      runId: 'invalid-panel',
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+    expect(executeTarget).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate members, invalid replicate counts, and the singular Rubric shape', async () => {
+    const executeTarget = vi.fn(async () => ({ output: 'A' }));
+    const declaration = executor(executeTarget);
+    const judge = {
+      judgeId: 'test.panel-validation/v1',
+      version: '1.0.0',
+      providerCost: { reporting: 'optional' as const },
+      async invoke() {
+        return { invocationStatus: 'completed' as const, output: '{"score":5,"reason":"ok"}' };
+      },
+    };
+    const base = {
+      dataset: pairedInput().dataset,
+      variants: [variant(declaration, treatmentSpec)],
+      comparisons: [],
+      experiment: { seed: 'panel-validation-seed', sampling: { samplingKind: 'solo' as const } },
+      policy: {},
+      runId: 'panel-validation',
+    };
+    const panel = {
+      evaluatorKind: 'rubric-judge',
+      evaluatorId: 'validation-panel',
+      metricId: 'quality-score',
+      rubric: { criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.' },
+      aggregation: { method: 'mean', missing: 'require-complete' },
+    } as const;
+
+    await expect(evaluate({
+      ...base,
+      evaluators: [{
+        ...panel,
+        judges: [
+          { memberId: 'same', model: 'a', judge },
+          { memberId: 'same', model: 'b', judge },
+        ],
+      }],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+    await expect(evaluate({
+      ...base,
+      evaluators: [{
+        ...panel,
+        judges: [{ memberId: 'primary', model: 'a', judge, replicateCount: 0 }],
+      }],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+    await expect(evaluate({
+      ...base,
+      evaluators: [{
+        evaluatorKind: 'rubric-judge',
+        evaluatorId: 'singular-judge',
+        metricId: 'quality-score',
+        model: 'old-model',
+        judge,
+        rubric: panel.rubric,
+      } as unknown as Evaluator],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+    expect(executeTarget).not.toHaveBeenCalled();
+  });
+
+  it('canonicalizes commutative panel member declaration order', async () => {
+    const declaration = executor();
+    const judge = {
+      judgeId: 'test.panel-order/v1',
+      version: '1.0.0',
+      providerCost: { reporting: 'optional' as const },
+      async invoke() {
+        return { invocationStatus: 'completed' as const, output: '{"score":3,"reason":"ok"}' };
+      },
+    };
+    const members = [
+      { memberId: 'judge-a', model: 'model-a', judge },
+      { memberId: 'judge-b', model: 'model-b', judge },
+    ] as const;
+    const common = {
+      dataset: pairedInput().dataset,
+      variants: [variant(declaration, treatmentSpec)],
+      comparisons: [],
+      experiment: { seed: 'panel-order-seed', sampling: { samplingKind: 'solo' as const } },
+      policy: {},
+      clock: fixedClock,
+    };
+    const evaluator = (judges: RubricJudgeEvaluator['judges']): RubricJudgeEvaluator => ({
+      evaluatorKind: 'rubric-judge',
+      evaluatorId: 'order-panel',
+      metricId: 'quality-score',
+      rubric: { criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.' },
+      judges,
+      aggregation: { method: 'mean', missing: 'require-complete' },
+    });
+    const first = await evaluate({
+      ...common,
+      evaluators: [evaluator(members)],
+      runId: 'panel-order-first',
+    });
+    const second = await evaluate({
+      ...common,
+      evaluators: [evaluator([...members].reverse())],
+      runId: 'panel-order-second',
+    });
+
+    expect(first.status).toBe('completed');
+    expect(second.status).toBe('completed');
+    expect(second.definition).toEqual(first.definition);
   });
 
   it('compiles equivalent declarations to one canonical Core Definition', async () => {
@@ -1317,7 +1551,9 @@ describe('canonical eval-runtime API', () => {
       ...pairedInput(),
       evaluators: [{
         evaluatorKind: 'rubric-judge', evaluatorId: 'captured-judge',
-        metricId: 'captured-score', model: 'judge-model', judge: mutableJudge,
+        metricId: 'captured-score',
+        judges: [{ memberId: 'primary', model: 'judge-model', judge: mutableJudge }],
+        aggregation: { method: 'mean', missing: 'require-complete' },
         rubric: {
           criterionId: 'correctness', prompt: 'Judge correctness.',
           rubric: '5 is correct; 1 is incorrect.',
@@ -1335,7 +1571,7 @@ describe('canonical eval-runtime API', () => {
     mutableJudge.invoke = async () => { throw new Error('must retain captured method'); };
 
     const result = await pending;
-    expect(result.status).toBe('completed');
+    expect(result.status, JSON.stringify(result)).toBe('completed');
     expect(seenRevisions).toEqual(['judge-one', 'judge-one', 'judge-one', 'judge-one']);
   });
 
