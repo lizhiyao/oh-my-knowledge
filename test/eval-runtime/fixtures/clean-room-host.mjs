@@ -80,12 +80,16 @@ const evaluation = (overrides = {}) => evaluate({
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { bootstrap: { resamples: 100 } },
-  decision: {
-    decisionKind: 'comparison',
-    comparisonId: 'baseline-vs-prompt-v2',
-    treatmentVariantId: 'prompt-v2',
+  analysis: { analyses: [{
+    analysisId: 'baseline-vs-prompt-v2-correct',
+    analysisKind: 'comparison-interval', statistic: 'mean-difference',
+    comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
     metricId: 'correct',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }] },
+  decision: {
+    decisionKind: 'analysis',
+    analysisId: 'baseline-vs-prompt-v2-correct',
   },
   experiment: { seed: 'clean-room-seed', sampling: { samplingKind: 'paired' } },
   policy: { maxConcurrency: 1 },
@@ -98,6 +102,22 @@ assert.equal(withoutObserver.status, 'completed');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
 
 const customEvaluation = await evaluation({
+  dataset: {
+    datasetId: 'clean-room-analysis-presets',
+    analysisCohorts: [{
+      cohortId: 'smoke',
+      cohortSetId: 'release-slice',
+      cohortSetKind: 'cohort',
+      classification: 'public',
+      disclosure: 'identity-only',
+    }],
+    samples: ['one', 'two'].map((sampleId, index) => ({
+      sampleId,
+      input: 'success',
+      expected: 'expected',
+      ...(index === 0 ? { analysis: { memberships: [{ cohortId: 'smoke' }] } } : {}),
+    })),
+  },
   evaluators: [{
     evaluatorKind: 'custom',
     evaluatorId: 'clean-room-length',
@@ -130,11 +150,34 @@ const customEvaluation = await evaluation({
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['output-length'],
   }],
+  analysis: { analyses: [{
+    analysisId: 'baseline-mean-length',
+    analysisKind: 'summary', statistic: 'mean',
+    variantId: 'baseline', metricId: 'output-length',
+  }, {
+    analysisId: 'prompt-v2-mean-length',
+    analysisKind: 'summary', statistic: 'mean',
+    variantId: 'prompt-v2', metricId: 'output-length',
+  }, {
+    analysisId: 'prompt-v2-smoke-p50-length',
+    analysisKind: 'summary', statistic: 'quantile', probability: 0.5,
+    variantId: 'prompt-v2', metricId: 'output-length',
+    cohortFilter: { includeCohortIds: ['smoke'] },
+  }, {
+    analysisId: 'baseline-vs-prompt-v2-length',
+    analysisKind: 'comparison-interval', statistic: 'mean-difference',
+    comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
+    metricId: 'output-length',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }] },
   decision: undefined,
   runId: 'clean-room-custom-evaluator',
 });
 assert.equal(customEvaluation.status, 'completed');
-assert.equal(customEvaluation.artifacts.analysis.records.length, 1);
+assert.equal(customEvaluation.artifacts.analysis.records.length, 4);
+assert.equal(customEvaluation.analysisResults['baseline-mean-length'].value, 8);
+assert.equal(customEvaluation.analysisResults['prompt-v2-mean-length'].value, 8);
+assert.equal(customEvaluation.analysisResults['prompt-v2-smoke-p50-length'].value, 8);
 assert.ok(customEvaluation.artifacts.evaluation.records.every((record) => (
   record.evaluationStatus === 'completed'
   && record.observations[0]?.observationStatus === 'observed'
@@ -178,6 +221,35 @@ assert.equal(
   4,
 );
 assert.equal(independent.artifacts.analysis.records[0].analysisStatus, 'completed');
+
+const clustered = await evaluate({
+  dataset: {
+    datasetId: 'clean-room-clustered',
+    samples: ['a-1', 'a-2', 'b-1', 'b-2'].map((sampleId) => ({
+      sampleId,
+      input: 'success',
+      expected: 'expected',
+      executionContext: { cluster: sampleId.slice(0, 1) },
+    })),
+  },
+  variants: [variant],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [],
+  analysis: { analyses: [{
+    analysisId: 'clustered-correctness',
+    analysisKind: 'quality-interval', statistic: 'mean',
+    variantId: 'prompt-v2', metricId: 'correct',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 64 },
+  }] },
+  experiment: {
+    seed: 'clean-room-cluster-seed',
+    sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
+  },
+  policy: {},
+  runId: 'clean-room-clustered',
+});
+assert.equal(clustered.status, 'completed');
+assert.equal(clustered.analysisResults['clustered-correctness'].value.unitCount, 2);
 
 const sequences = [];
 const withSlowObserver = await evaluation({

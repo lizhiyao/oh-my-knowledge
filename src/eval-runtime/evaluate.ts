@@ -11,6 +11,8 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
   type EvaluationDefinition,
+  type AnalysisCohortDefinition,
+  type AnalysisRecord,
   type EvaluationSample,
   type EvaluatorDefinition,
   type JsonValue,
@@ -112,6 +114,7 @@ const RuntimeContextSchema = z.object({
 const SamplingDesignInputSchema = z.discriminatedUnion('samplingKind', [
   z.object({
     samplingKind: z.literal('solo'),
+    clusterKey: z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/).optional(),
     stratumKey: z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/).optional(),
   }).strict(),
   z.object({
@@ -146,11 +149,52 @@ const ExperimentSchema = z.object({
   }).strict().optional(),
 }).strict();
 
+const CohortFilterInputSchema = z.object({
+  includeCohortIds: z.array(IdentifierSchema).min(1).optional(),
+  excludeCohortIds: z.array(IdentifierSchema).min(1).optional(),
+}).strict().refine((filter) => (
+  filter.includeCohortIds !== undefined || filter.excludeCohortIds !== undefined
+));
+
 const AnalysisInputSchema = z.object({
-  bootstrap: z.object({
-    resamples: z.number().int().positive().optional(),
-    alpha: z.number().gt(0).lt(1).optional(),
-  }).strict().optional(),
+  analyses: z.array(z.discriminatedUnion('analysisKind', [
+    z.object({
+      analysisId: IdentifierSchema,
+      analysisKind: z.literal('summary'),
+      statistic: z.enum(['mean', 'rate', 'quantile']),
+      variantId: IdentifierSchema,
+      metricId: IdentifierSchema,
+      probability: z.number().min(0).max(1).optional(),
+      cohortFilter: CohortFilterInputSchema.optional(),
+    }).strict(),
+    z.object({
+      analysisId: IdentifierSchema,
+      analysisKind: z.literal('quality-interval'),
+      statistic: z.literal('mean'),
+      variantId: IdentifierSchema,
+      metricId: IdentifierSchema,
+      confidence: z.object({
+        method: z.literal('percentile-bootstrap'),
+        level: z.number().gt(0).lt(1),
+        resamples: z.number().int().positive(),
+      }).strict(),
+      cohortFilter: CohortFilterInputSchema.optional(),
+    }).strict(),
+    z.object({
+      analysisId: IdentifierSchema,
+      analysisKind: z.literal('comparison-interval'),
+      statistic: z.literal('mean-difference'),
+      comparisonId: IdentifierSchema,
+      treatmentVariantId: IdentifierSchema,
+      metricId: IdentifierSchema,
+      confidence: z.object({
+        method: z.literal('percentile-bootstrap'),
+        level: z.number().gt(0).lt(1),
+        resamples: z.number().int().positive(),
+      }).strict(),
+      cohortFilter: CohortFilterInputSchema.optional(),
+    }).strict(),
+  ])),
 }).strict();
 
 const ComparisonInputSchema = z.object({
@@ -161,25 +205,13 @@ const ComparisonInputSchema = z.object({
   metricIds: z.array(IdentifierSchema).min(1),
 }).strict();
 
-const DecisionInputSchema = z.discriminatedUnion('decisionKind', [
-  z.object({
-    decisionKind: z.literal('quality'),
-    variantId: IdentifierSchema,
-    metricId: IdentifierSchema,
-    threshold: z.number().optional(),
-    equivalence: z.number().nonnegative().optional(),
-    minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
-  }).strict(),
-  z.object({
-    decisionKind: z.literal('comparison'),
-    comparisonId: IdentifierSchema,
-    treatmentVariantId: IdentifierSchema,
-    metricId: IdentifierSchema,
-    threshold: z.number().optional(),
-    equivalence: z.number().nonnegative().optional(),
-    minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
-  }).strict(),
-]);
+const DecisionInputSchema = z.object({
+  decisionKind: z.literal('analysis'),
+  analysisId: IdentifierSchema,
+  threshold: z.number().optional(),
+  equivalence: z.number().nonnegative().optional(),
+  minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
+}).strict();
 
 const PolicyInputSchema = z.object({
   maxConcurrency: z.number().int().positive().optional(),
@@ -241,6 +273,8 @@ export interface Variant<
 export interface Dataset {
   readonly datasetId: string;
   readonly samples: readonly EvaluationSample[];
+  readonly analysisCohorts?: readonly AnalysisCohortDefinition[];
+  readonly annotations?: JsonValue;
 }
 
 export interface ExecutorCapabilities {
@@ -395,6 +429,7 @@ export interface Experiment {
 export type SamplingDesign =
   | Readonly<{
       samplingKind: 'solo';
+      clusterKey?: string;
       stratumKey?: string;
     }>
   | Readonly<{
@@ -411,8 +446,57 @@ export type SamplingDesign =
       minimumSamplesPerVariantPerStratum: number;
     }>;
 
+export type CohortFilter =
+  | Readonly<{
+      includeCohortIds: readonly string[];
+      excludeCohortIds?: readonly string[];
+    }>
+  | Readonly<{
+      includeCohortIds?: readonly string[];
+      excludeCohortIds: readonly string[];
+    }>;
+
+export type AnalysisRequest =
+  | (Readonly<{
+      analysisId: string;
+      analysisKind: 'summary';
+      variantId: string;
+      metricId: string;
+      cohortFilter?: CohortFilter;
+    }> & (
+      | Readonly<{ statistic: 'mean' | 'rate'; probability?: never }>
+      | Readonly<{ statistic: 'quantile'; probability: number }>
+    ))
+  | Readonly<{
+      analysisId: string;
+      analysisKind: 'quality-interval';
+      statistic: 'mean';
+      variantId: string;
+      metricId: string;
+      confidence: Readonly<{
+        method: 'percentile-bootstrap';
+        level: number;
+        resamples: number;
+      }>;
+      cohortFilter?: CohortFilter;
+    }>
+  | Readonly<{
+      analysisId: string;
+      analysisKind: 'comparison-interval';
+      statistic: 'mean-difference';
+      comparisonId: string;
+      treatmentVariantId: string;
+      metricId: string;
+      confidence: Readonly<{
+        method: 'percentile-bootstrap';
+        level: number;
+        resamples: number;
+      }>;
+      cohortFilter?: CohortFilter;
+    }>;
+
 export interface Analysis {
-  readonly bootstrap?: Readonly<{ resamples?: number; alpha?: number }>;
+  readonly analyses: readonly AnalysisRequest[];
 }
 
 export interface Comparison {
@@ -429,18 +513,10 @@ interface DecisionBase {
   readonly minimumEvidenceStatus?: 'complete' | 'partial' | 'unresolvable';
 }
 
-export type Decision =
-  | (DecisionBase & Readonly<{
-      decisionKind: 'quality';
-      variantId: string;
-      metricId: string;
-    }>)
-  | (DecisionBase & Readonly<{
-      decisionKind: 'comparison';
-      comparisonId: string;
-      treatmentVariantId: string;
-      metricId: string;
-    }>);
+export type Decision = DecisionBase & Readonly<{
+  decisionKind: 'analysis';
+  analysisId: string;
+}>;
 
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
@@ -448,6 +524,7 @@ export type Sample = EvaluationSample;
 export type EvaluationResult = EvaluationRunResult & Readonly<{
   definition: EvaluationDefinition;
   policy: MeasurementPolicy;
+  analysisResults: Readonly<Record<string, AnalysisRecord>>;
 }>;
 export type EventObserver = EvaluationEventObserver;
 export type Clock = EvaluationEngineClock;
@@ -476,7 +553,7 @@ export interface EvaluateInput {
   readonly variants: readonly Variant[];
   readonly evaluators: readonly Evaluator[];
   readonly comparisons: readonly Comparison[];
-  readonly analysis?: Analysis;
+  readonly analysis: Analysis;
   readonly decision?: Decision;
   readonly experiment: Experiment;
   readonly policy: Policy;
@@ -933,7 +1010,13 @@ function attachDefinition(
   definition: EvaluationDefinition,
   policy: MeasurementPolicy,
 ): EvaluationResult {
-  return Object.freeze({ ...result, definition, policy });
+  const records = result.artifacts?.analysis?.records ?? [];
+  const analysisResults = Object.freeze(Object.fromEntries(
+    [...records]
+      .sort((left, right) => compareStrings(left.resultId, right.resultId))
+      .map((record) => [record.resultId, record]),
+  ));
+  return Object.freeze({ ...result, definition, policy, analysisResults });
 }
 
 interface CapturedEvaluators {
@@ -1330,6 +1413,8 @@ function captureEvaluators(
 }
 
 interface AnalysisBinding {
+  readonly analysisId: string;
+  readonly analysisKind: AnalysisRequest['analysisKind'];
   readonly resultId: string;
   readonly metricId: string;
   readonly variantId?: string;
@@ -1338,7 +1423,7 @@ interface AnalysisBinding {
 }
 
 function stableFacadeId(
-  identityKind: 'node' | 'result' | 'decision' | 'slot',
+  identityKind: 'node' | 'decision' | 'slot',
   selector: Readonly<Record<string, JsonValue>>,
 ): string {
   return `${identityKind}:${digestCanonicalJson({
@@ -1376,12 +1461,16 @@ function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function alphaFromConfidenceLevel(level: number): number {
+  return Number((1 - level).toPrecision(15));
+}
+
 function createGeneralDefinition(input: Readonly<{
   variants: readonly Readonly<CapturedVariant>[];
   evaluators: CapturedEvaluators;
   comparisons: readonly Comparison[];
   experiment: Experiment;
-  analysis?: Analysis;
+  analysis: Analysis;
   decision?: Decision;
 }>): EvaluationDefinition {
   const variants = [...input.variants].sort((left, right) => (
@@ -1432,6 +1521,7 @@ function createGeneralDefinition(input: Readonly<{
     }
   }
   const sampling = input.experiment.sampling;
+  const isClustered = sampling.samplingKind === 'solo' && sampling.clusterKey !== undefined;
   if (sampling.samplingKind === 'solo') {
     if (variants.length !== 1 || comparisons.length !== 0) {
       return configurationFailure(
@@ -1463,46 +1553,91 @@ function createGeneralDefinition(input: Readonly<{
       }
     }
   }
-  const bootstrap = input.analysis?.bootstrap;
-  const analysisNodes: Array<{
-    analysisNodeKind: 'estimator';
-    nodeId: string;
-    implementationId: string;
-    inputs: Array<
-      | { inputKind: 'metric-observations'; referenceId: string }
-      | {
-          inputKind: 'comparison';
-          referenceId: string;
-          treatmentTargetId: string;
-          metricId: string;
-        }
-    >;
-    outputResultId: string;
-    parameters: JsonValue;
-  }> = [];
+  let analysis: z.infer<typeof AnalysisInputSchema>;
+  try {
+    analysis = AnalysisInputSchema.parse(structuredClone(input.analysis));
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation analysis declaration 无效。',
+    );
+  }
+  const requests = [...analysis.analyses].sort((left, right) => (
+    compareStrings(left.analysisId, right.analysisId)
+  ));
+  if (new Set(requests.map((request) => request.analysisId)).size !== requests.length) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation analysisId 必须唯一。',
+    );
+  }
+  const cohortIds = new Set(
+    (input.evaluators.dataset.analysisCohorts ?? []).map((cohort) => cohort.cohortId),
+  );
+  const analysisNodes: EvaluationDefinition['analysisGraph']['nodes'] = [];
   const analysisBindings: AnalysisBinding[] = [];
-  if (sampling.samplingKind === 'solo') {
-    for (const metric of metrics.filter((candidate) => (
-      candidate.valueType === 'numeric' || candidate.valueType === 'boolean'
+  for (const request of requests) {
+    const metric = metrics.find((candidate) => candidate.metricId === request.metricId);
+    const selectedCohortIds = [
+      ...(request.cohortFilter?.includeCohortIds ?? []),
+      ...(request.cohortFilter?.excludeCohortIds ?? []),
+    ];
+    if (metric === undefined
+        || new Set(selectedCohortIds).size !== selectedCohortIds.length
+        || selectedCohortIds.some((cohortId) => !cohortIds.has(cohortId))) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation analysis 引用了未知或重复的 Metric／cohort。',
+      );
+    }
+    if (request.cohortFilter?.includeCohortIds?.some((cohortId) => (
+      request.cohortFilter?.excludeCohortIds?.includes(cohortId)
     ))) {
-      const selector = {
-        analysisKind: 'quality',
-        variantId: variants[0].variantId,
-        metricId: metric.metricId,
-      };
-      const resultId = stableFacadeId('result', selector);
-      const measurementAggregation = input.evaluators.measurementAggregations.get(metric.metricId);
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation analysis 不能同时包含并排除同一个 cohort。',
+      );
+    }
+    const resultId = request.analysisId;
+    const cohortFilter = request.cohortFilter === undefined ? undefined : {
+      ...(request.cohortFilter.includeCohortIds === undefined ? {} : {
+        includeCohortIds: [...request.cohortFilter.includeCohortIds].sort(compareStrings),
+      }),
+      ...(request.cohortFilter.excludeCohortIds === undefined ? {} : {
+        excludeCohortIds: [...request.cohortFilter.excludeCohortIds].sort(compareStrings),
+      }),
+    };
+    const common = {
+      nodeId: stableFacadeId('node', { analysisId: request.analysisId }),
+      inputs: [{ inputKind: 'metric-observations' as const, referenceId: request.metricId }],
+      outputResultId: resultId,
+      ...(cohortFilter === undefined ? {} : {
+        cohortFilter,
+      }),
+    };
+    const measurementAggregation = input.evaluators.measurementAggregations.get(request.metricId);
+    if (request.analysisKind === 'summary') {
+      if (!variantIdSet.has(request.variantId)
+          || (request.statistic === 'mean' && metric.valueType !== 'numeric')
+          || (request.statistic === 'rate' && metric.valueType !== 'boolean')
+          || (request.statistic === 'quantile' && metric.valueType !== 'numeric')
+          || (request.statistic === 'quantile') !== (request.probability !== undefined)) {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Evaluation summary 的 Variant、Metric、statistic 或 probability 不匹配。',
+        );
+      }
       analysisNodes.push({
-        analysisNodeKind: 'estimator',
-        nodeId: stableFacadeId('node', selector),
+        ...common,
+        analysisNodeKind: 'reducer',
+        targetFilter: { includeTargetIds: [request.variantId] },
         implementationId: measurementAggregation === undefined
-          ? 'bootstrap.mean-percentile/v1'
-          : 'bootstrap.hierarchical-mean-percentile/v1',
-        inputs: [{ inputKind: 'metric-observations', referenceId: metric.metricId }],
-        outputResultId: resultId,
+          ? `descriptive.${request.statistic}/v1`
+          : `descriptive.hierarchical-${request.statistic}/v1`,
         parameters: {
-          resamples: bootstrap?.resamples ?? 1_000,
-          alpha: bootstrap?.alpha ?? 0.05,
+          ...(request.statistic === 'quantile'
+            ? { probability: request.probability as number }
+            : {}),
           ...(measurementAggregation === undefined ? {} : {
             measurementAggregation: JsonValueSchema.parse(
               structuredClone(measurementAggregation),
@@ -1511,64 +1646,96 @@ function createGeneralDefinition(input: Readonly<{
         },
       });
       analysisBindings.push({
+        analysisId: request.analysisId,
+        analysisKind: request.analysisKind,
         resultId,
-        metricId: metric.metricId,
-        variantId: variants[0].variantId,
+        metricId: request.metricId,
+        variantId: request.variantId,
       });
+      continue;
     }
-  } else {
-    for (const comparison of comparisons) {
-      for (const treatmentVariantId of [...comparison.treatmentVariantIds].sort(compareStrings)) {
-        for (const metricId of [...comparison.metricIds].sort(compareStrings)) {
-          const metric = metrics.find((candidate) => candidate.metricId === metricId);
-          if (metric?.valueType !== 'numeric' && metric?.valueType !== 'boolean') continue;
-          const selector = {
-            analysisKind: 'comparison',
-            comparisonId: comparison.comparisonId,
-            treatmentVariantId,
-            metricId,
-          };
-          const resultId = stableFacadeId('result', selector);
-          const measurementAggregation = input.evaluators.measurementAggregations.get(metricId);
-          analysisNodes.push({
-            analysisNodeKind: 'estimator',
-            nodeId: stableFacadeId('node', selector),
-            implementationId: sampling.samplingKind === 'independent'
-              ? measurementAggregation === undefined
-                ? 'bootstrap.unpaired-difference-percentile/v1'
-                : 'bootstrap.hierarchical-unpaired-difference-percentile/v1'
-              : measurementAggregation === undefined
-                ? 'bootstrap.paired-difference-percentile/v1'
-                : 'bootstrap.hierarchical-paired-difference-percentile/v1',
-            inputs: [
-              { inputKind: 'metric-observations', referenceId: metricId },
-              {
-                inputKind: 'comparison',
-                referenceId: comparison.comparisonId,
-                treatmentTargetId: treatmentVariantId,
-                metricId,
-              },
-            ],
-            outputResultId: resultId,
-            parameters: {
-              resamples: bootstrap?.resamples ?? 1_000,
-              alpha: bootstrap?.alpha ?? 0.05,
-              ...(measurementAggregation === undefined ? {} : {
-                measurementAggregation: JsonValueSchema.parse(
-                  structuredClone(measurementAggregation),
-                ),
-              }),
-            },
-          });
-          analysisBindings.push({
-            resultId,
-            metricId,
-            comparisonId: comparison.comparisonId,
-            treatmentVariantId,
-          });
-        }
+    if (metric.valueType !== 'numeric' && metric.valueType !== 'boolean') {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation interval 只接受 numeric 或 boolean Metric。',
+      );
+    }
+    const parameters = {
+      resamples: request.confidence.resamples,
+      alpha: alphaFromConfidenceLevel(request.confidence.level),
+      ...(measurementAggregation === undefined ? {} : {
+        measurementAggregation: JsonValueSchema.parse(structuredClone(measurementAggregation)),
+      }),
+    };
+    if (request.analysisKind === 'quality-interval') {
+      if (!variantIdSet.has(request.variantId)) {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Evaluation quality interval 引用了未知 Variant。',
+        );
       }
+      analysisNodes.push({
+        ...common,
+        analysisNodeKind: 'estimator',
+        targetFilter: { includeTargetIds: [request.variantId] },
+        implementationId: isClustered
+          ? measurementAggregation === undefined
+            ? 'bootstrap.cluster-percentile/v1'
+            : 'bootstrap.hierarchical-cluster-percentile/v1'
+          : measurementAggregation === undefined
+            ? 'bootstrap.mean-percentile/v1'
+            : 'bootstrap.hierarchical-mean-percentile/v1',
+        parameters,
+      });
+      analysisBindings.push({
+        analysisId: request.analysisId,
+        analysisKind: request.analysisKind,
+        resultId,
+        metricId: request.metricId,
+        variantId: request.variantId,
+      });
+      continue;
     }
+    const comparison = comparisons.find((candidate) => (
+      candidate.comparisonId === request.comparisonId
+    ));
+    if (comparison === undefined
+        || !comparison.treatmentVariantIds.includes(request.treatmentVariantId)
+        || !comparison.metricIds.includes(request.metricId)) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation comparison interval 引用了未知 Comparison、Treatment 或 Metric。',
+      );
+    }
+    analysisNodes.push({
+      ...common,
+      analysisNodeKind: 'estimator',
+      implementationId: comparison.comparisonKind === 'independent'
+        ? measurementAggregation === undefined
+          ? 'bootstrap.unpaired-difference-percentile/v1'
+          : 'bootstrap.hierarchical-unpaired-difference-percentile/v1'
+        : measurementAggregation === undefined
+          ? 'bootstrap.paired-difference-percentile/v1'
+          : 'bootstrap.hierarchical-paired-difference-percentile/v1',
+      inputs: [
+        ...common.inputs,
+        {
+          inputKind: 'comparison',
+          referenceId: request.comparisonId,
+          treatmentTargetId: request.treatmentVariantId,
+          metricId: request.metricId,
+        },
+      ],
+      parameters,
+    });
+    analysisBindings.push({
+      analysisId: request.analysisId,
+      analysisKind: request.analysisKind,
+      resultId,
+      metricId: request.metricId,
+      comparisonId: request.comparisonId,
+      treatmentVariantId: request.treatmentVariantId,
+    });
   }
   let decisionPolicy;
   if (input.decision !== undefined) {
@@ -1581,28 +1748,23 @@ function createGeneralDefinition(input: Readonly<{
         'Evaluation decision declaration 无效。',
       );
     }
-    const decisionMetric = metrics.find((metric) => metric.metricId === parsedDecision.metricId);
+    const selected = analysisBindings.filter((binding) => (
+      binding.analysisId === parsedDecision.analysisId
+    ));
+    if (selected.length !== 1 || selected[0].analysisKind === 'summary') {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation decision 必须精确选择一个 interval analysis。',
+      );
+    }
+    const chosen = selected[0];
+    const decisionMetric = metrics.find((metric) => metric.metricId === chosen.metricId);
     if (decisionMetric?.direction !== 'higher-is-better') {
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
         'Canonical progress Decision 只接受 higher-is-better Metric。',
       );
     }
-    const selected = analysisBindings.filter((binding) => (
-      parsedDecision.decisionKind === 'quality'
-        ? binding.variantId === parsedDecision.variantId
-          && binding.metricId === parsedDecision.metricId
-        : binding.comparisonId === parsedDecision.comparisonId
-          && binding.treatmentVariantId === parsedDecision.treatmentVariantId
-          && binding.metricId === parsedDecision.metricId
-    ));
-    if (selected.length !== 1) {
-      return configurationFailure(
-        'EVAL_RUNTIME_INPUT_INVALID',
-        'Evaluation decision 必须精确选择一个已声明的 analysis result。',
-      );
-    }
-    const chosen = selected[0];
     const decisionPolicyId = stableFacadeId('decision', {
       decisionKind: parsedDecision.decisionKind,
       resultId: chosen.resultId,
@@ -1611,14 +1773,14 @@ function createGeneralDefinition(input: Readonly<{
       decisionPolicyId,
       implementationId: 'progress/v2',
       analysisResultIds: [chosen.resultId],
-      ...(parsedDecision.decisionKind === 'comparison' ? {
+      ...(chosen.comparisonId === undefined ? {} : {
         comparisonFamily: [{
-          comparisonId: parsedDecision.comparisonId,
-          treatmentTargetId: parsedDecision.treatmentVariantId,
-          metricId: parsedDecision.metricId,
+          comparisonId: chosen.comparisonId,
+          treatmentTargetId: chosen.treatmentVariantId as string,
+          metricId: chosen.metricId,
           analysisResultId: chosen.resultId,
         }],
-      } : {}),
+      }),
       minimumEvidenceStatus: parsedDecision.minimumEvidenceStatus ?? 'complete',
       parameters: {
         threshold: parsedDecision.threshold ?? 0,
@@ -1629,9 +1791,13 @@ function createGeneralDefinition(input: Readonly<{
   const trials = input.experiment.trials ?? 1;
   const hasHierarchicalMeasurement = input.evaluators.measurementAggregations.size > 0;
   const estimatorId = sampling.samplingKind === 'solo'
-    ? hasHierarchicalMeasurement
-      ? 'bootstrap.hierarchical-mean-percentile/v1'
-      : 'bootstrap.mean-percentile/v1'
+    ? isClustered
+      ? hasHierarchicalMeasurement
+        ? 'bootstrap.hierarchical-cluster-percentile/v1'
+        : 'bootstrap.cluster-percentile/v1'
+      : hasHierarchicalMeasurement
+        ? 'bootstrap.hierarchical-mean-percentile/v1'
+        : 'bootstrap.mean-percentile/v1'
     : sampling.samplingKind === 'independent'
       ? hasHierarchicalMeasurement
         ? 'bootstrap.hierarchical-unpaired-difference-percentile/v1'
@@ -1684,9 +1850,10 @@ function createGeneralDefinition(input: Readonly<{
         randomizationSlotIds: randomizationSlots.map((slot) => slot.randomizationSlotId),
       },
       sampling: sampling.samplingKind === 'solo' ? {
-        experimentalUnit: 'sample',
+        experimentalUnit: isClustered ? 'cluster' : 'sample',
+        ...(sampling.clusterKey === undefined ? {} : { clusterKey: sampling.clusterKey }),
         repeatedMeasures: trials > 1,
-        resamplingUnit: 'sample',
+        resamplingUnit: isClustered ? 'cluster' : 'sample',
         estimatorId,
         seedCoupling: 'independent-by-target',
       } : {
@@ -1727,7 +1894,7 @@ function assertCommonInput(input: Readonly<{
   evaluators: readonly Evaluator[];
   comparisons: readonly Comparison[];
   experiment: Experiment;
-  analysis?: Analysis;
+  analysis: Analysis;
   decision?: Decision;
   policy: Policy;
   eventBufferCapacity?: number;
@@ -1757,7 +1924,7 @@ function assertCommonInput(input: Readonly<{
       || !Array.isArray(input.evaluators) || input.evaluators.length === 0
       || !Array.isArray(input.comparisons)
       || !ExperimentSchema.safeParse(input.experiment).success
-      || !AnalysisInputSchema.safeParse(input.analysis ?? {}).success
+      || !AnalysisInputSchema.safeParse(input.analysis).success
       || (input.decision !== undefined && !DecisionInputSchema.safeParse(input.decision).success)
       || !z.array(ComparisonInputSchema).safeParse(input.comparisons).success
       || !PolicyInputSchema.safeParse(input.policy).success
@@ -1800,7 +1967,7 @@ export async function evaluate(
       evaluators,
       comparisons: input.comparisons,
       experiment: input.experiment,
-      ...(input.analysis === undefined ? {} : { analysis: input.analysis }),
+      analysis: input.analysis,
       ...(input.decision === undefined ? {} : { decision: input.decision }),
     });
   } catch (error) {

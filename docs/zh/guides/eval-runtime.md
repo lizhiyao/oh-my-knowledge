@@ -115,12 +115,18 @@ const result = await evaluate({
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { bootstrap: { resamples: 1_000, alpha: 0.05 } },
-  decision: {
-    decisionKind: 'comparison',
+  analysis: { analyses: [{
+    analysisId: 'prompt-v1-vs-v2-correct',
+    analysisKind: 'comparison-interval',
+    statistic: 'mean-difference',
     comparisonId: 'prompt-v1-vs-v2',
     treatmentVariantId: 'prompt-v2',
     metricId: 'correct',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
+  }] },
+  decision: {
+    decisionKind: 'analysis',
+    analysisId: 'prompt-v1-vs-v2-correct',
   },
   experiment: {
     seed: 'release-2026-09-04',
@@ -135,7 +141,7 @@ if (result.status !== 'completed') throw new Error(result.error.code);
 await reportStore.put(result.report);
 ```
 
-`result.definition` 与 `result.policy` 是 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。其余 Core 运行结果字段保持不变：evidence 位于 `result.artifacts`，Decision 位于 `result.artifacts.decision`，Report 位于 `result.report`。
+`result.definition` 与 `result.policy` 是 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。`result.analysisResults[analysisId]` 是同一批 Core Analysis record 的只读索引，不会重新计算统计量。其余 Core 运行结果字段保持不变：evidence 位于 `result.artifacts`，Decision 位于 `result.artifacts.decision`，Report 位于 `result.report`。
 
 除上面展示的值外，`executor.execute()` 还会收到 `variantId`。比较角色属于 `comparisons`，不会注入 Executor invocation。可预期的宿主失败应返回 `{ errorCode }`，其中 error code 必须稳定且不包含敏感信息；普通异常会统一成为脱敏的 `EVAL_RUNTIME_EXECUTOR_FAILED`。
 
@@ -233,7 +239,7 @@ Bindings 是最小权限 allowlist。只有 evaluator 确实需要 gold data 时
 
 Callback 可返回 `score`、`missing`、`invalid` 或 `failed`。Score 会作为 measurement data 直接持久化，不是带 classification 的 source content；text、category 与 ranking schema 必须把它约束在安全的测量词表内，绝不能回显 answer、trace、secret 或评委解释。这类支撑材料应放入显式声明 classification 的 `CustomEvaluatorContent` evidence。Invalid value 同样使用 `CustomEvaluatorContent`；普通异常会被脱敏。不要在 callback 内自行重试或实现超时：Core 会执行已封存的并发、超时、预算、取消、计量与失败策略。Callback 必须无状态、可安全并行且协作响应 `signal`；需要有状态资源时使用 advanced 生命周期 SPI。
 
-OMK 不会根据 `Function#toString()` 推导 provenance，因此 identity 必须显式声明。当代码、依赖、schema 或 provider 配置改变测量行为时，必须更新 `version`、schema `fingerprintFacets` 或 implementation `fingerprintFacets`。单个 custom evaluator 不得产出多个 Metric，也不代表 ensemble member。Numeric 与 boolean Metric 必须声明单调 direction，并使用内置 Bootstrap analysis；categorical、text 与 ranking Metric 在通过 advanced API 明确选择兼容 estimator 前只保留为 evaluation evidence。比较估计值保持原始 treatment-minus-control 差值。Canonical Decision 只接受 `higher-is-better`；对于 lower-is-better Metric，应省略 `decision` 后解释区间符号，或让 callback 返回 higher-is-better utility score。
+OMK 不会根据 `Function#toString()` 推导 provenance，因此 identity 必须显式声明。当代码、依赖、schema 或 provider 配置改变测量行为时，必须更新 `version`、schema `fingerprintFacets` 或 implementation `fingerprintFacets`。单个 custom evaluator 不得产出多个 Metric，也不代表 ensemble member。Numeric 与 boolean Metric 必须声明单调 direction；只有调用方声明兼容的具名 summary 或 interval 后，它们才会成为 analysis result。Categorical、text 与 ranking Metric 在通过 advanced API 明确选择兼容 estimator 前只保留为 evaluation evidence。比较估计值保持原始 treatment-minus-control 差值。Canonical Decision 只接受 `higher-is-better`，并通过 `analysisId` 选择一个 interval；对于 lower-is-better Metric，应省略 `decision` 后解释区间符号，或让 callback 返回 higher-is-better utility score。
 
 ## Rubric 评委评测
 

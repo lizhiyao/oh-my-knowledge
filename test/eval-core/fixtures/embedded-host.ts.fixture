@@ -44,6 +44,8 @@ import {
   checkExecutor,
   EvaluationEventConsumptionError,
   evaluate,
+  type AnalysisRequest,
+  type CohortFilter,
   type Executor as CanonicalExecutor,
 } from 'oh-my-knowledge';
 import {
@@ -122,6 +124,17 @@ const canonicalExecutor: CanonicalExecutor<string, undefined, string> = {
       return { output: input };
     },
 };
+const canonicalCohortFilter: CohortFilter = { includeCohortIds: ['release'] };
+const canonicalAnalysis: AnalysisRequest = {
+  analysisId: 'baseline-vs-prompt-v2-correct',
+  analysisKind: 'comparison-interval',
+  statistic: 'mean-difference',
+  comparisonId: 'baseline-vs-prompt-v2',
+  treatmentVariantId: 'prompt-v2',
+  metricId: 'correct',
+  confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+};
+void canonicalCohortFilter;
 const canonicalEvaluation = evaluate({
   dataset: {
     datasetId: 'typescript-canonical-runtime',
@@ -144,6 +157,7 @@ const canonicalEvaluation = evaluate({
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
+  analysis: { analyses: [canonicalAnalysis] },
   experiment: { seed: 'typescript-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
   runId: 'typescript-canonical-runtime',

@@ -3,7 +3,12 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import type { CustomEvaluator, SamplingDesign } from '../../src/eval-runtime/index.js';
+import type {
+  AnalysisRequest,
+  CohortFilter,
+  CustomEvaluator,
+  SamplingDesign,
+} from '../../src/eval-runtime/index.js';
 
 const independentSampling: SamplingDesign = {
   samplingKind: 'independent',
@@ -14,6 +19,16 @@ const independentSampling: SamplingDesign = {
   minimumSamplesPerVariant: 2,
   minimumSamplesPerVariantPerStratum: 1,
 };
+
+// @ts-expect-error quantile requests require an explicit probability.
+const incompleteQuantile: AnalysisRequest = {
+  analysisId: 'p95', analysisKind: 'summary', statistic: 'quantile',
+  variantId: 'candidate', metricId: 'latency-ms',
+};
+// @ts-expect-error an explicit cohort filter must select or exclude at least one cohort.
+const emptyCohortFilter: CohortFilter = {};
+void incompleteQuantile;
+void emptyCohortFilter;
 
 const publicCustomEvaluator = {
   evaluatorKind: 'custom',
@@ -59,7 +74,9 @@ const PUBLIC_API = {
       'ArtifactKind',
       'ArtifactSource',
       'Analysis',
+      'AnalysisRequest',
       'Clock',
+      'CohortFilter',
       'Comparison',
       'CustomEvaluator',
       'CustomEvaluatorBinding',

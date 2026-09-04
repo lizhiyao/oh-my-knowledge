@@ -80,12 +80,16 @@ const base = {
     treatmentVariantIds: ['treatment'],
     metricIds: ['rubric-score'],
   }],
-  analysis: { bootstrap: { resamples: 100 } },
-  decision: {
-    decisionKind: 'comparison',
-    comparisonId: 'control-vs-treatment',
-    treatmentVariantId: 'treatment',
+  analysis: { analyses: [{
+    analysisId: 'control-vs-treatment-rubric',
+    analysisKind: 'comparison-interval', statistic: 'mean-difference',
+    comparisonId: 'control-vs-treatment', treatmentVariantId: 'treatment',
     metricId: 'rubric-score',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }] },
+  decision: {
+    decisionKind: 'analysis',
+    analysisId: 'control-vs-treatment-rubric',
   },
   experiment: { seed: 'explicit-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
