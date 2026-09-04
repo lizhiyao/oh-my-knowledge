@@ -1,6 +1,9 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildJudgePrompt, getJudgePromptHash } from '../../../src/eval-workflows/instruments/judge.js';
+import {
+  buildJudgePrompt,
+  getJudgePromptHash,
+} from '../../src/eval-runtime/judges/rubric-prompt.js';
 
 describe('judge prompt versioning', () => {
   it('default builds the v5-cot-toolargs-fmt-len prompt', () => {

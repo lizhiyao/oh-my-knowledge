@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildJudgePrompt } from '../../../src/eval-workflows/instruments/judge.js';
+import { buildJudgePrompt } from '../../src/eval-runtime/judges/rubric-prompt.js';
 
 /**
  * Defensive test (R11 from sample-design plan).

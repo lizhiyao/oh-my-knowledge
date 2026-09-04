@@ -55,7 +55,7 @@ These metadata fields are used only for:
 - Skill Map declared anchors (`covers`)
 - the `report.analysis.sampleQuality` aggregate (for tools to read)
 
-**They never enter the judge prompt** (`buildJudgePrompt(prompt, rubric, output, traceSummary)` has no sample object in its signature, and `test/eval-workflows/instruments/judge-prompt-isolation.test.ts` guards against regressions). **They never affect the verdict algorithm.** This is a hard requirement for construct-validity protection — a judge seeing "construct: necessity" is a judge that knows the answer key.
+**They never enter the judge prompt** (`buildJudgePrompt(prompt, rubric, output, traceSummary)` has no sample object in its signature, and `test/eval-runtime/rubric-prompt-isolation.test.ts` guards against regressions). **They never affect the verdict algorithm.** This is a hard requirement for construct-validity protection — a judge seeing "construct: necessity" is a judge that knows the answer key.
 
 ### Sandbox eval fields (mocks / environment / tripwire / mocksStrict)
 
@@ -223,7 +223,7 @@ The initial schema kept four measurement-validity fields (capability / difficult
 
 **Hard constraints before adding any new field**
 
-- Must not enter the `buildJudgePrompt` signature (`test/eval-workflows/instruments/judge-prompt-isolation.test.ts` guards the regression)
+- Must not enter the `buildJudgePrompt` signature (`test/eval-runtime/rubric-prompt-isolation.test.ts` guards the regression)
 - Must enter the complete-contract `sampleHash` by default. `sample_id` is the only excluded map key; any field that changes execution or interpretation must invalidate reuse and cross-report comparability.
 - Must not enter the verdict / Δ algorithm
 - Must not semantically overlap the existing metadata fields + `rubric` / `assertions`
