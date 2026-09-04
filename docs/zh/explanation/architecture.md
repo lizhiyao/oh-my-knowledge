@@ -143,7 +143,7 @@ Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Exp
 
 Assertion 与 rubric 评委保持为不同 evaluator instrument。Analysis 会推导 assertion layer、judge replicate／ensemble、dimension、composite、Bootstrap comparison family 与 agreement table，但不会压平它们的身份。
 
-Missing、invalid、failed、unavailable 与 not-started observation 都不是零分。Coverage 会沿整张图保持显式。`omk.release-decision/v6` 必须先确认 evidence 完整、Analysis binding 精确、Bootstrap 的 Monte Carlo 不确定性已经消解，且实际效应的置信区间下界达到阈值，才能返回 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 或 `SOLO`；已配置但无法测量跨评委一致性时，正向比较会被 gate 为 `CAUTIOUS`，样本量护栏则把实际观测的比较单元数与预注册的固定下限或先验规划比较。展示分数或点估计不能替代已注册 Decision。
+Missing、invalid、failed、unavailable 与 not-started observation 都不是零分。Coverage 会沿整张图保持显式。`omk.release-decision/v7` 必须先确认 evidence 完整、Analysis binding 精确、Bootstrap 的 Monte Carlo 不确定性已经消解，且实际效应的置信区间下界达到阈值，才能返回 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 或 `SOLO`；任一适用 rubric 维度已配置但无法测量跨评委一致性时，正向比较会被 gate 为 `CAUTIOUS`，样本量护栏则把实际观测的比较单元数与预注册的固定下限或先验规划比较。展示分数或点估计不能替代已注册 Decision。
 
 成本、usage、duration、运行状态、证据状态、结论状态与 lineage 都是正交事实，不是额外评分维度。独立的 `--repeat` run 会组成 Evaluation Series；单次 run 不能推断跨 run 稳定性。
 

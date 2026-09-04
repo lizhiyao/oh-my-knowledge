@@ -21,8 +21,8 @@ import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   RELEASE_DECISION_PARAMETERS_SCHEMA,
   RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
-  RELEASE_DECISION_POLICY,
-  RELEASE_DECISION_POLICY_IDENTITY,
+  RELEASE_DECISION_POLICY_V4,
+  RELEASE_DECISION_POLICY_V4_IDENTITY,
   RELEASE_DECISION_POLICY_V1,
   RELEASE_DECISION_POLICY_V1_IDENTITY,
   RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
@@ -356,7 +356,7 @@ function context(
     runId: 'release-run',
     policy: {
       decisionPolicyId: 'release-decision',
-      implementationId: RELEASE_DECISION_POLICY.identity.implementationId,
+      implementationId: RELEASE_DECISION_POLICY_V4.identity.implementationId,
       analysisResultIds: ['composite-table', 'bootstrap-family'],
       ...(comparisons.length === 0 ? {} : {
         comparisonFamily: comparisons.map((comparison) => ({
@@ -401,7 +401,7 @@ async function decide(
   releaseParameters: ReleaseDecisionParameters,
   values: ReturnType<typeof tables>,
 ) {
-  return RELEASE_DECISION_POLICY.decide(context(releaseParameters, values));
+  return RELEASE_DECISION_POLICY_V4.decide(context(releaseParameters, values));
 }
 
 function contextV5(
@@ -476,7 +476,7 @@ function contextV7(
 describe('OMK Release DecisionPolicy', () => {
   it('declares the sealed table and comparison-family capabilities', () => {
     const capabilities = DecisionPolicyCapabilitiesSchema.parse(
-      RELEASE_DECISION_POLICY_IDENTITY.capabilities,
+      RELEASE_DECISION_POLICY_V4_IDENTITY.capabilities,
     );
     expect(capabilities.analysisResultSchemaUris).toEqual([
       BOOTSTRAP_FAMILY_TABLE_SCHEMA.schemaUri,
@@ -487,7 +487,7 @@ describe('OMK Release DecisionPolicy', () => {
       BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
     ]);
     expect(capabilities.parameterSchema).toEqual(RELEASE_DECISION_PARAMETERS_SCHEMA);
-    expect(Object.isFrozen(RELEASE_DECISION_POLICY_IDENTITY)).toBe(true);
+    expect(Object.isFrozen(RELEASE_DECISION_POLICY_V4_IDENTITY)).toBe(true);
     expect(RELEASE_DECISION_POLICY_V1_IDENTITY.fingerprint).toBe(
       'sha256:0c13bef0733f511a6b17ffd3e9e3274231f36262a0e2aa23668b17aaf484bc5c',
     );
@@ -497,14 +497,14 @@ describe('OMK Release DecisionPolicy', () => {
     expect(RELEASE_DECISION_POLICY_V3_IDENTITY.fingerprint).toBe(
       'sha256:fec0a532957eb6ce17cd5866ec7851a0bca0e9cc70e70748c60049d1766839a9',
     );
-    expect(RELEASE_DECISION_POLICY_IDENTITY.fingerprint).toBe(
+    expect(RELEASE_DECISION_POLICY_V4_IDENTITY.fingerprint).toBe(
       'sha256:310b31c9cd1c3a689c5c760f35a6b5ab869b6959bc70047c0fb4362024f821ee',
     );
     expect([...createReleaseDecisionPolicies().keys()]).toEqual([
       RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
-      RELEASE_DECISION_POLICY.identity.implementationId,
+      RELEASE_DECISION_POLICY_V4.identity.implementationId,
       RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
@@ -1045,7 +1045,7 @@ describe('OMK Release DecisionPolicy', () => {
       ],
     };
 
-    await expect(RELEASE_DECISION_POLICY.decide(decisionContext)).resolves.toEqual({
+    await expect(RELEASE_DECISION_POLICY_V4.decide(decisionContext)).resolves.toEqual({
       decisionStatus: 'decided',
       verdict: 'CAUTIOUS',
       reasonCodes: ['comparison-significant-progress', 'judge-ensemble-dissent'],
@@ -1088,7 +1088,7 @@ describe('OMK Release DecisionPolicy', () => {
       ],
     };
 
-    await expect(RELEASE_DECISION_POLICY.decide(decisionContext)).resolves.toEqual({
+    await expect(RELEASE_DECISION_POLICY_V4.decide(decisionContext)).resolves.toEqual({
       decisionStatus: 'decided',
       verdict: 'CAUTIOUS',
       reasonCodes: ['comparison-significant-progress', 'judge-uncertainty-unmeasured'],
@@ -1139,7 +1139,7 @@ describe('OMK Release DecisionPolicy', () => {
       },
     });
     const baseContext = context(releaseParameters, values);
-    await expect(RELEASE_DECISION_POLICY.decide({
+    await expect(RELEASE_DECISION_POLICY_V4.decide({
       ...baseContext,
       policy: {
         ...baseContext.policy,
@@ -1167,7 +1167,7 @@ describe('OMK Release DecisionPolicy', () => {
       sampleIds,
       targetScores: { control: [3, 3, 3, 3], treatment: [4, 4, 4, 4] },
     });
-    await expect(RELEASE_DECISION_POLICY.decide({
+    await expect(RELEASE_DECISION_POLICY_V4.decide({
       ...context(releaseParameters, values),
       evidenceStatus: 'partial',
     })).resolves.toEqual({
@@ -1178,7 +1178,7 @@ describe('OMK Release DecisionPolicy', () => {
       ...driftBase,
       policy: { ...driftBase.policy, analysisResultIds: ['composite-table'] },
     };
-    await expect(RELEASE_DECISION_POLICY.decide(drift)).resolves.toEqual({
+    await expect(RELEASE_DECISION_POLICY_V4.decide(drift)).resolves.toEqual({
       decisionStatus: 'not-decided',
       reasonCodes: ['release-analysis-result-binding-mismatch'],
     });
@@ -1187,7 +1187,7 @@ describe('OMK Release DecisionPolicy', () => {
       ...familyDriftBase,
       policy: { ...familyDriftBase.policy, comparisonFamilyResultId: 'composite-table' },
     };
-    await expect(RELEASE_DECISION_POLICY.decide(familyDrift)).resolves.toEqual({
+    await expect(RELEASE_DECISION_POLICY_V4.decide(familyDrift)).resolves.toEqual({
       decisionStatus: 'not-decided',
       reasonCodes: ['release-analysis-source-lineage-mismatch'],
     });
@@ -1204,7 +1204,7 @@ describe('OMK Release DecisionPolicy', () => {
     });
     const controller = new AbortController();
     controller.abort();
-    await expect(RELEASE_DECISION_POLICY.decide({
+    await expect(RELEASE_DECISION_POLICY_V4.decide({
       ...context(releaseParameters, values), signal: controller.signal,
     })).resolves.toEqual({
       decisionStatus: 'not-decided', reasonCodes: ['decision-cancelled'],

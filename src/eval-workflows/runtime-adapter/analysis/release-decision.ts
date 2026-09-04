@@ -56,10 +56,12 @@ import { compareStrings, round } from './analysis-support.js';
 export const RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID = 'omk.release-decision/v1' as const;
 export const RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID = 'omk.release-decision/v2' as const;
 export const RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID = 'omk.release-decision/v3' as const;
-export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v4' as const;
+export const RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID = 'omk.release-decision/v4' as const;
 export const RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID = 'omk.release-decision/v5' as const;
 export const RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID = 'omk.release-decision/v6' as const;
 export const RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID = 'omk.release-decision/v7' as const;
+export const CURRENT_RELEASE_DECISION_POLICY_IMPLEMENTATION_ID =
+  RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID;
 
 function releaseDecisionCapabilities(
   parameterSchema: SchemaIdentity,
@@ -256,12 +258,12 @@ export const RELEASE_DECISION_POLICY_V3_IDENTITY: RuntimeIdentity = deepFreezeCa
   }),
 );
 
-export const RELEASE_DECISION_POLICY_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
+export const RELEASE_DECISION_POLICY_V4_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
-    implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+    implementationId: RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
     version: '4.0.0',
     fingerprint: digestCanonicalJson({
-      implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+      implementationId: RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
       conclusionContract: [
         'SOLO',
         'UNDERPOWERED',
@@ -985,8 +987,8 @@ function decideRelease(
   return decided(representative.verdict, representative.reasonCodes);
 }
 
-export const RELEASE_DECISION_POLICY: AnalysisDecisionPolicy = {
-  identity: RELEASE_DECISION_POLICY_IDENTITY,
+export const RELEASE_DECISION_POLICY_V4: AnalysisDecisionPolicy = {
+  identity: RELEASE_DECISION_POLICY_V4_IDENTITY,
   decide: async (context) => decideRelease(context, {
     gateUnmeasuredJudgeUncertainty: true,
     sampleSizeBasis: 'observed-comparison-units',
@@ -1074,7 +1076,7 @@ export function createReleaseDecisionPolicies(): ReadonlyMap<string, AnalysisDec
     [RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V1],
     [RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V2],
     [RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V3],
-    [RELEASE_DECISION_POLICY_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY],
+    [RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V4],
     [RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V5],
     [RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V6],
     [RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V7],

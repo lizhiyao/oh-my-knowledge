@@ -62,7 +62,7 @@ import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   createReleaseDecisionPolicies,
   createReleaseDecisionParameterSchemaValidators,
-  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
@@ -826,7 +826,7 @@ describe('judge aggregation Analysis nodes', () => {
     definition.experiment.scheduling = { schedulingKind: 'randomized-block', blockSize: 2 };
     definition.decisionPolicy = {
       decisionPolicyId: 'release-decision',
-      implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+      implementationId: RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
       analysisResultIds: ['ensemble-table', 'composite-table', 'bootstrap-family'],
       comparisonFamily: [{
         comparisonId: 'control-vs-treatment',
@@ -1140,7 +1140,7 @@ describe('judge aggregation Analysis nodes', () => {
         interval: { estimate: 0, lower: 0, upper: 0, significant: false },
       }],
     });
-    const releasePolicy = decisionPolicies.get(RELEASE_DECISION_POLICY_IMPLEMENTATION_ID);
+    const releasePolicy = decisionPolicies.get(RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID);
     if (releasePolicy === undefined) throw new Error('missing Release DecisionPolicy');
     const decision = await decideAnalysisSource(
       plan,

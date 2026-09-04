@@ -46,7 +46,7 @@ import {
   AGREEMENT_PARAMETERS_SCHEMA,
   AGREEMENT_TABLE_SCHEMA,
   RELEASE_DECISION_PARAMETERS_SCHEMA,
-  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   resourceLeaseRequestsFromBindingEntries,
@@ -1175,7 +1175,7 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has(
-      RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
     )).toBe(true);
   });
 });

@@ -84,7 +84,7 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 ## Release Decision
 
-`omk.release-decision/v6` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
+`omk.release-decision/v7` 消费经过认证的 Composite table、Bootstrap family，以及每个适用 rubric 维度的 Judge Ensemble table。它会给出六种结论：
 
 | Verdict | 含义 |
 |---|---|
@@ -97,7 +97,7 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 运行状态、证据状态、结论状态与 verdict 始终正交。只有同时携带 `release-gates-passed` 的 `PROGRESS` 才能进入常规发布路由。跨 run 稳定性属于 Evaluation Series，绝不能从单次 run 推断。
 
-对于配对设计，v6 使用完整 pair 数执行样本量 gate；对于独立设计，使用两侧实际观测单元数中的较小值，因为较大一侧不能补偿另一侧缺失的证据。已编写但未观测的用例不能把 `UNDERPOWERED` 变成 `NOISE`。Monte Carlo 误差下仍为 `indeterminate` 的显著性不会进入该 gate，而是保持 not-decided。对于显著向好的比较，v6 把 `triviallySmallDifference` 应用于持久化的四位小数 percentile 区间下界，而不是点估计。下界等于阈值时通过；下界低于阈值时，即使点估计很大也返回 `CAUTIOUS`。
+对于配对设计，v7 使用完整 pair 数执行样本量 gate；对于独立设计，使用两侧实际观测单元数中的较小值，因为较大一侧不能补偿另一侧缺失的证据。已编写但未观测的用例不能把 `UNDERPOWERED` 变成 `NOISE`。Monte Carlo 误差下仍为 `indeterminate` 的显著性不会进入该 gate，而是保持 not-decided。对于显著向好的比较，v7 把 `triviallySmallDifference` 应用于持久化的四位小数 percentile 区间下界，而不是点估计。下界等于阈值时通过；下界低于阈值时，即使点估计很大也返回 `CAUTIOUS`。每个适用 rubric 维度都参与 dissent 与未测量不确定性门禁，不再让任何维度名拥有特殊语义。
 
 默认的 `minimum-count` 要求是 20 个比较单元。它是可配置的启发式证据下限，不代表统计功效已经得到证明。正式发布研究如果已有可靠先验信息，可以在 `eval.yaml` 中声明配对比较的先验规划：
 
