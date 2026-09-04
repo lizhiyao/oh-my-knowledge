@@ -33,6 +33,9 @@ import {
   RELEASE_DECISION_POLICY_V5,
   RELEASE_DECISION_POLICY_V5_IDENTITY,
   RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V6,
+  RELEASE_DECISION_POLICY_V6_IDENTITY,
+  RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
   buildBootstrapFamilyTable,
   buildBootstrapFamilyTableV2,
   compareCompositeGroups,
@@ -412,6 +415,20 @@ function contextV5(
   } as DecisionPolicyContext;
 }
 
+function contextV6(
+  releaseParameters: ReleaseDecisionParameters,
+  values: ReturnType<typeof tables>,
+): DecisionPolicyContext {
+  const current = contextV5(releaseParameters, values);
+  return {
+    ...current,
+    policy: {
+      ...current.policy,
+      implementationId: RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+    },
+  };
+}
+
 describe('OMK Release DecisionPolicy', () => {
   it('declares the sealed table and comparison-family capabilities', () => {
     const capabilities = DecisionPolicyCapabilitiesSchema.parse(
@@ -445,6 +462,7 @@ describe('OMK Release DecisionPolicy', () => {
       RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY.identity.implementationId,
       RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
     ]);
   });
 
@@ -524,6 +542,67 @@ describe('OMK Release DecisionPolicy', () => {
         'comparison-not-significant',
         'comparison-sample-size-sufficient',
       ],
+    });
+  });
+
+  it('v6 requires the confidence-interval lower bound to meet the practical-effect threshold', async () => {
+    const sampleIds = Array.from({ length: 4 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: [4, 4, 4, 4],
+        treatment: [4.01, 4.01, 4.01, 4.77],
+      },
+    });
+    const comparison = values.bootstrapV2.comparisons[0];
+    expect(comparison).toMatchObject({
+      comparisonStatus: 'observed',
+      interval: { estimate: 0.2, lower: 0.01 },
+      significance: { significanceStatus: 'significant', direction: 'positive' },
+    });
+    await expect(RELEASE_DECISION_POLICY_V5.decide(
+      contextV5(parameters({ sampleIds }), values),
+    )).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
+    });
+    await expect(RELEASE_DECISION_POLICY_V6.decide(
+      contextV6(parameters({ sampleIds }), values),
+    )).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'CAUTIOUS',
+      reasonCodes: [
+        'comparison-effect-practically-trivial',
+        'comparison-significant-progress',
+      ],
+    });
+  });
+
+  it('v6 declares the lower-bound practical-effect contract in its identity', () => {
+    expect(RELEASE_DECISION_POLICY_V6_IDENTITY.implementationId).toBe(
+      RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+    );
+    expect(RELEASE_DECISION_POLICY_V6_IDENTITY.fingerprint).toBe(
+      'sha256:3214ed21b603d3faa6b175cddf7fe701e0ca9c25055f4d7154d053ecacd1283a',
+    );
+  });
+
+  it('v6 treats a practical-effect lower bound equal to the threshold as sufficient', async () => {
+    const sampleIds = Array.from({ length: 4 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: [4, 4, 4, 4],
+        treatment: [4.1, 4.1, 4.1, 4.1],
+      },
+    });
+    await expect(RELEASE_DECISION_POLICY_V6.decide(
+      contextV6(parameters({ sampleIds }), values),
+    )).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
     });
   });
 

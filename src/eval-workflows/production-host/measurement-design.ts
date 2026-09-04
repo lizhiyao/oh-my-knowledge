@@ -33,7 +33,7 @@ import {
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
-  RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
 } from '../runtime-adapter/analysis/index.js';
 import {
   EXECUTION_ASSERTION_BINDINGS,
@@ -568,7 +568,7 @@ export function buildProductionMeasurementDesign(
       : splitHoldout(sampleIds, request.values.measurement.holdoutRatio);
     decisionPolicy = {
       decisionPolicyId: 'release-decision',
-      implementationId: RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+      implementationId: RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
       analysisResultIds,
       comparisonFamily: treatments.map((target) => ({
         comparisonId: `control-vs-${target.targetId}`,

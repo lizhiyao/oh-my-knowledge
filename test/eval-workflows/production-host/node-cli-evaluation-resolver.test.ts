@@ -12,7 +12,7 @@ import {
 } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
-  RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
@@ -713,7 +713,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
       sources: { judgeEnsemble: { replicateGroupId: expect.stringContaining('rubric-') } },
     });
     expect(compiled.definition.decisionPolicy?.implementationId).toBe(
-      RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
     );
     const rubricEvaluators = compiled.definition.evaluators.filter((evaluator) => (
       evaluator.measurement.replicateGroupId.startsWith('rubric-')
