@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import {
+  COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   createEvaluationEngine,
   EXECUTION_FACTS_SCHEMA_VERSION,
   type EvaluationDefinition,
   type EvaluationEngineRuntime,
   type EvaluationEvent,
   type EvaluationRunResult,
+  type ComparabilityRunIdentity,
   type Evaluator,
   type ExecutionFacts,
   type Executor,
@@ -66,9 +68,15 @@ declare const policy: MeasurementPolicy;
 declare const executor: Executor;
 declare const evaluator: Evaluator;
 declare const executionFacts: ExecutionFacts;
+declare const comparabilityRunIdentity: ComparabilityRunIdentity;
 
 const executionFactsVersion: typeof EXECUTION_FACTS_SCHEMA_VERSION = executionFacts.schemaVersion;
+const comparabilityAssessmentVersion: 'omk.comparability-assessment/v2' =
+  COMPARABILITY_ASSESSMENT_SCHEMA_VERSION;
+const comparabilityRunIdentityDigest: string = comparabilityRunIdentity.runIdentityDigest;
 void executionFactsVersion;
+void comparabilityAssessmentVersion;
+void comparabilityRunIdentityDigest;
 
 const sampleSet: EvalSampleSetDocument = createEvalSampleSetDocument([{
   sample_id: 'typescript-host',
@@ -348,7 +356,11 @@ async function advancedBoundary(source: ExecutionBundleSource): Promise<void> {
   await evaluation.source;
   await stages.close();
   const schema: URL = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
+  const comparabilitySchema: URL = resolveEvaluationCoreJsonSchema(
+    'comparability-assessment.schema.json',
+  );
   void schema;
+  void comparabilitySchema;
 }
 
 async function consume(): Promise<EvaluationRunResult> {

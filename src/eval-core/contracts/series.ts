@@ -52,7 +52,7 @@ export const EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION =
 export const EVALUATION_SERIES_PLAN_SCHEMA_VERSION =
   'omk.evaluation-series-plan/v1' as const;
 export const SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION =
-  'omk.series-analysis-bundle/v1' as const;
+  'omk.series-analysis-bundle/v2' as const;
 export const EVALUATION_SERIES_REPORT_SCHEMA_VERSION =
   'omk.evaluation-series-report/v1' as const;
 
@@ -211,7 +211,7 @@ export const SeriesAnalysisBundleSchema = z.object({
   provenance: ProvenanceSchema,
   bundleDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
-}).strict().meta({ title: 'OMK Series Analysis Bundle v1' });
+}).strict().meta({ title: 'OMK Series Analysis Bundle v2' });
 
 const SeriesDecisionResultBaseSchema = z.object({
   decisionPolicyId: IdentifierSchema,

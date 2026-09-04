@@ -445,9 +445,9 @@ Annotations such as `project`, `owner`, and `tags` do not enter measurement dige
 
 ### 7.1 ADR: compare a declared subject under an invariant measurement system
 
-**Status:** accepted and implemented for v1; tracked by [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441).
+**Status:** accepted and implemented; the `exact-measurement-design` semantics remain v1, while the Assessment wire contract is v2. Tracked by [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441).
 
-Comparability is a relation between two candidates for one declared use, not an intrinsic property of either Run. v1 supports one deliberately conservative design mode: `exact-measurement-design`. The caller declares one or more one-to-one Target mappings as the subjects under study. Only the mapped Target definitions and their Executor Runtime implementation identities may differ. Everything that defines how those subjects are observed, scored, sampled, analyzed, and—when requested—decided remains invariant.
+Comparability is a relation between two Runs for one declared use, not an intrinsic property of either Run. v1 supports one deliberately conservative design mode: `exact-measurement-design`. The caller declares one or more one-to-one Target mappings as the subjects under study. Only the mapped Target definitions and their Executor Runtime implementation identities may differ. Everything that defines how those subjects are observed, scored, sampled, analyzed, and—when requested—decided remains invariant.
 
 This decision separates three propositions that must never collapse into one Boolean:
 
@@ -512,7 +512,7 @@ interface RuntimeQualificationFact {
   verifiedByAttestationDigest?: Sha256Digest;
 }
 
-interface ComparabilityCandidateIdentity {
+interface ComparabilityRunIdentity {
   runContractDigest: Sha256Digest;
   planDigests: PlanDigests;
   randomizationDesignDigest: Sha256Digest;
@@ -522,16 +522,16 @@ interface ComparabilityCandidateIdentity {
   }[];
   sourceVerification: readonly ComparabilitySourceVerificationFact[];
   runtimeQualification: readonly RuntimeQualificationFact[];
-  candidateDigest: Sha256Digest;
+  runIdentityDigest: Sha256Digest;
 }
 
 interface ComparabilityAssessment {
-  schemaVersion: 'omk.comparability-assessment/v1';
+  schemaVersion: 'omk.comparability-assessment/v2';
   policyDigest: Sha256Digest;
   designMode: 'exact-measurement-design';
   comparisonScope: 'evaluation' | 'analysis' | 'decision';
-  left: ComparabilityCandidateIdentity;
-  right: ComparabilityCandidateIdentity;
+  left: ComparabilityRunIdentity;
+  right: ComparabilityRunIdentity;
   designStatus: 'compatible' | 'incompatible';
   evidenceQualificationStatus: 'verified' | 'conditional' | 'rejected';
   comparabilityStatus: 'compatible' | 'conditional' | 'incompatible';
@@ -576,8 +576,8 @@ interface ComparabilityVerificationContext {
 interface ComparabilityAssessmentPlanVerification {
   assessmentComputationStatus: 'verified';
   policyDigest: Sha256Digest;
-  leftCandidateDigest: Sha256Digest;
-  rightCandidateDigest: Sha256Digest;
+  leftRunIdentityDigest: Sha256Digest;
+  rightRunIdentityDigest: Sha256Digest;
 }
 
 interface ComparabilityAssessmentSource {
@@ -586,11 +586,13 @@ interface ComparabilityAssessmentSource {
 }
 ```
 
-`ComparabilityCandidateIdentity` records all stage Plan digests for audit, the subject-neutral `randomizationDesignDigest`, the source Bundle or Decision digest when supplied, and only the normalized verification facts actually used. `ComparabilitySourceVerificationFact` is a discriminated union so a cache receipt cannot claim a provenance trust value and a parent trust fact cannot claim `indeterminate`. A missing artifact is represented by absence plus a reason in the Assessment, never by a fake digest or a self-reported verified fact. The identity never copies raw Dataset, Gold, output, trace, attestation material, cost values, or invocation counts.
+`ComparabilityRunIdentity` records the comparability projection of one Run: all stage Plan digests for audit, the subject-neutral `randomizationDesignDigest`, the source Bundle or Decision digest when supplied, and only the normalized verification facts actually used. Its `runIdentityDigest` commits this complete projection; it is distinct from `runContractDigest`, which commits only the sealed measurement contract. `ComparabilitySourceVerificationFact` is a discriminated union so a cache receipt cannot claim a provenance trust value and a parent trust fact cannot claim `indeterminate`. A missing artifact is represented by absence plus a reason in the Assessment, never by a fake digest or a self-reported verified fact. The identity never copies raw Dataset, Gold, output, trace, attestation material, cost values, or invocation counts.
+
+Assessment v2 replaces v1's retired side-identity names without accepting aliases or dual-writing fields. Because the side digest excludes its own field, an identical side payload retains the same digest value under the new name. The Assessment schema version and serialized field name do change canonical Assessment bytes and `assessmentDigest`, which in turn changes the containing SeriesAnalysisBundle bytes and `bundleDigest`; that container therefore also advances to v2. The frozen v1 roots remain published at their original URIs. RunPlan, its schema identities, and `runContractDigest` do not change because comparability remains a post-hoc contract.
 
 Runtime comparison uses two separately digested projections. `runtimeIdentityDigest` uses domain `omk.runtime-identity/v1` and covers the complete sealed RuntimeIdentity. `runtimeImplementationDigest` uses domain `omk.runtime-implementation-identity/v1` and covers exactly `implementationId`, `version`, `fingerprint`, `capabilities`, and the complete `implementationManifest`; only this digest participates in design equality. Evidence qualification contains `fingerprintBasis`, sealed/effective assurance, the closed `provenanceFacets`, effective source trust, and source-verification axes. The implementation manifest must prove structurally that every behavior-affecting dependency is either committed by `fingerprint` or present as a canonical implementation facet; provenance may contain observation and attestation metadata only. A basis- or assurance-only change therefore cannot masquerade as a changed measurement algorithm, a changed effective dependency cannot hide as evidence metadata, and an equal implementation digest cannot masquerade as authenticated execution.
 
-`ComparabilityVerificationContext` is a non-serializable trusted-host input, parallel to existing Bundle verification contexts. Its map key is the complete `runtimeIdentityDigest`; its value is the digest of attestation material already verified by an independent host boundary. Core never accepts raw attestation material, a transported `verifiedByAttestationDigest`, or a caller-supplied effective level as proof. A Runtime may rise above its sealed assurance only when the context contains an exact identity match; Core then records the verified attestation digest in the candidate. Malformed context entries are rejected, while entries for unrelated identities grant no trust and are ignored. New attestation produces a new candidate and Assessment digest rather than mutating an existing artifact.
+`ComparabilityVerificationContext` is a non-serializable trusted-host input, parallel to existing Bundle verification contexts. Its map key is the complete `runtimeIdentityDigest`; its value is the digest of attestation material already verified by an independent host boundary. Core never accepts raw attestation material, a transported `verifiedByAttestationDigest`, or a caller-supplied effective level as proof. A Runtime may rise above its sealed assurance only when the context contains an exact identity match; Core then records the verified attestation digest in the corresponding Run identity. Malformed context entries are rejected, while entries for unrelated identities grant no trust and are ignored. New attestation produces a new Run identity and Assessment digest rather than mutating an existing artifact.
 
 Comparability follows the same document/source split as every other durable stage:
 
@@ -598,9 +600,9 @@ Comparability follows the same document/source split as every other durable stag
 - `assessComparability()` consumes the Policy, two sealed RunPlans, an exact authenticated stage-source prefix for each side when available, and an optional trusted verification context. It returns a branded `ComparabilityAssessmentSource`.
 - `parseComparabilityAssessment()` consumes a transported document plus the same Plans, sources, Policy, and verification context; it recomputes the complete expected Assessment and returns a branded source only on exact equality.
 
-Required source prefixes are Execution+Evaluation for `evaluation`, plus Analysis for `analysis`, and plus Decision for `decision`. A shorter exact prefix is allowed for plan-only diagnosis and yields explicit conditional reasons; a hole, foreign parent, stale stage, or unbranded source is rejected before comparison. `ComparabilityAssessmentSource` is a non-serializable capability guarded like the existing Bundle sources. Automated release consumers must require that source and `comparabilityStatus: 'compatible'`; a transported Assessment that merely claims `verified` has no authority. Host signing may attest a document for transport, but v1 never lets signing bypass plan/source-aware recomputation.
+Required source prefixes are Execution+Evaluation for `evaluation`, plus Analysis for `analysis`, and plus Decision for `decision`. A shorter exact prefix is allowed for plan-only diagnosis and yields explicit conditional reasons; a hole, foreign parent, stale stage, or unbranded source is rejected before comparison. `ComparabilityAssessmentSource` is a non-serializable capability guarded like the existing Bundle sources. Automated release consumers must require that source and `comparabilityStatus: 'compatible'`; a transported Assessment that merely claims `verified` has no authority. Host signing may attest a document for transport, but Assessment v2 never lets signing bypass plan/source-aware recomputation.
 
-The Policy is immutable, canonical, and content-addressed. It is supplied to the pure Core operation rather than embedded in `MeasurementPolicy` or either RunPlan: comparing historical Runs does not change how either Run was produced. Policy, candidate, and Assessment digests omit their own digest field. The Assessment binds both candidate digests and the Policy digest, and repeats the Policy's `designMode` and `comparisonScope` so a standalone reader cannot mistake Analysis comparability for Decision comparability; plan-aware validation requires exact equality. It contains no clock time, localized message, host path, or unordered reason collection; presentation adapters map stable reason codes to human text.
+The Policy is immutable, canonical, and content-addressed. It is supplied to the pure Core operation rather than embedded in `MeasurementPolicy` or either RunPlan: comparing historical Runs does not change how either Run was produced. Policy, Run identity, and Assessment digests omit their own digest field. The Assessment binds both Run identity digests and the Policy digest, and repeats the Policy's `designMode` and `comparisonScope` so a standalone reader cannot mistake Analysis comparability for Decision comparability; plan-aware validation requires exact equality. It contains no clock time, localized message, host path, or unordered reason collection; presentation adapters map stable reason codes to human text.
 
 The Policy and Assessment publish their own JSON Schemas, but those post-hoc schemas are deliberately excluded from each RunPlan's `schemaIdentities`. Adding or revising the comparison mechanism must not retroactively perturb the identity of the measurements being compared. Only schemas consumed while producing a Run enter `runContractDigest`.
 
@@ -615,7 +617,7 @@ All arrays use the following total order before hashing; non-canonical input is 
 - tagged Target references sort by `targetReferenceKind` `subject < literal-target` and then `referenceId`; subjects sort by `(subjectId, leftTargetId, rightTargetId)`, artifacts by `(stage, artifactDigest)`, and Runtime qualifications by `(stage, runtimeKind, referenceId, runtimeIdentityDigest)`;
 - reasons sort by severity `incompatible < conditional < info`, axis `design < evidence < identity`, scope `evaluation < analysis < decision`, then `reasonCode`.
 
-Uniqueness keys are `subjectId`, each side's Target ID, each side's tagged Target reference, artifact stage, `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)` for source facts, `(stage, runtimeKind, referenceId)` for Runtime qualifications, and `reasonCode` for reasons. A duplicate semantic key is invalid even when the remaining values differ. Each reason code has exactly one normative `(axis, severity)` pair; `scope` must equal the Assessment scope. The identity-change code maps to `(identity, info)`; every `comparability-design-*` code maps to `(design, incompatible)`; `comparability-evidence-source-untrusted` maps to `(evidence, incompatible)`; every other `comparability-evidence-*` code maps to `(evidence, conditional)`. A code is emitted at most once when its category applies, regardless of how many component-level differences triggered it. Canonical component diffs, paths, and per-component digest pairs are a recomputable diagnostic view over the two authenticated Plans, not fields of the content-addressed Assessment. These rules, rather than implementation traversal or diff granularity, define `policyDigest`, `candidateDigest`, and `assessmentDigest` across languages and hosts.
+Uniqueness keys are `subjectId`, each side's Target ID, each side's tagged Target reference, artifact stage, `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)` for source facts, `(stage, runtimeKind, referenceId)` for Runtime qualifications, and `reasonCode` for reasons. A duplicate semantic key is invalid even when the remaining values differ. Each reason code has exactly one normative `(axis, severity)` pair; `scope` must equal the Assessment scope. The identity-change code maps to `(identity, info)`; every `comparability-design-*` code maps to `(design, incompatible)`; `comparability-evidence-source-untrusted` maps to `(evidence, incompatible)`; every other `comparability-evidence-*` code maps to `(evidence, conditional)`. A code is emitted at most once when its category applies, regardless of how many component-level differences triggered it. Canonical component diffs, paths, and per-component digest pairs are a recomputable diagnostic view over the two authenticated Plans, not fields of the content-addressed Assessment. These rules, rather than implementation traversal or diff granularity, define `policyDigest`, `runIdentityDigest`, and `assessmentDigest` across languages and hosts.
 
 ### 7.3 Scope projections
 
@@ -669,7 +671,7 @@ The initial change matrix below is normative. Outcomes assume otherwise verified
 | effective source trust is `untrusted` | incompatible (`evidenceQualificationStatus: rejected`) | incompatible (`evidenceQualificationStatus: rejected`) | incompatible (`evidenceQualificationStatus: rejected`) | `comparability-evidence-source-untrusted` |
 | an invariant Runtime uses an opaque fingerprint | conditional | conditional | conditional | `comparability-evidence-runtime-identity-opaque` |
 
-Invalid subject mappings use `comparability-design-subject-mapping-invalid`; any invariant component not covered by a more specific code uses `comparability-design-projection-mismatch`. Equal versus different stage and artifact digests are recorded in candidate identities, not emitted as verdict reasons. Reason codes are category-level and unique; adapters that need field-level explanations recompute a non-authoritative diagnostic diff from the authenticated Plans. Unknown reason codes fail closed for automated release consumers; readers may still preserve and display them.
+Invalid subject mappings use `comparability-design-subject-mapping-invalid`; any invariant component not covered by a more specific code uses `comparability-design-projection-mismatch`. Equal versus different stage and artifact digests are recorded in Run identities, not emitted as verdict reasons. Reason codes are category-level and unique; adapters that need field-level explanations recompute a non-authoritative diagnostic diff from the authenticated Plans. Unknown reason codes fail closed for automated release consumers; readers may still preserve and display them.
 
 ### 7.5 Consequences and rejected alternatives
 
@@ -895,7 +897,7 @@ These decisions close the architectural choices required before Contracts. Confo
 
 The first implementation phase is tracked by [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427). Its source of truth is isolated under `src/eval-core/contracts/`; it does not import CLI, executor, grading, renderer, server, or other application layers. The historical evaluation implementation has been removed.
 
-The active catalog currently publishes twenty-one JSON Schema 2020-12 roots across `schemas/eval-core/v1/` and `schemas/eval-core/v2/`: Analysis Bundle and Evaluation Report are v2, while ExecutionFacts, ExecutorCapabilities, EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, ComparabilityPolicy, ComparabilityAssessment, Event, BudgetSummary, Execution and Evaluation Bundles, and four Evaluation Series contracts remain v1. Frozen superseded roots remain addressable at their original catalog identities. TypeScript types are inferred from the active Zod 4 schemas. `yarn build:schemas` regenerates active files without rewriting historical roots, while `yarn build` checks committed output for drift and copies the catalog into the package build.
+The active catalog currently publishes twenty-one JSON Schema 2020-12 roots across `schemas/eval-core/v1/` and `schemas/eval-core/v2/`: Analysis Bundle, Evaluation Report, ComparabilityAssessment, and SeriesAnalysisBundle are v2, while ExecutionFacts, ExecutorCapabilities, EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, ComparabilityPolicy, Event, BudgetSummary, Execution and Evaluation Bundles, and the other three Evaluation Series contracts remain v1. Frozen superseded roots remain addressable at their original catalog identities. TypeScript types are inferred from the active Zod 4 schemas. `yarn build:schemas` regenerates active files without rewriting historical roots, while `yarn build` checks committed output for drift and copies the catalog into the package build.
 
 Wire entry points use `parseWireDocument()` rather than a bare schema parse. It first rejects values that cannot be represented as I-JSON or JCS input, including non-finite numbers, functions, symbols, cycles, sparse arrays, accessor properties, class instances, and unpaired Unicode surrogates, and then applies the Zod schema. Hosts accepting raw JSON text must additionally reject duplicate property names before constructing a JavaScript value because duplicates are no longer observable after ordinary `JSON.parse()`.
 
@@ -1025,7 +1027,7 @@ An Evaluation Series is a separate offline Core workflow over independent Runs. 
 
 Series never accepts a file, URI, unverified Report object, or host summary as evidence. `createEvaluationSeriesMemberSource()` requires a sealed RunPlan and the authenticated Execution, Evaluation, Analysis, optional Decision source chain, then revalidates the EvaluationReport before issuing a non-serializable member capability. Each durable `SeriesMemberReference` binds the Run contract, all stage Plan digests, all Bundle digests, optional Decision digest, Report digest, terminal three-axis status, and effective trust.
 
-`startEvaluationSeries()` first enforces member-slot uniqueness, any expected Run identity, and—when preregistered—the member Run's exact pre-execution Series binding. A post-hoc Run with no matching binding fails closed. `runEvaluationSeries()` is an exact Promise convenience over that same start path, not a second implementation. Core then applies the explicit ComparabilityPolicy from an anchor Run to every candidate. The complete authenticated ComparabilityAssessment for every non-anchor member is persisted in SeriesAnalysisBundle, so design incompatibility, evidence conditionality, and identity change remain auditable rather than collapsing into a count. Design incompatibility is never accepted. Evidence-conditional comparability is admitted only when the preregistered policy allows `conditional`; an identity change cannot be hidden as a missing member. Missing, partial, cancelled, budget-exhausted, and failed Runs remain in `SeriesMemberCoverage` and are never dropped or converted to zero.
+`startEvaluationSeries()` first enforces member-slot uniqueness, any expected Run identity, and—when preregistered—the member Run's exact pre-execution Series binding. A post-hoc Run with no matching binding fails closed. `runEvaluationSeries()` is an exact Promise convenience over that same start path, not a second implementation. Core then applies the explicit ComparabilityPolicy from an anchor Run to every non-anchor Run. The complete authenticated ComparabilityAssessment for every non-anchor member is persisted in SeriesAnalysisBundle, so design incompatibility, evidence conditionality, and identity change remain auditable rather than collapsing into a count. Design incompatibility is never accepted. Evidence-conditional comparability is admitted only when the preregistered policy allows `conditional`; an identity change cannot be hidden as a missing member. Missing, partial, cancelled, budget-exhausted, and failed Runs remain in `SeriesMemberCoverage` and are never dropped or converted to zero.
 
 The Series start path returns `{ events, result }`. Its bounded single-consumer event stream is lifecycle notification only and never needs a live consumer for the result to settle. Events use an injected clock, deterministic per-run sequencing, and contain identities, terminal states, and sanitized reason codes rather than member evidence or Runtime errors. Event generation or delivery failure cannot rewrite artifacts or the terminal result. The optional EventWriter has one fixed observational contract: writes are ordered and backpressured, and the first writer failure disables further writes. If external delivery is ever allowed to fail a Series, that behavior must first become a sealed Series policy rather than a start-time switch.
 

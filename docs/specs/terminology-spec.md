@@ -101,6 +101,7 @@ Rules:
 - `cwd` belongs to the runtime context and is declared separately (the CLI's `--control-cwd` / `--treatment-cwd`, or eval.yaml's structured `cwd:` field); it is not encoded into the variant expression.
 - To express "empty artifact + a specific runtime context", use a self-describing label as the artifact and supply the cwd separately, e.g. `--treatment project-env --treatment-cwd /path/to/project`.
 - Do not collapse the project directory, project-level runtime context, and explicit artifact injection into a single concept.
+- Do not confuse runtime context with the two sample-level Core projections: `executionContext` is input visible to the Executor for one sample, while `evaluationContext` is input visible only to the Evaluator. Neither field describes the host environment.
 
 ### 6. Sample
 

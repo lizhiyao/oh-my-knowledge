@@ -66,7 +66,7 @@ import {
 export type ComparabilityRunPlan = SealedRunPlan;
 
 export const COMPARABILITY_POLICY_SCHEMA_VERSION = 'omk.comparability-policy/v1' as const;
-export const COMPARABILITY_ASSESSMENT_SCHEMA_VERSION = 'omk.comparability-assessment/v1' as const;
+export const COMPARABILITY_ASSESSMENT_SCHEMA_VERSION = 'omk.comparability-assessment/v2' as const;
 
 export const ComparisonScopeSchema = z.enum(['evaluation', 'analysis', 'decision']);
 export const ComparabilityStageSchema = z.enum([
@@ -317,41 +317,41 @@ function runtimeQualificationKey(
   return `${fact.stage}\u0000${fact.runtimeKind}\u0000${fact.referenceId}`;
 }
 
-export const ComparabilityCandidateIdentitySchema = z.object({
+export const ComparabilityRunIdentitySchema = z.object({
   runContractDigest: Sha256DigestSchema,
   planDigests: PlanDigestsSchema,
   randomizationDesignDigest: Sha256DigestSchema,
   artifacts: z.array(ComparabilityArtifactIdentitySchema),
   sourceVerification: z.array(ComparabilitySourceVerificationFactSchema),
   runtimeQualification: z.array(RuntimeQualificationFactSchema),
-  candidateDigest: Sha256DigestSchema,
-}).strict().superRefine((candidate, context) => {
-  if (!isCanonicalArray(candidate.artifacts, compareArtifacts)
-      || new Set(candidate.artifacts.map((artifact) => artifact.stage)).size
-        !== candidate.artifacts.length) {
+  runIdentityDigest: Sha256DigestSchema,
+}).strict().superRefine((runIdentity, context) => {
+  if (!isCanonicalArray(runIdentity.artifacts, compareArtifacts)
+      || new Set(runIdentity.artifacts.map((artifact) => artifact.stage)).size
+        !== runIdentity.artifacts.length) {
     context.addIssue({ code: 'custom', path: ['artifacts'], message: 'Artifacts must be canonical.' });
   }
-  if (candidate.runContractDigest !== candidate.planDigests.runContractDigest
-      || candidate.randomizationDesignDigest
-        !== candidate.planDigests.randomizationDesignDigest) {
+  if (runIdentity.runContractDigest !== runIdentity.planDigests.runContractDigest
+      || runIdentity.randomizationDesignDigest
+        !== runIdentity.planDigests.randomizationDesignDigest) {
     context.addIssue({
       code: 'custom',
       path: ['planDigests'],
-      message: 'Candidate summary digests must equal their Plan digest entries.',
+      message: 'Run identity digests must equal their Plan digest entries.',
     });
   }
-  if (!isCanonicalArray(candidate.sourceVerification, compareSourceFacts)
-      || new Set(candidate.sourceVerification.map(sourceFactKey)).size
-        !== candidate.sourceVerification.length) {
+  if (!isCanonicalArray(runIdentity.sourceVerification, compareSourceFacts)
+      || new Set(runIdentity.sourceVerification.map(sourceFactKey)).size
+        !== runIdentity.sourceVerification.length) {
     context.addIssue({
       code: 'custom',
       path: ['sourceVerification'],
       message: 'Source verification facts must be unique and canonical.',
     });
   }
-  if (!isCanonicalArray(candidate.runtimeQualification, compareRuntimeQualifications)
-      || new Set(candidate.runtimeQualification.map(runtimeQualificationKey)).size
-        !== candidate.runtimeQualification.length) {
+  if (!isCanonicalArray(runIdentity.runtimeQualification, compareRuntimeQualifications)
+      || new Set(runIdentity.runtimeQualification.map(runtimeQualificationKey)).size
+        !== runIdentity.runtimeQualification.length) {
     context.addIssue({
       code: 'custom',
       path: ['runtimeQualification'],
@@ -429,8 +429,8 @@ export const ComparabilityAssessmentSchema = z.object({
   policyDigest: Sha256DigestSchema,
   designMode: z.literal('exact-measurement-design'),
   comparisonScope: ComparisonScopeSchema,
-  left: ComparabilityCandidateIdentitySchema,
-  right: ComparabilityCandidateIdentitySchema,
+  left: ComparabilityRunIdentitySchema,
+  right: ComparabilityRunIdentitySchema,
   designStatus: z.enum(['compatible', 'incompatible']),
   evidenceQualificationStatus: z.enum(['verified', 'conditional', 'rejected']),
   comparabilityStatus: z.enum(['compatible', 'conditional', 'incompatible']),
@@ -490,15 +490,15 @@ export type ComparabilitySourceVerificationFact = z.infer<
   typeof ComparabilitySourceVerificationFactSchema
 >;
 export type RuntimeQualificationFact = z.infer<typeof RuntimeQualificationFactSchema>;
-export type ComparabilityCandidateIdentity = z.infer<
-  typeof ComparabilityCandidateIdentitySchema
+export type ComparabilityRunIdentity = z.infer<
+  typeof ComparabilityRunIdentitySchema
 >;
 export type ComparabilityReason = z.infer<typeof ComparabilityReasonSchema>;
 export type ComparabilityAssessment = z.infer<typeof ComparabilityAssessmentSchema>;
 
 export type ComparabilityValidationErrorCode =
   | 'COMPARABILITY_POLICY_DIGEST_MISMATCH'
-  | 'COMPARABILITY_CANDIDATE_DIGEST_MISMATCH'
+  | 'COMPARABILITY_RUN_IDENTITY_DIGEST_MISMATCH'
   | 'COMPARABILITY_ASSESSMENT_DIGEST_MISMATCH'
   | 'COMPARABILITY_ASSESSMENT_RECOMPUTATION_MISMATCH'
   | 'COMPARABILITY_SOURCE_PREFIX_INVALID'
@@ -554,18 +554,18 @@ export function parseComparabilityPolicyDocument(value: unknown): ComparabilityP
   return policy;
 }
 
-function computeCandidateDigest(
-  candidate: Omit<ComparabilityCandidateIdentity, 'candidateDigest'>,
+function computeRunIdentityDigest(
+  runIdentity: Omit<ComparabilityRunIdentity, 'runIdentityDigest'>,
 ): Sha256Digest {
-  return digestCanonicalJson(candidate);
+  return digestCanonicalJson(runIdentity);
 }
 
-function assertCandidateDigest(candidate: ComparabilityCandidateIdentity): void {
-  const { candidateDigest, ...payload } = candidate;
-  if (computeCandidateDigest(payload) !== candidateDigest) {
+function assertRunIdentityDigest(runIdentity: ComparabilityRunIdentity): void {
+  const { runIdentityDigest, ...payload } = runIdentity;
+  if (computeRunIdentityDigest(payload) !== runIdentityDigest) {
     throw new ComparabilityValidationError(
-      'COMPARABILITY_CANDIDATE_DIGEST_MISMATCH',
-      'Comparability candidate digest does not match its canonical payload.',
+      'COMPARABILITY_RUN_IDENTITY_DIGEST_MISMATCH',
+      'Comparability Run identity digest does not match its canonical payload.',
     );
   }
 }
@@ -578,8 +578,8 @@ function computeAssessmentDigest(
 
 export function parseComparabilityAssessmentDocument(value: unknown): ComparabilityAssessment {
   const assessment = parseWireDocument(ComparabilityAssessmentSchema, value);
-  assertCandidateDigest(assessment.left);
-  assertCandidateDigest(assessment.right);
+  assertRunIdentityDigest(assessment.left);
+  assertRunIdentityDigest(assessment.right);
   const { assessmentDigest, ...payload } = assessment;
   if (computeAssessmentDigest(payload) !== assessmentDigest) {
     throw new ComparabilityValidationError(
@@ -612,8 +612,8 @@ export interface ComparabilityVerificationContext {
 export interface ComparabilityAssessmentPlanVerification {
   readonly assessmentComputationStatus: 'verified';
   readonly policyDigest: Sha256Digest;
-  readonly leftCandidateDigest: Sha256Digest;
-  readonly rightCandidateDigest: Sha256Digest;
+  readonly leftRunIdentityDigest: Sha256Digest;
+  readonly rightRunIdentityDigest: Sha256Digest;
 }
 
 export interface ComparabilityAssessmentSource {
@@ -1485,12 +1485,12 @@ function requiredStages(scope: ComparisonScope): ComparabilityStage[] {
   return ['execution', 'evaluation', 'analysis', 'decision'];
 }
 
-function candidateIdentity(
+function comparabilityRunIdentity(
   plan: SealedRunPlan,
   scope: ComparisonScope,
   source: ComparabilitySourcePrefix,
   attestations: ReadonlyMap<Sha256Digest, ComparabilityRuntimeAttestation>,
-): ComparabilityCandidateIdentity {
+): ComparabilityRunIdentity {
   const artifacts = requiredStages(scope)
     .filter((stage) => source[stage] !== undefined)
     .map((stage) => ({ stage, artifactDigest: sourceDigest(source, stage) }))
@@ -1505,25 +1505,25 @@ function candidateIdentity(
   };
   return {
     ...payload,
-    candidateDigest: computeCandidateDigest(payload),
+    runIdentityDigest: computeRunIdentityDigest(payload),
   };
 }
 
 function evidenceReasons(
   scope: ComparisonScope,
-  leftCandidate: ComparabilityCandidateIdentity,
-  rightCandidate: ComparabilityCandidateIdentity,
+  leftRunIdentity: ComparabilityRunIdentity,
+  rightRunIdentity: ComparabilityRunIdentity,
   leftProjection: SideProjection,
   rightProjection: SideProjection,
 ): Set<ComparabilityReasonCode> {
   const codes = new Set<ComparabilityReasonCode>();
   const required = requiredStages(scope);
-  const leftStages = new Set(leftCandidate.artifacts.map((artifact) => artifact.stage));
-  const rightStages = new Set(rightCandidate.artifacts.map((artifact) => artifact.stage));
+  const leftStages = new Set(leftRunIdentity.artifacts.map((artifact) => artifact.stage));
+  const rightStages = new Set(rightRunIdentity.artifacts.map((artifact) => artifact.stage));
   if (required.some((stage) => !leftStages.has(stage) || !rightStages.has(stage))) {
     addReason(codes, 'comparability-evidence-source-absent');
   }
-  const facts = [...leftCandidate.sourceVerification, ...rightCandidate.sourceVerification];
+  const facts = [...leftRunIdentity.sourceVerification, ...rightRunIdentity.sourceVerification];
   if (facts.some((fact) => fact.verificationFactKind === 'verification-axis'
       && fact.verificationStatus === 'indeterminate')) {
     addReason(codes, 'comparability-evidence-verification-indeterminate');
@@ -1536,22 +1536,22 @@ function evidenceReasons(
     addReason(codes, 'comparability-evidence-source-untrusted');
   }
   const runtimes = [
-    ...leftCandidate.runtimeQualification,
-    ...rightCandidate.runtimeQualification,
+    ...leftRunIdentity.runtimeQualification,
+    ...rightRunIdentity.runtimeQualification,
   ];
   if (trustFacts.some((fact) => fact.trust === 'declared' || fact.trust === 'unknown')
       || runtimes.some((runtime) => runtime.effectiveAssuranceLevel !== 'verified')) {
     addReason(codes, 'comparability-evidence-assurance-unverified');
   }
   const opaqueInvariantRuntime = (
-    candidate: ComparabilityCandidateIdentity,
+    runIdentity: ComparabilityRunIdentity,
     projection: SideProjection,
-  ): boolean => candidate.runtimeQualification.some((runtime) => (
+  ): boolean => runIdentity.runtimeQualification.some((runtime) => (
     runtime.fingerprintBasis === 'opaque'
     && !(runtime.runtimeKind === 'executor' && projection.mappedTargetIds.has(runtime.referenceId))
   ));
-  if (opaqueInvariantRuntime(leftCandidate, leftProjection)
-      || opaqueInvariantRuntime(rightCandidate, rightProjection)) {
+  if (opaqueInvariantRuntime(leftRunIdentity, leftProjection)
+      || opaqueInvariantRuntime(rightRunIdentity, rightProjection)) {
     addReason(codes, 'comparability-evidence-runtime-identity-opaque');
   }
   return codes;
@@ -1574,8 +1574,8 @@ function makeAssessmentSource(assessment: ComparabilityAssessment): Comparabilit
     planVerification: {
       assessmentComputationStatus: 'verified' as const,
       policyDigest: assessment.policyDigest as Sha256Digest,
-      leftCandidateDigest: assessment.left.candidateDigest as Sha256Digest,
-      rightCandidateDigest: assessment.right.candidateDigest as Sha256Digest,
+      leftRunIdentityDigest: assessment.left.runIdentityDigest as Sha256Digest,
+      rightRunIdentityDigest: assessment.right.runIdentityDigest as Sha256Digest,
     },
   });
   comparabilityAssessmentSources.add(source);
@@ -1605,13 +1605,13 @@ export function assessComparability(
     rightSource,
   );
   const design = designReasons(policy, leftPlan, rightPlan);
-  const left = candidateIdentity(
+  const left = comparabilityRunIdentity(
     leftPlan,
     policy.comparisonScope,
     normalizedLeftSource,
     attestations,
   );
-  const right = candidateIdentity(
+  const right = comparabilityRunIdentity(
     rightPlan,
     policy.comparisonScope,
     normalizedRightSource,

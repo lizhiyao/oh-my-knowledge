@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EVALUATION_CORE_JSON_SCHEMA_FILES,
@@ -19,6 +20,7 @@ import {
 } from 'oh-my-knowledge/eval-core';
 
 assert.equal(EXECUTION_FACTS_SCHEMA_VERSION, 'omk.execution-facts/v1');
+assert.equal(COMPARABILITY_ASSESSMENT_SCHEMA_VERSION, 'omk.comparability-assessment/v2');
 
 function schemaIdentity(name) {
   return {
@@ -634,4 +636,11 @@ assert.equal(
 assert.equal(EVALUATION_CORE_JSON_SCHEMA_FILES.length, 21);
 const executionSchemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 assert.equal(executionSchemaUrl.pathname.endsWith('/execution-bundle.schema.json'), true);
+const comparabilitySchemaUrl = resolveEvaluationCoreJsonSchema(
+  'comparability-assessment.schema.json',
+);
+assert.equal(
+  comparabilitySchemaUrl.pathname.endsWith('/schemas/v2/comparability-assessment.schema.json'),
+  true,
+);
 assert.throws(() => resolveEvaluationCoreJsonSchema('../package.json'));

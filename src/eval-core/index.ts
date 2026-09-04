@@ -53,7 +53,7 @@ export type {
   ComparabilityAssessment,
   ComparabilityAssessmentPlanVerification,
   ComparabilityAssessmentSource,
-  ComparabilityCandidateIdentity,
+  ComparabilityRunIdentity,
   ComparabilityPolicy,
   ComparabilityPolicyInput,
   ComparabilityReason,

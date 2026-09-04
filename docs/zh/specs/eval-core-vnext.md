@@ -442,9 +442,9 @@ runContractDigest = H(all plan digests + schema identities + event delivery + op
 
 ### 1．ADR：在不变测量系统下比较显式声明的研究对象
 
-**状态**：v1 已接受并实现，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
+**状态**：已接受并实现；`exact-measurement-design` 语义保持 v1，Assessment wire contract 为 v2。由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
 
-可比性是两个候选对象针对一种明确用途的关系，不是任一 Run 自带的固有属性。v1 只支持一种刻意保守的设计模式：`exact-measurement-design`。调用方把一组一一对应的 Target 显式声明为研究对象；只有这些映射 Target 的定义及其 Executor Runtime 实现身份可以变化。观察、评分、抽样、分析这些研究对象，以及在请求时作出决策的全部测量系统保持不变。
+可比性是两个 Run 针对一种明确用途的关系，不是任一 Run 自带的固有属性。v1 只支持一种刻意保守的设计模式：`exact-measurement-design`。调用方把一组一一对应的 Target 显式声明为研究对象；只有这些映射 Target 的定义及其 Executor Runtime 实现身份可以变化。观察、评分、抽样、分析这些研究对象，以及在请求时作出决策的全部测量系统保持不变。
 
 该决策把三个绝不能压缩成同一 Boolean 的命题分开：
 
@@ -509,7 +509,7 @@ interface RuntimeQualificationFact {
   verifiedByAttestationDigest?: Sha256Digest;
 }
 
-interface ComparabilityCandidateIdentity {
+interface ComparabilityRunIdentity {
   runContractDigest: Sha256Digest;
   planDigests: PlanDigests;
   randomizationDesignDigest: Sha256Digest;
@@ -519,16 +519,16 @@ interface ComparabilityCandidateIdentity {
   }[];
   sourceVerification: readonly ComparabilitySourceVerificationFact[];
   runtimeQualification: readonly RuntimeQualificationFact[];
-  candidateDigest: Sha256Digest;
+  runIdentityDigest: Sha256Digest;
 }
 
 interface ComparabilityAssessment {
-  schemaVersion: 'omk.comparability-assessment/v1';
+  schemaVersion: 'omk.comparability-assessment/v2';
   policyDigest: Sha256Digest;
   designMode: 'exact-measurement-design';
   comparisonScope: 'evaluation' | 'analysis' | 'decision';
-  left: ComparabilityCandidateIdentity;
-  right: ComparabilityCandidateIdentity;
+  left: ComparabilityRunIdentity;
+  right: ComparabilityRunIdentity;
   designStatus: 'compatible' | 'incompatible';
   evidenceQualificationStatus: 'verified' | 'conditional' | 'rejected';
   comparabilityStatus: 'compatible' | 'conditional' | 'incompatible';
@@ -573,8 +573,8 @@ interface ComparabilityVerificationContext {
 interface ComparabilityAssessmentPlanVerification {
   assessmentComputationStatus: 'verified';
   policyDigest: Sha256Digest;
-  leftCandidateDigest: Sha256Digest;
-  rightCandidateDigest: Sha256Digest;
+  leftRunIdentityDigest: Sha256Digest;
+  rightRunIdentityDigest: Sha256Digest;
 }
 
 interface ComparabilityAssessmentSource {
@@ -583,11 +583,13 @@ interface ComparabilityAssessmentSource {
 }
 ```
 
-`ComparabilityCandidateIdentity` 为审计记录全部 stage Plan digest、subject-neutral `randomizationDesignDigest`、已提供的 source Bundle 或 Decision digest，以及本次判断实际使用的规范化 verification facts。`ComparabilitySourceVerificationFact` 使用 discriminated union，因此 cache receipt 不能填写 provenance trust，parent trust fact 也不能填写 `indeterminate`。缺少 artifact 时，通过 Assessment 中不存在对应条目并附带 reason 表达，绝不伪造 digest 或自报 verified fact。该 identity 不复制原始 Dataset、Gold、output、trace、attestation material、cost value 或 invocation count。
+`ComparabilityRunIdentity` 记录一次 Run 的 comparability 投影：用于审计的全部 stage Plan digest、subject-neutral `randomizationDesignDigest`、已提供的 source Bundle 或 Decision digest，以及本次判断实际使用的规范化 verification facts。它的 `runIdentityDigest` 承诺该完整投影；`runContractDigest` 则只承诺封存后的测量契约，二者不能混用。`ComparabilitySourceVerificationFact` 使用 discriminated union，因此 cache receipt 不能填写 provenance trust，parent trust fact 也不能填写 `indeterminate`。缺少 artifact 时，通过 Assessment 中不存在对应条目并附带 reason 表达，绝不伪造 digest 或自报 verified fact。该 identity 不复制原始 Dataset、Gold、output、trace、attestation material、cost value 或 invocation count。
+
+Assessment v2 替换 v1 已废弃的侧边身份命名，不接受 alias，也不双写字段。由于侧边 digest 计算时排除自身字段，相同侧边 payload 在新名称下仍得到相同 digest value；但 Assessment schema version 与序列化字段名会改变 canonical Assessment bytes 和 `assessmentDigest`，继而改变所包含 SeriesAnalysisBundle 的 bytes 与 `bundleDigest`，因此该容器也升级为 v2。冻结的 v1 根契约继续发布在原 URI。Comparability 仍是 post-hoc contract，不会改变 RunPlan、其中的 schema identity 或 `runContractDigest`。
 
 Runtime 比较使用两个分别计算 digest 的投影。`runtimeIdentityDigest` 使用 `omk.runtime-identity/v1` domain 并覆盖完整 sealed RuntimeIdentity；`runtimeImplementationDigest` 使用 `omk.runtime-implementation-identity/v1` domain，且只覆盖 `implementationId`、`version`、`fingerprint`、`capabilities` 与完整 `implementationManifest`，只有该 digest 参与 design equality。Evidence qualification 包含 `fingerprintBasis`、sealed／effective assurance、封闭的 `provenanceFacets`、effective source trust 与 source verification axes。implementation manifest 必须在结构上证明每个行为相关依赖已经由 `fingerprint` 承诺，或作为 canonical implementation facet 存在；provenance 只能包含 observation 与 attestation metadata。这样，只改变 basis 或 assurance 不会伪装成测量算法改变，effective dependency 变化不能藏进 evidence metadata，implementation digest 相同也不会伪装成执行已认证。
 
-`ComparabilityVerificationContext` 是不可序列化的 trusted-host 输入，与现有 Bundle verification context 平行。Map key 是完整 `runtimeIdentityDigest`，value 是已经由独立宿主边界验证过的 attestation material digest。Core 绝不把 raw attestation material、transported `verifiedByAttestationDigest` 或调用方自填的 effective level 当作证明。只有 context 精确匹配 Runtime identity 时，effective assurance 才能高于 sealed level；Core 随后把 verified attestation digest 记录到 candidate。畸形 context entry 会被拒绝；与本次 Runtime identity 无关的 entry 不授予任何信任，直接忽略。新增 attestation 会产生新的 candidate／Assessment digest，不能修改旧 artifact。
+`ComparabilityVerificationContext` 是不可序列化的 trusted-host 输入，与现有 Bundle verification context 平行。Map key 是完整 `runtimeIdentityDigest`，value 是已经由独立宿主边界验证过的 attestation material digest。Core 绝不把 raw attestation material、transported `verifiedByAttestationDigest` 或调用方自填的 effective level 当作证明。只有 context 精确匹配 Runtime identity 时，effective assurance 才能高于 sealed level；Core 随后把 verified attestation digest 记录到对应 Run identity。畸形 context entry 会被拒绝；与本次 Runtime identity 无关的 entry 不授予任何信任，直接忽略。新增 attestation 会产生新的 Run identity 与 Assessment digest，不能修改旧 artifact。
 
 Comparability 与其它 durable stage 使用同一套 document／source 分层：
 
@@ -595,9 +597,9 @@ Comparability 与其它 durable stage 使用同一套 document／source 分层�
 - `assessComparability()` 消费 Policy、两个 sealed RunPlan、两侧可用的准确 authenticated stage-source prefix，以及可选 trusted verification context，返回 branded `ComparabilityAssessmentSource`；
 - `parseComparabilityAssessment()` 消费 transported document 及同一组 Plan、source、Policy 与 verification context，完整重算预期 Assessment，只有完全相等时才返回 branded source。
 
-`evaluation` 所需 source prefix 是 Execution+Evaluation，`analysis` 再加 Analysis，`decision` 再加 Decision。plan-only diagnosis 可以提供更短但必须准确的 prefix，并产生显式 conditional reason；存在空洞、foreign parent、stale stage 或 unbranded source 时，在比较前直接拒绝。`ComparabilityAssessmentSource` 与现有 Bundle source 一样，是受保护的不可序列化 capability。自动发布消费者必须同时要求该 source 与 `comparabilityStatus: 'compatible'`；transported Assessment 即使自报 `verified` 也没有权限。宿主可以签名证明 document transport，但 v1 不允许签名绕过 plan／source-aware 重算。
+`evaluation` 所需 source prefix 是 Execution+Evaluation，`analysis` 再加 Analysis，`decision` 再加 Decision。plan-only diagnosis 可以提供更短但必须准确的 prefix，并产生显式 conditional reason；存在空洞、foreign parent、stale stage 或 unbranded source 时，在比较前直接拒绝。`ComparabilityAssessmentSource` 与现有 Bundle source 一样，是受保护的不可序列化 capability。自动发布消费者必须同时要求该 source 与 `comparabilityStatus: 'compatible'`；transported Assessment 即使自报 `verified` 也没有权限。宿主可以签名证明 document transport，但 Assessment v2 不允许签名绕过 plan／source-aware 重算。
 
-Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Policy、candidate 与 Assessment 计算 digest 时均排除自身 digest 字段。Assessment 绑定两个 candidate digest 与 Policy digest，并重复 Policy 的 `designMode` 与 `comparisonScope`，避免 standalone reader 把 Analysis comparability 误当成 Decision comparability；plan-aware validation 要求它们完全一致。Assessment 不包含 clock time、本地化 message、宿主路径或无序 reason 集合；展示 adapter 再把稳定 reason code 映射为人类文案。
+Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Policy、Run identity 与 Assessment 计算 digest 时均排除自身 digest 字段。Assessment 绑定两个 Run identity digest 与 Policy digest，并重复 Policy 的 `designMode` 与 `comparisonScope`，避免 standalone reader 把 Analysis comparability 误当成 Decision comparability；plan-aware validation 要求它们完全一致。Assessment 不包含 clock time、本地化 message、宿主路径或无序 reason 集合；展示 adapter 再把稳定 reason code 映射为人类文案。
 
 Policy 与 Assessment 发布各自独立的 JSON Schema，但这些事后比较 schema 刻意不进入每份 RunPlan 的 `schemaIdentities`。新增或修改比较机制不能反向扰动被比较测量本身的 identity；只有生产 Run 时实际消费的 schema 才进入 `runContractDigest`。
 
@@ -612,7 +614,7 @@ Subject mapping 必须非空，`subjectId` 必须唯一，左右两侧分别一�
 - tagged Target reference 先按 `targetReferenceKind` 的 `subject < literal-target` 排序，再按 `referenceId` 排序；subject 按 `(subjectId, leftTargetId, rightTargetId)` 排序，artifact 按 `(stage, artifactDigest)` 排序，Runtime qualification 按 `(stage, runtimeKind, referenceId, runtimeIdentityDigest)` 排序；
 - reason 先按 severity `incompatible < conditional < info`、axis `design < evidence < identity`、scope `evaluation < analysis < decision` 排序，最后按 `reasonCode` 排序。
 
-Uniqueness key 分别是 `subjectId`、左右两侧各自的 Target ID、每侧 tagged Target reference、artifact stage、source fact 的 `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)`、Runtime qualification 的 `(stage, runtimeKind, referenceId)`，以及 reason 的 `reasonCode`。即使其它 value 不同，semantic key 重复仍属于非法。每个 reason code 只有一个 normative `(axis, severity)` 组合，`scope` 必须等于 Assessment scope：identity-change code 映射到 `(identity, info)`；全部 `comparability-design-*` code 映射到 `(design, incompatible)`；`comparability-evidence-source-untrusted` 映射到 `(evidence, incompatible)`；其它 `comparability-evidence-*` code 映射到 `(evidence, conditional)`。同一类别无论由多少 component-level difference 触发，对应 code 最多输出一次。Canonical component diff、path 和 per-component digest pair 是根据两份 authenticated Plan 重新计算的 diagnostic view，不进入 content-addressed Assessment。跨语言和宿主的 `policyDigest`、`candidateDigest` 与 `assessmentDigest` 由这些规则决定，不能依赖实现遍历顺序或 diff 粒度。
+Uniqueness key 分别是 `subjectId`、左右两侧各自的 Target ID、每侧 tagged Target reference、artifact stage、source fact 的 `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)`、Runtime qualification 的 `(stage, runtimeKind, referenceId)`，以及 reason 的 `reasonCode`。即使其它 value 不同，semantic key 重复仍属于非法。每个 reason code 只有一个 normative `(axis, severity)` 组合，`scope` 必须等于 Assessment scope：identity-change code 映射到 `(identity, info)`；全部 `comparability-design-*` code 映射到 `(design, incompatible)`；`comparability-evidence-source-untrusted` 映射到 `(evidence, incompatible)`；其它 `comparability-evidence-*` code 映射到 `(evidence, conditional)`。同一类别无论由多少 component-level difference 触发，对应 code 最多输出一次。Canonical component diff、path 和 per-component digest pair 是根据两份 authenticated Plan 重新计算的 diagnostic view，不进入 content-addressed Assessment。跨语言和宿主的 `policyDigest`、`runIdentityDigest` 与 `assessmentDigest` 由这些规则决定，不能依赖实现遍历顺序或 diff 粒度。
 
 ### 3．Scope 投影
 
@@ -666,7 +668,7 @@ else                                                              => compatible
 | effective source trust 为 `untrusted` | incompatible（`evidenceQualificationStatus: rejected`） | incompatible（`evidenceQualificationStatus: rejected`） | incompatible（`evidenceQualificationStatus: rejected`） | `comparability-evidence-source-untrusted` |
 | invariant Runtime 使用 opaque fingerprint | conditional | conditional | conditional | `comparability-evidence-runtime-identity-opaque` |
 
-无效 subject mapping 使用 `comparability-design-subject-mapping-invalid`；其它没有更具体 code 的 invariant component 使用 `comparability-design-projection-mismatch`。Stage／artifact digest 相同还是不同会记录在 candidate identity 中，不作为 verdict reason。Reason code 按类别唯一；需要 field-level explanation 的 adapter 根据 authenticated Plan 重算不具权威性的 diagnostic diff。自动发布消费者遇到未知 reason code 时必须 fail closed；reader 仍可保留并展示它。
+无效 subject mapping 使用 `comparability-design-subject-mapping-invalid`；其它没有更具体 code 的 invariant component 使用 `comparability-design-projection-mismatch`。Stage／artifact digest 相同还是不同会记录在 Run identity 中，不作为 verdict reason。Reason code 按类别唯一；需要 field-level explanation 的 adapter 根据 authenticated Plan 重算不具权威性的 diagnostic diff。自动发布消费者遇到未知 reason code 时必须 fail closed；reader 仍可保留并展示它。
 
 ### 5．影响与否决方案
 
@@ -891,7 +893,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/eval-core/contracts/`，不导入 CLI、executor、grading、renderer、server 或其它应用层；历史评测实现已经删除。
 
-当前 catalog 在 `schemas/eval-core/v1/` 与 `schemas/eval-core/v2/` 共发布二十一个有效 JSON Schema 2020-12 根契约：Analysis Bundle 与 Evaluation Report 为 v2；ExecutionFacts、ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、BudgetSummary、Execution／Evaluation Bundle，以及四个 Evaluation Series 契约仍为 v1。被替代的冻结根契约继续保留在原 catalog identity，供历史解析。TypeScript 类型从有效 Zod 4 schema 推导；`yarn build:schemas` 重新生成有效文件但不改写历史根契约，`yarn build` 检查已提交产物是否漂移，并把整个 catalog 复制到 package build。
+当前 catalog 在 `schemas/eval-core/v1/` 与 `schemas/eval-core/v2/` 共发布二十一个有效 JSON Schema 2020-12 根契约：Analysis Bundle、Evaluation Report、ComparabilityAssessment 与 SeriesAnalysisBundle 为 v2；ExecutionFacts、ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、Event、BudgetSummary、Execution／Evaluation Bundle，以及其它三个 Evaluation Series 契约仍为 v1。被替代的冻结根契约继续保留在原 catalog identity，供历史解析。TypeScript 类型从有效 Zod 4 schema 推导；`yarn build:schemas` 重新生成有效文件但不改写历史根契约，`yarn build` 检查已提交产物是否漂移，并把整个 catalog 复制到 package build。
 
 Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
 

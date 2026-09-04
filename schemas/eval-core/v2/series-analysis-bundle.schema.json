@@ -1,0 +1,1299 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.series-analysis-bundle/v2",
+      "type": "string"
+    },
+    "__schema1": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema10": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "stage": {
+            "$ref": "#/$defs/__schema11"
+          }
+        },
+        "required": [
+          "stage",
+          "artifactDigest"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema11": {
+      "enum": [
+        "execution",
+        "evaluation",
+        "analysis",
+        "decision"
+      ],
+      "type": "string"
+    },
+    "__schema12": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "sourceDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "stage": {
+                "$ref": "#/$defs/__schema11"
+              },
+              "verificationAxis": {
+                "$ref": "#/$defs/__schema14"
+              },
+              "verificationFactKind": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "verificationStatus": {
+                "$ref": "#/$defs/__schema15"
+              }
+            },
+            "required": [
+              "verificationFactKind",
+              "stage",
+              "sourceDigest",
+              "verificationAxis",
+              "verificationStatus"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "sourceDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "stage": {
+                "$ref": "#/$defs/__schema11"
+              },
+              "trust": {
+                "$ref": "#/$defs/__schema18"
+              },
+              "trustRelation": {
+                "$ref": "#/$defs/__schema17"
+              },
+              "verificationFactKind": {
+                "$ref": "#/$defs/__schema16"
+              }
+            },
+            "required": [
+              "verificationFactKind",
+              "stage",
+              "sourceDigest",
+              "trustRelation",
+              "trust"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "__schema13": {
+      "const": "verification-axis",
+      "type": "string"
+    },
+    "__schema14": {
+      "enum": [
+        "provenance-attestation",
+        "cache-receipt",
+        "invocation-budget",
+        "provider-cost-budget",
+        "policy-execution"
+      ],
+      "type": "string"
+    },
+    "__schema15": {
+      "enum": [
+        "verified",
+        "indeterminate"
+      ],
+      "type": "string"
+    },
+    "__schema16": {
+      "const": "source-trust",
+      "type": "string"
+    },
+    "__schema17": {
+      "enum": [
+        "parent",
+        "effective"
+      ],
+      "type": "string"
+    },
+    "__schema18": {
+      "enum": [
+        "verified",
+        "declared",
+        "untrusted",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "__schema19": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "effectiveAssuranceLevel": {
+            "$ref": "#/$defs/__schema22"
+          },
+          "fingerprintBasis": {
+            "$ref": "#/$defs/__schema21"
+          },
+          "referenceId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "runtimeIdentityDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "runtimeImplementationDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "runtimeKind": {
+            "$ref": "#/$defs/__schema20"
+          },
+          "sealedAssuranceLevel": {
+            "$ref": "#/$defs/__schema22"
+          },
+          "stage": {
+            "$ref": "#/$defs/__schema11"
+          },
+          "verifiedByAttestationDigest": {
+            "$ref": "#/$defs/__schema23"
+          }
+        },
+        "required": [
+          "stage",
+          "runtimeKind",
+          "referenceId",
+          "runtimeIdentityDigest",
+          "runtimeImplementationDigest",
+          "fingerprintBasis",
+          "sealedAssuranceLevel",
+          "effectiveAssuranceLevel"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema2": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema20": {
+      "enum": [
+        "executor",
+        "evaluator",
+        "analysis-node",
+        "missing-policy",
+        "decision-policy"
+      ],
+      "type": "string"
+    },
+    "__schema21": {
+      "enum": [
+        "content-derived",
+        "environment-derived",
+        "self-reported",
+        "opaque"
+      ],
+      "type": "string"
+    },
+    "__schema22": {
+      "enum": [
+        "verified",
+        "declared",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "__schema23": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "__schema24": {
+      "enum": [
+        "compatible",
+        "incompatible"
+      ],
+      "type": "string"
+    },
+    "__schema25": {
+      "enum": [
+        "verified",
+        "conditional",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "__schema26": {
+      "enum": [
+        "compatible",
+        "conditional",
+        "incompatible"
+      ],
+      "type": "string"
+    },
+    "__schema27": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "axis": {
+            "enum": [
+              "design",
+              "evidence",
+              "identity"
+            ],
+            "type": "string"
+          },
+          "reasonCode": {
+            "enum": [
+              "comparability-identity-declared-subject-change",
+              "comparability-design-subject-mapping-invalid",
+              "comparability-design-undeclared-subject-change",
+              "comparability-design-evaluation-input-mismatch",
+              "comparability-design-evaluation-instrument-mismatch",
+              "comparability-design-sampling-mismatch",
+              "comparability-design-randomization-mismatch",
+              "comparability-design-analysis-mismatch",
+              "comparability-design-comparison-mismatch",
+              "comparability-design-decision-mismatch",
+              "comparability-design-schema-mismatch",
+              "comparability-design-projection-mismatch",
+              "comparability-evidence-source-absent",
+              "comparability-evidence-verification-indeterminate",
+              "comparability-evidence-assurance-unverified",
+              "comparability-evidence-source-untrusted",
+              "comparability-evidence-runtime-identity-opaque"
+            ],
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/__schema8"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "conditional",
+              "incompatible"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reasonCode",
+          "axis",
+          "severity",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema28": {
+      "additionalProperties": false,
+      "properties": {
+        "budgetExhausted": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cancelled": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "comparable": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "missing": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "partial": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "planned": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "planned",
+        "completed",
+        "partial",
+        "cancelled",
+        "budgetExhausted",
+        "failed",
+        "missing",
+        "comparable"
+      ],
+      "type": "object"
+    },
+    "__schema29": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "analysisMode": {
+                "$ref": "#/$defs/__schema43"
+              },
+              "analysisStandardId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "analysisStatus": {
+                "const": "completed",
+                "type": "string"
+              },
+              "assumptionChecks": {
+                "$ref": "#/$defs/__schema41"
+              },
+              "coverage": {
+                "$ref": "#/$defs/__schema28"
+              },
+              "implementation": {
+                "$ref": "#/$defs/__schema30"
+              },
+              "inputReferences": {
+                "$ref": "#/$defs/__schema38"
+              },
+              "memberIds": {
+                "$ref": "#/$defs/__schema40"
+              },
+              "nodeId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "outputSchema": {
+                "$ref": "#/$defs/__schema36"
+              },
+              "parentDigests": {
+                "$ref": "#/$defs/__schema44"
+              },
+              "recordDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "resultId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "resultType": {
+                "enum": [
+                  "scalar",
+                  "interval",
+                  "distribution",
+                  "table",
+                  "matrix",
+                  "curve"
+                ],
+                "type": "string"
+              },
+              "runtimeExecutionStatus": {
+                "$ref": "#/$defs/__schema42"
+              },
+              "value": {
+                "$ref": "#/$defs/__schema32"
+              }
+            },
+            "required": [
+              "resultId",
+              "nodeId",
+              "analysisStandardId",
+              "implementation",
+              "outputSchema",
+              "inputReferences",
+              "memberIds",
+              "coverage",
+              "assumptionChecks",
+              "runtimeExecutionStatus",
+              "analysisMode",
+              "parentDigests",
+              "recordDigest",
+              "analysisStatus",
+              "resultType",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "analysisMode": {
+                "$ref": "#/$defs/__schema43"
+              },
+              "analysisStandardId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "analysisStatus": {
+                "const": "inconclusive",
+                "type": "string"
+              },
+              "assumptionChecks": {
+                "$ref": "#/$defs/__schema41"
+              },
+              "coverage": {
+                "$ref": "#/$defs/__schema28"
+              },
+              "implementation": {
+                "$ref": "#/$defs/__schema30"
+              },
+              "inputReferences": {
+                "$ref": "#/$defs/__schema38"
+              },
+              "memberIds": {
+                "$ref": "#/$defs/__schema40"
+              },
+              "nodeId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "outputSchema": {
+                "$ref": "#/$defs/__schema36"
+              },
+              "parentDigests": {
+                "$ref": "#/$defs/__schema44"
+              },
+              "reasonCodes": {
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "recordDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "resultId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "runtimeExecutionStatus": {
+                "$ref": "#/$defs/__schema42"
+              }
+            },
+            "required": [
+              "resultId",
+              "nodeId",
+              "analysisStandardId",
+              "implementation",
+              "outputSchema",
+              "inputReferences",
+              "memberIds",
+              "coverage",
+              "assumptionChecks",
+              "runtimeExecutionStatus",
+              "analysisMode",
+              "parentDigests",
+              "recordDigest",
+              "analysisStatus",
+              "reasonCodes"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "analysisMode": {
+                "$ref": "#/$defs/__schema43"
+              },
+              "analysisStandardId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "analysisStatus": {
+                "const": "failed",
+                "type": "string"
+              },
+              "assumptionChecks": {
+                "$ref": "#/$defs/__schema41"
+              },
+              "coverage": {
+                "$ref": "#/$defs/__schema28"
+              },
+              "error": {
+                "$ref": "#/$defs/__schema45"
+              },
+              "implementation": {
+                "$ref": "#/$defs/__schema30"
+              },
+              "inputReferences": {
+                "$ref": "#/$defs/__schema38"
+              },
+              "memberIds": {
+                "$ref": "#/$defs/__schema40"
+              },
+              "nodeId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "outputSchema": {
+                "$ref": "#/$defs/__schema36"
+              },
+              "parentDigests": {
+                "$ref": "#/$defs/__schema44"
+              },
+              "recordDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "resultId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "runtimeExecutionStatus": {
+                "$ref": "#/$defs/__schema42"
+              }
+            },
+            "required": [
+              "resultId",
+              "nodeId",
+              "analysisStandardId",
+              "implementation",
+              "outputSchema",
+              "inputReferences",
+              "memberIds",
+              "coverage",
+              "assumptionChecks",
+              "runtimeExecutionStatus",
+              "analysisMode",
+              "parentDigests",
+              "recordDigest",
+              "analysisStatus",
+              "error"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "__schema3": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisBundleDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "decisionDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "effectiveTrust": {
+            "enum": [
+              "verified",
+              "declared",
+              "untrusted",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "evaluationBundleDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "executionBundleDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "memberId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "planDigests": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "replicateIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reportDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "runContractDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "status": {
+            "additionalProperties": false,
+            "properties": {
+              "conclusionStatus": {
+                "enum": [
+                  "conclusive",
+                  "inconclusive",
+                  "not-evaluated"
+                ],
+                "type": "string"
+              },
+              "evidenceStatus": {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unresolvable"
+                ],
+                "type": "string"
+              },
+              "runStatus": {
+                "enum": [
+                  "completed",
+                  "cancelled",
+                  "budget-exhausted",
+                  "failed"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "runStatus",
+              "evidenceStatus",
+              "conclusionStatus"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "memberId",
+          "replicateIndex",
+          "runContractDigest",
+          "planDigests",
+          "executionBundleDigest",
+          "evaluationBundleDigest",
+          "analysisBundleDigest",
+          "reportDigest",
+          "status",
+          "effectiveTrust"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema30": {
+      "additionalProperties": false,
+      "properties": {
+        "assuranceLevel": {
+          "$ref": "#/$defs/__schema22"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/__schema32"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "fingerprintBasis": {
+          "$ref": "#/$defs/__schema21"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "implementationManifest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/__schema33"
+            },
+            {
+              "$ref": "#/$defs/__schema34"
+            }
+          ]
+        },
+        "provenanceFacets": {
+          "additionalProperties": false,
+          "properties": {
+            "attestation": {
+              "additionalProperties": false,
+              "properties": {
+                "attestationDigest": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "attestorId": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "required": [
+                "attestationDigest"
+              ],
+              "type": "object"
+            },
+            "observation": {
+              "additionalProperties": false,
+              "properties": {
+                "observedAt": {
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                  "type": "string"
+                },
+                "observerId": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "version": {
+          "$ref": "#/$defs/__schema31"
+        }
+      },
+      "required": [
+        "implementationId",
+        "fingerprint",
+        "fingerprintBasis",
+        "assuranceLevel",
+        "capabilities",
+        "implementationManifest"
+      ],
+      "type": "object"
+    },
+    "__schema31": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema32": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema32"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema32"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema33": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema34": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema35"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema35": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema32"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema36": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "schemaUri": {
+          "$ref": "#/$defs/__schema37"
+        },
+        "schemaVersion": {
+          "$ref": "#/$defs/__schema31"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "schemaUri",
+        "schemaDigest"
+      ],
+      "type": "object"
+    },
+    "__schema37": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema38": {
+      "items": {
+        "$ref": "#/$defs/__schema39"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema39": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "referenceId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "seriesInputKind": {
+              "const": "members",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seriesInputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "referenceId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "seriesInputKind": {
+              "const": "analysis-result",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seriesInputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema4": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisInputDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "analysisPlanDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "datasetRevisionDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "decisionPlanDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "evaluationInputDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "evaluationPlanDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "executionInputDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "executionPlanDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "randomizationDesignDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "runContractDigest": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "datasetRevisionDigest",
+        "executionInputDigest",
+        "evaluationInputDigest",
+        "analysisInputDigest",
+        "randomizationDesignDigest",
+        "executionPlanDigest",
+        "evaluationPlanDigest",
+        "analysisPlanDigest",
+        "decisionPlanDigest",
+        "runContractDigest"
+      ],
+      "type": "object"
+    },
+    "__schema40": {
+      "items": {
+        "$ref": "#/$defs/__schema1"
+      },
+      "type": "array"
+    },
+    "__schema41": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptionId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "checkStatus": {
+            "enum": [
+              "passed",
+              "failed",
+              "not-evaluated"
+            ],
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/$defs/__schema32"
+          },
+          "nodeId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "reasonCode": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        "required": [
+          "assumptionId",
+          "nodeId",
+          "checkStatus"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema42": {
+      "enum": [
+        "executed",
+        "not-executed"
+      ],
+      "type": "string"
+    },
+    "__schema43": {
+      "enum": [
+        "preregistered",
+        "exploratory"
+      ],
+      "type": "string"
+    },
+    "__schema44": {
+      "items": {
+        "$ref": "#/$defs/__schema2"
+      },
+      "type": "array"
+    },
+    "__schema45": {
+      "additionalProperties": false,
+      "properties": {
+        "causes": {
+          "items": {
+            "$ref": "#/$defs/__schema45"
+          },
+          "type": "array"
+        },
+        "code": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "details": {
+          "$ref": "#/$defs/__schema32"
+        },
+        "message": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "stage": {
+          "enum": [
+            "configuration",
+            "infrastructure",
+            "execution",
+            "evaluation",
+            "analysis",
+            "internal"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "stage",
+        "message"
+      ],
+      "type": "object"
+    },
+    "__schema46": {
+      "additionalProperties": false,
+      "properties": {
+        "facets": {
+          "$ref": "#/$defs/__schema32"
+        },
+        "parentDigests": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "type": "array"
+        },
+        "provenanceKind": {
+          "enum": [
+            "native",
+            "imported",
+            "replay",
+            "derived"
+          ],
+          "type": "string"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "trust": {
+          "enum": [
+            "verified",
+            "declared",
+            "untrusted",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenanceKind",
+        "trust",
+        "parentDigests"
+      ],
+      "type": "object"
+    },
+    "__schema47": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema32"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema37"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema37"
+      },
+      "type": "object"
+    },
+    "__schema5": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorMemberId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "assessment": {
+            "additionalProperties": false,
+            "properties": {
+              "assessmentDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "comparabilityStatus": {
+                "$ref": "#/$defs/__schema26"
+              },
+              "comparisonScope": {
+                "$ref": "#/$defs/__schema8"
+              },
+              "designMode": {
+                "$ref": "#/$defs/__schema7"
+              },
+              "designStatus": {
+                "$ref": "#/$defs/__schema24"
+              },
+              "evidenceQualificationStatus": {
+                "$ref": "#/$defs/__schema25"
+              },
+              "left": {
+                "$ref": "#/$defs/__schema9"
+              },
+              "policyDigest": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "reasons": {
+                "$ref": "#/$defs/__schema27"
+              },
+              "right": {
+                "$ref": "#/$defs/__schema9"
+              },
+              "schemaVersion": {
+                "$ref": "#/$defs/__schema6"
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "policyDigest",
+              "designMode",
+              "comparisonScope",
+              "left",
+              "right",
+              "designStatus",
+              "evidenceQualificationStatus",
+              "comparabilityStatus",
+              "reasons",
+              "assessmentDigest"
+            ],
+            "type": "object"
+          },
+          "memberId": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        "required": [
+          "anchorMemberId",
+          "memberId",
+          "assessment"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema6": {
+      "const": "omk.comparability-assessment/v2",
+      "type": "string"
+    },
+    "__schema7": {
+      "const": "exact-measurement-design",
+      "type": "string"
+    },
+    "__schema8": {
+      "enum": [
+        "evaluation",
+        "analysis",
+        "decision"
+      ],
+      "type": "string"
+    },
+    "__schema9": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "planDigests": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "randomizationDesignDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "runContractDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "runIdentityDigest": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "runtimeQualification": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "sourceVerification": {
+          "$ref": "#/$defs/__schema12"
+        }
+      },
+      "required": [
+        "runContractDigest",
+        "planDigests",
+        "randomizationDesignDigest",
+        "artifacts",
+        "sourceVerification",
+        "runtimeQualification",
+        "runIdentityDigest"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v2/series-analysis-bundle.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bundleDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "bundleId": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "comparability": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "coverage": {
+      "$ref": "#/$defs/__schema28"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema47"
+    },
+    "members": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "provenance": {
+      "$ref": "#/$defs/__schema46"
+    },
+    "records": {
+      "$ref": "#/$defs/__schema29"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "seriesPlanDigest": {
+      "$ref": "#/$defs/__schema2"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "bundleId",
+    "seriesPlanDigest",
+    "members",
+    "comparability",
+    "coverage",
+    "records",
+    "provenance",
+    "bundleDigest"
+  ],
+  "title": "OMK Series Analysis Bundle v2",
+  "type": "object"
+}
