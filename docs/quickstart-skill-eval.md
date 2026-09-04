@@ -32,13 +32,13 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 `omk init` creates two skill variants and three sample cases. `--dry-run` previews the sealed task plan and estimated calls; the real run then opens the Core run in Studio. With only three demo samples, the verdict is often `UNDERPOWERED` — that is a normal teaching result, not a failed run.
 
-If you want the first run to meet omk's registered sample-size floor, create the demo with the first-party 20-case pack instead:
+If you want the first run to meet omk's default heuristic evidence floor, create the demo with the first-party 20-case pack instead:
 
 ```bash
 omk init demo --samples 20
 ```
 
-The full pack has five security, robustness, maintainability, and performance cases each, spans easy / medium / hard difficulty, and includes no-defect controls so a reviewer is not rewarded merely for reporting more issues. It produces 40 control / treatment executions, so the 3-case default remains the fastest way to verify setup. The fixed starter cases are marked `provenance: llm-generated`: twenty samples improve statistical power, but they remain teaching data rather than production release evidence. Review them and replace them with real domain cases before trusting a ship / no-ship decision.
+The full pack has five security, robustness, maintainability, and performance cases each, spans easy / medium / hard difficulty, and includes no-defect controls so a reviewer is not rewarded merely for reporting more issues. It produces 40 control / treatment executions, so the 3-case default remains the fastest way to verify setup. The fixed starter cases are marked `provenance: llm-generated`: twenty samples meet only the default heuristic evidence floor, not an a priori power plan, and remain teaching data rather than production release evidence. Review them and replace them with real domain cases before trusting a ship / no-ship decision.
 
 Inside a Codex task, the shortest commands above need no runtime flags. To make Codex the default in regular terminals, add the preference to your shell profile (for example `~/.zshrc`):
 
@@ -152,7 +152,7 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 | `CAUTIOUS` | Do not ship blind. Inspect the warning that fired (layer gate, judge dissent, stability, or holdout), fix the issue, then re-run; loosen the gate only after explicit human review. |
 | `REGRESSION` | Do not ship. Start from the weakest layer and the failing samples, fix the artifact, then re-run the eval. |
 | `NOISE` | No release call yet. Add samples or sharpen the sample set so the diff can separate from noise, then re-run. |
-| `UNDERPOWERED` | Obtain roughly 20+ comparable cases, or at least 2x the current observed comparison units, then re-run. |
+| `UNDERPOWERED` | Satisfy the preregistered sample-size requirement, then re-run. Without an a priori plan, 20 comparable units is only omk's default heuristic floor; configure `decision.power` from external pilot assumptions or register a simulation-derived `decision.minimumComparisonUnits` for a formal study. |
 | `SOLO` | Add a control, usually `omk eval --control baseline --treatment <name>`, before making a ship/no-ship call. |
 
 ## Things to keep in mind

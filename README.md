@@ -55,7 +55,7 @@ export OMK_EXECUTOR=codex
 
 Without `OMK_MODEL`, omk reads the model from `~/.codex/config.toml`. You can still pass `--executor codex --model <codex-model>` per command. Pass `--judge-models` or set `OMK_JUDGE_MODELS` only when you want a different judge.
 
-> The default 3-case pack is a low-cost workflow check, so `UNDERPOWERED` is expected. `--samples 20` selects a first-party, difficulty-stratified starter pack that meets omk's registered sample-size floor. Its provenance is `llm-generated`: use it to learn the statistical workflow, then review and replace it with real domain cases before making a release decision.
+> The default 3-case pack is a low-cost workflow check, so `UNDERPOWERED` is expected. `--samples 20` selects a first-party, difficulty-stratified starter pack that meets omk's default heuristic evidence floor; it is not an a priori power calculation. Its provenance is `llm-generated`: use it to learn the statistical workflow, then review and replace it with real domain cases before making a release decision.
 
 > The CLI notifies you when a newer version is available (at most once per 20h); set `OMK_SKIP_UPDATE_CHECK=1` to silence it permanently.
 

@@ -26,7 +26,7 @@ describe('oclif init', () => {
     assert.ok(stdout.includes('--samples'), 'stdout should document the curated sample-count option');
     assert.ok(stdout.includes('--force'), 'stdout should document explicit overwrite consent');
     assert.ok(stdout.includes('3 条用于快速跑通'), `stdout should explain the quick pack:\n${stdout}`);
-    assert.match(stdout, /20\s+条用于达到注册样本量下限/, `stdout should explain the full pack:\n${stdout}`);
+    assert.match(stdout, /20\s+条用于达到默认启发式证据下限/, `stdout should explain the full pack:\n${stdout}`);
   });
 
   it('--help --lang en', async () => {

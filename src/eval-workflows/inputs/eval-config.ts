@@ -1,7 +1,12 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, isAbsolute, join } from 'node:path';
 import { parseYaml } from './load-samples.js';
-import type { EvalBudget, EvalConfig, EvalConfigVariant } from './contracts/config.js';
+import type {
+  EvalBudget,
+  EvalConfig,
+  EvalConfigVariant,
+  EvalDecisionConfig,
+} from './contracts/config.js';
 import type { ExperimentRole } from '../../knowledge-artifacts/contracts.js';
 import type { JudgeConfig } from '../instruments/contracts/config.js';
 import type { RemoteGitRef, VariantSpec } from './contracts/variant.js';
@@ -50,6 +55,15 @@ export const EVAL_CONFIG_SCHEMA_SOURCE_PATHS = [
   'goldDir',
   'lengthDebias',
   'strictBaseline',
+  'decision',
+  'decision.threshold',
+  'decision.trivialDifference',
+  'decision.minimumComparisonUnits',
+  'decision.power',
+  'decision.power.minimumDetectableDifference',
+  'decision.power.expectedDifferenceStandardDeviation',
+  'decision.power.targetPower',
+  'decision.power.assumptionSource',
 ] as const;
 
 /**
@@ -323,6 +337,97 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     throw new Error(`${configPath}: skipDoctor must be boolean (got ${typeof obj.skipDoctor})`);
   }
 
+  let decision: EvalDecisionConfig | undefined;
+  if (obj.decision !== undefined) {
+    if (typeof obj.decision !== 'object' || obj.decision === null
+        || Array.isArray(obj.decision)) {
+      throw new Error(`${configPath}: decision must be an object`);
+    }
+    const rawDecision = obj.decision as Record<string, unknown>;
+    const decisionKeys = new Set([
+      'threshold',
+      'trivialDifference',
+      'minimumComparisonUnits',
+      'power',
+    ]);
+    const unknownDecisionKey = Object.keys(rawDecision).find((key) => !decisionKeys.has(key));
+    if (unknownDecisionKey !== undefined) {
+      throw new Error(`${configPath}: decision.${unknownDecisionKey} is not supported`);
+    }
+    const finiteInRange = (key: string, minimum: number, maximum: number): number | undefined => {
+      const value = rawDecision[key];
+      if (value === undefined) return undefined;
+      if (typeof value !== 'number' || !Number.isFinite(value)
+          || value < minimum || value > maximum) {
+        throw new Error(`${configPath}: decision.${key} must be in [${minimum}, ${maximum}]`);
+      }
+      return value;
+    };
+    const threshold = finiteInRange('threshold', 1, 5);
+    const trivialDifference = finiteInRange('trivialDifference', 0, 4);
+    let minimumComparisonUnits: number | undefined;
+    if (rawDecision.minimumComparisonUnits !== undefined) {
+      const value = rawDecision.minimumComparisonUnits;
+      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+        throw new Error(`${configPath}: decision.minimumComparisonUnits must be a positive safe integer`);
+      }
+      minimumComparisonUnits = value;
+    }
+    let power: EvalDecisionConfig['power'];
+    if (rawDecision.power !== undefined) {
+      if (typeof rawDecision.power !== 'object' || rawDecision.power === null
+          || Array.isArray(rawDecision.power)) {
+        throw new Error(`${configPath}: decision.power must be an object`);
+      }
+      if (minimumComparisonUnits !== undefined) {
+        throw new Error(
+          `${configPath}: decision.minimumComparisonUnits and decision.power are mutually exclusive`,
+        );
+      }
+      const rawPower = rawDecision.power as Record<string, unknown>;
+      const powerKeys = new Set([
+        'minimumDetectableDifference',
+        'expectedDifferenceStandardDeviation',
+        'targetPower',
+        'assumptionSource',
+      ]);
+      const unknownPowerKey = Object.keys(rawPower).find((key) => !powerKeys.has(key));
+      if (unknownPowerKey !== undefined) {
+        throw new Error(`${configPath}: decision.power.${unknownPowerKey} is not supported`);
+      }
+      const positive = (key: string, maximum: number): number => {
+        const value = rawPower[key];
+        if (typeof value !== 'number' || !Number.isFinite(value)
+            || value <= 0 || value > maximum) {
+          throw new Error(`${configPath}: decision.power.${key} must be in (0, ${maximum}]`);
+        }
+        return value;
+      };
+      const targetPower = rawPower.targetPower ?? 0.8;
+      if (typeof targetPower !== 'number' || !Number.isFinite(targetPower)
+          || targetPower <= 0.5 || targetPower >= 1) {
+        throw new Error(`${configPath}: decision.power.targetPower must be in (0.5, 1)`);
+      }
+      if (typeof rawPower.assumptionSource !== 'string'
+          || rawPower.assumptionSource.trim().length === 0) {
+        throw new Error(`${configPath}: decision.power.assumptionSource must be a non-empty string`);
+      }
+      power = {
+        minimumDetectableDifference: positive('minimumDetectableDifference', 4),
+        expectedDifferenceStandardDeviation:
+          positive('expectedDifferenceStandardDeviation', 4),
+        ...(rawPower.targetPower === undefined ? {} : { targetPower }),
+        assumptionSource: rawPower.assumptionSource.trim(),
+      };
+    }
+    decision = {
+      ...(threshold === undefined ? {} : { threshold }),
+      ...(trivialDifference === undefined ? {} : { trivialDifference }),
+      ...(minimumComparisonUnits === undefined ? {} : { minimumComparisonUnits }),
+      ...(power === undefined ? {} : { power }),
+    };
+  }
+
   return {
     samples: obj.samples as string,
     executor: obj.executor as string | undefined,
@@ -346,6 +451,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     effort,
     noDiagnostic: obj.noDiagnostic as boolean | undefined,
     skipDoctor: obj.skipDoctor as boolean | undefined,
+    decision,
   };
 }
 

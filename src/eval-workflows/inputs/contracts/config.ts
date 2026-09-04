@@ -16,6 +16,20 @@ export interface EvalConfigVariant {
   allowedSkills?: string[];
 }
 
+export interface EvalDecisionPowerConfig {
+  minimumDetectableDifference: number;
+  expectedDifferenceStandardDeviation: number;
+  targetPower?: number;
+  assumptionSource: string;
+}
+
+export interface EvalDecisionConfig {
+  threshold?: number;
+  trivialDifference?: number;
+  minimumComparisonUnits?: number;
+  power?: EvalDecisionPowerConfig;
+}
+
 export interface EvalConfig {
   samples: string;
   executor?: string;
@@ -65,6 +79,8 @@ export interface EvalConfig {
   lengthDebias?: boolean;
   /** --no-strict-baseline flips this to false. Default true (baseline-kind allowedSkills=[]). */
   strictBaseline?: boolean;
+  /** Release-decision thresholds and optional a priori sample-size assumptions. */
+  decision?: EvalDecisionConfig;
 }
 
 export interface EvalBudget {

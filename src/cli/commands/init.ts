@@ -88,8 +88,8 @@ export default class Init extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '使用达到注册样本量下限的 20 条官方用例初始化',
-        en: 'Initialize with the 20 first-party samples that meet the registered sample-size floor',
+        zh: '使用达到默认启发式证据下限的 20 条官方用例初始化',
+        en: 'Initialize with 20 first-party samples that meet the default heuristic evidence floor',
       }),
       command: '<%= config.bin %> init my-project --samples 20',
     },
@@ -121,8 +121,8 @@ export default class Init extends BaseCommand {
     lang: LANG_FLAG,
     samples: Flags.string({
       description: bilingual({
-        zh: '官方起步用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限',
-        en: 'Number of first-party starter samples: 3 for a quick run, 20 to meet the registered sample-size floor',
+        zh: '官方起步用例数量：3 条用于快速跑通，20 条用于达到默认启发式证据下限',
+        en: 'Number of first-party starter samples: 3 for a quick run, 20 to meet the default heuristic evidence floor',
       }),
       options: [String(DEFAULT_INIT_SAMPLE_COUNT), String(FULL_INIT_SAMPLE_COUNT)],
       default: String(DEFAULT_INIT_SAMPLE_COUNT),

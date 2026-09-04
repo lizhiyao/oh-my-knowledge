@@ -62,7 +62,7 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 ## Release Decision
 
-`omk.release-decision/v3` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
+`omk.release-decision/v4` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
 
 | Verdict | 含义 |
 |---|---|
@@ -75,9 +75,24 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 运行状态、证据状态、结论状态与 verdict 始终正交。只有同时携带 `release-gates-passed` 的 `PROGRESS` 才能进入常规发布路由。跨 run 稳定性属于 Evaluation Series，绝不能从单次 run 推断。
 
-对于配对设计，v3 使用完整 pair 数执行样本量 gate；对于独立设计，使用两侧实际观测单元数中的较小值，因为较大一侧不能补偿另一侧缺失的证据。已编写但未观测的用例不能把 `UNDERPOWERED` 变成 `NOISE`。
+对于配对设计，v4 使用完整 pair 数执行样本量 gate；对于独立设计，使用两侧实际观测单元数中的较小值，因为较大一侧不能补偿另一侧缺失的证据。已编写但未观测的用例不能把 `UNDERPOWERED` 变成 `NOISE`。
 
-对于已配置的 Judge Ensemble，v3 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 v1 与 v2 只为精确重放而保留注册；v2 已包含 judge uncertainty gate，但样本量 gate 仍使用已编写用例数。
+默认的 `minimum-count` 要求是 20 个比较单元。它是可配置的启发式证据下限，不代表统计功效已经得到证明。正式发布研究如果已有可靠先验信息，可以在 `eval.yaml` 中声明配对比较的先验规划：
+
+```yaml
+decision:
+  power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1.0
+    targetPower: 0.8
+    assumptionSource: pilot-2026-q3
+```
+
+omk 会在执行前封存最小有意义的 treatment-minus-control 差异、来自外部先导数据的配对差值标准差、目标功效、假设来源、家族 alpha、计划比较数量、方法 identity，以及据此计算的完整 pair 数要求。当前方法采用双侧正态近似，并按计划 comparison family 做 Bonferroni 分配；它是规划近似，不保证 percentile Bootstrap 的实际运行特性。复杂、强离散或偏态设计应在 omk 外通过 simulation 确定样本量，再用 `decision.minimumComparisonUnits` 登记结果。omk 明确不报告事后「观测功效」：用本次 run 的观测 effect 或 variance 为本次样本量辩护属于循环论证。
+
+对于已配置的 Judge Ensemble，v4 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 v1、v2 与 v3 只为精确重放而保留注册；v3 已使用实际观测比较单元，但只有固定下限契约。
+
+规划依据：[NIST 的双侧样本量公式](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm)、[CONSORT 2025 对目标差异、假设、alpha 与功效预先声明的要求](https://www.bmj.com/content/389/bmj-2024-081124)，以及 [Hoenig 与 Heisey 对事后功效滥用的论证](https://doi.org/10.1198/000313001300339897)。
 
 实现：`src/eval-workflows/runtime-adapter/analysis/release-decision.ts`。
 

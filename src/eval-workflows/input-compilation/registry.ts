@@ -1,5 +1,9 @@
 import type { JsonValue } from '../../eval-core/contracts/index.js';
-import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../evaluation-defaults.js';
+import {
+  DEFAULT_EVALUATION_TIMEOUT_MS,
+  DEFAULT_MINIMUM_COMPARISON_UNITS,
+  DEFAULT_TARGET_POWER,
+} from '../evaluation-defaults.js';
 
 export type CliInputRegistryOwner =
   | 'Definition'
@@ -300,6 +304,50 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
   config('strictBaseline', 'definition.baselineIsolation', 'Definition', 'execution', {
     defaultValue: true, defaultSource: 'documented',
   }),
+  config('decision', 'definition.decisionPolicy', 'Definition', 'decision'),
+  config('decision.threshold', 'definition.decisionPolicy.threshold', 'Definition', 'decision', {
+    defaultSource: 'derived',
+  }),
+  config(
+    'decision.trivialDifference',
+    'definition.decisionPolicy.trivialDifference',
+    'Definition',
+    'decision',
+    { defaultSource: 'derived' },
+  ),
+  config(
+    'decision.minimumComparisonUnits',
+    'definition.decisionPolicy.sampleSize.minimumComparisonUnits',
+    'Definition',
+    'decision',
+    { defaultValue: DEFAULT_MINIMUM_COMPARISON_UNITS, defaultSource: 'documented' },
+  ),
+  config('decision.power', 'definition.decisionPolicy.sampleSize', 'Definition', 'decision'),
+  config(
+    'decision.power.minimumDetectableDifference',
+    'definition.decisionPolicy.sampleSize.minimumDetectableDifference',
+    'Definition',
+    'decision',
+  ),
+  config(
+    'decision.power.expectedDifferenceStandardDeviation',
+    'definition.decisionPolicy.sampleSize.expectedDifferenceStandardDeviation',
+    'Definition',
+    'decision',
+  ),
+  config(
+    'decision.power.targetPower',
+    'definition.decisionPolicy.sampleSize.targetPower',
+    'Definition',
+    'decision',
+    { defaultValue: DEFAULT_TARGET_POWER, defaultSource: 'documented' },
+  ),
+  config(
+    'decision.power.assumptionSource',
+    'definition.decisionPolicy.sampleSize.assumptionSource',
+    'Definition',
+    'decision',
+  ),
 ] as const satisfies readonly CliEvaluationInputRegistryEntry[];
 
 export function cliEvaluationRegistrySourceKeys(

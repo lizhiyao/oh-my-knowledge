@@ -2,7 +2,11 @@ import type { EvalConfig, EvalConfigVariant } from '../inputs/contracts/config.j
 import type { JudgeConfig } from '../instruments/contracts/config.js';
 import { deepFreezeCanonicalJson } from '../../eval-core/contracts/index.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../analysis/bootstrap.js';
-import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../evaluation-defaults.js';
+import {
+  DEFAULT_EVALUATION_TIMEOUT_MS,
+  DEFAULT_MINIMUM_COMPARISON_UNITS,
+  DEFAULT_TARGET_POWER,
+} from '../evaluation-defaults.js';
 import { CliEvaluationInputError } from './error.js';
 import {
   CLI_EVALUATION_REQUEST_SCHEMA_VERSION,
@@ -515,14 +519,108 @@ export function parseCliEvaluationRequest(
   const threshold = pick({
     normalizedField: 'values.measurement.decision.threshold',
     cliKey: 'threshold', cliValue: numericValue(flags.threshold, 'threshold'),
+    configKey: 'decision.threshold',
+    configValue: numericValue(config?.decision?.threshold, 'decision.threshold', { min: 1, max: 5 }),
     defaultSource: 'derived',
   });
   const trivialDifference = pick({
     normalizedField: 'values.measurement.decision.trivialDifference',
     cliKey: 'trivial-diff',
     cliValue: numericValue(flags['trivial-diff'], 'trivial-diff', { min: 0 }),
+    configKey: 'decision.trivialDifference',
+    configValue: numericValue(
+      config?.decision?.trivialDifference,
+      'decision.trivialDifference',
+      { min: 0, max: 4 },
+    ),
     defaultSource: 'derived',
   });
+  const power = config?.decision?.power;
+  if (power !== undefined && !bootstrapEnabled) {
+    invalid('decision.power', '先验功效规划要求启用 bootstrap comparison。');
+  }
+  if (power !== undefined && config?.decision?.minimumComparisonUnits !== undefined) {
+    invalid(
+      'decision',
+      'decision.minimumComparisonUnits 与 decision.power 不能同时配置。',
+    );
+  }
+  let sampleSize: CliEvaluationRequestValues['measurement']['decision']['sampleSize'];
+  if (power === undefined) {
+    sampleSize = {
+      sampleSizePlanningKind: 'minimum-count',
+      minimumComparisonUnits: pick({
+        normalizedField: 'values.measurement.decision.sampleSize.minimumComparisonUnits',
+        configKey: 'decision.minimumComparisonUnits',
+        configValue: numericValue(
+          config?.decision?.minimumComparisonUnits,
+          'decision.minimumComparisonUnits',
+          { integer: true, min: 1 },
+        ),
+        defaultValue: DEFAULT_MINIMUM_COMPARISON_UNITS,
+        defaultSource: 'documented',
+      }) as number,
+    };
+  } else {
+    const targetPower = pick({
+      normalizedField: 'values.measurement.decision.sampleSize.targetPower',
+      configKey: 'decision.power.targetPower',
+      configValue: numericValue(
+        power.targetPower,
+        'decision.power.targetPower',
+        { min: 0.5, max: 1, exclusive: true },
+      ),
+      defaultValue: DEFAULT_TARGET_POWER,
+      defaultSource: 'documented',
+    }) as number;
+    for (const [normalizedField, sourceKey] of [
+      [
+        'values.measurement.decision.sampleSize.minimumDetectableDifference',
+        'decision.power.minimumDetectableDifference',
+      ],
+      [
+        'values.measurement.decision.sampleSize.expectedDifferenceStandardDeviation',
+        'decision.power.expectedDifferenceStandardDeviation',
+      ],
+      [
+        'values.measurement.decision.sampleSize.assumptionSource',
+        'decision.power.assumptionSource',
+      ],
+    ] as const) {
+      fieldSources.push({ normalizedField, sourceKind: 'eval-config', sourceKey });
+    }
+    const minimumDetectableDifference = numericValue(
+      power.minimumDetectableDifference,
+      'decision.power.minimumDetectableDifference',
+      { min: 0, max: 4 },
+    );
+    const expectedDifferenceStandardDeviation = numericValue(
+      power.expectedDifferenceStandardDeviation,
+      'decision.power.expectedDifferenceStandardDeviation',
+      { min: 0, max: 4 },
+    );
+    if (minimumDetectableDifference === undefined || minimumDetectableDifference === 0) {
+      invalid('decision.power.minimumDetectableDifference', '最小可检测差异必须大于 0。');
+    }
+    if (expectedDifferenceStandardDeviation === undefined
+        || expectedDifferenceStandardDeviation === 0) {
+      invalid('decision.power.expectedDifferenceStandardDeviation', '预期配对差值标准差必须大于 0。');
+    }
+    const assumptionSource = nonEmptyString(
+      power.assumptionSource,
+      'decision.power.assumptionSource',
+    );
+    if (assumptionSource === undefined) {
+      invalid('decision.power.assumptionSource', '先验功效假设必须登记来源。');
+    }
+    sampleSize = {
+      sampleSizePlanningKind: 'a-priori-power',
+      minimumDetectableDifference,
+      expectedDifferenceStandardDeviation,
+      targetPower,
+      assumptionSource,
+    };
+  }
   const dryRun = pick({
     normalizedField: 'values.orchestration.dryRun',
     cliKey: 'dry-run', cliValue: booleanValue(flags['dry-run'], 'dry-run'),
@@ -585,6 +683,7 @@ export function parseCliEvaluationRequest(
       decision: {
         ...(threshold === undefined ? {} : { threshold }),
         ...(trivialDifference === undefined ? {} : { trivialDifference }),
+        sampleSize,
       },
       ...(hasBudget ? {
         budget: {

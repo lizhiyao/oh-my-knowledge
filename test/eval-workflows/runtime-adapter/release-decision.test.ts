@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-workflows/analysis/bootstrap.js';
+import {
+  PAIRED_NORMAL_POWER_METHOD_ID,
+  requiredPairedComparisonUnits,
+} from '../../../src/eval-workflows/analysis/sample-size.js';
 import type { DecisionPolicyContext } from '../../../src/eval-core/analysis/index.js';
 import {
   canonicalizeJson,
@@ -22,6 +26,8 @@ import {
   RELEASE_DECISION_POLICY_V2,
   RELEASE_DECISION_POLICY_V2_IDENTITY,
   RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V3_IDENTITY,
+  RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
   buildBootstrapFamilyTable,
   compareCompositeGroups,
   compositeAggregate,
@@ -31,11 +37,13 @@ import {
   parseCompositeTableEnvelope,
   parseJudgeEnsembleTableEnvelope,
   parseReleaseDecisionParameters,
+  parseReleaseDecisionParametersV1,
   type BootstrapFamilyParameters,
   type BootstrapObservation,
   type CompositeGroup,
   type CompositeLayerEntry,
   type ReleaseDecisionParameters,
+  type ReleaseDecisionParametersV1,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 
 const CONTROL = 'control';
@@ -56,11 +64,29 @@ function parameters(input: Readonly<{
     thresholds: {
       layerScore: 3.5,
       triviallySmallDifference: 0.1,
-      minimumSampleCount: 20,
       judgeDissentPearson: 0.4,
       holdoutGap: 0.5,
     },
+    sampleSizeRequirement: {
+      sampleSizePlanningKind: 'minimum-count',
+      minimumComparisonUnits: 20,
+    },
     ...(input.holdout === undefined ? {} : { holdout: input.holdout }),
+  });
+}
+
+function legacyParameters(
+  current: ReleaseDecisionParameters,
+): ReleaseDecisionParametersV1 {
+  return parseReleaseDecisionParametersV1({
+    sources: current.sources,
+    targetIds: current.targetIds,
+    sampleIds: current.sampleIds,
+    thresholds: {
+      ...current.thresholds,
+      minimumSampleCount: current.sampleSizeRequirement.minimumComparisonUnits,
+    },
+    ...(current.holdout === undefined ? {} : { holdout: current.holdout }),
   });
 }
 
@@ -297,7 +323,7 @@ function judgeEnsemble(
 }
 
 function context(
-  releaseParameters: ReleaseDecisionParameters,
+  releaseParameters: ReleaseDecisionParameters | ReleaseDecisionParametersV1,
   values: ReturnType<typeof tables>,
 ): DecisionPolicyContext {
   const comparisons = values.bootstrap.configuration.comparisons;
@@ -374,12 +400,16 @@ describe('OMK Release DecisionPolicy', () => {
     expect(RELEASE_DECISION_POLICY_V2_IDENTITY.fingerprint).toBe(
       'sha256:e905b666e7b0ec35fbb0a4c005ceb19eaf072fd807d97bb359e58f7910af5cc9',
     );
-    expect(RELEASE_DECISION_POLICY_IDENTITY.fingerprint).toBe(
+    expect(RELEASE_DECISION_POLICY_V3_IDENTITY.fingerprint).toBe(
       'sha256:fec0a532957eb6ce17cd5866ec7851a0bca0e9cc70e70748c60049d1766839a9',
+    );
+    expect(RELEASE_DECISION_POLICY_IDENTITY.fingerprint).toBe(
+      'sha256:310b31c9cd1c3a689c5c760f35a6b5ab869b6959bc70047c0fb4362024f821ee',
     );
     expect([...createReleaseDecisionPolicies().keys()]).toEqual([
       RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY.identity.implementationId,
     ]);
   });
@@ -456,7 +486,7 @@ describe('OMK Release DecisionPolicy', () => {
         'comparison-sample-size-below-minimum',
       ],
     });
-    const v2Context = context(releaseParameters, values);
+    const v2Context = context(legacyParameters(releaseParameters), values);
     await expect(RELEASE_DECISION_POLICY_V2.decide({
       ...v2Context,
       policy: {
@@ -496,6 +526,111 @@ describe('OMK Release DecisionPolicy', () => {
         'comparison-interval-overlaps-zero',
         'comparison-sample-size-below-minimum',
       ],
+    });
+  });
+
+  it('gates against the recomputable a priori plan without using observed variance', async () => {
+    const sampleIds = Array.from({ length: 20 }, (_, index) => `sample-${index + 1}`);
+    const assumptions = {
+      minimumDetectableDifference: 0.5,
+      expectedDifferenceStandardDeviation: 1,
+      targetPower: 0.8,
+      familywiseAlpha: 0.05,
+      plannedComparisonCount: 1,
+    } as const;
+    const releaseParameters = parseReleaseDecisionParameters({
+      ...parameters({ sampleIds }),
+      sampleSizeRequirement: {
+        sampleSizePlanningKind: 'a-priori-power',
+        methodId: PAIRED_NORMAL_POWER_METHOD_ID,
+        ...assumptions,
+        minimumComparisonUnits: requiredPairedComparisonUnits(assumptions),
+        assumptionSource: 'pilot-2026-q3',
+      },
+    });
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: Array.from({ length: 20 }, () => 4),
+        treatment: Array.from({ length: 20 }, () => 4),
+      },
+    });
+
+    await expect(decide(releaseParameters, values)).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'UNDERPOWERED',
+      reasonCodes: [
+        'comparison-interval-overlaps-zero',
+        'comparison-sample-size-below-minimum',
+      ],
+    });
+    expect(() => parseReleaseDecisionParameters({
+      ...releaseParameters,
+      sampleSizeRequirement: {
+        ...releaseParameters.sampleSizeRequirement,
+        minimumComparisonUnits: 20,
+      },
+    })).toThrow(/not recomputable/);
+    expect(() => parseReleaseDecisionParameters({
+      ...releaseParameters,
+      sampleSizeRequirement: {
+        ...releaseParameters.sampleSizeRequirement,
+        plannedComparisonCount: Number.MAX_SAFE_INTEGER,
+        minimumComparisonUnits: 2,
+      },
+    })).toThrow(/cannot be represented safely/);
+  });
+
+  it('fails closed when an a priori plan does not match the sealed comparison design', async () => {
+    const sampleIds = Array.from({ length: 20 }, (_, index) => `sample-${index + 1}`);
+    const assumptions = {
+      minimumDetectableDifference: 0.5,
+      expectedDifferenceStandardDeviation: 1,
+      targetPower: 0.8,
+      familywiseAlpha: 0.05,
+      plannedComparisonCount: 2,
+    } as const;
+    const releaseParameters = parseReleaseDecisionParameters({
+      ...parameters({ sampleIds }),
+      sampleSizeRequirement: {
+        sampleSizePlanningKind: 'a-priori-power',
+        methodId: PAIRED_NORMAL_POWER_METHOD_ID,
+        ...assumptions,
+        minimumComparisonUnits: requiredPairedComparisonUnits(assumptions),
+        assumptionSource: 'pilot-2026-q3',
+      },
+    });
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: Array.from({ length: 20 }, () => 4),
+        treatment: Array.from({ length: 20 }, () => 4),
+      },
+    });
+
+    await expect(decide(releaseParameters, values)).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['release-analysis-source-lineage-mismatch'],
+    });
+
+    const alphaAssumptions = {
+      ...assumptions,
+      familywiseAlpha: 0.1,
+      plannedComparisonCount: 1,
+    };
+    const alphaMismatch = parseReleaseDecisionParameters({
+      ...parameters({ sampleIds }),
+      sampleSizeRequirement: {
+        sampleSizePlanningKind: 'a-priori-power',
+        methodId: PAIRED_NORMAL_POWER_METHOD_ID,
+        ...alphaAssumptions,
+        minimumComparisonUnits: requiredPairedComparisonUnits(alphaAssumptions),
+        assumptionSource: 'pilot-2026-q3',
+      },
+    });
+    await expect(decide(alphaMismatch, values)).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['release-analysis-source-lineage-mismatch'],
     });
   });
 
@@ -676,6 +811,7 @@ describe('OMK Release DecisionPolicy', () => {
       policy: {
         ...decisionContext.policy,
         implementationId: RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+        parameters: legacyParameters(releaseParameters),
       },
     })).resolves.toEqual({
       decisionStatus: 'decided',
@@ -687,6 +823,7 @@ describe('OMK Release DecisionPolicy', () => {
       policy: {
         ...decisionContext.policy,
         implementationId: RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
+        parameters: legacyParameters(releaseParameters),
       },
     })).resolves.toEqual({
       decisionStatus: 'decided',

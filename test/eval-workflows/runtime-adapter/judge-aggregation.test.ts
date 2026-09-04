@@ -851,9 +851,12 @@ describe('judge aggregation Analysis nodes', () => {
         thresholds: {
           layerScore: 3.5,
           triviallySmallDifference: 0.1,
-          minimumSampleCount: 20,
           judgeDissentPearson: 0.4,
           holdoutGap: 0.5,
+        },
+        sampleSizeRequirement: {
+          sampleSizePlanningKind: 'minimum-count',
+          minimumComparisonUnits: 20,
         },
       },
     };

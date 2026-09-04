@@ -67,9 +67,9 @@ composite 是同一 sealed design 内的比较信号。Dataset、Target 条件�
 
 ## Decision 边界
 
-composite score 或正向点估计本身不能授权发布。`omk.release-decision/v3` 消费精确绑定的 Composite 与 Bootstrap-family result，以及可选的 Judge Ensemble result，并先校验证据完整性与 source lineage。
+composite score 或正向点估计本身不能授权发布。`omk.release-decision/v4` 消费精确绑定的 Composite 与 Bootstrap-family result，以及可选的 Judge Ensemble result，并先校验证据完整性与 source lineage。
 
-它的六种结论是 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 与 `SOLO`。常规发布路由要求 Decision 已决定为 `PROGRESS`，且携带 `release-gates-passed`。如果已绑定 Judge Ensemble，但 control 或 treatment 无法估计跨评委一致性，正向比较会变为 `CAUTIOUS`，并携带 `judge-uncertainty-unmeasured`；未绑定 Judge Ensemble 的确定性评测不受影响。非显著配对比较使用完整 pair 数执行样本量 gate，独立比较使用两侧实际观测单元数中的较小值。区间缺失时保持 not-decided；多 treatment 使用已注册的最差结论；跨 run 稳定性属于 Evaluation Series，不能从单次 run 分数推断。历史 v1 与 v2 仍保留注册以精确重放。
+它的六种结论是 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 与 `SOLO`。常规发布路由要求 Decision 已决定为 `PROGRESS`，且携带 `release-gates-passed`。如果已绑定 Judge Ensemble，但 control 或 treatment 无法估计跨评委一致性，正向比较会变为 `CAUTIOUS`，并携带 `judge-uncertainty-unmeasured`；未绑定 Judge Ensemble 的确定性评测不受影响。非显著配对比较使用完整 pair 数执行样本量 gate，独立比较使用两侧实际观测单元数中的较小值。封存要求可以是显式下限，也可以是可重算的配对比较先验规划；规划绝不读取本次 run 的观测 variance。区间缺失时保持 not-decided；多 treatment 使用已注册的最差结论；跨 run 稳定性属于 Evaluation Series，不能从单次 run 分数推断。历史 v1、v2 与 v3 仍保留注册以精确重放。
 
 不确定性、一致性、去偏与 coverage gate 详见[统计严谨性](../explanation/statistical-rigor.md)。
 

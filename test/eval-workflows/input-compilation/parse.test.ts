@@ -237,11 +237,20 @@ describe('parseCliEvaluationRequest', () => {
       defaults,
     });
 
-    expect(request.values.measurement.decision).toEqual({});
+    expect(request.values.measurement.decision).toEqual({
+      sampleSize: {
+        sampleSizePlanningKind: 'minimum-count',
+        minimumComparisonUnits: 20,
+      },
+    });
     expect(request.fieldSources.some((source) => (
       source.normalizedField === 'values.measurement.decision.threshold'
       || source.normalizedField === 'values.measurement.decision.trivialDifference'
     ))).toBe(false);
+    expect(request.fieldSources).toContainEqual(expect.objectContaining({
+      normalizedField: 'values.measurement.decision.sampleSize.minimumComparisonUnits',
+      sourceKind: 'documented-default',
+    }));
     expect(request.fieldSources).toContainEqual(expect.objectContaining({
       normalizedField: 'values.measurement.timeoutMs',
       sourceKind: 'documented-default',
@@ -260,6 +269,107 @@ describe('parseCliEvaluationRequest', () => {
         sourceKind: 'documented-default',
       }),
     ]));
+  });
+
+  it('normalizes a priori power assumptions and records every source', () => {
+    const request = parseCliEvaluationRequest({
+      explicitCliFlags: {},
+      evalConfig: {
+        ...equivalentConfig,
+        decision: {
+          power: {
+            minimumDetectableDifference: 0.5,
+            expectedDifferenceStandardDeviation: 1,
+            assumptionSource: 'pilot-2026-q3',
+          },
+        },
+      },
+      defaults,
+    });
+
+    expect(request.values.measurement.decision.sampleSize).toEqual({
+      sampleSizePlanningKind: 'a-priori-power',
+      minimumDetectableDifference: 0.5,
+      expectedDifferenceStandardDeviation: 1,
+      targetPower: 0.8,
+      assumptionSource: 'pilot-2026-q3',
+    });
+    expect(request.fieldSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        normalizedField: 'values.measurement.decision.sampleSize.minimumDetectableDifference',
+        sourceKind: 'eval-config',
+      }),
+      expect.objectContaining({
+        normalizedField: 'values.measurement.decision.sampleSize.expectedDifferenceStandardDeviation',
+        sourceKind: 'eval-config',
+      }),
+      expect.objectContaining({
+        normalizedField: 'values.measurement.decision.sampleSize.targetPower',
+        sourceKind: 'documented-default',
+      }),
+      expect.objectContaining({
+        normalizedField: 'values.measurement.decision.sampleSize.assumptionSource',
+        sourceKind: 'eval-config',
+      }),
+    ]));
+  });
+
+  it('rejects a power plan when comparison intervals are disabled', () => {
+    expect(() => parseCliEvaluationRequest({
+      explicitCliFlags: {},
+      evalConfig: {
+        ...equivalentConfig,
+        bootstrap: false,
+        decision: {
+          power: {
+            minimumDetectableDifference: 0.5,
+            expectedDifferenceStandardDeviation: 1,
+            assumptionSource: 'pilot-2026-q3',
+          },
+        },
+      },
+      defaults,
+    })).toThrowError(expect.objectContaining({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: 'decision.power',
+    }));
+  });
+
+  it.each([
+    {
+      decision: { minimumComparisonUnits: 1.5 },
+      fieldPath: 'decision.minimumComparisonUnits',
+    },
+    {
+      decision: {
+        power: {
+          minimumDetectableDifference: Number.NaN,
+          expectedDifferenceStandardDeviation: 1,
+          assumptionSource: 'pilot',
+        },
+      },
+      fieldPath: 'decision.power.minimumDetectableDifference',
+    },
+    {
+      decision: {
+        minimumComparisonUnits: 20,
+        power: {
+          minimumDetectableDifference: 0.5,
+          expectedDifferenceStandardDeviation: 1,
+          assumptionSource: 'pilot',
+        },
+      },
+      fieldPath: 'decision',
+    },
+  ])('rejects invalid programmatic decision config at $fieldPath', ({ decision, fieldPath }) => {
+    expect(() => parseCliEvaluationRequest({
+      explicitCliFlags: {},
+      evalConfig: {
+        ...equivalentConfig,
+        decision: decision as EvalConfig['decision'],
+      },
+      defaults,
+    })).toThrowError(expect.objectContaining({ code: 'CLI_INPUT_INVALID', fieldPath }));
   });
 
   it('accepts legacy disable-only input without inferring a cache-enabled mode', () => {

@@ -62,7 +62,7 @@ This prevents a run from looking better merely because difficult coordinates fai
 
 ## Release Decision
 
-`omk.release-decision/v3` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
+`omk.release-decision/v4` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
 
 | Verdict | Meaning |
 |---|---|
@@ -75,9 +75,24 @@ This prevents a run from looking better merely because difficult coordinates fai
 
 Operational status, evidence status, conclusion status, and verdict remain separate. `PROGRESS` authorizes the normal release route only when it also carries `release-gates-passed`. Cross-run stability is an Evaluation Series concern and is never inferred from a single run.
 
-For a paired design, v3 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`.
+For a paired design, v4 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`.
 
-For a configured Judge Ensemble, v3 estimates cross-judge agreement independently for control and treatment. If either side has fewer than two complete judge-member series across at least two samples, agreement is not estimable; a positive result is reported as `CAUTIOUS` with `judge-uncertainty-unmeasured`, rather than treating one LLM reading as exact. This gate is inapplicable when the design has no Judge Ensemble. Historical v1 and v2 remain registered solely for exact replay; v2 has the judge-uncertainty gate but uses authored sample count for the sample-size gate.
+The default `minimum-count` requirement of 20 comparison units is a configurable heuristic evidence floor, not a claim of statistical power. For a release study with defensible prior information, configure an a priori paired-comparison plan in `eval.yaml`:
+
+```yaml
+decision:
+  power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1.0
+    targetPower: 0.8
+    assumptionSource: pilot-2026-q3
+```
+
+Before execution, omk seals the minimum meaningful treatment-minus-control difference, the externally estimated standard deviation of paired differences, target power, assumption provenance, family-wide alpha, planned comparison count, method identity, and the resulting required complete-pair count. The current method is a two-sided normal approximation with Bonferroni allocation across the planned family; it is an approximation for planning, not a guarantee of the percentile Bootstrap's realized operating characteristics. Complex, strongly discrete, or skewed designs should establish sample size by simulation outside omk and register that result with `decision.minimumComparisonUnits`. omk deliberately does not report retrospective “observed power”: using the run's observed effect or variance to justify its own sample size would be circular.
+
+For a configured Judge Ensemble, v4 estimates cross-judge agreement independently for control and treatment. If either side has fewer than two complete judge-member series across at least two samples, agreement is not estimable; a positive result is reported as `CAUTIOUS` with `judge-uncertainty-unmeasured`, rather than treating one LLM reading as exact. This gate is inapplicable when the design has no Judge Ensemble. Historical v1, v2, and v3 remain registered solely for exact replay; v3 already uses observed comparison units but has only the fixed minimum-count contract.
+
+Planning references: [NIST's two-sided sample-size formulation](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm), [CONSORT 2025 on prespecifying target difference, assumptions, alpha, and power](https://www.bmj.com/content/389/bmj-2024-081124), and [Hoenig and Heisey on the abuse of retrospective power](https://doi.org/10.1198/000313001300339897).
 
 Implementation: `src/eval-workflows/runtime-adapter/analysis/release-decision.ts`.
 
