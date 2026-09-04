@@ -1,10 +1,11 @@
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
 import { projectLayout } from './layout.js';
 import { listMeasurementReportPaths, type MeasurementDomain } from './report-bundle.js';
+import { resolveDataDirectory } from './directory-selection.js';
 
 /**
- * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
- * (src/knowledge-artifacts/governance/store.ts)。测量产物绑用例集上下文(construct validity,不可全局化),
+ * 测量产物的「项目优先 → 全局兜底」目录解析，与 managed／observe inbox 共用
+ * `resolveDataDirectory` 的单一选择策略。测量产物绑用例集上下文(construct validity,不可全局化),
  * 默认落项目 `.omk/`,全局作显式 opt-in。
  *
  * 「记录优先」—— 目录里有匹配 report 文件才算数（不是「目录存在」），与 managed 同口径，
@@ -36,9 +37,9 @@ export function resolveObserveHealthDir(
   dir: string = projectObserveHealthDir(),
   global: string = globalObserveHealthDir(),
 ): string {
-  const found = [dir, global].find((candidate) => hasReports(candidate, 'observe-health'));
-  if (found !== undefined) return found;
-  return dir;
+  return resolveDataDirectory(dir, global, (candidate) => (
+    hasReports(candidate, 'observe-health')
+  ));
 }
 
 // —— doctor（体检报告）——
@@ -60,9 +61,7 @@ export function resolveDoctorsDir(
   dir: string = projectDoctorsDir(),
   global: string = globalDoctorsDir(),
 ): string {
-  const found = [dir, global].find((candidate) => hasReports(candidate, 'doctor'));
-  if (found !== undefined) return found;
-  return dir;
+  return resolveDataDirectory(dir, global, (candidate) => hasReports(candidate, 'doctor'));
 }
 
 // —— eval（评测报告）——

@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
 import { isReportFileName } from '../../evidence/storage/file-names.js';
+import { resolveDataDirectory } from '../../evidence/storage/directory-selection.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = projectLayout().observeInboxDir;
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = globalLayout().observeInboxDir;
@@ -55,8 +56,7 @@ export function observationArchiveDir(observationsDir: string): string {
 }
 
 export function resolveObservationsDir(dir: string = DEFAULT_PROJECT_OBSERVATIONS_DIR): string {
-  if (resolve(dir) === resolve(DEFAULT_PROJECT_OBSERVATIONS_DIR)
-      && !hasObservationData(dir)
-      && hasObservationData(DEFAULT_GLOBAL_OBSERVATIONS_DIR)) return DEFAULT_GLOBAL_OBSERVATIONS_DIR;
-  return dir;
+  return resolve(dir) === resolve(DEFAULT_PROJECT_OBSERVATIONS_DIR)
+    ? resolveDataDirectory(dir, DEFAULT_GLOBAL_OBSERVATIONS_DIR, hasObservationData)
+    : dir;
 }
