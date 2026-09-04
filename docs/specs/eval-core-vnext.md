@@ -56,7 +56,7 @@ The current pipeline joins CLI flags, file parsing, artifact resolution, executo
 3. Support re-evaluation, re-analysis, and re-decision with complete derivation lineage.
 4. Make statistical design, missingness, caching, and budgets explicit measurement contracts.
 5. Isolate resources, cancellation, events, and caches between concurrent Runs.
-6. Provide one Core for the package-root embedded API, CLI, Studio, and future hosts.
+6. Provide one Core for the package-root Runtime façade, CLI, Studio, and future hosts.
 
 ### Non-goals
 
@@ -799,7 +799,7 @@ Advanced APIs support:
 - `analyze(plan.analysis, evaluationBundle)`;
 - `decide(plan.decision, analysisBundle)`.
 
-The package root also provides a one-call façade. Advanced APIs return serializable Bundles and do not expose mutable schedulers. Public exports are allowlisted through `package.json#exports`; `./dist/*` deep imports are not a contract.
+The one-call Core façade is exposed from `oh-my-knowledge/eval-core`; the package root is reserved for the ordinary `evaluate()` Runtime façade. Advanced Core APIs return serializable Bundles and do not expose mutable schedulers. Public exports are allowlisted through `package.json#exports`; `./dist/*` deep imports are not a contract.
 
 ## 13. Conformance and verification
 
@@ -874,7 +874,7 @@ Rejected. Durability and distributed orchestration belong to hosts. Content-addr
 5. Execution: trials, paired scheduling, resources, and ExecutionBundle.
 6. Evaluation/Analysis: re-scoring, AnalysisGraph, statistics, and DecisionPolicy.
 7. Conformance: three Target classes, fault injection, security, and simulation.
-8. Deliver the package-root façade in #424.
+8. Deliver the original package-root Core façade in #424; later expose that Core from `/eval-core` and reserve the root for the ordinary Runtime façade.
 9. Migrate CLI and Studio last.
 
 Each phase depends only on the previous phase's public Plan/Bundle contracts, never its internal implementation.
@@ -968,9 +968,11 @@ statistical vectors and deterministic simulations guard bootstrap unit semantics
 coverage, and a broad null paired-effect type-I error bound.
 
 The #425 acceptance audit is now complete for Contracts, Compiler, Execution, Evaluation,
-Analysis/Decision, and cross-stage conformance. The package-root façade, public export allowlist,
-and independent Node.js host acceptance remain intentionally assigned to #424. CLI and Studio
-migration remain later consumers and are not Evaluation Core acceptance dependencies.
+Analysis/Decision, and cross-stage conformance. At that stage, the package-root Core façade,
+public export allowlist, and independent Node.js host acceptance were assigned to #424. The Core
+surface now lives at the explicit `/eval-core` subpath, while the package root exposes the ordinary
+Runtime façade. CLI and Studio migration remain later consumers and are not Evaluation Core
+acceptance dependencies.
 
 Conformance exposed cross-stage defects: durable Bundle admission previously compared the
 originating root contract with the current RunPlan. Origin lineage remains sealed and
@@ -1071,9 +1073,9 @@ started once, in the suffix required by the host. Every method delegates directl
 stage runtime, so scheduling, cache, budget, failure, cancellation, and resource teardown semantics
 remain single-sourced.
 
-The package root deliberately types `prepare()` as the minimal one-call `PreparedEvaluation`.
-`oh-my-knowledge/eval-core` exposes the same factory with the narrower advanced return type;
-it does not create a second implementation, registry, or execution path. Studio and downstream
+`oh-my-knowledge/eval-core` exposes the one-call and prepared-stage capabilities through the same
+factory; it does not create a second implementation, registry, or execution path. The package root
+instead exposes the ordinary `evaluate()` Runtime façade. Studio and downstream
 projections live behind their own explicit subpaths, while unlisted and `dist/*` deep imports remain
 closed. This keeps dependency direction visible without fragmenting runtime authority.
 

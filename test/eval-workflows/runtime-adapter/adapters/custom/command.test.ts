@@ -16,14 +16,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   digestCanonicalJson,
+  type EvaluationDefinition,
   type ExecutorCapabilities,
   type JsonValue,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../../../src/index.js';
-import type {
-  EvaluationDefinition,
-  TargetExecutionControls,
+  type TargetExecutionControls,
 } from '../../../../../src/eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,

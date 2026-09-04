@@ -30,6 +30,10 @@ const PACKAGE_ENTRYPOINTS = new Set([
   'studio/index.ts',
 ]);
 
+const ALLOWED_ENTRYPOINT_EDGES = new Set([
+  'index.ts → eval-runtime/index.ts',
+]);
+
 const EXPECTED_SHARED_FILES = [
   'atomic-json.ts',
   'content-hash.ts',
@@ -140,7 +144,8 @@ describe('src 最终领域地图', () => {
         if (!target) continue;
         const targetRelative = sourceRelative(target);
         if (PACKAGE_ENTRYPOINTS.has(targetRelative)) {
-          violations.push(`${importerRelative} → ${targetRelative}`);
+          const edge = `${importerRelative} → ${targetRelative}`;
+          if (!ALLOWED_ENTRYPOINT_EDGES.has(edge)) violations.push(edge);
         }
       }
     }

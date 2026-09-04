@@ -16,7 +16,7 @@ const PROBE_PATH = join(
   REPO_ROOT,
   'test/eval-core/fixtures/core-side-effect-probe.mjs',
 );
-const CORE_DIST_ENTRY = join(REPO_ROOT, 'dist/index.js');
+const ROOT_DIST_ENTRY = join(REPO_ROOT, 'dist/index.js');
 
 function directorySnapshot(root: string): string[] {
   const snapshot: string[] = [];
@@ -33,9 +33,9 @@ function directorySnapshot(root: string): string[] {
   return snapshot.sort();
 }
 
-describe('Evaluation Core 宿主副作用边界', () => {
+describe('嵌入式 Evaluation API 宿主副作用边界', () => {
   it('在隔离进程导入根入口与全部公共子路径时零宿主副作用', () => {
-    if (!existsSync(CORE_DIST_ENTRY)) {
+    if (!existsSync(ROOT_DIST_ENTRY)) {
       throw new Error('缺少 dist/index.js；请先运行 yarn build。');
     }
 

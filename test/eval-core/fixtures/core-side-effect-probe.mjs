@@ -19,7 +19,7 @@ function restoreHostCapabilities() {
 }
 
 try {
-  const [core, advanced, projections, studio] = await Promise.all([
+  const [root, core, projections, studio] = await Promise.all([
     import('oh-my-knowledge'),
     import('oh-my-knowledge/eval-core'),
     import('oh-my-knowledge/projections'),
@@ -47,8 +47,11 @@ try {
   const digest = core.digestCanonicalJson({ z: 1, a: ['memory-only'] });
   if (canonical !== '{"a":["memory-only"],"z":1}'
       || !digest.startsWith('sha256:')
+      || typeof root.evaluate !== 'function'
+      || typeof root.checkExecutor !== 'function'
+      || root.createEvaluationEngine !== undefined
       || typeof core.createEvaluationEngine !== 'function'
-      || typeof advanced.assessComparability !== 'function'
+      || typeof core.assessComparability !== 'function'
       || typeof projections.projectCoreArtifactGraph !== 'function'
       || typeof studio.createCoreStudioCatalog !== 'function') {
     throw new Error('Evaluation Core pure-memory contract operation failed');

@@ -7,7 +7,7 @@ import {
   createCoreStudioCatalog,
   projectCoreStudioRunDetail,
 } from '../../../src/studio/index.js';
-import { digestCanonicalJson } from '../../../src/index.js';
+import { digestCanonicalJson } from '../../../src/eval-core/contracts/index.js';
 import { CoreDownstreamProjectionError } from '../../../src/eval-workflows/projections/index.js';
 import {
   CoreRunArtifactOverlayError,

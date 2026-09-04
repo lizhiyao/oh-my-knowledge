@@ -2,6 +2,10 @@
 
 `package.json#exports` 是受支持边界，API allowlist 会锁定下列全部 value 与 type。所有入口仅支持 ESM。
 
+## `oh-my-knowledge`
+
+这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`checkExecutor`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
+
 ## `oh-my-knowledge/eval-runtime`
 
 面向应用开发者的 canonical API：
@@ -75,6 +79,6 @@ Runner 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、
 
 ## 迁移
 
-`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。新宿主从 `/eval-runtime` 导入 `evaluate` 或 `checkExecutor`。
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
 
 自定义 analysis graph、持久 artifact admission、分阶段重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。

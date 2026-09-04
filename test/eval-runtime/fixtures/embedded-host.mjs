@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge';
 
 const answers = {
   control: { one: 'A', two: 'incorrect', three: 'incorrect' },

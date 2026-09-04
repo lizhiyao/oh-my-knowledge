@@ -1,9 +1,9 @@
 # Embed OMK in a Node.js service
 
-Use `oh-my-knowledge/eval-runtime` when your application owns model invocation and OMK should own measurement, comparison, and reporting. The ordinary integration has one entry point:
+Use the `oh-my-knowledge` package root when your application owns model invocation and OMK should own measurement, comparison, and reporting. The ordinary integration has one entry point:
 
 ```ts
-import { evaluate } from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge';
 ```
 
 The package is ESM-only and requires Node.js 22 or newer. It does not discover credentials, providers, files, environment variables, CLI configuration, or Studio state.
@@ -37,7 +37,7 @@ npm install oh-my-knowledge zod
 
 ```ts
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge';
 
 const result = await evaluate({
   executor: {
@@ -175,7 +175,7 @@ The Judge callback performs exactly one provider invocation and must not retry. 
 Run `checkExecutor()` before adopting an adapter. It drives the same declaration through real successful, failed, and cancelled Core runs, and checks binding isolation, lifecycle cleanup, telemetry, observations, paired analysis, and Decision:
 
 ```ts
-import { checkExecutor } from 'oh-my-knowledge/eval-runtime';
+import { checkExecutor } from 'oh-my-knowledge';
 
 const certification = await checkExecutor({
   executor,
@@ -203,6 +203,6 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-Use `oh-my-knowledge/eval-runtime/advanced` for custom ports, staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, or explicit cross-run comparability. `eval-workflows` depends on the leaf runtime foundation modules, never on this user façade. Deep paths outside `package.json#exports` are private.
+The explicit `oh-my-knowledge/eval-runtime` subpath exposes the same canonical façade as the package root. Use `oh-my-knowledge/eval-runtime/advanced` for custom ports, staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, or explicit cross-run comparability. `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
 
 The runnable [minimal example](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime) and packed-package fixtures exercise the canonical API in a clean host.

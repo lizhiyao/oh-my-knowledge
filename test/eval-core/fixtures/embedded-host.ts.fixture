@@ -10,9 +10,6 @@ import {
   type ExecutionFacts,
   type Executor,
   type MeasurementPolicy,
-} from 'oh-my-knowledge';
-import {
-  createEvaluationEngine as createAdvancedEvaluationEngine,
   resolveEvaluationCoreJsonSchema,
   type ExecutionBundleSource,
 } from 'oh-my-knowledge/eval-core';
@@ -43,9 +40,10 @@ import {
   type RuntimePortRegistration,
 } from 'oh-my-knowledge/eval-runtime/advanced';
 import {
+  checkExecutor,
   EvaluationEventConsumptionError,
   evaluate,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge';
 import {
   createEvalSampleSetDocument,
   resolveEvalSampleJsonSchema,
@@ -155,6 +153,7 @@ function canonicalEventErrorBoundary(error: unknown): void {
   void maxConcurrency;
 }
 void canonicalEventErrorBoundary;
+void checkExecutor;
 
 const jsonIdentity = createInvokeExecutorIdentity({
   implementationId: 'test.typescript-json/v1',
@@ -335,12 +334,6 @@ const engine = createEvaluationEngine({
 });
 const run = engine.start(definition, { policy, runId: 'typescript-host' });
 
-async function rootBoundary(): Promise<void> {
-  const prepared = await engine.prepare(definition, policy);
-  // @ts-expect-error 分阶段 API 只属于显式 eval-core 子路径。
-  prepared.stages({ runId: 'root-must-stay-minimal' });
-}
-
 async function runtimeBoundary(): Promise<void> {
   const prepared = await publicEngine.prepare(publicDefinition, publicPolicy);
   // @ts-expect-error eval-runtime 同样只公开标准一键 façade。
@@ -348,7 +341,7 @@ async function runtimeBoundary(): Promise<void> {
 }
 
 async function advancedBoundary(source: ExecutionBundleSource): Promise<void> {
-  const advanced = createAdvancedEvaluationEngine(runtime);
+  const advanced = createEvaluationEngine(runtime);
   const prepared = await advanced.prepare(definition, policy);
   const stages = prepared.stages({ runId: 'typescript-advanced-host' });
   const evaluation = stages.evaluate({ execution: source });
@@ -367,6 +360,5 @@ async function consume(): Promise<EvaluationRunResult> {
 }
 
 void consume;
-void rootBoundary;
 void runtimeBoundary;
 void advancedBoundary;
