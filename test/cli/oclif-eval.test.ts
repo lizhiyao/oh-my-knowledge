@@ -102,6 +102,45 @@ describe('oclif eval', () => {
     }
   });
 
+  it('eval gold validate 的失败摘要遵循 --lang', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-gold-invalid-'));
+    try {
+      for (const [lang, expected] of [
+        ['zh', 'gold dataset 目录中没有 .yaml 文件'],
+        ['en', 'no .yaml files found in gold dataset directory'],
+      ] as const) {
+        await assert.rejects(
+          () => runCommand(EvalGoldValidate, [dir, '--lang', lang]),
+          (err: unknown) => {
+            const e = err as ExecError;
+            assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+            assert.ok(e.stderr.includes(expected), e.stderr);
+            return true;
+          },
+        );
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('eval gold compare 的必填参数错误遵循 --lang', async () => {
+    for (const [lang, expected] of [
+      ['zh', '必须提供 --gold-dir。'],
+      ['en', '--gold-dir is required.'],
+    ] as const) {
+      await assert.rejects(
+        () => runCommand(EvalGoldCompare, ['report-1', '--lang', lang]),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+          assert.ok(e.stderr.includes(expected), e.stderr);
+          return true;
+        },
+      );
+    }
+  });
+
   it('eval 非法 --repeat --lang en → exit 2 + English parser error', async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', '--repeat', 'abc', '--lang', 'en']);

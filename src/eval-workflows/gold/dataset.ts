@@ -58,7 +58,10 @@ export interface ValidationIssue {
   path: string;
   /** Annotation index within the file, when applicable. */
   index?: number;
+  /** Stable English diagnostic retained for programmatic callers and existing integrations. */
   message: string;
+  /** Chinese user-facing equivalent; CLI renderers select it when `--lang zh`. */
+  messageZh: string;
 }
 
 export interface LoadResult {
@@ -86,13 +89,18 @@ export function loadGoldDataset(dir: string): LoadResult {
     issues.push({
       path: absDir,
       message: `gold dataset directory not found or unreadable: ${(err as Error).message}`,
+      messageZh: `gold dataset 目录不存在或不可读：${(err as Error).message}`,
     });
     return { issues };
   }
 
   const yamlFiles = entries.filter((f) => f.endsWith('.yaml') || f.endsWith('.yml')).sort();
   if (yamlFiles.length === 0) {
-    issues.push({ path: absDir, message: 'no .yaml files found in gold dataset directory' });
+    issues.push({
+      path: absDir,
+      message: 'no .yaml files found in gold dataset directory',
+      messageZh: 'gold dataset 目录中没有 .yaml 文件',
+    });
     return { issues };
   }
 
@@ -108,11 +116,19 @@ export function loadGoldDataset(dir: string): LoadResult {
     try {
       parsed = parseYaml(readFileSync(fpath, 'utf-8'));
     } catch (err) {
-      issues.push({ path: fpath, message: (err as Error).message });
+      issues.push({
+        path: fpath,
+        message: (err as Error).message,
+        messageZh: `YAML 解析失败：${(err as Error).message}`,
+      });
       continue;
     }
     if (typeof parsed !== 'object' || parsed === null) {
-      issues.push({ path: fpath, message: 'top-level YAML must be an object' });
+      issues.push({
+        path: fpath,
+        message: 'top-level YAML must be an object',
+        messageZh: 'YAML 顶层必须是对象',
+      });
       continue;
     }
     const obj = parsed as Record<string, unknown>;
@@ -121,7 +137,11 @@ export function loadGoldDataset(dir: string): LoadResult {
       const metaIssue = validateMetadata(obj.metadata, fpath);
       if (metaIssue) issues.push(metaIssue);
       else if (metadata) {
-        issues.push({ path: fpath, message: 'metadata declared in multiple files; keep it in one place' });
+        issues.push({
+          path: fpath,
+          message: 'metadata declared in multiple files; keep it in one place',
+          messageZh: '多个文件重复声明了 metadata；请只保留一处',
+        });
       } else {
         metadata = obj.metadata as GoldMetadata;
       }
@@ -140,6 +160,7 @@ export function loadGoldDataset(dir: string): LoadResult {
             path: fpath,
             index: i,
             message: `duplicate sample_id "${anno.sample_id}" — each gold annotation must be unique`,
+            messageZh: `sample_id「${anno.sample_id}」重复；每条 gold 标注必须唯一`,
           });
           continue;
         }
@@ -150,10 +171,14 @@ export function loadGoldDataset(dir: string): LoadResult {
   }
 
   if (!metadata) {
-    issues.push({ path: absDir, message: 'no metadata block found in any file (need annotator/annotatedAt/version)' });
+    issues.push({
+      path: absDir,
+      message: 'no metadata block found in any file (need annotator/annotatedAt/version)',
+      messageZh: '所有文件中都没有 metadata；必须提供 annotator、annotatedAt 与 version',
+    });
   }
   if (annotations.length === 0) {
-    issues.push({ path: absDir, message: 'no annotations found' });
+    issues.push({ path: absDir, message: 'no annotations found', messageZh: '没有找到任何标注' });
   }
 
   if (!metadata || annotations.length === 0) {
@@ -168,18 +193,26 @@ export function loadGoldDataset(dir: string): LoadResult {
 
 function validateMetadata(raw: unknown, path: string): ValidationIssue | null {
   if (typeof raw !== 'object' || raw === null) {
-    return { path, message: 'metadata must be an object' };
+    return { path, message: 'metadata must be an object', messageZh: 'metadata 必须是对象' };
   }
   const m = raw as Record<string, unknown>;
   for (const k of ['annotator', 'annotatedAt', 'version']) {
     if (typeof m[k] !== 'string' || !m[k]) {
-      return { path, message: `metadata.${k} is required and must be a non-empty string` };
+      return {
+        path,
+        message: `metadata.${k} is required and must be a non-empty string`,
+        messageZh: `metadata.${k} 为必填项，且必须是非空字符串`,
+      };
     }
   }
   if (m.scale !== undefined) {
     const s = m.scale as Record<string, unknown>;
     if (typeof s !== 'object' || typeof s.min !== 'number' || typeof s.max !== 'number' || (s.max as number) <= (s.min as number)) {
-      return { path, message: 'metadata.scale must be { min: number, max: number } with max > min' };
+      return {
+        path,
+        message: 'metadata.scale must be { min: number, max: number } with max > min',
+        messageZh: 'metadata.scale 必须是 { min: number, max: number }，且 max 必须大于 min',
+      };
     }
   }
   return null;
@@ -187,14 +220,29 @@ function validateMetadata(raw: unknown, path: string): ValidationIssue | null {
 
 function validateAnnotation(raw: unknown, path: string, index: number): ValidationIssue | null {
   if (typeof raw !== 'object' || raw === null) {
-    return { path, index, message: 'annotation must be an object' };
+    return {
+      path,
+      index,
+      message: 'annotation must be an object',
+      messageZh: 'annotation 必须是对象',
+    };
   }
   const a = raw as Record<string, unknown>;
   if (typeof a.sample_id !== 'string' || !a.sample_id) {
-    return { path, index, message: 'sample_id is required and must be a non-empty string' };
+    return {
+      path,
+      index,
+      message: 'sample_id is required and must be a non-empty string',
+      messageZh: 'sample_id 为必填项，且必须是非空字符串',
+    };
   }
   if (typeof a.score !== 'number' || !Number.isFinite(a.score)) {
-    return { path, index, message: 'score is required and must be a finite number' };
+    return {
+      path,
+      index,
+      message: 'score is required and must be a finite number',
+      messageZh: 'score 为必填项，且必须是有限数值',
+    };
   }
   return null;
 }
@@ -202,4 +250,11 @@ function validateAnnotation(raw: unknown, path: string, index: number): Validati
 /** Re-export YAML serializer so the `gold init` CLI can write a template. */
 export function dumpYaml(value: unknown): string {
   return yaml.dump(value, { lineWidth: 100, noRefs: true });
+}
+
+export function validationIssueMessage(
+  issue: ValidationIssue,
+  lang: 'zh' | 'en',
+): string {
+  return lang === 'zh' ? issue.messageZh : issue.message;
 }
