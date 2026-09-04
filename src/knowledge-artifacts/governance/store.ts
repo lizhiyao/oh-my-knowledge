@@ -9,6 +9,7 @@ import {
   globalLayout,
   projectLayout,
 } from '../../evidence/storage/layout.js';
+import { resolveDataDirectory } from '../../evidence/storage/directory-selection.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../../shared/timestamp.js';
@@ -293,16 +294,18 @@ function withManagedRecordLock<T>(dir: string, recordId: string, operation: () =
   );
 }
 
-/** 读全部记录。项目目录空 → 兜底全局(镜像 observe inbox 的 project→global)。 */
+/** 读全部记录。项目目录空 → 按共享目录选择策略兜底全局。 */
 export function loadAllManagedRecords(dir: string = managedDir()): ManagedArtifactRecord[] {
-  const local = readRecordsFromDir(dir);
-  if (local.length > 0) return local;
   const global = globalManagedDir();
-  if (dir !== global) {
-    const fallback = readRecordsFromDir(global);
-    if (fallback.length > 0) return fallback;
-  }
-  return local;
+  const records = new Map<string, ManagedArtifactRecord[]>();
+  const read = (candidate: string): ManagedArtifactRecord[] => {
+    const cached = records.get(candidate);
+    if (cached !== undefined) return cached;
+    const loaded = readRecordsFromDir(candidate);
+    records.set(candidate, loaded);
+    return loaded;
+  };
+  return read(resolveDataDirectory(dir, global, (candidate) => read(candidate).length > 0));
 }
 
 /**
@@ -310,10 +313,11 @@ export function loadAllManagedRecords(dir: string = managedDir()): ManagedArtifa
  * 与 `loadAllManagedRecords` 的 project→global 回退同口径。
  */
 export function resolveManagedDir(dir: string = managedDir()): string {
-  if (readRecordsFromDir(dir).length > 0) return dir;
-  const global = globalManagedDir();
-  if (dir !== global && readRecordsFromDir(global).length > 0) return global;
-  return dir;
+  return resolveDataDirectory(
+    dir,
+    globalManagedDir(),
+    (candidate) => readRecordsFromDir(candidate).length > 0,
+  );
 }
 
 /**
