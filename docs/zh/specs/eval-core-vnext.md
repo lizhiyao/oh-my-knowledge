@@ -1117,6 +1117,7 @@ comparability reason。
 ## 相关文档
 
 - [评分公式](scoring.md)；
+- [评分等价迁移 RFC](evaluation-scoring-equivalence.md)；
 - [统计严谨性](../explanation/statistical-rigor.md)；
 - [术语规范](terminology-spec.md)；
 - [RAG metrics 规范](rag-metrics-spec.md)。

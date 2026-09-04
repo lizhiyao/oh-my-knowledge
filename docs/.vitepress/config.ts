@@ -147,6 +147,7 @@ export default defineConfig({
               { text: '用例设计科学性指南', link: '/zh/specs/sample-design-spec' },
               { text: '知识缺口信号规范', link: '/zh/specs/knowledge-gap-signal-spec' },
               { text: 'RAG metrics 规范', link: '/zh/specs/rag-metrics-spec' },
+              { text: '评分等价迁移 RFC', link: '/zh/specs/evaluation-scoring-equivalence' },
               { text: '术语规范', link: '/zh/specs/terminology-spec' },
               { text: '存储布局规范', link: '/zh/specs/storage-layout-spec' },
             ],
