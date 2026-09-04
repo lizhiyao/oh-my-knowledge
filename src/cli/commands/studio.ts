@@ -16,15 +16,15 @@ import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';
 
 // dev / browser-open 测试需要 mock `node:child_process` + `node:os`,通过 in-process
-// import 直接调用。把业务作为 module-level helper export 从 Command file 暴露,
-// 既保留 test 兼容又让产品命令树语义干净(无 legacy commands directory)。
+// import 直接调用。把业务作为 module-level helper export 从 Command file 暴露，
+// 便于测试命令行为，同时保持产品命令树语义干净。
 export async function runStudio(
   _args: StudioArgs,
   flags: StudioFlags,
   lang: CliLang,
 ): Promise<void> {
-  // reports 读取目录：显式 --reports-dir 固定该目录；--global 钉全局；默认只聚合
-  // 当前项目 + 全局 Core run。旧 eval report index 已删除，不再扫描其它项目。
+  // reports 读取目录：显式 --reports-dir 固定该目录；--global 钉全局；默认聚合
+  // 当前项目与全局 Core run。
   const reportsDirOpt = flags['reports-dir']
     ? resolve(flags['reports-dir'])
     : flags.global

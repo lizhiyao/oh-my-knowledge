@@ -40,7 +40,7 @@ export function initGoldDataset(targetDir: string, options: { annotator?: string
       '- `metadata.yaml`：标注者、日期、版本与量程。',
       '- `annotations.yaml`：按 `sample_id` 绑定的评分。',
       '',
-      '比较命令只消费 Evaluation Core artifact，不读取旧 evaluation report。',
+      '使用 `omk eval gold compare` 将人工标注与 Core run 观测进行比较。',
       '',
     ].join('\n'));
   }

@@ -941,7 +941,6 @@ export async function resolveNodeCliEvaluationRequest(
       dryRun: request.values.orchestration.dryRun,
       batch: false,
       ...(request.values.orchestration.resumeSourceLocator === undefined ? {} : {
-        // Core resume locators are stable run identities, never legacy report paths.
         resumeSourceLocator: request.values.orchestration.resumeSourceLocator,
       }),
       preflight: request.values.orchestration.preflight,

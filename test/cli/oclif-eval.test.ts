@@ -142,6 +142,42 @@ describe('oclif eval', () => {
     }
   });
 
+  it('eval gold compare 找不到 Core run 时只报告当前契约', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-gold-missing-run-'));
+    try {
+      const goldDir = join(dir, 'gold');
+      const reportsDir = join(dir, 'reports');
+      await runCommand(EvalGoldInit, ['--out', goldDir]);
+      await mkdir(reportsDir);
+
+      for (const [lang, expected] of [
+        ['zh', '找不到 Core run「missing-run」。'],
+        ['en', 'Core run "missing-run" was not found.'],
+      ] as const) {
+        await assert.rejects(
+          () => runCommand(EvalGoldCompare, [
+            'missing-run',
+            '--gold-dir', goldDir,
+            '--reports-dir', reportsDir,
+            '--target', 'target',
+            '--evaluator', 'evaluator',
+            '--metric', 'metric',
+            '--lang', lang,
+          ]),
+          (err: unknown) => {
+            const e = err as ExecError;
+            assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+            assert.ok(e.stderr.includes(expected), e.stderr);
+            assert.doesNotMatch(e.stderr, /旧|legacy/i);
+            return true;
+          },
+        );
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('eval 非法 --repeat --lang en → exit 2 + English parser error', async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', '--repeat', 'abc', '--lang', 'en']);
