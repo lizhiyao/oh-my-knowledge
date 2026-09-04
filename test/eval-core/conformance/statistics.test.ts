@@ -6,6 +6,8 @@ import {
 } from '../../../src/eval-core/analysis/index.js';
 import { digestCanonicalJson, type Sha256Digest } from '../../../src/eval-core/contracts/index.js';
 
+const ANALYSIS_NODES = createBuiltinAnalysisNodes();
+
 function generator(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -17,6 +19,16 @@ function generator(seed: number): () => number {
 function normal(next: () => number): number {
   const first = Math.max(next(), Number.EPSILON);
   return Math.sqrt(-2 * Math.log(first)) * Math.cos(2 * Math.PI * next());
+}
+
+function categorical(next: () => number, probabilities: readonly number[]): number {
+  const draw = next();
+  let cumulative = 0;
+  for (const [index, probability] of probabilities.entries()) {
+    cumulative += probability;
+    if (draw < cumulative) return index + 1;
+  }
+  return probabilities.length;
 }
 
 function metricRow(input: {
@@ -59,7 +71,7 @@ async function interval(input: {
   simulation: number;
   paired?: boolean;
 }): Promise<{ lower: number; upper: number; estimate: number; unitCount: number }> {
-  const implementation = createBuiltinAnalysisNodes().get(input.implementationId);
+  const implementation = ANALYSIS_NODES.get(input.implementationId);
   if (implementation === undefined) throw new Error('Missing bootstrap implementation.');
   const run = await implementation.openRun({
     runId: `simulation-${input.simulation}`,
@@ -173,7 +185,7 @@ describe('Evaluation Core deterministic statistical conformance', () => {
     expect(paired).toEqual({ lower: 1.5, upper: 3.5, estimate: 2.5, unitCount: 4 });
   });
 
-  it('keeps deterministic 90% mean-interval coverage within a broad calibration band', async () => {
+  it('pins the deterministic continuous 90% mean-interval coverage profile', async () => {
     let covered = 0;
     const simulations = 80;
     for (let simulation = 1; simulation <= simulations; simulation += 1) {
@@ -190,11 +202,10 @@ describe('Evaluation Core deterministic statistical conformance', () => {
       if (result.lower <= 0 && result.upper >= 0) covered += 1;
     }
 
-    expect(covered / simulations).toBeGreaterThanOrEqual(0.8);
-    expect(covered / simulations).toBeLessThanOrEqual(0.99);
+    expect({ covered, simulations }).toEqual({ covered: 69, simulations: 80 });
   });
 
-  it('keeps null paired effects from exceeding a broad type-I error bound', async () => {
+  it('pins the deterministic continuous null paired-effect profile', async () => {
     let falseDirections = 0;
     const simulations = 80;
     for (let simulation = 101; simulation < 101 + simulations; simulation += 1) {
@@ -227,6 +238,137 @@ describe('Evaluation Core deterministic statistical conformance', () => {
       if (result.lower > 0 || result.upper < 0) falseDirections += 1;
     }
 
-    expect(falseDirections / simulations).toBeLessThanOrEqual(0.2);
+    expect({ falseDirections, simulations }).toEqual({ falseDirections: 8, simulations: 80 });
+  });
+
+  it('pins discrete 1-5 frequency profiles at N=8 and N=20 without claiming nominal calibration', async () => {
+    const simulations = 60;
+    const profiles = [
+      {
+        distribution: 'balanced',
+        probabilities: [0.1, 0.2, 0.4, 0.2, 0.1],
+        seedNamespace: 800_000,
+      },
+      {
+        distribution: 'skewed',
+        probabilities: [0.5, 0.25, 0.15, 0.07, 0.03],
+        seedNamespace: 600_000,
+      },
+      {
+        distribution: 'ceiling',
+        probabilities: [0.02, 0.03, 0.1, 0.25, 0.6],
+        seedNamespace: 700_000,
+      },
+    ] as const;
+    const results: Array<{
+      distribution: string;
+      sampleSize: number;
+      meanCovered: number;
+      pairedFalseDirections: number;
+    }> = [];
+
+    for (const profile of profiles) {
+      const populationMean = profile.probabilities.reduce((sum, probability, index) => (
+        sum + probability * (index + 1)
+      ), 0);
+      for (const sampleSize of [8, 20]) {
+        let meanCovered = 0;
+        let pairedFalseDirections = 0;
+        for (let simulation = 1; simulation <= simulations; simulation += 1) {
+          const simulationId = profile.seedNamespace + sampleSize * 1_000 + simulation;
+          const next = generator(simulationId);
+          const scores = Array.from(
+            { length: sampleSize },
+            () => categorical(next, profile.probabilities),
+          );
+          const meanResult = await interval({
+            implementationId: 'bootstrap.mean-percentile/v1',
+            rows: scores.map((value, index) => metricRow({
+              sampleId: `sample-${index}`,
+              value,
+            })),
+            simulation: simulationId,
+          });
+          if (meanResult.lower <= populationMean && meanResult.upper >= populationMean) {
+            meanCovered += 1;
+          }
+
+          const pairedRows = Array.from({ length: sampleSize }, (_, index) => {
+            const pairingBlockId = digestCanonicalJson({
+              simulation: simulationId,
+              pair: index,
+            });
+            return [
+              metricRow({
+                sampleId: `sample-${index}`,
+                targetId: 'control',
+                value: categorical(next, profile.probabilities),
+                pairingBlockId,
+              }),
+              metricRow({
+                sampleId: `sample-${index}`,
+                targetId: 'treatment',
+                value: categorical(next, profile.probabilities),
+                pairingBlockId,
+              }),
+            ];
+          }).flat();
+          const pairedResult = await interval({
+            implementationId: 'bootstrap.paired-difference-percentile/v1',
+            rows: pairedRows,
+            simulation: simulationId,
+            paired: true,
+          });
+          if (pairedResult.lower > 0 || pairedResult.upper < 0) {
+            pairedFalseDirections += 1;
+          }
+        }
+        results.push({
+          distribution: profile.distribution,
+          sampleSize,
+          meanCovered,
+          pairedFalseDirections,
+        });
+      }
+    }
+
+    expect(results).toEqual([
+      {
+        distribution: 'balanced',
+        sampleSize: 8,
+        meanCovered: 48,
+        pairedFalseDirections: 7,
+      },
+      {
+        distribution: 'balanced',
+        sampleSize: 20,
+        meanCovered: 54,
+        pairedFalseDirections: 5,
+      },
+      {
+        distribution: 'skewed',
+        sampleSize: 8,
+        meanCovered: 52,
+        pairedFalseDirections: 6,
+      },
+      {
+        distribution: 'skewed',
+        sampleSize: 20,
+        meanCovered: 54,
+        pairedFalseDirections: 13,
+      },
+      {
+        distribution: 'ceiling',
+        sampleSize: 8,
+        meanCovered: 43,
+        pairedFalseDirections: 8,
+      },
+      {
+        distribution: 'ceiling',
+        sampleSize: 20,
+        meanCovered: 46,
+        pairedFalseDirections: 9,
+      },
+    ]);
   });
 });

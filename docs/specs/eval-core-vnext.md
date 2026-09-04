@@ -966,8 +966,13 @@ explicitly injected Runtime registry, event sequencer, artifact store, and pair 
 retaining distinct Run ids, state, cancellation, sessions, and teardown; deferred gates force their
 lifecycles to overlap. All fixtures use deterministic clocks, seeds, deferred gates, and in-memory
 stores; they do not read files, networks, user configuration, or wall-clock delays. Known
-statistical vectors and deterministic simulations guard bootstrap unit semantics, broad interval
-coverage, and a broad null paired-effect type-I error bound.
+statistical vectors and deterministic simulations guard bootstrap unit semantics and pin exact
+frequency profiles for continuous data plus balanced, skewed, and ceiling-heavy discrete 1-5
+scores at N=8 and N=20. These profiles are regression evidence, not a claim that the percentile
+interval reaches its nominal coverage for every finite population: the frozen v1 procedure
+under-covers in small, bounded, skewed cases (the deterministic 90%, 256-resample grid reaches
+43/60 in the N=8 ceiling case and 46/60 at N=20). Consumers must treat the confidence level as
+nominal, and any replacement that changes those properties requires a new estimator identity.
 
 The #425 acceptance audit is now complete for Contracts, Compiler, Execution, Evaluation,
 Analysis/Decision, and cross-stage conformance. At that stage, the package-root Core façade,

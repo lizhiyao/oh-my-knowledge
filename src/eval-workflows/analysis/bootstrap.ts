@@ -3,11 +3,12 @@
  *
  * Why bootstrap instead of t-test for LLM scores?
  *
- * 1. **No distribution assumption** — t-test assumes scores are normally
- *    distributed. LLM scores on a 1-5 ordinal scale violate this; bootstrap
- *    only requires that the sample is representative.
- * 2. **Small N robustness** — t-test's small-sample correction (df-adjusted)
- *    breaks down with N < 10. Bootstrap is consistent at any N >= 2.
+ * 1. **No normality assumption** — the resampling distribution comes from the
+ *    observed units instead of assuming normally distributed raw scores.
+ * 2. **Explicit finite-sample limits** — the empirical distribution still has
+ *    to represent the population. Percentile intervals can undercover for
+ *    discrete 1-5 scores and small N; deterministic conformance simulations
+ *    pin that limitation instead of treating the nominal level as a guarantee.
  * 3. **Difference-of-means is the actual question** — In A/B eval the user
  *    asks "is variant B better than A?" — this is a 2-sample comparison and
  *    needs CI on the *difference*, not on each variant's mean separately.
