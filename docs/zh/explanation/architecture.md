@@ -35,8 +35,8 @@ flowchart TD
 
 `src` 的目录表达领域所有权，不机械套用一组全仓分层。维护时需要区分三类依赖：
 
-- **运行时实现边**必须保持无环。领域实现只能依赖它所消费的事实或更低层能力，不能借 facade、动态 import 或工具函数形成反向依赖；
-- **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的 type-only contract 回边才成立，新增双向关系会被架构测试拒绝；
+- **运行时实现边**必须保持无环。领域实现只能依赖它所消费的事实或更低层能力，不能借 facade、动态 import 或工具函数形成反向依赖。依赖图会保留指向 `contracts` 的 value import；已审计环按完整领域集合与环内边拓扑登记，新增任何返回路径都会使登记失效。TypeScript 与可执行 JavaScript 源码中的非字面量 dynamic import 也默认拒绝，必须按 importer、表达式与 canonical source digest 显式登记；
+- **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的回边才成立，架构测试会同时拒绝新增双向关系和失效登记；
 - **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/production-host` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
 
 `shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
