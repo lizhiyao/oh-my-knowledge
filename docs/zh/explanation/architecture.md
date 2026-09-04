@@ -69,12 +69,15 @@ Governance 只消费经过认证的评测与观测证据，不重新计算 Core 
 ```text
 eval-workflows/
 ├── analysis/           # workflow 所有的可复用统计原语
-├── inputs/             # 配置、sample、知识载体来源解析与 schema
-├── instruments/        # 评委调用、评委 trace 与 instrument contracts
+├── artifact-store/     # Core artifact 持久化、发现与 overlay
+├── assertions/         # authored assertion 适配与评分层
 ├── gold/               # human-gold 数据集、校准与 CLI 支持
 ├── input-compilation/  # 宿主输入 → 宿主无关测量定义
-├── runtime-adapter/    # binding 装配与声明式 preflight 准入
+├── inputs/             # 配置、sample、知识载体来源解析与 schema
+├── instruments/        # evaluator 配置与冻结 prompt 资产
 ├── projections/        # 基于认证 Core 产物的下游视图
+├── resume-admission/   # 持久化 run 完整性与 resume 准入
+├── runtime-adapter/    # Core binding、analysis node、evaluator 与 adapter
 └── production-host/    # Node 宿主组合与副作用编排
 
 executors/
@@ -87,6 +90,22 @@ executors/
 适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
 `eval-workflows/runtime-adapter/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
 这些子域即使在物理目录上聚合，仍作为独立节点参与依赖图检查。
+
+`eval-workflows` 是所有权边界，不是继续形成第二个单体的理由。上面每个直属目录都是独立的
+依赖图节点；根目录只允许跨 workflow 的默认值、用户文案和仓库规则，新行为必须进入明确的所属
+子域。下一轮拆分首先关注 `runtime-adapter`，新增内容必须归入四个能力分区：
+
+```text
+runtime-adapter/
+├── adapters/         # provider 协议桥接
+├── analysis/         # 已注册的 Core AnalysisNode 实现
+├── evaluators/       # 把 evaluator port 适配为 Core instrument
+└── resource-leases/  # 声明式宿主资源获取与清理
+```
+
+只有当某个分区具备稳定 contract、独立 consumer 或 lifecycle、不再依赖产品宿主装配，且新
+所有者明确时，才把它移出 `eval-workflows`。代码行数本身不是增加顶层领域的理由。在这些条件
+成立前，架构测试会确保每个 workflow 子域都参与环检测，并拒绝未经规划的根目录扩张。
 
 Evidence 持久化与跨来源关联属于同一个不做决策的边界：
 

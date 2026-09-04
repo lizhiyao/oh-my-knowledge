@@ -19,6 +19,19 @@ const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
   'observability/skill-health/advisories.ts',
   'observability/skill-health/skill-chain.ts',
 ]);
+const EVAL_WORKFLOW_SUBDOMAINS = new Set([
+  'analysis',
+  'artifact-store',
+  'assertions',
+  'gold',
+  'input-compilation',
+  'inputs',
+  'instruments',
+  'production-host',
+  'projections',
+  'resume-admission',
+  'runtime-adapter',
+]);
 
 interface ModuleEdge {
   importer: string;
@@ -115,7 +128,7 @@ function moduleDomain(path: string): string {
   }
   if (
     topLevel === 'eval-workflows'
-    && ['analysis', 'gold', 'inputs', 'instruments'].includes(subdomain)
+    && EVAL_WORKFLOW_SUBDOMAINS.has(subdomain)
   ) {
     return `${topLevel}/${subdomain}`;
   }
@@ -364,6 +377,13 @@ describe('src 依赖图', () => {
     expect(moduleDomain('eval-workflows/instruments/prompts/judge-prompts.ts')).toBe('eval-workflows/instruments');
     expect(moduleDomain('eval-workflows/gold/human.ts')).toBe('eval-workflows/gold');
     expect(moduleDomain('eval-workflows/analysis/bootstrap.ts')).toBe('eval-workflows/analysis');
+    expect(moduleDomain('eval-workflows/artifact-store/node-run-store.ts')).toBe('eval-workflows/artifact-store');
+    expect(moduleDomain('eval-workflows/assertions/layers.ts')).toBe('eval-workflows/assertions');
+    expect(moduleDomain('eval-workflows/input-compilation/compile.ts')).toBe('eval-workflows/input-compilation');
+    expect(moduleDomain('eval-workflows/production-host/orchestration.ts')).toBe('eval-workflows/production-host');
+    expect(moduleDomain('eval-workflows/projections/cli.ts')).toBe('eval-workflows/projections');
+    expect(moduleDomain('eval-workflows/resume-admission/admit.ts')).toBe('eval-workflows/resume-admission');
+    expect(moduleDomain('eval-workflows/runtime-adapter/assembly.ts')).toBe('eval-workflows/runtime-adapter');
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
     expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');

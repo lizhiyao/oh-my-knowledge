@@ -3,10 +3,47 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('eval-workflows 与 executors 领域布局', () => {
-  it('保留输入、评分类适配与执行前检查的稳定子域', () => {
-    expect(existsSync(resolve('src/eval-workflows/inputs'))).toBe(true);
-    expect(existsSync(resolve('src/eval-workflows/instruments'))).toBe(true);
-    expect(existsSync(resolve('src/eval-workflows/gold'))).toBe(true);
+  it('eval-workflows 根目录只保留已规划的稳定子域与共享入口', () => {
+    const entries = readdirSync(resolve('src/eval-workflows'), { withFileTypes: true });
+    expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
+      .toEqual([
+        'analysis',
+        'artifact-store',
+        'assertions',
+        'gold',
+        'input-compilation',
+        'inputs',
+        'instruments',
+        'production-host',
+        'projections',
+        'resume-admission',
+        'runtime-adapter',
+      ]);
+    expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
+      .toEqual(['AGENTS.md', 'evaluation-defaults.ts', 'messages.ts']);
+  });
+
+  it('runtime-adapter 的增长进入能力子域而不是继续堆入根目录', () => {
+    const entries = readdirSync(resolve('src/eval-workflows/runtime-adapter'), {
+      withFileTypes: true,
+    });
+    expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
+      .toEqual(['adapters', 'analysis', 'evaluators', 'resource-leases']);
+    expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
+      .toEqual([
+        'assembly.ts',
+        'builtins.ts',
+        'composition.ts',
+        'event-projection.ts',
+        'index.ts',
+        'preflight.ts',
+        'series-variance.ts',
+        'source-neutral-trace.ts',
+        'types.ts',
+      ]);
+  });
+
+  it('executors 保留独立的执行前检查边界', () => {
     expect(
       readdirSync(resolve('src/executors/preflight')).sort(),
     ).toEqual(['contracts.ts', 'dependencies.ts']);
