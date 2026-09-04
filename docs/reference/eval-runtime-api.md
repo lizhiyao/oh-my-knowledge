@@ -23,6 +23,8 @@ Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, 
 
 `EvaluationResult` preserves every field of the Core `EvaluationRunResult` and adds `definition` plus `policy`, the exact sealed Core Definition and fully materialized Measurement Policy compiled by the façade. Execution and evaluation evidence remain under `artifacts`, the decision remains under `artifacts.decision`, and the public report remains under `report`.
 
+For one control／treatment comparison, the façade seals the interval-aware Core `progress/v2` policy. `PROGRESS` or `REGRESSION` requires the complete confidence interval to exclude the configured threshold plus equivalence band; an overlapping interval yields `NOISE`. This three-way directional policy is intentionally smaller than the CLI workflow's six-tier release policy, which additionally distinguishes `UNDERPOWERED`／`CAUTIOUS` and applies release gates. Both paths therefore share the same interval requirement without pretending to expose identical policy contracts.
+
 The entry deliberately exposes no Definition builder, Runtime registry, Core Target, lifecycle adapter, or raw Rubric factory. `Artifact` is what is evaluated, `Variant` binds it to runtime context, and `control`／`treatment` are experiment roles.
 
 ## `oh-my-knowledge/eval-runtime/advanced`

@@ -23,6 +23,8 @@
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
+对于一组 control／treatment 比较，façade 会封存区间感知的 Core `progress/v2` 策略。只有完整置信区间排除配置的 threshold 加 equivalence band，才会给出 `PROGRESS` 或 `REGRESSION`；区间重叠时返回 `NOISE`。这个三分类方向策略有意小于 CLI workflow 的六分类发布策略，后者还会区分 `UNDERPOWERED`／`CAUTIOUS` 并执行发布门禁。两条路径因此共享同一个区间要求，但不伪装成完全相同的策略契约。
+
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 runtime context，`control`／`treatment` 是实验角色。
 
 ## `oh-my-knowledge/eval-runtime/advanced`

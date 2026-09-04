@@ -389,6 +389,9 @@ describe('Evaluation Core built-in estimators', () => {
   it('selects the exact bound effect for the progress decision', async () => {
     const progress = createBuiltinDecisionPolicies().get('progress/v1');
     if (progress === undefined) throw new Error('missing progress policy');
+    expect(progress.identity.fingerprint).toBe(
+      'sha256:422be979c929c5db1c49df13474ad92e95cff8c9b2428def371b6376503a0045',
+    );
     expect(progress.identity.capabilities).toMatchObject({
       analysisResultSchemaUris: [
         BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri,
@@ -425,6 +428,64 @@ describe('Evaluation Core built-in estimators', () => {
     })).resolves.toEqual({
       decisionStatus: 'not-decided',
       reasonCodes: ['decision-effect-unavailable'],
+    });
+  });
+
+  it('requires an interval to exclude the decision boundary for progress/v2', async () => {
+    const progress = createBuiltinDecisionPolicies().get('progress/v2');
+    if (progress === undefined) throw new Error('missing interval progress policy');
+    expect(progress.identity.fingerprint).toBe(
+      'sha256:3075e7741fcd2fe463af8d7ec31ca0731c7c0838bad46a2bbdb0952f32ee434b',
+    );
+    expect(progress.identity.capabilities).toMatchObject({
+      analysisResultSchemaUris: [BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri],
+      multipleComparisonPolicyIds: [],
+    });
+    const decisionContext = (
+      value: unknown,
+      resultType: 'interval' | 'scalar' = 'interval',
+    ) => ({
+      policy: { parameters: { threshold: 0.1, equivalence: 0.05 } },
+      results: [{ resultId: 'bound-effect', resultType, value }],
+      contrasts: [{
+        analysisResultId: 'bound-effect',
+        comparisonId: 'comparison-1',
+        controlTargetId: 'control',
+        treatmentTargetId: 'treatment',
+        metricId: 'score',
+      }],
+    }) as unknown as DecisionPolicyContext;
+    const interval = (estimate: number, lower: number, upper: number) => ({
+      estimate,
+      lower,
+      upper,
+      confidenceLevel: 0.95,
+      resamples: 1_000,
+      unitCount: 20,
+      method: 'percentile',
+    });
+
+    await expect(progress.decide(decisionContext(interval(0.25, 0.16, 0.4))))
+      .resolves.toEqual({
+        decisionStatus: 'decided',
+        verdict: 'PROGRESS',
+        reasonCodes: ['interval-above-progress-boundary'],
+      });
+    await expect(progress.decide(decisionContext(interval(-0.2, -0.4, 0.04))))
+      .resolves.toEqual({
+        decisionStatus: 'decided',
+        verdict: 'REGRESSION',
+        reasonCodes: ['interval-below-regression-boundary'],
+      });
+    await expect(progress.decide(decisionContext(interval(0.25, 0.14, 0.4))))
+      .resolves.toEqual({
+        decisionStatus: 'decided',
+        verdict: 'NOISE',
+        reasonCodes: ['interval-overlaps-decision-boundary'],
+      });
+    await expect(progress.decide(decisionContext(0.25, 'scalar'))).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['decision-interval-unavailable'],
     });
   });
 });

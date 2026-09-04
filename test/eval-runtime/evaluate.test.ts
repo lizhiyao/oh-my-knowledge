@@ -199,6 +199,12 @@ describe('canonical eval-runtime API', () => {
       analysisStatus: 'completed',
       value: { estimate: 0.5 },
     });
+    expect(result.definition.decisionPolicy?.implementationId).toBe('progress/v2');
+    expect(result.artifacts.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'NOISE',
+      reasonCodes: ['interval-overlaps-decision-boundary'],
+    });
     expect(new Set(seen.map((item) => `${item.experimentRole}:${item.variantId}`))).toEqual(
       new Set(['control:prompt-v1', 'treatment:prompt-v2']),
     );

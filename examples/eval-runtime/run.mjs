@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { evaluate } from 'oh-my-knowledge';
 
 const answers = {
-  baseline: { one: 'A', two: 'incorrect', three: 'incorrect' },
+  baseline: { one: 'A', two: 'B', three: 'incorrect' },
   candidate: { one: 'A', two: 'B', three: 'C' },
 };
 
@@ -67,6 +67,7 @@ process.stdout.write(`${JSON.stringify({
   runStatus: result.status,
   estimate: result.artifacts.analysis.records[0].value.estimate,
   decisionStatus: result.artifacts.decision.decisionStatus,
+  verdict: result.artifacts.decision.verdict,
   datasetId: result.definition.dataset.datasetId,
   reportId: result.report.reportId,
 })}\n`);

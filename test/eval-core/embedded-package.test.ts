@@ -314,8 +314,9 @@ const assert = require('node:assert/strict');
     });
     expect(JSON.parse(result.stdout)).toMatchObject({
       runStatus: 'completed',
-      estimate: 2 / 3,
+      estimate: 1 / 3,
       decisionStatus: 'decided',
+      verdict: 'NOISE',
       datasetId: 'embedded-service-example',
     });
     expect([

@@ -138,6 +138,7 @@ describe('eval-runtime foundation', () => {
       resamplingUnit: 'paired-block',
       seedCoupling: 'shared-within-block',
     });
+    expect(definition.decisionPolicy?.implementationId).toBe('progress/v2');
   });
 
   it('maps an ExecutorFn failure into a stable Core execution error', async () => {

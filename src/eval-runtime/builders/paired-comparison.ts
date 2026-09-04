@@ -168,7 +168,7 @@ export function createPairedComparisonDefinition(
     }],
     decisionPolicy: {
       decisionPolicyId,
-      implementationId: 'progress/v1',
+      implementationId: 'progress/v2',
       analysisResultIds: [analysisResultId],
       minimumEvidenceStatus: input.decision?.minimumEvidenceStatus ?? 'complete',
       parameters: {
