@@ -104,6 +104,9 @@ function scriptKind(path: string): ts.ScriptKind {
 
 function moduleDomain(path: string): string {
   const [topLevel, subdomain] = path.split('/');
+  if (topLevel === 'eval-core' && subdomain !== undefined && subdomain.includes('.') === false) {
+    return `${topLevel}/${subdomain}`;
+  }
   if (
     topLevel === 'knowledge-artifacts'
     && ['authoring', 'doctor', 'governance', 'skills', 'sources'].includes(subdomain)
@@ -352,6 +355,8 @@ describe('src 依赖图', () => {
 
   it('按稳定子域而非粗粒度物理顶层分析聚合领域依赖', () => {
     expect(moduleDomain('knowledge-artifacts/contracts.ts')).toBe('knowledge-artifacts');
+    expect(moduleDomain('eval-core/contracts/comparability.ts')).toBe('eval-core/contracts');
+    expect(moduleDomain('eval-core/compiler/index.ts')).toBe('eval-core/compiler');
     expect(moduleDomain('knowledge-artifacts/doctor/index.ts')).toBe('knowledge-artifacts/doctor');
     expect(moduleDomain('knowledge-artifacts/governance/store.ts')).toBe('knowledge-artifacts/governance');
     expect(moduleDomain('knowledge-artifacts/sources/content-hash.ts')).toBe('knowledge-artifacts/sources');
@@ -378,9 +383,21 @@ describe('src 依赖图', () => {
     const violations = edges.filter((edge) => edge.importerDomain === 'eval-runtime')
       .filter((edge) => (
         edge.targetDomain !== 'eval-core'
+        && !edge.targetDomain.startsWith('eval-core/')
         && !(edge.targetDomain === 'executors'
           && edge.typeOnly
           && edge.target.startsWith('executors/contracts/'))
+      ))
+      .map(describeEdge);
+    expect(violations).toEqual([]);
+  });
+
+  it('eval-core contracts 不反向依赖 Core 实现子域', () => {
+    const violations = edges
+      .filter((edge) => edge.importerDomain === 'eval-core/contracts')
+      .filter((edge) => (
+        edge.targetDomain.startsWith('eval-core/')
+        && edge.targetDomain !== 'eval-core/contracts'
       ))
       .map(describeEdge);
     expect(violations).toEqual([]);

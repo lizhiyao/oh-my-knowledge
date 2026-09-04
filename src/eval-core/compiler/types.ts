@@ -10,7 +10,7 @@ import {
   type ProtocolManifest,
   type TargetExecutionRequirements,
 } from '../contracts/index.js';
-export type { DeepReadonly, SealedRunPlan } from '../internal/sealed-run-plan.js';
+export type { DeepReadonly, SealedRunPlan } from '../contracts/sealed-run-plan.js';
 
 export { ExecutorCapabilitiesSchema, ProtocolManifestSchema };
 export type { ExecutorCapabilities, ProtocolManifest };
