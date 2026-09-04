@@ -1,5 +1,9 @@
 import { describe, it, vi, beforeEach, afterEach, expect } from 'vitest';
 
+const { legacyLayoutMock } = vi.hoisted(() => ({
+  legacyLayoutMock: vi.fn(),
+}));
+
 interface CapturedSpawn {
   command: string;
   args: string[];
@@ -55,6 +59,10 @@ vi.mock('../../src/studio/http/report-server.js', () => ({
   })),
 }));
 
+vi.mock('../../src/evidence/storage/legacy-eval-layout.js', () => ({
+  detectLegacyEvaluationLayouts: legacyLayoutMock,
+}));
+
 describe('studio --dev child spawn argv', () => {
   beforeEach(() => {
     spawnCalls.length = 0;
@@ -64,6 +72,7 @@ describe('studio --dev child spawn argv', () => {
     delete process.env.__OMK_DEV_CHILD;
     delete process.env.BROWSER;
     setStdoutIsTTY(false);
+    legacyLayoutMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -136,6 +145,52 @@ describe('studio --dev child spawn argv', () => {
     await runStudio({}, { lang: 'zh', port: '7799', 'no-open': true, dev: false }, 'zh');
     const opts = vi.mocked(createReportServer).mock.calls.at(-1)?.[0];
     expect(opts?.observationsDir).toBeUndefined();
+  });
+
+  it('在启动服务前用中文提示旧版扁平评测布局', async () => {
+    legacyLayoutMock.mockResolvedValue([{
+      layoutKind: 'legacy-reports-directory',
+      directory: '/tmp/project/.omk/reports',
+      fileCount: 2,
+    }]);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const { runStudio } = await import('../../src/cli/commands/studio.js');
+      await runStudio({}, { lang: 'zh', port: '7799', 'no-open': true, dev: false }, 'zh');
+
+      const output = stderr.mock.calls.map((call) => String(call[0])).join('');
+      expect(output).toContain('检测到 2 个旧版或不受支持的扁平评测文件');
+      expect(output).toContain('/tmp/project/.omk/reports');
+      expect(output).toContain('/zh/guides/eval-core-cutover');
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  it('uses an English migration hint and scans only an explicit reports directory', async () => {
+    legacyLayoutMock.mockResolvedValue([{
+      layoutKind: 'flat-files-in-eval-directory',
+      directory: '/tmp/selected',
+      fileCount: 1,
+    }]);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const { runStudio } = await import('../../src/cli/commands/studio.js');
+      await runStudio({}, {
+        lang: 'en', port: '7799', 'reports-dir': '/tmp/selected', 'no-open': true, dev: false,
+      }, 'en');
+
+      expect(legacyLayoutMock).toHaveBeenLastCalledWith({
+        evalDirectories: ['/tmp/selected'],
+        legacyReportsDirectories: [],
+      });
+      const output = stderr.mock.calls.map((call) => String(call[0])).join('');
+      expect(output).toContain('Found 1 legacy or unsupported flat evaluation file(s)');
+      expect(output).toContain('/guides/eval-core-cutover');
+      expect(output).not.toContain('/zh/guides/eval-core-cutover');
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   it('treats BROWSER=none as no browser open', async () => {
