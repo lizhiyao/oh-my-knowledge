@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { deepFreeze } from './immutability.js';
 
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -143,13 +144,7 @@ export function parseWireDocument<T>(schema: z.ZodType<T>, value: unknown): T {
 
 export function deepFreezeCanonicalJson<T>(value: T): T {
   assertCanonicalJson(value);
-  const freeze = (candidate: unknown): void => {
-    if (candidate === null || typeof candidate !== 'object' || Object.isFrozen(candidate)) return;
-    for (const child of Object.values(candidate)) freeze(child);
-    Object.freeze(candidate);
-  };
-  freeze(value);
-  return value;
+  return deepFreeze(value);
 }
 
 function serializeCanonical(value: JsonValue): string {
