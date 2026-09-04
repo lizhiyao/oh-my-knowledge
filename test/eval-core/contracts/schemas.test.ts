@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import _Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import {
+  COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EXECUTION_FACTS_SCHEMA_VERSION,
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
@@ -10,6 +11,7 @@ import {
   EvaluationStatusSchema,
   MetricObservationSchema,
   RuntimeIdentitySchema,
+  SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
   WIRE_SCHEMA_CATALOG,
   canonicalizeJson,
   generateWireJsonSchemas,
@@ -72,9 +74,28 @@ describe('Evaluation Core wire schemas', () => {
       (identity) => identity.schemaVersion,
     );
     expect(versions).not.toContain('omk.comparability-policy/v1');
-    expect(versions).not.toContain('omk.comparability-assessment/v1');
+    expect(versions).not.toContain(COMPARABILITY_ASSESSMENT_SCHEMA_VERSION);
     expect(versions).toContain(EXECUTOR_CAPABILITIES_SCHEMA_VERSION);
     expect(versions).toContain(EXECUTION_FACTS_SCHEMA_VERSION);
+  });
+
+  it('publishes renamed comparability contracts under v2 without rewriting v1 roots', () => {
+    expect(COMPARABILITY_ASSESSMENT_SCHEMA_VERSION).toBe('omk.comparability-assessment/v2');
+    expect(SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION).toBe('omk.series-analysis-bundle/v2');
+    expect(evaluationCoreJsonSchemaLocation('comparability-assessment.schema.json')).toBe(
+      'v2/comparability-assessment.schema.json',
+    );
+    expect(evaluationCoreJsonSchemaLocation('series-analysis-bundle.schema.json')).toBe(
+      'v2/series-analysis-bundle.schema.json',
+    );
+    expect(readFileSync(
+      resolve('schemas/eval-core/v1/comparability-assessment.schema.json'),
+      'utf8',
+    )).toContain('"const": "omk.comparability-assessment/v1"');
+    expect(readFileSync(
+      resolve('schemas/eval-core/v1/series-analysis-bundle.schema.json'),
+      'utf8',
+    )).toContain('"const": "omk.series-analysis-bundle/v1"');
   });
 
   it('keeps opaque Runtime fingerprints distinct from OMK content digests', () => {

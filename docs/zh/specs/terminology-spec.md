@@ -101,6 +101,7 @@
 - `cwd` 归属于 runtime context，单独声明（CLI 的 `--control-cwd` / `--treatment-cwd`，或 eval.yaml 的结构化 `cwd:` 字段），不编码进 variant 表达式
 - 如果要表达"空 artifact + 指定 runtime context"，用自描述标签作 artifact、cwd 单独给，例如 `--treatment project-env --treatment-cwd /path/to/project`
 - 不要把项目目录、项目级 runtime context、显式 artifact 注入混成一个概念
+- 不要把 runtime context 与 Core 的两个用例级投影混淆：`executionContext` 是单条用例中仅供 Executor 使用的输入，`evaluationContext` 是仅供 Evaluator 使用的输入；二者都不描述宿主运行环境
 
 ### 6. Sample / 用例
 

@@ -23,7 +23,9 @@ const schemaRoot = resolve('schemas/eval-core');
 const schemas = generateWireJsonSchemas();
 const historicalSchemaDigests = new Map([
   ['v1/analysis-bundle.schema.json', '92e49a22dd3d3c4c91b710afe20018a76c5709773c4f06d8c39fbc3c89e3eb97'],
+  ['v1/comparability-assessment.schema.json', '1e9e264e11bb136d1b17373981878788ffa30a0a1eebf32b070af43a1c2dbd79'],
   ['v1/evaluation-report.schema.json', '57089f7538da7347870426ed9b499adc289660500b8931f278eb2640d39fee8a'],
+  ['v1/series-analysis-bundle.schema.json', '6838725aefbe299c51c84b541114f2785e2739bea31cf8beccc0efc238a72a12'],
 ]);
 
 function sortJson(value) {

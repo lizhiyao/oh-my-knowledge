@@ -1,6 +1,7 @@
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
+  COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
   ComparabilityPolicySchema,
   assessComparability,
@@ -56,7 +57,7 @@ function policy(
     designMode: 'exact-measurement-design',
     comparisonScope: scope,
     subjects: [{
-      subjectId: 'candidate',
+      subjectId: 'evaluated-run',
       leftTargetId: 'treatment',
       rightTargetId: 'treatment',
     }],
@@ -77,6 +78,41 @@ function sourcePrefix(result: ConformanceResult): ComparabilitySourcePrefix {
 }
 
 describe('Evaluation Core comparability contract', () => {
+  it('publishes the v2 Run identity contract and rejects the retired v1 shape', async () => {
+    const result = await runConformanceScenario('function', { suffix: 'run-identity-v2' });
+    const source = assessComparability(
+      policy('decision'),
+      result.plan,
+      result.plan,
+      sourcePrefix(result),
+      sourcePrefix(result),
+    );
+    const { assessment } = source;
+
+    expect(COMPARABILITY_ASSESSMENT_SCHEMA_VERSION).toBe('omk.comparability-assessment/v2');
+    expect(assessment.schemaVersion).toBe(COMPARABILITY_ASSESSMENT_SCHEMA_VERSION);
+    expect(assessment.left).toHaveProperty('runIdentityDigest');
+    expect(assessment.left).not.toHaveProperty('candidateDigest');
+    const { runIdentityDigest, ...runIdentityPayload } = assessment.left;
+    expect(runIdentityDigest).toBe(digestCanonicalJson(runIdentityPayload));
+    expect(source.planVerification).toEqual({
+      assessmentComputationStatus: 'verified',
+      policyDigest: assessment.policyDigest,
+      leftRunIdentityDigest: assessment.left.runIdentityDigest,
+      rightRunIdentityDigest: assessment.right.runIdentityDigest,
+    });
+    expect(() => parseComparabilityAssessmentDocument({
+      ...structuredClone(assessment),
+      schemaVersion: 'omk.comparability-assessment/v1',
+    })).toThrow();
+
+    const forged = structuredClone(assessment);
+    forged.left.runIdentityDigest = `sha256:${'0'.repeat(64)}`;
+    expect(() => parseComparabilityAssessmentDocument(forged)).toThrowError(
+      expect.objectContaining({ code: 'COMPARABILITY_RUN_IDENTITY_DIGEST_MISMATCH' }),
+    );
+  });
+
   it('creates a canonical content-addressed policy and rejects ambiguous mappings', () => {
     const value = createComparabilityPolicy({
       schemaVersion: COMPARABILITY_POLICY_SCHEMA_VERSION,
@@ -166,7 +202,7 @@ describe('Evaluation Core comparability contract', () => {
       comparisonScope: 'evaluation',
       subjects: [
         { subjectId: 'control', leftTargetId: 'control', rightTargetId: 'control' },
-        { subjectId: 'candidate', leftTargetId: 'treatment', rightTargetId: 'treatment' },
+        { subjectId: 'evaluated-run', leftTargetId: 'treatment', rightTargetId: 'treatment' },
       ],
     });
     const runtimeAssessment = assessComparability(
@@ -187,7 +223,7 @@ describe('Evaluation Core comparability contract', () => {
       designMode: 'exact-measurement-design',
       comparisonScope: 'evaluation',
       subjects: [{
-        subjectId: 'candidate',
+        subjectId: 'evaluated-run',
         leftTargetId: 'treatment',
         rightTargetId: 'missing-target',
       }],
@@ -556,7 +592,7 @@ describe('Evaluation Core comparability contract', () => {
       comparisonScope: 'evaluation',
       subjects: [
         { subjectId: 'control', leftTargetId: 'control', rightTargetId: 'control' },
-        { subjectId: 'candidate', leftTargetId: 'treatment', rightTargetId: 'treatment' },
+        { subjectId: 'evaluated-run', leftTargetId: 'treatment', rightTargetId: 'treatment' },
       ],
     });
     expect(reasonCodes(assessComparability(
@@ -652,9 +688,9 @@ describe('Evaluation Core comparability contract', () => {
 
     const forged = structuredClone(original.assessment);
     forged.left.planDigests.datasetRevisionDigest = `sha256:${'f'.repeat(64)}`;
-    const candidatePayload = { ...forged.left };
-    delete (candidatePayload as Partial<typeof candidatePayload>).candidateDigest;
-    forged.left.candidateDigest = digestCanonicalJson(candidatePayload);
+    const runIdentityPayload = { ...forged.left };
+    delete (runIdentityPayload as Partial<typeof runIdentityPayload>).runIdentityDigest;
+    forged.left.runIdentityDigest = digestCanonicalJson(runIdentityPayload);
     const assessmentPayload = { ...forged };
     delete (assessmentPayload as Partial<typeof assessmentPayload>).assessmentDigest;
     forged.assessmentDigest = digestCanonicalJson(assessmentPayload);

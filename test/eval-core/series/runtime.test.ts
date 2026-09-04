@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION,
+  SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
   createEvaluationSeriesDefinition,
   createEvaluationSeriesMemberSource,
   digestCanonicalJson,
   prepareEvaluationSeriesPlan,
+  parseSeriesAnalysisBundleDocument,
   runEvaluationSeries,
   startEvaluationSeries,
   schemaIdentityKey,
@@ -431,6 +433,11 @@ describe('Evaluation Series Runtime', () => {
       'repeat-1',
       'repeat-2',
     ]);
+    expect(result.analysis.schemaVersion).toBe(SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION);
+    expect(() => parseSeriesAnalysisBundleDocument({
+      ...structuredClone(result.analysis),
+      schemaVersion: 'omk.series-analysis-bundle/v1',
+    })).toThrow();
     expect(result.analysis.coverage).toMatchObject({ planned: 2, comparable: 2, missing: 0 });
     expect(result.analysis.comparability).toHaveLength(1);
     expect(result.analysis.comparability[0]).toMatchObject({

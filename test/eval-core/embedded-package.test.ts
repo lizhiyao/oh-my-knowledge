@@ -105,6 +105,22 @@ describe('published embedded Evaluation API', () => {
     ), 'utf8')).title).toBe('OMK Analysis Bundle v2');
     expect(JSON.parse(readFileSync(join(
       packageDirectory,
+      'dist/eval-core/contracts/schemas/v2/comparability-assessment.schema.json',
+    ), 'utf8')).$id).toContain('/schemas/eval-core/v2/comparability-assessment.schema.json');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v2/series-analysis-bundle.schema.json',
+    ), 'utf8')).title).toBe('OMK Series Analysis Bundle v2');
+    expect(existsSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v1/comparability-assessment.schema.json',
+    ))).toBe(true);
+    expect(existsSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v1/series-analysis-bundle.schema.json',
+    ))).toBe(true);
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
       'dist/eval-workflows/inputs/contracts/schemas/v1/eval-sample-set.schema.json',
     ), 'utf8')).title).toBe('OMK Eval Sample Set v1');
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({
