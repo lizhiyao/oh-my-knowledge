@@ -183,8 +183,10 @@ function declarationExports(entry: string): { values: string[]; types: string[] 
 
 describe('published eval-runtime API allowlist', () => {
   it('makes the package root an exact runtime façade alias', async () => {
-    const root = await import('../../dist/index.js');
-    const runtime = await import('../../dist/eval-runtime/index.js');
+    const rootEntry = '../../dist/index.js';
+    const runtimeEntry = '../../dist/eval-runtime/index.js';
+    const root = await import(rootEntry);
+    const runtime = await import(runtimeEntry);
     expect(Object.keys(root).sort()).toEqual(Object.keys(runtime).sort());
     expect(Object.keys(root).sort()).toEqual([
       ...PUBLIC_API['eval-runtime'].values,
