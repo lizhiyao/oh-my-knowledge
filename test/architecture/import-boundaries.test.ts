@@ -296,6 +296,7 @@ interface CoreCapabilityViolation {
 
 const ALLOWED_CORE_EXTERNAL_IMPORTS = new Set(['zod', 'node:crypto']);
 const FORBIDDEN_HOST_GLOBALS = new Set([
+  'Buffer',
   'process',
   'console',
   'globalThis',
