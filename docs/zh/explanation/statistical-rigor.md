@@ -62,18 +62,20 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 ## Release Decision
 
-`omk.release-decision/v1` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
+`omk.release-decision/v2` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
 
 | Verdict | 含义 |
 |---|---|
 | `PROGRESS` | 比较显著向好，且所有已注册 release gate 通过 |
-| `CAUTIOUS` | 有正向信号，但 practical-effect、layer、judge-dissent 或 holdout gate 要求复核 |
+| `CAUTIOUS` | 有正向信号，但 practical-effect、layer、judge-dissent、未测量的 judge uncertainty 或 holdout gate 要求复核 |
 | `REGRESSION` | 比较显著向坏 |
 | `NOISE` | comparison interval 跨 0，且计划用例数达到已注册下限 |
 | `UNDERPOWERED` | comparison interval 跨 0，且计划用例数低于已注册下限 |
 | `SOLO` | 只有一个 Target，不存在 comparison |
 
 运行状态、证据状态、结论状态与 verdict 始终正交。只有同时携带 `release-gates-passed` 的 `PROGRESS` 才能进入常规发布路由。跨 run 稳定性属于 Evaluation Series，绝不能从单次 run 推断。
+
+对于已配置的 Judge Ensemble，v2 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 `omk.release-decision/v1` 只为精确重放而保留注册。
 
 实现：`src/eval-workflows/runtime-adapter/analysis/release-decision.ts`。
 
