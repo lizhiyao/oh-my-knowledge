@@ -45,7 +45,7 @@ import {
   ComparabilityAssessmentSchema,
   parseComparabilityAssessmentDocument,
 } from './comparability.js';
-import { assertSealedRunPlan, type SealedRunPlan } from '../internal/sealed-run-plan.js';
+import { assertSealedRunPlan, type SealedRunPlan } from './sealed-run-plan.js';
 
 export const EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION =
   'omk.evaluation-series-definition/v1' as const;

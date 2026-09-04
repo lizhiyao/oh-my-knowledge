@@ -61,7 +61,7 @@ import {
 import {
   assertSealedRunPlan,
   type SealedRunPlan,
-} from '../internal/sealed-run-plan.js';
+} from './sealed-run-plan.js';
 
 export type ComparabilityRunPlan = SealedRunPlan;
 
