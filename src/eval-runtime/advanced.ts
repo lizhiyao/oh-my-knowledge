@@ -1,4 +1,3 @@
-export { createEvaluationEngine } from './engine.js';
 export {
   EvaluationEventConsumptionError,
   runEvaluation,

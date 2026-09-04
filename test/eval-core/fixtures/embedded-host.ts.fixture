@@ -16,7 +16,6 @@ import {
   type ExecutionBundleSource,
 } from 'oh-my-knowledge/eval-core';
 import {
-  createEvaluationEngine as createRuntimeEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createInvokeExecutorIdentity,
@@ -107,12 +106,10 @@ const publicDefinition = createExactMatchDefinition({
   treatment: { targetId: 'treatment', executorId: executor.identity.implementationId },
 });
 const publicPolicy = createMeasurementPolicy();
-const publicEngine = createRuntimeEvaluationEngine(publicRuntime);
 const registration: RuntimePortRegistration<Executor> = { port: executor };
 void publicRuntime;
 void publicDefinition;
 void publicPolicy;
-void publicEngine.prepare(publicDefinition, publicPolicy);
 void registration;
 
 const canonicalEvaluation = evaluate({
@@ -342,12 +339,6 @@ const engine = createEvaluationEngine({
 });
 const run = engine.start(definition, { policy, runId: 'typescript-host' });
 
-async function runtimeBoundary(): Promise<void> {
-  const prepared = await publicEngine.prepare(publicDefinition, publicPolicy);
-  // @ts-expect-error eval-runtime 同样只公开标准一键 façade。
-  prepared.stages({ runId: 'runtime-must-stay-minimal' });
-}
-
 async function advancedBoundary(source: ExecutionBundleSource): Promise<void> {
   const advanced = createEvaluationEngine(runtime);
   const prepared = await advanced.prepare(definition, policy);
@@ -372,5 +363,4 @@ async function consume(): Promise<EvaluationRunResult> {
 }
 
 void consume;
-void runtimeBoundary;
 void advancedBoundary;

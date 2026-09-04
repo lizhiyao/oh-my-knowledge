@@ -33,7 +33,6 @@
 
 | Export | 用途 |
 |---|---|
-| `createEvaluationEngine` | 检查 sealed plan 或驱动显式阶段。 |
 | `runEvaluation` | 运行已装配的 Core Definition、Runtime 与 Policy。 |
 | `EvaluationEventConsumptionError` | `runEvaluation` 的事件消费错误。 |
 | `createEvaluationRuntime` | 装配 Executor／Evaluator registration 与 Core built-in。 |
@@ -83,6 +82,6 @@ Run 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`Cr
 
 ## 迁移
 
-`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
 
 自定义 analysis graph、持久 artifact admission、分阶段重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。

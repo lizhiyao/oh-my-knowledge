@@ -9,7 +9,7 @@ import type {
   EvaluationEngineRuntime,
   EvaluationRunResult,
 } from '../eval-core/engine/index.js';
-import { createEvaluationEngine } from './engine.js';
+import { createEvaluationEngine as createCoreEvaluationEngine } from '../eval-core/engine/index.js';
 
 type MaybePromise<Value> = Value | Promise<Value>;
 
@@ -64,7 +64,7 @@ export async function runEvaluation(
   if (input.signal?.aborted) externalAbort();
   else input.signal?.addEventListener('abort', externalAbort, { once: true });
 
-  const run = createEvaluationEngine(input.runtime).start(input.definition, {
+  const run = createCoreEvaluationEngine(input.runtime).start(input.definition, {
     policy: input.policy,
     runId: input.runId,
     signal: controller.signal,

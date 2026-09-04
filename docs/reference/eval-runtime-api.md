@@ -33,7 +33,6 @@ Low-level host assembly and extension SPI. Applications should prefer `evaluate(
 
 | Export | Purpose |
 |---|---|
-| `createEvaluationEngine` | Inspect a sealed plan or drive explicit stages. |
 | `runEvaluation` | Run an already assembled Core Definition, Runtime, and Policy. |
 | `EvaluationEventConsumptionError` | Event-consumption failure for `runEvaluation`. |
 | `createEvaluationRuntime` | Assemble Executor／Evaluator registrations and Core built-ins. |
@@ -83,6 +82,6 @@ Versioned wire contracts for adapter and trace authors:
 
 ## Migration
 
-The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. Move existing low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. New hosts should import `evaluate` or `checkExecutor` from the package root. The `/eval-runtime` entry remains the explicit equivalent for consumers that prefer domain-qualified imports.
+The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. Move existing low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. `createEvaluationEngine` has one meaning and one home: import the full staged engine from `oh-my-knowledge/eval-core`; use advanced `runEvaluation` when a preassembled Runtime, Definition, and Policy only need a standard complete run. New hosts should import `evaluate` or `checkExecutor` from the package root. The `/eval-runtime` entry remains the explicit equivalent for consumers that prefer domain-qualified imports.
 
 Use `oh-my-knowledge/eval-core` for custom analysis graphs, persisted artifact admission, staged replay, or explicit cross-run comparability. Deep implementation imports are unsupported.
