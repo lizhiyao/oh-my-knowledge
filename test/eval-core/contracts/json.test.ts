@@ -3,6 +3,7 @@ import {
   InvalidCanonicalJsonError,
   canonicalizeJson,
   canonicalizeJsonBytes,
+  deepFreezeCanonicalJson,
   digestCanonicalJson,
   isCanonicalJson,
 } from '../../../src/eval-core/contracts/json.js';
@@ -107,5 +108,14 @@ describe('Evaluation Core RFC 8785 JSON', () => {
 
   it('uses the ECMAScript representation for negative zero', () => {
     expect(canonicalizeJson(-0)).toBe('0');
+  });
+
+  it('deeply freezes canonical JSON through the shared Core implementation', () => {
+    const value = { nested: [{ score: 5 }] };
+
+    expect(deepFreezeCanonicalJson(value)).toBe(value);
+    expect(Object.isFrozen(value)).toBe(true);
+    expect(Object.isFrozen(value.nested)).toBe(true);
+    expect(Object.isFrozen(value.nested[0])).toBe(true);
   });
 });
