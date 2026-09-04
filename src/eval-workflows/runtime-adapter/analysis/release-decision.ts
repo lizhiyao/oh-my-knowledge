@@ -1,4 +1,4 @@
-import { computeJudgeAgreement } from '../../instruments/judge.js';
+import { computeJudgeAgreement } from './judge-agreement.js';
 import type {
   AnalysisDecisionPolicy,
   DecisionPolicyContext,

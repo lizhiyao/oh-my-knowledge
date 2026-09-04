@@ -41,14 +41,12 @@ import {
   type OmkLlmJudgeInvocationResult,
   type RubricJudgeTracePolicy,
 } from '../../../src/eval-workflows/runtime-adapter/index.js';
-import { llmJudge } from '../../../src/eval-workflows/instruments/judge.js';
 import {
   buildJudgePrompt,
   getJudgePromptHash,
   JUDGE_SYSTEM_PROMPT,
-} from '../../../src/eval-workflows/instruments/prompts/judge-prompts.js';
-import { buildJudgeTraceSummary } from '../../../src/eval-workflows/instruments/judge-trace.js';
-import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
+} from '../../../src/eval-runtime/judges/rubric-prompt.js';
+import { buildJudgeTraceSummary } from '../../../src/eval-runtime/judges/trace-summary.js';
 import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
 
 const PROVIDER_IMPLEMENTATION_ID = 'test.rubric-provider/v1';
@@ -559,44 +557,6 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
     expect(completedObservations(result).some((observation) => (
       observation.observationStatus === 'observed'
     ))).toBe(false);
-  });
-
-  it('freezes the intentional break from legacy salvage and coercion to invalid observations', async () => {
-    const responses = [
-      '{"score": 4 "reason": "missing comma"}',
-      '{"score":"4","reason":"numeric string"}',
-      '{"score":4}',
-    ];
-    for (const response of responses) {
-      const legacyExecutor: ExecutorFn = async () => ({
-        ok: true,
-        output: response,
-        durationMs: 1,
-        durationApiMs: 1,
-        inputTokens: 1,
-        outputTokens: 1,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        costUSD: 0.001,
-        stopReason: 'end_turn',
-        numTurns: 1,
-      });
-      const legacy = await llmJudge({
-        output: 'Actual answer',
-        rubric: 'rubric',
-        prompt: 'prompt',
-        executor: legacyExecutor,
-        model: 'judge-model',
-      });
-      expect(legacy.score).toBe(4);
-
-      const core = await runCore({
-        handler: async () => ({ invocationStatus: 'completed', output: response }),
-      });
-      expect(completedObservations(core).every((observation) => (
-        observation.observationStatus === 'invalid'
-      ))).toBe(true);
-    }
   });
 
   it('records provider failure separately, redacts provider details, and retains known usage', async () => {

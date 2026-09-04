@@ -177,8 +177,8 @@ describe('eval-runtime façade architecture guard', () => {
     const quickstart = readFileSync(resolve('docs/zh/quickstart-skill-eval.md'), 'utf8');
     const cli = readFileSync(resolve('src/cli/commands/eval/index.ts'), 'utf8');
     const studio = readFileSync(resolve('src/studio/core-runs/renderer.ts'), 'utf8');
-    const workflowJudge = readFileSync(
-      resolve('src/eval-workflows/instruments/judge.ts'),
+    const runtimeJudge = readFileSync(
+      resolve('src/eval-runtime/judges/rubric-judge.ts'),
       'utf8',
     );
     const canonicalTerms = [
@@ -216,6 +216,6 @@ describe('eval-runtime façade architecture guard', () => {
     expect(cli).toContain('跳过 LLM 评委');
     expect(cli).toContain('判定阈值');
     expect(studio).toContain("verdict: '判定'");
-    expect(workflowJudge).not.toContain('判官');
+    expect(runtimeJudge).not.toContain('判官');
   });
 });

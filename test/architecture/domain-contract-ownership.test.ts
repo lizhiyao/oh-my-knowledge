@@ -20,7 +20,6 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/eval-workflows/inputs/contracts/variant.ts',
   'src/eval-workflows/instruments/contracts/index.ts',
   'src/eval-workflows/instruments/contracts/config.ts',
-  'src/eval-workflows/instruments/contracts/result.ts',
   'src/eval-workflows/inputs/contracts/assertion-kind.ts',
   'src/shared/language.ts',
   'src/executors/contracts/trace-source.ts',

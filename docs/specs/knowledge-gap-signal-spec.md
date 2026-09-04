@@ -133,7 +133,7 @@ type HedgingVerdict = {
 
 async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
-  executor: LlmExecutor,         // reuses the executor from src/eval-workflows/instruments/judge.ts
+  executor: ExecutorFn,          // uses the shared executor port
   opts?: { maxCandidates?: number; model?: string },
 ): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
 ```
