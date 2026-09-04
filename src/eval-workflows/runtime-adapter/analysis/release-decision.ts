@@ -41,7 +41,8 @@ import {
 import { compareStrings, round } from './analysis-support.js';
 
 export const RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID = 'omk.release-decision/v1' as const;
-export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v2' as const;
+export const RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID = 'omk.release-decision/v2' as const;
+export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v3' as const;
 
 const RELEASE_DECISION_CAPABILITIES: JsonValue = {
   capabilityKind: 'decision-policy',
@@ -112,10 +113,61 @@ export const RELEASE_DECISION_POLICY_V1_IDENTITY: RuntimeIdentity = deepFreezeCa
   }),
 );
 
+export const RELEASE_DECISION_POLICY_V2_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
+  RuntimeIdentitySchema.parse({
+    implementationId: RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+    version: '2.0.0',
+    fingerprint: digestCanonicalJson({
+      implementationId: RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+      conclusionContract: [
+        'SOLO',
+        'UNDERPOWERED',
+        'NOISE',
+        'PROGRESS',
+        'CAUTIOUS',
+        'REGRESSION',
+      ],
+      precedence: [
+        'not-decided-evidence-and-binding-gates',
+        'solo',
+        'regression',
+        'cautious',
+        'underpowered',
+        'noise',
+        'progress',
+      ],
+      comparisonInterval: 'sealed-bootstrap-family-rounded-bounds-significance',
+      layerGate: 'two-decimal-mean-of-observed-composite-layer-facts-by-target',
+      sampleSize: 'sealed-authored-sample-count',
+      judgeDissent: 'pairwise-mean-pearson-over-complete-member-sample-matrix',
+      judgeUncertainty:
+        'positive-comparison-cautious-when-configured-ensemble-dissent-is-unmeasurable',
+      repeatedTrials: 'mean-observed-member-or-composite-values-within-sample',
+      holdout: 'train-minus-holdout-composite-with-minimum-scorable-partitions',
+      multiTreatment: 'worst-conclusion-then-comparison-id',
+      stabilityBoundary: 'evaluation-series-only',
+      evidenceGate: 'complete-evidence-required-after-core-source-trust-and-assumption-gates',
+      missingComparisonInterval: 'not-decided-no-point-estimate-fallback',
+      directReportDependency: 'none',
+      sourceSchemas: [
+        COMPOSITE_TABLE_SCHEMA,
+        BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+        JUDGE_ENSEMBLE_TABLE_SCHEMA,
+      ],
+      parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_CAPABILITIES,
+    }),
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
+    capabilities: RELEASE_DECISION_CAPABILITIES,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
+  }),
+);
+
 export const RELEASE_DECISION_POLICY_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
-    version: '2.0.0',
+    version: '3.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
       conclusionContract: [
@@ -137,7 +189,8 @@ export const RELEASE_DECISION_POLICY_IDENTITY: RuntimeIdentity = deepFreezeCanon
       ],
       comparisonInterval: 'sealed-bootstrap-family-rounded-bounds-significance',
       layerGate: 'two-decimal-mean-of-observed-composite-layer-facts-by-target',
-      sampleSize: 'sealed-authored-sample-count',
+      sampleSize:
+        'paired-complete-pair-count-or-independent-minimum-observed-arm-count',
       judgeDissent: 'pairwise-mean-pearson-over-complete-member-sample-matrix',
       judgeUncertainty:
         'positive-comparison-cautious-when-configured-ensemble-dissent-is-unmeasurable',
@@ -483,6 +536,18 @@ function judgeAssessment(
 
 interface ReleaseDecisionSemantics {
   readonly gateUnmeasuredJudgeUncertainty: boolean;
+  readonly sampleSizeBasis: 'authored-samples' | 'observed-comparison-units';
+}
+
+function comparisonUnitCount(
+  comparison: Extract<BootstrapComparison, { comparisonStatus: 'observed' }>,
+  parameters: ReleaseDecisionParameters,
+  semantics: ReleaseDecisionSemantics,
+): number {
+  if (semantics.sampleSizeBasis === 'authored-samples') return parameters.sampleIds.length;
+  return comparison.binding.comparisonDesign === 'paired'
+    ? comparison.counts.comparableUnits ?? 0
+    : Math.min(comparison.counts.controlUnits, comparison.counts.treatmentUnits);
 }
 
 function pairDecision(
@@ -494,7 +559,8 @@ function pairDecision(
   const binding = comparison.binding;
   const interval = comparison.interval;
   if (!interval.significant) {
-    return parameters.sampleIds.length < parameters.thresholds.minimumSampleCount
+    return comparisonUnitCount(comparison, parameters, semantics)
+      < parameters.thresholds.minimumSampleCount
       ? {
         comparisonId: binding.comparisonId,
         verdict: 'UNDERPOWERED',
@@ -604,17 +670,32 @@ function decideRelease(
 
 export const RELEASE_DECISION_POLICY: AnalysisDecisionPolicy = {
   identity: RELEASE_DECISION_POLICY_IDENTITY,
-  decide: async (context) => decideRelease(context, { gateUnmeasuredJudgeUncertainty: true }),
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: true,
+    sampleSizeBasis: 'observed-comparison-units',
+  }),
+};
+
+export const RELEASE_DECISION_POLICY_V2: AnalysisDecisionPolicy = {
+  identity: RELEASE_DECISION_POLICY_V2_IDENTITY,
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: true,
+    sampleSizeBasis: 'authored-samples',
+  }),
 };
 
 export const RELEASE_DECISION_POLICY_V1: AnalysisDecisionPolicy = {
   identity: RELEASE_DECISION_POLICY_V1_IDENTITY,
-  decide: async (context) => decideRelease(context, { gateUnmeasuredJudgeUncertainty: false }),
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: false,
+    sampleSizeBasis: 'authored-samples',
+  }),
 };
 
 export function createReleaseDecisionPolicies(): ReadonlyMap<string, AnalysisDecisionPolicy> {
   return new Map([
     [RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V1],
+    [RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V2],
     [RELEASE_DECISION_POLICY_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY],
   ]);
 }

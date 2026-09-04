@@ -62,20 +62,22 @@ This prevents a run from looking better merely because difficult coordinates fai
 
 ## Release Decision
 
-`omk.release-decision/v2` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
+`omk.release-decision/v3` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
 
 | Verdict | Meaning |
 |---|---|
 | `PROGRESS` | Significant positive comparison and all registered release gates passed |
 | `CAUTIOUS` | Positive signal, but a practical-effect, layer, judge-dissent, unmeasured judge-uncertainty, or holdout gate requires review |
 | `REGRESSION` | Significant negative comparison |
-| `NOISE` | The comparison interval overlaps zero with sufficient planned sample count |
-| `UNDERPOWERED` | The interval overlaps zero and the planned sample count is below the registered minimum |
+| `NOISE` | The comparison interval overlaps zero with sufficient observed comparison units |
+| `UNDERPOWERED` | The interval overlaps zero and observed comparison units are below the registered minimum |
 | `SOLO` | One Target is present and no comparison exists |
 
 Operational status, evidence status, conclusion status, and verdict remain separate. `PROGRESS` authorizes the normal release route only when it also carries `release-gates-passed`. Cross-run stability is an Evaluation Series concern and is never inferred from a single run.
 
-For a configured Judge Ensemble, v2 estimates cross-judge agreement independently for control and treatment. If either side has fewer than two complete judge-member series across at least two samples, agreement is not estimable; a positive result is reported as `CAUTIOUS` with `judge-uncertainty-unmeasured`, rather than treating one LLM reading as exact. This gate is inapplicable when the design has no Judge Ensemble. Historical `omk.release-decision/v1` remains registered solely for exact replay.
+For a paired design, v3 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`.
+
+For a configured Judge Ensemble, v3 estimates cross-judge agreement independently for control and treatment. If either side has fewer than two complete judge-member series across at least two samples, agreement is not estimable; a positive result is reported as `CAUTIOUS` with `judge-uncertainty-unmeasured`, rather than treating one LLM reading as exact. This gate is inapplicable when the design has no Judge Ensemble. Historical v1 and v2 remain registered solely for exact replay; v2 has the judge-uncertainty gate but uses authored sample count for the sample-size gate.
 
 Implementation: `src/eval-workflows/runtime-adapter/analysis/release-decision.ts`.
 
