@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createEvaluationEngine } from '../../src/eval-core/index.js';
 import {
-  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,

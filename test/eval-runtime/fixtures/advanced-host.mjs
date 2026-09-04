@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
+import { createEvaluationEngine } from 'oh-my-knowledge/eval-core';
 import {
-  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,

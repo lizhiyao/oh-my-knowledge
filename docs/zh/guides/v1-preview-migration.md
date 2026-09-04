@@ -85,6 +85,7 @@ omk eval --dry-run --samples eval-samples.yaml \
 
 - 普通 `evaluate()` 与 `checkExecutor()` façade 从 `oh-my-knowledge` 导入；显式子路径 `oh-my-knowledge/eval-runtime` 与其等价。
 - 原包根 Core import 迁移到 `oh-my-knowledge/eval-core`；Engine 构造、分阶段执行、admission、verification、comparability、Series 与 Core JSON Schema 均从该子路径导入。
+- `createEvaluationEngine` 只从 `oh-my-knowledge/eval-core` 导入；`eval-runtime/advanced` 已移除含义模糊的窄化重导出。已装配输入只需一次标准完整运行时，在 advanced 使用 `runEvaluation`。
 - eval-samples、projection、Studio、MCP 与 DSH 集成分别使用 `oh-my-knowledge/eval-samples`、`oh-my-knowledge/projections`、`oh-my-knowledge/studio`、`oh-my-knowledge/mcp` 与 `oh-my-knowledge/dsh-plugin`。
 - 同步 `require()` 改为 ESM import 或动态 `import()`。
 - Engine Runtime 装配改用 binding resolver，一次返回 resolution 与配置好的 port。

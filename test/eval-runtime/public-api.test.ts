@@ -52,7 +52,6 @@ const PUBLIC_API = {
       'INVOKE_JSON_TRACE_SCHEMA',
       'RuntimeConformanceError',
       'assertExecutorConformance',
-      'createEvaluationEngine',
       'createEvaluationRuntime',
       'createExactMatchDefinition',
       'createExactMatchEvaluator',
