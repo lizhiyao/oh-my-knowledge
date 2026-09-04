@@ -24,7 +24,6 @@ export type CommonMessageKey =
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
-  | 'cli.studio.legacy_eval_layout'
   | 'cli.doctor.no_skill_found'
   | 'cli.doctor.progress_skill_start'
   | 'cli.doctor.progress_skill_done';
@@ -121,10 +120,6 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.studio.open_failed': {
     zh: '⚠ 无法自动打开浏览器（{command}）：{message}\n',
     en: '⚠ Failed to open browser automatically ({command}): {message}\n',
-  },
-  'cli.studio.legacy_eval_layout': {
-    zh: '⚠️ 检测到 {count} 个旧版或不受支持的扁平评测文件，当前 OMK 不会读取或自动转换：\n{locations}\n如需查看，请保留对应的旧版 OMK；否则归档这些文件后重新运行 omk eval。迁移说明：https://oh-my-knowledge.pages.dev/zh/guides/eval-core-cutover\n',
-    en: '⚠️ Found {count} legacy or unsupported flat evaluation file(s). Current OMK will not read or convert them:\n{locations}\nKeep the matching older OMK version if you need to inspect them; otherwise archive the files and run omk eval again. Migration guide: https://oh-my-knowledge.pages.dev/guides/eval-core-cutover\n',
   },
   'cli.doctor.no_skill_found': {
     zh: '未在 {path} 下发现 skill 文件。\n  doctor 期望 .md 文件、目录(包含 .md 或 SKILL.md)或 cwd 下的 skills/ 子目录。',
