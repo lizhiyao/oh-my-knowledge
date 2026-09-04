@@ -19,6 +19,9 @@ import {
   RELEASE_DECISION_POLICY_V1,
   RELEASE_DECISION_POLICY_V1_IDENTITY,
   RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V2,
+  RELEASE_DECISION_POLICY_V2_IDENTITY,
+  RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
   buildBootstrapFamilyTable,
   compareCompositeGroups,
   compositeAggregate,
@@ -368,11 +371,15 @@ describe('OMK Release DecisionPolicy', () => {
     expect(RELEASE_DECISION_POLICY_V1_IDENTITY.fingerprint).toBe(
       'sha256:0c13bef0733f511a6b17ffd3e9e3274231f36262a0e2aa23668b17aaf484bc5c',
     );
-    expect(RELEASE_DECISION_POLICY_IDENTITY.fingerprint).toBe(
+    expect(RELEASE_DECISION_POLICY_V2_IDENTITY.fingerprint).toBe(
       'sha256:e905b666e7b0ec35fbb0a4c005ceb19eaf072fd807d97bb359e58f7910af5cc9',
+    );
+    expect(RELEASE_DECISION_POLICY_IDENTITY.fingerprint).toBe(
+      'sha256:fec0a532957eb6ce17cd5866ec7851a0bca0e9cc70e70748c60049d1766839a9',
     );
     expect([...createReleaseDecisionPolicies().keys()]).toEqual([
       RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY.identity.implementationId,
     ]);
   });
@@ -426,6 +433,70 @@ describe('OMK Release DecisionPolicy', () => {
       targetScores: targetScores as Readonly<Record<string, readonly number[]>>,
     })))
       .resolves.toEqual({ decisionStatus: 'decided', verdict, reasonCodes: reasons });
+  });
+
+  it('uses complete paired units instead of authored samples for the sample-size guard', async () => {
+    const sampleIds = Array.from({ length: 20 }, (_, index) => `sample-${index + 1}`);
+    const observed = [3, 4, 3, 4];
+    const missing = Array.from({ length: 16 }, () => undefined);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: [...observed, ...missing],
+        treatment: [...observed, ...missing],
+      },
+    });
+    const releaseParameters = parameters({ sampleIds });
+
+    await expect(decide(releaseParameters, values)).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'UNDERPOWERED',
+      reasonCodes: [
+        'comparison-interval-overlaps-zero',
+        'comparison-sample-size-below-minimum',
+      ],
+    });
+    const v2Context = context(releaseParameters, values);
+    await expect(RELEASE_DECISION_POLICY_V2.decide({
+      ...v2Context,
+      policy: {
+        ...v2Context.policy,
+        implementationId: RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+      },
+    })).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'NOISE',
+      reasonCodes: [
+        'comparison-interval-overlaps-zero',
+        'comparison-sample-size-sufficient',
+      ],
+    });
+  });
+
+  it('uses the smaller observed arm for an independent comparison sample-size guard', async () => {
+    const sampleIds = Array.from({ length: 20 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: Array.from({ length: 20 }, (_, index) => index % 2 === 0 ? 3 : 4),
+        treatment: [3, 4, 3, 4, ...Array.from({ length: 16 }, () => undefined)],
+      },
+      comparisons: [{
+        comparisonId: 'control-vs-treatment',
+        controlTargetId: CONTROL,
+        treatmentTargetId: TREATMENT,
+        comparisonDesign: 'independent',
+      }],
+    });
+
+    await expect(decide(parameters({ sampleIds }), values)).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'UNDERPOWERED',
+      reasonCodes: [
+        'comparison-interval-overlaps-zero',
+        'comparison-sample-size-below-minimum',
+      ],
+    });
   });
 
   it('rolls a corrected multi-treatment family up by sealed worst-case precedence', async () => {
@@ -596,6 +667,17 @@ describe('OMK Release DecisionPolicy', () => {
     };
 
     await expect(RELEASE_DECISION_POLICY.decide(decisionContext)).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'CAUTIOUS',
+      reasonCodes: ['comparison-significant-progress', 'judge-uncertainty-unmeasured'],
+    });
+    await expect(RELEASE_DECISION_POLICY_V2.decide({
+      ...decisionContext,
+      policy: {
+        ...decisionContext.policy,
+        implementationId: RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
+      },
+    })).resolves.toEqual({
       decisionStatus: 'decided',
       verdict: 'CAUTIOUS',
       reasonCodes: ['comparison-significant-progress', 'judge-uncertainty-unmeasured'],

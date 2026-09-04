@@ -124,7 +124,7 @@ Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Exp
 
 Assertion 与 rubric 评委保持为不同 evaluator instrument。Analysis 会推导 assertion layer、judge replicate／ensemble、dimension、composite、Bootstrap comparison family 与 agreement table，但不会压平它们的身份。
 
-Missing、invalid、failed、unavailable 与 not-started observation 都不是零分。Coverage 会沿整张图保持显式。`omk.release-decision/v2` 必须先确认 evidence 完整且 Analysis binding 精确，才能返回 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 或 `SOLO`；已配置但无法测量跨评委一致性时，正向比较会被 gate 为 `CAUTIOUS`。展示分数或点估计不能替代已注册 Decision。
+Missing、invalid、failed、unavailable 与 not-started observation 都不是零分。Coverage 会沿整张图保持显式。`omk.release-decision/v3` 必须先确认 evidence 完整且 Analysis binding 精确，才能返回 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 或 `SOLO`；已配置但无法测量跨评委一致性时，正向比较会被 gate 为 `CAUTIOUS`，样本量护栏则使用实际观测的比较单元数，而不是已编写用例数。展示分数或点估计不能替代已注册 Decision。
 
 成本、usage、duration、运行状态、证据状态、结论状态与 lineage 都是正交事实，不是额外评分维度。独立的 `--repeat` run 会组成 Evaluation Series；单次 run 不能推断跨 run 稳定性。
 

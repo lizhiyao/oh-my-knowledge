@@ -152,7 +152,7 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 | `CAUTIOUS` | Do not ship blind. Inspect the warning that fired (layer gate, judge dissent, stability, or holdout), fix the issue, then re-run; loosen the gate only after explicit human review. |
 | `REGRESSION` | Do not ship. Start from the weakest layer and the failing samples, fix the artifact, then re-run the eval. |
 | `NOISE` | No release call yet. Add samples or sharpen the sample set so the diff can separate from noise, then re-run. |
-| `UNDERPOWERED` | Grow the sample set to roughly 20+ cases, or at least 2x the current size, then re-run. |
+| `UNDERPOWERED` | Obtain roughly 20+ comparable cases, or at least 2x the current observed comparison units, then re-run. |
 | `SOLO` | Add a control, usually `omk eval --control baseline --treatment <name>`, before making a ship/no-ship call. |
 
 ## Things to keep in mind
