@@ -2,9 +2,6 @@ import { access, readFile, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, isAbsolute, join } from 'node:path';
 import {
-  RuntimeIdentitySchema,
-  deepFreezeCanonicalJson,
-  digestCanonicalJson,
   schemaIdentityKey,
   type CoreSchemaValidator,
   type RuntimeIdentity,
@@ -13,6 +10,7 @@ import {
 import { checkDependencies } from '../../executors/preflight/dependencies.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
+import { resolveExecutorRuntimeFingerprint } from '../../executors/core/runtime-fingerprint.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';
 import type { CliEvaluationCompileResult } from '../input-compilation/index.js';
 import type {
@@ -32,6 +30,7 @@ import {
   customCommandExecutorCapabilities,
 } from '../runtime-adapter/adapters/index.js';
 import type { ClassifiedEnvironmentEntry } from '../runtime-adapter/adapters/shared/classified-environment.js';
+import { createJudgeProviderRuntimeIdentity } from './judge-provider-identity.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createProductionRuntimeFactoryRegistry,
@@ -447,26 +446,21 @@ function productionSchemaValidators(): ReadonlyMap<string, CoreSchemaValidator> 
 function judgeIdentity(
   executorId: string,
   model: string,
+  deploymentRevision: string | undefined,
+  executor: ExecutorFn,
+  environment: NodeJS.ProcessEnv,
 ): RuntimeIdentity {
-  const capabilities = { providerInvocation: 'single', model };
-  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
-    implementationId: executorId,
-    fingerprint: digestCanonicalJson({
-      derivation: 'omk.node-cli-judge-provider/v1',
+  return createJudgeProviderRuntimeIdentity({
+    executorId,
+    model,
+    ...(deploymentRevision === undefined ? {} : { deploymentRevision }),
+    executorRuntime: resolveExecutorRuntimeFingerprint(
       executorId,
       model,
-    }),
-    fingerprintBasis: 'opaque',
-    assuranceLevel: 'unknown',
-    capabilities,
-    implementationManifest: {
-      coverageKind: 'fingerprint-plus-facets',
-      facets: [{
-        facetId: 'provider.binding',
-        value: { executorId, model },
-      }],
-    },
-  })) as RuntimeIdentity;
+      { env: environment },
+      executor,
+    ),
+  });
 }
 
 function usage(result: Awaited<ReturnType<ExecutorFn>>): UsageRecord | undefined {
@@ -487,7 +481,7 @@ function usage(result: Awaited<ReturnType<ExecutorFn>>): UsageRecord | undefined
   return Object.keys(value).length === 0 ? undefined : value;
 }
 
-function judgeResolver(): (
+function judgeResolver(environment: NodeJS.ProcessEnv): (
   context: Parameters<NonNullable<Parameters<typeof createProductionRuntimeFactoryRegistry>[0]['resolveJudgeInvocation']>>[0],
 ) => Promise<OmkLlmJudgeInvocationBinding> {
   const executors = new Map<string, ExecutorFn>();
@@ -508,7 +502,13 @@ function judgeResolver(): (
     const provider = executor;
     return Object.freeze({
       port: Object.freeze({
-        identity: judgeIdentity(executorId, qualification.model),
+        identity: judgeIdentity(
+          executorId,
+          qualification.model,
+          qualification.deploymentRevision,
+          provider,
+          environment,
+        ),
         providerCost: { reporting: 'optional' as const },
         async invoke(request: Readonly<OmkLlmJudgeInvocationRequest>) {
           try {
@@ -590,7 +590,7 @@ export async function createNodeCliProductionComposition(
   return Object.freeze({
     factories: createProductionRuntimeFactoryRegistry({
       executorsByImplementationId: new Map(configurations),
-      resolveJudgeInvocation: judgeResolver(),
+      resolveJudgeInvocation: judgeResolver(environment),
     }),
     support,
     resources: Object.freeze({

@@ -35,6 +35,7 @@ export type RubricJudgeInstrument = JsonObject & {
 export type RubricJudgeRuntimeConfig = JsonObject & {
   readonly executorId: string;
   readonly model: string;
+  readonly deploymentRevision?: string;
   readonly effort?: OmkLlmJudgeEffort;
   readonly promptVariant: string;
 };

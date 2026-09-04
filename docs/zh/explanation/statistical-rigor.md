@@ -51,6 +51,16 @@ LLM 评委可能在正确性之外奖励冗长、精致排版或自信语气。o
 - 排版与语气中性化始终开启；
 - 长度去偏默认开启；`--no-debias-length` 只关闭长度指令，用于受控研究或复现；
 - 每条评分类 prompt 都有 registry identity 与 hash；evaluator identity 或 prompt variant 不同时，报告不会被当作可盲比事实；
+- model 名称本身不能唯一标识远端评委部署。`eval.yaml` 未提供 `judgeModels[].deploymentRevision` 时，omk 会把 provider Runtime 记录为 `opaque/unknown`；跨 run 可比性会明确标为 conditional，要求完全 compatible evidence 的 policy 会失败关闭。正式发布研究应使用 provider 的固定 model identifier，并声明 gateway 或 deployment revision：
+
+  ```yaml
+  judgeModels:
+    - executor: openai-api
+      model: gpt-5-2025-08-07
+      deploymentRevision: production-gateway-2026-09-04
+  ```
+
+  该 revision 是宿主声明，不是 provider attestation，因此 assurance 只会是 `declared`，不会成为 `verified`。routing、system middleware 或实际部署模型改变时，必须同步修改 revision。omk 不根据 model 名称格式猜测它是否不可变：OpenAI 记录了 pinned snapshot，Anthropic 区分 snapshot ID 与移动 alias，并说明 serving infrastructure 仍可能变化；Vertex AI alias 也可以重新指向其它版本。参见 [OpenAI model stability 说明](https://platform.openai.com/docs/api-reference/backward-compatibility)、[Anthropic model ID 与 alias](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions)及 [Vertex AI model alias](https://docs.cloud.google.com/vertex-ai/docs/model-registry/model-alias)；
 - hash 由 `test/measurement-governance/prompt-registry.ts` 统一编目，并由同目录 `prompt-registry-freeze.test.ts` 冻结。这份治理清单仅用于维护与 CI，不进入发布运行时。
 
 Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold calibration 才是外部校验。

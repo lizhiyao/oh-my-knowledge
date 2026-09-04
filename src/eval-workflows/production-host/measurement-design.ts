@@ -695,10 +695,14 @@ export function buildProductionMeasurementDesign(
         ensembleMemberId: digestId('judge-member', {
           executorId: member.executorId,
           model: member.model,
+          deploymentRevision: member.deploymentRevision ?? null,
           occurrence,
         }),
         executorId: member.executorId,
         model: member.model,
+        ...(member.deploymentRevision === undefined
+          ? {}
+          : { deploymentRevision: member.deploymentRevision }),
         effort: request.values.targetRuntime.effort,
       };
     });

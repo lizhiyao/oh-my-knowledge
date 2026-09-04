@@ -77,6 +77,7 @@ interface LlmAssertionInstrument {
 interface LlmAssertionRuntimeConfig {
   readonly executorId: string;
   readonly model: string;
+  readonly deploymentRevision?: string;
   readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   readonly promptVariant: string;
 }
@@ -303,10 +304,14 @@ function parseRuntime(value: unknown): LlmAssertionRuntimeConfig {
         'executorId',
         'model',
         'promptVariant',
+        ...('deploymentRevision' in value ? ['deploymentRevision'] : []),
         ...('effort' in value ? ['effort'] : []),
       ])
       || typeof value.executorId !== 'string' || value.executorId === ''
       || typeof value.model !== 'string' || value.model === ''
+      || (value.deploymentRevision !== undefined
+        && (typeof value.deploymentRevision !== 'string'
+          || value.deploymentRevision.trim() === ''))
       || typeof value.promptVariant !== 'string' || value.promptVariant === ''
       || (value.effort !== undefined
         && !['low', 'medium', 'high', 'xhigh', 'max'].includes(String(value.effort)))) {
@@ -318,6 +323,9 @@ function parseRuntime(value: unknown): LlmAssertionRuntimeConfig {
   return Object.freeze({
     executorId: value.executorId,
     model: value.model,
+    ...(value.deploymentRevision === undefined
+      ? {}
+      : { deploymentRevision: value.deploymentRevision }),
     promptVariant: value.promptVariant,
     ...(value.effort === undefined
       ? {}
@@ -542,13 +550,16 @@ export function createLlmAssertionEvaluatorIdentity(input: Readonly<{
     version: '1.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+      runtimeProvenanceCompositionVersion: 'omk.runtime-provenance-composition/v2',
       algorithmVersion: ALGORITHM_VERSION,
       instrument: input.instrument,
       runtime: input.runtime,
       invocationRuntime: invocation.identity,
       capabilities,
     }),
-    fingerprintBasis: 'content-derived',
+    // Preserve the provider Runtime's evidence strength through composition.
+    // Otherwise an opaque remote model would be mislabeled content-derived.
+    fingerprintBasis: invocation.identity.fingerprintBasis,
     assuranceLevel: invocation.identity.assuranceLevel,
     capabilities,
     implementationManifest: { coverageKind: 'fingerprint-complete' },
@@ -660,6 +671,7 @@ export function createLlmAssertionEvaluatorBindingFactory(
         || qualification === undefined
         || qualification.executorId !== config.runtime.executorId
         || qualification.model !== config.runtime.model
+        || qualification.deploymentRevision !== config.runtime.deploymentRevision
         || qualification.effort !== config.runtime.effort
         || qualification.promptVariant !== config.runtime.promptVariant) {
       return failure(

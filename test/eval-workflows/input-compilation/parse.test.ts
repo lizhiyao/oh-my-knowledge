@@ -37,7 +37,10 @@ const equivalentConfig: EvalConfig = {
   skipDoctor: true,
   judgeModels: [
     { executor: 'anthropic-api', model: 'judge-a' },
-    { executor: 'openai-api', model: 'judge-b' },
+    {
+      executor: 'openai-api',
+      model: 'judge-b',
+    },
   ],
   concurrency: 2,
   timeoutMs: 90_000,
@@ -73,6 +76,9 @@ function resolveWithDeterministicTestResources(
     ensembleMemberId: `judge-${index}`,
     executorId: member.executorId,
     model: member.model,
+    ...(member.deploymentRevision === undefined
+      ? {}
+      : { deploymentRevision: member.deploymentRevision }),
     effort: request.values.targetRuntime.effort,
   }));
   resolved.policy.executionConcurrency = request.values.measurement.executionConcurrency;
@@ -176,6 +182,27 @@ describe('parseCliEvaluationRequest', () => {
     });
 
     expect(request.values.judges).toMatchObject({ enabled: false, members: [] });
+  });
+
+  it('preserves an eval.yaml judge deployment revision as explicit Runtime qualification', () => {
+    const request = parseCliEvaluationRequest({
+      explicitCliFlags: {},
+      evalConfig: {
+        ...equivalentConfig,
+        judgeModels: [{
+          executor: 'openai-api',
+          model: 'judge-b',
+          deploymentRevision: 'judge-b-snapshot-2026-09-04',
+        }],
+      },
+      defaults,
+    });
+
+    expect(request.values.judges.members).toEqual([{
+      executorId: 'openai-api',
+      model: 'judge-b',
+      deploymentRevision: 'judge-b-snapshot-2026-09-04',
+    }]);
   });
 
   it('rejects conflicting baseline isolation flags with a stable code', () => {

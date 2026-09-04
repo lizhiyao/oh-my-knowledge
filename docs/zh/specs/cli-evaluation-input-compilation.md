@@ -114,7 +114,7 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 
 本层已经是正式生产边界。`omk eval` 把这里产出的 contract 交给 Runtime 装配与 Core 宿主 workflow，并持久化 Core Plan、Bundle 和 Report。已删除的旧 pipeline 不会双跑或 shadow run，后续层也不会重新解析 CLI 输入。
 
-迁移 contract 有意不兼容：parse output 使用 `omk.cli-evaluation-request/v2`，resolved compiler input 使用 `omk.resolved-cli-evaluation-input/v5`，HostResource inventory 仍使用 `omk.resolved-host-resources/v3`，binding output 仍使用 `omk.runtime-binding-request/v4`。Request v2 与 resolved input v5 增加必需的样本量规划 contract，并选择 `omk.release-decision/v5` 与 `omk.bootstrap-family-table/v2`；旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。此前 resolved input v4 已用 secret `mock-rule` descriptor 和 lease role 取代内联 mock match rule。新的 release-policy identity 同时绑定计划家族校正与显式 Monte Carlo 判定证据，历史 release policy v1～v4 与 Bootstrap family v1 仍保留注册用于重放。
+当前边界输出 `omk.cli-evaluation-request/v3`、`omk.resolved-cli-evaluation-input/v6`、`omk.resolved-host-resources/v3` 与 `omk.runtime-binding-request/v5`。Request v3、resolved input v6 和 binding request v5 会把 `eval.yaml` 中可选的宿主声明 judge deployment revision 传入 evaluator Runtime qualification。更早的 request 结构不会被接受。
 
 disable-only 的 `--no-cache`／`noCache` 没有忠实的 Core cache-enable 等价语义：已删除实现中的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。当前 Registry 只规范化 disabled 状态，并把显式 cache reuse 留给未来单独设计的接口；旧 cache 文件不会被读取。
 
@@ -192,6 +192,7 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | eval.yaml | `goldDir` | `orchestration.gold.resourceLocator` | 200 | — | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `holdoutRatio` | `definition.dataset.analysisCohorts` | 200 | — | Definition | analysis | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeModels` | `definition.judges.members` | 200 | — (environment-selection) | Definition | evaluation | `evaluator-instrument` | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `judgeModels[].deploymentRevision` | `definition.judges.members[].deploymentRevision` | 200 | — | Definition | evaluation | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeModels[].executor` | `definition.judges.members[].executorId` | 200 | — | Definition | evaluation | `evaluator-instrument` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeModels[].model` | `definition.judges.members[].model` | 200 | — | Definition | evaluation | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeRepeat` | `definition.judges.replicateCount` | 200 | `1` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |

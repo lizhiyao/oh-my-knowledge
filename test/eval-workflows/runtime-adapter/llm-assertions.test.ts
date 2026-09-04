@@ -107,9 +107,10 @@ function providerIdentity(): RuntimeIdentity {
 function invocationPort(
   handler: InvocationHandler,
   reporting: 'unsupported' | 'optional' | 'required' = 'optional',
+  identity: RuntimeIdentity = providerIdentity(),
 ): OmkLlmJudgeInvocationPort {
   return Object.freeze({
-    identity: providerIdentity(),
+    identity,
     providerCost: { reporting },
     invoke: handler,
   });
@@ -399,6 +400,33 @@ const COMPLETE_USAGE: UsageRecord = {
 };
 
 describe('provider-neutral LLM assertion Evaluator', () => {
+  it('preserves opaque provider provenance through evaluator composition', () => {
+    const opaqueProvider = RuntimeIdentitySchema.parse({
+      implementationId: PROVIDER_IMPLEMENTATION_ID,
+      fingerprint: digestCanonicalJson({ provider: PROVIDER_IMPLEMENTATION_ID, opaque: true }),
+      fingerprintBasis: 'opaque',
+      assuranceLevel: 'unknown',
+      capabilities: { invocation: 'single-call' },
+      implementationManifest: {
+        coverageKind: 'fingerprint-plus-facets',
+        facets: [{
+          facetId: 'provider.deployment',
+          value: { coverage: 'remote-opaque' },
+        }],
+      },
+    });
+    const identity = evaluatorIdentity(
+      'semantic_similarity',
+      invocationPort(async () => ({
+        invocationStatus: 'completed',
+        output: '{"score":5,"reason":"valid"}',
+      }), 'optional', opaqueProvider),
+    );
+
+    expect(identity.fingerprintBasis).toBe('opaque');
+    expect(identity.assuranceLevel).toBe('unknown');
+  });
+
   it.each([
     ['semantic_similarity', 'semantic-similarity', getSemanticPromptHash()],
     ['faithfulness', 'rag-faithfulness', getRagJudgePromptHash('faithfulness')],

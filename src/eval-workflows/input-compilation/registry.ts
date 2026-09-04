@@ -250,6 +250,13 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
   config('judgeModels[].model', 'definition.judges.members[].model', 'Definition', 'evaluation', {
     runtimeQualificationRequirements: ['model-effort'],
   }),
+  config(
+    'judgeModels[].deploymentRevision',
+    'definition.judges.members[].deploymentRevision',
+    'Definition',
+    'evaluation',
+    { runtimeQualificationRequirements: ['model-effort'] },
+  ),
   config('concurrency', 'policy.executionConcurrency', 'MeasurementPolicy', 'execution', {
     defaultValue: 1, defaultSource: 'documented',
   }),
