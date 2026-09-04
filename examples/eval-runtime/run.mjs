@@ -63,12 +63,18 @@ const result = await evaluate({
     treatmentVariantIds: ['candidate'],
     metricIds: ['correct'],
   }],
-  analysis: { bootstrap: { resamples: 100 } },
-  decision: {
-    decisionKind: 'comparison',
+  analysis: { analyses: [{
+    analysisId: 'baseline-vs-candidate-correct',
+    analysisKind: 'comparison-interval',
+    statistic: 'mean-difference',
     comparisonId: 'baseline-vs-candidate',
     treatmentVariantId: 'candidate',
     metricId: 'correct',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }] },
+  decision: {
+    decisionKind: 'analysis',
+    analysisId: 'baseline-vs-candidate-correct',
   },
   experiment: { seed: 'explicit-example-seed', sampling: { samplingKind: 'paired' } },
   policy: { maxConcurrency: 2 },

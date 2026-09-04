@@ -120,19 +120,49 @@ function pairedInput(
       treatmentVariantIds: [treatmentSpec.variantId],
       metricIds: ['correct'],
     }],
-    analysis: { bootstrap: { resamples: 100 } },
+    analysis: {
+      analyses: [{
+        analysisId: 'baseline-vs-candidate-correct',
+        analysisKind: 'comparison-interval' as const,
+        statistic: 'mean-difference' as const,
+        comparisonId: 'baseline-vs-candidate',
+        treatmentVariantId: treatmentSpec.variantId,
+        metricId: 'correct',
+        confidence: {
+          method: 'percentile-bootstrap' as const,
+          level: 0.95,
+          resamples: 100,
+        },
+      }],
+    },
     experiment: {
       seed: 'fixed-seed',
       sampling: { samplingKind: 'paired' as const },
     },
     decision: {
-      decisionKind: 'comparison' as const,
-      comparisonId: 'baseline-vs-candidate',
-      treatmentVariantId: treatmentSpec.variantId,
-      metricId: 'correct',
+      decisionKind: 'analysis' as const,
+      analysisId: 'baseline-vs-candidate-correct',
     },
     policy: { maxConcurrency: 2 },
     runId: 'canonical-evaluate',
+  };
+}
+
+function comparisonAnalysis(metricId: string, analysisId = `${metricId}-difference`) {
+  return {
+    analyses: [{
+      analysisId,
+      analysisKind: 'comparison-interval' as const,
+      statistic: 'mean-difference' as const,
+      comparisonId: 'baseline-vs-candidate',
+      treatmentVariantId: treatmentSpec.variantId,
+      metricId,
+      confidence: {
+        method: 'percentile-bootstrap' as const,
+        level: 0.95,
+        resamples: 100,
+      },
+    }],
   };
 }
 
@@ -193,7 +223,7 @@ function qualitativeCustomEvaluator(
 }
 
 function stableFacadeId(
-  identityKind: 'node' | 'result' | 'decision' | 'slot',
+  identityKind: 'node' | 'decision' | 'slot',
   selector: Readonly<Record<string, string>>,
 ): string {
   return `${identityKind}:${digestCanonicalJson({
@@ -237,7 +267,7 @@ describe('canonical eval-runtime API', () => {
         metricId: 'correct',
       }],
     });
-    expect(result.artifacts.analysis.records[0]).toMatchObject({
+    expect(result.analysisResults['baseline-vs-candidate-correct']).toMatchObject({
       analysisStatus: 'completed',
       value: { estimate: 0.5 },
     });
@@ -254,6 +284,30 @@ describe('canonical eval-runtime API', () => {
         model: 'test-model',
       }),
     ]));
+  });
+
+  it('estimates one Variant quality inside a paired experiment at the paired-block unit', async () => {
+    const input = pairedInput();
+    const result = await evaluate({
+      ...input,
+      analysis: { analyses: [...input.analysis.analyses, {
+        analysisId: 'candidate-quality',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }] },
+      decision: undefined,
+      runId: 'paired-quality',
+      clock: fixedClock,
+    });
+
+    expect(result.status, JSON.stringify(result)).toBe('completed');
+    expect(result.analysisResults['candidate-quality']).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 1, unitCount: 2 },
+    });
   });
 
   it('seals one stable Variant assignment per sample for independent comparisons', async () => {
@@ -294,6 +348,14 @@ describe('canonical eval-runtime API', () => {
           minimumSamplesPerVariantPerStratum: 1,
         },
       },
+      analysis: { analyses: [...input.analysis.analyses, {
+        analysisId: 'candidate-independent-quality',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }] },
       decision: undefined,
       runId: 'independent-assignment',
       clock: fixedClock,
@@ -326,6 +388,10 @@ describe('canonical eval-runtime API', () => {
     expect(calls.filter((call) => call.variantId === controlSpec.variantId)).toHaveLength(6);
     expect(calls.filter((call) => call.variantId === treatmentSpec.variantId)).toHaveLength(6);
     expect(result.artifacts.analysis.records[0]).toMatchObject({ analysisStatus: 'completed' });
+    expect(result.analysisResults['candidate-independent-quality']).toMatchObject({
+      analysisStatus: 'completed',
+      value: { unitCount: 3 },
+    });
   });
 
   it('runs a custom Evaluator from only its declared bindings', async () => {
@@ -372,6 +438,12 @@ describe('canonical eval-runtime API', () => {
       ...input,
       evaluators: [...input.evaluators, custom],
       comparisons: [{ ...input.comparisons[0], metricIds: ['correct', 'length'] }],
+      analysis: {
+        analyses: [
+          ...input.analysis.analyses,
+          ...comparisonAnalysis('length').analyses,
+        ],
+      },
       decision: undefined,
       runId: 'custom-evaluator',
       clock: fixedClock,
@@ -438,6 +510,7 @@ describe('canonical eval-runtime API', () => {
         },
       }],
       comparisons: [{ ...input.comparisons[0], metricIds: ['strict-score'] }],
+      analysis: comparisonAnalysis('strict-score'),
       decision: undefined,
       runId: 'custom-evaluator-invalid',
       clock: fixedClock,
@@ -481,6 +554,7 @@ describe('canonical eval-runtime API', () => {
         ...input.comparisons[0],
         metricIds: ['transformed-bindings-score'],
       }],
+      analysis: comparisonAnalysis('transformed-bindings-score'),
       decision: undefined,
       runId: 'custom-evaluator-transformed-bindings',
       clock: fixedClock,
@@ -579,6 +653,7 @@ describe('canonical eval-runtime API', () => {
         step: string;
       }>],
       comparisons: [{ ...input.comparisons[0], metricIds: ['all-bindings-valid'] }],
+      analysis: comparisonAnalysis('all-bindings-valid'),
       decision: undefined,
       runId: 'custom-evaluator-all-bindings',
       clock: fixedClock,
@@ -626,6 +701,7 @@ describe('canonical eval-runtime API', () => {
         ...input.comparisons[0],
         metricIds: ['answer-category-value', 'answer-text-value', 'answer-ranking-value'],
       }],
+      analysis: { analyses: [] },
       decision: undefined,
       runId: 'custom-evaluator-categorical',
       clock: fixedClock,
@@ -695,6 +771,12 @@ describe('canonical eval-runtime API', () => {
         ...input.comparisons[0],
         metricIds: ['shared-length-score', 'shared-is-a-score'],
       }],
+      analysis: {
+        analyses: [
+          ...comparisonAnalysis('shared-length-score').analyses,
+          ...comparisonAnalysis('shared-is-a-score').analyses,
+        ],
+      },
       decision: undefined,
       runId: 'custom-evaluator-shared-implementation',
       clock: fixedClock,
@@ -738,6 +820,7 @@ describe('canonical eval-runtime API', () => {
         },
       }],
       comparisons: [{ ...input.comparisons[0], metricIds: ['throwing-score'] }],
+      analysis: comparisonAnalysis('throwing-score'),
       decision: undefined,
       runId: 'custom-evaluator-thrown-failure',
       clock: fixedClock,
@@ -788,6 +871,7 @@ describe('canonical eval-runtime API', () => {
         },
       }],
       comparisons: [{ ...input.comparisons[0], metricIds: ['slow-score'] }],
+      analysis: comparisonAnalysis('slow-score'),
       decision: undefined,
       policy: { ...input.policy, evaluationTimeoutMs: 5 },
       runId: 'custom-evaluator-timeout',
@@ -812,6 +896,7 @@ describe('canonical eval-runtime API', () => {
         usage: { totalTokens: 3 },
       }))],
       comparisons: [{ ...input.comparisons[0], metricIds: ['stable-failure-score'] }],
+      analysis: comparisonAnalysis('stable-failure-score'),
       decision: undefined,
       runId: 'custom-evaluator-stable-failure',
       clock: fixedClock,
@@ -833,6 +918,7 @@ describe('canonical eval-runtime API', () => {
         return { resultKind: 'score', value: 1 };
       })],
       comparisons: [{ ...input.comparisons[0], metricIds: ['budgeted-score'] }],
+      analysis: comparisonAnalysis('budgeted-score'),
       decision: undefined,
       policy: { ...input.policy, maxInvocations: 4 },
       runId: 'custom-evaluator-budget',
@@ -856,6 +942,7 @@ describe('canonical eval-runtime API', () => {
       ...input,
       evaluators: [custom],
       comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
+      analysis: comparisonAnalysis('captured-callback-score'),
       decision: undefined,
       runId: 'custom-evaluator-captured-callback',
       clock: fixedClock,
@@ -872,6 +959,7 @@ describe('canonical eval-runtime API', () => {
         'revision-two',
       )],
       comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
+      analysis: comparisonAnalysis('captured-callback-score'),
       decision: undefined,
       runId: 'custom-evaluator-new-identity',
       clock: fixedClock,
@@ -898,12 +986,18 @@ describe('canonical eval-runtime API', () => {
       variants: [variant(declaration, treatmentSpec)],
       evaluators: [{ evaluatorKind: 'exact-match' }],
       comparisons: [],
-      analysis: { bootstrap: { resamples: 100 } },
-      experiment: { seed: 'solo-seed', sampling: { samplingKind: 'solo' } },
-      decision: {
-        decisionKind: 'quality',
+      analysis: { analyses: [{
+        analysisId: 'candidate-quality',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
         variantId: treatmentSpec.variantId,
         metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+      }] },
+      experiment: { seed: 'solo-seed', sampling: { samplingKind: 'solo' } },
+      decision: {
+        decisionKind: 'analysis',
+        analysisId: 'candidate-quality',
         threshold: 0.5,
       },
       policy: {},
@@ -926,6 +1020,176 @@ describe('canonical eval-runtime API', () => {
       inputs: [{ inputKind: 'metric-observations', referenceId: 'correct' }],
     });
     expect(result.artifacts.execution?.records).toHaveLength(2);
+  });
+
+  it('compiles explicit summaries with target and cohort selection', async () => {
+    const declaration = executor();
+    const input = pairedInput(declaration);
+    const length = numericCustomEvaluator('summary-length', ({ bindings }) => ({
+      resultKind: 'score',
+      value: bindings.actual.length,
+    }));
+    const result = await evaluate({
+      ...input,
+      dataset: {
+        ...input.dataset,
+        analysisCohorts: [{
+          cohortId: 'first-sample',
+          cohortSetId: 'position',
+          cohortSetKind: 'cohort',
+          classification: 'public',
+          disclosure: 'identity-only',
+        }],
+        samples: input.dataset.samples.map((sample, index) => ({
+          ...sample,
+          ...(index === 0 ? {
+            analysis: { memberships: [{ cohortId: 'first-sample' }] },
+          } : {}),
+        })),
+      },
+      evaluators: [...input.evaluators, length],
+      comparisons: [{
+        ...input.comparisons[0],
+        metricIds: ['correct', 'summary-length-score'],
+      }],
+      analysis: { analyses: [{
+        analysisId: 'control-first-rate',
+        analysisKind: 'summary',
+        statistic: 'rate',
+        variantId: controlSpec.variantId,
+        metricId: 'correct',
+        cohortFilter: { includeCohortIds: ['first-sample'] },
+      }, {
+        analysisId: 'treatment-rate',
+        analysisKind: 'summary',
+        statistic: 'rate',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+      }, {
+        analysisId: 'treatment-p50-length',
+        analysisKind: 'summary',
+        statistic: 'quantile',
+        probability: 0.5,
+        variantId: treatmentSpec.variantId,
+        metricId: 'summary-length-score',
+      }] },
+      decision: undefined,
+      runId: 'explicit-summaries',
+      clock: fixedClock,
+    });
+
+    expect(result.status, JSON.stringify(result)).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.analysisResults['control-first-rate']).toMatchObject({
+      analysisStatus: 'completed',
+      value: 1,
+    });
+    expect(result.analysisResults['treatment-rate']).toMatchObject({
+      analysisStatus: 'completed',
+      value: 1,
+    });
+    expect(result.analysisResults['treatment-p50-length']).toMatchObject({
+      analysisStatus: 'completed',
+      value: 1,
+    });
+    expect(Object.isFrozen(result.analysisResults)).toBe(true);
+    expect(result.analysisResults['control-first-rate']).toBe(
+      result.artifacts.analysis.records.find((record) => (
+        record.resultId === 'control-first-rate'
+      )),
+    );
+    expect(result.definition.analysisGraph.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        outputResultId: 'control-first-rate',
+        targetFilter: { includeTargetIds: [controlSpec.variantId] },
+        cohortFilter: { includeCohortIds: ['first-sample'] },
+      }),
+      expect.objectContaining({
+        outputResultId: 'treatment-rate',
+        targetFilter: { includeTargetIds: [treatmentSpec.variantId] },
+      }),
+    ]));
+  });
+
+  it('resamples declared clusters as indivisible quality units', async () => {
+    const declaration = executor();
+    const result = await evaluate({
+      dataset: {
+        datasetId: 'clustered-quality',
+        samples: [
+          { sampleId: 'a-1', input: { prompt: 'one' }, expected: 'A', executionContext: { cluster: 'a' } },
+          { sampleId: 'a-2', input: { prompt: 'two' }, expected: 'B', executionContext: { cluster: 'a' } },
+          { sampleId: 'b-1', input: { prompt: 'one' }, expected: 'A', executionContext: { cluster: 'b' } },
+          { sampleId: 'b-2', input: { prompt: 'two' }, expected: 'B', executionContext: { cluster: 'b' } },
+        ],
+      },
+      variants: [variant(declaration, treatmentSpec)],
+      evaluators: [{ evaluatorKind: 'exact-match' }],
+      comparisons: [],
+      analysis: { analyses: [{
+        analysisId: 'clustered-correctness',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 64 },
+      }] },
+      experiment: {
+        seed: 'clustered-quality-seed',
+        sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
+      },
+      policy: {},
+      runId: 'clustered-quality',
+      clock: fixedClock,
+    });
+
+    expect(result.status, JSON.stringify(result)).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.definition.experiment.sampling).toMatchObject({
+      experimentalUnit: 'cluster',
+      clusterKey: '/executionContext/cluster',
+      resamplingUnit: 'cluster',
+      estimatorId: 'bootstrap.cluster-percentile/v1',
+    });
+    expect(result.analysisResults['clustered-correctness']).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 1, unitCount: 2 },
+    });
+  });
+
+  it('rejects missing cluster membership before the first Target call', async () => {
+    let invocations = 0;
+    const declaration = executor(async () => {
+      invocations += 1;
+      return { output: 'A' };
+    });
+    const input = pairedInput(declaration);
+
+    const result = await evaluate({
+      dataset: input.dataset,
+      variants: [variant(declaration, treatmentSpec)],
+      evaluators: [{ evaluatorKind: 'exact-match' }],
+      comparisons: [],
+      analysis: { analyses: [{
+        analysisId: 'clustered-correctness',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }] },
+      experiment: {
+        seed: 'missing-cluster-membership',
+        sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
+      },
+      policy: {},
+      runId: 'missing-cluster-membership',
+    });
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: { code: 'EVAL_DEFINITION_MISSING_REFERENCE', stage: 'configuration' },
+    });
+    expect(invocations).toBe(0);
   });
 
   it('runs heterogeneous Executors and all canonical Evaluator kinds in one Core Run', async () => {
@@ -996,6 +1260,23 @@ describe('canonical eval-runtime API', () => {
         treatmentVariantIds: [thirdSpec.variantId, treatmentSpec.variantId],
         metricIds: ['quality-score', 'correct', 'length-score'],
       }],
+      analysis: {
+        analyses: ['prompt-v2', 'prompt-v3'].flatMap((treatmentVariantId) => (
+          ['quality-score', 'correct', 'length-score'].map((metricId) => ({
+            analysisId: `${treatmentVariantId}-${metricId}`,
+            analysisKind: 'comparison-interval' as const,
+            statistic: 'mean-difference' as const,
+            comparisonId: 'baseline-vs-candidates',
+            treatmentVariantId,
+            metricId,
+            confidence: {
+              method: 'percentile-bootstrap' as const,
+              level: 0.95,
+              resamples: 100,
+            },
+          }))
+        )),
+      },
       experiment: {
         seed: 'multi-arm-independent-seed',
         sampling: {
@@ -1084,12 +1365,35 @@ describe('canonical eval-runtime API', () => {
       },
     } satisfies RubricJudgeEvaluator;
     const result = await evaluate({
-      dataset: pairedInput().dataset,
+      dataset: {
+        ...pairedInput().dataset,
+        samples: pairedInput().dataset.samples.map((sample) => ({
+          ...sample,
+          executionContext: { cluster: sample.sampleId },
+        })),
+      },
       variants: [variant(declaration, treatmentSpec)],
       evaluators: [panel],
       comparisons: [],
-      analysis: { bootstrap: { resamples: 32 } },
-      experiment: { seed: 'panel-seed', trials: 2, sampling: { samplingKind: 'solo' } },
+      analysis: { analyses: [{
+        analysisId: 'panel-quality',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'quality-score',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }, {
+        analysisId: 'panel-mean',
+        analysisKind: 'summary',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'quality-score',
+      }] },
+      experiment: {
+        seed: 'panel-seed',
+        trials: 2,
+        sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
+      },
       decision: undefined,
       policy: { maxConcurrency: 2 },
       runId: 'rubric-panel',
@@ -1124,9 +1428,15 @@ describe('canonical eval-runtime API', () => {
     ]);
     expect(result.artifacts.execution.records).toHaveLength(4);
     expect(result.artifacts.evaluation.records).toHaveLength(12);
-    expect(result.artifacts.analysis.records[0]).toMatchObject({
+    expect(result.analysisResults['panel-quality']).toMatchObject({
       analysisStatus: 'completed',
+      implementation: { implementationId: 'bootstrap.hierarchical-cluster-percentile/v1' },
       value: { estimate: 4, unitCount: 2 },
+    });
+    expect(result.analysisResults['panel-mean']).toMatchObject({
+      analysisStatus: 'completed',
+      implementation: { implementationId: 'descriptive.hierarchical-mean/v1' },
+      value: 4,
     });
   });
 
@@ -1160,6 +1470,7 @@ describe('canonical eval-runtime API', () => {
         },
       }],
       comparisons: [],
+      analysis: { analyses: [] },
       experiment: { seed: 'invalid-panel-seed', sampling: { samplingKind: 'solo' } },
       policy: {},
       runId: 'invalid-panel',
@@ -1182,6 +1493,7 @@ describe('canonical eval-runtime API', () => {
       dataset: pairedInput().dataset,
       variants: [variant(declaration, treatmentSpec)],
       comparisons: [],
+      analysis: { analyses: [] },
       experiment: { seed: 'panel-validation-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
       runId: 'panel-validation',
@@ -1243,6 +1555,20 @@ describe('canonical eval-runtime API', () => {
       dataset: pairedInput().dataset,
       variants: [variant(declaration, treatmentSpec)],
       comparisons: [],
+      analysis: {
+        analyses: [{
+          analysisId: 'order-panel-quality',
+          analysisKind: 'quality-interval' as const,
+          statistic: 'mean' as const,
+          variantId: treatmentSpec.variantId,
+          metricId: 'quality-score',
+          confidence: {
+            method: 'percentile-bootstrap' as const,
+            level: 0.95,
+            resamples: 32,
+          },
+        }],
+      },
       experiment: { seed: 'panel-order-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
       clock: fixedClock,
@@ -1286,13 +1612,8 @@ describe('canonical eval-runtime API', () => {
       clock: fixedClock,
     });
 
-    const selector = {
-      analysisKind: 'comparison',
-      comparisonId: 'baseline-vs-candidate',
-      treatmentVariantId: 'prompt-v2',
-      metricId: 'correct',
-    };
-    const resultId = stableFacadeId('result', selector);
+    const selector = { analysisId: 'baseline-vs-candidate-correct' };
+    const resultId = 'baseline-vs-candidate-correct';
     const expected = EvaluationDefinitionSchema.parse({
       schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,
       dataset: common.dataset,
@@ -1388,7 +1709,7 @@ describe('canonical eval-runtime API', () => {
       }],
       decisionPolicy: {
         decisionPolicyId: stableFacadeId('decision', {
-          decisionKind: 'comparison', resultId,
+          decisionKind: 'analysis', resultId,
         }),
         implementationId: 'progress/v2',
         analysisResultIds: [resultId],
@@ -1414,9 +1735,77 @@ describe('canonical eval-runtime API', () => {
       outputResultId: resultId,
     });
     expect(first.definition.decisionPolicy?.decisionPolicyId).toBe(stableFacadeId('decision', {
-      decisionKind: 'comparison',
+      decisionKind: 'analysis',
       resultId: first.definition.analysisGraph.nodes[0].outputResultId,
     }));
+  });
+
+  it('canonicalizes Analysis request and cohort-filter declaration order', async () => {
+    const declaration = executor();
+    const base = pairedInput(declaration);
+    const dataset = {
+      ...base.dataset,
+      analysisCohorts: [{
+        cohortId: 'alpha',
+        cohortSetId: 'tags',
+        cohortSetKind: 'cohort' as const,
+        classification: 'public' as const,
+        disclosure: 'identity-only' as const,
+      }, {
+        cohortId: 'beta',
+        cohortSetId: 'tags',
+        cohortSetKind: 'cohort' as const,
+        classification: 'public' as const,
+        disclosure: 'identity-only' as const,
+      }],
+      samples: base.dataset.samples.map((sample) => ({
+        ...sample,
+        analysis: { memberships: [{ cohortId: 'alpha' }, { cohortId: 'beta' }] },
+      })),
+    };
+    const analyses = [{
+      analysisId: 'candidate-rate',
+      analysisKind: 'summary' as const,
+      statistic: 'rate' as const,
+      variantId: treatmentSpec.variantId,
+      metricId: 'correct',
+      cohortFilter: { includeCohortIds: ['beta', 'alpha'] },
+    }, {
+      analysisId: 'comparison-interval',
+      analysisKind: 'comparison-interval' as const,
+      statistic: 'mean-difference' as const,
+      comparisonId: 'baseline-vs-candidate',
+      treatmentVariantId: treatmentSpec.variantId,
+      metricId: 'correct',
+      confidence: { method: 'percentile-bootstrap' as const, level: 0.95, resamples: 32 },
+    }];
+
+    const first = await evaluate({
+      ...base,
+      dataset,
+      analysis: { analyses },
+      decision: undefined,
+      runId: 'analysis-order-first',
+      clock: fixedClock,
+    });
+    const second = await evaluate({
+      ...base,
+      dataset,
+      analysis: {
+        analyses: [...analyses].reverse().map((request) => (
+          request.analysisKind === 'summary'
+            ? { ...request, cohortFilter: { includeCohortIds: ['alpha', 'beta'] } }
+            : request
+        )),
+      },
+      decision: undefined,
+      runId: 'analysis-order-second',
+      clock: fixedClock,
+    });
+
+    expect(first.status).toBe('completed');
+    expect(second.status).toBe('completed');
+    expect(second.definition).toEqual(first.definition);
   });
 
   it('preserves Executor trace, usage, and required-telemetry failures end to end', async () => {
@@ -1468,6 +1857,20 @@ describe('canonical eval-runtime API', () => {
       })],
       evaluators: [{ evaluatorKind: 'exact-match' as const }],
       comparisons: [],
+      analysis: {
+        analyses: [{
+          analysisId: 'only-correct',
+          analysisKind: 'quality-interval' as const,
+          statistic: 'mean' as const,
+          variantId: 'only',
+          metricId: 'correct',
+          confidence: {
+            method: 'percentile-bootstrap' as const,
+            level: 0.95,
+            resamples: 100,
+          },
+        }],
+      },
       experiment: { seed: 'telemetry-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
       runId: 'telemetry-evaluate',
@@ -1564,6 +1967,7 @@ describe('canonical eval-runtime API', () => {
         controlVariantId: 'prompt-v1', treatmentVariantIds: ['prompt-v2'],
         metricIds: ['captured-score'],
       }],
+      analysis: comparisonAnalysis('captured-score'),
       decision: undefined,
       runId: 'captured-judge',
     });
@@ -1606,6 +2010,7 @@ describe('canonical eval-runtime API', () => {
         controlVariantId: 'prompt-v1', treatmentVariantIds: ['prompt-v2'],
         metricIds: ['schema-safe-correct'],
       }],
+      analysis: comparisonAnalysis('schema-safe-correct'),
       decision: undefined,
       runId: 'schema-mismatch',
     });
@@ -1751,9 +2156,10 @@ describe('canonical eval-runtime API', () => {
         ...pairedInput(declaration).comparisons[0],
         metricIds: [lowerIsBetter.metric.metricId],
       }],
+      analysis: comparisonAnalysis(lowerIsBetter.metric.metricId, 'lower-is-better'),
       decision: {
-        ...pairedInput(declaration).decision,
-        metricId: lowerIsBetter.metric.metricId,
+        decisionKind: 'analysis',
+        analysisId: 'lower-is-better',
       },
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
 
@@ -1828,12 +2234,75 @@ describe('canonical eval-runtime API', () => {
     await expect(evaluate({
       ...common,
       decision: {
-        decisionKind: 'comparison',
-        comparisonId: 'baseline-vs-candidate',
-        treatmentVariantId: 'missing-variant',
-        metricId: 'correct',
+        decisionKind: 'analysis',
+        analysisId: 'missing-analysis',
       },
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+  });
+
+  it('rejects invalid or legacy Analysis declarations before the first Target call', async () => {
+    let invocations = 0;
+    const declaration = executor(async () => {
+      invocations += 1;
+      return { output: 'A' };
+    });
+    const common = pairedInput(declaration);
+
+    const invalidAnalyses: unknown[] = [
+      { bootstrap: { resamples: 100, confidenceLevel: 0.95 } },
+      { analyses: [common.analysis.analyses[0], common.analysis.analyses[0]] },
+      { analyses: [{
+        analysisId: 'unknown-metric', analysisKind: 'summary', statistic: 'rate',
+        variantId: treatmentSpec.variantId, metricId: 'missing',
+      }] },
+      { analyses: [{
+        analysisId: 'unknown-variant', analysisKind: 'summary', statistic: 'rate',
+        variantId: 'missing', metricId: 'correct',
+      }] },
+      { analyses: [{
+        analysisId: 'unknown-cohort', analysisKind: 'summary', statistic: 'rate',
+        variantId: treatmentSpec.variantId, metricId: 'correct',
+        cohortFilter: { includeCohortIds: ['missing'] },
+      }] },
+      { analyses: [{
+        analysisId: 'empty-cohort-filter', analysisKind: 'summary', statistic: 'rate',
+        variantId: treatmentSpec.variantId, metricId: 'correct', cohortFilter: {},
+      }] },
+      { analyses: [{
+        analysisId: 'unknown-comparison', analysisKind: 'comparison-interval',
+        statistic: 'mean-difference', comparisonId: 'missing',
+        treatmentVariantId: treatmentSpec.variantId, metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }] },
+      { analyses: [{
+        analysisId: 'wrong-statistic', analysisKind: 'summary', statistic: 'mean',
+        variantId: treatmentSpec.variantId, metricId: 'correct',
+      }] },
+      { analyses: [{
+        analysisId: 'missing-probability', analysisKind: 'summary', statistic: 'quantile',
+        variantId: treatmentSpec.variantId, metricId: 'correct',
+      }] },
+    ];
+    for (const analysis of invalidAnalyses) {
+      await expect(evaluate({
+        ...common,
+        analysis,
+        decision: undefined,
+      } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+    }
+
+    await expect(evaluate({
+      ...common,
+      analysis: { analyses: [{
+        analysisId: 'candidate-rate',
+        analysisKind: 'summary',
+        statistic: 'rate',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+      }] },
+      decision: { decisionKind: 'analysis', analysisId: 'candidate-rate' },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+    expect(invocations).toBe(0);
   });
 
   it('derives a bounded evaluator identity from the longest valid Metric identity', async () => {
@@ -1846,6 +2315,7 @@ describe('canonical eval-runtime API', () => {
       variants: [variant(executor(), treatmentSpec)],
       evaluators: [{ evaluatorKind: 'exact-match', metricId }],
       comparisons: [],
+      analysis: { analyses: [] },
       experiment: { seed: 'long-metric-id', sampling: { samplingKind: 'solo' } },
       policy: {},
       runId: 'long-metric-id',

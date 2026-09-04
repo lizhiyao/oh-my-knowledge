@@ -118,12 +118,18 @@ const result = await evaluate({
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { bootstrap: { resamples: 1_000, alpha: 0.05 } },
-  decision: {
-    decisionKind: 'comparison',
+  analysis: { analyses: [{
+    analysisId: 'prompt-v1-vs-v2-correct',
+    analysisKind: 'comparison-interval',
+    statistic: 'mean-difference',
     comparisonId: 'prompt-v1-vs-v2',
     treatmentVariantId: 'prompt-v2',
     metricId: 'correct',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
+  }] },
+  decision: {
+    decisionKind: 'analysis',
+    analysisId: 'prompt-v1-vs-v2-correct',
   },
   experiment: {
     seed: 'release-2026-09-04',
@@ -138,7 +144,7 @@ if (result.status !== 'completed') throw new Error(result.error.code);
 await reportStore.put(result.report);
 ```
 
-`result.definition` and `result.policy` are the exact sealed Core Definition and fully materialized Measurement Policy compiled by the façade. The unchanged Core run result fields keep evidence in `result.artifacts`, Decision in `result.artifacts.decision`, and Report in `result.report`.
+`result.definition` and `result.policy` are the exact sealed Core Definition and fully materialized Measurement Policy compiled by the façade. `result.analysisResults[analysisId]` is a read-only index of the same Core Analysis records; it does not recompute statistics. The unchanged Core run result fields keep evidence in `result.artifacts`, Decision in `result.artifacts.decision`, and Report in `result.report`.
 
 `executor.execute()` receives `variantId` in addition to the values shown above. Comparison roles belong to `comparisons`, not to the Executor invocation. Return `{ errorCode }` for an expected, stable, non-sensitive host failure; throwing an ordinary error becomes the redacted `EVAL_RUNTIME_EXECUTOR_FAILED` failure.
 
@@ -236,7 +242,7 @@ Bindings are a least-authority allowlist. Declare `expected` or `evaluation-cont
 
 The callback may return `score`, `missing`, `invalid`, or `failed`. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
 
-Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. One custom evaluator cannot emit multiple Metrics or represent an ensemble member. Numeric and boolean Metrics require a monotonic direction and receive the built-in Bootstrap analysis; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The canonical Decision accepts only `higher-is-better`; for a lower-is-better Metric, omit `decision` and interpret the signed interval, or return a higher-is-better utility score.
+Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. One custom evaluator cannot emit multiple Metrics or represent an ensemble member. Numeric and boolean Metrics require a monotonic direction. They become analysis results only when the caller declares a compatible named summary or interval; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The canonical Decision accepts only `higher-is-better` and selects one interval by `analysisId`; for a lower-is-better Metric, omit `decision` and interpret the signed interval, or return a higher-is-better utility score.
 
 ## Rubric Judge evaluation
 

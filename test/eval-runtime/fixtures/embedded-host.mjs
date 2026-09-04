@@ -64,12 +64,16 @@ const result = await evaluate({
     treatmentVariantIds: ['treatment'],
     metricIds: ['correct'],
   }],
-  analysis: { bootstrap: { resamples: 100 } },
-  decision: {
-    decisionKind: 'comparison',
-    comparisonId: 'control-vs-treatment',
-    treatmentVariantId: 'treatment',
+  analysis: { analyses: [{
+    analysisId: 'control-vs-treatment-correct',
+    analysisKind: 'comparison-interval', statistic: 'mean-difference',
+    comparisonId: 'control-vs-treatment', treatmentVariantId: 'treatment',
     metricId: 'correct',
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }] },
+  decision: {
+    decisionKind: 'analysis',
+    analysisId: 'control-vs-treatment-correct',
   },
   experiment: { seed: 'explicit-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
