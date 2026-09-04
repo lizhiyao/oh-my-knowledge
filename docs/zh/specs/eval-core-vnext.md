@@ -101,7 +101,7 @@ Definition 是不可变、可序列化的意图，不包含函数、类实例、
 
 ```ts
 interface EvaluationDefinition {
-  schemaVersion: 'omk.evaluation-definition/v1';
+  schemaVersion: 'omk.evaluation-definition/v2';
   dataset: EvaluationDataset;
   targets: readonly TargetDefinition[];
   evaluators: readonly EvaluatorDefinition[];
@@ -229,16 +229,30 @@ interface SamplingDesign {
   experimentalUnit: 'sample' | 'run' | 'cluster';
   pairingKey?: string;
   clusterKey?: string;
-  stratumKey?: string;
   repeatedMeasures: boolean;
   resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
   estimatorId: string;
   seedCoupling: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
 }
 
+type AssignmentDesign = {
+  assignmentKind: 'complete-block';
+  algorithmId: 'assignment.complete-block/v1';
+  stratumKey?: string;
+  randomizationSlotIds: readonly string[];
+} | {
+  assignmentKind: 'independent-groups';
+  algorithmId: 'assignment.stratified-fixed-quota/v1';
+  stratumKey?: string;
+  allocations: readonly { randomizationSlotId: string; weight: number }[];
+  minimumUnitsPerTarget: number;
+  minimumUnitsPerTargetPerStratum: number;
+};
+
 interface ExperimentDesign {
   trials: number;
   seed: string;
+  assignment: AssignmentDesign;
   sampling: SamplingDesign;
   scheduling: SchedulingPolicy;
   randomizationSlots: readonly {
@@ -250,9 +264,15 @@ interface ExperimentDesign {
 
 trial 表示同一实验条件的一次重复测量；retry attempt 表示一次 trial 内的基础设施重试，两者不能互换。统计实现必须在 prepare 阶段验证自己支持当前 SamplingDesign，不能把重复 trial 自动视为独立样本。
 
+`AssignmentDesign` 与统计 `SamplingDesign` 是两个不同契约。complete-block assignment 把每个 sample 发送到所有已声明 slot；independent-group assignment 使用确定性的分层固定配额：Core 根据已封存的 seed、algorithm、stratum 与 sample ID 派生 SHA-256 排名，在每个 stratum 内排序 sample，再用最大余数法计算加权整数配额，最终把每个 sample 恰好分给一个 slot。slot 声明必须 canonical，并恰好覆盖全部 Target。全局与逐 stratum 的 minimum 会在 Runtime resolution 前检查；设计不足时 Executor 调用数为零。assignment 固定在 sample unit，并在重复 trial、retry、resume、budget stop 与 failure 中沿用，任何事件都不能重新分组。
+
+这是有意的 `BREAKING-SCHEMA` 切换。EvaluationDefinition、ExecutionPlan、AnalysisPlan 与 RunPlan 现在只接受 v2；不提供 v1 reader、迁移 adapter 或兼容性诊断。`stratumKey` 从 `SamplingDesign` 移到 `AssignmentDesign`，自定义 Analysis Runtime capability 必须声明支持的 `assignmentKinds`。内建的 assignment-aware Analysis Runtime 因 capability fingerprint 发生变化而再次升级 identity version。切换前持久化的 Plan 必须从源 Definition 重新生成后才能使用。
+
 配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`randomizationSlots` 为每个 Target 分配唯一、稳定的实验 slot；该 slot 只标识随机化条件，绝不编码 control／treatment role。宿主比较 successive subject implementation 时，即使 Target ID 改变，也必须保持同一个 slot。
 
-`randomizationSlots` 按 `(randomizationSlotId, targetId)` canonical 排序，并在两个字段上分别保持一一对应。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按稳定 slot 派生独立随机条件，还是诚实声明 Target 随机性不可控；Executor 不能自行猜测。Core 使用 `omk.randomization-design/v1` domain，根据 execution-input projection、trial count、root seed、会影响执行的 SamplingDesign projection、SchedulingPolicy、sampling membership，以及只使用 `randomizationSlotId` 表达的 scheduling connectivity，封存 `randomizationDesignDigest`；其中不包含只属于 Analysis 的 `estimatorId`、原始 Target ID、Target definition、Runtime identity 或绑定 Plan 的 artifact ID。计划 admission rank 与受控 trial seed 只能根据该 digest、trial index、sample identity，以及仅在独立 coupling 下使用的稳定 slot 派生；不得依赖 `executionPlanDigest`、`schedulingBlockId`、`trialId`、Runtime fingerprint 或 Target implementation content。sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+`randomizationSlots` 按 `(randomizationSlotId, targetId)` canonical 排序，并在两个字段上分别保持一一对应。`ExecutionPlan.assignments` 会在任何调用前物化 canonical `(sampleId, targetId, randomizationSlotId)` membership。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按稳定 slot 派生独立随机条件，还是诚实声明 Target 随机性不可控；Executor 不能自行猜测。Core 使用 `omk.randomization-design/v2` domain，根据 execution-input projection、trial count、root seed、AssignmentDesign、已物化的 sample-to-slot membership、会影响执行的 SamplingDesign projection、SchedulingPolicy、sampling membership，以及只使用 `randomizationSlotId` 表达的 scheduling connectivity，封存 `randomizationDesignDigest`；其中不包含只属于 Analysis 的 `estimatorId`、原始 Target ID、Target definition、Runtime identity 或绑定 Plan 的 artifact ID。计划 admission rank 与受控 trial seed 只能根据该 digest、trial index、sample identity，以及仅在独立 coupling 下使用的稳定 slot 派生；不得依赖 `executionPlanDigest`、`schedulingBlockId`、`trialId`、Runtime fingerprint 或 Target implementation content。sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。完整配对 block 只有在预算足够覆盖所有臂时才启动；独立组只调度每个 sample 已封存的唯一 Target。未启动坐标标记为 budget-censored，不伪造 attempt，也绝不能改变已封存 assignment。
+
+非配对 estimator 先在 sample 内聚合重复 trial，再拒绝任何跨臂重叠的 sample；Bootstrap 在每个 stratum 内分别对 control 与 treatment 独立重采样，并使用已封存计划总体的 sample 比例组合各 stratum 差值。任一 stratum 缺少任一观测臂时，结果为 inconclusive。estimator capability 必须显式声明支持的 assignment kind，prepare 会拒绝 paired／unpaired 交叉绑定。
 
 ExecutionPlan 携带同一份 execution-affecting ExperimentDesign projection，因此不存在 `estimatorId`；包含 estimator identity 的完整 ExperimentDesign 从 AnalysisPlan 开始出现。只改变 estimator 时，ExecutionPlan 与 EvaluationPlan identity 保持不变，AnalysisPlan 及其全部下游 identity 失效。
 

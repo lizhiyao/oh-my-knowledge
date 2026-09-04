@@ -196,6 +196,78 @@ describe('canonical eval-runtime API', () => {
     ]));
   });
 
+  it('seals one stable Variant assignment per sample for independent comparisons', async () => {
+    const calls: Array<{ sampleId: string; variantId: string; trialIndex: number }> = [];
+    const declaration = executor(async (invocation) => {
+      calls.push({
+        sampleId: invocation.sampleId,
+        variantId: invocation.variantId,
+        trialIndex: invocation.trialIndex,
+      });
+      return { output: invocation.config.answers[invocation.input.prompt] };
+    });
+    const input = pairedInput(declaration);
+    const result = await evaluate({
+      ...input,
+      dataset: {
+        datasetId: 'independent-answers',
+        samples: Array.from({ length: 6 }, (_, index) => ({
+          sampleId: `sample-${index + 1}`,
+          input: { prompt: index % 2 === 0 ? 'one' : 'two' },
+          expected: index % 2 === 0 ? 'A' : 'B',
+        })),
+      },
+      comparisons: [{
+        ...input.comparisons[0],
+        comparisonKind: 'independent',
+      }],
+      experiment: {
+        seed: 'independent-seed',
+        trials: 2,
+        sampling: {
+          samplingKind: 'independent',
+          allocations: [
+            { variantId: controlSpec.variantId, weight: 1 },
+            { variantId: treatmentSpec.variantId, weight: 1 },
+          ],
+          minimumSamplesPerVariant: 2,
+          minimumSamplesPerVariantPerStratum: 1,
+        },
+      },
+      decision: undefined,
+      runId: 'independent-assignment',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.definition.experiment.assignment).toMatchObject({
+      assignmentKind: 'independent-groups',
+      algorithmId: 'assignment.stratified-fixed-quota/v1',
+      minimumUnitsPerTarget: 2,
+      minimumUnitsPerTargetPerStratum: 1,
+    });
+    expect(result.definition.experiment.sampling).toMatchObject({
+      estimatorId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      seedCoupling: 'independent-by-target',
+    });
+    expect(result.artifacts.execution.records).toHaveLength(12);
+    expect(calls).toHaveLength(12);
+    const variantsBySample = new Map<string, Set<string>>();
+    for (const call of calls) {
+      const variants = variantsBySample.get(call.sampleId) ?? new Set<string>();
+      variants.add(call.variantId);
+      variantsBySample.set(call.sampleId, variants);
+    }
+    expect([...variantsBySample.values()].every((variants) => variants.size === 1)).toBe(true);
+    expect([...new Set(calls.filter((call) => call.trialIndex === 0).map((call) => call.variantId))])
+      .toHaveLength(2);
+    expect(calls.filter((call) => call.variantId === controlSpec.variantId)).toHaveLength(6);
+    expect(calls.filter((call) => call.variantId === treatmentSpec.variantId)).toHaveLength(6);
+    expect(result.artifacts.analysis.records[0]).toMatchObject({ analysisStatus: 'completed' });
+  });
+
   it('produces a solo quality profile without a fabricated Comparison', async () => {
     const declaration = executor();
     const result = await evaluate({
@@ -247,6 +319,14 @@ describe('canonical eval-runtime API', () => {
     const judgeCalls: string[] = [];
     const result = await evaluate({
       ...pairedInput(firstExecutor),
+      dataset: {
+        datasetId: 'multi-arm-independent',
+        samples: Array.from({ length: 6 }, (_, index) => ({
+          sampleId: `sample-${index + 1}`,
+          input: { prompt: index % 2 === 0 ? 'one' : 'two' },
+          expected: index % 2 === 0 ? 'A' : 'B',
+        })),
+      },
       variants: [
         variant(firstExecutor, controlSpec),
         variant(firstExecutor, treatmentSpec),
@@ -280,11 +360,24 @@ describe('canonical eval-runtime API', () => {
       ],
       comparisons: [{
         comparisonId: 'baseline-vs-candidates',
-        comparisonKind: 'paired',
+        comparisonKind: 'independent',
         controlVariantId: controlSpec.variantId,
         treatmentVariantIds: [thirdSpec.variantId, treatmentSpec.variantId],
         metricIds: ['quality-score', 'correct'],
       }],
+      experiment: {
+        seed: 'multi-arm-independent-seed',
+        sampling: {
+          samplingKind: 'independent',
+          allocations: [
+            { variantId: controlSpec.variantId, weight: 1 },
+            { variantId: treatmentSpec.variantId, weight: 1 },
+            { variantId: thirdSpec.variantId, weight: 1 },
+          ],
+          minimumSamplesPerVariant: 2,
+          minimumSamplesPerVariantPerStratum: 1,
+        },
+      },
       decision: undefined,
       runId: 'multi-arm-multi-metric',
       clock: fixedClock,
@@ -389,6 +482,13 @@ describe('canonical eval-runtime API', () => {
       experiment: {
         trials: 1,
         seed: 'fixed-seed',
+        assignment: {
+          assignmentKind: 'complete-block',
+          algorithmId: 'assignment.complete-block/v1',
+          randomizationSlotIds: ['prompt-v1', 'prompt-v2'].map((variantId) => (
+            stableFacadeId('slot', { variantId })
+          )).sort(),
+        },
         sampling: {
           experimentalUnit: 'sample', pairingKey: '/sampleId', repeatedMeasures: false,
           resamplingUnit: 'paired-block',

@@ -29,11 +29,11 @@ import {
   TargetDefinitionSchema,
 } from './definition.js';
 
-export const EXECUTION_PLAN_SCHEMA_VERSION = 'omk.execution-plan/v1' as const;
+export const EXECUTION_PLAN_SCHEMA_VERSION = 'omk.execution-plan/v2' as const;
 export const EVALUATION_PLAN_SCHEMA_VERSION = 'omk.evaluation-plan/v1' as const;
-export const ANALYSIS_PLAN_SCHEMA_VERSION = 'omk.analysis-plan/v1' as const;
+export const ANALYSIS_PLAN_SCHEMA_VERSION = 'omk.analysis-plan/v2' as const;
 export const DECISION_PLAN_SCHEMA_VERSION = 'omk.decision-plan/v1' as const;
-export const RUN_PLAN_SCHEMA_VERSION = 'omk.run-plan/v1' as const;
+export const RUN_PLAN_SCHEMA_VERSION = 'omk.run-plan/v2' as const;
 
 export const ExecutionInputSampleSchema = EvaluationSampleSchema.pick({
   sampleId: true,
@@ -89,12 +89,19 @@ export const EvaluationPlanPolicySchema = z.object({
 
 export const SchedulingTargetGroupSchema = z.array(IdentifierSchema).min(1);
 
+export const AssignmentMembershipSchema = z.object({
+  sampleId: IdentifierSchema,
+  targetId: IdentifierSchema,
+  randomizationSlotId: IdentifierSchema,
+}).strict();
+
 export const ExecutionPlanSchema = z.object({
   schemaVersion: z.literal(EXECUTION_PLAN_SCHEMA_VERSION),
   executionInputDigest: Sha256DigestSchema,
   randomizationDesignDigest: Sha256DigestSchema,
   samples: z.array(ExecutionInputSampleSchema).min(1),
   targets: z.array(TargetDefinitionSchema).min(1),
+  assignments: z.array(AssignmentMembershipSchema).min(1),
   schedulingTargetGroups: z.array(SchedulingTargetGroupSchema).min(1),
   experiment: ExecutionExperimentDesignSchema,
   runtimes: z.array(ResolvedRuntimeSchema),
@@ -102,7 +109,7 @@ export const ExecutionPlanSchema = z.object({
   executionPlanDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Execution Plan v1',
+  title: 'OMK Execution Plan v2',
 });
 
 export const EvaluationPlanSchema = z.object({
@@ -134,7 +141,7 @@ export const AnalysisPlanSchema = z.object({
   analysisPlanDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Analysis Plan v1',
+  title: 'OMK Analysis Plan v2',
 });
 
 export const DecisionPlanSchema = z.object({
@@ -174,10 +181,11 @@ export const RunPlanSchema = z.object({
   digests: PlanDigestsSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Run Plan v1',
+  title: 'OMK Run Plan v2',
 });
 
 export type ExecutionInputSample = z.infer<typeof ExecutionInputSampleSchema>;
+export type AssignmentMembership = z.infer<typeof AssignmentMembershipSchema>;
 export type ExecutionPlanPolicy = z.infer<typeof ExecutionPlanPolicySchema>;
 export type EvaluationInputSample = z.infer<typeof EvaluationInputSampleSchema>;
 export type AnalysisInputSample = z.infer<typeof AnalysisInputSampleSchema>;

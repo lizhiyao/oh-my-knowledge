@@ -219,7 +219,45 @@ async function makePlan(
         randomizationSlotId: `slot-${String(index).padStart(4, '0')}`,
       }));
   }
+  if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+    definition.experiment.assignment.randomizationSlotIds = definition.experiment.randomizationSlots
+      .map((slot) => slot.randomizationSlotId)
+      .sort();
+  }
   return prepareEvaluationPlan(definition, policy, runtime);
+}
+
+async function makeIndependentPlan(
+  mutate?: (
+    definition: ReturnType<typeof validDefinition>,
+    policy: ReturnType<typeof validPolicy>,
+  ) => void,
+): Promise<Plan> {
+  return makePlan((definition, policy) => {
+    definition.dataset.samples = Array.from({ length: 6 }, (_, index) => ({
+      ...structuredClone(definition.dataset.samples[0]),
+      sampleId: `sample-${index + 1}`,
+    }));
+    definition.experiment.assignment = {
+      assignmentKind: 'independent-groups',
+      algorithmId: 'assignment.stratified-fixed-quota/v1',
+      allocations: [
+        { randomizationSlotId: 'slot-control', weight: 1 },
+        { randomizationSlotId: 'slot-treatment', weight: 1 },
+      ],
+      minimumUnitsPerTarget: 2,
+      minimumUnitsPerTargetPerStratum: 1,
+    };
+    definition.experiment.sampling = {
+      experimentalUnit: 'sample',
+      repeatedMeasures: false,
+      resamplingUnit: 'sample',
+      estimatorId: 'bootstrap.unpaired-difference-percentile/v1',
+      seedCoupling: 'independent-by-target',
+    };
+    policy.execution.maxConcurrency = 1;
+    mutate?.(definition, policy);
+  }, testRuntime({ samplingAssignmentKinds: ['independent-groups'] }));
 }
 
 function expectedExecutorIdentity(plan: Plan): RuntimeIdentity {
@@ -388,6 +426,84 @@ describe('Evaluation Core Execution runtime', () => {
       original.execution.randomizationDesignDigest,
     );
     expect(randomizationProjection(renamed)).toEqual(randomizationProjection(original));
+  });
+
+  it('fails closed when a sealed Plan no longer covers every sample assignment', async () => {
+    const plan = await makePlan();
+    const tampered = structuredClone(plan) as unknown as {
+      execution: { assignments: unknown[] };
+    };
+    tampered.execution.assignments.pop();
+
+    expect(() => deriveExecutionSchedule(tampered as unknown as Plan)).toThrow(
+      /assignment coverage/,
+    );
+  });
+
+  it('never reassigns independent units after budget censoring, failure, or cancellation', async () => {
+    const assertAssignedTargets = (
+      plan: Plan,
+      contexts: readonly ExecutorTrialContext[],
+    ) => {
+      const targetBySample = new Map(plan.execution.assignments.map((assignment) => (
+        [assignment.sampleId, assignment.targetId] as const
+      )));
+      expect(contexts.every((context) => (
+        targetBySample.get(context.sampleId) === context.targetId
+      ))).toBe(true);
+      expect(new Set(contexts.map((context) => context.sampleId)).size).toBe(contexts.length);
+    };
+
+    const budgetPlan = await makeIndependentPlan((_definition, policy) => {
+      policy.budget.stages.execution.maxInvocations = 2;
+    });
+    const budgetRuntime = portsFor(budgetPlan);
+    const budgetBundle = await executeRunPlan(budgetPlan, budgetRuntime.ports, {
+      runId: 'independent-budget',
+      bundleId: 'independent-budget-bundle',
+    });
+    expect(budgetBundle.coverage).toMatchObject({ planned: 6, started: 2, budgetCensored: 4 });
+    assertAssignedTargets(budgetPlan, budgetRuntime.state.trialContexts);
+
+    const failurePlan = await makeIndependentPlan((_definition, policy) => {
+      policy.retry.maxAttempts = 1;
+    });
+    const failedSampleId = failurePlan.execution.assignments[0].sampleId;
+    const failureRuntime = portsFor(failurePlan, (trial) => {
+      if (trial.sampleId === failedSampleId) {
+        throw new ExecutionPortFailure({
+          code: 'timeout',
+          stage: 'infrastructure',
+          message: 'expected test failure',
+        });
+      }
+      return {
+        output: { value: { answer: trial.targetId }, classification: 'public' },
+      };
+    });
+    const failureBundle = await executeRunPlan(failurePlan, failureRuntime.ports, {
+      runId: 'independent-failure',
+      bundleId: 'independent-failure-bundle',
+    });
+    expect(failureBundle.coverage).toMatchObject({ planned: 6, started: 6, failed: 1 });
+    assertAssignedTargets(failurePlan, failureRuntime.state.trialContexts);
+
+    const cancellationPlan = await makeIndependentPlan();
+    const controller = new AbortController();
+    const cancellationRuntime = portsFor(cancellationPlan, (trial) => {
+      controller.abort();
+      return {
+        output: { value: { answer: trial.targetId }, classification: 'public' },
+      };
+    });
+    const cancelledBundle = await executeRunPlan(cancellationPlan, cancellationRuntime.ports, {
+      runId: 'independent-cancelled',
+      bundleId: 'independent-cancelled-bundle',
+      signal: controller.signal,
+    });
+    expect(cancelledBundle.executionBundleStatus).toBe('cancelled');
+    expect(cancelledBundle.coverage.notStarted).toBeGreaterThan(0);
+    assertAssignedTargets(cancellationPlan, cancellationRuntime.state.trialContexts);
   });
 
   it('retries only within one trial identity and disposes one trial session', async () => {

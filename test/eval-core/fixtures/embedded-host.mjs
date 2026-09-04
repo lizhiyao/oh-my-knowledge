@@ -382,6 +382,11 @@ function definition(targetKind) {
     experiment: {
       trials: 1,
       seed: 'host-seed',
+      assignment: {
+        assignmentKind: 'complete-block',
+        algorithmId: 'assignment.complete-block/v1',
+        randomizationSlotIds: ['slot-control', 'slot-treatment'],
+      },
       randomizationSlots: [
         { targetId: 'control', randomizationSlotId: 'slot-control' },
         { targetId: 'treatment', randomizationSlotId: 'slot-treatment' },

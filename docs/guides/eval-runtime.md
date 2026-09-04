@@ -146,6 +146,33 @@ Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults,
 
 Variant `config` and `runtimeContext` are serialized into the sealed Definition. Put only reproducible, non-secret measurement inputs there. Credentials, clients, and process-local resources stay in the Executor closure and never enter the Definition.
 
+For independent groups, change the comparison and sampling declarations together. Every Variant must have one allocation:
+
+```ts
+comparisons: [{
+  comparisonId: 'prompt-v1-vs-v2',
+  comparisonKind: 'independent',
+  controlVariantId: 'prompt-v1',
+  treatmentVariantIds: ['prompt-v2'],
+  metricIds: ['correct'],
+}],
+experiment: {
+  seed: 'release-2026-09-04',
+  sampling: {
+    samplingKind: 'independent',
+    allocations: [
+      { variantId: 'prompt-v1', weight: 1 },
+      { variantId: 'prompt-v2', weight: 1 },
+    ],
+    minimumSamplesPerVariant: 20,
+    minimumSamplesPerVariantPerStratum: 5,
+    stratumKey: '/executionContext/locale',
+  },
+},
+```
+
+OMK deterministically seals one Variant per sample before execution. Repeated trials reuse that assignment; changing the seed, weights, strata, or minima produces a different randomization identity.
+
 `exact-match` compares the canonical JSON value of the actual output with the sample's `expected` value. It is not byte-for-byte string comparison.
 
 `onEvent` is an optional, best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.

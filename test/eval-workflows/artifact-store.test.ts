@@ -269,6 +269,21 @@ describe('Node Core run artifact store', () => {
     );
   });
 
+  it('rejects persisted assignment membership that was not derived from the Definition', async () => {
+    const root = await temporaryDirectory();
+    const result = await runConformanceScenario('function', { runId: 'assignment-plan-run' });
+    const plan = structuredClone(result.plan) as unknown as RunPlan;
+    plan.execution.assignments.pop();
+    const store = createNodeCoreRunArtifactStore(root);
+    await assert.rejects(
+      store.save({
+        ...saveRequest(result, 'assignment-plan-run'),
+        plan: plan as unknown as SealedRunPlan,
+      }),
+      expectStoreError('CORE_RUN_ARTIFACT_PLAN_INVALID'),
+    );
+  });
+
   it('requires every descriptor to resolve before publishing a resolvable run', async () => {
     const root = await temporaryDirectory();
     const artifactStore = new InMemoryConformanceArtifactStore();

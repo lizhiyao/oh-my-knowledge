@@ -29,8 +29,12 @@ export function evaluationCoreJsonSchemaLocation(
   fileName: EvaluationCoreJsonSchemaFile,
 ): `v${number}/${EvaluationCoreJsonSchemaFile}` {
   return fileName === 'analysis-bundle.schema.json'
+    || fileName === 'analysis-plan.schema.json'
     || fileName === 'comparability-assessment.schema.json'
+    || fileName === 'evaluation-definition.schema.json'
     || fileName === 'evaluation-report.schema.json'
+    || fileName === 'execution-plan.schema.json'
+    || fileName === 'run-plan.schema.json'
     || fileName === 'series-analysis-bundle.schema.json'
     ? `v2/${fileName}`
     : `v1/${fileName}`;

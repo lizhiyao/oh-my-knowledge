@@ -14,6 +14,7 @@ import {
   generateRunContractSchemaIdentities,
   parseWireDocument,
   projectExecutionExperimentDesign,
+  deriveAssignmentMemberships,
   projectEvaluationInputs,
   projectAnalysisInputs,
   projectAnalysisCohorts,
@@ -385,6 +386,11 @@ function normalizeAnalysisCapabilities(
     inputCardinalities: capabilities.inputCardinalities,
     ...(capabilities.sampling !== undefined ? {
       sampling: {
+        assignmentKinds: sortedUniqueStrings(
+          capabilities.sampling.assignmentKinds,
+          referenceId,
+          'sampling.assignmentKinds',
+        ) as NonNullable<AnalysisNodeCapabilities['sampling']>['assignmentKinds'],
         experimentalUnits: sortedUniqueStrings(
           capabilities.sampling.experimentalUnits,
           referenceId,
@@ -412,7 +418,7 @@ function parseInput<T>(schema: z.ZodType<T>, value: unknown, documentKind: strin
       code: 'EVAL_DEFINITION_SCHEMA_INVALID',
       stage: 'configuration',
       preparationStage: 'schema',
-      message: `${documentKind} 不符合 Evaluation Core v1 wire contract。`,
+      message: `${documentKind} 不符合当前 Evaluation Core wire contract。`,
       ...(error instanceof z.ZodError ? { details: safeSchemaDetails(error) } : {}),
     });
   }
@@ -855,6 +861,9 @@ async function resolveAnalysisRuntimes(
   const samplingCapabilities = samplingEstimator.capabilities.sampling;
   const sampling = definition.experiment.sampling;
   if (samplingCapabilities === undefined
+      || !samplingCapabilities.assignmentKinds.includes(
+        definition.experiment.assignment.assignmentKind,
+      )
       || !samplingCapabilities.experimentalUnits.includes(sampling.experimentalUnit)
       || !samplingCapabilities.repeatedMeasures.includes(sampling.repeatedMeasures)
       || !samplingCapabilities.resamplingUnits.includes(sampling.resamplingUnit)) {
@@ -865,6 +874,23 @@ async function resolveAnalysisRuntimes(
       message: 'Estimator 不支持声明的 SamplingDesign。',
       details: { referenceId: samplingReferenceId },
     });
+  }
+
+  for (const [nodeId, resolved] of byNodeId) {
+    const capabilities = resolved.capabilities.sampling;
+    if (capabilities === undefined) continue;
+    if (!capabilities.assignmentKinds.includes(definition.experiment.assignment.assignmentKind)
+        || !capabilities.experimentalUnits.includes(sampling.experimentalUnit)
+        || !capabilities.repeatedMeasures.includes(sampling.repeatedMeasures)
+        || !capabilities.resamplingUnits.includes(sampling.resamplingUnit)) {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Analysis node 不支持声明的 AssignmentDesign／SamplingDesign。',
+        details: { referenceId: nodeId },
+      });
+    }
   }
 
   const metricsById = new Map(definition.metrics.map((metric) => [metric.metricId, metric]));
@@ -1290,6 +1316,11 @@ export async function prepareEvaluationPlan(
     comparisons: definition.comparisons,
     paired: definition.experiment.sampling.resamplingUnit === 'paired-block',
   });
+  const executionSamples = projectExecutionInputs(definition.dataset);
+  const assignments = deriveAssignmentMemberships({
+    samples: executionSamples,
+    experiment: definition.experiment,
+  });
   const digests = computePlanDigests({
     dataset: definition.dataset,
     targets: definition.targets,
@@ -1317,8 +1348,9 @@ export async function prepareEvaluationPlan(
     schemaVersion: EXECUTION_PLAN_SCHEMA_VERSION,
     executionInputDigest: digests.executionInputDigest,
     randomizationDesignDigest: digests.randomizationDesignDigest,
-    samples: projectExecutionInputs(definition.dataset),
+    samples: executionSamples,
     targets: definition.targets,
+    assignments,
     schedulingTargetGroups,
     experiment: projectExecutionExperimentDesign(definition.experiment),
     runtimes: executorRuntimes,

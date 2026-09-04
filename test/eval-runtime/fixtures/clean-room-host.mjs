@@ -97,6 +97,45 @@ const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
 
+const independent = await evaluation({
+  dataset: {
+    datasetId: 'clean-room-independent',
+    samples: ['one', 'two', 'three', 'four'].map((sampleId) => ({
+      sampleId,
+      input: 'success',
+      expected: 'expected',
+    })),
+  },
+  comparisons: [{
+    comparisonId: 'baseline-vs-prompt-v2',
+    comparisonKind: 'independent',
+    controlVariantId: 'baseline',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correct'],
+  }],
+  decision: undefined,
+  experiment: {
+    seed: 'clean-room-independent-seed',
+    sampling: {
+      samplingKind: 'independent',
+      allocations: [
+        { variantId: 'baseline', weight: 1 },
+        { variantId: 'prompt-v2', weight: 1 },
+      ],
+      minimumSamplesPerVariant: 2,
+      minimumSamplesPerVariantPerStratum: 1,
+    },
+  },
+  runId: 'clean-room-independent',
+});
+assert.equal(independent.status, 'completed');
+assert.equal(independent.artifacts.execution.records.length, 4);
+assert.equal(
+  new Set(independent.artifacts.execution.records.map((record) => record.sampleId)).size,
+  4,
+);
+assert.equal(independent.artifacts.analysis.records[0].analysisStatus, 'completed');
+
 const sequences = [];
 const withSlowObserver = await evaluation({
   runId: 'clean-room-slow-observer',

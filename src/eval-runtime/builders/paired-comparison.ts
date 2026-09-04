@@ -121,6 +121,11 @@ export function createPairedComparisonDefinition(
     experiment: {
       trials,
       seed: input.seed,
+      assignment: {
+        assignmentKind: 'complete-block',
+        algorithmId: 'assignment.complete-block/v1',
+        randomizationSlotIds: targets.map((candidate) => `slot-${candidate.targetId}`).sort(),
+      },
       randomizationSlots: targets.map((candidate) => ({
         targetId: candidate.targetId,
         randomizationSlotId: `slot-${candidate.targetId}`,

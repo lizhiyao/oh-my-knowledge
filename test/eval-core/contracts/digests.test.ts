@@ -7,6 +7,7 @@ import {
   computeRunContractDigest,
   computeRuntimeIdentityDigest,
   computeRuntimeImplementationDigest,
+  deriveAssignmentMemberships,
   digestArtifactPayload,
   digestCanonicalJson,
   generateRunContractSchemaIdentities,
@@ -132,6 +133,11 @@ const definition: EvaluationDefinition = {
   experiment: {
     trials: 1,
     seed: 'seed-1',
+    assignment: {
+      assignmentKind: 'complete-block',
+      algorithmId: 'assignment.complete-block/v1',
+      randomizationSlotIds: ['slot-control'],
+    },
     randomizationSlots: [{
       targetId: 'control',
       randomizationSlotId: 'slot-control',
@@ -171,7 +177,120 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
   });
 }
 
+function independentDefinition(seed = 'independent-seed'): EvaluationDefinition {
+  return {
+    ...structuredClone(definition),
+    dataset: {
+      datasetId: 'independent-cases',
+      samples: Array.from({ length: 8 }, (_, index) => ({
+        ...structuredClone(dataset.samples[0]),
+        sampleId: `sample-${index + 1}`,
+        executionContext: { stratum: index < 4 ? 'a' : 'b' },
+      })),
+    },
+    targets: [
+      structuredClone(definition.targets[0]),
+      { ...structuredClone(definition.targets[0]), targetId: 'treatment' },
+    ],
+    experiment: {
+      trials: 2,
+      seed,
+      assignment: {
+        assignmentKind: 'independent-groups',
+        algorithmId: 'assignment.stratified-fixed-quota/v1',
+        stratumKey: '/executionContext/stratum',
+        allocations: [
+          { randomizationSlotId: 'slot-control', weight: 1 },
+          { randomizationSlotId: 'slot-treatment', weight: 1 },
+        ],
+        minimumUnitsPerTarget: 2,
+        minimumUnitsPerTargetPerStratum: 1,
+      },
+      randomizationSlots: [
+        { targetId: 'control', randomizationSlotId: 'slot-control' },
+        { targetId: 'treatment', randomizationSlotId: 'slot-treatment' },
+      ],
+      sampling: {
+        experimentalUnit: 'sample',
+        repeatedMeasures: true,
+        resamplingUnit: 'sample',
+        estimatorId: 'bootstrap.unpaired-difference-percentile/v1',
+        seedCoupling: 'independent-by-target',
+      },
+      scheduling: { schedulingKind: 'interleaved' },
+    },
+    comparisons: [{
+      comparisonId: 'control-vs-treatment',
+      controlTargetId: 'control',
+      treatmentTargetIds: ['treatment'],
+      metricIds: ['correct'],
+    }],
+  };
+}
+
 describe('Evaluation Core layered digests', () => {
+  it('derives deterministic balanced independent assignments at the sample unit', () => {
+    const current = independentDefinition();
+    const input = {
+      samples: projectExecutionInputs(current.dataset),
+      experiment: current.experiment,
+    };
+    const first = deriveAssignmentMemberships(input);
+    const reordered = deriveAssignmentMemberships({
+      ...input,
+      samples: [...input.samples].reverse(),
+    });
+
+    expect(first).toEqual(reordered);
+    expect(first).toHaveLength(8);
+    expect(new Set(first.map((membership) => membership.sampleId)).size).toBe(8);
+    expect(first.filter((membership) => membership.targetId === 'control')).toHaveLength(4);
+    expect(first.filter((membership) => membership.targetId === 'treatment')).toHaveLength(4);
+  });
+
+  it('honors fixed allocation weights independently within each stratum', () => {
+    const current = independentDefinition();
+    if (current.experiment.assignment.assignmentKind !== 'independent-groups') return;
+    current.experiment.assignment.allocations = [
+      { randomizationSlotId: 'slot-control', weight: 3 },
+      { randomizationSlotId: 'slot-treatment', weight: 1 },
+    ];
+    const memberships = deriveAssignmentMemberships({
+      samples: projectExecutionInputs(current.dataset),
+      experiment: current.experiment,
+    });
+    const stratumBySample = new Map(current.dataset.samples.map((sample) => [
+      sample.sampleId,
+      (sample.executionContext as { stratum: string }).stratum,
+    ]));
+
+    expect(memberships.filter((membership) => membership.targetId === 'control')).toHaveLength(6);
+    expect(memberships.filter((membership) => membership.targetId === 'treatment')).toHaveLength(2);
+    for (const stratum of ['a', 'b']) {
+      const stratumMemberships = memberships.filter((membership) => (
+        stratumBySample.get(membership.sampleId) === stratum
+      ));
+      expect(stratumMemberships.filter((membership) => membership.targetId === 'control'))
+        .toHaveLength(3);
+      expect(stratumMemberships.filter((membership) => membership.targetId === 'treatment'))
+        .toHaveLength(1);
+    }
+  });
+
+  it('binds independent assignment seed, weights, and sealed memberships into identity', () => {
+    const current = independentDefinition();
+    const first = planDigests(current);
+    const reseeded = planDigests(independentDefinition('other-seed'));
+    const reweighted = structuredClone(current);
+    if (reweighted.experiment.assignment.assignmentKind !== 'independent-groups') return;
+    reweighted.experiment.assignment.allocations[0].weight = 3;
+    const second = planDigests(reweighted);
+
+    expect(reseeded.randomizationDesignDigest).not.toBe(first.randomizationDesignDigest);
+    expect(reseeded.executionPlanDigest).not.toBe(first.executionPlanDigest);
+    expect(second.randomizationDesignDigest).not.toBe(first.randomizationDesignDigest);
+    expect(second.executionPlanDigest).not.toBe(first.executionPlanDigest);
+  });
   it('binds Target execution requirements into Execution and downstream plan identity', () => {
     const first = planDigests(definition);
     const second = planDigests({

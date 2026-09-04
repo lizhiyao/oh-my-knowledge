@@ -1,7 +1,7 @@
 {
   "$defs": {
     "__schema0": {
-      "const": "omk.execution-plan/v1",
+      "const": "omk.execution-plan/v2",
       "type": "string"
     },
     "__schema1": {
@@ -59,18 +59,119 @@
       "type": "array"
     },
     "__schema14": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "sampleId",
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema15": {
+      "items": {
+        "$ref": "#/$defs/__schema16"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema16": {
       "items": {
         "$ref": "#/$defs/__schema4"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema15": {
+    "__schema17": {
       "additionalProperties": false,
       "properties": {
+        "assignment": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "algorithmId": {
+                  "const": "assignment.complete-block/v1",
+                  "type": "string"
+                },
+                "assignmentKind": {
+                  "const": "complete-block",
+                  "type": "string"
+                },
+                "randomizationSlotIds": {
+                  "items": {
+                    "$ref": "#/$defs/__schema4"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "stratumKey": {
+                  "$ref": "#/$defs/__schema18"
+                }
+              },
+              "required": [
+                "assignmentKind",
+                "algorithmId",
+                "randomizationSlotIds"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "algorithmId": {
+                  "const": "assignment.stratified-fixed-quota/v1",
+                  "type": "string"
+                },
+                "allocations": {
+                  "items": {
+                    "$ref": "#/$defs/__schema20"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "assignmentKind": {
+                  "const": "independent-groups",
+                  "type": "string"
+                },
+                "minimumUnitsPerTarget": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "minimumUnitsPerTargetPerStratum": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "stratumKey": {
+                  "$ref": "#/$defs/__schema18"
+                }
+              },
+              "required": [
+                "assignmentKind",
+                "algorithmId",
+                "allocations",
+                "minimumUnitsPerTarget",
+                "minimumUnitsPerTargetPerStratum"
+              ],
+              "type": "object"
+            }
+          ]
+        },
         "randomizationSlots": {
           "items": {
-            "$ref": "#/$defs/__schema17"
+            "$ref": "#/$defs/__schema21"
           },
           "minItems": 1,
           "type": "array"
@@ -79,7 +180,7 @@
           "additionalProperties": false,
           "properties": {
             "clusterKey": {
-              "$ref": "#/$defs/__schema16"
+              "$ref": "#/$defs/__schema19"
             },
             "experimentalUnit": {
               "enum": [
@@ -90,7 +191,7 @@
               "type": "string"
             },
             "pairingKey": {
-              "$ref": "#/$defs/__schema16"
+              "$ref": "#/$defs/__schema19"
             },
             "repeatedMeasures": {
               "type": "boolean"
@@ -111,9 +212,6 @@
                 "uncontrolled"
               ],
               "type": "string"
-            },
-            "stratumKey": {
-              "$ref": "#/$defs/__schema16"
             }
           },
           "required": [
@@ -158,17 +256,45 @@
       "required": [
         "trials",
         "seed",
+        "assignment",
         "sampling",
         "scheduling",
         "randomizationSlots"
       ],
       "type": "object"
     },
-    "__schema16": {
+    "__schema18": {
+      "$ref": "#/$defs/__schema19"
+    },
+    "__schema19": {
       "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
       "type": "string"
     },
-    "__schema17": {
+    "__schema2": {
+      "items": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema20": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "weight": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "randomizationSlotId",
+        "weight"
+      ],
+      "type": "object"
+    },
+    "__schema21": {
       "additionalProperties": false,
       "properties": {
         "randomizationSlotId": {
@@ -184,7 +310,7 @@
       ],
       "type": "object"
     },
-    "__schema18": {
+    "__schema22": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -220,10 +346,10 @@
               "implementationManifest": {
                 "oneOf": [
                   {
-                    "$ref": "#/$defs/__schema19"
+                    "$ref": "#/$defs/__schema23"
                   },
                   {
-                    "$ref": "#/$defs/__schema20"
+                    "$ref": "#/$defs/__schema24"
                   }
                 ]
               },
@@ -298,7 +424,7 @@
       },
       "type": "array"
     },
-    "__schema19": {
+    "__schema23": {
       "additionalProperties": false,
       "properties": {
         "coverageKind": {
@@ -311,14 +437,7 @@
       ],
       "type": "object"
     },
-    "__schema2": {
-      "items": {
-        "$ref": "#/$defs/__schema3"
-      },
-      "minItems": 1,
-      "type": "array"
-    },
-    "__schema20": {
+    "__schema24": {
       "additionalProperties": false,
       "properties": {
         "coverageKind": {
@@ -327,7 +446,7 @@
         },
         "facets": {
           "items": {
-            "$ref": "#/$defs/__schema21"
+            "$ref": "#/$defs/__schema25"
           },
           "minItems": 1,
           "type": "array"
@@ -339,7 +458,7 @@
       ],
       "type": "object"
     },
-    "__schema21": {
+    "__schema25": {
       "additionalProperties": false,
       "properties": {
         "facetId": {
@@ -355,26 +474,26 @@
       ],
       "type": "object"
     },
-    "__schema22": {
+    "__schema26": {
       "additionalProperties": false,
       "properties": {
         "budget": {
           "additionalProperties": false,
           "properties": {
             "attempt": {
-              "$ref": "#/$defs/__schema30"
+              "$ref": "#/$defs/__schema34"
             },
             "coordinate": {
-              "$ref": "#/$defs/__schema29"
+              "$ref": "#/$defs/__schema33"
             },
             "providerCostAdmission": {
-              "$ref": "#/$defs/__schema31"
+              "$ref": "#/$defs/__schema35"
             },
             "run": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema27"
             },
             "stages": {
-              "$ref": "#/$defs/__schema28"
+              "$ref": "#/$defs/__schema32"
             }
           },
           "required": [
@@ -399,10 +518,10 @@
               "type": "string"
             },
             "output": {
-              "$ref": "#/$defs/__schema32"
+              "$ref": "#/$defs/__schema36"
             },
             "trace": {
-              "$ref": "#/$defs/__schema32"
+              "$ref": "#/$defs/__schema36"
             }
           },
           "required": [
@@ -522,17 +641,17 @@
       ],
       "type": "object"
     },
-    "__schema23": {
+    "__schema27": {
       "additionalProperties": false,
       "properties": {
         "maxActiveDurationMs": {
-          "$ref": "#/$defs/__schema27"
+          "$ref": "#/$defs/__schema31"
         },
         "maxInvocations": {
-          "$ref": "#/$defs/__schema24"
+          "$ref": "#/$defs/__schema28"
         },
         "maxProviderCost": {
-          "$ref": "#/$defs/__schema25"
+          "$ref": "#/$defs/__schema29"
         },
         "maxWallClockMs": {
           "exclusiveMinimum": 0,
@@ -542,67 +661,13 @@
       },
       "type": "object"
     },
-    "__schema24": {
-      "exclusiveMinimum": 0,
-      "maximum": 9007199254740991,
-      "type": "integer"
-    },
-    "__schema25": {
-      "$ref": "#/$defs/__schema26"
-    },
-    "__schema26": {
-      "additionalProperties": false,
-      "properties": {
-        "amount": {
-          "minimum": 0,
-          "type": "number"
-        },
-        "currency": {
-          "pattern": "^[A-Z]{3}$",
-          "type": "string"
-        }
-      },
-      "required": [
-        "amount",
-        "currency"
-      ],
-      "type": "object"
-    },
-    "__schema27": {
-      "exclusiveMinimum": 0,
-      "maximum": 9007199254740991,
-      "type": "integer"
-    },
     "__schema28": {
-      "additionalProperties": false,
-      "properties": {
-        "evaluation": {
-          "$ref": "#/$defs/__schema29"
-        },
-        "execution": {
-          "$ref": "#/$defs/__schema29"
-        }
-      },
-      "required": [
-        "execution",
-        "evaluation"
-      ],
-      "type": "object"
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
     },
     "__schema29": {
-      "additionalProperties": false,
-      "properties": {
-        "maxActiveDurationMs": {
-          "$ref": "#/$defs/__schema27"
-        },
-        "maxInvocations": {
-          "$ref": "#/$defs/__schema24"
-        },
-        "maxProviderCost": {
-          "$ref": "#/$defs/__schema25"
-        }
-      },
-      "type": "object"
+      "$ref": "#/$defs/__schema30"
     },
     "__schema3": {
       "additionalProperties": false,
@@ -626,13 +691,67 @@
     "__schema30": {
       "additionalProperties": false,
       "properties": {
+        "amount": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "type": "object"
+    },
+    "__schema31": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "__schema32": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluation": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "execution": {
+          "$ref": "#/$defs/__schema33"
+        }
+      },
+      "required": [
+        "execution",
+        "evaluation"
+      ],
+      "type": "object"
+    },
+    "__schema33": {
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema31"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema28"
+        },
         "maxProviderCost": {
-          "$ref": "#/$defs/__schema26"
+          "$ref": "#/$defs/__schema29"
         }
       },
       "type": "object"
     },
-    "__schema31": {
+    "__schema34": {
+      "additionalProperties": false,
+      "properties": {
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema30"
+        }
+      },
+      "type": "object"
+    },
+    "__schema35": {
       "additionalProperties": false,
       "properties": {
         "admissionMode": {
@@ -656,7 +775,7 @@
       ],
       "type": "object"
     },
-    "__schema32": {
+    "__schema36": {
       "enum": [
         "full",
         "reference",
@@ -665,7 +784,7 @@
       ],
       "type": "string"
     },
-    "__schema33": {
+    "__schema37": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -676,7 +795,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema34"
+            "$ref": "#/$defs/__schema38"
           }
         },
         "required": [
@@ -687,11 +806,11 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema34"
+        "$ref": "#/$defs/__schema38"
       },
       "type": "object"
     },
-    "__schema34": {
+    "__schema38": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
@@ -952,10 +1071,13 @@
       ]
     }
   },
-  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v1/execution-plan.schema.json",
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v2/execution-plan.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "assignments": {
+      "$ref": "#/$defs/__schema13"
+    },
     "executionInputDigest": {
       "$ref": "#/$defs/__schema1"
     },
@@ -963,25 +1085,25 @@
       "$ref": "#/$defs/__schema1"
     },
     "experiment": {
-      "$ref": "#/$defs/__schema15"
+      "$ref": "#/$defs/__schema17"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema33"
+      "$ref": "#/$defs/__schema37"
     },
     "policy": {
-      "$ref": "#/$defs/__schema22"
+      "$ref": "#/$defs/__schema26"
     },
     "randomizationDesignDigest": {
       "$ref": "#/$defs/__schema1"
     },
     "runtimes": {
-      "$ref": "#/$defs/__schema18"
+      "$ref": "#/$defs/__schema22"
     },
     "samples": {
       "$ref": "#/$defs/__schema2"
     },
     "schedulingTargetGroups": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema15"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"
@@ -996,12 +1118,13 @@
     "randomizationDesignDigest",
     "samples",
     "targets",
+    "assignments",
     "schedulingTargetGroups",
     "experiment",
     "runtimes",
     "policy",
     "executionPlanDigest"
   ],
-  "title": "OMK Execution Plan v1",
+  "title": "OMK Execution Plan v2",
   "type": "object"
 }

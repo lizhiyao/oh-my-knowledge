@@ -14,6 +14,34 @@ import {
 } from '../../../src/eval-core/compiler/validation.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
+function independentDefinition() {
+  const definition = validDefinition();
+  definition.dataset.samples = Array.from({ length: 8 }, (_, index) => ({
+    ...structuredClone(definition.dataset.samples[0]),
+    sampleId: `sample-${index + 1}`,
+    executionContext: { stratum: index < 4 ? 'a' : 'b' },
+  }));
+  definition.experiment.assignment = {
+    assignmentKind: 'independent-groups',
+    algorithmId: 'assignment.stratified-fixed-quota/v1',
+    stratumKey: '/executionContext/stratum',
+    allocations: [
+      { randomizationSlotId: 'slot-control', weight: 1 },
+      { randomizationSlotId: 'slot-treatment', weight: 1 },
+    ],
+    minimumUnitsPerTarget: 2,
+    minimumUnitsPerTargetPerStratum: 1,
+  };
+  definition.experiment.sampling = {
+    experimentalUnit: 'sample',
+    repeatedMeasures: false,
+    resamplingUnit: 'sample',
+    estimatorId: 'bootstrap.unpaired-difference-percentile/v1',
+    seedCoupling: 'independent-by-target',
+  };
+  return definition;
+}
+
 async function expectCode(
   definition: unknown,
   policy: unknown,
@@ -237,6 +265,43 @@ describe('Compiler definition validation', () => {
     const nonCanonical = validDefinition();
     nonCanonical.experiment.randomizationSlots.reverse();
     await expectCode(nonCanonical, validPolicy(), 'EVAL_DEFINITION_POLICY_INVALID');
+  });
+
+  it('fails closed when independent assignment minima cannot be satisfied', async () => {
+    const definition = independentDefinition();
+    if (definition.experiment.assignment.assignmentKind !== 'independent-groups') return;
+    definition.experiment.assignment.minimumUnitsPerTargetPerStratum = 3;
+    const runtime = testRuntime({ samplingAssignmentKinds: ['independent-groups'] });
+
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_POLICY_INVALID',
+      runtime,
+    );
+    expect(runtime.calls).toEqual({ executor: 0, evaluator: 0, analysis: 0, extension: 0 });
+  });
+
+  it('requires estimator capabilities to match the sealed assignment kind', async () => {
+    await expectCode(
+      independentDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ samplingAssignmentKinds: ['complete-block'] }),
+    );
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ samplingAssignmentKinds: ['independent-groups'] }),
+    );
+
+    const plan = await prepareEvaluationPlan(
+      independentDefinition(),
+      validPolicy(),
+      testRuntime({ samplingAssignmentKinds: ['independent-groups'] }),
+    );
+    expect(plan.execution.assignments).toHaveLength(8);
   });
 
   it('rejects a Runtime that hides behavior-affecting facts in provenance facets', async () => {
@@ -762,6 +827,9 @@ describe('Compiler definition validation', () => {
       targetId: 'treatment-secondary',
       randomizationSlotId: 'slot-treatment-secondary',
     });
+    if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+      definition.experiment.assignment.randomizationSlotIds.push('slot-treatment-secondary');
+    }
     definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
     definition.analysisGraph.nodes = [
       {
@@ -850,6 +918,9 @@ describe('Compiler definition validation', () => {
       targetId: 'treatment-secondary',
       randomizationSlotId: 'slot-treatment-secondary',
     });
+    if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+      definition.experiment.assignment.randomizationSlotIds.push('slot-treatment-secondary');
+    }
     definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
     definition.analysisGraph.nodes[0].analysisNodeKind = 'estimator';
     definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';

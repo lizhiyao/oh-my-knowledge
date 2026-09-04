@@ -112,7 +112,7 @@ decision:
 
 omk 会在执行前封存最小有意义的 treatment-minus-control 差异、来自外部先导数据的配对差值标准差、目标功效、假设来源、家族 alpha、计划比较数量、方法 identity，以及据此计算的完整 pair 数要求。当前方法采用双侧正态近似，并按计划 comparison family 做 Bonferroni 分配；它是规划近似，不保证 percentile Bootstrap 的实际运行特性。复杂、强离散或偏态设计应在 omk 外通过 simulation 确定样本量，再用 `decision.minimumComparisonUnits` 登记结果。omk 明确不报告事后「观测功效」：用本次 run 的观测 effect 或 variance 为本次样本量辩护属于循环论证。
 
-对于已配置的 Judge Ensemble，v6 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 release policy v1～v5 与 Bootstrap family v1 只为精确重放保留注册；新运行使用 v6 与 Bootstrap family v2。
+对于已配置的 Judge Ensemble，v6 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 release policy v1～v5 与 Bootstrap family v1 仍作为历史语义实现存在；新运行使用 v6 与 Bootstrap family v2。assignment-aware schema 切换会升级受影响的 Runtime identity，并且不保留切换前的 Plan reader。
 
 规划依据：[NIST 的双侧样本量公式](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm)、[CONSORT 2025 对目标差异、假设、alpha 与功效预先声明的要求](https://www.bmj.com/content/389/bmj-2024-081124)，以及 [Hoenig 与 Heisey 对事后功效滥用的论证](https://doi.org/10.1198/000313001300339897)。
 

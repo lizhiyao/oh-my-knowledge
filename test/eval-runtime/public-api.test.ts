@@ -2,6 +2,17 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import type { SamplingDesign } from '../../src/eval-runtime/index.js';
+
+const independentSampling: SamplingDesign = {
+  samplingKind: 'independent',
+  allocations: [
+    { variantId: 'control', weight: 1 },
+    { variantId: 'treatment', weight: 1 },
+  ],
+  minimumSamplesPerVariant: 2,
+  minimumSamplesPerVariantPerStratum: 1,
+};
 
 const PUBLIC_API = {
   'eval-runtime': {
@@ -186,6 +197,10 @@ function declarationExports(entry: string): { values: string[]; types: string[] 
 }
 
 describe('published eval-runtime API allowlist', () => {
+  it('exposes the independent-group design through the public TypeScript contract', () => {
+    expect(independentSampling.samplingKind).toBe('independent');
+  });
+
   it('makes the package root an exact runtime façade alias', async () => {
     const rootEntry = '../../dist/index.js';
     const runtimeEntry = '../../dist/eval-runtime/index.js';

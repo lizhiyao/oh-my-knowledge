@@ -213,6 +213,7 @@ function nodeCapabilities(input: {
   outputSchema: SchemaIdentity;
   parameterSchema: SchemaIdentity;
   sampling?: {
+    assignmentKinds: Array<'complete-block' | 'independent-groups'>;
     experimentalUnits: Array<'sample' | 'run' | 'cluster'>;
     repeatedMeasures: boolean[];
     resamplingUnits: Array<'sample' | 'paired-block' | 'cluster' | 'run'>;
@@ -253,6 +254,7 @@ function nodeCapabilities(input: {
     },
     ...(input.sampling !== undefined ? {
       sampling: {
+        assignmentKinds: [...input.sampling.assignmentKinds].sort(),
         experimentalUnits: [...input.sampling.experimentalUnits].sort(),
         repeatedMeasures: [...input.sampling.repeatedMeasures].sort(
           (left, right) => Number(left) - Number(right),
@@ -673,6 +675,7 @@ function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): Analys
   }
   const controlId = comparisonInput.contrast.controlTargetId;
   const treatmentId = comparisonInput.contrast.treatmentTargetId;
+  const plannedRows = metricInput.rows;
   const rows = observedRows(context);
   const controlRows = rows.filter((row) => row.targetId === controlId);
   const treatmentRows = rows.filter((row) => row.targetId === treatmentId);
@@ -703,16 +706,35 @@ function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): Analys
     const stratumId = unit.stratumId ?? 'omk:unstratified';
     treatmentByStratum.set(stratumId, [...(treatmentByStratum.get(stratumId) ?? []), unit]);
   }
-  const totalUnitCount = controlUnits.length + treatmentUnits.length;
+  const plannedStratumBySample = new Map<string, string>();
+  for (const row of plannedRows) {
+    const stratumId = row.samplingUnitIds.stratumId ?? 'omk:unstratified';
+    const existing = plannedStratumBySample.get(row.sampleId);
+    if (existing !== undefined && existing !== stratumId) {
+      throw new TypeError('One experimental unit cannot cross planned strata.');
+    }
+    plannedStratumBySample.set(row.sampleId, stratumId);
+  }
+  const plannedCountByStratum = new Map<string, number>();
+  for (const stratumId of plannedStratumBySample.values()) {
+    plannedCountByStratum.set(stratumId, (plannedCountByStratum.get(stratumId) ?? 0) + 1);
+  }
+  const plannedUnitCount = plannedStratumBySample.size;
   const strata = [...controlStrata].sort().map((stratumId) => ({
     stratumId,
     control: controlByStratum.get(stratumId) ?? [],
     treatment: treatmentByStratum.get(stratumId) ?? [],
+    plannedCount: plannedCountByStratum.get(stratumId) ?? 0,
   }));
+  if (plannedUnitCount === 0
+      || strata.some((stratum) => stratum.plannedCount === 0)
+      || [...plannedCountByStratum.keys()].some((stratumId) => !controlStrata.has(stratumId))) {
+    return incomplete('analysis-unpaired-bootstrap-planned-strata-not-observed');
+  }
   const weightedDifference = (
     estimate: (armId: string, stratumId: string, units: readonly BootstrapUnit[]) => number,
   ): number => strata.reduce((sum, stratum) => {
-    const weight = (stratum.control.length + stratum.treatment.length) / totalUnitCount;
+    const weight = stratum.plannedCount / plannedUnitCount;
     return sum + weight * (
       estimate(treatmentId, stratum.stratumId, stratum.treatment)
         - estimate(controlId, stratum.stratumId, stratum.control)
@@ -878,6 +900,7 @@ register(
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
     parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
+      assignmentKinds: ['complete-block'],
       experimentalUnits: ['sample', 'run'],
       repeatedMeasures: [false, true],
       resamplingUnits: ['sample', 'run'],
@@ -897,6 +920,7 @@ register(
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
     parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
+      assignmentKinds: ['complete-block'],
       experimentalUnits: ['sample'],
       repeatedMeasures: [false, true],
       resamplingUnits: ['paired-block'],
@@ -916,6 +940,7 @@ register(
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
     parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
+      assignmentKinds: ['independent-groups'],
       experimentalUnits: ['sample'],
       repeatedMeasures: [false, true],
       resamplingUnits: ['sample'],
@@ -934,6 +959,7 @@ register(
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
     parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
+      assignmentKinds: ['complete-block'],
       experimentalUnits: ['cluster'],
       repeatedMeasures: [false, true],
       resamplingUnits: ['cluster'],

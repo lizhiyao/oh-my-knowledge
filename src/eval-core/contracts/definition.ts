@@ -9,7 +9,7 @@ import {
 import { JsonValueSchema } from './json.js';
 import { TargetExecutionControlsSchema } from './execution-controls.js';
 
-export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v1' as const;
+export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v2' as const;
 export const MEASUREMENT_POLICY_SCHEMA_VERSION = 'omk.measurement-policy/v1' as const;
 
 export const AnalysisCohortDefinitionSchema = z.object({
@@ -140,7 +140,6 @@ export const SamplingDesignSchema = z.object({
   experimentalUnit: z.enum(['sample', 'run', 'cluster']),
   pairingKey: JsonPointerSchema.optional(),
   clusterKey: JsonPointerSchema.optional(),
-  stratumKey: JsonPointerSchema.optional(),
   repeatedMeasures: z.boolean(),
   resamplingUnit: z.enum(['sample', 'paired-block', 'cluster', 'run']),
   estimatorId: IdentifierSchema,
@@ -157,9 +156,38 @@ export const RandomizationSlotSchema = z.object({
   randomizationSlotId: IdentifierSchema,
 }).strict();
 
+export const AssignmentAllocationSchema = z.object({
+  randomizationSlotId: IdentifierSchema,
+  weight: z.number().finite().positive(),
+}).strict();
+
+const AssignmentDesignBaseSchema = z.object({
+  stratumKey: JsonPointerSchema.optional(),
+}).strict();
+
+export const CompleteBlockAssignmentSchema = AssignmentDesignBaseSchema.extend({
+  assignmentKind: z.literal('complete-block'),
+  algorithmId: z.literal('assignment.complete-block/v1'),
+  randomizationSlotIds: z.array(IdentifierSchema).min(1),
+}).strict();
+
+export const IndependentGroupsAssignmentSchema = AssignmentDesignBaseSchema.extend({
+  assignmentKind: z.literal('independent-groups'),
+  algorithmId: z.literal('assignment.stratified-fixed-quota/v1'),
+  allocations: z.array(AssignmentAllocationSchema).min(2),
+  minimumUnitsPerTarget: z.number().int().positive(),
+  minimumUnitsPerTargetPerStratum: z.number().int().positive(),
+}).strict();
+
+export const AssignmentDesignSchema = z.discriminatedUnion('assignmentKind', [
+  CompleteBlockAssignmentSchema,
+  IndependentGroupsAssignmentSchema,
+]);
+
 export const ExperimentDesignSchema = z.object({
   trials: z.number().int().positive(),
   seed: NonEmptyStringSchema,
+  assignment: AssignmentDesignSchema,
   sampling: SamplingDesignSchema,
   scheduling: SchedulingPolicySchema,
   randomizationSlots: z.array(RandomizationSlotSchema).min(1),
@@ -278,7 +306,7 @@ export const EvaluationDefinitionSchema = z.object({
   seriesMembership: EvaluationSeriesMembershipSchema.optional(),
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Evaluation Definition v1',
+  title: 'OMK Evaluation Definition v2',
 });
 
 export const ExecutionPolicySchema = z.object({
@@ -398,6 +426,8 @@ export type SeedCoupling = z.infer<typeof SeedCouplingSchema>;
 export type SamplingDesign = z.infer<typeof SamplingDesignSchema>;
 export type ExecutionSamplingDesign = z.infer<typeof ExecutionSamplingDesignSchema>;
 export type RandomizationSlot = z.infer<typeof RandomizationSlotSchema>;
+export type AssignmentAllocation = z.infer<typeof AssignmentAllocationSchema>;
+export type AssignmentDesign = z.infer<typeof AssignmentDesignSchema>;
 export type ExperimentDesign = z.infer<typeof ExperimentDesignSchema>;
 export type ExecutionExperimentDesign = z.infer<typeof ExecutionExperimentDesignSchema>;
 export type ReducerDefinition = z.infer<typeof ReducerDefinitionSchema>;

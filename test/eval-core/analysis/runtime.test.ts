@@ -145,6 +145,10 @@ async function makePlan(mutate?: (
         randomizationSlotId: `slot-${String(index).padStart(4, '0')}`,
       }));
   }
+  if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+    definition.experiment.assignment.randomizationSlotIds = definition.experiment
+      .randomizationSlots.map((slot) => slot.randomizationSlotId).sort();
+  }
   return prepareEvaluationPlan(definition, policy, runtime);
 }
 

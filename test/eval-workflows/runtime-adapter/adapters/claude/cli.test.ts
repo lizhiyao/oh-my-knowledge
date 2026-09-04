@@ -786,6 +786,11 @@ describe('Claude CLI Core Executor adapter', () => {
       targetId: fixture.target.targetId,
       randomizationSlotId: 'slot-target-a',
     }];
+    definition.experiment.assignment = {
+      assignmentKind: 'complete-block',
+      algorithmId: 'assignment.complete-block/v1',
+      randomizationSlotIds: ['slot-target-a'],
+    };
     definition.experiment.sampling.seedCoupling = 'uncontrolled';
     definition.comparisons = [];
     const policy = validPolicy();

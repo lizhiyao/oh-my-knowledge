@@ -36,6 +36,7 @@ const BOOTSTRAP_FAMILY_ANALYSIS_CAPABILITIES: JsonValue = {
     comparisons: { min: 0, max: 0 },
   },
   sampling: {
+    assignmentKinds: ['complete-block'],
     experimentalUnits: ['sample'],
     repeatedMeasures: [false, true],
     resamplingUnits: ['paired-block', 'sample'],
@@ -46,7 +47,7 @@ const BOOTSTRAP_FAMILY_ANALYSIS_CAPABILITIES: JsonValue = {
 export const BOOTSTRAP_FAMILY_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
-    version: '1.0.0',
+    version: '2.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_VERSION,

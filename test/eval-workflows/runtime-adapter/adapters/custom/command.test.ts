@@ -366,6 +366,11 @@ describe('custom-command Core Executor adapter', () => {
     const definition = validDefinition();
     definition.targets = [definition.targets[0]];
     definition.experiment.randomizationSlots = [definition.experiment.randomizationSlots[0]];
+    if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+      definition.experiment.assignment.randomizationSlotIds = [
+        definition.experiment.randomizationSlots[0].randomizationSlotId,
+      ];
+    }
     definition.comparisons = [];
     const policy = validPolicy();
     delete policy.execution.timeoutMs;

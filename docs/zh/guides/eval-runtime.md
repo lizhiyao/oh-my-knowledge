@@ -143,6 +143,33 @@ Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 
 
 Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因此只应放入可重放、非敏感的测量输入。凭证、client 与进程内资源应保留在 Executor closure 中，绝不能进入 Definition。
 
+使用独立组时，必须同时调整 comparison 与 sampling 声明，并为每个 Variant 声明一个 allocation：
+
+```ts
+comparisons: [{
+  comparisonId: 'prompt-v1-vs-v2',
+  comparisonKind: 'independent',
+  controlVariantId: 'prompt-v1',
+  treatmentVariantIds: ['prompt-v2'],
+  metricIds: ['correct'],
+}],
+experiment: {
+  seed: 'release-2026-09-04',
+  sampling: {
+    samplingKind: 'independent',
+    allocations: [
+      { variantId: 'prompt-v1', weight: 1 },
+      { variantId: 'prompt-v2', weight: 1 },
+    ],
+    minimumSamplesPerVariant: 20,
+    minimumSamplesPerVariantPerStratum: 5,
+    stratumKey: '/executionContext/locale',
+  },
+},
+```
+
+OMK 会在执行前确定性地为每个 sample 封存唯一 Variant。重复 trial 沿用该分组；改变 seed、weight、stratum 或 minimum 都会产生新的 randomization identity。
+
 `exact-match` 比较 actual output 与 sample `expected` 的 canonical JSON 值，不是字符串字节逐一比较。
 
 `onEvent` 是可选的 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。

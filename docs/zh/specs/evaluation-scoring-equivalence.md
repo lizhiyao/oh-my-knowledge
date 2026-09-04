@@ -132,7 +132,7 @@ Rubric 评委使用 `omk.rubric-judge/v1` 和同一个宿主拥有的单次调�
 
 Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体并不等价。空输入、总计只有一个评分对，或期望分歧为零时，结果是不确定而不是数值零。alpha bootstrap 重采样配对评分单元。
 
-该标准由宿主 Analysis 节点 `omk.agreement-table/v3` 实现，它从 [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522) 引入的 v1 节点演化而来。它消费 schema 密封的加权 Dimension v2 表，以及仅存在于 Analysis 样本上下文中的 Gold 评分；Execution 和 Evaluation 的计划与 Bundle 永远不会接收该上下文。节点密封一个目标、标注者身份、标注版本、数值标度、JSON 指针、样本顺序、bootstrap 配置，以及区间距离 alpha 定义。重复的 Dimension 试验在每个样本内求平均，同时保留每样本组覆盖和血缘。输出以 Krippendorff alpha 为主统计量，以加权 kappa 和 Pearson 为辅助诊断，并报告完整 bootstrap draw coverage；样本对不足、期望分歧为零、统计量未定义、完全一致导致 bootstrap 不适用，或意外抽样无效时，输出结构化缺失结果。v3 保留 v2 遵循 Krippendorff 推荐的 bootstrap——重采样配对观测分歧，同时固定原始评分的期望分歧——并把认证过的上游契约切到加权 Dimension v2。v1 与 v2 继续绑定 Dimension v1 注册，以支持精确重放。表会在传输 Bundle 验证期间按统计公式重算。生产 Gold 比较通过显式选择器消费这个经过认证的 Core 投影。
+该标准由宿主 Analysis 节点 `omk.agreement-table/v3` 实现，它从 [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522) 引入的 v1 节点演化而来。它消费 schema 密封的加权 Dimension v2 表，以及仅存在于 Analysis 样本上下文中的 Gold 评分；Execution 和 Evaluation 的计划与 Bundle 永远不会接收该上下文。节点密封一个目标、标注者身份、标注版本、数值标度、JSON 指针、样本顺序、bootstrap 配置，以及区间距离 alpha 定义。重复的 Dimension 试验在每个样本内求平均，同时保留每样本组覆盖和血缘。输出以 Krippendorff alpha 为主统计量，以加权 kappa 和 Pearson 为辅助诊断，并报告完整 bootstrap draw coverage；样本对不足、期望分歧为零、统计量未定义、完全一致导致 bootstrap 不适用，或意外抽样无效时，输出结构化缺失结果。v3 保留 v2 遵循 Krippendorff 推荐的 bootstrap——重采样配对观测分歧，同时固定原始评分的期望分歧——并把认证过的上游契约切到加权 Dimension v2。v1 与 v2 继续绑定 Dimension v1，作为历史语义实现存在；assignment-aware capability identity 不承诺重放切换前的 Plan。表会在传输 Bundle 验证期间按统计公式重算。生产 Gold 比较通过显式选择器消费这个经过认证的 Core 投影。
 
 ## 8. DecisionPolicy 边界
 
@@ -142,7 +142,7 @@ Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体�
 
 `SOLO`、`UNDERPOWERED`、`NOISE`、`PROGRESS`、`CAUTIOUS` 和 `REGRESSION` 是结论，而不是运行状态。基础设施失败仍产生失败或未决决策。
 
-该契约由宿主拥有的 `omk.release-decision/v7` 策略实现，它从 [#525](https://github.com/lizhiyao/oh-my-knowledge/issues/525) 引入的 v1 策略演化而来。参数显式绑定 Composite 表、Bootstrap Family v2 表、每个适用 Judge Ensemble 选择器及其 sample 范围、密封的目标和样本顺序、所有门禁阈值、预注册样本量要求，以及可选且互斥的训练／留出分区。在应用六级优先级前，策略会验证估计量拥有的 `comparisonFamilyResultId`、精确的结果／schema 全集、Composite 到 Bootstrap 的观测血缘、比较绑定，以及每个已配置 Judge Ensemble 的覆盖。任一适用维度出现分歧或跨评委一致性不可测时，正向比较都会成为 `CAUTIOUS`；没有 Judge Ensemble 的确定性设计不受影响。不显著的比较根据完整配对数或较小的独立组已观测样本数应用样本量门禁，绝不使用已编写但未观测的样本。显著向好的比较只有在持久化的 percentile 区间下界达到已封存阈值时，才能通过实际效应 gate；点估计本身不充分。缺失区间或 Monte Carlo 误差下仍未决的显著性保持 not-decided；Core 路径绝不回退到点估计。跨运行稳定性属于 Series DecisionPolicy，不会从单个 Run 推断。历史 release policy v1～v6 与 Bootstrap family v1 仍注册以支持精确重放。
+该契约由宿主拥有的 `omk.release-decision/v7` 策略实现，它从 [#525](https://github.com/lizhiyao/oh-my-knowledge/issues/525) 引入的 v1 策略演化而来。参数显式绑定 Composite 表、Bootstrap Family v2 表、每个适用 Judge Ensemble 选择器及其 sample 范围、密封的目标和样本顺序、所有门禁阈值、预注册样本量要求，以及可选且互斥的训练／留出分区。在应用六级优先级前，策略会验证估计量拥有的 `comparisonFamilyResultId`、精确的结果／schema 全集、Composite 到 Bootstrap 的观测血缘、比较绑定，以及每个已配置 Judge Ensemble 的覆盖。任一适用维度出现分歧或跨评委一致性不可测时，正向比较都会成为 `CAUTIOUS`；没有 Judge Ensemble 的确定性设计不受影响。不显著的比较根据完整配对数或较小的独立组已观测样本数应用样本量门禁，绝不使用已编写但未观测的样本。显著向好的比较只有在持久化的 percentile 区间下界达到已封存阈值时，才能通过实际效应 gate；点估计本身不充分。缺失区间或 Monte Carlo 误差下仍未决的显著性保持 not-decided；Core 路径绝不回退到点估计。跨运行稳定性属于 Series DecisionPolicy，不会从单个 Run 推断。历史 release policy v1～v6 与 Bootstrap family v1 仍作为历史语义实现存在；assignment-aware schema 切换有意拒绝切换前的 Plan，而不再承诺精确重放。
 
 ## 9. 字段映射与拒绝规则
 
