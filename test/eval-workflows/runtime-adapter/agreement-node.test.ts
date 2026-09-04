@@ -13,6 +13,8 @@ import type {
 import {
   AGREEMENT_ANALYSIS_IDENTITY,
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  AGREEMENT_ANALYSIS_V1_IDENTITY,
+  AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
   createAgreementAnalysisNodes,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-node.js';
 import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-parameters.js';
@@ -176,6 +178,9 @@ describe('Agreement Analysis node', () => {
     expect(capabilities.outputSchema).toEqual(AGREEMENT_TABLE_SCHEMA);
     expect(capabilities.parameterSchema).toEqual(AGREEMENT_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(AGREEMENT_ANALYSIS_IDENTITY)).toBe(true);
+    expect(AGREEMENT_ANALYSIS_IDENTITY.fingerprint).toBe(
+      'sha256:8c8cc64b722b9b29b89bd5bd6da92cbde51d6c3115d59e65123d222f96aa5402',
+    );
 
     const result = await execute(context());
     expect(result).toMatchObject({
@@ -206,6 +211,15 @@ describe('Agreement Analysis node', () => {
         },
       },
     });
+  });
+
+  it('keeps the v1 runtime identity registered byte-for-byte for replay', () => {
+    expect(AGREEMENT_ANALYSIS_V1_IDENTITY.fingerprint).toBe(
+      'sha256:146618a95988de00fbe2dc8b5b456740447e945a1e539493d6e56932bd4f34f0',
+    );
+    expect(createAgreementAnalysisNodes().get(
+      AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
+    )?.identity).toEqual(AGREEMENT_ANALYSIS_V1_IDENTITY);
   });
 
   it('rejects source, sample-order, Gold classification, and cancellation drift', async () => {

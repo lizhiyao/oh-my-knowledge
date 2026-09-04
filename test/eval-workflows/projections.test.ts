@@ -178,10 +178,19 @@ describe('Evaluation Core downstream projections', () => {
     });
 
     assert.equal(result.projectionKind, 'core-gold-comparison');
+    assert.equal(result.schemaVersion, 'omk.core-gold-comparison/v2');
+    assert.equal(result.analysisMode, 'exploratory-post-hoc');
+    assert.equal(result.agreementPolicy, undefined);
+    assert.equal(result.assessment.assessmentStatus, 'inconclusive');
+    assert.ok(result.assessment.reasonCodes.includes(
+      'gold-agreement-threshold-not-configured',
+    ));
     assert.equal(result.agreement.sampleCount, 2);
     assert.equal(result.agreement.alpha, 1);
     assert.deepEqual(result.missingSampleIds, ['missing-sample']);
     assert.deepEqual(result.unscoredSampleIds, []);
+    assert.deepEqual(result.unannotatedSampleIds, []);
+    assert.deepEqual(result.notApplicableSampleIds, []);
     assert.ok(result.rows.every((row) => row.difference === 0));
     assert.equal(result.contaminationWarning, undefined);
     assert.match(result.gold.datasetDigest, /^sha256:[0-9a-f]{64}$/);
@@ -208,8 +217,54 @@ describe('Evaluation Core downstream projections', () => {
       bootstrapSeed: 42,
     });
     assert.equal(empty.agreement.alpha, null);
+    assert.equal(empty.agreement.alphaCI.intervalStatus, 'missing');
     assert.equal(empty.agreement.weightedKappa, null);
     assert.doesNotThrow(() => JSON.parse(JSON.stringify(empty)) as unknown);
+
+    const opposedGold = {
+      metadata: {
+        annotator: 'independent-human-panel',
+        annotatedAt: '2026-08-30',
+        version: '1',
+        scale: { min: 0, max: 1 },
+      },
+      annotations: annotations.map((annotation) => ({
+        sample_id: annotation.sample_id,
+        score: annotation.score === 0 ? 1 : 0,
+      })),
+      sourcePaths: ['/gold/annotations.yaml'],
+    } as const;
+    const explicitPolicyInput = {
+      source,
+      gold: opposedGold,
+      selector: {
+        targetId: 'control',
+        evaluatorId: 'retrieval',
+        metricId: 'ndcg',
+        instrumentId: 'retrieval-metrics',
+        ensembleMemberId: 'retrieval-local',
+        replicateGroupId: 'retrieval-primary',
+        replicateIndex: 0,
+        trialIndex: 0,
+      },
+      bootstrapSamples: 100,
+      bootstrapSeed: 42,
+    } as const;
+    const failed = compareGoldToCoreRun({ ...explicitPolicyInput, minimumAlpha: 0.8 });
+    assert.deepEqual(failed.agreementPolicy, {
+      criterion: 'krippendorff-alpha-ci-lower-bound',
+      minimumAlpha: 0.8,
+      thresholdSource: 'caller',
+    });
+    assert.deepEqual(failed.assessment, {
+      assessmentStatus: 'failed',
+      reasonCodes: ['gold-agreement-alpha-ci-below-threshold'],
+    });
+    const passed = compareGoldToCoreRun({ ...explicitPolicyInput, minimumAlpha: -1 });
+    assert.deepEqual(passed.assessment, {
+      assessmentStatus: 'passed',
+      reasonCodes: ['gold-agreement-alpha-ci-meets-threshold'],
+    });
   });
 
   it('rejects incompatible scales and implicit pooling across trials', async () => {
@@ -254,6 +309,18 @@ describe('Evaluation Core downstream projections', () => {
         selector: { ...base.selector, trialIndex: 0 },
       }),
       expectProjectionError('CORE_GOLD_SCALE_INCOMPATIBLE'),
+    );
+    assert.throws(
+      () => compareGoldToCoreRun({ ...base, minimumAlpha: 1.1 }),
+      expectProjectionError('CORE_GOLD_POLICY_INVALID'),
+    );
+    assert.throws(
+      () => compareGoldToCoreRun({ ...base, bootstrapSamples: 0 }),
+      expectProjectionError('CORE_GOLD_POLICY_INVALID'),
+    );
+    assert.throws(
+      () => compareGoldToCoreRun({ ...base, bootstrapSeed: -1 }),
+      expectProjectionError('CORE_GOLD_POLICY_INVALID'),
     );
   });
 

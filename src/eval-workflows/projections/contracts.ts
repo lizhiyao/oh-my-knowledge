@@ -9,7 +9,7 @@ import type {
 } from '../../eval-core/contracts/index.js';
 
 export const CORE_GOLD_COMPARISON_SCHEMA_VERSION =
-  'omk.core-gold-comparison/v1' as const;
+  'omk.core-gold-comparison/v2' as const;
 export const CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION =
   'omk.core-evolution-evidence/v1' as const;
 export const CORE_CLI_DRY_RUN_SCHEMA_VERSION =
@@ -31,6 +31,7 @@ export type CoreDownstreamProjectionErrorCode =
   | 'CORE_GOLD_SCALE_INCOMPATIBLE'
   | 'CORE_GOLD_ANNOTATION_INVALID'
   | 'CORE_GOLD_OBSERVATION_AMBIGUOUS'
+  | 'CORE_GOLD_POLICY_INVALID'
   | 'CORE_SERIES_SOURCE_INVALID'
   | 'CORE_CLI_PLAN_INVALID'
   | 'CORE_CLI_OPTIONS_INVALID'
@@ -68,22 +69,64 @@ export interface CoreGoldComparisonRow {
   readonly observationId: string;
 }
 
+interface CoreGoldAlphaIntervalBase {
+  readonly confidenceLevel: number;
+  readonly drawCoverage: {
+    readonly plannedDraws: number;
+    readonly observedDraws: number;
+    readonly missingDraws: number;
+  };
+}
+
+export type CoreGoldAlphaInterval = CoreGoldAlphaIntervalBase & (
+  | Readonly<{
+      intervalStatus: 'observed';
+      low: number;
+      high: number;
+      estimate: number;
+      samples: number;
+    }>
+  | Readonly<{
+      intervalStatus: 'missing';
+      low: null;
+      high: null;
+      estimate: null;
+      samples: 0;
+      reasonCode:
+        | 'agreement-point-unobserved'
+        | 'agreement-bootstrap-not-applicable-perfect'
+        | 'agreement-bootstrap-draws-incomplete';
+    }>
+);
+
 export interface CoreGoldAgreementResult {
   readonly alpha: number | null;
-  readonly alphaCI: {
-    readonly low: number | null;
-    readonly high: number | null;
-    readonly estimate: number | null;
-    readonly samples: number;
-  };
+  readonly alphaCI: CoreGoldAlphaInterval;
   readonly weightedKappa: number | null;
   readonly pearson: number | null;
   readonly sampleCount: number;
 }
 
+export type CoreGoldAgreementAssessmentReasonCode =
+  | 'gold-agreement-alpha-ci-meets-threshold'
+  | 'gold-agreement-alpha-ci-below-threshold'
+  | 'gold-agreement-threshold-not-configured'
+  | 'gold-agreement-alpha-unavailable'
+  | 'gold-agreement-bootstrap-not-applicable-perfect'
+  | 'gold-agreement-bootstrap-draws-incomplete'
+  | 'gold-agreement-coverage-incomplete'
+  | 'gold-agreement-annotator-contamination';
+
+export interface CoreGoldAgreementAssessment {
+  readonly assessmentStatus: 'passed' | 'failed' | 'inconclusive';
+  readonly reasonCodes: readonly CoreGoldAgreementAssessmentReasonCode[];
+}
+
 export interface CoreGoldComparisonResult {
   readonly projectionKind: 'core-gold-comparison';
   readonly schemaVersion: typeof CORE_GOLD_COMPARISON_SCHEMA_VERSION;
+  /** Gold compare is descriptive post-hoc evidence, never a release DecisionResult. */
+  readonly analysisMode: 'exploratory-post-hoc';
   readonly runContractDigest: string;
   readonly reportDigest: string;
   readonly gold: {
@@ -95,9 +138,21 @@ export interface CoreGoldComparisonResult {
   readonly selector: CoreGoldMetricSelector;
   readonly scale: { readonly min: number; readonly max: number };
   readonly evaluatorRuntime: RuntimeIdentity;
+  readonly agreementPolicy?: {
+    readonly criterion: 'krippendorff-alpha-ci-lower-bound';
+    readonly minimumAlpha: number;
+    readonly thresholdSource: 'caller';
+  };
   readonly agreement: CoreGoldAgreementResult;
+  readonly assessment: CoreGoldAgreementAssessment;
   readonly rows: readonly CoreGoldComparisonRow[];
+  /** Gold annotation IDs absent from the sealed Evaluation sample set. */
   readonly missingSampleIds: readonly string[];
+  /** Sealed applicable sample IDs with no Gold annotation. */
+  readonly unannotatedSampleIds: readonly string[];
+  /** Gold annotations that are sealed samples but outside this Evaluator's applicability. */
+  readonly notApplicableSampleIds: readonly string[];
+  /** Applicable, annotated samples without one selected observed score. */
   readonly unscoredSampleIds: readonly string[];
   readonly contaminationWarning?: string;
 }

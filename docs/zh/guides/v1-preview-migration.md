@@ -74,7 +74,7 @@ omk eval --dry-run --samples eval-samples.yaml \
 - `omk init` 仍默认生成 3 条低成本起步用例；较完整的官方起步集使用 `omk init --samples 20`。把它当发布证据前必须人工复核或替换。
 - `omk init` 不再覆盖已有脚手架文件，除非显式传入 `--force`。
 - `omk eval --resume` 接受 Core `runId`，不再接受报告路径。
-- `omk eval gold compare` 接受 Core `runId`，并要求显式提供 `--target`、`--evaluator` 与 `--metric`。
+- `omk eval gold compare` 接受 Core `runId`，并要求显式提供 `--target`、`--evaluator` 与 `--metric`。只有领域已经选定可靠性阈值时才传入可选的 `--minimum-alpha`；事后 assessment 使用置信区间下界，绝不会改变 release verdict。
 - `omk evolve` 不再接受旧的 diagnostic、sample repair、report reuse、holdout、significance 与 test split 开关。候选接受和源文件写回由 Core decision 管理；独立发布验证集应放在 authoring loop 外运行。
 
 更新脚本时请以当前 [CLI 参考](../reference/cli.md)为准，不要沿用 `0.54` 的 flag。
@@ -95,4 +95,4 @@ omk eval --dry-run --samples eval-samples.yaml \
 
 ## 测量边界
 
-本次迁移保持冻结的评分类 prompt、五层评分、Bootstrap CI 公式、Krippendorff alpha 公式与 length-debias toggle 语义不变。它不保持 artifact schema、存储路径、digest、Runtime identity，也不保持未解析外部 URL 的解释方式。只比较新 Core 判断为 compatible 的 run；不要手工拼接新旧分数历史。
+本次迁移保持冻结的评分类 prompt、五层评分、比较家族 Bootstrap CI 公式、Krippendorff alpha 点估计公式与 length-debias toggle 语义不变。一致性区间 v2 有意改用 Krippendorff 的固定期望分歧可靠性 bootstrap；v1 只为精确重放保留。它不保持 artifact schema、存储路径、digest、Runtime identity，也不保持未解析外部 URL 的解释方式。只比较新 Core 判断为 compatible 的 run；不要手工拼接新旧分数历史。

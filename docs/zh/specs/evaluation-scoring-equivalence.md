@@ -132,7 +132,7 @@ Rubric 评委使用 `omk.rubric-judge/v1` 和同一个宿主拥有的单次调�
 
 Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体并不等价。空输入、总计只有一个评分对，或期望分歧为零时，结果是不确定而不是数值零。alpha bootstrap 重采样配对评分单元。
 
-该标准由 [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522) 引入的宿主 Analysis 节点 `omk.agreement-table/v1` 实现。它消费一个 schema 密封的 Dimension 表，以及仅存在于 Analysis 样本上下文中的 Gold 评分；Execution 和 Evaluation 的计划与 Bundle 永远不会接收该上下文。节点密封一个目标、标注者身份、标注版本、数值标度、JSON 指针、样本顺序、bootstrap 配置，以及区间距离 alpha 定义。重复的 Dimension 试验在每个样本内求平均，同时保留每样本组覆盖和血缘。输出以 Krippendorff alpha 为主统计量，以加权 kappa 和 Pearson 为辅助诊断，并报告有限抽样覆盖；样本对不足、期望分歧为零、统计量未定义或抽样无效时，输出结构化缺失结果。表会在传输 Bundle 验证期间按统计公式重算。生产 Gold 比较通过显式选择器消费这个经过认证的 Core 投影。
+该标准由宿主 Analysis 节点 `omk.agreement-table/v2` 实现，它从 [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522) 引入的 v1 节点演化而来。它消费一个 schema 密封的 Dimension 表，以及仅存在于 Analysis 样本上下文中的 Gold 评分；Execution 和 Evaluation 的计划与 Bundle 永远不会接收该上下文。节点密封一个目标、标注者身份、标注版本、数值标度、JSON 指针、样本顺序、bootstrap 配置，以及区间距离 alpha 定义。重复的 Dimension 试验在每个样本内求平均，同时保留每样本组覆盖和血缘。输出以 Krippendorff alpha 为主统计量，以加权 kappa 和 Pearson 为辅助诊断，并报告完整 bootstrap draw coverage；样本对不足、期望分歧为零、统计量未定义、完全一致导致 bootstrap 不适用，或意外抽样无效时，输出结构化缺失结果。v2 遵循 Krippendorff 推荐的 bootstrap：重采样配对观测分歧，同时固定原始评分的期望分歧，并把 draw 限定在 alpha 的 `[-1, 1]` 范围。相对 v1 的条件有限 draw bootstrap，这是一项 `BREAKING-COMPARABILITY` 修正；v1 继续注册以支持精确重放。表会在传输 Bundle 验证期间按统计公式重算。生产 Gold 比较通过显式选择器消费这个经过认证的 Core 投影。
 
 ## 8. DecisionPolicy 边界
 

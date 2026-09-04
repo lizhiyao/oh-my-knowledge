@@ -72,6 +72,7 @@ describe('oclif eval', () => {
     assert.ok(stdout.includes('Core run 观测跟 gold dataset 对比'), `gold compare --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('RUNID'), 'should list RUNID positional');
     assert.ok(stdout.includes('--gold-dir'), 'should list --gold-dir');
+    assert.ok(stdout.includes('--minimum-alpha'), 'should list --minimum-alpha');
   });
 
   it('eval gold init + validate 实跑', async () => {
@@ -262,6 +263,21 @@ describe('oclif eval', () => {
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.match(e.stderr, /--bootstrap-samples(?=[\s\S]*整数)(?=[\s\S]*100)/, `stderr missing zh parser error:\n${e.stderr}`);
+    }
+  });
+
+  it('eval gold compare 非法 --minimum-alpha → exit 2 + 中文 parser 错误', async () => {
+    try {
+      await runCommand(EvalGoldCompare, ['report-1', '--minimum-alpha', '1.1']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(
+        e.stderr,
+        /--minimum-alpha(?=[\s\S]*数字)(?=[\s\S]*-1)(?=[\s\S]*1)/,
+        `stderr missing zh parser error:\n${e.stderr}`,
+      );
     }
   });
 

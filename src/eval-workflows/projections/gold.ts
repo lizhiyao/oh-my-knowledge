@@ -4,7 +4,8 @@ import {
 } from '../../eval-core/contracts/index.js';
 import type { GoldDataset } from '../gold/dataset.js';
 import {
-  computeAgreementWithCI,
+  computeAgreementEvidence,
+  type AgreementEvidenceResult,
   type RatingPair,
 } from '../gold/human.js';
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
@@ -22,6 +23,8 @@ export interface CompareGoldToCoreRunInput {
   readonly selector: Readonly<CoreGoldMetricSelector>;
   readonly bootstrapSamples?: number;
   readonly bootstrapSeed?: number;
+  /** Optional post-hoc reliability threshold; no context-free default is assumed. */
+  readonly minimumAlpha?: number;
 }
 
 export interface CoreGoldDatasetInput {
@@ -65,8 +68,59 @@ function sealedEvaluatorRuntimeAliases(config: unknown): string[] {
   ];
 }
 
-function jsonNumber(value: number): number | null {
-  return Number.isFinite(value) ? value : null;
+function observedStatisticValue(
+  statistic: AgreementEvidenceResult['krippendorffAlpha'],
+): number | null {
+  return statistic.statisticStatus === 'observed' ? statistic.value : null;
+}
+
+function assessGoldAgreement(
+  evidence: AgreementEvidenceResult,
+  minimumAlpha: number | undefined,
+  coverage: Readonly<{
+    missingSampleIds: readonly string[];
+    unannotatedSampleIds: readonly string[];
+    unscoredSampleIds: readonly string[];
+  }>,
+  contaminated: boolean,
+): CoreGoldComparisonResult['assessment'] {
+  const reasonCodes: CoreGoldComparisonResult['assessment']['reasonCodes'][number][] = [];
+  if (contaminated) reasonCodes.push('gold-agreement-annotator-contamination');
+  if (minimumAlpha === undefined) {
+    reasonCodes.push('gold-agreement-threshold-not-configured');
+  }
+  if (coverage.missingSampleIds.length > 0
+      || coverage.unannotatedSampleIds.length > 0
+      || coverage.unscoredSampleIds.length > 0) {
+    reasonCodes.push('gold-agreement-coverage-incomplete');
+  }
+  if (evidence.alphaInterval.intervalStatus === 'missing') {
+    reasonCodes.push(
+      evidence.alphaInterval.reasonCode === 'agreement-bootstrap-draws-incomplete'
+        ? 'gold-agreement-bootstrap-draws-incomplete'
+        : evidence.alphaInterval.reasonCode === 'agreement-bootstrap-not-applicable-perfect'
+          ? 'gold-agreement-bootstrap-not-applicable-perfect'
+          : 'gold-agreement-alpha-unavailable',
+    );
+  }
+  if (reasonCodes.length > 0) {
+    return { assessmentStatus: 'inconclusive', reasonCodes };
+  }
+  if (evidence.alphaInterval.intervalStatus !== 'observed') {
+    throw new TypeError('Observed Gold agreement assessment requires an observed alpha interval.');
+  }
+  if (minimumAlpha === undefined) {
+    throw new TypeError('Gold agreement assessment requires an explicit minimum alpha.');
+  }
+  return evidence.alphaInterval.low >= minimumAlpha
+    ? {
+        assessmentStatus: 'passed',
+        reasonCodes: ['gold-agreement-alpha-ci-meets-threshold'],
+      }
+    : {
+        assessmentStatus: 'failed',
+        reasonCodes: ['gold-agreement-alpha-ci-below-threshold'],
+      };
 }
 
 /**
@@ -80,6 +134,29 @@ export function compareGoldToCoreRun(
   assertCoreProjectionSource(input.source);
   const { plan, evaluation, report } = input.source;
   const { selector, gold } = input;
+  if (input.minimumAlpha !== undefined
+      && (!Number.isFinite(input.minimumAlpha)
+        || input.minimumAlpha < -1
+        || input.minimumAlpha > 1)) {
+    throw new CoreDownstreamProjectionError(
+      'CORE_GOLD_POLICY_INVALID',
+      'Gold minimum alpha must be a finite number between -1 and 1.',
+    );
+  }
+  if (input.bootstrapSamples !== undefined
+      && (!Number.isSafeInteger(input.bootstrapSamples) || input.bootstrapSamples <= 0)) {
+    throw new CoreDownstreamProjectionError(
+      'CORE_GOLD_POLICY_INVALID',
+      'Gold bootstrap samples must be a positive safe integer.',
+    );
+  }
+  if (input.bootstrapSeed !== undefined
+      && (!Number.isSafeInteger(input.bootstrapSeed) || input.bootstrapSeed < 0)) {
+    throw new CoreDownstreamProjectionError(
+      'CORE_GOLD_POLICY_INVALID',
+      'Gold bootstrap seed must be a non-negative safe integer.',
+    );
+  }
   const target = plan.execution.targets.find((entry) => entry.targetId === selector.targetId);
   const evaluator = plan.evaluation.evaluators.find(
     (entry) => entry.evaluatorId === selector.evaluatorId,
@@ -151,17 +228,29 @@ export function compareGoldToCoreRun(
   }
 
   const sampleIds = new Set(plan.evaluation.samples.map((sample) => sample.sampleId));
+  const applicableSampleIds = new Set(
+    evaluator.applicableSampleIds ?? plan.evaluation.samples.map((sample) => sample.sampleId),
+  );
   const records = evaluation.records.filter((record) => matchesSelector(record, selector));
   const pairs: RatingPair[] = [];
   const rows: CoreGoldComparisonResult['rows'][number][] = [];
   const missingSampleIds: string[] = [];
+  const notApplicableSampleIds: string[] = [];
   const unscoredSampleIds: string[] = [];
+  const annotationIdSet = new Set(annotationIds);
+  const unannotatedSampleIds = [...applicableSampleIds]
+    .filter((sampleId) => !annotationIdSet.has(sampleId))
+    .sort((left, right) => left.localeCompare(right));
 
   for (const annotation of [...gold.annotations].sort((left, right) => (
     left.sample_id.localeCompare(right.sample_id)
   ))) {
     if (!sampleIds.has(annotation.sample_id)) {
       missingSampleIds.push(annotation.sample_id);
+      continue;
+    }
+    if (!applicableSampleIds.has(annotation.sample_id)) {
+      notApplicableSampleIds.push(annotation.sample_id);
       continue;
     }
     const observations = records.flatMap((record) => (
@@ -216,10 +305,11 @@ export function compareGoldToCoreRun(
     evaluatorRuntime.identity.fingerprint,
     ...sealedEvaluatorRuntimeAliases(evaluator.config),
   ].map(normalizedIdentity);
-  const contaminationWarning = runtimeIds.includes(annotator)
+  const contaminated = runtimeIds.includes(annotator);
+  const contaminationWarning = contaminated
     ? `gold annotator "${gold.metadata.annotator}" exactly matches the selected evaluator identity; agreement may be inflated`
     : undefined;
-  const agreement = computeAgreementWithCI(pairs, {
+  const agreement = computeAgreementEvidence(pairs, {
     samples: input.bootstrapSamples,
     seed: input.bootstrapSeed,
     scale,
@@ -240,10 +330,16 @@ export function compareGoldToCoreRun(
         ...(annotation.reason === undefined ? {} : { reason: annotation.reason }),
       })),
   });
+  const assessment = assessGoldAgreement(agreement, input.minimumAlpha, {
+    missingSampleIds,
+    unannotatedSampleIds,
+    unscoredSampleIds,
+  }, contaminated);
 
   return {
     projectionKind: 'core-gold-comparison',
     schemaVersion: CORE_GOLD_COMPARISON_SCHEMA_VERSION,
+    analysisMode: 'exploratory-post-hoc',
     runContractDigest: plan.digests.runContractDigest,
     reportDigest: report.reportDigest,
     gold: {
@@ -255,20 +351,44 @@ export function compareGoldToCoreRun(
     selector: { ...selector },
     scale: { ...scale },
     evaluatorRuntime: evaluatorRuntime.identity,
-    agreement: {
-      alpha: jsonNumber(agreement.alpha),
-      alphaCI: {
-        low: jsonNumber(agreement.alphaCI.low),
-        high: jsonNumber(agreement.alphaCI.high),
-        estimate: jsonNumber(agreement.alphaCI.estimate),
-        samples: agreement.alphaCI.samples,
+    ...(input.minimumAlpha === undefined ? {} : {
+      agreementPolicy: {
+        criterion: 'krippendorff-alpha-ci-lower-bound' as const,
+        minimumAlpha: input.minimumAlpha,
+        thresholdSource: 'caller' as const,
       },
-      weightedKappa: jsonNumber(agreement.weightedKappa),
-      pearson: jsonNumber(agreement.pearson),
+    }),
+    agreement: {
+      alpha: observedStatisticValue(agreement.krippendorffAlpha),
+      alphaCI: agreement.alphaInterval.intervalStatus === 'observed'
+        ? {
+            intervalStatus: 'observed',
+            low: agreement.alphaInterval.low,
+            high: agreement.alphaInterval.high,
+            estimate: agreement.alphaInterval.estimate,
+            samples: agreement.alphaInterval.samples,
+            confidenceLevel: agreement.alphaInterval.confidenceLevel,
+            drawCoverage: agreement.alphaInterval.drawCoverage,
+          }
+        : {
+            intervalStatus: 'missing',
+            low: null,
+            high: null,
+            estimate: null,
+            samples: 0,
+            confidenceLevel: agreement.alphaInterval.confidenceLevel,
+            drawCoverage: agreement.alphaInterval.drawCoverage,
+            reasonCode: agreement.alphaInterval.reasonCode,
+          },
+      weightedKappa: observedStatisticValue(agreement.weightedKappa),
+      pearson: observedStatisticValue(agreement.pearson),
       sampleCount: agreement.sampleCount,
     },
+    assessment,
     rows,
     missingSampleIds,
+    unannotatedSampleIds,
+    notApplicableSampleIds,
     unscoredSampleIds,
     ...(contaminationWarning === undefined ? {} : { contaminationWarning }),
   };

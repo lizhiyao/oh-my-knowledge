@@ -74,7 +74,7 @@ Runs that previously measured a real URL as literal text are not directly compar
 - `omk init` still creates three low-cost starter cases. Use `omk init --samples 20` for the larger first-party starter set; review or replace it before treating it as release evidence.
 - `omk init` no longer overwrites scaffold files unless `--force` is explicit.
 - `omk eval --resume` accepts a Core `runId`, not a report path.
-- `omk eval gold compare` accepts a Core `runId` and requires explicit `--target`, `--evaluator`, and `--metric` selectors.
+- `omk eval gold compare` accepts a Core `runId` and requires explicit `--target`, `--evaluator`, and `--metric` selectors. Pass an optional `--minimum-alpha` only when your domain has chosen a reliability threshold; the post-hoc assessment uses the confidence-interval lower bound and never changes the release verdict.
 - `omk evolve` no longer accepts the former diagnostic, sample-repair, report-reuse, holdout, significance, or test-split switches. Candidate acceptance and source write-back are governed by the Core decision; run an independent release validation set outside the authoring loop.
 
 Check the current [CLI reference](../reference/cli.md) rather than copying 0.54 flags into scripts.
@@ -95,4 +95,4 @@ The [embedded API reference](../reference/embedded-api.md) is the canonical cont
 
 ## Measurement boundary
 
-The migration preserves the frozen evaluator prompts, five scoring layers, Bootstrap confidence interval formula, Krippendorff alpha formula, and length-debias toggle semantics. It does not preserve artifact schemas, storage paths, digests, Runtime identities, or the interpretation of unresolved external URLs. Compare only runs that the new Core marks compatible; do not splice old and new score histories manually.
+The migration preserves the frozen evaluator prompts, five scoring layers, comparison-family Bootstrap formula, Krippendorff alpha point formula, and length-debias toggle semantics. Agreement interval v2 intentionally adopts Krippendorff's fixed-expected-disagreement reliability bootstrap; v1 remains available only for exact replay. The migration does not preserve artifact schemas, storage paths, digests, Runtime identities, or the interpretation of unresolved external URLs. Compare only runs that the new Core marks compatible; do not splice old and new score histories manually.

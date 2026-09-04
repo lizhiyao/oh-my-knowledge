@@ -4,6 +4,7 @@ import {
   computeKrippendorffAlpha,
   computeWeightedKappa,
   computePearson,
+  computeAgreementEvidence,
   computeAgreementWithCI,
   type RatingPair,
 } from '../../../src/eval-workflows/gold/human.js';
@@ -109,5 +110,57 @@ describe('computeAgreementWithCI', () => {
     assert.ok(Number.isNaN(result.alpha));
     assert.ok(Number.isNaN(result.weightedKappa));
     assert.ok(Number.isNaN(result.pearson));
+  });
+});
+
+describe('computeAgreementEvidence', () => {
+  it('reports the bootstrap interval as not applicable for perfect agreement', () => {
+    const result = computeAgreementEvidence(
+      pairsOf([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]),
+      { samples: 100, seed: 42 },
+    );
+    assert.deepEqual(result.alphaInterval, {
+      intervalStatus: 'missing',
+      reasonCode: 'agreement-bootstrap-not-applicable-perfect',
+      confidenceLevel: 0.95,
+      drawCoverage: { plannedDraws: 100, observedDraws: 0, missingDraws: 100 },
+    });
+  });
+
+  it('uses fixed expected disagreement so every non-degenerate draw is defined', () => {
+    const result = computeAgreementEvidence(pairsOf([
+      [1, 2], [2, 2], [3, 3], [4, 4], [5, 4],
+      [1, 1], [2, 3], [3, 3], [4, 5], [5, 5],
+    ]), { samples: 1_000, seed: 7 });
+    assert.equal(result.alphaInterval.intervalStatus, 'observed');
+    assert.deepEqual(result.alphaInterval.drawCoverage, {
+      plannedDraws: 1_000,
+      observedDraws: 1_000,
+      missingDraws: 0,
+    });
+  });
+
+  it('keeps degenerate resamples finite by retaining original expected disagreement', () => {
+    const result = computeAgreementEvidence(pairsOf([[1, 2], [3, 3]]), {
+      samples: 100,
+      seed: 42,
+    });
+    assert.equal(result.alphaInterval.intervalStatus, 'observed');
+    assert.deepEqual(result.alphaInterval.drawCoverage, {
+      plannedDraws: 100,
+      observedDraws: 100,
+      missingDraws: 0,
+    });
+    if (result.alphaInterval.intervalStatus === 'observed') {
+      assert.ok(result.alphaInterval.low >= -1);
+      assert.ok(result.alphaInterval.high <= 1);
+    }
+  });
+
+  it('rejects invalid interval configuration before drawing', () => {
+    const pairs = pairsOf([[1, 1], [2, 2]]);
+    assert.throws(() => computeAgreementEvidence(pairs, { samples: 0 }), /positive safe integer/);
+    assert.throws(() => computeAgreementEvidence(pairs, { alpha: 1 }), /between 0 and 1/);
+    assert.throws(() => computeAgreementEvidence(pairs, { seed: -1 }), /non-negative safe integer/);
   });
 });

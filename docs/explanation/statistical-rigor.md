@@ -34,6 +34,8 @@ The projection reports:
 - paired-unit Bootstrap uncertainty and structured missing states;
 - contamination warnings when annotator and judge identities make agreement optimistic.
 
+The current `omk.agreement-table/v2` contract follows [Krippendorff's recommended reliability bootstrap](https://www.asc.upenn.edu/sites/default/files/2021-03/Algorithm%20for%20Bootstrapping%20a%20Distribution%20of%20Alpha.pdf): each draw resamples paired observed disagreement while expected disagreement stays fixed from the original ratings. This avoids conditioning quantiles on only finite draws when a resample collapses to one value. Perfect observed agreement is a documented non-applicability case and produces no fabricated interval. Draw coverage and every missing state remain explicit. The v1 finite-draw contract remains registered only for exact replay. A post-hoc caller may supply an explicit minimum alpha; the assessment compares the confidence-interval lower bound, while an omitted threshold remains explicitly unconfigured.
+
 Post-hoc Gold comparison is exploratory calibration. It does not retroactively rewrite the preregistered release Decision.
 
 Implementation: the explicit projection is `src/eval-workflows/projections/gold.ts`; the preregistered Core Analysis node is `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`.

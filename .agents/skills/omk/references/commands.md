@@ -169,6 +169,7 @@ omk eval gold compare <runId> [flags]
 - `--gold-dir` `option`:gold dataset 目录，必填
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--metric` `option`:显式选择 Core metric ID。
+- `--minimum-alpha` `option`:可选的一致性阈值；按 Krippendorff α 置信区间下界评估
 - `--reports-dir` `option`:只读取指定 Core 报告目录（默认当前项目 + 全局）
 - `--seed` `option`:bootstrap seed，可复现
 - `--target` `option`:显式选择 Core target ID。

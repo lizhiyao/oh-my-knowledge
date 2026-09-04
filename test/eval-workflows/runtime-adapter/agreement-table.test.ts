@@ -14,7 +14,9 @@ import {
 } from '../../../src/eval-core/contracts/index.js';
 import {
   AGREEMENT_TABLE_SCHEMA,
+  AGREEMENT_TABLE_V1_SCHEMA,
   buildAgreementTable,
+  buildAgreementTableV1,
   createAgreementTableSchemaValidators,
   parseAgreementTableEnvelope,
   type AgreementPair,
@@ -73,6 +75,12 @@ describe('Agreement Analysis table', () => {
     const sealed = parameters(values.map((_, index) => `sample-${index}`));
     const value = buildAgreementTable(sealed, pairs);
 
+    expect(AGREEMENT_TABLE_SCHEMA).toEqual({
+      schemaVersion: 'omk.agreement-table/v2',
+      schemaUri: 'urn:omk:analysis-result:agreement-table:v2',
+      schemaDigest: 'sha256:ab4c54b0ad48ff57b609bc7b86de155e79d027c20da2f4bd43afa010149e7cef',
+    });
+
     expect(value.pairs.map((pair) => pair.sampleId)).toEqual(sealed.sampleIds);
     expect(value.coverage).toEqual({
       plannedPairs: 10,
@@ -87,8 +95,8 @@ describe('Agreement Analysis table', () => {
       krippendorffAlpha: { statisticStatus: 'observed', value: 0.8939 },
       alphaInterval: {
         intervalStatus: 'observed',
-        lower: 0.7177,
-        upper: 0.9719,
+        lower: 0.8142,
+        upper: 0.9735,
         estimate: 0.8939,
         samples: 1_000,
         confidenceLevel: 0.95,
@@ -103,17 +111,16 @@ describe('Agreement Analysis table', () => {
     })), { samples: 1_000, seed: 7, alpha: 0.05 });
     expect(value.statistics).toMatchObject({
       krippendorffAlpha: { value: legacy.alpha },
-      alphaInterval: {
-        lower: legacy.alphaCI.low,
-        upper: legacy.alphaCI.high,
-        estimate: legacy.alphaCI.estimate,
-      },
       weightedKappa: { value: legacy.weightedKappa },
       pearson: { value: legacy.pearson },
     });
+    expect(value.statistics.alphaInterval).not.toMatchObject({
+      lower: legacy.alphaCI.low,
+      upper: legacy.alphaCI.high,
+    });
   });
 
-  it('retains undefined bootstrap draws as coverage instead of NaN', () => {
+  it('reports the interval as not applicable for perfect agreement', () => {
     const pairs = comparablePairs([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
     const sealed = parameters(pairs.map((pair) => pair.sampleId), {
       resamples: 100,
@@ -123,18 +130,46 @@ describe('Agreement Analysis table', () => {
     expect(value.statistics).toEqual({
       krippendorffAlpha: { statisticStatus: 'observed', value: 1 },
       alphaInterval: {
-        intervalStatus: 'observed',
-        lower: 1,
-        upper: 1,
-        estimate: 1,
-        samples: 99,
+        intervalStatus: 'missing',
+        reasonCode: 'agreement-bootstrap-not-applicable-perfect',
         confidenceLevel: 0.95,
-        drawCoverage: { plannedDraws: 100, observedDraws: 99, missingDraws: 1 },
+        drawCoverage: { plannedDraws: 100, observedDraws: 0, missingDraws: 100 },
       },
       weightedKappa: { statisticStatus: 'observed', value: 1 },
       pearson: { statisticStatus: 'observed', value: 1 },
     });
     expect(JSON.stringify(value)).not.toContain('NaN');
+  });
+
+  it('keeps the v1 conditional-finite-draw contract available for exact replay', () => {
+    const pairs = comparablePairs([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
+    const sealed = parameters(pairs.map((pair) => pair.sampleId), {
+      resamples: 100,
+      seed: 42,
+    });
+    const value = buildAgreementTableV1(sealed, pairs);
+    expect(AGREEMENT_TABLE_V1_SCHEMA).toEqual({
+      schemaVersion: 'omk.agreement-table/v1',
+      schemaUri: 'urn:omk:analysis-result:agreement-table:v1',
+      schemaDigest: 'sha256:ba2a45e25c820d71d04538ce971e20c9491e4ba792623508c77d7c195b69a972',
+    });
+    expect(value.statistics.alphaInterval).toEqual({
+      intervalStatus: 'observed',
+      lower: 1,
+      upper: 1,
+      estimate: 1,
+      samples: 99,
+      confidenceLevel: 0.95,
+      drawCoverage: { plannedDraws: 100, observedDraws: 99, missingDraws: 1 },
+    });
+    const validator = createAgreementTableSchemaValidators().get(
+      schemaIdentityKey(AGREEMENT_TABLE_V1_SCHEMA),
+    );
+    expect(validator?.parse({ resultType: 'table', value }, {
+      validationKind: 'analysis-output',
+      parameters: sealed,
+      inputFacts: { resamplingUnitCount: 5 },
+    })).toEqual({ resultType: 'table', value });
   });
 
   it('maps insufficient, zero-disagreement, and unavailable evidence to structured missing', () => {
@@ -148,6 +183,7 @@ describe('Agreement Analysis table', () => {
       alphaInterval: {
         intervalStatus: 'missing',
         reasonCode: 'agreement-point-unobserved',
+        confidenceLevel: 0.95,
         drawCoverage: { plannedDraws: 100, observedDraws: 0, missingDraws: 100 },
       },
       weightedKappa: {
@@ -246,6 +282,8 @@ describe('Agreement Analysis table', () => {
     const altered = structuredClone(envelope);
     if (altered.value.statistics.alphaInterval.intervalStatus === 'observed') {
       altered.value.statistics.alphaInterval.lower = 0.5;
+    } else {
+      altered.value.statistics.alphaInterval.drawCoverage.observedDraws -= 1;
     }
     expect(() => validator?.parse(altered, context)).toThrow(/recomputable/);
     expect(() => validator?.parse(envelope, {
