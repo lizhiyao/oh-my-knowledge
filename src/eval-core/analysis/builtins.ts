@@ -270,7 +270,7 @@ const EXCLUDE_CAPABILITIES: JsonValue = {
   schemas: [],
 };
 
-const DECISION_CAPABILITIES: JsonValue = {
+const PROGRESS_V1_DECISION_CAPABILITIES: JsonValue = {
   capabilityKind: 'decision-policy',
   analysisResultSchemaUris: [
     BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri,
@@ -281,13 +281,32 @@ const DECISION_CAPABILITIES: JsonValue = {
   schemas: [],
 };
 
-const PROGRESS_DECISION_FINGERPRINT_FACETS: JsonValue = {
+const PROGRESS_V2_DECISION_CAPABILITIES: JsonValue = {
+  capabilityKind: 'decision-policy',
+  analysisResultSchemaUris: [BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri],
+  multipleComparisonPolicyIds: [],
+  parameterSchema: PROGRESS_PARAMETERS_SCHEMA,
+  schemas: [],
+};
+
+const PROGRESS_V1_DECISION_FINGERPRINT_FACETS: JsonValue = {
   decisionOutputContract: 'decided-verdict-with-reason-codes/v1',
   reasonRules: {
     progress: 'effect-above-progress-threshold',
     regression: 'effect-below-regression-threshold',
     noise: 'effect-within-equivalence-band',
     notDecided: 'decision-effect-unavailable',
+  },
+};
+
+const PROGRESS_V2_DECISION_FINGERPRINT_FACETS: JsonValue = {
+  decisionOutputContract: 'interval-bounded-verdict-with-reason-codes/v2',
+  directionRule: 'confidence-interval-must-exclude-threshold-plus-equivalence-band',
+  reasonRules: {
+    progress: 'interval-above-progress-boundary',
+    regression: 'interval-below-regression-boundary',
+    noise: 'interval-overlaps-decision-boundary',
+    notDecided: 'decision-interval-unavailable',
   },
 };
 
@@ -888,15 +907,21 @@ export const BUILTIN_EXCLUDE_MISSING_POLICY = {
   decide: () => 'exclude' as const,
 };
 
-function scalarEffect(context: DecisionPolicyContext): number | undefined {
+function selectedDecisionResult(
+  context: DecisionPolicyContext,
+): DecisionPolicyContext['results'][number] | undefined {
   const resultId = context.contrasts.length === 1
     ? context.contrasts[0].analysisResultId
     : context.contrasts.length === 0 && context.results.length === 1
       ? context.results[0].resultId
       : undefined;
-  const result = resultId === undefined
+  return resultId === undefined
     ? undefined
     : context.results.find((candidate) => candidate.resultId === resultId);
+}
+
+function scalarEffect(context: DecisionPolicyContext): number | undefined {
+  const result = selectedDecisionResult(context);
   if (result === undefined) return undefined;
   if (typeof result.value === 'number' && Number.isFinite(result.value)) return result.value;
   if (result.value !== null && !Array.isArray(result.value)
@@ -907,24 +932,45 @@ function scalarEffect(context: DecisionPolicyContext): number | undefined {
   return undefined;
 }
 
+function intervalEffect(
+  context: DecisionPolicyContext,
+): Readonly<{ estimate: number; lower: number; upper: number }> | undefined {
+  const result = selectedDecisionResult(context);
+  if (result === undefined) return undefined;
+  const parsed = IntervalEnvelopeSchema.safeParse({
+    resultType: result.resultType,
+    value: result.value,
+  });
+  return parsed.success ? parsed.data.value : undefined;
+}
+
+function progressParameters(context: DecisionPolicyContext): {
+  threshold: number;
+  equivalence: number;
+} {
+  const policyParameters = context.policy.parameters;
+  const object = policyParameters !== null && policyParameters !== undefined
+    && !Array.isArray(policyParameters) && typeof policyParameters === 'object'
+    ? policyParameters as Record<string, JsonValue>
+    : {};
+  return {
+    threshold: typeof object.threshold === 'number' ? object.threshold : 0,
+    equivalence: typeof object.equivalence === 'number' ? object.equivalence : 0,
+  };
+}
+
 export const BUILTIN_PROGRESS_DECISION_POLICY: AnalysisDecisionPolicy = {
   identity: runtimeIdentity(
     'progress/v1',
-    DECISION_CAPABILITIES,
-    PROGRESS_DECISION_FINGERPRINT_FACETS,
+    PROGRESS_V1_DECISION_CAPABILITIES,
+    PROGRESS_V1_DECISION_FINGERPRINT_FACETS,
   ),
   decide: async (context): Promise<DecisionPolicyOutput> => {
     const effect = scalarEffect(context);
     if (effect === undefined) {
       return { decisionStatus: 'not-decided', reasonCodes: ['decision-effect-unavailable'] };
     }
-    const policyParameters = context.policy.parameters;
-    const object = policyParameters !== null && policyParameters !== undefined
-      && !Array.isArray(policyParameters) && typeof policyParameters === 'object'
-      ? policyParameters as Record<string, JsonValue>
-      : {};
-    const threshold = typeof object.threshold === 'number' ? object.threshold : 0;
-    const equivalence = typeof object.equivalence === 'number' ? object.equivalence : 0;
+    const { threshold, equivalence } = progressParameters(context);
     if (effect > threshold + equivalence) {
       return {
         decisionStatus: 'decided',
@@ -943,6 +989,40 @@ export const BUILTIN_PROGRESS_DECISION_POLICY: AnalysisDecisionPolicy = {
       decisionStatus: 'decided',
       verdict: 'NOISE',
       reasonCodes: ['effect-within-equivalence-band'],
+    };
+  },
+};
+
+export const BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY: AnalysisDecisionPolicy = {
+  identity: runtimeIdentity(
+    'progress/v2',
+    PROGRESS_V2_DECISION_CAPABILITIES,
+    PROGRESS_V2_DECISION_FINGERPRINT_FACETS,
+  ),
+  decide: async (context): Promise<DecisionPolicyOutput> => {
+    const interval = intervalEffect(context);
+    if (interval === undefined) {
+      return { decisionStatus: 'not-decided', reasonCodes: ['decision-interval-unavailable'] };
+    }
+    const { threshold, equivalence } = progressParameters(context);
+    if (interval.lower > threshold + equivalence) {
+      return {
+        decisionStatus: 'decided',
+        verdict: 'PROGRESS',
+        reasonCodes: ['interval-above-progress-boundary'],
+      };
+    }
+    if (interval.upper < threshold - equivalence) {
+      return {
+        decisionStatus: 'decided',
+        verdict: 'REGRESSION',
+        reasonCodes: ['interval-below-regression-boundary'],
+      };
+    }
+    return {
+      decisionStatus: 'decided',
+      verdict: 'NOISE',
+      reasonCodes: ['interval-overlaps-decision-boundary'],
     };
   },
 };
@@ -985,7 +1065,10 @@ export function createBuiltinMissingPolicies() {
 }
 
 export function createBuiltinDecisionPolicies() {
-  return new Map([['progress/v1', BUILTIN_PROGRESS_DECISION_POLICY]]);
+  return new Map([
+    ['progress/v1', BUILTIN_PROGRESS_DECISION_POLICY],
+    ['progress/v2', BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY],
+  ]);
 }
 
 export function resolveBuiltinAnalysisRuntime(
@@ -999,9 +1082,14 @@ export function resolveBuiltinAnalysisRuntime(
     };
   }
   if (requirement.requirementKind === 'decision-policy') {
-    if (requirement.implementationId !== 'progress/v1') return undefined;
+    const policy = requirement.implementationId === 'progress/v1'
+      ? BUILTIN_PROGRESS_DECISION_POLICY
+      : requirement.implementationId === 'progress/v2'
+        ? BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY
+        : undefined;
+    if (policy === undefined) return undefined;
     return {
-      identity: BUILTIN_PROGRESS_DECISION_POLICY.identity,
+      identity: policy.identity,
       satisfiesVersionConstraint: true,
     };
   }

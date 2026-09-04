@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { evaluate } from 'oh-my-knowledge';
 
 const answers = {
-  control: { one: 'A', two: 'incorrect', three: 'incorrect' },
+  control: { one: 'A', two: 'B', three: 'incorrect' },
   treatment: { one: 'A', two: 'B', three: 'C' },
 };
 
@@ -67,6 +67,8 @@ assert.equal(result.definition.dataset.datasetId, 'faas-example');
 assert.equal(Object.isFrozen(result.definition), true);
 assert.equal(Object.isFrozen(result.policy), true);
 assert.equal(result.artifacts.execution.records.length, 6);
-assert.equal(result.artifacts.analysis.records[0].value.estimate, 2 / 3);
+assert.equal(result.definition.decisionPolicy.implementationId, 'progress/v2');
+assert.equal(result.artifacts.analysis.records[0].value.estimate, 1 / 3);
 assert.equal(result.artifacts.decision.decisionStatus, 'decided');
+assert.equal(result.artifacts.decision.verdict, 'NOISE');
 assert.equal(result.report.bundles.length, 3);
