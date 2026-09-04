@@ -119,6 +119,16 @@ const SamplingDesignInputSchema = z.discriminatedUnion('samplingKind', [
       'uncontrolled',
     ]).optional(),
   }).strict(),
+  z.object({
+    samplingKind: z.literal('independent'),
+    allocations: z.array(z.object({
+      variantId: IdentifierSchema,
+      weight: z.number().finite().positive(),
+    }).strict()).min(2),
+    stratumKey: z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/).optional(),
+    minimumSamplesPerVariant: z.number().int().min(2),
+    minimumSamplesPerVariantPerStratum: z.number().int().positive(),
+  }).strict(),
 ]);
 
 const ExperimentSchema = z.object({
@@ -140,7 +150,7 @@ const AnalysisInputSchema = z.object({
 
 const ComparisonInputSchema = z.object({
   comparisonId: IdentifierSchema,
-  comparisonKind: z.literal('paired'),
+  comparisonKind: z.enum(['paired', 'independent']),
   controlVariantId: IdentifierSchema,
   treatmentVariantIds: z.array(IdentifierSchema).min(1),
   metricIds: z.array(IdentifierSchema).min(1),
@@ -368,6 +378,13 @@ export type SamplingDesign =
       pairingKey?: string;
       stratumKey?: string;
       seedCoupling?: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
+    }>
+  | Readonly<{
+      samplingKind: 'independent';
+      allocations: readonly Readonly<{ variantId: string; weight: number }>[];
+      stratumKey?: string;
+      minimumSamplesPerVariant: number;
+      minimumSamplesPerVariantPerStratum: number;
     }>;
 
 export interface Analysis {
@@ -376,7 +393,7 @@ export interface Analysis {
 
 export interface Comparison {
   readonly comparisonId: string;
-  readonly comparisonKind: 'paired';
+  readonly comparisonKind: 'paired' | 'independent';
   readonly controlVariantId: string;
   readonly treatmentVariantIds: readonly string[];
   readonly metricIds: readonly string[];
@@ -1181,7 +1198,9 @@ function createGeneralDefinition(input: Readonly<{
         || treatmentIds.has(comparison.controlVariantId)
         || [...treatmentIds].some((variantId) => !variantIdSet.has(variantId))
         || new Set(comparison.metricIds).size !== comparison.metricIds.length
-        || comparison.metricIds.some((metricId) => !metricIds.has(metricId))) {
+        || comparison.metricIds.some((metricId) => !metricIds.has(metricId))
+        || (input.experiment.sampling.samplingKind !== 'solo'
+          && comparison.comparisonKind !== input.experiment.sampling.samplingKind)) {
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
         'Evaluation comparison 引用了无效或重复的 Variant／Metric。',
@@ -1205,8 +1224,19 @@ function createGeneralDefinition(input: Readonly<{
         || variantIds.some((variantId) => !participatingVariantIds.has(variantId))) {
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
-        'paired sampling 要求至少两个 Variant，且每个 Variant 都进入显式 Comparison。',
+        `${sampling.samplingKind} sampling 要求至少两个 Variant，且每个 Variant 都进入显式 Comparison。`,
       );
+    }
+    if (sampling.samplingKind === 'independent') {
+      const allocationIds = sampling.allocations.map((allocation) => allocation.variantId);
+      if (new Set(allocationIds).size !== allocationIds.length
+          || [...allocationIds].sort(compareStrings).join('\u0000')
+            !== [...variantIds].sort(compareStrings).join('\u0000')) {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'independent allocations 必须恰好声明每个 Variant 一次。',
+        );
+      }
     }
   }
   const bootstrap = input.analysis?.bootstrap;
@@ -1266,7 +1296,9 @@ function createGeneralDefinition(input: Readonly<{
           analysisNodes.push({
             analysisNodeKind: 'estimator',
             nodeId: stableFacadeId('node', selector),
-            implementationId: 'bootstrap.paired-difference-percentile/v1',
+            implementationId: sampling.samplingKind === 'independent'
+              ? 'bootstrap.unpaired-difference-percentile/v1'
+              : 'bootstrap.paired-difference-percentile/v1',
             inputs: [
               { inputKind: 'metric-observations', referenceId: metricId },
               {
@@ -1344,7 +1376,19 @@ function createGeneralDefinition(input: Readonly<{
   const trials = input.experiment.trials ?? 1;
   const estimatorId = sampling.samplingKind === 'solo'
     ? 'bootstrap.mean-percentile/v1'
-    : 'bootstrap.paired-difference-percentile/v1';
+    : sampling.samplingKind === 'independent'
+      ? 'bootstrap.unpaired-difference-percentile/v1'
+      : 'bootstrap.paired-difference-percentile/v1';
+  const randomizationSlots = variants.map((variant) => ({
+    targetId: variant.variantId,
+    randomizationSlotId: stableFacadeId('slot', { variantId: variant.variantId }),
+  })).sort((left, right) => compareStrings(
+    left.randomizationSlotId,
+    right.randomizationSlotId,
+  ));
+  const slotByVariant = new Map(randomizationSlots.map((slot) => (
+    [slot.targetId, slot.randomizationSlotId] as const
+  )));
   const definition = EvaluationDefinitionSchema.parse({
     schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,
     dataset: input.evaluators.dataset,
@@ -1354,32 +1398,53 @@ function createGeneralDefinition(input: Readonly<{
     experiment: {
       trials,
       seed: input.experiment.seed,
+      assignment: sampling.samplingKind === 'independent' ? {
+        assignmentKind: 'independent-groups',
+        algorithmId: 'assignment.stratified-fixed-quota/v1',
+        ...(sampling.stratumKey === undefined ? {} : { stratumKey: sampling.stratumKey }),
+        allocations: sampling.allocations.map((allocation) => {
+          const randomizationSlotId = slotByVariant.get(allocation.variantId);
+          if (randomizationSlotId === undefined) {
+            return configurationFailure(
+              'EVAL_RUNTIME_INPUT_INVALID',
+              'independent allocation 引用了未知 Variant。',
+            );
+          }
+          return { randomizationSlotId, weight: allocation.weight };
+        }).sort((left, right) => compareStrings(
+          left.randomizationSlotId,
+          right.randomizationSlotId,
+        )),
+        minimumUnitsPerTarget: sampling.minimumSamplesPerVariant,
+        minimumUnitsPerTargetPerStratum: sampling.minimumSamplesPerVariantPerStratum,
+      } : {
+        assignmentKind: 'complete-block',
+        algorithmId: 'assignment.complete-block/v1',
+        ...(sampling.stratumKey === undefined ? {} : { stratumKey: sampling.stratumKey }),
+        randomizationSlotIds: randomizationSlots.map((slot) => slot.randomizationSlotId),
+      },
       sampling: sampling.samplingKind === 'solo' ? {
         experimentalUnit: 'sample',
-        ...(sampling.stratumKey === undefined ? {} : { stratumKey: sampling.stratumKey }),
         repeatedMeasures: trials > 1,
         resamplingUnit: 'sample',
         estimatorId,
         seedCoupling: 'independent-by-target',
       } : {
         experimentalUnit: 'sample',
-        pairingKey: sampling.pairingKey ?? '/sampleId',
-        ...(sampling.stratumKey === undefined ? {} : { stratumKey: sampling.stratumKey }),
+        ...(sampling.samplingKind === 'paired'
+          ? { pairingKey: sampling.pairingKey ?? '/sampleId' }
+          : {}),
         repeatedMeasures: trials > 1,
-        resamplingUnit: 'paired-block',
+        resamplingUnit: sampling.samplingKind === 'independent' ? 'sample' : 'paired-block',
         estimatorId,
-        seedCoupling: sampling.seedCoupling ?? 'shared-within-block',
+        seedCoupling: sampling.samplingKind === 'independent'
+          ? 'independent-by-target'
+          : sampling.seedCoupling ?? 'shared-within-block',
       },
       scheduling: input.experiment.scheduling ?? {
         schedulingKind: sampling.samplingKind === 'solo' ? 'sequential' : 'interleaved',
       },
-      randomizationSlots: variants.map((variant) => ({
-        targetId: variant.variantId,
-        randomizationSlotId: stableFacadeId('slot', { variantId: variant.variantId }),
-      })).sort((left, right) => compareStrings(
-        left.randomizationSlotId,
-        right.randomizationSlotId,
-      )),
+      randomizationSlots,
     },
     analysisGraph: {
       analysisMode: 'preregistered',

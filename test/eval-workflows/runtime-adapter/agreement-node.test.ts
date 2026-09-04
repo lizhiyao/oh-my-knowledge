@@ -183,11 +183,11 @@ describe('Agreement Analysis node', () => {
     expect(capabilities.parameterSchema).toEqual(AGREEMENT_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(AGREEMENT_ANALYSIS_IDENTITY)).toBe(true);
     expect(AGREEMENT_ANALYSIS_V2_IDENTITY.fingerprint).toBe(
-      'sha256:8c8cc64b722b9b29b89bd5bd6da92cbde51d6c3115d59e65123d222f96aa5402',
+      'sha256:f93712cdf9b2cadc19d049291b458a72f670fcd7f4a9b2873a0b4ecc11229581',
     );
     expect(AGREEMENT_ANALYSIS_IDENTITY.implementationId).toBe('omk.agreement-table/v3');
     expect(AGREEMENT_ANALYSIS_IDENTITY.fingerprint).toBe(
-      'sha256:dfc544ee70da39d2482f223a5457ccd0d110088c48b4ed986c447d257f687467',
+      'sha256:4de30b1ec1e3a19ec92d9f34b503ba755649230de49550e79c9d77b0060101b1',
     );
 
     const result = await execute(context());
@@ -221,9 +221,9 @@ describe('Agreement Analysis node', () => {
     });
   });
 
-  it('keeps the v1 and v2 runtime identities registered byte-for-byte for replay', () => {
+  it('registers the explicitly versioned assignment-aware runtime identities', () => {
     expect(AGREEMENT_ANALYSIS_V1_IDENTITY.fingerprint).toBe(
-      'sha256:146618a95988de00fbe2dc8b5b456740447e945a1e539493d6e56932bd4f34f0',
+      'sha256:c88a9d4fcc67c892da96ce7e4baec35e9ec8bf04da4afd7fb966c3f0dbb03373',
     );
     expect(createAgreementAnalysisNodes().get(
       AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,

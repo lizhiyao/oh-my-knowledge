@@ -303,6 +303,9 @@ describe('Evaluation Core consumer cutover projections', () => {
           targetId: 'middle',
           randomizationSlotId: 'slot-middle',
         });
+        if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+          definition.experiment.assignment.randomizationSlotIds.splice(1, 0, 'slot-middle');
+        }
         definition.comparisons = [{
           comparisonId: 'control-vs-middle',
           controlTargetId: 'control',

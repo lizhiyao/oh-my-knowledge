@@ -18,6 +18,7 @@ import {
   computeRandomizationDesignDigest,
   computeRunContractDigest,
   deepFreezeCanonicalJson,
+  deriveAssignmentMemberships,
   deriveEvaluationStatus,
   digestCanonicalJson,
   evaluationRecordCapturedContents,
@@ -116,6 +117,13 @@ async function pathExists(path: string): Promise<boolean> {
 
 function assertPlanDocument(plan: RunPlan): void {
   const definition = plan.definition;
+  const expectedAssignments = deriveAssignmentMemberships({
+    samples: plan.execution.samples,
+    experiment: definition.experiment,
+  });
+  if (canonicalizeJson(expectedAssignments) !== canonicalizeJson(plan.execution.assignments)) {
+    fail('CORE_RUN_ARTIFACT_PLAN_INVALID', 'RunPlan assignments 与 Definition 不一致。');
+  }
   const expectedDigests = computePlanDigests({
     dataset: definition.dataset,
     targets: definition.targets,
@@ -163,11 +171,13 @@ function assertPlanDocument(plan: RunPlan): void {
         estimatorId: definition.experiment.sampling.estimatorId,
       },
     },
+    assignments: plan.execution.assignments,
   });
   const actualExecutionPlanDigest = computeExecutionPlanDigest({
     executionInputDigest: sha256(plan.execution.executionInputDigest),
     randomizationDesignDigest: sha256(plan.execution.randomizationDesignDigest),
     targets: plan.execution.targets,
+    assignments: plan.execution.assignments,
     schedulingTargetGroups: plan.execution.schedulingTargetGroups,
     executorRuntimes: plan.execution.runtimes,
     experiment: plan.execution.experiment,

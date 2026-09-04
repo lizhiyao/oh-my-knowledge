@@ -101,7 +101,7 @@ A Definition is immutable, serializable intent. It contains no function, class i
 
 ```ts
 interface EvaluationDefinition {
-  schemaVersion: 'omk.evaluation-definition/v1';
+  schemaVersion: 'omk.evaluation-definition/v2';
   dataset: EvaluationDataset;
   targets: readonly TargetDefinition[];
   evaluators: readonly EvaluatorDefinition[];
@@ -229,16 +229,30 @@ interface SamplingDesign {
   experimentalUnit: 'sample' | 'run' | 'cluster';
   pairingKey?: string;
   clusterKey?: string;
-  stratumKey?: string;
   repeatedMeasures: boolean;
   resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
   estimatorId: string;
   seedCoupling: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
 }
 
+type AssignmentDesign = {
+  assignmentKind: 'complete-block';
+  algorithmId: 'assignment.complete-block/v1';
+  stratumKey?: string;
+  randomizationSlotIds: readonly string[];
+} | {
+  assignmentKind: 'independent-groups';
+  algorithmId: 'assignment.stratified-fixed-quota/v1';
+  stratumKey?: string;
+  allocations: readonly { randomizationSlotId: string; weight: number }[];
+  minimumUnitsPerTarget: number;
+  minimumUnitsPerTargetPerStratum: number;
+};
+
 interface ExperimentDesign {
   trials: number;
   seed: string;
+  assignment: AssignmentDesign;
   sampling: SamplingDesign;
   scheduling: SchedulingPolicy;
   randomizationSlots: readonly {
@@ -250,9 +264,15 @@ interface ExperimentDesign {
 
 A trial is one repeated measurement under the same condition. A retry attempt is infrastructure recovery within one trial. They are not interchangeable. Statistical implementations validate that they support the SamplingDesign during prepare and never treat repeated trials as independent samples by default.
 
+`AssignmentDesign` is distinct from statistical `SamplingDesign`. Complete-block assignment sends every sample to every declared slot. Independent-group assignment uses deterministic stratified fixed quotas: Core orders samples within each stratum by a SHA-256 rank derived from the sealed seed, algorithm, stratum, and sample ID; computes weighted integer quotas by the largest-remainder method; then assigns each sample to exactly one slot. Slot declarations are canonical and must cover all Targets exactly once. Global and per-stratum minimums are checked before Runtime resolution, so an underpowered design makes zero Executor calls. Assignment is fixed at the sample unit and reused across trials, retries, resume, budget stops, and failures; none of those events may reassign a sample.
+
+This is an intentional `BREAKING-SCHEMA` cutover. EvaluationDefinition, ExecutionPlan, AnalysisPlan, and RunPlan now require v2; no v1 reader, migration adapter, or compatibility diagnostic is provided. `stratumKey` moves from `SamplingDesign` to `AssignmentDesign`, and custom Analysis Runtime capabilities must declare their supported `assignmentKinds`. Built-in assignment-aware Analysis Runtime identities are versioned again because their capability fingerprints changed. Pre-cutover persisted Plans must be regenerated from their source definitions before use.
+
 Paired comparisons use a scheduling block as the dispatch atom. The compiler materializes comparison connectivity as canonical `ExecutionPlan.schedulingTargetGroups`: overlapping comparisons form one connected Target group, while unreferenced Targets remain singleton groups. These groups are covered by `executionPlanDigest`, so changing paired connectivity creates a new Execution identity. Comparison labels, treatment roles, and metric projections do not change Execution or Evaluation identity, but they do change Analysis identity and every downstream digest. `randomizationSlots` assigns every Target exactly one unique, stable experimental slot; the slot identifies a condition for randomization only and never encodes control/treatment role. A host comparing successive subject implementations preserves the slot even when its Target ID changes.
 
-`randomizationSlots` is canonical by `(randomizationSlotId, targetId)` and is one-to-one on both fields. `seedCoupling` explicitly chooses whether Targets for the same sample in a block share a random condition, derive independent per-slot conditions, or honestly declare Target randomness uncontrolled; an Executor cannot infer this choice. Core seals `randomizationDesignDigest` with domain `omk.randomization-design/v1` from the execution-input projection, trials, root seed, the execution-affecting SamplingDesign projection, SchedulingPolicy, sampling memberships, and scheduling connectivity expressed only with `randomizationSlotId` values. The analysis-only `estimatorId`, raw Target IDs, Target definitions, Runtime identities, and plan-bound artifact IDs are excluded. Planned admission ranks and controlled trial seeds derive from this digest, trial index, sample identity, and—only for independent coupling—the stable slot. They never derive from `executionPlanDigest`, `schedulingBlockId`, `trialId`, a Runtime fingerprint, or Target implementation content. The sample coordinate always enters seed derivation so that distinct samples in a larger block never reuse a seed accidentally. A block is not started unless budget exists for all arms. Coordinates that never start are budget-censored, create no attempt, and are excluded from the primary paired estimator.
+`randomizationSlots` is canonical by `(randomizationSlotId, targetId)` and is one-to-one on both fields. `ExecutionPlan.assignments` materializes canonical `(sampleId, targetId, randomizationSlotId)` memberships before any call. `seedCoupling` explicitly chooses whether Targets for the same sample in a block share a random condition, derive independent per-slot conditions, or honestly declare Target randomness uncontrolled; an Executor cannot infer this choice. Core seals `randomizationDesignDigest` with domain `omk.randomization-design/v2` from the execution-input projection, trials, root seed, AssignmentDesign, materialized sample-to-slot membership, the execution-affecting SamplingDesign projection, SchedulingPolicy, sampling memberships, and scheduling connectivity expressed only with `randomizationSlotId` values. The analysis-only `estimatorId`, raw Target IDs, Target definitions, Runtime identities, and plan-bound artifact IDs are excluded. Planned admission ranks and controlled trial seeds derive from this digest, trial index, sample identity, and—only for independent coupling—the stable slot. They never derive from `executionPlanDigest`, `schedulingBlockId`, `trialId`, a Runtime fingerprint, or Target implementation content. The sample coordinate always enters seed derivation so that distinct samples in a larger block never reuse a seed accidentally. A complete paired block is not started unless budget exists for all arms; independent groups schedule only the single sealed Target for each sample. Coordinates that never start are budget-censored, create no attempt, and never change the sealed assignment.
+
+The unpaired estimator aggregates repeated trials within each sample, rejects overlapping arm membership, bootstraps control and treatment independently within every stratum, and combines stratum-level differences using the sealed planned sample proportions. A stratum missing either observed arm is inconclusive. Estimator capabilities explicitly declare supported assignment kinds, and prepare rejects paired／unpaired cross-binding.
 
 ExecutionPlan carries that same execution-affecting ExperimentDesign projection and therefore has no `estimatorId`; the full ExperimentDesign, including estimator identity, begins at AnalysisPlan. An estimator-only change preserves ExecutionPlan and EvaluationPlan identities and invalidates AnalysisPlan plus every downstream identity.
 

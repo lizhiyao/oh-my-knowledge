@@ -58,6 +58,13 @@ function row(input: {
   };
 }
 
+function missingRow(input: Parameters<typeof row>[0]): AnalysisMetricRow {
+  const observed = row(input) as Extract<AnalysisMetricRow, { rowStatus: 'observed' }>;
+  const { value: _value, ...base } = observed;
+  void _value;
+  return { ...base, rowStatus: 'missing', reasonCode: 'missing-output' };
+}
+
 function context(input: {
   implementationId: string;
   rows: AnalysisMetricRow[];
@@ -146,6 +153,7 @@ describe('Evaluation Core built-in estimators', () => {
         comparisons: { min: 1, max: 1 },
       },
       sampling: {
+        assignmentKinds: ['independent-groups'],
         experimentalUnits: ['sample'],
         repeatedMeasures: [false, true],
         resamplingUnits: ['sample'],
@@ -388,6 +396,58 @@ describe('Evaluation Core built-in estimators', () => {
     expect(missingArm).toMatchObject({
       analysisStatus: 'inconclusive',
       reasonCodes: ['analysis-unpaired-bootstrap-strata-not-shared'],
+    });
+  });
+
+  it('keeps sealed stratum weights stable under differential missingness', async () => {
+    const stratumA = digestCanonicalJson({ stratum: 'a' });
+    const stratumB = digestCanonicalJson({ stratum: 'b' });
+    const result = await execute(context({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        row({ sampleId: 'c-a1', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 'c-a2', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 'c-a3', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 't-a1', targetId: 'treatment', value: 0, stratumId: stratumA }),
+        missingRow({ sampleId: 't-a2', targetId: 'treatment', value: 0, stratumId: stratumA }),
+        missingRow({ sampleId: 't-a3', targetId: 'treatment', value: 0, stratumId: stratumA }),
+        row({ sampleId: 'c-b1', targetId: 'control', value: 0, stratumId: stratumB }),
+        row({ sampleId: 't-b1', targetId: 'treatment', value: 100, stratumId: stratumB }),
+      ],
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 25, unitCount: 6 },
+    });
+  });
+
+  it('weights a multi-arm contrast by the sealed experiment population', async () => {
+    const stratumA = digestCanonicalJson({ stratum: 'a' });
+    const stratumB = digestCanonicalJson({ stratum: 'b' });
+    const result = await execute(context({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        row({ sampleId: 'c-a', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 't-a', targetId: 'treatment', value: 0, stratumId: stratumA }),
+        ...Array.from({ length: 6 }, (_, index) => row({
+          sampleId: `third-a-${index + 1}`,
+          targetId: 'third',
+          value: 0,
+          stratumId: stratumA,
+        })),
+        row({ sampleId: 'c-b', targetId: 'control', value: 0, stratumId: stratumB }),
+        row({ sampleId: 't-b', targetId: 'treatment', value: 100, stratumId: stratumB }),
+      ],
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 20, unitCount: 4 },
     });
   });
 

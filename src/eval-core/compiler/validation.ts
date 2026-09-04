@@ -3,6 +3,7 @@ import type {
 } from './types.js';
 import {
   canonicalizeJson,
+  deriveAssignmentMemberships,
   deriveSchedulingTargetGroups,
   projectExecutionInputs,
   resolveEffectiveExecutionControl,
@@ -72,7 +73,7 @@ function validateDesignPointers(definition: EvaluationDefinition): void {
   const pointers = [
     ['pairingKey', definition.experiment.sampling.pairingKey],
     ['clusterKey', definition.experiment.sampling.clusterKey],
-    ['stratumKey', definition.experiment.sampling.stratumKey],
+    ['stratumKey', definition.experiment.assignment.stratumKey],
   ] as const;
 
   for (const [field, pointer] of pointers) {
@@ -81,9 +82,11 @@ function validateDesignPointers(definition: EvaluationDefinition): void {
       if (!resolvesPointer(sample, pointer)) {
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
-          `SamplingDesign.${field} 无法在 execution-visible sample 中定位值。`,
+          `${field === 'stratumKey' ? 'AssignmentDesign' : 'SamplingDesign'}.${field} 无法在 execution-visible sample 中定位值。`,
           {
-            location: `experiment.sampling.${field}`,
+            location: field === 'stratumKey'
+              ? 'experiment.assignment.stratumKey'
+              : `experiment.sampling.${field}`,
             sampleId: sample.sampleId,
           },
         );
@@ -293,6 +296,40 @@ function validateSamplingDesign(definition: EvaluationDefinition): void {
       { location: 'experiment.randomizationSlots' },
     );
   }
+  const declaredSlotIds = experiment.randomizationSlots.map(
+    (slot) => slot.randomizationSlotId,
+  ).sort();
+  const assignmentSlotIds = experiment.assignment.assignmentKind === 'complete-block'
+    ? experiment.assignment.randomizationSlotIds
+    : experiment.assignment.allocations.map((allocation) => allocation.randomizationSlotId);
+  assertUnique(assignmentSlotIds, 'experiment:assignment-slot');
+  const canonicalAssignmentSlotIds = [...assignmentSlotIds].sort();
+  if (canonicalizeJson(canonicalAssignmentSlotIds) !== canonicalizeJson(assignmentSlotIds)) {
+    throw definitionError(
+      'EVAL_DEFINITION_POLICY_INVALID',
+      'Assignment slots 必须按 randomizationSlotId 的 canonical 顺序排列。',
+      { location: 'experiment.assignment' },
+    );
+  }
+  if (canonicalizeJson(canonicalAssignmentSlotIds) !== canonicalizeJson(declaredSlotIds)) {
+    throw definitionError(
+      'EVAL_DEFINITION_POLICY_INVALID',
+      'Assignment 必须恰好覆盖全部 randomization slots。',
+      { location: 'experiment.assignment' },
+    );
+  }
+  if (experiment.assignment.assignmentKind === 'independent-groups') {
+    if (sampling.experimentalUnit !== 'sample'
+        || sampling.resamplingUnit !== 'sample'
+        || sampling.seedCoupling !== 'independent-by-target'
+        || definition.comparisons.length === 0) {
+      throw definitionError(
+        'EVAL_DEFINITION_POLICY_INVALID',
+        'independent-groups 要求 sample experimental／resampling unit、independent-by-target seed coupling 和至少一个 Comparison。',
+        { location: 'experiment' },
+      );
+    }
+  }
   if (experiment.trials > 1 && !sampling.repeatedMeasures) {
     throw definitionError(
       'EVAL_DEFINITION_POLICY_INVALID',
@@ -373,6 +410,18 @@ function validateSamplingDesign(definition: EvaluationDefinition): void {
     }
   }
   validateDesignPointers(definition);
+  try {
+    deriveAssignmentMemberships({
+      samples: projectExecutionInputs(definition.dataset),
+      experiment,
+    });
+  } catch (error) {
+    throw definitionError(
+      'EVAL_DEFINITION_POLICY_INVALID',
+      error instanceof Error ? error.message : 'Assignment 无法确定性编译。',
+      { location: 'experiment.assignment' },
+    );
+  }
 }
 
 function validatePolicy(

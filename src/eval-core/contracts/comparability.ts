@@ -778,9 +778,22 @@ function normalizeExperiment(
   plan: SealedRunPlan,
   side: SideProjection,
 ): JsonValue {
+  const assignment = plan.execution.experiment.assignment;
   return {
     trials: plan.execution.experiment.trials,
     seed: plan.execution.experiment.seed,
+    assignment: assignment.assignmentKind === 'complete-block' ? {
+      ...assignment,
+      randomizationSlotIds: [...assignment.randomizationSlotIds],
+    } : {
+      ...assignment,
+      allocations: assignment.allocations.map((allocation) => ({ ...allocation })),
+    },
+    assignments: sortedJsonValues(plan.execution.assignments.map((membership) => ({
+      sampleId: membership.sampleId,
+      targetReference: targetReference(side, membership.targetId),
+      randomizationSlotId: membership.randomizationSlotId,
+    }))),
     sampling: plan.execution.experiment.sampling,
     scheduling: plan.execution.experiment.scheduling,
     randomizationSlots: sortedJsonValues(plan.execution.experiment.randomizationSlots.map(

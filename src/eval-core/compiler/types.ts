@@ -44,6 +44,7 @@ export const EvaluatorCapabilitiesSchema = z.object({
 }).strict();
 
 const SamplingCapabilitiesSchema = z.object({
+  assignmentKinds: z.array(z.enum(['complete-block', 'independent-groups'])).min(1),
   experimentalUnits: z.array(z.enum(['sample', 'run', 'cluster'])).min(1),
   repeatedMeasures: z.array(z.boolean()).min(1),
   resamplingUnits: z.array(z.enum(['sample', 'paired-block', 'cluster', 'run'])).min(1),

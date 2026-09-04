@@ -44,6 +44,7 @@ const BOOTSTRAP_FAMILY_V2_CAPABILITIES: JsonValue = {
     comparisons: { min: 0, max: 0 },
   },
   sampling: {
+    assignmentKinds: ['complete-block'],
     experimentalUnits: ['sample'],
     repeatedMeasures: [false, true],
     resamplingUnits: ['paired-block', 'sample'],
@@ -54,7 +55,7 @@ const BOOTSTRAP_FAMILY_V2_CAPABILITIES: JsonValue = {
 export const BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
-    version: '2.0.0',
+    version: '3.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
       algorithmVersion: 'omk.percentile-bootstrap-family/v2',

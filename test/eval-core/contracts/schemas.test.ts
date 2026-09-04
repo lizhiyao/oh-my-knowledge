@@ -177,6 +177,11 @@ describe('Evaluation Core wire schemas', () => {
       experiment: {
         trials: 1,
         seed: 'seed',
+        assignment: {
+          assignmentKind: 'complete-block',
+          algorithmId: 'assignment.complete-block/v1',
+          randomizationSlotIds: ['slot-t'],
+        },
         randomizationSlots: [{ targetId: 't', randomizationSlotId: 'slot-t' }],
         sampling: {
           experimentalUnit: 'sample',
@@ -269,6 +274,11 @@ describe('Evaluation Core wire schemas', () => {
       experiment: {
         trials: 1,
         seed: 'seed',
+        assignment: {
+          assignmentKind: 'complete-block',
+          algorithmId: 'assignment.complete-block/v1',
+          randomizationSlotIds: ['slot-t'],
+        },
         randomizationSlots: [{ targetId: 't', randomizationSlotId: 'slot-t' }],
         sampling: {
           experimentalUnit: 'sample',

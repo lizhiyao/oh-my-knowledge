@@ -131,6 +131,11 @@ export function validDefinition(): EvaluationDefinition {
     experiment: {
       trials: 1,
       seed: 'seed-1',
+      assignment: {
+        assignmentKind: 'complete-block',
+        algorithmId: 'assignment.complete-block/v1',
+        randomizationSlotIds: ['slot-control', 'slot-treatment'],
+      },
       randomizationSlots: [
         { targetId: 'control', randomizationSlotId: 'slot-control' },
         { targetId: 'treatment', randomizationSlotId: 'slot-treatment' },
@@ -261,6 +266,7 @@ interface RuntimeOptions {
   };
   analysisValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
   samplingResamplingUnits?: Array<'sample' | 'paired-block' | 'cluster' | 'run'>;
+  samplingAssignmentKinds?: Array<'complete-block' | 'independent-groups'>;
   versionSatisfied?: boolean;
   throwExecutor?: boolean;
   extensionStages?: Record<string, 'execution' | 'evaluation' | 'analysis' | 'decision' | 'run' | 'audit'>;
@@ -446,6 +452,7 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
             },
             ...(isSampling ? {
               sampling: {
+                assignmentKinds: options.samplingAssignmentKinds ?? ['complete-block'],
                 experimentalUnits: ['sample'],
                 repeatedMeasures: [false],
                 resamplingUnits: options.samplingResamplingUnits ?? ['sample'],

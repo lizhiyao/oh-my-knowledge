@@ -56,6 +56,7 @@ function agreementAnalysisCapabilities(
       comparisons: { min: 0, max: 0 },
     },
     sampling: {
+      assignmentKinds: ['complete-block'],
       experimentalUnits: ['sample'],
       repeatedMeasures: [false, true],
       resamplingUnits: ['paired-block', 'sample'],
@@ -80,7 +81,7 @@ const AGREEMENT_ANALYSIS_V2_CAPABILITIES = agreementAnalysisCapabilities(
 export const AGREEMENT_ANALYSIS_V1_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
-    version: '1.0.0',
+    version: '2.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_V1_VERSION,
@@ -109,7 +110,7 @@ export const AGREEMENT_ANALYSIS_V1_IDENTITY: RuntimeIdentity = deepFreezeCanonic
 export const AGREEMENT_ANALYSIS_V2_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: AGREEMENT_ANALYSIS_V2_IMPLEMENTATION_ID,
-    version: '2.0.0',
+    version: '3.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: AGREEMENT_ANALYSIS_V2_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_V2_VERSION,
@@ -138,7 +139,7 @@ export const AGREEMENT_ANALYSIS_V2_IDENTITY: RuntimeIdentity = deepFreezeCanonic
 export const AGREEMENT_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
-    version: '3.0.0',
+    version: '4.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_VERSION,

@@ -314,6 +314,10 @@ async function runFactsCore(cache: EvaluationCache) {
   definition.experiment.randomizationSlots = definition.experiment.randomizationSlots.filter(
     (slot) => slot.targetId === definition.targets[0].targetId,
   );
+  if (definition.experiment.assignment.assignmentKind === 'complete-block') {
+    definition.experiment.assignment.randomizationSlotIds = definition.experiment
+      .randomizationSlots.map((slot) => slot.randomizationSlotId);
+  }
   definition.dataset.samples[0].evaluationContext = {
     executionAssertions: {
       schemaVersion: EXECUTION_ASSERTION_CONTEXT_SCHEMA_VERSION,

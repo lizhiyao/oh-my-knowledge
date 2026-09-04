@@ -190,6 +190,7 @@ export interface ExecutionIdentityPlanContext {
   | 'randomizationDesignDigest'
   | 'samples'
   | 'targets'
+  | 'assignments'
   | 'runtimes'
   | 'policy'
   | 'extensions'
@@ -421,7 +422,39 @@ export function derivePlannedExecutionCoordinates(
     sampling.pairingKey,
   );
   const clusterBySample = deriveMembershipBySample(plan, 'cluster', sampling.clusterKey);
-  const stratumBySample = deriveMembershipBySample(plan, 'stratum', sampling.stratumKey);
+  const stratumBySample = deriveMembershipBySample(
+    plan,
+    'stratum',
+    execution.experiment.assignment.stratumKey,
+  );
+  const assignedTargetsBySample = new Map<string, Set<string>>();
+  const expectedSamples = new Set(execution.samples.map((sample) => sample.sampleId));
+  const expectedSlots = new Map(execution.experiment.randomizationSlots.map((slot) => (
+    [slot.randomizationSlotId, slot.targetId] as const
+  )));
+  for (const assignment of execution.assignments) {
+    if (!expectedSamples.has(assignment.sampleId)) {
+      throw new TypeError(`ExecutionPlan assignment references unknown sample ${assignment.sampleId}.`);
+    }
+    if (expectedSlots.get(assignment.randomizationSlotId) !== assignment.targetId) {
+      throw new TypeError('ExecutionPlan assignment does not match its sealed randomization slot.');
+    }
+    const targets = assignedTargetsBySample.get(assignment.sampleId) ?? new Set<string>();
+    if (targets.has(assignment.targetId)) {
+      throw new TypeError('ExecutionPlan contains a duplicate assignment membership.');
+    }
+    targets.add(assignment.targetId);
+    assignedTargetsBySample.set(assignment.sampleId, targets);
+  }
+  const expectedAssignmentsPerSample = execution.experiment.assignment.assignmentKind
+    === 'complete-block'
+    ? execution.experiment.assignment.randomizationSlotIds.length
+    : 1;
+  for (const sample of execution.samples) {
+    if (assignedTargetsBySample.get(sample.sampleId)?.size !== expectedAssignmentsPerSample) {
+      throw new TypeError('ExecutionPlan assignment coverage does not match AssignmentDesign.');
+    }
+  }
   const targetGroups = validateSchedulingTargetGroups(plan);
   const randomizationSlotByTarget = new Map(execution.experiment.randomizationSlots.map(
     (slot) => [slot.targetId, slot.randomizationSlotId],
@@ -446,10 +479,13 @@ export function derivePlannedExecutionCoordinates(
           : {}),
       };
       for (const targetGroup of targetGroups) {
-        const blockCoordinates = targetGroup.map((targetId) => ({
+        const blockCoordinates = targetGroup.filter((targetId) => (
+          assignedTargetsBySample.get(sample.sampleId)?.has(targetId) === true
+        )).map((targetId) => ({
           targetId,
           sampleId: sample.sampleId,
         }));
+        if (blockCoordinates.length === 0) continue;
         const schedulingBlockId = deriveSchedulingBlockId({
           randomizationDesignDigest: execution.randomizationDesignDigest as Sha256Digest,
           trialIndex,

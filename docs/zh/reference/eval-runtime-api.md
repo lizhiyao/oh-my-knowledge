@@ -12,7 +12,7 @@
 
 | Export | 用途 |
 |---|---|
-| `evaluate` | 运行一份显式的 solo 或 paired 评测设计，包括多臂与多指标比较。 |
+| `evaluate` | 运行一份显式的 solo、paired 或 independent-group 评测设计，包括多臂与多指标比较。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量检查认证 Executor。 |
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
@@ -23,9 +23,11 @@
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
-`SamplingDesign` 当前支持单 Variant 的 `solo` 质量画像，以及显式 `paired` 比较。一项 paired `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric。`evaluators` 可包含多个 exact-match 或 Rubric 评委，但 evaluator ID 与 metric ID 必须分别唯一。真正的独立组分配不能伪装成配对数据；在 Core 提供显式分配与非配对估计契约前，OMK 暂不支持这种设计。
+`SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric。`evaluators` 可包含多个 exact-match 或 Rubric 评委，但 evaluator ID 与 metric ID 必须分别唯一。
 
-Analysis 始终预注册。对于 `solo`，façade 为每个 Metric 生成一个均值 Bootstrap result；对于 `paired`，则为每个 comparison × treatment × Metric 生成一个配对差值 Bootstrap result。它不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个 result，再交给区间感知的 Core `progress/v2` 策略。
+`independent` 必须为每个 Variant 显式声明 allocation，以及全局和逐 stratum 的最小样本数。seed、可选 `stratumKey`、weight 与 minimum 会在任何 Executor 调用前封存；Core 把每个 sample 恰好分给一个 Variant，重复 trial 沿用同一分组，任何 minimum 无法满足时都在执行前失败。每项比较使用非配对 percentile Bootstrap estimator，绝不把独立组数据伪装成 paired data。
+
+Analysis 始终预注册。对于 `solo`，façade 为每个 Metric 生成一个均值 Bootstrap result；对于 `paired` 或 `independent`，则为每个 comparison × treatment × Metric 生成配对或非配对差值 Bootstrap result。它不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个 result，再交给区间感知的 Core `progress/v2` 策略。
 
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 

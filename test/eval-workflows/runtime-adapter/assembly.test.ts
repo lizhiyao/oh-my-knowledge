@@ -398,6 +398,7 @@ function factoriesFor(
                 comparisons: { min: 0, max: 0 },
               },
               sampling: {
+                assignmentKinds: [compiled.definition.experiment.assignment.assignmentKind],
                 experimentalUnits: [compiled.definition.experiment.sampling.experimentalUnit],
                 repeatedMeasures: [compiled.definition.experiment.sampling.repeatedMeasures],
                 resamplingUnits: [compiled.definition.experiment.sampling.resamplingUnit],

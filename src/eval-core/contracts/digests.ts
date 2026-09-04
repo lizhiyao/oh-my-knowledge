@@ -7,6 +7,7 @@ import type {
   EvaluatorDefinition,
   ExecutionExperimentDesign,
   ExperimentDesign,
+  AssignmentAllocation,
   MeasurementPolicy,
   MetricDefinition,
   TargetDefinition,
@@ -19,6 +20,7 @@ import {
   RUN_PLAN_SCHEMA_VERSION,
   type EvaluationInputSample,
   type AnalysisInputSample,
+  type AssignmentMembership,
   type ExecutionInputSample,
   type PlanDigests,
   type ResolvedRuntime,
@@ -159,6 +161,7 @@ export interface ExecutionPlanIdentityInput {
   executionInputDigest: Sha256Digest;
   randomizationDesignDigest: Sha256Digest;
   targets: TargetDefinition[];
+  assignments: AssignmentMembership[];
   schedulingTargetGroups: string[][];
   executorRuntimes: ResolvedRuntime[];
   experiment: ExecutionExperimentDesign;
@@ -181,6 +184,7 @@ export function computeExecutionPlanDigest(
     executionInputDigest: input.executionInputDigest,
     randomizationDesignDigest: input.randomizationDesignDigest,
     targets: input.targets,
+    assignments: input.assignments,
     schedulingTargetGroups: input.schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
     experiment: projectExecutionExperimentDesign(input.experiment),
@@ -237,11 +241,181 @@ function projectSamplingMemberships(
     .sort((left, right) => compareStrings(canonicalizeJson(left), canonicalizeJson(right)));
 }
 
+export interface AssignmentDerivationInput {
+  samples: readonly ExecutionInputSample[];
+  experiment: Pick<ExperimentDesign, 'seed' | 'assignment' | 'randomizationSlots'>;
+}
+
+function compareAssignments(left: AssignmentMembership, right: AssignmentMembership): number {
+  return compareStrings(left.randomizationSlotId, right.randomizationSlotId)
+    || compareStrings(left.sampleId, right.sampleId)
+    || compareStrings(left.targetId, right.targetId);
+}
+
+function assignmentStrata(input: AssignmentDerivationInput): Array<{
+  stratumKey: string;
+  samples: ExecutionInputSample[];
+}> {
+  const pointer = input.experiment.assignment.stratumKey;
+  const groups = new Map<string, ExecutionInputSample[]>();
+  for (const sample of input.samples) {
+    const stratumKey = pointer === undefined
+      ? 'unstratified:'
+      : `value:${canonicalizeJson(resolveSamplingPointer(sample, pointer))}`;
+    const members = groups.get(stratumKey) ?? [];
+    members.push(sample);
+    groups.set(stratumKey, members);
+  }
+  return [...groups.entries()]
+    .map(([stratumKey, samples]) => ({ stratumKey, samples }))
+    .sort((left, right) => compareStrings(left.stratumKey, right.stratumKey));
+}
+
+function fixedQuotaCounts(
+  size: number,
+  allocations: readonly AssignmentAllocation[],
+  seed: string,
+  algorithmId: string,
+  stratumKey: string,
+): Map<string, number> {
+  const maximumWeight = Math.max(...allocations.map((allocation) => allocation.weight));
+  const normalized = allocations.map((allocation) => ({
+    ...allocation,
+    normalizedWeight: allocation.weight / maximumWeight,
+  }));
+  if (normalized.some((allocation) => allocation.normalizedWeight === 0)) {
+    throw new TypeError('Assignment weight ratio is outside the supported numeric range.');
+  }
+  const totalWeight = normalized.reduce((sum, allocation) => (
+    sum + allocation.normalizedWeight
+  ), 0);
+  const quotas = normalized.map((allocation) => {
+    const exact = size * allocation.normalizedWeight / totalWeight;
+    return {
+      randomizationSlotId: allocation.randomizationSlotId,
+      count: Math.floor(exact),
+      remainder: exact - Math.floor(exact),
+      tieBreak: digestCanonicalJson({
+        derivation: 'omk.assignment-fixed-quota-tie/v1',
+        seed,
+        algorithmId,
+        stratumKey,
+        randomizationSlotId: allocation.randomizationSlotId,
+      }),
+    };
+  });
+  let remaining = size - quotas.reduce((sum, quota) => sum + quota.count, 0);
+  const remainderOrder = [...quotas].sort((left, right) => (
+    right.remainder - left.remainder
+      || compareStrings(left.tieBreak, right.tieBreak)
+      || compareStrings(left.randomizationSlotId, right.randomizationSlotId)
+  ));
+  for (const quota of remainderOrder) {
+    if (remaining === 0) break;
+    quota.count += 1;
+    remaining -= 1;
+  }
+  if (remaining !== 0) throw new TypeError('Assignment fixed quota could not allocate every sample.');
+  return new Map(quotas.map((quota) => [quota.randomizationSlotId, quota.count]));
+}
+
+export function deriveAssignmentMemberships(
+  input: AssignmentDerivationInput,
+): AssignmentMembership[] {
+  const slotById = new Map(input.experiment.randomizationSlots.map((slot) => (
+    [slot.randomizationSlotId, slot] as const
+  )));
+  const assignment = input.experiment.assignment;
+  if (assignment.assignmentKind === 'complete-block') {
+    return input.samples.flatMap((sample) => assignment.randomizationSlotIds.map((slotId) => {
+      const slot = slotById.get(slotId);
+      if (slot === undefined) throw new TypeError(`Unknown assignment slot ${slotId}.`);
+      return {
+        sampleId: sample.sampleId,
+        targetId: slot.targetId,
+        randomizationSlotId: slot.randomizationSlotId,
+      };
+    })).sort(compareAssignments);
+  }
+
+  const memberships: AssignmentMembership[] = [];
+  for (const stratum of assignmentStrata(input)) {
+    const counts = fixedQuotaCounts(
+      stratum.samples.length,
+      assignment.allocations,
+      input.experiment.seed,
+      assignment.algorithmId,
+      stratum.stratumKey,
+    );
+    for (const allocation of assignment.allocations) {
+      if ((counts.get(allocation.randomizationSlotId) ?? 0)
+          < assignment.minimumUnitsPerTargetPerStratum) {
+        throw new TypeError(
+          `Independent assignment cannot satisfy per-stratum minimum for ${allocation.randomizationSlotId}.`,
+        );
+      }
+    }
+    const samples = [...stratum.samples].sort((left, right) => {
+      const leftScore = digestCanonicalJson({
+        derivation: 'omk.assignment-sample-order/v1',
+        seed: input.experiment.seed,
+        algorithmId: assignment.algorithmId,
+        stratumKey: stratum.stratumKey,
+        sampleId: left.sampleId,
+      });
+      const rightScore = digestCanonicalJson({
+        derivation: 'omk.assignment-sample-order/v1',
+        seed: input.experiment.seed,
+        algorithmId: assignment.algorithmId,
+        stratumKey: stratum.stratumKey,
+        sampleId: right.sampleId,
+      });
+      return compareStrings(leftScore, rightScore) || compareStrings(left.sampleId, right.sampleId);
+    });
+    let offset = 0;
+    for (const allocation of assignment.allocations) {
+      const slot = slotById.get(allocation.randomizationSlotId);
+      if (slot === undefined) {
+        throw new TypeError(`Unknown assignment slot ${allocation.randomizationSlotId}.`);
+      }
+      const count = counts.get(allocation.randomizationSlotId) ?? 0;
+      for (const sample of samples.slice(offset, offset + count)) {
+        memberships.push({
+          sampleId: sample.sampleId,
+          targetId: slot.targetId,
+          randomizationSlotId: slot.randomizationSlotId,
+        });
+      }
+      offset += count;
+    }
+    if (offset !== samples.length) {
+      throw new TypeError('Independent assignment did not consume every sample exactly once.');
+    }
+  }
+  const countBySlot = new Map<string, number>();
+  for (const membership of memberships) {
+    countBySlot.set(
+      membership.randomizationSlotId,
+      (countBySlot.get(membership.randomizationSlotId) ?? 0) + 1,
+    );
+  }
+  for (const allocation of assignment.allocations) {
+    if ((countBySlot.get(allocation.randomizationSlotId) ?? 0)
+        < assignment.minimumUnitsPerTarget) {
+      throw new TypeError(
+        `Independent assignment cannot satisfy target minimum for ${allocation.randomizationSlotId}.`,
+      );
+    }
+  }
+  return memberships.sort(compareAssignments);
+}
+
 export interface RandomizationDesignIdentityInput {
   executionInputDigest: Sha256Digest;
   samples: readonly ExecutionInputSample[];
   schedulingTargetGroups: readonly (readonly string[])[];
   experiment: ExperimentDesign;
+  assignments: readonly AssignmentMembership[];
 }
 
 export function projectExecutionExperimentDesign(
@@ -250,6 +424,24 @@ export function projectExecutionExperimentDesign(
   return {
     trials: experiment.trials,
     seed: experiment.seed,
+    assignment: experiment.assignment.assignmentKind === 'complete-block' ? {
+      assignmentKind: experiment.assignment.assignmentKind,
+      algorithmId: experiment.assignment.algorithmId,
+      ...(experiment.assignment.stratumKey === undefined ? {} : {
+        stratumKey: experiment.assignment.stratumKey,
+      }),
+      randomizationSlotIds: [...experiment.assignment.randomizationSlotIds],
+    } : {
+      assignmentKind: experiment.assignment.assignmentKind,
+      algorithmId: experiment.assignment.algorithmId,
+      ...(experiment.assignment.stratumKey === undefined ? {} : {
+        stratumKey: experiment.assignment.stratumKey,
+      }),
+      allocations: experiment.assignment.allocations.map((allocation) => ({ ...allocation })),
+      minimumUnitsPerTarget: experiment.assignment.minimumUnitsPerTarget,
+      minimumUnitsPerTargetPerStratum:
+        experiment.assignment.minimumUnitsPerTargetPerStratum,
+    },
     sampling: {
       experimentalUnit: experiment.sampling.experimentalUnit,
       ...(experiment.sampling.pairingKey === undefined ? {} : {
@@ -257,9 +449,6 @@ export function projectExecutionExperimentDesign(
       }),
       ...(experiment.sampling.clusterKey === undefined ? {} : {
         clusterKey: experiment.sampling.clusterKey,
-      }),
-      ...(experiment.sampling.stratumKey === undefined ? {} : {
-        stratumKey: experiment.sampling.stratumKey,
       }),
       repeatedMeasures: experiment.sampling.repeatedMeasures,
       resamplingUnit: experiment.sampling.resamplingUnit,
@@ -306,18 +495,23 @@ export function computeRandomizationDesignDigest(
   )).sort((left, right) => compareStrings(canonicalizeJson(left), canonicalizeJson(right)));
   const { sampling } = experiment;
   return digestCanonicalJson({
-    derivation: 'omk.randomization-design/v1',
+    derivation: 'omk.randomization-design/v2',
     executionInputDigest: input.executionInputDigest,
     trials: experiment.trials,
     rootSeed: experiment.seed,
     sampling,
+    assignment: experiment.assignment,
+    assignments: [...input.assignments].sort(compareAssignments).map((membership) => ({
+      sampleId: membership.sampleId,
+      randomizationSlotId: membership.randomizationSlotId,
+    })),
     scheduling: experiment.scheduling,
     randomizationSlotIds: slotIds,
     schedulingSlotGroups,
     samplingMemberships: {
       pairing: projectSamplingMemberships(input.samples, sampling.pairingKey),
       cluster: projectSamplingMemberships(input.samples, sampling.clusterKey),
-      stratum: projectSamplingMemberships(input.samples, sampling.stratumKey),
+      stratum: projectSamplingMemberships(input.samples, experiment.assignment.stratumKey),
     },
   });
 }
@@ -477,16 +671,22 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
     paired: input.experiment.sampling.resamplingUnit === 'paired-block',
   });
   const executionSamples = projectExecutionInputs(input.dataset);
+  const assignments = deriveAssignmentMemberships({
+    samples: executionSamples,
+    experiment: input.experiment,
+  });
   const randomizationDesignDigest = computeRandomizationDesignDigest({
     executionInputDigest: dataset.executionInputDigest,
     samples: executionSamples,
     schedulingTargetGroups,
     experiment: input.experiment,
+    assignments,
   });
   const executionPlanDigest = computeExecutionPlanDigest({
     executionInputDigest: dataset.executionInputDigest,
     randomizationDesignDigest,
     targets: input.targets,
+    assignments,
     schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
     experiment: projectExecutionExperimentDesign(input.experiment),

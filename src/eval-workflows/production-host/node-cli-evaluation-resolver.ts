@@ -906,6 +906,11 @@ export async function resolveNodeCliEvaluationRequest(
     experiment: {
       trials: 1,
       seed: design.dataset.datasetId,
+      assignment: {
+        assignmentKind: 'complete-block',
+        algorithmId: 'assignment.complete-block/v1',
+        randomizationSlotIds: targets.map((target) => `slot-${target.targetId}`).sort(),
+      },
       sampling: {
         experimentalUnit: 'sample',
         pairingKey: '/sampleId',

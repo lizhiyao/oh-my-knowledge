@@ -12,7 +12,7 @@ The canonical API for application developers:
 
 | Export | Purpose |
 |---|---|
-| `evaluate` | Run one explicit solo or paired evaluation design, including multi-arm and multi-metric comparisons. |
+| `evaluate` | Run one explicit solo, paired, or independent-group evaluation design, including multi-arm and multi-metric comparisons. |
 | `checkExecutor` | Certify an Executor through success, failure, cancellation, cleanup, and measurement checks. |
 | `EvaluationConfigurationError` | Stable caller-configuration failure with a public code and no rejected payload. |
 | `EvaluationEventConsumptionError` | Stable, redacted observer／event-stream failure that retains the terminal `EvaluationResult` when available. |
@@ -23,9 +23,11 @@ Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, 
 
 `EvaluationResult` preserves every field of the Core `EvaluationRunResult` and adds `definition` plus `policy`, the exact sealed Core Definition and fully materialized Measurement Policy compiled by the façade. Execution and evaluation evidence remain under `artifacts`, the decision remains under `artifacts.decision`, and the public report remains under `report`.
 
-`SamplingDesign` currently supports a one-Variant `solo` quality profile and explicit `paired` comparisons. A paired `Comparison` declares one control, one or more treatments, and the Metrics to analyze. `evaluators` may contain multiple exact-match or Rubric Judge evaluators, provided evaluator and metric IDs are unique. True independent-group assignment is intentionally not represented as paired data and is not supported until Core has an explicit assignment and unpaired-estimator contract.
+`SamplingDesign` supports a one-Variant `solo` quality profile, complete-block `paired` comparisons, and fixed-quota `independent` comparisons. A `Comparison` declares one control, one or more treatments, and the Metrics to analyze. `evaluators` may contain multiple exact-match or Rubric Judge evaluators, provided evaluator and metric IDs are unique.
 
-Analysis is always preregistered. The façade creates one mean-bootstrap result per Metric for `solo`, or one paired-difference bootstrap result per comparison × treatment × Metric for `paired`. It does not fabricate a composite verdict. Omitting `decision` returns all analysis results without a Decision; supplying `decision` explicitly selects exactly one result for the interval-aware Core `progress/v2` policy.
+`independent` requires an explicit allocation for every Variant plus global and per-stratum minimum sample counts. The seed, optional `stratumKey`, weights, and minima are sealed before any Executor call. Core assigns each sample to exactly one Variant, reuses that assignment across repeated trials, and fails before execution if any minimum cannot be met. It analyzes each comparison with the unpaired percentile-bootstrap estimator; it never relabels independent data as paired.
+
+Analysis is always preregistered. The façade creates one mean-bootstrap result per Metric for `solo`, or one difference-bootstrap result per comparison × treatment × Metric: paired for `paired`, unpaired for `independent`. It does not fabricate a composite verdict. Omitting `decision` returns all analysis results without a Decision; supplying `decision` explicitly selects exactly one result for the interval-aware Core `progress/v2` policy.
 
 The entry deliberately exposes no Definition builder, Runtime registry, Core Target, lifecycle adapter, or raw Rubric factory. `Artifact` is what is evaluated, `Variant` binds it to an Executor, config, and runtime context, and control／treatment roles exist only inside an explicit `Comparison`.
 

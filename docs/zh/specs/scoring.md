@@ -69,7 +69,7 @@ composite 是同一 sealed design 内的比较信号。Dataset、Target 条件�
 
 composite score 或正向点估计本身不能授权发布。`omk.release-decision/v7` 消费精确绑定的 Composite、Bootstrap-family v2 result，以及每个适用 rubric 维度的 Judge Ensemble；它先校验证据完整性与 source lineage，再把所有已配置维度都纳入分歧与未测不确定性门禁。统计显著性使用未舍入的尾部证据；有限重采样的 Monte Carlo 不确定性跨越显著性阈值时失败关闭。正向比较只有在持久化的四位小数 percentile 区间下界大于或等于 `triviallySmallDifference` 时，才能通过实际效应 gate；点估计很大但下界不确定时仍为 `CAUTIOUS`。
 
-它的六种结论是 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 与 `SOLO`。常规发布路由要求 Decision 已决定为 `PROGRESS`，且携带 `release-gates-passed`。任一适用 Judge Ensemble 出现分歧，或 control／treatment 无法估计跨评委一致性时，正向比较都会变为 `CAUTIOUS`；未绑定 Judge Ensemble 的确定性评测不受影响。非显著配对比较使用完整 pair 数执行样本量 gate，独立比较使用两侧实际观测单元数中的较小值。封存要求可以是显式下限，也可以是可重算的配对比较先验规划；规划绝不读取本次 run 的观测 variance。区间缺失或 Monte Carlo 误差下仍未决的显著性保持 not-decided；多 treatment 使用已注册的最差结论；跨 run 稳定性属于 Evaluation Series，不能从单次 run 分数推断。历史 release policy v1～v6 与 Bootstrap family v1 仍保留注册以精确重放。
+它的六种结论是 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 与 `SOLO`。常规发布路由要求 Decision 已决定为 `PROGRESS`，且携带 `release-gates-passed`。任一适用 Judge Ensemble 出现分歧，或 control／treatment 无法估计跨评委一致性时，正向比较都会变为 `CAUTIOUS`；未绑定 Judge Ensemble 的确定性评测不受影响。非显著配对比较使用完整 pair 数执行样本量 gate，独立比较使用两侧实际观测单元数中的较小值。封存要求可以是显式下限，也可以是可重算的配对比较先验规划；规划绝不读取本次 run 的观测 variance。区间缺失或 Monte Carlo 误差下仍未决的显著性保持 not-decided；多 treatment 使用已注册的最差结论；跨 run 稳定性属于 Evaluation Series，不能从单次 run 分数推断。历史 release policy v1～v6 与 Bootstrap family v1 仍作为历史语义实现存在；assignment-aware schema 切换会升级其 Runtime identity，并有意拒绝切换前的 Plan 精确重放。
 
 不确定性、一致性、去偏与 coverage gate 详见[统计严谨性](../explanation/statistical-rigor.md)。
 

@@ -280,6 +280,11 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     experiment: {
       trials: 1,
       seed: 'experiment-seed',
+      assignment: {
+        assignmentKind: 'complete-block',
+        algorithmId: 'assignment.complete-block/v1',
+        randomizationSlotIds: ['slot-control', 'slot-treatment'],
+      },
       sampling: {
         experimentalUnit: 'sample',
         pairingKey: '/sampleId',
