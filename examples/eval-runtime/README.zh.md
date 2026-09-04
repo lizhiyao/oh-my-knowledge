@@ -4,7 +4,7 @@
 
 ## 用途
 
-这个最小 Node.js ESM 宿主把内存中的业务调用函数注入 `oh-my-knowledge/eval-runtime`，对比两个服务部署，执行确定性 exact-match 评分，并物化 Evaluation Report。它不会加载 CLI，也不会读取用户配置。
+这个最小 Node.js ESM 宿主通过 `oh-my-knowledge` 包根入口注入内存中的业务调用函数，对比两个服务部署，执行确定性 exact-match 评分，并物化 Evaluation Report。它不会加载 CLI，也不会读取用户配置。
 
 ## 运行
 

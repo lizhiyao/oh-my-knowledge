@@ -1,24 +1,21 @@
 import assert from 'node:assert/strict';
 import {
+  COMPARABILITY_POLICY_SCHEMA_VERSION,
   EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EVALUATION_CORE_JSON_SCHEMA_FILES,
   EXECUTION_FACTS_SCHEMA_VERSION,
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
+  assessComparability,
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
+  createComparabilityPolicy,
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
   createEvaluationEngine,
   digestCanonicalJson,
-  resolveBuiltinAnalysisRuntime,
-} from 'oh-my-knowledge';
-import {
-  COMPARABILITY_POLICY_SCHEMA_VERSION,
-  EVALUATION_CORE_JSON_SCHEMA_FILES,
-  assessComparability,
-  createComparabilityPolicy,
-  createEvaluationEngine as createAdvancedEvaluationEngine,
   resolveEvaluationCoreJsonSchema,
+  resolveBuiltinAnalysisRuntime,
 } from 'oh-my-knowledge/eval-core';
 
 assert.equal(EXECUTION_FACTS_SCHEMA_VERSION, 'omk.execution-facts/v1');
@@ -466,7 +463,7 @@ assert.equal(cancelled.result.status, 'cancelled');
 assert.equal(cancelled.result.report.status.evidenceStatus, 'unresolvable');
 
 const stagedHost = createHostRuntime('function');
-const stagedEngine = createAdvancedEvaluationEngine(stagedHost.runtime);
+const stagedEngine = createEvaluationEngine(stagedHost.runtime);
 const initialDefinition = definition('function');
 initialDefinition.decisionPolicy = {
   decisionPolicyId: 'release-gate',

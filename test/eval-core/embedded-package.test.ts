@@ -42,7 +42,7 @@ const ADVANCED_RUNTIME_HOST_FIXTURE = join(
 );
 const PUBLIC_RUNTIME_EXAMPLE = join(REPO_ROOT, 'examples/eval-runtime/run.mjs');
 
-describe('published embedded Evaluation Core API', () => {
+describe('published embedded Evaluation API', () => {
   let projectRoot: string;
   let npmCache: string;
 
@@ -144,8 +144,11 @@ const assert = require('node:assert/strict');
   const studio = await import('oh-my-knowledge/studio');
   const mcp = await import('oh-my-knowledge/mcp');
   const dshPlugin = await import('oh-my-knowledge/dsh-plugin');
-  assert.equal(typeof api.createEvaluationEngine, 'function');
-  assert.equal(typeof api.digestCanonicalJson, 'function');
+  assert.deepEqual(Object.keys(api).sort(), Object.keys(evalRuntime).sort());
+  assert.equal(typeof api.evaluate, 'function');
+  assert.equal(typeof api.checkExecutor, 'function');
+  assert.equal(api.createEvaluationEngine, undefined);
+  assert.equal(api.digestCanonicalJson, undefined);
   assert.equal(api.createCoreStudioCatalog, undefined);
   assert.equal(api.projectCoreArtifactGraph, undefined);
   assert.equal(api.assessComparability, undefined);
@@ -215,7 +218,7 @@ const assert = require('node:assert/strict');
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
-  it('NodeNext／ESM 宿主完成一键运行、分阶段复用、可比性与篡改拒绝', () => {
+  it('NodeNext／ESM Core 宿主完成一键运行、分阶段复用、可比性与篡改拒绝', () => {
     const result = spawnSync(process.execPath, [join(projectRoot, 'host.mjs')], {
       cwd: projectRoot,
       encoding: 'utf8',
@@ -243,7 +246,7 @@ const assert = require('node:assert/strict');
     }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
   });
 
-  it('独立 Node.js ESM 宿主通过 eval-runtime 完成双 Target 对比', () => {
+  it('独立 Node.js ESM 宿主通过包根 Runtime façade 完成双 Target 对比', () => {
     const isolatedHome = join(projectRoot, 'runtime-home');
     const isolatedConfig = join(projectRoot, 'runtime-config');
     const isolatedCache = join(projectRoot, 'runtime-cache');

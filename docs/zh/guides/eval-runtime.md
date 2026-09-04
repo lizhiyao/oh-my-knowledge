@@ -1,9 +1,9 @@
 # 在 Node.js 服务中嵌入 OMK
 
-应用自行负责模型调用，而希望 OMK 负责测量、对比和报告时，使用 `oh-my-knowledge/eval-runtime`。普通接入只有一个主入口：
+应用自行负责模型调用，而希望 OMK 负责测量、对比和报告时，使用 `oh-my-knowledge` 包根入口。普通接入只有一个主入口：
 
 ```ts
-import { evaluate } from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge';
 ```
 
 该包仅支持 ESM，要求 Node.js 22 或更高版本。它不会自行发现凭证、provider、文件、环境变量、CLI 配置或 Studio 状态。
@@ -37,7 +37,7 @@ npm install oh-my-knowledge zod
 
 ```ts
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge';
 
 const result = await evaluate({
   executor: {
@@ -172,7 +172,7 @@ const result = await evaluate({
 接纳 adapter 前运行 `checkExecutor()`。它会让同一份 declaration 经历真实的成功、失败和取消 Core run，并检查 binding 隔离、生命周期清理、telemetry、observation、配对分析与 Decision：
 
 ```ts
-import { checkExecutor } from 'oh-my-knowledge/eval-runtime';
+import { checkExecutor } from 'oh-my-knowledge';
 
 const certification = await checkExecutor({
   executor,
@@ -200,6 +200,6 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-自定义 port、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖这层用户 façade。`package.json#exports` 之外的深路径均为私有实现。
+显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
 
 可运行的[最小示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime)与 packed-package fixture 会在 clean host 中验证 canonical API。

@@ -1,8 +1,34 @@
-# 嵌入式 Evaluation Core API
+# 嵌入式 API
 
-当 Node.js 宿主自行负责数据集、凭证、队列、存储和业务工作流，而希望 OMK 负责评测计划、执行、测量、分析与报告物化时，使用包根嵌入式 API。
+当 Node.js 宿主自行负责模型调用，而希望 OMK 负责测量、对比与报告时，使用包根 Runtime façade。它仅提供 ESM 构建，要求 Node.js 22 或更高版本：
 
-嵌入式 API 仅提供 ESM 构建，要求 Node.js 22 或更高版本：
+```ts
+import { evaluate, checkExecutor } from 'oh-my-knowledge';
+```
+
+CommonJS 宿主通过动态导入使用：
+
+```js
+const { evaluate } = await import('oh-my-knowledge');
+```
+
+OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 CommonJS 构建，从而避免两个模块实例持有相互分裂的 Runtime registry。只支持以下公共入口：
+
+| 入口 | 职责 |
+|---|---|
+| `oh-my-knowledge` | 面向普通宿主的推荐 `evaluate()` 与 `checkExecutor()` façade |
+| `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
+| `oh-my-knowledge/eval-runtime` | 与包根 Runtime façade 完全等价的显式入口 |
+| `oh-my-knowledge/eval-runtime/advanced` | 底层 Runtime 装配、identity、adapter、builder 与生命周期 SPI |
+| `oh-my-knowledge/projections` | 下游 artifact projection |
+| `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |
+| `oh-my-knowledge/mcp`／`oh-my-knowledge/dsh-plugin` | 集成专用 API |
+
+其它路径均为私有实现，包括 `oh-my-knowledge/dist/*` 在内，都会被 package export map 阻断。
+
+## Evaluation Core 边界
+
+标准服务宿主优先参考[eval-runtime 接入指南](/zh/guides/eval-runtime)。需要自定义 Analysis implementation、分阶段重放或基础设施 port 的宿主，应显式导入底层 Core surface：
 
 ```ts
 import {
@@ -11,32 +37,8 @@ import {
   type EvaluationDefinition,
   type EvaluationEngineRuntime,
   type MeasurementPolicy,
-} from 'oh-my-knowledge';
+} from 'oh-my-knowledge/eval-core';
 ```
-
-CommonJS 宿主通过动态导入使用：
-
-```js
-const { createEvaluationEngine } = await import('oh-my-knowledge');
-```
-
-OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 CommonJS 构建，从而避免两个模块实例持有相互分裂的 Runtime registry。只支持以下公共入口：
-
-| 入口 | 职责 |
-|---|---|
-| `oh-my-knowledge` | 最小一键 Engine façade 与 Core contract |
-| `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
-| `oh-my-knowledge/eval-runtime` | 面向普通 Node.js／FaaS 宿主的 canonical `evaluate()` 与 `checkExecutor()` API |
-| `oh-my-knowledge/eval-runtime/advanced` | 底层 Runtime 装配、identity、adapter、builder 与生命周期 SPI |
-| `oh-my-knowledge/projections` | 下游 artifact projection |
-| `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |
-| `oh-my-knowledge/mcp`／`oh-my-knowledge/dsh-plugin` | 集成专用 API |
-
-其它路径均为私有实现，包括 `oh-my-knowledge/dist/*` 在内，都会被 package export map 阻断。
-
-## Runtime 边界
-
-标准服务宿主优先参考[eval-runtime 接入指南](/zh/guides/eval-runtime)。下面的底层装配适用于需要自定义 Analysis implementation 或基础设施 port 的宿主。
 
 Engine 接收实现与基础设施 port。函数实现只存在于内存，不会进入可序列化 Definition：
 

@@ -1,8 +1,34 @@
-# Embedded Evaluation Core API
+# Embedded API
 
-Use the package-root API when a Node.js host owns datasets, credentials, queues, storage, and user-facing workflows but wants OMK to own evaluation planning, execution, measurement, analysis, and report materialization.
+When a Node.js host owns model invocation while OMK owns measurement, comparison, and reporting, use the package-root Runtime façade. It is ESM-only and requires Node.js 22 or newer:
 
-The embedded API is ESM-only and requires Node.js 22 or newer:
+```ts
+import { evaluate, checkExecutor } from 'oh-my-knowledge';
+```
+
+CommonJS hosts use dynamic import:
+
+```js
+const { evaluate } = await import('oh-my-knowledge');
+```
+
+Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does not ship a second CommonJS build, avoiding two module instances with diverging runtime registries. Only these public entry points are supported:
+
+| Entry point | Ownership |
+|---|---|
+| `oh-my-knowledge` | recommended `evaluate()` and `checkExecutor()` façade for ordinary hosts |
+| `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
+| `oh-my-knowledge/eval-runtime` | explicit equivalent of the package-root Runtime façade |
+| `oh-my-knowledge/eval-runtime/advanced` | low-level Runtime assembly, identities, adapters, builders, and lifecycle SPI |
+| `oh-my-knowledge/projections` | downstream artifact projections |
+| `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
+| `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |
+
+All other paths, including `oh-my-knowledge/dist/*`, are private and blocked by the package export map.
+
+## Evaluation Core boundary
+
+For the standard service-host path, start with the [eval-runtime guide](/guides/eval-runtime). Hosts that need custom Analysis implementations, staged replay, or infrastructure ports import the lower-level Core surface explicitly:
 
 ```ts
 import {
@@ -11,32 +37,8 @@ import {
   type EvaluationDefinition,
   type EvaluationEngineRuntime,
   type MeasurementPolicy,
-} from 'oh-my-knowledge';
+} from 'oh-my-knowledge/eval-core';
 ```
-
-CommonJS hosts use dynamic import:
-
-```js
-const { createEvaluationEngine } = await import('oh-my-knowledge');
-```
-
-Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does not ship a second CommonJS build, avoiding two module instances with diverging runtime registries. Only these public entry points are supported:
-
-| Entry point | Ownership |
-|---|---|
-| `oh-my-knowledge` | minimal one-call Engine façade and Core contracts |
-| `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
-| `oh-my-knowledge/eval-runtime` | canonical `evaluate()` and `checkExecutor()` API for ordinary Node.js／FaaS hosts |
-| `oh-my-knowledge/eval-runtime/advanced` | low-level Runtime assembly, identities, adapters, builders, and lifecycle SPI |
-| `oh-my-knowledge/projections` | downstream artifact projections |
-| `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
-| `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |
-
-All other paths, including `oh-my-knowledge/dist/*`, are private and blocked by the package export map.
-
-## Runtime boundary
-
-For the standard service-host path, start with the [eval-runtime guide](/guides/eval-runtime). The lower-level assembly below is for hosts that need custom Analysis implementations or infrastructure ports.
 
 An engine receives implementations and infrastructure ports. Functions stay in memory and never enter the serializable Definition:
 

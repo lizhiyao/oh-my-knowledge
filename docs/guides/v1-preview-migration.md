@@ -83,8 +83,8 @@ Check the current [CLI reference](../reference/cli.md) rather than copying 0.54 
 
 The published API is ESM-only on Node.js 22 or newer. Imports are restricted to the package export map; `oh-my-knowledge/dist/*` is private.
 
-- Use `oh-my-knowledge` for the minimal one-call Engine façade and Core contracts.
-- Use `oh-my-knowledge/eval-core` for staged execution, admission, verification, comparability, Series, and Core JSON Schemas.
+- Use `oh-my-knowledge` for the ordinary `evaluate()` and `checkExecutor()` façade. The explicit `oh-my-knowledge/eval-runtime` subpath is equivalent.
+- Move former package-root Core imports to `oh-my-knowledge/eval-core`; use that subpath for Engine construction, staged execution, admission, verification, comparability, Series, and Core JSON Schemas.
 - Use `oh-my-knowledge/eval-samples`, `oh-my-knowledge/projections`, `oh-my-knowledge/studio`, `oh-my-knowledge/mcp`, or `oh-my-knowledge/dsh-plugin` for those explicit surfaces.
 - Replace synchronous `require()` with ESM imports or dynamic `import()`.
 - Engine Runtime assembly now uses binding resolvers that return the resolution and configured port together.

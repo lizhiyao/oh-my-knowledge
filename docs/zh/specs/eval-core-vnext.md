@@ -56,7 +56,7 @@ EvaluationDefinition + MeasurementPolicy
 3. 支持执行结果重评分、重新分析和重新决策，并保留完整 derivation lineage。
 4. 让统计设计、缺失机制、缓存和预算成为显式测量契约。
 5. 让并发 Run 的资源、取消、事件和缓存完全隔离。
-6. 为包根嵌入式 API、CLI、Studio 和未来宿主提供同一套 Core。
+6. 为包根 Runtime façade、CLI、Studio 和未来宿主提供同一套 Core。
 
 ### 非目标
 
@@ -796,7 +796,7 @@ const result = await run.result;
 - `analyze(plan.analysis, evaluationBundle)`；
 - `decide(plan.decision, analysisBundle)`。
 
-包根另提供一次完成全流程的便捷 façade。高级 API 输出可序列化 Bundle，不暴露可变内部调度器。公共导出通过 `package.json#exports` 白名单管理，不再承诺 `./dist/*` 深层导入。
+Core 一次完成全流程的 façade 从 `oh-my-knowledge/eval-core` 暴露；包根只承载普通用户的 `evaluate()` Runtime façade。高级 Core API 输出可序列化 Bundle，不暴露可变内部调度器。公共导出通过 `package.json#exports` 白名单管理，不再承诺 `./dist/*` 深层导入。
 
 ## 十三、Conformance 与验证
 
@@ -870,7 +870,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 5. Execution：trial、paired scheduling、资源和 ExecutionBundle；
 6. Evaluation／Analysis：重评分、AnalysisGraph、统计和 DecisionPolicy；
 7. Conformance：三类 Target、fault injection、安全与 simulation；
-8. #424 包根 façade；
+8. #424 交付原包根 Core façade；后续将其收敛到 `/eval-core`，包根只承载普通用户 Runtime façade；
 9. 最后迁移 CLI／Studio。
 
 每一阶段只依赖前一阶段的公开 Bundle／Plan 契约，不直接导入内部实现。
@@ -962,8 +962,9 @@ cache，同时保持不同的 Run id、state、取消、session 和 teardown；d
 语义、宽松的区间 coverage 校准带，以及零 paired effect 的宽松 I 型错误率上界。
 
 #425 对 Contracts、Compiler、Execution、Evaluation、Analysis／Decision 与跨阶段 conformance
-的验收审计至此完成。包根 façade、公开 export 白名单和独立 Node.js 宿主验收仍明确归 #424；
-CLI／Studio 迁移是后续消费者，不构成 Evaluation Core 验收前置条件。
+的验收审计至此完成。当时包根 Core façade、公开 export 白名单和独立 Node.js 宿主验收明确归 #424。
+现在 Core surface 位于显式 `/eval-core` 子路径，包根则暴露普通用户 Runtime façade；CLI／Studio
+迁移是后续消费者，不构成 Evaluation Core 验收前置条件。
 
 Conformance 暴露并修复了多个跨阶段缺口：durable Bundle 接纳曾要求来源 root contract 等于
 当前 RunPlan。来源血缘仍被封存并受 provenance 绑定，但接纳现在按阶段发生，递归校验每个被
@@ -1060,9 +1061,9 @@ Analysis、Decision 和 Report materialization 在同一 session 中各自最多
 任意有效阶段开始，只重算必要后缀。每个方法都直接委托现有 stage runtime，因此调度、cache、预算、
 失败、取消和资源释放语义继续只有一份来源。
 
-包根会刻意把 `prepare()` 类型收窄为最小一键 `PreparedEvaluation`。
-`oh-my-knowledge/eval-core` 通过同一个 factory 暴露高级返回类型；它不会创建第二份
-implementation、registry 或执行路径。Studio 与 downstream projection 分别放在显式子路径中，
+`oh-my-knowledge/eval-core` 通过同一个 factory 暴露一键运行与 prepared-stage capability；它不会
+创建第二份 implementation、registry 或执行路径。包根改为暴露普通用户的 `evaluate()` Runtime
+façade。Studio 与 downstream projection 分别放在显式子路径中，
 未列出的入口和 `dist/*` 深层导入继续保持关闭。这样既让依赖方向清晰可见，又不分裂 Runtime authority。
 
 每次 prepare 或一键 start 都会捕获 Runtime 顶层 infrastructure port、binding resolver 函数与独立的

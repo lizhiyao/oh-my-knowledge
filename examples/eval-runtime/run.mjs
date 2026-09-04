@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge';
 
 const answers = {
   baseline: { one: 'A', two: 'incorrect', three: 'incorrect' },

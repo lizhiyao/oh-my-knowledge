@@ -6,7 +6,7 @@ import {
   type RuntimeIdentity,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../../../src/index.js';
+} from '../../../../../src/eval-core/contracts/index.js';
 import type {
   EvaluatorRecordContext,
   EvaluatorRunContext,

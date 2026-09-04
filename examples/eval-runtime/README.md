@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This minimal Node.js ESM host injects an in-memory business invocation function into `oh-my-knowledge/eval-runtime`, compares two service deployments, applies deterministic exact-match scoring, and materializes an Evaluation Report. It does not load the CLI or read user configuration.
+This minimal Node.js ESM host injects an in-memory business invocation function through the `oh-my-knowledge` package root, compares two service deployments, applies deterministic exact-match scoring, and materializes an Evaluation Report. It does not load the CLI or read user configuration.
 
 ## Run
 

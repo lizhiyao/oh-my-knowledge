@@ -2,6 +2,10 @@
 
 `package.json#exports` is the supported boundary. The API allowlist locks every value and type below. All entries are ESM-only.
 
+## `oh-my-knowledge`
+
+The recommended ordinary-user entry. It exposes exactly the same canonical Runtime façade as `oh-my-knowledge/eval-runtime`: `evaluate`, `checkExecutor`, their stable errors, and their public model types. Core engines, builders, registrations, and adapters are intentionally absent.
+
 ## `oh-my-knowledge/eval-runtime`
 
 The canonical API for application developers:
@@ -75,6 +79,6 @@ Versioned wire contracts for adapter and trace authors:
 
 ## Migration
 
-The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. Move existing low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. New hosts should import `evaluate` or `checkExecutor` from `/eval-runtime`.
+The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. Move existing low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. New hosts should import `evaluate` or `checkExecutor` from the package root. The `/eval-runtime` entry remains the explicit equivalent for consumers that prefer domain-qualified imports.
 
 Use `oh-my-knowledge/eval-core` for custom analysis graphs, persisted artifact admission, staged replay, or explicit cross-run comparability. Deep implementation imports are unsupported.
