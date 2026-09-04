@@ -150,11 +150,16 @@ const assert = require('node:assert/strict');
   assert.equal(api.projectCoreArtifactGraph, undefined);
   assert.equal(api.assessComparability, undefined);
   assert.equal(typeof advanced.assessComparability, 'function');
-  assert.equal(typeof evalRuntime.createEvaluationRuntime, 'function');
+  assert.equal(typeof evalRuntime.evaluate, 'function');
+  assert.equal(typeof evalRuntime.checkExecutor, 'function');
   assert.equal(evalRuntime.createExecutorFnAdapter, undefined);
-  assert.equal(typeof evalRuntime.createJsonExecutorAdapter, 'function');
-  assert.equal(typeof evalRuntime.createRubricJudgeKit, 'function');
-  assert.equal(typeof evalRuntime.runEvaluation, 'function');
+  assert.equal(evalRuntime.createJsonExecutorAdapter, undefined);
+  assert.equal(evalRuntime.createRubricJudgeKit, undefined);
+  assert.equal(evalRuntime.runEvaluation, undefined);
+  assert.equal(typeof evalRuntimeAdvanced.createEvaluationRuntime, 'function');
+  assert.equal(typeof evalRuntimeAdvanced.createJsonExecutorAdapter, 'function');
+  assert.equal(typeof evalRuntimeAdvanced.createRubricJudgeKit, 'function');
+  assert.equal(typeof evalRuntimeAdvanced.runEvaluation, 'function');
   assert.equal(typeof evalRuntimeAdvanced.createExecutorFnAdapter, 'function');
   assert.equal(typeof evalRuntimeAdvanced.createSameProcessExecutorAdapter, 'function');
   assert.equal(typeof evalRuntimeContracts.SourceNeutralTraceSchema.safeParse, 'function');
@@ -292,6 +297,7 @@ const assert = require('node:assert/strict');
       runStatus: 'completed',
       estimate: 2 / 3,
       decisionStatus: 'decided',
+      datasetId: 'embedded-service-example',
     });
     expect([
       ...readdirSync(isolatedHome),

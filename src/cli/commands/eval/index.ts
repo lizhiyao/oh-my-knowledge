@@ -226,14 +226,14 @@ async function runEval(
 
 export default class Eval extends BaseCommand {
   static description = bilingual({
-    zh: '跑评测：对一个 control vs 多个 treatment skill 做对照试验，产 verdict 报告。',
+    zh: '跑评测：用一个对照组与多个实验组 skill 做对照试验，生成判定报告。',
     en: 'Run evaluation: control vs treatment(s) comparison, produce verdict report.',
   });
 
   static examples = [
     {
       description: bilingual({
-        zh: '最简对照:baseline vs my-skill',
+        zh: '最简对照：baseline 作为对照组，my-skill 作为实验组',
         en: 'Minimal A/B: baseline vs my-skill',
       }),
       command: '<%= config.bin %> eval --control baseline --treatment my-skill',
@@ -251,23 +251,23 @@ export default class Eval extends BaseCommand {
     lang: LANG_FLAG,
     // ── 实验角色 ──
     control: Flags.string({
-      description: bilingual({ zh: 'control variant 表达式（仅 artifact 身份）', en: 'Control variant expr (artifact identity only)' }),
+      description: bilingual({ zh: '对照组（control）的 variant 表达式（仅 artifact 身份）', en: 'Control variant expr (artifact identity only)' }),
     }),
     treatment: Flags.string({
       description: bilingual({
-        zh: 'treatment variant 列表，逗号分隔（仅 artifact 身份）',
+        zh: '实验组（treatment）的 variant 列表，逗号分隔（仅 artifact 身份）',
         en: 'Treatment variants, comma-separated (artifact identity only)',
       }),
     }),
     'control-cwd': Flags.string({
       description: bilingual({
-        zh: 'control 的 runtime context 目录',
+        zh: '对照组（control）的 runtime context 目录',
         en: 'Runtime context dir for control',
       }),
     }),
     'treatment-cwd': Flags.string({
       description: bilingual({
-        zh: 'treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）',
+        zh: '实验组（treatment）的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）',
         en: 'Runtime context dirs for treatments, comma-separated, index-aligned with --treatment (blank = none)',
       }),
     }),
@@ -276,7 +276,7 @@ export default class Eval extends BaseCommand {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '用例路径。自动发现项目级或单 treatment 目录 skill 下的 eval-samples.json / eval-samples.yaml；显式路径可为 JSON / YAML 文件或分片目录。',
+        zh: '用例路径。自动发现项目级或单个实验组（treatment）目录 skill 下的 eval-samples.json / eval-samples.yaml；显式路径可为 JSON / YAML 文件或分片目录。',
         en: 'Samples path. Auto-discovers eval-samples.json / eval-samples.yaml at project scope or for a single directory-skill treatment; an explicit path may be a JSON / YAML file or split directory.',
       }),
     }),
@@ -310,7 +310,7 @@ export default class Eval extends BaseCommand {
     }),
     // ── 评测 toggle ──
     'no-judge': Flags.boolean({
-      description: bilingual({ zh: '跳过 LLM judge', en: 'Skip LLM judge' }),
+      description: bilingual({ zh: '跳过 LLM 评委', en: 'Skip LLM judge' }),
     }),
     'no-cache': Flags.boolean({
       description: bilingual({ zh: '跳过 executor cache', en: 'Skip executor cache' }),
@@ -331,7 +331,7 @@ export default class Eval extends BaseCommand {
     }),
     batch: Flags.boolean({
       description: bilingual({
-        zh: 'batch 模式:baseline vs 每个 skill',
+        zh: 'batch 模式：baseline 作为对照组，逐个 skill 作为实验组',
         en: 'Batch mode: baseline vs each skill',
       }),
     }),
@@ -354,7 +354,7 @@ export default class Eval extends BaseCommand {
       description: bilingual({ zh: '详细日志', en: 'Verbose logging' }),
     }),
     retry: Flags.string({
-      description: bilingual({ zh: '失败 sample 重试次数', en: 'Per-sample retry count' }),
+      description: bilingual({ zh: '单用例失败重试次数', en: 'Per-sample retry count' }),
       parse: integerStringParser('--retry', { min: 0 }),
     }),
     resume: Flags.string({
@@ -387,7 +387,7 @@ export default class Eval extends BaseCommand {
     }),
     // ── eval-runner extra ──
     repeat: Flags.string({
-      description: bilingual({ zh: '每个 sample 重复跑 N 次', en: 'Repeat each sample N times' }),
+      description: bilingual({ zh: '每个用例重复运行 N 次', en: 'Repeat each sample N times' }),
       parse: integerStringParser('--repeat', { min: 1 }),
     }),
     'holdout-ratio': Flags.string({
@@ -398,7 +398,7 @@ export default class Eval extends BaseCommand {
       parse: numberStringParser('--holdout-ratio', { min: 0, max: 1 }),
     }),
     'judge-repeat': Flags.string({
-      description: bilingual({ zh: '每个 dim 评 N 次', en: 'Judge each dim N times' }),
+      description: bilingual({ zh: '每个维度由评委评价 N 次', en: 'Judge each dim N times' }),
       parse: integerStringParser('--judge-repeat', { min: 1 }),
     }),
     bootstrap: Flags.boolean({
@@ -419,16 +419,16 @@ export default class Eval extends BaseCommand {
       parse: numberStringParser('--budget-usd', { minExclusive: 0 }),
     }),
     'budget-per-sample-usd': Flags.string({
-      description: bilingual({ zh: '单 sample 预算上限 USD（必须 > 0，不传则无上限）', en: 'Per-sample budget cap USD (must be > 0; omit for no cap)' }),
+      description: bilingual({ zh: '单用例预算上限 USD（必须 > 0，不传则无上限）', en: 'Per-sample budget cap USD (must be > 0; omit for no cap)' }),
       parse: numberStringParser('--budget-per-sample-usd', { minExclusive: 0 }),
     }),
     'budget-per-sample-ms': Flags.string({
-      description: bilingual({ zh: '单 sample 时长上限 ms（必须 > 0，不传则无上限）', en: 'Per-sample time cap ms (must be > 0; omit for no cap)' }),
+      description: bilingual({ zh: '单用例时长上限 ms（必须 > 0，不传则无上限）', en: 'Per-sample time cap ms (must be > 0; omit for no cap)' }),
       parse: integerStringParser('--budget-per-sample-ms', { min: 1 }),
     }),
     threshold: Flags.string({
       description: bilingual({
-        zh: `verdict 阈值，默认 ${DEFAULT_GATE_THRESHOLD}`,
+        zh: `判定阈值，默认 ${DEFAULT_GATE_THRESHOLD}`,
         en: `Verdict threshold, default ${DEFAULT_GATE_THRESHOLD}`,
       }),
       parse: numberStringParser('--threshold'),
@@ -439,12 +439,12 @@ export default class Eval extends BaseCommand {
     }),
     'report-only': Flags.boolean({
       description: bilingual({
-        zh: '生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。',
+        zh: '生成报告并打印判定，但始终 exit 0(不参与 CI gate）。',
         en: 'Produce the report and print verdict, but always exit 0 (no CI gate).',
       }),
     }),
     'no-gate': Flags.boolean({
-      description: bilingual({ zh: '关 verdict gate', en: 'Disable verdict gate' }),
+      description: bilingual({ zh: '关闭判定门禁', en: 'Disable verdict gate' }),
     }),
     'no-evidence': Flags.boolean({
       description: bilingual({

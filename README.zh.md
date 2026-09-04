@@ -157,7 +157,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 | 特性 | 说明 |
 |------|------|
-| **Core 发布决定** | 六种结论 + 稳定 reason code + exit code 路由；Studio 投影同一份经过认证的 Decision |
+| **Core 发布决定** | 六种判定 + 稳定 reason code + exit code 路由；Studio 投影同一份经过认证的 Decision |
 | **五层 evidence graph** | Assertion / LLM / Judge / Dimension / Composite 保持独立，coverage、成本、状态与 lineage 与分数正交 |
 | **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Anthropic API 及自定义命令 |
 | **30+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
@@ -228,7 +228,7 @@ omk-mcp
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[迁移到 1.0 预览版](docs/zh/guides/v1-preview-migration.md)** —— 从 `0.54` 升级时的安装渠道、存储重建、用例协议、CLI 自动化与嵌入式 API 变化
 - **[Evaluation Core 生产切换](docs/zh/guides/eval-core-cutover.md)** —— `BREAKING-SCHEMA` 存储、resume、Studio、Gold、受管证据与 evolve 迁移
-- **[在服务中嵌入 OMK](docs/zh/guides/eval-runtime.md)** —— 面向 Node.js 与 FaaS 宿主的轻量 `eval-runtime` 装配
+- **[在服务中嵌入 OMK](docs/zh/guides/eval-runtime.md)** —— 面向 Node.js 与 FaaS 宿主的单一 `evaluate()` API
 - **[存储布局 v2](docs/zh/specs/storage-layout-spec.md)** —— 项目／全局领域、迁移兼容与 Git 策略
 - **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）

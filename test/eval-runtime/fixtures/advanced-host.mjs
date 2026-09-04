@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { createEvaluationEngine } from 'oh-my-knowledge/eval-core';
 import {
+  createEvaluationEngine,
   createEvaluationRuntime,
   createExactMatchDefinition,
   createExactMatchEvaluator,
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
-} from 'oh-my-knowledge/eval-runtime';
-import { createExecutorFnAdapter } from 'oh-my-knowledge/eval-runtime/advanced';
+  createExecutorFnAdapter,
+} from 'oh-my-knowledge/eval-runtime/advanced';
 
 const identity = createInvokeExecutorIdentity({
   implementationId: 'example.staged-service/v1',

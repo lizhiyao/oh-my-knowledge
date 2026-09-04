@@ -63,7 +63,7 @@ omk doctor --json --gate
 
 ## omk eval
 
-跑评测：对一个 control vs 多个 treatment skill 做对照试验，产 verdict 报告。
+跑评测：用一个对照组与多个实验组 skill 做对照试验，生成判定报告。
 
 **用法:**
 
@@ -73,16 +73,16 @@ omk eval [flags]
 
 **Flags:**
 
-- `--batch` `boolean`:batch 模式:baseline vs 每个 skill
+- `--batch` `boolean`:batch 模式：baseline 作为对照组，逐个 skill 作为实验组
 - `--bootstrap` `boolean`:加 bootstrap CI
 - `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
-- `--budget-per-sample-ms` `option`:单 sample 时长上限 ms（必须 > 0，不传则无上限）
-- `--budget-per-sample-usd` `option`:单 sample 预算上限 USD（必须 > 0，不传则无上限）
+- `--budget-per-sample-ms` `option`:单用例时长上限 ms（必须 > 0，不传则无上限）
+- `--budget-per-sample-usd` `option`:单用例预算上限 USD（必须 > 0，不传则无上限）
 - `--budget-usd` `option`:总预算上限 USD（必须 > 0，不传则无上限）
 - `--concurrency` `option`:并发数，默认 1
 - `--config` `option`:eval.yaml 路径
-- `--control` `option`:control variant 表达式（仅 artifact 身份）
-- `--control-cwd` `option`:control 的 runtime context 目录
+- `--control` `option`:对照组（control）的 variant 表达式（仅 artifact 身份）
+- `--control-cwd` `option`:对照组（control）的 runtime context 目录
 - `--dry-run` `boolean`:只 plan 不实跑
 - `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
 - `--executor` `option`:执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
@@ -90,7 +90,7 @@ omk eval [flags]
 - `--gold-dir` `option`:gold dataset 目录
 - `--holdout-ratio` `option`:留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
 - `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。
-- `--judge-repeat` `option`:每个 dim 评 N 次
+- `--judge-repeat` `option`:每个维度由评委评价 N 次
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--layered-stats` `boolean`:输出分层统计
 - `--mcp-config` `option`:MCP 配置文件路径
@@ -99,30 +99,30 @@ omk eval [flags]
 - `--no-debias-length` `boolean`:关 length-debias（默认开）
 - `--no-diagnostic` `boolean`:关闭基于 Core 失败、缺失、排除与稳定 reason code 的诊断投影。
 - `--no-evidence` `boolean`:不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
-- `--no-gate` `boolean`:关 verdict gate
-- `--no-judge` `boolean`:跳过 LLM judge
+- `--no-gate` `boolean`:关闭判定门禁
+- `--no-judge` `boolean`:跳过 LLM 评委
 - `--no-serve` `boolean`:不启 report server
 - `--no-strict-baseline` `boolean`:关闭 baseline 隔离
 - `--output-dir` `option`:报告输出目录（默认项目级 .omk/eval）
-- `--repeat` `option`:每个 sample 重复跑 N 次
-- `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
+- `--repeat` `option`:每个用例重复运行 N 次
+- `--report-only` `boolean`:生成报告并打印判定，但始终 exit 0(不参与 CI gate）。
 - `--resume` `option`:复用经过完整契约校验的 Core runId；拒绝时失败关闭
-- `--retry` `option`:失败 sample 重试次数
-- `--samples` `option`:用例路径。自动发现项目级或单 treatment 目录 skill 下的 eval-samples.json / eval-samples.yaml；显式路径可为 JSON / YAML 文件或分片目录。
+- `--retry` `option`:单用例失败重试次数
+- `--samples` `option`:用例路径。自动发现项目级或单个实验组（treatment）目录 skill 下的 eval-samples.json / eval-samples.yaml；显式路径可为 JSON / YAML 文件或分片目录。
 - `--skill-dir` `option`:skill 目录，默认 skills
 - `--skip-connectivity` `boolean`:跳 LLM 连通性预检
 - `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
 - `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
-- `--threshold` `option`:verdict 阈值，默认 3.5
+- `--threshold` `option`:判定阈值，默认 3.5
 - `--timeout` `option`:单用例超时秒，默认 120
-- `--treatment` `option`:treatment variant 列表，逗号分隔（仅 artifact 身份）
-- `--treatment-cwd` `option`:treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
+- `--treatment` `option`:实验组（treatment）的 variant 列表，逗号分隔（仅 artifact 身份）
+- `--treatment-cwd` `option`:实验组（treatment）的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
 - `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
 - `--verbose` `boolean`:详细日志
 
 **示例:**
 
-> 最简对照:baseline vs my-skill
+> 最简对照：baseline 作为对照组，my-skill 作为实验组
 
 ```bash
 omk eval --control baseline --treatment my-skill

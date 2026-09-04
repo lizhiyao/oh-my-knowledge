@@ -7,7 +7,7 @@ import {
   createInvokeExecutorIdentity,
   createMeasurementPolicy,
   runEvaluation,
-} from '../../src/eval-runtime/index.js';
+} from '../../src/eval-runtime/advanced.js';
 import {
   createExecutorFnAdapter,
   type ExecResult,

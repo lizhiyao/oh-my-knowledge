@@ -39,7 +39,7 @@ Directories under `src` express domain ownership rather than one mechanical repo
 - **Contract edges** share stable data shapes across domains. A bidirectional domain relationship is valid only when its type-only contract return edge has been audited and registered; architecture tests reject new bidirectional relationships.
 - **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-workflows/production-host`. They may assemble domains and effects, while domain implementations may not import delivery composition.
 
-`shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. `eval-runtime` is the lightweight service-host adoption layer: it assembles explicit ports and Core built-ins without owning product workflows or infrastructure. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
+`shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. `eval-runtime` is the lightweight service-host adoption layer: its canonical façade compiles ordinary `evaluate()` input into existing Core contracts, while its foundation assembles explicit ports and Core built-ins without owning product workflows or infrastructure. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
 
 ```text
 eval-core ← eval-runtime ← eval-workflows ← CLI / DSH
@@ -47,7 +47,7 @@ eval-core ← eval-runtime ← eval-workflows ← CLI / DSH
         executors / FaaS   OMK product workflows
 ```
 
-The arrow points from consumer to dependency. `eval-runtime` may depend on Core and type-only Executor contracts; it must not import `eval-workflows`, provider implementations, or delivery surfaces. `eval-workflows` reuses its generic same-process lifecycle adapter instead of maintaining a second implementation.
+The arrow points from consumer to dependency. `eval-runtime` may depend on Core and type-only Executor contracts; it must not import `eval-workflows`, provider implementations, or delivery surfaces. `eval-workflows` reuses Runtime foundation leaf modules instead of importing the canonical user façade or maintaining a second lifecycle implementation.
 
 Knowledge artifact lifecycle capabilities share one ownership boundary:
 

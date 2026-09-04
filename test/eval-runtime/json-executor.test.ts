@@ -8,7 +8,7 @@ import {
   createJsonExecutorAdapter,
   createMeasurementPolicy,
   runEvaluation,
-} from '../../src/eval-runtime/index.js';
+} from '../../src/eval-runtime/advanced.js';
 
 function identity(input: Readonly<{
   trace?: 'unsupported' | 'optional' | 'required';
