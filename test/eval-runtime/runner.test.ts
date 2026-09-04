@@ -75,24 +75,84 @@ function fixture() {
 }
 
 describe('eval-runtime high-level runner', () => {
-  it('drains every event in order even with a one-event buffer and slow observer', async () => {
-    const { runtime, definition, policy } = fixture();
+  it('bounds a slow observer with drop-oldest progress while EventWriter remains lossless', async () => {
+    const { runtime, definition } = fixture();
+    const policy = createMeasurementPolicy({
+      maxConcurrency: 1,
+      eventDelivery: { writerMode: 'optional' },
+    });
     const sequences: number[] = [];
+    const persistedSequences: number[] = [];
+    let activeObservers = 0;
+    let maximumActiveObservers = 0;
+    let releaseFirstObserver: (() => void) | undefined;
+    const firstObserverBlocked = new Promise<void>((resolve) => {
+      releaseFirstObserver = resolve;
+    });
     const result = await runEvaluation({
       runtime: runtime(),
       definition,
       policy,
       runId: 'runner-events',
       eventBufferCapacity: 1,
+      eventWriter: {
+        async write(event) {
+          persistedSequences.push(event.sequence);
+          if (event.eventKind === 'report.materialized') releaseFirstObserver?.();
+        },
+      },
       async onEvent(event) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        sequences.push(event.sequence);
+        activeObservers += 1;
+        maximumActiveObservers = Math.max(maximumActiveObservers, activeObservers);
+        try {
+          sequences.push(event.sequence);
+          if (sequences.length === 1) await firstObserverBlocked;
+        } finally {
+          activeObservers -= 1;
+        }
       },
     });
 
     expect(result.status).toBe('completed');
     expect(sequences.length).toBeGreaterThan(1);
-    expect(sequences).toEqual(sequences.map((_, index) => index));
+    expect(sequences.length).toBeLessThan(persistedSequences.length);
+    expect(sequences).toEqual([...sequences].sort((left, right) => left - right));
+    expect(sequences.some((sequence, index) => index > 0
+      && sequence > sequences[index - 1] + 1)).toBe(true);
+    expect(persistedSequences).toEqual(persistedSequences.map((_, index) => index));
+    expect(maximumActiveObservers).toBe(1);
+  });
+
+  it('fails the Core run when a required EventWriter rejects', async () => {
+    const { runtime, definition } = fixture();
+    const result = await runEvaluation({
+      runtime: runtime(),
+      definition,
+      policy: createMeasurementPolicy({
+        eventDelivery: { writerMode: 'required' },
+      }),
+      runId: 'runner-required-writer-failure',
+      eventWriter: { async write() { throw new Error('private writer failure'); } },
+    });
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: { code: expect.stringContaining('event-writer-failed') },
+    });
+    expect(JSON.stringify(result)).not.toContain('private writer failure');
+  });
+
+  it('rejects an EventWriter that a disabled policy would silently ignore', async () => {
+    const { runtime, definition, policy } = fixture();
+    await expect(runEvaluation({
+      runtime: runtime(),
+      definition,
+      policy,
+      runId: 'runner-disabled-writer',
+      eventWriter: { async write() {} },
+    })).rejects.toThrow(
+      'eventWriter requires an explicit optional or required eventDelivery policy.',
+    );
   });
 
   it('completes with a one-event buffer when no observer is registered', async () => {

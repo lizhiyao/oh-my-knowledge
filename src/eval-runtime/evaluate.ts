@@ -13,7 +13,6 @@ import {
 } from '../eval-core/contracts/index.js';
 import type {
   EvaluationEngineClock,
-  EvaluationEngineEventWriter,
   EvaluationRunResult,
 } from '../eval-core/engine/index.js';
 import { createJsonExecutorAdapter, type RuntimeValueParser } from './adapters/json-executor.js';
@@ -56,7 +55,7 @@ const ARTIFACT_SOURCES = [
   'inline',
   'custom',
 ] as const;
-const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v1' as const;
+const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v2' as const;
 
 const ArtifactSchema = z.object({
   name: z.string().min(1),
@@ -84,7 +83,6 @@ const ArtifactSchema = z.object({
 });
 
 const RuntimeContextSchema = z.object({
-  cwd: z.string().min(1).optional(),
   values: JsonValueSchema.optional(),
 }).strict();
 
@@ -134,7 +132,6 @@ export interface Artifact {
 }
 
 export interface RuntimeContext {
-  readonly cwd?: string;
   readonly values?: JsonValue;
 }
 
@@ -281,7 +278,7 @@ export interface Experiment {
   }>;
 }
 
-export type Policy = MeasurementPolicyBuilderInput;
+export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
 /** Core run result plus the exact sealed Definition compiled by the façade. */
 export type EvaluationResult = EvaluationRunResult & Readonly<{
@@ -289,7 +286,6 @@ export type EvaluationResult = EvaluationRunResult & Readonly<{
   policy: MeasurementPolicy;
 }>;
 export type EventObserver = EvaluationEventObserver;
-export type EventWriter = EvaluationEngineEventWriter;
 export type Clock = EvaluationEngineClock;
 
 /** Stable, redacted event-consumption failure from the canonical facade. */
@@ -328,7 +324,6 @@ export interface EvaluateInput<
   readonly signal?: AbortSignal;
   readonly annotations?: JsonValue;
   readonly summaries?: JsonValue;
-  readonly eventWriter?: EventWriter;
   readonly eventBufferCapacity?: number;
   readonly onEvent?: EventObserver;
   readonly clock?: Clock;
@@ -545,7 +540,7 @@ function captureExecutor<
         },
         fingerprintFacets: {
           facade: {
-            version: 'omk.eval-runtime.evaluate/v1',
+            version: 'omk.eval-runtime.evaluate/v2',
             outputClassification,
             traceClassification,
             ...(value.outputMediaType === undefined
@@ -832,7 +827,24 @@ function assertCommonInput(input: Readonly<{
   annotations?: JsonValue;
   summaries?: JsonValue;
 }>) {
-  if (!IdentifierSchema.safeParse(input.runId).success
+  const allowedKeys = new Set([
+    'executor',
+    'dataset',
+    'control',
+    'treatment',
+    'evaluator',
+    'experiment',
+    'policy',
+    'runId',
+    'signal',
+    'annotations',
+    'summaries',
+    'eventBufferCapacity',
+    'onEvent',
+    'clock',
+  ]);
+  if (Object.keys(input).some((key) => !allowedKeys.has(key))
+      || !IdentifierSchema.safeParse(input.runId).success
       || !ExperimentSchema.safeParse(input.experiment).success
       || !PolicyInputSchema.safeParse(input.policy).success
       || (input.eventBufferCapacity !== undefined
@@ -841,7 +853,7 @@ function assertCommonInput(input: Readonly<{
       || (input.summaries !== undefined && !JsonValueSchema.safeParse(input.summaries).success)) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
-      'Evaluation runId 或 experiment 无效。',
+      'Evaluation input 包含无效或不受支持的字段。',
     );
   }
 }
@@ -1015,7 +1027,6 @@ export async function evaluate<
       ...(input.signal === undefined ? {} : { signal: input.signal }),
       ...(annotations === undefined ? {} : { annotations }),
       ...(summaries === undefined ? {} : { summaries }),
-      ...(input.eventWriter === undefined ? {} : { eventWriter: input.eventWriter }),
       ...(input.eventBufferCapacity === undefined
         ? {}
         : { eventBufferCapacity: input.eventBufferCapacity }),

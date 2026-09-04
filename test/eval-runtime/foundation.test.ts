@@ -139,6 +139,23 @@ describe('eval-runtime foundation', () => {
       seedCoupling: 'shared-within-block',
     });
     expect(definition.decisionPolicy?.implementationId).toBe('progress/v2');
+    expect(createMeasurementPolicy({
+      eventDelivery: { writerMode: 'optional' },
+    }).eventDelivery).toEqual({
+      writerMode: 'optional',
+      backpressureMode: 'block',
+      writerFailureMode: 'ignore',
+    });
+    expect(createMeasurementPolicy({
+      eventDelivery: { writerMode: 'required' },
+    }).eventDelivery).toEqual({
+      writerMode: 'required',
+      backpressureMode: 'block',
+      writerFailureMode: 'fail-run',
+    });
+    expect(() => createMeasurementPolicy({
+      eventDelivery: { writerMode: 'required', writerFailureMode: 'ignore' },
+    } as never)).toThrow('EventWriter mode and failure mode are inconsistent.');
   });
 
   it('maps an ExecutorFn failure into a stable Core execution error', async () => {
