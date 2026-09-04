@@ -14,9 +14,11 @@ import {
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IDENTITY,
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+} from './bootstrap-family-node-contract.js';
+import {
   bootstrapFamilyAnalysisResultInput,
   validateBootstrapExecutionDesign,
-} from './bootstrap-family-node-contract.js';
+} from './bootstrap-family-node-support.js';
 
 export {
   BOOTSTRAP_FAMILY_ANALYSIS_IDENTITY,

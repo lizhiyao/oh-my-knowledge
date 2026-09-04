@@ -26,7 +26,9 @@ import {
   digestNodeFileResource,
   digestNodeTreeResource,
 } from '../runtime-adapter/resource-leases/node.js';
-import { BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID } from '../runtime-adapter/analysis/index.js';
+import {
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+} from '../runtime-adapter/analysis/index.js';
 import { buildProductionMeasurementDesign } from './measurement-design.js';
 import { createNodeSampleContentResolver } from './node-sample-content-resolver.js';
 import {
@@ -909,7 +911,7 @@ export async function resolveNodeCliEvaluationRequest(
         pairingKey: '/sampleId',
         repeatedMeasures: true,
         resamplingUnit: 'paired-block',
-        estimatorId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+        estimatorId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
         seedCoupling: 'uncontrolled',
       },
       scheduling: {

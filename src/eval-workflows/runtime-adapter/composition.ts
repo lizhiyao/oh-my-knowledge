@@ -25,6 +25,9 @@ import {
 import {
   createBootstrapFamilyTableSchemaValidators,
 } from './analysis/bootstrap-family-table.js';
+import {
+  createBootstrapFamilyTableV2SchemaValidators,
+} from './analysis/bootstrap-family-table-v2.js';
 import { createAgreementParameterSchemaValidators } from './analysis/agreement-parameters.js';
 import { createAgreementTableSchemaValidators } from './analysis/agreement-table.js';
 import {
@@ -380,6 +383,9 @@ export function createOmkEvaluationSchemaValidators(
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createBootstrapFamilyTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createBootstrapFamilyTableV2SchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createAgreementParameterSchemaValidators()].map((entry) => (

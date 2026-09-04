@@ -9,6 +9,8 @@ export * from './bootstrap-family-parameters.js';
 export * from './bootstrap-family-source-adapter.js';
 export * from './bootstrap-family-table.js';
 export * from './bootstrap-family-node.js';
+export * from './bootstrap-family-table-v2.js';
+export * from './bootstrap-family-node-v2.js';
 export * from './composite-parameters.js';
 export * from './composite-source-adapter.js';
 export * from './composite-table.js';

@@ -13,13 +13,17 @@ omk 评估一次知识改动时，会固定模型和用例设计，只改变 art
 
 `omk eval` 根据实际观测到的 sampling unit，通过 percentile Bootstrap 估计不确定性，不假设分数服从某种参数分布。
 
-- Target 均值与 treatment-minus-control 区间由 `omk.bootstrap-family-table/v1` 生成；
+- Target 均值与 treatment-minus-control 区间由 `omk.bootstrap-family-table/v2` 生成；
 - paired design 必须声明显式 pairing key，绝不会自动降级为 independent estimator；
-- 多个 treatment 共享一组封存的 comparison family，有效显著性水平为 `alpha / K`，增加比较数量不会静默放大家族假阳性率；
+- 多个 treatment 共享一组封存的 comparison family；`K` 取计划比较数，包含后来证据缺失的比较，有效显著性水平为 `alpha / K`，缺失结果不能静默放大家族假阳性率；
 - 重采样次数、名义 alpha、design、Target／Sample 顺序与确定性 Mulberry32 随机流都进入 Analysis identity；CLI 默认重采样 1000 次；
+- 四位小数的 percentile 区间只用于描述，不作为显著性判定边界；显著性直接使用未舍入的 draw stream，以及它在 0 一侧的相关尾部；
+- 有限 draw 数量拥有独立的精确 Clopper-Pearson 尾概率区间；其置信度按计划 comparison family 做 Bonferroni 分配，保证全家族 99% 置信度。区间跨越 `alpha / (2K)` 时，显著性为 `indeterminate`，发布判定失败关闭；
 - comparison interval 缺失时保持 inconclusive，release policy 不会拿点估计兜底。
 
-实现：`src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.ts` 与 `bootstrap-family-parameters.ts`。
+这把总体抽样不确定性与 Monte Carlo 近似误差明确分开，符合 [Koehler、Brown 与 Haneuse](https://pmc.ncbi.nlm.nih.gov/articles/PMC3337209/) 强调的区分；精确二项区间采用 [Clopper 与 Pearson](https://doi.org/10.1093/biomet/26.4.404) 的方法。
+
+实现：`src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table-v2.ts` 与 `bootstrap-family-parameters.ts`。
 
 ## 二、Gold agreement 是显式校准
 
@@ -70,20 +74,20 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 
 ## Release Decision
 
-`omk.release-decision/v4` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
+`omk.release-decision/v5` 消费经过认证的 Composite table、Bootstrap family，以及可选的 Judge Ensemble table。它会给出六种结论：
 
 | Verdict | 含义 |
 |---|---|
 | `PROGRESS` | 比较显著向好，且所有已注册 release gate 通过 |
 | `CAUTIOUS` | 有正向信号，但 practical-effect、layer、judge-dissent、未测量的 judge uncertainty 或 holdout gate 要求复核 |
 | `REGRESSION` | 比较显著向坏 |
-| `NOISE` | comparison interval 跨 0，且实际观测的比较单元数达到已注册下限 |
-| `UNDERPOWERED` | comparison interval 跨 0，且实际观测的比较单元数低于已注册下限 |
+| `NOISE` | comparison 不显著，且实际观测的比较单元数达到已注册下限 |
+| `UNDERPOWERED` | comparison 不显著，且实际观测的比较单元数低于已注册下限 |
 | `SOLO` | 只有一个 Target，不存在 comparison |
 
 运行状态、证据状态、结论状态与 verdict 始终正交。只有同时携带 `release-gates-passed` 的 `PROGRESS` 才能进入常规发布路由。跨 run 稳定性属于 Evaluation Series，绝不能从单次 run 推断。
 
-对于配对设计，v4 使用完整 pair 数执行样本量 gate；对于独立设计，使用两侧实际观测单元数中的较小值，因为较大一侧不能补偿另一侧缺失的证据。已编写但未观测的用例不能把 `UNDERPOWERED` 变成 `NOISE`。
+对于配对设计，v5 使用完整 pair 数执行样本量 gate；对于独立设计，使用两侧实际观测单元数中的较小值，因为较大一侧不能补偿另一侧缺失的证据。已编写但未观测的用例不能把 `UNDERPOWERED` 变成 `NOISE`。Monte Carlo 误差下仍为 `indeterminate` 的显著性不会进入该 gate，而是保持 not-decided。
 
 默认的 `minimum-count` 要求是 20 个比较单元。它是可配置的启发式证据下限，不代表统计功效已经得到证明。正式发布研究如果已有可靠先验信息，可以在 `eval.yaml` 中声明配对比较的先验规划：
 
@@ -98,7 +102,7 @@ decision:
 
 omk 会在执行前封存最小有意义的 treatment-minus-control 差异、来自外部先导数据的配对差值标准差、目标功效、假设来源、家族 alpha、计划比较数量、方法 identity，以及据此计算的完整 pair 数要求。当前方法采用双侧正态近似，并按计划 comparison family 做 Bonferroni 分配；它是规划近似，不保证 percentile Bootstrap 的实际运行特性。复杂、强离散或偏态设计应在 omk 外通过 simulation 确定样本量，再用 `decision.minimumComparisonUnits` 登记结果。omk 明确不报告事后「观测功效」：用本次 run 的观测 effect 或 variance 为本次样本量辩护属于循环论证。
 
-对于已配置的 Judge Ensemble，v4 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 v1、v2 与 v3 只为精确重放而保留注册；v3 已使用实际观测比较单元，但只有固定下限契约。
+对于已配置的 Judge Ensemble，v5 会分别估计 control 与 treatment 的跨评委一致性。如果任一侧不足两个完整的评委成员序列，或者不足两个共同 sample，一致性就不可估计；正向结果会返回 `CAUTIOUS` 与 `judge-uncertainty-unmeasured`，而不是把一次 LLM 读数当成精确真值。未配置 Judge Ensemble 时此 gate 不适用。历史 release policy v1～v4 与 Bootstrap family v1 只为精确重放保留注册；新运行使用 v5 与 Bootstrap family v2。
 
 规划依据：[NIST 的双侧样本量公式](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm)、[CONSORT 2025 对目标差异、假设、alpha 与功效预先声明的要求](https://www.bmj.com/content/389/bmj-2024-081124)，以及 [Hoenig 与 Heisey 对事后功效滥用的论证](https://doi.org/10.1198/000313001300339897)。
 

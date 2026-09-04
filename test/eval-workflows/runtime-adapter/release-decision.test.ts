@@ -13,7 +13,9 @@ import {
 import { DecisionPolicyCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
   COMPOSITE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
@@ -28,7 +30,11 @@ import {
   RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
   RELEASE_DECISION_POLICY_V3_IDENTITY,
   RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V5,
+  RELEASE_DECISION_POLICY_V5_IDENTITY,
+  RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
   buildBootstrapFamilyTable,
+  buildBootstrapFamilyTableV2,
   compareCompositeGroups,
   compositeAggregate,
   compositeCoverage,
@@ -224,6 +230,7 @@ function tables(input: Readonly<{
   return {
     composite,
     bootstrap: buildBootstrapFamilyTable(bootstrapParameters, observations),
+    bootstrapV2: buildBootstrapFamilyTableV2(bootstrapParameters, observations),
   };
 }
 
@@ -379,6 +386,32 @@ async function decide(
   return RELEASE_DECISION_POLICY.decide(context(releaseParameters, values));
 }
 
+function contextV5(
+  releaseParameters: ReleaseDecisionParameters,
+  values: ReturnType<typeof tables>,
+): DecisionPolicyContext {
+  const legacy = context(releaseParameters, values);
+  const comparisons = values.bootstrapV2.configuration.comparisons;
+  return {
+    ...legacy,
+    policy: {
+      ...legacy.policy,
+      implementationId: RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+      ...(comparisons.length > 1 ? {
+        multipleComparisonPolicyId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+      } : {}),
+    },
+    results: [
+      legacy.results[0],
+      completedResult(
+        'bootstrap-family',
+        BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA as typeof COMPOSITE_TABLE_SCHEMA,
+        values.bootstrapV2 as JsonValue,
+      ),
+    ],
+  } as DecisionPolicyContext;
+}
+
 describe('OMK Release DecisionPolicy', () => {
   it('declares the sealed table and comparison-family capabilities', () => {
     const capabilities = DecisionPolicyCapabilitiesSchema.parse(
@@ -411,7 +444,87 @@ describe('OMK Release DecisionPolicy', () => {
       RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY.identity.implementationId,
+      RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
     ]);
+  });
+
+  it('v5 consumes v2 tail evidence and declares its implementation identity', async () => {
+    const capabilities = DecisionPolicyCapabilitiesSchema.parse(
+      RELEASE_DECISION_POLICY_V5_IDENTITY.capabilities,
+    );
+    expect(capabilities.analysisResultSchemaUris).toContain(
+      BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA.schemaUri,
+    );
+    expect(capabilities.analysisResultSchemaUris).not.toContain(
+      BOOTSTRAP_FAMILY_TABLE_SCHEMA.schemaUri,
+    );
+    expect(capabilities.multipleComparisonPolicyIds).toEqual([
+      BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+    ]);
+    expect(RELEASE_DECISION_POLICY_V5_IDENTITY.fingerprint).toBe(
+      'sha256:2ef98d77984528a583cce8eeb4e4bc108865d29e270d42f87ac9de731dad8e86',
+    );
+
+    const sampleIds = Array.from({ length: 4 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: [4, 4, 4, 4],
+        treatment: [5, 5, 5, 5],
+      },
+    });
+    await expect(RELEASE_DECISION_POLICY_V5.decide(
+      contextV5(parameters({ sampleIds }), values),
+    )).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
+    });
+  });
+
+  it('v5 fails closed when finite resampling cannot resolve the significance boundary', async () => {
+    const sampleIds = Array.from({ length: 20 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: Array.from({ length: 20 }, () => 3),
+        treatment: Array.from({ length: 20 }, (_, index) => index < 5 ? 2 : 4),
+      },
+    });
+    const comparison = values.bootstrapV2.comparisons[0];
+    expect(comparison?.comparisonStatus).toBe('observed');
+    if (comparison?.comparisonStatus !== 'observed') return;
+    expect(comparison.significance).toMatchObject({
+      significanceStatus: 'indeterminate',
+      tailCount: 17,
+    });
+    await expect(RELEASE_DECISION_POLICY_V5.decide(
+      contextV5(parameters({ sampleIds }), values),
+    )).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['release-bootstrap-monte-carlo-indeterminate'],
+    });
+  });
+
+  it('v5 distinguishes a resolved nonsignificant result from interval display wording', async () => {
+    const sampleIds = Array.from({ length: 20 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: {
+        control: Array.from({ length: 20 }, () => 4),
+        treatment: Array.from({ length: 20 }, () => 4),
+      },
+    });
+    await expect(RELEASE_DECISION_POLICY_V5.decide(
+      contextV5(parameters({ sampleIds }), values),
+    )).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'NOISE',
+      reasonCodes: [
+        'comparison-not-significant',
+        'comparison-sample-size-sufficient',
+      ],
+    });
   });
 
   it.each([

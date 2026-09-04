@@ -115,8 +115,8 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '⚠ --bootstrap-samples "{value}" is invalid (expected an integer ≥ 100), falling back to 1000\n',
   },
   'cli.run.bootstrap_samples_too_large': {
-    zh: '⚠ --bootstrap-samples {n} 较大, 可能耗时数秒。1000 是业内标准, 通常已够用。\n',
-    en: '⚠ --bootstrap-samples {n} is large and may take several seconds. 1000 is the industry standard and usually sufficient.\n',
+    zh: '⚠ --bootstrap-samples {n} 较大，可能耗时数秒。有限重采样误差会单独进入显著性证据。\n',
+    en: '⚠ --bootstrap-samples {n} is large and may take several seconds. Finite-resampling error is reported separately in significance evidence.\n',
   },
   'cli.run.dry_run_no_scores': {
     zh: 'eval dry-run：仅预览任务，不检查分数。下一步：确认任务无误后，去掉 --dry-run 运行正式评测。',

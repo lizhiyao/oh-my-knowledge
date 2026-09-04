@@ -28,12 +28,12 @@ import type {
 } from '../input-compilation/index.js';
 import {
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
-  BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
-  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
 } from '../runtime-adapter/analysis/index.js';
 import {
   EXECUTION_ASSERTION_BINDINGS,
@@ -533,7 +533,7 @@ export function buildProductionMeasurementDesign(
     nodes.push({
       analysisNodeKind: 'estimator',
       nodeId: 'bootstrap-family',
-      implementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+      implementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
       inputs: [{ inputKind: 'analysis-result', referenceId: 'composite-table' }],
       outputResultId: 'bootstrap-family',
       parameters: {
@@ -568,7 +568,7 @@ export function buildProductionMeasurementDesign(
       : splitHoldout(sampleIds, request.values.measurement.holdoutRatio);
     decisionPolicy = {
       decisionPolicyId: 'release-decision',
-      implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+      implementationId: RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
       analysisResultIds,
       comparisonFamily: treatments.map((target) => ({
         comparisonId: `control-vs-${target.targetId}`,
@@ -577,6 +577,9 @@ export function buildProductionMeasurementDesign(
         analysisResultId: 'bootstrap-family',
       })),
       comparisonFamilyResultId: 'bootstrap-family',
+      ...(treatments.length > 1 ? {
+        multipleComparisonPolicyId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+      } : {}),
       minimumEvidenceStatus: 'complete',
       parameters: {
         sources: {

@@ -11,9 +11,15 @@ import {
 } from '../../../src/eval-core/contracts/index.js';
 import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+  BOOTSTRAP_MONTE_CARLO_METHOD_ID,
   buildBootstrapFamilyTable,
+  buildBootstrapFamilyTableV2,
+  bootstrapSignificanceEvidence,
   createBootstrapFamilyTableSchemaValidators,
+  createBootstrapFamilyTableV2SchemaValidators,
   parseBootstrapFamilyTableEnvelope,
+  parseBootstrapFamilyTableV2Envelope,
   type BootstrapFamilyParameters,
   type BootstrapObservation,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
@@ -401,5 +407,103 @@ describe('Bootstrap family Analysis table', () => {
     const duplicate = observations();
     duplicate.push({ ...duplicate[0] });
     expect(() => buildBootstrapFamilyTable(parameters(), duplicate)).toThrow(/globally unique/);
+  });
+});
+
+describe('Bootstrap family Analysis table v2', () => {
+  it('uses the planned family size even when a comparison is missing', () => {
+    const value = buildBootstrapFamilyTableV2(parameters(), observations());
+
+    expect(value.family).toEqual({
+      plannedComparisons: 3,
+      observedComparisons: 2,
+      missingComparisons: 1,
+      nominalAlpha: 0.05,
+      effectiveAlpha: 0.05 / 3,
+      monteCarloFamilyConfidenceLevel: 0.99,
+    });
+    expect(value.comparisons.filter((entry) => entry.comparisonStatus === 'observed'))
+      .toMatchObject([{
+        effectiveAlpha: 0.05 / 3,
+        significance: {
+          significanceStatus: 'significant',
+          evidenceKind: 'exact-resampling-support',
+          supportMethodId: 'omk.exact-resampling-support/v1',
+        },
+      }, {
+        effectiveAlpha: 0.05 / 3,
+        significance: {
+          monteCarloMethodId: BOOTSTRAP_MONTE_CARLO_METHOD_ID,
+          familyConfidenceLevel: 0.99,
+        },
+      }]);
+  });
+
+  it('decides from unrounded tail evidence and exposes Monte Carlo uncertainty', () => {
+    const belowDisplayPrecision = bootstrapSignificanceEvidence({
+      distribution: {
+        estimate: 0.00001,
+        draws: Array.from({ length: 1_000 }, () => 0.00001),
+        exactSign: null,
+      },
+      effectiveAlpha: 0.05,
+      plannedComparisons: 1,
+    });
+    expect(belowDisplayPrecision).toMatchObject({
+      significanceStatus: 'significant',
+      evidenceKind: 'monte-carlo-tail',
+      direction: 'positive',
+      tailCount: 0,
+      tailProbability: 0,
+      monteCarloMethodId: BOOTSTRAP_MONTE_CARLO_METHOD_ID,
+    });
+    expect(belowDisplayPrecision.evidenceKind).toBe('monte-carlo-tail');
+    if (belowDisplayPrecision.evidenceKind !== 'monte-carlo-tail') return;
+    expect(belowDisplayPrecision.probabilityInterval.upper).toBeLessThan(0.025);
+
+    const boundary = bootstrapSignificanceEvidence({
+      distribution: {
+        estimate: 0.1,
+        draws: [
+          ...Array.from({ length: 20 }, () => 0),
+          ...Array.from({ length: 980 }, () => 0.1),
+        ],
+        exactSign: null,
+      },
+      effectiveAlpha: 0.05,
+      plannedComparisons: 1,
+    });
+    expect(boundary.significanceStatus).toBe('indeterminate');
+    expect(boundary.evidenceKind).toBe('monte-carlo-tail');
+    if (boundary.evidenceKind !== 'monte-carlo-tail') return;
+    expect(boundary.probabilityInterval.lower).toBeLessThan(0.025);
+    expect(boundary.probabilityInterval.upper).toBeGreaterThan(0.025);
+  });
+
+  it('recomputes transported v2 evidence under sealed parameters', () => {
+    const sealed = parameters();
+    const value = buildBootstrapFamilyTableV2(sealed, observations());
+    const envelope = { resultType: 'table' as const, value };
+    expect(parseBootstrapFamilyTableV2Envelope(envelope)).toEqual(envelope);
+    const validator = createBootstrapFamilyTableV2SchemaValidators().get(
+      schemaIdentityKey(BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA),
+    );
+    const context = {
+      validationKind: 'analysis-output' as const,
+      parameters: sealed,
+      inputFacts: { resamplingUnitCount: 4 },
+    };
+    expect(validator?.parse(envelope, context)).toEqual(envelope);
+
+    const altered = structuredClone(envelope);
+    const comparison = altered.value.comparisons.find(
+      (entry) => entry.comparisonStatus === 'observed'
+        && entry.significance.evidenceKind === 'monte-carlo-tail',
+    );
+    if (comparison?.comparisonStatus === 'observed'
+        && comparison.significance.evidenceKind === 'monte-carlo-tail') {
+      comparison.significance.tailCount += 1;
+    }
+    expect(() => validator?.parse(altered, context)).toThrow(/recomputable/);
   });
 });

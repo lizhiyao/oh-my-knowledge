@@ -26,6 +26,14 @@ import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.js';
 import {
+  BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table-v2.js';
+import {
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY,
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+  createBootstrapFamilyV2AnalysisNodes,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-node-v2.js';
+import {
   COMPOSITE_TABLE_SCHEMA,
   COMPOSITE_TABLE_SCHEMA_VERSION,
   compositeAggregate,
@@ -150,6 +158,33 @@ async function execute(value: AnalysisNodeExecutionContext) {
   }
 }
 
+async function executeV2(): Promise<Awaited<ReturnType<typeof execute>>> {
+  const implementation = createBootstrapFamilyV2AnalysisNodes().get(
+    BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+  );
+  if (implementation === undefined) throw new Error('missing Bootstrap v2 implementation');
+  const run = await implementation.openRun({
+    runId: 'run-v2', analysisPlanDigest: planDigest,
+    evaluationBundleDigest: bundleDigest, analysisMode: 'preregistered',
+  });
+  try {
+    const value = context();
+    return await run.execute({
+      ...value,
+      node: {
+        ...value.node,
+        implementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+      },
+      sampling: {
+        ...value.sampling,
+        estimatorId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+      },
+    });
+  } finally {
+    await run.dispose();
+  }
+}
+
 describe('Bootstrap family Analysis node', () => {
   it('declares canonical compiler capabilities and executes the Composite source contract', async () => {
     const capabilities = AnalysisNodeCapabilitiesSchema.parse(
@@ -197,5 +232,29 @@ describe('Bootstrap family Analysis node', () => {
       .rejects.toThrow('cancel-bootstrap');
     expect(canonicalizeJson(BOOTSTRAP_FAMILY_SOURCE_SCHEMAS))
       .toBe(canonicalizeJson([COMPOSITE_TABLE_SCHEMA]));
+  });
+
+  it('registers v2 with explicit Monte Carlo evidence', async () => {
+    const capabilities = AnalysisNodeCapabilitiesSchema.parse(
+      BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY.capabilities,
+    );
+    expect(capabilities.outputSchema).toEqual(BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA);
+    expect(Object.isFrozen(BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY)).toBe(true);
+    expect(BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY.fingerprint).toBe(
+      'sha256:f7aead16c6349a6c1963f500b4fa8c7d7d27d0d466c031d2e00f57864e668508',
+    );
+    await expect(executeV2()).resolves.toMatchObject({
+      analysisStatus: 'completed',
+      value: {
+        comparisons: [{
+          interval: { estimate: 1, samples: 100 },
+          significance: {
+            significanceStatus: 'significant',
+            evidenceKind: 'exact-resampling-support',
+            supportMethodId: 'omk.exact-resampling-support/v1',
+          },
+        }],
+      },
+    });
   });
 });
