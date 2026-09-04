@@ -160,14 +160,15 @@ const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json'
 ```
 
 Each published file uses its canonical raw catalog URL as `$id`, so JSON Schema tooling can
-resolve the document identity. The catalog contains 21 root contract names. Analysis Bundle,
-Comparability Assessment, Evaluation Report, and Series Analysis Bundle currently use v2; the
-other 17 current contracts use v1. Their package paths are respectively
+resolve the document identity.
+The catalog contains 21 root contract names; 8 current roots use v2 and 13 use v1. Their package paths are respectively
 `oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` and
-`oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`. Frozen v1 snapshots of the four
-upgraded contracts remain in the source catalog for historical identity resolution, but the
-runtime does not read them. Node.js hosts should prefer the `eval-core` package subpath or
-`resolveEvaluationCoreJsonSchema()` to use the installed current contract.
+`oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`. Some upgraded output contracts retain
+frozen v1 snapshots for historical identity resolution, while the assignment-aware Definition
+and Plan cutover intentionally has no v1 reader or snapshot. The runtime does not infer a current
+version from files present on disk. Node.js hosts should prefer the `eval-core` package subpath or
+`resolveEvaluationCoreJsonSchema()`; the resolver is the source of truth for each installed current
+contract.
 
 ## Results and errors
 

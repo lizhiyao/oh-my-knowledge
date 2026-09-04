@@ -84,7 +84,7 @@ This prevents a run from looking better merely because difficult coordinates fai
 
 ## Release Decision
 
-`omk.release-decision/v6` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
+`omk.release-decision/v7` consumes the authenticated Composite table, Bootstrap family, and every applicable rubric-dimension Judge Ensemble table. Its conclusions are:
 
 | Verdict | Meaning |
 |---|---|
@@ -97,7 +97,7 @@ This prevents a run from looking better merely because difficult coordinates fai
 
 Operational status, evidence status, conclusion status, and verdict remain separate. `PROGRESS` authorizes the normal release route only when it also carries `release-gates-passed`. Cross-run stability is an Evaluation Series concern and is never inferred from a single run.
 
-For a paired design, v6 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`. Monte Carlo-indeterminate significance never enters this gate; it remains not-decided. For a significant positive comparison, v6 applies `triviallySmallDifference` to the persisted four-decimal percentile lower bound, not the point estimate. Equality passes; a lower bound below the threshold yields `CAUTIOUS` even when the point estimate is large.
+For a paired design, v7 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`. Monte Carlo-indeterminate significance never enters this gate; it remains not-decided. For a significant positive comparison, v7 applies `triviallySmallDifference` to the persisted four-decimal percentile lower bound, not the point estimate. Equality passes; a lower bound below the threshold yields `CAUTIOUS` even when the point estimate is large. Every applicable rubric dimension participates in dissent and unmeasured-uncertainty gates; no dimension name has privileged semantics.
 
 The default `minimum-count` requirement of 20 comparison units is a configurable heuristic evidence floor, not a claim of statistical power. For a release study with defensible prior information, configure an a priori paired-comparison plan in `eval.yaml`:
 
