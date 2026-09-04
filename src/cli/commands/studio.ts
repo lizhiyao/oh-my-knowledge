@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -11,6 +11,7 @@ import {
   projectReportsDir, globalReportsDir,
 } from '../../evidence/storage/directories.js';
 import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
+import { detectLegacyEvaluationLayouts } from '../../evidence/storage/legacy-eval-layout.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';
@@ -73,6 +74,29 @@ export async function runStudio(
     // 当成功上报会让 omk studio --dev 的 crash 静默)。
     child.on('exit', (code: number | null) => process.exit(code ?? 1));
     return;
+  }
+
+  const evalDirectories = flags['reports-dir']
+    ? [reportsDirOpt!]
+    : flags.global
+      ? [globalReportsDir()]
+      : [projectReportsDir(), globalReportsDir()];
+  const legacyReportsDirectories = flags['reports-dir']
+    ? []
+    : evalDirectories.map((directory) => join(dirname(directory), 'reports'));
+  const legacyLayouts = await detectLegacyEvaluationLayouts({
+    evalDirectories,
+    legacyReportsDirectories,
+  });
+  if (legacyLayouts.length > 0) {
+    const locations = legacyLayouts.map((finding) => (
+      `  - ${finding.directory} (${finding.fileCount})`
+    )).join('\n');
+    const fileCount = legacyLayouts.reduce((sum, finding) => sum + finding.fileCount, 0);
+    process.stderr.write(tCli('cli.studio.legacy_eval_layout', lang, {
+      count: fileCount,
+      locations,
+    }));
   }
 
   const { createReportServer } = await import('../../studio/http/report-server.js');
