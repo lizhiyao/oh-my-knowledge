@@ -18,6 +18,13 @@ OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它�
 - 只有架构／公开行为发生实质变化、CI 暴露新问题、重要 rebase 冲突或外部审查提出新高风险方向时，才重新做完整 CR；普通小修只复查受影响面，避免无限循环审查。
 - Finding 的证据、优先级与输出格式以 `CODE_REVIEW.md` 为准；无 finding 时明确报告 no findings，不制造猜测性问题。用户显式要求 `cr`／`review` 时，仍按「写作规则」把结论直接发到对应 PR。
 
+### CR 运行产物隔离
+
+- `artifacts/cr/` 和 `knowledge/cr/` 属于 CR 工具运行状态，不是 OMK 源码资产；不得在仓库内创建或保留。不要用 `.gitignore` 隐藏这类工作树污染。
+- 每轮 CR 先用 `mktemp -d` 创建唯一的仓库外运行目录；材料快照与索引、Material IR、运行证据、图谱缓存、Context Package、编排结果和最终报告全部写入该目录。工具默认指向仓库时，必须用显式 `--runtime-dir`、`--graph-cache`、`--out`、`--results` 或等价参数改到该目录；不得执行回写仓库的结果同步。
+- Issue／PR／CI 是持久审查记录。只有用户明确要求把某份材料或报告作为项目资产维护时，才按正常文档改动评审并提交；外部发布同样需要用户明确授权。
+- CR 前后检查 `git status --short`；除本次有意源码改动外，工作树必须保持不变。工具无法避免写入仓库时停止使用该写入路径，清理其可重建产物，并披露限制。
+
 ## Code Review Rules
 
 ### 测量可比性与公开身份

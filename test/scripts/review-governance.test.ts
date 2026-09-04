@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -11,9 +11,16 @@ describe('autonomous review governance', () => {
     expect(agents).toContain('## 自主 CR 与完成定义');
     expect(agents).toContain('## Code Review Rules');
     expect(agents).toContain('必须完整阅读 [`CODE_REVIEW.md`](./CODE_REVIEW.md)');
+    expect(agents).toContain('### CR 运行产物隔离');
+    expect(agents).toContain('不得在仓库内创建或保留');
+    expect(agents).toContain('不得执行回写仓库的结果同步');
     expect(Buffer.byteLength(agents, 'utf8')).toBeLessThan(32 * 1024);
     expect(read('CLAUDE.md')).toContain('@AGENTS.md');
     expect(read('CONTRIBUTING.md')).toContain('[`CODE_REVIEW.md`](./CODE_REVIEW.md)');
+    const playbook = read('CODE_REVIEW.md');
+    expect(playbook).toContain('CR 工具产物必须与源码工作树隔离');
+    expect(playbook).toContain('`mktemp -d`');
+    expect(playbook).toContain('不得用 `.gitignore` 掩盖工具写入');
   });
 
   it('keeps domain-specific review rules close to the code they govern', () => {
@@ -44,6 +51,12 @@ describe('autonomous review governance', () => {
       '## 未解决风险',
     ]) {
       expect(template).toContain(heading);
+    }
+  });
+
+  it('keeps generated CR state outside the repository', () => {
+    for (const path of ['artifacts/cr', 'knowledge/cr']) {
+      expect(existsSync(join(root, path)), path).toBe(false);
     }
   });
 });
