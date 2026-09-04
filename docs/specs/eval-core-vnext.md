@@ -287,10 +287,13 @@ v1 keeps its built-in reducers and estimators minimal:
 - `descriptive.mean/v1`, `descriptive.rate/v1`, and `descriptive.quantile/v1`;
 - `bootstrap.mean-percentile/v1`;
 - `bootstrap.paired-difference-percentile/v1`;
+- `bootstrap.unpaired-difference-percentile/v1`;
 - `bootstrap.cluster-percentile/v1`;
 - `bonferroni/v1` for multiple-comparison correction.
 
 Alpha, resample count, resampling unit, and seed enter AnalysisPlan. v1 does not embed parametric methods such as t-tests, ANOVA, or Hotelling T². Future estimators are added through AnalysisRegistry identities without changing observation or Bundle contracts. Prepare fails when an estimator does not support the value domain or SamplingDesign and never switches algorithms implicitly.
+
+The unpaired estimator requires disjoint sample identities between the declared control and treatment arms and independently resamples each arm. For stratified inputs, it resamples within arm × stratum cells and combines within-stratum differences using pooled observed stratum proportions. A missing arm in any observed stratum makes the result inconclusive; the estimator never falls back to a paired or unstratified analysis.
 
 Re-analysis and re-decision preserve parent Bundle digest, policy digest, derivation time, and `analysisMode: preregistered | exploratory`. Thresholds or methods chosen after observing results cannot masquerade as pre-sealed release gates.
 
@@ -889,7 +892,7 @@ This review closes five blocking questions:
 2. **Protocol families**: v1 includes only `omk.invoke/v1` and `omk.session/v1`; external results enter through ExecutionBundle rather than an import protocol.
 3. **Event journal**: one consumer, 256 events by default, retained-window replay for late subscribers, progress-first coalescing, and explicit overflow reporting; lossless delivery uses EventWriter.
 4. **Bundle signing**: v1 records digest and trust but does not sign; hosts compose attestations and verifiers through extensions.
-5. **Estimator registry**: v1 includes descriptive reducers, percentile bootstrap for mean/paired-difference/cluster designs, and Bonferroni, with no built-in parametric methods.
+5. **Estimator registry**: v1 includes descriptive reducers, percentile bootstrap for mean/paired-difference/unpaired-difference/cluster designs, and Bonferroni, with no built-in parametric methods.
 
 These decisions close the architectural choices required before Contracts. Conformance tests and simulations must still validate implementation constants and algorithms.
 

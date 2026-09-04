@@ -134,6 +134,25 @@ async function execute(input: AnalysisNodeExecutionContext) {
 }
 
 describe('Evaluation Core built-in estimators', () => {
+  it('declares the independent-group estimator capability without paired-block fallback', () => {
+    const implementation = createBuiltinAnalysisNodes().get(
+      'bootstrap.unpaired-difference-percentile/v1',
+    );
+    expect(implementation?.identity.capabilities).toMatchObject({
+      capabilityKind: 'analysis-node',
+      analysisNodeKinds: ['estimator'],
+      inputCardinalities: {
+        metricObservations: { min: 1, max: 1 },
+        comparisons: { min: 1, max: 1 },
+      },
+      sampling: {
+        experimentalUnits: ['sample'],
+        repeatedMeasures: [false, true],
+        resamplingUnits: ['sample'],
+      },
+    });
+  });
+
   it('counts only complete paired resampling units', () => {
     expect(countAnalysisResamplingUnits('paired-block', [
       {
@@ -288,6 +307,88 @@ describe('Evaluation Core built-in estimators', () => {
       value: { estimate: 1.5, unitCount: 2 },
     });
     expect(result.includedRowIds).toHaveLength(4);
+  });
+
+  it('resamples independent arms and rejects overlapping experimental units', async () => {
+    const independent = context({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        row({ sampleId: 'c1', targetId: 'control', value: 1 }),
+        row({ sampleId: 'c2', targetId: 'control', value: 3 }),
+        row({ sampleId: 't1', targetId: 'treatment', value: 4 }),
+        row({ sampleId: 't2', targetId: 'treatment', value: 6 }),
+      ],
+    });
+    const first = await execute(independent);
+    const second = await execute(independent);
+
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 3, unitCount: 4, resamples: 64 },
+      assumptionChecks: [{
+        assumptionId: 'independent-non-overlapping-samples',
+        checkStatus: 'passed',
+      }],
+    });
+    expect(first.includedRowIds).toHaveLength(4);
+
+    const overlapping = await execute(context({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        row({ sampleId: 'shared', targetId: 'control', value: 1 }),
+        row({ sampleId: 'c2', targetId: 'control', value: 3 }),
+        row({ sampleId: 'shared', targetId: 'treatment', value: 4 }),
+        row({ sampleId: 't2', targetId: 'treatment', value: 6 }),
+      ],
+    }));
+    expect(overlapping).toMatchObject({
+      analysisStatus: 'inconclusive',
+      reasonCodes: ['analysis-unpaired-bootstrap-overlapping-units'],
+    });
+  });
+
+  it('estimates independent arms within strata using pooled stratum weights', async () => {
+    const stratumA = digestCanonicalJson({ stratum: 'a' });
+    const stratumB = digestCanonicalJson({ stratum: 'b' });
+    const result = await execute(context({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        row({ sampleId: 'c-a1', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 'c-a2', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 't-a1', targetId: 'treatment', value: 2, stratumId: stratumA }),
+        row({ sampleId: 'c-b1', targetId: 'control', value: 100, stratumId: stratumB }),
+        row({ sampleId: 't-b1', targetId: 'treatment', value: 102, stratumId: stratumB }),
+        row({ sampleId: 't-b2', targetId: 'treatment', value: 102, stratumId: stratumB }),
+      ],
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 2, unitCount: 6 },
+    });
+
+    const missingArm = await execute(context({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        row({ sampleId: 'c-a1', targetId: 'control', value: 0, stratumId: stratumA }),
+        row({ sampleId: 'c-b1', targetId: 'control', value: 100, stratumId: stratumB }),
+        row({ sampleId: 't-a1', targetId: 'treatment', value: 2, stratumId: stratumA }),
+        row({ sampleId: 't-a2', targetId: 'treatment', value: 2, stratumId: stratumA }),
+      ],
+    }));
+    expect(missingArm).toMatchObject({
+      analysisStatus: 'inconclusive',
+      reasonCodes: ['analysis-unpaired-bootstrap-strata-not-shared'],
+    });
   });
 
   it('resamples whole clusters and rejects fewer than two units', async () => {

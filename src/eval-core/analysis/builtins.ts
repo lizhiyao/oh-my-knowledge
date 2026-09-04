@@ -639,6 +639,121 @@ function executePairedBootstrap(context: AnalysisNodeExecutionContext): Analysis
   } : interval;
 }
 
+function bootstrapArmStratumMean(
+  seed: Sha256Digest,
+  armId: string,
+  stratumId: string,
+  replicate: number,
+  members: readonly BootstrapUnit[],
+): number {
+  const stratumSeed = digestCanonicalJson({
+    derivation: 'omk.analysis-unpaired-bootstrap-arm-stratum-seed/v1',
+    seed,
+    armId,
+    stratumId,
+  });
+  return mean(Array.from({ length: members.length }, (_, draw) => (
+    members[deterministicIndex(stratumSeed, replicate, draw, members.length)].value
+  )));
+}
+
+function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): AnalysisNodeExecutionResult {
+  const comparisonInputs = context.inputs.filter(
+    (input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
+      input.inputKind === 'comparison'
+    ),
+  );
+  if (comparisonInputs.length !== 1) {
+    throw new TypeError('Unpaired bootstrap requires exactly one Comparison contrast.');
+  }
+  const comparisonInput = comparisonInputs[0];
+  const metricInput = metricInputs(context)[0];
+  if (metricInput === undefined || comparisonInput.contrast.metricId !== metricInput.referenceId) {
+    return incomplete('analysis-unpaired-bootstrap-requires-one-matching-metric');
+  }
+  const controlId = comparisonInput.contrast.controlTargetId;
+  const treatmentId = comparisonInput.contrast.treatmentTargetId;
+  const rows = observedRows(context);
+  const controlRows = rows.filter((row) => row.targetId === controlId);
+  const treatmentRows = rows.filter((row) => row.targetId === treatmentId);
+  const controlSampleIds = new Set(controlRows.map((row) => row.sampleId));
+  if (treatmentRows.some((row) => controlSampleIds.has(row.sampleId))) {
+    return incomplete('analysis-unpaired-bootstrap-overlapping-units');
+  }
+  const controlUnits = [...groupRows(controlRows, (row) => row.sampleId).values()].map(groupUnit);
+  const treatmentUnits = [...groupRows(treatmentRows, (row) => row.sampleId).values()].map(groupUnit);
+  if (controlUnits.length < 2 || treatmentUnits.length < 2) {
+    return incomplete('analysis-insufficient-resampling-units-per-arm');
+  }
+  const controlStrata = new Set(controlUnits.map((unit) => unit.stratumId ?? 'omk:unstratified'));
+  const treatmentStrata = new Set(
+    treatmentUnits.map((unit) => unit.stratumId ?? 'omk:unstratified'),
+  );
+  if (controlStrata.size !== treatmentStrata.size
+      || [...controlStrata].some((stratumId) => !treatmentStrata.has(stratumId))) {
+    return incomplete('analysis-unpaired-bootstrap-strata-not-shared');
+  }
+  const controlByStratum = new Map<string, BootstrapUnit[]>();
+  const treatmentByStratum = new Map<string, BootstrapUnit[]>();
+  for (const unit of controlUnits) {
+    const stratumId = unit.stratumId ?? 'omk:unstratified';
+    controlByStratum.set(stratumId, [...(controlByStratum.get(stratumId) ?? []), unit]);
+  }
+  for (const unit of treatmentUnits) {
+    const stratumId = unit.stratumId ?? 'omk:unstratified';
+    treatmentByStratum.set(stratumId, [...(treatmentByStratum.get(stratumId) ?? []), unit]);
+  }
+  const totalUnitCount = controlUnits.length + treatmentUnits.length;
+  const strata = [...controlStrata].sort().map((stratumId) => ({
+    stratumId,
+    control: controlByStratum.get(stratumId) ?? [],
+    treatment: treatmentByStratum.get(stratumId) ?? [],
+  }));
+  const weightedDifference = (
+    estimate: (armId: string, stratumId: string, units: readonly BootstrapUnit[]) => number,
+  ): number => strata.reduce((sum, stratum) => {
+    const weight = (stratum.control.length + stratum.treatment.length) / totalUnitCount;
+    return sum + weight * (
+      estimate(treatmentId, stratum.stratumId, stratum.treatment)
+        - estimate(controlId, stratum.stratumId, stratum.control)
+    );
+  }, 0);
+  const resamples = parameterInteger(context, 'resamples', 1_000);
+  const alpha = parameterNumber(context, 'alpha', 0.05);
+  if (resamples < 1 || alpha <= 0 || alpha >= 1) {
+    throw new TypeError('Bootstrap requires positive resamples and alpha in (0, 1).');
+  }
+  const seed = bootstrapSeed(context);
+  const estimates = Array.from({ length: resamples }, (_, replicate) => weightedDifference(
+    (armId, stratumId, units) => bootstrapArmStratumMean(
+      seed,
+      armId,
+      stratumId,
+      replicate,
+      units,
+    ),
+  )).sort((left, right) => left - right);
+  const includedRows = [...controlRows, ...treatmentRows];
+  return {
+    analysisStatus: 'completed',
+    resultType: 'interval',
+    value: {
+      estimate: weightedDifference((_armId, _stratumId, units) => (
+        mean(units.map((unit) => unit.value))
+      )),
+      lower: quantile(estimates, alpha / 2),
+      upper: quantile(estimates, 1 - alpha / 2),
+      confidenceLevel: 1 - alpha,
+      resamples,
+      unitCount: controlUnits.length + treatmentUnits.length,
+      method: 'percentile',
+    },
+    includedRowIds: includedRows.map((row) => row.rowId),
+    comparableRowIds: includedRows.map((row) => row.rowId),
+    assumptionChecks: passedAssumption('independent-non-overlapping-samples'),
+  };
+}
+
 interface Hypothesis {
   hypothesisId: string;
   pValue: number;
@@ -790,6 +905,25 @@ register(
   BUILTIN_INTERVAL_RESULT_SCHEMA,
   BOOTSTRAP_PARAMETERS_SCHEMA,
   executePairedBootstrap,
+);
+register(
+  'bootstrap.unpaired-difference-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    comparison: true,
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['sample'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeUnpairedBootstrap,
 );
 register(
   'bootstrap.cluster-percentile/v1',
