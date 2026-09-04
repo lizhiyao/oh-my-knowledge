@@ -307,10 +307,18 @@ v1 内建的 reducer／estimator 保持最小：
 - `descriptive.mean/v1`、`descriptive.rate/v1`、`descriptive.quantile/v1`；
 - `bootstrap.mean-percentile/v1`；
 - `bootstrap.paired-difference-percentile/v1`；
+- `bootstrap.unpaired-difference-percentile/v1`；
+- `bootstrap.hierarchical-mean-percentile/v1`；
+- `bootstrap.hierarchical-paired-difference-percentile/v1`；
+- `bootstrap.hierarchical-unpaired-difference-percentile/v1`；
 - `bootstrap.cluster-percentile/v1`；
 - multiple-comparison correction 的 `bonferroni/v1`。
 
 alpha、重采样次数、resampling unit 和 seed 都进入 AnalysisPlan。v1 不内建 t-test、ANOVA、Hotelling T² 等参数方法；未来通过 AnalysisRegistry 增加新 estimator identity，不改变 observation 或 Bundle 契约。值域或 SamplingDesign 不受某 estimator 支持时，prepare 失败，不自动换算法。
+
+非配对 estimator 要求声明的 control 与 treatment 臂使用互不重叠的 sample identity，并对两臂独立重采样。存在 stratum 时，它在 arm × stratum 单元内重采样，再按计划总体的 stratum 比例组合组内差值；任一已观察 stratum 缺少一侧臂时结果为 inconclusive，绝不自动退化成 paired 或 unstratified analysis。
+
+分层 estimator 会在参数中封存完整 measurement panel：先在每个 ensemble member 内平均 evaluator replicate，再执行已声明的成员等权或正数归一化权重聚合，最后在每个 sample 内平均完整的 Target trial。只有所有已封存 evaluator、instrument、member、group 与 replicate 坐标都已观察时，trial 才能进入分析。Bootstrap 仍只重采样 sample 或 paired block；panel member 与 replicate 永远不增加 `unitCount`。非分层 estimator identity 保持原有语义。
 
 重新分析和重新决策保留 parent bundle digest、policy digest、生成时间以及 `analysisMode: preregistered | exploratory`。执行后修改的阈值或方法不能冒充预先封存的发布门槛。
 
