@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   InvalidCanonicalJsonError,
   canonicalizeJson,
+  canonicalizeJsonBytes,
   digestCanonicalJson,
   isCanonicalJson,
 } from '../../../src/eval-core/contracts/json.js';
@@ -54,6 +55,19 @@ describe('Evaluation Core RFC 8785 JSON', () => {
 
     expect(first).toBe(second);
     expect(first).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it('preserves the frozen UTF-8 byte and digest contract without Node Buffer', () => {
+    const value = { text: '知识😀' };
+
+    expect([...canonicalizeJsonBytes(value)]).toEqual([
+      123, 34, 116, 101, 120, 116, 34, 58, 34,
+      231, 159, 165, 232, 175, 134, 240, 159, 152, 128,
+      34, 125,
+    ]);
+    expect(digestCanonicalJson(value)).toBe(
+      'sha256:c944686c8bd06911f743ac2510ee0a691a0751eb7dc9e8bba4ee43d84c3b6a31',
+    );
   });
 
   it.each([

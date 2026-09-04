@@ -168,7 +168,7 @@ export function canonicalizeJson(value: unknown): string {
 }
 
 export function canonicalizeJsonBytes(value: unknown): Uint8Array {
-  return Buffer.from(canonicalizeJson(value), 'utf8');
+  return new TextEncoder().encode(canonicalizeJson(value));
 }
 
 export type Sha256Digest = `sha256:${string}`;
