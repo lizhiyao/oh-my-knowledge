@@ -71,12 +71,15 @@ runtime readiness belongs to executors:
 ```text
 eval-workflows/
 ├── analysis/           # reusable workflow-owned statistical primitives
-├── inputs/             # config, sample, artifact-source resolution, and schemas
-├── instruments/        # judge invocation, judge trace, and instrument contracts
+├── artifact-store/     # Core artifact persistence, discovery, and overlays
+├── assertions/         # authored assertion adaptation and score layers
 ├── gold/               # human-gold datasets, calibration, and CLI support
 ├── input-compilation/  # host inputs → host-neutral measurement definition
-├── runtime-adapter/    # binding assembly and declared-preflight admission
+├── inputs/             # config, sample, artifact-source resolution, and schemas
+├── instruments/        # evaluator configuration and frozen prompt assets
 ├── projections/        # authenticated downstream views of Core artifacts
+├── resume-admission/   # persisted-run integrity and resume admission
+├── runtime-adapter/    # Core bindings, analysis nodes, evaluators, and adapters
 └── production-host/    # Node host composition and effect orchestration
 
 executors/
@@ -90,6 +93,24 @@ judge execution and Gold calibration into the instruments and analysis contracts
 `executors/preflight` reports environment readiness facts, while
 `eval-workflows/runtime-adapter/preflight.ts` decides workflow admission from binding declarations.
 These subdomains remain separate dependency-graph vertices even though they are physically grouped.
+
+`eval-workflows` is an ownership umbrella, not permission to grow a second monolith. Every direct
+subdirectory above is a separate dependency-graph vertex. Its root is limited to cross-workflow defaults,
+user messages, and repository guidance; new behavior belongs in an owning subdomain. The next decomposition
+boundary is `runtime-adapter`, whose growth must stay within four capability partitions:
+
+```text
+runtime-adapter/
+├── adapters/         # provider protocol bridges
+├── analysis/         # registered Core AnalysisNode implementations
+├── evaluators/       # evaluator ports adapted to Core instruments
+└── resource-leases/  # declared host-resource acquisition and cleanup
+```
+
+A partition moves out of `eval-workflows` only when its contract is stable, it has an independent
+consumer or lifecycle, it no longer imports product-host composition, and its new owner is unambiguous.
+Line count alone is not a reason to add another top-level domain. Until those conditions hold, architecture
+tests keep every workflow subdomain visible to cycle analysis and reject unplanned root-level expansion.
 
 Evidence persistence and cross-source association have one non-decision boundary:
 
