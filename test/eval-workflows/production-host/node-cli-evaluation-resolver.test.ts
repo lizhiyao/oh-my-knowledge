@@ -676,6 +676,49 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(rubricEvaluators[0]?.measurement.replicateIndex).toBe(0);
   });
 
+  it('seals a priori power assumptions and the derived comparison-unit requirement', async () => {
+    const root = await fixture('power-plan');
+    const base = request(root);
+    const powered = {
+      ...base,
+      values: {
+        ...base.values,
+        measurement: {
+          ...base.values.measurement,
+          decision: {
+            ...base.values.measurement.decision,
+            sampleSize: {
+              sampleSizePlanningKind: 'a-priori-power' as const,
+              minimumDetectableDifference: 0.5,
+              expectedDifferenceStandardDeviation: 1,
+              targetPower: 0.8,
+              assumptionSource: 'pilot-2026-q3',
+            },
+          },
+        },
+      },
+    };
+
+    const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(
+      powered,
+      { projectRoot: root, materializationRoot: join(root, '.omk', 'resolved') },
+    ));
+
+    expect(compiled.definition.decisionPolicy?.parameters).toMatchObject({
+      sampleSizeRequirement: {
+        sampleSizePlanningKind: 'a-priori-power',
+        methodId: 'omk.paired-mean-difference-normal-approximation/v1',
+        minimumDetectableDifference: 0.5,
+        expectedDifferenceStandardDeviation: 1,
+        targetPower: 0.8,
+        familywiseAlpha: 0.05,
+        plannedComparisonCount: 1,
+        minimumComparisonUnits: 32,
+        assumptionSource: 'pilot-2026-q3',
+      },
+    });
+  });
+
   it('keeps production sample validation strict despite the legacy ambient escape hatch', async () => {
     const root = await fixture('strict-loader');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{

@@ -17,14 +17,14 @@ omk init [目录]
 ```text
   --force           允许覆盖目标目录中已有的 omk 脚手架文件
   --lang <value>    输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --samples <3|20>  官方起步用例数量：3 条用于快速跑通，20 条用于达到注册样本量下限
+  --samples <3|20>  官方起步用例数量：3 条用于快速跑通，20 条用于达到默认启发式证据下限
 ```
 
 完整描述见 `omk init --help`。
 
 <!-- omk:cli:init:flags:end -->
 
-在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到注册样本量下限的官方起步用例集。起步用例标记为 `llm-generated`，作为发布证据前必须人工复核或替换。除非显式传入 `--force`，`init` 不会覆盖已有脚手架文件。
+在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到默认启发式证据下限的官方起步用例集，但不代表完成先验功效规划。起步用例标记为 `llm-generated`，作为发布证据前必须人工复核或替换。除非显式传入 `--force`，`init` 不会覆盖已有脚手架文件。
 
 ## `omk install`
 

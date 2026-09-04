@@ -114,7 +114,7 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 
 本层已经是正式生产边界。`omk eval` 把这里产出的 contract 交给 Runtime 装配与 Core 宿主 workflow，并持久化 Core Plan、Bundle 和 Report。已删除的旧 pipeline 不会双跑或 shadow run，后续层也不会重新解析 CLI 输入。
 
-迁移 contract 有意不兼容：resolved compiler input 使用 `omk.resolved-cli-evaluation-input/v4`，HostResource inventory 使用 `omk.resolved-host-resources/v3`，binding output 使用 `omk.runtime-binding-request/v4`。v4 用 secret `mock-rule` descriptor 和 lease role 取代内联 mock match rule。旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。评分、统计及其可比性不变量不变。
+迁移 contract 有意不兼容：parse output 使用 `omk.cli-evaluation-request/v2`，resolved compiler input 使用 `omk.resolved-cli-evaluation-input/v5`，HostResource inventory 仍使用 `omk.resolved-host-resources/v3`，binding output 仍使用 `omk.runtime-binding-request/v4`。Request v2 与 resolved input v5 增加必需的样本量规划 contract，并选择 `omk.release-decision/v4`；旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。此前 resolved input v4 已用 secret `mock-rule` descriptor 和 lease role 取代内联 mock match rule。新的 release-policy identity 显式标记样本量语义变化，历史 v1～v3 policy 仍保留注册用于重放。
 
 disable-only 的 `--no-cache`／`noCache` 没有忠实的 Core cache-enable 等价语义：已删除实现中的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。当前 Registry 只规范化 disabled 状态，并把显式 cache reuse 留给未来单独设计的接口；旧 cache 文件不会被读取。
 
@@ -178,6 +178,15 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | eval.yaml | `budget.perSampleUSD` | `policy.budget.perCoordinateProviderCostUSD` | 200 | — | MeasurementPolicy | run | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `budget.totalUSD` | `policy.budget.totalProviderCostUSD` | 200 | — | MeasurementPolicy | run | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `concurrency` | `policy.executionConcurrency` | 200 | `1` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision` | `definition.decisionPolicy` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.minimumComparisonUnits` | `definition.decisionPolicy.sampleSize.minimumComparisonUnits` | 200 | `20` (documented) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power` | `definition.decisionPolicy.sampleSize` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.assumptionSource` | `definition.decisionPolicy.sampleSize.assumptionSource` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.expectedDifferenceStandardDeviation` | `definition.decisionPolicy.sampleSize.expectedDifferenceStandardDeviation` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.minimumDetectableDifference` | `definition.decisionPolicy.sampleSize.minimumDetectableDifference` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.targetPower` | `definition.decisionPolicy.sampleSize.targetPower` | 200 | `0.8` (documented) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.threshold` | `definition.decisionPolicy.threshold` | 200 | — (derived) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.trivialDifference` | `definition.decisionPolicy.trivialDifference` | 200 | — (derived) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `effort` | `definition.targetRuntime.effort` | 200 | `"low"` (documented) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `executor` | `definition.targetRuntime.implementationId` | 200 | — (environment-selection) | Definition | execution | `executor-protocol`<br>`model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `goldDir` | `orchestration.gold.resourceLocator` | 200 | — | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |

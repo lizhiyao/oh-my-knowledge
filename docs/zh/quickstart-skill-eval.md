@@ -32,13 +32,13 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 `omk init` 会创建两版 skill 和三条评测用例。`--dry-run` 先预览 sealed task plan 和预估调用次数；真跑后会在 Studio 打开 Core run。demo 只有三条用例，verdict 经常是 `UNDERPOWERED`，这是正常教学结果，不是运行失败。
 
-希望第一次运行就达到 omk 注册的样本量下限，可以改用官方 20 条完整起步集：
+希望第一次运行就达到 omk 默认的启发式证据下限，可以改用官方 20 条完整起步集：
 
 ```bash
 omk init demo --samples 20
 ```
 
-完整用例集在安全、健壮性、可维护性、性能四个维度各有 5 条，覆盖 easy／medium／hard 难度，并包含无缺陷对照，避免把「报告更多问题」误当成更好的审查。它会产生 40 次 control／treatment 执行，因此默认 3 条仍然是验证环境最省成本的入口。固定起步用例明确标记为 `provenance: llm-generated`：20 条能提高统计功效，但仍是教学数据而非生产发布证据。信任 ship／no-ship 判断前，应人工复核并替换为真实领域用例。
+完整用例集在安全、健壮性、可维护性、性能四个维度各有 5 条，覆盖 easy／medium／hard 难度，并包含无缺陷对照，避免把「报告更多问题」误当成更好的审查。它会产生 40 次 control／treatment 执行，因此默认 3 条仍然是验证环境最省成本的入口。固定起步用例明确标记为 `provenance: llm-generated`：20 条只达到默认启发式证据下限，不等于完成先验功效规划，也仍是教学数据而非生产发布证据。信任 ship／no-ship 判断前，应人工复核并替换为真实领域用例。
 
 在 Codex 任务里，上面的最短命令无需添加 runtime 参数。普通终端想固定使用 Codex，可以把偏好加入 shell 配置，例如 `~/.zshrc`：
 
@@ -152,7 +152,7 @@ CLI 会尽量把首跑失败变成可执行的下一步：
 | `CAUTIOUS` | 不要盲发。先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑；只有明确人工复核后才放宽门禁。 |
 | `REGRESSION` | 不要发布。从最差层和失败用例开始定位，修好 artifact 后重跑评测。 |
 | `NOISE` | 暂不做发布判断。增加用例，或提高用例集区分度，让差异能从噪声里分离出来，再重跑。 |
-| `UNDERPOWERED` | 取得约 20 条以上可比较结果，或至少按当前实际观测比较单元数的 2× 补齐后重跑。 |
+| `UNDERPOWERED` | 补齐预注册的样本量要求后重跑。没有先验规划时，20 个可比较单元只是 omk 默认的启发式下限；正式研究应根据外部先导假设配置 `decision.power`，或用 `decision.minimumComparisonUnits` 登记 simulation 得出的要求。 |
 | `SOLO` | 先补对照组，通常用 `omk eval --control baseline --treatment <name>`，再做发布 / 不发布判断。 |
 
 ## 关键提示

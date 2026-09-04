@@ -7,7 +7,14 @@ import {
   type JsonValue,
   type MetricDefinition,
 } from '../../eval-core/contracts/index.js';
-import { DEFAULT_BOOTSTRAP_SEED } from '../analysis/bootstrap.js';
+import {
+  DEFAULT_BOOTSTRAP_ALPHA,
+  DEFAULT_BOOTSTRAP_SEED,
+} from '../analysis/bootstrap.js';
+import {
+  PAIRED_NORMAL_POWER_METHOD_ID,
+  requiredPairedComparisonUnits,
+} from '../analysis/sample-size.js';
 import { splitHoldout } from './holdout.js';
 import { renderEnvironmentSection } from './environment.js';
 import { deterministicAssertionInputSourceKinds } from '../assertions/deterministic.js';
@@ -544,7 +551,7 @@ export function buildProductionMeasurementDesign(
           comparisonDesign: 'paired',
         })),
         resamples: request.values.measurement.bootstrap.resamples,
-        alpha: 0.05,
+        alpha: DEFAULT_BOOTSTRAP_ALPHA,
         seed: DEFAULT_BOOTSTRAP_SEED,
       },
     });
@@ -590,10 +597,36 @@ export function buildProductionMeasurementDesign(
           layerScore: request.values.measurement.decision.threshold ?? 3,
           triviallySmallDifference:
             request.values.measurement.decision.trivialDifference ?? 0.1,
-          minimumSampleCount: 20,
           judgeDissentPearson: 0.4,
           holdoutGap: 0.5,
         },
+        sampleSizeRequirement:
+          request.values.measurement.decision.sampleSize.sampleSizePlanningKind
+            === 'minimum-count'
+            ? {
+                sampleSizePlanningKind: 'minimum-count',
+                minimumComparisonUnits:
+                  request.values.measurement.decision.sampleSize.minimumComparisonUnits,
+              }
+            : {
+                sampleSizePlanningKind: 'a-priori-power',
+                methodId: PAIRED_NORMAL_POWER_METHOD_ID,
+                minimumDetectableDifference:
+                  request.values.measurement.decision.sampleSize.minimumDetectableDifference,
+                expectedDifferenceStandardDeviation:
+                  request.values.measurement.decision.sampleSize
+                    .expectedDifferenceStandardDeviation,
+                targetPower: request.values.measurement.decision.sampleSize.targetPower,
+                familywiseAlpha: DEFAULT_BOOTSTRAP_ALPHA,
+                plannedComparisonCount: treatments.length,
+                minimumComparisonUnits: requiredPairedComparisonUnits({
+                  ...request.values.measurement.decision.sampleSize,
+                  familywiseAlpha: DEFAULT_BOOTSTRAP_ALPHA,
+                  plannedComparisonCount: treatments.length,
+                }),
+                assumptionSource:
+                  request.values.measurement.decision.sampleSize.assumptionSource,
+              },
         ...(holdout === null ? {} : {
           holdout: {
             trainSampleIds: sampleIds.filter((sampleId) => holdout.trainIds.has(sampleId)),

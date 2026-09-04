@@ -534,6 +534,86 @@ judgeModels:
   });
 });
 
+describe('loadEvalConfig — release decision sample size', () => {
+  const minimal = `
+samples: ./s.json
+variants:
+  - name: control
+    role: control
+    artifact: baseline
+  - name: treatment
+    role: treatment
+    artifact: ./v1.md
+`;
+
+  it('loads an explicit minimum comparison-unit floor', () => {
+    withYaml(`${minimal}
+decision:
+  minimumComparisonUnits: 12
+`, (path) => {
+      assert.deepEqual(loadEvalConfig(path).decision, { minimumComparisonUnits: 12 });
+    });
+  });
+
+  it('loads a priori power assumptions without materializing the documented power default', () => {
+    withYaml(`${minimal}
+decision:
+  power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1
+    assumptionSource: pilot-2026-q3
+`, (path) => {
+      assert.deepEqual(loadEvalConfig(path).decision?.power, {
+        minimumDetectableDifference: 0.5,
+        expectedDifferenceStandardDeviation: 1,
+        assumptionSource: 'pilot-2026-q3',
+      });
+    });
+  });
+
+  it.each([
+    {
+      name: 'mixes fixed and power planning',
+      body: `minimumComparisonUnits: 20
+  power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1
+    assumptionSource: pilot`,
+      error: /mutually exclusive/,
+    },
+    {
+      name: 'omits assumption provenance',
+      body: `power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1`,
+      error: /assumptionSource/,
+    },
+    {
+      name: 'uses invalid target power',
+      body: `power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1
+    targetPower: 1
+    assumptionSource: pilot`,
+      error: /targetPower/,
+    },
+    {
+      name: 'misspells a power assumption',
+      body: `power:
+    minimumDetectableDifference: 0.5
+    expectedDifferenceStandardDeviation: 1
+    targetPwoer: 0.8
+    assumptionSource: pilot`,
+      error: /targetPwoer is not supported/,
+    },
+  ])('rejects invalid planning config: $name', ({ body, error }) => {
+    assertYamlThrows(`${minimal}
+decision:
+  ${body}
+`, error, 'invalid decision sample-size planning config');
+  });
+});
+
 describe('loadEvalConfig — allowedSkills', () => {
   it('解析 allowedSkills: [] 表示完全隔离', () => {
     const dir = makeTmpDir();

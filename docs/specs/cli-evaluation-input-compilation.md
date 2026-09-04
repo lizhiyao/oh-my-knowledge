@@ -114,7 +114,7 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 
 This layer is the production boundary. `omk eval` consumes its contracts through Runtime assembly and the Core host workflow, then persists the Core Plan, Bundles, and Report. The deleted legacy pipeline is neither double-run nor shadow-run, and no later layer reparses CLI input.
 
-The migration contracts are intentionally incompatible: resolved compiler input is `omk.resolved-cli-evaluation-input/v4`, HostResource inventory is `omk.resolved-host-resources/v3`, and binding output is `omk.runtime-binding-request/v4`. v4 replaces inline mock match rules with a secret `mock-rule` descriptor and lease role. Earlier shapes are rejected without inference or a compatibility reader. Scoring, statistics, and their comparability invariants do not change.
+The migration contracts are intentionally incompatible: parse output is `omk.cli-evaluation-request/v2`, resolved compiler input is `omk.resolved-cli-evaluation-input/v5`, HostResource inventory remains `omk.resolved-host-resources/v3`, and binding output remains `omk.runtime-binding-request/v4`. Request v2 and resolved input v5 add the required sample-size planning contract and select `omk.release-decision/v4`; earlier shapes are rejected without inference or a compatibility reader. The v4 resolved input had previously replaced inline mock match rules with a secret `mock-rule` descriptor and lease role. Release-policy identity now makes the changed sample-size semantics explicit while historical v1–v3 policies remain registered for replay.
 
 The disable-only `--no-cache`／`noCache` surface has no faithful Core cache-enable equivalent: the removed implementation used stochastic read-through execution reuse and expressed nothing about Evaluation cache. The current registry therefore normalizes only the disabled state and marks explicit cache reuse for a future, separately designed interface. Old cache files are not read.
 
@@ -178,6 +178,15 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | eval.yaml | `budget.perSampleUSD` | `policy.budget.perCoordinateProviderCostUSD` | 200 | — | MeasurementPolicy | run | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `budget.totalUSD` | `policy.budget.totalProviderCostUSD` | 200 | — | MeasurementPolicy | run | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `concurrency` | `policy.executionConcurrency` | 200 | `1` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision` | `definition.decisionPolicy` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.minimumComparisonUnits` | `definition.decisionPolicy.sampleSize.minimumComparisonUnits` | 200 | `20` (documented) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power` | `definition.decisionPolicy.sampleSize` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.assumptionSource` | `definition.decisionPolicy.sampleSize.assumptionSource` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.expectedDifferenceStandardDeviation` | `definition.decisionPolicy.sampleSize.expectedDifferenceStandardDeviation` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.minimumDetectableDifference` | `definition.decisionPolicy.sampleSize.minimumDetectableDifference` | 200 | — | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.power.targetPower` | `definition.decisionPolicy.sampleSize.targetPower` | 200 | `0.8` (documented) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.threshold` | `definition.decisionPolicy.threshold` | 200 | — (derived) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `decision.trivialDifference` | `definition.decisionPolicy.trivialDifference` | 200 | — (derived) | Definition | decision | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `effort` | `definition.targetRuntime.effort` | 200 | `"low"` (documented) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `executor` | `definition.targetRuntime.implementationId` | 200 | — (environment-selection) | Definition | execution | `executor-protocol`<br>`model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `goldDir` | `orchestration.gold.resourceLocator` | 200 | — | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |

@@ -16,9 +16,9 @@ import type {
 } from '../../eval-core/contracts/index.js';
 
 export const CLI_EVALUATION_REQUEST_SCHEMA_VERSION =
-  'omk.cli-evaluation-request/v1' as const;
+  'omk.cli-evaluation-request/v2' as const;
 export const RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION =
-  'omk.resolved-cli-evaluation-input/v4' as const;
+  'omk.resolved-cli-evaluation-input/v5' as const;
 export const RESOLVED_HOST_RESOURCES_SCHEMA_VERSION =
   'omk.resolved-host-resources/v3' as const;
 export const RUNTIME_BINDING_REQUEST_SCHEMA_VERSION =
@@ -101,6 +101,18 @@ export interface CliEvaluationRequestValues {
     readonly decision: {
       readonly threshold?: number;
       readonly trivialDifference?: number;
+      readonly sampleSize:
+        | {
+            readonly sampleSizePlanningKind: 'minimum-count';
+            readonly minimumComparisonUnits: number;
+          }
+        | {
+            readonly sampleSizePlanningKind: 'a-priori-power';
+            readonly minimumDetectableDifference: number;
+            readonly expectedDifferenceStandardDeviation: number;
+            readonly targetPower: number;
+            readonly assumptionSource: string;
+          };
     };
     readonly budget?: {
       readonly totalProviderCostUSD?: number;

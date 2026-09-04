@@ -35,34 +35,46 @@ import {
 } from './judge-aggregation.js';
 import {
   RELEASE_DECISION_PARAMETERS_SCHEMA,
+  RELEASE_DECISION_PARAMETERS_V1_SCHEMA,
   parseReleaseDecisionParameters,
-  type ReleaseDecisionParameters,
+  parseReleaseDecisionParametersV1,
+  type AnyReleaseDecisionParameters,
 } from './release-decision-parameters.js';
 import { compareStrings, round } from './analysis-support.js';
 
 export const RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID = 'omk.release-decision/v1' as const;
 export const RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID = 'omk.release-decision/v2' as const;
-export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v3' as const;
+export const RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID = 'omk.release-decision/v3' as const;
+export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v4' as const;
 
-const RELEASE_DECISION_CAPABILITIES: JsonValue = {
-  capabilityKind: 'decision-policy',
-  analysisResultSchemaUris: [
-    COMPOSITE_TABLE_SCHEMA.schemaUri,
-    BOOTSTRAP_FAMILY_TABLE_SCHEMA.schemaUri,
-    JUDGE_ENSEMBLE_TABLE_SCHEMA.schemaUri,
-  ].sort(compareStrings),
-  multipleComparisonPolicyIds: [BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID],
-  parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
-  schemas: [
-    COMPOSITE_TABLE_SCHEMA,
-    BOOTSTRAP_FAMILY_TABLE_SCHEMA,
-    JUDGE_ENSEMBLE_TABLE_SCHEMA,
-  ].sort((left, right) => (
-    compareStrings(left.schemaUri, right.schemaUri)
-    || compareStrings(left.schemaVersion, right.schemaVersion)
-    || compareStrings(left.schemaDigest, right.schemaDigest)
-  )),
-};
+function releaseDecisionCapabilities(parameterSchema: SchemaIdentity): JsonValue {
+  return {
+    capabilityKind: 'decision-policy',
+    analysisResultSchemaUris: [
+      COMPOSITE_TABLE_SCHEMA.schemaUri,
+      BOOTSTRAP_FAMILY_TABLE_SCHEMA.schemaUri,
+      JUDGE_ENSEMBLE_TABLE_SCHEMA.schemaUri,
+    ].sort(compareStrings),
+    multipleComparisonPolicyIds: [BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID],
+    parameterSchema,
+    schemas: [
+      COMPOSITE_TABLE_SCHEMA,
+      BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+      JUDGE_ENSEMBLE_TABLE_SCHEMA,
+    ].sort((left, right) => (
+      compareStrings(left.schemaUri, right.schemaUri)
+      || compareStrings(left.schemaVersion, right.schemaVersion)
+      || compareStrings(left.schemaDigest, right.schemaDigest)
+    )),
+  };
+}
+
+const RELEASE_DECISION_V1_CAPABILITIES = releaseDecisionCapabilities(
+  RELEASE_DECISION_PARAMETERS_V1_SCHEMA,
+);
+const RELEASE_DECISION_CAPABILITIES = releaseDecisionCapabilities(
+  RELEASE_DECISION_PARAMETERS_SCHEMA,
+);
 
 export const RELEASE_DECISION_POLICY_V1_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
@@ -103,12 +115,12 @@ export const RELEASE_DECISION_POLICY_V1_IDENTITY: RuntimeIdentity = deepFreezeCa
         BOOTSTRAP_FAMILY_TABLE_SCHEMA,
         JUDGE_ENSEMBLE_TABLE_SCHEMA,
       ],
-      parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
-      declaredCapabilities: RELEASE_DECISION_CAPABILITIES,
+      parameterSchema: RELEASE_DECISION_PARAMETERS_V1_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_V1_CAPABILITIES,
     }),
     fingerprintBasis: 'self-reported',
     assuranceLevel: 'declared',
-    capabilities: RELEASE_DECISION_CAPABILITIES,
+    capabilities: RELEASE_DECISION_V1_CAPABILITIES,
     implementationManifest: { coverageKind: 'fingerprint-complete' },
   }),
 );
@@ -154,12 +166,64 @@ export const RELEASE_DECISION_POLICY_V2_IDENTITY: RuntimeIdentity = deepFreezeCa
         BOOTSTRAP_FAMILY_TABLE_SCHEMA,
         JUDGE_ENSEMBLE_TABLE_SCHEMA,
       ],
-      parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
-      declaredCapabilities: RELEASE_DECISION_CAPABILITIES,
+      parameterSchema: RELEASE_DECISION_PARAMETERS_V1_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_V1_CAPABILITIES,
     }),
     fingerprintBasis: 'self-reported',
     assuranceLevel: 'declared',
-    capabilities: RELEASE_DECISION_CAPABILITIES,
+    capabilities: RELEASE_DECISION_V1_CAPABILITIES,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
+  }),
+);
+
+export const RELEASE_DECISION_POLICY_V3_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
+  RuntimeIdentitySchema.parse({
+    implementationId: RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
+    version: '3.0.0',
+    fingerprint: digestCanonicalJson({
+      implementationId: RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID,
+      conclusionContract: [
+        'SOLO',
+        'UNDERPOWERED',
+        'NOISE',
+        'PROGRESS',
+        'CAUTIOUS',
+        'REGRESSION',
+      ],
+      precedence: [
+        'not-decided-evidence-and-binding-gates',
+        'solo',
+        'regression',
+        'cautious',
+        'underpowered',
+        'noise',
+        'progress',
+      ],
+      comparisonInterval: 'sealed-bootstrap-family-rounded-bounds-significance',
+      layerGate: 'two-decimal-mean-of-observed-composite-layer-facts-by-target',
+      sampleSize:
+        'paired-complete-pair-count-or-independent-minimum-observed-arm-count',
+      judgeDissent: 'pairwise-mean-pearson-over-complete-member-sample-matrix',
+      judgeUncertainty:
+        'positive-comparison-cautious-when-configured-ensemble-dissent-is-unmeasurable',
+      repeatedTrials: 'mean-observed-member-or-composite-values-within-sample',
+      holdout: 'train-minus-holdout-composite-with-minimum-scorable-partitions',
+      multiTreatment: 'worst-conclusion-then-comparison-id',
+      stabilityBoundary: 'evaluation-series-only',
+      evidenceGate: 'complete-evidence-required-after-core-source-trust-and-assumption-gates',
+      missingComparisonInterval: 'not-decided-no-point-estimate-fallback',
+      directReportDependency: 'none',
+      sourceSchemas: [
+        COMPOSITE_TABLE_SCHEMA,
+        BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+        JUDGE_ENSEMBLE_TABLE_SCHEMA,
+      ],
+      parameterSchema: RELEASE_DECISION_PARAMETERS_V1_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_V1_CAPABILITIES,
+    }),
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
+    capabilities: RELEASE_DECISION_V1_CAPABILITIES,
     implementationManifest: { coverageKind: 'fingerprint-complete' },
   }),
 );
@@ -167,7 +231,7 @@ export const RELEASE_DECISION_POLICY_V2_IDENTITY: RuntimeIdentity = deepFreezeCa
 export const RELEASE_DECISION_POLICY_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
-    version: '3.0.0',
+    version: '4.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
       conclusionContract: [
@@ -190,7 +254,9 @@ export const RELEASE_DECISION_POLICY_IDENTITY: RuntimeIdentity = deepFreezeCanon
       comparisonInterval: 'sealed-bootstrap-family-rounded-bounds-significance',
       layerGate: 'two-decimal-mean-of-observed-composite-layer-facts-by-target',
       sampleSize:
-        'paired-complete-pair-count-or-independent-minimum-observed-arm-count',
+        'observed-comparison-units-against-preregistered-minimum-or-a-priori-power-plan',
+      powerPlanning:
+        'paired-two-sided-normal-approximation-with-bonferroni-familywise-alpha',
       judgeDissent: 'pairwise-mean-pearson-over-complete-member-sample-matrix',
       judgeUncertainty:
         'positive-comparison-cautious-when-configured-ensemble-dissent-is-unmeasurable',
@@ -263,7 +329,7 @@ function result(
     : undefined;
 }
 
-function expectedResultIds(parameters: ReleaseDecisionParameters): string[] {
+function expectedResultIds(parameters: AnyReleaseDecisionParameters): string[] {
   return [
     parameters.sources.compositeResultId,
     parameters.sources.bootstrapFamilyResultId,
@@ -275,7 +341,7 @@ function expectedResultIds(parameters: ReleaseDecisionParameters): string[] {
 
 function releaseFacts(
   context: DecisionPolicyContext,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
 ): ReleaseFacts | undefined {
   const expectedIds = expectedResultIds(parameters);
   const actualIds = context.results.map((candidate) => candidate.resultId).sort(compareStrings);
@@ -323,11 +389,18 @@ function releaseFacts(
 
 function validateSourceBindings(
   context: DecisionPolicyContext,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   facts: ReleaseFacts,
 ): boolean {
   const configuration = facts.bootstrap.configuration;
   const comparisonCount = configuration.comparisons.length;
+  if ('sampleSizeRequirement' in parameters
+      && parameters.sampleSizeRequirement.sampleSizePlanningKind === 'a-priori-power'
+      && (parameters.sampleSizeRequirement.plannedComparisonCount !== comparisonCount
+        || parameters.sampleSizeRequirement.familywiseAlpha !== configuration.alpha
+        || configuration.comparisons.some((comparison) => (
+          comparison.comparisonDesign !== 'paired'
+        )))) return false;
   if (configuration.source.analysisResultId !== parameters.sources.compositeResultId
       || canonicalizeJson(configuration.targetIds) !== canonicalizeJson(parameters.targetIds)
       || canonicalizeJson(configuration.sampleIds) !== canonicalizeJson(parameters.sampleIds)
@@ -445,7 +518,7 @@ function sampleCompositeScores(
 }
 
 function holdoutGated(
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   table: CompositeTableValue,
   targetId: string,
 ): boolean {
@@ -466,7 +539,7 @@ function holdoutGated(
 
 function selectedJudgeGroups(
   table: JudgeEnsembleTableValue,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   targetId: string,
 ): JudgeEnsembleGroup[] {
   const source = parameters.sources.judgeEnsemble;
@@ -481,7 +554,7 @@ function selectedJudgeGroups(
 
 function judgePearson(
   table: JudgeEnsembleTableValue | undefined,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   targetId: string,
 ): number | undefined {
   if (table === undefined || parameters.sources.judgeEnsemble === undefined) return undefined;
@@ -516,7 +589,7 @@ function judgePearson(
 
 function judgeAssessment(
   facts: ReleaseFacts,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   controlTargetId: string,
   treatmentTargetId: string,
 ): Readonly<{ dissent: boolean; uncertaintyUnmeasured: boolean }> {
@@ -537,11 +610,12 @@ function judgeAssessment(
 interface ReleaseDecisionSemantics {
   readonly gateUnmeasuredJudgeUncertainty: boolean;
   readonly sampleSizeBasis: 'authored-samples' | 'observed-comparison-units';
+  readonly parameterSchemaVersion: 'v1' | 'v2';
 }
 
 function comparisonUnitCount(
   comparison: Extract<BootstrapComparison, { comparisonStatus: 'observed' }>,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   semantics: ReleaseDecisionSemantics,
 ): number {
   if (semantics.sampleSizeBasis === 'authored-samples') return parameters.sampleIds.length;
@@ -550,17 +624,23 @@ function comparisonUnitCount(
     : Math.min(comparison.counts.controlUnits, comparison.counts.treatmentUnits);
 }
 
+function minimumComparisonUnitCount(parameters: AnyReleaseDecisionParameters): number {
+  return 'sampleSizeRequirement' in parameters
+    ? parameters.sampleSizeRequirement.minimumComparisonUnits
+    : parameters.thresholds.minimumSampleCount;
+}
+
 function pairDecision(
   comparison: Extract<BootstrapComparison, { comparisonStatus: 'observed' }>,
   facts: ReleaseFacts,
-  parameters: ReleaseDecisionParameters,
+  parameters: AnyReleaseDecisionParameters,
   semantics: ReleaseDecisionSemantics,
 ): PairDecision {
   const binding = comparison.binding;
   const interval = comparison.interval;
   if (!interval.significant) {
     return comparisonUnitCount(comparison, parameters, semantics)
-      < parameters.thresholds.minimumSampleCount
+      < minimumComparisonUnitCount(parameters)
       ? {
         comparisonId: binding.comparisonId,
         verdict: 'UNDERPOWERED',
@@ -633,7 +713,9 @@ function decideRelease(
 ): DecisionPolicyOutput {
   if (context.signal.aborted) return notDecided('decision-cancelled');
   if (context.evidenceStatus !== 'complete') return notDecided('release-evidence-incomplete');
-  const parameters = parseReleaseDecisionParameters(context.policy.parameters);
+  const parameters = semantics.parameterSchemaVersion === 'v1'
+    ? parseReleaseDecisionParametersV1(context.policy.parameters)
+    : parseReleaseDecisionParameters(context.policy.parameters);
   const facts = releaseFacts(context, parameters);
   if (facts === undefined) return notDecided('release-analysis-result-binding-mismatch');
   if (!validateSourceBindings(context, parameters, facts)) {
@@ -673,6 +755,16 @@ export const RELEASE_DECISION_POLICY: AnalysisDecisionPolicy = {
   decide: async (context) => decideRelease(context, {
     gateUnmeasuredJudgeUncertainty: true,
     sampleSizeBasis: 'observed-comparison-units',
+    parameterSchemaVersion: 'v2',
+  }),
+};
+
+export const RELEASE_DECISION_POLICY_V3: AnalysisDecisionPolicy = {
+  identity: RELEASE_DECISION_POLICY_V3_IDENTITY,
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: true,
+    sampleSizeBasis: 'observed-comparison-units',
+    parameterSchemaVersion: 'v1',
   }),
 };
 
@@ -681,6 +773,7 @@ export const RELEASE_DECISION_POLICY_V2: AnalysisDecisionPolicy = {
   decide: async (context) => decideRelease(context, {
     gateUnmeasuredJudgeUncertainty: true,
     sampleSizeBasis: 'authored-samples',
+    parameterSchemaVersion: 'v1',
   }),
 };
 
@@ -689,6 +782,7 @@ export const RELEASE_DECISION_POLICY_V1: AnalysisDecisionPolicy = {
   decide: async (context) => decideRelease(context, {
     gateUnmeasuredJudgeUncertainty: false,
     sampleSizeBasis: 'authored-samples',
+    parameterSchemaVersion: 'v1',
   }),
 };
 
@@ -696,6 +790,7 @@ export function createReleaseDecisionPolicies(): ReadonlyMap<string, AnalysisDec
   return new Map([
     [RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V1],
     [RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V2],
+    [RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V3],
     [RELEASE_DECISION_POLICY_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY],
   ]);
 }

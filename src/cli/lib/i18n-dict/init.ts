@@ -41,8 +41,8 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
     en: '  2. Read the report verdict and Next line: 3 samples only prove the workflow, so UNDERPOWERED is expected; use --samples 20 in a new empty directory for the full starter set.',
   },
   'cli.init.next_step_report_full': {
-    zh: '  2. 看报告里的 verdict 和“下一步”：20 条用例达到注册样本量下限，但来源是 llm-generated；用于理解统计流程，发布前应人工复核并替换为真实领域用例。',
-    en: '  2. Read the report verdict and Next line: 20 samples meet the registered sample-size floor but are llm-generated; use them to learn the statistical workflow, then review and replace them with real domain cases before release.',
+    zh: '  2. 看报告里的 verdict 和“下一步”：20 条用例达到默认启发式证据下限，但不等于完成先验功效规划；其来源是 llm-generated，发布前应人工复核并替换为真实领域用例。',
+    en: '  2. Read the report verdict and Next line: 20 samples meet the default heuristic evidence floor, not an a priori power plan; they are llm-generated and must be reviewed or replaced with real domain cases before release.',
   },
   'cli.init.next_step_executor': {
     zh: '     executor / judge 会按运行环境选择；Codex 任务自动使用本机 Codex 配置。也可用 OMK_EXECUTOR / OMK_MODEL 固定环境偏好，详见 https://oh-my-knowledge.pages.dev/zh/reference/executors。',
