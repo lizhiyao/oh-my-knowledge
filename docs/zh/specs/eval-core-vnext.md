@@ -961,7 +961,12 @@ read／write／miss／stale／forged provenance，ContentStore 与 ContentResolv
 cache，同时保持不同的 Run id、state、取消、session 和 teardown；deferred gate 强制生命周期真实
 重叠。全部 fixture 只使用确定性 clock、seed、deferred gate 与内存 store，不读取文件、网络、用户
 配置，也不依赖 wall-clock delay。已知统计参考向量与确定性 simulation 共同守护 bootstrap unit
-语义、宽松的区间 coverage 校准带，以及零 paired effect 的宽松 I 型错误率上界。
+语义，并固定连续数据，以及 N=8／N=20 下均衡、偏斜、天花板聚集三类离散 1–5 分布的精确频率
+profile。这些 profile 是回归证据，不代表 percentile interval 对所有有限总体都达到 nominal
+coverage：冻结的 v1 流程在小样本、有界、偏斜场景会 coverage 不足（确定性 90%、每个 interval
+重采样 256 次的网格中，N=8 天花板场景为 43／60，N=20 为 46／60）。使用方必须把
+confidence level 理解为 nominal；任何改变这些性质的替代方案都必须使用新的 estimator
+identity。
 
 #425 对 Contracts、Compiler、Execution、Evaluation、Analysis／Decision 与跨阶段 conformance
 的验收审计至此完成。当时包根 Core façade、公开 export 白名单和独立 Node.js 宿主验收明确归 #424。
