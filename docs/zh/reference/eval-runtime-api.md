@@ -17,17 +17,23 @@
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`Analysis`、`Comparison`、`Decision`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`Analysis`、`Comparison`、`Decision`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
 `RuntimeContext` 只包含可重放的宿主自定义 JSON `values`。canonical façade 不接受文件系统路径充当 workspace identity；在一般化 Runtime 提供内容寻址 workspace descriptor 与宿主持有的 lease 前，需要 workspace 的宿主应使用 advanced Core assembly 路径。`Sample.executionContext` 是单条用例中仅供 Executor 使用的输入，`Sample.evaluationContext` 是仅供 Evaluator 使用的输入；这两个用例投影都不描述宿主运行环境。
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
-`SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric。`evaluators` 可包含多个 exact-match 或 Rubric 评委，但 evaluator ID 与 metric ID 必须分别唯一。
+`SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric。`evaluators` 可包含多个 exact-match、Rubric 评委或 custom evaluator，但 evaluator ID 与 metric ID 必须分别唯一。
+
+`CustomEvaluator` 是 canonical API 中一次只产出一个 Metric 的 callback 扩展。它显式声明输入 `bindings`、可序列化 `parameters`、sample-scope `Metric`、schema parser 与测量相关 identity facets。Callback 只能收到 bindings 选中的值，无法读取完整 sample 或 execution record；返回值只能是一个 `score`、`missing`、`invalid` 或稳定 `failed`。并发、超时、预算、取消、evidence capture 与错误脱敏仍只由 Core 负责。该 callback 契约要求无状态、可安全并行且协作响应取消；需要有状态生命周期的宿主应使用 `/advanced`。单个 evaluator 不得产出多个 Metric，也不得自行声明 ensemble coordinate。
+
+Numeric 与 boolean custom Metric 必须显式声明 `higher-is-better` 或 `lower-is-better` direction；categorical、text 与 ranking Metric 不得声明 scale 或 direction。Canonical `progress/v2` Decision 目前只接受 `higher-is-better`，因为把它的正向效应规则静默用于 lower-is-better 量表会反转 verdict。
+
+`implementation.version`、schema `fingerprintFacets` 与 implementation `fingerprintFacets` 是必填 identity 声明。OMK 不会对 `Function#toString()` 做指纹；callback 代码、依赖、schema 或 provider 配置一旦改变测量行为，调用方必须更新至少一个 identity facet。Binding 与 value schema 只能校验，不能 coercion、补默认值或删除字段。`CustomEvaluatorContent` 为 evidence 或 invalid value 显式携带 classification；未声明的 source value 永远不会传入 callback。
 
 `independent` 必须为每个 Variant 显式声明 allocation，以及全局和逐 stratum 的最小样本数。seed、可选 `stratumKey`、weight 与 minimum 会在任何 Executor 调用前封存；Core 把每个 sample 恰好分给一个 Variant，重复 trial 沿用同一分组，任何 minimum 无法满足时都在执行前失败。每项比较使用非配对 percentile Bootstrap estimator，绝不把独立组数据伪装成 paired data。
 
-Analysis 始终预注册。对于 `solo`，façade 为每个 Metric 生成一个均值 Bootstrap result；对于 `paired` 或 `independent`，则为每个 comparison × treatment × Metric 生成配对或非配对差值 Bootstrap result。它不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个 result，再交给区间感知的 Core `progress/v2` 策略。
+Analysis 始终预注册。对于 numeric 与 boolean Metric，façade 在 `solo` 中生成均值 Bootstrap result，在 `paired` 或 `independent` 中为每个 comparison × treatment × Metric 生成原始的 treatment-minus-control 配对或非配对差值 Bootstrap result；Metric direction 保留给解释层，lower-is-better 结果不会被静默翻转符号。Categorical、text 与 ranking Metric 在有明确的兼容 estimator 前只保留为类型化 evaluation evidence，绝不会伪装成 numeric。Façade 不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个可分析、higher-is-better result，再交给区间感知的 Core `progress/v2` 策略。
 
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 

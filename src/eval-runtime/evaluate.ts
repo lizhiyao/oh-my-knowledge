@@ -34,6 +34,10 @@ import {
   createExactMatchEvaluator,
 } from './evaluators/exact-match.js';
 import { createInvokeExecutorIdentity, createRuntimeIdentity } from './identity.js';
+import {
+  captureCustomEvaluator,
+  type CustomEvaluator,
+} from './custom-evaluator.js';
 import type {
   OmkLlmJudgeEffort,
   OmkLlmJudgeInvocationRequest,
@@ -355,7 +359,7 @@ export interface RubricJudgeEvaluator {
   readonly classification?: 'public' | 'sensitive';
 }
 
-export type Evaluator = ExactMatchEvaluator | RubricJudgeEvaluator;
+export type Evaluator = ExactMatchEvaluator | RubricJudgeEvaluator | CustomEvaluator;
 
 export interface Experiment {
   /** Required measurement seed; never sourced from time, environment, or randomness. */
@@ -987,6 +991,12 @@ function captureEvaluators(
     kit: Readonly<RubricJudgeKit>;
     criterion: Readonly<RubricJudgeCriterion>;
   }>> = [];
+  const customEntries: Array<Readonly<{
+    evaluatorId: string;
+    implementationId: string;
+    version: string;
+    port: EvaluationEvaluator;
+  }>> = [];
   try {
     for (const value of values) {
       if (value.evaluatorKind === 'exact-match') {
@@ -994,6 +1004,26 @@ function captureEvaluators(
         definitions.push(captured.definition);
         metrics.push(captured.metric);
         exactPorts.set(captured.definition.evaluatorId, captured.port);
+        continue;
+      }
+      if (value.evaluatorKind === 'custom') {
+        let captured;
+        try {
+          captured = captureCustomEvaluator(value);
+        } catch {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Custom Evaluator 配置无效。',
+          );
+        }
+        definitions.push(captured.definition);
+        metrics.push(captured.metric);
+        customEntries.push({
+          evaluatorId: captured.definition.evaluatorId,
+          implementationId: captured.implementationId,
+          version: captured.version,
+          port: captured.port,
+        });
         continue;
       }
       if (value.evaluatorKind !== 'rubric-judge') {
@@ -1092,6 +1122,36 @@ function captureEvaluators(
     registrations.push(createRubricJudgeRegistration(
       rubricEntries.map((entry) => entry.kit),
     ));
+  }
+  for (const implementationId of [...new Set(customEntries.map(
+    (entry) => entry.implementationId,
+  ))].sort(compareStrings)) {
+    const matchingEntries = customEntries.filter((entry) => (
+      entry.implementationId === implementationId
+    ));
+    const versions = new Set(matchingEntries.map((entry) => entry.version));
+    if (versions.size !== 1) {
+      return configurationFailure(
+        'EVAL_RUNTIME_EVALUATOR_INVALID',
+        '同一 Custom Evaluator implementationId 在一次 Evaluation 中只能声明一个版本。',
+      );
+    }
+    const version = matchingEntries[0]!.version;
+    const ports = new Map(matchingEntries.map((entry) => [entry.evaluatorId, entry.port]));
+    registrations.push({
+      implementationId,
+      satisfiesVersionConstraint: (constraint) => constraint === version,
+      createPort(requirement) {
+        const port = ports.get(requirement.referenceId);
+        if (port === undefined) {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Evaluation Runtime 收到了未知 custom evaluator binding。',
+          );
+        }
+        return port;
+      },
+    });
   }
   return Object.freeze({
     dataset: preparedDataset,
@@ -1258,7 +1318,9 @@ function createGeneralDefinition(input: Readonly<{
   }> = [];
   const analysisBindings: AnalysisBinding[] = [];
   if (sampling.samplingKind === 'solo') {
-    for (const metric of metrics) {
+    for (const metric of metrics.filter((candidate) => (
+      candidate.valueType === 'numeric' || candidate.valueType === 'boolean'
+    ))) {
       const selector = {
         analysisKind: 'quality',
         variantId: variants[0].variantId,
@@ -1286,6 +1348,8 @@ function createGeneralDefinition(input: Readonly<{
     for (const comparison of comparisons) {
       for (const treatmentVariantId of [...comparison.treatmentVariantIds].sort(compareStrings)) {
         for (const metricId of [...comparison.metricIds].sort(compareStrings)) {
+          const metric = metrics.find((candidate) => candidate.metricId === metricId);
+          if (metric?.valueType !== 'numeric' && metric?.valueType !== 'boolean') continue;
           const selector = {
             analysisKind: 'comparison',
             comparisonId: comparison.comparisonId,
@@ -1333,6 +1397,13 @@ function createGeneralDefinition(input: Readonly<{
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
         'Evaluation decision declaration 无效。',
+      );
+    }
+    const decisionMetric = metrics.find((metric) => metric.metricId === parsedDecision.metricId);
+    if (decisionMetric?.direction !== 'higher-is-better') {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Canonical progress Decision 只接受 higher-is-better Metric。',
       );
     }
     const selected = analysisBindings.filter((binding) => (

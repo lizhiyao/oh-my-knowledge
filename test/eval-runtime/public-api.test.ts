@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import type { SamplingDesign } from '../../src/eval-runtime/index.js';
+import type { CustomEvaluator, SamplingDesign } from '../../src/eval-runtime/index.js';
 
 const independentSampling: SamplingDesign = {
   samplingKind: 'independent',
@@ -13,6 +14,36 @@ const independentSampling: SamplingDesign = {
   minimumSamplesPerVariant: 2,
   minimumSamplesPerVariantPerStratum: 1,
 };
+
+const publicCustomEvaluator = {
+  evaluatorKind: 'custom',
+  evaluatorId: 'public-length',
+  instrumentId: 'public-length-v1',
+  metric: {
+    metricId: 'public-length-score',
+    valueType: 'numeric',
+    direction: 'lower-is-better',
+    missingPolicyId: 'exclude/v1',
+  },
+  bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+  parameters: { trim: true },
+  implementation: {
+    implementationId: 'test.public-length/v1',
+    version: '1.0.0',
+    schemas: {
+      bindings: z.object({ actual: z.string() }).strict(),
+      value: z.number(),
+      fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+    },
+    fingerprintFacets: { revision: 'test-one' },
+    evaluate({ bindings, parameters }) {
+      return {
+        resultKind: 'score',
+        value: (parameters?.trim ? bindings.actual.trim() : bindings.actual).length,
+      };
+    },
+  },
+} satisfies CustomEvaluator<{ actual: string }, { trim: boolean }>;
 
 const PUBLIC_API = {
   'eval-runtime': {
@@ -30,6 +61,11 @@ const PUBLIC_API = {
       'Analysis',
       'Clock',
       'Comparison',
+      'CustomEvaluator',
+      'CustomEvaluatorBinding',
+      'CustomEvaluatorContent',
+      'CustomEvaluatorInvocation',
+      'CustomEvaluatorResult',
       'Dataset',
       'Decision',
       'EvaluateInput',
@@ -45,6 +81,7 @@ const PUBLIC_API = {
       'ExecutorResult',
       'Experiment',
       'Judge',
+      'Metric',
       'Policy',
       'Rubric',
       'RubricJudgeEvaluator',
@@ -199,6 +236,7 @@ function declarationExports(entry: string): { values: string[]; types: string[] 
 describe('published eval-runtime API allowlist', () => {
   it('exposes the independent-group design through the public TypeScript contract', () => {
     expect(independentSampling.samplingKind).toBe('independent');
+    expect(publicCustomEvaluator.evaluatorKind).toBe('custom');
   });
 
   it('makes the package root an exact runtime façade alias', async () => {

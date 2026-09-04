@@ -174,6 +174,67 @@ OMK 会在执行前确定性地为每个 sample 封存唯一 Variant。重复 tr
 
 `onEvent` 是可选的 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
 
+## Custom Evaluator
+
+确定性规则、领域 parser 或宿主持有的评价服务不适合 exact match 或内置 Rubric 评委时，使用 `evaluatorKind: 'custom'`。一个 custom evaluator 只测量一个 sample-scope `Metric`：
+
+```ts
+import { z } from 'zod';
+import { evaluate, type CustomEvaluator } from 'oh-my-knowledge';
+
+const outputLength = {
+  evaluatorKind: 'custom',
+  evaluatorId: 'output-length',
+  instrumentId: 'output-length-v1',
+  metric: {
+    metricId: 'output-length-chars',
+    valueType: 'numeric',
+    unit: 'characters',
+    direction: 'lower-is-better',
+    missingPolicyId: 'exclude/v1',
+  },
+  bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+  parameters: { trim: true },
+  implementation: {
+    implementationId: 'acme.output-length/v1',
+    version: '1.0.0',
+    schemas: {
+      bindings: z.object({ actual: z.string() }).strict(),
+      value: z.number().int().nonnegative(),
+      fingerprintFacets: { bindings: 'actual-string/v1', value: 'nonnegative-integer/v1' },
+    },
+    fingerprintFacets: { sourceRevision: 'sha256:...' },
+    evaluate({ bindings, parameters, signal }) {
+      signal.throwIfAborted();
+      const actual = parameters?.trim ? bindings.actual.trim() : bindings.actual;
+      return { resultKind: 'score', value: actual.length };
+    },
+  },
+} satisfies CustomEvaluator<{ actual: string }, { trim: boolean }>;
+
+const result = await evaluate({
+  dataset,
+  variants,
+  evaluators: [outputLength],
+  comparisons: [{
+    comparisonId: 'prompt-v1-vs-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'prompt-v1',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['output-length-chars'],
+  }],
+  experiment: { seed: 'length-release-42', sampling: { samplingKind: 'paired' } },
+  policy: { evaluationTimeoutMs: 5_000 },
+  runId: crypto.randomUUID(),
+});
+```
+
+Bindings 是最小权限 allowlist。只有 evaluator 确实需要 gold data 时才声明 `expected` 或 `evaluation-context`；callback 无法读取未声明的 sample 字段。JSON Pointer 会在投递前进一步收窄 source。`execution-facts` 是例外：它的 pointer 必须为空，让 callback 消费完整、已经脱敏的 canonical facts projection，避免产生第二套 projection identity。Binding 与 value schema 只能校验和收窄，不能 coercion、补默认值或删除字段。
+
+Callback 可返回 `score`、`missing`、`invalid` 或 `failed`。Score 会作为 measurement data 直接持久化，不是带 classification 的 source content；text、category 与 ranking schema 必须把它约束在安全的测量词表内，绝不能回显 answer、trace、secret 或评委解释。这类支撑材料应放入显式声明 classification 的 `CustomEvaluatorContent` evidence。Invalid value 同样使用 `CustomEvaluatorContent`；普通异常会被脱敏。不要在 callback 内自行重试或实现超时：Core 会执行已封存的并发、超时、预算、取消、计量与失败策略。Callback 必须无状态、可安全并行且协作响应 `signal`；需要有状态资源时使用 advanced 生命周期 SPI。
+
+OMK 不会根据 `Function#toString()` 推导 provenance，因此 identity 必须显式声明。当代码、依赖、schema 或 provider 配置改变测量行为时，必须更新 `version`、schema `fingerprintFacets` 或 implementation `fingerprintFacets`。单个 custom evaluator 不得产出多个 Metric，也不代表 ensemble member。Numeric 与 boolean Metric 必须声明单调 direction，并使用内置 Bootstrap analysis；categorical、text 与 ranking Metric 在通过 advanced API 明确选择兼容 estimator 前只保留为 evaluation evidence。比较估计值保持原始 treatment-minus-control 差值。Canonical Decision 只接受 `higher-is-better`；对于 lower-is-better Metric，应省略 `decision` 后解释区间符号，或让 callback 返回 higher-is-better utility score。
+
 ## Rubric 评委评测
 
 输出不适合做完全相等判断时，使用 `evaluatorKind: 'rubric-judge'`。宿主只负责一次模型调用；冻结 prompt、输出解析、1～5 分指标、evidence、重试、超时、预算和取消语义均由 OMK 负责：
