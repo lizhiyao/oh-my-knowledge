@@ -240,7 +240,7 @@ Identity is explicit because OMK does not derive provenance from `Function#toStr
 
 ## Rubric Judge evaluation
 
-Use `evaluatorKind: 'rubric-judge'` when exact equality is not meaningful. The host provides one model call; OMK owns the frozen prompt, output parser, 1–5 metric, evidence, retry, timeout, budget, and cancellation semantics:
+Use `evaluatorKind: 'rubric-judge'` when exact equality is not meaningful. Declare one or more judge members and how their measurements are aggregated. Each callback performs one model call; OMK owns the frozen prompt, output parser, 1–5 metric, evidence, retry, timeout, budget, cancellation, and aggregation semantics:
 
 ```ts
 const result = await evaluate({
@@ -250,28 +250,33 @@ const result = await evaluate({
     evaluatorKind: 'rubric-judge',
     evaluatorId: 'correctness-judge',
     metricId: 'correctness-score',
-    model: 'judge-model',
-    effort: 'low',
     rubric: {
       criterionId: 'correctness',
       prompt: 'Judge whether the answer is factually correct.',
       rubric: '5 is fully correct; 1 is fully incorrect.',
     },
-    judge: {
-      judgeId: 'acme.model-gateway/v1',
-      version: '2026.09.04',
-      providerCost: { reporting: 'optional' },
-      fingerprintFacets: { deploymentRevision: 'sha256:...' },
-      async invoke(request) {
-        const response = await internalGateway.generate({
-          model: request.model,
-          system: request.system,
-          prompt: request.prompt,
-          signal: request.signal,
-        });
-        return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+    judges: [{
+      memberId: 'primary',
+      model: 'judge-model',
+      effort: 'low',
+      replicateCount: 2,
+      judge: {
+        judgeId: 'acme.model-gateway/v1',
+        version: '2026.09.04',
+        providerCost: { reporting: 'optional' },
+        fingerprintFacets: { deploymentRevision: 'sha256:...' },
+        async invoke(request) {
+          const response = await internalGateway.generate({
+            model: request.model,
+            system: request.system,
+            prompt: request.prompt,
+            signal: request.signal,
+          });
+          return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+        },
       },
-    },
+    }],
+    aggregation: { method: 'mean', missing: 'require-complete' },
   }],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
@@ -286,7 +291,7 @@ const result = await evaluate({
 });
 ```
 
-The Judge callback performs exactly one provider invocation and must not retry. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge/eval-runtime/contracts`.
+The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes the whole Target × Sample × Trial panel reading if any planned coordinate is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge/eval-runtime/contracts`.
 
 ## Certify an Executor
 

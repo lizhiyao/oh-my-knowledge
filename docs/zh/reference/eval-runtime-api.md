@@ -17,13 +17,15 @@
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`Analysis`、`Comparison`、`Decision`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`Analysis`、`Comparison`、`Decision`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
 `RuntimeContext` 只包含可重放的宿主自定义 JSON `values`。canonical façade 不接受文件系统路径充当 workspace identity；在一般化 Runtime 提供内容寻址 workspace descriptor 与宿主持有的 lease 前，需要 workspace 的宿主应使用 advanced Core assembly 路径。`Sample.executionContext` 是单条用例中仅供 Executor 使用的输入，`Sample.evaluationContext` 是仅供 Evaluator 使用的输入；这两个用例投影都不描述宿主运行环境。
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
 `SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric。`evaluators` 可包含多个 exact-match、Rubric 评委或 custom evaluator，但 evaluator ID 与 metric ID 必须分别唯一。
+
+`RubricJudgeEvaluator` 是一份显式评委 panel。`judges` 包含一个或多个 `RubricJudgeMember`；`replicateCount` 只重复该成员的测量，不会重新执行 Target。单个 panel 最多可展开为 1000 个 member × replicate 坐标。`RubricJudgeAggregation` 必须选择成员等权的 `mean`，或权重完整覆盖所有成员、均为正数且总和为 1 的 `weighted-mean`。目前唯一支持的缺失规则是 `require-complete`：任一计划成员或 replicate 不可用时，对应 Target × Sample × Trial 的 panel 读数不会进入分析，更不会用剩余评委补平均；原始成员与 replicate record 仍保留在 Evaluation Bundle 中。
 
 `CustomEvaluator` 是 canonical API 中一次只产出一个 Metric 的 callback 扩展。它显式声明输入 `bindings`、可序列化 `parameters`、sample-scope `Metric`、schema parser 与测量相关 identity facets。Callback 只能收到 bindings 选中的值，无法读取完整 sample 或 execution record；返回值只能是一个 `score`、`missing`、`invalid` 或稳定 `failed`。并发、超时、预算、取消、evidence capture 与错误脱敏仍只由 Core 负责。该 callback 契约要求无状态、可安全并行且协作响应取消；需要有状态生命周期的宿主应使用 `/advanced`。单个 evaluator 不得产出多个 Metric，也不得自行声明 ensemble coordinate。
 
@@ -33,7 +35,7 @@ Numeric 与 boolean custom Metric 必须显式声明 `higher-is-better` 或 `low
 
 `independent` 必须为每个 Variant 显式声明 allocation，以及全局和逐 stratum 的最小样本数。seed、可选 `stratumKey`、weight 与 minimum 会在任何 Executor 调用前封存；Core 把每个 sample 恰好分给一个 Variant，重复 trial 沿用同一分组，任何 minimum 无法满足时都在执行前失败。每项比较使用非配对 percentile Bootstrap estimator，绝不把独立组数据伪装成 paired data。
 
-Analysis 始终预注册。对于 numeric 与 boolean Metric，façade 在 `solo` 中生成均值 Bootstrap result，在 `paired` 或 `independent` 中为每个 comparison × treatment × Metric 生成原始的 treatment-minus-control 配对或非配对差值 Bootstrap result；Metric direction 保留给解释层，lower-is-better 结果不会被静默翻转符号。Categorical、text 与 ranking Metric 在有明确的兼容 estimator 前只保留为类型化 evaluation evidence，绝不会伪装成 numeric。Façade 不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个可分析、higher-is-better result，再交给区间感知的 Core `progress/v2` 策略。
+Analysis 始终预注册。对于 numeric 与 boolean Metric，façade 在 `solo` 中生成均值 Bootstrap result，在 `paired` 或 `independent` 中为每个 comparison × treatment × Metric 生成原始的 treatment-minus-control 配对或非配对差值 Bootstrap result。Rubric panel 会先在成员内平均 replicate，再执行已声明的成员聚合，最后在 sample 内平均完整的 Target trial。Bootstrap `unitCount` 仍只计算 sample 或 paired block；评委成员与 replicate 是测量次数，不是独立统计单元。Metric direction 保留给解释层，lower-is-better 结果不会被静默翻转符号。Categorical、text 与 ranking Metric 在有明确的兼容 estimator 前只保留为类型化 evaluation evidence，绝不会伪装成 numeric。Façade 不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个可分析、higher-is-better result，再交给区间感知的 Core `progress/v2` 策略。
 
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 
@@ -92,6 +94,6 @@ Run 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`Cr
 
 ## 迁移
 
-`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，sampling 改为显式声明，Bootstrap 参数位于 `analysis`，Decision 选择可省略但传入时必须显式。它不提供 0.x 兼容读取。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，sampling 改为显式声明，Bootstrap 参数位于 `analysis`，Decision 选择可省略但传入时必须显式。Rubric 评测必须使用 `judges + aggregation`，不接受单数 `judge + model + effort` 结构。它不提供 0.x 兼容读取。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
 
 自定义 analysis graph、持久 artifact admission、分阶段重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。

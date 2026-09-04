@@ -78,6 +78,7 @@ const ARTIFACT_SOURCES = [
   'custom',
 ] as const;
 const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v3' as const;
+const MAX_RUBRIC_PANEL_COORDINATES = 1_000;
 
 const ArtifactSchema = z.object({
   name: z.string().min(1),
@@ -344,14 +345,33 @@ export interface Rubric {
   readonly rubric: string;
 }
 
+export interface RubricJudgeMember {
+  readonly memberId: string;
+  readonly model: string;
+  readonly judge: Judge;
+  readonly effort?: OmkLlmJudgeEffort;
+  /** Independent measurements by this judge; defaults to one. */
+  readonly replicateCount?: number;
+}
+
+export type RubricJudgeAggregation =
+  | Readonly<{
+      method: 'mean';
+      missing: 'require-complete';
+    }>
+  | Readonly<{
+      method: 'weighted-mean';
+      missing: 'require-complete';
+      weights: Readonly<Record<string, number>>;
+    }>;
+
 export interface RubricJudgeEvaluator {
   readonly evaluatorKind: 'rubric-judge';
   readonly evaluatorId: string;
   readonly metricId: string;
-  readonly model: string;
-  readonly judge: Judge;
+  readonly judges: readonly RubricJudgeMember[];
+  readonly aggregation: RubricJudgeAggregation;
   readonly rubric: Rubric;
-  readonly effort?: OmkLlmJudgeEffort;
   readonly lengthDebias?: boolean;
   readonly tracePolicy?: RubricJudgeTracePolicy;
   readonly actualPointer?: string;
@@ -920,10 +940,43 @@ interface CapturedEvaluators {
   readonly dataset: Dataset;
   readonly definitions: readonly EvaluatorDefinition[];
   readonly metrics: readonly MetricDefinition[];
+  readonly measurementAggregations: ReadonlyMap<string, MeasurementAggregationPlan>;
   readonly registrations: readonly RuntimePortRegistration<
     EvaluationEvaluator,
     EvaluatorRuntimeRequirement
   >[];
+}
+
+interface MeasurementAggregationPlan {
+  readonly method: 'mean' | 'weighted-mean';
+  readonly missing: 'require-complete';
+  readonly replicateGroupId: string;
+  readonly members: readonly Readonly<{
+    ensembleMemberId: string;
+    weight?: number;
+    replicates: readonly Readonly<{
+      evaluatorId: string;
+      instrumentId: string;
+      replicateIndex: number;
+    }>[];
+  }>[];
+}
+
+function panelEvaluatorId(panelId: string, memberId: string, replicateIndex: number): string {
+  const readable = `${panelId}/${memberId}/replicate-${replicateIndex}`;
+  return IdentifierSchema.safeParse(readable).success
+    ? readable
+    : `rubric-panel:${digestCanonicalJson({
+        derivation: 'omk.eval-runtime.rubric-panel-evaluator-id/v1',
+        panelId,
+        memberId,
+        replicateIndex,
+      }).slice('sha256:'.length)}`;
+}
+
+function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
+  const keys = new Set(allowed);
+  return Object.keys(value).every((key) => keys.has(key));
 }
 
 function exactMatchDefinition(input: Readonly<ExactMatchEvaluator>): Readonly<{
@@ -986,6 +1039,7 @@ function captureEvaluators(
   }
   const definitions: EvaluatorDefinition[] = [];
   const metrics: MetricDefinition[] = [];
+  const measurementAggregations = new Map<string, MeasurementAggregationPlan>();
   const exactPorts = new Map<string, EvaluationEvaluator>();
   const rubricEntries: Array<Readonly<{
     kit: Readonly<RubricJudgeKit>;
@@ -1032,26 +1086,135 @@ function captureEvaluators(
           'Evaluation evaluatorKind 不受支持。',
         );
       }
-      const kit = createRubricJudgeKit({
-        evaluatorId: value.evaluatorId,
-        metricId: value.metricId,
-        model: value.model,
-        invocation: captureJudge(value.judge),
-        ...(value.effort === undefined ? {} : { effort: value.effort }),
-        ...(value.lengthDebias === undefined ? {} : { lengthDebias: value.lengthDebias }),
-        ...(value.tracePolicy === undefined ? {} : { tracePolicy: value.tracePolicy }),
-        ...(value.actualPointer === undefined ? {} : { actualPointer: value.actualPointer }),
-        ...(value.tracePointer === undefined ? {} : { tracePointer: value.tracePointer }),
-        ...(value.classification === undefined ? {} : { classification: value.classification }),
-      });
-      definitions.push(kit.evaluatorDefinition);
-      metrics.push(kit.metricDefinition);
-      rubricEntries.push({
-        kit,
-        criterion: {
-          schemaVersion: 'omk.rubric-judge-context/v1',
-          ...value.rubric,
-        },
+      const panelId = IdentifierSchema.parse(value.evaluatorId);
+      const metricId = IdentifierSchema.parse(value.metricId);
+      if (!hasOnlyKeys(value, [
+        'evaluatorKind', 'evaluatorId', 'metricId', 'judges', 'aggregation', 'rubric',
+        'lengthDebias', 'tracePolicy', 'actualPointer', 'tracePointer', 'classification',
+      ])
+          || !Array.isArray(value.judges) || value.judges.length === 0
+          || value.judges.length > MAX_RUBRIC_PANEL_COORDINATES
+          || value.aggregation === null || typeof value.aggregation !== 'object'
+          || (value.aggregation.method !== 'mean'
+            && value.aggregation.method !== 'weighted-mean')
+          || value.aggregation.missing !== 'require-complete'
+          || !hasOnlyKeys(
+            value.aggregation,
+            value.aggregation.method === 'weighted-mean'
+              ? ['method', 'missing', 'weights']
+              : ['method', 'missing'],
+          )) {
+        return configurationFailure(
+          'EVAL_RUNTIME_EVALUATOR_INVALID',
+          'Rubric 评委 panel 配置无效。',
+        );
+      }
+      const panelJudges = value.judges as readonly RubricJudgeMember[];
+      if (panelJudges.some((member) => (
+        member === null || typeof member !== 'object'
+        || !hasOnlyKeys(member, ['memberId', 'model', 'judge', 'effort', 'replicateCount'])
+      ))) {
+        return configurationFailure(
+          'EVAL_RUNTIME_EVALUATOR_INVALID',
+          'Rubric 评委 member 配置无效。',
+        );
+      }
+      const memberIds = panelJudges.map((member) => IdentifierSchema.parse(member.memberId));
+      if (new Set(memberIds).size !== memberIds.length) {
+        return configurationFailure(
+          'EVAL_RUNTIME_EVALUATOR_INVALID',
+          'Rubric 评委 memberId 必须唯一。',
+        );
+      }
+      const replicateCounts = panelJudges.map((member) => member.replicateCount ?? 1);
+      if (replicateCounts.some((count) => !Number.isSafeInteger(count) || count < 1)
+          || replicateCounts.reduce((sum, count) => sum + count, 0)
+            > MAX_RUBRIC_PANEL_COORDINATES) {
+        return configurationFailure(
+          'EVAL_RUNTIME_EVALUATOR_INVALID',
+          `Rubric 评委 panel 最多包含 ${MAX_RUBRIC_PANEL_COORDINATES} 个测量坐标。`,
+        );
+      }
+      const weights = value.aggregation.method === 'weighted-mean'
+        ? value.aggregation.weights
+        : undefined;
+      if (weights !== undefined) {
+        if (weights === null || Array.isArray(weights) || typeof weights !== 'object'
+            || Object.keys(weights).sort(compareStrings).join('\u0000')
+              !== [...memberIds].sort(compareStrings).join('\u0000')
+            || memberIds.some((memberId) => (
+              typeof weights[memberId] !== 'number'
+              || !Number.isFinite(weights[memberId])
+              || weights[memberId] <= 0
+            ))
+            || Math.abs(memberIds.reduce((sum, memberId) => sum + weights[memberId], 0) - 1)
+              > 1e-12) {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Rubric 评委权重必须完整覆盖 member、为正数且总和为 1。',
+          );
+        }
+      }
+      const aggregationMembers: MeasurementAggregationPlan['members'][number][] = [];
+      let metric: MetricDefinition | undefined;
+      for (const [memberIndex, member] of panelJudges.entries()) {
+        const memberId = memberIds[memberIndex];
+        const replicateCount = replicateCounts[memberIndex];
+        const invocation = captureJudge(member.judge);
+        const replicates: MeasurementAggregationPlan['members'][number]['replicates'][number][] = [];
+        for (let replicateIndex = 0; replicateIndex < replicateCount; replicateIndex += 1) {
+          const evaluatorId = panelEvaluatorId(panelId, memberId, replicateIndex);
+          const kit = createRubricJudgeKit({
+            evaluatorId,
+            metricId,
+            model: member.model,
+            invocation,
+            ...(member.effort === undefined ? {} : { effort: member.effort }),
+            ...(value.lengthDebias === undefined ? {} : { lengthDebias: value.lengthDebias }),
+            ...(value.tracePolicy === undefined ? {} : { tracePolicy: value.tracePolicy }),
+            ...(value.actualPointer === undefined ? {} : { actualPointer: value.actualPointer }),
+            ...(value.tracePointer === undefined ? {} : { tracePointer: value.tracePointer }),
+            ...(value.classification === undefined ? {} : { classification: value.classification }),
+            ensembleMemberId: memberId,
+            replicateGroupId: panelId,
+            replicateIndex,
+          });
+          definitions.push(kit.evaluatorDefinition);
+          metric ??= kit.metricDefinition;
+          rubricEntries.push({
+            kit,
+            criterion: {
+              schemaVersion: 'omk.rubric-judge-context/v1',
+              ...value.rubric,
+            },
+          });
+          replicates.push({
+            evaluatorId,
+            instrumentId: kit.evaluatorDefinition.measurement.instrumentId,
+            replicateIndex,
+          });
+        }
+        aggregationMembers.push({
+          ensembleMemberId: memberId,
+          ...(weights === undefined ? {} : { weight: weights[memberId] }),
+          replicates,
+        });
+      }
+      if (metric === undefined) {
+        return configurationFailure(
+          'EVAL_RUNTIME_EVALUATOR_INVALID',
+          'Rubric 评委 panel 未产生 Metric。',
+        );
+      }
+      metrics.push(metric);
+      measurementAggregations.set(metricId, {
+        method: value.aggregation.method,
+        missing: 'require-complete',
+        replicateGroupId: panelId,
+        members: [...aggregationMembers].sort((left, right) => compareStrings(
+          left.ensembleMemberId,
+          right.ensembleMemberId,
+        )),
       });
     }
   } catch (error) {
@@ -1161,6 +1324,7 @@ function captureEvaluators(
     metrics: Object.freeze([...metrics].sort((left, right) => (
       left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
     ))),
+    measurementAggregations,
     registrations: Object.freeze(registrations),
   });
 }
@@ -1314,7 +1478,7 @@ function createGeneralDefinition(input: Readonly<{
         }
     >;
     outputResultId: string;
-    parameters: { resamples: number; alpha: number };
+    parameters: JsonValue;
   }> = [];
   const analysisBindings: AnalysisBinding[] = [];
   if (sampling.samplingKind === 'solo') {
@@ -1327,15 +1491,23 @@ function createGeneralDefinition(input: Readonly<{
         metricId: metric.metricId,
       };
       const resultId = stableFacadeId('result', selector);
+      const measurementAggregation = input.evaluators.measurementAggregations.get(metric.metricId);
       analysisNodes.push({
         analysisNodeKind: 'estimator',
         nodeId: stableFacadeId('node', selector),
-        implementationId: 'bootstrap.mean-percentile/v1',
+        implementationId: measurementAggregation === undefined
+          ? 'bootstrap.mean-percentile/v1'
+          : 'bootstrap.hierarchical-mean-percentile/v1',
         inputs: [{ inputKind: 'metric-observations', referenceId: metric.metricId }],
         outputResultId: resultId,
         parameters: {
           resamples: bootstrap?.resamples ?? 1_000,
           alpha: bootstrap?.alpha ?? 0.05,
+          ...(measurementAggregation === undefined ? {} : {
+            measurementAggregation: JsonValueSchema.parse(
+              structuredClone(measurementAggregation),
+            ),
+          }),
         },
       });
       analysisBindings.push({
@@ -1357,12 +1529,17 @@ function createGeneralDefinition(input: Readonly<{
             metricId,
           };
           const resultId = stableFacadeId('result', selector);
+          const measurementAggregation = input.evaluators.measurementAggregations.get(metricId);
           analysisNodes.push({
             analysisNodeKind: 'estimator',
             nodeId: stableFacadeId('node', selector),
             implementationId: sampling.samplingKind === 'independent'
-              ? 'bootstrap.unpaired-difference-percentile/v1'
-              : 'bootstrap.paired-difference-percentile/v1',
+              ? measurementAggregation === undefined
+                ? 'bootstrap.unpaired-difference-percentile/v1'
+                : 'bootstrap.hierarchical-unpaired-difference-percentile/v1'
+              : measurementAggregation === undefined
+                ? 'bootstrap.paired-difference-percentile/v1'
+                : 'bootstrap.hierarchical-paired-difference-percentile/v1',
             inputs: [
               { inputKind: 'metric-observations', referenceId: metricId },
               {
@@ -1376,6 +1553,11 @@ function createGeneralDefinition(input: Readonly<{
             parameters: {
               resamples: bootstrap?.resamples ?? 1_000,
               alpha: bootstrap?.alpha ?? 0.05,
+              ...(measurementAggregation === undefined ? {} : {
+                measurementAggregation: JsonValueSchema.parse(
+                  structuredClone(measurementAggregation),
+                ),
+              }),
             },
           });
           analysisBindings.push({
@@ -1445,11 +1627,18 @@ function createGeneralDefinition(input: Readonly<{
     };
   }
   const trials = input.experiment.trials ?? 1;
+  const hasHierarchicalMeasurement = input.evaluators.measurementAggregations.size > 0;
   const estimatorId = sampling.samplingKind === 'solo'
-    ? 'bootstrap.mean-percentile/v1'
+    ? hasHierarchicalMeasurement
+      ? 'bootstrap.hierarchical-mean-percentile/v1'
+      : 'bootstrap.mean-percentile/v1'
     : sampling.samplingKind === 'independent'
-      ? 'bootstrap.unpaired-difference-percentile/v1'
-      : 'bootstrap.paired-difference-percentile/v1';
+      ? hasHierarchicalMeasurement
+        ? 'bootstrap.hierarchical-unpaired-difference-percentile/v1'
+        : 'bootstrap.unpaired-difference-percentile/v1'
+      : hasHierarchicalMeasurement
+        ? 'bootstrap.hierarchical-paired-difference-percentile/v1'
+        : 'bootstrap.paired-difference-percentile/v1';
   const randomizationSlots = variants.map((variant) => ({
     targetId: variant.variantId,
     randomizationSlotId: stableFacadeId('slot', { variantId: variant.variantId }),

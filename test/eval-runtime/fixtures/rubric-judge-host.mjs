@@ -95,9 +95,22 @@ const evaluator = {
   evaluatorKind: 'rubric-judge',
   evaluatorId: 'rubric-judge',
   metricId: 'rubric-score',
-  model: 'internal-judge-model',
-  effort: 'low',
-  judge,
+  judges: [{
+    memberId: 'primary',
+    model: 'internal-judge-model',
+    effort: 'low',
+    replicateCount: 2,
+    judge,
+  }, {
+    memberId: 'secondary',
+    model: 'internal-judge-model-secondary',
+    judge,
+  }],
+  aggregation: {
+    method: 'weighted-mean',
+    missing: 'require-complete',
+    weights: { primary: 0.75, secondary: 0.25 },
+  },
   rubric: {
     criterionId: 'correctness',
     prompt: 'What is the capital of France?',
@@ -115,14 +128,18 @@ const result = await pending;
 
 assert.equal(result.status, 'completed', JSON.stringify(result));
 assert.equal(result.definition.metrics[0].metricId, 'rubric-score');
-assert.equal(requests.length, 2);
+assert.equal(requests.length, 6);
 assert.equal(requests[0].model, 'internal-judge-model');
-assert.equal(requests[0].promptId, requests[1].promptId);
-assert.equal(requests[0].promptHash, requests[1].promptHash);
+assert.equal(requests.filter((request) => request.model === 'internal-judge-model').length, 4);
+assert.equal(requests.filter((request) => (
+  request.model === 'internal-judge-model-secondary'
+)).length, 2);
+assert.ok(requests.every((request) => request.promptId === requests[0].promptId));
+assert.ok(requests.every((request) => request.promptHash === requests[0].promptHash));
 const observations = result.artifacts.evaluation.records.flatMap((record) => (
   record.evaluationStatus === 'completed' ? record.observations : []
 ));
-assert.equal(observations.length, 2);
+assert.equal(observations.length, 6);
 assert.ok(observations.every((observation) => (
   observation.observationStatus === 'observed' && observation.value === 5
 )));
@@ -131,20 +148,23 @@ const failureResult = await evaluate({
   ...base,
   evaluators: [{
     ...evaluator,
-    judge: {
-      ...judge,
-      async invoke() {
-        return {
-          invocationStatus: 'failed',
-          reasonCode: 'gateway-private-failure',
-          usage: {
-            inputTokens: 7,
-            providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
-            details: { privateTenant: 'must-not-be-persisted' },
-          },
-        };
+    judges: evaluator.judges.map((member) => ({
+      ...member,
+      judge: {
+        ...judge,
+        async invoke() {
+          return {
+            invocationStatus: 'failed',
+            reasonCode: 'gateway-private-failure',
+            usage: {
+              inputTokens: 7,
+              providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
+              details: { privateTenant: 'must-not-be-persisted' },
+            },
+          };
+        },
       },
-    },
+    })),
   }],
   runId: 'embedded-faas-rubric-failure',
 });
