@@ -26,7 +26,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 
 ## 示例契约
 
-索引中的每个目录都必须具备独立的用户用途、中英文说明、可复制的入口命令、明确的运行前提，以及「该案例不能证明什么」的证据边界。评测用例统一使用 `omk.eval-sample-set/v1` 协议。JSON 与 YAML 在不同示例中被有意保留，但同一用例作用域不能同时存在两种格式。
+索引中的每个目录都必须具备独立的用户用途、中英文说明、可复制的入口命令、明确的运行前提，以及「该案例不能证明什么」的证据边界。评测用例统一使用 `omk.eval-sample-set/v2` 协议。JSON 与 YAML 在不同示例中被有意保留，但同一用例作用域不能同时存在两种格式。
 
 生成的报告、图谱和 Doctor 产物应写入项目级 `.omk/`，并由 Git 忽略。目录式 skill 可以在 `skills/<name>/.omk/eval-samples.json` 或 `.yaml` 保存随源码版本化的私有用例；这些文件是输入，不是运行产物。
 

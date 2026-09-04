@@ -12,11 +12,17 @@ The most common construct mismatch: you run baseline-vs-skill intending to measu
 
 ```yaml
 # eval-samples.yaml
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: s001
     prompt: "Draw a line chart in React; data is date + value, give minimal runnable code"
-    rubric: "Must identify the Line component + correct data format + include a chart render container"
+    rubric:
+      component_selection:
+        criterion: "Must identify the Line component and use the correct data format"
+        weight: 0.6
+      completeness:
+        criterion: "Must include a chart render container"
+        weight: 0.4
     assertions:
       - { type: contains, value: "Line", weight: 1 }
       - { type: regex, pattern: "data", weight: 1 }
@@ -62,11 +68,14 @@ These metadata fields are used only for:
 To run evals decoupled from the real external environment (databases / APIs / filesystem / actual git push, etc.), a sample also carries a group of sandbox fields. The omk runtime matches mocks before a tool call; on a hit it returns fake data instead of really invoking the underlying tool.
 
 ```yaml
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: s002
     prompt: "Use antlogs-query to count ERROR logs in the last 1 hour"
-    rubric: "Must call the logstore_query tool, filter containing 'ERROR', time window 1 hour"
+    rubric:
+      workflow_quality:
+        criterion: "Must call the logstore_query tool with an ERROR filter and a one-hour window"
+        weight: 1
     assertions:
       - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
       - { type: mock_hit, value: "Bash:1", weight: 1 }

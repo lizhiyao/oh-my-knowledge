@@ -92,17 +92,17 @@ Rubric 评委使用 `omk.rubric-judge/v1` 和同一个宿主拥有的单次调�
 
 1. `judge-replicate-mean`：对成功的原始读数求均值和样本标准差；成功读数为零时结果缺失。
 2. `judge-ensemble-mean`：对成功的成员均值等权求平均；成员行和失败仍保留在输入血缘中。
-3. `dimension-mean`：对现有维度分数等权求平均，四舍五入到两位小数。
+3. `dimension-weighted-mean`：对全部计划维度按密封权重求平均，四舍五入到两位小数；任一维度缺失都会让聚合结果缺失。
 4. `assertion-layer-score`：分别计算事实和行为的加权通过比例，以 `1 + ratio * 4` 映射，并四舍五入到两位小数。
 5. `composite-score`：对现有的事实、行为和评委行等权求平均，四舍五入到两位小数；不存在任何层时，只允许旧投影产生历史零哨兵，权威 Core 结果为不确定／缺失。
 
 前两个派生由宿主拥有的 Analysis 节点 `omk.judge-replicate-table/v2` 和 `omk.judge-ensemble-table/v2` 实现。重复测量表按完整的目标／样本／试验／指标／工具／集成成员／重复测量组坐标分组，按显式规划的重复测量索引排序而不要求索引连续，并保留每个已观测或未观测行。成员均值四舍五入到两位小数，样本标准差(`n - 1`) 四舍五入到三位小数。集成表消费经过 schema 验证的结果，赋予每个已观测成员均值相同权重，把共识值四舍五入到两位小数，并仅在已观测成员间计算两两平均绝对差，四舍五入到三位小数。已观测成员少于两个时，一致性缺失。两个输出 schema 都会在实时执行和传输 Bundle 验证期间强制执行规范顺序、覆盖守恒、内容派生的血缘身份和可重算统计量；其 Runtime 指纹绑定估计量、标度、缺失策略、舍入规则，以及由 Core 派生的配对／聚类／分层抽样单元身份。v2 身份替换切换前的 v1 契约，而不是改变其 schema 摘要；该修正由 [#497](https://github.com/lizhiyao/oh-my-knowledge/issues/497) 负责，不注册 v1，也不提供兼容读取器。
 
-第三个派生由 [#505](https://github.com/lizhiyao/oh-my-knowledge/issues/505) 引入的宿主 Analysis 节点 `omk.dimension-table/v1` 实现。密封参数在维度、Metric 与上游评委集成 Analysis 结果身份之间建立一一映射。每个目标／样本／试验行仅包含拥有已规划上游组的维度；不存在表示结构性不适用，而上游缺失组仍是显式缺失证据。节点对已观测且保留两位小数的集成共识分数等权求平均，再把结果四舍五入到两位小数；已观测维度为零时结果缺失而不是数值零。表验证器会重算覆盖和聚合值，并强制执行规范的单元／维度顺序、稳定绑定、全局唯一来源组血缘，以及内容派生的组身份。由于它消费 Analysis 结果而不是 Metric 行，记录级直接行覆盖为空，溯源跟随来源 Analysis／组身份。Runtime 指纹绑定这些语义及所有上游／参数／输出 schema 身份。生产 CLI 通过已注册的 Core AnalysisGraph 消费该节点。
+第三个派生由宿主持有的 `omk.dimension-table/v2` 节点实现。密封参数把每个维度绑定到一个 Metric、一个上游评委集成 Analysis 结果，以及显式的逐 sample 适用范围和权重；每条 sample 的计划权重和必须为 1。只有全部计划维度都有观测值时，节点才计算保留两位小数的加权平均；缺少上游组、读数缺失或权重和非法都会失败关闭为缺失聚合。表验证器会重算覆盖与聚合，强制执行规范顺序和稳定绑定，并把权重认证进内容派生的血缘身份。每条 criterion 都由一次独立评委调用测量，因此多准则 prompt 内的排列顺序不再进入测量构造。Runtime 指纹绑定这些语义及全部上游、参数和输出 schema 身份。
 
 第四个派生由 [#496](https://github.com/lizhiyao/oh-my-knowledge/issues/496) 引入的宿主 Analysis 节点 `omk.assertion-layer-table/v1` 实现。其密封参数把每个唯一准则和布尔 Metric 显式映射到 `fact`、`behavior` 或 `excluded-mixed-layer`，并附带有限正权重；节点绝不从 assertion 名称、Evaluator ID 或证据推断分类。每个目标／样本／试验行保留完整准则状态和 Core 派生的抽样单元血缘。`criterion-not-applicable` 是结构性的，不计入 assertion 评分覆盖；Analysis Bundle v2 仍在 `planned` 中保留这个矩形坐标，将其放入独立的 `notApplicable` 桶，并通过 `notApplicableRows` 认证行身份和原因。因此它不会降低证据完整度；其它所有未观测状态仍会降低覆盖，但不会变成 `false` 或分数零。表验证器会重算加权分数和覆盖，并强制执行规范顺序、全局唯一来源血缘、内容派生的组身份，以及在所有测量单元间保持一致的准则设计。Runtime 指纹绑定这些语义和两个 schema 身份。生产 CLI 通过已注册的 Core AnalysisGraph 消费该节点。
 
-第五个派生由 [#512](https://github.com/lizhiyao/oh-my-knowledge/issues/512) 引入的宿主 Analysis 节点 `omk.composite-table/v1` 实现。密封参数把事实层和行为层绑定到 assertion-layer 结果，并把评委层绑定到集成共识或维度聚合；不会从图位置或标签推断来源。对于每个目标／样本／试验单元，节点对现有的已观测层等权求平均并四舍五入到两位小数。缺少来源组是结构性不适用，不会创建层条目；已有但缺失的组仍是显式证据；已观测层为零时，权威结果是缺失而不是数值零。验证器会重算聚合值和覆盖，并强制执行规范的单元／层顺序、稳定绑定、全局唯一来源结果／来源组血缘，以及内容派生的组身份。由于所有溯源均跟随上游 Analysis 组，直接 Metric 行覆盖为空。真实 Core DAG 一致性测试覆盖仅 assertion 和由维度支撑的仅评委计划，包括传输 Bundle 验证、父节点失败阻塞、取消和仅一次释放。生产 CLI 通过已注册的 Core AnalysisGraph 消费该节点。
+第五个派生由 [#512](https://github.com/lizhiyao/oh-my-knowledge/issues/512) 引入的宿主 Analysis 节点 `omk.composite-table/v2` 实现。密封参数把事实层和行为层绑定到 assertion-layer 结果，并把评委层绑定到集成共识或维度聚合；不会从图位置或标签推断来源。对于每个目标／样本／试验单元，节点对现有的已观测层等权求平均并四舍五入到两位小数。缺少来源组是结构性不适用，不会创建层条目；已有但缺失的组仍是显式证据；已观测层为零时，权威结果是缺失而不是数值零。验证器会重算聚合值和覆盖，并强制执行规范的单元／层顺序、稳定绑定、全局唯一来源结果／来源组血缘，以及内容派生的组身份。由于所有溯源均跟随上游 Analysis 组，直接 Metric 行覆盖为空。真实 Core DAG 一致性测试覆盖仅 assertion 和由维度支撑的仅评委计划，包括传输 Bundle 验证、父节点失败阻塞、取消和仅一次释放。生产 CLI 通过已注册的 Core AnalysisGraph 消费该节点。
 
 本次迁移有意打破旧约定：失败成员的分数零哨兵以前会污染一致性，却不参与共识。现在，失败、无效、不可用和未开始的坐标保持不同的缺失证据，绝不变成数值零。该修正由 [#494](https://github.com/lizhiyao/oh-my-knowledge/issues/494) 负责，没有兼容模式，也不会把 Evaluator 用量聚合到 Analysis 产物中。
 
@@ -132,7 +132,7 @@ Rubric 评委使用 `omk.rubric-judge/v1` 和同一个宿主拥有的单次调�
 
 Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体并不等价。空输入、总计只有一个评分对，或期望分歧为零时，结果是不确定而不是数值零。alpha bootstrap 重采样配对评分单元。
 
-该标准由宿主 Analysis 节点 `omk.agreement-table/v2` 实现，它从 [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522) 引入的 v1 节点演化而来。它消费一个 schema 密封的 Dimension 表，以及仅存在于 Analysis 样本上下文中的 Gold 评分；Execution 和 Evaluation 的计划与 Bundle 永远不会接收该上下文。节点密封一个目标、标注者身份、标注版本、数值标度、JSON 指针、样本顺序、bootstrap 配置，以及区间距离 alpha 定义。重复的 Dimension 试验在每个样本内求平均，同时保留每样本组覆盖和血缘。输出以 Krippendorff alpha 为主统计量，以加权 kappa 和 Pearson 为辅助诊断，并报告完整 bootstrap draw coverage；样本对不足、期望分歧为零、统计量未定义、完全一致导致 bootstrap 不适用，或意外抽样无效时，输出结构化缺失结果。v2 遵循 Krippendorff 推荐的 bootstrap：重采样配对观测分歧，同时固定原始评分的期望分歧，并把 draw 限定在 alpha 的 `[-1, 1]` 范围。相对 v1 的条件有限 draw bootstrap，这是一项 `BREAKING-COMPARABILITY` 修正；v1 继续注册以支持精确重放。表会在传输 Bundle 验证期间按统计公式重算。生产 Gold 比较通过显式选择器消费这个经过认证的 Core 投影。
+该标准由宿主 Analysis 节点 `omk.agreement-table/v3` 实现，它从 [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522) 引入的 v1 节点演化而来。它消费 schema 密封的加权 Dimension v2 表，以及仅存在于 Analysis 样本上下文中的 Gold 评分；Execution 和 Evaluation 的计划与 Bundle 永远不会接收该上下文。节点密封一个目标、标注者身份、标注版本、数值标度、JSON 指针、样本顺序、bootstrap 配置，以及区间距离 alpha 定义。重复的 Dimension 试验在每个样本内求平均，同时保留每样本组覆盖和血缘。输出以 Krippendorff alpha 为主统计量，以加权 kappa 和 Pearson 为辅助诊断，并报告完整 bootstrap draw coverage；样本对不足、期望分歧为零、统计量未定义、完全一致导致 bootstrap 不适用，或意外抽样无效时，输出结构化缺失结果。v3 保留 v2 遵循 Krippendorff 推荐的 bootstrap——重采样配对观测分歧，同时固定原始评分的期望分歧——并把认证过的上游契约切到加权 Dimension v2。v1 与 v2 继续绑定 Dimension v1 注册，以支持精确重放。表会在传输 Bundle 验证期间按统计公式重算。生产 Gold 比较通过显式选择器消费这个经过认证的 Core 投影。
 
 ## 8. DecisionPolicy 边界
 
@@ -142,7 +142,7 @@ Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体�
 
 `SOLO`、`UNDERPOWERED`、`NOISE`、`PROGRESS`、`CAUTIOUS` 和 `REGRESSION` 是结论，而不是运行状态。基础设施失败仍产生失败或未决决策。
 
-该契约由宿主拥有的 `omk.release-decision/v6` 策略实现，它从 [#525](https://github.com/lizhiyao/oh-my-knowledge/issues/525) 引入的 v1 策略演化而来。参数显式绑定 Composite 表、Bootstrap Family v2 表、可选 Judge Ensemble 选择器、密封的目标和样本顺序、所有门禁阈值、预注册样本量要求，以及可选且互斥的训练／留出分区。在应用六级优先级前，策略会验证估计量拥有的 `comparisonFamilyResultId`、精确的结果／schema 全集、Composite 到 Bootstrap 的观测血缘、比较绑定，以及已配置 Judge Ensemble 的覆盖。配置了跨评委一致性但无法测量的一次正向比较会成为 `CAUTIOUS`；没有 Judge Ensemble 的确定性设计不受影响。不显著的比较根据完整配对数或较小的独立组已观测样本数应用样本量门禁，绝不使用已编写但未观测的样本。显著向好的比较只有在持久化的 percentile 区间下界达到已封存阈值时，才能通过实际效应 gate；点估计本身不充分。缺失区间或 Monte Carlo 误差下仍未决的显著性保持 not-decided；Core 路径绝不回退到点估计。跨运行稳定性属于 Series DecisionPolicy，不会从单个 Run 推断。历史 release policy v1～v5 与 Bootstrap family v1 仍注册以支持精确重放。
+该契约由宿主拥有的 `omk.release-decision/v7` 策略实现，它从 [#525](https://github.com/lizhiyao/oh-my-knowledge/issues/525) 引入的 v1 策略演化而来。参数显式绑定 Composite 表、Bootstrap Family v2 表、每个适用 Judge Ensemble 选择器及其 sample 范围、密封的目标和样本顺序、所有门禁阈值、预注册样本量要求，以及可选且互斥的训练／留出分区。在应用六级优先级前，策略会验证估计量拥有的 `comparisonFamilyResultId`、精确的结果／schema 全集、Composite 到 Bootstrap 的观测血缘、比较绑定，以及每个已配置 Judge Ensemble 的覆盖。任一适用维度出现分歧或跨评委一致性不可测时，正向比较都会成为 `CAUTIOUS`；没有 Judge Ensemble 的确定性设计不受影响。不显著的比较根据完整配对数或较小的独立组已观测样本数应用样本量门禁，绝不使用已编写但未观测的样本。显著向好的比较只有在持久化的 percentile 区间下界达到已封存阈值时，才能通过实际效应 gate；点估计本身不充分。缺失区间或 Monte Carlo 误差下仍未决的显著性保持 not-decided；Core 路径绝不回退到点估计。跨运行稳定性属于 Series DecisionPolicy，不会从单个 Run 推断。历史 release policy v1～v6 与 Bootstrap family v1 仍注册以支持精确重放。
 
 ## 9. 字段映射与拒绝规则
 

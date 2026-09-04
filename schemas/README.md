@@ -7,9 +7,12 @@ schema file by hand.
 ## Layout
 
 - `eval-core/v1/` and `eval-core/v2/` contain versioned Evaluation Core wire contracts.
-- `eval-samples/v1/` contains the Eval Sample Set contract used by JSON and YAML sample files.
-- A contract version is part of its public identity. A newer version does not replace or mutate
-  an older file; frozen versions remain available for historical identity resolution.
+- `eval-samples/v2/` contains the only supported Eval Sample Set contract used by JSON and YAML
+  sample files. Preview-era sample schemas are removed rather than retained as readers or package
+  exports.
+- Evaluation Core contract versions are part of their public identities. A newer Core version does
+  not replace or mutate an older file; frozen Core versions remain available for historical
+  identity resolution.
 
 The current Evaluation Core catalog has 21 root contract names. Analysis Bundle,
 Comparability Assessment, Evaluation Report, and Series Analysis Bundle use v2; the other 17
@@ -33,7 +36,7 @@ contract:
 ```text
 oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json
 oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json
-oh-my-knowledge/eval-samples/schemas/v1/eval-sample-set.schema.json
+oh-my-knowledge/eval-samples/schemas/v2/eval-sample-set.schema.json
 ```
 
 ## Maintainer workflow

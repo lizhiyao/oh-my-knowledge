@@ -93,11 +93,11 @@ describe('loadSamples', () => {
       samples: [{ sample_id: 's1', prompt: 'hello' }],
     }));
     const wrong = writeSampleFile('wrong-version.json', JSON.stringify({
-      schemaVersion: 'omk.eval-sample-set/v2',
+      schemaVersion: 'omk.eval-sample-set/v999',
       samples: [{ sample_id: 's1', prompt: 'hello' }],
     }));
-    assert.throws(() => loadSamples(missing), /schemaVersion.*expected.*omk\.eval-sample-set\/v1/);
-    assert.throws(() => loadSamples(wrong), /schemaVersion.*expected.*omk\.eval-sample-set\/v1/);
+    assert.throws(() => loadSamples(missing), /schemaVersion.*expected.*omk\.eval-sample-set\/v2/);
+    assert.throws(() => loadSamples(wrong), /schemaVersion.*expected.*omk\.eval-sample-set\/v2/);
   });
 
   it('拒绝根、sample 与 assertion 上的未知字段', () => {
@@ -138,9 +138,19 @@ describe('loadSamples', () => {
   describe('execution contract', () => {
     const invalidContractCases = [
       {
-        name: 'dimensions must contain non-empty rubric text',
-        sample: { dimensions: { quality: '' } },
-        error: /samples\.0\.dimensions\.quality.*expected string.*>=1/,
+        name: 'rubric criterion must be non-empty',
+        sample: { rubric: { quality: { criterion: '', weight: 1 } } },
+        error: /samples\.0\.rubric\.quality\.criterion.*expected string.*>=1/,
+      },
+      {
+        name: 'rubric weights must sum to one',
+        sample: {
+          rubric: {
+            accuracy: { criterion: 'Correct.', weight: 0.7 },
+            clarity: { criterion: 'Clear.', weight: 0.4 },
+          },
+        },
+        error: /Rubric weights must sum to 1/,
       },
       {
         name: 'unknown assertion type',

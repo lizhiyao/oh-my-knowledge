@@ -1,123 +1,158 @@
 {
-  "schemaVersion": "omk.eval-sample-set/v1",
+  "schemaVersion": "omk.eval-sample-set/v2",
   "samples": [
-  {
-    "sample_id": "release-risk-summary",
-    "prompt": "We are shipping a payment flow change tomorrow. Summarize the release risk and decide whether to proceed.",
-    "rubric": "The answer should mention policy gates, rollback readiness, owner confirmation, and a clear go/no-go decision.",
-    "assertions": [
-      {
-        "type": "contains_all",
-        "values": ["rollback", "owner"]
+    {
+      "sample_id": "release-risk-summary",
+      "prompt": "We are shipping a payment flow change tomorrow. Summarize the release risk and decide whether to proceed.",
+      "rubric": {
+        "quality": {
+          "criterion": "The answer should mention policy gates, rollback readiness, owner confirmation, and a clear go/no-go decision.",
+          "weight": 1
+        }
       },
-      {
-        "type": "regex",
-        "pattern": "\\b(NO-GO|CAUTION|GO)\\b",
-        "flags": "i"
-      }
-    ],
-    "capability": ["release-readiness", "risk-review"],
-    "construct": "capability",
-    "covers": [
-      {
-        "targetKind": "reference",
-        "ref": "references/release-policy.md"
+      "assertions": [
+        {
+          "type": "contains_all",
+          "values": [
+            "rollback",
+            "owner"
+          ]
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b(NO-GO|CAUTION|GO)\\b",
+          "flags": "i"
+        }
+      ],
+      "capability": [
+        "release-readiness",
+        "risk-review"
+      ],
+      "construct": "capability",
+      "covers": [
+        {
+          "targetKind": "reference",
+          "ref": "references/release-policy.md"
+        },
+        {
+          "targetKind": "reference",
+          "ref": "references/rollback-runbook.md"
+        },
+        {
+          "targetKind": "hard_rule",
+          "ref": "cite-release-policy"
+        },
+        {
+          "targetKind": "workflow",
+          "ref": "release-review"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "release-review.check-policy"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "release-review.verify-rollback"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "release-review.decide"
+        }
+      ]
+    },
+    {
+      "sample_id": "missing-rollback",
+      "prompt": "The release checklist is green except the rollback owner is not assigned. Draft the release comment.",
+      "rubric": {
+        "quality": {
+          "criterion": "The answer should block or caution the release until the rollback owner is assigned.",
+          "weight": 1
+        }
       },
-      {
-        "targetKind": "reference",
-        "ref": "references/rollback-runbook.md"
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "block",
+            "caution",
+            "NO-GO"
+          ]
+        }
+      ],
+      "capability": [
+        "release-readiness",
+        "rollback"
+      ],
+      "construct": "necessity",
+      "covers": [
+        {
+          "targetKind": "reference",
+          "ref": "references/release-policy.md"
+        },
+        {
+          "targetKind": "reference",
+          "ref": "references/rollback-runbook.md"
+        },
+        {
+          "targetKind": "hard_rule",
+          "ref": "rollback-before-ship"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "release-review.verify-rollback"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "release-review.decide"
+        }
+      ]
+    },
+    {
+      "sample_id": "post-release-incident",
+      "prompt": "Ten minutes after deployment, checkout errors increased. Produce the first response plan.",
+      "rubric": {
+        "quality": {
+          "criterion": "The answer should prioritize rollback, evidence collection, user impact, and communication cadence.",
+          "weight": 1
+        }
       },
-      {
-        "targetKind": "hard_rule",
-        "ref": "cite-release-policy"
-      },
-      {
-        "targetKind": "workflow",
-        "ref": "release-review"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "release-review.check-policy"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "release-review.verify-rollback"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "release-review.decide"
-      }
-    ]
-  },
-  {
-    "sample_id": "missing-rollback",
-    "prompt": "The release checklist is green except the rollback owner is not assigned. Draft the release comment.",
-    "rubric": "The answer should block or caution the release until the rollback owner is assigned.",
-    "assertions": [
-      {
-        "type": "contains_any",
-        "values": ["block", "caution", "NO-GO"]
-      }
-    ],
-    "capability": ["release-readiness", "rollback"],
-    "construct": "necessity",
-    "covers": [
-      {
-        "targetKind": "reference",
-        "ref": "references/release-policy.md"
-      },
-      {
-        "targetKind": "reference",
-        "ref": "references/rollback-runbook.md"
-      },
-      {
-        "targetKind": "hard_rule",
-        "ref": "rollback-before-ship"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "release-review.verify-rollback"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "release-review.decide"
-      }
-    ]
-  },
-  {
-    "sample_id": "post-release-incident",
-    "prompt": "Ten minutes after deployment, checkout errors increased. Produce the first response plan.",
-    "rubric": "The answer should prioritize rollback, evidence collection, user impact, and communication cadence.",
-    "assertions": [
-      {
-        "type": "contains_all",
-        "values": ["rollback", "impact", "communicat"]
-      }
-    ],
-    "capability": ["incident-response", "rollback"],
-    "construct": "quality",
-    "covers": [
-      {
-        "targetKind": "reference",
-        "ref": "references/rollback-runbook.md"
-      },
-      {
-        "targetKind": "workflow",
-        "ref": "incident-response"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "incident-response.assess-impact"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "incident-response.trigger-rollback"
-      },
-      {
-        "targetKind": "workflow_node",
-        "ref": "incident-response.communicate"
-      }
-    ]
-  }
+      "assertions": [
+        {
+          "type": "contains_all",
+          "values": [
+            "rollback",
+            "impact",
+            "communicat"
+          ]
+        }
+      ],
+      "capability": [
+        "incident-response",
+        "rollback"
+      ],
+      "construct": "quality",
+      "covers": [
+        {
+          "targetKind": "reference",
+          "ref": "references/rollback-runbook.md"
+        },
+        {
+          "targetKind": "workflow",
+          "ref": "incident-response"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "incident-response.assess-impact"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "incident-response.trigger-rollback"
+        },
+        {
+          "targetKind": "workflow_node",
+          "ref": "incident-response.communicate"
+        }
+      ]
+    }
   ]
 }

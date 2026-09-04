@@ -80,7 +80,7 @@ export function extractCompositeSourceLayers(
         if (signal?.aborted === true) throw signal.reason;
         const common = { binding, sourceGroupId: group.groupId } as const;
         const layer: CompositeLayerEntry = group.aggregate.aggregateStatus === 'observed'
-          ? { ...common, layerStatus: 'observed', score: group.aggregate.mean }
+          ? { ...common, layerStatus: 'observed', score: group.aggregate.weightedMean }
           : { ...common, layerStatus: 'missing', reasonCode: group.aggregate.reasonCode };
         return sourceGroup(group, layer);
       });

@@ -1,19 +1,27 @@
 {
-  "schemaVersion": "omk.eval-sample-set/v1",
+  "schemaVersion": "omk.eval-sample-set/v2",
   "samples": [
-  {
-    "sample_id": "s001",
-    "prompt": "What is two plus two?",
-    "assertions": [
-      { "type": "contains", "value": "four", "weight": 1 }
-    ]
-  },
-  {
-    "sample_id": "s002",
-    "prompt": "Say hello in English",
-    "assertions": [
-      { "type": "contains", "value": "hello", "weight": 1 }
-    ]
-  }
+    {
+      "sample_id": "s001",
+      "prompt": "What is two plus two?",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "four",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "sample_id": "s002",
+      "prompt": "Say hello in English",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "hello",
+          "weight": 1
+        }
+      ]
+    }
   ]
 }

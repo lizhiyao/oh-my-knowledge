@@ -42,9 +42,9 @@ import {
   createStatelessAnalysisImplementation,
 } from './analysis-support.js';
 
-export const DIMENSION_ANALYSIS_IMPLEMENTATION_ID = 'omk.dimension-table/v1' as const;
+export const DIMENSION_ANALYSIS_IMPLEMENTATION_ID = 'omk.dimension-table/v2' as const;
 
-const ALGORITHM_VERSION = 'omk.dimension-aggregation/v1' as const;
+const ALGORITHM_VERSION = 'omk.dimension-aggregation/v2' as const;
 
 const DIMENSION_ANALYSIS_CAPABILITIES: JsonValue = {
   capabilityKind: 'analysis-node',
@@ -66,16 +66,16 @@ const DIMENSION_ANALYSIS_CAPABILITIES: JsonValue = {
 export const DIMENSION_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
-    version: '1.0.0',
+    version: '2.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_VERSION,
-      estimator: 'equal-observed-dimension-mean',
+      estimator: 'weighted-complete-dimension-mean',
       scoreScale: { min: DIMENSION_SCORE_MIN, max: DIMENSION_SCORE_MAX },
       decimals: DIMENSION_SCORE_DECIMALS,
-      missingPolicyId: 'exclude/v1',
-      applicability: 'upstream-group-presence',
-      samplingUnitLineage: 'equal-across-upstream-dimensions',
+      missingPolicyId: 'fail-closed/v2',
+      applicability: 'sealed-sample-weights',
+      samplingUnitLineage: 'weighted-across-all-planned-dimensions',
       directMetricRowMembership: 'none-analysis-results-only',
       upstreamSchema: JUDGE_ENSEMBLE_TABLE_SCHEMA,
       outputSchema: DIMENSION_TABLE_SCHEMA,
@@ -138,12 +138,14 @@ function coordinateKey(group: JudgeEnsembleGroup): string {
 function entryFromGroup(
   group: JudgeEnsembleGroup,
   dimension: DimensionParameter,
+  weight: number,
 ): DimensionEntry {
   const common = {
     dimensionId: dimension.dimensionId,
     metricId: dimension.metricId,
     sourceAnalysisResultId: dimension.analysisResultId,
     sourceGroupId: group.groupId,
+    weight,
   } as const;
   return group.aggregateStatus === 'observed'
     ? { ...common, dimensionStatus: 'observed', consensus: group.consensus }
@@ -165,6 +167,14 @@ function buildDimensionTable(
   signal: AbortSignal,
 ): DimensionTableValue {
   const dimensionsByResult = validateInputDesign(inputs, parameters);
+  const plannedBySample = new Map<string, Map<string, number>>();
+  for (const dimension of parameters.dimensions) {
+    for (const sample of dimension.sampleWeights) {
+      const planned = plannedBySample.get(sample.sampleId) ?? new Map<string, number>();
+      planned.set(dimension.dimensionId, sample.weight);
+      plannedBySample.set(sample.sampleId, planned);
+    }
+  }
   const pending = new Map<string, PendingGroup>();
   for (const input of inputs) {
     const dimension = dimensionsByResult.get(input.referenceId);
@@ -180,6 +190,12 @@ function buildDimensionTable(
       if (group.metricId !== dimension.metricId) {
         throw new TypeError('Upstream ensemble Metric disagrees with dimension parameters.');
       }
+      const weight = dimension.sampleWeights.find((sample) => (
+        sample.sampleId === group.sampleId
+      ))?.weight;
+      if (weight === undefined) {
+        throw new TypeError('Upstream ensemble contains a sample outside sealed dimension applicability.');
+      }
       const key = coordinateKey(group);
       const existing = pending.get(key);
       if (existing === undefined) {
@@ -189,7 +205,7 @@ function buildDimensionTable(
           trialIndex: group.trialIndex,
           trialId: group.trialId,
           samplingUnitIds: group.samplingUnitIds,
-          dimensions: [entryFromGroup(group, dimension)],
+          dimensions: [entryFromGroup(group, dimension, weight)],
         });
         continue;
       }
@@ -201,10 +217,17 @@ function buildDimensionTable(
       if (existing.dimensions.some((entry) => entry.dimensionId === dimension.dimensionId)) {
         throw new TypeError('A measurement unit contains duplicate upstream dimension groups.');
       }
-      existing.dimensions.push(entryFromGroup(group, dimension));
+      existing.dimensions.push(entryFromGroup(group, dimension, weight));
     }
   }
   const groups = [...pending.values()].map((source): DimensionGroup => {
+    const planned = plannedBySample.get(source.sampleId);
+    const actualDimensionIds = source.dimensions.map((entry) => entry.dimensionId).sort(compareStrings);
+    const plannedDimensionIds = [...(planned?.keys() ?? [])].sort(compareStrings);
+    if (planned === undefined
+        || canonicalizeJson(actualDimensionIds) !== canonicalizeJson(plannedDimensionIds)) {
+      throw new TypeError('A measurement unit is missing one or more sealed rubric dimensions.');
+    }
     const dimensions = [...source.dimensions].sort((left, right) => (
       compareStrings(left.sourceAnalysisResultId, right.sourceAnalysisResultId)
       || compareStrings(left.metricId, right.metricId)
@@ -218,6 +241,12 @@ function buildDimensionTable(
     };
     return { groupId: dimensionGroupId(withoutGroupId), ...withoutGroupId };
   });
+  const observedSampleIds = new Set(groups.map((group) => group.sampleId));
+  for (const sampleId of plannedBySample.keys()) {
+    if (!observedSampleIds.has(sampleId)) {
+      throw new TypeError(`No dimension evidence was produced for sealed sample "${sampleId}".`);
+    }
+  }
   groups.sort(compareDimensionGroups);
   return parseDimensionTableValue({ schemaVersion: DIMENSION_TABLE_SCHEMA_VERSION, groups });
 }

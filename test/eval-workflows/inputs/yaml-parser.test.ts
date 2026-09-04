@@ -75,7 +75,13 @@ server:
     const yaml = `
 - sample_id: s001
   prompt: Review this code
-  rubric: Find SQL injection
+  rubric:
+    security:
+      criterion: Check for vulnerabilities
+      weight: 0.7
+    performance:
+      criterion: Check for performance
+      weight: 0.3
   assertions:
     - type: contains
       value: SQL
@@ -83,12 +89,12 @@ server:
     - type: min_length
       value: 50
       weight: 0.5
-  dimensions:
-    security: Check for vulnerabilities
-    perf: Check for performance
 - sample_id: s002
   prompt: Review this code too
-  rubric: Find XSS
+  rubric:
+    security:
+      criterion: Find XSS
+      weight: 1
 `.trim();
     const result = parseYaml(yaml) as Array<Record<string, unknown>>;
     assert.equal(result.length, 2);
@@ -100,7 +106,10 @@ server:
     assert.equal((result[0].assertions as Array<Record<string, unknown>>)[0].weight, 1);
     assert.equal((result[0].assertions as Array<Record<string, unknown>>)[1].type, 'min_length');
     assert.equal((result[0].assertions as Array<Record<string, unknown>>)[1].value, 50);
-    assert.equal((result[0].dimensions as Record<string, string>).security, 'Check for vulnerabilities');
+    assert.equal(
+      ((result[0].rubric as Record<string, { criterion: string }>).security).criterion,
+      'Check for vulnerabilities',
+    );
     assert.equal(result[1].sample_id, 's002');
   });
 
@@ -110,7 +119,7 @@ server:
       readFileSync(join(__dirname, '..', '..', 'fixtures', 'code-review', 'eval-samples.json'), 'utf-8'),
     );
     // At minimum, verify the JSON has the expected structure
-    assert.equal(jsonSamples.schemaVersion, 'omk.eval-sample-set/v1');
+    assert.equal(jsonSamples.schemaVersion, 'omk.eval-sample-set/v2');
     assert.ok(Array.isArray(jsonSamples.samples));
     assert.ok(jsonSamples.samples.length > 0);
     assert.ok(jsonSamples.samples[0].sample_id);

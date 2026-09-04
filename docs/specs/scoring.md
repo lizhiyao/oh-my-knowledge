@@ -43,7 +43,7 @@ Raw rubric readings retain their evaluator, metric, instrument, ensemble-member,
 
 - The replicate table averages observed readings for one planned member and preserves non-observed rows.
 - The ensemble table gives each observed member mean equal weight and reports agreement only when the required evidence exists.
-- The dimension table binds each dimension to one Metric and one upstream ensemble result. Missing upstream evidence remains missing; zero observed dimensions does not become zero.
+- The dimension table seals per-sample applicability and weights. It emits a weighted mean only when every planned dimension is observed; missing evidence fails closed.
 
 This prevents retry attempts, judge repeats, ensemble members, Trials, and independent Runs from being collapsed into the same statistical unit.
 
@@ -57,7 +57,7 @@ composite = mean(observed present layers)
 
 The aggregate is rounded to two decimals. An absent layer is structural non-applicability; a present but missing layer remains explicit missing evidence. If no planned layer is observed, the composite is missing rather than numeric zero. Every source group and binding is retained in lineage, and transported tables are recomputed during validation.
 
-Implementation: `omk.composite-table/v1` in `src/eval-workflows/runtime-adapter/analysis/composite-table.ts`.
+Implementation: `omk.composite-table/v2` in `src/eval-workflows/runtime-adapter/analysis/composite-table.ts`.
 
 ## What the composite can answer
 
@@ -67,9 +67,9 @@ It is not an absolute psychometric level. Equal weighting is pragmatic, assertio
 
 ## Decision boundary
 
-A composite score or positive point estimate cannot authorize release by itself. `omk.release-decision/v6` consumes the exact Composite and Bootstrap-family v2 results, plus an optional Judge Ensemble result, and first checks complete evidence and source lineage. Statistical significance uses unrounded tail evidence and fails closed when finite-resample Monte Carlo uncertainty crosses the significance threshold. A positive comparison passes the practical-effect gate only when its persisted four-decimal percentile lower bound is greater than or equal to `triviallySmallDifference`; a large point estimate with an uncertain lower bound remains `CAUTIOUS`.
+A composite score or positive point estimate cannot authorize release by itself. `omk.release-decision/v7` consumes the exact Composite and Bootstrap-family v2 results plus every applicable rubric-dimension Judge Ensemble. It first checks complete evidence and source lineage, then applies dissent and unmeasured-uncertainty gates to every configured dimension. Statistical significance uses unrounded tail evidence and fails closed when finite-resample Monte Carlo uncertainty crosses the significance threshold. A positive comparison passes the practical-effect gate only when its persisted four-decimal percentile lower bound is greater than or equal to `triviallySmallDifference`; a large point estimate with an uncertain lower bound remains `CAUTIOUS`.
 
-Its six conclusions are `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, and `SOLO`. A normal release route requires a decided `PROGRESS` carrying `release-gates-passed`. When a Judge Ensemble is bound but cross-judge agreement cannot be estimated for control or treatment, a positive comparison becomes `CAUTIOUS` with `judge-uncertainty-unmeasured`; deterministic evaluations without a Judge Ensemble are unaffected. A nonsignificant paired comparison uses complete pairs for the sample-size gate; an independent comparison uses its smaller observed arm. The sealed requirement is either an explicit minimum or a recomputable a priori paired-comparison plan; no observed run variance enters that plan. Missing intervals and Monte Carlo-indeterminate significance remain not-decided; multi-treatment results use the worst registered conclusion; cross-run stability belongs to an Evaluation Series rather than a single-run score. Historical release policies v1 through v5 and Bootstrap family v1 remain registered for exact replay.
+Its six conclusions are `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, and `SOLO`. A normal release route requires a decided `PROGRESS` carrying `release-gates-passed`. When any applicable Judge Ensemble has dissent or cross-judge agreement cannot be estimated for control or treatment, a positive comparison becomes `CAUTIOUS`; deterministic evaluations without a Judge Ensemble are unaffected. A nonsignificant paired comparison uses complete pairs for the sample-size gate; an independent comparison uses its smaller observed arm. The sealed requirement is either an explicit minimum or a recomputable a priori paired-comparison plan; no observed run variance enters that plan. Missing intervals and Monte Carlo-indeterminate significance remain not-decided; multi-treatment results use the worst registered conclusion; cross-run stability belongs to an Evaluation Series rather than a single-run score. Historical release policies v1 through v6 and Bootstrap family v1 remain registered for exact replay.
 
 See [Statistical rigor](../explanation/statistical-rigor.md) for uncertainty, agreement, debiasing, and coverage gates.
 

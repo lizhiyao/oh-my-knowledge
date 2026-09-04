@@ -37,14 +37,22 @@ export interface SampleEnvironment {
   notes?: string;
 }
 
+export interface SampleRubricCriterion {
+  /** 单一、可独立判定的评分准则。 */
+  criterion: string;
+  /** 当前 sample 内的显式聚合权重；所有 rubric 权重之和必须为 1。 */
+  weight: number;
+}
+
+export type SampleRubric = Record<string, SampleRubricCriterion>;
+
 export interface Sample {
   sample_id: string;
   prompt: string;
   context?: string;
   cwd?: string;
-  rubric?: string;
+  rubric?: SampleRubric;
   assertions?: Assertion[];
-  dimensions?: Record<string, string>;
   allowedTools?: string[];
   /** 该 sample 测试的能力维度,可多维。free-form string,suggested
    *  values 见 docs/specs/sample-design-spec.md。aggregate 时大小写不敏感。
@@ -82,7 +90,7 @@ export interface Sample {
 }
 
 export interface EvalSampleSetDocument {
-  schemaVersion: 'omk.eval-sample-set/v1';
+  schemaVersion: 'omk.eval-sample-set/v2';
   requires?: {
     tools?: string[];
     files?: string[];

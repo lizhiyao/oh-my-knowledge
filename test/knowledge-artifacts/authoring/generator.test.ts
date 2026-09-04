@@ -35,7 +35,9 @@ describe('generateSamples', () => {
         output: JSON.stringify([{
           sample_id: 's001',
           prompt: 'review the integration',
-          rubric: 'explain the correct result',
+          rubric: {
+            quality: { criterion: 'explain the correct result', weight: 1 },
+          },
           environment: { files_available: ['app.js'] },
           mocks: [{ tool: 'Read', return: 'fixture' }],
           mocksStrict: true,
@@ -194,7 +196,9 @@ describe('generateSamplesFromTraces', () => {
     const r = await generateSamplesFromTraces({
       items: oneItem,
       model: 'test-model',
-      executor: mockExec(JSON.stringify([{ sample_id: 'trace-1', prompt: 'reproduce the failed search for x', rubric: 'should locate the file' }])),
+      executor: mockExec(JSON.stringify([{ sample_id: 'trace-1', prompt: 'reproduce the failed search for x', rubric: {
+        quality: { criterion: 'should locate the file', weight: 1 },
+      } }])),
     });
     assert.ok(r.samples.length >= 1);
     assert.ok(r.samples.every((s) => s.provenance === 'production-trace'));

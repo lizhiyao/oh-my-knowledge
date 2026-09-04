@@ -20,6 +20,7 @@ import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   RELEASE_DECISION_PARAMETERS_SCHEMA,
+  RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
   RELEASE_DECISION_POLICY,
   RELEASE_DECISION_POLICY_IDENTITY,
   RELEASE_DECISION_POLICY_V1,
@@ -36,6 +37,9 @@ import {
   RELEASE_DECISION_POLICY_V6,
   RELEASE_DECISION_POLICY_V6_IDENTITY,
   RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V7,
+  RELEASE_DECISION_POLICY_V7_IDENTITY,
   buildBootstrapFamilyTable,
   buildBootstrapFamilyTableV2,
   compareCompositeGroups,
@@ -47,12 +51,14 @@ import {
   parseJudgeEnsembleTableEnvelope,
   parseReleaseDecisionParameters,
   parseReleaseDecisionParametersV1,
+  parseReleaseDecisionParametersV3,
   type BootstrapFamilyParameters,
   type BootstrapObservation,
   type CompositeGroup,
   type CompositeLayerEntry,
   type ReleaseDecisionParameters,
   type ReleaseDecisionParametersV1,
+  type ReleaseDecisionParametersV3,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 
 const CONTROL = 'control';
@@ -251,6 +257,15 @@ function completedResult(resultId: string, schema: typeof COMPOSITE_TABLE_SCHEMA
 function judgeEnsemble(
   composite: ReturnType<typeof tables>['composite'],
   mode: 'aligned' | 'dissenting' | 'single',
+  binding: Readonly<{
+    metricId: string;
+    instrumentId: string;
+    replicateGroupId: string;
+  }> = {
+    metricId: 'rubric-score',
+    instrumentId: 'rubric-correctness',
+    replicateGroupId: 'primary',
+  },
 ) {
   const groupKey = (group: CompositeGroup) => canonicalizeJson([
     group.targetId,
@@ -258,9 +273,9 @@ function judgeEnsemble(
     group.trialIndex,
     group.trialId,
     group.samplingUnitIds,
-    'rubric-score',
-    'rubric-correctness',
-    'primary',
+    binding.metricId,
+    binding.instrumentId,
+    binding.replicateGroupId,
   ]);
   const groups = composite.groups.map((source, index) => {
     const sampleIndex = Number(source.sampleId.split('-').at(-1)) - 1;
@@ -298,9 +313,9 @@ function judgeEnsemble(
       trialIndex: source.trialIndex,
       trialId: source.trialId,
       samplingUnitIds: source.samplingUnitIds,
-      metricId: 'rubric-score',
-      instrumentId: 'rubric-correctness',
-      replicateGroupId: 'primary',
+      metricId: binding.metricId,
+      instrumentId: binding.instrumentId,
+      replicateGroupId: binding.replicateGroupId,
       coverage: {
         plannedMembers: members.length,
         observedMembers: members.length,
@@ -429,6 +444,35 @@ function contextV6(
   };
 }
 
+function contextV7(
+  releaseParameters: ReleaseDecisionParametersV3,
+  values: ReturnType<typeof tables>,
+  ensembles: Readonly<Record<string, ReturnType<typeof judgeEnsemble>>>,
+): DecisionPolicyContext {
+  const current = contextV5(parameters({ sampleIds: releaseParameters.sampleIds }), values);
+  const ensembleResults = Object.entries(ensembles).map(([resultId, table]) => (
+    completedResult(
+      resultId,
+      JUDGE_ENSEMBLE_TABLE_SCHEMA as typeof COMPOSITE_TABLE_SCHEMA,
+      table as JsonValue,
+    )
+  ));
+  return {
+    ...current,
+    policy: {
+      ...current.policy,
+      implementationId: RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
+      analysisResultIds: [
+        'composite-table',
+        'bootstrap-family',
+        ...Object.keys(ensembles),
+      ],
+      parameters: releaseParameters,
+    },
+    results: [...current.results, ...ensembleResults],
+  };
+}
+
 describe('OMK Release DecisionPolicy', () => {
   it('declares the sealed table and comparison-family capabilities', () => {
     const capabilities = DecisionPolicyCapabilitiesSchema.parse(
@@ -463,6 +507,7 @@ describe('OMK Release DecisionPolicy', () => {
       RELEASE_DECISION_POLICY.identity.implementationId,
       RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
       RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
     ]);
   });
 
@@ -585,6 +630,56 @@ describe('OMK Release DecisionPolicy', () => {
     );
     expect(RELEASE_DECISION_POLICY_V6_IDENTITY.fingerprint).toBe(
       'sha256:3214ed21b603d3faa6b175cddf7fe701e0ca9c25055f4d7154d053ecacd1283a',
+    );
+  });
+
+  it('v7 applies dissent and uncertainty gates to every rubric dimension', async () => {
+    const sampleIds = Array.from({ length: 4 }, (_, index) => `sample-${index + 1}`);
+    const values = tables({
+      sampleIds,
+      targetScores: { control: [3, 3, 3, 3], treatment: [4, 4, 4, 4] },
+    });
+    const bindings = [
+      {
+        analysisResultId: 'judge-accuracy',
+        metricId: 'rubric-accuracy',
+        instrumentId: 'rubric-judge',
+        replicateGroupId: 'rubric-accuracy',
+        applicableSampleIds: sampleIds,
+      },
+      {
+        analysisResultId: 'judge-safety',
+        metricId: 'rubric-safety',
+        instrumentId: 'rubric-judge',
+        replicateGroupId: 'rubric-safety',
+        applicableSampleIds: sampleIds,
+      },
+    ];
+    const releaseParameters = parseReleaseDecisionParametersV3({
+      ...parameters({ sampleIds }),
+      sources: {
+        compositeResultId: 'composite-table',
+        bootstrapFamilyResultId: 'bootstrap-family',
+        judgeEnsembles: bindings,
+      },
+    });
+    const ensembles = {
+      'judge-accuracy': judgeEnsemble(values.composite, 'aligned', bindings[0]),
+      'judge-safety': judgeEnsemble(values.composite, 'dissenting', bindings[1]),
+    };
+
+    await expect(RELEASE_DECISION_POLICY_V7.decide(
+      contextV7(releaseParameters, values, ensembles),
+    )).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'CAUTIOUS',
+      reasonCodes: ['comparison-significant-progress', 'judge-ensemble-dissent'],
+    });
+    expect(RELEASE_DECISION_POLICY_V7_IDENTITY.capabilities).toMatchObject({
+      parameterSchema: RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
+    });
+    expect(RELEASE_DECISION_POLICY_V7_IDENTITY.fingerprint).toBe(
+      'sha256:bb7ef4efe65de02150c8e577875c68eb71fa6b2ce6bb87eff305901bb55e3d48',
     );
   });
 

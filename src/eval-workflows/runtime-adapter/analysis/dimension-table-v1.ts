@@ -17,7 +17,7 @@ import {
   round,
 } from './analysis-support.js';
 
-export const DIMENSION_TABLE_SCHEMA_VERSION = 'omk.dimension-table/v2' as const;
+export const DIMENSION_TABLE_SCHEMA_VERSION = 'omk.dimension-table/v1' as const;
 export const DIMENSION_SCORE_DECIMALS = 2;
 export const DIMENSION_SCORE_MIN = 1;
 export const DIMENSION_SCORE_MAX = 5;
@@ -36,7 +36,6 @@ const DimensionEntryBaseSchema = z.object({
   metricId: IdentifierSchema,
   sourceAnalysisResultId: IdentifierSchema,
   sourceGroupId: Sha256DigestSchema,
-  weight: z.number().finite().positive().max(1),
 });
 
 const ObservedDimensionEntrySchema = DimensionEntryBaseSchema.extend({
@@ -62,7 +61,7 @@ const DimensionCoverageSchema = z.object({
 
 const ObservedDimensionAggregateSchema = z.object({
   aggregateStatus: z.literal('observed'),
-  weightedMean: ScoreSchema,
+  mean: ScoreSchema,
 }).strict();
 
 const MissingDimensionAggregateSchema = z.object({
@@ -133,19 +132,16 @@ export function dimensionCoverage(entries: readonly DimensionEntry[]): Dimension
 }
 
 export function dimensionAggregate(entries: readonly DimensionEntry[]): DimensionAggregate {
-  if (entries.some((entry) => entry.dimensionStatus === 'missing')) {
-    return { aggregateStatus: 'missing', reasonCode: 'dimension-unobserved' };
-  }
-  const weightSum = entries.reduce((sum, entry) => sum + entry.weight, 0);
-  if (Math.abs(weightSum - 1) > 1e-9) {
+  const values = entries.flatMap((entry) => (
+    entry.dimensionStatus === 'observed' ? [entry.consensus] : []
+  ));
+  if (values.length === 0) {
     return { aggregateStatus: 'missing', reasonCode: 'dimension-unobserved' };
   }
   return {
     aggregateStatus: 'observed',
-    weightedMean: round(
-      entries.reduce((sum, entry) => (
-        sum + (entry.dimensionStatus === 'observed' ? entry.consensus * entry.weight : 0)
-      ), 0),
+    mean: round(
+      values.reduce((sum, value) => sum + value, 0) / values.length,
       DIMENSION_SCORE_DECIMALS,
     ),
   };
@@ -160,7 +156,6 @@ export function dimensionGroupId(group: Omit<DimensionGroup, 'groupId'>): string
       metricId: entry.metricId,
       sourceAnalysisResultId: entry.sourceAnalysisResultId,
       sourceGroupId: entry.sourceGroupId,
-      weight: entry.weight,
     })),
   });
 }
@@ -186,21 +181,6 @@ function assertStableBinding(
   }
 }
 
-function assertStableSampleWeights(groups: readonly DimensionGroup[], issue: Issue): void {
-  const weights = new Map<string, number>();
-  for (const group of groups) {
-    for (const entry of group.dimensions) {
-      const key = canonicalizeJson([group.sampleId, entry.dimensionId]);
-      const previous = weights.get(key);
-      if (previous !== undefined && previous !== entry.weight) {
-        issue(['groups'], 'Dimension weight must remain stable for each sample and dimension.');
-        return;
-      }
-      weights.set(key, entry.weight);
-    }
-  }
-}
-
 function validateDimensionTable(value: DimensionTableValue, issue: Issue): void {
   const groupKeys = value.groups.map(unitKey);
   if (new Set(groupKeys).size !== groupKeys.length
@@ -212,7 +192,6 @@ function validateDimensionTable(value: DimensionTableValue, issue: Issue): void 
   for (const field of ['dimensionId', 'metricId', 'sourceAnalysisResultId'] as const) {
     assertStableBinding(allEntries, field, issue);
   }
-  assertStableSampleWeights(value.groups, issue);
   const sourceGroupIds = allEntries.map((entry) => entry.sourceGroupId);
   if (new Set(sourceGroupIds).size !== sourceGroupIds.length) {
     issue(['groups'], 'Dimension source group identities must be globally unique.');
@@ -233,7 +212,7 @@ function validateDimensionTable(value: DimensionTableValue, issue: Issue): void 
     }
     if (canonicalizeJson(group.aggregate)
         !== canonicalizeJson(dimensionAggregate(group.dimensions))) {
-      issue(['groups', groupIndex, 'aggregate'], 'Dimension weighted mean is not recomputable.');
+      issue(['groups', groupIndex, 'aggregate'], 'Dimension mean is not recomputable.');
     }
     if (group.groupId !== dimensionGroupId(group)) {
       issue(['groups', groupIndex, 'groupId'], 'Dimension group identity does not match lineage.');
@@ -252,17 +231,16 @@ const DimensionTableEnvelopeSchema = z.object({
 
 export const DIMENSION_TABLE_SCHEMA = analysisSchemaIdentity(
   DIMENSION_TABLE_SCHEMA_VERSION,
-  'urn:omk:analysis-result:dimension-table:v2',
+  'urn:omk:analysis-result:dimension-table:v1',
   analysisJsonSchema(DimensionTableEnvelopeSchema, [
     'groups and dimension entries are unique and canonically ordered',
     'dimension, metric, and upstream Analysis result bindings remain stable across groups',
-    'each sample and dimension weight remains stable across targets and trials',
     'source ensemble group identities are globally unique',
-    'every planned dimension and weight is sealed before execution',
+    'only dimensions represented by an upstream group are planned for a measurement unit',
     'coverage exactly conserves observed and missing dimension entries',
     'source consensus scores use the sealed 2-decimal precision',
-    'the aggregate is the weighted mean of all planned 1-5 consensus scores rounded to 2 decimals',
-    'any missing planned dimension or invalid weight sum fails closed to a missing aggregate',
+    'the aggregate is the equal mean of observed 1-5 consensus scores rounded to 2 decimals',
+    'zero observed dimensions produces missing rather than numeric zero',
     'groupId binds the sampling unit, dimension design, and upstream Analysis lineage',
     'raw judge evidence, usage, cost, and direct Metric row membership are not copied',
   ]),

@@ -7,7 +7,7 @@ import {
   DIMENSION_TABLE_SCHEMA,
   parseDimensionTableEnvelope,
   type DimensionGroup,
-} from './dimension-table.js';
+} from './dimension-table-v1.js';
 
 export const AGREEMENT_SOURCE_SCHEMAS = Object.freeze([
   DIMENSION_TABLE_SCHEMA,
@@ -44,7 +44,7 @@ function resolvePointer(value: unknown, pointer: string): unknown {
 
 function hasObservedAggregate(
   group: DimensionGroup,
-): group is DimensionGroup & { aggregate: { aggregateStatus: 'observed'; weightedMean: number } } {
+): group is DimensionGroup & { aggregate: { aggregateStatus: 'observed'; mean: number } } {
   return group.aggregate.aggregateStatus === 'observed';
 }
 
@@ -92,7 +92,7 @@ function judgeRating(groups: readonly DimensionGroup[]): AgreementPair['judge'] 
   return {
     ratingStatus: 'observed',
     score: round(
-      observed.reduce((sum, group) => sum + group.aggregate.weightedMean, 0) / observed.length,
+      observed.reduce((sum, group) => sum + group.aggregate.mean, 0) / observed.length,
       2,
     ),
     sourceGroupIds,

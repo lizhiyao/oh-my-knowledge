@@ -63,7 +63,7 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
     const total = appendSamplesToFile(f, [s('s001'), s('s003')]);
     assert.equal(total, 4);
     const parsed = JSON.parse(readFileSync(f, 'utf-8'));
-    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v1');
+    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v2');
     assert.deepEqual(parsed.samples.map((x: Sample) => x.sample_id), ['s001', 's002', 's001-2', 's003']);
   });
 
@@ -87,7 +87,7 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
       schemaVersion: string;
       samples: Sample[];
     };
-    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v1');
+    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v2');
     assert.deepEqual(parsed.samples.map((x) => x.sample_id), ['s001', 's002']);
   });
 });

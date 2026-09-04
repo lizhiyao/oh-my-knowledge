@@ -51,7 +51,7 @@ export interface LoadSamplesOptions {
  * Load samples from a single file OR a directory of sample files.
  *
  * File mode (.json / .yaml / .yml):
- * - Versioned object: `{ schemaVersion: 'omk.eval-sample-set/v1', requires?, samples }`
+ * - Versioned object: `{ schemaVersion: 'omk.eval-sample-set/v2', requires?, samples }`
  *
  * Directory mode (e.g. `<skill>/.omk/`):
  * - Glob `*.{json,yaml,yml}` minus reserved prefixes (report*, health*, _*)

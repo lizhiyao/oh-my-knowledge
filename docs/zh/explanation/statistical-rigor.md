@@ -38,7 +38,7 @@ Bootstrap uncertainty 回答的是观测差异能否与重采样噪声区分，�
 - paired-unit Bootstrap uncertainty 与结构化 missing 状态；
 - annotator 与评委身份可能让一致性过于乐观时的污染警告。
 
-当前 `omk.agreement-table/v2` 契约遵循 [Krippendorff 推荐的可靠性 bootstrap](https://www.asc.upenn.edu/sites/default/files/2021-03/Algorithm%20for%20Bootstrapping%20a%20Distribution%20of%20Alpha.pdf)：每个 draw 重采样配对的观测分歧，期望分歧则固定为原始评分的值。这样可以避免样本重采样退化为单一值时，只对有限 draw 计算分位数。观测结果完全一致是文献明确的不适用情形，不会编造区间；draw coverage 与所有缺失状态仍显式报告。v1 的有限 draw 契约只为精确重放保留注册。事后调用方可以显式提供最低 alpha，assessment 会比较置信区间下界；未提供阈值时则明确保持未配置。
+当前 `omk.agreement-table/v3` 契约遵循 [Krippendorff 推荐的可靠性 bootstrap](https://www.asc.upenn.edu/sites/default/files/2021-03/Algorithm%20for%20Bootstrapping%20a%20Distribution%20of%20Alpha.pdf)：每个 draw 重采样配对观测分歧，期望分歧则固定为原始评分的值。它消费加权 Dimension v2 契约；v1 与 v2 只为精确重放继续绑定 Dimension v1。观测结果完全一致是文献明确的不适用情形，不会编造区间；draw coverage 与所有缺失状态仍显式报告。事后调用方可以显式提供最低 alpha，assessment 会比较置信区间下界；未提供阈值时则明确保持未配置。
 
 事后 Gold comparison 属于 exploratory calibration，不会反向改写预注册的 release Decision。
 

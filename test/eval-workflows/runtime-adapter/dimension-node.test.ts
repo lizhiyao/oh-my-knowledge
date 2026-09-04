@@ -40,11 +40,13 @@ const security: DimensionParameter = {
   dimensionId: 'security',
   metricId: 'rubric-security',
   analysisResultId: 'ensemble-security',
+  sampleWeights: [{ sampleId: 'sample-a', weight: 0.75 }],
 };
 const actionability: DimensionParameter = {
   dimensionId: 'actionability',
   metricId: 'rubric-actionability',
   analysisResultId: 'ensemble-actionability',
+  sampleWeights: [{ sampleId: 'sample-a', weight: 0.25 }],
 };
 
 interface SourceOptions {
@@ -160,7 +162,14 @@ function input(dimension: DimensionParameter, options: SourceOptions = {}): Anal
 }
 
 function parameters(dimensions: readonly DimensionParameter[] = [security, actionability]): JsonValue {
-  return { dimensions: dimensions.map((dimension) => ({ ...dimension })) };
+  return {
+    dimensions: dimensions.map((dimension) => ({
+      ...dimension,
+      sampleWeights: dimensions.length === 1
+        ? dimension.sampleWeights.map((sample) => ({ ...sample, weight: 1 }))
+        : dimension.sampleWeights.map((sample) => ({ ...sample })),
+    })),
+  };
 }
 
 function context(
@@ -229,9 +238,13 @@ describe('dimension Analysis node', () => {
     expect(capabilities.parameterSchema).toEqual(DIMENSION_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(DIMENSION_ANALYSIS_IDENTITY)).toBe(true);
     expect(Object.isFrozen(DIMENSION_ANALYSIS_IDENTITY.capabilities)).toBe(true);
+    expect(DIMENSION_ANALYSIS_IDENTITY.version).toBe('2.0.0');
+    expect(DIMENSION_ANALYSIS_IDENTITY.fingerprint).toBe(
+      'sha256:5e1ea39bce994b140ea526d037a91b4dcf4e859fe6e2aff0356febc44cac47e6',
+    );
   });
 
-  it('builds a canonical 5 + 3 → 4 table without direct Metric row membership', async () => {
+  it('builds a canonical weighted table without direct Metric row membership', async () => {
     const forward = await execute(context());
     const reverse = await execute(context([
       input(actionability, { score: 3 }),
@@ -245,7 +258,7 @@ describe('dimension Analysis node', () => {
       assumptionChecks: [{ assumptionId: 'dimension-contract', checkStatus: 'passed' }],
       value: {
         groups: [{
-          aggregate: { aggregateStatus: 'observed', mean: 4 },
+          aggregate: { aggregateStatus: 'observed', weightedMean: 4.5 },
           coverage: { plannedDimensions: 2, observedDimensions: 2, missingDimensions: 0 },
         }],
       },
@@ -257,13 +270,13 @@ describe('dimension Analysis node', () => {
     expect(() => validator?.parse({ resultType: 'table', value: forward.value })).not.toThrow();
   });
 
-  it('excludes missing dimensions and preserves all-missing as missing', async () => {
+  it('fails closed when any planned dimension is missing', async () => {
     const partial = await execute(context([
       input(security, { missing: true }),
       input(actionability, { score: 3 }),
     ]));
     expect(partial).toMatchObject({
-      value: { groups: [{ aggregate: { aggregateStatus: 'observed', mean: 3 } }] },
+      value: { groups: [{ aggregate: { aggregateStatus: 'missing', reasonCode: 'dimension-unobserved' } }] },
     });
     const missing = await execute(context([
       input(security, { missing: true }),
@@ -279,7 +292,11 @@ describe('dimension Analysis node', () => {
     });
   });
 
-  it('treats absent upstream groups as structural non-applicability per unit', async () => {
+  it('uses sealed sample applicability instead of inferring it from observed groups', async () => {
+    const dimensions = [
+      { ...security, sampleWeights: [{ sampleId: 'sample-a', weight: 1 }] },
+      { ...actionability, sampleWeights: [{ sampleId: 'sample-b', weight: 1 }] },
+    ];
     const result = await execute(context([
       input(security, { sampleId: 'sample-a', score: 5 }),
       input(actionability, {
@@ -287,7 +304,7 @@ describe('dimension Analysis node', () => {
         score: 3,
         samplingUnitIds: { pairingBlockId: digestCanonicalJson('pair-b') },
       }),
-    ]));
+    ], dimensions));
     if (result.analysisStatus !== 'completed') throw new Error('expected completed result');
     const groups = (result.value as { groups: Array<{ coverage: unknown }> }).groups;
     expect(groups).toHaveLength(2);

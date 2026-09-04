@@ -750,6 +750,7 @@ describe('judge aggregation Analysis nodes', () => {
           dimensionId: 'correctness',
           metricId: 'rubric-score',
           analysisResultId: 'ensemble-table',
+          sampleWeights: [{ sampleId: 'sample-1', weight: 1 }],
         }],
       },
     }, {
@@ -1063,7 +1064,7 @@ describe('judge aggregation Analysis nodes', () => {
       groups: expect.arrayContaining([expect.objectContaining({
         samplingUnitIds: { pairingBlockId: executionPairingBlockId },
         coverage: { plannedDimensions: 1, observedDimensions: 1, missingDimensions: 0 },
-        aggregate: { aggregateStatus: 'observed', mean: 3.75 },
+        aggregate: { aggregateStatus: 'observed', weightedMean: 3.75 },
       })]),
     });
     const dimensionGroups = (dimensionRecord.value as { groups: Array<{
@@ -1073,7 +1074,7 @@ describe('judge aggregation Analysis nodes', () => {
     }> }).groups;
     expect(dimensionGroups).toHaveLength(2);
     expect(dimensionGroups.every((group) => canonicalizeJson(group.aggregate)
-      === canonicalizeJson({ aggregateStatus: 'observed', mean: 3.75 }))).toBe(true);
+      === canonicalizeJson({ aggregateStatus: 'observed', weightedMean: 3.75 }))).toBe(true);
     const compositeRecord = analysis.bundle.records.find((record) => (
       record.resultId === 'composite-table'
     ));
