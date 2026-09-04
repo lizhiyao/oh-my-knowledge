@@ -7,7 +7,7 @@ description: Why Evaluation Core decisions are auditable: preregistered Bootstra
 
 omk evaluates a knowledge change by fixing the model and sample design, changing the artifact, and carrying the resulting evidence through a sealed Evaluation Core plan. A higher display score is not release authority. The registered Core Decision must be able to trace its conclusion back to complete, comparable observations and preregistered analysis.
 
-Four safeguards cover different failure modes.
+Five safeguards cover different failure modes.
 
 ## 1. Bootstrap comparison families
 
@@ -59,6 +59,12 @@ Missing evidence is not a zero score and is not silently dropped from the decisi
 - The release Decision requires complete evidence and exact source binding before issuing a directional conclusion.
 
 This prevents a run from looking better merely because difficult coordinates failed to produce a score.
+
+## 5. Repeated runs require a fixed stopping rule
+
+`--repeat N` seals `N` independent Runs into one Evaluation Series before execution. It is test-retest evidence, not a retry-until-success switch. Choose the repeat count and stopping rule before inspecting results, then report the complete Series. Do not rerun after a disappointing verdict and publish only the first favorable run: unadjusted, result-dependent repetition is optional stopping and invalidates the advertised false-positive control.
+
+`--retry` has a different purpose: it retries an operationally failed sample attempt under the sealed retry policy. Neither option authorizes selective deletion, replacement, or reporting of completed observations. If an adaptive stopping design is required, analyze it with a sequential method that explicitly controls error rates; the current fixed-design release Decision does not provide that guarantee. See García-Pérez, [Statistical Conclusion Validity: Some Common Threats and Simple Remedies](https://pmc.ncbi.nlm.nih.gov/articles/PMC3429930/).
 
 ## Release Decision
 

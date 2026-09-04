@@ -7,7 +7,7 @@ description: Evaluation Core 的结论为何可审计：预注册 Bootstrap fami
 
 omk 评估一次知识改动时，会固定模型和用例设计，只改变 artifact，并让证据沿 sealed Evaluation Core plan 流动。更高的展示分数不是发布授权；已注册的 Core Decision 必须能把结论追溯到完整、可比的观测与预注册分析。
 
-四道防线分别覆盖不同的失败模式。
+五道防线分别覆盖不同的失败模式。
 
 ## 一、Bootstrap comparison family
 
@@ -59,6 +59,12 @@ Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold ca
 - release Decision 必须先确认 evidence 完整且 source binding 精确，才能给出方向性结论。
 
 这能防止困难 coordinate 因为没产出分数，反而让 run 看起来更好。
+
+## 五、重复运行必须先固定停止规则
+
+`--repeat N` 会在执行前把 `N` 个独立 Run 封存进同一个 Evaluation Series。它是 test-retest 证据，不是「重试到成功」开关。应当在查看结果前确定 repeat 数与停止规则，然后完整报告这个 Series。不要在 verdict 不理想后反复重跑，再只发布第一次有利结果：这种未校正、由结果决定的重复属于 optional stopping，会使宣称的假阳性控制失效。
+
+`--retry` 的用途不同：它只在已封存的 retry policy 下重试运行失败的 sample attempt。两个选项都不允许选择性删除、替换或报告已完成的观测。如果确实需要自适应停止设计，必须使用显式控制错误率的 sequential method；当前的固定设计 release Decision 不提供这种保证。参见 García-Pérez：[Statistical Conclusion Validity: Some Common Threats and Simple Remedies](https://pmc.ncbi.nlm.nih.gov/articles/PMC3429930/)。
 
 ## Release Decision
 

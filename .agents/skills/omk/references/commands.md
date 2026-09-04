@@ -104,7 +104,7 @@ omk eval [flags]
 - `--no-serve` `boolean`:不启 report server
 - `--no-strict-baseline` `boolean`:关闭 baseline 隔离
 - `--output-dir` `option`:报告输出目录（默认项目级 .omk/eval）
-- `--repeat` `option`:每个用例重复运行 N 次
+- `--repeat` `option`:预先固定 Evaluation Series 的独立 run 数
 - `--report-only` `boolean`:生成报告并打印判定，但始终 exit 0(不参与 CI gate）。
 - `--resume` `option`:复用经过完整契约校验的 Core runId；拒绝时失败关闭
 - `--retry` `option`:单用例失败重试次数
