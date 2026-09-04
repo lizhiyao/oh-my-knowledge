@@ -277,6 +277,11 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
         analysisNodeKind: 'reducer' | 'estimator' | 'correction';
         outputResultId: string;
         parameters?: unknown;
+        targetFilter?: { includeTargetIds: readonly string[] };
+        cohortFilter?: {
+          includeCohortIds?: readonly string[];
+          excludeCohortIds?: readonly string[];
+        };
         inputs: readonly ({
           inputKind: 'metric-observations' | 'analysis-result';
           referenceId: string;
@@ -288,6 +293,10 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
         })[];
       }[];
     };
+    samples: readonly {
+      sampleId: string;
+      analysis?: { memberships: readonly { cohortId: string }[] };
+    }[];
     experiment: {
       sampling: {
         resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
@@ -437,6 +446,13 @@ function expectedRows(
     .filter((input) => input.inputKind === 'metric-observations')
     .map((input) => input.referenceId));
   if (metricIds.size === 0) return [];
+  const includeTargetIds = new Set(node.targetFilter?.includeTargetIds ?? []);
+  const includeCohortIds = new Set(node.cohortFilter?.includeCohortIds ?? []);
+  const excludeCohortIds = new Set(node.cohortFilter?.excludeCohortIds ?? []);
+  const cohortIdsBySample = new Map(plan.analysis.samples.map((sample) => [
+    sample.sampleId,
+    new Set(sample.analysis?.memberships.map((membership) => membership.cohortId) ?? []),
+  ]));
   const comparisonInputs = node.inputs.filter((input) => input.inputKind === 'comparison');
   const comparisonById = new Map(plan.analysis.comparisons.map(
     (comparison) => [comparison.comparisonId, comparison],
@@ -455,6 +471,11 @@ function expectedRows(
   ));
   const rows: ExpectedAnalysisRow[] = [];
   for (const coordinate of derivePlannedEvaluationCoordinates(plan)) {
+    if (includeTargetIds.size > 0 && !includeTargetIds.has(coordinate.targetId)) continue;
+    const sampleCohortIds = cohortIdsBySample.get(coordinate.sampleId) ?? new Set<string>();
+    if (includeCohortIds.size > 0
+        && ![...includeCohortIds].some((cohortId) => sampleCohortIds.has(cohortId))) continue;
+    if ([...excludeCohortIds].some((cohortId) => sampleCohortIds.has(cohortId))) continue;
     const evaluator = evaluatorById.get(coordinate.evaluatorId);
     if (evaluator === undefined) continue;
     for (const metricId of evaluator.metricIds) {

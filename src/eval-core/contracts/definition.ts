@@ -9,7 +9,7 @@ import {
 import { JsonValueSchema } from './json.js';
 import { TargetExecutionControlsSchema } from './execution-controls.js';
 
-export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v2' as const;
+export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v3' as const;
 export const MEASUREMENT_POLICY_SCHEMA_VERSION = 'omk.measurement-policy/v1' as const;
 
 export const AnalysisCohortDefinitionSchema = z.object({
@@ -230,6 +230,9 @@ const AnalysisNodeBaseSchema = z.object({
   versionConstraint: NonEmptyStringSchema.optional(),
   inputs: z.array(AnalysisInputReferenceSchema).min(1),
   outputResultId: IdentifierSchema,
+  targetFilter: z.object({
+    includeTargetIds: z.array(IdentifierSchema).min(1),
+  }).strict().optional(),
   cohortFilter: z.object({
     includeCohortIds: z.array(IdentifierSchema).min(1).optional(),
     excludeCohortIds: z.array(IdentifierSchema).min(1).optional(),
@@ -306,7 +309,7 @@ export const EvaluationDefinitionSchema = z.object({
   seriesMembership: EvaluationSeriesMembershipSchema.optional(),
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Evaluation Definition v2',
+  title: 'OMK Evaluation Definition v3',
 });
 
 export const ExecutionPolicySchema = z.object({

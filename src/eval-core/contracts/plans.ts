@@ -31,9 +31,9 @@ import {
 
 export const EXECUTION_PLAN_SCHEMA_VERSION = 'omk.execution-plan/v2' as const;
 export const EVALUATION_PLAN_SCHEMA_VERSION = 'omk.evaluation-plan/v1' as const;
-export const ANALYSIS_PLAN_SCHEMA_VERSION = 'omk.analysis-plan/v2' as const;
+export const ANALYSIS_PLAN_SCHEMA_VERSION = 'omk.analysis-plan/v3' as const;
 export const DECISION_PLAN_SCHEMA_VERSION = 'omk.decision-plan/v1' as const;
-export const RUN_PLAN_SCHEMA_VERSION = 'omk.run-plan/v2' as const;
+export const RUN_PLAN_SCHEMA_VERSION = 'omk.run-plan/v3' as const;
 
 export const ExecutionInputSampleSchema = EvaluationSampleSchema.pick({
   sampleId: true,
@@ -141,7 +141,7 @@ export const AnalysisPlanSchema = z.object({
   analysisPlanDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Analysis Plan v2',
+  title: 'OMK Analysis Plan v3',
 });
 
 export const DecisionPlanSchema = z.object({
@@ -181,7 +181,7 @@ export const RunPlanSchema = z.object({
   digests: PlanDigestsSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
-  title: 'OMK Run Plan v2',
+  title: 'OMK Run Plan v3',
 });
 
 export type ExecutionInputSample = z.infer<typeof ExecutionInputSampleSchema>;
