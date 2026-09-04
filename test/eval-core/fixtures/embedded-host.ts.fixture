@@ -31,7 +31,7 @@ import {
   assertExecutorConformance,
   runExecutorConformance,
   runEvaluation,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge/eval-runtime/advanced';
 import {
   createRubricJudgeCriterion,
   createRubricJudgeEvaluator,
@@ -42,6 +42,10 @@ import {
   createRubricJudgeRuntimeConfig,
   type RuntimePortRegistration,
 } from 'oh-my-knowledge/eval-runtime/advanced';
+import {
+  EvaluationEventConsumptionError,
+  evaluate,
+} from 'oh-my-knowledge/eval-runtime';
 import {
   createEvalSampleSetDocument,
   resolveEvalSampleJsonSchema,
@@ -104,6 +108,53 @@ void publicDefinition;
 void publicPolicy;
 void publicEngine.prepare(publicDefinition, publicPolicy);
 void registration;
+
+const canonicalEvaluation = evaluate({
+  executor: {
+    executorId: 'typescript-canonical/v1',
+    version: '1.0.0',
+    schemas: { input: z.string(), output: z.string() },
+    async execute({ input, signal }) {
+      signal.throwIfAborted();
+      return { output: input };
+    },
+  },
+  dataset: {
+    datasetId: 'typescript-canonical-runtime',
+    samples: [{ sampleId: 'one', input: 'question', expected: 'answer' }],
+  },
+  control: {
+    variantId: 'baseline',
+    artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
+  },
+  treatment: {
+    variantId: 'prompt-v2',
+    artifact: { name: 'prompt-v2', kind: 'prompt', source: 'inline', content: 'Answer.' },
+  },
+  evaluator: { evaluatorKind: 'exact-match' },
+  experiment: { seed: 'typescript-seed' },
+  policy: {},
+  runId: 'typescript-canonical-runtime',
+});
+async function canonicalResultBoundary(): Promise<void> {
+  const result = await canonicalEvaluation;
+  const datasetId: string = result.definition.dataset.datasetId;
+  const maxConcurrency: number = result.policy.execution.maxConcurrency;
+  const runStatus: 'completed' | 'cancelled' | 'budget-exhausted' | 'failed' = result.status;
+  void datasetId;
+  void maxConcurrency;
+  void runStatus;
+}
+void canonicalResultBoundary;
+
+function canonicalEventErrorBoundary(error: unknown): void {
+  if (!(error instanceof EvaluationEventConsumptionError) || error.runResult === undefined) return;
+  const datasetId: string = error.runResult.definition.dataset.datasetId;
+  const maxConcurrency: number = error.runResult.policy.execution.maxConcurrency;
+  void datasetId;
+  void maxConcurrency;
+}
+void canonicalEventErrorBoundary;
 
 const jsonIdentity = createInvokeExecutorIdentity({
   implementationId: 'test.typescript-json/v1',

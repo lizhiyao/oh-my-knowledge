@@ -3,45 +3,30 @@ import { setImmediate as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import {
   EvaluationEventConsumptionError,
-  assertExecutorConformance,
-  createEvaluationRuntime,
-  createExactMatchDefinition,
-  createExactMatchEvaluator,
-  createInvokeExecutorIdentity,
-  createJsonExecutorAdapter,
-  createMeasurementPolicy,
-  runEvaluation,
-  runExecutorConformance,
+  checkExecutor,
+  evaluate,
 } from 'oh-my-knowledge/eval-runtime';
 
-const identity = createInvokeExecutorIdentity({
-  implementationId: 'clean-room.json-host/v1',
+const executor = {
+  executorId: 'clean-room.json-host/v1',
   version: '1.0.0',
-  determinism: 'deterministic',
-  cancellation: 'cooperative',
-  concurrency: { safety: 'parallel-safe' },
-  seedControl: 'unsupported',
-  telemetry: {
-    trace: 'unsupported',
-    usage: 'required',
-    providerCost: { reporting: 'optional' },
+  schemas: { input: z.string(), config: z.undefined(), output: z.string() },
+  outputClassification: 'public',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: {
+      trace: 'unsupported',
+      usage: 'required',
+      providerCost: { reporting: 'optional' },
+    },
   },
   fingerprintFacets: { revision: 'clean-room-one' },
-});
-
-const createExecutor = () => createJsonExecutorAdapter({
-  identity,
-  inputParser: z.string(),
-  targetConfigParser: z.undefined(),
-  outputParser: z.string(),
-  outputClassification: 'public',
-  async invoke({ input, signal }) {
+  async execute({ input, signal }) {
     if (input === 'failure') {
-      return {
-        invocationStatus: 'failed',
-        errorCode: 'clean-room-expected-failure',
-        usage: { inputTokens: 1 },
-      };
+      return { errorCode: 'clean-room-expected-failure', usage: { inputTokens: 1 } };
     }
     if (input === 'cancellation') {
       await new Promise((_resolve, reject) => {
@@ -51,7 +36,6 @@ const createExecutor = () => createJsonExecutorAdapter({
       });
     }
     return {
-      invocationStatus: 'completed',
       output: 'expected',
       usage: {
         inputTokens: 1,
@@ -61,40 +45,46 @@ const createExecutor = () => createJsonExecutorAdapter({
       },
     };
   },
+};
+
+const variant = {
+  variantId: 'prompt-v2',
+  artifact: {
+    name: 'prompt-v2',
+    kind: 'prompt',
+    source: 'inline',
+    content: 'Return expected.',
+  },
+};
+
+const evaluation = (overrides = {}) => evaluate({
+  executor,
+  dataset: {
+    datasetId: 'clean-room-runner',
+    samples: ['one', 'two'].map((sampleId) => ({
+      sampleId,
+      input: 'success',
+      expected: 'expected',
+    })),
+  },
+  control: {
+    variantId: 'baseline',
+    artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
+  },
+  treatment: variant,
+  evaluator: { evaluatorKind: 'exact-match' },
+  experiment: { seed: 'clean-room-seed', bootstrap: { resamples: 100 } },
+  policy: { maxConcurrency: 1 },
+  runId: 'clean-room-evaluate',
+  ...overrides,
 });
 
-const definition = createExactMatchDefinition({
-  datasetId: 'clean-room-runner',
-  seed: 'clean-room-seed',
-  samples: ['one', 'two'].map((sampleId) => ({
-    sampleId,
-    input: 'success',
-    expected: 'expected',
-  })),
-  control: { targetId: 'control', executorId: identity.implementationId },
-  treatment: { targetId: 'treatment', executorId: identity.implementationId },
-  bootstrap: { resamples: 100 },
-});
-const runtime = () => createEvaluationRuntime({
-  executors: [{ implementationId: identity.implementationId, createPort: createExecutor }],
-  evaluators: [{ port: createExactMatchEvaluator() }],
-});
-const policy = createMeasurementPolicy({ maxConcurrency: 1 });
-
-const withoutObserver = await runEvaluation({
-  runtime: runtime(),
-  definition,
-  policy,
-  runId: 'clean-room-no-observer',
-  eventBufferCapacity: 1,
-});
+const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
+assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
 
 const sequences = [];
-const withSlowObserver = await runEvaluation({
-  runtime: runtime(),
-  definition,
-  policy,
+const withSlowObserver = await evaluation({
   runId: 'clean-room-slow-observer',
   eventBufferCapacity: 1,
   async onEvent(event) {
@@ -105,16 +95,14 @@ const withSlowObserver = await runEvaluation({
 assert.equal(withSlowObserver.status, 'completed');
 assert.deepEqual(sequences, sequences.map((_value, index) => index));
 
+const observerSecret = 'private progress sink payload';
 let observerFailure;
 try {
-  await runEvaluation({
-    runtime: runtime(),
-    definition,
-    policy,
+  await evaluation({
     runId: 'clean-room-observer-failure',
     eventBufferCapacity: 1,
     onEvent() {
-      throw new Error('private progress sink failure');
+      throw { secret: observerSecret };
     },
   });
 } catch (error) {
@@ -122,13 +110,17 @@ try {
 }
 assert.ok(observerFailure instanceof EvaluationEventConsumptionError);
 assert.equal(observerFailure.runResult.status, 'completed');
+assert.equal(observerFailure.runResult.definition.dataset.datasetId, 'clean-room-runner');
+assert.equal(observerFailure.runResult.policy.execution.maxConcurrency, 1);
+assert.equal(observerFailure.cause, undefined);
+assert.equal(JSON.stringify(observerFailure).includes(observerSecret), false);
 
-const conformance = await runExecutorConformance({
-  implementationId: identity.implementationId,
-  createExecutor,
+const conformance = await checkExecutor({
+  executor,
+  variant,
   success: { input: 'success', expected: 'expected' },
   failure: { input: 'failure', expectedErrorCode: 'clean-room-expected-failure' },
   cancellation: { input: 'cancellation' },
 });
-assertExecutorConformance(conformance);
+assert.equal(conformance.conformant, true, JSON.stringify(conformance.checks));
 assert.ok(conformance.checks.every((check) => check.checkStatus === 'passed'));

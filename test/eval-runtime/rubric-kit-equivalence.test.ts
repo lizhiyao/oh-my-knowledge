@@ -10,7 +10,7 @@ import {
   createRuntimeIdentity,
   runEvaluation,
   type OmkLlmJudgeInvocationPort,
-} from '../../src/eval-runtime/index.js';
+} from '../../src/eval-runtime/advanced.js';
 import {
   createRubricJudgeCriterion,
   createRubricJudgeEvaluatorDefinition,

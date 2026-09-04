@@ -11,7 +11,7 @@ import {
   createMeasurementPolicy,
   createPairedComparisonDefinition,
   runExecutorConformance,
-} from '../../src/eval-runtime/index.js';
+} from '../../src/eval-runtime/advanced.js';
 import {
   createExecutorFnAdapter,
   type ExecResult,
@@ -264,6 +264,26 @@ describe('eval-runtime foundation', () => {
       evaluator: { ...exact.evaluators[0], metricIds: ['another-metric'] },
       metric: exact.metrics[0],
     })).toThrow(/matching metric/);
+  });
+
+  it('rejects duplicate Executor identities during Runtime assembly', () => {
+    const identity = executorIdentity();
+    const createExecutor = () => createExecutorFnAdapter({
+      identity,
+      outputClassification: 'public',
+      mapInput: ({ targetId, input }) => ({ model: targetId, prompt: String(input) }),
+      executor: async () => result('answer'),
+    });
+
+    expect(() => createEvaluationRuntime({
+      executors: [
+        { implementationId: identity.implementationId, createPort: createExecutor },
+        { implementationId: identity.implementationId, createPort: createExecutor },
+      ],
+      evaluators: [{ port: createExactMatchEvaluator() }],
+    })).toThrowError(expect.objectContaining({
+      code: 'EVAL_RUNTIME_DUPLICATE_IMPLEMENTATION',
+    }));
   });
 
   it('offers a framework-neutral Executor conformance probe through the real pipeline', async () => {

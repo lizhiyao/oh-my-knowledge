@@ -5,7 +5,7 @@ import {
   createRubricJudgeKit,
   createRubricJudgeRegistration,
   createRuntimeIdentity,
-} from '../../src/eval-runtime/index.js';
+} from '../../src/eval-runtime/advanced.js';
 import {
   createRubricJudgeCriterion,
   createRubricJudgeEvaluator,

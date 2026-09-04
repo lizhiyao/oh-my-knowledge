@@ -48,9 +48,9 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | [verdict](../specs/scoring.md#decision-边界) | 判定 | PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六种结论 | Core Report、CLI 路由与 Studio projection |
 | sample (evaluation sample) | 评测用例 | omk user-facing zh 统一用「用例」（英文 sample 保留） | eval-samples.json |
 | [eval-samples](./eval-sample-format.md) | 评测用例集 / 评测用例文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
-| baseline (reserved variant) | 基线 / 对照（保留字） | 不注入 skill 的对照组，omk 保留变体名 | `--control baseline` |
-| treatment | 实验组 | 注入 skill 的对比组 | `--treatment <name>` |
-| control | 对照组 | baseline 的别名 | `--control <name>` |
+| baseline (reserved variant) | 空知识载体变体（保留字） | omk 保留该变体名；只有被选为 control 时才承担对照角色 | `--control baseline` |
+| treatment | 实验组 | 与对照组比较的实验角色；可以承载任意 artifact kind | `--treatment <name>` |
+| control | 对照组 | 作为参照侧的实验角色；可以承载 baseline，也可以承载其它 artifact kind | `--control <name>` |
 | [composite (score)](../specs/scoring.md) | 综合分 | observed 且 present 的 fact / behavior / judge layer 等权均值，1–5 制；零 observed layer 时为 missing | Core Composite table 与 Studio projection |
 | fact (layer) | 事实层 | 显式分类的 fact criterion 通过权重映射到 1–5 | Assertion-layer Analysis |
 | behavior (layer) | 行为层 | 显式分类的 behavior criterion 通过权重映射到 1–5 | Assertion-layer Analysis |

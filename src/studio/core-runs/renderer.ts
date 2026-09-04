@@ -64,7 +64,7 @@ const COPY = {
     result: '结果',
     exclusionCount: '排除数',
     policy: '策略',
-    verdict: '结论',
+    verdict: '判定',
     reasons: '原因码',
     kind: '类型',
     protocol: '协议',

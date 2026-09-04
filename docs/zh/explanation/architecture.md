@@ -39,7 +39,7 @@ flowchart TD
 - **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的 type-only contract 回边才成立，新增双向关系会被架构测试拒绝；
 - **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/production-host` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
 
-`shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层，只装配显式 port 与 Core 内建能力，不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
+`shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
 ```text
 eval-core ← eval-runtime ← eval-workflows ← CLI / DSH
@@ -47,7 +47,7 @@ eval-core ← eval-runtime ← eval-workflows ← CLI / DSH
         executors / FaaS   OMK 产品 workflow
 ```
 
-箭头从 consumer 指向 dependency。`eval-runtime` 可以依赖 Core 与 type-only Executor contract，但不得导入 `eval-workflows`、provider implementation 或 delivery surface。`eval-workflows` 复用其中的通用 same-process 生命周期 adapter，不再维护第二份实现。
+箭头从 consumer 指向 dependency。`eval-runtime` 可以依赖 Core 与 type-only Executor contract，但不得导入 `eval-workflows`、provider implementation 或 delivery surface。`eval-workflows` 只复用 Runtime foundation 叶子模块，不导入 canonical 用户 façade，也不维护第二份生命周期实现。
 
 知识载体生命周期能力归入同一个所有权边界：
 

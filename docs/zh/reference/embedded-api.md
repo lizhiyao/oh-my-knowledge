@@ -26,7 +26,8 @@ OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 C
 |---|---|
 | `oh-my-knowledge` | 最小一键 Engine façade 与 Core contract |
 | `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
-| `oh-my-knowledge/eval-runtime` | 轻量宿主装配、Runtime identity、`ExecutorFn` 桥接、封存的 Definition／Policy builder 和 adapter conformance 探针 |
+| `oh-my-knowledge/eval-runtime` | 面向普通 Node.js／FaaS 宿主的 canonical `evaluate()` 与 `checkExecutor()` API |
+| `oh-my-knowledge/eval-runtime/advanced` | 底层 Runtime 装配、identity、adapter、builder 与生命周期 SPI |
 | `oh-my-knowledge/projections` | 下游 artifact projection |
 | `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |
 | `oh-my-knowledge/mcp`／`oh-my-knowledge/dsh-plugin` | 集成专用 API |

@@ -1,37 +1,39 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
-import {
-  createEvaluationRuntime,
-  createInvokeExecutorIdentity,
-  createJsonExecutorAdapter,
-  createMeasurementPolicy,
-  createPairedComparisonDefinition,
-  createRubricJudgeKit,
-  createRuntimeIdentity,
-  runEvaluation,
-} from 'oh-my-knowledge/eval-runtime';
+import { evaluate } from 'oh-my-knowledge/eval-runtime';
 
-const targetIdentity = createInvokeExecutorIdentity({
-  implementationId: 'example.faas-target/v1',
+const executor = {
+  executorId: 'example.faas-target/v1',
   version: '1.0.0',
-  determinism: 'deterministic',
-  cancellation: 'cooperative',
-  concurrency: { safety: 'parallel-safe' },
-  seedControl: 'unsupported',
-  telemetry: { trace: 'unsupported', usage: 'required' },
+  schemas: {
+    input: z.object({ prompt: z.string() }).strict(),
+    config: z.object({ retrievalRevision: z.string() }).strict(),
+    output: z.string(),
+  },
+  outputClassification: 'public',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: { trace: 'unsupported', usage: 'required' },
+  },
   fingerprintFacets: { deploymentRevision: 'target-1' },
-});
-const judgeIdentity = createRuntimeIdentity({
-  implementationId: 'example.internal-model-gateway/v1',
-  version: '1.0.0',
-  capabilities: { invocation: 'single-call', cancellation: 'cooperative' },
-  fingerprintFacets: { gatewayRevision: 'judge-1' },
-});
+  async execute({ signal }) {
+    signal.throwIfAborted();
+    return {
+      output: 'Paris',
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    };
+  },
+};
 
 const requests = [];
-const invocation = {
-  identity: judgeIdentity,
+const judge = {
+  judgeId: 'example.internal-model-gateway/v1',
+  version: '1.0.0',
   providerCost: { reporting: 'optional' },
+  fingerprintFacets: { gatewayRevision: 'judge-1' },
   async invoke(request) {
     requests.push(request);
     request.signal.throwIfAborted();
@@ -47,124 +49,91 @@ const invocation = {
     };
   },
 };
-const judge = createRubricJudgeKit({
+
+const base = {
+  executor,
+  dataset: {
+    datasetId: 'faas-rubric-example',
+    samples: [{
+      sampleId: 'capital',
+      input: { prompt: 'What is the capital of France?' },
+      expected: 'Paris',
+    }],
+  },
+  control: {
+    variantId: 'control',
+    artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
+    config: { retrievalRevision: 'baseline' },
+  },
+  treatment: {
+    variantId: 'treatment',
+    artifact: {
+      name: 'candidate',
+      kind: 'prompt',
+      source: 'inline',
+      content: 'Answer using retrieved knowledge.',
+    },
+    config: { retrievalRevision: 'candidate' },
+  },
+  experiment: { seed: 'explicit-seed', bootstrap: { resamples: 100 } },
+  policy: {},
+};
+
+const evaluator = {
+  evaluatorKind: 'rubric-judge',
   evaluatorId: 'rubric-judge',
   metricId: 'rubric-score',
   model: 'internal-judge-model',
   effort: 'low',
-  invocation,
+  judge,
+  rubric: {
+    criterionId: 'correctness',
+    prompt: 'What is the capital of France?',
+    rubric: 'The output must state Paris.',
+  },
   lengthDebias: true,
   tracePolicy: 'none',
-});
-const criterion = judge.createCriterion({
-  criterionId: 'correctness',
-  prompt: 'What is the capital of France?',
-  rubric: 'The output must state Paris.',
-});
-const definition = createPairedComparisonDefinition({
-  datasetId: 'faas-rubric-example',
-  seed: 'explicit-seed',
-  samples: [{
-    sampleId: 'capital',
-    input: { prompt: 'What is the capital of France?' },
-    expected: 'Paris',
-    evaluationContext: judge.createEvaluationContext(criterion),
-  }],
-  control: {
-    targetId: 'control',
-    targetKind: 'rag',
-    executorId: targetIdentity.implementationId,
-    config: { retrievalRevision: 'baseline' },
-  },
-  treatment: {
-    targetId: 'treatment',
-    targetKind: 'rag',
-    executorId: targetIdentity.implementationId,
-    config: { retrievalRevision: 'candidate' },
-  },
-  evaluator: judge.evaluatorDefinition,
-  metric: judge.metricDefinition,
-  bootstrap: { resamples: 100 },
-});
-
-invocation.invoke = async () => {
-  throw new Error('The kit must retain the invocation method captured at construction.');
 };
-const createTarget = () => createJsonExecutorAdapter({
-  identity: targetIdentity,
-  inputParser: z.object({ prompt: z.string() }).strict(),
-  targetConfigParser: z.object({ retrievalRevision: z.string() }).strict(),
-  outputParser: z.string(),
-  outputClassification: 'public',
-  async invoke({ signal }) {
-    signal.throwIfAborted();
-    return {
-      invocationStatus: 'completed',
-      output: 'Paris',
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    };
-  },
-});
-const runtime = createEvaluationRuntime({
-  executors: [{ implementationId: targetIdentity.implementationId, createPort: createTarget }],
-  evaluators: [judge.evaluatorRegistration],
-});
 
-const result = await runEvaluation({
-  runtime,
-  definition,
-  policy: createMeasurementPolicy(),
-  runId: 'embedded-faas-rubric',
-});
+const pending = evaluate({ ...base, evaluator, runId: 'embedded-faas-rubric' });
+judge.invoke = async () => {
+  throw new Error('evaluate must retain the Judge method captured at construction.');
+};
+const result = await pending;
 
 assert.equal(result.status, 'completed', JSON.stringify(result));
+assert.equal(result.definition.metrics[0].metricId, 'rubric-score');
 assert.equal(requests.length, 2);
-assert.equal(requests[0].promptId, judge.instrument.promptId);
-assert.equal(requests[0].promptHash, judge.instrument.promptHash);
-assert.equal(requests[0].model, judge.runtime.model);
+assert.equal(requests[0].model, 'internal-judge-model');
+assert.equal(requests[0].promptId, requests[1].promptId);
+assert.equal(requests[0].promptHash, requests[1].promptHash);
 const observations = result.artifacts.evaluation.records.flatMap((record) => (
   record.evaluationStatus === 'completed' ? record.observations : []
 ));
 assert.equal(observations.length, 2);
 assert.ok(observations.every((observation) => (
-  observation.observationStatus === 'observed'
-  && observation.value === 5
-  && observation.evidence.value.promptHash === judge.instrument.promptHash
-)));
-assert.ok(result.artifacts.evaluation.records.every((record) => (
-  record.evaluationStatus === 'completed' && record.usage.totalTokens === 15
+  observation.observationStatus === 'observed' && observation.value === 5
 )));
 
-const failingJudge = createRubricJudgeKit({
-  evaluatorId: 'rubric-judge',
-  metricId: 'rubric-score',
-  model: 'internal-judge-model',
-  effort: 'low',
-  invocation: {
-    identity: judgeIdentity,
-    providerCost: { reporting: 'optional' },
-    async invoke() {
-      return {
-        invocationStatus: 'failed',
-        reasonCode: 'gateway-private-failure',
-        usage: {
-          inputTokens: 7,
-          providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
-          details: { privateTenant: 'must-not-be-persisted' },
-        },
-      };
+const failureResult = await evaluate({
+  ...base,
+  evaluator: {
+    ...evaluator,
+    judge: {
+      ...judge,
+      async invoke() {
+        return {
+          invocationStatus: 'failed',
+          reasonCode: 'gateway-private-failure',
+          usage: {
+            inputTokens: 7,
+            providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
+            details: { privateTenant: 'must-not-be-persisted' },
+          },
+        };
+      },
     },
   },
-  lengthDebias: true,
-  tracePolicy: 'none',
-});
-const failureResult = await runEvaluation({
-  runtime: createEvaluationRuntime({
-    executors: [{ implementationId: targetIdentity.implementationId, createPort: createTarget }],
-    evaluators: [failingJudge.evaluatorRegistration],
-  }),
-  definition,
-  policy: createMeasurementPolicy(),
   runId: 'embedded-faas-rubric-failure',
 });
 assert.equal(failureResult.status, 'completed');

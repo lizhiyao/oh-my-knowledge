@@ -89,8 +89,8 @@ function getErrorMessage(err: unknown): string {
  * 截断到 INPUT_PREVIEW_MAX 字符,避免 prompt 膨胀过头。
  *
  * 关键:wrapper-style skill(mcporter / code-host CLI / git CLI 等)的真实语义调用
- * 编码在 Bash 命令字符串里(`mcporter --tool X` / `code-host pr show Y`),判官看不到
- * 就会下"没调指定工具"的错误结论。这个预览是判官识别这层语义的唯一通道。
+ * 编码在 Bash 命令字符串里(`mcporter --tool X` / `code-host pr show Y`),评委看不到
+ * 就会下"没调指定工具"的错误结论。这个预览是评委识别这层语义的唯一通道。
  */
 export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]): string | null {
   return buildJudgeTraceSummary(turns, toolCalls);

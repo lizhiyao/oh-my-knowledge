@@ -1,86 +1,80 @@
 # eval-runtime API 分层
 
-`package.json#exports` 是唯一受支持的边界。Allowlist 测试锁定下列每一个 value 与 type export，因此新增、移动或删除 export 都必须显式审查。三个入口都只支持 ESM，在正式 `1.0.0` 前按 beta API 管理。
+`package.json#exports` 是受支持边界，API allowlist 会锁定下列全部 value 与 type。所有入口仅支持 ESM。
 
 ## `oh-my-knowledge/eval-runtime`
 
-层级：日常宿主 API。目标用户：Node.js／FaaS 应用开发者。稳定性：受支持的 beta API；breaking change 必须提供迁移说明。
+面向应用开发者的 canonical API：
 
 | Export | 用途 |
 |---|---|
-| `runEvaluation` | 执行普通 Core Definition／Policy，并安全 drain 进度事件。 |
-| `EvaluationEventConsumptionError` | 观察器或事件消费失败，同时保留 Core 终态结果。 |
-| `createEvaluationEngine` | 检查 sealed plan 或显式使用运行阶段。 |
-| `createEvaluationRuntime` | 用显式 Executor／Evaluator registration 和 Core built-in 装配 Runtime。 |
-| `EvaluationRuntimeAssemblyError` | 稳定的 Runtime registration 配置错误。 |
-| `createExactMatchDefinition` | 构造 canonical exact-match 配对比较。 |
-| `createPairedComparisonDefinition` | 构造单指标、自定义 Evaluator 的配对比较。 |
-| `createMeasurementPolicy` | 显式物化 Core policy 默认值。 |
-| `createExactMatchEvaluator` | 注册 built-in exact-match Evaluator。 |
-| `createInvokeExecutorIdentity` | 声明并封存 `omk.invoke/v1` Executor identity。 |
-| `createRuntimeIdentity` | 声明非 Executor 宿主 identity，例如 LLM gateway。 |
-| `createJsonExecutorAdapter` | 把带运行时校验的类型化 JSON callback 绑定到 Core Executor port。 |
-| `createRubricJudgeKit` | 一次派生匹配的 Rubric instrument、Definition 片段、Metric 与 registration。 |
-| `createRubricJudgeEvaluationContext` | 为一个或多个 kit 构造与 sealed pointer 完全一致的 criterion context。 |
-| `createRubricJudgeRegistration` | 把多个 Rubric kit 合并为一个 implementation registration。 |
-| `runExecutorConformance` | 检查成功、失败、取消、telemetry、隔离与清理。 |
-| `assertExecutorConformance` | 把失败的 conformance check 转成稳定异常。 |
-| `RuntimeConformanceError` | 携带稳定错误码和失败 check ID 的 conformance 异常。 |
+| `evaluate` | 使用宿主持有的 Executor，对一个 control 和一个 treatment 进行评测。 |
+| `checkExecutor` | 通过成功、失败、取消、清理和测量检查认证 Executor。 |
+| `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
+| `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-Type export：`RunEvaluationInput`、`EvaluationEventObserver` 描述高层运行；`CreateEvaluationRuntimeInput` 描述装配；`ExactMatchDefinitionBuilderInput`、`ExactMatchTarget`、`PairedComparisonDefinitionBuilderInput`、`EvaluationRuntimeTarget`、`MeasurementPolicyBuilderInput`、`CreateExactMatchEvaluatorInput` 描述 builder；`InvokeExecutorIdentityDeclaration`、`RuntimeIdentityDeclaration` 描述 identity；`CreateJsonExecutorAdapterInput`、`JsonExecutorInvocation`、`JsonExecutorInvocationResult`、`RuntimeValueParser` 描述 JSON 边界；`OmkLlmJudgeEffort`、`OmkLlmJudgeInvocationPort`、`OmkLlmJudgeInvocationRequest`、`OmkLlmJudgeInvocationResult` 描述宿主拥有的 Judge 调用；`CreateRubricJudgeKitInput`、`RubricJudgeKit` 描述 Judge 组合 API；`ExecutorConformanceProbeInput`、`ExecutorConformanceResult`、`RuntimeConformanceCheck` 描述 conformance 证据。每个 type 的目标用户、层级与稳定性跟消费或返回它的 value 一致。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`Judge`、`Rubric`、`Experiment`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver`、`EventWriter` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+
+`EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
+
+该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 runtime context，`control`／`treatment` 是实验角色。
 
 ## `oh-my-knowledge/eval-runtime/advanced`
 
-层级：宿主扩展 SPI。目标用户：框架与 adapter 作者。稳定性：需审查的 beta SPI；普通应用通常不需要。
+面向底层宿主装配与扩展的 SPI。普通应用应优先使用 `evaluate()`。
 
 | Export | 用途 |
 |---|---|
-| `createNodeEvaluationClock` | 显式提供默认 Node.js Core clock。 |
-| `EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID` | 引用 built-in exact-match implementation identity。 |
-| `createExactMatchEvaluatorIdentity` | 不创建 port，直接检查 exact-match Runtime identity。 |
-| `INVOKE_JSON_INPUT_SCHEMA` | `omk.invoke/v1` 默认 JSON input schema identity。 |
-| `INVOKE_JSON_OUTPUT_SCHEMA` | `omk.invoke/v1` 默认 JSON output schema identity。 |
-| `INVOKE_JSON_TRACE_SCHEMA` | `omk.invoke/v1` 默认 JSON trace schema identity。 |
-| `createExecutorFnAdapter` | 桥接 OMK 旧 `ExecutorFn`；不是新宿主 canonical 入口。 |
-| `createSameProcessExecutorAdapter` | 实现显式进程内 run／trial lifecycle SPI。 |
-| `createSameProcessEvaluatorAdapter` | 实现显式进程内 run／record lifecycle SPI。 |
-| `createRubricJudgeCriterion` | 脱离 kit 独立构造 criterion。 |
-| `createRubricJudgeInstrument` | 独立构造冻结的 built-in Rubric instrument。 |
-| `createRubricJudgeRuntimeConfig` | 构造原始 Rubric provider runtime config。 |
-| `createRubricJudgeEvaluatorDefinition` | 构造原始 Rubric Evaluator Definition 片段。 |
-| `createRubricJudgeMetricDefinition` | 构造原始 1～5 分 Rubric Metric。 |
-| `createRubricJudgeEvaluatorIdentity` | 派生原始 Rubric Evaluator Runtime identity。 |
-| `createRubricJudgeEvaluator` | 构造一个原始 Rubric Evaluator port。 |
-| `createRubricJudgeEvaluatorRegistration` | 把原始 Rubric binding 合并为 registration。 |
-| `rubricJudgeInstrumentId` | 派生 built-in contract 使用的 instrument ID。 |
+| `createEvaluationEngine` | 检查 sealed plan 或驱动显式阶段。 |
+| `runEvaluation` | 运行已装配的 Core Definition、Runtime 与 Policy。 |
+| `EvaluationEventConsumptionError` | `runEvaluation` 的事件消费错误。 |
+| `createEvaluationRuntime` | 装配 Executor／Evaluator registration 与 Core built-in。 |
+| `EvaluationRuntimeAssemblyError` | 稳定的 registration 或 resolution 错误。 |
+| `createExactMatchDefinition` | 构造 exact-match 配对 Core Definition。 |
+| `createPairedComparisonDefinition` | 构造单指标配对 Core Definition。 |
+| `createMeasurementPolicy` | 物化 Core Policy 默认值。 |
+| `createExactMatchEvaluator` | 创建内置 exact-match Evaluator port。 |
+| `createInvokeExecutorIdentity` | 声明 `omk.invoke/v1` Executor identity。 |
+| `createRuntimeIdentity` | 声明其它宿主 Runtime identity。 |
+| `createJsonExecutorAdapter` | 将 typed JSON callback 适配到 Core Executor。 |
+| `createRubricJudgeKit` | 派生匹配的 Rubric Definition、Metric、context 与 registration 片段。 |
+| `createRubricJudgeEvaluationContext` | 组合多个 Rubric kit 的 criterion context。 |
+| `createRubricJudgeRegistration` | 组合多个 Rubric kit binding。 |
+| `runExecutorConformance` | 执行底层 Executor conformance probe。 |
+| `assertExecutorConformance` | Conformance 失败时抛错。 |
+| `RuntimeConformanceError` | 稳定的 conformance assertion error。 |
+| `createNodeEvaluationClock` | 显式提供 Node.js Core clock。 |
+| `EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID` | 内置 exact-match implementation ID。 |
+| `createExactMatchEvaluatorIdentity` | 查看 exact-match Runtime identity。 |
+| `INVOKE_JSON_INPUT_SCHEMA` | 默认 JSON input schema identity。 |
+| `INVOKE_JSON_OUTPUT_SCHEMA` | 默认 JSON output schema identity。 |
+| `INVOKE_JSON_TRACE_SCHEMA` | 默认 JSON trace schema identity。 |
+| `createExecutorFnAdapter` | 兼容旧 `ExecutorFn`。 |
+| `createSameProcessExecutorAdapter` | 实现进程内 Executor 生命周期 SPI。 |
+| `createSameProcessEvaluatorAdapter` | 实现进程内 Evaluator 生命周期 SPI。 |
+| `createRubricJudgeCriterion` | 构造底层 Rubric criterion。 |
+| `createRubricJudgeInstrument` | 构造底层冻结 Rubric instrument。 |
+| `createRubricJudgeRuntimeConfig` | 构造底层 Judge Runtime config。 |
+| `createRubricJudgeEvaluatorDefinition` | 构造底层 Rubric Evaluator Definition。 |
+| `createRubricJudgeMetricDefinition` | 构造底层 1～5 分 Metric。 |
+| `createRubricJudgeEvaluatorIdentity` | 派生底层 Rubric Evaluator identity。 |
+| `createRubricJudgeEvaluator` | 构造一个底层 Rubric Evaluator port。 |
+| `createRubricJudgeEvaluatorRegistration` | 组合底层 Rubric binding。 |
+| `rubricJudgeInstrumentId` | 派生内置 instrument ID。 |
 
-Type export：`EvaluationRuntimeSupportPorts`、`RuntimePortRegistration` 描述宿主装配 SPI；`CreateExecutorFnAdapterInput`、`ExecutorFn`、`ExecutorInput`、`ExecResult`、`ExecutorFnInputMapper`、`ExecutorFnResultMapper` 描述旧 bridge；`CreateSameProcessExecutorAdapterInput`、`CreateSameProcessEvaluatorAdapterInput`、`SameProcessExecutorImplementation`、`SameProcessEvaluatorImplementation`、`SameProcessResourceLeaseAccess`、`SameProcessRunScope`、`SameProcessOperationScope` 描述生命周期 SPI；`CreateRubricJudgeEvaluatorInput`、`RubricJudgeEvaluatorBinding`、`RubricJudgeEvaluatorDefinitionBuilderInput` 描述 Rubric 手工装配。它们继承 advanced 层的目标用户与稳定性。
+Runner 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`CreateEvaluationRuntimeInput`、`EvaluationRuntimeSupportPorts` 与 `RuntimePortRegistration`。Builder type 包括 `ExactMatchDefinitionBuilderInput`、`ExactMatchTarget`、`PairedComparisonDefinitionBuilderInput`、`EvaluationRuntimeTarget`、`MeasurementPolicyBuilderInput` 与 `CreateExactMatchEvaluatorInput`。Identity 与 JSON adapter type 包括 `InvokeExecutorIdentityDeclaration`、`RuntimeIdentityDeclaration`、`CreateJsonExecutorAdapterInput`、`JsonExecutorInvocation`、`JsonExecutorInvocationResult` 与 `RuntimeValueParser`。Judge type 包括 `OmkLlmJudgeEffort`、`OmkLlmJudgeInvocationPort`、`OmkLlmJudgeInvocationRequest`、`OmkLlmJudgeInvocationResult`、`CreateRubricJudgeKitInput`、`RubricJudgeKit`、`CreateRubricJudgeEvaluatorInput`、`RubricJudgeEvaluatorBinding` 与 `RubricJudgeEvaluatorDefinitionBuilderInput`。Conformance type 包括 `ExecutorConformanceProbeInput`、`ExecutorConformanceResult` 与 `RuntimeConformanceCheck`。旧 bridge 与生命周期 SPI type 包括 `CreateExecutorFnAdapterInput`、`ExecutorFn`、`ExecutorInput`、`ExecResult`、`ExecutorFnInputMapper`、`ExecutorFnResultMapper`、`CreateSameProcessExecutorAdapterInput`、`CreateSameProcessEvaluatorAdapterInput`、`SameProcessExecutorImplementation`、`SameProcessEvaluatorImplementation`、`SameProcessResourceLeaseAccess`、`SameProcessRunScope` 与 `SameProcessOperationScope`。
 
 ## `oh-my-knowledge/eval-runtime/contracts`
 
-层级：Runtime protocol 与 schema contract。目标用户：adapter 作者、trace producer、持久化与校验集成。稳定性：版本化 contract；语义变化必须使用新的 schema identity。
+面向 adapter 与 trace 作者的版本化 wire contract：
 
-| Export | 用途 |
-|---|---|
-| `RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID` | 版本化的 built-in Rubric implementation ID。 |
-| `RUBRIC_JUDGE_BINDINGS` | canonical actual／criterion／trace binding ID。 |
-| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION` | Rubric instrument wire version。 |
-| `RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION` | Criterion context wire version。 |
-| `RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION` | Judge evidence wire version。 |
-| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA` | Rubric instrument schema identity descriptor。 |
-| `RUBRIC_JUDGE_CONTEXT_SCHEMA` | Criterion context schema identity descriptor。 |
-| `RUBRIC_JUDGE_EVIDENCE_SCHEMA` | Judge evidence schema identity descriptor。 |
-| `SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION` | 完整 source-neutral trace wire version。 |
-| `SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR` | 完整 trace schema identity descriptor。 |
-| `SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR` | 无 mocks trace schema identity descriptor。 |
-| `SourceNeutralTraceSchema` | 运行时校验完整 source-neutral trace。 |
-| `SourceNeutralTraceWithoutMocksSchema` | 校验无 mocks trace variant。 |
-| `SourceNeutralMockStatsSchema` | 校验 source-neutral mock 统计。 |
-| `parseSourceNeutralTrace` | 按 mock mode 解析 provider-neutral trace JSON。 |
-| `attachSourceNeutralMockStats` | 在不改变 provider 事实的前提下附加已校验 mock 统计。 |
+- Rubric identity 与 schema：`RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID`、`RUBRIC_JUDGE_BINDINGS`、`RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION`、`RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION`、`RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION`、`RUBRIC_JUDGE_INSTRUMENT_SCHEMA`、`RUBRIC_JUDGE_CONTEXT_SCHEMA` 与 `RUBRIC_JUDGE_EVIDENCE_SCHEMA`。
+- Rubric type：`RubricJudgeInstrument`、`RubricJudgeRuntimeConfig`、`RubricJudgeConfig`、`RubricJudgeCriterion` 与 `RubricJudgeTracePolicy`。
+- Trace value：`SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION`、`SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR`、`SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR`、`SourceNeutralTraceSchema`、`SourceNeutralTraceWithoutMocksSchema`、`SourceNeutralMockStatsSchema`、`parseSourceNeutralTrace` 与 `attachSourceNeutralMockStats`。
+- Trace type：`SourceNeutralTrace` 与 `SourceNeutralMockStats`。
 
-Type export：`RubricJudgeInstrument`、`RubricJudgeRuntimeConfig`、`RubricJudgeConfig`、`RubricJudgeCriterion`、`RubricJudgeTracePolicy` 描述 Rubric wire value；`SourceNeutralTrace`、`SourceNeutralMockStats` 描述 trace wire value。它们都是版本化 contract，目标用户与稳定性跟本入口一致。
+## 迁移
 
-## 何时离开便捷层
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。新宿主从 `/eval-runtime` 导入 `evaluate` 或 `checkExecutor`。
 
-多指标图、`lower-is-better`／`target-is-best` 指标、自定义 Analysis Runtime、持久 artifact admission、分阶段 replay 或显式跨 run 可比性应使用 `oh-my-knowledge/eval-core`。`eval-runtime` 不定义第二套 Definition、Policy、Report、retry、timeout、budget、cache、统计或 Decision contract。
+自定义 analysis graph、持久 artifact admission、分阶段重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。

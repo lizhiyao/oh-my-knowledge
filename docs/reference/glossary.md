@@ -48,9 +48,9 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | [verdict](../specs/scoring.md#decision-boundary) | One of six conclusions: PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | Core Report, CLI route, and Studio projection |
 | sample (evaluation sample) | A single evaluation case | eval-samples.json |
 | [eval-samples](./eval-sample-format.md) | The sample config file (each entry has prompt / rubric / assertion / capability) | `omk eval --samples` |
-| baseline (reserved variant) | The control group with no skill injected; omk reserves this variant name | `--control baseline` |
-| treatment | The experiment group with the skill injected | `--treatment <name>` |
-| control | An alias for baseline | `--control <name>` |
+| baseline (reserved variant) | The empty-artifact variant; omk reserves this variant name, but it becomes the control only when selected for that experiment role | `--control baseline` |
+| treatment | The experiment role compared with control; it may contain any artifact kind | `--treatment <name>` |
+| control | The experiment role used as the reference side; it may contain a baseline or any other artifact kind | `--control <name>` |
 | [composite (score)](../specs/scoring.md) | Equal-weight mean of observed present fact / behavior / judge layers on a 1-5 scale; zero observed layers is missing | Core Composite table and Studio projection |
 | fact (layer) | Explicitly classified fact-criterion pass weight mapped to 1-5 | Assertion-layer Analysis |
 | behavior (layer) | Explicitly classified behavior-criterion pass weight mapped to 1-5 | Assertion-layer Analysis |

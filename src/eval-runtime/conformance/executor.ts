@@ -28,7 +28,7 @@ export interface ExecutorConformanceProbeCase {
 export interface ExecutorConformanceProbeInput {
   readonly implementationId: string;
   /** A fresh Core Executor is required for each Target binding and probe phase. */
-  readonly createExecutor: () => Executor;
+  readonly createExecutor: (targetId: string) => Executor;
   readonly success: ExecutorConformanceProbeCase & { readonly expected: JsonValue };
   /** Must make the host return the declared stable failure code without leaking private details. */
   readonly failure: ExecutorConformanceProbeCase & { readonly expectedErrorCode: string };
@@ -246,7 +246,10 @@ async function runProbe(
   const runtime = createEvaluationRuntime({
     executors: [{
       implementationId: input.implementationId,
-      createPort: () => instrumentExecutor(input.createExecutor(), observations),
+      createPort: (requirement) => instrumentExecutor(
+        input.createExecutor(requirement.referenceId),
+        observations,
+      ),
     }],
     evaluators: [{ port: createExactMatchEvaluator() }],
   });

@@ -152,22 +152,45 @@ Rules:
 - A trace belongs to the run result.
 - A trace is used to explain differences in agent behavior, not to name the thing being evaluated.
 
+### 9. Evaluation Runtime vocabulary
+
+The embedded Runtime API uses the following standard terms without introducing a second vocabulary:
+
+| Term | Normative meaning |
+|---|---|
+| `evaluation` | One complete measurement process from sealed inputs through Report. |
+| `executor` | Host-owned code that runs one artifact／variant for one sample. It is not the artifact itself. |
+| `evaluator` | A measurement method that turns execution facts into metric observations. |
+| `metric` | The named value contract and direction used for analysis. |
+| `judge` | An LLM-backed invocation used by an evaluator; it is not a synonym for every evaluator. |
+| `rubric` | The criterion and scoring instructions supplied to a Rubric Judge. |
+| `dataset` | A named, non-empty collection of samples. |
+| `experiment` | The preregistered trials, seed, resampling, and decision design. |
+| `policy` | Operational limits for execution, evaluation, evidence, retry, budget, and failure handling. |
+| `run` | One execution of a sealed evaluation design, identified by `runId`. |
+| `comparison` | The declared control-versus-treatment relationship consumed by analysis. |
+| `verdict` | The Decision result, such as `PROGRESS` or `NOISE`; it is not a raw score. |
+| `evidence` | Classified, attributable facts supporting an observation or conclusion. |
+| `report` | The materialized projection of authenticated run artifacts and Decision. |
+
+The canonical package entry is therefore `evaluate({ executor, dataset, control, treatment, evaluator, experiment, policy, runId })`. Avoid public aliases such as runner, suite, cases, candidate, scoring, or using `target` as a synonym for artifact. Core `Target` is a compiled binding of a variant to execution requirements and remains a lower-level contract. `eval-workflows` may depend on Runtime foundation leaf modules but must not depend on the canonical user façade or package index.
+
 ## 3. Term boundaries
 
-### 1. baseline means "nothing at all"
+### 1. baseline means an empty artifact
 
 The standard meaning of `baseline` is:
 
 - no explicit artifact injection
-- no extra project-level runtime context attached
+- no implied experiment role or runtime context
 
-For most users, `baseline` can be read directly as "nothing at all".
+`baseline` describes only the artifact. A host may bind an explicit runtime context to an empty artifact; control or treatment still comes from the variant's experiment role. The CLI keeps its reserved `baseline` expression stricter and refuses a cwd binding so the shorthand remains an unambiguous empty-artifact／empty-context reference.
 
 If you want to isolate project-level runtime context, write it explicitly:
 
-- use the self-describing label `project-env` as the artifact, and `--treatment-cwd /path/to/project` for the cwd (or eval.yaml's `cwd:` field)
+- use the self-describing variant label `project-env`, and `--treatment-cwd /path/to/project` for the cwd (or eval.yaml's `cwd:` field)
 
-Here `project-env` is just an experiment-grouping label; the real meaning is "empty artifact + a specific runtime context".
+Here `project-env` is an experiment-grouping label; the real meaning is "empty artifact + a specific runtime context".
 
 ### 2. skill is not the umbrella term
 
