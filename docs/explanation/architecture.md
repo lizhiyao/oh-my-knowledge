@@ -128,7 +128,7 @@ Trace's `message-classification.ts` decides message origin and protocol semantic
 
 Assertions and rubric judges remain separate evaluator instruments. Analysis derives assertion layers, judge replicates and ensembles, dimensions, composite values, Bootstrap comparison families, and agreement tables without collapsing their identities.
 
-Missing, invalid, failed, unavailable, and not-started observations are not zero scores. Coverage remains explicit through the graph. `omk.release-decision/v1` requires complete evidence and exact Analysis binding before returning one of `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, or `SOLO`. A display score or point estimate never replaces the registered Decision.
+Missing, invalid, failed, unavailable, and not-started observations are not zero scores. Coverage remains explicit through the graph. `omk.release-decision/v2` requires complete evidence and exact Analysis binding before returning one of `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, or `SOLO`; configured but unmeasurable cross-judge agreement gates positive comparisons as `CAUTIOUS`. A display score or point estimate never replaces the registered Decision.
 
 Cost, usage, duration, operational status, evidence status, conclusion status, and lineage are orthogonal facts rather than extra scoring dimensions. Independent `--repeat` runs form an Evaluation Series; cross-run stability is not inferred from one run.
 

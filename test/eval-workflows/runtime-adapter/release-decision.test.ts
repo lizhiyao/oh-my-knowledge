@@ -16,11 +16,15 @@ import {
   RELEASE_DECISION_PARAMETERS_SCHEMA,
   RELEASE_DECISION_POLICY,
   RELEASE_DECISION_POLICY_IDENTITY,
+  RELEASE_DECISION_POLICY_V1,
+  RELEASE_DECISION_POLICY_V1_IDENTITY,
+  RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
   buildBootstrapFamilyTable,
   compareCompositeGroups,
   compositeAggregate,
   compositeCoverage,
   compositeGroupId,
+  createReleaseDecisionPolicies,
   parseCompositeTableEnvelope,
   parseJudgeEnsembleTableEnvelope,
   parseReleaseDecisionParameters,
@@ -205,7 +209,10 @@ function completedResult(resultId: string, schema: typeof COMPOSITE_TABLE_SCHEMA
   } as unknown as DecisionPolicyContext['results'][number];
 }
 
-function dissentingEnsemble(composite: ReturnType<typeof tables>['composite']) {
+function judgeEnsemble(
+  composite: ReturnType<typeof tables>['composite'],
+  mode: 'aligned' | 'dissenting' | 'single',
+) {
   const groupKey = (group: CompositeGroup) => canonicalizeJson([
     group.targetId,
     group.sampleId,
@@ -219,7 +226,9 @@ function dissentingEnsemble(composite: ReturnType<typeof tables>['composite']) {
   const groups = composite.groups.map((source, index) => {
     const sampleIndex = Number(source.sampleId.split('-').at(-1)) - 1;
     const alpha = [1, 2, 3, 4][sampleIndex];
-    const beta = source.targetId === TREATMENT ? [4, 3, 2, 1][sampleIndex] : alpha;
+    const beta = mode === 'dissenting' && source.targetId === TREATMENT
+      ? [4, 3, 2, 1][sampleIndex]
+      : alpha;
     if (alpha === undefined || beta === undefined) throw new Error('invalid ensemble fixture');
     const coverage = {
       planned: 1,
@@ -231,10 +240,11 @@ function dissentingEnsemble(composite: ReturnType<typeof tables>['composite']) {
       notStarted: 0,
       censored: 0,
     };
-    const members = [
+    const memberScores = [
       { ensembleMemberId: 'alpha', mean: alpha },
       { ensembleMemberId: 'beta', mean: beta },
-    ].map((member) => ({
+    ];
+    const members = (mode === 'single' ? memberScores.slice(0, 1) : memberScores).map((member) => ({
       ...member,
       sourceGroupId: digestCanonicalJson({ source: index, member: member.ensembleMemberId }),
       sourceRowIds: [digestCanonicalJson({ row: index, member: member.ensembleMemberId })],
@@ -252,9 +262,19 @@ function dissentingEnsemble(composite: ReturnType<typeof tables>['composite']) {
       metricId: 'rubric-score',
       instrumentId: 'rubric-correctness',
       replicateGroupId: 'primary',
-      coverage: { plannedMembers: 2, observedMembers: 2, missingMembers: 0 },
+      coverage: {
+        plannedMembers: members.length,
+        observedMembers: members.length,
+        missingMembers: 0,
+      },
       members,
-      agreement: { agreementStatus: 'observed' as const, meanAbsDiff, pairCount: 1 },
+      agreement: mode === 'single'
+        ? {
+            agreementStatus: 'missing' as const,
+            reasonCode: 'judge-agreement-insufficient-members' as const,
+            pairCount: 0 as const,
+          }
+        : { agreementStatus: 'observed' as const, meanAbsDiff, pairCount: 1 },
       aggregateStatus: 'observed' as const,
       consensus: (alpha + beta) / 2,
     };
@@ -345,6 +365,16 @@ describe('OMK Release DecisionPolicy', () => {
     ]);
     expect(capabilities.parameterSchema).toEqual(RELEASE_DECISION_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(RELEASE_DECISION_POLICY_IDENTITY)).toBe(true);
+    expect(RELEASE_DECISION_POLICY_V1_IDENTITY.fingerprint).toBe(
+      'sha256:0c13bef0733f511a6b17ffd3e9e3274231f36262a0e2aa23668b17aaf484bc5c',
+    );
+    expect(RELEASE_DECISION_POLICY_IDENTITY.fingerprint).toBe(
+      'sha256:e905b666e7b0ec35fbb0a4c005ceb19eaf072fd807d97bb359e58f7910af5cc9',
+    );
+    expect([...createReleaseDecisionPolicies().keys()]).toEqual([
+      RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY.identity.implementationId,
+    ]);
   });
 
   it.each([
@@ -517,7 +547,7 @@ describe('OMK Release DecisionPolicy', () => {
         completedResult(
           'ensemble-table',
           JUDGE_ENSEMBLE_TABLE_SCHEMA as typeof COMPOSITE_TABLE_SCHEMA,
-          dissentingEnsemble(values.composite) as JsonValue,
+          judgeEnsemble(values.composite, 'dissenting') as JsonValue,
         ),
       ],
     };
@@ -526,6 +556,101 @@ describe('OMK Release DecisionPolicy', () => {
       decisionStatus: 'decided',
       verdict: 'CAUTIOUS',
       reasonCodes: ['comparison-significant-progress', 'judge-ensemble-dissent'],
+    });
+  });
+
+  it('gates a positive comparison when configured judge uncertainty is unmeasured', async () => {
+    const sampleIds = ['sample-1', 'sample-2', 'sample-3', 'sample-4'];
+    const values = tables({
+      sampleIds,
+      targetScores: { control: [4, 4, 4, 4], treatment: [5, 5, 5, 5] },
+    });
+    const releaseParameters = parseReleaseDecisionParameters({
+      ...parameters({ sampleIds }),
+      sources: {
+        compositeResultId: 'composite-table',
+        bootstrapFamilyResultId: 'bootstrap-family',
+        judgeEnsemble: {
+          analysisResultId: 'ensemble-table',
+          metricId: 'rubric-score',
+          instrumentId: 'rubric-correctness',
+          replicateGroupId: 'primary',
+        },
+      },
+    });
+    const baseContext = context(releaseParameters, values);
+    const decisionContext: DecisionPolicyContext = {
+      ...baseContext,
+      policy: {
+        ...baseContext.policy,
+        analysisResultIds: [...baseContext.policy.analysisResultIds, 'ensemble-table'],
+      },
+      results: [
+        ...baseContext.results,
+        completedResult(
+          'ensemble-table',
+          JUDGE_ENSEMBLE_TABLE_SCHEMA as typeof COMPOSITE_TABLE_SCHEMA,
+          judgeEnsemble(values.composite, 'single') as JsonValue,
+        ),
+      ],
+    };
+
+    await expect(RELEASE_DECISION_POLICY.decide(decisionContext)).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'CAUTIOUS',
+      reasonCodes: ['comparison-significant-progress', 'judge-uncertainty-unmeasured'],
+    });
+    await expect(RELEASE_DECISION_POLICY_V1.decide({
+      ...decisionContext,
+      policy: {
+        ...decisionContext.policy,
+        implementationId: RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
+      },
+    })).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
+    });
+  });
+
+  it('keeps release open when configured judge agreement is measurable and aligned', async () => {
+    const sampleIds = ['sample-1', 'sample-2', 'sample-3', 'sample-4'];
+    const values = tables({
+      sampleIds,
+      targetScores: { control: [4, 4, 4, 4], treatment: [5, 5, 5, 5] },
+    });
+    const releaseParameters = parseReleaseDecisionParameters({
+      ...parameters({ sampleIds }),
+      sources: {
+        compositeResultId: 'composite-table',
+        bootstrapFamilyResultId: 'bootstrap-family',
+        judgeEnsemble: {
+          analysisResultId: 'ensemble-table',
+          metricId: 'rubric-score',
+          instrumentId: 'rubric-correctness',
+          replicateGroupId: 'primary',
+        },
+      },
+    });
+    const baseContext = context(releaseParameters, values);
+    await expect(RELEASE_DECISION_POLICY.decide({
+      ...baseContext,
+      policy: {
+        ...baseContext.policy,
+        analysisResultIds: [...baseContext.policy.analysisResultIds, 'ensemble-table'],
+      },
+      results: [
+        ...baseContext.results,
+        completedResult(
+          'ensemble-table',
+          JUDGE_ENSEMBLE_TABLE_SCHEMA as typeof COMPOSITE_TABLE_SCHEMA,
+          judgeEnsemble(values.composite, 'aligned') as JsonValue,
+        ),
+      ],
+    })).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
     });
   });
 

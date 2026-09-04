@@ -10,6 +10,9 @@ import { resolveNodeCliEvaluationRequest } from '../../../src/eval-workflows/pro
 import {
   createEvalSampleSetDocument,
 } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
+import {
+  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
 const roots: string[] = [];
@@ -663,6 +666,14 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(compiled.definition.decisionPolicy?.parameters).toMatchObject({
       sources: { judgeEnsemble: { replicateGroupId: expect.stringContaining('rubric-') } },
     });
+    expect(compiled.definition.decisionPolicy?.implementationId).toBe(
+      RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+    );
+    const rubricEvaluators = compiled.definition.evaluators.filter((evaluator) => (
+      evaluator.measurement.replicateGroupId.startsWith('rubric-')
+    ));
+    expect(rubricEvaluators).toHaveLength(1);
+    expect(rubricEvaluators[0]?.measurement.replicateIndex).toBe(0);
   });
 
   it('keeps production sample validation strict despite the legacy ambient escape hatch', async () => {

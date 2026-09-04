@@ -67,9 +67,9 @@ It is not an absolute psychometric level. Equal weighting is pragmatic, assertio
 
 ## Decision boundary
 
-A composite score or positive point estimate cannot authorize release by itself. `omk.release-decision/v1` consumes the exact Composite and Bootstrap-family results, plus an optional Judge Ensemble result, and first checks complete evidence and source lineage.
+A composite score or positive point estimate cannot authorize release by itself. `omk.release-decision/v2` consumes the exact Composite and Bootstrap-family results, plus an optional Judge Ensemble result, and first checks complete evidence and source lineage.
 
-Its six conclusions are `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, and `SOLO`. A normal release route requires a decided `PROGRESS` carrying `release-gates-passed`. Missing intervals remain not-decided; multi-treatment results use the worst registered conclusion; cross-run stability belongs to an Evaluation Series rather than a single-run score.
+Its six conclusions are `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, and `SOLO`. A normal release route requires a decided `PROGRESS` carrying `release-gates-passed`. When a Judge Ensemble is bound but cross-judge agreement cannot be estimated for control or treatment, a positive comparison becomes `CAUTIOUS` with `judge-uncertainty-unmeasured`; deterministic evaluations without a Judge Ensemble are unaffected. Missing intervals remain not-decided; multi-treatment results use the worst registered conclusion; cross-run stability belongs to an Evaluation Series rather than a single-run score. Historical `omk.release-decision/v1` remains registered for exact replay and does not apply the unmeasured-uncertainty gate.
 
 See [Statistical rigor](../explanation/statistical-rigor.md) for uncertainty, agreement, debiasing, and coverage gates.
 
