@@ -42,7 +42,7 @@ Assembly requires one exact binding for every:
 
 An analysis binding carries both `referenceId` and Core's `requirementKind`. Sampling Estimator is therefore not inferred from an AnalysisGraph node or silently resolved from a fallback registry.
 
-This complete shape is `omk.runtime-binding-request/v4`. The superseded v3 request can expose inline mock match rules and is rejected rather than read through a compatibility branch.
+This complete shape is `omk.runtime-binding-request/v5`. Evaluator bindings seal an optional host-declared judge deployment revision; no revision means the remote provider identity remains opaque.
 
 Before invoking any factory, assembly validates unique binding IDs and reference keys, exact Definition／Series coverage, implementation and version constraints, executor protocol／model／effort／behavior digest, evaluator measurement／config digest, and resource lease requirements. A validation failure causes zero factory calls.
 

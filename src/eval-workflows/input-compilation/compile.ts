@@ -607,6 +607,9 @@ function evaluatorConfig(
       runtime: {
         executorId: member.executorId,
         model: member.model,
+        ...(member.deploymentRevision === undefined
+          ? {}
+          : { deploymentRevision: member.deploymentRevision }),
         promptVariant: template.runtimePromptVariant,
         ...(member.effort === undefined ? {} : { effort: member.effort }),
       },
@@ -1100,6 +1103,9 @@ function compileRuntimeBinding(
         qualification: {
           executorId: judgeMember.executorId,
           model: judgeMember.model,
+          ...(judgeMember.deploymentRevision === undefined
+            ? {}
+            : { deploymentRevision: judgeMember.deploymentRevision }),
           ...(judgeMember.effort === undefined ? {} : { effort: judgeMember.effort }),
           promptVariant: template?.runtimePromptVariant
             ?? fail({

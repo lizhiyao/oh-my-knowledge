@@ -106,7 +106,13 @@ function parseJudgeModels(value: string): CliEvaluationJudgeRequest[] {
 }
 
 function configJudgeModels(value: readonly JudgeConfig[]): CliEvaluationJudgeRequest[] {
-  return value.map((member) => ({ executorId: member.executor, model: member.model }));
+  return value.map((member) => ({
+    executorId: member.executor,
+    model: member.model,
+    ...(member.deploymentRevision === undefined
+      ? {}
+      : { deploymentRevision: member.deploymentRevision }),
+  }));
 }
 
 function expressionTargetId(expression: string): string {

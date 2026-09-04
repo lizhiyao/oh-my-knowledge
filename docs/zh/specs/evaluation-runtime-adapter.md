@@ -36,7 +36,7 @@ Assembly 要求以下每个引用都有且只有一个 binding：
 
 Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Sampling Estimator 不再从 AnalysisGraph node 猜测，也不能由 fallback registry 静默解析。
 
-完整结构使用 `omk.runtime-binding-request/v4`。已被取代的 v3 request 可能暴露内联 mock match rule，会被直接拒绝，不增加 compatibility 分支。
+完整结构使用 `omk.runtime-binding-request/v5`。Evaluator binding 会封存可选的宿主声明 judge deployment revision；未声明 revision 时，远端 provider identity 保持 opaque。
 
 调用任何 factory 前，assembly 会验证 binding ID／reference key 唯一性、Definition／Series 精确覆盖、implementation／version、executor protocol／model／effort／behavior digest、evaluator measurement／config digest，以及 resource lease requirement。验证失败时 factory 调用次数必须为零。
 

@@ -33,6 +33,7 @@ export function createRubricJudgeEvaluatorBindingFactory(
         || qualification === undefined
         || qualification.executorId !== config.runtime.executorId
         || qualification.model !== config.runtime.model
+        || qualification.deploymentRevision !== config.runtime.deploymentRevision
         || qualification.effort !== config.runtime.effort
         || qualification.promptVariant !== config.runtime.promptVariant) {
       return failure(

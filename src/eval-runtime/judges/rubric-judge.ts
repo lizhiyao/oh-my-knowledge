@@ -179,10 +179,14 @@ function parseRuntime(value: unknown): RubricJudgeRuntimeConfig {
         'executorId',
         'model',
         'promptVariant',
+        ...('deploymentRevision' in value ? ['deploymentRevision'] : []),
         ...('effort' in value ? ['effort'] : []),
       ])
       || typeof value.executorId !== 'string' || value.executorId === ''
       || typeof value.model !== 'string' || value.model === ''
+      || (value.deploymentRevision !== undefined
+        && (typeof value.deploymentRevision !== 'string'
+          || value.deploymentRevision.trim() === ''))
       || typeof value.promptVariant !== 'string' || value.promptVariant === ''
       || (value.effort !== undefined
         && !['low', 'medium', 'high', 'xhigh', 'max'].includes(String(value.effort)))) {
@@ -194,6 +198,9 @@ function parseRuntime(value: unknown): RubricJudgeRuntimeConfig {
   return Object.freeze({
     executorId: value.executorId,
     model: value.model,
+    ...(value.deploymentRevision === undefined
+      ? {}
+      : { deploymentRevision: value.deploymentRevision }),
     promptVariant: value.promptVariant,
     ...(value.effort === undefined ? {} : { effort: value.effort as OmkLlmJudgeEffort }),
   });
@@ -356,6 +363,7 @@ export function createRubricJudgeEvaluatorIdentity(input: Readonly<{
     version: '1.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
+      runtimeProvenanceCompositionVersion: 'omk.runtime-provenance-composition/v2',
       algorithmVersion: ALGORITHM_VERSION,
       instrument: input.instrument,
       runtime: input.runtime,
@@ -366,7 +374,10 @@ export function createRubricJudgeEvaluatorIdentity(input: Readonly<{
       } : {}),
       capabilities: declaredCapabilities,
     }),
-    fingerprintBasis: 'content-derived',
+    // A composed evaluator cannot claim stronger provenance than the provider
+    // Runtime that produced its measurement. In particular, hashing an opaque
+    // provider identity does not make the remote deployment content-derived.
+    fingerprintBasis: invocation.identity.fingerprintBasis,
     assuranceLevel: invocation.identity.assuranceLevel,
     capabilities: declaredCapabilities,
     implementationManifest: { coverageKind: 'fingerprint-complete' },
@@ -554,12 +565,16 @@ export function createRubricJudgeCriterion(
 export function createRubricJudgeRuntimeConfig(input: Readonly<{
   executorId: string;
   model: string;
+  deploymentRevision?: string;
   effort?: OmkLlmJudgeEffort;
   instrument: RubricJudgeInstrument;
 }>): RubricJudgeRuntimeConfig {
   return deepFreezeCanonicalJson(parseRuntime({
     executorId: input.executorId,
     model: input.model,
+    ...(input.deploymentRevision === undefined
+      ? {}
+      : { deploymentRevision: input.deploymentRevision }),
     ...(input.effort === undefined ? {} : { effort: input.effort }),
     promptVariant: parseInstrument(input.instrument).promptId,
   }));

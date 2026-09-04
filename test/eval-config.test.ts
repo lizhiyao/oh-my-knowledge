@@ -396,6 +396,7 @@ judgeModels:
     model: opus
   - executor: openai-api
     model: gpt-4o
+    deploymentRevision: gpt-4o-2024-11-20
 `.trim());
       const cfg = loadEvalConfig(path);
       assert.equal(cfg.repeat, 5);
@@ -408,7 +409,11 @@ judgeModels:
       assert.equal(cfg.noJudge, true);
       assert.deepEqual(cfg.judgeModels, [
         { executor: 'claude', model: 'opus' },
-        { executor: 'openai-api', model: 'gpt-4o' },
+        {
+          executor: 'openai-api',
+          model: 'gpt-4o',
+          deploymentRevision: 'gpt-4o-2024-11-20',
+        },
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -484,6 +489,11 @@ judgeModels:
       name: 'judgeModels empty array',
       yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: []`,
       error: /judgeModels must have ≥ 1 entry/,
+    },
+    {
+      name: 'judgeModels empty deployment revision',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: openai-api\n    model: gpt-4o\n    deploymentRevision: "  "`,
+      error: /deploymentRevision must be a non-empty string/,
     },
     {
       name: 'judgeModels duplicate entry',

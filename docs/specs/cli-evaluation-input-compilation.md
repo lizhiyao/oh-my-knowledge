@@ -114,7 +114,7 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 
 This layer is the production boundary. `omk eval` consumes its contracts through Runtime assembly and the Core host workflow, then persists the Core Plan, Bundles, and Report. The deleted legacy pipeline is neither double-run nor shadow-run, and no later layer reparses CLI input.
 
-The migration contracts are intentionally incompatible: parse output is `omk.cli-evaluation-request/v2`, resolved compiler input is `omk.resolved-cli-evaluation-input/v5`, HostResource inventory remains `omk.resolved-host-resources/v3`, and binding output remains `omk.runtime-binding-request/v4`. Request v2 and resolved input v5 add the required sample-size planning contract and select `omk.release-decision/v5` with `omk.bootstrap-family-table/v2`; earlier shapes are rejected without inference or a compatibility reader. The v4 resolved input had previously replaced inline mock match rules with a secret `mock-rule` descriptor and lease role. Release-policy identity now binds planned-family correction and explicit Monte Carlo decision evidence, while historical release policies v1–v4 and Bootstrap family v1 remain registered for replay.
+The current boundary emits `omk.cli-evaluation-request/v3`, `omk.resolved-cli-evaluation-input/v6`, `omk.resolved-host-resources/v3`, and `omk.runtime-binding-request/v5`. Request v3, resolved input v6, and binding request v5 carry the optional host-declared judge deployment revision from `eval.yaml` into evaluator Runtime qualification. Earlier request shapes are not accepted.
 
 The disable-only `--no-cache`／`noCache` surface has no faithful Core cache-enable equivalent: the removed implementation used stochastic read-through execution reuse and expressed nothing about Evaluation cache. The current registry therefore normalizes only the disabled state and marks explicit cache reuse for a future, separately designed interface. Old cache files are not read.
 
@@ -192,6 +192,7 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | eval.yaml | `goldDir` | `orchestration.gold.resourceLocator` | 200 | — | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `holdoutRatio` | `definition.dataset.analysisCohorts` | 200 | — | Definition | analysis | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeModels` | `definition.judges.members` | 200 | — (environment-selection) | Definition | evaluation | `evaluator-instrument` | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `judgeModels[].deploymentRevision` | `definition.judges.members[].deploymentRevision` | 200 | — | Definition | evaluation | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeModels[].executor` | `definition.judges.members[].executorId` | 200 | — | Definition | evaluation | `evaluator-instrument` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeModels[].model` | `definition.judges.members[].model` | 200 | — | Definition | evaluation | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `judgeRepeat` | `definition.judges.replicateCount` | 200 | `1` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |

@@ -51,6 +51,16 @@ LLM judges can reward verbosity, polished formatting, or confident tone independ
 - Presentation and tone neutrality are always enabled.
 - Length debiasing is enabled by default; `--no-debias-length` disables only the length instruction for controlled research or replication.
 - Every scoring prompt has a registry identity and hash. Reports with different evaluator identities or prompt variants are not treated as blind equivalents.
+- A model name alone does not identify a remote judge deployment. When `eval.yaml` omits `judgeModels[].deploymentRevision`, omk records the provider Runtime as `opaque/unknown`; cross-run comparability is explicitly conditional, and a policy requiring fully compatible evidence fails closed. For release-grade studies, use a provider's pinned model identifier and declare the gateway or deployment revision:
+
+  ```yaml
+  judgeModels:
+    - executor: openai-api
+      model: gpt-5-2025-08-07
+      deploymentRevision: production-gateway-2026-09-04
+  ```
+
+  The revision is a host declaration, not provider attestation, so its assurance remains `declared`, never `verified`. Change it whenever routing, system middleware, or the served model deployment changes. omk deliberately does not guess immutability from model-name patterns: OpenAI documents pinned snapshots, Anthropic distinguishes snapshot IDs from moving aliases and notes that serving infrastructure may still change, and Vertex AI aliases can be reassigned. See the [OpenAI model stability guidance](https://platform.openai.com/docs/api-reference/backward-compatibility), [Anthropic model IDs and aliases](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions), and [Vertex AI model aliases](https://docs.cloud.google.com/vertex-ai/docs/model-registry/model-alias).
 - The frozen hashes are catalogued and guarded by `test/measurement-governance/prompt-registry.ts` and `prompt-registry-freeze.test.ts`. This governance-only manifest is excluded from the published runtime.
 
 Prompt instructions reduce a known bias risk; they do not prove that a judge is unbiased. Gold calibration is the external check.

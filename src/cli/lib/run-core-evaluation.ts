@@ -96,6 +96,9 @@ function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string): 
       judgeMembers: input.config.judgeModels.map((judge) => ({
         executorId: judge.executor,
         model: judge.model,
+        ...(judge.deploymentRevision === undefined
+          ? {}
+          : { deploymentRevision: judge.deploymentRevision }),
       })),
       presentation: {
         projectOutputDirectoryLocator: projectReportsDir(),

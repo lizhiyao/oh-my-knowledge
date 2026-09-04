@@ -201,6 +201,27 @@ describe('compileCliEvaluationInput', () => {
     expect(judgeBindings).toHaveLength(4);
   });
 
+  it('seals a declared judge deployment revision into evaluator config and Runtime binding', () => {
+    const input = deepClone(validResolvedCliInput());
+    input.judges.members[0].deploymentRevision = 'openai-deployment-r42';
+    const result = compileCliEvaluationInput(input);
+    const evaluator = result.definition.evaluators.find((candidate) => (
+      candidate.evaluatorKind === 'llm-rubric'
+      && candidate.measurement.ensembleMemberId === 'judge-b'
+    ));
+    const binding = result.runtimeBinding.bindings.find((candidate) => (
+      candidate.runtimeKind === 'evaluator'
+      && candidate.evaluatorId === evaluator?.evaluatorId
+    ));
+
+    expect(evaluator?.config).toMatchObject({
+      runtime: { deploymentRevision: 'openai-deployment-r42' },
+    });
+    expect(binding).toMatchObject({
+      qualification: { deploymentRevision: 'openai-deployment-r42' },
+    });
+  });
+
   it('does not resolve or bind unused judges when judging is disabled', () => {
     const input = deepClone(validResolvedCliInput());
     input.judges.enabled = false;
@@ -550,7 +571,7 @@ describe('compileCliEvaluationInput', () => {
       },
     });
     const bindingJson = canonicalizeJson(result.runtimeBinding);
-    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v4');
+    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v5');
     expect(bindingJson).not.toContain('capabilities');
     expect(bindingJson).not.toContain('fingerprint');
     expect(bindingJson).not.toContain('assuranceLevel');

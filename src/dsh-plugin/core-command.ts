@@ -1,9 +1,6 @@
 import { join, resolve } from 'node:path';
 import {
-  RuntimeIdentitySchema,
-  deepFreezeCanonicalJson,
   schemaIdentityKey,
-  type JsonValue,
   type RuntimeIdentity,
   type UsageRecord,
 } from '../eval-core/contracts/index.js';
@@ -22,6 +19,7 @@ import {
   createNodeHostPreflightDeclarations,
   createProductionEvaluationHost,
   createProductionRuntimeFactoryRegistry,
+  createJudgeProviderRuntimeIdentity,
   executeProductionEvaluationSeries,
   persistCoreArtifactSidecars,
   resolveNodeCliEvaluationRequest,
@@ -97,22 +95,19 @@ function usage(result: Readonly<ExecResult>): UsageRecord | undefined {
   return Object.keys(value).length === 0 ? undefined : value;
 }
 
-function runtimeIdentity(executor: ExecutorFn, model: string): RuntimeIdentity {
+function runtimeIdentity(
+  executor: ExecutorFn,
+  model: string,
+  deploymentRevision?: string,
+): RuntimeIdentity {
   const fingerprint = executor.runtimeFingerprint?.(model);
   if (fingerprint === undefined) throw new TypeError('DSH Host 没有提供 Runtime identity。');
-  const manifest = JSON.parse(JSON.stringify(fingerprint)) as JsonValue;
-  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
-    implementationId: DSH_HOST_IMPLEMENTATION_ID,
-    ...(fingerprint.binary?.version === undefined ? {} : { version: fingerprint.binary.version }),
-    fingerprint: fingerprint.fingerprint,
-    fingerprintBasis: 'environment-derived',
-    assuranceLevel: 'unknown',
-    capabilities: fingerprint.capabilities as unknown as JsonValue,
-    implementationManifest: {
-      coverageKind: 'fingerprint-plus-facets',
-      facets: [{ facetId: 'dsh.host-invocation', value: manifest }],
-    },
-  })) as RuntimeIdentity;
+  return createJudgeProviderRuntimeIdentity({
+    executorId: DSH_HOST_IMPLEMENTATION_ID,
+    model,
+    ...(deploymentRevision === undefined ? {} : { deploymentRevision }),
+    executorRuntime: fingerprint,
+  });
 }
 
 function judgeResolver(
@@ -127,9 +122,17 @@ function judgeResolver(
         || qualification.executorId !== DSH_HOST_IMPLEMENTATION_ID) {
       throw new TypeError('DSH Host 只能解析继承当前宿主的评委 Runtime。');
     }
-    const identity = identities.get(qualification.model)
-      ?? runtimeIdentity(executor, qualification.model);
-    identities.set(qualification.model, identity);
+    const identityKey = JSON.stringify([
+      qualification.model,
+      qualification.deploymentRevision ?? null,
+    ]);
+    const identity = identities.get(identityKey)
+      ?? runtimeIdentity(
+        executor,
+        qualification.model,
+        qualification.deploymentRevision,
+      );
+    identities.set(identityKey, identity);
     return Object.freeze({
       port: Object.freeze({
         identity,
@@ -282,6 +285,9 @@ export async function runDshCoreEvaluation(input: Readonly<{
       judgeMembers: judgeModels.map((judge) => ({
         executorId: judge.executor,
         model: judge.model,
+        ...(judge.deploymentRevision === undefined
+          ? {}
+          : { deploymentRevision: judge.deploymentRevision }),
       })),
       presentation: {
         projectOutputDirectoryLocator: outputDirectory,
