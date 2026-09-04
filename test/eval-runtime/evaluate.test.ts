@@ -5,6 +5,7 @@ import {
   checkExecutor,
   evaluate,
   type Clock,
+  type CustomEvaluator,
   type Executor,
   type Variant,
 } from '../../src/eval-runtime/index.js';
@@ -12,6 +13,7 @@ import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EvaluationDefinitionSchema,
   digestCanonicalJson,
+  type JsonValue,
 } from '../../src/eval-core/contracts/index.js';
 
 type Input = { prompt: string };
@@ -129,6 +131,62 @@ function pairedInput(
     },
     policy: { maxConcurrency: 2 },
     runId: 'canonical-evaluate',
+  };
+}
+
+function numericCustomEvaluator(
+  evaluatorId: string,
+  callback: CustomEvaluator<{ actual: string }>['implementation']['evaluate'],
+  revision = 'test-one',
+): CustomEvaluator<{ actual: string }> {
+  return {
+    evaluatorKind: 'custom',
+    evaluatorId,
+    instrumentId: `${evaluatorId}-v1`,
+    metric: {
+      metricId: `${evaluatorId}-score`,
+      valueType: 'numeric',
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    },
+    bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+    implementation: {
+      implementationId: `test.${evaluatorId}/v1`,
+      version: '1.0.0',
+      schemas: {
+        bindings: z.object({ actual: z.string() }).strict(),
+        value: z.number(),
+        fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+      },
+      fingerprintFacets: { revision },
+      evaluate: callback,
+    },
+  };
+}
+
+function qualitativeCustomEvaluator(
+  evaluatorId: string,
+  valueType: 'categorical' | 'text' | 'ranking',
+  valueParser: Readonly<{ parse(value: unknown): JsonValue }>,
+  callback: CustomEvaluator<{ actual: string }>['implementation']['evaluate'],
+): CustomEvaluator<{ actual: string }> {
+  return {
+    evaluatorKind: 'custom',
+    evaluatorId,
+    instrumentId: `${evaluatorId}-v1`,
+    metric: { metricId: `${evaluatorId}-value`, valueType, missingPolicyId: 'exclude/v1' },
+    bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+    implementation: {
+      implementationId: `test.${evaluatorId}/v1`,
+      version: '1.0.0',
+      schemas: {
+        bindings: z.object({ actual: z.string() }).strict(),
+        value: valueParser,
+        fingerprintFacets: { bindings: 'actual-string/v1', value: `${valueType}/v1` },
+      },
+      fingerprintFacets: { revision: 'test-one' },
+      evaluate: callback,
+    },
   };
 }
 
@@ -268,6 +326,569 @@ describe('canonical eval-runtime API', () => {
     expect(result.artifacts.analysis.records[0]).toMatchObject({ analysisStatus: 'completed' });
   });
 
+  it('runs a custom Evaluator from only its declared bindings', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const custom = {
+      evaluatorKind: 'custom',
+      evaluatorId: 'output-length',
+      instrumentId: 'output-length-v1',
+      metric: {
+        metricId: 'length',
+        valueType: 'numeric',
+        direction: 'lower-is-better',
+        missingPolicyId: 'exclude/v1',
+      },
+      bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+      parameters: { offset: 1 },
+      implementation: {
+        implementationId: 'test.output-length/v1',
+        version: '1.0.0',
+        schemas: {
+          bindings: z.object({ actual: z.string() }).strict(),
+          value: z.number(),
+          fingerprintFacets: { bindings: 'actual-string/v1', value: 'finite-number/v1' },
+        },
+        fingerprintFacets: { revision: 'test-one' },
+        async evaluate(invocation) {
+          seen.push({
+            ...invocation.bindings,
+            parameters: invocation.parameters,
+            variantId: invocation.variantId,
+            attemptNumber: invocation.attemptNumber,
+          });
+          return {
+            resultKind: 'score',
+            value: invocation.bindings.actual.length + 1,
+            evidence: { value: { rule: 'length-plus-offset' }, classification: 'public' },
+            usage: { totalTokens: 1 },
+          };
+        },
+      },
+    } satisfies CustomEvaluator<{ actual: string }>;
+    const input = pairedInput();
+    const result = await evaluate({
+      ...input,
+      evaluators: [...input.evaluators, custom],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['correct', 'length'] }],
+      decision: undefined,
+      runId: 'custom-evaluator',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(seen).toHaveLength(4);
+    expect(seen.every((invocation) => !('expected' in invocation))).toBe(true);
+    expect(seen.every((invocation) => invocation.attemptNumber === 1)).toBe(true);
+    expect(result.definition.evaluators.find((candidate) => (
+      candidate.evaluatorId === 'output-length'
+    ))).toMatchObject({
+      evaluatorKind: 'custom',
+      implementationId: 'test.output-length/v1',
+      metricIds: ['length'],
+      inputs: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+      config: { offset: 1 },
+    });
+    const observations = result.artifacts.evaluation.records.flatMap((record) => (
+      record.evaluatorId === 'output-length' && record.evaluationStatus === 'completed'
+        ? record.observations
+        : []
+    ));
+    expect(observations).toHaveLength(4);
+    expect(observations.every((observation) => (
+      observation.observationStatus === 'observed' && observation.valueType === 'numeric'
+    ))).toBe(true);
+    expect(result.artifacts.evaluation.records.filter((record) => (
+      record.evaluatorId === 'output-length'
+    )).every((record) => (
+      record.evaluationStatus === 'completed' && record.usage?.totalTokens === 1
+    ))).toBe(true);
+    expect(result.artifacts.analysis.records).toHaveLength(2);
+  });
+
+  it('records a schema-rejected custom score as invalid evidence', async () => {
+    const input = pairedInput();
+    const result = await evaluate({
+      ...input,
+      evaluators: [{
+        evaluatorKind: 'custom',
+        evaluatorId: 'strict-number',
+        instrumentId: 'strict-number-v1',
+        metric: {
+          metricId: 'strict-score',
+          valueType: 'numeric',
+          direction: 'higher-is-better',
+          missingPolicyId: 'exclude/v1',
+        },
+        bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+        implementation: {
+          implementationId: 'test.strict-number/v1',
+          version: '1.0.0',
+          schemas: {
+            bindings: z.object({ actual: z.string() }).strict(),
+            value: z.number(),
+            fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+          },
+          fingerprintFacets: { revision: 'test-one' },
+          async evaluate() {
+            return { resultKind: 'score', value: 'not-a-number' };
+          },
+        },
+      }],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['strict-score'] }],
+      decision: undefined,
+      runId: 'custom-evaluator-invalid',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.artifacts.evaluation.records.flatMap((record) => (
+      record.evaluationStatus === 'completed' ? record.observations : []
+    )))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          observationStatus: 'invalid',
+          reasonCode: 'custom-evaluator-value-invalid',
+          invalidValue: expect.objectContaining({ classification: 'gold' }),
+        }),
+      ]));
+    expect(result.artifacts.analysis.records[0]).toMatchObject({
+      analysisStatus: 'inconclusive',
+    });
+
+    let transformedBindingCalls = 0;
+    const transformedBindings = numericCustomEvaluator('transformed-bindings', () => {
+      transformedBindingCalls += 1;
+      return { resultKind: 'score', value: 1 };
+    });
+    const transformedResult = await evaluate({
+      ...input,
+      evaluators: [{
+        ...transformedBindings,
+        implementation: {
+          ...transformedBindings.implementation,
+          schemas: {
+            ...transformedBindings.implementation.schemas,
+            bindings: z.object({ actual: z.string() }).strict()
+              .transform(({ actual }) => ({ actual: `${actual}-changed` })),
+          },
+        },
+      }],
+      comparisons: [{
+        ...input.comparisons[0],
+        metricIds: ['transformed-bindings-score'],
+      }],
+      decision: undefined,
+      runId: 'custom-evaluator-transformed-bindings',
+      clock: fixedClock,
+    });
+    expect(transformedResult.status).toBe('completed');
+    expect(transformedBindingCalls).toBe(0);
+    expect(transformedResult.artifacts?.evaluation?.records.flatMap((record) => (
+      record.evaluationStatus === 'completed' ? record.observations : []
+    ))).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        observationStatus: 'invalid',
+        reasonCode: 'custom-evaluator-bindings-invalid',
+      }),
+    ]));
+  });
+
+  it('projects every supported custom binding source through its declared JSON Pointer', async () => {
+    const base = executor();
+    const traceExecutor: Executor<Input, Config, string, { steps: string[] }> = {
+      ...base,
+      schemas: {
+        ...base.schemas,
+        trace: z.object({ steps: z.array(z.string()) }).strict(),
+      },
+      capabilities: {
+        ...base.capabilities,
+        telemetry: { trace: 'required', usage: 'optional' },
+      },
+      async execute({ input: executionInput, config }) {
+        return {
+          output: config.answers[executionInput.prompt],
+          trace: { steps: ['generated'] },
+        };
+      },
+    };
+    const input = pairedInput(traceExecutor);
+    const seen: Array<Record<string, unknown>> = [];
+    const result = await evaluate({
+      ...input,
+      dataset: {
+        ...input.dataset,
+        samples: input.dataset.samples.map((sample) => ({
+          ...sample,
+          evaluationContext: { domain: 'qa' },
+        })),
+      },
+      evaluators: [{
+        evaluatorKind: 'custom',
+        evaluatorId: 'all-bindings',
+        instrumentId: 'all-bindings-v1',
+        metric: {
+          metricId: 'all-bindings-valid',
+          valueType: 'boolean',
+          direction: 'higher-is-better',
+          missingPolicyId: 'exclude/v1',
+        },
+        bindings: [
+          { bindingId: 'actual', sourceKind: 'output', pointer: '' },
+          { bindingId: 'facts', sourceKind: 'execution-facts', pointer: '' },
+          { bindingId: 'domain', sourceKind: 'evaluation-context', pointer: '/domain' },
+          { bindingId: 'expected', sourceKind: 'expected', pointer: '' },
+          { bindingId: 'step', sourceKind: 'trace', pointer: '/steps/0' },
+        ],
+        implementation: {
+          implementationId: 'test.all-bindings/v1',
+          version: '1.0.0',
+          schemas: {
+            bindings: z.object({
+              actual: z.string(),
+              facts: z.record(z.string(), z.json()),
+              domain: z.string(),
+              expected: z.string(),
+              step: z.string(),
+            }).strict(),
+            value: z.boolean(),
+            fingerprintFacets: { bindings: 'all-sources/v1', value: 'boolean/v1' },
+          },
+          fingerprintFacets: { revision: 'test-one' },
+          evaluate({ bindings }) {
+            seen.push(bindings);
+            return {
+              resultKind: 'score',
+              value: bindings.facts.attemptCount === 1
+                && bindings.domain === 'qa'
+                && bindings.step === 'generated'
+                && typeof bindings.actual === 'string'
+                && typeof bindings.expected === 'string',
+            };
+          },
+        },
+      } satisfies CustomEvaluator<{
+        actual: string;
+        facts: Record<string, JsonValue>;
+        domain: string;
+        expected: string;
+        step: string;
+      }>],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['all-bindings-valid'] }],
+      decision: undefined,
+      runId: 'custom-evaluator-all-bindings',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    expect(seen).toHaveLength(4);
+    expect(seen.every((bindings) => Object.keys(bindings).sort().join(',')
+      === 'actual,domain,expected,facts,step')).toBe(true);
+  });
+
+  it('keeps qualitative custom observations as evidence without fabricating an estimator', async () => {
+    const input = pairedInput();
+    const result = await evaluate({
+      ...input,
+      evaluators: [
+        qualitativeCustomEvaluator(
+          'answer-category',
+          'categorical',
+          z.string(),
+          ({ sampleId, bindings }) => sampleId === 'two'
+            ? { resultKind: 'missing', reasonCode: 'label-not-available' }
+            : { resultKind: 'score', value: bindings.actual },
+        ),
+        qualitativeCustomEvaluator(
+          'answer-text',
+          'text',
+          z.enum(['empty', 'non-empty']),
+          ({ bindings }) => ({
+            resultKind: 'score',
+            value: bindings.actual === '' ? 'empty' : 'non-empty',
+          }),
+        ),
+        qualitativeCustomEvaluator(
+          'answer-ranking',
+          'ranking',
+          z.array(z.enum(['empty', 'non-empty', 'fallback'])).min(1),
+          ({ bindings }) => ({
+            resultKind: 'score',
+            value: bindings.actual === '' ? ['empty'] : ['non-empty', 'fallback'],
+          }),
+        ),
+      ],
+      comparisons: [{
+        ...input.comparisons[0],
+        metricIds: ['answer-category-value', 'answer-text-value', 'answer-ranking-value'],
+      }],
+      decision: undefined,
+      runId: 'custom-evaluator-categorical',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.definition.analysisGraph.nodes).toEqual([]);
+    expect(result.artifacts.analysis.records).toEqual([]);
+    expect(result.artifacts.evaluation.records.flatMap((record) => (
+      record.evaluationStatus === 'completed' ? record.observations : []
+    ))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ observationStatus: 'observed', valueType: 'categorical' }),
+      expect.objectContaining({ observationStatus: 'observed', valueType: 'text' }),
+      expect.objectContaining({ observationStatus: 'observed', valueType: 'ranking' }),
+      expect.objectContaining({
+        observationStatus: 'missing',
+        reasonCode: 'label-not-available',
+      }),
+    ]));
+  });
+
+  it('routes multiple bindings of one custom implementation without cross-wiring them', async () => {
+    const input = pairedInput();
+    const implementation = (suffix: string) => ({
+      implementationId: 'test.shared-custom/v1',
+      version: '1.0.0',
+      schemas: {
+        bindings: z.object({ actual: z.string() }).strict(),
+        value: z.number(),
+        fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+      },
+      fingerprintFacets: { revision: 'test-one', suffix },
+      evaluate: ({ bindings }) => ({
+        resultKind: 'score' as const,
+        value: suffix === 'length' ? bindings.actual.length : Number(bindings.actual === 'A'),
+      }),
+    } satisfies CustomEvaluator<{ actual: string }>['implementation']);
+    const result = await evaluate({
+      ...input,
+      evaluators: [{
+        evaluatorKind: 'custom',
+        evaluatorId: 'shared-length',
+        instrumentId: 'shared-length-v1',
+        metric: {
+          metricId: 'shared-length-score',
+          valueType: 'numeric',
+          direction: 'lower-is-better',
+          missingPolicyId: 'exclude/v1',
+        },
+        bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+        implementation: implementation('length'),
+      }, {
+        evaluatorKind: 'custom',
+        evaluatorId: 'shared-is-a',
+        instrumentId: 'shared-is-a-v1',
+        metric: {
+          metricId: 'shared-is-a-score',
+          valueType: 'numeric',
+          direction: 'higher-is-better',
+          missingPolicyId: 'exclude/v1',
+        },
+        bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+        implementation: implementation('is-a'),
+      }],
+      comparisons: [{
+        ...input.comparisons[0],
+        metricIds: ['shared-length-score', 'shared-is-a-score'],
+      }],
+      decision: undefined,
+      runId: 'custom-evaluator-shared-implementation',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.artifacts.analysis.records).toHaveLength(2);
+    expect(new Set(result.artifacts.evaluation.records.map((record) => record.evaluatorId)))
+      .toEqual(new Set(['shared-length', 'shared-is-a']));
+  });
+
+  it('redacts thrown custom Evaluator failures and lets Core enforce timeout cancellation', async () => {
+    const privateMessage = 'private custom evaluator provider detail';
+    const input = pairedInput();
+    const failed = await evaluate({
+      ...input,
+      evaluators: [{
+        evaluatorKind: 'custom',
+        evaluatorId: 'throwing-custom',
+        instrumentId: 'throwing-custom-v1',
+        metric: {
+          metricId: 'throwing-score',
+          valueType: 'numeric',
+          direction: 'higher-is-better',
+          missingPolicyId: 'exclude/v1',
+        },
+        bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+        implementation: {
+          implementationId: 'test.throwing-custom/v1',
+          version: '1.0.0',
+          schemas: {
+            bindings: z.object({ actual: z.string() }).strict(),
+            value: z.number(),
+            fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+          },
+          fingerprintFacets: { revision: 'test-one' },
+          evaluate() {
+            throw new Error(privateMessage);
+          },
+        },
+      }],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['throwing-score'] }],
+      decision: undefined,
+      runId: 'custom-evaluator-thrown-failure',
+      clock: fixedClock,
+    });
+    expect(failed.status).toBe('completed');
+    expect(JSON.stringify(failed)).not.toContain(privateMessage);
+    expect(failed.artifacts?.evaluation?.records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        evaluationStatus: 'failed',
+        error: expect.objectContaining({ code: 'evaluator-error' }),
+      }),
+    ]));
+
+    let observedAbort = false;
+    const timedOut = await evaluate({
+      ...input,
+      evaluators: [{
+        evaluatorKind: 'custom',
+        evaluatorId: 'slow-custom',
+        instrumentId: 'slow-custom-v1',
+        metric: {
+          metricId: 'slow-score',
+          valueType: 'numeric',
+          direction: 'higher-is-better',
+          missingPolicyId: 'exclude/v1',
+        },
+        bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+        implementation: {
+          implementationId: 'test.slow-custom/v1',
+          version: '1.0.0',
+          schemas: {
+            bindings: z.object({ actual: z.string() }).strict(),
+            value: z.number(),
+            fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+          },
+          fingerprintFacets: { revision: 'test-one' },
+          async evaluate({ signal }) {
+            await new Promise((_resolve, reject) => {
+              const abort = () => {
+                observedAbort = true;
+                reject(signal.reason);
+              };
+              if (signal.aborted) abort();
+              else signal.addEventListener('abort', abort, { once: true });
+            });
+            return { resultKind: 'score', value: 1 };
+          },
+        },
+      }],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['slow-score'] }],
+      decision: undefined,
+      policy: { ...input.policy, evaluationTimeoutMs: 5 },
+      runId: 'custom-evaluator-timeout',
+    });
+    expect(timedOut.status).toBe('completed');
+    expect(observedAbort).toBe(true);
+    expect(timedOut.artifacts?.evaluation?.records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        evaluationStatus: 'failed',
+        error: expect.objectContaining({ code: 'timeout' }),
+      }),
+    ]));
+  });
+
+  it('preserves stable custom failures and prevents callbacks from bypassing Core budget', async () => {
+    const input = pairedInput();
+    const stableFailure = await evaluate({
+      ...input,
+      evaluators: [numericCustomEvaluator('stable-failure', () => ({
+        resultKind: 'failed',
+        errorCode: 'custom-service-unavailable',
+        usage: { totalTokens: 3 },
+      }))],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['stable-failure-score'] }],
+      decision: undefined,
+      runId: 'custom-evaluator-stable-failure',
+      clock: fixedClock,
+    });
+    expect(stableFailure.status).toBe('completed');
+    expect(stableFailure.artifacts?.evaluation?.records).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        evaluationStatus: 'failed',
+        error: expect.objectContaining({ code: 'custom-service-unavailable' }),
+        usage: expect.objectContaining({ totalTokens: 3 }),
+      }),
+    ]));
+
+    let calls = 0;
+    const budgeted = await evaluate({
+      ...input,
+      evaluators: [numericCustomEvaluator('budgeted', () => {
+        calls += 1;
+        return { resultKind: 'score', value: 1 };
+      })],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['budgeted-score'] }],
+      decision: undefined,
+      policy: { ...input.policy, maxInvocations: 4 },
+      runId: 'custom-evaluator-budget',
+      clock: fixedClock,
+    });
+    expect(budgeted.status).toBe('budget-exhausted');
+    expect(calls).toBe(0);
+    expect(budgeted.artifacts?.evaluation?.records.every((record) => (
+      record.evaluationStatus === 'not-evaluated'
+    ))).toBe(true);
+  });
+
+  it('captures the active callback and changes Runtime identity when declared facets change', async () => {
+    const input = pairedInput();
+    const custom = numericCustomEvaluator(
+      'captured-callback',
+      () => ({ resultKind: 'score', value: 1 }),
+      'revision-one',
+    );
+    const pending = evaluate({
+      ...input,
+      evaluators: [custom],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
+      decision: undefined,
+      runId: 'custom-evaluator-captured-callback',
+      clock: fixedClock,
+    });
+    (custom.implementation as {
+      evaluate: CustomEvaluator<{ actual: string }>['implementation']['evaluate'];
+    }).evaluate = () => ({ resultKind: 'score', value: 99 });
+    const first = await pending;
+    const second = await evaluate({
+      ...input,
+      evaluators: [numericCustomEvaluator(
+        'captured-callback',
+        () => ({ resultKind: 'score', value: 1 }),
+        'revision-two',
+      )],
+      comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
+      decision: undefined,
+      runId: 'custom-evaluator-new-identity',
+      clock: fixedClock,
+    });
+
+    expect(first.status).toBe('completed');
+    expect(second.status).toBe('completed');
+    if (first.status !== 'completed' || second.status !== 'completed') return;
+    expect(first.artifacts.evaluation.records.flatMap((record) => (
+      record.evaluationStatus === 'completed' ? record.observations : []
+    )).every((observation) => (
+      observation.observationStatus === 'observed' && observation.value === 1
+    ))).toBe(true);
+    expect(first.artifacts.evaluation.records[0].runtime.fingerprint)
+      .not.toBe(second.artifacts.evaluation.records[0].runtime.fingerprint);
+    expect(first.artifacts.evaluation.evaluationPlanDigest)
+      .not.toBe(second.artifacts.evaluation.evaluationPlanDigest);
+  });
+
   it('produces a solo quality profile without a fabricated Comparison', async () => {
     const declaration = executor();
     const result = await evaluate({
@@ -305,7 +926,7 @@ describe('canonical eval-runtime API', () => {
     expect(result.artifacts.execution?.records).toHaveLength(2);
   });
 
-  it('runs three Variants, heterogeneous Executors, and two Metrics in one Core Run', async () => {
+  it('runs heterogeneous Executors and all canonical Evaluator kinds in one Core Run', async () => {
     const firstExecutor = executor();
     const secondExecutor = executor(undefined, {
       executorId: 'test.alternate-executor/v1',
@@ -357,13 +978,17 @@ describe('canonical eval-runtime API', () => {
             },
           },
         },
+        numericCustomEvaluator('length', ({ bindings }) => ({
+          resultKind: 'score',
+          value: bindings.actual.length,
+        })),
       ],
       comparisons: [{
         comparisonId: 'baseline-vs-candidates',
         comparisonKind: 'independent',
         controlVariantId: controlSpec.variantId,
         treatmentVariantIds: [thirdSpec.variantId, treatmentSpec.variantId],
-        metricIds: ['quality-score', 'correct'],
+        metricIds: ['quality-score', 'correct', 'length-score'],
       }],
       experiment: {
         seed: 'multi-arm-independent-seed',
@@ -392,21 +1017,23 @@ describe('canonical eval-runtime API', () => {
     ]);
     expect(result.definition.evaluators.map((evaluator) => evaluator.evaluatorId)).toEqual([
       'exact-match',
+      'length',
       'quality-judge',
     ]);
     expect(result.definition.metrics.map((metric) => metric.metricId)).toEqual([
       'correct',
+      'length-score',
       'quality-score',
     ]);
     expect(result.definition.comparisons[0].treatmentTargetIds).toEqual([
       'prompt-v2',
       'prompt-v3',
     ]);
-    expect(result.definition.analysisGraph.nodes).toHaveLength(4);
+    expect(result.definition.analysisGraph.nodes).toHaveLength(6);
     expect(result.definition.decisionPolicy).toBeUndefined();
     expect(result.artifacts.execution.records).toHaveLength(6);
-    expect(result.artifacts.evaluation.records).toHaveLength(12);
-    expect(result.artifacts.analysis.records).toHaveLength(4);
+    expect(result.artifacts.evaluation.records).toHaveLength(18);
+    expect(result.artifacts.analysis.records).toHaveLength(6);
     expect(judgeCalls).toHaveLength(6);
   });
 
@@ -823,6 +1450,76 @@ describe('canonical eval-runtime API', () => {
         { evaluatorKind: 'exact-match', evaluatorId: 'another', metricId: 'same' },
       ],
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+
+    const custom = numericCustomEvaluator(
+      'invalid-custom-config',
+      () => ({ resultKind: 'score', value: 1 }),
+    );
+    await expect(evaluate({
+      ...pairedInput(declaration),
+      evaluators: [{
+        ...custom,
+        metric: { ...custom.metric, scope: 'run' },
+      } as never],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+
+    await expect(evaluate({
+      ...pairedInput(declaration),
+      evaluators: [{
+        ...custom,
+        bindings: [{
+          bindingId: 'facts',
+          sourceKind: 'execution-facts',
+          pointer: '/attemptCount',
+        }],
+      }],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+
+    await expect(evaluate({
+      ...pairedInput(declaration),
+      evaluators: [{
+        ...custom,
+        implementation: {
+          ...custom.implementation,
+          providerCost: {
+            reporting: 'optional',
+            trustedUpperBound: { amount: 1, currency: 'USD' },
+          },
+        },
+      }],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+
+    await expect(evaluate({
+      ...pairedInput(declaration),
+      evaluators: [custom, {
+        ...custom,
+        evaluatorId: 'invalid-custom-config-two',
+        metric: { ...custom.metric, metricId: 'invalid-custom-config-two-score' },
+        implementation: { ...custom.implementation, version: '2.0.0' },
+      }],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+
+    const lowerIsBetter = {
+      ...custom,
+      metric: {
+        metricId: custom.metric.metricId,
+        valueType: 'numeric' as const,
+        direction: 'lower-is-better' as const,
+        missingPolicyId: 'exclude/v1' as const,
+      },
+    };
+    await expect(evaluate({
+      ...pairedInput(declaration),
+      evaluators: [lowerIsBetter],
+      comparisons: [{
+        ...pairedInput(declaration).comparisons[0],
+        metricIds: [lowerIsBetter.metric.metricId],
+      }],
+      decision: {
+        ...pairedInput(declaration).decision,
+        metricId: lowerIsBetter.metric.metricId,
+      },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
 
     let invocations = 0;
     const transformed = {

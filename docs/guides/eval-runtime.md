@@ -177,6 +177,67 @@ OMK deterministically seals one Variant per sample before execution. Repeated tr
 
 `onEvent` is an optional, best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
 
+## Custom Evaluator
+
+Use `evaluatorKind: 'custom'` for a deterministic rule, a domain-specific parser, or a host-owned evaluation service that does not fit exact match or the built-in Rubric Judge. A custom evaluator measures exactly one sample-scope `Metric`:
+
+```ts
+import { z } from 'zod';
+import { evaluate, type CustomEvaluator } from 'oh-my-knowledge';
+
+const outputLength = {
+  evaluatorKind: 'custom',
+  evaluatorId: 'output-length',
+  instrumentId: 'output-length-v1',
+  metric: {
+    metricId: 'output-length-chars',
+    valueType: 'numeric',
+    unit: 'characters',
+    direction: 'lower-is-better',
+    missingPolicyId: 'exclude/v1',
+  },
+  bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+  parameters: { trim: true },
+  implementation: {
+    implementationId: 'acme.output-length/v1',
+    version: '1.0.0',
+    schemas: {
+      bindings: z.object({ actual: z.string() }).strict(),
+      value: z.number().int().nonnegative(),
+      fingerprintFacets: { bindings: 'actual-string/v1', value: 'nonnegative-integer/v1' },
+    },
+    fingerprintFacets: { sourceRevision: 'sha256:...' },
+    evaluate({ bindings, parameters, signal }) {
+      signal.throwIfAborted();
+      const actual = parameters?.trim ? bindings.actual.trim() : bindings.actual;
+      return { resultKind: 'score', value: actual.length };
+    },
+  },
+} satisfies CustomEvaluator<{ actual: string }, { trim: boolean }>;
+
+const result = await evaluate({
+  dataset,
+  variants,
+  evaluators: [outputLength],
+  comparisons: [{
+    comparisonId: 'prompt-v1-vs-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'prompt-v1',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['output-length-chars'],
+  }],
+  experiment: { seed: 'length-release-42', sampling: { samplingKind: 'paired' } },
+  policy: { evaluationTimeoutMs: 5_000 },
+  runId: crypto.randomUUID(),
+});
+```
+
+Bindings are a least-authority allowlist. Declare `expected` or `evaluation-context` only when the evaluator actually needs gold data; undeclared sample fields are not passed to the callback. JSON Pointer narrows each source before delivery. The `execution-facts` source is the exception: its pointer must be empty so the callback consumes the complete canonical, already-redacted facts projection rather than inventing a second projection identity. Binding and value schemas may validate and narrow but must not coerce, add defaults, or remove fields.
+
+The callback may return `score`, `missing`, `invalid`, or `failed`. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
+
+Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. One custom evaluator cannot emit multiple Metrics or represent an ensemble member. Numeric and boolean Metrics require a monotonic direction and receive the built-in Bootstrap analysis; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The canonical Decision accepts only `higher-is-better`; for a lower-is-better Metric, omit `decision` and interpret the signed interval, or return a higher-is-better utility score.
+
 ## Rubric Judge evaluation
 
 Use `evaluatorKind: 'rubric-judge'` when exact equality is not meaningful. The host provides one model call; OMK owns the frozen prompt, output parser, 1–5 metric, evidence, retry, timeout, budget, and cancellation semantics:

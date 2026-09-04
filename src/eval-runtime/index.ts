@@ -37,3 +37,11 @@ export type {
   Variant,
   VariantExecution,
 } from './evaluate.js';
+export type {
+  CustomEvaluator,
+  CustomEvaluatorBinding,
+  CustomEvaluatorContent,
+  CustomEvaluatorInvocation,
+  CustomEvaluatorResult,
+  Metric,
+} from './custom-evaluator.js';

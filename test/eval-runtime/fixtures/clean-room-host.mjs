@@ -97,6 +97,49 @@ const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
 
+const customEvaluation = await evaluation({
+  evaluators: [{
+    evaluatorKind: 'custom',
+    evaluatorId: 'clean-room-length',
+    instrumentId: 'clean-room-length-v1',
+    metric: {
+      metricId: 'output-length',
+      valueType: 'numeric',
+      direction: 'lower-is-better',
+      missingPolicyId: 'exclude/v1',
+    },
+    bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+    implementation: {
+      implementationId: 'clean-room.length/v1',
+      version: '1.0.0',
+      schemas: {
+        bindings: z.object({ actual: z.string() }).strict(),
+        value: z.number(),
+        fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+      },
+      fingerprintFacets: { revision: 'clean-room-one' },
+      evaluate({ bindings }) {
+        return { resultKind: 'score', value: bindings.actual.length };
+      },
+    },
+  }],
+  comparisons: [{
+    comparisonId: 'baseline-vs-prompt-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'baseline',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['output-length'],
+  }],
+  decision: undefined,
+  runId: 'clean-room-custom-evaluator',
+});
+assert.equal(customEvaluation.status, 'completed');
+assert.equal(customEvaluation.artifacts.analysis.records.length, 1);
+assert.ok(customEvaluation.artifacts.evaluation.records.every((record) => (
+  record.evaluationStatus === 'completed'
+  && record.observations[0]?.observationStatus === 'observed'
+)));
+
 const independent = await evaluation({
   dataset: {
     datasetId: 'clean-room-independent',
