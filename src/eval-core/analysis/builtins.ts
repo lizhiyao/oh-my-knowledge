@@ -36,6 +36,77 @@ const BootstrapParametersSchema = z.object({
   resamples: z.number().int().positive().safe().default(1_000),
   alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
 }).strict();
+const MeasurementReplicateSchema = z.object({
+  evaluatorId: z.string().min(1).max(256),
+  instrumentId: z.string().min(1).max(256),
+  replicateIndex: z.number().int().nonnegative().safe(),
+}).strict();
+const MeasurementMemberBaseSchema = z.object({
+  ensembleMemberId: z.string().min(1).max(256),
+  replicates: z.array(MeasurementReplicateSchema).min(1),
+}).strict();
+const MeasurementAggregationSchema = z.discriminatedUnion('method', [
+  z.object({
+    method: z.literal('mean'),
+    missing: z.literal('require-complete'),
+    replicateGroupId: z.string().min(1).max(256),
+    members: z.array(MeasurementMemberBaseSchema).min(1),
+  }).strict(),
+  z.object({
+    method: z.literal('weighted-mean'),
+    missing: z.literal('require-complete'),
+    replicateGroupId: z.string().min(1).max(256),
+    members: z.array(MeasurementMemberBaseSchema.extend({
+      weight: FiniteNumberSchema.positive(),
+    }).strict()).min(1),
+  }).strict(),
+]).superRefine((aggregation, context) => {
+  const memberIds = aggregation.members.map((member) => member.ensembleMemberId);
+  if (new Set(memberIds).size !== memberIds.length) {
+    context.addIssue({ code: 'custom', path: ['members'], message: 'Member IDs must be unique' });
+  }
+  if (canonicalizeJson(memberIds) !== canonicalizeJson([...memberIds].sort())) {
+    context.addIssue({
+      code: 'custom',
+      path: ['members'],
+      message: 'Members must be ordered by ensembleMemberId',
+    });
+  }
+  const evaluatorIds: string[] = [];
+  const instrumentIds = new Set<string>();
+  for (const [memberIndex, member] of aggregation.members.entries()) {
+    const indexes = member.replicates.map((replicate) => replicate.replicateIndex);
+    if (new Set(indexes).size !== indexes.length
+        || indexes.some((value, index) => value !== index)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['members', memberIndex, 'replicates'],
+        message: 'Replicate indexes must be unique and contiguous from zero',
+      });
+    }
+    for (const replicate of member.replicates) {
+      evaluatorIds.push(replicate.evaluatorId);
+      instrumentIds.add(replicate.instrumentId);
+    }
+  }
+  if (new Set(evaluatorIds).size !== evaluatorIds.length) {
+    context.addIssue({ code: 'custom', path: ['members'], message: 'Evaluator IDs must be unique' });
+  }
+  if (instrumentIds.size !== 1) {
+    context.addIssue({ code: 'custom', path: ['members'], message: 'One panel must use one instrument' });
+  }
+  if (aggregation.method === 'weighted-mean') {
+    const total = aggregation.members.reduce((sum, member) => sum + member.weight, 0);
+    if (Math.abs(total - 1) > 1e-12) {
+      context.addIssue({ code: 'custom', path: ['members'], message: 'Member weights must sum to one' });
+    }
+  }
+});
+const HierarchicalBootstrapParametersSchema = z.object({
+  resamples: z.number().int().positive().safe().default(1_000),
+  alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
+  measurementAggregation: MeasurementAggregationSchema,
+}).strict();
 const BonferroniParametersSchema = z.object({
   alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
 }).strict();
@@ -172,6 +243,17 @@ const QUANTILE_PARAMETERS_SCHEMA = schemaIdentity(
 );
 const BOOTSTRAP_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.bootstrap/v1', 'urn:omk:parameters:bootstrap:v1', jsonSchema(BootstrapParametersSchema),
+);
+const HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.hierarchical-measurement-bootstrap/v1',
+  'urn:omk:parameters:hierarchical-measurement-bootstrap:v1',
+  jsonSchema(HierarchicalBootstrapParametersSchema, [
+    'replicate indexes are unique and contiguous from zero within each member',
+    'evaluator IDs and member IDs are unique, with members and replicates canonically ordered',
+    'all panel coordinates use one instrument and one replicate group',
+    'weighted-mean member weights are positive and sum to one',
+    'a target/sample/trial contributes only when every sealed coordinate is observed',
+  ]),
 );
 const BONFERRONI_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.bonferroni/v1', 'urn:omk:parameters:bonferroni:v1', jsonSchema(BonferroniParametersSchema),
@@ -488,6 +570,152 @@ interface BootstrapUnit {
   stratumId?: string;
 }
 
+type MeasurementAggregation = z.infer<typeof MeasurementAggregationSchema>;
+
+interface AggregatedMeasurementUnit extends BootstrapUnit {
+  targetId: string;
+  sampleId: string;
+  pairingBlockId?: string;
+  rowIds: Sha256Digest[];
+}
+
+function metricInput(context: AnalysisNodeExecutionContext): Extract<
+  AnalysisNodeInput,
+  { inputKind: 'metric-observations' }
+> {
+  const inputs = metricInputs(context);
+  if (inputs.length !== 1) {
+    throw new TypeError('Built-in Analysis implementations require exactly one Metric input.');
+  }
+  return inputs[0];
+}
+
+function singleOptionalCoordinate<T>(
+  rows: readonly T[],
+  select: (row: T) => string | undefined,
+  label: string,
+): string | undefined {
+  const values = new Set(rows.map(select));
+  if (values.size > 1) throw new TypeError(`One measurement unit cannot cross ${label}.`);
+  return select(rows[0]);
+}
+
+function aggregateMeasurementUnits(
+  context: AnalysisNodeExecutionContext,
+): AggregatedMeasurementUnit[] {
+  const input = metricInput(context);
+  const aggregation = MeasurementAggregationSchema.parse(
+    parameters(context).measurementAggregation,
+  ) as MeasurementAggregation;
+  const expected = new Map<string, Readonly<{
+    ensembleMemberId: string;
+    instrumentId: string;
+    replicateIndex: number;
+  }>>();
+  for (const member of aggregation.members) {
+    for (const replicate of member.replicates) {
+      expected.set(replicate.evaluatorId, {
+        ensembleMemberId: member.ensembleMemberId,
+        instrumentId: replicate.instrumentId,
+        replicateIndex: replicate.replicateIndex,
+      });
+    }
+  }
+  for (const row of input.rows) {
+    const coordinate = expected.get(row.evaluatorId);
+    if (coordinate === undefined
+        || row.measurement.instrumentId !== coordinate.instrumentId
+        || row.measurement.ensembleMemberId !== coordinate.ensembleMemberId
+        || row.measurement.replicateGroupId !== aggregation.replicateGroupId
+        || row.measurement.replicateIndex !== coordinate.replicateIndex) {
+      throw new TypeError('Measurement row differs from the sealed panel coordinates.');
+    }
+  }
+  const trials = groupRows(input.rows, (row) => canonicalizeJson([
+    row.targetId,
+    row.sampleId,
+    row.trialIndex,
+  ]));
+  const completeTrials: Array<AggregatedMeasurementUnit & { trialIndex: number }> = [];
+  for (const rows of trials.values()) {
+    const byEvaluator = new Map<string, AnalysisMetricRow>();
+    for (const row of rows) {
+      if (byEvaluator.has(row.evaluatorId)) {
+        throw new TypeError('Measurement trial contains a duplicate evaluator coordinate.');
+      }
+      byEvaluator.set(row.evaluatorId, row);
+    }
+    if (byEvaluator.size !== expected.size
+        || [...expected.keys()].some((evaluatorId) => !byEvaluator.has(evaluatorId))) {
+      throw new TypeError('Measurement trial is missing a sealed evaluator coordinate.');
+    }
+    if (rows.some((row) => row.rowStatus !== 'observed')) continue;
+    const memberValues = aggregation.members.map((member) => {
+      const values = member.replicates.map((replicate) => numericValue(
+        byEvaluator.get(replicate.evaluatorId)!,
+      ));
+      return {
+        value: mean(values),
+        weight: 'weight' in member ? member.weight : 1,
+      };
+    });
+    const value = aggregation.method === 'weighted-mean'
+      ? memberValues.reduce((sum, member) => sum + member.value * member.weight, 0)
+      : mean(memberValues.map((member) => member.value));
+    completeTrials.push({
+      targetId: rows[0].targetId,
+      sampleId: rows[0].sampleId,
+      trialIndex: rows[0].trialIndex,
+      value,
+      rowIds: rows.map((row) => row.rowId),
+      ...(singleOptionalCoordinate(
+        rows,
+        (row) => row.samplingUnitIds.stratumId,
+        'strata',
+      ) === undefined ? {} : {
+        stratumId: rows[0].samplingUnitIds.stratumId,
+      }),
+      ...(singleOptionalCoordinate(
+        rows,
+        (row) => row.samplingUnitIds.pairingBlockId,
+        'pairing blocks',
+      ) === undefined ? {} : {
+        pairingBlockId: rows[0].samplingUnitIds.pairingBlockId,
+      }),
+    });
+  }
+  return [...groupRows(completeTrials, (trial) => (
+    canonicalizeJson([trial.targetId, trial.sampleId])
+  )).values()].map((group) => {
+    const trialsForSample = group;
+    const targetId = trialsForSample[0].targetId;
+    const sampleId = trialsForSample[0].sampleId;
+    if (trialsForSample.some((trial) => (
+      trial.targetId !== targetId || trial.sampleId !== sampleId
+    ))) {
+      throw new TypeError('One sample measurement unit cannot cross target or sample identity.');
+    }
+    const stratumId = singleOptionalCoordinate(
+      trialsForSample,
+      (trial) => trial.stratumId,
+      'strata',
+    );
+    const pairingBlockId = singleOptionalCoordinate(
+      trialsForSample,
+      (trial) => trial.pairingBlockId,
+      'pairing blocks',
+    );
+    return {
+      targetId,
+      sampleId,
+      value: mean(trialsForSample.map((trial) => trial.value)),
+      rowIds: trialsForSample.flatMap((trial) => trial.rowIds),
+      ...(stratumId === undefined ? {} : { stratumId }),
+      ...(pairingBlockId === undefined ? {} : { pairingBlockId }),
+    };
+  });
+}
+
 function percentileInterval(
   context: AnalysisNodeExecutionContext,
   units: readonly BootstrapUnit[],
@@ -542,11 +770,11 @@ function percentileInterval(
   };
 }
 
-function groupRows(
-  rows: readonly AnalysisMetricRow[],
-  key: (row: AnalysisMetricRow) => string | undefined,
-): Map<string, AnalysisMetricRow[]> {
-  const groups = new Map<string, AnalysisMetricRow[]>();
+function groupRows<T>(
+  rows: readonly T[],
+  key: (row: T) => string | undefined,
+): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
   for (const row of rows) {
     const groupId = key(row);
     if (groupId === undefined) continue;
@@ -641,6 +869,60 @@ function executePairedBootstrap(context: AnalysisNodeExecutionContext): Analysis
   } : interval;
 }
 
+function executeHierarchicalMeanBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const units = aggregateMeasurementUnits(context);
+  const interval = percentileInterval(context, units);
+  return interval.analysisStatus === 'completed' ? {
+    ...interval,
+    includedRowIds: units.flatMap((unit) => unit.rowIds),
+    comparableRowIds: units.flatMap((unit) => unit.rowIds),
+  } : interval;
+}
+
+function executeHierarchicalPairedBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const comparisonInputs = context.inputs.filter(
+    (input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
+      input.inputKind === 'comparison'
+    ),
+  );
+  if (comparisonInputs.length !== 1) {
+    throw new TypeError('Hierarchical paired bootstrap requires exactly one Comparison contrast.');
+  }
+  const comparisonInput = comparisonInputs[0];
+  const input = metricInput(context);
+  if (comparisonInput.contrast.metricId !== input.referenceId) {
+    return incomplete('analysis-paired-bootstrap-requires-one-matching-metric');
+  }
+  const controlId = comparisonInput.contrast.controlTargetId;
+  const treatmentId = comparisonInput.contrast.treatmentTargetId;
+  const units = aggregateMeasurementUnits(context);
+  const groups = groupRows(units, (unit) => unit.pairingBlockId);
+  const differences: BootstrapUnit[] = [];
+  const includedUnits: AggregatedMeasurementUnit[] = [];
+  for (const group of groups.values()) {
+    const control = group.filter((unit) => unit.targetId === controlId);
+    const treatment = group.filter((unit) => unit.targetId === treatmentId);
+    if (control.length === 0 || treatment.length === 0) continue;
+    const stratumId = singleOptionalCoordinate(group, (unit) => unit.stratumId, 'strata');
+    differences.push({
+      value: mean(treatment.map((unit) => unit.value))
+        - mean(control.map((unit) => unit.value)),
+      ...(stratumId === undefined ? {} : { stratumId }),
+    });
+    includedUnits.push(...control, ...treatment);
+  }
+  const interval = percentileInterval(context, differences);
+  return interval.analysisStatus === 'completed' ? {
+    ...interval,
+    includedRowIds: includedUnits.flatMap((unit) => unit.rowIds),
+    comparableRowIds: includedUnits.flatMap((unit) => unit.rowIds),
+  } : interval;
+}
+
 function bootstrapArmStratumMean(
   seed: Sha256Digest,
   armId: string,
@@ -659,7 +941,11 @@ function bootstrapArmStratumMean(
   )));
 }
 
-function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): AnalysisNodeExecutionResult {
+function executeUnpairedBootstrapWithUnits(
+  context: AnalysisNodeExecutionContext,
+  units: readonly AggregatedMeasurementUnit[],
+  plannedRows: readonly AnalysisMetricRow[],
+): AnalysisNodeExecutionResult {
   const comparisonInputs = context.inputs.filter(
     (input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
       input.inputKind === 'comparison'
@@ -675,16 +961,12 @@ function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): Analys
   }
   const controlId = comparisonInput.contrast.controlTargetId;
   const treatmentId = comparisonInput.contrast.treatmentTargetId;
-  const plannedRows = metricInput.rows;
-  const rows = observedRows(context);
-  const controlRows = rows.filter((row) => row.targetId === controlId);
-  const treatmentRows = rows.filter((row) => row.targetId === treatmentId);
-  const controlSampleIds = new Set(controlRows.map((row) => row.sampleId));
-  if (treatmentRows.some((row) => controlSampleIds.has(row.sampleId))) {
+  const controlUnits = units.filter((unit) => unit.targetId === controlId);
+  const treatmentUnits = units.filter((unit) => unit.targetId === treatmentId);
+  const controlSampleIds = new Set(controlUnits.map((unit) => unit.sampleId));
+  if (treatmentUnits.some((unit) => controlSampleIds.has(unit.sampleId))) {
     return incomplete('analysis-unpaired-bootstrap-overlapping-units');
   }
-  const controlUnits = [...groupRows(controlRows, (row) => row.sampleId).values()].map(groupUnit);
-  const treatmentUnits = [...groupRows(treatmentRows, (row) => row.sampleId).values()].map(groupUnit);
   if (controlUnits.length < 2 || treatmentUnits.length < 2) {
     return incomplete('analysis-insufficient-resampling-units-per-arm');
   }
@@ -755,7 +1037,7 @@ function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): Analys
       units,
     ),
   )).sort((left, right) => left - right);
-  const includedRows = [...controlRows, ...treatmentRows];
+  const includedRowIds = [...controlUnits, ...treatmentUnits].flatMap((unit) => unit.rowIds);
   return {
     analysisStatus: 'completed',
     resultType: 'interval',
@@ -770,10 +1052,40 @@ function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): Analys
       unitCount: controlUnits.length + treatmentUnits.length,
       method: 'percentile',
     },
-    includedRowIds: includedRows.map((row) => row.rowId),
-    comparableRowIds: includedRows.map((row) => row.rowId),
+    includedRowIds,
+    comparableRowIds: includedRowIds,
     assumptionChecks: passedAssumption('independent-non-overlapping-samples'),
   };
+}
+
+function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): AnalysisNodeExecutionResult {
+  const input = metricInput(context);
+  const rows = observedRows(context);
+  const units = [...groupRows(rows, (row) => canonicalizeJson([
+    row.targetId,
+    row.sampleId,
+  ])).values()].map((group): AggregatedMeasurementUnit => {
+    const unit = groupUnit(group);
+    return {
+      targetId: group[0].targetId,
+      sampleId: group[0].sampleId,
+      value: unit.value,
+      rowIds: group.map((row) => row.rowId),
+      ...(unit.stratumId === undefined ? {} : { stratumId: unit.stratumId }),
+    };
+  });
+  return executeUnpairedBootstrapWithUnits(context, units, input.rows);
+}
+
+function executeHierarchicalUnpairedBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const input = metricInput(context);
+  return executeUnpairedBootstrapWithUnits(
+    context,
+    aggregateMeasurementUnits(context),
+    input.rows,
+  );
 }
 
 interface Hypothesis {
@@ -951,6 +1263,65 @@ register(
   executeUnpairedBootstrap,
 );
 register(
+  'bootstrap.hierarchical-mean-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['complete-block'],
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['sample'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeHierarchicalMeanBootstrap,
+);
+register(
+  'bootstrap.hierarchical-paired-difference-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    comparison: true,
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['complete-block'],
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['paired-block'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeHierarchicalPairedBootstrap,
+);
+register(
+  'bootstrap.hierarchical-unpaired-difference-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    comparison: true,
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['independent-groups'],
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['sample'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeHierarchicalUnpairedBootstrap,
+);
+register(
   'bootstrap.cluster-percentile/v1',
   nodeCapabilities({
     analysisNodeKind: 'estimator',
@@ -1042,7 +1413,11 @@ function validateIntervalContext(
   value: JsonValue,
   context?: Readonly<CoreSchemaValidationContext>,
 ): void {
-  const sealed = BootstrapParametersSchema.parse(requireAnalysisOutputContext(context).parameters);
+  const rawParameters = requireAnalysisOutputContext(context).parameters;
+  const sealed = rawParameters !== null && typeof rawParameters === 'object'
+    && !Array.isArray(rawParameters) && 'measurementAggregation' in rawParameters
+    ? HierarchicalBootstrapParametersSchema.parse(rawParameters)
+    : BootstrapParametersSchema.parse(rawParameters);
   const envelope = IntervalEnvelopeSchema.parse(value);
   if (envelope.value.resamples !== sealed.resamples
       || envelope.value.confidenceLevel !== 1 - sealed.alpha
@@ -1208,6 +1583,7 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
     [EMPTY_PARAMETERS_SCHEMA, StrictEmptyParametersSchema],
     [QUANTILE_PARAMETERS_SCHEMA, QuantileParametersSchema],
     [BOOTSTRAP_PARAMETERS_SCHEMA, BootstrapParametersSchema],
+    [HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA, HierarchicalBootstrapParametersSchema],
     [BONFERRONI_PARAMETERS_SCHEMA, BonferroniParametersSchema],
     [PROGRESS_PARAMETERS_SCHEMA, ProgressParametersSchema],
   ];

@@ -308,12 +308,17 @@ v1 keeps its built-in reducers and estimators minimal:
 - `bootstrap.mean-percentile/v1`;
 - `bootstrap.paired-difference-percentile/v1`;
 - `bootstrap.unpaired-difference-percentile/v1`;
+- `bootstrap.hierarchical-mean-percentile/v1`;
+- `bootstrap.hierarchical-paired-difference-percentile/v1`;
+- `bootstrap.hierarchical-unpaired-difference-percentile/v1`;
 - `bootstrap.cluster-percentile/v1`;
 - `bonferroni/v1` for multiple-comparison correction.
 
 Alpha, resample count, resampling unit, and seed enter AnalysisPlan. v1 does not embed parametric methods such as t-tests, ANOVA, or Hotelling T². Future estimators are added through AnalysisRegistry identities without changing observation or Bundle contracts. Prepare fails when an estimator does not support the value domain or SamplingDesign and never switches algorithms implicitly.
 
 The unpaired estimator requires disjoint sample identities between the declared control and treatment arms and independently resamples each arm. For stratified inputs, it resamples within arm × stratum cells and combines within-stratum differences using pooled observed stratum proportions. A missing arm in any observed stratum makes the result inconclusive; the estimator never falls back to a paired or unstratified analysis.
+
+The hierarchical estimators seal one complete measurement panel in their parameters. They average evaluator replicates within each ensemble member, apply the declared equal or positive normalized member weights, and then average complete Target trials within each sample. A trial contributes only when every sealed evaluator, instrument, member, group, and replicate coordinate is observed. Bootstrap still resamples only samples or paired blocks; panel members and replicates never increase `unitCount`. The non-hierarchical estimator identities keep their original semantics.
 
 Re-analysis and re-decision preserve parent Bundle digest, policy digest, derivation time, and `analysisMode: preregistered | exploratory`. Thresholds or methods chosen after observing results cannot masquerade as pre-sealed release gates.
 

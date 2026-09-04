@@ -14,6 +14,7 @@ import {
   countAnalysisResamplingUnits,
   digestCanonicalJson,
   schemaIdentityKey,
+  type JsonValue,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
 
@@ -22,25 +23,31 @@ function row(input: {
   targetId?: string;
   trialIndex?: number;
   value: number;
+  evaluatorId?: string;
+  instrumentId?: string;
+  ensembleMemberId?: string;
+  replicateGroupId?: string;
+  replicateIndex?: number;
   pairingBlockId?: Sha256Digest;
   clusterId?: Sha256Digest;
   stratumId?: Sha256Digest;
 }): AnalysisMetricRow {
   const targetId = input.targetId ?? 'target';
   const trialIndex = input.trialIndex ?? 0;
+  const evaluatorId = input.evaluatorId ?? 'score-evaluator';
   const trialId = digestCanonicalJson({ targetId, sampleId: input.sampleId, trialIndex });
   return {
-    rowId: digestCanonicalJson({ trialId, metricId: 'score' }),
+    rowId: digestCanonicalJson({ trialId, metricId: 'score', evaluatorId }),
     targetId,
     sampleId: input.sampleId,
     trialIndex,
     trialId,
-    evaluatorId: 'score-evaluator',
+    evaluatorId,
     measurement: {
-      instrumentId: 'score-instrument',
-      ensembleMemberId: 'score-member',
-      replicateGroupId: 'score-primary',
-      replicateIndex: 0,
+      instrumentId: input.instrumentId ?? 'score-instrument',
+      ensembleMemberId: input.ensembleMemberId ?? 'score-member',
+      replicateGroupId: input.replicateGroupId ?? 'score-primary',
+      replicateIndex: input.replicateIndex ?? 0,
     },
     cohortIds: [],
     metricId: 'score',
@@ -70,6 +77,7 @@ function context(input: {
   rows: AnalysisMetricRow[];
   resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
   comparison?: boolean;
+  parameters?: JsonValue;
 }): AnalysisNodeExecutionContext {
   return {
     node: {
@@ -88,7 +96,7 @@ function context(input: {
           : []),
       ],
       outputResultId: 'estimate-result',
-      parameters: { resamples: 64, alpha: 0.1 },
+      parameters: input.parameters ?? { resamples: 64, alpha: 0.1 },
     },
     inputs: [{
       inputKind: 'metric-observations',
@@ -127,6 +135,60 @@ function context(input: {
     signal: new AbortController().signal,
   };
 }
+
+const panelAggregation = {
+  method: 'weighted-mean',
+  missing: 'require-complete',
+  replicateGroupId: 'quality-panel',
+  members: [{
+    ensembleMemberId: 'judge-a',
+    weight: 0.25,
+    replicates: [0, 1].map((replicateIndex) => ({
+      evaluatorId: `quality-panel/judge-a/replicate-${replicateIndex}`,
+      instrumentId: 'quality-rubric-v1',
+      replicateIndex,
+    })),
+  }, {
+    ensembleMemberId: 'judge-b',
+    weight: 0.75,
+    replicates: [0, 1].map((replicateIndex) => ({
+      evaluatorId: `quality-panel/judge-b/replicate-${replicateIndex}`,
+      instrumentId: 'quality-rubric-v1',
+      replicateIndex,
+    })),
+  }],
+} as const;
+
+function panelRows(input: {
+  sampleId: string;
+  targetId?: string;
+  trialIndex?: number;
+  values: readonly [number, number, number, number];
+  pairingBlockId?: Sha256Digest;
+  stratumId?: Sha256Digest;
+}): AnalysisMetricRow[] {
+  return panelAggregation.members.flatMap((member, memberIndex) => (
+    member.replicates.map((replicate, replicateIndex) => row({
+      sampleId: input.sampleId,
+      ...(input.targetId === undefined ? {} : { targetId: input.targetId }),
+      ...(input.trialIndex === undefined ? {} : { trialIndex: input.trialIndex }),
+      value: input.values[memberIndex * 2 + replicateIndex],
+      evaluatorId: replicate.evaluatorId,
+      instrumentId: replicate.instrumentId,
+      ensembleMemberId: member.ensembleMemberId,
+      replicateGroupId: panelAggregation.replicateGroupId,
+      replicateIndex: replicate.replicateIndex,
+      ...(input.pairingBlockId === undefined ? {} : { pairingBlockId: input.pairingBlockId }),
+      ...(input.stratumId === undefined ? {} : { stratumId: input.stratumId }),
+    }))
+  ));
+}
+
+const panelParameters = {
+  resamples: 64,
+  alpha: 0.1,
+  measurementAggregation: panelAggregation,
+} as unknown as JsonValue;
 
 async function execute(input: AnalysisNodeExecutionContext) {
   const implementation = createBuiltinAnalysisNodes().get(input.node.implementationId);
@@ -289,6 +351,165 @@ describe('Evaluation Core built-in estimators', () => {
     expect(first).toMatchObject({
       analysisStatus: 'completed',
       value: { estimate: 0.75, unitCount: 2, resamples: 64 },
+    });
+  });
+
+  it('aggregates replicate, member, trial, and sample levels without inflating unitCount', async () => {
+    const rows = [
+      ...panelRows({ sampleId: 's1', trialIndex: 0, values: [1, 3, 5, 5] }),
+      ...panelRows({ sampleId: 's1', trialIndex: 1, values: [2, 4, 6, 6] }),
+      ...panelRows({ sampleId: 's2', trialIndex: 0, values: [1, 1, 1, 1] }),
+      ...panelRows({ sampleId: 's2', trialIndex: 1, values: [1, 1, 1, 1] }),
+    ];
+    const result = await execute(context({
+      implementationId: 'bootstrap.hierarchical-mean-percentile/v1',
+      resamplingUnit: 'sample',
+      rows,
+      parameters: panelParameters,
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 2.875, unitCount: 2 },
+    });
+    expect(result.includedRowIds).toHaveLength(16);
+  });
+
+  it('fails a panel trial closed when one sealed replicate is unavailable', async () => {
+    const complete = panelRows({ sampleId: 's1', values: [1, 3, 5, 5] });
+    const incompleteTrial = panelRows({
+      sampleId: 's1', trialIndex: 1, values: [100, 100, 100, 100],
+    });
+    incompleteTrial[3] = missingRow({
+      sampleId: 's1',
+      trialIndex: 1,
+      value: 100,
+      evaluatorId: 'quality-panel/judge-b/replicate-1',
+      instrumentId: 'quality-rubric-v1',
+      ensembleMemberId: 'judge-b',
+      replicateGroupId: 'quality-panel',
+      replicateIndex: 1,
+    });
+    const result = await execute(context({
+      implementationId: 'bootstrap.hierarchical-mean-percentile/v1',
+      resamplingUnit: 'sample',
+      rows: [
+        ...complete,
+        ...incompleteTrial,
+        ...panelRows({ sampleId: 's2', values: [1, 1, 1, 1] }),
+      ],
+      parameters: panelParameters,
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 2.625, unitCount: 2 },
+    });
+    expect(result.includedRowIds).toHaveLength(8);
+    expect(result.includedRowIds).not.toContain(incompleteTrial[0].rowId);
+  });
+
+  it('keeps a one-member one-replicate panel mathematically equivalent to v1', async () => {
+    const rows = [
+      row({ sampleId: 's1', value: 1 }),
+      row({ sampleId: 's2', value: 1 }),
+    ];
+    const legacy = await execute(context({
+      implementationId: 'bootstrap.mean-percentile/v1',
+      resamplingUnit: 'sample',
+      rows,
+    }));
+    const hierarchical = await execute(context({
+      implementationId: 'bootstrap.hierarchical-mean-percentile/v1',
+      resamplingUnit: 'sample',
+      rows,
+      parameters: {
+        resamples: 64,
+        alpha: 0.1,
+        measurementAggregation: {
+          method: 'mean',
+          missing: 'require-complete',
+          replicateGroupId: 'score-primary',
+          members: [{
+            ensembleMemberId: 'score-member',
+            replicates: [{
+              evaluatorId: 'score-evaluator',
+              instrumentId: 'score-instrument',
+              replicateIndex: 0,
+            }],
+          }],
+        },
+      },
+    }));
+
+    expect(hierarchical).toEqual(legacy);
+  });
+
+  it('rejects rows that differ from sealed panel coordinates', async () => {
+    const rows = panelRows({ sampleId: 's1', values: [1, 1, 1, 1] });
+    rows[0] = row({
+      sampleId: 's1',
+      value: 1,
+      evaluatorId: 'unexpected-evaluator',
+      instrumentId: 'quality-rubric-v1',
+      ensembleMemberId: 'judge-a',
+      replicateGroupId: 'quality-panel',
+      replicateIndex: 0,
+    });
+    await expect(execute(context({
+      implementationId: 'bootstrap.hierarchical-mean-percentile/v1',
+      resamplingUnit: 'sample',
+      rows,
+      parameters: panelParameters,
+    }))).rejects.toThrow(/sealed panel coordinates/);
+
+    const nonCanonical = structuredClone(panelParameters) as {
+      measurementAggregation: { members: unknown[] };
+    };
+    nonCanonical.measurementAggregation.members.reverse();
+    await expect(execute(context({
+      implementationId: 'bootstrap.hierarchical-mean-percentile/v1',
+      resamplingUnit: 'sample',
+      rows: panelRows({ sampleId: 's1', values: [1, 1, 1, 1] }),
+      parameters: nonCanonical as unknown as JsonValue,
+    }))).rejects.toThrow(/ordered by ensembleMemberId/);
+  });
+
+  it('uses complete hierarchical panel units for paired and independent contrasts', async () => {
+    const pair1 = digestCanonicalJson({ panelPair: 1 });
+    const pair2 = digestCanonicalJson({ panelPair: 2 });
+    const paired = await execute(context({
+      implementationId: 'bootstrap.hierarchical-paired-difference-percentile/v1',
+      resamplingUnit: 'paired-block',
+      comparison: true,
+      rows: [
+        ...panelRows({ sampleId: 's1', targetId: 'control', values: [1, 1, 1, 1], pairingBlockId: pair1 }),
+        ...panelRows({ sampleId: 's1', targetId: 'treatment', values: [3, 3, 3, 3], pairingBlockId: pair1 }),
+        ...panelRows({ sampleId: 's2', targetId: 'control', values: [2, 2, 2, 2], pairingBlockId: pair2 }),
+        ...panelRows({ sampleId: 's2', targetId: 'treatment', values: [5, 5, 5, 5], pairingBlockId: pair2 }),
+      ],
+      parameters: panelParameters,
+    }));
+    expect(paired).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 2.5, unitCount: 2 },
+    });
+
+    const independent = await execute(context({
+      implementationId: 'bootstrap.hierarchical-unpaired-difference-percentile/v1',
+      resamplingUnit: 'sample',
+      comparison: true,
+      rows: [
+        ...panelRows({ sampleId: 'c1', targetId: 'control', values: [1, 1, 1, 1] }),
+        ...panelRows({ sampleId: 'c2', targetId: 'control', values: [3, 3, 3, 3] }),
+        ...panelRows({ sampleId: 't1', targetId: 'treatment', values: [4, 4, 4, 4] }),
+        ...panelRows({ sampleId: 't2', targetId: 'treatment', values: [6, 6, 6, 6] }),
+      ],
+      parameters: panelParameters,
+    }));
+    expect(independent).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 3, unitCount: 4 },
     });
   });
 
