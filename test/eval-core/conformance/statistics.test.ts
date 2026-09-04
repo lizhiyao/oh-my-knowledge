@@ -66,11 +66,13 @@ function metricRow(input: {
 
 async function interval(input: {
   implementationId: 'bootstrap.mean-percentile/v1'
-    | 'bootstrap.paired-difference-percentile/v1';
+    | 'bootstrap.paired-difference-percentile/v1'
+    | 'bootstrap.unpaired-difference-percentile/v1';
   rows: AnalysisMetricRow[];
   simulation: number;
-  paired?: boolean;
 }): Promise<{ lower: number; upper: number; estimate: number; unitCount: number }> {
+  const comparison = input.implementationId !== 'bootstrap.mean-percentile/v1';
+  const paired = input.implementationId === 'bootstrap.paired-difference-percentile/v1';
   const implementation = ANALYSIS_NODES.get(input.implementationId);
   if (implementation === undefined) throw new Error('Missing bootstrap implementation.');
   const run = await implementation.openRun({
@@ -86,7 +88,7 @@ async function interval(input: {
       implementationId: input.implementationId,
       inputs: [
         { inputKind: 'metric-observations', referenceId: 'score' },
-        ...(input.paired ? [{
+        ...(comparison ? [{
           inputKind: 'comparison' as const,
           referenceId: 'comparison',
           treatmentTargetId: 'treatment',
@@ -107,7 +109,7 @@ async function interval(input: {
         missingPolicyId: 'exclude/v1',
       },
       rows: input.rows,
-    }, ...(input.paired ? [{
+    }, ...(comparison ? [{
       inputKind: 'comparison' as const,
       referenceId: 'comparison',
       contrast: {
@@ -121,10 +123,10 @@ async function interval(input: {
     sampling: {
       experimentalUnit: 'sample',
       repeatedMeasures: false,
-      resamplingUnit: input.paired ? 'paired-block' : 'sample',
+      resamplingUnit: paired ? 'paired-block' : 'sample',
       estimatorId: input.implementationId,
       seedCoupling: 'shared-within-block',
-      ...(input.paired ? { pairingKey: '/input/pair' } : {}),
+      ...(paired ? { pairingKey: '/input/pair' } : {}),
     },
     rootSeed: `simulation-seed-${input.simulation}`,
     samples: [],
@@ -148,7 +150,7 @@ async function interval(input: {
 }
 
 describe('Evaluation Core deterministic statistical conformance', () => {
-  it('matches known mean and paired-difference reference vectors', async () => {
+  it('matches known mean, paired, and unpaired reference vectors', async () => {
     const mean = await interval({
       implementationId: 'bootstrap.mean-percentile/v1',
       simulation: 0,
@@ -178,11 +180,24 @@ describe('Evaluation Core deterministic statistical conformance', () => {
       implementationId: 'bootstrap.paired-difference-percentile/v1',
       simulation: 0,
       rows: pairedRows,
-      paired: true,
+    });
+    const unpaired = await interval({
+      implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+      simulation: 0,
+      rows: [1, 2, 3, 4].map((value, index) => metricRow({
+        sampleId: `control-${index}`,
+        targetId: 'control',
+        value,
+      })).concat([3, 4, 5, 6].map((value, index) => metricRow({
+        sampleId: `treatment-${index}`,
+        targetId: 'treatment',
+        value,
+      }))),
     });
 
     expect(mean).toEqual({ lower: 1.5, upper: 3.25, estimate: 2.5, unitCount: 4 });
     expect(paired).toEqual({ lower: 1.5, upper: 3.5, estimate: 2.5, unitCount: 4 });
+    expect(unpaired).toEqual({ lower: 0.75, upper: 3.5, estimate: 2, unitCount: 8 });
   });
 
   it('pins the deterministic continuous 90% mean-interval coverage profile', async () => {
@@ -233,12 +248,36 @@ describe('Evaluation Core deterministic statistical conformance', () => {
         implementationId: 'bootstrap.paired-difference-percentile/v1',
         rows,
         simulation,
-        paired: true,
       });
       if (result.lower > 0 || result.upper < 0) falseDirections += 1;
     }
 
     expect({ falseDirections, simulations }).toEqual({ falseDirections: 8, simulations: 80 });
+  });
+
+  it('pins the deterministic continuous null unpaired-effect profile', async () => {
+    let falseDirections = 0;
+    const simulations = 80;
+    for (let simulation = 201; simulation < 201 + simulations; simulation += 1) {
+      const next = generator(simulation);
+      const rows = Array.from({ length: 24 }, (_, index) => metricRow({
+        sampleId: `control-${index}`,
+        targetId: 'control',
+        value: normal(next),
+      })).concat(Array.from({ length: 24 }, (_, index) => metricRow({
+        sampleId: `treatment-${index}`,
+        targetId: 'treatment',
+        value: normal(next),
+      })));
+      const result = await interval({
+        implementationId: 'bootstrap.unpaired-difference-percentile/v1',
+        rows,
+        simulation,
+      });
+      if (result.lower > 0 || result.upper < 0) falseDirections += 1;
+    }
+
+    expect({ falseDirections, simulations }).toEqual({ falseDirections: 12, simulations: 80 });
   });
 
   it('pins discrete 1-5 frequency profiles at N=8 and N=20 without claiming nominal calibration', async () => {
@@ -317,7 +356,6 @@ describe('Evaluation Core deterministic statistical conformance', () => {
             implementationId: 'bootstrap.paired-difference-percentile/v1',
             rows: pairedRows,
             simulation: simulationId,
-            paired: true,
           });
           if (pairedResult.lower > 0 || pairedResult.upper < 0) {
             pairedFalseDirections += 1;
