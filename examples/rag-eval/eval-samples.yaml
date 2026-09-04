@@ -1,7 +1,7 @@
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: refund-window
-    prompt: "What is the refund window for the Pro plan?"
+    prompt: What is the refund window for the Pro plan?
     context: |
       Pricing policy:
       - Starter plan refunds are available within 7 days.
@@ -13,10 +13,9 @@ samples:
       - type: answer_relevancy
         threshold: 4
       - type: context_recall
-        reference: "Pro plan refunds are available within 14 days."
-
+        reference: Pro plan refunds are available within 14 days.
   - sample_id: unsupported-sla
-    prompt: "What uptime SLA does the Pro plan include?"
+    prompt: What uptime SLA does the Pro plan include?
     context: |
       Pricing policy:
       - Starter plan refunds are available within 7 days.
@@ -24,12 +23,14 @@ samples:
       - Enterprise contracts use the signed order form.
     assertions:
       - type: contains_any
-        values: ["unspecified", "context", "mention"]
+        values:
+          - unspecified
+          - context
+          - mention
       - type: faithfulness
         threshold: 4
-
   - sample_id: enterprise-source
-    prompt: "Where should I check Enterprise refund terms?"
+    prompt: Where should I check Enterprise refund terms?
     context: |
       Pricing policy:
       - Starter plan refunds are available within 7 days.
@@ -37,6 +38,6 @@ samples:
       - Enterprise contracts use the signed order form.
     assertions:
       - type: context_recall
-        reference: "Enterprise contracts use the signed order form."
+        reference: Enterprise contracts use the signed order form.
       - type: answer_relevancy
         threshold: 4

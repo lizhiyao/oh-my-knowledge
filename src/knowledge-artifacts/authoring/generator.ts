@@ -3,6 +3,7 @@ import { executorSupportsSampleMocks } from '../../executors/core/capabilities.j
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../eval-workflows/evaluation-defaults.js';
 import { sampleMockReferenceKeys } from '../../eval-workflows/inputs/sample-contract.js';
 import type { Sample, SampleProvenance } from '../../eval-workflows/inputs/contracts/sample.js';
+import { SampleSchema } from '../../eval-workflows/inputs/schemas/sample-set.js';
 import { detailedSchemaIssue } from '../../eval-workflows/inputs/schemas/error.js';
 import { MockSchema } from '../../eval-workflows/inputs/schemas/mock.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
@@ -43,9 +44,11 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - sample_id: 唯一标识，格式为 s001, s002, ...
 - prompt: 用户会向使用此 skill 的 AI 提出的典型问题或指令
 - context: 可选，附加上下文信息（如代码片段、文档段落等），仅在需要时提供
-- rubric: **judge 评分的输入**，要写 3-5 个**可分辨好坏的判分维度**，不要写一句话总结。
-  omk 的 judge pipeline 拿 rubric 让 judge LLM 看完整 trace（toolCalls + 最终输出 +
-  关键中间产物）后按 rubric 每个维度逐项打 1-5 分,取均值作为该 sample 的 judge 综合分。
+- rubric: **judge 评分的输入**，必须是包含 3-5 个具名维度的 JSON object。每个维度严格写成
+  \`{ "criterion": "一条可独立判定的准则", "weight": 0.x }\`，同一 sample 的 weight
+  必须都是正数且总和严格等于 1。不要输出旧的 rubric 字符串或 dimensions 字段。
+  omk 的 judge pipeline 会把每个 criterion 编译为一次独立 judge 调用，让 judge LLM 看完整
+  trace（toolCalls + 最终输出 + 关键中间产物）后打 1-5 分，再按显式 weight 加权聚合。
   rubric 写得越具体 / 越多维度,judge 给的分数区分度越高;写得空泛(如"应当正确完成
   任务")则 judge 倾向给所有 sample 都 3-4 分中位,verdict 失去信号。
 
@@ -60,11 +63,13 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
   5. **范围边界**:"应当严格遵守 skill 描述的职责边界,不主动越界做 Y 操作"
 
   示例:
-    弱 rubric(❌): "应当正确生成评审报告"(judge 看不出"正确"是什么,只能给个中位分)
-    强 rubric(✅): "应当:(1) 第一步识别当前评审属于需求阶段还是编码阶段并据此
-      选 checks/ 下对应的检查清单文件,(2) 用户说'不用 git push'时仍按 SKILL.md
-      默认规则把结果留档到知识库(因为'不 push'不在'temp 模式'触发词列表里),
-      (3) 报告里不向用户透出红线检查的逐项细节,只给最终风险等级 + 留档链接"
+    弱 rubric(❌): \`{ "quality": { "criterion": "应当正确生成评审报告", "weight": 1 } }\`
+    强 rubric(✅):
+    \`{
+      "phase_detection": { "criterion": "先识别需求阶段或编码阶段，并选择对应检查清单", "weight": 0.35 },
+      "evidence_delivery": { "criterion": "按 SKILL.md 的留档规则保存结果，不把不 push 误解为临时模式", "weight": 0.4 },
+      "report_boundary": { "criterion": "只给最终风险等级与留档链接，不泄露红线逐项细节", "weight": 0.25 }
+    }\`
 
   **禁忌(时间敏感数据)**: 不要在 rubric 里硬编码具体日期 / 时间戳 / 工号 / IP /
   临时 token 等会随评测时刻变化的具体值。
@@ -364,7 +369,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 
 **JSON 输出规范（必须遵守）**：
 - 直接输出 JSON 数组，不要包含 markdown 代码块标记或其他文字
-- 字符串字段（prompt / rubric / capability 等）内部如需引号，**必须用全角「」**而不是半角 \`""\`，避免漏转义破坏 JSON 解析
+- 字符串字段（prompt / rubric criterion / capability 等）内部如需引号，**必须用全角「」**而不是半角 \`""\`，避免漏转义破坏 JSON 解析
 - 例：错 → \`"prompt": "查询"Daily"标签..."\`（内部 \`"\` 未转义，JSON 解析失败）
        对 → \`"prompt": "查询「Daily」标签..."\`（全角引号，无转义压力）`;
 
@@ -537,7 +542,16 @@ async function finalizeSamples(
     );
   }
 
-  return { samples, costUSD };
+  return {
+    samples: samples.map((sample, index) => {
+      const parsed = SampleSchema.safeParse(sample);
+      if (!parsed.success) {
+        throw new Error(`samples[${index}] does not satisfy Eval Sample Set v2: ${parsed.error.message}`);
+      }
+      return parsed.data;
+    }),
+    costUSD,
+  };
 }
 
 const TRACE_GEN_INSTRUCTIONS = `下面给出的不是 skill，而是从生产会话 trace 中观测到的失败 / 异常信号。请为这些信号生成评测用例（eval samples），使评测能复现并守住这些失败模式——把线上真实发生过的问题沉淀成回归用例。

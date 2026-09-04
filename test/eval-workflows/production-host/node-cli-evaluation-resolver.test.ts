@@ -12,7 +12,7 @@ import {
 } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
-  RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
@@ -40,7 +40,9 @@ async function fixture(label: string): Promise<string> {
   await writeFile(join(root, 'samples.json'), sampleSetJson([{
     sample_id: 'sample-a',
     prompt: 'Return a concise JSON answer.',
-    rubric: 'The response is correct and concise.',
+    rubric: {
+      quality: { criterion: 'The response is correct and concise.', weight: 1 },
+    },
     assertions: [
       { type: 'json_valid', weight: 2 },
       { type: 'tools_count_max', value: 1 },
@@ -116,7 +118,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
       sample_id: 'sample-a',
       prompt: 'Use https://docs.acme.dev/spec twice: https://docs.acme.dev/spec.',
       context: 'Context https://docs.acme.dev/spec',
-      rubric: 'Correct.',
+      rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
     }]));
     const resolveContent = vi.fn(async () => ({
       content: 'Authoritative specification bytes.',
@@ -161,7 +165,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('binds resolved URL bytes into the Definition digest but not the transport', async () => {
     const root = await fixture('sample-content-identity');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: 'Correct.',
+      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
     }]));
     const compileWith = async (content: string, transportKind: 'http' | 'mcp') => (
       compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(request(root), {
@@ -195,7 +201,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('fails closed and still closes the one-shot resolver session', async () => {
     const root = await fixture('sample-content-failure');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: 'Correct.',
+      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
     }]));
     const close = vi.fn(async () => undefined);
 
@@ -219,7 +227,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
       prompt: 'Use https://user:secret@docs.acme.dev/spec',
-      rubric: 'Correct.',
+      rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
     }]));
 
     await expect(resolveNodeCliEvaluationRequest(request(root), {
@@ -284,8 +294,8 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(compiled.definition.analysisGraph.nodes.map((node) => node.implementationId)).toEqual(
       expect.arrayContaining([
         'omk.assertion-layer-table/v1',
-        'omk.dimension-table/v1',
-        'omk.composite-table/v1',
+        'omk.dimension-table/v2',
+        'omk.composite-table/v2',
         'omk.bootstrap-family-table/v2',
       ]),
     );
@@ -309,7 +319,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
       prompt: 'A',
-      rubric: 'Correct.',
+      rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
       mocks: [{ tool: 'Read', return: { token: 'inline-secret' } }],
     }]));
     const resolved = await resolveNodeCliEvaluationRequest(request(root), {
@@ -337,7 +349,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
       await writeFile(join(root, 'samples.json'), sampleSetJson([{
         sample_id: 'sample-a',
         prompt: 'A',
-        rubric: 'Correct.',
+        rubric: {
+          quality: { criterion: 'Correct.', weight: 1 },
+        },
         mocks: [{
           tool: 'Bash',
           match: { command_glob: commandGlob },
@@ -362,12 +376,16 @@ describe('resolveNodeCliEvaluationRequest', () => {
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-default',
       prompt: 'A',
-      rubric: 'Correct.',
+      rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
       mocks: [{ tool: 'Read', return: 'default' }],
     }, {
       sample_id: 'sample-opt-out',
       prompt: 'B',
-      rubric: 'Correct.',
+      rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
       mocks: [{ tool: 'Read', return: 'opt-out' }],
       mocksStrict: false,
     }]));
@@ -565,10 +583,14 @@ describe('resolveNodeCliEvaluationRequest', () => {
     await writeFile(join(root, 'workspace-a', 'identity.txt'), 'workspace-a');
     await writeFile(join(root, 'workspace-b', 'identity.txt'), 'workspace-b');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
+      sample_id: 'sample-a', prompt: 'A', rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
       cwd: 'workspace-a', allowedTools: ['Read'],
     }, {
-      sample_id: 'sample-b', prompt: 'B', rubric: 'Correct.',
+      sample_id: 'sample-b', prompt: 'B', rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
       cwd: 'workspace-b', allowedTools: ['Bash'],
     }]));
 
@@ -643,7 +665,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('multi-sample');
     await writeFile(join(root, 'samples.json'), sampleSetJson([
       {
-        sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
+        sample_id: 'sample-a', prompt: 'A', rubric: {
+          quality: { criterion: 'Correct.', weight: 1 },
+        },
         assertions: [
           { type: 'json_valid' },
           { type: 'tools_count_max', value: 1 },
@@ -651,7 +675,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
         ],
       },
       {
-        sample_id: 'sample-b', prompt: 'B', rubric: 'Correct.',
+        sample_id: 'sample-b', prompt: 'B', rubric: {
+          quality: { criterion: 'Correct.', weight: 1 },
+        },
         assertions: [
           { type: 'contains', value: 'Bee' },
           { type: 'tools_count_max', value: 2 },
@@ -679,10 +705,15 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('partial-applicability');
     await writeFile(join(root, 'samples.json'), sampleSetJson([
       {
-        sample_id: 'sample-a', prompt: 'A', dimensions: { accuracy: 'Correct.' },
+        sample_id: 'sample-a', prompt: 'A', rubric: {
+          accuracy: { criterion: 'Correct.', weight: 0.7 },
+          safety: { criterion: 'Safe.', weight: 0.3 },
+        },
         assertions: [{ type: 'semantic_similarity', reference: 'A' }],
       },
-      { sample_id: 'sample-b', prompt: 'B', dimensions: { style: 'Concise.' } },
+      { sample_id: 'sample-b', prompt: 'B', rubric: {
+        style: { criterion: 'Concise.', weight: 1 },
+      } },
     ]));
 
     const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(request(root), {
@@ -693,16 +724,26 @@ describe('resolveNodeCliEvaluationRequest', () => {
       .filter((evaluator) => evaluator.applicableSampleIds !== undefined)
       .map((evaluator) => evaluator.applicableSampleIds);
 
-    expect(applicability).toHaveLength(3);
+    expect(applicability).toHaveLength(4);
     expect(applicability).toEqual(expect.arrayContaining([
-      ['sample-a'], ['sample-a'], ['sample-b'],
+      ['sample-a'], ['sample-a'], ['sample-a'], ['sample-b'],
     ]));
-    expect(compiled.definition.decisionPolicy?.parameters).not.toMatchObject({
-      sources: { judgeEnsemble: expect.anything() },
+    const rubricEvaluators = compiled.definition.evaluators.filter((evaluator) => (
+      evaluator.implementationId === 'omk.rubric-judge/v1'
+    ));
+    expect(rubricEvaluators).toHaveLength(3);
+    expect(compiled.definition.decisionPolicy?.parameters).toMatchObject({
+      sources: {
+        judgeEnsembles: expect.arrayContaining([
+          expect.objectContaining({ applicableSampleIds: ['sample-a'] }),
+          expect.objectContaining({ applicableSampleIds: ['sample-a'] }),
+          expect.objectContaining({ applicableSampleIds: ['sample-b'] }),
+        ]),
+      },
     });
   });
 
-  it('uses only an explicit overall rubric for the release judge-agreement gate', async () => {
+  it('gates release on every applicable rubric dimension without a reserved name', async () => {
     const root = await fixture('overall-agreement');
     const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(
       request(root),
@@ -710,10 +751,14 @@ describe('resolveNodeCliEvaluationRequest', () => {
     ));
 
     expect(compiled.definition.decisionPolicy?.parameters).toMatchObject({
-      sources: { judgeEnsemble: { replicateGroupId: expect.stringContaining('rubric-') } },
+      sources: {
+        judgeEnsembles: [expect.objectContaining({
+          replicateGroupId: expect.stringContaining('rubric-'),
+        })],
+      },
     });
     expect(compiled.definition.decisionPolicy?.implementationId).toBe(
-      RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
     );
     const rubricEvaluators = compiled.definition.evaluators.filter((evaluator) => (
       evaluator.measurement.replicateGroupId.startsWith('rubric-')
@@ -768,7 +813,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('keeps production sample validation strict despite the legacy ambient escape hatch', async () => {
     const root = await fixture('strict-loader');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.',
+      sample_id: 'sample-a', prompt: 'A', rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      },
       assertions: [{ type: 'contains', value: 'X' }],
     }]));
     vi.stubEnv('OMK_LENIENT_ASSERTIONS', '1');
@@ -782,7 +829,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('preserves normalized sample dependency requirements for host preflight', async () => {
     const root = await fixture('dependencies');
     await writeFile(join(root, 'samples.json'), sampleSetJson(
-      [{ sample_id: 'sample-a', prompt: 'A', rubric: 'Correct.' }],
+      [{ sample_id: 'sample-a', prompt: 'A', rubric: {
+        quality: { criterion: 'Correct.', weight: 1 },
+      } }],
       {
         tools: ['git', 'node'],
         files: ['./fixtures/input.json'],

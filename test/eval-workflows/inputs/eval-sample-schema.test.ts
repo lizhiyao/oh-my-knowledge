@@ -10,16 +10,16 @@ import {
 
 const Ajv2020 = _Ajv2020 as unknown as typeof _Ajv2020.default;
 
-describe('Eval Sample Set v1 JSON Schema', () => {
+describe('Eval Sample Set v2 JSON Schema', () => {
   it('matches the committed deterministic JSON Schema 2020-12 artifact', () => {
     const generated = generateEvalSampleSetJsonSchema();
     const committed = JSON.parse(readFileSync(resolve(
-      'schemas/eval-samples/v1/eval-sample-set.schema.json',
+      'schemas/eval-samples/v2/eval-sample-set.schema.json',
     ), 'utf8'));
 
     expect(generated).toMatchObject({
       $schema: 'https://json-schema.org/draft/2020-12/schema',
-      $id: expect.stringContaining('/schemas/eval-samples/v1/eval-sample-set.schema.json'),
+      $id: expect.stringContaining('/schemas/eval-samples/v2/eval-sample-set.schema.json'),
     });
     expect(committed).toEqual(generated);
     expect(JSON.stringify(generated)).not.toContain(':{}');
@@ -32,6 +32,7 @@ describe('Eval Sample Set v1 JSON Schema', () => {
     const valid = createEvalSampleSetDocument([{
       sample_id: 's1',
       prompt: 'Review this change.',
+      rubric: { quality: { criterion: 'The answer is correct.', weight: 1 } },
       assertions: [{ type: 'contains', value: 'token' }],
       mocks: [{ tool: 'Read', return: 'fixture' }],
     }]);
@@ -40,6 +41,7 @@ describe('Eval Sample Set v1 JSON Schema', () => {
       { samples: [{ sample_id: 's1', prompt: 'missing version' }] },
       { ...valid, typo: true },
       { ...valid, samples: [{ ...valid.samples[0], mockStrict: true }] },
+      { ...valid, samples: [{ ...valid.samples[0], rubric: {} }] },
       {
         ...valid,
         samples: [{
@@ -68,5 +70,15 @@ describe('Eval Sample Set v1 JSON Schema', () => {
       expect(validate(invalid)).toBe(false);
       expect(EvalSampleSetDocumentSchema.safeParse(invalid).success).toBe(false);
     }
+    expect(EvalSampleSetDocumentSchema.safeParse({
+      ...valid,
+      samples: [{
+        ...valid.samples[0],
+        rubric: {
+          accuracy: { criterion: 'Correct.', weight: 0.7 },
+          clarity: { criterion: 'Clear.', weight: 0.4 },
+        },
+      }],
+    }).success).toBe(false);
   });
 });

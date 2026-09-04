@@ -3,6 +3,7 @@ import {
   ASYNC_ASSERTION_TYPES,
   SUPPORTED_ASSERTION_TYPES,
 } from './assertion-types.js';
+import { RUBRIC_WEIGHT_SUM_TOLERANCE } from './rubric-contract.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -294,19 +295,30 @@ export function sampleContractValidationError(
     || (expectedId !== undefined && value.sample_id !== expectedId)
   ) return '"sample_id" must be a non-empty matching string';
   if (!isNonEmptyString(value.prompt)) return '"prompt" must be a non-empty string';
-  for (const field of ['cwd', 'rubric', 'context'] as const) {
+  for (const field of ['cwd', 'context'] as const) {
     if (value[field] !== undefined && typeof value[field] !== 'string') {
       return `"${field}" must be a string when present`;
     }
   }
   if (
-    value.dimensions !== undefined
+    value.rubric !== undefined
     && (
-      !isRecord(value.dimensions)
-      || !Object.keys(value.dimensions).every(isNonEmptyString)
-      || !Object.values(value.dimensions).every(isNonEmptyString)
+      !isRecord(value.rubric)
+      || Object.keys(value.rubric).length === 0
+      || !Object.entries(value.rubric).every(([dimensionName, entry]) => (
+        isNonEmptyString(dimensionName)
+        && isRecord(entry)
+        && hasOnlyKeys(entry, ['criterion', 'weight'])
+        && isNonEmptyString(entry.criterion)
+        && isFiniteNumber(entry.weight)
+        && entry.weight > 0
+        && entry.weight <= 1
+      ))
+      || Math.abs(Object.values(value.rubric).reduce<number>((sum, entry) => (
+        sum + (isRecord(entry) && isFiniteNumber(entry.weight) ? entry.weight : 0)
+      ), 0) - 1) > RUBRIC_WEIGHT_SUM_TOLERANCE
     )
-  ) return '"dimensions" must map non-empty names to non-empty string rubrics';
+  ) return '"rubric" must map non-empty dimension names to criterion/weight objects whose weights sum to 1';
   if (value.assertions !== undefined) {
     if (!Array.isArray(value.assertions)) return '"assertions" must be an array';
     for (const [index, assertion] of value.assertions.entries()) {

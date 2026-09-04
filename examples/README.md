@@ -26,7 +26,7 @@ Use `omk init demo --samples 20` when you want the first-party, difficulty-strat
 
 ## Example contract
 
-Every directory in this catalog has a distinct user-facing purpose, English and Chinese instructions, a copyable entry command, explicit runtime requirements, and a statement of what the case cannot prove. Evaluation samples use the canonical `omk.eval-sample-set/v1` protocol. JSON and YAML are both demonstrated intentionally, but a single sample scope must not contain both formats.
+Every directory in this catalog has a distinct user-facing purpose, English and Chinese instructions, a copyable entry command, explicit runtime requirements, and a statement of what the case cannot prove. Evaluation samples use the canonical `omk.eval-sample-set/v2` protocol. JSON and YAML are both demonstrated intentionally, but a single sample scope must not contain both formats.
 
 Generated reports, graphs, and Doctor artifacts belong under the project-level `.omk/` directory and are ignored by Git. A directory skill may keep its versioned source samples under `skills/<name>/.omk/eval-samples.json` or `.yaml`; those files are inputs, not generated reports.
 

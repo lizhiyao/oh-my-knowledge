@@ -137,12 +137,14 @@ function dimensionEnvelope(missing = false) {
         dimensionId: 'quality', metricId: 'rubric-quality',
         sourceAnalysisResultId: 'judge-ensemble',
         sourceGroupId: digestCanonicalJson('dimension-source'),
+        weight: 1,
         dimensionStatus: 'missing', reasonCode: 'judge-ensemble-unobserved',
       }
     : {
         dimensionId: 'quality', metricId: 'rubric-quality',
         sourceAnalysisResultId: 'judge-ensemble',
         sourceGroupId: digestCanonicalJson('dimension-source'),
+        weight: 1,
         dimensionStatus: 'observed', consensus: 3.5,
       };
   const withoutGroupId: Omit<DimensionGroup, 'groupId'> = {
@@ -199,7 +201,7 @@ describe('composite source adapter', () => {
   it('validates upstream semantics and never infers a source schema from payload shape', () => {
     const forged = structuredClone(dimensionEnvelope());
     const aggregate = forged.value.groups[0].aggregate;
-    if (aggregate.aggregateStatus === 'observed') aggregate.mean = 4.5;
+    if (aggregate.aggregateStatus === 'observed') aggregate.weightedMean = 4.5;
     expect(() => extractCompositeSourceLayers(dimensionBinding, forged)).toThrow();
     expect(() => extractCompositeSourceLayers(ensembleBinding, dimensionEnvelope())).toThrow();
   });

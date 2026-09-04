@@ -44,8 +44,10 @@ import {
 } from './judge-aggregation.js';
 import {
   RELEASE_DECISION_PARAMETERS_SCHEMA,
+  RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
   RELEASE_DECISION_PARAMETERS_V1_SCHEMA,
   parseReleaseDecisionParameters,
+  parseReleaseDecisionParametersV3,
   parseReleaseDecisionParametersV1,
   type AnyReleaseDecisionParameters,
 } from './release-decision-parameters.js';
@@ -57,6 +59,7 @@ export const RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID = 'omk.release-decisio
 export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v4' as const;
 export const RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID = 'omk.release-decision/v5' as const;
 export const RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID = 'omk.release-decision/v6' as const;
+export const RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID = 'omk.release-decision/v7' as const;
 
 function releaseDecisionCapabilities(
   parameterSchema: SchemaIdentity,
@@ -92,6 +95,11 @@ const RELEASE_DECISION_CAPABILITIES = releaseDecisionCapabilities(
 );
 const RELEASE_DECISION_BOOTSTRAP_V2_CAPABILITIES = releaseDecisionCapabilities(
   RELEASE_DECISION_PARAMETERS_SCHEMA,
+  BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+);
+const RELEASE_DECISION_V7_CAPABILITIES = releaseDecisionCapabilities(
+  RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
   BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
 );
@@ -418,6 +426,39 @@ export const RELEASE_DECISION_POLICY_V6_IDENTITY: RuntimeIdentity = deepFreezeCa
   }),
 );
 
+export const RELEASE_DECISION_POLICY_V7_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
+  RuntimeIdentitySchema.parse({
+    implementationId: RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
+    version: '7.0.0',
+    fingerprint: digestCanonicalJson({
+      implementationId: RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
+      predecessor: {
+        implementationId: RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+        fingerprint: RELEASE_DECISION_POLICY_V6_IDENTITY.fingerprint,
+      },
+      comparisonInterval:
+        'sealed-bootstrap-family-v2-unrounded-tail-with-explicit-monte-carlo-error',
+      practicalEffectGate:
+        'persisted-four-decimal-percentile-lower-bound-greater-than-or-equal-to-threshold',
+      judgeDissent:
+        'every-applicable-rubric-dimension-pairwise-mean-pearson-over-complete-member-sample-matrix',
+      judgeUncertainty:
+        'any-applicable-dimension-unmeasurable-makes-positive-comparison-cautious',
+      sourceSchemas: [
+        COMPOSITE_TABLE_SCHEMA,
+        BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+        JUDGE_ENSEMBLE_TABLE_SCHEMA,
+      ],
+      parameterSchema: RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_V7_CAPABILITIES,
+    }),
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
+    capabilities: RELEASE_DECISION_V7_CAPABILITIES,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
+  }),
+);
+
 type CompletedResult = DecisionPolicyContext['results'][number];
 type ReleaseVerdict = 'SOLO' | 'UNDERPOWERED' | 'NOISE' | 'PROGRESS'
   | 'CAUTIOUS' | 'REGRESSION';
@@ -425,7 +466,7 @@ type ReleaseVerdict = 'SOLO' | 'UNDERPOWERED' | 'NOISE' | 'PROGRESS'
 interface ReleaseFacts {
   composite: CompositeTableValue;
   bootstrap: BootstrapFamilyTableValue | BootstrapFamilyTableV2Value;
-  ensemble?: JudgeEnsembleTableValue;
+  ensembles: ReadonlyMap<string, JudgeEnsembleTableValue>;
 }
 
 interface PairDecision {
@@ -465,13 +506,27 @@ function result(
     : undefined;
 }
 
+type JudgeEnsembleSource = Readonly<{
+  analysisResultId: string;
+  metricId: string;
+  instrumentId: string;
+  replicateGroupId: string;
+  applicableSampleIds?: readonly string[];
+}>;
+
+function judgeSources(parameters: AnyReleaseDecisionParameters): readonly JudgeEnsembleSource[] {
+  return 'judgeEnsembles' in parameters.sources
+    ? parameters.sources.judgeEnsembles ?? []
+    : !('judgeEnsemble' in parameters.sources) || parameters.sources.judgeEnsemble === undefined
+      ? []
+      : [parameters.sources.judgeEnsemble];
+}
+
 function expectedResultIds(parameters: AnyReleaseDecisionParameters): string[] {
   return [
     parameters.sources.compositeResultId,
     parameters.sources.bootstrapFamilyResultId,
-    ...(parameters.sources.judgeEnsemble === undefined
-      ? []
-      : [parameters.sources.judgeEnsemble.analysisResultId]),
+    ...judgeSources(parameters).map((source) => source.analysisResultId),
   ].sort(compareStrings);
 }
 
@@ -498,15 +553,12 @@ function releaseFacts(
     parameters.sources.bootstrapFamilyResultId,
     bootstrapSchema,
   );
-  const ensemble = parameters.sources.judgeEnsemble === undefined
-    ? undefined
-    : result(
-      context,
-      parameters.sources.judgeEnsemble.analysisResultId,
-      JUDGE_ENSEMBLE_TABLE_SCHEMA,
-    );
+  const ensembleResults = judgeSources(parameters).map((source) => ({
+    source,
+    result: result(context, source.analysisResultId, JUDGE_ENSEMBLE_TABLE_SCHEMA),
+  }));
   if (composite === undefined || bootstrap === undefined
-      || (parameters.sources.judgeEnsemble !== undefined && ensemble === undefined)) {
+      || ensembleResults.some((entry) => entry.result === undefined)) {
     return undefined;
   }
   return {
@@ -523,12 +575,13 @@ function releaseFacts(
           resultType: bootstrap.resultType,
           value: bootstrap.value,
         }).value,
-    ...(ensemble === undefined ? {} : {
-      ensemble: parseJudgeEnsembleTableEnvelope({
-        resultType: ensemble.resultType,
-        value: ensemble.value,
+    ensembles: new Map(ensembleResults.map(({ source, result: ensemble }) => [
+      source.analysisResultId,
+      parseJudgeEnsembleTableEnvelope({
+        resultType: ensemble!.resultType,
+        value: ensemble!.value,
       }).value,
-    }),
+    ])),
   };
 }
 
@@ -589,13 +642,18 @@ function validateSourceBindings(
             || observation.score !== source.aggregate.score
           : observation.observationStatus !== 'missing';
       })) return false;
-  if (facts.ensemble !== undefined) {
-    if (facts.ensemble.groups.some((group) => (
+  for (const source of judgeSources(parameters)) {
+    const ensemble = facts.ensembles.get(source.analysisResultId);
+    if (ensemble === undefined || ensemble.groups.some((group) => (
       !targets.has(group.targetId) || !samples.has(group.sampleId)
     ))) return false;
+    const applicableSampleIds = source.applicableSampleIds ?? parameters.sampleIds;
+    if (ensemble.groups.some((group) => !applicableSampleIds.includes(group.sampleId))) {
+      return false;
+    }
     for (const targetId of parameters.targetIds) {
-      const selected = selectedJudgeGroups(facts.ensemble, parameters, targetId);
-      if (parameters.sampleIds.some((sampleId) => (
+      const selected = selectedJudgeGroups(ensemble, source, targetId);
+      if (applicableSampleIds.some((sampleId) => (
         !selected.some((group) => group.sampleId === sampleId)
       ))) return false;
     }
@@ -685,11 +743,9 @@ function holdoutGated(
 
 function selectedJudgeGroups(
   table: JudgeEnsembleTableValue,
-  parameters: AnyReleaseDecisionParameters,
+  source: JudgeEnsembleSource,
   targetId: string,
 ): JudgeEnsembleGroup[] {
-  const source = parameters.sources.judgeEnsemble;
-  if (source === undefined) return [];
   return table.groups.filter((group) => (
     group.targetId === targetId
     && group.metricId === source.metricId
@@ -699,12 +755,11 @@ function selectedJudgeGroups(
 }
 
 function judgePearson(
-  table: JudgeEnsembleTableValue | undefined,
-  parameters: AnyReleaseDecisionParameters,
+  table: JudgeEnsembleTableValue,
+  source: JudgeEnsembleSource,
   targetId: string,
 ): number | undefined {
-  if (table === undefined || parameters.sources.judgeEnsemble === undefined) return undefined;
-  const groups = selectedJudgeGroups(table, parameters, targetId);
+  const groups = selectedJudgeGroups(table, source, targetId);
   const memberIds = [...new Set(groups.flatMap((group) => (
     group.members.map((member) => member.ensembleMemberId)
   )))].sort(compareStrings);
@@ -721,7 +776,7 @@ function judgePearson(
     }
   }
   const matrix = memberIds.map(() => [] as number[]);
-  for (const sampleId of parameters.sampleIds) {
+  for (const sampleId of source.applicableSampleIds ?? []) {
     const sampleValues = memberIds.map((memberId) => {
       const values = byMember.get(memberId)?.get(sampleId);
       return values === undefined || values.length === 0 ? undefined : mean(values);
@@ -739,12 +794,19 @@ function judgeAssessment(
   controlTargetId: string,
   treatmentTargetId: string,
 ): Readonly<{ dissent: boolean; uncertaintyUnmeasured: boolean }> {
-  if (facts.ensemble === undefined || parameters.sources.judgeEnsemble === undefined) {
+  const sources = judgeSources(parameters);
+  if (sources.length === 0) {
     return { dissent: false, uncertaintyUnmeasured: false };
   }
-  const correlations = [controlTargetId, treatmentTargetId].map((targetId) => (
-    judgePearson(facts.ensemble, parameters, targetId)
-  ));
+  const correlations = sources.flatMap((source) => {
+    const table = facts.ensembles.get(source.analysisResultId);
+    return table === undefined ? [undefined] : [controlTargetId, treatmentTargetId].map((targetId) => (
+      judgePearson(table, {
+        ...source,
+        applicableSampleIds: source.applicableSampleIds ?? parameters.sampleIds,
+      }, targetId)
+    ));
+  });
   return {
     dissent: correlations.some((pearson) => (
       pearson !== undefined && pearson < parameters.thresholds.judgeDissentPearson
@@ -756,7 +818,7 @@ function judgeAssessment(
 interface ReleaseDecisionSemantics {
   readonly gateUnmeasuredJudgeUncertainty: boolean;
   readonly sampleSizeBasis: 'authored-samples' | 'observed-comparison-units';
-  readonly parameterSchemaVersion: 'v1' | 'v2';
+  readonly parameterSchemaVersion: 'v1' | 'v2' | 'v3';
   readonly bootstrapVersion: 'v1' | 'v2';
   readonly bootstrapImplementationId: string;
   readonly practicalEffectBasis: 'point-estimate' | 'interval-lower-bound';
@@ -877,7 +939,9 @@ function decideRelease(
   if (context.evidenceStatus !== 'complete') return notDecided('release-evidence-incomplete');
   const parameters = semantics.parameterSchemaVersion === 'v1'
     ? parseReleaseDecisionParametersV1(context.policy.parameters)
-    : parseReleaseDecisionParameters(context.policy.parameters);
+    : semantics.parameterSchemaVersion === 'v2'
+      ? parseReleaseDecisionParameters(context.policy.parameters)
+      : parseReleaseDecisionParametersV3(context.policy.parameters);
   const facts = releaseFacts(context, parameters, semantics.bootstrapVersion);
   if (facts === undefined) return notDecided('release-analysis-result-binding-mismatch');
   if (!validateSourceBindings(
@@ -957,6 +1021,18 @@ export const RELEASE_DECISION_POLICY_V6: AnalysisDecisionPolicy = {
   }),
 };
 
+export const RELEASE_DECISION_POLICY_V7: AnalysisDecisionPolicy = {
+  identity: RELEASE_DECISION_POLICY_V7_IDENTITY,
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: true,
+    sampleSizeBasis: 'observed-comparison-units',
+    parameterSchemaVersion: 'v3',
+    bootstrapVersion: 'v2',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'interval-lower-bound',
+  }),
+};
+
 export const RELEASE_DECISION_POLICY_V3: AnalysisDecisionPolicy = {
   identity: RELEASE_DECISION_POLICY_V3_IDENTITY,
   decide: async (context) => decideRelease(context, {
@@ -1001,5 +1077,6 @@ export function createReleaseDecisionPolicies(): ReadonlyMap<string, AnalysisDec
     [RELEASE_DECISION_POLICY_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY],
     [RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V5],
     [RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V6],
+    [RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V7],
   ]);
 }

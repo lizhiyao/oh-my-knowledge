@@ -24,9 +24,9 @@ import {
 } from './composite-table.js';
 import { compareStrings } from './analysis-support.js';
 
-export const COMPOSITE_ANALYSIS_IMPLEMENTATION_ID = 'omk.composite-table/v1' as const;
+export const COMPOSITE_ANALYSIS_IMPLEMENTATION_ID = 'omk.composite-table/v2' as const;
 
-const ALGORITHM_VERSION = 'omk.composite-aggregation/v1' as const;
+const ALGORITHM_VERSION = 'omk.composite-aggregation/v2' as const;
 
 const COMPOSITE_ANALYSIS_CAPABILITIES: JsonValue = {
   capabilityKind: 'analysis-node',
@@ -48,7 +48,7 @@ const COMPOSITE_ANALYSIS_CAPABILITIES: JsonValue = {
 export const COMPOSITE_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
-    version: '1.0.0',
+    version: '2.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_VERSION,

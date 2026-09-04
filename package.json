@@ -31,7 +31,7 @@
       "types": "./dist/eval-workflows/inputs/eval-samples.d.ts",
       "import": "./dist/eval-workflows/inputs/eval-samples.js"
     },
-    "./eval-samples/schemas/v1/*": "./dist/eval-workflows/inputs/contracts/schemas/v1/*",
+    "./eval-samples/schemas/v2/*": "./dist/eval-workflows/inputs/contracts/schemas/v2/*",
     "./projections": {
       "types": "./dist/eval-workflows/projections/index.d.ts",
       "import": "./dist/eval-workflows/projections/index.js"

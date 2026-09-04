@@ -88,7 +88,12 @@ describe('oclif init', () => {
       assert.equal(new Set(samples.map((sample) => sample.sample_id)).size, 20);
       assert.ok(samples.every((sample) => sample.construct === 'quality'));
       assert.ok(samples.every((sample) => sample.provenance === 'llm-generated'));
-      assert.ok(samples.every((sample) => sample.rubric?.startsWith('满分标准：')));
+      assert.ok(samples.every((sample) => {
+        const rubric = Object.values(sample.rubric ?? {});
+        return rubric.length >= 2
+          && Math.abs(rubric.reduce((sum, entry) => sum + entry.weight, 0) - 1) <= 1e-9
+          && rubric.every((entry) => entry.criterion.length > 0);
+      }));
 
       const capabilityCounts = Object.fromEntries(
         ['security-review', 'robustness-review', 'maintainability-review', 'performance-review']

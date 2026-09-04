@@ -23,7 +23,7 @@ for (const [src, dst] of ASSETS) {
 const DIR_ASSETS = [
   ['.agents/skills/omk', 'dist/assets/agent-skills/omk'],
   ['schemas/eval-core', 'dist/eval-core/contracts/schemas'],
-  ['schemas/eval-samples/v1', 'dist/eval-workflows/inputs/contracts/schemas/v1'],
+  ['schemas/eval-samples/v2', 'dist/eval-workflows/inputs/contracts/schemas/v2'],
 ];
 
 for (const [src, dst] of DIR_ASSETS) {

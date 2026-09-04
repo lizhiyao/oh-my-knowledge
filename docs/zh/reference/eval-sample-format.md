@@ -15,26 +15,31 @@
 
 自动发现只识别以上两个 canonical 文件名。同一作用域同时存在 JSON 与 YAML 时，omk 会报告歧义并停止，不会静默选择其中一个。`.yml`、`samples.*`、`<name>.eval-samples.*` 扁平 sidecar 和分片目录均不参与自动发现；仍可通过 `--samples` 显式读取自定义 JSON / YAML 文件或分片目录。
 
-每个文件都必须声明 `schemaVersion: omk.eval-sample-set/v1`，历史顶层数组格式会被拒绝。根文档、sample、assertion、mock 及其嵌套契约都采用严格校验；未知字段会在执行前报错，不会被静默忽略。发布的 JSON Schema 位于 [`schemas/eval-samples/v1/eval-sample-set.schema.json`](../../../schemas/eval-samples/v1/eval-sample-set.schema.json)。
+每个文件都必须声明 `schemaVersion: omk.eval-sample-set/v2`，历史顶层数组格式会被拒绝。根文档、sample、assertion、mock 及其嵌套契约都采用严格校验；未知字段会在执行前报错，不会被静默忽略。发布的 JSON Schema 位于 [`schemas/eval-samples/v2/eval-sample-set.schema.json`](../../../schemas/eval-samples/v2/eval-sample-set.schema.json)。
 
 ```json
 {
-  "schemaVersion": "omk.eval-sample-set/v1",
+  "schemaVersion": "omk.eval-sample-set/v2",
   "samples": [
     {
       "sample_id": "s001",
       "prompt": "审查这段代码的安全性",
       "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-      "rubric": "应识别 SQL 注入风险并建议参数化查询",
+      "rubric": {
+        "security": {
+          "criterion": "准确识别注入漏洞并说明影响",
+          "weight": 0.6
+        },
+        "actionability": {
+          "criterion": "给出可直接采用的参数化查询修复",
+          "weight": 0.4
+        }
+      },
       "assertions": [
         { "type": "contains", "value": "SQL", "weight": 1 },
         { "type": "contains", "value": "parameterized", "weight": 1 },
         { "type": "not_contains", "value": "safe", "weight": 0.5 }
-      ],
-      "dimensions": {
-        "security": "是否识别出注入漏洞",
-        "actionability": "是否给出可直接使用的修复代码"
-      }
+      ]
     }
   ]
 }
@@ -50,7 +55,9 @@
 | `prompt` | `string` | **是** | 发送给模型的用户提示词 |
 | `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后。也支持 URL，运行时自动抓取内容 |
 | `cwd` | `string` | 否 | 单用例工作目录覆盖（这一条的 runtime context） |
-| `rubric` | `string` | 否 | LLM 评委的评分标准（1-5 分） |
+| `rubric` | `object` | 否 | 具名且独立判定的评分维度；每个值包含 `criterion` 与 `weight` |
+| `rubric.<name>.criterion` | `string` | 是 | 当前维度的一条非空评分准则 |
+| `rubric.<name>.weight` | `number` | 是 | `(0, 1]` 内的正权重；单条 sample 的所有 rubric 权重之和必须为 1 |
 | `assertions` | `array` | 否 | 断言检查列表，详见[断言类型](#断言类型) |
 | `assertions[].type` | `string` | **是** | 断言类型 |
 | `assertions[].value` | `string\|number` | 视类型 | 检查值（`contains`、`min_length`、`cost_max` 等必填） |
@@ -64,9 +71,8 @@
 | `assertions[].weight` | `number` | 否 | 权重（默认 1） |
 | `assertions[].not` | `boolean` | 否 | 反转有效的通过／失败读数，适用于任意类型 |
 | `assertions[].n` | `number` | 否 | `rouge_n_min` 的 n-gram 阶数（默认 1） |
-| `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
 
-loader 会在任何模型调用前校验完整契约。不支持的断言类型、缺失的类型专属字段、非法正则、非正权重和格式错误的沙箱字段都会作为配置错误失败，绝不会计入模型失败。
+loader 会在任何模型调用前校验完整契约。rubric 至少包含一个维度；维度名与 criterion 不能是空白文本，weight 必须是有限正数，单条 sample 内的权重和须在 `1e-9` 容差内等于 1。发布的 JSON Schema 表达局部结构与数值范围，runtime validator 额外执行跨属性的权重和校验。非法输入会作为配置错误失败，绝不会计入模型失败。
 
 ## 元数据与沙箱字段
 
@@ -93,7 +99,7 @@ loader 还会校验跨字段引用。每条 `mock_hit: "Tool:N"` 必须指向该
 Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节点时，会显示该结构关系是否由 `sample.covers` 显式声明。
 
 ```yaml
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: release-risk-summary
     prompt: "总结发布风险和回滚方案。"
@@ -114,7 +120,7 @@ samples:
 
 ```json
 {
-  "schemaVersion": "omk.eval-sample-set/v1",
+  "schemaVersion": "omk.eval-sample-set/v2",
   "samples": [{
     "sample_id": "s001",
     "prompt": "请根据以下 PRD 文档生成评测用例：https://wiki.example.com/prd/feature-x"
@@ -168,9 +174,9 @@ samples:
 
 算综合分时，断言会拆成两个独立层 —— **factScore**（事实类检查）和 **behaviorScore**（行为类检查），各自用上面的公式在自己那批断言上打分。
 
-### 2. Rubric / Dimensions 评分
+### 2. Rubric 评分
 
-评委模型（默认 `haiku`）按标准打 1-5 分，产出 **judgeScore**。`dimensions` 模式下各维度独立评分后取平均。
+每个 rubric 维度会被编译成一次独立的评委调用，避免同一 prompt 内多个准则因排列位置产生优先级偏差。评委对每个适用维度打 1-5 分；只有全部计划维度都有观测值时，OMK 才按密封权重计算加权平均，任一维度缺失都会让 rubric 聚合结果缺失。所有适用维度也都会进入发布阶段的评委分歧与不确定性门禁。
 
 ### 3. 综合分数
 
@@ -180,9 +186,9 @@ samples:
 |------|------|
 | `factScore` | 事实类断言（`contains` / `regex` / `json_*` / `equals` / `semantic_similarity` / `tool_*_contains` …） |
 | `behaviorScore` | 行为类断言（长度 / 词数 / `cost_max` / `latency_max` / `turns_*` / `tools_*` / `custom` …） |
-| `judgeScore` | LLM 评委（rubric / dimensions） |
+| `judgeScore` | 独立判定的 rubric 维度加权聚合 |
 
-`composite = mean(存在的层)`。某层没有断言（或没配评委）时**从平均里剔除**，不当作 0 分；断言和评委都没有时综合分为 `0`。
+`composite = mean(存在的层)`。某层没有断言（或没配评委）时**从平均里剔除**，不当作 0 分；没有任何已观测层的 sample 不产生数值型综合分。
 
 完整推导、等权重 caveat、以及多层 verdict gate 与综合分的关系见[评分公式](../specs/scoring)。
 

@@ -15,26 +15,31 @@ Recommended layouts:
 
 Auto-discovery recognizes only those two canonical names. If both JSON and YAML exist in the same scope, omk fails with an ambiguity error rather than silently choosing one. `.yml`, `samples.*`, flat-skill sidecars such as `<name>.eval-samples.*`, and split directories are not auto-discovered. You can still load a custom JSON / YAML file or a split directory explicitly with `--samples`.
 
-Every file must declare `schemaVersion: omk.eval-sample-set/v1`. Legacy top-level arrays are rejected. The root document, every sample, assertion, mock, and nested contract are strict: unknown fields fail before execution instead of being ignored. The published JSON Schema is [`schemas/eval-samples/v1/eval-sample-set.schema.json`](../../schemas/eval-samples/v1/eval-sample-set.schema.json).
+Every file must declare `schemaVersion: omk.eval-sample-set/v2`. Legacy top-level arrays are rejected. The root document, every sample, assertion, mock, and nested contract are strict: unknown fields fail before execution instead of being ignored. The published JSON Schema is [`schemas/eval-samples/v2/eval-sample-set.schema.json`](../../schemas/eval-samples/v2/eval-sample-set.schema.json).
 
 ```json
 {
-  "schemaVersion": "omk.eval-sample-set/v1",
+  "schemaVersion": "omk.eval-sample-set/v2",
   "samples": [
     {
       "sample_id": "s001",
       "prompt": "Review this code for security issues",
       "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-      "rubric": "Should identify SQL injection risk and recommend parameterized queries",
+      "rubric": {
+        "security": {
+          "criterion": "Identifies the injection vulnerability and explains its impact",
+          "weight": 0.6
+        },
+        "actionability": {
+          "criterion": "Provides a directly usable parameterized-query fix",
+          "weight": 0.4
+        }
+      },
       "assertions": [
         { "type": "contains", "value": "SQL", "weight": 1 },
         { "type": "contains", "value": "parameterized", "weight": 1 },
         { "type": "not_contains", "value": "safe", "weight": 0.5 }
-      ],
-      "dimensions": {
-        "security": "did it identify the injection vulnerability?",
-        "actionability": "did it give directly usable fix code?"
-      }
+      ]
     }
   ]
 }
@@ -50,7 +55,9 @@ The root may also contain `requires` with `tools`, `files`, `env`, and `prefligh
 | `prompt` | `string` | **yes** | User prompt sent to the model |
 | `context` | `string` | no | Extra context (e.g. code). Wrapped in a code block and appended to the prompt. URLs are auto-fetched at runtime. |
 | `cwd` | `string` | no | Per-sample working-directory override (runtime context for this one case) |
-| `rubric` | `string` | no | Scoring guideline for the LLM judge (1-5 scale) |
+| `rubric` | `object` | no | Named, independently judged dimensions; every value contains `criterion` and `weight` |
+| `rubric.<name>.criterion` | `string` | yes | One non-empty scoring criterion for this dimension |
+| `rubric.<name>.weight` | `number` | yes | Positive weight in `(0, 1]`; all rubric weights for the sample must sum to 1 |
 | `assertions` | `array` | no | Assertion checks; see [assertion types](#assertion-types) |
 | `assertions[].type` | `string` | **yes** | Assertion type |
 | `assertions[].value` | `string\|number` | depends | Check value (required for `contains`, `min_length`, `cost_max`, etc.) |
@@ -64,9 +71,8 @@ The root may also contain `requires` with `tools`, `files`, `env`, and `prefligh
 | `assertions[].weight` | `number` | no | Weight (default 1) |
 | `assertions[].not` | `boolean` | no | Invert a valid pass/fail reading; works with any type |
 | `assertions[].n` | `number` | no | n-gram order for `rouge_n_min` (default 1) |
-| `dimensions` | `object` | no | Multi-dimension scoring; key = dimension name, value = scoring guideline |
 
-The loader validates this contract before any model call. Unsupported assertion types, missing type-specific fields, invalid regular expressions, non-positive weights, and malformed sandbox fields fail as configuration errors; they are never counted as model failures.
+The loader validates this contract before any model call. A rubric must contain at least one dimension; dimension names and criteria must be non-blank, weights must be finite and positive, and the per-sample sum must equal 1 within `1e-9`. The published JSON Schema expresses the local shape and bounds; the runtime validator additionally enforces the cross-property weight sum. Invalid input is a configuration error and is never counted as model failure.
 
 ## Metadata & sandbox fields
 
@@ -93,7 +99,7 @@ The loader also validates cross-field references. Every `mock_hit: "Tool:N"` mus
 Studio also surfaces this declaration in the Skill Map node detail panel: selecting a node shows whether its structure relation is explicitly declared by `sample.covers`.
 
 ```yaml
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: release-risk-summary
     prompt: "Summarize release risk and rollback plan."
@@ -114,7 +120,7 @@ URLs in `prompt` and `context` are auto-fetched before evaluation and inlined in
 
 ```json
 {
-  "schemaVersion": "omk.eval-sample-set/v1",
+  "schemaVersion": "omk.eval-sample-set/v2",
   "samples": [{
     "sample_id": "s001",
     "prompt": "Generate test cases from this PRD: https://wiki.example.com/prd/feature-x"
@@ -168,9 +174,9 @@ Rule-based local checks; each assertion yields pass/fail.
 
 For the composite, assertions are split into two independent layers — a **factScore** (factual checks) and a **behaviorScore** (behavioral checks) — each scored with the formula above over its own assertions.
 
-### 2. Rubric / Dimensions score
+### 2. Rubric score
 
-The judge model (default `haiku`) scores 1–5 against the rubric, producing the **judgeScore**. In `dimensions` mode, each dimension is scored independently and then averaged.
+Each rubric dimension is compiled into a separate judge call, so one criterion cannot gain priority from its position beside another criterion in the same prompt. The judge scores every applicable dimension from 1–5. OMK then computes the sealed weighted mean only when every planned dimension is observed; one missing dimension makes the rubric aggregate missing. Every applicable dimension also participates in release-time judge dissent and uncertainty gates.
 
 ### 3. Composite score
 
@@ -180,9 +186,9 @@ The composite is the **mean of the layered scores that are present** — there a
 |---|---|
 | `factScore` | factual assertions (`contains` / `regex` / `json_*` / `equals` / `semantic_similarity` / `tool_*_contains` …) |
 | `behaviorScore` | behavioral assertions (length / word-count / `cost_max` / `latency_max` / `turns_*` / `tools_*` / `custom` …) |
-| `judgeScore` | LLM judge (rubric / dimensions) |
+| `judgeScore` | Weighted aggregate of independently judged rubric dimensions |
 
-`composite = mean(present layers)`. A layer with no assertions (or no judge configured) is **dropped from the mean**, not counted as zero; with neither assertions nor judge the composite is `0`.
+`composite = mean(present layers)`. A layer with no assertions (or no judge configured) is **dropped from the mean**, not counted as zero. A sample with no observed layer has no numeric composite score.
 
 See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-weight caveat, and how the multi-layer verdict gate relates to the composite.
 

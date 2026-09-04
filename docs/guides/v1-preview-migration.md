@@ -23,31 +23,11 @@ The preview uses the domain-oriented storage v2 layout. It does not read, move, 
 
 Do not copy scores from an old report into the new layout. Re-run the evaluation so the sealed plan, lineage, Runtime identity, and decision evidence are produced together. See the [Evaluation Core cutover](./eval-core-cutover.md) and [storage layout v2](../specs/storage-layout-spec.md) for the full boundary.
 
-## 2. Upgrade the eval-samples document
+## 2. Create a new eval-samples document
 
-Every sample file must now be a strict, versioned document. Wrap a legacy top-level array as follows:
+The preview uses the strict `omk.eval-sample-set/v2` contract. Earlier sample documents are not read or converted. Generate a new document with `omk init` or `omk sample`, then review its criteria and weights before using it as evidence.
 
-```json
-{
-  "schemaVersion": "omk.eval-sample-set/v1",
-  "samples": [
-    {
-      "sample_id": "case-1",
-      "prompt": "..."
-    }
-  ]
-}
-```
-
-Then apply these changes:
-
-- Rename project `eval-samples.yml` to `eval-samples.yaml`.
-- Rename a directory skill's `.omk/samples.json` or `.omk/samples.yaml` to `.omk/eval-samples.json` or `.omk/eval-samples.yaml`.
-- Keep exactly one canonical JSON or YAML file in each auto-discovery scope. Flat-skill sidecars and split directories are no longer auto-discovered; pass a custom file or split directory explicitly with `--samples`.
-- Remove `expectedTools`. Express tool behavior with assertions and `allowedTools`.
-- Remove unknown fields. The root, samples, assertions, mocks, and nested contracts are closed schemas.
-- Treat omitted `mocksStrict` as `true`. Set it to `false` only when unmatched calls may intentionally reach the real Runtime.
-- Give each mock exactly one of `return`, `return_file`, or `return_seq`.
+Each rubric is a map of independently judged dimensions. Every dimension contains one `criterion` and a positive `weight`; weights within a sample must sum to 1. Keep exactly one canonical `eval-samples.json` or `eval-samples.yaml` in each auto-discovery scope.
 
 Validate the result before a paid run:
 
@@ -56,7 +36,7 @@ omk eval --dry-run --samples eval-samples.yaml \
   --control code-review-v1 --treatment code-review-v2
 ```
 
-See the [eval sample format](../reference/eval-sample-format.md) and its published JSON Schema for the complete contract.
+See the [eval sample format](../reference/eval-sample-format.md) and its published JSON Schema for the complete v2 contract.
 
 ## 3. Re-check external URL inputs
 

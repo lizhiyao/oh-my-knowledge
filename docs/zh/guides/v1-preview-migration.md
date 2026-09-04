@@ -23,31 +23,11 @@ omk --version
 
 不要把旧报告的分数复制到新布局。重新运行评测，让 sealed plan、lineage、Runtime identity 与 decision evidence 一起生成。完整边界见 [Evaluation Core 生产切换](./eval-core-cutover.md)与[存储布局 v2](../specs/storage-layout-spec.md)。
 
-## 二、升级评测用例协议
+## 二、新建评测用例文档
 
-每份用例文件现在都必须是严格、带版本号的文档。把旧的顶层数组包装为：
+预览版只使用严格的 `omk.eval-sample-set/v2` 契约，不读取或转换更早的用例文档。请通过 `omk init` 或 `omk sample` 生成新文档，并在作为证据使用前复核准则与权重。
 
-```json
-{
-  "schemaVersion": "omk.eval-sample-set/v1",
-  "samples": [
-    {
-      "sample_id": "case-1",
-      "prompt": "..."
-    }
-  ]
-}
-```
-
-然后完成这些迁移：
-
-- 把项目级 `eval-samples.yml` 改名为 `eval-samples.yaml`。
-- 把目录 skill 的 `.omk/samples.json` 或 `.omk/samples.yaml` 改名为 `.omk/eval-samples.json` 或 `.omk/eval-samples.yaml`。
-- 每个自动发现作用域只保留一份 canonical JSON 或 YAML。扁平 skill sidecar 与分片目录不再自动发现；自定义文件或分片目录仍可用 `--samples` 显式传入。
-- 删除 `expectedTools`，改用 assertion 与 `allowedTools` 表达工具行为约束。
-- 删除未知字段。根文档、sample、assertion、mock 与嵌套 contract 都是封闭 schema。
-- 未声明 `mocksStrict` 时按 `true` 处理。只有明确允许未命中调用进入真实 Runtime 时才设为 `false`。
-- 每条 mock 必须且只能声明 `return`、`return_file`、`return_seq` 之一。
+每条 rubric 是独立判定维度的映射。每个维度包含一条 `criterion` 与一个正 `weight`，同一 sample 的权重和必须为 1。每个自动发现作用域只保留一份 canonical `eval-samples.json` 或 `eval-samples.yaml`。
 
 付费运行前先验证：
 
@@ -56,7 +36,7 @@ omk eval --dry-run --samples eval-samples.yaml \
   --control code-review-v1 --treatment code-review-v2
 ```
 
-完整协议见[评测用例格式](../reference/eval-sample-format.md)及随包发布的 JSON Schema。
+完整 v2 协议见[评测用例格式](../reference/eval-sample-format.md)及随包发布的 JSON Schema。
 
 ## 三、重新检查外部 URL 输入
 

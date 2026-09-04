@@ -33,7 +33,7 @@ import {
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
-  RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
 } from '../runtime-adapter/analysis/index.js';
 import {
   EXECUTION_ASSERTION_BINDINGS,
@@ -371,33 +371,34 @@ export function buildProductionMeasurementDesign(
   const rubricDimensions = new Map<string, {
     dimensionId: string;
     metricId: string;
-    sampleIds: Set<string>;
+    sampleWeights: Map<string, number>;
   }>();
   if (request.values.judges.enabled) {
     for (const sample of sortedSamples) {
-      const dimensions = sample.dimensions
-        ?? (sample.rubric === undefined ? {} : { overall: sample.rubric });
-      for (const [dimensionName, rubric] of Object.entries(dimensions).sort((left, right) => (
+      for (const [dimensionName, rubric] of Object.entries(sample.rubric ?? {}).sort((left, right) => (
         left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0
       ))) {
         const design = rubricDimensions.get(dimensionName) ?? {
           dimensionId: digestId('dimension', { dimensionName }),
           metricId: digestId('judge', { dimensionName }),
-          sampleIds: new Set<string>(),
+          sampleWeights: new Map<string, number>(),
         };
         rubricDimensions.set(dimensionName, design);
-        design.sampleIds.add(sample.sample_id);
+        design.sampleWeights.set(sample.sample_id, rubric.weight);
         const contextKey = `rubricJudge_${design.metricId.replaceAll('-', '_')}`;
         contextFor(sample.sample_id)[contextKey] = {
           schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
           criterionId: design.dimensionId,
           prompt: sample.prompt,
-          rubric,
+          rubric: rubric.criterion,
         };
       }
     }
   }
-  for (const design of rubricDimensions.values()) {
+  const orderedRubricDimensions = [...rubricDimensions.values()].sort((left, right) => (
+    left.dimensionId < right.dimensionId ? -1 : left.dimensionId > right.dimensionId ? 1 : 0
+  ));
+  for (const design of orderedRubricDimensions) {
     metrics.push(metric(design.metricId, 'numeric'));
     const contextKey = `rubricJudge_${design.metricId.replaceAll('-', '_')}`;
     templates.push({
@@ -405,7 +406,7 @@ export function buildProductionMeasurementDesign(
       evaluatorKind: 'llm-rubric',
       runtimeBindingKind: 'judge',
       implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
-      applicableSampleIds: [...design.sampleIds].sort(),
+      applicableSampleIds: [...design.sampleWeights.keys()].sort(),
       instrumentId: rubricInstrumentId,
       runtimePromptVariant: rubricInstrument.promptId,
       replicateGroupId: `rubric-${design.dimensionId}`,
@@ -465,7 +466,7 @@ export function buildProductionMeasurementDesign(
   }
 
   const dimensions: JsonValue[] = [];
-  for (const design of rubricDimensions.values()) {
+  for (const design of orderedRubricDimensions) {
     const replicateResultId = `judge-replicate-${design.metricId}`;
     const ensembleResultId = `judge-ensemble-${design.metricId}`;
     nodes.push({
@@ -485,6 +486,9 @@ export function buildProductionMeasurementDesign(
       dimensionId: design.dimensionId,
       metricId: design.metricId,
       analysisResultId: ensembleResultId,
+      sampleWeights: [...design.sampleWeights]
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([sampleId, weight]) => ({ sampleId, weight })),
     });
   }
   if (dimensions.length > 0) {
@@ -555,25 +559,23 @@ export function buildProductionMeasurementDesign(
         seed: DEFAULT_BOOTSTRAP_SEED,
       },
     });
-    // Legacy release gating only measured agreement for the top-level rubric.
-    // Choosing an arbitrary named dimension would make verdicts depend on lexical order.
-    const decisionJudge = rubricDimensions.get('overall');
+    const decisionJudges = orderedRubricDimensions;
     const analysisResultIds = [
       'composite-table',
       'bootstrap-family',
-      ...(decisionJudge === undefined ? [] : [`judge-ensemble-${decisionJudge.metricId}`]),
+      ...decisionJudges.map((judge) => `judge-ensemble-${judge.metricId}`),
     ];
     const holdout = request.values.measurement.holdoutRatio === undefined
       ? null
       : splitHoldout(sampleIds, request.values.measurement.holdoutRatio);
     decisionPolicy = {
       decisionPolicyId: 'release-decision',
-      implementationId: RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+      implementationId: RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
       analysisResultIds,
       comparisonFamily: treatments.map((target) => ({
         comparisonId: `control-vs-${target.targetId}`,
         treatmentTargetId: target.targetId,
-        metricId: decisionJudge?.metricId ?? metrics[0]!.metricId,
+        metricId: metrics[0]!.metricId,
         analysisResultId: 'bootstrap-family',
       })),
       comparisonFamilyResultId: 'bootstrap-family',
@@ -585,13 +587,14 @@ export function buildProductionMeasurementDesign(
         sources: {
           compositeResultId: 'composite-table',
           bootstrapFamilyResultId: 'bootstrap-family',
-          ...(decisionJudge === undefined ? {} : {
-            judgeEnsemble: {
-              analysisResultId: `judge-ensemble-${decisionJudge.metricId}`,
-              metricId: decisionJudge.metricId,
+          ...(decisionJudges.length === 0 ? {} : {
+            judgeEnsembles: decisionJudges.map((judge) => ({
+              analysisResultId: `judge-ensemble-${judge.metricId}`,
+              metricId: judge.metricId,
               instrumentId: rubricInstrumentId,
-              replicateGroupId: `rubric-${decisionJudge.dimensionId}`,
-            },
+              replicateGroupId: `rubric-${judge.dimensionId}`,
+              applicableSampleIds: [...judge.sampleWeights.keys()].sort(),
+            })),
           }),
         },
         targetIds,

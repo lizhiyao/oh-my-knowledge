@@ -24,6 +24,7 @@ const security: DimensionEntry = {
   metricId: 'rubric-security',
   sourceAnalysisResultId: 'ensemble-security',
   sourceGroupId: securitySource,
+  weight: 0.75,
   dimensionStatus: 'observed',
   consensus: 5,
 };
@@ -33,6 +34,7 @@ const actionability: DimensionEntry = {
   metricId: 'rubric-actionability',
   sourceAnalysisResultId: 'ensemble-actionability',
   sourceGroupId: actionabilitySource,
+  weight: 0.25,
   dimensionStatus: 'observed',
   consensus: 3,
 };
@@ -75,9 +77,9 @@ function validator() {
 }
 
 describe('dimension table contract', () => {
-  it('reproduces the legacy equal mean while retaining every source dimension', () => {
+  it('uses sealed rubric weights while retaining every source dimension', () => {
     const value = group();
-    expect(value.aggregate).toEqual({ aggregateStatus: 'observed', mean: 4 });
+    expect(value.aggregate).toEqual({ aggregateStatus: 'observed', weightedMean: 4.5 });
     expect(value.coverage).toEqual({
       plannedDimensions: 2,
       observedDimensions: 2,
@@ -86,18 +88,19 @@ describe('dimension table contract', () => {
     expect(() => validator().parse(envelope([value]))).not.toThrow();
   });
 
-  it('excludes missing dimensions and reports all-missing units without a zero score', () => {
+  it('fails closed when any planned dimension is missing', () => {
     const missing: DimensionEntry = {
       dimensionId: security.dimensionId,
       metricId: security.metricId,
       sourceAnalysisResultId: security.sourceAnalysisResultId,
       sourceGroupId: security.sourceGroupId,
+      weight: security.weight,
       dimensionStatus: 'missing',
       reasonCode: 'judge-ensemble-unobserved',
     };
     expect(dimensionAggregate([actionability, missing])).toEqual({
-      aggregateStatus: 'observed',
-      mean: 3,
+      aggregateStatus: 'missing',
+      reasonCode: 'dimension-unobserved',
     });
     expect(dimensionAggregate([missing])).toEqual({
       aggregateStatus: 'missing',
@@ -120,9 +123,9 @@ describe('dimension table contract', () => {
   });
 
   it.each([
-    ['mean', (candidate: ReturnType<typeof envelope>) => {
+    ['weighted mean', (candidate: ReturnType<typeof envelope>) => {
       const aggregate = candidate.value.groups[0].aggregate;
-      if (aggregate.aggregateStatus === 'observed') aggregate.mean = 4.5;
+      if (aggregate.aggregateStatus === 'observed') aggregate.weightedMean = 4;
     }],
     ['coverage', (candidate: ReturnType<typeof envelope>) => {
       candidate.value.groups[0].coverage.missingDimensions = 1;
@@ -180,7 +183,7 @@ describe('dimension table contract', () => {
     };
     candidate.value.groups[0].judgeReason = 'private reasoning';
     expect(() => validator().parse(candidate)).toThrow();
-    expect(validator().schema.schemaVersion).toBe('omk.dimension-table/v1');
-    expect(validator().schema.schemaUri).toBe('urn:omk:analysis-result:dimension-table:v1');
+    expect(validator().schema.schemaVersion).toBe('omk.dimension-table/v2');
+    expect(validator().schema.schemaUri).toBe('urn:omk:analysis-result:dimension-table:v2');
   });
 });

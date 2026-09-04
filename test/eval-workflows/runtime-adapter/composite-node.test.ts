@@ -127,12 +127,14 @@ function dimensionEnvelope(options: DimensionOptions = {}) {
         dimensionId: 'quality', metricId: 'rubric-quality',
         sourceAnalysisResultId: 'judge-quality',
         sourceGroupId: digestCanonicalJson({ source: sampleId }),
+        weight: 1,
         dimensionStatus: 'missing', reasonCode: 'judge-ensemble-unobserved',
       }
     : {
         dimensionId: 'quality', metricId: 'rubric-quality',
         sourceAnalysisResultId: 'judge-quality',
         sourceGroupId: digestCanonicalJson({ source: sampleId }),
+        weight: 1,
         dimensionStatus: 'observed', consensus: options.score ?? 4,
       };
   const withoutGroupId: Omit<DimensionGroup, 'groupId'> = {
@@ -275,6 +277,10 @@ describe('composite Analysis node', () => {
     expect(capabilities.outputSchema).toEqual(COMPOSITE_TABLE_SCHEMA);
     expect(capabilities.parameterSchema).toEqual(COMPOSITE_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(COMPOSITE_ANALYSIS_IDENTITY)).toBe(true);
+    expect(COMPOSITE_ANALYSIS_IDENTITY.version).toBe('2.0.0');
+    expect(COMPOSITE_ANALYSIS_IDENTITY.fingerprint).toBe(
+      'sha256:5a050d4ff23eae2ef397932af870fdfeddaa6209a22aabe095e2f7c6fa17d691',
+    );
   });
 
   it('reproduces 3.29 + 5 + 4 → 4.1 independent of input order', async () => {

@@ -14,6 +14,8 @@ export type {
   SampleDifficulty,
   SampleEnvironment,
   SampleProvenance,
+  SampleRubric,
+  SampleRubricCriterion,
 } from './contracts/sample.js';
 export {
   EVAL_SAMPLE_SET_SCHEMA_VERSION,
@@ -33,5 +35,5 @@ export function resolveEvalSampleJsonSchema(fileName: EvalSampleJsonSchemaFile):
   if (!schemaFiles.has(fileName)) {
     throw new TypeError(`Unknown Eval Sample JSON Schema: ${String(fileName)}`);
   }
-  return new URL(`./contracts/schemas/v1/${fileName}`, import.meta.url);
+  return new URL(`./contracts/schemas/v2/${fileName}`, import.meta.url);
 }

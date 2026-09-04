@@ -13,6 +13,8 @@ import type {
 import {
   AGREEMENT_ANALYSIS_IDENTITY,
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  AGREEMENT_ANALYSIS_V2_IDENTITY,
+  AGREEMENT_ANALYSIS_V2_IMPLEMENTATION_ID,
   AGREEMENT_ANALYSIS_V1_IDENTITY,
   AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
   createAgreementAnalysisNodes,
@@ -45,6 +47,7 @@ function dimensionGroup(
     metricId: 'rubric-quality',
     sourceAnalysisResultId: 'judge-quality',
     sourceGroupId: digestCanonicalJson({ sampleId, trialIndex, source: 'judge' }),
+    weight: 1,
     dimensionStatus: 'missing',
     reasonCode: 'judge-ensemble-unobserved',
   } : {
@@ -52,6 +55,7 @@ function dimensionGroup(
     metricId: 'rubric-quality',
     sourceAnalysisResultId: 'judge-quality',
     sourceGroupId: digestCanonicalJson({ sampleId, trialIndex, source: 'judge' }),
+    weight: 1,
     dimensionStatus: 'observed',
     consensus: score,
   };
@@ -178,8 +182,12 @@ describe('Agreement Analysis node', () => {
     expect(capabilities.outputSchema).toEqual(AGREEMENT_TABLE_SCHEMA);
     expect(capabilities.parameterSchema).toEqual(AGREEMENT_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(AGREEMENT_ANALYSIS_IDENTITY)).toBe(true);
-    expect(AGREEMENT_ANALYSIS_IDENTITY.fingerprint).toBe(
+    expect(AGREEMENT_ANALYSIS_V2_IDENTITY.fingerprint).toBe(
       'sha256:8c8cc64b722b9b29b89bd5bd6da92cbde51d6c3115d59e65123d222f96aa5402',
+    );
+    expect(AGREEMENT_ANALYSIS_IDENTITY.implementationId).toBe('omk.agreement-table/v3');
+    expect(AGREEMENT_ANALYSIS_IDENTITY.fingerprint).toBe(
+      'sha256:dfc544ee70da39d2482f223a5457ccd0d110088c48b4ed986c447d257f687467',
     );
 
     const result = await execute(context());
@@ -213,13 +221,16 @@ describe('Agreement Analysis node', () => {
     });
   });
 
-  it('keeps the v1 runtime identity registered byte-for-byte for replay', () => {
+  it('keeps the v1 and v2 runtime identities registered byte-for-byte for replay', () => {
     expect(AGREEMENT_ANALYSIS_V1_IDENTITY.fingerprint).toBe(
       'sha256:146618a95988de00fbe2dc8b5b456740447e945a1e539493d6e56932bd4f34f0',
     );
     expect(createAgreementAnalysisNodes().get(
       AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
     )?.identity).toEqual(AGREEMENT_ANALYSIS_V1_IDENTITY);
+    expect(createAgreementAnalysisNodes().get(
+      AGREEMENT_ANALYSIS_V2_IMPLEMENTATION_ID,
+    )?.identity).toEqual(AGREEMENT_ANALYSIS_V2_IDENTITY);
   });
 
   it('rejects source, sample-order, Gold classification, and cancellation drift', async () => {

@@ -12,16 +12,19 @@ const security = {
   dimensionId: 'security',
   metricId: 'rubric-security',
   analysisResultId: 'ensemble-security',
+  sampleWeights: [{ sampleId: 'sample-a', weight: 0.4 }],
 } as const;
 const actionability = {
   dimensionId: 'actionability',
   metricId: 'rubric-actionability',
   analysisResultId: 'ensemble-actionability',
+  sampleWeights: [{ sampleId: 'sample-a', weight: 0.35 }],
 } as const;
 const clarity = {
   dimensionId: 'clarity',
   metricId: 'rubric-clarity',
   analysisResultId: 'ensemble-clarity',
+  sampleWeights: [{ sampleId: 'sample-a', weight: 0.25 }],
 } as const;
 
 describe('dimension parameter contract', () => {
@@ -73,7 +76,7 @@ describe('dimension parameter contract', () => {
     expect(validator?.parse({
       dimensions: [security, actionability, clarity],
     })).toEqual({ dimensions: [actionability, clarity, security] });
-    expect(validator?.schema.schemaVersion).toBe('omk.parameters.dimension/v1');
-    expect(validator?.schema.schemaUri).toBe('urn:omk:parameters:dimension:v1');
+    expect(validator?.schema.schemaVersion).toBe('omk.parameters.dimension/v2');
+    expect(validator?.schema.schemaUri).toBe('urn:omk:parameters:dimension:v2');
   });
 });

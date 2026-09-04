@@ -12,11 +12,17 @@ omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / lengt
 
 ```yaml
 # eval-samples.yaml
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: s001
     prompt: "用 React 画一个折线图，数据是日期 + 数值，给最小可运行代码"
-    rubric: "应识别 Line 组件 + 数据格式正确 + 必须包含图表渲染容器"
+    rubric:
+      component_selection:
+        criterion: "应识别 Line 组件并使用正确的数据格式"
+        weight: 0.6
+      completeness:
+        criterion: "必须包含图表渲染容器"
+        weight: 0.4
     assertions:
       - { type: contains, value: "Line", weight: 1 }
       - { type: regex, pattern: "data", weight: 1 }
@@ -62,11 +68,14 @@ samples:
 为了让评测脱离真实外部环境（数据库/API/文件系统/真 git push 等），Sample 还有一组沙箱字段。omk runtime 在工具调用前匹配 mocks，命中即返回假数据，不真调底层。
 
 ```yaml
-schemaVersion: omk.eval-sample-set/v1
+schemaVersion: omk.eval-sample-set/v2
 samples:
   - sample_id: s002
     prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
-    rubric: "应调 logstore_query 工具，filter 含 'ERROR'，时间窗口 1 小时"
+    rubric:
+      workflow_quality:
+        criterion: "应调用 logstore_query 工具，filter 包含 ERROR，时间窗口为 1 小时"
+        weight: 1
     assertions:
       - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
       - { type: mock_hit, value: "Bash:1", weight: 1 }

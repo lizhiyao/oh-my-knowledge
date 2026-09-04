@@ -13,11 +13,13 @@ import {
 import {
   analysisJsonSchema,
   analysisSchemaIdentity,
+  compareStrings,
   createAnalysisSchemaValidator,
 } from './analysis-support.js';
 
 const PARAMETERS_SCHEMA_V1 = 'omk.parameters.release-decision/v1' as const;
 const PARAMETERS_SCHEMA_V2 = 'omk.parameters.release-decision/v2' as const;
+const PARAMETERS_SCHEMA_V3 = 'omk.parameters.release-decision/v3' as const;
 const PositiveCountSchema = z.number().int().positive().safe();
 
 const JudgeEnsembleSourceSchema = z.object({
@@ -26,6 +28,18 @@ const JudgeEnsembleSourceSchema = z.object({
   instrumentId: IdentifierSchema,
   replicateGroupId: IdentifierSchema,
 }).strict();
+
+const JudgeEnsembleSourceV3Schema = JudgeEnsembleSourceSchema.extend({
+  applicableSampleIds: z.array(IdentifierSchema).min(1),
+}).strict().superRefine((source, context) => {
+  if (new Set(source.applicableSampleIds).size !== source.applicableSampleIds.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['applicableSampleIds'],
+      message: 'Judge Ensemble applicable sample identities must be unique.',
+    });
+  }
+});
 
 const ReleaseDecisionSourcesSchema = z.object({
   compositeResultId: IdentifierSchema,
@@ -42,6 +56,38 @@ const ReleaseDecisionSourcesSchema = z.object({
       code: 'custom',
       path: [],
       message: 'Release Decision source result identities must be distinct.',
+    });
+  }
+});
+
+const ReleaseDecisionSourcesV3Schema = z.object({
+  compositeResultId: IdentifierSchema,
+  bootstrapFamilyResultId: IdentifierSchema,
+  judgeEnsembles: z.array(JudgeEnsembleSourceV3Schema).min(1).optional(),
+}).strict().superRefine((sources, context) => {
+  const ensembles = sources.judgeEnsembles ?? [];
+  const resultIds = [
+    sources.compositeResultId,
+    sources.bootstrapFamilyResultId,
+    ...ensembles.map((source) => source.analysisResultId),
+  ];
+  if (new Set(resultIds).size !== resultIds.length) {
+    context.addIssue({
+      code: 'custom',
+      path: [],
+      message: 'Release Decision source result identities must be distinct.',
+    });
+  }
+  const bindings = ensembles.map((source) => canonicalizeJson([
+    source.metricId,
+    source.instrumentId,
+    source.replicateGroupId,
+  ]));
+  if (new Set(bindings).size !== bindings.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['judgeEnsembles'],
+      message: 'Judge Ensemble source bindings must be unique.',
     });
   }
 });
@@ -164,21 +210,55 @@ export const ReleaseDecisionParametersSchema = ParameterBaseSchema.extend({
   sampleSizeRequirement: ReleaseSampleSizeRequirementSchema,
 }).strict().superRefine(validateSharedParameters);
 
+export const ReleaseDecisionParametersV3Schema = z.object({
+  sources: ReleaseDecisionSourcesV3Schema,
+  targetIds: z.array(IdentifierSchema).min(1),
+  sampleIds: z.array(IdentifierSchema).min(1),
+  thresholds: SharedThresholdsSchema,
+  sampleSizeRequirement: ReleaseSampleSizeRequirementSchema,
+  holdout: HoldoutPartitionSchema.optional(),
+}).strict().superRefine((parameters, context) => {
+  validateSharedParameters(parameters, context);
+  const sampleIds = new Set(parameters.sampleIds);
+  for (const [sourceIndex, source] of (parameters.sources.judgeEnsembles ?? []).entries()) {
+    if (source.applicableSampleIds.some((sampleId) => !sampleIds.has(sampleId))) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sources', 'judgeEnsembles', sourceIndex, 'applicableSampleIds'],
+        message: 'Judge Ensemble applicability must be a subset of sealed sampleIds.',
+      });
+    }
+  }
+});
+
 export type ReleaseDecisionParametersV1 = z.infer<typeof ReleaseDecisionParametersV1Schema>;
 export type ReleaseDecisionParameters = z.infer<typeof ReleaseDecisionParametersSchema>;
-export type AnyReleaseDecisionParameters = ReleaseDecisionParametersV1 | ReleaseDecisionParameters;
+export type ReleaseDecisionParametersV3 = z.infer<typeof ReleaseDecisionParametersV3Schema>;
+export type AnyReleaseDecisionParameters = ReleaseDecisionParametersV1
+  | ReleaseDecisionParameters
+  | ReleaseDecisionParametersV3;
 
 function copyParameters<Parameters extends AnyReleaseDecisionParameters>(
   parsed: Parameters,
 ): Parameters {
   return {
     ...parsed,
-    sources: {
-      ...parsed.sources,
-      ...(parsed.sources.judgeEnsemble === undefined ? {} : {
-        judgeEnsemble: { ...parsed.sources.judgeEnsemble },
-      }),
-    },
+    sources: 'judgeEnsembles' in parsed.sources
+      ? {
+          ...parsed.sources,
+          ...(parsed.sources.judgeEnsembles === undefined ? {} : {
+            judgeEnsembles: parsed.sources.judgeEnsembles.map((source) => ({
+              ...source,
+              applicableSampleIds: [...source.applicableSampleIds],
+            })),
+          }),
+        }
+      : 'judgeEnsemble' in parsed.sources ? {
+          ...parsed.sources,
+          ...(parsed.sources.judgeEnsemble === undefined ? {} : {
+            judgeEnsemble: { ...parsed.sources.judgeEnsemble },
+          }),
+        } : parsed.sources,
     targetIds: [...parsed.targetIds],
     sampleIds: [...parsed.sampleIds],
     thresholds: { ...parsed.thresholds },
@@ -201,6 +281,27 @@ export function parseReleaseDecisionParametersV1(value: unknown): ReleaseDecisio
 
 export function parseReleaseDecisionParameters(value: unknown): ReleaseDecisionParameters {
   return copyParameters(ReleaseDecisionParametersSchema.parse(value));
+}
+
+export function parseReleaseDecisionParametersV3(value: unknown): ReleaseDecisionParametersV3 {
+  const parsed = copyParameters(ReleaseDecisionParametersV3Schema.parse(value));
+  return {
+    ...parsed,
+    sources: {
+      ...parsed.sources,
+      ...(parsed.sources.judgeEnsembles === undefined ? {} : {
+        judgeEnsembles: [...parsed.sources.judgeEnsembles].map((source) => ({
+          ...source,
+          applicableSampleIds: [...source.applicableSampleIds].sort(compareStrings),
+        })).sort((left, right) => (
+          compareStrings(left.analysisResultId, right.analysisResultId)
+          || compareStrings(left.metricId, right.metricId)
+          || compareStrings(left.instrumentId, right.instrumentId)
+          || compareStrings(left.replicateGroupId, right.replicateGroupId)
+        )),
+      }),
+    },
+  };
 }
 
 export const RELEASE_DECISION_PARAMETERS_V1_SCHEMA = analysisSchemaIdentity(
@@ -229,6 +330,19 @@ export const RELEASE_DECISION_PARAMETERS_SCHEMA = analysisSchemaIdentity(
   ]),
 );
 
+export const RELEASE_DECISION_PARAMETERS_V3_SCHEMA = analysisSchemaIdentity(
+  PARAMETERS_SCHEMA_V3,
+  'urn:omk:parameters:release-decision:v3',
+  analysisJsonSchema(ReleaseDecisionParametersV3Schema, [
+    'Composite, Bootstrap Family, and every applicable Judge Ensemble result identity are explicit',
+    'Judge Ensemble sources are distinct and canonically ordered before plan sealing',
+    'target and sample order are sealed before Evaluation begins',
+    'the sample-size requirement is either an explicit minimum or a recomputable a priori power plan',
+    'every configured Judge Ensemble participates in dissent and uncertainty gates',
+    'optional train and holdout sample partitions are disjoint and cover every sealed sample',
+  ]),
+);
+
 export function createReleaseDecisionParameterSchemaValidators(): ReadonlyMap<
   string,
   CoreSchemaValidator
@@ -241,6 +355,10 @@ export function createReleaseDecisionParameterSchemaValidators(): ReadonlyMap<
     createAnalysisSchemaValidator(
       RELEASE_DECISION_PARAMETERS_SCHEMA,
       (value) => parseReleaseDecisionParameters(value) as JsonValue,
+    ),
+    createAnalysisSchemaValidator(
+      RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
+      (value) => parseReleaseDecisionParametersV3(value) as JsonValue,
     ),
   ];
   return new Map(validators.map((validator) => [schemaIdentityKey(validator.schema), validator]));
