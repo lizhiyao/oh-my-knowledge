@@ -1,35 +1,50 @@
 import { z } from 'zod';
 import {
+  EVALUATION_DEFINITION_SCHEMA_VERSION,
   IdentifierSchema,
+  EvaluationDefinitionSchema,
   EvaluationDatasetSchema,
+  EvaluatorDefinitionSchema,
   JsonValueSchema,
+  MetricDefinitionSchema,
   deepFreezeCanonicalJson,
   canonicalizeJson,
+  digestCanonicalJson,
   type EvaluationDefinition,
   type EvaluationSample,
+  type EvaluatorDefinition,
   type JsonValue,
   type MeasurementPolicy,
+  type MetricDefinition,
   type UsageRecord,
 } from '../eval-core/contracts/index.js';
 import type {
   EvaluationEngineClock,
   EvaluationRunResult,
 } from '../eval-core/engine/index.js';
+import type { EvaluatorRuntimeRequirement } from '../eval-core/compiler/index.js';
+import type { EvaluationEvaluator } from '../eval-core/evaluation/index.js';
 import { createJsonExecutorAdapter, type RuntimeValueParser } from './adapters/json-executor.js';
-import { createExactMatchDefinition } from './builders/exact-match.js';
-import { createPairedComparisonDefinition } from './builders/paired-comparison.js';
 import {
   createMeasurementPolicy,
   type MeasurementPolicyBuilderInput,
 } from './builders/policy.js';
-import { createExactMatchEvaluator } from './evaluators/exact-match.js';
+import {
+  EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
+  createExactMatchEvaluator,
+} from './evaluators/exact-match.js';
 import { createInvokeExecutorIdentity, createRuntimeIdentity } from './identity.js';
 import type {
   OmkLlmJudgeEffort,
   OmkLlmJudgeInvocationRequest,
   OmkLlmJudgeInvocationResult,
 } from './judges/invocation.js';
-import { createRubricJudgeKit } from './judges/rubric-kit.js';
+import {
+  createRubricJudgeEvaluationContext,
+  createRubricJudgeKit,
+  createRubricJudgeRegistration,
+  type RubricJudgeKit,
+} from './judges/rubric-kit.js';
 import type {
   RubricJudgeCriterion,
   RubricJudgeTracePolicy,
@@ -39,7 +54,10 @@ import {
   runEvaluation,
   type EvaluationEventObserver,
 } from './runner.js';
-import { createEvaluationRuntime } from './runtime.js';
+import {
+  createEvaluationRuntime,
+  type RuntimePortRegistration,
+} from './runtime.js';
 import {
   runExecutorConformance,
   type ExecutorConformanceResult,
@@ -55,7 +73,7 @@ const ARTIFACT_SOURCES = [
   'inline',
   'custom',
 ] as const;
-const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v2' as const;
+const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v3' as const;
 
 const ArtifactSchema = z.object({
   name: z.string().min(1),
@@ -86,19 +104,67 @@ const RuntimeContextSchema = z.object({
   values: JsonValueSchema.optional(),
 }).strict();
 
+const SamplingDesignInputSchema = z.discriminatedUnion('samplingKind', [
+  z.object({
+    samplingKind: z.literal('solo'),
+    stratumKey: z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/).optional(),
+  }).strict(),
+  z.object({
+    samplingKind: z.literal('paired'),
+    pairingKey: z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/).optional(),
+    stratumKey: z.string().regex(/^(?:\/(?:[^~/]|~[01])*)*$/).optional(),
+    seedCoupling: z.enum([
+      'shared-within-block',
+      'independent-by-target',
+      'uncontrolled',
+    ]).optional(),
+  }).strict(),
+]);
+
 const ExperimentSchema = z.object({
   seed: z.string().min(1),
   trials: z.number().int().positive().optional(),
+  sampling: SamplingDesignInputSchema,
+  scheduling: z.object({
+    schedulingKind: z.enum(['sequential', 'interleaved', 'randomized-block']),
+    blockSize: z.number().int().positive().optional(),
+  }).strict().optional(),
+}).strict();
+
+const AnalysisInputSchema = z.object({
   bootstrap: z.object({
     resamples: z.number().int().positive().optional(),
     alpha: z.number().gt(0).lt(1).optional(),
   }).strict().optional(),
-  decision: z.object({
+}).strict();
+
+const ComparisonInputSchema = z.object({
+  comparisonId: IdentifierSchema,
+  comparisonKind: z.literal('paired'),
+  controlVariantId: IdentifierSchema,
+  treatmentVariantIds: z.array(IdentifierSchema).min(1),
+  metricIds: z.array(IdentifierSchema).min(1),
+}).strict();
+
+const DecisionInputSchema = z.discriminatedUnion('decisionKind', [
+  z.object({
+    decisionKind: z.literal('quality'),
+    variantId: IdentifierSchema,
+    metricId: IdentifierSchema,
     threshold: z.number().optional(),
     equivalence: z.number().nonnegative().optional(),
     minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
-  }).strict().optional(),
-}).strict();
+  }).strict(),
+  z.object({
+    decisionKind: z.literal('comparison'),
+    comparisonId: IdentifierSchema,
+    treatmentVariantId: IdentifierSchema,
+    metricId: IdentifierSchema,
+    threshold: z.number().optional(),
+    equivalence: z.number().nonnegative().optional(),
+    minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
+  }).strict(),
+]);
 
 const PolicyInputSchema = z.object({
   maxConcurrency: z.number().int().positive().optional(),
@@ -135,11 +201,26 @@ export interface RuntimeContext {
   readonly values?: JsonValue;
 }
 
-export interface Variant<Config extends JsonValue | undefined = JsonValue | undefined> {
-  readonly variantId: string;
-  readonly artifact: Artifact;
+export interface VariantExecution<
+  Input extends JsonValue = JsonValue,
+  Config extends JsonValue | undefined = JsonValue | undefined,
+  Output extends JsonValue = JsonValue,
+  Trace extends JsonValue = JsonValue,
+> {
+  readonly executor: Executor<Input, Config, Output, Trace>;
   readonly runtimeContext?: RuntimeContext;
   readonly config?: Config;
+}
+
+export interface Variant<
+  Input extends JsonValue = JsonValue,
+  Config extends JsonValue | undefined = JsonValue | undefined,
+  Output extends JsonValue = JsonValue,
+  Trace extends JsonValue = JsonValue,
+> {
+  readonly variantId: string;
+  readonly artifact: Artifact;
+  readonly execution: VariantExecution<Input, Config, Output, Trace>;
 }
 
 export interface Dataset {
@@ -176,7 +257,6 @@ export interface ExecutorInvocation<
   readonly executionContext?: JsonValue;
   readonly sampleId: string;
   readonly variantId: string;
-  readonly experimentRole: 'control' | 'treatment';
   readonly trialIndex: number;
   readonly trialSeed?: string;
   readonly attemptNumber: number;
@@ -227,6 +307,7 @@ export interface Executor<
 
 export interface ExactMatchEvaluator {
   readonly evaluatorKind: 'exact-match';
+  readonly evaluatorId?: string;
   readonly metricId?: string;
 }
 
@@ -270,13 +351,55 @@ export interface Experiment {
   /** Required measurement seed; never sourced from time, environment, or randomness. */
   readonly seed: string;
   readonly trials?: number;
-  readonly bootstrap?: Readonly<{ resamples?: number; alpha?: number }>;
-  readonly decision?: Readonly<{
-    threshold?: number;
-    equivalence?: number;
-    minimumEvidenceStatus?: 'complete' | 'partial' | 'unresolvable';
+  readonly sampling: SamplingDesign;
+  readonly scheduling?: Readonly<{
+    schedulingKind: 'sequential' | 'interleaved' | 'randomized-block';
+    blockSize?: number;
   }>;
 }
+
+export type SamplingDesign =
+  | Readonly<{
+      samplingKind: 'solo';
+      stratumKey?: string;
+    }>
+  | Readonly<{
+      samplingKind: 'paired';
+      pairingKey?: string;
+      stratumKey?: string;
+      seedCoupling?: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
+    }>;
+
+export interface Analysis {
+  readonly bootstrap?: Readonly<{ resamples?: number; alpha?: number }>;
+}
+
+export interface Comparison {
+  readonly comparisonId: string;
+  readonly comparisonKind: 'paired';
+  readonly controlVariantId: string;
+  readonly treatmentVariantIds: readonly string[];
+  readonly metricIds: readonly string[];
+}
+
+interface DecisionBase {
+  readonly threshold?: number;
+  readonly equivalence?: number;
+  readonly minimumEvidenceStatus?: 'complete' | 'partial' | 'unresolvable';
+}
+
+export type Decision =
+  | (DecisionBase & Readonly<{
+      decisionKind: 'quality';
+      variantId: string;
+      metricId: string;
+    }>)
+  | (DecisionBase & Readonly<{
+      decisionKind: 'comparison';
+      comparisonId: string;
+      treatmentVariantId: string;
+      metricId: string;
+    }>);
 
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
@@ -307,17 +430,13 @@ export class EvaluationEventConsumptionError extends Error {
   }
 }
 
-export interface EvaluateInput<
-  Input extends JsonValue,
-  Config extends JsonValue | undefined,
-  Output extends JsonValue,
-  Trace extends JsonValue = JsonValue,
-> {
-  readonly executor: Executor<Input, Config, Output, Trace>;
+export interface EvaluateInput {
   readonly dataset: Dataset;
-  readonly control: Variant<Config>;
-  readonly treatment: Variant<Config>;
-  readonly evaluator: Evaluator;
+  readonly variants: readonly Variant[];
+  readonly evaluators: readonly Evaluator[];
+  readonly comparisons: readonly Comparison[];
+  readonly analysis?: Analysis;
+  readonly decision?: Decision;
   readonly experiment: Experiment;
   readonly policy: Policy;
   readonly runId: string;
@@ -335,8 +454,7 @@ export interface ExecutorCheckInput<
   Output extends JsonValue,
   Trace extends JsonValue = JsonValue,
 > {
-  readonly executor: Executor<Input, Config, Output, Trace>;
-  readonly variant: Variant<Config>;
+  readonly variant: Variant<Input, Config, Output, Trace>;
   readonly success: Readonly<{ input: Input; expected: Output }>;
   /** Input that must make the Executor return this stable, non-sensitive error code. */
   readonly failure: Readonly<{ input: Input; expectedErrorCode: string }>;
@@ -375,7 +493,6 @@ interface CapturedExecutor<
   readonly outputParser: RuntimeValueParser<Output>;
   readonly createPort: (
     targetId: string,
-    experimentRole: 'control' | 'treatment',
   ) => ReturnType<typeof createJsonExecutorAdapter<Input, JsonValue, Output, Trace>>;
 }
 
@@ -540,7 +657,7 @@ function captureExecutor<
         },
         fingerprintFacets: {
           facade: {
-            version: 'omk.eval-runtime.evaluate/v2',
+            version: 'omk.eval-runtime.evaluate/v3',
             outputClassification,
             traceClassification,
             ...(value.outputMediaType === undefined
@@ -597,7 +714,6 @@ function captureExecutor<
 
   const createPort = (
     targetId: string,
-    experimentRole: 'control' | 'treatment',
   ) => createJsonExecutorAdapter({
     identity,
     inputParser,
@@ -638,7 +754,6 @@ function captureExecutor<
           : { executionContext: invocation.executionContext }),
         sampleId: invocation.sampleId,
         variantId: targetId,
-        experimentRole,
         trialIndex: invocation.trialIndex,
         ...(invocation.trialSeed === undefined ? {} : { trialSeed: invocation.trialSeed }),
         attemptNumber: invocation.attemptNumber,
@@ -678,28 +793,29 @@ function captureDataset(value: Readonly<Dataset>): Dataset {
   }
 }
 
-function captureVariant<Config extends JsonValue | undefined>(
-  value: Readonly<Variant<Config>>,
-  configParser: Readonly<RuntimeValueParser<Config>>,
-): Readonly<{
+interface CapturedVariant {
   variantId: string;
   artifact: Artifact;
   runtimeContext?: RuntimeContext;
-  config?: Config;
+  config?: JsonValue;
   envelope: JsonValue;
-}> {
+  executor: CapturedExecutor<JsonValue, JsonValue | undefined, JsonValue, JsonValue>;
+}
+
+function captureVariant(value: Readonly<Variant>): Readonly<CapturedVariant> {
   const variantId = IdentifierSchema.safeParse(value?.variantId);
-  if (!variantId.success) {
+  if (!variantId.success || value.execution === null || typeof value.execution !== 'object') {
     return configurationFailure(
       'EVAL_RUNTIME_VARIANT_INVALID',
-      'Evaluation variantId 无效。',
+      'Evaluation variantId 或 execution binding 无效。',
     );
   }
+  const executor = captureExecutor(value.execution.executor);
   const artifact = captureArtifact(value.artifact);
-  const runtimeContext = captureRuntimeContext(value.runtimeContext);
+  const runtimeContext = captureRuntimeContext(value.execution.runtimeContext);
   const config = parseOptionalWithoutTransform(
-    configParser,
-    value.config,
+    executor.configParser,
+    value.execution.config,
     'EVAL_RUNTIME_VARIANT_INVALID',
     'Evaluation variant config 不符合 Executor schema，或 schema 改变了值。',
   );
@@ -715,6 +831,7 @@ function captureVariant<Config extends JsonValue | undefined>(
     ...(runtimeContext === undefined ? {} : { runtimeContext }),
     ...(config === undefined ? {} : { config }),
     envelope,
+    executor,
   });
 }
 
@@ -778,37 +895,118 @@ function attachDefinition(
   return Object.freeze({ ...result, definition, policy });
 }
 
-function rubricDataset(
+interface CapturedEvaluators {
+  readonly dataset: Dataset;
+  readonly definitions: readonly EvaluatorDefinition[];
+  readonly metrics: readonly MetricDefinition[];
+  readonly registrations: readonly RuntimePortRegistration<
+    EvaluationEvaluator,
+    EvaluatorRuntimeRequirement
+  >[];
+}
+
+function exactMatchDefinition(input: Readonly<ExactMatchEvaluator>): Readonly<{
+  definition: EvaluatorDefinition;
+  metric: MetricDefinition;
+  port: EvaluationEvaluator;
+}> {
+  const metricId = IdentifierSchema.parse(input.metricId ?? 'correct');
+  const readableDefaultId = `exact-match-${metricId}`;
+  const defaultEvaluatorId = metricId === 'correct'
+    ? 'exact-match'
+    : IdentifierSchema.safeParse(readableDefaultId).success
+      ? readableDefaultId
+      : `exact-match:${digestCanonicalJson({
+          derivation: 'omk.eval-runtime.exact-match-evaluator-id/v1',
+          metricId,
+        }).slice('sha256:'.length)}`;
+  const evaluatorId = IdentifierSchema.parse(
+    input.evaluatorId ?? defaultEvaluatorId,
+  );
+  const definition = EvaluatorDefinitionSchema.parse({
+    evaluatorId,
+    evaluatorKind: 'assertion',
+    implementationId: EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
+    measurement: {
+      instrumentId: 'canonical-json-exact-match-v1',
+      ensembleMemberId: 'deterministic-local',
+      replicateGroupId: 'deterministic-primary',
+      replicateIndex: 0,
+    },
+    metricIds: [metricId],
+    inputs: [
+      { bindingId: 'actual', sourceKind: 'output', pointer: '' },
+      { bindingId: 'expected', sourceKind: 'expected', pointer: '' },
+    ],
+  });
+  const metric = MetricDefinitionSchema.parse({
+    metricId,
+    valueType: 'boolean',
+    scope: 'sample',
+    direction: 'higher-is-better',
+    missingPolicyId: 'exclude/v1',
+  });
+  return Object.freeze({
+    definition,
+    metric,
+    port: createExactMatchEvaluator({ metricId }),
+  });
+}
+
+function captureEvaluators(
   dataset: Readonly<Dataset>,
-  evaluator: Readonly<RubricJudgeEvaluator>,
-  createEvaluationContext: (
-    criterion: Readonly<RubricJudgeCriterion>,
-    base?: Readonly<{ [key: string]: JsonValue }>,
-  ) => JsonValue,
-): Dataset {
-  let samples: EvaluationSample[];
+  values: readonly Evaluator[],
+): CapturedEvaluators {
+  if (!Array.isArray(values) || values.length === 0) {
+    return configurationFailure(
+      'EVAL_RUNTIME_EVALUATOR_INVALID',
+      'Evaluation 至少需要一个 evaluator。',
+    );
+  }
+  const definitions: EvaluatorDefinition[] = [];
+  const metrics: MetricDefinition[] = [];
+  const exactPorts = new Map<string, EvaluationEvaluator>();
+  const rubricEntries: Array<Readonly<{
+    kit: Readonly<RubricJudgeKit>;
+    criterion: Readonly<RubricJudgeCriterion>;
+  }>> = [];
   try {
-    const criterion: RubricJudgeCriterion = {
-      schemaVersion: 'omk.rubric-judge-context/v1',
-      ...evaluator.rubric,
-    };
-    samples = dataset.samples.map((sample) => {
-      const base = sample.evaluationContext;
-      if (base !== undefined
-          && (base === null || Array.isArray(base) || typeof base !== 'object')) {
+    for (const value of values) {
+      if (value.evaluatorKind === 'exact-match') {
+        const captured = exactMatchDefinition(value);
+        definitions.push(captured.definition);
+        metrics.push(captured.metric);
+        exactPorts.set(captured.definition.evaluatorId, captured.port);
+        continue;
+      }
+      if (value.evaluatorKind !== 'rubric-judge') {
         return configurationFailure(
           'EVAL_RUNTIME_EVALUATOR_INVALID',
-          'Rubric 评委要求用例的 evaluationContext 为 JSON object。',
+          'Evaluation evaluatorKind 不受支持。',
         );
       }
-      return {
-        ...structuredClone(sample),
-        evaluationContext: createEvaluationContext(
-          criterion,
-          base as Readonly<{ [key: string]: JsonValue }> | undefined,
-        ),
-      };
-    });
+      const kit = createRubricJudgeKit({
+        evaluatorId: value.evaluatorId,
+        metricId: value.metricId,
+        model: value.model,
+        invocation: captureJudge(value.judge),
+        ...(value.effort === undefined ? {} : { effort: value.effort }),
+        ...(value.lengthDebias === undefined ? {} : { lengthDebias: value.lengthDebias }),
+        ...(value.tracePolicy === undefined ? {} : { tracePolicy: value.tracePolicy }),
+        ...(value.actualPointer === undefined ? {} : { actualPointer: value.actualPointer }),
+        ...(value.tracePointer === undefined ? {} : { tracePointer: value.tracePointer }),
+        ...(value.classification === undefined ? {} : { classification: value.classification }),
+      });
+      definitions.push(kit.evaluatorDefinition);
+      metrics.push(kit.metricDefinition);
+      rubricEntries.push({
+        kit,
+        criterion: {
+          schemaVersion: 'omk.rubric-judge-context/v1',
+          ...value.rubric,
+        },
+      });
+    }
   } catch (error) {
     if (error instanceof EvaluationConfigurationError) throw error;
     return configurationFailure(
@@ -816,23 +1014,408 @@ function rubricDataset(
       'Rubric 评委配置无效。',
     );
   }
-  return captureDataset({ datasetId: dataset.datasetId, samples });
+  const evaluatorIds = definitions.map((definition) => definition.evaluatorId);
+  const metricIds = metrics.map((metric) => metric.metricId);
+  if (new Set(evaluatorIds).size !== evaluatorIds.length
+      || new Set(metricIds).size !== metricIds.length) {
+    return configurationFailure(
+      'EVAL_RUNTIME_EVALUATOR_INVALID',
+      'Evaluation evaluatorId 与 metricId 必须分别唯一。',
+    );
+  }
+  let preparedDataset = dataset;
+  if (rubricEntries.length > 0) {
+    try {
+      const samples = dataset.samples.map((sample) => {
+        const base = sample.evaluationContext;
+        if (base !== undefined
+            && (base === null || Array.isArray(base) || typeof base !== 'object')) {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Rubric 评委要求用例的 evaluationContext 为 JSON object。',
+          );
+        }
+        return {
+          ...structuredClone(sample),
+          evaluationContext: createRubricJudgeEvaluationContext(
+            rubricEntries,
+            base as Readonly<{ [key: string]: JsonValue }> | undefined,
+          ),
+        };
+      });
+      preparedDataset = captureDataset({ datasetId: dataset.datasetId, samples });
+    } catch (error) {
+      if (error instanceof EvaluationConfigurationError) throw error;
+      return configurationFailure(
+        'EVAL_RUNTIME_EVALUATOR_INVALID',
+        'Rubric 评委 evaluationContext 无效。',
+      );
+    }
+  }
+  const registrations: RuntimePortRegistration<
+    EvaluationEvaluator,
+    EvaluatorRuntimeRequirement
+  >[] = [];
+  if (exactPorts.size > 0) {
+    registrations.push({
+      implementationId: EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
+      createPort(requirement) {
+        const port = exactPorts.get(requirement.referenceId);
+        if (port === undefined) {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Evaluation Runtime 收到了未知 exact-match evaluator binding。',
+          );
+        }
+        return port;
+      },
+    });
+  }
+  if (rubricEntries.length > 0) {
+    registrations.push(createRubricJudgeRegistration(
+      rubricEntries.map((entry) => entry.kit),
+    ));
+  }
+  return Object.freeze({
+    dataset: preparedDataset,
+    definitions: Object.freeze([...definitions].sort((left, right) => (
+      left.evaluatorId < right.evaluatorId ? -1 : left.evaluatorId > right.evaluatorId ? 1 : 0
+    ))),
+    metrics: Object.freeze([...metrics].sort((left, right) => (
+      left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
+    ))),
+    registrations: Object.freeze(registrations),
+  });
+}
+
+interface AnalysisBinding {
+  readonly resultId: string;
+  readonly metricId: string;
+  readonly variantId?: string;
+  readonly comparisonId?: string;
+  readonly treatmentVariantId?: string;
+}
+
+function stableFacadeId(
+  identityKind: 'node' | 'result' | 'decision' | 'slot',
+  selector: Readonly<Record<string, JsonValue>>,
+): string {
+  return `${identityKind}:${digestCanonicalJson({
+    derivation: 'omk.eval-runtime.definition-binding/v1',
+    selector,
+  }).slice('sha256:'.length)}`;
+}
+
+function targetDefinition(variant: Readonly<CapturedVariant>) {
+  return {
+    targetId: variant.variantId,
+    targetKind: variant.artifact.kind,
+    protocolId: 'omk.invoke/v1' as const,
+    executorId: variant.executor.declaration.executorId,
+    executionRequirements: {
+      systemInstructions: 'not-required' as const,
+      workspace: 'not-required' as const,
+      mcp: 'not-required' as const,
+      mockInterception: 'not-required' as const,
+      toolPolicy: 'runtime-default' as const,
+      skillDiscovery: 'runtime-default' as const,
+    },
+    executionControls: {
+      defaults: {
+        workspace: { workspaceMode: 'not-required' as const },
+        tools: { toolPolicyKind: 'runtime-default' as const },
+      },
+      sampleOverrides: [],
+    },
+    config: variant.envelope,
+  };
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function createGeneralDefinition(input: Readonly<{
+  variants: readonly Readonly<CapturedVariant>[];
+  evaluators: CapturedEvaluators;
+  comparisons: readonly Comparison[];
+  experiment: Experiment;
+  analysis?: Analysis;
+  decision?: Decision;
+}>): EvaluationDefinition {
+  const variants = [...input.variants].sort((left, right) => (
+    compareStrings(left.variantId, right.variantId)
+  ));
+  const variantIds = variants.map((variant) => variant.variantId);
+  if (new Set(variantIds).size !== variantIds.length) {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variantId 必须唯一。',
+    );
+  }
+  const metrics = input.evaluators.metrics;
+  const metricIds = new Set(metrics.map((metric) => metric.metricId));
+  let comparisons: Comparison[];
+  try {
+    comparisons = input.comparisons.map((comparison) => (
+      ComparisonInputSchema.parse(structuredClone(comparison))
+    )).sort((left, right) => compareStrings(left.comparisonId, right.comparisonId));
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation comparisons declaration 无效。',
+    );
+  }
+  if (new Set(comparisons.map((comparison) => comparison.comparisonId)).size
+      !== comparisons.length) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation comparisonId 必须唯一。',
+    );
+  }
+  const variantIdSet = new Set(variantIds);
+  for (const comparison of comparisons) {
+    const treatmentIds = new Set(comparison.treatmentVariantIds);
+    if (!variantIdSet.has(comparison.controlVariantId)
+        || treatmentIds.size !== comparison.treatmentVariantIds.length
+        || treatmentIds.has(comparison.controlVariantId)
+        || [...treatmentIds].some((variantId) => !variantIdSet.has(variantId))
+        || new Set(comparison.metricIds).size !== comparison.metricIds.length
+        || comparison.metricIds.some((metricId) => !metricIds.has(metricId))) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation comparison 引用了无效或重复的 Variant／Metric。',
+      );
+    }
+  }
+  const sampling = input.experiment.sampling;
+  if (sampling.samplingKind === 'solo') {
+    if (variants.length !== 1 || comparisons.length !== 0) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'solo sampling 要求恰好一个 Variant，且不声明 Comparison。',
+      );
+    }
+  } else {
+    const participatingVariantIds = new Set(comparisons.flatMap((comparison) => [
+      comparison.controlVariantId,
+      ...comparison.treatmentVariantIds,
+    ]));
+    if (variants.length < 2 || comparisons.length === 0
+        || variantIds.some((variantId) => !participatingVariantIds.has(variantId))) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'paired sampling 要求至少两个 Variant，且每个 Variant 都进入显式 Comparison。',
+      );
+    }
+  }
+  const bootstrap = input.analysis?.bootstrap;
+  const analysisNodes: Array<{
+    analysisNodeKind: 'estimator';
+    nodeId: string;
+    implementationId: string;
+    inputs: Array<
+      | { inputKind: 'metric-observations'; referenceId: string }
+      | {
+          inputKind: 'comparison';
+          referenceId: string;
+          treatmentTargetId: string;
+          metricId: string;
+        }
+    >;
+    outputResultId: string;
+    parameters: { resamples: number; alpha: number };
+  }> = [];
+  const analysisBindings: AnalysisBinding[] = [];
+  if (sampling.samplingKind === 'solo') {
+    for (const metric of metrics) {
+      const selector = {
+        analysisKind: 'quality',
+        variantId: variants[0].variantId,
+        metricId: metric.metricId,
+      };
+      const resultId = stableFacadeId('result', selector);
+      analysisNodes.push({
+        analysisNodeKind: 'estimator',
+        nodeId: stableFacadeId('node', selector),
+        implementationId: 'bootstrap.mean-percentile/v1',
+        inputs: [{ inputKind: 'metric-observations', referenceId: metric.metricId }],
+        outputResultId: resultId,
+        parameters: {
+          resamples: bootstrap?.resamples ?? 1_000,
+          alpha: bootstrap?.alpha ?? 0.05,
+        },
+      });
+      analysisBindings.push({
+        resultId,
+        metricId: metric.metricId,
+        variantId: variants[0].variantId,
+      });
+    }
+  } else {
+    for (const comparison of comparisons) {
+      for (const treatmentVariantId of [...comparison.treatmentVariantIds].sort(compareStrings)) {
+        for (const metricId of [...comparison.metricIds].sort(compareStrings)) {
+          const selector = {
+            analysisKind: 'comparison',
+            comparisonId: comparison.comparisonId,
+            treatmentVariantId,
+            metricId,
+          };
+          const resultId = stableFacadeId('result', selector);
+          analysisNodes.push({
+            analysisNodeKind: 'estimator',
+            nodeId: stableFacadeId('node', selector),
+            implementationId: 'bootstrap.paired-difference-percentile/v1',
+            inputs: [
+              { inputKind: 'metric-observations', referenceId: metricId },
+              {
+                inputKind: 'comparison',
+                referenceId: comparison.comparisonId,
+                treatmentTargetId: treatmentVariantId,
+                metricId,
+              },
+            ],
+            outputResultId: resultId,
+            parameters: {
+              resamples: bootstrap?.resamples ?? 1_000,
+              alpha: bootstrap?.alpha ?? 0.05,
+            },
+          });
+          analysisBindings.push({
+            resultId,
+            metricId,
+            comparisonId: comparison.comparisonId,
+            treatmentVariantId,
+          });
+        }
+      }
+    }
+  }
+  let decisionPolicy;
+  if (input.decision !== undefined) {
+    let parsedDecision: Decision;
+    try {
+      parsedDecision = DecisionInputSchema.parse(structuredClone(input.decision));
+    } catch {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation decision declaration 无效。',
+      );
+    }
+    const selected = analysisBindings.filter((binding) => (
+      parsedDecision.decisionKind === 'quality'
+        ? binding.variantId === parsedDecision.variantId
+          && binding.metricId === parsedDecision.metricId
+        : binding.comparisonId === parsedDecision.comparisonId
+          && binding.treatmentVariantId === parsedDecision.treatmentVariantId
+          && binding.metricId === parsedDecision.metricId
+    ));
+    if (selected.length !== 1) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Evaluation decision 必须精确选择一个已声明的 analysis result。',
+      );
+    }
+    const chosen = selected[0];
+    const decisionPolicyId = stableFacadeId('decision', {
+      decisionKind: parsedDecision.decisionKind,
+      resultId: chosen.resultId,
+    });
+    decisionPolicy = {
+      decisionPolicyId,
+      implementationId: 'progress/v2',
+      analysisResultIds: [chosen.resultId],
+      ...(parsedDecision.decisionKind === 'comparison' ? {
+        comparisonFamily: [{
+          comparisonId: parsedDecision.comparisonId,
+          treatmentTargetId: parsedDecision.treatmentVariantId,
+          metricId: parsedDecision.metricId,
+          analysisResultId: chosen.resultId,
+        }],
+      } : {}),
+      minimumEvidenceStatus: parsedDecision.minimumEvidenceStatus ?? 'complete',
+      parameters: {
+        threshold: parsedDecision.threshold ?? 0,
+        equivalence: parsedDecision.equivalence ?? 0,
+      },
+    };
+  }
+  const trials = input.experiment.trials ?? 1;
+  const estimatorId = sampling.samplingKind === 'solo'
+    ? 'bootstrap.mean-percentile/v1'
+    : 'bootstrap.paired-difference-percentile/v1';
+  const definition = EvaluationDefinitionSchema.parse({
+    schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,
+    dataset: input.evaluators.dataset,
+    targets: variants.map(targetDefinition),
+    evaluators: input.evaluators.definitions,
+    metrics,
+    experiment: {
+      trials,
+      seed: input.experiment.seed,
+      sampling: sampling.samplingKind === 'solo' ? {
+        experimentalUnit: 'sample',
+        ...(sampling.stratumKey === undefined ? {} : { stratumKey: sampling.stratumKey }),
+        repeatedMeasures: trials > 1,
+        resamplingUnit: 'sample',
+        estimatorId,
+        seedCoupling: 'independent-by-target',
+      } : {
+        experimentalUnit: 'sample',
+        pairingKey: sampling.pairingKey ?? '/sampleId',
+        ...(sampling.stratumKey === undefined ? {} : { stratumKey: sampling.stratumKey }),
+        repeatedMeasures: trials > 1,
+        resamplingUnit: 'paired-block',
+        estimatorId,
+        seedCoupling: sampling.seedCoupling ?? 'shared-within-block',
+      },
+      scheduling: input.experiment.scheduling ?? {
+        schedulingKind: sampling.samplingKind === 'solo' ? 'sequential' : 'interleaved',
+      },
+      randomizationSlots: variants.map((variant) => ({
+        targetId: variant.variantId,
+        randomizationSlotId: stableFacadeId('slot', { variantId: variant.variantId }),
+      })).sort((left, right) => compareStrings(
+        left.randomizationSlotId,
+        right.randomizationSlotId,
+      )),
+    },
+    analysisGraph: {
+      analysisMode: 'preregistered',
+      nodes: analysisNodes.sort((left, right) => compareStrings(left.nodeId, right.nodeId)),
+    },
+    comparisons: comparisons.map((comparison) => ({
+      comparisonId: comparison.comparisonId,
+      controlTargetId: comparison.controlVariantId,
+      treatmentTargetIds: [...comparison.treatmentVariantIds].sort(compareStrings),
+      metricIds: [...comparison.metricIds].sort(compareStrings),
+    })),
+    ...(decisionPolicy === undefined ? {} : { decisionPolicy }),
+  });
+  return deepFreezeCanonicalJson(definition);
 }
 
 function assertCommonInput(input: Readonly<{
   runId: string;
+  variants: readonly Variant[];
+  evaluators: readonly Evaluator[];
+  comparisons: readonly Comparison[];
   experiment: Experiment;
+  analysis?: Analysis;
+  decision?: Decision;
   policy: Policy;
   eventBufferCapacity?: number;
   annotations?: JsonValue;
   summaries?: JsonValue;
 }>) {
   const allowedKeys = new Set([
-    'executor',
     'dataset',
-    'control',
-    'treatment',
-    'evaluator',
+    'variants',
+    'evaluators',
+    'comparisons',
+    'analysis',
+    'decision',
     'experiment',
     'policy',
     'runId',
@@ -845,7 +1428,13 @@ function assertCommonInput(input: Readonly<{
   ]);
   if (Object.keys(input).some((key) => !allowedKeys.has(key))
       || !IdentifierSchema.safeParse(input.runId).success
+      || !Array.isArray(input.variants) || input.variants.length === 0
+      || !Array.isArray(input.evaluators) || input.evaluators.length === 0
+      || !Array.isArray(input.comparisons)
       || !ExperimentSchema.safeParse(input.experiment).success
+      || !AnalysisInputSchema.safeParse(input.analysis ?? {}).success
+      || (input.decision !== undefined && !DecisionInputSchema.safeParse(input.decision).success)
+      || !z.array(ComparisonInputSchema).safeParse(input.comparisons).success
       || !PolicyInputSchema.safeParse(input.policy).success
       || (input.eventBufferCapacity !== undefined
         && (!Number.isSafeInteger(input.eventBufferCapacity) || input.eventBufferCapacity < 1))
@@ -858,14 +1447,9 @@ function assertCommonInput(input: Readonly<{
   }
 }
 
-/** Runs one control/treatment evaluation through OMK's canonical user-facing API. */
-export async function evaluate<
-  Input extends JsonValue,
-  Config extends JsonValue | undefined,
-  Output extends JsonValue,
-  Trace extends JsonValue = JsonValue,
->(
-  input: Readonly<EvaluateInput<Input, Config, Output, Trace>>,
+/** Runs one explicit evaluation design through OMK's canonical user-facing API. */
+export async function evaluate(
+  input: Readonly<EvaluateInput>,
 ): Promise<EvaluationResult> {
   if (input === null || typeof input !== 'object') {
     return configurationFailure(
@@ -874,7 +1458,6 @@ export async function evaluate<
     );
   }
   assertCommonInput(input);
-  const executor = captureExecutor(input.executor);
   const dataset = captureDataset(input.dataset);
   const annotations = input.annotations === undefined
     ? undefined
@@ -882,109 +1465,24 @@ export async function evaluate<
   const summaries = input.summaries === undefined
     ? undefined
     : deepFreezeCanonicalJson(structuredClone(input.summaries));
-  const control = captureVariant(input.control, executor.configParser);
-  const treatment = captureVariant(input.treatment, executor.configParser);
-  if (control.variantId === treatment.variantId) {
-    return configurationFailure(
-      'EVAL_RUNTIME_VARIANT_INVALID',
-      'Evaluation 的对照组（control）与实验组（treatment）必须使用不同的 variantId。',
-    );
-  }
+  const variants = input.variants.map(captureVariant);
+  const evaluators = captureEvaluators(dataset, input.evaluators);
 
-  let definition;
-  let evaluatorRegistration;
+  let definition: EvaluationDefinition;
   try {
-    if (input.evaluator.evaluatorKind === 'exact-match') {
-      const metricId = input.evaluator.metricId ?? 'correct';
-      definition = createExactMatchDefinition({
-        datasetId: dataset.datasetId,
-        samples: dataset.samples,
-        control: {
-          targetId: control.variantId,
-          targetKind: control.artifact.kind,
-          executorId: executor.declaration.executorId,
-          config: control.envelope,
-        },
-        treatment: {
-          targetId: treatment.variantId,
-          targetKind: treatment.artifact.kind,
-          executorId: executor.declaration.executorId,
-          config: treatment.envelope,
-        },
-        seed: input.experiment.seed,
-        ...(input.experiment.trials === undefined ? {} : { trials: input.experiment.trials }),
-        metricId,
-        ...(input.experiment.bootstrap === undefined
-          ? {}
-          : { bootstrap: input.experiment.bootstrap }),
-        ...(input.experiment.decision === undefined
-          ? {}
-          : { decision: input.experiment.decision }),
-      });
-      evaluatorRegistration = { port: createExactMatchEvaluator({ metricId }) };
-    } else if (input.evaluator.evaluatorKind === 'rubric-judge') {
-      const evaluator = input.evaluator;
-      const kit = createRubricJudgeKit({
-        evaluatorId: evaluator.evaluatorId,
-        metricId: evaluator.metricId,
-        model: evaluator.model,
-        invocation: captureJudge(evaluator.judge),
-        ...(evaluator.effort === undefined ? {} : { effort: evaluator.effort }),
-        ...(evaluator.lengthDebias === undefined
-          ? {}
-          : { lengthDebias: evaluator.lengthDebias }),
-        ...(evaluator.tracePolicy === undefined
-          ? {}
-          : { tracePolicy: evaluator.tracePolicy }),
-        ...(evaluator.actualPointer === undefined
-          ? {}
-          : { actualPointer: evaluator.actualPointer }),
-        ...(evaluator.tracePointer === undefined
-          ? {}
-          : { tracePointer: evaluator.tracePointer }),
-        ...(evaluator.classification === undefined
-          ? {}
-          : { classification: evaluator.classification }),
-      });
-      const preparedDataset = rubricDataset(dataset, evaluator, kit.createEvaluationContext);
-      definition = createPairedComparisonDefinition({
-        datasetId: preparedDataset.datasetId,
-        samples: preparedDataset.samples,
-        control: {
-          targetId: control.variantId,
-          targetKind: control.artifact.kind,
-          executorId: executor.declaration.executorId,
-          config: control.envelope,
-        },
-        treatment: {
-          targetId: treatment.variantId,
-          targetKind: treatment.artifact.kind,
-          executorId: executor.declaration.executorId,
-          config: treatment.envelope,
-        },
-        evaluator: kit.evaluatorDefinition,
-        metric: kit.metricDefinition,
-        seed: input.experiment.seed,
-        ...(input.experiment.trials === undefined ? {} : { trials: input.experiment.trials }),
-        ...(input.experiment.bootstrap === undefined
-          ? {}
-          : { bootstrap: input.experiment.bootstrap }),
-        ...(input.experiment.decision === undefined
-          ? {}
-          : { decision: input.experiment.decision }),
-      });
-      evaluatorRegistration = kit.evaluatorRegistration;
-    } else {
-      return configurationFailure(
-        'EVAL_RUNTIME_EVALUATOR_INVALID',
-        'Evaluation evaluatorKind 不受支持。',
-      );
-    }
+    definition = createGeneralDefinition({
+      variants,
+      evaluators,
+      comparisons: input.comparisons,
+      experiment: input.experiment,
+      ...(input.analysis === undefined ? {} : { analysis: input.analysis }),
+      ...(input.decision === undefined ? {} : { decision: input.decision }),
+    });
   } catch (error) {
     if (error instanceof EvaluationConfigurationError) throw error;
     return configurationFailure(
-      'EVAL_RUNTIME_EVALUATOR_INVALID',
-      'Evaluation evaluator 或 experiment declaration 无效。',
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation experiment 无法编译为 Core Definition。',
     );
   }
 
@@ -997,25 +1495,30 @@ export async function evaluate<
       'Evaluation policy 无效。',
     );
   }
-  const roles = new Map([
-    [control.variantId, 'control' as const],
-    [treatment.variantId, 'treatment' as const],
-  ]);
+  const variantsByExecutor = new Map<string, Map<string, Readonly<CapturedVariant>>>();
+  for (const variant of variants) {
+    const executorId = variant.executor.declaration.executorId;
+    const byVariant = variantsByExecutor.get(executorId) ?? new Map();
+    byVariant.set(variant.variantId, variant);
+    variantsByExecutor.set(executorId, byVariant);
+  }
   const runtime = createEvaluationRuntime({
-    executors: [{
-      implementationId: executor.declaration.executorId,
-      createPort: (requirement) => {
-        const experimentRole = roles.get(requirement.referenceId);
-        if (experimentRole === undefined) {
-          return configurationFailure(
-            'EVAL_RUNTIME_VARIANT_INVALID',
-            'Evaluation Runtime 收到了未知 variant binding。',
-          );
-        }
-        return executor.createPort(requirement.referenceId, experimentRole);
-      },
-    }],
-    evaluators: [evaluatorRegistration],
+    executors: [...variantsByExecutor.entries()]
+      .sort(([left], [right]) => compareStrings(left, right))
+      .map(([executorId, byVariant]) => ({
+        implementationId: executorId,
+        createPort: (requirement) => {
+          const variant = byVariant.get(requirement.referenceId);
+          if (variant === undefined) {
+            return configurationFailure(
+              'EVAL_RUNTIME_VARIANT_INVALID',
+              'Evaluation Runtime 收到了未知 variant binding。',
+            );
+          }
+          return variant.executor.createPort(variant.variantId);
+        },
+      })),
+    evaluators: evaluators.registrations,
     ...(input.clock === undefined ? {} : { clock: input.clock }),
   });
   try {
@@ -1072,8 +1575,8 @@ export async function checkExecutor<
       'Executor check probe declaration 无效。',
     );
   }
-  const executor = captureExecutor(input.executor);
-  const variant = captureVariant(input.variant, executor.configParser);
+  const variant = captureVariant(input.variant);
+  const executor = variant.executor;
   const successInput = parseWithoutTransform(
     executor.inputParser,
     input.success.input,
@@ -1106,14 +1609,8 @@ export async function checkExecutor<
   }
   return runExecutorConformance({
     implementationId: executor.declaration.executorId,
-    createExecutor(targetId) {
-      if (targetId !== 'control' && targetId !== 'treatment') {
-        return configurationFailure(
-          'EVAL_RUNTIME_INPUT_INVALID',
-          'Executor check 收到了未知实验角色。',
-        );
-      }
-      return executor.createPort(variant.variantId, targetId);
+    createExecutor() {
+      return executor.createPort(variant.variantId);
     },
     success: {
       input: successInput,

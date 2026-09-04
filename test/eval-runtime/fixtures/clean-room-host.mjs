@@ -55,10 +55,10 @@ const variant = {
     source: 'inline',
     content: 'Return expected.',
   },
+  execution: { executor },
 };
 
 const evaluation = (overrides = {}) => evaluate({
-  executor,
   dataset: {
     datasetId: 'clean-room-runner',
     samples: ['one', 'two'].map((sampleId) => ({
@@ -67,13 +67,27 @@ const evaluation = (overrides = {}) => evaluate({
       expected: 'expected',
     })),
   },
-  control: {
+  variants: [{
     variantId: 'baseline',
     artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
+    execution: { executor },
+  }, variant],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [{
+    comparisonId: 'baseline-vs-prompt-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'baseline',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correct'],
+  }],
+  analysis: { bootstrap: { resamples: 100 } },
+  decision: {
+    decisionKind: 'comparison',
+    comparisonId: 'baseline-vs-prompt-v2',
+    treatmentVariantId: 'prompt-v2',
+    metricId: 'correct',
   },
-  treatment: variant,
-  evaluator: { evaluatorKind: 'exact-match' },
-  experiment: { seed: 'clean-room-seed', bootstrap: { resamples: 100 } },
+  experiment: { seed: 'clean-room-seed', sampling: { samplingKind: 'paired' } },
   policy: { maxConcurrency: 1 },
   runId: 'clean-room-evaluate',
   ...overrides,
@@ -117,7 +131,6 @@ assert.equal(observerFailure.cause, undefined);
 assert.equal(JSON.stringify(observerFailure).includes(observerSecret), false);
 
 const conformance = await checkExecutor({
-  executor,
   variant,
   success: { input: 'success', expected: 'expected' },
   failure: { input: 'failure', expectedErrorCode: 'clean-room-expected-failure' },

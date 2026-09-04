@@ -1,34 +1,28 @@
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  EvaluationConfigurationError,
   EvaluationEventConsumptionError,
   checkExecutor,
   evaluate,
   type Clock,
   type Executor,
+  type Variant,
 } from '../../src/eval-runtime/index.js';
 import {
-  createEvaluationRuntime,
-  createExactMatchDefinition,
-  createExactMatchEvaluator,
-  createInvokeExecutorIdentity,
-  createJsonExecutorAdapter,
-  createMeasurementPolicy,
-  createPairedComparisonDefinition,
-  createRubricJudgeKit,
-  createRuntimeIdentity,
-  runEvaluation,
-} from '../../src/eval-runtime/advanced.js';
+  EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EvaluationDefinitionSchema,
+  digestCanonicalJson,
+} from '../../src/eval-core/contracts/index.js';
 
 type Input = { prompt: string };
 type Config = { answers: Record<string, string> };
 
 function executor(
   execute?: Executor<Input, Config, string>['execute'],
+  input: Readonly<{ executorId?: string; revision?: string }> = {},
 ): Executor<Input, Config, string> {
   return {
-    executorId: 'test.answer-executor/v1',
+    executorId: input.executorId ?? 'test.answer-executor/v1',
     version: '1.0.0',
     schemas: {
       input: z.object({ prompt: z.string() }).strict(),
@@ -43,15 +37,15 @@ function executor(
       seedControl: 'unsupported',
       telemetry: { trace: 'unsupported', usage: 'optional' },
     },
-    fingerprintFacets: { deploymentRevision: 'test-one' },
-    execute: execute ?? (async ({ input, config, signal }) => {
+    fingerprintFacets: { deploymentRevision: input.revision ?? 'test-one' },
+    execute: execute ?? (async ({ input: invocationInput, config, signal }) => {
       signal.throwIfAborted();
-      return { output: config.answers[input.prompt] };
+      return { output: config.answers[invocationInput.prompt] };
     }),
   };
 }
 
-const control = {
+const controlSpec = {
   variantId: 'prompt-v1',
   artifact: {
     name: 'baseline',
@@ -62,7 +56,7 @@ const control = {
   config: { answers: { one: 'A', two: 'wrong' } },
 } as const;
 
-const treatment = {
+const treatmentSpec = {
   variantId: 'prompt-v2',
   artifact: {
     name: 'candidate',
@@ -74,357 +68,398 @@ const treatment = {
   config: { answers: { one: 'A', two: 'B' } },
 } as const;
 
+interface VariantSpec {
+  readonly variantId: string;
+  readonly artifact: Variant<Input, Config, string>['artifact'];
+  readonly runtimeContext?: Variant<Input, Config, string>['execution']['runtimeContext'];
+  readonly config: Config;
+}
+
+function variant(
+  declaration: Executor<Input, Config, string>,
+  spec: VariantSpec,
+): Variant<Input, Config, string> {
+  return {
+    variantId: spec.variantId,
+    artifact: spec.artifact,
+    execution: {
+      executor: declaration,
+      ...('runtimeContext' in spec ? { runtimeContext: spec.runtimeContext } : {}),
+      config: spec.config,
+    },
+  };
+}
+
 const fixedClock: Clock = {
   monotonicNow: () => 0,
   timestamp: () => '2026-09-04T00:00:00.000Z',
   sleep: () => Promise.resolve(),
 };
 
-const manualArtifactSchema = z.object({
-  name: z.string(),
-  kind: z.enum(['baseline', 'skill', 'prompt', 'agent', 'workflow']),
-  source: z.enum(['baseline', 'variant-name', 'file-path', 'git', 'inline', 'custom']),
-  content: z.string().nullable(),
-}).strict();
-
-function manualExecutorIdentity(declaration: Executor<Input, Config, string>) {
-  return createInvokeExecutorIdentity({
-    implementationId: declaration.executorId,
-    version: declaration.version,
-    determinism: 'deterministic',
-    cancellation: 'cooperative',
-    concurrency: { safety: 'parallel-safe' },
-    seedControl: 'unsupported',
-    telemetry: { trace: 'unsupported', usage: 'optional', providerCost: { reporting: 'optional' } },
-    fingerprintFacets: {
-      facade: {
-        version: 'omk.eval-runtime.evaluate/v2',
-        outputClassification: 'public',
-        traceClassification: 'public',
-      },
-      host: { deploymentRevision: 'test-one' },
-    },
-  });
-}
-
-function variantEnvelope(variant: typeof control | typeof treatment) {
+function pairedInput(
+  declaration: Executor<Input, Config, string> = executor(),
+) {
   return {
-    schemaVersion: 'omk.eval-runtime.variant-config/v2' as const,
-    artifact: variant.artifact,
-    ...('runtimeContext' in variant ? { runtimeContext: variant.runtimeContext } : {}),
-    executorConfig: variant.config,
+    dataset: {
+      datasetId: 'answers',
+      samples: [
+        { sampleId: 'one', input: { prompt: 'one' }, expected: 'A' },
+        { sampleId: 'two', input: { prompt: 'two' }, expected: 'B' },
+      ],
+    },
+    variants: [variant(declaration, controlSpec), variant(declaration, treatmentSpec)],
+    evaluators: [{ evaluatorKind: 'exact-match' as const }],
+    comparisons: [{
+      comparisonId: 'baseline-vs-candidate',
+      comparisonKind: 'paired' as const,
+      controlVariantId: controlSpec.variantId,
+      treatmentVariantIds: [treatmentSpec.variantId],
+      metricIds: ['correct'],
+    }],
+    analysis: { bootstrap: { resamples: 100 } },
+    experiment: {
+      seed: 'fixed-seed',
+      sampling: { samplingKind: 'paired' as const },
+    },
+    decision: {
+      decisionKind: 'comparison' as const,
+      comparisonId: 'baseline-vs-candidate',
+      treatmentVariantId: treatmentSpec.variantId,
+      metricId: 'correct',
+    },
+    policy: { maxConcurrency: 2 },
+    runId: 'canonical-evaluate',
   };
 }
 
-function manualExecutorPort(declaration: Executor<Input, Config, string>) {
-  const envelopeSchema = z.object({
-    schemaVersion: z.literal('omk.eval-runtime.variant-config/v2'),
-    artifact: manualArtifactSchema,
-    runtimeContext: z.object({ values: z.json().optional() })
-      .strict().optional(),
-    executorConfig: z.object({ answers: z.record(z.string(), z.string()) }).strict(),
-  }).strict();
-  return createJsonExecutorAdapter({
-    identity: manualExecutorIdentity(declaration),
-    inputParser: declaration.schemas.input,
-    targetConfigParser: {
-      parse: (value) => z.json().parse(envelopeSchema.parse(value)),
-    },
-    outputParser: declaration.schemas.output,
-    outputClassification: 'public',
-    async invoke(invocation) {
-      const targetConfig = envelopeSchema.parse(invocation.targetConfig);
-      const role = invocation.targetId === control.variantId ? 'control' : 'treatment';
-      const output = await declaration.execute({
-        input: invocation.input,
-        artifact: targetConfig.artifact,
-        ...(targetConfig.runtimeContext === undefined
-          ? {}
-          : { runtimeContext: targetConfig.runtimeContext }),
-        config: targetConfig.executorConfig,
-        ...(invocation.executionContext === undefined
-          ? {}
-          : { executionContext: invocation.executionContext }),
-        sampleId: invocation.sampleId,
-        variantId: invocation.targetId,
-        experimentRole: role,
-        trialIndex: invocation.trialIndex,
-        ...(invocation.trialSeed === undefined ? {} : { trialSeed: invocation.trialSeed }),
-        attemptNumber: invocation.attemptNumber,
-        signal: invocation.signal,
-      });
-      return typeof output.errorCode === 'string'
-        ? { invocationStatus: 'failed', errorCode: output.errorCode, usage: output.usage }
-        : { invocationStatus: 'completed', output: output.output, usage: output.usage };
-    },
-  });
+function stableFacadeId(
+  identityKind: 'node' | 'result' | 'decision' | 'slot',
+  selector: Readonly<Record<string, string>>,
+): string {
+  return `${identityKind}:${digestCanonicalJson({
+    derivation: 'omk.eval-runtime.definition-binding/v1',
+    selector,
+  }).slice('sha256:'.length)}`;
 }
 
 describe('canonical eval-runtime API', () => {
-  it('evaluates control and treatment with ordinary OMK terms', async () => {
-    const seen: Array<{
-      variantId: string;
-      experimentRole: string;
-      artifactName: string;
-      model?: string;
-    }> = [];
-    const result = await evaluate({
-      executor: executor(async (invocation) => {
-        seen.push({
-          variantId: invocation.variantId,
-          experimentRole: invocation.experimentRole,
-          artifactName: invocation.artifact.name,
-          model: (invocation.runtimeContext?.values as { model?: string } | undefined)?.model,
-        });
-        return { output: invocation.config.answers[invocation.input.prompt] };
-      }),
-      dataset: {
-        datasetId: 'answers',
-        samples: [
-          { sampleId: 'one', input: { prompt: 'one' }, expected: 'A' },
-          { sampleId: 'two', input: { prompt: 'two' }, expected: 'B' },
-        ],
-      },
-      control,
-      treatment,
-      evaluator: { evaluatorKind: 'exact-match' },
-      experiment: { seed: 'fixed-seed', bootstrap: { resamples: 100 } },
-      policy: { maxConcurrency: 2 },
-      runId: 'canonical-evaluate',
+  it('evaluates an explicit paired comparison without assigning a global experiment role', async () => {
+    const seen: Array<{ variantId: string; artifactName: string; model?: string }> = [];
+    const declaration = executor(async (invocation) => {
+      seen.push({
+        variantId: invocation.variantId,
+        artifactName: invocation.artifact.name,
+        model: (invocation.runtimeContext?.values as { model?: string } | undefined)?.model,
+      });
+      return { output: invocation.config.answers[invocation.input.prompt] };
     });
+    const result = await evaluate(pairedInput(declaration));
 
     expect(result.status).toBe('completed');
-    if (result.status !== 'completed') return;
+    if (result.status !== 'completed' || result.artifacts === undefined) return;
+    expect(result.definition.targets.map((target) => (
+      (target.config as { schemaVersion: string }).schemaVersion
+    ))).toEqual([
+      'omk.eval-runtime.variant-config/v3',
+      'omk.eval-runtime.variant-config/v3',
+    ]);
+    expect(result.definition.comparisons).toEqual([{
+      comparisonId: 'baseline-vs-candidate',
+      controlTargetId: 'prompt-v1',
+      treatmentTargetIds: ['prompt-v2'],
+      metricIds: ['correct'],
+    }]);
+    expect(result.definition.decisionPolicy).toMatchObject({
+      implementationId: 'progress/v2',
+      comparisonFamily: [{
+        comparisonId: 'baseline-vs-candidate',
+        treatmentTargetId: 'prompt-v2',
+        metricId: 'correct',
+      }],
+    });
     expect(result.artifacts.analysis.records[0]).toMatchObject({
       analysisStatus: 'completed',
       value: { estimate: 0.5 },
     });
-    expect(result.definition.decisionPolicy?.implementationId).toBe('progress/v2');
-    expect(result.definition.targets.map((target) => (
-      (target.config as { schemaVersion: string }).schemaVersion
-    ))).toEqual([
-      'omk.eval-runtime.variant-config/v2',
-      'omk.eval-runtime.variant-config/v2',
-    ]);
-    expect(result.artifacts.decision).toMatchObject({
-      decisionStatus: 'decided',
-      verdict: 'NOISE',
-      reasonCodes: ['interval-overlaps-decision-boundary'],
-    });
-    expect(new Set(seen.map((item) => `${item.experimentRole}:${item.variantId}`))).toEqual(
-      new Set(['control:prompt-v1', 'treatment:prompt-v2']),
+    expect(result.artifacts.execution.records[0].runtime.fingerprint).toBe(
+      'sha256:d29c4becb1812eb4951220d5b3cf8825ee9d66c23e3908d0832512e90468ff80',
     );
-    expect(seen.filter((item) => item.experimentRole === 'treatment')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ artifactName: 'candidate', model: 'test-model' }),
-      ]),
+    expect(new Set(seen.map((item) => item.variantId))).toEqual(
+      new Set(['prompt-v1', 'prompt-v2']),
     );
-  });
-
-  it('is canonically equivalent to exact-match manual assembly', async () => {
-    const declaration = executor();
-    expect(manualExecutorIdentity(declaration).fingerprint).toBe(
-      'sha256:ab643fe11db0fa29948bacdfe5c05e85cc7990dc1c5d47443e6e0b4b046eb79f',
-    );
-    const shared = {
-      dataset: {
-        datasetId: 'equivalent-answers',
-        samples: [
-          { sampleId: 'one', input: { prompt: 'one' }, expected: 'A' },
-          { sampleId: 'two', input: { prompt: 'two' }, expected: 'B' },
-        ],
-      },
-      control,
-      treatment,
-      experiment: { trials: 2, seed: 'equivalence-seed', bootstrap: { resamples: 100 } },
-      policy: { maxConcurrency: 2 },
-      runId: 'equivalent-exact-match',
-    } as const;
-    const facade = await evaluate({
-      executor: declaration,
-      ...shared,
-      evaluator: { evaluatorKind: 'exact-match' },
-      clock: fixedClock,
-    });
-
-    const definition = createExactMatchDefinition({
-      datasetId: shared.dataset.datasetId,
-      samples: shared.dataset.samples,
-      control: {
-        targetId: control.variantId,
-        targetKind: control.artifact.kind,
-        executorId: declaration.executorId,
-        config: variantEnvelope(control),
-      },
-      treatment: {
-        targetId: treatment.variantId,
-        targetKind: treatment.artifact.kind,
-        executorId: declaration.executorId,
-        config: variantEnvelope(treatment),
-      },
-      seed: shared.experiment.seed,
-      trials: shared.experiment.trials,
-      bootstrap: shared.experiment.bootstrap,
-    });
-    const resolvedPolicy = createMeasurementPolicy(shared.policy);
-    const manual = await runEvaluation({
-      runtime: createEvaluationRuntime({
-        executors: [{
-          implementationId: declaration.executorId,
-          createPort: () => manualExecutorPort(declaration),
-        }],
-        evaluators: [{ port: createExactMatchEvaluator() }],
-        clock: fixedClock,
+    expect(seen).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        variantId: 'prompt-v2',
+        artifactName: 'candidate',
+        model: 'test-model',
       }),
-      definition,
-      policy: resolvedPolicy,
-      runId: shared.runId,
-    });
-
-    const {
-      definition: compiledDefinition,
-      policy: compiledPolicy,
-      ...facadeRunResult
-    } = facade;
-    expect(compiledDefinition).toEqual(definition);
-    expect(compiledPolicy).toEqual(resolvedPolicy);
-    expect(facadeRunResult).toEqual(manual);
-    expect(facade.status).toBe('completed');
-    if (facade.status !== 'completed') return;
-    expect(facade.artifacts.execution.records).toHaveLength(8);
-    expect(facade.artifacts.evaluation.records).toHaveLength(8);
-    expect(new Set(facade.artifacts.execution.records.map((record) => record.trialIndex)))
-      .toEqual(new Set([0, 1]));
+    ]));
   });
 
-  it('is canonically equivalent to Rubric Judge manual assembly', async () => {
-    const prompts: Array<{ promptId: string; promptHash: string }> = [];
+  it('produces a solo quality profile without a fabricated Comparison', async () => {
     const declaration = executor();
-    const dataset = {
-        datasetId: 'rubric-answers',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      } as const;
-    const rubric = {
-      criterionId: 'correctness',
-      prompt: 'Judge correctness.',
-      rubric: '5 is correct; 1 is incorrect.',
-    } as const;
-    const invoke = async (request: Readonly<{ promptId: string; promptHash: string }>) => {
-      prompts.push({ promptId: request.promptId, promptHash: request.promptHash });
-      return {
-        invocationStatus: 'completed' as const,
-        output: '{"score":5,"reason":"correct"}',
-      };
-    };
-    const evaluator = {
-      evaluatorKind: 'rubric-judge' as const,
-      evaluatorId: 'correctness-judge',
-      metricId: 'correctness-score',
-      model: 'judge-model',
-      rubric,
-      judge: {
-        judgeId: 'test.judge/v1',
-        version: '1.0.0',
-        providerCost: { reporting: 'optional' as const },
-        invoke,
+    const result = await evaluate({
+      dataset: pairedInput().dataset,
+      variants: [variant(declaration, treatmentSpec)],
+      evaluators: [{ evaluatorKind: 'exact-match' }],
+      comparisons: [],
+      analysis: { bootstrap: { resamples: 100 } },
+      experiment: { seed: 'solo-seed', sampling: { samplingKind: 'solo' } },
+      decision: {
+        decisionKind: 'quality',
+        variantId: treatmentSpec.variantId,
+        metricId: 'correct',
+        threshold: 0.5,
       },
-    };
-    const facade = await evaluate({
-      executor: declaration,
-      dataset,
-      control,
-      treatment,
-      evaluator,
-      experiment: { trials: 2, seed: 'rubric-seed', bootstrap: { resamples: 100 } },
       policy: {},
-      runId: 'rubric-evaluate',
+      runId: 'solo-quality',
       clock: fixedClock,
     });
 
-    const judgeIdentity = createRuntimeIdentity({
-      implementationId: evaluator.judge.judgeId,
-      version: evaluator.judge.version,
-      capabilities: {
-        invocationKind: 'llm-judge',
-        cancellation: 'cooperative',
-        providerCost: evaluator.judge.providerCost,
-      },
-      fingerprintFacets: { facade: 'omk.eval-runtime.rubric-judge/v1' },
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed' || result.artifacts === undefined) return;
+    expect(result.definition.comparisons).toEqual([]);
+    expect(result.definition.experiment.sampling).toMatchObject({
+      experimentalUnit: 'sample',
+      resamplingUnit: 'sample',
+      estimatorId: 'bootstrap.mean-percentile/v1',
+      seedCoupling: 'independent-by-target',
     });
-    const kit = createRubricJudgeKit({
-      evaluatorId: evaluator.evaluatorId,
-      metricId: evaluator.metricId,
-      model: evaluator.model,
-      invocation: {
-        identity: judgeIdentity,
-        providerCost: evaluator.judge.providerCost,
-        invoke,
-      },
+    expect(result.definition.analysisGraph.nodes).toHaveLength(1);
+    expect(result.definition.analysisGraph.nodes[0]).toMatchObject({
+      implementationId: 'bootstrap.mean-percentile/v1',
+      inputs: [{ inputKind: 'metric-observations', referenceId: 'correct' }],
     });
-    const definition = createPairedComparisonDefinition({
-      datasetId: dataset.datasetId,
-      samples: dataset.samples.map((sample) => ({
-        ...sample,
-        evaluationContext: kit.createEvaluationContext(kit.createCriterion(rubric)),
-      })),
-      control: {
-        targetId: control.variantId,
-        targetKind: control.artifact.kind,
-        executorId: declaration.executorId,
-        config: variantEnvelope(control),
-      },
-      treatment: {
-        targetId: treatment.variantId,
-        targetKind: treatment.artifact.kind,
-        executorId: declaration.executorId,
-        config: variantEnvelope(treatment),
-      },
-      evaluator: kit.evaluatorDefinition,
-      metric: kit.metricDefinition,
-      trials: 2,
-      seed: 'rubric-seed',
-      bootstrap: { resamples: 100 },
-    });
-    const resolvedPolicy = createMeasurementPolicy();
-    const manual = await runEvaluation({
-      runtime: createEvaluationRuntime({
-        executors: [{
-          implementationId: declaration.executorId,
-          createPort: () => manualExecutorPort(declaration),
-        }],
-        evaluators: [kit.evaluatorRegistration],
-        clock: fixedClock,
-      }),
-      definition,
-      policy: resolvedPolicy,
-      runId: 'rubric-evaluate',
-    });
-
-    const {
-      definition: compiledDefinition,
-      policy: compiledPolicy,
-      ...facadeRunResult
-    } = facade;
-    expect(compiledDefinition).toEqual(definition);
-    expect(compiledPolicy).toEqual(resolvedPolicy);
-    expect(facadeRunResult).toEqual(manual);
-    expect(facade.status).toBe('completed');
-    if (facade.status !== 'completed') return;
-    expect(facade.artifacts.execution.records).toHaveLength(4);
-    expect(facade.artifacts.evaluation.records).toHaveLength(4);
-    expect(new Set(facade.artifacts.execution.records.map((record) => record.trialIndex)))
-      .toEqual(new Set([0, 1]));
-    expect(prompts).toHaveLength(8);
-    expect(new Set(prompts.map((prompt) => `${prompt.promptId}:${prompt.promptHash}`)).size).toBe(1);
+    expect(result.artifacts.execution?.records).toHaveLength(2);
   });
 
-  it('preserves Executor trace, usage, and classification declarations end to end', async () => {
-    const declaration: Executor<
-      string,
-      undefined,
-      { answer: string },
-      { steps: string[] }
-    > = {
+  it('runs three Variants, heterogeneous Executors, and two Metrics in one Core Run', async () => {
+    const firstExecutor = executor();
+    const secondExecutor = executor(undefined, {
+      executorId: 'test.alternate-executor/v1',
+      revision: 'alternate-one',
+    });
+    const thirdSpec = {
+      ...treatmentSpec,
+      variantId: 'prompt-v3',
+      artifact: { ...treatmentSpec.artifact, name: 'candidate-three' },
+    } as const;
+    const judgeCalls: string[] = [];
+    const result = await evaluate({
+      ...pairedInput(firstExecutor),
+      variants: [
+        variant(firstExecutor, controlSpec),
+        variant(firstExecutor, treatmentSpec),
+        variant(secondExecutor, thirdSpec),
+      ],
+      evaluators: [
+        { evaluatorKind: 'exact-match' },
+        {
+          evaluatorKind: 'rubric-judge',
+          evaluatorId: 'quality-judge',
+          metricId: 'quality-score',
+          model: 'judge-model',
+          rubric: {
+            criterionId: 'quality',
+            prompt: 'Judge answer quality.',
+            rubric: '5 is correct; 1 is incorrect.',
+          },
+          judge: {
+            judgeId: 'test.judge/v1',
+            version: '1.0.0',
+            providerCost: { reporting: 'optional' },
+            async invoke(request) {
+              judgeCalls.push(request.promptId);
+              return {
+                invocationStatus: 'completed',
+                output: '{"score":5,"reason":"correct"}',
+              };
+            },
+          },
+        },
+      ],
+      comparisons: [{
+        comparisonId: 'baseline-vs-candidates',
+        comparisonKind: 'paired',
+        controlVariantId: controlSpec.variantId,
+        treatmentVariantIds: [thirdSpec.variantId, treatmentSpec.variantId],
+        metricIds: ['quality-score', 'correct'],
+      }],
+      decision: undefined,
+      runId: 'multi-arm-multi-metric',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') return;
+    expect(result.definition.targets.map((target) => target.executorId)).toEqual([
+      'test.answer-executor/v1',
+      'test.answer-executor/v1',
+      'test.alternate-executor/v1',
+    ]);
+    expect(result.definition.evaluators.map((evaluator) => evaluator.evaluatorId)).toEqual([
+      'exact-match',
+      'quality-judge',
+    ]);
+    expect(result.definition.metrics.map((metric) => metric.metricId)).toEqual([
+      'correct',
+      'quality-score',
+    ]);
+    expect(result.definition.comparisons[0].treatmentTargetIds).toEqual([
+      'prompt-v2',
+      'prompt-v3',
+    ]);
+    expect(result.definition.analysisGraph.nodes).toHaveLength(4);
+    expect(result.definition.decisionPolicy).toBeUndefined();
+    expect(result.artifacts.execution.records).toHaveLength(6);
+    expect(result.artifacts.evaluation.records).toHaveLength(12);
+    expect(result.artifacts.analysis.records).toHaveLength(4);
+    expect(judgeCalls).toHaveLength(6);
+  });
+
+  it('compiles equivalent declarations to one canonical Core Definition', async () => {
+    const declaration = executor();
+    const common = pairedInput(declaration);
+    const first = await evaluate({ ...common, clock: fixedClock });
+    const second = await evaluate({
+      ...common,
+      variants: [...common.variants].reverse(),
+      comparisons: [{
+        ...common.comparisons[0],
+        treatmentVariantIds: [...common.comparisons[0].treatmentVariantIds].reverse(),
+        metricIds: [...common.comparisons[0].metricIds].reverse(),
+      }],
+      clock: fixedClock,
+    });
+
+    const selector = {
+      analysisKind: 'comparison',
+      comparisonId: 'baseline-vs-candidate',
+      treatmentVariantId: 'prompt-v2',
+      metricId: 'correct',
+    };
+    const resultId = stableFacadeId('result', selector);
+    const expected = EvaluationDefinitionSchema.parse({
+      schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,
+      dataset: common.dataset,
+      targets: [controlSpec, treatmentSpec].map((spec) => ({
+        targetId: spec.variantId,
+        targetKind: spec.artifact.kind,
+        protocolId: 'omk.invoke/v1',
+        executorId: declaration.executorId,
+        executionRequirements: {
+          systemInstructions: 'not-required', workspace: 'not-required',
+          mcp: 'not-required', mockInterception: 'not-required',
+          toolPolicy: 'runtime-default', skillDiscovery: 'runtime-default',
+        },
+        executionControls: {
+          defaults: {
+            workspace: { workspaceMode: 'not-required' },
+            tools: { toolPolicyKind: 'runtime-default' },
+          },
+          sampleOverrides: [],
+        },
+        config: {
+          schemaVersion: 'omk.eval-runtime.variant-config/v3',
+          artifact: spec.artifact,
+          ...('runtimeContext' in spec ? { runtimeContext: spec.runtimeContext } : {}),
+          executorConfig: spec.config,
+        },
+      })),
+      evaluators: [{
+        evaluatorId: 'exact-match',
+        evaluatorKind: 'assertion',
+        implementationId: 'omk.eval-runtime.exact-match/v1',
+        measurement: {
+          instrumentId: 'canonical-json-exact-match-v1',
+          ensembleMemberId: 'deterministic-local',
+          replicateGroupId: 'deterministic-primary',
+          replicateIndex: 0,
+        },
+        metricIds: ['correct'],
+        inputs: [
+          { bindingId: 'actual', sourceKind: 'output', pointer: '' },
+          { bindingId: 'expected', sourceKind: 'expected', pointer: '' },
+        ],
+      }],
+      metrics: [{
+        metricId: 'correct', valueType: 'boolean', scope: 'sample',
+        direction: 'higher-is-better', missingPolicyId: 'exclude/v1',
+      }],
+      experiment: {
+        trials: 1,
+        seed: 'fixed-seed',
+        sampling: {
+          experimentalUnit: 'sample', pairingKey: '/sampleId', repeatedMeasures: false,
+          resamplingUnit: 'paired-block',
+          estimatorId: 'bootstrap.paired-difference-percentile/v1',
+          seedCoupling: 'shared-within-block',
+        },
+        scheduling: { schedulingKind: 'interleaved' },
+        randomizationSlots: ['prompt-v1', 'prompt-v2'].map((variantId) => ({
+          targetId: variantId,
+          randomizationSlotId: stableFacadeId('slot', { variantId }),
+        })).sort((left, right) => (
+          left.randomizationSlotId < right.randomizationSlotId ? -1
+            : left.randomizationSlotId > right.randomizationSlotId ? 1 : 0
+        )),
+      },
+      analysisGraph: {
+        analysisMode: 'preregistered',
+        nodes: [{
+          analysisNodeKind: 'estimator',
+          nodeId: stableFacadeId('node', selector),
+          implementationId: 'bootstrap.paired-difference-percentile/v1',
+          inputs: [
+            { inputKind: 'metric-observations', referenceId: 'correct' },
+            {
+              inputKind: 'comparison', referenceId: 'baseline-vs-candidate',
+              treatmentTargetId: 'prompt-v2', metricId: 'correct',
+            },
+          ],
+          outputResultId: resultId,
+          parameters: { resamples: 100, alpha: 0.05 },
+        }],
+      },
+      comparisons: [{
+        comparisonId: 'baseline-vs-candidate', controlTargetId: 'prompt-v1',
+        treatmentTargetIds: ['prompt-v2'], metricIds: ['correct'],
+      }],
+      decisionPolicy: {
+        decisionPolicyId: stableFacadeId('decision', {
+          decisionKind: 'comparison', resultId,
+        }),
+        implementationId: 'progress/v2',
+        analysisResultIds: [resultId],
+        comparisonFamily: [{
+          comparisonId: 'baseline-vs-candidate', treatmentTargetId: 'prompt-v2',
+          metricId: 'correct', analysisResultId: resultId,
+        }],
+        minimumEvidenceStatus: 'complete',
+        parameters: { threshold: 0, equivalence: 0 },
+      },
+    });
+
+    expect(EvaluationDefinitionSchema.parse(first.definition)).toEqual(first.definition);
+    expect(first.definition).toEqual(expected);
+    expect(second.definition).toEqual(first.definition);
+    expect(first.definition.experiment.randomizationSlots.map((slot) => slot.randomizationSlotId))
+      .toEqual([
+        stableFacadeId('slot', { variantId: 'prompt-v1' }),
+        stableFacadeId('slot', { variantId: 'prompt-v2' }),
+      ]);
+    expect(first.definition.analysisGraph.nodes[0]).toMatchObject({
+      nodeId: stableFacadeId('node', selector),
+      outputResultId: resultId,
+    });
+    expect(first.definition.decisionPolicy?.decisionPolicyId).toBe(stableFacadeId('decision', {
+      decisionKind: 'comparison',
+      resultId: first.definition.analysisGraph.nodes[0].outputResultId,
+    }));
+  });
+
+  it('preserves Executor trace, usage, and required-telemetry failures end to end', async () => {
+    const declaration: Executor<string, undefined, { answer: string }, { steps: string[] }> = {
       executorId: 'test.telemetry-executor/v1',
       version: '1.0.0',
       schemas: {
@@ -449,138 +484,81 @@ describe('canonical eval-runtime API', () => {
         return {
           output: { answer: 'ok' },
           trace: { steps: ['done'] },
-          usage: {
-            inputTokens: 1,
-            outputTokens: 1,
-            totalTokens: 2,
-            providerCost: { amount: 0.001, currency: 'USD', reportedByProvider: true },
-          },
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
         };
       },
     };
+    const makeVariant = (
+      variantId: string,
+      artifact: Variant<string, undefined, { answer: string }>['artifact'],
+      boundExecutor = declaration,
+    ): Variant<string, undefined, { answer: string }, { steps: string[] }> => ({
+      variantId,
+      artifact,
+      execution: { executor: boundExecutor },
+    });
     const input = {
-      executor: declaration,
       dataset: {
         datasetId: 'telemetry',
         samples: [{ sampleId: 'one', input: 'question', expected: { answer: 'ok' } }],
       },
-      control: {
-        variantId: 'control',
-        artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
-      },
-      treatment: {
-        variantId: 'treatment',
-        artifact: { name: 'candidate', kind: 'prompt', source: 'inline', content: 'Answer.' },
-      },
-      evaluator: { evaluatorKind: 'exact-match' },
-      experiment: { seed: 'telemetry-seed', bootstrap: { resamples: 100 } },
+      variants: [makeVariant('only', {
+        name: 'candidate', kind: 'prompt', source: 'inline', content: 'Answer.',
+      })],
+      evaluators: [{ evaluatorKind: 'exact-match' as const }],
+      comparisons: [],
+      experiment: { seed: 'telemetry-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
       runId: 'telemetry-evaluate',
       clock: fixedClock,
-    } as const;
+    };
 
     const result = await evaluate(input);
     expect(result.status).toBe('completed');
     if (result.status !== 'completed') return;
-    expect(result.artifacts.execution.records).toHaveLength(2);
-    expect(result.artifacts.execution.records).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        executionStatus: 'completed',
-        output: expect.objectContaining({ classification: 'public', value: { answer: 'ok' } }),
-        trace: expect.objectContaining({ classification: 'sensitive', value: { steps: ['done'] } }),
-        usage: expect.objectContaining({
-          inputTokens: 1,
-          outputTokens: 1,
-          totalTokens: 2,
-          providerCost: {
-            amount: 0.001,
-            currency: 'USD',
-            reportedByProvider: true,
-          },
-        }),
-      }),
-    ]));
+    expect(result.artifacts.execution.records[0]).toMatchObject({
+      executionStatus: 'completed',
+      output: { classification: 'public', value: { answer: 'ok' } },
+      trace: { classification: 'sensitive', value: { steps: ['done'] } },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    });
 
+    const missingTraceExecutor: typeof declaration = {
+      ...declaration,
+      async execute() {
+        return {
+          output: { answer: 'ok' },
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
     const missingTrace = await evaluate({
       ...input,
-      executor: {
-        ...declaration,
-        async execute() {
-          return {
-            output: { answer: 'ok' },
-            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          };
-        },
-      },
+      variants: [makeVariant('only', input.variants[0].artifact, missingTraceExecutor)],
       runId: 'telemetry-missing-trace',
     });
     expect(missingTrace.status).toBe('completed');
     if (missingTrace.status !== 'completed') return;
-    expect(missingTrace.artifacts.execution.records).toHaveLength(2);
-    expect(missingTrace.artifacts.execution.records).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        executionStatus: 'failed',
-        error: expect.objectContaining({ code: 'EVAL_RUNTIME_EXECUTOR_CONTRACT_VIOLATION' }),
-      }),
-    ]));
-  });
-
-  it('rejects transformed config before execution under the same identity', async () => {
-    let invocations = 0;
-    const original = executor(async () => {
-      invocations += 1;
-      return { output: 'unreachable' };
+    expect(missingTrace.artifacts.execution.records[0]).toMatchObject({
+      executionStatus: 'failed',
+      error: { code: 'EVAL_RUNTIME_EXECUTOR_CONTRACT_VIOLATION' },
     });
-    const declaration = {
-      ...original,
-      schemas: {
-        ...original.schemas,
-        config: z.object({ answers: z.record(z.string(), z.string()) })
-          .transform((value) => ({ answers: { ...value.answers, injected: 'changed' } })),
-      },
-    };
-
-    await expect(evaluate({
-      executor: declaration,
-      dataset: {
-        datasetId: 'answers',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      control,
-      treatment,
-      evaluator: { evaluatorKind: 'exact-match' },
-      experiment: { seed: 'fixed-seed' },
-      policy: {},
-      runId: 'transformed-config',
-    })).rejects.toMatchObject({
-      name: 'EvaluationConfigurationError',
-      code: 'EVAL_RUNTIME_VARIANT_INVALID',
-    } satisfies Partial<EvaluationConfigurationError>);
-    expect(invocations).toBe(0);
   });
 
-  it('captures variant config and Executor callbacks before asynchronous execution', async () => {
+  it('captures mutable Variant config and Executor callbacks before asynchronous execution', async () => {
     const declaration = executor();
-    const mutableTreatment = structuredClone(treatment) as {
+    const mutable = structuredClone(treatmentSpec) as {
       variantId: string;
-      artifact: typeof treatment.artifact;
+      artifact: typeof treatmentSpec.artifact;
       runtimeContext: { values: { model: string } };
       config: Config;
     };
     const pending = evaluate({
-      executor: declaration,
-      dataset: {
-        datasetId: 'captured-input',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      control,
-      treatment: mutableTreatment,
-      evaluator: { evaluatorKind: 'exact-match' },
-      experiment: { seed: 'captured-input-seed', bootstrap: { resamples: 100 } },
-      policy: {},
-      runId: 'captured-input',
+      ...pairedInput(declaration),
+      variants: [variant(declaration, controlSpec), variant(declaration, mutable)],
+      clock: fixedClock,
     });
-    mutableTreatment.config.answers.one = 'mutated';
+    mutable.config.answers.one = 'mutated';
     (declaration as { execute: Executor<Input, Config, string>['execute'] }).execute = async () => ({
       output: 'mutated',
     });
@@ -589,7 +567,7 @@ describe('canonical eval-runtime API', () => {
     expect(result.status).toBe('completed');
     if (result.status !== 'completed') return;
     expect(result.artifacts.execution.records.filter((record) => (
-      record.targetId === treatment.variantId
+      record.targetId === treatmentSpec.variantId
       && record.executionStatus === 'completed'
       && record.output?.contentKind === 'inline'
       && record.output.value === 'A'
@@ -603,100 +581,95 @@ describe('canonical eval-runtime API', () => {
       version: '1.0.0',
       providerCost: { reporting: 'optional' as const },
       fingerprintFacets: { deploymentRevision: 'judge-one' },
-      async invoke(this: {
-        fingerprintFacets?: { deploymentRevision?: string };
-      }) {
+      async invoke(this: { fingerprintFacets?: { deploymentRevision?: string } }) {
         seenRevisions.push(this.fingerprintFacets?.deploymentRevision ?? 'missing');
-        return {
-          invocationStatus: 'completed' as const,
-          output: '{"score":5,"reason":"correct"}',
-        };
+        return { invocationStatus: 'completed' as const, output: '{"score":5,"reason":"ok"}' };
       },
     };
     const pending = evaluate({
-      executor: executor(),
-      dataset: {
-        datasetId: 'captured-judge',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      control,
-      treatment,
-      evaluator: {
-        evaluatorKind: 'rubric-judge',
-        evaluatorId: 'captured-judge',
-        metricId: 'captured-score',
-        model: 'judge-model',
-        judge: mutableJudge,
+      ...pairedInput(),
+      evaluators: [{
+        evaluatorKind: 'rubric-judge', evaluatorId: 'captured-judge',
+        metricId: 'captured-score', model: 'judge-model', judge: mutableJudge,
         rubric: {
-          criterionId: 'correctness',
-          prompt: 'Judge correctness.',
+          criterionId: 'correctness', prompt: 'Judge correctness.',
           rubric: '5 is correct; 1 is incorrect.',
         },
-      },
-      experiment: { seed: 'captured-judge-seed', bootstrap: { resamples: 100 } },
-      policy: {},
+      }],
+      comparisons: [{
+        comparisonId: 'baseline-vs-candidate', comparisonKind: 'paired',
+        controlVariantId: 'prompt-v1', treatmentVariantIds: ['prompt-v2'],
+        metricIds: ['captured-score'],
+      }],
+      decision: undefined,
       runId: 'captured-judge',
     });
     mutableJudge.fingerprintFacets.deploymentRevision = 'mutated';
-    mutableJudge.invoke = async () => {
-      throw new Error('must retain the captured Judge method');
-    };
+    mutableJudge.invoke = async () => { throw new Error('must retain captured method'); };
 
     const result = await pending;
     expect(result.status).toBe('completed');
-    expect(seenRevisions).toEqual(['judge-one', 'judge-one']);
+    expect(seenRevisions).toEqual(['judge-one', 'judge-one', 'judge-one', 'judge-one']);
   });
 
-  it('rejects ambiguous roles and invalid baseline artifacts with stable redacted errors', async () => {
-    const common = {
-      executor: executor(),
-      dataset: {
-        datasetId: 'invalid-variants',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      evaluator: { evaluatorKind: 'exact-match' as const },
-      experiment: { seed: 'invalid-variant-seed' },
-      policy: {},
-      runId: 'invalid-variants',
-    };
-    await expect(evaluate({
-      ...common,
-      control,
-      treatment: { ...treatment, variantId: control.variantId },
-    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+  it('keeps structured Executor failures stable and provider-private throws redacted', async () => {
+    const privateMessage = 'provider-private-executor-message';
+    const declaration = executor(async ({ variantId, input, config }) => {
+      if (variantId === treatmentSpec.variantId) return { errorCode: 'host-capacity-exhausted' };
+      if (input.prompt === 'two') throw new Error(privateMessage);
+      return { output: config.answers[input.prompt] };
+    });
+    const result = await evaluate({ ...pairedInput(declaration), decision: undefined });
 
-    const privatePayload = 'must-not-appear-in-error';
-    let failure: unknown;
-    try {
-      await evaluate({
-        ...common,
-        control: {
-          ...control,
-          artifact: { ...control.artifact, content: privatePayload },
-        },
-        treatment,
-      });
-    } catch (error) {
-      failure = error;
-    }
-    expect(failure).toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
-    expect(String(failure)).not.toContain(privatePayload);
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed' || result.artifacts === undefined) return;
+    const failures = result.artifacts.execution.records.filter(
+      (record) => record.executionStatus === 'failed',
+    );
+    expect(failures.map((record) => record.error.code)).toEqual(expect.arrayContaining([
+      'EVAL_RUNTIME_EXECUTOR_FAILED', 'host-capacity-exhausted',
+    ]));
+    expect(JSON.stringify(result)).not.toContain(privateMessage);
   });
 
-  it('checks an Executor through real success, failure, cancellation, and cleanup', async () => {
+  it('maps output schema mismatches to stable redacted execution failures', async () => {
+    const privateOutput = { answer: 'must-not-be-persisted' };
+    const declaration = executor(async () => ({ output: privateOutput as never }));
+    const result = await evaluate({
+      ...pairedInput(declaration),
+      evaluators: [{ evaluatorKind: 'exact-match', metricId: 'schema-safe-correct' }],
+      comparisons: [{
+        comparisonId: 'baseline-vs-candidate', comparisonKind: 'paired',
+        controlVariantId: 'prompt-v1', treatmentVariantIds: ['prompt-v2'],
+        metricIds: ['schema-safe-correct'],
+      }],
+      decision: undefined,
+      runId: 'schema-mismatch',
+    });
+
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed' || result.artifacts === undefined) return;
+    expect(result.artifacts.execution.records.every((record) => (
+      record.executionStatus === 'failed'
+      && record.error.code === 'EVAL_RUNTIME_EXECUTOR_OUTPUT_INVALID'
+    ))).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(privateOutput.answer);
+  });
+
+  it('checks a Variant-bound Executor through real success, failure, and cancellation', async () => {
+    const declaration = executor(async ({ input, config, signal }) => {
+      if (input.prompt === 'failure') return { errorCode: 'expected-failure' };
+      if (input.prompt === 'cancellation') {
+        await new Promise((_resolve, reject) => {
+          const abort = () => reject(signal.reason);
+          if (signal.aborted) abort();
+          else signal.addEventListener('abort', abort, { once: true });
+        });
+      }
+      return { output: config.answers[input.prompt] };
+    });
     const result = await checkExecutor({
-      executor: executor(async ({ input, config, signal }) => {
-        if (input.prompt === 'failure') return { errorCode: 'expected-failure' };
-        if (input.prompt === 'cancellation') {
-          await new Promise((_resolve, reject) => {
-            const abort = () => reject(signal.reason);
-            if (signal.aborted) abort();
-            else signal.addEventListener('abort', abort, { once: true });
-          });
-        }
-        return { output: config.answers[input.prompt] };
-      }),
-      variant: treatment,
+      variant: variant(declaration, treatmentSpec),
       success: { input: { prompt: 'one' }, expected: 'A' },
       failure: { input: { prompt: 'failure' }, expectedErrorCode: 'expected-failure' },
       cancellation: { input: { prompt: 'cancellation' } },
@@ -706,183 +679,147 @@ describe('canonical eval-runtime API', () => {
     expect(result.checks.every((check) => check.checkStatus === 'passed')).toBe(true);
   });
 
-  it('forwards cancellation through evaluate and removes the external listener', async () => {
+  it('forwards cancellation and redacts observer failures', async () => {
     const controller = new AbortController();
     const remove = vi.spyOn(controller.signal, 'removeEventListener');
     controller.abort(new Error('cancel before start'));
-
-    const result = await evaluate({
-      executor: executor(),
-      dataset: {
-        datasetId: 'cancelled-evaluate',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      control,
-      treatment,
-      evaluator: { evaluatorKind: 'exact-match' },
-      experiment: { seed: 'cancelled-evaluate-seed' },
-      policy: {},
+    const cancelled = await evaluate({
+      ...pairedInput(),
       runId: 'cancelled-evaluate',
       signal: controller.signal,
     });
-
-    expect(result.status).toBe('cancelled');
-    expect(result.definition.experiment.seed).toBe('cancelled-evaluate-seed');
-    expect(result.policy.execution.maxConcurrency).toBeGreaterThan(0);
+    expect(cancelled.status).toBe('cancelled');
     expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
-  });
 
-  it('returns a typed terminal result but redacts an event observer failure', async () => {
     const privateValue = 'private-observer-payload';
     let caught: unknown;
     try {
       await evaluate({
-        executor: executor(),
-        dataset: {
-          datasetId: 'observer-failure',
-          samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-        },
-        control,
-        treatment,
-        evaluator: { evaluatorKind: 'exact-match' },
-        experiment: { seed: 'observer-failure-seed' },
-        policy: {},
+        ...pairedInput(),
         runId: 'observer-failure',
-        onEvent() {
-          throw { privateValue };
-        },
+        onEvent() { throw { privateValue }; },
       });
     } catch (error) {
       caught = error;
     }
-
     expect(caught).toBeInstanceOf(EvaluationEventConsumptionError);
     if (!(caught instanceof EvaluationEventConsumptionError)) return;
     expect(caught.code).toBe('EVAL_RUNTIME_EVENT_OBSERVER_FAILED');
     expect(caught.runResult?.status).toBe('completed');
-    expect(caught.runResult?.definition.dataset.datasetId).toBe('observer-failure');
-    expect(caught.runResult?.policy.execution.maxConcurrency).toBeGreaterThan(0);
-    expect((caught as unknown as { cause?: unknown }).cause).toBeUndefined();
     expect(JSON.stringify(caught)).not.toContain(privateValue);
   });
 
-  it('keeps structured Executor failures stable and provider-private throws redacted', async () => {
-    const privateMessage = 'provider-private-executor-message';
-    const result = await evaluate({
-      executor: executor(async ({ experimentRole, input, config }) => {
-        if (experimentRole === 'treatment') return { errorCode: 'host-capacity-exhausted' };
-        if (input.prompt === 'two') throw new Error(privateMessage);
-        return { output: config.answers[input.prompt] };
-      }),
-      dataset: {
-        datasetId: 'executor-failures',
-        samples: [
-          { sampleId: 'one', input: { prompt: 'one' }, expected: 'A' },
-          { sampleId: 'two', input: { prompt: 'two' }, expected: 'B' },
-        ],
-      },
-      control,
-      treatment,
-      evaluator: { evaluatorKind: 'exact-match' },
-      experiment: { seed: 'executor-failure-seed' },
-      policy: {},
-      runId: 'executor-failures',
-    });
-
-    expect(result.status).toBe('completed');
-    if (result.status !== 'completed') return;
-    const failures = result.artifacts.execution.records.filter(
-      (record) => record.executionStatus === 'failed',
-    );
-    expect(failures.map((record) => record.error.code)).toEqual(expect.arrayContaining([
-      'EVAL_RUNTIME_EXECUTOR_FAILED',
-      'host-capacity-exhausted',
-    ]));
-    expect(JSON.stringify(result)).not.toContain(privateMessage);
-  });
-
-  it('maps schema mismatches to stable redacted Core execution failures', async () => {
-    const privateOutput = { answer: 'must-not-be-persisted' };
-    const result = await evaluate({
-      executor: executor(async () => ({ output: privateOutput as never })),
-      dataset: {
-        datasetId: 'schema-mismatch',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      control,
-      treatment,
-      evaluator: { evaluatorKind: 'exact-match', metricId: 'schema-safe-correct' },
-      experiment: { seed: 'schema-mismatch-seed' },
-      policy: {},
-      runId: 'schema-mismatch',
-    });
-
-    expect(result.status).toBe('completed');
-    if (result.status !== 'completed') return;
-    expect(result.definition.evaluators[0].metricIds).toEqual(['schema-safe-correct']);
-    expect(result.artifacts.execution.records).toHaveLength(2);
-    expect(result.artifacts.execution.records.every((record) => (
-      record.executionStatus === 'failed'
-      && record.error.code === 'EVAL_RUNTIME_EXECUTOR_OUTPUT_INVALID'
-    ))).toBe(true);
-    expect(JSON.stringify(result)).not.toContain(privateOutput.answer);
-  });
-
-  it('rejects artifact/runtime-context confusion and invalid evaluator declarations', async () => {
-    const common = {
-      executor: executor(),
-      dataset: {
-        datasetId: 'invalid-boundaries',
-        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
-      },
-      control,
-      treatment,
-      experiment: { seed: 'invalid-boundaries-seed' },
-      policy: {},
-      runId: 'invalid-boundaries',
-    } as const;
+  it('rejects implicit designs, duplicate identities, transformed config, and the removed API', async () => {
+    const declaration = executor();
+    await expect(evaluate({
+      ...pairedInput(declaration),
+      comparisons: [],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
 
     await expect(evaluate({
-      ...common,
-      treatment: {
-        ...treatment,
-        runtimeContext: { artifact: treatment.artifact },
-      } as never,
-      evaluator: { evaluatorKind: 'exact-match' },
-    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
-
-    await expect(evaluate({
-      ...common,
-      treatment: {
-        ...treatment,
-        runtimeContext: { cwd: '/tmp/unsealed-workspace' },
-      } as never,
-      evaluator: { evaluatorKind: 'exact-match' },
-    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
-
-    await expect(evaluate({
-      ...common,
-      evaluator: { evaluatorKind: 'exact-match' },
-      eventWriter: { async write() {} },
-    } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
-
-    await expect(evaluate({
-      ...common,
-      evaluator: {
-        evaluatorKind: 'rubric-judge',
-        evaluatorId: 'invalid-judge',
-        metricId: '',
-        model: 'judge-model',
-        judge: {
-          judgeId: 'invalid-judge/v1',
-          version: '1.0.0',
-          providerCost: { reporting: 'optional' },
-          async invoke() {
-            return { invocationStatus: 'completed', output: '{}' };
-          },
-        },
-        rubric: { criterionId: 'criterion', prompt: 'Prompt.', rubric: 'Rubric.' },
-      },
+      ...pairedInput(declaration),
+      evaluators: [
+        { evaluatorKind: 'exact-match', metricId: 'same' },
+        { evaluatorKind: 'exact-match', evaluatorId: 'another', metricId: 'same' },
+      ],
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+
+    let invocations = 0;
+    const transformed = {
+      ...declaration,
+      schemas: {
+        ...declaration.schemas,
+        config: z.object({ answers: z.record(z.string(), z.string()) })
+          .transform((value) => ({ answers: { ...value.answers, injected: 'changed' } })),
+      },
+      async execute(invocation: Parameters<typeof declaration.execute>[0]) {
+        invocations += 1;
+        return declaration.execute(invocation);
+      },
+    };
+    await expect(evaluate({
+      ...pairedInput(transformed),
+      variants: [variant(transformed, controlSpec), variant(transformed, treatmentSpec)],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+    expect(invocations).toBe(0);
+
+    await expect(evaluate({
+      executor: declaration,
+      dataset: pairedInput().dataset,
+      control: controlSpec,
+      treatment: treatmentSpec,
+      evaluator: { evaluatorKind: 'exact-match' },
+      experiment: { seed: 'removed-api' },
+      policy: {},
+      runId: 'removed-api',
+    } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+  });
+
+  it('rejects duplicate Variants and artifact boundary violations without leaking payloads', async () => {
+    const common = pairedInput();
+    await expect(evaluate({
+      ...common,
+      variants: [common.variants[0], { ...common.variants[1], variantId: 'prompt-v1' }],
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+
+    const privatePayload = 'must-not-appear-in-error';
+    let failure: unknown;
+    try {
+      await evaluate({
+        ...common,
+        variants: [{
+          ...common.variants[0],
+          artifact: { ...common.variants[0].artifact, content: privatePayload },
+        }, common.variants[1]],
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+    expect(String(failure)).not.toContain(privatePayload);
+  });
+
+  it('rejects runtime-context boundary confusion and invalid Decision selectors', async () => {
+    const common = pairedInput();
+    await expect(evaluate({
+      ...common,
+      variants: [common.variants[0], {
+        ...common.variants[1],
+        execution: {
+          ...common.variants[1].execution,
+          runtimeContext: { cwd: '/tmp/unsealed-workspace' },
+        },
+      }],
+    } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+
+    await expect(evaluate({
+      ...common,
+      decision: {
+        decisionKind: 'comparison',
+        comparisonId: 'baseline-vs-candidate',
+        treatmentVariantId: 'missing-variant',
+        metricId: 'correct',
+      },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+  });
+
+  it('derives a bounded evaluator identity from the longest valid Metric identity', async () => {
+    const metricId = 'm'.repeat(256);
+    const result = await evaluate({
+      dataset: {
+        datasetId: 'long-metric-id',
+        samples: [{ sampleId: 'one', input: { prompt: 'one' }, expected: 'A' }],
+      },
+      variants: [variant(executor(), treatmentSpec)],
+      evaluators: [{ evaluatorKind: 'exact-match', metricId }],
+      comparisons: [],
+      experiment: { seed: 'long-metric-id', sampling: { samplingKind: 'solo' } },
+      policy: {},
+      runId: 'long-metric-id',
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.definition.evaluators[0].evaluatorId).toMatch(/^exact-match:[0-9a-f]{64}$/);
+    expect(result.definition.metrics[0].metricId).toBe(metricId);
   });
 });
