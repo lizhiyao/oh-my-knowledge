@@ -17,6 +17,6 @@
 - 独立 `--repeat` run 只把 run-level variance 发布为 Series analysis；没有预注册的 Series 总体决定时，release gate 会失败关闭，单次 member 也不会写入受管证据；
 - `--dry-run` 只完成 Runtime assembly 与 sealed plan prepare，不打开 Target 或 Evaluator。
 
-迁移方式有意保持为人工操作，而不是程序转换：如有需要，可归档或删除旧的扁平报告文件，然后重新运行评测。Studio 启动时会检查当前 Core 根目录和旧的同级 `reports/` 根目录，寻找顶层 JSON 文件。如果发现，会在启动服务前打印目录与文件数量；绝不解析、移动、删除或转换这些文件。OMK 不会根据旧报告臆造 Core Run Plan、lineage、digest 或决策证据，也不会从旧文件重建历史分数曲线。
+迁移方式有意保持为人工操作，而不是程序转换：如有需要，可归档或删除旧的扁平报告文件，然后重新运行评测。OMK 不会根据旧报告臆造 Core Run Plan、lineage、digest 或决策证据，也不会从旧文件重建历史分数曲线。
 
 这是存储和应用 schema 的切换，不改变测量 construct。冻结的评分类 prompt、五层评分、Bootstrap CI、Krippendorff alpha 与 length-debias 语义保持不变。
