@@ -111,11 +111,6 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
     - tools_not_called 反模式断言 0-1 条(禁止接触某禁忌工具,如 tripwire sample)
     - rubric 3-5 个判分维度(细致写明 judge 该看什么),由 sample.rubric 字段承载
 
-  *测量学背景:* 当前 omk verdict 三层独立 threshold(默认 ${DEFAULT_GATE_THRESHOLD}),fact 条目少之后单条
-  权重大、单次评测方差大,**强烈建议** 评测时带 \`--repeat 2\` 或更大测稳定性(coefficient
-  of variation),并参考 bootstrap CI 而非点估计。这是 fact 层稀疏化的代价,换来的是
-  fact 信号干净(不被 trajectory 字面噪音污染)。
-
   各 fact 类型详解(下面这些都属于"结果"或"里程碑"范畴,不是"过程"):
 
   工具/流程类(强信号,首选):
@@ -355,10 +350,6 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    的细节,把那些细节写进 sample.rubric 让 judge 按维度评分 — judge 信号本来就比"某
    汉字是否出现在 trace"更接近"任务做没做对"。
 
-   *跟测量学的关联:* fact 条目稀疏化后单条权重相对大、单次评测方差变大,跑评测时
-   建议带 \`--repeat 2\`(或更大)测同 variant 内部 coefficient of variation,看 bootstrap
-   CI 下限而非点估计。这是 fact 干净换稳定性的等价交换,omk eval CLI 在 N<20 且
-   --repeat=1 时已有 stderr 警告提醒。
 7. 如果 skill 涉及外部调用(MCP/CLI/HTTP/文件读),**必须**为本 sample 生成 mocks 数组,
    保证评测时 0 真调底层。query 类返回贴近真实 schema 的示例数据,write 类返回 success。
 

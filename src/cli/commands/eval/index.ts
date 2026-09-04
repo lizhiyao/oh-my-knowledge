@@ -387,7 +387,10 @@ export default class Eval extends BaseCommand {
     }),
     // ── eval-runner extra ──
     repeat: Flags.string({
-      description: bilingual({ zh: '每个用例重复运行 N 次', en: 'Repeat each sample N times' }),
+      description: bilingual({
+        zh: '预先固定 Evaluation Series 的独立 run 数',
+        en: 'Predeclare the independent run count for the Evaluation Series',
+      }),
       parse: integerStringParser('--repeat', { min: 1 }),
     }),
     'holdout-ratio': Flags.string({

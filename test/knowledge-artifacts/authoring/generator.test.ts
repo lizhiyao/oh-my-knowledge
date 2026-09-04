@@ -67,6 +67,7 @@ describe('generateSamples', () => {
     });
 
     assert.match(capturedSystem, /目标执行器能力约束（最高优先级）/);
+    assert.doesNotMatch(capturedSystem, /--repeat|coefficient of variation|stderr 警告/);
     assert.match(capturedPrompt, /不要生成 mocks 和 mocksStrict/);
     assert.equal(result.samples[0].mocks, undefined);
     assert.equal(result.samples[0].mocksStrict, undefined);

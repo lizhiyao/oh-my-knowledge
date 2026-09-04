@@ -256,7 +256,7 @@ omk eval gold compare <run-id> --gold-dir gold-dataset
   --no-serve                      不启 report server
   --no-strict-baseline            关闭 baseline 隔离
   --output-dir <value>            报告输出目录（默认项目级 .omk/eval）
-  --repeat <value>                每个用例重复运行 N 次
+  --repeat <value>                预先固定 Evaluation Series 的独立 run 数
   --report-only                   生成报告并打印判定，但始终 exit 0(不参与 CI gate）。
   --resume <value>                复用经过完整契约校验的 Core runId；拒绝时失败关闭
   --retry <value>                 单用例失败重试次数
@@ -276,6 +276,8 @@ omk eval gold compare <run-id> --gold-dir gold-dataset
 完整描述见 `omk eval --help`。
 
 <!-- omk:cli:eval:flags:end -->
+
+`--repeat` 会创建一个预注册的 Evaluation Series，其独立 Run 数在执行前固定。应当在查看结果前确定数量，并报告所有 member Run。不能在 verdict 不理想后持续新建 Run，再遇到第一次有利结果时停止；这属于未校正的 optional stopping。`--retry` 另行计算，只在已封存的 retry policy 下处理运行失败的 sample attempt。
 
 Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
 

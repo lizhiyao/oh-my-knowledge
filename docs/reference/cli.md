@@ -256,7 +256,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --no-serve                      Do not start report server
   --no-strict-baseline            Disable baseline isolation
   --output-dir <value>            Report output dir (default project .omk/eval)
-  --repeat <value>                Repeat each sample N times
+  --repeat <value>                Predeclare the independent run count for the Evaluation Series
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
   --resume <value>                Reuse a fully verified Core runId; fail closed when rejected
   --retry <value>                 Per-sample retry count
@@ -276,6 +276,8 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
 For full descriptions: `omk eval --help`.
 
 <!-- omk:cli:eval:flags:end -->
+
+`--repeat` creates one preregistered Evaluation Series with a fixed number of independent Runs. Set the count before looking at results and report every member Run. It is not safe to keep launching new Runs after an unfavorable verdict and stop at the first favorable one; that is unadjusted optional stopping. `--retry` is separate and applies only to operationally failed sample attempts under the sealed retry policy.
 
 Studio opens the validated Core run rather than a second report model. The run detail projects operational, evidence, and conclusion status separately; shows numeric observations, Analysis results, Decision reason codes, cost, coverage, and provenance; and links every view back to immutable Core artifacts. Diagnostic post-processing is limited to authenticated Core failures, missing evidence, exclusions, and stable reason codes. For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
 
