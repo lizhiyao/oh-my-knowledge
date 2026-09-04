@@ -57,9 +57,10 @@ function digestPath(repositoryPath) {
 
 function workspaceSnapshot() {
   const paths = new Set(gitWorkspacePaths());
-  // `.omk/` is intentionally ignored by Git but is user-owned project state,
-  // so it needs an explicit guard in addition to tracked/untracked files.
-  collectTree(join(PROJECT_ROOT, '.omk'), paths);
+  // These paths remain guarded even if a future ignore rule would otherwise hide them.
+  for (const repositoryPath of ['.omk', 'artifacts/cr', 'knowledge/cr']) {
+    collectTree(join(PROJECT_ROOT, repositoryPath), paths);
+  }
   return new Map([...paths].sort().map((path) => [path, digestPath(path)]));
 }
 
