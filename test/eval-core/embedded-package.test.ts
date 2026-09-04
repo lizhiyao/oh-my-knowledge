@@ -111,6 +111,10 @@ describe('published embedded Evaluation API', () => {
       packageDirectory,
       'dist/eval-core/contracts/schemas/v2/series-analysis-bundle.schema.json',
     ), 'utf8')).title).toBe('OMK Series Analysis Bundle v2');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v3/evaluation-definition.schema.json',
+    ), 'utf8')).title).toBe('OMK Evaluation Definition v3');
     expect(existsSync(join(
       packageDirectory,
       'dist/eval-core/contracts/schemas/v1/comparability-assessment.schema.json',
@@ -200,6 +204,11 @@ const assert = require('node:assert/strict');
     { with: { type: 'json' } }
   );
   assert.equal(analysisSchema.default.title, 'OMK Analysis Bundle v2');
+  const definitionSchema = await import(
+    'oh-my-knowledge/eval-core/schemas/v3/evaluation-definition.schema.json',
+    { with: { type: 'json' } }
+  );
+  assert.equal(definitionSchema.default.title, 'OMK Evaluation Definition v3');
   const sampleSchema = await import(
     'oh-my-knowledge/eval-samples/schemas/v2/eval-sample-set.schema.json',
     { with: { type: 'json' } }
@@ -461,6 +470,7 @@ const assert = require('node:assert/strict');
       './eval-core',
       './eval-core/schemas/v1/*',
       './eval-core/schemas/v2/*',
+      './eval-core/schemas/v3/*',
       './eval-runtime',
       './eval-runtime/advanced',
       './eval-runtime/contracts',

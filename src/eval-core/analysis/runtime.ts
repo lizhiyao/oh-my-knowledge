@@ -562,12 +562,14 @@ function materializeNodeInputs(
   const blockedReasonCodes: string[] = [];
   const includeCohortIds = new Set(binding.node.cohortFilter?.includeCohortIds ?? []);
   const excludeCohortIds = new Set(binding.node.cohortFilter?.excludeCohortIds ?? []);
+  const includeTargetIds = new Set(binding.node.targetFilter?.includeTargetIds ?? []);
   const filterRows = (rows: readonly AnalysisMetricRow[]): readonly AnalysisMetricRow[] => (
     rows.filter((row) => {
+      const targetIncluded = includeTargetIds.size === 0 || includeTargetIds.has(row.targetId);
       const included = includeCohortIds.size === 0
         || row.cohortIds.some((cohortId) => includeCohortIds.has(cohortId));
       const excluded = row.cohortIds.some((cohortId) => excludeCohortIds.has(cohortId));
-      return included && !excluded;
+      return targetIncluded && included && !excluded;
     })
   );
   for (const input of binding.node.inputs) {

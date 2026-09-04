@@ -1,7 +1,7 @@
 {
   "$defs": {
     "__schema0": {
-      "const": "omk.run-plan/v2",
+      "const": "omk.run-plan/v3",
       "type": "string"
     },
     "__schema1": {
@@ -11,13 +11,13 @@
           "$ref": "#/$defs/__schema40"
         },
         "comparisons": {
-          "$ref": "#/$defs/__schema46"
+          "$ref": "#/$defs/__schema47"
         },
         "dataset": {
           "$ref": "#/$defs/__schema3"
         },
         "decisionPolicy": {
-          "$ref": "#/$defs/__schema48"
+          "$ref": "#/$defs/__schema49"
         },
         "evaluators": {
           "$ref": "#/$defs/__schema21"
@@ -26,7 +26,7 @@
           "$ref": "#/$defs/__schema26"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema52"
+          "$ref": "#/$defs/__schema53"
         },
         "metrics": {
           "$ref": "#/$defs/__schema24"
@@ -35,7 +35,7 @@
           "$ref": "#/$defs/__schema2"
         },
         "seriesMembership": {
-          "$ref": "#/$defs/__schema51"
+          "$ref": "#/$defs/__schema52"
         },
         "targets": {
           "$ref": "#/$defs/__schema14"
@@ -51,7 +51,7 @@
         "analysisGraph",
         "comparisons"
       ],
-      "title": "OMK Evaluation Definition v2",
+      "title": "OMK Evaluation Definition v3",
       "type": "object"
     },
     "__schema10": {
@@ -99,33 +99,39 @@
     },
     "__schema100": {
       "items": {
-        "$ref": "#/$defs/__schema25"
+        "$ref": "#/$defs/__schema22"
       },
       "type": "array"
     },
     "__schema101": {
       "items": {
-        "$ref": "#/$defs/__schema89"
+        "$ref": "#/$defs/__schema25"
       },
       "type": "array"
     },
     "__schema102": {
+      "items": {
+        "$ref": "#/$defs/__schema90"
+      },
+      "type": "array"
+    },
+    "__schema103": {
       "additionalProperties": false,
       "properties": {
         "budget": {
-          "$ref": "#/$defs/__schema59"
+          "$ref": "#/$defs/__schema60"
         },
         "evaluationCacheMode": {
-          "$ref": "#/$defs/__schema72"
-        },
-        "evidence": {
           "$ref": "#/$defs/__schema73"
         },
+        "evidence": {
+          "$ref": "#/$defs/__schema74"
+        },
         "failure": {
-          "$ref": "#/$defs/__schema75"
+          "$ref": "#/$defs/__schema76"
         },
         "runtime": {
-          "$ref": "#/$defs/__schema69"
+          "$ref": "#/$defs/__schema70"
         }
       },
       "required": [
@@ -137,10 +143,10 @@
       ],
       "type": "object"
     },
-    "__schema103": {
-      "$ref": "#/$defs/__schema53"
-    },
     "__schema104": {
+      "$ref": "#/$defs/__schema54"
+    },
+    "__schema105": {
       "additionalProperties": false,
       "properties": {
         "analysisGraph": {
@@ -153,10 +159,10 @@
           "$ref": "#/$defs/__schema17"
         },
         "cohorts": {
-          "$ref": "#/$defs/__schema108"
+          "$ref": "#/$defs/__schema109"
         },
         "comparisons": {
-          "$ref": "#/$defs/__schema110"
+          "$ref": "#/$defs/__schema111"
         },
         "evaluationPlanDigest": {
           "$ref": "#/$defs/__schema17"
@@ -165,19 +171,19 @@
           "$ref": "#/$defs/__schema26"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema112"
+          "$ref": "#/$defs/__schema113"
         },
         "metrics": {
-          "$ref": "#/$defs/__schema109"
+          "$ref": "#/$defs/__schema110"
         },
         "runtimes": {
-          "$ref": "#/$defs/__schema111"
+          "$ref": "#/$defs/__schema112"
         },
         "samples": {
-          "$ref": "#/$defs/__schema106"
+          "$ref": "#/$defs/__schema107"
         },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema105"
+          "$ref": "#/$defs/__schema106"
         }
       },
       "required": [
@@ -193,21 +199,21 @@
         "runtimes",
         "analysisPlanDigest"
       ],
-      "title": "OMK Analysis Plan v2",
+      "title": "OMK Analysis Plan v3",
       "type": "object"
     },
-    "__schema105": {
-      "const": "omk.analysis-plan/v2",
+    "__schema106": {
+      "const": "omk.analysis-plan/v3",
       "type": "string"
     },
-    "__schema106": {
+    "__schema107": {
       "items": {
-        "$ref": "#/$defs/__schema107"
+        "$ref": "#/$defs/__schema108"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema107": {
+    "__schema108": {
       "additionalProperties": false,
       "properties": {
         "analysis": {
@@ -222,15 +228,9 @@
       ],
       "type": "object"
     },
-    "__schema108": {
-      "items": {
-        "$ref": "#/$defs/__schema12"
-      },
-      "type": "array"
-    },
     "__schema109": {
       "items": {
-        "$ref": "#/$defs/__schema25"
+        "$ref": "#/$defs/__schema12"
       },
       "type": "array"
     },
@@ -245,20 +245,26 @@
     },
     "__schema110": {
       "items": {
-        "$ref": "#/$defs/__schema47"
+        "$ref": "#/$defs/__schema25"
       },
       "type": "array"
     },
     "__schema111": {
       "items": {
-        "$ref": "#/$defs/__schema89"
+        "$ref": "#/$defs/__schema48"
       },
       "type": "array"
     },
     "__schema112": {
-      "$ref": "#/$defs/__schema53"
+      "items": {
+        "$ref": "#/$defs/__schema90"
+      },
+      "type": "array"
     },
     "__schema113": {
+      "$ref": "#/$defs/__schema54"
+    },
+    "__schema114": {
       "additionalProperties": false,
       "properties": {
         "analysisInputDigest": {
@@ -271,16 +277,16 @@
           "$ref": "#/$defs/__schema17"
         },
         "decisionPolicy": {
-          "$ref": "#/$defs/__schema115"
-        },
-        "extensions": {
-          "$ref": "#/$defs/__schema117"
-        },
-        "runtimes": {
           "$ref": "#/$defs/__schema116"
         },
+        "extensions": {
+          "$ref": "#/$defs/__schema118"
+        },
+        "runtimes": {
+          "$ref": "#/$defs/__schema117"
+        },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema114"
+          "$ref": "#/$defs/__schema115"
         }
       },
       "required": [
@@ -293,48 +299,28 @@
       "title": "OMK Decision Plan v1",
       "type": "object"
     },
-    "__schema114": {
+    "__schema115": {
       "const": "omk.decision-plan/v1",
       "type": "string"
     },
-    "__schema115": {
-      "$ref": "#/$defs/__schema49"
-    },
     "__schema116": {
+      "$ref": "#/$defs/__schema50"
+    },
+    "__schema117": {
       "items": {
-        "$ref": "#/$defs/__schema89"
+        "$ref": "#/$defs/__schema90"
       },
       "type": "array"
     },
-    "__schema117": {
-      "$ref": "#/$defs/__schema53"
-    },
     "__schema118": {
+      "$ref": "#/$defs/__schema54"
+    },
+    "__schema119": {
       "items": {
-        "$ref": "#/$defs/__schema119"
+        "$ref": "#/$defs/__schema120"
       },
       "minItems": 1,
       "type": "array"
-    },
-    "__schema119": {
-      "additionalProperties": false,
-      "properties": {
-        "schemaDigest": {
-          "$ref": "#/$defs/__schema17"
-        },
-        "schemaUri": {
-          "$ref": "#/$defs/__schema54"
-        },
-        "schemaVersion": {
-          "$ref": "#/$defs/__schema13"
-        }
-      },
-      "required": [
-        "schemaVersion",
-        "schemaUri",
-        "schemaDigest"
-      ],
-      "type": "object"
     },
     "__schema12": {
       "additionalProperties": false,
@@ -394,6 +380,26 @@
     "__schema120": {
       "additionalProperties": false,
       "properties": {
+        "schemaDigest": {
+          "$ref": "#/$defs/__schema17"
+        },
+        "schemaUri": {
+          "$ref": "#/$defs/__schema55"
+        },
+        "schemaVersion": {
+          "$ref": "#/$defs/__schema13"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "schemaUri",
+        "schemaDigest"
+      ],
+      "type": "object"
+    },
+    "__schema121": {
+      "additionalProperties": false,
+      "properties": {
         "analysisInputDigest": {
           "$ref": "#/$defs/__schema17"
         },
@@ -439,8 +445,8 @@
       ],
       "type": "object"
     },
-    "__schema121": {
-      "$ref": "#/$defs/__schema53"
+    "__schema122": {
+      "$ref": "#/$defs/__schema54"
     },
     "__schema13": {
       "minLength": 1,
@@ -707,7 +713,7 @@
       "$ref": "#/$defs/__schema16"
     },
     "__schema2": {
-      "const": "omk.evaluation-definition/v2",
+      "const": "omk.evaluation-definition/v3",
       "type": "string"
     },
     "__schema20": {
@@ -1187,7 +1193,7 @@
                     "type": "string"
                   },
                   "cohortFilter": {
-                    "$ref": "#/$defs/__schema44"
+                    "$ref": "#/$defs/__schema45"
                   },
                   "implementationId": {
                     "$ref": "#/$defs/__schema4"
@@ -1202,7 +1208,10 @@
                     "$ref": "#/$defs/__schema4"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema45"
+                    "$ref": "#/$defs/__schema46"
+                  },
+                  "targetFilter": {
+                    "$ref": "#/$defs/__schema44"
                   },
                   "versionConstraint": {
                     "$ref": "#/$defs/__schema41"
@@ -1225,7 +1234,7 @@
                     "type": "string"
                   },
                   "cohortFilter": {
-                    "$ref": "#/$defs/__schema44"
+                    "$ref": "#/$defs/__schema45"
                   },
                   "implementationId": {
                     "$ref": "#/$defs/__schema4"
@@ -1240,7 +1249,10 @@
                     "$ref": "#/$defs/__schema4"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema45"
+                    "$ref": "#/$defs/__schema46"
+                  },
+                  "targetFilter": {
+                    "$ref": "#/$defs/__schema44"
                   },
                   "versionConstraint": {
                     "$ref": "#/$defs/__schema41"
@@ -1263,7 +1275,7 @@
                     "type": "string"
                   },
                   "cohortFilter": {
-                    "$ref": "#/$defs/__schema44"
+                    "$ref": "#/$defs/__schema45"
                   },
                   "implementationId": {
                     "$ref": "#/$defs/__schema4"
@@ -1278,7 +1290,10 @@
                     "$ref": "#/$defs/__schema4"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema45"
+                    "$ref": "#/$defs/__schema46"
+                  },
+                  "targetFilter": {
+                    "$ref": "#/$defs/__schema44"
                   },
                   "versionConstraint": {
                     "$ref": "#/$defs/__schema41"
@@ -1380,6 +1395,22 @@
     "__schema44": {
       "additionalProperties": false,
       "properties": {
+        "includeTargetIds": {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "includeTargetIds"
+      ],
+      "type": "object"
+    },
+    "__schema45": {
+      "additionalProperties": false,
+      "properties": {
         "excludeCohortIds": {
           "items": {
             "$ref": "#/$defs/__schema4"
@@ -1397,16 +1428,16 @@
       },
       "type": "object"
     },
-    "__schema45": {
+    "__schema46": {
       "$ref": "#/$defs/__schema6"
     },
-    "__schema46": {
+    "__schema47": {
       "items": {
-        "$ref": "#/$defs/__schema47"
+        "$ref": "#/$defs/__schema48"
       },
       "type": "array"
     },
-    "__schema47": {
+    "__schema48": {
       "additionalProperties": false,
       "properties": {
         "comparisonId": {
@@ -1438,10 +1469,41 @@
       ],
       "type": "object"
     },
-    "__schema48": {
-      "$ref": "#/$defs/__schema49"
-    },
     "__schema49": {
+      "$ref": "#/$defs/__schema50"
+    },
+    "__schema5": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "annotations": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "evaluationContext": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "executionContext": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "expected": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "input": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "sampleId",
+        "input"
+      ],
+      "type": "object"
+    },
+    "__schema50": {
       "additionalProperties": false,
       "properties": {
         "analysisResultIds": {
@@ -1453,7 +1515,7 @@
         },
         "comparisonFamily": {
           "items": {
-            "$ref": "#/$defs/__schema50"
+            "$ref": "#/$defs/__schema51"
           },
           "minItems": 1,
           "type": "array"
@@ -1493,38 +1555,7 @@
       ],
       "type": "object"
     },
-    "__schema5": {
-      "additionalProperties": false,
-      "properties": {
-        "analysis": {
-          "$ref": "#/$defs/__schema10"
-        },
-        "annotations": {
-          "$ref": "#/$defs/__schema6"
-        },
-        "evaluationContext": {
-          "$ref": "#/$defs/__schema9"
-        },
-        "executionContext": {
-          "$ref": "#/$defs/__schema7"
-        },
-        "expected": {
-          "$ref": "#/$defs/__schema8"
-        },
-        "input": {
-          "$ref": "#/$defs/__schema6"
-        },
-        "sampleId": {
-          "$ref": "#/$defs/__schema4"
-        }
-      },
-      "required": [
-        "sampleId",
-        "input"
-      ],
-      "type": "object"
-    },
-    "__schema50": {
+    "__schema51": {
       "anyOf": [
         {
           "additionalProperties": false,
@@ -1580,7 +1611,7 @@
         }
       ]
     },
-    "__schema51": {
+    "__schema52": {
       "additionalProperties": false,
       "properties": {
         "memberId": {
@@ -1603,10 +1634,10 @@
       ],
       "type": "object"
     },
-    "__schema52": {
-      "$ref": "#/$defs/__schema53"
-    },
     "__schema53": {
+      "$ref": "#/$defs/__schema54"
+    },
+    "__schema54": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -1617,7 +1648,7 @@
             "$ref": "#/$defs/__schema17"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema54"
+            "$ref": "#/$defs/__schema55"
           }
         },
         "required": [
@@ -1628,46 +1659,46 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema54"
+        "$ref": "#/$defs/__schema55"
       },
       "type": "object"
     },
-    "__schema54": {
+    "__schema55": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
-    "__schema55": {
+    "__schema56": {
       "additionalProperties": false,
       "properties": {
         "budget": {
-          "$ref": "#/$defs/__schema59"
+          "$ref": "#/$defs/__schema60"
         },
         "cache": {
-          "$ref": "#/$defs/__schema70"
+          "$ref": "#/$defs/__schema71"
         },
         "evaluation": {
-          "$ref": "#/$defs/__schema69"
+          "$ref": "#/$defs/__schema70"
         },
         "eventDelivery": {
-          "$ref": "#/$defs/__schema76"
-        },
-        "evidence": {
-          "$ref": "#/$defs/__schema73"
-        },
-        "execution": {
-          "$ref": "#/$defs/__schema57"
-        },
-        "extensions": {
           "$ref": "#/$defs/__schema77"
         },
-        "failure": {
-          "$ref": "#/$defs/__schema75"
+        "evidence": {
+          "$ref": "#/$defs/__schema74"
         },
-        "retry": {
+        "execution": {
           "$ref": "#/$defs/__schema58"
         },
+        "extensions": {
+          "$ref": "#/$defs/__schema78"
+        },
+        "failure": {
+          "$ref": "#/$defs/__schema76"
+        },
+        "retry": {
+          "$ref": "#/$defs/__schema59"
+        },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema56"
+          "$ref": "#/$defs/__schema57"
         }
       },
       "required": [
@@ -1684,11 +1715,11 @@
       "title": "OMK Measurement Policy v1",
       "type": "object"
     },
-    "__schema56": {
+    "__schema57": {
       "const": "omk.measurement-policy/v1",
       "type": "string"
     },
-    "__schema57": {
+    "__schema58": {
       "additionalProperties": false,
       "properties": {
         "maxConcurrency": {
@@ -1707,7 +1738,7 @@
       ],
       "type": "object"
     },
-    "__schema58": {
+    "__schema59": {
       "additionalProperties": false,
       "properties": {
         "backoff": {
@@ -1757,34 +1788,6 @@
       ],
       "type": "object"
     },
-    "__schema59": {
-      "additionalProperties": false,
-      "properties": {
-        "attempt": {
-          "$ref": "#/$defs/__schema67"
-        },
-        "coordinate": {
-          "$ref": "#/$defs/__schema66"
-        },
-        "providerCostAdmission": {
-          "$ref": "#/$defs/__schema68"
-        },
-        "run": {
-          "$ref": "#/$defs/__schema60"
-        },
-        "stages": {
-          "$ref": "#/$defs/__schema65"
-        }
-      },
-      "required": [
-        "run",
-        "stages",
-        "coordinate",
-        "attempt",
-        "providerCostAdmission"
-      ],
-      "type": "object"
-    },
     "__schema6": {
       "anyOf": [
         {
@@ -1819,14 +1822,42 @@
     "__schema60": {
       "additionalProperties": false,
       "properties": {
-        "maxActiveDurationMs": {
-          "$ref": "#/$defs/__schema64"
+        "attempt": {
+          "$ref": "#/$defs/__schema68"
         },
-        "maxInvocations": {
+        "coordinate": {
+          "$ref": "#/$defs/__schema67"
+        },
+        "providerCostAdmission": {
+          "$ref": "#/$defs/__schema69"
+        },
+        "run": {
           "$ref": "#/$defs/__schema61"
         },
-        "maxProviderCost": {
+        "stages": {
+          "$ref": "#/$defs/__schema66"
+        }
+      },
+      "required": [
+        "run",
+        "stages",
+        "coordinate",
+        "attempt",
+        "providerCostAdmission"
+      ],
+      "type": "object"
+    },
+    "__schema61": {
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema65"
+        },
+        "maxInvocations": {
           "$ref": "#/$defs/__schema62"
+        },
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema63"
         },
         "maxWallClockMs": {
           "exclusiveMinimum": 0,
@@ -1836,15 +1867,15 @@
       },
       "type": "object"
     },
-    "__schema61": {
+    "__schema62": {
       "exclusiveMinimum": 0,
       "maximum": 9007199254740991,
       "type": "integer"
     },
-    "__schema62": {
-      "$ref": "#/$defs/__schema63"
-    },
     "__schema63": {
+      "$ref": "#/$defs/__schema64"
+    },
+    "__schema64": {
       "additionalProperties": false,
       "properties": {
         "amount": {
@@ -1862,19 +1893,19 @@
       ],
       "type": "object"
     },
-    "__schema64": {
+    "__schema65": {
       "exclusiveMinimum": 0,
       "maximum": 9007199254740991,
       "type": "integer"
     },
-    "__schema65": {
+    "__schema66": {
       "additionalProperties": false,
       "properties": {
         "evaluation": {
-          "$ref": "#/$defs/__schema66"
+          "$ref": "#/$defs/__schema67"
         },
         "execution": {
-          "$ref": "#/$defs/__schema66"
+          "$ref": "#/$defs/__schema67"
         }
       },
       "required": [
@@ -1883,24 +1914,15 @@
       ],
       "type": "object"
     },
-    "__schema66": {
-      "additionalProperties": false,
-      "properties": {
-        "maxActiveDurationMs": {
-          "$ref": "#/$defs/__schema64"
-        },
-        "maxInvocations": {
-          "$ref": "#/$defs/__schema61"
-        },
-        "maxProviderCost": {
-          "$ref": "#/$defs/__schema62"
-        }
-      },
-      "type": "object"
-    },
     "__schema67": {
       "additionalProperties": false,
       "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema65"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema62"
+        },
         "maxProviderCost": {
           "$ref": "#/$defs/__schema63"
         }
@@ -1908,6 +1930,15 @@
       "type": "object"
     },
     "__schema68": {
+      "additionalProperties": false,
+      "properties": {
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema64"
+        }
+      },
+      "type": "object"
+    },
+    "__schema69": {
       "additionalProperties": false,
       "properties": {
         "admissionMode": {
@@ -1931,7 +1962,10 @@
       ],
       "type": "object"
     },
-    "__schema69": {
+    "__schema7": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "__schema70": {
       "additionalProperties": false,
       "properties": {
         "maxConcurrency": {
@@ -1940,7 +1974,7 @@
           "type": "integer"
         },
         "retry": {
-          "$ref": "#/$defs/__schema58"
+          "$ref": "#/$defs/__schema59"
         },
         "timeoutMs": {
           "exclusiveMinimum": 0,
@@ -1954,17 +1988,14 @@
       ],
       "type": "object"
     },
-    "__schema7": {
-      "$ref": "#/$defs/__schema6"
-    },
-    "__schema70": {
+    "__schema71": {
       "additionalProperties": false,
       "properties": {
         "evaluationMode": {
-          "$ref": "#/$defs/__schema72"
+          "$ref": "#/$defs/__schema73"
         },
         "executionMode": {
-          "$ref": "#/$defs/__schema71"
+          "$ref": "#/$defs/__schema72"
         }
       },
       "required": [
@@ -1973,7 +2004,7 @@
       ],
       "type": "object"
     },
-    "__schema71": {
+    "__schema72": {
       "enum": [
         "disabled",
         "replay-only",
@@ -1981,27 +2012,27 @@
       ],
       "type": "string"
     },
-    "__schema72": {
+    "__schema73": {
       "enum": [
         "disabled",
         "reuse"
       ],
       "type": "string"
     },
-    "__schema73": {
+    "__schema74": {
       "additionalProperties": false,
       "properties": {
         "evidence": {
-          "$ref": "#/$defs/__schema74"
+          "$ref": "#/$defs/__schema75"
         },
         "maximumClassification": {
           "$ref": "#/$defs/__schema11"
         },
         "output": {
-          "$ref": "#/$defs/__schema74"
+          "$ref": "#/$defs/__schema75"
         },
         "trace": {
-          "$ref": "#/$defs/__schema74"
+          "$ref": "#/$defs/__schema75"
         }
       },
       "required": [
@@ -2012,7 +2043,7 @@
       ],
       "type": "object"
     },
-    "__schema74": {
+    "__schema75": {
       "enum": [
         "full",
         "reference",
@@ -2021,7 +2052,7 @@
       ],
       "type": "string"
     },
-    "__schema75": {
+    "__schema76": {
       "additionalProperties": false,
       "properties": {
         "failureMode": {
@@ -2043,7 +2074,7 @@
       ],
       "type": "object"
     },
-    "__schema76": {
+    "__schema77": {
       "additionalProperties": false,
       "properties": {
         "backpressureMode": {
@@ -2075,14 +2106,14 @@
       ],
       "type": "object"
     },
-    "__schema77": {
-      "$ref": "#/$defs/__schema53"
-    },
     "__schema78": {
+      "$ref": "#/$defs/__schema54"
+    },
+    "__schema79": {
       "additionalProperties": false,
       "properties": {
         "assignments": {
-          "$ref": "#/$defs/__schema83"
+          "$ref": "#/$defs/__schema84"
         },
         "executionInputDigest": {
           "$ref": "#/$defs/__schema17"
@@ -2091,31 +2122,31 @@
           "$ref": "#/$defs/__schema17"
         },
         "experiment": {
-          "$ref": "#/$defs/__schema87"
+          "$ref": "#/$defs/__schema88"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema94"
+          "$ref": "#/$defs/__schema95"
         },
         "policy": {
-          "$ref": "#/$defs/__schema93"
+          "$ref": "#/$defs/__schema94"
         },
         "randomizationDesignDigest": {
           "$ref": "#/$defs/__schema17"
         },
         "runtimes": {
-          "$ref": "#/$defs/__schema88"
+          "$ref": "#/$defs/__schema89"
         },
         "samples": {
-          "$ref": "#/$defs/__schema80"
+          "$ref": "#/$defs/__schema81"
         },
         "schedulingTargetGroups": {
-          "$ref": "#/$defs/__schema85"
+          "$ref": "#/$defs/__schema86"
         },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema79"
+          "$ref": "#/$defs/__schema80"
         },
         "targets": {
-          "$ref": "#/$defs/__schema82"
+          "$ref": "#/$defs/__schema83"
         }
       },
       "required": [
@@ -2134,21 +2165,21 @@
       "title": "OMK Execution Plan v2",
       "type": "object"
     },
-    "__schema79": {
-      "const": "omk.execution-plan/v2",
-      "type": "string"
-    },
     "__schema8": {
       "$ref": "#/$defs/__schema6"
     },
     "__schema80": {
+      "const": "omk.execution-plan/v2",
+      "type": "string"
+    },
+    "__schema81": {
       "items": {
-        "$ref": "#/$defs/__schema81"
+        "$ref": "#/$defs/__schema82"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema81": {
+    "__schema82": {
       "additionalProperties": false,
       "properties": {
         "executionContext": {
@@ -2167,21 +2198,21 @@
       ],
       "type": "object"
     },
-    "__schema82": {
+    "__schema83": {
       "items": {
         "$ref": "#/$defs/__schema15"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema83": {
+    "__schema84": {
       "items": {
-        "$ref": "#/$defs/__schema84"
+        "$ref": "#/$defs/__schema85"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema84": {
+    "__schema85": {
       "additionalProperties": false,
       "properties": {
         "randomizationSlotId": {
@@ -2201,21 +2232,21 @@
       ],
       "type": "object"
     },
-    "__schema85": {
+    "__schema86": {
       "items": {
-        "$ref": "#/$defs/__schema86"
+        "$ref": "#/$defs/__schema87"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema86": {
+    "__schema87": {
       "items": {
         "$ref": "#/$defs/__schema4"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema87": {
+    "__schema88": {
       "additionalProperties": false,
       "properties": {
         "assignment": {
@@ -2274,13 +2305,16 @@
       ],
       "type": "object"
     },
-    "__schema88": {
+    "__schema89": {
       "items": {
-        "$ref": "#/$defs/__schema89"
+        "$ref": "#/$defs/__schema90"
       },
       "type": "array"
     },
-    "__schema89": {
+    "__schema9": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "__schema90": {
       "additionalProperties": false,
       "properties": {
         "identity": {
@@ -2315,10 +2349,10 @@
             "implementationManifest": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/__schema90"
+                  "$ref": "#/$defs/__schema91"
                 },
                 {
-                  "$ref": "#/$defs/__schema91"
+                  "$ref": "#/$defs/__schema92"
                 }
               ]
             },
@@ -2391,10 +2425,7 @@
       ],
       "type": "object"
     },
-    "__schema9": {
-      "$ref": "#/$defs/__schema6"
-    },
-    "__schema90": {
+    "__schema91": {
       "additionalProperties": false,
       "properties": {
         "coverageKind": {
@@ -2407,7 +2438,7 @@
       ],
       "type": "object"
     },
-    "__schema91": {
+    "__schema92": {
       "additionalProperties": false,
       "properties": {
         "coverageKind": {
@@ -2416,7 +2447,7 @@
         },
         "facets": {
           "items": {
-            "$ref": "#/$defs/__schema92"
+            "$ref": "#/$defs/__schema93"
           },
           "minItems": 1,
           "type": "array"
@@ -2428,7 +2459,7 @@
       ],
       "type": "object"
     },
-    "__schema92": {
+    "__schema93": {
       "additionalProperties": false,
       "properties": {
         "facetId": {
@@ -2444,11 +2475,11 @@
       ],
       "type": "object"
     },
-    "__schema93": {
+    "__schema94": {
       "additionalProperties": false,
       "properties": {
         "budget": {
-          "$ref": "#/$defs/__schema59"
+          "$ref": "#/$defs/__schema60"
         },
         "evidence": {
           "additionalProperties": false,
@@ -2457,10 +2488,10 @@
               "$ref": "#/$defs/__schema11"
             },
             "output": {
-              "$ref": "#/$defs/__schema74"
+              "$ref": "#/$defs/__schema75"
             },
             "trace": {
-              "$ref": "#/$defs/__schema74"
+              "$ref": "#/$defs/__schema75"
             }
           },
           "required": [
@@ -2471,16 +2502,16 @@
           "type": "object"
         },
         "execution": {
-          "$ref": "#/$defs/__schema57"
+          "$ref": "#/$defs/__schema58"
         },
         "executionCacheMode": {
-          "$ref": "#/$defs/__schema71"
+          "$ref": "#/$defs/__schema72"
         },
         "failure": {
-          "$ref": "#/$defs/__schema75"
+          "$ref": "#/$defs/__schema76"
         },
         "retry": {
-          "$ref": "#/$defs/__schema58"
+          "$ref": "#/$defs/__schema59"
         }
       },
       "required": [
@@ -2493,10 +2524,10 @@
       ],
       "type": "object"
     },
-    "__schema94": {
-      "$ref": "#/$defs/__schema53"
-    },
     "__schema95": {
+      "$ref": "#/$defs/__schema54"
+    },
+    "__schema96": {
       "additionalProperties": false,
       "properties": {
         "evaluationInputDigest": {
@@ -2506,28 +2537,28 @@
           "$ref": "#/$defs/__schema17"
         },
         "evaluators": {
-          "$ref": "#/$defs/__schema99"
+          "$ref": "#/$defs/__schema100"
         },
         "executionPlanDigest": {
           "$ref": "#/$defs/__schema17"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema103"
+          "$ref": "#/$defs/__schema104"
         },
         "metrics": {
-          "$ref": "#/$defs/__schema100"
-        },
-        "policy": {
-          "$ref": "#/$defs/__schema102"
-        },
-        "runtimes": {
           "$ref": "#/$defs/__schema101"
         },
+        "policy": {
+          "$ref": "#/$defs/__schema103"
+        },
+        "runtimes": {
+          "$ref": "#/$defs/__schema102"
+        },
         "samples": {
-          "$ref": "#/$defs/__schema97"
+          "$ref": "#/$defs/__schema98"
         },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema96"
+          "$ref": "#/$defs/__schema97"
         }
       },
       "required": [
@@ -2544,18 +2575,18 @@
       "title": "OMK Evaluation Plan v1",
       "type": "object"
     },
-    "__schema96": {
+    "__schema97": {
       "const": "omk.evaluation-plan/v1",
       "type": "string"
     },
-    "__schema97": {
+    "__schema98": {
       "items": {
-        "$ref": "#/$defs/__schema98"
+        "$ref": "#/$defs/__schema99"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema98": {
+    "__schema99": {
       "additionalProperties": false,
       "properties": {
         "evaluationContext": {
@@ -2579,44 +2610,38 @@
         "input"
       ],
       "type": "object"
-    },
-    "__schema99": {
-      "items": {
-        "$ref": "#/$defs/__schema22"
-      },
-      "type": "array"
     }
   },
-  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v2/run-plan.schema.json",
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v3/run-plan.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
     "analysis": {
-      "$ref": "#/$defs/__schema104"
+      "$ref": "#/$defs/__schema105"
     },
     "decision": {
-      "$ref": "#/$defs/__schema113"
+      "$ref": "#/$defs/__schema114"
     },
     "definition": {
       "$ref": "#/$defs/__schema1"
     },
     "digests": {
-      "$ref": "#/$defs/__schema120"
-    },
-    "evaluation": {
-      "$ref": "#/$defs/__schema95"
-    },
-    "execution": {
-      "$ref": "#/$defs/__schema78"
-    },
-    "extensions": {
       "$ref": "#/$defs/__schema121"
     },
+    "evaluation": {
+      "$ref": "#/$defs/__schema96"
+    },
+    "execution": {
+      "$ref": "#/$defs/__schema79"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema122"
+    },
     "measurementPolicy": {
-      "$ref": "#/$defs/__schema55"
+      "$ref": "#/$defs/__schema56"
     },
     "schemaIdentities": {
-      "$ref": "#/$defs/__schema118"
+      "$ref": "#/$defs/__schema119"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"
@@ -2633,6 +2658,6 @@
     "schemaIdentities",
     "digests"
   ],
-  "title": "OMK Run Plan v2",
+  "title": "OMK Run Plan v3",
   "type": "object"
 }

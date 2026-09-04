@@ -232,6 +232,47 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('rejects duplicate or unknown Analysis target filters before runtime resolution', async () => {
+    const duplicate = validDefinition();
+    duplicate.analysisGraph.nodes[0].targetFilter = {
+      includeTargetIds: ['control', 'control'],
+    };
+    const duplicateRuntime = testRuntime();
+    await expectCode(
+      duplicate,
+      validPolicy(),
+      'EVAL_DEFINITION_DUPLICATE_ID',
+      duplicateRuntime,
+    );
+    expect(duplicateRuntime.calls).toEqual({ executor: 0, evaluator: 0, analysis: 0, extension: 0 });
+
+    const unknown = validDefinition();
+    unknown.analysisGraph.nodes[0].targetFilter = {
+      includeTargetIds: ['missing-target'],
+    };
+    const unknownRuntime = testRuntime();
+    await expectCode(
+      unknown,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+      unknownRuntime,
+    );
+    expect(unknownRuntime.calls).toEqual({ executor: 0, evaluator: 0, analysis: 0, extension: 0 });
+  });
+
+  it('rejects an empty Analysis cohort filter before runtime resolution', async () => {
+    const definition = validDefinition();
+    definition.analysisGraph.nodes[0].cohortFilter = {};
+    const runtime = testRuntime();
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+      runtime,
+    );
+    expect(runtime.calls).toEqual({ executor: 0, evaluator: 0, analysis: 0, extension: 0 });
+  });
+
   it('rejects inconsistent SamplingDesign and MeasurementPolicy combinations', async () => {
     const sampling = validDefinition();
     sampling.experiment.trials = 2;

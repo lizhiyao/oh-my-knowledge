@@ -160,7 +160,7 @@ const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json'
 ```
 
 每个已发布文件都以 canonical raw catalog URL 作为 `$id`，JSON Schema 工具可以解析其 document identity。
-Catalog 共包含 21 个根契约名称；当前有 8 个根契约使用 v2，13 个使用 v1。对应 package 路径分别是 `oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` 与 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`。部分已升级的输出契约保留冻结 v1 快照，用于解析历史 identity；assignment-aware Definition 与 Plan 切换则有意不提供 v1 reader 或快照。Runtime 不会根据磁盘上存在的文件猜测当前版本。Node.js 宿主应优先使用 `eval-core` package subpath 或 `resolveEvaluationCoreJsonSchema()`；resolver 是每个已安装 current contract 的单一真值来源。
+Catalog 共包含 21 个根契约名称；当前有 3 个根契约使用 v3，5 个使用 v2，13 个使用 v1。对应 package 路径分别是 `oh-my-knowledge/eval-core/schemas/v3/<file>.schema.json`、`oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` 与 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`。部分已升级的输出契约保留冻结 v1 快照，用于解析历史 identity；assignment-aware Definition 与 Plan 切换及显式 Analysis selection 切换均有意不提供早期版本 reader 或快照。Runtime 不会根据磁盘上存在的文件猜测当前版本。Node.js 宿主应优先使用 `eval-core` package subpath 或 `resolveEvaluationCoreJsonSchema()`；resolver 是每个已安装 current contract 的单一真值来源。
 
 ## 结果与错误
 

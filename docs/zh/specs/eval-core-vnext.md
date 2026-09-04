@@ -101,7 +101,7 @@ Definition 是不可变、可序列化的意图，不包含函数、类实例、
 
 ```ts
 interface EvaluationDefinition {
-  schemaVersion: 'omk.evaluation-definition/v2';
+  schemaVersion: 'omk.evaluation-definition/v3';
   dataset: EvaluationDataset;
   targets: readonly TargetDefinition[];
   evaluators: readonly EvaluatorDefinition[];
@@ -266,7 +266,7 @@ trial 表示同一实验条件的一次重复测量；retry attempt 表示一次
 
 `AssignmentDesign` 与统计 `SamplingDesign` 是两个不同契约。complete-block assignment 把每个 sample 发送到所有已声明 slot；independent-group assignment 使用确定性的分层固定配额：Core 根据已封存的 seed、algorithm、stratum 与 sample ID 派生 SHA-256 排名，在每个 stratum 内排序 sample，再用最大余数法计算加权整数配额，最终把每个 sample 恰好分给一个 slot。slot 声明必须 canonical，并恰好覆盖全部 Target。全局与逐 stratum 的 minimum 会在 Runtime resolution 前检查；设计不足时 Executor 调用数为零。assignment 固定在 sample unit，并在重复 trial、retry、resume、budget stop 与 failure 中沿用，任何事件都不能重新分组。
 
-这是有意的 `BREAKING-SCHEMA` 切换。EvaluationDefinition、ExecutionPlan、AnalysisPlan 与 RunPlan 现在只接受 v2；不提供 v1 reader、迁移 adapter 或兼容性诊断。`stratumKey` 从 `SamplingDesign` 移到 `AssignmentDesign`，自定义 Analysis Runtime capability 必须声明支持的 `assignmentKinds`。内建的 assignment-aware Analysis Runtime 因 capability fingerprint 发生变化而再次升级 identity version。切换前持久化的 Plan 必须从源 Definition 重新生成后才能使用。
+Assignment redesign 是一次有意的 `BREAKING-SCHEMA` 切换：ExecutionPlan 只接受 v2，EvaluationPlan 仍为 v1。后续显式 Analysis selection 切换把 EvaluationDefinition、AnalysisPlan 与 RunPlan 推进到 v3，因为 node 现在可以封存 `targetFilter.includeTargetIds`；不提供早期版本 reader、迁移 adapter 或兼容性诊断。`stratumKey` 位于 `AssignmentDesign`，自定义 Analysis Runtime capability 必须声明支持的 `assignmentKinds`。内建的 assignment-aware Analysis Runtime 会在 capability fingerprint 发生变化时升级 identity version。切换前持久化的 Plan 必须从源 Definition 重新生成后才能使用。
 
 配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`randomizationSlots` 为每个 Target 分配唯一、稳定的实验 slot；该 slot 只标识随机化条件，绝不编码 control／treatment role。宿主比较 successive subject implementation 时，即使 Target ID 改变，也必须保持同一个 slot。
 
@@ -302,9 +302,10 @@ interface MetricDefinition {
 
 DecisionPolicy 的每个 comparison family member 都声明 `(comparisonId, treatmentTargetId, metricId, analysisResultId)`。family 有两种显式形态。通用 correction 形态中，每个 member 拥有独立 AnalysisResult，其 producer 必须精确且仅消费该 member 的 Metric 与 Comparison selector；需要校正时，每个 member 还要声明 canonical `hypothesisId`，correction node 精确消费这些 member result，DecisionPolicy 消费唯一 correction result。estimator-owned 形态则由 `comparisonFamilyResultId` 指向所有 member 共同绑定、且由 DecisionPolicy 消费的权威 result；family producer 自己封存并校验整个 family。超过一个 member 时始终必须声明 `multipleComparisonPolicyId`，权威 result 必须由使用该 implementation identity 的 estimator 产生，已解析 DecisionPolicy capability 也必须支持同一标准；但 estimator-owned 形态不需要额外 correction node，Core 绝不为迁就通用形态而伪造 p-value。空或 singleton family 不能伪装成多重比较。Decision 只能收到带 result identity 和可选 hypothesis identity 的投影 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。通用 correction table 必须匹配 canonical hypothesis ID、family size 与 raw p-value；estimator-owned table 则必须通过版本化输出 schema 与 DecisionPolicy lineage 校验，之后才能产生 verdict。内建 `progress/v1` 作为历史点估计策略冻结保留；当前 `progress/v2` 只选择 singleton contrast 绑定的区间 result，没有 family 时只接受唯一声明的区间 result，并且只有完整置信区间排除配置的 threshold 加 equivalence band 后才给出方向性 verdict。输入有歧义或不是区间时返回 not-decided，并且不声称支持 multiple-comparison。多 contrast 的发布语义必须由专用 DecisionPolicy 明确定义。
 
-v1 内建的 reducer／estimator 保持最小：
+内建 reducer／estimator 集保持克制：
 
 - `descriptive.mean/v1`、`descriptive.rate/v1`、`descriptive.quantile/v1`；
+- `descriptive.hierarchical-mean/v1`、`descriptive.hierarchical-rate/v1`、`descriptive.hierarchical-quantile/v1`；
 - `bootstrap.mean-percentile/v1`；
 - `bootstrap.paired-difference-percentile/v1`；
 - `bootstrap.unpaired-difference-percentile/v1`；
@@ -312,6 +313,7 @@ v1 内建的 reducer／estimator 保持最小：
 - `bootstrap.hierarchical-paired-difference-percentile/v1`；
 - `bootstrap.hierarchical-unpaired-difference-percentile/v1`；
 - `bootstrap.cluster-percentile/v1`；
+- `bootstrap.hierarchical-cluster-percentile/v1`；
 - multiple-comparison correction 的 `bonferroni/v1`。
 
 alpha、重采样次数、resampling unit 和 seed 都进入 AnalysisPlan。v1 不内建 t-test、ANOVA、Hotelling T² 等参数方法；未来通过 AnalysisRegistry 增加新 estimator identity，不改变 observation 或 Bundle 契约。值域或 SamplingDesign 不受某 estimator 支持时，prepare 失败，不自动换算法。
@@ -957,7 +959,7 @@ Evaluation 的 retry、timeout 与 concurrency 封存在 `MeasurementPolicy.eval
 
 Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或精确 Comparison contrast 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出以完整 `{ resultType, value }` envelope 同时经过 wire result contract，以及由完整 sealed SchemaIdentity 从独立注入 registry 选择的 Core-owned validator 校验；Analysis 实现不能校验自己的输出。JSON Schema 无法表达的语义不变量，包括 Bonferroni 算术与 canonical family membership，也必须进入 validator 和 schema digest。
 
-内建 registry 提供三个 descriptive reducer、三个确定性的 percentile-bootstrap estimator、Bonferroni correction、显式 exclusion MissingPolicy 与最小 progress DecisionPolicy。每个内建 reducer／estimator 都封存恰好一个 Metric 输入。Bootstrap draw 从 sealed root seed、AnalysisPlan digest、node identity 与 replicate index 做 domain-separated 派生。重复 trial 先在声明的 sampling unit 内归约；paired contrast 先在完整 pairing block 内形成，再进行重采样；cluster bootstrap 按整簇重采样。有效单位不足或前提失败时产生 inconclusive result，绝不自动选择 fallback estimator。内建 Runtime identity 属于 self-reported，使用 `assuranceLevel: declared`；只有独立宿主 verifier 或 attestation 边界才能把实际执行代码提升为 verified assurance。
+内建 registry 提供六个 descriptive reducer、八个确定性的 percentile-bootstrap estimator、Bonferroni correction、显式 exclusion MissingPolicy 与最小 progress DecisionPolicy。每个内建 reducer／estimator 都封存恰好一个 Metric 输入。Bootstrap draw 从 sealed root seed、AnalysisPlan digest、node identity 与 replicate index 做 domain-separated 派生。重复 trial 与 measurement panel replicate 先在声明的 sampling unit 内归约；paired contrast 先在完整 pairing block 内形成，再进行重采样；cluster bootstrap 按整簇重采样。有效单位不足或前提失败时产生 inconclusive result，绝不自动选择 fallback estimator。内建 Runtime identity 属于 self-reported，使用 `assuranceLevel: declared`；只有独立宿主 verifier 或 attestation 边界才能把实际执行代码提升为 verified assurance。
 
 Decision 只消费 policy 命名的 AnalysisResult，以及 coverage、assumption check、evidence status 与显式封存的 comparison family。correction result 必须匹配这个精确 family，而不是全局 Comparison 数量。gate 未通过时产生稳定的 `not-decided` reason；policy 或基础设施失败与统计结论保持分离。EvaluationReport 随后物化 Bundle reference、内容寻址的 DecisionResult、provenance 与派生的 run／evidence／conclusion 三轴状态，不重算统计量或 verdict。Host annotation 属于展示元数据：它可以改变 report artifact digest，但不能改变任何 stage Plan 或 source Bundle digest。
 
@@ -1035,7 +1037,7 @@ Compiler 现在封存四种彼此独立的投影：
 | Analysis | 稳定的 `sampleId + analysis` 与 cohort 定义 | Analysis Runtime |
 | Dataset revision | 全部 Dataset 事实与审计 annotation | lineage 与审计 |
 
-`analysisInputDigest` 覆盖 Analysis 投影。它进入 AnalysisPlan、DecisionPlan 和 `runContractDigest`，但不进入 ExecutionPlan 或 EvaluationPlan。因此改变 holdout 或 cohort 不会扰动 Target 执行、评委 cache identity 或评委可见的 Gold。AnalysisPlan 物化分析 Sample 与 cohort registry，并将两者作为封存的执行上下文传给 Analysis Runtime；每条 metric row 携带 canonical `cohortIds`，节点按封存的 `cohortFilter` 过滤，不解析 sample ID、数组位置或宿主闭包。Report 和 Event contract 不会自动复制 raw analysis context。
+`analysisInputDigest` 覆盖 Analysis 投影。它进入 AnalysisPlan、DecisionPlan 和 `runContractDigest`，但不进入 ExecutionPlan 或 EvaluationPlan。因此改变 holdout 或 cohort 不会扰动 Target 执行、评委 cache identity 或评委可见的 Gold。AnalysisPlan 物化分析 Sample 与 cohort registry，并将两者作为封存的执行上下文传给 Analysis Runtime；每条 metric row 携带 canonical `targetId` 与 `cohortIds`，节点按封存的 `targetFilter` 与 `cohortFilter` 过滤，不解析 sample ID、数组位置或宿主闭包。接纳 AnalysisBundle 时，Core 会根据封存 Plan 独立重算 eligible row universe，producer 因而无法扩大、缩小或重标所选 population。Report 和 Event contract 不会自动复制 raw analysis context。
 
 ### 21.2 评委测量 identity
 

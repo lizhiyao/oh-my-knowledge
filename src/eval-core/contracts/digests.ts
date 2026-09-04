@@ -124,6 +124,11 @@ export function projectAnalysisGraph(
     analysisMode: graph.analysisMode,
     nodes: graph.nodes.map((node) => ({
       ...node,
+      ...(node.targetFilter === undefined ? {} : {
+        targetFilter: {
+          includeTargetIds: [...node.targetFilter.includeTargetIds].sort(compareStrings),
+        },
+      }),
       ...(node.cohortFilter === undefined ? {} : {
         cohortFilter: {
           ...(node.cohortFilter.includeCohortIds === undefined ? {} : {

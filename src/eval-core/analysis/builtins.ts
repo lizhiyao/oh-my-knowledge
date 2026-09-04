@@ -107,6 +107,13 @@ const HierarchicalBootstrapParametersSchema = z.object({
   alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
   measurementAggregation: MeasurementAggregationSchema,
 }).strict();
+const HierarchicalReducerParametersSchema = z.object({
+  measurementAggregation: MeasurementAggregationSchema,
+}).strict();
+const HierarchicalQuantileParametersSchema = z.object({
+  probability: ProbabilitySchema,
+  measurementAggregation: MeasurementAggregationSchema,
+}).strict();
 const BonferroniParametersSchema = z.object({
   alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
 }).strict();
@@ -254,6 +261,16 @@ const HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA = schemaIdentity(
     'weighted-mean member weights are positive and sum to one',
     'a target/sample/trial contributes only when every sealed coordinate is observed',
   ]),
+);
+const HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.hierarchical-measurement-reducer/v1',
+  'urn:omk:parameters:hierarchical-measurement-reducer:v1',
+  jsonSchema(HierarchicalReducerParametersSchema),
+);
+const HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.hierarchical-measurement-quantile/v1',
+  'urn:omk:parameters:hierarchical-measurement-quantile:v1',
+  jsonSchema(HierarchicalQuantileParametersSchema),
 );
 const BONFERRONI_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.bonferroni/v1', 'urn:omk:parameters:bonferroni:v1', jsonSchema(BonferroniParametersSchema),
@@ -567,6 +584,7 @@ function bootstrapSeed(context: AnalysisNodeExecutionContext): Sha256Digest {
 
 interface BootstrapUnit {
   value: number;
+  clusterId?: string;
   stratumId?: string;
 }
 
@@ -670,6 +688,13 @@ function aggregateMeasurementUnits(
       rowIds: rows.map((row) => row.rowId),
       ...(singleOptionalCoordinate(
         rows,
+        (row) => row.samplingUnitIds.clusterId,
+        'clusters',
+      ) === undefined ? {} : {
+        clusterId: rows[0].samplingUnitIds.clusterId,
+      }),
+      ...(singleOptionalCoordinate(
+        rows,
         (row) => row.samplingUnitIds.stratumId,
         'strata',
       ) === undefined ? {} : {
@@ -700,6 +725,11 @@ function aggregateMeasurementUnits(
       (trial) => trial.stratumId,
       'strata',
     );
+    const clusterId = singleOptionalCoordinate(
+      trialsForSample,
+      (trial) => trial.clusterId,
+      'clusters',
+    );
     const pairingBlockId = singleOptionalCoordinate(
       trialsForSample,
       (trial) => trial.pairingBlockId,
@@ -710,10 +740,43 @@ function aggregateMeasurementUnits(
       sampleId,
       value: mean(trialsForSample.map((trial) => trial.value)),
       rowIds: trialsForSample.flatMap((trial) => trial.rowIds),
+      ...(clusterId === undefined ? {} : { clusterId }),
       ...(stratumId === undefined ? {} : { stratumId }),
       ...(pairingBlockId === undefined ? {} : { pairingBlockId }),
     };
   });
+}
+
+function hierarchicalScalarResult(
+  context: AnalysisNodeExecutionContext,
+  statistic: (values: readonly number[]) => number,
+): AnalysisNodeExecutionResult {
+  const units = aggregateMeasurementUnits(context);
+  if (units.length === 0) return incomplete('analysis-no-observed-values');
+  return {
+    analysisStatus: 'completed',
+    resultType: 'scalar',
+    value: statistic(units.map((unit) => unit.value)),
+    includedRowIds: units.flatMap((unit) => unit.rowIds),
+    comparableRowIds: units.flatMap((unit) => unit.rowIds),
+    assumptionChecks: passedAssumption('complete-measurement-units'),
+  };
+}
+
+function executeHierarchicalMean(context: AnalysisNodeExecutionContext) {
+  return hierarchicalScalarResult(context, mean);
+}
+
+function executeHierarchicalRate(context: AnalysisNodeExecutionContext) {
+  return hierarchicalScalarResult(context, mean);
+}
+
+function executeHierarchicalQuantile(context: AnalysisNodeExecutionContext) {
+  const probability = parameterNumber(context, 'probability', 0.5);
+  return hierarchicalScalarResult(
+    context,
+    (values) => quantile([...values].sort((left, right) => left - right), probability),
+  );
 }
 
 function percentileInterval(
@@ -800,6 +863,7 @@ function executeMeanBootstrap(context: AnalysisNodeExecutionContext): AnalysisNo
   const unitKind = context.sampling.resamplingUnit;
   const groups = groupRows(rows, (row) => {
     if (unitKind === 'sample') return row.sampleId;
+    if (unitKind === 'paired-block') return row.samplingUnitIds.pairingBlockId;
     if (unitKind === 'run') return 'run';
     return undefined;
   });
@@ -873,7 +937,46 @@ function executeHierarchicalMeanBootstrap(
   context: AnalysisNodeExecutionContext,
 ): AnalysisNodeExecutionResult {
   const units = aggregateMeasurementUnits(context);
-  const interval = percentileInterval(context, units);
+  let bootstrapUnits: readonly BootstrapUnit[] = units;
+  if (context.sampling.resamplingUnit === 'paired-block') {
+    if (units.some((unit) => unit.pairingBlockId === undefined)) {
+      return incomplete('analysis-pairing-membership-missing');
+    }
+    bootstrapUnits = [...groupRows(units, (unit) => unit.pairingBlockId).values()].map(
+      (members) => {
+        const stratumId = singleOptionalCoordinate(members, (member) => member.stratumId, 'strata');
+        return {
+          value: mean(members.map((member) => member.value)),
+          ...(stratumId === undefined ? {} : { stratumId }),
+        };
+      },
+    );
+  }
+  const interval = percentileInterval(context, bootstrapUnits);
+  return interval.analysisStatus === 'completed' ? {
+    ...interval,
+    includedRowIds: units.flatMap((unit) => unit.rowIds),
+    comparableRowIds: units.flatMap((unit) => unit.rowIds),
+  } : interval;
+}
+
+function executeHierarchicalClusterBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const units = aggregateMeasurementUnits(context);
+  const groups = new Map<string, AggregatedMeasurementUnit[]>();
+  for (const unit of units) {
+    if (unit.clusterId === undefined) return incomplete('analysis-cluster-membership-missing');
+    groups.set(unit.clusterId, [...(groups.get(unit.clusterId) ?? []), unit]);
+  }
+  const clusterUnits = [...groups.values()].map((members) => {
+    const stratumId = singleOptionalCoordinate(members, (member) => member.stratumId, 'strata');
+    return {
+      value: mean(members.map((member) => member.value)),
+      ...(stratumId === undefined ? {} : { stratumId }),
+    };
+  });
+  const interval = percentileInterval(context, clusterUnits);
   return interval.analysisStatus === 'completed' ? {
     ...interval,
     includedRowIds: units.flatMap((unit) => unit.rowIds),
@@ -1204,6 +1307,45 @@ register(
   executeQuantile,
 );
 register(
+  'descriptive.hierarchical-mean/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'reducer',
+    valueTypes: ['numeric'],
+    missingPolicyIds: ['exclude/v1'],
+    outputSchema: BUILTIN_SCALAR_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA,
+  }),
+  BUILTIN_SCALAR_RESULT_SCHEMA,
+  HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA,
+  executeHierarchicalMean,
+);
+register(
+  'descriptive.hierarchical-rate/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'reducer',
+    valueTypes: ['boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    outputSchema: BUILTIN_SCALAR_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA,
+  }),
+  BUILTIN_SCALAR_RESULT_SCHEMA,
+  HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA,
+  executeHierarchicalRate,
+);
+register(
+  'descriptive.hierarchical-quantile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'reducer',
+    valueTypes: ['numeric'],
+    missingPolicyIds: ['exclude/v1'],
+    outputSchema: BUILTIN_SCALAR_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA,
+  }),
+  BUILTIN_SCALAR_RESULT_SCHEMA,
+  HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA,
+  executeHierarchicalQuantile,
+);
+register(
   'bootstrap.mean-percentile/v1',
   nodeCapabilities({
     analysisNodeKind: 'estimator',
@@ -1212,10 +1354,10 @@ register(
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
     parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
-      assignmentKinds: ['complete-block'],
+      assignmentKinds: ['complete-block', 'independent-groups'],
       experimentalUnits: ['sample', 'run'],
       repeatedMeasures: [false, true],
-      resamplingUnits: ['sample', 'run'],
+      resamplingUnits: ['sample', 'paired-block', 'run'],
     },
   }),
   BUILTIN_INTERVAL_RESULT_SCHEMA,
@@ -1271,10 +1413,10 @@ register(
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
     parameterSchema: HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
-      assignmentKinds: ['complete-block'],
+      assignmentKinds: ['complete-block', 'independent-groups'],
       experimentalUnits: ['sample'],
       repeatedMeasures: [false, true],
-      resamplingUnits: ['sample'],
+      resamplingUnits: ['sample', 'paired-block'],
     },
   }),
   BUILTIN_INTERVAL_RESULT_SCHEMA,
@@ -1339,6 +1481,25 @@ register(
   BUILTIN_INTERVAL_RESULT_SCHEMA,
   BOOTSTRAP_PARAMETERS_SCHEMA,
   executeClusterBootstrap,
+);
+register(
+  'bootstrap.hierarchical-cluster-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['complete-block'],
+      experimentalUnits: ['cluster'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['cluster'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeHierarchicalClusterBootstrap,
 );
 register(
   'bonferroni/v1',
@@ -1584,6 +1745,8 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
     [QUANTILE_PARAMETERS_SCHEMA, QuantileParametersSchema],
     [BOOTSTRAP_PARAMETERS_SCHEMA, BootstrapParametersSchema],
     [HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA, HierarchicalBootstrapParametersSchema],
+    [HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA, HierarchicalReducerParametersSchema],
+    [HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA, HierarchicalQuantileParametersSchema],
     [BONFERRONI_PARAMETERS_SCHEMA, BonferroniParametersSchema],
     [PROGRESS_PARAMETERS_SCHEMA, ProgressParametersSchema],
   ];

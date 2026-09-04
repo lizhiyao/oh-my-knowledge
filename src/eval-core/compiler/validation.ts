@@ -682,8 +682,25 @@ export function validateDefinitionSemantics(
   }
 
   for (const node of definition.analysisGraph.nodes) {
+    const includeTargets = node.targetFilter?.includeTargetIds ?? [];
+    assertUnique(includeTargets, `analysis-node:${node.nodeId}:include-target`);
+    for (const targetId of includeTargets) {
+      assertReference(
+        targetIds,
+        targetId,
+        `analysisGraph.nodes.${node.nodeId}.targetFilter`,
+        'Target',
+      );
+    }
     const include = node.cohortFilter?.includeCohortIds ?? [];
     const exclude = node.cohortFilter?.excludeCohortIds ?? [];
+    if (node.cohortFilter !== undefined && include.length === 0 && exclude.length === 0) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        `Analysis 节点“${node.nodeId}”声明了空 cohort filter。`,
+        { nodeId: node.nodeId },
+      );
+    }
     assertUnique(include, `analysis-node:${node.nodeId}:include-cohort`);
     assertUnique(exclude, `analysis-node:${node.nodeId}:exclude-cohort`);
     for (const cohortId of [...include, ...exclude]) {

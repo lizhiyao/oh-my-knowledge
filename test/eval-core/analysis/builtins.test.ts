@@ -165,6 +165,7 @@ function panelRows(input: {
   trialIndex?: number;
   values: readonly [number, number, number, number];
   pairingBlockId?: Sha256Digest;
+  clusterId?: Sha256Digest;
   stratumId?: Sha256Digest;
 }): AnalysisMetricRow[] {
   return panelAggregation.members.flatMap((member, memberIndex) => (
@@ -179,6 +180,7 @@ function panelRows(input: {
       replicateGroupId: panelAggregation.replicateGroupId,
       replicateIndex: replicate.replicateIndex,
       ...(input.pairingBlockId === undefined ? {} : { pairingBlockId: input.pairingBlockId }),
+      ...(input.clusterId === undefined ? {} : { clusterId: input.clusterId }),
       ...(input.stratumId === undefined ? {} : { stratumId: input.stratumId }),
     }))
   ));
@@ -373,6 +375,75 @@ describe('Evaluation Core built-in estimators', () => {
       value: { estimate: 2.875, unitCount: 2 },
     });
     expect(result.includedRowIds).toHaveLength(16);
+  });
+
+  it('applies descriptive reducers after sealed measurement-panel aggregation', async () => {
+    const rows = [
+      ...panelRows({ sampleId: 's1', values: [1, 3, 5, 5] }),
+      ...panelRows({ sampleId: 's2', values: [1, 1, 1, 1] }),
+    ];
+    const meanResult = await execute(context({
+      implementationId: 'descriptive.hierarchical-mean/v1',
+      resamplingUnit: 'sample',
+      rows,
+      parameters: { measurementAggregation: panelAggregation } as unknown as JsonValue,
+    }));
+    const minimumResult = await execute(context({
+      implementationId: 'descriptive.hierarchical-quantile/v1',
+      resamplingUnit: 'sample',
+      rows,
+      parameters: {
+        probability: 0,
+        measurementAggregation: panelAggregation,
+      } as unknown as JsonValue,
+    }));
+
+    expect(meanResult).toMatchObject({ analysisStatus: 'completed', value: 2.625 });
+    expect(minimumResult).toMatchObject({ analysisStatus: 'completed', value: 1 });
+    expect(meanResult.includedRowIds).toHaveLength(8);
+  });
+
+  it('resamples clusters only after sealed measurement-panel aggregation', async () => {
+    const clusterA = digestCanonicalJson({ panelCluster: 'a' });
+    const clusterB = digestCanonicalJson({ panelCluster: 'b' });
+    const result = await execute(context({
+      implementationId: 'bootstrap.hierarchical-cluster-percentile/v1',
+      resamplingUnit: 'cluster',
+      rows: [
+        ...panelRows({ sampleId: 'a1', values: [1, 1, 1, 1], clusterId: clusterA }),
+        ...panelRows({ sampleId: 'a2', values: [3, 3, 3, 3], clusterId: clusterA }),
+        ...panelRows({ sampleId: 'b1', values: [5, 5, 5, 5], clusterId: clusterB }),
+        ...panelRows({ sampleId: 'b2', values: [7, 7, 7, 7], clusterId: clusterB }),
+      ],
+      parameters: panelParameters,
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 4, unitCount: 2 },
+    });
+    expect(result.includedRowIds).toHaveLength(16);
+  });
+
+  it('resamples paired blocks after sealed measurement-panel aggregation', async () => {
+    const pairA = digestCanonicalJson({ panelPair: 'a' });
+    const pairB = digestCanonicalJson({ panelPair: 'b' });
+    const result = await execute(context({
+      implementationId: 'bootstrap.hierarchical-mean-percentile/v1',
+      resamplingUnit: 'paired-block',
+      rows: [
+        ...panelRows({ sampleId: 'a1', values: [1, 1, 1, 1], pairingBlockId: pairA }),
+        ...panelRows({ sampleId: 'a2', values: [3, 3, 3, 3], pairingBlockId: pairA }),
+        ...panelRows({ sampleId: 'b1', values: [5, 5, 5, 5], pairingBlockId: pairB }),
+      ],
+      parameters: panelParameters,
+    }));
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 3.5, unitCount: 2 },
+    });
+    expect(result.includedRowIds).toHaveLength(12);
   });
 
   it('fails a panel trial closed when one sealed replicate is unavailable', async () => {

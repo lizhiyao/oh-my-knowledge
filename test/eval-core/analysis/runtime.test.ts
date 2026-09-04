@@ -400,6 +400,9 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       definition.analysisGraph.nodes[0].cohortFilter = {
         includeCohortIds: ['validation'],
       };
+      definition.analysisGraph.nodes[0].targetFilter = {
+        includeTargetIds: ['control'],
+      };
     });
     expect(plan.execution.samples[0]).not.toHaveProperty('analysis');
     expect(plan.evaluation.samples[0]).not.toHaveProperty('analysis');
@@ -447,6 +450,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const metricInput = captured?.inputs.find((input) => input.inputKind === 'metric-observations');
     expect(metricInput?.inputKind).toBe('metric-observations');
     if (metricInput?.inputKind !== 'metric-observations') throw new Error('metric input missing');
+    expect(metricInput.rows).toHaveLength(1);
+    expect(metricInput.rows.every((row) => row.targetId === 'control')).toBe(true);
     expect(metricInput.rows[0]).toMatchObject({
       cohortIds: ['validation'],
       analysisContext: {
