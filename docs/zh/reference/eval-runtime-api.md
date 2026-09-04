@@ -17,9 +17,9 @@
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`Judge`、`Rubric`、`Experiment`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver`、`EventWriter` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`Judge`、`Rubric`、`Experiment`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
-`RuntimeContext` 描述绑定到 variant 的运行环境，当前包括 `cwd` 与宿主自定义 `values`。`Sample.executionContext` 是单条用例中仅供 Executor 使用的输入，`Sample.evaluationContext` 是仅供 Evaluator 使用的输入；这两个用例投影都不描述宿主运行环境。
+`RuntimeContext` 只包含可重放的宿主自定义 JSON `values`。canonical façade 不接受文件系统路径充当 workspace identity；在一般化 Runtime 提供内容寻址 workspace descriptor 与宿主持有的 lease 前，需要 workspace 的宿主应使用 advanced Core assembly 路径。`Sample.executionContext` 是单条用例中仅供 Executor 使用的输入，`Sample.evaluationContext` 是仅供 Evaluator 使用的输入；这两个用例投影都不描述宿主运行环境。
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
@@ -39,7 +39,7 @@
 | `EvaluationRuntimeAssemblyError` | 稳定的 registration 或 resolution 错误。 |
 | `createExactMatchDefinition` | 构造 exact-match 配对 Core Definition。 |
 | `createPairedComparisonDefinition` | 构造单指标配对 Core Definition。 |
-| `createMeasurementPolicy` | 物化 Core Policy 默认值。 |
+| `createMeasurementPolicy` | 物化 Core Policy 默认值，包括显式 EventWriter 投递模式。 |
 | `createExactMatchEvaluator` | 创建内置 exact-match Evaluator port。 |
 | `createInvokeExecutorIdentity` | 声明 `omk.invoke/v1` Executor identity。 |
 | `createRuntimeIdentity` | 声明其它宿主 Runtime identity。 |
@@ -69,7 +69,7 @@
 | `createRubricJudgeEvaluatorRegistration` | 组合底层 Rubric binding。 |
 | `rubricJudgeInstrumentId` | 派生内置 instrument ID。 |
 
-Run 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`CreateEvaluationRuntimeInput`、`EvaluationRuntimeSupportPorts` 与 `RuntimePortRegistration`。Builder type 包括 `ExactMatchDefinitionBuilderInput`、`ExactMatchTarget`、`PairedComparisonDefinitionBuilderInput`、`EvaluationRuntimeTarget`、`MeasurementPolicyBuilderInput` 与 `CreateExactMatchEvaluatorInput`。Identity 与 JSON adapter type 包括 `InvokeExecutorIdentityDeclaration`、`RuntimeIdentityDeclaration`、`CreateJsonExecutorAdapterInput`、`JsonExecutorInvocation`、`JsonExecutorInvocationResult` 与 `RuntimeValueParser`。Judge type 包括 `OmkLlmJudgeEffort`、`OmkLlmJudgeInvocationPort`、`OmkLlmJudgeInvocationRequest`、`OmkLlmJudgeInvocationResult`、`CreateRubricJudgeKitInput`、`RubricJudgeKit`、`CreateRubricJudgeEvaluatorInput`、`RubricJudgeEvaluatorBinding` 与 `RubricJudgeEvaluatorDefinitionBuilderInput`。Conformance type 包括 `ExecutorConformanceProbeInput`、`ExecutorConformanceResult` 与 `RuntimeConformanceCheck`。旧 bridge 与生命周期 SPI type 包括 `CreateExecutorFnAdapterInput`、`ExecutorFn`、`ExecutorInput`、`ExecResult`、`ExecutorFnInputMapper`、`ExecutorFnResultMapper`、`CreateSameProcessExecutorAdapterInput`、`CreateSameProcessEvaluatorAdapterInput`、`SameProcessExecutorImplementation`、`SameProcessEvaluatorImplementation`、`SameProcessResourceLeaseAccess`、`SameProcessRunScope` 与 `SameProcessOperationScope`。
+Run 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`CreateEvaluationRuntimeInput`、`EvaluationRuntimeSupportPorts` 与 `RuntimePortRegistration`。Builder type 包括 `ExactMatchDefinitionBuilderInput`、`ExactMatchTarget`、`PairedComparisonDefinitionBuilderInput`、`EvaluationRuntimeTarget`、`MeasurementPolicyBuilderInput`、`MeasurementEventDeliveryInput` 与 `CreateExactMatchEvaluatorInput`。Identity 与 JSON adapter type 包括 `InvokeExecutorIdentityDeclaration`、`RuntimeIdentityDeclaration`、`CreateJsonExecutorAdapterInput`、`JsonExecutorInvocation`、`JsonExecutorInvocationResult` 与 `RuntimeValueParser`。Judge type 包括 `OmkLlmJudgeEffort`、`OmkLlmJudgeInvocationPort`、`OmkLlmJudgeInvocationRequest`、`OmkLlmJudgeInvocationResult`、`CreateRubricJudgeKitInput`、`RubricJudgeKit`、`CreateRubricJudgeEvaluatorInput`、`RubricJudgeEvaluatorBinding` 与 `RubricJudgeEvaluatorDefinitionBuilderInput`。Conformance type 包括 `ExecutorConformanceProbeInput`、`ExecutorConformanceResult` 与 `RuntimeConformanceCheck`。旧 bridge 与生命周期 SPI type 包括 `CreateExecutorFnAdapterInput`、`ExecutorFn`、`ExecutorInput`、`ExecResult`、`ExecutorFnInputMapper`、`ExecutorFnResultMapper`、`CreateSameProcessExecutorAdapterInput`、`CreateSameProcessEvaluatorAdapterInput`、`SameProcessExecutorImplementation`、`SameProcessEvaluatorImplementation`、`SameProcessResourceLeaseAccess`、`SameProcessRunScope` 与 `SameProcessOperationScope`。
 
 ## `oh-my-knowledge/eval-runtime/contracts`
 

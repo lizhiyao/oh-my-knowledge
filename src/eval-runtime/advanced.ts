@@ -12,7 +12,10 @@ export type {
   ExactMatchTarget,
 } from './builders/exact-match.js';
 export { createMeasurementPolicy } from './builders/policy.js';
-export type { MeasurementPolicyBuilderInput } from './builders/policy.js';
+export type {
+  MeasurementEventDeliveryInput,
+  MeasurementPolicyBuilderInput,
+} from './builders/policy.js';
 export { createPairedComparisonDefinition } from './builders/paired-comparison.js';
 export type {
   EvaluationRuntimeTarget,

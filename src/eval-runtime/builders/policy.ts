@@ -12,7 +12,16 @@ export interface MeasurementPolicyBuilderInput {
   readonly maxInvocations?: number;
   readonly failureMode?: 'continue' | 'fail-fast';
   readonly maximumClassification?: 'public' | 'sensitive' | 'secret' | 'gold';
+  readonly eventDelivery?: MeasurementEventDeliveryInput;
 }
+
+export type MeasurementEventDeliveryInput =
+  | Readonly<{ writerMode: 'disabled'; writerFailureMode?: 'ignore' }>
+  | Readonly<{
+      writerMode: 'optional';
+      writerFailureMode?: 'ignore' | 'fail-run';
+    }>
+  | Readonly<{ writerMode: 'required'; writerFailureMode?: 'fail-run' }>;
 
 /** Builds a complete, serializable Core policy with every default sealed into the result. */
 export function createMeasurementPolicy(
@@ -20,6 +29,13 @@ export function createMeasurementPolicy(
 ): MeasurementPolicy {
   const maxConcurrency = input.maxConcurrency ?? 4;
   const maxInvocations = input.maxInvocations ?? 10_000;
+  const eventDelivery = input.eventDelivery ?? { writerMode: 'disabled' as const };
+  const writerFailureMode = eventDelivery.writerFailureMode
+    ?? (eventDelivery.writerMode === 'required' ? 'fail-run' : 'ignore');
+  if ((eventDelivery.writerMode === 'disabled' && writerFailureMode !== 'ignore')
+      || (eventDelivery.writerMode === 'required' && writerFailureMode !== 'fail-run')) {
+    throw new TypeError('EventWriter mode and failure mode are inconsistent.');
+  }
   return deepFreezeCanonicalJson(MeasurementPolicySchema.parse({
     schemaVersion: MEASUREMENT_POLICY_SCHEMA_VERSION,
     execution: {
@@ -66,9 +82,9 @@ export function createMeasurementPolicy(
     },
     failure: { failureMode: input.failureMode ?? 'continue' },
     eventDelivery: {
-      writerMode: 'disabled',
+      writerMode: eventDelivery.writerMode,
       backpressureMode: 'block',
-      writerFailureMode: 'ignore',
+      writerFailureMode,
     },
   }));
 }

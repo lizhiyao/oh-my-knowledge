@@ -26,8 +26,12 @@ export interface RunEvaluationInput {
   readonly annotations?: JsonValue;
   readonly summaries?: JsonValue;
   readonly eventWriter?: EvaluationEngineEventWriter;
+  /**
+   * Capacity of the Core progress stream consumed by `onEvent`. When a slow observer falls
+   * behind, the bounded stream drops its oldest pending progress event and retains the latest.
+   */
   readonly eventBufferCapacity?: number;
-  /** Ordered progress projection. Durable event delivery belongs to `eventWriter`. */
+  /** Ordered, best-effort progress projection. Durable lossless delivery belongs to `eventWriter`. */
   readonly onEvent?: EvaluationEventObserver;
 }
 
@@ -55,10 +59,18 @@ export class EvaluationEventConsumptionError extends Error {
 /**
  * Runs the standard Core pipeline while owning the event-stream consumer.
  * Observer failure never changes measurement; it drains the stream, then rejects with the Core result.
+ * A slow observer applies no measurement backpressure: Core's bounded stream retains recent progress
+ * and may expose sequence gaps rather than creating an unbounded callback backlog.
  */
 export async function runEvaluation(
   input: Readonly<RunEvaluationInput>,
 ): Promise<EvaluationRunResult> {
+  if (input.eventWriter !== undefined
+      && input.policy.eventDelivery.writerMode === 'disabled') {
+    throw new TypeError(
+      'eventWriter requires an explicit optional or required eventDelivery policy.',
+    );
+  }
   const controller = new AbortController();
   const externalAbort = (): void => controller.abort(input.signal?.reason);
   if (input.signal?.aborted) externalAbort();
@@ -81,26 +93,20 @@ export async function runEvaluation(
   let streamFailed = false;
   let streamFailure: unknown;
   const draining = (async () => {
-    let observerTail = Promise.resolve();
     try {
       for await (const event of run.events) {
-        if (input.onEvent === undefined) continue;
-        observerTail = observerTail.then(async () => {
-          if (observerFailed) return;
-          try {
-            await input.onEvent?.(event);
-          } catch (error) {
-            observerFailed = true;
-            observerFailure = error;
-          }
-        });
+        if (input.onEvent === undefined || observerFailed) continue;
+        try {
+          await input.onEvent(event);
+        } catch (error) {
+          observerFailed = true;
+          observerFailure = error;
+        }
       }
-      await observerTail;
     } catch (error) {
       streamFailed = true;
       streamFailure = error;
       controller.abort(error);
-      await observerTail;
     }
   })();
 

@@ -516,6 +516,10 @@ describe('source-neutral JSON Executor adapter', () => {
     const runtimeIdentity = identity();
     const controller = new AbortController();
     let observedReason: unknown;
+    let markInvocationStarted: (() => void) | undefined;
+    const invocationStarted = new Promise<void>((resolve) => {
+      markInvocationStarted = resolve;
+    });
     const createExecutor = () => createJsonExecutorAdapter({
       identity: runtimeIdentity,
       inputParser: z.string(),
@@ -523,6 +527,7 @@ describe('source-neutral JSON Executor adapter', () => {
       outputParser: z.string(),
       outputClassification: 'public',
       async invoke({ signal }) {
+        markInvocationStarted?.();
         await new Promise<void>((_resolve, reject) => {
           const abort = () => {
             observedReason = signal.reason;
@@ -534,20 +539,16 @@ describe('source-neutral JSON Executor adapter', () => {
         return { invocationStatus: 'completed', output: 'unreachable' };
       },
     });
-    const result = await execute(
+    const pendingResult = execute(
       createExecutor,
       runtimeIdentity,
       'question',
       'answer',
-      {
-        signal: controller.signal,
-        onEvent(event) {
-          if (event.eventKind === 'execution.attempt.started') {
-            controller.abort(new Error('host cancelled evaluation'));
-          }
-        },
-      },
+      { signal: controller.signal },
     );
+    await invocationStarted;
+    controller.abort(new Error('host cancelled evaluation'));
+    const result = await pendingResult;
 
     expect(result.status).toBe('cancelled');
     expect(observedReason).toBe('external-cancellation');

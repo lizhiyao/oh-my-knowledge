@@ -98,7 +98,7 @@ function manualExecutorIdentity(declaration: Executor<Input, Config, string>) {
     telemetry: { trace: 'unsupported', usage: 'optional', providerCost: { reporting: 'optional' } },
     fingerprintFacets: {
       facade: {
-        version: 'omk.eval-runtime.evaluate/v1',
+        version: 'omk.eval-runtime.evaluate/v2',
         outputClassification: 'public',
         traceClassification: 'public',
       },
@@ -109,7 +109,7 @@ function manualExecutorIdentity(declaration: Executor<Input, Config, string>) {
 
 function variantEnvelope(variant: typeof control | typeof treatment) {
   return {
-    schemaVersion: 'omk.eval-runtime.variant-config/v1' as const,
+    schemaVersion: 'omk.eval-runtime.variant-config/v2' as const,
     artifact: variant.artifact,
     ...('runtimeContext' in variant ? { runtimeContext: variant.runtimeContext } : {}),
     executorConfig: variant.config,
@@ -118,9 +118,9 @@ function variantEnvelope(variant: typeof control | typeof treatment) {
 
 function manualExecutorPort(declaration: Executor<Input, Config, string>) {
   const envelopeSchema = z.object({
-    schemaVersion: z.literal('omk.eval-runtime.variant-config/v1'),
+    schemaVersion: z.literal('omk.eval-runtime.variant-config/v2'),
     artifact: manualArtifactSchema,
-    runtimeContext: z.object({ values: z.json().optional(), cwd: z.string().optional() })
+    runtimeContext: z.object({ values: z.json().optional() })
       .strict().optional(),
     executorConfig: z.object({ answers: z.record(z.string(), z.string()) }).strict(),
   }).strict();
@@ -200,6 +200,12 @@ describe('canonical eval-runtime API', () => {
       value: { estimate: 0.5 },
     });
     expect(result.definition.decisionPolicy?.implementationId).toBe('progress/v2');
+    expect(result.definition.targets.map((target) => (
+      (target.config as { schemaVersion: string }).schemaVersion
+    ))).toEqual([
+      'omk.eval-runtime.variant-config/v2',
+      'omk.eval-runtime.variant-config/v2',
+    ]);
     expect(result.artifacts.decision).toMatchObject({
       decisionStatus: 'decided',
       verdict: 'NOISE',
@@ -217,6 +223,9 @@ describe('canonical eval-runtime API', () => {
 
   it('is canonically equivalent to exact-match manual assembly', async () => {
     const declaration = executor();
+    expect(manualExecutorIdentity(declaration).fingerprint).toBe(
+      'sha256:ab643fe11db0fa29948bacdfe5c05e85cc7990dc1c5d47443e6e0b4b046eb79f',
+    );
     const shared = {
       dataset: {
         datasetId: 'equivalent-answers',
@@ -841,6 +850,21 @@ describe('canonical eval-runtime API', () => {
       } as never,
       evaluator: { evaluatorKind: 'exact-match' },
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+
+    await expect(evaluate({
+      ...common,
+      treatment: {
+        ...treatment,
+        runtimeContext: { cwd: '/tmp/unsealed-workspace' },
+      } as never,
+      evaluator: { evaluatorKind: 'exact-match' },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_VARIANT_INVALID' });
+
+    await expect(evaluate({
+      ...common,
+      evaluator: { evaluatorKind: 'exact-match' },
+      eventWriter: { async write() {} },
+    } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
 
     await expect(evaluate({
       ...common,

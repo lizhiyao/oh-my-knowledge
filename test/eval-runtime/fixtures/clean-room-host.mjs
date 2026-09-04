@@ -93,7 +93,8 @@ const withSlowObserver = await evaluation({
   },
 });
 assert.equal(withSlowObserver.status, 'completed');
-assert.deepEqual(sequences, sequences.map((_value, index) => index));
+assert.ok(sequences.length > 0);
+assert.ok(sequences.every((sequence, index) => index === 0 || sequence > sequences[index - 1]));
 
 const observerSecret = 'private progress sink payload';
 let observerFailure;

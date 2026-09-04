@@ -15,7 +15,6 @@ export type {
   EvaluationResult,
   Evaluator,
   EventObserver,
-  EventWriter,
   ExactMatchEvaluator,
   Executor,
   ExecutorCapabilities,

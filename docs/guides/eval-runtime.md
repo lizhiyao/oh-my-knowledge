@@ -123,7 +123,7 @@ Variant `config` and `runtimeContext` are serialized into the sealed Definition.
 
 `exact-match` compares the canonical JSON value of the actual output with the sample's `expected` value. It is not byte-for-byte string comparison.
 
-`onEvent` is an optional ordered progress observer; `eventWriter` is the durable Core event port. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical facade redacts the host callback's original error. The caller's `AbortSignal` controls cancellation.
+`onEvent` is an optional, best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
 
 ## Rubric Judge evaluation
 
