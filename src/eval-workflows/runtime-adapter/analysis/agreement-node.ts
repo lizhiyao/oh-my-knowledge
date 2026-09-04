@@ -4,12 +4,17 @@ import { parseAgreementParameters } from './agreement-parameters.js';
 import { extractAgreementPairs } from './agreement-source-adapter.js';
 import {
   AGREEMENT_TABLE_SCHEMA,
+  AGREEMENT_TABLE_V1_SCHEMA,
   buildAgreementTable,
+  buildAgreementTableV1,
   parseAgreementTableEnvelope,
+  parseAgreementTableV1Envelope,
 } from './agreement-table.js';
 import {
   AGREEMENT_ANALYSIS_IDENTITY,
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  AGREEMENT_ANALYSIS_V1_IDENTITY,
+  AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
   agreementAnalysisResultInput,
   validateAgreementExecutionDesign,
 } from './agreement-node-contract.js';
@@ -17,12 +22,39 @@ import {
 export {
   AGREEMENT_ANALYSIS_IDENTITY,
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  AGREEMENT_ANALYSIS_V1_IDENTITY,
+  AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
 } from './agreement-node-contract.js';
 
 export function createAgreementAnalysisNodes(): ReadonlyMap<
   string,
   AnalysisNodeImplementation
 > {
+  const v1Implementation = createStatelessAnalysisImplementation({
+    identity: AGREEMENT_ANALYSIS_V1_IDENTITY,
+    outputSchema: AGREEMENT_TABLE_V1_SCHEMA,
+    parseParameters: (parameters) => { parseAgreementParameters(parameters); },
+    execute(context) {
+      const parameters = parseAgreementParameters(context.node.parameters);
+      validateAgreementExecutionDesign(context, parameters);
+      const input = agreementAnalysisResultInput(context.inputs, parameters);
+      const pairs = extractAgreementPairs(
+        parameters,
+        { resultType: input.record.resultType, value: input.record.value },
+        context.samples,
+        context.signal,
+      );
+      const table = buildAgreementTableV1(parameters, pairs);
+      return {
+        analysisStatus: 'completed',
+        resultType: 'table',
+        value: parseAgreementTableV1Envelope({ resultType: 'table', value: table }).value,
+        includedRowIds: [],
+        comparableRowIds: [],
+        assumptionChecks: [{ assumptionId: 'agreement-contract', checkStatus: 'passed' }],
+      };
+    },
+  });
   const implementation = createStatelessAnalysisImplementation({
     identity: AGREEMENT_ANALYSIS_IDENTITY,
     outputSchema: AGREEMENT_TABLE_SCHEMA,
@@ -48,5 +80,8 @@ export function createAgreementAnalysisNodes(): ReadonlyMap<
       };
     },
   });
-  return new Map([[AGREEMENT_ANALYSIS_IMPLEMENTATION_ID, implementation]]);
+  return new Map([
+    [AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID, v1Implementation],
+    [AGREEMENT_ANALYSIS_IMPLEMENTATION_ID, implementation],
+  ]);
 }

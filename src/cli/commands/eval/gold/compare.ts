@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
-import { integerStringParser } from '../../../oclif/parsers.js';
+import { integerStringParser, numberStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
 import { projectReportsDir, globalReportsDir } from '../../../../evidence/storage/directories.js';
 
@@ -35,6 +35,13 @@ export default class EvalGoldCompare extends BaseCommand {
     }),
     metric: Flags.string({
       description: bilingual({ zh: '显式选择 Core metric ID。', en: 'Explicit Core metric ID.' }),
+    }),
+    'minimum-alpha': Flags.string({
+      description: bilingual({
+        zh: '可选的一致性阈值；按 Krippendorff α 置信区间下界评估',
+        en: 'Optional agreement threshold, assessed against the Krippendorff alpha CI lower bound',
+      }),
+      parse: numberStringParser('--minimum-alpha', { min: -1, max: 1 }),
     }),
     'trial-index': Flags.string({
       description: bilingual({ zh: '显式选择 trial index。', en: 'Explicit trial index.' }),
@@ -132,6 +139,9 @@ export default class EvalGoldCompare extends BaseCommand {
           }),
         },
         bootstrapSamples: samples,
+        ...(flags['minimum-alpha'] === undefined ? {} : {
+          minimumAlpha: Number(flags['minimum-alpha']),
+        }),
         ...(Number.isFinite(seedVal) ? { bootstrapSeed: seedVal } : {}),
       });
       console.log(JSON.stringify(result, null, 2));

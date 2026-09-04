@@ -215,10 +215,13 @@ omk eval --control baseline --treatment my-skill                # 单 skill 必�
 omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
 omk eval --config eval.yaml
 omk eval --batch
-omk eval gold compare <run-id> --gold-dir gold-dataset
+omk eval gold compare <run-id> --gold-dir gold-dataset \
+  --target <id> --evaluator <id> --metric <id> --minimum-alpha <value>
 ```
 
 运行离线评测，应用 verdict gate，持久化报告，并用 exit code 表示 ship/no-ship。这个工作流默认开启 bootstrap CI。
+
+`eval gold compare` 是独立的事后探索性校准。`--minimum-alpha` 是可选项；提供后，OMK 会用 Krippendorff alpha 置信区间下界与该显式阈值比较。未提供时，assessment 以 `gold-agreement-threshold-not-configured` 明确表示 inconclusive，OMK 不会假定通用可靠性阈值。v2 区间遵循 Krippendorff 的可靠性 bootstrap：重采样配对的观测分歧，同时固定原始评分的期望分歧，因此不会静默剔除退化 draw。观测结果完全一致时输出结构化的「bootstrap 不适用」，而不是编造区间。该 assessment 不会改写 run 的预注册 release verdict，也不改变命令退出状态。
 
 <!-- omk:cli:eval:flags:start -->
 

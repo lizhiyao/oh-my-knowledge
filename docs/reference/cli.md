@@ -215,10 +215,13 @@ omk eval --control baseline --treatment my-skill                # single-skill n
 omk eval --control code-review-v1 --treatment code-review-v2    # multi-variant A/B
 omk eval --config eval.yaml
 omk eval --batch
-omk eval gold compare <run-id> --gold-dir gold-dataset
+omk eval gold compare <run-id> --gold-dir gold-dataset \
+  --target <id> --evaluator <id> --metric <id> --minimum-alpha <value>
 ```
 
 Runs the offline evaluation, applies the verdict gate, persists the report, and returns a ship/no-ship exit code. Bootstrap CI is enabled by default on this workflow.
+
+`eval gold compare` is a separate, exploratory post-hoc calibration. `--minimum-alpha` is optional; when supplied, OMK assesses the Krippendorff alpha confidence-interval lower bound against that explicit threshold. Without it, the assessment is inconclusive with `gold-agreement-threshold-not-configured`—OMK does not assume a universal reliability cutoff. The v2 interval follows Krippendorff's reliability bootstrap: it resamples paired observed disagreement while holding expected disagreement fixed from the original ratings, so degenerate draws are not silently discarded. Perfect observed agreement has a structured “bootstrap not applicable” state rather than a fabricated interval. This assessment does not rewrite the run's preregistered release verdict or change the command's exit status.
 
 <!-- omk:cli:eval:flags:start -->
 

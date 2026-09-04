@@ -71,7 +71,7 @@ overlay 只写 primary store，读取时 primary 优先于 fallback layer。索�
 
 artifact graph projection 消费一组已经校验的持久化 run，输出 Run、Target、Evaluator、Metric、Execution result、Evaluation result、Analysis result 与 Decision 等限定语义节点。节点状态只来自显式 stage 状态。数值 observation 可以作为视图 metric 展示，但分数档位和展示阈值不能变成 verdict。evidence reference 绑定 Core 文档的精确 hash 与 JSON pointer；原始 input、expected、output、trace、evidence 与 error text 一律不进入图。
 
-gold comparison 要求调用方显式选择一个已封存的 Target、Evaluator 与数值 Metric。可选 trial／measurement coordinate 用于进一步限定 identity，但必须与 Plan 一致。Gold 与 Metric 的 scale 必须完全相同。同一样本匹配到多个 observation 时显式失败，不会跨 trial、ensemble member 或 replicate 暗自平均；scale 变换必须进入预注册 Analysis。projection 绑定 canonical Gold dataset digest，并用 `null` 表示未定义统计量，不把非 JSON 的 `NaN` 写入版本化输出。现有 Krippendorff alpha、加权 kappa、Pearson 与配对单位 bootstrap 公式保持不变。
+gold comparison 要求调用方显式选择一个已封存的 Target、Evaluator 与数值 Metric。可选 trial／measurement coordinate 用于进一步限定 identity，但必须与 Plan 一致。Gold 与 Metric 的 scale 必须完全相同。同一样本匹配到多个 observation 时显式失败，不会跨 trial、ensemble member 或 replicate 暗自平均；scale 变换必须进入预注册 Analysis。v2 projection 绑定 canonical Gold dataset digest，并用 `null` 表示未定义统计量，不把非 JSON 的 `NaN` 写入版本化输出。它记录完整的 bootstrap draw coverage，使用固定期望分歧的可靠性 bootstrap；完全一致时区间显式标记为不适用。调用方可选择显式最低 alpha，事后 assessment 会比较区间下界；它没有通用默认值，也不是 release DecisionResult。Krippendorff alpha、加权 kappa 与 Pearson 点估计公式保持不变；v2 区间相对 v1 的条件有限 draw bootstrap 是一项 `BREAKING-COMPARABILITY` 变更。
 
 evolution evidence 消费同一条 Evaluation Series Plan → SeriesAnalysisBundle → EvaluationSeriesReport 精确链。Series 固定 `experimentalUnit = run`；projection 保留 member 状态、trust、comparability、analysis standard、assumption、coverage 与已注册 Decision，绝不根据展示分数给 member run 排名或猜测 winner。只有 `decided` 的 Series Decision 才会得到 `decision-ready`；只有已完成 Analysis 而没有 Decision 时仍为 `analysis-only`。
 

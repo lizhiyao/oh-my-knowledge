@@ -30,7 +30,12 @@
  * see uncertainty on the agreement number itself when N is small.
  */
 
-import { bootstrapWithMetric, type BootstrapCI } from '../analysis/bootstrap.js';
+import {
+  bootstrapWithMetric,
+  drawBootstrapMetric,
+  summarizeBootstrapMetric,
+  type BootstrapCI,
+} from '../analysis/bootstrap.js';
 
 export interface RatingPair {
   /** Per-sample identifier; used only for diagnostics. */
@@ -54,6 +59,63 @@ export interface AgreementResult {
   sampleCount: number;
 }
 
+export type AgreementStatisticEvidence =
+  | Readonly<{ statisticStatus: 'observed'; value: number }>
+  | Readonly<{
+      statisticStatus: 'missing';
+      reasonCode:
+        | 'agreement-insufficient-pairs'
+        | 'agreement-zero-expected-disagreement'
+        | 'agreement-statistic-undefined';
+    }>;
+
+export type AgreementIntervalEvidence =
+  | Readonly<{
+      intervalStatus: 'observed';
+      low: number;
+      high: number;
+      estimate: number;
+      samples: number;
+      confidenceLevel: number;
+      drawCoverage: Readonly<{
+        plannedDraws: number;
+        observedDraws: number;
+        missingDraws: 0;
+      }>;
+    }>
+  | Readonly<{
+      intervalStatus: 'missing';
+      reasonCode:
+        | 'agreement-point-unobserved'
+        | 'agreement-bootstrap-not-applicable-perfect'
+        | 'agreement-bootstrap-draws-incomplete';
+      confidenceLevel: number;
+      drawCoverage: Readonly<{
+        plannedDraws: number;
+        observedDraws: number;
+        missingDraws: number;
+      }>;
+    }>;
+
+/**
+ * Structured agreement evidence for decision or projection boundaries.
+ *
+ * Unlike the historical convenience API, this follows Krippendorff's
+ * recommended reliability bootstrap: each draw recomputes observed
+ * disagreement while expected disagreement remains fixed from the original
+ * data.
+ * This avoids conditioning interval quantiles on only finite draws when a
+ * resample collapses to one rating value. Perfect observed agreement is a
+ * documented non-applicability case rather than a fabricated interval.
+ */
+export interface AgreementEvidenceResult {
+  readonly krippendorffAlpha: AgreementStatisticEvidence;
+  readonly alphaInterval: AgreementIntervalEvidence;
+  readonly weightedKappa: AgreementStatisticEvidence;
+  readonly pearson: AgreementStatisticEvidence;
+  readonly sampleCount: number;
+}
+
 /**
  * Krippendorff's α with interval weights for two coders.
  *
@@ -72,37 +134,8 @@ export interface AgreementResult {
  */
 export function computeKrippendorffAlpha(pairs: RatingPair[]): number {
   if (pairs.length === 0) return NaN;
-
-  // Marginal counts: how many times each value appears across both coders.
-  const marginal = new Map<number, number>();
-  for (const p of pairs) {
-    marginal.set(p.coderA, (marginal.get(p.coderA) ?? 0) + 1);
-    marginal.set(p.coderB, (marginal.get(p.coderB) ?? 0) + 1);
-  }
-  const totalMass = 2 * pairs.length; // n_··
-
-  // Observed disagreement: average squared distance within units, ×2 because
-  // each unit contributes (a,b) and (b,a). Equivalent to mean (a-b)² over units.
-  let observedSum = 0;
-  for (const p of pairs) {
-    observedSum += 2 * (p.coderA - p.coderB) ** 2;
-  }
-  const Do = observedSum / totalMass;
-
-  // Expected disagreement under chance: pair every value with every other value
-  // proportional to marginals.
-  let expectedSum = 0;
-  const values = [...marginal.keys()];
-  for (const c of values) {
-    const nc = marginal.get(c)!;
-    for (const k of values) {
-      const nk = marginal.get(k)!;
-      expectedSum += nc * nk * (c - k) ** 2;
-    }
-  }
-  const denom = totalMass * (totalMass - 1);
-  if (denom === 0) return NaN;
-  const De = expectedSum / denom;
+  const Do = observedDisagreement(pairs);
+  const De = expectedDisagreement(pairs);
   if (De === 0) return NaN; // no variance => agreement is undefined
 
   return 1 - Do / De;
@@ -182,6 +215,166 @@ export function computePearson(pairs: RatingPair[]): number {
   }
   if (varA === 0 || varB === 0) return NaN;
   return cov / Math.sqrt(varA * varB);
+}
+
+function statisticEvidence(
+  value: number,
+  insufficient: boolean,
+  undefinedReason: 'agreement-zero-expected-disagreement' | 'agreement-statistic-undefined',
+): AgreementStatisticEvidence {
+  if (insufficient) {
+    return { statisticStatus: 'missing', reasonCode: 'agreement-insufficient-pairs' };
+  }
+  return Number.isFinite(value)
+    ? { statisticStatus: 'observed', value: roundOrNaN(value) }
+    : { statisticStatus: 'missing', reasonCode: undefinedReason };
+}
+
+function expectedDisagreement(pairs: readonly RatingPair[]): number {
+  const marginal = new Map<number, number>();
+  for (const pair of pairs) {
+    marginal.set(pair.coderA, (marginal.get(pair.coderA) ?? 0) + 1);
+    marginal.set(pair.coderB, (marginal.get(pair.coderB) ?? 0) + 1);
+  }
+
+  const totalMass = 2 * pairs.length;
+  let expectedSum = 0;
+  for (const [coderA, coderACount] of marginal) {
+    for (const [coderB, coderBCount] of marginal) {
+      expectedSum += coderACount * coderBCount * (coderA - coderB) ** 2;
+    }
+  }
+  return expectedSum / (totalMass * (totalMass - 1));
+}
+
+function observedDisagreement(pairs: readonly RatingPair[]): number {
+  let observedSum = 0;
+  for (const pair of pairs) {
+    observedSum += (pair.coderA - pair.coderB) ** 2;
+  }
+  return observedSum / pairs.length;
+}
+
+export function computeAgreementEvidence(
+  pairs: RatingPair[],
+  options: {
+    samples?: number;
+    seed?: number;
+    alpha?: number;
+    scale?: { min: number; max: number };
+  } = {},
+): AgreementEvidenceResult {
+  const { samples = 1000, seed, alpha = 0.05, scale } = options;
+  if (!Number.isSafeInteger(samples) || samples <= 0) {
+    throw new TypeError('Agreement bootstrap samples must be a positive safe integer.');
+  }
+  if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    throw new TypeError('Agreement alpha must be a finite number between 0 and 1.');
+  }
+  if (seed !== undefined && (!Number.isSafeInteger(seed) || seed < 0)) {
+    throw new TypeError('Agreement bootstrap seed must be a non-negative safe integer.');
+  }
+  const insufficient = pairs.length < 2;
+  const rawAlpha = insufficient ? Number.NaN : computeKrippendorffAlpha(pairs);
+  const krippendorffAlpha = statisticEvidence(
+    rawAlpha,
+    insufficient,
+    'agreement-zero-expected-disagreement',
+  );
+  const weightedKappa = statisticEvidence(
+    insufficient ? Number.NaN : computeWeightedKappa(pairs, scale),
+    insufficient,
+    'agreement-statistic-undefined',
+  );
+  const pearson = statisticEvidence(
+    insufficient ? Number.NaN : computePearson(pairs),
+    insufficient,
+    'agreement-statistic-undefined',
+  );
+  const confidenceLevel = 1 - alpha;
+  if (krippendorffAlpha.statisticStatus !== 'observed') {
+    return {
+      krippendorffAlpha,
+      alphaInterval: {
+        intervalStatus: 'missing',
+        reasonCode: 'agreement-point-unobserved',
+        confidenceLevel,
+        drawCoverage: { plannedDraws: samples, observedDraws: 0, missingDraws: samples },
+      },
+      weightedKappa,
+      pearson,
+      sampleCount: pairs.length,
+    };
+  }
+
+  if (rawAlpha === 1) {
+    return {
+      krippendorffAlpha,
+      alphaInterval: {
+        intervalStatus: 'missing',
+        reasonCode: 'agreement-bootstrap-not-applicable-perfect',
+        confidenceLevel,
+        drawCoverage: { plannedDraws: samples, observedDraws: 0, missingDraws: samples },
+      },
+      weightedKappa,
+      pearson,
+      sampleCount: pairs.length,
+    };
+  }
+
+  const originalExpectedDisagreement = expectedDisagreement(pairs);
+  const indices = pairs.map((_, index) => index);
+  const distribution = drawBootstrapMetric(
+    indices,
+    (resampled) => {
+      const resampledObservedDisagreement = observedDisagreement(
+        resampled.map((index) => pairs[index]),
+      );
+      return Math.max(
+        -1,
+        Math.min(1, 1 - resampledObservedDisagreement / originalExpectedDisagreement),
+      );
+    },
+    samples,
+    seed,
+  );
+  const finiteDraws = distribution.draws.filter(Number.isFinite);
+  const missingDraws = samples - finiteDraws.length;
+  if (missingDraws > 0) {
+    return {
+      krippendorffAlpha,
+      alphaInterval: {
+        intervalStatus: 'missing',
+        reasonCode: 'agreement-bootstrap-draws-incomplete',
+        confidenceLevel,
+        drawCoverage: {
+          plannedDraws: samples,
+          observedDraws: finiteDraws.length,
+          missingDraws,
+        },
+      },
+      weightedKappa,
+      pearson,
+      sampleCount: pairs.length,
+    };
+  }
+
+  const interval = summarizeBootstrapMetric(rawAlpha, finiteDraws, alpha, samples);
+  return {
+    krippendorffAlpha,
+    alphaInterval: {
+      intervalStatus: 'observed',
+      low: interval.low,
+      high: interval.high,
+      estimate: interval.estimate,
+      samples: interval.samples,
+      confidenceLevel,
+      drawCoverage: { plannedDraws: samples, observedDraws: samples, missingDraws: 0 },
+    },
+    weightedKappa,
+    pearson,
+    sampleCount: pairs.length,
+  };
 }
 
 /**

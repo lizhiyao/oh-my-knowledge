@@ -4,6 +4,7 @@ import {
   summarizeBootstrapMetric,
 } from '../../analysis/bootstrap.js';
 import {
+  computeAgreementEvidence,
   computeKrippendorffAlpha,
   computePearson,
   computeWeightedKappa,
@@ -29,7 +30,8 @@ import {
   type AgreementParameters,
 } from './agreement-parameters.js';
 
-export const AGREEMENT_TABLE_SCHEMA_VERSION = 'omk.agreement-table/v1' as const;
+export const AGREEMENT_TABLE_V1_SCHEMA_VERSION = 'omk.agreement-table/v1' as const;
+export const AGREEMENT_TABLE_SCHEMA_VERSION = 'omk.agreement-table/v2' as const;
 export const AGREEMENT_STATISTIC_DECIMALS = 4;
 
 const CountSchema = z.number().int().nonnegative().safe();
@@ -148,6 +150,17 @@ const MissingAlphaIntervalSchema = z.object({
   intervalStatus: z.literal('missing'),
   reasonCode: z.enum([
     'agreement-point-unobserved',
+    'agreement-bootstrap-not-applicable-perfect',
+    'agreement-bootstrap-draws-incomplete',
+  ]),
+  confidenceLevel: z.number().finite().gt(0).lt(1),
+  drawCoverage: DrawCoverageSchema,
+}).strict();
+
+const MissingAlphaIntervalV1Schema = z.object({
+  intervalStatus: z.literal('missing'),
+  reasonCode: z.enum([
+    'agreement-point-unobserved',
     'agreement-no-valid-bootstrap-draws',
   ]),
   drawCoverage: DrawCoverageSchema,
@@ -158,9 +171,21 @@ const AlphaIntervalSchema = z.discriminatedUnion('intervalStatus', [
   MissingAlphaIntervalSchema,
 ]);
 
+const AlphaIntervalV1Schema = z.discriminatedUnion('intervalStatus', [
+  ObservedAlphaIntervalSchema,
+  MissingAlphaIntervalV1Schema,
+]);
+
 const AgreementStatisticsSchema = z.object({
   krippendorffAlpha: AgreementStatisticSchema,
   alphaInterval: AlphaIntervalSchema,
+  weightedKappa: AgreementStatisticSchema,
+  pearson: AgreementStatisticSchema,
+}).strict();
+
+const AgreementStatisticsV1Schema = z.object({
+  krippendorffAlpha: AgreementStatisticSchema,
+  alphaInterval: AlphaIntervalV1Schema,
   weightedKappa: AgreementStatisticSchema,
   pearson: AgreementStatisticSchema,
 }).strict();
@@ -173,10 +198,19 @@ const AgreementTableValueSchema = z.object({
   statistics: AgreementStatisticsSchema,
 }).strict();
 
+const AgreementTableV1ValueSchema = z.object({
+  schemaVersion: z.literal(AGREEMENT_TABLE_V1_SCHEMA_VERSION),
+  configuration: AgreementParametersSchema,
+  pairs: z.array(AgreementPairSchema).min(1),
+  coverage: AgreementCoverageSchema,
+  statistics: AgreementStatisticsV1Schema,
+}).strict();
+
 export type AgreementPair = z.infer<typeof AgreementPairSchema>;
 export type AgreementCoverage = z.infer<typeof AgreementCoverageSchema>;
 export type AgreementStatistics = z.infer<typeof AgreementStatisticsSchema>;
 export type AgreementTableValue = z.infer<typeof AgreementTableValueSchema>;
+export type AgreementTableV1Value = z.infer<typeof AgreementTableV1ValueSchema>;
 
 function legacyRound4(value: number): number {
   return Math.round(value * 10_000) / 10_000;
@@ -248,10 +282,10 @@ function observedOrMissing(
     : { statisticStatus: 'missing', reasonCode: undefinedReason };
 }
 
-export function agreementStatistics(
+export function agreementStatisticsV1(
   parameters: AgreementParameters,
   pairs: readonly AgreementPair[],
-): AgreementStatistics {
+): z.infer<typeof AgreementStatisticsV1Schema> {
   const ratings: RatingPair[] = pairs.flatMap((pair) => (
     pair.gold.ratingStatus === 'observed' && pair.judge.ratingStatus === 'observed'
       ? [{ unitId: pair.sampleId, coderA: pair.gold.score, coderB: pair.judge.score }]
@@ -330,6 +364,60 @@ export function agreementStatistics(
   return { krippendorffAlpha, alphaInterval, weightedKappa, pearson };
 }
 
+export function agreementStatistics(
+  parameters: AgreementParameters,
+  pairs: readonly AgreementPair[],
+): AgreementStatistics {
+  const ratings: RatingPair[] = pairs.flatMap((pair) => (
+    pair.gold.ratingStatus === 'observed' && pair.judge.ratingStatus === 'observed'
+      ? [{ unitId: pair.sampleId, coderA: pair.gold.score, coderB: pair.judge.score }]
+      : []
+  ));
+  const evidence = computeAgreementEvidence(ratings, {
+    samples: parameters.resamples,
+    seed: parameters.seed,
+    alpha: parameters.alpha,
+    scale: parameters.gold.scale,
+  });
+  const interval = evidence.alphaInterval.intervalStatus === 'observed'
+    ? {
+        intervalStatus: 'observed' as const,
+        lower: evidence.alphaInterval.low,
+        upper: evidence.alphaInterval.high,
+        estimate: evidence.alphaInterval.estimate,
+        samples: evidence.alphaInterval.samples,
+        confidenceLevel: evidence.alphaInterval.confidenceLevel,
+        drawCoverage: evidence.alphaInterval.drawCoverage,
+      }
+    : {
+        intervalStatus: 'missing' as const,
+        reasonCode: evidence.alphaInterval.reasonCode,
+        confidenceLevel: evidence.alphaInterval.confidenceLevel,
+        drawCoverage: evidence.alphaInterval.drawCoverage,
+      };
+  return {
+    krippendorffAlpha: evidence.krippendorffAlpha,
+    alphaInterval: interval,
+    weightedKappa: evidence.weightedKappa,
+    pearson: evidence.pearson,
+  };
+}
+
+export function buildAgreementTableV1(
+  rawParameters: unknown,
+  rawPairs: readonly AgreementPair[],
+): AgreementTableV1Value {
+  const parameters = parseAgreementParameters(rawParameters);
+  const pairs = parsePairs(parameters, rawPairs);
+  return {
+    schemaVersion: AGREEMENT_TABLE_V1_SCHEMA_VERSION,
+    configuration: parameters,
+    pairs,
+    coverage: agreementCoverage(pairs),
+    statistics: agreementStatisticsV1(parameters, pairs),
+  };
+}
+
 export function buildAgreementTable(
   rawParameters: unknown,
   rawPairs: readonly AgreementPair[],
@@ -366,6 +454,37 @@ function validateAgreementTable(value: AgreementTableValue, context: z.Refinemen
   }
 }
 
+function validateAgreementTableV1(
+  value: AgreementTableV1Value,
+  context: z.RefinementCtx,
+): void {
+  let expected: AgreementTableV1Value;
+  try {
+    expected = buildAgreementTableV1(value.configuration, value.pairs);
+  } catch (error) {
+    context.addIssue({
+      code: 'custom',
+      path: ['pairs'],
+      message: error instanceof Error ? error.message : 'Agreement pairs are invalid.',
+    });
+    return;
+  }
+  if (canonicalizeJson(value) !== canonicalizeJson(expected)) {
+    context.addIssue({
+      code: 'custom',
+      path: [],
+      message: 'Agreement table is not canonically ordered or statistically recomputable.',
+    });
+  }
+}
+
+const AgreementTableV1EnvelopeSchema = z.object({
+  resultType: z.literal('table'),
+  value: AgreementTableV1ValueSchema,
+}).strict().superRefine((envelope, context) => {
+  validateAgreementTableV1(envelope.value, context);
+});
+
 const AgreementTableEnvelopeSchema = z.object({
   resultType: z.literal('table'),
   value: AgreementTableValueSchema,
@@ -375,8 +494,25 @@ const AgreementTableEnvelopeSchema = z.object({
 
 export const AGREEMENT_TABLE_SCHEMA = analysisSchemaIdentity(
   AGREEMENT_TABLE_SCHEMA_VERSION,
-  'urn:omk:analysis-result:agreement-table:v1',
+  'urn:omk:analysis-result:agreement-table:v2',
   analysisJsonSchema(AgreementTableEnvelopeSchema, [
+    'pairs map every sealed sample exactly once and preserve gold and Dimension availability separately',
+    'judge group coverage, globally unique source lineage, pair coverage, and sample ordering are recomputable',
+    'all observed ratings stay within the sealed external-annotation scale',
+    'Krippendorff alpha uses interval distance squared and requires at least two comparable rating pairs',
+    'quadratic-weighted kappa and Pearson are auxiliary statistics over the identical comparable pair set',
+    'bootstrap resamples paired observed disagreement using the sealed Mulberry32 stream while expected disagreement stays fixed from the original ratings',
+    'draws are bounded to alpha range negative one through one and quantiles never condition on a finite subset',
+    'perfect agreement bootstrap non-applicability, incomplete draws, zero expected disagreement, and insufficient pairs produce structured missing rather than NaN or zero',
+    'finite point estimates and percentile bounds use the legacy four-decimal persistence rounding',
+    'the complete table is statistically recomputable during live and transported validation',
+  ]),
+);
+
+export const AGREEMENT_TABLE_V1_SCHEMA = analysisSchemaIdentity(
+  AGREEMENT_TABLE_V1_SCHEMA_VERSION,
+  'urn:omk:analysis-result:agreement-table:v1',
+  analysisJsonSchema(AgreementTableV1EnvelopeSchema, [
     'pairs map every sealed sample exactly once and preserve gold and Dimension availability separately',
     'judge group coverage, globally unique source lineage, pair coverage, and sample ordering are recomputable',
     'all observed ratings stay within the sealed external-annotation scale',
@@ -397,11 +533,33 @@ export function parseAgreementTableEnvelope(value: unknown): Readonly<{
   return AgreementTableEnvelopeSchema.parse(value);
 }
 
+export function parseAgreementTableV1Envelope(value: unknown): Readonly<{
+  resultType: 'table';
+  value: AgreementTableV1Value;
+}> {
+  return AgreementTableV1EnvelopeSchema.parse(value);
+}
+
 function validateSealedConfiguration(
   value: unknown,
   context?: Readonly<CoreSchemaValidationContext>,
 ): JsonValue {
   const parsed = parseAgreementTableEnvelope(value);
+  if (context?.validationKind !== 'analysis-output') {
+    throw new TypeError('Agreement Analysis output validation requires sealed node parameters.');
+  }
+  const sealed = parseAgreementParameters(context.parameters);
+  if (canonicalizeJson(parsed.value.configuration) !== canonicalizeJson(sealed)) {
+    throw new TypeError('Agreement table configuration does not match sealed node parameters.');
+  }
+  return parsed as JsonValue;
+}
+
+function validateV1SealedConfiguration(
+  value: unknown,
+  context?: Readonly<CoreSchemaValidationContext>,
+): JsonValue {
+  const parsed = parseAgreementTableV1Envelope(value);
   if (context?.validationKind !== 'analysis-output') {
     throw new TypeError('Agreement Analysis output validation requires sealed node parameters.');
   }
@@ -420,5 +578,12 @@ export function createAgreementTableSchemaValidators(): ReadonlyMap<
     AGREEMENT_TABLE_SCHEMA,
     validateSealedConfiguration,
   );
-  return new Map([[schemaIdentityKey(validator.schema), validator]]);
+  const v1Validator = createAnalysisSchemaValidator(
+    AGREEMENT_TABLE_V1_SCHEMA,
+    validateV1SealedConfiguration,
+  );
+  return new Map([
+    [schemaIdentityKey(v1Validator.schema), v1Validator],
+    [schemaIdentityKey(validator.schema), validator],
+  ]);
 }
