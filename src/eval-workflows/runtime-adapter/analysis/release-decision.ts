@@ -56,6 +56,7 @@ export const RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID = 'omk.release-decisio
 export const RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID = 'omk.release-decision/v3' as const;
 export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v4' as const;
 export const RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID = 'omk.release-decision/v5' as const;
+export const RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID = 'omk.release-decision/v6' as const;
 
 function releaseDecisionCapabilities(
   parameterSchema: SchemaIdentity,
@@ -89,7 +90,7 @@ const RELEASE_DECISION_V1_CAPABILITIES = releaseDecisionCapabilities(
 const RELEASE_DECISION_CAPABILITIES = releaseDecisionCapabilities(
   RELEASE_DECISION_PARAMETERS_SCHEMA,
 );
-const RELEASE_DECISION_V5_CAPABILITIES = releaseDecisionCapabilities(
+const RELEASE_DECISION_BOOTSTRAP_V2_CAPABILITIES = releaseDecisionCapabilities(
   RELEASE_DECISION_PARAMETERS_SCHEMA,
   BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
@@ -349,11 +350,70 @@ export const RELEASE_DECISION_POLICY_V5_IDENTITY: RuntimeIdentity = deepFreezeCa
         JUDGE_ENSEMBLE_TABLE_SCHEMA,
       ],
       parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
-      declaredCapabilities: RELEASE_DECISION_V5_CAPABILITIES,
+      declaredCapabilities: RELEASE_DECISION_BOOTSTRAP_V2_CAPABILITIES,
     }),
     fingerprintBasis: 'self-reported',
     assuranceLevel: 'declared',
-    capabilities: RELEASE_DECISION_V5_CAPABILITIES,
+    capabilities: RELEASE_DECISION_BOOTSTRAP_V2_CAPABILITIES,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
+  }),
+);
+
+export const RELEASE_DECISION_POLICY_V6_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
+  RuntimeIdentitySchema.parse({
+    implementationId: RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+    version: '6.0.0',
+    fingerprint: digestCanonicalJson({
+      implementationId: RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
+      conclusionContract: [
+        'SOLO',
+        'UNDERPOWERED',
+        'NOISE',
+        'PROGRESS',
+        'CAUTIOUS',
+        'REGRESSION',
+      ],
+      precedence: [
+        'not-decided-evidence-and-binding-gates',
+        'solo',
+        'regression',
+        'cautious',
+        'underpowered',
+        'noise',
+        'progress',
+      ],
+      comparisonInterval:
+        'sealed-bootstrap-family-v2-unrounded-tail-with-explicit-monte-carlo-error',
+      monteCarloGate: 'indeterminate-significance-is-not-decided',
+      nonsignificantReasonCode: 'comparison-not-significant',
+      practicalEffectGate:
+        'persisted-four-decimal-percentile-lower-bound-greater-than-or-equal-to-threshold',
+      layerGate: 'two-decimal-mean-of-observed-composite-layer-facts-by-target',
+      sampleSize:
+        'observed-comparison-units-against-preregistered-minimum-or-a-priori-power-plan',
+      powerPlanning:
+        'paired-two-sided-normal-approximation-with-bonferroni-familywise-alpha',
+      judgeDissent: 'pairwise-mean-pearson-over-complete-member-sample-matrix',
+      judgeUncertainty:
+        'positive-comparison-cautious-when-configured-ensemble-dissent-is-unmeasurable',
+      repeatedTrials: 'mean-observed-member-or-composite-values-within-sample',
+      holdout: 'train-minus-holdout-composite-with-minimum-scorable-partitions',
+      multiTreatment: 'worst-conclusion-then-comparison-id',
+      stabilityBoundary: 'evaluation-series-only',
+      evidenceGate: 'complete-evidence-required-after-core-source-trust-and-assumption-gates',
+      missingComparisonInterval: 'not-decided-no-point-estimate-fallback',
+      directReportDependency: 'none',
+      sourceSchemas: [
+        COMPOSITE_TABLE_SCHEMA,
+        BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+        JUDGE_ENSEMBLE_TABLE_SCHEMA,
+      ],
+      parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_BOOTSTRAP_V2_CAPABILITIES,
+    }),
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
+    capabilities: RELEASE_DECISION_BOOTSTRAP_V2_CAPABILITIES,
     implementationManifest: { coverageKind: 'fingerprint-complete' },
   }),
 );
@@ -699,6 +759,7 @@ interface ReleaseDecisionSemantics {
   readonly parameterSchemaVersion: 'v1' | 'v2';
   readonly bootstrapVersion: 'v1' | 'v2';
   readonly bootstrapImplementationId: string;
+  readonly practicalEffectBasis: 'point-estimate' | 'interval-lower-bound';
 }
 
 type ObservedBootstrapComparison =
@@ -769,7 +830,10 @@ function pairDecision(
     binding.treatmentTargetId,
     parameters.thresholds.layerScore,
   ) === 'failed') reasons.push('treatment-layer-gate-failed');
-  if (interval.estimate < parameters.thresholds.triviallySmallDifference) {
+  const practicalEffect = semantics.practicalEffectBasis === 'point-estimate'
+    ? interval.estimate
+    : interval.lower;
+  if (practicalEffect < parameters.thresholds.triviallySmallDifference) {
     reasons.push('comparison-effect-practically-trivial');
   }
   const judge = judgeAssessment(
@@ -865,6 +929,7 @@ export const RELEASE_DECISION_POLICY: AnalysisDecisionPolicy = {
     parameterSchemaVersion: 'v2',
     bootstrapVersion: 'v1',
     bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'point-estimate',
   }),
 };
 
@@ -876,6 +941,19 @@ export const RELEASE_DECISION_POLICY_V5: AnalysisDecisionPolicy = {
     parameterSchemaVersion: 'v2',
     bootstrapVersion: 'v2',
     bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'point-estimate',
+  }),
+};
+
+export const RELEASE_DECISION_POLICY_V6: AnalysisDecisionPolicy = {
+  identity: RELEASE_DECISION_POLICY_V6_IDENTITY,
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: true,
+    sampleSizeBasis: 'observed-comparison-units',
+    parameterSchemaVersion: 'v2',
+    bootstrapVersion: 'v2',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'interval-lower-bound',
   }),
 };
 
@@ -887,6 +965,7 @@ export const RELEASE_DECISION_POLICY_V3: AnalysisDecisionPolicy = {
     parameterSchemaVersion: 'v1',
     bootstrapVersion: 'v1',
     bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'point-estimate',
   }),
 };
 
@@ -898,6 +977,7 @@ export const RELEASE_DECISION_POLICY_V2: AnalysisDecisionPolicy = {
     parameterSchemaVersion: 'v1',
     bootstrapVersion: 'v1',
     bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'point-estimate',
   }),
 };
 
@@ -909,6 +989,7 @@ export const RELEASE_DECISION_POLICY_V1: AnalysisDecisionPolicy = {
     parameterSchemaVersion: 'v1',
     bootstrapVersion: 'v1',
     bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    practicalEffectBasis: 'point-estimate',
   }),
 };
 
@@ -919,5 +1000,6 @@ export function createReleaseDecisionPolicies(): ReadonlyMap<string, AnalysisDec
     [RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V3],
     [RELEASE_DECISION_POLICY_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY],
     [RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V5],
+    [RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V6],
   ]);
 }
