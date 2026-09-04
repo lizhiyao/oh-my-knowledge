@@ -17,11 +17,20 @@ import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
 } from './bootstrap-family-node-contract.js';
 import {
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+} from './bootstrap-family-node-v2.js';
+import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
   parseBootstrapFamilyTableEnvelope,
   type BootstrapComparison,
   type BootstrapFamilyTableValue,
 } from './bootstrap-family-table.js';
+import {
+  BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+  parseBootstrapFamilyTableV2Envelope,
+  type BootstrapComparisonV2,
+  type BootstrapFamilyTableV2Value,
+} from './bootstrap-family-table-v2.js';
 import {
   COMPOSITE_TABLE_SCHEMA,
   parseCompositeTableEnvelope,
@@ -46,20 +55,25 @@ export const RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID = 'omk.release-decisio
 export const RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID = 'omk.release-decision/v2' as const;
 export const RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID = 'omk.release-decision/v3' as const;
 export const RELEASE_DECISION_POLICY_IMPLEMENTATION_ID = 'omk.release-decision/v4' as const;
+export const RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID = 'omk.release-decision/v5' as const;
 
-function releaseDecisionCapabilities(parameterSchema: SchemaIdentity): JsonValue {
+function releaseDecisionCapabilities(
+  parameterSchema: SchemaIdentity,
+  bootstrapSchema: SchemaIdentity = BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  bootstrapImplementationId: string = BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+): JsonValue {
   return {
     capabilityKind: 'decision-policy',
     analysisResultSchemaUris: [
       COMPOSITE_TABLE_SCHEMA.schemaUri,
-      BOOTSTRAP_FAMILY_TABLE_SCHEMA.schemaUri,
+      bootstrapSchema.schemaUri,
       JUDGE_ENSEMBLE_TABLE_SCHEMA.schemaUri,
     ].sort(compareStrings),
-    multipleComparisonPolicyIds: [BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID],
+    multipleComparisonPolicyIds: [bootstrapImplementationId],
     parameterSchema,
     schemas: [
       COMPOSITE_TABLE_SCHEMA,
-      BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+      bootstrapSchema,
       JUDGE_ENSEMBLE_TABLE_SCHEMA,
     ].sort((left, right) => (
       compareStrings(left.schemaUri, right.schemaUri)
@@ -74,6 +88,11 @@ const RELEASE_DECISION_V1_CAPABILITIES = releaseDecisionCapabilities(
 );
 const RELEASE_DECISION_CAPABILITIES = releaseDecisionCapabilities(
   RELEASE_DECISION_PARAMETERS_SCHEMA,
+);
+const RELEASE_DECISION_V5_CAPABILITIES = releaseDecisionCapabilities(
+  RELEASE_DECISION_PARAMETERS_SCHEMA,
+  BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
 );
 
 export const RELEASE_DECISION_POLICY_V1_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
@@ -282,13 +301,70 @@ export const RELEASE_DECISION_POLICY_IDENTITY: RuntimeIdentity = deepFreezeCanon
   }),
 );
 
+export const RELEASE_DECISION_POLICY_V5_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
+  RuntimeIdentitySchema.parse({
+    implementationId: RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+    version: '5.0.0',
+    fingerprint: digestCanonicalJson({
+      implementationId: RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
+      conclusionContract: [
+        'SOLO',
+        'UNDERPOWERED',
+        'NOISE',
+        'PROGRESS',
+        'CAUTIOUS',
+        'REGRESSION',
+      ],
+      precedence: [
+        'not-decided-evidence-and-binding-gates',
+        'solo',
+        'regression',
+        'cautious',
+        'underpowered',
+        'noise',
+        'progress',
+      ],
+      comparisonInterval:
+        'sealed-bootstrap-family-v2-unrounded-tail-with-explicit-monte-carlo-error',
+      monteCarloGate: 'indeterminate-significance-is-not-decided',
+      nonsignificantReasonCode: 'comparison-not-significant',
+      layerGate: 'two-decimal-mean-of-observed-composite-layer-facts-by-target',
+      sampleSize:
+        'observed-comparison-units-against-preregistered-minimum-or-a-priori-power-plan',
+      powerPlanning:
+        'paired-two-sided-normal-approximation-with-bonferroni-familywise-alpha',
+      judgeDissent: 'pairwise-mean-pearson-over-complete-member-sample-matrix',
+      judgeUncertainty:
+        'positive-comparison-cautious-when-configured-ensemble-dissent-is-unmeasurable',
+      repeatedTrials: 'mean-observed-member-or-composite-values-within-sample',
+      holdout: 'train-minus-holdout-composite-with-minimum-scorable-partitions',
+      multiTreatment: 'worst-conclusion-then-comparison-id',
+      stabilityBoundary: 'evaluation-series-only',
+      evidenceGate: 'complete-evidence-required-after-core-source-trust-and-assumption-gates',
+      missingComparisonInterval: 'not-decided-no-point-estimate-fallback',
+      directReportDependency: 'none',
+      sourceSchemas: [
+        COMPOSITE_TABLE_SCHEMA,
+        BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+        JUDGE_ENSEMBLE_TABLE_SCHEMA,
+      ],
+      parameterSchema: RELEASE_DECISION_PARAMETERS_SCHEMA,
+      declaredCapabilities: RELEASE_DECISION_V5_CAPABILITIES,
+    }),
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
+    capabilities: RELEASE_DECISION_V5_CAPABILITIES,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
+  }),
+);
+
 type CompletedResult = DecisionPolicyContext['results'][number];
 type ReleaseVerdict = 'SOLO' | 'UNDERPOWERED' | 'NOISE' | 'PROGRESS'
   | 'CAUTIOUS' | 'REGRESSION';
 
 interface ReleaseFacts {
   composite: CompositeTableValue;
-  bootstrap: BootstrapFamilyTableValue;
+  bootstrap: BootstrapFamilyTableValue | BootstrapFamilyTableV2Value;
   ensemble?: JudgeEnsembleTableValue;
 }
 
@@ -342,6 +418,7 @@ function expectedResultIds(parameters: AnyReleaseDecisionParameters): string[] {
 function releaseFacts(
   context: DecisionPolicyContext,
   parameters: AnyReleaseDecisionParameters,
+  bootstrapVersion: 'v1' | 'v2',
 ): ReleaseFacts | undefined {
   const expectedIds = expectedResultIds(parameters);
   const actualIds = context.results.map((candidate) => candidate.resultId).sort(compareStrings);
@@ -353,10 +430,13 @@ function releaseFacts(
     parameters.sources.compositeResultId,
     COMPOSITE_TABLE_SCHEMA,
   );
+  const bootstrapSchema = bootstrapVersion === 'v1'
+    ? BOOTSTRAP_FAMILY_TABLE_SCHEMA
+    : BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA;
   const bootstrap = result(
     context,
     parameters.sources.bootstrapFamilyResultId,
-    BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+    bootstrapSchema,
   );
   const ensemble = parameters.sources.judgeEnsemble === undefined
     ? undefined
@@ -374,10 +454,15 @@ function releaseFacts(
       resultType: composite.resultType,
       value: composite.value,
     }).value,
-    bootstrap: parseBootstrapFamilyTableEnvelope({
-      resultType: bootstrap.resultType,
-      value: bootstrap.value,
-    }).value,
+    bootstrap: bootstrapVersion === 'v1'
+      ? parseBootstrapFamilyTableEnvelope({
+          resultType: bootstrap.resultType,
+          value: bootstrap.value,
+        }).value
+      : parseBootstrapFamilyTableV2Envelope({
+          resultType: bootstrap.resultType,
+          value: bootstrap.value,
+        }).value,
     ...(ensemble === undefined ? {} : {
       ensemble: parseJudgeEnsembleTableEnvelope({
         resultType: ensemble.resultType,
@@ -391,6 +476,7 @@ function validateSourceBindings(
   context: DecisionPolicyContext,
   parameters: AnyReleaseDecisionParameters,
   facts: ReleaseFacts,
+  bootstrapImplementationId: string,
 ): boolean {
   const configuration = facts.bootstrap.configuration;
   const comparisonCount = configuration.comparisons.length;
@@ -411,7 +497,7 @@ function validateSourceBindings(
             !== parameters.sources.bootstrapFamilyResultId
           || (comparisonCount > 1
             ? context.policy.multipleComparisonPolicyId
-                !== BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID
+                !== bootstrapImplementationId
             : context.policy.multipleComparisonPolicyId !== undefined))) {
     return false;
   }
@@ -611,10 +697,16 @@ interface ReleaseDecisionSemantics {
   readonly gateUnmeasuredJudgeUncertainty: boolean;
   readonly sampleSizeBasis: 'authored-samples' | 'observed-comparison-units';
   readonly parameterSchemaVersion: 'v1' | 'v2';
+  readonly bootstrapVersion: 'v1' | 'v2';
+  readonly bootstrapImplementationId: string;
 }
 
+type ObservedBootstrapComparison =
+  | Extract<BootstrapComparison, { comparisonStatus: 'observed' }>
+  | Extract<BootstrapComparisonV2, { comparisonStatus: 'observed' }>;
+
 function comparisonUnitCount(
-  comparison: Extract<BootstrapComparison, { comparisonStatus: 'observed' }>,
+  comparison: ObservedBootstrapComparison,
   parameters: AnyReleaseDecisionParameters,
   semantics: ReleaseDecisionSemantics,
 ): number {
@@ -631,21 +723,27 @@ function minimumComparisonUnitCount(parameters: AnyReleaseDecisionParameters): n
 }
 
 function pairDecision(
-  comparison: Extract<BootstrapComparison, { comparisonStatus: 'observed' }>,
+  comparison: ObservedBootstrapComparison,
   facts: ReleaseFacts,
   parameters: AnyReleaseDecisionParameters,
   semantics: ReleaseDecisionSemantics,
 ): PairDecision {
   const binding = comparison.binding;
   const interval = comparison.interval;
-  if (!interval.significant) {
+  const significant = 'significance' in comparison
+    ? comparison.significance.significanceStatus === 'significant'
+    : comparison.interval.significant;
+  if (!significant) {
+    const reason = 'significance' in comparison
+      ? 'comparison-not-significant'
+      : 'comparison-interval-overlaps-zero';
     return comparisonUnitCount(comparison, parameters, semantics)
       < minimumComparisonUnitCount(parameters)
       ? {
         comparisonId: binding.comparisonId,
         verdict: 'UNDERPOWERED',
         reasonCodes: [
-          'comparison-interval-overlaps-zero',
+          reason,
           'comparison-sample-size-below-minimum',
         ],
       }
@@ -653,7 +751,7 @@ function pairDecision(
         comparisonId: binding.comparisonId,
         verdict: 'NOISE',
         reasonCodes: [
-          'comparison-interval-overlaps-zero',
+          reason,
           'comparison-sample-size-sufficient',
         ],
       };
@@ -716,9 +814,14 @@ function decideRelease(
   const parameters = semantics.parameterSchemaVersion === 'v1'
     ? parseReleaseDecisionParametersV1(context.policy.parameters)
     : parseReleaseDecisionParameters(context.policy.parameters);
-  const facts = releaseFacts(context, parameters);
+  const facts = releaseFacts(context, parameters, semantics.bootstrapVersion);
   if (facts === undefined) return notDecided('release-analysis-result-binding-mismatch');
-  if (!validateSourceBindings(context, parameters, facts)) {
+  if (!validateSourceBindings(
+    context,
+    parameters,
+    facts,
+    semantics.bootstrapImplementationId,
+  )) {
     return notDecided('release-analysis-source-lineage-mismatch');
   }
   if (context.contrasts.length === 0) {
@@ -736,6 +839,10 @@ function decideRelease(
   for (const comparison of facts.bootstrap.comparisons) {
     if (comparison.comparisonStatus !== 'observed') {
       return notDecided('release-comparison-interval-unavailable');
+    }
+    if ('significance' in comparison
+        && comparison.significance.significanceStatus === 'indeterminate') {
+      return notDecided('release-bootstrap-monte-carlo-indeterminate');
     }
     decisions.push(pairDecision(comparison, facts, parameters, semantics));
   }
@@ -756,6 +863,19 @@ export const RELEASE_DECISION_POLICY: AnalysisDecisionPolicy = {
     gateUnmeasuredJudgeUncertainty: true,
     sampleSizeBasis: 'observed-comparison-units',
     parameterSchemaVersion: 'v2',
+    bootstrapVersion: 'v1',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+  }),
+};
+
+export const RELEASE_DECISION_POLICY_V5: AnalysisDecisionPolicy = {
+  identity: RELEASE_DECISION_POLICY_V5_IDENTITY,
+  decide: async (context) => decideRelease(context, {
+    gateUnmeasuredJudgeUncertainty: true,
+    sampleSizeBasis: 'observed-comparison-units',
+    parameterSchemaVersion: 'v2',
+    bootstrapVersion: 'v2',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
   }),
 };
 
@@ -765,6 +885,8 @@ export const RELEASE_DECISION_POLICY_V3: AnalysisDecisionPolicy = {
     gateUnmeasuredJudgeUncertainty: true,
     sampleSizeBasis: 'observed-comparison-units',
     parameterSchemaVersion: 'v1',
+    bootstrapVersion: 'v1',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   }),
 };
 
@@ -774,6 +896,8 @@ export const RELEASE_DECISION_POLICY_V2: AnalysisDecisionPolicy = {
     gateUnmeasuredJudgeUncertainty: true,
     sampleSizeBasis: 'authored-samples',
     parameterSchemaVersion: 'v1',
+    bootstrapVersion: 'v1',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   }),
 };
 
@@ -783,6 +907,8 @@ export const RELEASE_DECISION_POLICY_V1: AnalysisDecisionPolicy = {
     gateUnmeasuredJudgeUncertainty: false,
     sampleSizeBasis: 'authored-samples',
     parameterSchemaVersion: 'v1',
+    bootstrapVersion: 'v1',
+    bootstrapImplementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   }),
 };
 
@@ -792,5 +918,6 @@ export function createReleaseDecisionPolicies(): ReadonlyMap<string, AnalysisDec
     [RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V2],
     [RELEASE_DECISION_POLICY_V3_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V3],
     [RELEASE_DECISION_POLICY_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY],
+    [RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID, RELEASE_DECISION_POLICY_V5],
   ]);
 }

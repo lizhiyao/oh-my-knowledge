@@ -11,7 +11,8 @@ import {
   createEvalSampleSetDocument,
 } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import {
-  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+  BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+  RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
@@ -34,6 +35,7 @@ async function fixture(label: string): Promise<string> {
   await mkdir(join(root, 'fixtures'));
   await writeFile(join(root, 'skills', 'control.md'), '# Control\nAnswer directly.\n');
   await writeFile(join(root, 'skills', 'treatment.md'), '# Treatment\nUse the supplied knowledge.\n');
+  await writeFile(join(root, 'skills', 'treatment-2.md'), '# Treatment 2\nUse concise knowledge.\n');
   await writeFile(join(root, 'fixtures', 'secret.json'), JSON.stringify({ token: 'secret-value' }));
   await writeFile(join(root, 'samples.json'), sampleSetJson([{
     sample_id: 'sample-a',
@@ -284,7 +286,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
         'omk.assertion-layer-table/v1',
         'omk.dimension-table/v1',
         'omk.composite-table/v1',
-        'omk.bootstrap-family-table/v1',
+        'omk.bootstrap-family-table/v2',
       ]),
     );
     expect(compiled.definition.experiment.sampling.seedCoupling).toBe('uncontrolled');
@@ -512,6 +514,50 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(cli.canonicalDigests).toEqual(yaml.canonicalDigests);
   });
 
+  it('seals multiple treatments into one planned correction family', async () => {
+    const root = await fixture('multiple-treatments');
+    const fromConfig = parseCliEvaluationRequest({
+      explicitCliFlags: {},
+      evalConfig: {
+        samples: 'samples.json',
+        executor: 'claude',
+        model: 'claude-test',
+        judgeModels: [{ executor: 'anthropic-api', model: 'judge-test' }],
+        variants: [{
+          name: 'control', role: 'control', artifact: 'skills/control.md',
+        }, {
+          name: 'treatment', role: 'treatment', artifact: 'skills/treatment.md',
+        }, {
+          name: 'treatment-2', role: 'treatment', artifact: 'skills/treatment-2.md',
+        }],
+      },
+      defaults: {
+        samplesLocator: 'samples.json',
+        skillDirectoryLocator: 'skills',
+        targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
+        judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
+        presentation: {
+          projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
+          globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),
+          language: 'zh',
+          languageDefaultSource: 'environment-selection',
+        },
+      },
+    });
+    const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(fromConfig, {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    }));
+
+    expect(compiled.definition.decisionPolicy?.comparisonFamily).toHaveLength(2);
+    expect(compiled.definition.decisionPolicy?.multipleComparisonPolicyId).toBe(
+      BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+    );
+    expect(compiled.definition.analysisGraph.nodes.find(
+      (node) => node.implementationId === BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+    )?.parameters).toMatchObject({ comparisons: [{}, {}] });
+  });
+
   it('seals heterogeneous sample workspaces and tool policies without flattening them', async () => {
     const root = await fixture('controls');
     await mkdir(join(root, 'workspace-a'));
@@ -667,7 +713,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
       sources: { judgeEnsemble: { replicateGroupId: expect.stringContaining('rubric-') } },
     });
     expect(compiled.definition.decisionPolicy?.implementationId).toBe(
-      RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+      RELEASE_DECISION_POLICY_V5_IMPLEMENTATION_ID,
     );
     const rubricEvaluators = compiled.definition.evaluators.filter((evaluator) => (
       evaluator.measurement.replicateGroupId.startsWith('rubric-')

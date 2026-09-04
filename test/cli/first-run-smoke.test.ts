@@ -129,7 +129,7 @@ describe('first-run smoke path', () => {
       assert.equal(report.decision?.decisionStatus, 'decided');
       assert.equal(report.decision?.verdict, 'UNDERPOWERED');
       assert.deepEqual(report.decision?.reasonCodes, [
-        'comparison-interval-overlaps-zero',
+        'comparison-not-significant',
         'comparison-sample-size-below-minimum',
       ]);
       assert.equal(report.usage?.executionInvocations, 6);

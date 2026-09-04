@@ -51,6 +51,11 @@ export interface BootstrapMetricDraws {
   draws: number[];
 }
 
+export interface BootstrapDifferenceDraws extends BootstrapMetricDraws {
+  /** Whether every possible resample has a strictly positive or negative difference. */
+  exactSign: 'positive' | 'negative' | null;
+}
+
 /**
  * Default number of bootstrap resamples. Every eval path uses this unless
  * `--bootstrap-samples` overrides it. Single source of truth: the docs cite
@@ -108,7 +113,7 @@ function resampleIndices(length: number, n: number, rng: () => number): number[]
   return indices;
 }
 
-function mean(arr: number[]): number {
+function mean(arr: readonly number[]): number {
   if (arr.length === 0) return 0;
   let sum = 0;
   for (const x of arr) sum += x;
@@ -190,17 +195,8 @@ export function bootstrapDiffCI(
   if (scoresA.length === 0 || scoresB.length === 0) {
     return { low: 0, high: 0, estimate: 0, samples: 0, significant: false };
   }
-  const rng = makeRng(seed);
-  const diffMeans: number[] = new Array(samples);
-  for (let b = 0; b < samples; b++) {
-    const idxA = resampleIndices(scoresA.length, scoresA.length, rng);
-    const idxB = resampleIndices(scoresB.length, scoresB.length, rng);
-    let sumA = 0;
-    let sumB = 0;
-    for (const i of idxA) sumA += scoresA[i];
-    for (const i of idxB) sumB += scoresB[i];
-    diffMeans[b] = sumB / scoresB.length - sumA / scoresA.length;
-  }
+  const distribution = drawBootstrapIndependentDifferences(scoresA, scoresB, samples, seed);
+  const diffMeans = distribution.draws;
   diffMeans.sort((a, b) => a - b);
   const low = round4(sortedQuantile(diffMeans, alpha / 2));
   const high = round4(sortedQuantile(diffMeans, 1 - alpha / 2));
@@ -248,26 +244,87 @@ export function bootstrapPairedDiffCI(
   if (pairs.length === 0) {
     return { low: 0, high: 0, estimate: 0, samples: 0, significant: false };
   }
-  const n = pairs.length;
-  const diffs = pairs.map((p) => p.b - p.a);
-  const rng = makeRng(seed);
-  const resampleDiffMeans: number[] = new Array(samples);
-  for (let s = 0; s < samples; s++) {
-    const idx = resampleIndices(n, n, rng);
-    let sum = 0;
-    for (const i of idx) sum += diffs[i];
-    resampleDiffMeans[s] = sum / n;
-  }
+  const distribution = drawBootstrapPairedDifferences(pairs, samples, seed);
+  const resampleDiffMeans = distribution.draws;
   resampleDiffMeans.sort((a, b) => a - b);
   const low = round4(sortedQuantile(resampleDiffMeans, alpha / 2));
   const high = round4(sortedQuantile(resampleDiffMeans, 1 - alpha / 2));
   return {
     low,
     high,
-    estimate: round4(mean(diffs)),
+    estimate: round4(distribution.estimate),
     samples,
     // significant 与持久化的(舍入)边界一致 —— 见函数头:绝不出现「low:0 但 significant:true」自相矛盾。
     significant: !(low <= 0 && 0 <= high),
+  };
+}
+
+/** Generate deterministic independent-group difference draws without persistence rounding. */
+export function drawBootstrapIndependentDifferences(
+  scoresA: readonly number[],
+  scoresB: readonly number[],
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
+  seed?: number,
+): BootstrapDifferenceDraws {
+  if (scoresA.length === 0 || scoresB.length === 0) {
+    return { estimate: 0, draws: [], exactSign: null };
+  }
+  const rng = makeRng(seed);
+  const draws: number[] = new Array(samples);
+  for (let iteration = 0; iteration < samples; iteration++) {
+    const indicesA = resampleIndices(scoresA.length, scoresA.length, rng);
+    const indicesB = resampleIndices(scoresB.length, scoresB.length, rng);
+    let sumA = 0;
+    let sumB = 0;
+    for (const index of indicesA) sumA += scoresA[index];
+    for (const index of indicesB) sumB += scoresB[index];
+    draws[iteration] = sumB / scoresB.length - sumA / scoresA.length;
+  }
+  let minimumA = Number.POSITIVE_INFINITY;
+  let maximumA = Number.NEGATIVE_INFINITY;
+  let minimumB = Number.POSITIVE_INFINITY;
+  let maximumB = Number.NEGATIVE_INFINITY;
+  for (const score of scoresA) {
+    minimumA = Math.min(minimumA, score);
+    maximumA = Math.max(maximumA, score);
+  }
+  for (const score of scoresB) {
+    minimumB = Math.min(minimumB, score);
+    maximumB = Math.max(maximumB, score);
+  }
+  const minimumDifference = minimumB - maximumA;
+  const maximumDifference = maximumB - minimumA;
+  return {
+    estimate: mean(scoresB) - mean(scoresA),
+    draws,
+    exactSign: minimumDifference > 0
+      ? 'positive'
+      : maximumDifference < 0 ? 'negative' : null,
+  };
+}
+
+/** Generate deterministic pair-preserving difference draws without persistence rounding. */
+export function drawBootstrapPairedDifferences(
+  pairs: readonly Readonly<{ a: number; b: number }>[],
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
+  seed?: number,
+): BootstrapDifferenceDraws {
+  if (pairs.length === 0) return { estimate: 0, draws: [], exactSign: null };
+  const differences = pairs.map((pair) => pair.b - pair.a);
+  const rng = makeRng(seed);
+  const draws: number[] = new Array(samples);
+  for (let iteration = 0; iteration < samples; iteration++) {
+    const indices = resampleIndices(differences.length, differences.length, rng);
+    let sum = 0;
+    for (const index of indices) sum += differences[index];
+    draws[iteration] = sum / differences.length;
+  }
+  return {
+    estimate: mean(differences),
+    draws,
+    exactSign: differences.every((difference) => difference > 0)
+      ? 'positive'
+      : differences.every((difference) => difference < 0) ? 'negative' : null,
   };
 }
 

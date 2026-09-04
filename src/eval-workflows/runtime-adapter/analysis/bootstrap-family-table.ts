@@ -67,7 +67,7 @@ export const BootstrapObservationSchema = z.discriminatedUnion('observationStatu
   MissingBootstrapObservationSchema,
 ]);
 
-const BootstrapIntervalSchema = z.object({
+export const BootstrapIntervalSchema = z.object({
   lower: RoundedStatisticSchema,
   upper: RoundedStatisticSchema,
   estimate: RoundedStatisticSchema,
@@ -91,12 +91,12 @@ const MissingTargetIntervalSchema = z.object({
   sourceGroupIds: z.tuple([]),
 }).strict();
 
-const BootstrapTargetIntervalSchema = z.discriminatedUnion('intervalStatus', [
+export const BootstrapTargetIntervalSchema = z.discriminatedUnion('intervalStatus', [
   ObservedTargetIntervalSchema,
   MissingTargetIntervalSchema,
 ]);
 
-const ComparisonCountsSchema = z.object({
+export const ComparisonCountsSchema = z.object({
   controlUnits: CountSchema,
   treatmentUnits: CountSchema,
   comparableUnits: CountSchema.nullable(),
@@ -155,7 +155,7 @@ interface ResamplingUnit {
   sourceGroupIds: string[];
 }
 
-interface ComparisonFacts {
+export interface BootstrapComparisonFacts {
   binding: BootstrapComparisonParameter;
   counts: z.infer<typeof ComparisonCountsSchema>;
   includedSourceGroupIds: string[];
@@ -244,7 +244,7 @@ function pairedFacts(
   parameters: BootstrapFamilyParameters,
   observations: readonly BootstrapObservation[],
   binding: BootstrapComparisonParameter,
-): ComparisonFacts {
+): BootstrapComparisonFacts {
   const blocks = new Map<string, BootstrapObservation[]>();
   for (const observation of observations) {
     if (!isObservedObservation(observation)) continue;
@@ -304,7 +304,7 @@ function independentFacts(
   parameters: BootstrapFamilyParameters,
   observations: readonly BootstrapObservation[],
   binding: BootstrapComparisonParameter,
-): ComparisonFacts {
+): BootstrapComparisonFacts {
   const control = sampleUnits(parameters, observations, binding.controlTargetId);
   const treatment = sampleUnits(parameters, observations, binding.treatmentTargetId);
   return {
@@ -323,6 +323,24 @@ function independentFacts(
     pairs: [],
     observed: control.length > 0 && treatment.length > 0,
   };
+}
+
+export function collectBootstrapComparisonFacts(
+  parameters: BootstrapFamilyParameters,
+  observations: readonly BootstrapObservation[],
+): BootstrapComparisonFacts[] {
+  return parameters.comparisons.map((binding) => (
+    binding.comparisonDesign === 'paired'
+      ? pairedFacts(parameters, observations, binding)
+      : independentFacts(parameters, observations, binding)
+  ));
+}
+
+export interface PreparedBootstrapFamilyFacts {
+  readonly parameters: BootstrapFamilyParameters;
+  readonly observations: BootstrapObservation[];
+  readonly targetIntervals: BootstrapTargetInterval[];
+  readonly comparisons: BootstrapComparisonFacts[];
 }
 
 function interval(value: Readonly<{
@@ -344,38 +362,13 @@ export function buildBootstrapFamilyTable(
   rawParameters: unknown,
   rawObservations: readonly BootstrapObservation[],
 ): BootstrapFamilyTableValue {
-  const parameters = parseBootstrapFamilyParameters(rawParameters);
-  const observations = parseObservations(parameters, rawObservations);
-  const targetIntervals: BootstrapTargetInterval[] = parameters.targetIds.map((targetId) => {
-    const units = sampleUnits(parameters, observations, targetId);
-    if (units.length === 0) {
-      return {
-        targetId,
-        intervalStatus: 'missing',
-        reasonCode: 'bootstrap-no-observed-units',
-        unitCount: 0,
-        sourceGroupIds: [],
-      };
-    }
-    const estimate = bootstrapMeanCI(
-      units.map((unit) => unit.value),
-      parameters.alpha,
-      parameters.resamples,
-      parameters.seed,
-    );
-    return {
-      targetId,
-      intervalStatus: 'observed',
-      unitCount: units.length,
-      sourceGroupIds: units.flatMap((unit) => unit.sourceGroupIds),
-      interval: interval(estimate, parameters.alpha),
-    };
-  });
-  const facts = parameters.comparisons.map((binding) => (
-    binding.comparisonDesign === 'paired'
-      ? pairedFacts(parameters, observations, binding)
-      : independentFacts(parameters, observations, binding)
-  ));
+  const prepared = prepareBootstrapFamilyFacts(rawParameters, rawObservations);
+  const {
+    parameters,
+    observations,
+    targetIntervals,
+    comparisons: facts,
+  } = prepared;
   const familySize = facts.filter((entry) => entry.observed).length;
   const effectiveAlpha = familySize === 0 ? null : parameters.alpha / familySize;
   const comparisons: BootstrapComparison[] = facts.map((entry) => {
@@ -429,6 +422,46 @@ export function buildBootstrapFamilyTable(
       nominalAlpha: parameters.alpha,
       effectiveAlpha,
     },
+  };
+}
+
+export function prepareBootstrapFamilyFacts(
+  rawParameters: unknown,
+  rawObservations: readonly BootstrapObservation[],
+): PreparedBootstrapFamilyFacts {
+  const parameters = parseBootstrapFamilyParameters(rawParameters);
+  const observations = parseObservations(parameters, rawObservations);
+  const targetIntervals: BootstrapTargetInterval[] = parameters.targetIds.map((targetId) => {
+    const units = sampleUnits(parameters, observations, targetId);
+    if (units.length === 0) {
+      return {
+        targetId,
+        intervalStatus: 'missing',
+        reasonCode: 'bootstrap-no-observed-units',
+        unitCount: 0,
+        sourceGroupIds: [],
+      };
+    }
+    const estimate = bootstrapMeanCI(
+      units.map((unit) => unit.value),
+      parameters.alpha,
+      parameters.resamples,
+      parameters.seed,
+    );
+    return {
+      targetId,
+      intervalStatus: 'observed',
+      unitCount: units.length,
+      sourceGroupIds: units.flatMap((unit) => unit.sourceGroupIds),
+      interval: interval(estimate, parameters.alpha),
+    };
+  });
+  const facts = collectBootstrapComparisonFacts(parameters, observations);
+  return {
+    parameters,
+    observations,
+    targetIntervals,
+    comparisons: facts,
   };
 }
 

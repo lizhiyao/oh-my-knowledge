@@ -13,13 +13,17 @@ Five safeguards cover different failure modes.
 
 `omk eval` estimates uncertainty from the observed sampling units with a percentile Bootstrap rather than assuming a parametric score distribution.
 
-- Target means and treatment-minus-control intervals are produced by `omk.bootstrap-family-table/v1`.
+- Target means and treatment-minus-control intervals are produced by `omk.bootstrap-family-table/v2`.
 - Paired designs require an explicit pairing key and never fall back to an independent estimator.
-- Multiple treatments share one sealed comparison family. The effective level is `alpha / K`, so adding comparisons cannot silently inflate the family-wise false-positive rate.
+- Multiple treatments share one sealed comparison family. `K` is the number of planned comparisons, including comparisons whose evidence is later missing; the effective level is `alpha / K`, so missing outcomes cannot silently relax the family-wise false-positive rate.
 - The resample count, nominal alpha, design, target／sample order, and deterministic Mulberry32 stream are part of the Analysis identity. Default CLI resampling uses 1000 draws.
+- Four-decimal percentile bounds are descriptive output, not the significance decision boundary. Significance uses the unrounded draw stream and the relevant tail at zero.
+- The finite draw count has its own exact Clopper-Pearson tail-probability interval. Its confidence allocation is Bonferroni-corrected to 99% across the planned family; if that interval crosses `alpha / (2K)`, significance is `indeterminate` and release fails closed.
 - Missing comparison intervals remain inconclusive. The release policy never substitutes a point estimate.
 
-Implementation: `src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.ts` and `bootstrap-family-parameters.ts`.
+This separates population uncertainty from Monte Carlo approximation error, following the distinction emphasized by [Koehler, Brown, and Haneuse](https://pmc.ncbi.nlm.nih.gov/articles/PMC3337209/). The exact binomial interval follows [Clopper and Pearson](https://doi.org/10.1093/biomet/26.4.404).
+
+Implementation: `src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table-v2.ts` and `bootstrap-family-parameters.ts`.
 
 ## 2. Gold agreement is explicit calibration
 
@@ -70,20 +74,20 @@ This prevents a run from looking better merely because difficult coordinates fai
 
 ## Release Decision
 
-`omk.release-decision/v4` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
+`omk.release-decision/v5` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
 
 | Verdict | Meaning |
 |---|---|
 | `PROGRESS` | Significant positive comparison and all registered release gates passed |
 | `CAUTIOUS` | Positive signal, but a practical-effect, layer, judge-dissent, unmeasured judge-uncertainty, or holdout gate requires review |
 | `REGRESSION` | Significant negative comparison |
-| `NOISE` | The comparison interval overlaps zero with sufficient observed comparison units |
-| `UNDERPOWERED` | The interval overlaps zero and observed comparison units are below the registered minimum |
+| `NOISE` | The comparison is not significant with sufficient observed comparison units |
+| `UNDERPOWERED` | The comparison is not significant and observed comparison units are below the registered minimum |
 | `SOLO` | One Target is present and no comparison exists |
 
 Operational status, evidence status, conclusion status, and verdict remain separate. `PROGRESS` authorizes the normal release route only when it also carries `release-gates-passed`. Cross-run stability is an Evaluation Series concern and is never inferred from a single run.
 
-For a paired design, v4 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`.
+For a paired design, v5 applies the sample-size gate to complete pairs. For an independent design, it uses the smaller observed arm, because the larger arm cannot compensate for missing evidence on the other side. Authored but unobserved samples never turn `UNDERPOWERED` into `NOISE`. Monte Carlo-indeterminate significance never enters this gate; it remains not-decided.
 
 The default `minimum-count` requirement of 20 comparison units is a configurable heuristic evidence floor, not a claim of statistical power. For a release study with defensible prior information, configure an a priori paired-comparison plan in `eval.yaml`:
 
@@ -98,7 +102,7 @@ decision:
 
 Before execution, omk seals the minimum meaningful treatment-minus-control difference, the externally estimated standard deviation of paired differences, target power, assumption provenance, family-wide alpha, planned comparison count, method identity, and the resulting required complete-pair count. The current method is a two-sided normal approximation with Bonferroni allocation across the planned family; it is an approximation for planning, not a guarantee of the percentile Bootstrap's realized operating characteristics. Complex, strongly discrete, or skewed designs should establish sample size by simulation outside omk and register that result with `decision.minimumComparisonUnits`. omk deliberately does not report retrospective “observed power”: using the run's observed effect or variance to justify its own sample size would be circular.
 
-For a configured Judge Ensemble, v4 estimates cross-judge agreement independently for control and treatment. If either side has fewer than two complete judge-member series across at least two samples, agreement is not estimable; a positive result is reported as `CAUTIOUS` with `judge-uncertainty-unmeasured`, rather than treating one LLM reading as exact. This gate is inapplicable when the design has no Judge Ensemble. Historical v1, v2, and v3 remain registered solely for exact replay; v3 already uses observed comparison units but has only the fixed minimum-count contract.
+For a configured Judge Ensemble, v5 estimates cross-judge agreement independently for control and treatment. If either side has fewer than two complete judge-member series across at least two samples, agreement is not estimable; a positive result is reported as `CAUTIOUS` with `judge-uncertainty-unmeasured`, rather than treating one LLM reading as exact. This gate is inapplicable when the design has no Judge Ensemble. Historical release policies v1 through v4 and Bootstrap family v1 remain registered solely for exact replay; new runs use v5 and Bootstrap family v2.
 
 Planning references: [NIST's two-sided sample-size formulation](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm), [CONSORT 2025 on prespecifying target difference, assumptions, alpha, and power](https://www.bmj.com/content/389/bmj-2024-081124), and [Hoenig and Heisey on the abuse of retrospective power](https://doi.org/10.1198/000313001300339897).
 

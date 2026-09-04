@@ -20,6 +20,7 @@ import { createAssertionLayerAnalysisNodes } from './analysis/assertion-layer-no
 import { createDimensionAnalysisNodes } from './analysis/dimension-node.js';
 import { createCompositeAnalysisNodes } from './analysis/composite-node.js';
 import { createBootstrapFamilyAnalysisNodes } from './analysis/bootstrap-family-node.js';
+import { createBootstrapFamilyV2AnalysisNodes } from './analysis/bootstrap-family-node-v2.js';
 import { createAgreementAnalysisNodes } from './analysis/agreement-node.js';
 import { createReleaseDecisionPolicies } from './analysis/release-decision.js';
 import {
@@ -103,6 +104,7 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
     ...createDimensionAnalysisNodes(),
     ...createCompositeAnalysisNodes(),
     ...createBootstrapFamilyAnalysisNodes(),
+    ...createBootstrapFamilyV2AnalysisNodes(),
     ...createAgreementAnalysisNodes(),
   ]);
   const missingPolicies = createBuiltinMissingPolicies();
