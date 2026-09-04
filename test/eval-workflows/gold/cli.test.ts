@@ -17,6 +17,10 @@ describe('gold dataset authoring', () => {
     const files = initGoldDataset(directory, { annotator: 'human-team' });
     assert.equal(files.length, 3);
     assert.match(readFileSync(join(directory, 'metadata.yaml'), 'utf8'), /human-team/);
+    assert.match(
+      readFileSync(join(directory, 'README.md'), 'utf8'),
+      /`omk eval gold compare` 将人工标注与 Core run 观测进行比较。/,
+    );
     assert.deepEqual(validateGoldDataset(directory), { ok: true, issues: [], sampleCount: 2 });
   });
 

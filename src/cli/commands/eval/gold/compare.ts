@@ -115,8 +115,8 @@ export default class EvalGoldCompare extends BaseCommand {
       const source = await store.get(runId);
       if (source === undefined) {
         console.error(lang === 'zh'
-          ? `找不到 Core run「${runId}」；旧 evaluation report 不再支持 gold compare。`
-          : `Core run "${runId}" was not found; legacy evaluation reports are no longer supported.`);
+          ? `找不到 Core run「${runId}」。`
+          : `Core run "${runId}" was not found.`);
         throw new CliExit(1);
       }
       if (!flags.target || !flags.evaluator || !flags.metric) {
