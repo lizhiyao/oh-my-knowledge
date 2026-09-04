@@ -64,6 +64,7 @@ Check the current [CLI reference](../reference/cli.md) rather than copying 0.54 
 The published API is ESM-only on Node.js 22 or newer. Imports are restricted to the package export map; `oh-my-knowledge/dist/*` is private.
 
 - Use `oh-my-knowledge` for the ordinary `evaluate()` and `checkExecutor()` façade. The explicit `oh-my-knowledge/eval-runtime` subpath is equivalent.
+- Replace the fixed `{ executor, control, treatment, evaluator }` call with `{ variants, evaluators, comparisons }`. Bind each Executor, config, and runtime context under `variant.execution`; declare `experiment.sampling`; move Bootstrap settings to `analysis`; add `decision` only when one analysis result should produce a verdict. The preview does not read the removed shape.
 - Move former package-root Core imports to `oh-my-knowledge/eval-core`; use that subpath for Engine construction, staged execution, admission, verification, comparability, Series, and Core JSON Schemas.
 - Import `createEvaluationEngine` only from `oh-my-knowledge/eval-core`; the ambiguous narrowed re-export has been removed from `eval-runtime/advanced`. Use `runEvaluation` there for a standard complete run over preassembled inputs.
 - Use `oh-my-knowledge/eval-samples`, `oh-my-knowledge/projections`, `oh-my-knowledge/studio`, `oh-my-knowledge/mcp`, or `oh-my-knowledge/dsh-plugin` for those explicit surfaces.

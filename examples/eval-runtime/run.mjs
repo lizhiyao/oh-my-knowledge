@@ -6,8 +6,7 @@ const answers = {
   candidate: { one: 'A', two: 'B', three: 'C' },
 };
 
-const result = await evaluate({
-  executor: {
+const executor = {
     executorId: 'example.answer-service/v1',
     version: '1.0.0',
     schemas: {
@@ -31,7 +30,9 @@ const result = await evaluate({
         usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
       };
     },
-  },
+};
+
+const result = await evaluate({
   dataset: {
     datasetId: 'embedded-service-example',
     samples: [
@@ -40,12 +41,11 @@ const result = await evaluate({
       { sampleId: 'three', input: { prompt: 'three' }, expected: 'C' },
     ],
   },
-  control: {
+  variants: [{
     variantId: 'baseline',
     artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
-    config: { deployment: 'baseline' },
-  },
-  treatment: {
+    execution: { executor, config: { deployment: 'baseline' } },
+  }, {
     variantId: 'candidate',
     artifact: {
       name: 'answer-prompt',
@@ -53,10 +53,24 @@ const result = await evaluate({
       source: 'inline',
       content: 'Answer with the expected label.',
     },
-    config: { deployment: 'candidate' },
+    execution: { executor, config: { deployment: 'candidate' } },
+  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [{
+    comparisonId: 'baseline-vs-candidate',
+    comparisonKind: 'paired',
+    controlVariantId: 'baseline',
+    treatmentVariantIds: ['candidate'],
+    metricIds: ['correct'],
+  }],
+  analysis: { bootstrap: { resamples: 100 } },
+  decision: {
+    decisionKind: 'comparison',
+    comparisonId: 'baseline-vs-candidate',
+    treatmentVariantId: 'candidate',
+    metricId: 'correct',
   },
-  evaluator: { evaluatorKind: 'exact-match' },
-  experiment: { seed: 'explicit-example-seed', bootstrap: { resamples: 100 } },
+  experiment: { seed: 'explicit-example-seed', sampling: { samplingKind: 'paired' } },
   policy: { maxConcurrency: 2 },
   runId: 'eval-runtime-example',
 });

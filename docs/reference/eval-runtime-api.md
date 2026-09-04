@@ -12,20 +12,22 @@ The canonical API for application developers:
 
 | Export | Purpose |
 |---|---|
-| `evaluate` | Evaluate one control and one treatment with a host-owned Executor. |
+| `evaluate` | Run one explicit solo or paired evaluation design, including multi-arm and multi-metric comparisons. |
 | `checkExecutor` | Certify an Executor through success, failure, cancellation, cleanup, and measurement checks. |
 | `EvaluationConfigurationError` | Stable caller-configuration failure with a public code and no rejected payload. |
 | `EvaluationEventConsumptionError` | Stable, redacted observer／event-stream failure that retains the terminal `EvaluationResult` when available. |
 
-Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, `RuntimeContext`, `Dataset`, `Sample`, `Executor`, `ExecutorCapabilities`, `ExecutorInvocation`, `ExecutorResult`, `Evaluator`, `ExactMatchEvaluator`, `RubricJudgeEvaluator`, `Judge`, `Rubric`, `Experiment`, `Policy`, `EvaluateInput`, `EvaluationResult`, `EventObserver`, and `Clock`. Executor certification uses `ExecutorCheckInput`, `ExecutorCheckResult`, and `RuntimeConformanceCheck`.
+Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, `VariantExecution`, `RuntimeContext`, `Dataset`, `Sample`, `Executor`, `ExecutorCapabilities`, `ExecutorInvocation`, `ExecutorResult`, `Evaluator`, `ExactMatchEvaluator`, `RubricJudgeEvaluator`, `Judge`, `Rubric`, `Experiment`, `SamplingDesign`, `Analysis`, `Comparison`, `Decision`, `Policy`, `EvaluateInput`, `EvaluationResult`, `EventObserver`, and `Clock`. Executor certification uses `ExecutorCheckInput`, `ExecutorCheckResult`, and `RuntimeConformanceCheck`.
 
 `RuntimeContext` contains only reproducible host-defined JSON `values`. The canonical façade does not accept a filesystem path as workspace identity. Until the general Runtime exposes content-addressed workspace descriptors and host-owned leases, workspace-aware hosts must use the advanced Core assembly path. `Sample.executionContext` is per-sample input visible to the Executor; `Sample.evaluationContext` is per-sample input visible only to the Evaluator. These sample projections do not describe the host environment.
 
 `EvaluationResult` preserves every field of the Core `EvaluationRunResult` and adds `definition` plus `policy`, the exact sealed Core Definition and fully materialized Measurement Policy compiled by the façade. Execution and evaluation evidence remain under `artifacts`, the decision remains under `artifacts.decision`, and the public report remains under `report`.
 
-For one control／treatment comparison, the façade seals the interval-aware Core `progress/v2` policy. `PROGRESS` or `REGRESSION` requires the complete confidence interval to exclude the configured threshold plus equivalence band; an overlapping interval yields `NOISE`. This three-way directional policy is intentionally smaller than the CLI workflow's six-tier release policy, which additionally distinguishes `UNDERPOWERED`／`CAUTIOUS` and applies release gates. Both paths therefore share the same interval requirement without pretending to expose identical policy contracts.
+`SamplingDesign` currently supports a one-Variant `solo` quality profile and explicit `paired` comparisons. A paired `Comparison` declares one control, one or more treatments, and the Metrics to analyze. `evaluators` may contain multiple exact-match or Rubric Judge evaluators, provided evaluator and metric IDs are unique. True independent-group assignment is intentionally not represented as paired data and is not supported until Core has an explicit assignment and unpaired-estimator contract.
 
-The entry deliberately exposes no Definition builder, Runtime registry, Core Target, lifecycle adapter, or raw Rubric factory. `Artifact` is what is evaluated, `Variant` binds it to runtime context, and `control`／`treatment` are experiment roles.
+Analysis is always preregistered. The façade creates one mean-bootstrap result per Metric for `solo`, or one paired-difference bootstrap result per comparison × treatment × Metric for `paired`. It does not fabricate a composite verdict. Omitting `decision` returns all analysis results without a Decision; supplying `decision` explicitly selects exactly one result for the interval-aware Core `progress/v2` policy.
+
+The entry deliberately exposes no Definition builder, Runtime registry, Core Target, lifecycle adapter, or raw Rubric factory. `Artifact` is what is evaluated, `Variant` binds it to an Executor, config, and runtime context, and control／treatment roles exist only inside an explicit `Comparison`.
 
 ## `oh-my-knowledge/eval-runtime/advanced`
 
@@ -82,6 +84,6 @@ Versioned wire contracts for adapter and trace authors:
 
 ## Migration
 
-The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. Move existing low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. `createEvaluationEngine` has one meaning and one home: import the full staged engine from `oh-my-knowledge/eval-core`; use advanced `runEvaluation` when a preassembled Runtime, Definition, and Policy only need a standard complete run. New hosts should import `evaluate` or `checkExecutor` from the package root. The `/eval-runtime` entry remains the explicit equivalent for consumers that prefer domain-qualified imports.
+The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. The general façade also replaces the earlier fixed `{ executor, control, treatment, evaluator }` input with `{ variants, evaluators, comparisons }`; Executor and config now live under each Variant's `execution`, sampling is explicit, Bootstrap settings live under `analysis`, and Decision selection is optional and explicit. There is no 0.x compatibility reader. Move low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. `createEvaluationEngine` has one meaning and one home: import the full staged engine from `oh-my-knowledge/eval-core`; use advanced `runEvaluation` when a preassembled Runtime, Definition, and Policy only need a standard complete run. New hosts should import `evaluate` or `checkExecutor` from the package root. The `/eval-runtime` entry remains the explicit equivalent for consumers that prefer domain-qualified imports.
 
 Use `oh-my-knowledge/eval-core` for custom analysis graphs, persisted artifact admission, staged replay, or explicit cross-run comparability. Deep implementation imports are unsupported.

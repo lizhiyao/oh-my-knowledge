@@ -44,6 +44,7 @@ import {
   checkExecutor,
   EvaluationEventConsumptionError,
   evaluate,
+  type Executor as CanonicalExecutor,
 } from 'oh-my-knowledge';
 import {
   createEvalSampleSetDocument,
@@ -112,8 +113,7 @@ void publicDefinition;
 void publicPolicy;
 void registration;
 
-const canonicalEvaluation = evaluate({
-  executor: {
+const canonicalExecutor: CanonicalExecutor<string, undefined, string> = {
     executorId: 'typescript-canonical/v1',
     version: '1.0.0',
     schemas: { input: z.string(), output: z.string() },
@@ -121,21 +121,30 @@ const canonicalEvaluation = evaluate({
       signal.throwIfAborted();
       return { output: input };
     },
-  },
+};
+const canonicalEvaluation = evaluate({
   dataset: {
     datasetId: 'typescript-canonical-runtime',
     samples: [{ sampleId: 'one', input: 'question', expected: 'answer' }],
   },
-  control: {
+  variants: [{
     variantId: 'baseline',
     artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
-  },
-  treatment: {
+    execution: { executor: canonicalExecutor },
+  }, {
     variantId: 'prompt-v2',
     artifact: { name: 'prompt-v2', kind: 'prompt', source: 'inline', content: 'Answer.' },
-  },
-  evaluator: { evaluatorKind: 'exact-match' },
-  experiment: { seed: 'typescript-seed' },
+    execution: { executor: canonicalExecutor },
+  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [{
+    comparisonId: 'baseline-vs-prompt-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'baseline',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correct'],
+  }],
+  experiment: { seed: 'typescript-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
   runId: 'typescript-canonical-runtime',
 });

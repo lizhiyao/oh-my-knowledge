@@ -16,11 +16,11 @@ The package is ESM-only and requires Node.js 22 or newer. It does not discover c
 |---|---|
 | artifact | The knowledge object being changed: a prompt, skill, agent, workflow, or an empty baseline. |
 | variant | One named artifact plus its runtime context and Executor config. |
-| control／treatment | Experiment roles. Either role may contain any artifact kind; `baseline` is not an alias for `control`. |
+| comparison | An explicit control Variant, one or more treatment Variants, and the Metrics to compare. |
 | dataset／sample | The evaluation inputs and expected or evaluation context. |
 | executor | Host code that runs an artifact for one sample. |
 | evaluator | The measurement method, such as exact match or a Rubric Judge. |
-| experiment／policy | Statistical design and operational limits. |
+| experiment／analysis／decision／policy | Sampling design, estimators, an optional selected Decision, and operational limits. |
 | result | The Core run artifacts, evidence, Decision, and Report. |
 
 Core's compiled `Target` remains an internal execution concept. It is not a second public name for artifact or variant.
@@ -37,10 +37,12 @@ npm install oh-my-knowledge zod
 
 ```ts
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge';
+import { evaluate, type Executor, type Variant } from 'oh-my-knowledge';
 
-const result = await evaluate({
-  executor: {
+type Input = { prompt: string };
+type Config = { deployment: string };
+
+const executor: Executor<Input, Config, string> = {
     executorId: 'acme.answer-service/v1',
     version: '1.4.0',
     schemas: {
@@ -69,7 +71,37 @@ const result = await evaluate({
         usage: response.usage,
       };
     },
+};
+
+const variants: Variant<Input, Config, string>[] = [{
+  variantId: 'prompt-v1',
+  artifact: {
+    name: 'answer-prompt-v1',
+    kind: 'prompt',
+    source: 'inline',
+    content: 'Answer concisely.',
   },
+  execution: {
+    executor,
+    config: { deployment: 'deployment-a' },
+    runtimeContext: { values: { tenant: 'evaluation' } },
+  },
+}, {
+  variantId: 'prompt-v2',
+  artifact: {
+    name: 'answer-prompt-v2',
+    kind: 'prompt',
+    source: 'inline',
+    content: 'Answer concisely and exactly.',
+  },
+  execution: {
+    executor,
+    config: { deployment: 'deployment-b' },
+    runtimeContext: { values: { tenant: 'evaluation' } },
+  },
+}];
+
+const result = await evaluate({
   dataset: {
     datasetId: 'answer-regression',
     samples: [
@@ -77,33 +109,26 @@ const result = await evaluate({
       { sampleId: 'two', input: { prompt: '2 + 2?' }, expected: '4' },
     ],
   },
-  control: {
-    variantId: 'prompt-v1',
-    artifact: {
-      name: 'answer-prompt-v1',
-      kind: 'prompt',
-      source: 'inline',
-      content: 'Answer concisely.',
-    },
-    config: { deployment: 'deployment-a' },
-    runtimeContext: { values: { tenant: 'evaluation' } },
+  variants,
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [{
+    comparisonId: 'prompt-v1-vs-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'prompt-v1',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correct'],
+  }],
+  analysis: { bootstrap: { resamples: 1_000, alpha: 0.05 } },
+  decision: {
+    decisionKind: 'comparison',
+    comparisonId: 'prompt-v1-vs-v2',
+    treatmentVariantId: 'prompt-v2',
+    metricId: 'correct',
   },
-  treatment: {
-    variantId: 'prompt-v2',
-    artifact: {
-      name: 'answer-prompt-v2',
-      kind: 'prompt',
-      source: 'inline',
-      content: 'Answer concisely and exactly.',
-    },
-    config: { deployment: 'deployment-b' },
-    runtimeContext: { values: { tenant: 'evaluation' } },
-  },
-  evaluator: { evaluatorKind: 'exact-match' },
   experiment: {
     seed: 'release-2026-09-04',
     trials: 1,
-    bootstrap: { resamples: 1_000, alpha: 0.05 },
+    sampling: { samplingKind: 'paired' },
   },
   policy: { maxConcurrency: 4 },
   runId: crypto.randomUUID(),
@@ -115,7 +140,7 @@ await reportStore.put(result.report);
 
 `result.definition` and `result.policy` are the exact sealed Core Definition and fully materialized Measurement Policy compiled by the façade. The unchanged Core run result fields keep evidence in `result.artifacts`, Decision in `result.artifacts.decision`, and Report in `result.report`.
 
-`executor.execute()` receives the explicit `experimentRole` and `variantId` in addition to the values shown above. Return `{ errorCode }` for an expected, stable, non-sensitive host failure; throwing an ordinary error becomes the redacted `EVAL_RUNTIME_EXECUTOR_FAILED` failure.
+`executor.execute()` receives `variantId` in addition to the values shown above. Comparison roles belong to `comparisons`, not to the Executor invocation. Return `{ errorCode }` for an expected, stable, non-sensitive host failure; throwing an ordinary error becomes the redacted `EVAL_RUNTIME_EXECUTOR_FAILED` failure.
 
 Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults, or drop JSON fields, because that would silently change the measured invocation under the same identity. Perform intentional transformations inside `execute()` and bump `version` or a measurement-relevant `fingerprintFacets` value.
 
@@ -131,11 +156,9 @@ Use `evaluatorKind: 'rubric-judge'` when exact equality is not meaningful. The h
 
 ```ts
 const result = await evaluate({
-  executor,
   dataset,
-  control,
-  treatment,
-  evaluator: {
+  variants,
+  evaluators: [{
     evaluatorKind: 'rubric-judge',
     evaluatorId: 'correctness-judge',
     metricId: 'correctness-score',
@@ -161,8 +184,15 @@ const result = await evaluate({
         return { invocationStatus: 'completed', output: response.text, usage: response.usage };
       },
     },
-  },
-  experiment: { seed: 'rubric-release-42' },
+  }],
+  comparisons: [{
+    comparisonId: 'prompt-v1-vs-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'prompt-v1',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correctness-score'],
+  }],
+  experiment: { seed: 'rubric-release-42', sampling: { samplingKind: 'paired' } },
   policy: {},
   runId: crypto.randomUUID(),
 });
@@ -178,8 +208,7 @@ Run `checkExecutor()` before adopting an adapter. It drives the same declaration
 import { checkExecutor } from 'oh-my-knowledge';
 
 const certification = await checkExecutor({
-  executor,
-  variant: treatment,
+  variant: variants[1],
   success: { input: successInput, expected: expectedOutput },
   failure: { input: failureInput, expectedErrorCode: 'model-unavailable' },
   cancellation: { input: longRunningInput },

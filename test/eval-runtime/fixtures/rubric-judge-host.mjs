@@ -51,7 +51,6 @@ const judge = {
 };
 
 const base = {
-  executor,
   dataset: {
     datasetId: 'faas-rubric-example',
     samples: [{
@@ -60,12 +59,11 @@ const base = {
       expected: 'Paris',
     }],
   },
-  control: {
+  variants: [{
     variantId: 'control',
     artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
-    config: { retrievalRevision: 'baseline' },
-  },
-  treatment: {
+    execution: { executor, config: { retrievalRevision: 'baseline' } },
+  }, {
     variantId: 'treatment',
     artifact: {
       name: 'candidate',
@@ -73,9 +71,23 @@ const base = {
       source: 'inline',
       content: 'Answer using retrieved knowledge.',
     },
-    config: { retrievalRevision: 'candidate' },
+    execution: { executor, config: { retrievalRevision: 'candidate' } },
+  }],
+  comparisons: [{
+    comparisonId: 'control-vs-treatment',
+    comparisonKind: 'paired',
+    controlVariantId: 'control',
+    treatmentVariantIds: ['treatment'],
+    metricIds: ['rubric-score'],
+  }],
+  analysis: { bootstrap: { resamples: 100 } },
+  decision: {
+    decisionKind: 'comparison',
+    comparisonId: 'control-vs-treatment',
+    treatmentVariantId: 'treatment',
+    metricId: 'rubric-score',
   },
-  experiment: { seed: 'explicit-seed', bootstrap: { resamples: 100 } },
+  experiment: { seed: 'explicit-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
 };
 
@@ -95,7 +107,7 @@ const evaluator = {
   tracePolicy: 'none',
 };
 
-const pending = evaluate({ ...base, evaluator, runId: 'embedded-faas-rubric' });
+const pending = evaluate({ ...base, evaluators: [evaluator], runId: 'embedded-faas-rubric' });
 judge.invoke = async () => {
   throw new Error('evaluate must retain the Judge method captured at construction.');
 };
@@ -117,7 +129,7 @@ assert.ok(observations.every((observation) => (
 
 const failureResult = await evaluate({
   ...base,
-  evaluator: {
+  evaluators: [{
     ...evaluator,
     judge: {
       ...judge,
@@ -133,7 +145,7 @@ const failureResult = await evaluate({
         };
       },
     },
-  },
+  }],
   runId: 'embedded-faas-rubric-failure',
 });
 assert.equal(failureResult.status, 'completed');

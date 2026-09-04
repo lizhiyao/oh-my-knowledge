@@ -7,8 +7,7 @@ const answers = {
   treatment: { one: 'A', two: 'B', three: 'C' },
 };
 
-const result = await evaluate({
-  executor: {
+const executor = {
     executorId: 'example.faas/v1',
     version: '1.0.0',
     schemas: {
@@ -32,7 +31,9 @@ const result = await evaluate({
         usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
       };
     },
-  },
+};
+
+const result = await evaluate({
   dataset: {
     datasetId: 'faas-example',
     samples: [
@@ -41,12 +42,11 @@ const result = await evaluate({
       { sampleId: 'three', input: { prompt: 'three' }, expected: 'C' },
     ],
   },
-  control: {
+  variants: [{
     variantId: 'control',
     artifact: { name: 'baseline', kind: 'baseline', source: 'baseline', content: null },
-    config: { role: 'control' },
-  },
-  treatment: {
+    execution: { executor, config: { role: 'control' } },
+  }, {
     variantId: 'treatment',
     artifact: {
       name: 'candidate',
@@ -54,10 +54,24 @@ const result = await evaluate({
       source: 'inline',
       content: 'Answer exactly.',
     },
-    config: { role: 'treatment' },
+    execution: { executor, config: { role: 'treatment' } },
+  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [{
+    comparisonId: 'control-vs-treatment',
+    comparisonKind: 'paired',
+    controlVariantId: 'control',
+    treatmentVariantIds: ['treatment'],
+    metricIds: ['correct'],
+  }],
+  analysis: { bootstrap: { resamples: 100 } },
+  decision: {
+    decisionKind: 'comparison',
+    comparisonId: 'control-vs-treatment',
+    treatmentVariantId: 'treatment',
+    metricId: 'correct',
   },
-  evaluator: { evaluatorKind: 'exact-match' },
-  experiment: { seed: 'explicit-seed', bootstrap: { resamples: 100 } },
+  experiment: { seed: 'explicit-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
   runId: 'embedded-faas',
 });

@@ -16,11 +16,11 @@ import { evaluate } from 'oh-my-knowledge';
 |---|---|
 | artifact | 被改动的知识载体：prompt、skill、agent、workflow 或空 baseline。 |
 | variant | 一个具名 artifact，以及它的 runtime context 和 Executor config。 |
-| control／treatment | 实验角色。任一角色都可以承载任意 artifact kind；`baseline` 不是 `control` 的别名。 |
+| comparison | 显式声明一个 control Variant、一个或多个 treatment Variant，以及要比较的 Metric。 |
 | dataset／sample | 评测输入，以及 expected 或 evaluation context。 |
 | executor | 针对一个 sample 运行 artifact 的宿主代码。 |
 | evaluator | 测量方法，例如 exact match 或 Rubric 评委。 |
-| experiment／policy | 统计设计与运行限制。 |
+| experiment／analysis／decision／policy | 采样设计、估计方法、可选的单一 Decision 与运行限制。 |
 | result | Core 产出的运行 artifact、evidence、Decision 与 Report。 |
 
 Core 编译后的 `Target` 仍是内部执行概念，不是 artifact 或 variant 的第二个公开名称。
@@ -37,10 +37,12 @@ npm install oh-my-knowledge zod
 
 ```ts
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge';
+import { evaluate, type Executor, type Variant } from 'oh-my-knowledge';
 
-const result = await evaluate({
-  executor: {
+type Input = { prompt: string };
+type Config = { deployment: string };
+
+const executor: Executor<Input, Config, string> = {
     executorId: 'acme.answer-service/v1',
     version: '1.4.0',
     schemas: {
@@ -66,7 +68,37 @@ const result = await evaluate({
       });
       return { output: response.text, usage: response.usage };
     },
+};
+
+const variants: Variant<Input, Config, string>[] = [{
+  variantId: 'prompt-v1',
+  artifact: {
+    name: 'answer-prompt-v1',
+    kind: 'prompt',
+    source: 'inline',
+    content: '简洁回答。',
   },
+  execution: {
+    executor,
+    config: { deployment: 'deployment-a' },
+    runtimeContext: { values: { tenant: 'evaluation' } },
+  },
+}, {
+  variantId: 'prompt-v2',
+  artifact: {
+    name: 'answer-prompt-v2',
+    kind: 'prompt',
+    source: 'inline',
+    content: '简洁、准确地回答。',
+  },
+  execution: {
+    executor,
+    config: { deployment: 'deployment-b' },
+    runtimeContext: { values: { tenant: 'evaluation' } },
+  },
+}];
+
+const result = await evaluate({
   dataset: {
     datasetId: 'answer-regression',
     samples: [
@@ -74,33 +106,26 @@ const result = await evaluate({
       { sampleId: 'two', input: { prompt: '2 + 2 等于几？' }, expected: '4' },
     ],
   },
-  control: {
-    variantId: 'prompt-v1',
-    artifact: {
-      name: 'answer-prompt-v1',
-      kind: 'prompt',
-      source: 'inline',
-      content: '简洁回答。',
-    },
-    config: { deployment: 'deployment-a' },
-    runtimeContext: { values: { tenant: 'evaluation' } },
+  variants,
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [{
+    comparisonId: 'prompt-v1-vs-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'prompt-v1',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correct'],
+  }],
+  analysis: { bootstrap: { resamples: 1_000, alpha: 0.05 } },
+  decision: {
+    decisionKind: 'comparison',
+    comparisonId: 'prompt-v1-vs-v2',
+    treatmentVariantId: 'prompt-v2',
+    metricId: 'correct',
   },
-  treatment: {
-    variantId: 'prompt-v2',
-    artifact: {
-      name: 'answer-prompt-v2',
-      kind: 'prompt',
-      source: 'inline',
-      content: '简洁、准确地回答。',
-    },
-    config: { deployment: 'deployment-b' },
-    runtimeContext: { values: { tenant: 'evaluation' } },
-  },
-  evaluator: { evaluatorKind: 'exact-match' },
   experiment: {
     seed: 'release-2026-09-04',
     trials: 1,
-    bootstrap: { resamples: 1_000, alpha: 0.05 },
+    sampling: { samplingKind: 'paired' },
   },
   policy: { maxConcurrency: 4 },
   runId: crypto.randomUUID(),
@@ -112,7 +137,7 @@ await reportStore.put(result.report);
 
 `result.definition` 与 `result.policy` 是 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。其余 Core 运行结果字段保持不变：evidence 位于 `result.artifacts`，Decision 位于 `result.artifacts.decision`，Report 位于 `result.report`。
 
-除上面展示的值外，`executor.execute()` 还会收到显式的 `experimentRole` 与 `variantId`。可预期的宿主失败应返回 `{ errorCode }`，其中 error code 必须稳定且不包含敏感信息；普通异常会统一成为脱敏的 `EVAL_RUNTIME_EXECUTOR_FAILED`。
+除上面展示的值外，`executor.execute()` 还会收到 `variantId`。比较角色属于 `comparisons`，不会注入 Executor invocation。可预期的宿主失败应返回 `{ errorCode }`，其中 error code 必须稳定且不包含敏感信息；普通异常会统一成为脱敏的 `EVAL_RUNTIME_EXECUTOR_FAILED`。
 
 Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 字段，OMK 会拒绝执行，因为这些行为会在同一 identity 下静默改变实际测量。需要有意变换时，应在 `execute()` 内完成，并提升 `version` 或测量相关的 `fingerprintFacets`。
 
@@ -128,11 +153,9 @@ Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因
 
 ```ts
 const result = await evaluate({
-  executor,
   dataset,
-  control,
-  treatment,
-  evaluator: {
+  variants,
+  evaluators: [{
     evaluatorKind: 'rubric-judge',
     evaluatorId: 'correctness-judge',
     metricId: 'correctness-score',
@@ -158,8 +181,15 @@ const result = await evaluate({
         return { invocationStatus: 'completed', output: response.text, usage: response.usage };
       },
     },
-  },
-  experiment: { seed: 'rubric-release-42' },
+  }],
+  comparisons: [{
+    comparisonId: 'prompt-v1-vs-v2',
+    comparisonKind: 'paired',
+    controlVariantId: 'prompt-v1',
+    treatmentVariantIds: ['prompt-v2'],
+    metricIds: ['correctness-score'],
+  }],
+  experiment: { seed: 'rubric-release-42', sampling: { samplingKind: 'paired' } },
   policy: {},
   runId: crypto.randomUUID(),
 });
@@ -175,8 +205,7 @@ const result = await evaluate({
 import { checkExecutor } from 'oh-my-knowledge';
 
 const certification = await checkExecutor({
-  executor,
-  variant: treatment,
+  variant: variants[1],
   success: { input: successInput, expected: expectedOutput },
   failure: { input: failureInput, expectedErrorCode: 'model-unavailable' },
   cancellation: { input: longRunningInput },

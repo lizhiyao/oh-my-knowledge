@@ -174,7 +174,7 @@ The embedded Runtime API uses the following standard terms without introducing a
 | `evidence` | Classified, attributable facts supporting an observation or conclusion. |
 | `report` | The materialized projection of authenticated run artifacts and Decision. |
 
-The canonical package entry is therefore `evaluate({ executor, dataset, control, treatment, evaluator, experiment, policy, runId })`. Avoid public aliases such as runner, suite, cases, candidate, scoring, or using `target` as a synonym for artifact. Core `Target` is a compiled binding of a variant to execution requirements and remains a lower-level contract. `eval-workflows` may depend on Runtime foundation leaf modules but must not depend on the canonical user façade or package index.
+The canonical package entry is therefore `evaluate({ dataset, variants, evaluators, comparisons, experiment, analysis, decision, policy, runId })`. Each Variant owns its execution binding; each Comparison explicitly declares its control, treatments, and Metrics. Avoid public aliases such as runner, suite, cases, candidate, scoring, or using `target` as a synonym for artifact. Core `Target` is a compiled binding of a variant to execution requirements and remains a lower-level contract. `eval-workflows` may depend on Runtime foundation leaf modules but must not depend on the canonical user façade or package index.
 
 ## 3. Term boundaries
 

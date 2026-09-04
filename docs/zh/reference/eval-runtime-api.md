@@ -12,20 +12,22 @@
 
 | Export | 用途 |
 |---|---|
-| `evaluate` | 使用宿主持有的 Executor，对一个 control 和一个 treatment 进行评测。 |
+| `evaluate` | 运行一份显式的 solo 或 paired 评测设计，包括多臂与多指标比较。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量检查认证 Executor。 |
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`Judge`、`Rubric`、`Experiment`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`Analysis`、`Comparison`、`Decision`、`Policy`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
 `RuntimeContext` 只包含可重放的宿主自定义 JSON `values`。canonical façade 不接受文件系统路径充当 workspace identity；在一般化 Runtime 提供内容寻址 workspace descriptor 与宿主持有的 lease 前，需要 workspace 的宿主应使用 advanced Core assembly 路径。`Sample.executionContext` 是单条用例中仅供 Executor 使用的输入，`Sample.evaluationContext` 是仅供 Evaluator 使用的输入；这两个用例投影都不描述宿主运行环境。
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition` 与 `policy`，用于访问 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
-对于一组 control／treatment 比较，façade 会封存区间感知的 Core `progress/v2` 策略。只有完整置信区间排除配置的 threshold 加 equivalence band，才会给出 `PROGRESS` 或 `REGRESSION`；区间重叠时返回 `NOISE`。这个三分类方向策略有意小于 CLI workflow 的六分类发布策略，后者还会区分 `UNDERPOWERED`／`CAUTIOUS` 并执行发布门禁。两条路径因此共享同一个区间要求，但不伪装成完全相同的策略契约。
+`SamplingDesign` 当前支持单 Variant 的 `solo` 质量画像，以及显式 `paired` 比较。一项 paired `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric。`evaluators` 可包含多个 exact-match 或 Rubric 评委，但 evaluator ID 与 metric ID 必须分别唯一。真正的独立组分配不能伪装成配对数据；在 Core 提供显式分配与非配对估计契约前，OMK 暂不支持这种设计。
 
-该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 runtime context，`control`／`treatment` 是实验角色。
+Analysis 始终预注册。对于 `solo`，façade 为每个 Metric 生成一个均值 Bootstrap result；对于 `paired`，则为每个 comparison × treatment × Metric 生成一个配对差值 Bootstrap result。它不会虚构 composite verdict。不传 `decision` 时返回全部分析结果但不生成 Decision；传入 `decision` 时，必须显式且唯一地选择一个 result，再交给区间感知的 Core `progress/v2` 策略。
+
+该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 
 ## `oh-my-knowledge/eval-runtime/advanced`
 
@@ -82,6 +84,6 @@ Run 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`Cr
 
 ## 迁移
 
-`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，sampling 改为显式声明，Bootstrap 参数位于 `analysis`，Decision 选择可省略但传入时必须显式。它不提供 0.x 兼容读取。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
 
 自定义 analysis graph、持久 artifact admission、分阶段重放或显式跨 run 可比性使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。
