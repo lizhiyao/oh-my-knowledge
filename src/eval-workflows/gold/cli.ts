@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { dumpYaml, loadGoldDataset } from './dataset.js';
+import { dumpYaml, loadGoldDataset, validationIssueMessage } from './dataset.js';
 
 /** Creates an empty human-gold dataset without coupling it to a report schema. */
 export function initGoldDataset(targetDir: string, options: { annotator?: string } = {}): string[] {
@@ -47,7 +47,10 @@ export function initGoldDataset(targetDir: string, options: { annotator?: string
   return [metadataPath, annotationsPath, readmePath];
 }
 
-export function validateGoldDataset(dir: string): { ok: boolean; issues: string[]; sampleCount: number } {
+export function validateGoldDataset(
+  dir: string,
+  lang: 'zh' | 'en' = 'en',
+): { ok: boolean; issues: string[]; sampleCount: number } {
   const { dataset, issues } = loadGoldDataset(dir);
   return {
     ok: dataset !== null && issues.length === 0,
@@ -55,7 +58,7 @@ export function validateGoldDataset(dir: string): { ok: boolean; issues: string[
       const location = issue.path
         ? ` (${issue.path}${issue.index === undefined ? '' : `:${issue.index}`})`
         : '';
-      return `${issue.message}${location}`;
+      return `${validationIssueMessage(issue, lang)}${location}`;
     }),
     sampleCount: dataset?.annotations.length ?? 0,
   };

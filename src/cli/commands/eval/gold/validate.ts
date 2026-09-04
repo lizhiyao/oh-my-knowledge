@@ -29,18 +29,22 @@ export default class EvalGoldValidate extends BaseCommand {
     await this.runWithCliExit(async () => {
       const dir = args.dir;
       if (!dir) {
-        console.error('Usage: omk eval gold validate <dir>');
+        console.error(lang === 'zh'
+          ? '用法：omk eval gold validate <dir>'
+          : 'Usage: omk eval gold validate <dir>');
         throw new CliExit(1);
       }
       const { validateGoldDataset } = await import('../../../../eval-workflows/gold/cli.js');
-      const result = validateGoldDataset(dir);
+      const result = validateGoldDataset(dir, lang);
       if (result.ok) {
         console.log(lang === 'zh'
           ? `✓ gold dataset OK，共 ${result.sampleCount} 条标注`
           : `✓ gold dataset OK — ${result.sampleCount} annotations`);
         return;
       }
-      console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
+      console.error(lang === 'zh'
+        ? `✗ gold dataset 存在 ${result.issues.length} 个问题：`
+        : `✗ gold dataset has ${result.issues.length} issue(s):`);
       for (const msg of result.issues) console.error(`  - ${msg}`);
       throw new CliExit(1);
     });

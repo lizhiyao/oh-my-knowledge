@@ -65,15 +65,19 @@ export default class EvalGoldCompare extends BaseCommand {
     await this.runWithCliExit(async () => {
       const runId = args.runId;
       if (!runId) {
-        console.error('Usage: omk eval gold compare <runId> --gold-dir <dir> --target <id> --evaluator <id> --metric <id>');
+        console.error(lang === 'zh'
+          ? '用法：omk eval gold compare <runId> --gold-dir <dir> --target <id> --evaluator <id> --metric <id>'
+          : 'Usage: omk eval gold compare <runId> --gold-dir <dir> --target <id> --evaluator <id> --metric <id>');
         throw new CliExit(1);
       }
       const goldDir = flags['gold-dir'];
       if (!goldDir) {
-        console.error('--gold-dir is required');
+        console.error(lang === 'zh' ? '必须提供 --gold-dir。' : '--gold-dir is required.');
         throw new CliExit(1);
       }
-      const { loadGoldDataset } = await import('../../../../eval-workflows/gold/dataset.js');
+      const { loadGoldDataset, validationIssueMessage } = await import(
+        '../../../../eval-workflows/gold/dataset.js'
+      );
       const {
         createNodeCoreContentStore,
         createNodeCoreRunArtifactStore,
@@ -85,11 +89,15 @@ export default class EvalGoldCompare extends BaseCommand {
 
       const { dataset, issues } = loadGoldDataset(goldDir);
       if (!dataset) {
-        console.error('Cannot load gold dataset:');
-        for (const i of issues) console.error(`  - ${i.message}`);
+        console.error(lang === 'zh' ? '无法加载 gold dataset：' : 'Cannot load gold dataset:');
+        for (const i of issues) console.error(`  - ${validationIssueMessage(i, lang)}`);
         throw new CliExit(1);
       }
-      for (const i of issues) console.error(`warn: ${i.message}`);
+      for (const i of issues) {
+        console.error(lang === 'zh'
+          ? `警告：${validationIssueMessage(i, lang)}`
+          : `Warning: ${validationIssueMessage(i, lang)}`);
+      }
 
       const storeOf = (directory: string) => createNodeCoreRunArtifactStore(directory, {
         contentResolver: createNodeCoreContentStore(resolve(directory, 'content')),

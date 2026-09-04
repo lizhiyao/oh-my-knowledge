@@ -159,7 +159,7 @@ import { resolveEvaluationCoreJsonSchema } from 'oh-my-knowledge/eval-core';
 const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json');
 ```
 
-每个已发布文件都以 canonical raw catalog URL 作为 `$id`，JSON Schema 工具可以解析其 document identity。当前 Analysis Bundle 与 Evaluation Report 已升为 v2，其余十九个根契约仍为 v1；对应 package 路径分别是 `oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` 与 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`。冻结的 v1 Analysis Bundle 与 Evaluation Report 仍保留在源码 catalog 中供历史 identity 解析，但 runtime 不再读取。Node.js 宿主仍应优先使用 `eval-core` package subpath 或 `resolveEvaluationCoreJsonSchema()`，以定位已安装 package 内的当前契约。
+每个已发布文件都以 canonical raw catalog URL 作为 `$id`，JSON Schema 工具可以解析其 document identity。Catalog 共包含 21 个根契约名称；当前 Analysis Bundle、Comparability Assessment、Evaluation Report 与 Series Analysis Bundle 使用 v2，其余 17 个当前契约使用 v1。对应 package 路径分别是 `oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json` 与 `oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json`。四个已升级契约的冻结 v1 快照仍保留在源码 catalog 中供历史 identity 解析，但 runtime 不再读取。Node.js 宿主仍应优先使用 `eval-core` package subpath 或 `resolveEvaluationCoreJsonSchema()`，以定位已安装 package 内的当前契约。
 
 ## 结果与错误
 
