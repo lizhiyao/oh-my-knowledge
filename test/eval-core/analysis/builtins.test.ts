@@ -18,6 +18,7 @@ import {
   digestCanonicalJson,
   schemaIdentityKey,
   type JsonValue,
+  type SchemaIdentity,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
 
@@ -1046,6 +1047,145 @@ describe('Evaluation Core built-in estimators', () => {
     await expect(progress.decide(decisionContext(0.25, 'scalar'))).resolves.toEqual({
       decisionStatus: 'not-decided',
       reasonCodes: ['decision-interval-unavailable'],
+    });
+  });
+
+  it('decides an explicitly bounded simultaneous interval family', async () => {
+    const release = createBuiltinDecisionPolicies().get('release-family/v1');
+    if (release === undefined) throw new Error('missing family release policy');
+    expect(release.identity.fingerprint).toBe(
+      'sha256:2f82e7538c14c62a6b778e01b8aef6bcb57259b94c4329ddab51287b259dfa0b',
+    );
+    expect(release.identity.capabilities).toMatchObject({
+      analysisResultSchemaUris: [
+        BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA.schemaUri,
+      ],
+      multipleComparisonPolicyIds: ['simultaneous-intervals.bonferroni/v1'],
+    });
+    const interval = (lower: number, upper: number) => ({
+      estimate: (lower + upper) / 2,
+      lower,
+      upper,
+      confidenceLevel: 0.975,
+      resamples: 64,
+      unitCount: 4,
+      method: 'percentile',
+    });
+    const decisionContext = (input: {
+      correctness: ReturnType<typeof interval>;
+      latency: ReturnType<typeof interval>;
+      criteria?: JsonValue[];
+    }) => ({
+      policy: {
+        parameters: {
+          rule: 'all',
+          criteria: input.criteria ?? [
+            { analysisResultId: 'correctness', minimumEffect: -0.01 },
+            { analysisResultId: 'latency-ms', maximumEffect: 20 },
+          ],
+        },
+      },
+      results: [{
+        resultId: 'release-family',
+        resultType: 'table',
+        value: {
+          adjustmentMethod: 'bonferroni',
+          familyConfidenceLevel: 0.95,
+          marginalConfidenceLevel: 0.975,
+          familySize: 2,
+          resamples: 64,
+          members: [
+            { analysisResultId: 'correctness', interval: input.correctness },
+            { analysisResultId: 'latency-ms', interval: input.latency },
+          ],
+        },
+      }],
+      contrasts: [
+        {
+          analysisResultId: 'correctness',
+          comparisonId: 'comparison-1',
+          controlTargetId: 'control',
+          treatmentTargetId: 'treatment',
+          metricId: 'correctness',
+        },
+        {
+          analysisResultId: 'latency-ms',
+          comparisonId: 'comparison-1',
+          controlTargetId: 'control',
+          treatmentTargetId: 'treatment',
+          metricId: 'latency-ms',
+        },
+      ],
+    }) as unknown as DecisionPolicyContext;
+
+    await expect(release.decide(decisionContext({
+      correctness: interval(-0.01, 0.1),
+      latency: interval(-5, 20),
+    }))).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'RELEASE',
+      reasonCodes: ['all-family-criteria-acceptable'],
+    });
+    await expect(release.decide(decisionContext({
+      correctness: interval(-0.01, 0.1),
+      latency: interval(21, 30),
+    }))).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'BLOCK',
+      reasonCodes: ['family-criterion-unacceptable'],
+    });
+    await expect(release.decide(decisionContext({
+      correctness: interval(-0.02, 0.1),
+      latency: interval(-5, 20),
+    }))).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['family-criterion-uncertain'],
+    });
+    await expect(release.decide(decisionContext({
+      correctness: interval(-0.01, 0.1),
+      latency: interval(-5, 20),
+      criteria: [
+        { analysisResultId: 'correctness', minimumEffect: -0.01 },
+        { analysisResultId: 'other', maximumEffect: 20 },
+      ],
+    }))).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['decision-family-contract-unavailable'],
+    });
+
+    const capabilities = release.identity.capabilities as {
+      parameterSchema: SchemaIdentity;
+    };
+    const validator = createBuiltinAnalysisSchemaValidators().get(
+      schemaIdentityKey(capabilities.parameterSchema),
+    );
+    expect(validator).toBeDefined();
+    expect(() => validator?.parse({
+      rule: 'all',
+      criteria: [
+        { analysisResultId: 'correctness' },
+        { analysisResultId: 'latency-ms', maximumEffect: 20 },
+      ],
+    })).toThrow(/requires at least one effect boundary/);
+    expect(() => validator?.parse({
+      rule: 'all',
+      criteria: [
+        { analysisResultId: 'correctness', minimumEffect: 1, maximumEffect: 0 },
+        { analysisResultId: 'latency-ms', maximumEffect: 20 },
+      ],
+    })).toThrow(/minimumEffect must not exceed maximumEffect/);
+    expect(validator?.parse({
+      rule: 'all',
+      criteria: [
+        { analysisResultId: 'latency-ms', maximumEffect: 20 },
+        { analysisResultId: 'correctness', minimumEffect: -0.01 },
+      ],
+    })).toEqual({
+      rule: 'all',
+      criteria: [
+        { analysisResultId: 'correctness', minimumEffect: -0.01 },
+        { analysisResultId: 'latency-ms', maximumEffect: 20 },
+      ],
     });
   });
 });

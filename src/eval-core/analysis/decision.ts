@@ -153,8 +153,8 @@ function gateReasons(
         ))
       : undefined;
     // A generic Core correction node exposes the hypothesis-table contract below.
-    // A host policy may instead declare an estimator-owned family standard whose
-    // output schema and family lineage are validated by that DecisionPolicy. The
+    // A host policy may instead declare a family-owned authoritative result whose
+    // output schema and child lineage are validated by that DecisionPolicy. The
     // compiler still requires the policy Runtime capability to admit the declared
     // standard; Core must not manufacture p-values to force it into this shape.
     if (correction !== undefined) {

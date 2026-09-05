@@ -12,6 +12,7 @@ import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
   validateMaterializedAnalysisSemantics,
+  validateMaterializedDecisionSemantics,
 } from '../../../src/eval-core/compiler/validation.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
@@ -1030,7 +1031,6 @@ describe('Compiler definition validation', () => {
     };
 
     expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
-
     definition.analysisGraph.nodes[0].inputs.push({
       inputKind: 'analysis-result',
       referenceId: 'raw-secondary-result',
@@ -1038,9 +1038,28 @@ describe('Compiler definition validation', () => {
     expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
       expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
     );
+    definition.analysisGraph.nodes[0].inputs.pop();
+    definition.decisionPolicy.comparisonFamilyResultId = 'corrected-result';
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+    definition.decisionPolicy.comparisonFamily = definition.decisionPolicy.comparisonFamily?.map(
+      (member) => {
+        if (!('hypothesisId' in member)) return member;
+        return {
+          analysisResultId: member.analysisResultId,
+          comparisonId: member.comparisonId,
+          treatmentTargetId: member.treatmentTargetId,
+          metricId: member.metricId,
+        };
+      },
+    );
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
   });
 
-  it('admits one authoritative estimator-owned result for an exact comparison family', () => {
+  it('binds one authoritative family result to distinct exact member results', () => {
     const definition = validDefinition();
     definition.targets.push({
       ...structuredClone(definition.targets[1]),
@@ -1054,42 +1073,123 @@ describe('Compiler definition validation', () => {
       definition.experiment.assignment.randomizationSlotIds.push('slot-treatment-secondary');
     }
     definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
-    definition.analysisGraph.nodes[0].analysisNodeKind = 'estimator';
-    definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';
+    definition.analysisGraph.nodes = [{
+      analysisNodeKind: 'estimator',
+      nodeId: 'primary-member',
+      implementationId: 'interval/v1',
+      inputs: [
+        { inputKind: 'metric-observations', referenceId: 'correct' },
+        {
+          inputKind: 'comparison',
+          referenceId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment',
+          metricId: 'correct',
+        },
+      ],
+      outputResultId: 'primary-result',
+    }, {
+      analysisNodeKind: 'estimator',
+      nodeId: 'secondary-member',
+      implementationId: 'interval/v1',
+      inputs: [
+        { inputKind: 'metric-observations', referenceId: 'correct' },
+        {
+          inputKind: 'comparison',
+          referenceId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment-secondary',
+          metricId: 'correct',
+        },
+      ],
+      outputResultId: 'secondary-result',
+    }, {
+      analysisNodeKind: 'correction',
+      nodeId: 'family-result',
+      implementationId: 'family-standard/v1',
+      inputs: [
+        { inputKind: 'analysis-result', referenceId: 'primary-result' },
+        { inputKind: 'analysis-result', referenceId: 'secondary-result' },
+      ],
+      outputResultId: 'authoritative-family',
+    }];
     definition.decisionPolicy = {
       decisionPolicyId: 'release-gate',
       implementationId: 'progress/v1',
-      analysisResultIds: ['correct-rate'],
+      analysisResultIds: ['authoritative-family'],
       comparisonFamily: [
         {
           comparisonId: 'control-vs-treatment',
           treatmentTargetId: 'treatment',
           metricId: 'correct',
-          analysisResultId: 'correct-rate',
+          analysisResultId: 'primary-result',
         },
         {
           comparisonId: 'control-vs-treatment',
           treatmentTargetId: 'treatment-secondary',
           metricId: 'correct',
-          analysisResultId: 'correct-rate',
+          analysisResultId: 'secondary-result',
         },
       ],
-      comparisonFamilyResultId: 'correct-rate',
-      multipleComparisonPolicyId: 'estimator-owned-family/v1',
+      comparisonFamilyResultId: 'authoritative-family',
+      multipleComparisonPolicyId: 'family-standard/v1',
       minimumEvidenceStatus: 'complete',
     };
 
     expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
+    const singletonDefinition = structuredClone(definition);
+    if (singletonDefinition.decisionPolicy === undefined) throw new Error('missing policy');
+    singletonDefinition.decisionPolicy.comparisonFamily =
+      singletonDefinition.decisionPolicy.comparisonFamily?.slice(0, 1);
+    singletonDefinition.decisionPolicy.multipleComparisonPolicyId = undefined;
+    expect(() => validateDefinitionSemantics(singletonDefinition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+    const releaseDefinition = structuredClone(definition);
+    if (releaseDefinition.decisionPolicy === undefined) throw new Error('missing policy');
+    releaseDefinition.decisionPolicy.implementationId = 'release-family/v1';
+    releaseDefinition.decisionPolicy.multipleComparisonPolicyId =
+      'simultaneous-intervals.bonferroni/v1';
+    releaseDefinition.decisionPolicy.parameters = {
+      rule: 'all',
+      criteria: [
+        { analysisResultId: 'primary-result', minimumEffect: 0 },
+        { analysisResultId: 'secondary-result', maximumEffect: 1 },
+      ],
+    };
+    expect(() => validateMaterializedDecisionSemantics(releaseDefinition)).not.toThrow();
+    releaseDefinition.decisionPolicy.analysisResultIds.push('primary-result');
+    expect(() => validateMaterializedDecisionSemantics(releaseDefinition)).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
 
-    definition.analysisGraph.nodes[0].implementationId = 'other-estimator/v1';
+    definition.analysisGraph.nodes[2].implementationId = 'other-family/v1';
     expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
       expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
     );
-    definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';
-    definition.decisionPolicy.comparisonFamily![1].analysisResultId = 'other-result';
+    definition.analysisGraph.nodes[2].implementationId = 'family-standard/v1';
+    definition.analysisGraph.nodes[2].inputs.pop();
     expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
       expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
     );
+    definition.analysisGraph.nodes[2].inputs.push({
+      inputKind: 'analysis-result',
+      referenceId: 'secondary-result',
+    });
+    definition.decisionPolicy.comparisonFamilyResultId = 'primary-result';
+    definition.decisionPolicy.analysisResultIds = ['primary-result'];
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+    definition.decisionPolicy.comparisonFamilyResultId = 'authoritative-family';
+    definition.decisionPolicy.analysisResultIds = ['authoritative-family'];
+    definition.decisionPolicy.comparisonFamily = definition.decisionPolicy.comparisonFamily?.map(
+      (member) => ({ ...member, analysisResultId: 'authoritative-family' }),
+    );
+    definition.analysisGraph.nodes[2] = {
+      ...definition.analysisGraph.nodes[2],
+      analysisNodeKind: 'estimator',
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'primary-result' }],
+    };
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
   });
 
   it('enforces declared cardinality for every Analysis input kind', () => {
