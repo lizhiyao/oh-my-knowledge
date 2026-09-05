@@ -131,6 +131,41 @@ const ProgressParametersSchema = z.object({
   threshold: FiniteNumberSchema.default(0),
   equivalence: FiniteNumberSchema.nonnegative().default(0),
 }).strict();
+const FamilyReleaseCriterionSchema = z.object({
+  analysisResultId: z.string().min(1).max(256),
+  minimumEffect: FiniteNumberSchema.optional(),
+  maximumEffect: FiniteNumberSchema.optional(),
+}).strict().superRefine((criterion, context) => {
+  if (criterion.minimumEffect === undefined && criterion.maximumEffect === undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: [],
+      message: 'A family release criterion requires at least one effect boundary',
+    });
+  }
+  if (criterion.minimumEffect !== undefined
+      && criterion.maximumEffect !== undefined
+      && criterion.minimumEffect > criterion.maximumEffect) {
+    context.addIssue({
+      code: 'custom',
+      path: ['minimumEffect'],
+      message: 'minimumEffect must not exceed maximumEffect',
+    });
+  }
+});
+const FamilyReleaseParametersSchema = z.object({
+  rule: z.literal('all'),
+  criteria: z.array(FamilyReleaseCriterionSchema).min(2),
+}).strict().superRefine((parameters, context) => {
+  const resultIds = parameters.criteria.map((criterion) => criterion.analysisResultId);
+  if (new Set(resultIds).size !== resultIds.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['criteria'],
+      message: 'Family release criteria must be unique',
+    });
+  }
+});
 
 const ScalarEnvelopeSchema = z.object({
   resultType: z.literal('scalar'),
@@ -352,6 +387,16 @@ const SIMULTANEOUS_INTERVAL_FAMILY_PARAMETERS_SCHEMA = schemaIdentity(
 const PROGRESS_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.progress/v1', 'urn:omk:parameters:progress:v1', jsonSchema(ProgressParametersSchema),
 );
+const FAMILY_RELEASE_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.family-release/v1',
+  'urn:omk:parameters:family-release:v1',
+  jsonSchema(FamilyReleaseParametersSchema, [
+    'rule is explicitly all',
+    'criteria are unique and sealed in canonical analysisResultId order',
+    'every criterion declares at least one finite effect boundary',
+    'minimumEffect is less than or equal to maximumEffect when both are present',
+  ]),
+);
 
 function runtimeIdentity(
   implementationId: string,
@@ -467,6 +512,14 @@ const PROGRESS_V2_DECISION_CAPABILITIES: JsonValue = {
   schemas: [],
 };
 
+const FAMILY_RELEASE_DECISION_CAPABILITIES: JsonValue = {
+  capabilityKind: 'decision-policy',
+  analysisResultSchemaUris: [BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA.schemaUri],
+  multipleComparisonPolicyIds: ['simultaneous-intervals.bonferroni/v1'],
+  parameterSchema: FAMILY_RELEASE_PARAMETERS_SCHEMA,
+  schemas: [],
+};
+
 const PROGRESS_V1_DECISION_FINGERPRINT_FACETS: JsonValue = {
   decisionOutputContract: 'decided-verdict-with-reason-codes/v1',
   reasonRules: {
@@ -485,6 +538,18 @@ const PROGRESS_V2_DECISION_FINGERPRINT_FACETS: JsonValue = {
     regression: 'interval-below-regression-boundary',
     noise: 'interval-overlaps-decision-boundary',
     notDecided: 'decision-interval-unavailable',
+  },
+};
+
+const FAMILY_RELEASE_DECISION_FINGERPRINT_FACETS: JsonValue = {
+  decisionOutputContract: 'all-member-bounded-release/v1',
+  effectRule: 'raw-treatment-minus-control-interval',
+  equalityRule: 'bounds-are-inclusive-for-acceptance',
+  reasonRules: {
+    release: 'all-family-criteria-acceptable',
+    block: 'family-criterion-unacceptable',
+    notDecided: 'family-criterion-uncertain',
+    unavailable: 'decision-family-contract-unavailable',
   },
 };
 
@@ -1698,6 +1763,7 @@ class BuiltinSchemaValidator implements CoreSchemaValidator {
     value: JsonValue,
     context?: Readonly<CoreSchemaValidationContext>,
   ) => void;
+  readonly #normalize?: (value: JsonValue) => JsonValue;
 
   constructor(
     schema: SchemaIdentity,
@@ -1706,14 +1772,17 @@ class BuiltinSchemaValidator implements CoreSchemaValidator {
       value: JsonValue,
       context?: Readonly<CoreSchemaValidationContext>,
     ) => void,
+    normalize?: (value: JsonValue) => JsonValue,
   ) {
     this.schema = schema;
     this.#zod = zodSchema;
     this.#validateContext = validateContext;
+    this.#normalize = normalize;
   }
 
   parse(value: unknown, context?: Readonly<CoreSchemaValidationContext>): JsonValue {
-    const parsed = this.#zod.parse(value) as JsonValue;
+    const validated = this.#zod.parse(value) as JsonValue;
+    const parsed = this.#normalize?.(validated) ?? validated;
     this.#validateContext?.(parsed, context);
     return parsed;
   }
@@ -1896,6 +1965,88 @@ export const BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY: AnalysisDecisionPolicy =
   },
 };
 
+export const BUILTIN_FAMILY_RELEASE_DECISION_POLICY: AnalysisDecisionPolicy = {
+  identity: runtimeIdentity(
+    'release-family/v1',
+    FAMILY_RELEASE_DECISION_CAPABILITIES,
+    FAMILY_RELEASE_DECISION_FINGERPRINT_FACETS,
+  ),
+  decide: async (context): Promise<DecisionPolicyOutput> => {
+    const parameters = FamilyReleaseParametersSchema.safeParse(context.policy.parameters);
+    if (!parameters.success || context.results.length !== 1) {
+      return {
+        decisionStatus: 'not-decided',
+        reasonCodes: ['decision-family-contract-unavailable'],
+      };
+    }
+    const family = SimultaneousIntervalFamilyEnvelopeSchema.safeParse({
+      resultType: context.results[0].resultType,
+      value: context.results[0].value,
+    });
+    if (!family.success) {
+      return {
+        decisionStatus: 'not-decided',
+        reasonCodes: ['decision-family-contract-unavailable'],
+      };
+    }
+    const criterionIds = parameters.data.criteria.map(
+      (criterion) => criterion.analysisResultId,
+    ).sort();
+    const familyIds = family.data.value.members.map(
+      (member) => member.analysisResultId,
+    ).sort();
+    const contrastIds = context.contrasts.map((contrast) => contrast.analysisResultId).sort();
+    if (canonicalizeJson(criterionIds) !== canonicalizeJson(familyIds)
+        || canonicalizeJson(criterionIds) !== canonicalizeJson(contrastIds)) {
+      return {
+        decisionStatus: 'not-decided',
+        reasonCodes: ['decision-family-contract-unavailable'],
+      };
+    }
+    const intervalsById = new Map(family.data.value.members.map(
+      (member) => [member.analysisResultId, member.interval],
+    ));
+    let uncertain = false;
+    for (const criterion of parameters.data.criteria) {
+      const interval = intervalsById.get(criterion.analysisResultId);
+      if (interval === undefined) {
+        return {
+          decisionStatus: 'not-decided',
+          reasonCodes: ['decision-family-contract-unavailable'],
+        };
+      }
+      const provenUnacceptable = (
+        criterion.minimumEffect !== undefined && interval.upper < criterion.minimumEffect
+      ) || (
+        criterion.maximumEffect !== undefined && interval.lower > criterion.maximumEffect
+      );
+      if (provenUnacceptable) {
+        return {
+          decisionStatus: 'decided',
+          verdict: 'BLOCK',
+          reasonCodes: ['family-criterion-unacceptable'],
+        };
+      }
+      const provenAcceptable = (
+        criterion.minimumEffect === undefined || interval.lower >= criterion.minimumEffect
+      ) && (
+        criterion.maximumEffect === undefined || interval.upper <= criterion.maximumEffect
+      );
+      if (!provenAcceptable) uncertain = true;
+    }
+    return uncertain
+      ? {
+        decisionStatus: 'not-decided',
+        reasonCodes: ['family-criterion-uncertain'],
+      }
+      : {
+        decisionStatus: 'decided',
+        verdict: 'RELEASE',
+        reasonCodes: ['all-family-criteria-acceptable'],
+      };
+  },
+};
+
 export function createBuiltinAnalysisNodes(): ReadonlyMap<string, AnalysisNodeImplementation> {
   return new Map([...BUILTIN_DEFINITIONS.entries()].map(([implementationId, definition]) => [
     implementationId,
@@ -1909,6 +2060,7 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
     SchemaIdentity,
     z.ZodType,
     ((value: JsonValue, context?: Readonly<CoreSchemaValidationContext>) => void)?,
+    ((value: JsonValue) => JsonValue)?,
   ]> = [
     [BUILTIN_SCALAR_RESULT_SCHEMA, ScalarEnvelopeSchema],
     [BUILTIN_INTERVAL_RESULT_SCHEMA, IntervalEnvelopeSchema, validateIntervalContext],
@@ -1931,11 +2083,26 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
       SimultaneousIntervalFamilyParametersSchema,
     ],
     [PROGRESS_PARAMETERS_SCHEMA, ProgressParametersSchema],
+    [
+      FAMILY_RELEASE_PARAMETERS_SCHEMA,
+      FamilyReleaseParametersSchema,
+      undefined,
+      (value) => {
+        const parsed = value as z.infer<typeof FamilyReleaseParametersSchema>;
+        return {
+          ...parsed,
+          criteria: [...parsed.criteria].sort((left, right) => (
+            left.analysisResultId < right.analysisResultId ? -1
+              : left.analysisResultId > right.analysisResultId ? 1 : 0
+          )),
+        };
+      },
+    ],
   ];
-  for (const [schema, zodSchema, validateContext] of entries) {
+  for (const [schema, zodSchema, validateContext, normalize] of entries) {
     validators.set(
       schemaIdentityKey(schema),
-      new BuiltinSchemaValidator(schema, zodSchema, validateContext),
+      new BuiltinSchemaValidator(schema, zodSchema, validateContext, normalize),
     );
   }
   return validators;
@@ -1949,6 +2116,7 @@ export function createBuiltinDecisionPolicies() {
   return new Map([
     ['progress/v1', BUILTIN_PROGRESS_DECISION_POLICY],
     ['progress/v2', BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY],
+    ['release-family/v1', BUILTIN_FAMILY_RELEASE_DECISION_POLICY],
   ]);
 }
 
@@ -1967,7 +2135,9 @@ export function resolveBuiltinAnalysisRuntime(
       ? BUILTIN_PROGRESS_DECISION_POLICY
       : requirement.implementationId === 'progress/v2'
         ? BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY
-        : undefined;
+        : requirement.implementationId === 'release-family/v1'
+          ? BUILTIN_FAMILY_RELEASE_DECISION_POLICY
+          : undefined;
     if (policy === undefined) return undefined;
     return {
       identity: policy.identity,

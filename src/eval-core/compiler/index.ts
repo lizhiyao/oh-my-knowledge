@@ -57,6 +57,7 @@ import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
   validateMaterializedAnalysisSemantics,
+  validateMaterializedDecisionSemantics,
 } from './validation.js';
 import { sealRunPlan } from '../contracts/sealed-run-plan.js';
 
@@ -66,6 +67,7 @@ export { assertSealedRunPlan } from '../contracts/sealed-run-plan.js';
 export {
   validateDefinitionSemantics,
   validateMaterializedAnalysisSemantics,
+  validateMaterializedDecisionSemantics,
 } from './validation.js';
 
 interface StageExtensions {
@@ -1310,6 +1312,9 @@ export async function prepareEvaluationPlan(
     runtime,
   );
   validateMaterializedAnalysisSemantics(definition);
+  if (definition.decisionPolicy?.implementationId === 'release-family/v1') {
+    validateMaterializedDecisionSemantics(definition);
+  }
   const stageExtensions = await resolveExtensions(
     definition.extensions,
     measurementPolicy.extensions,

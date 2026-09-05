@@ -919,17 +919,26 @@ export function validateDefinitionSemantics(
     );
     assertUnique(hypothesisMembers.map((member) => member.hypothesisId), 'decision-policy:hypothesis');
     const familyResultId = definition.decisionPolicy.comparisonFamilyResultId;
-    if (familyResultId === undefined) {
+    const sharesFamilyResult = familyResultId !== undefined
+      && family.length > 0
+      && family.every((member) => member.analysisResultId === familyResultId);
+    const usesDistinctMemberResults = familyResultId !== undefined
+      && family.length > 0
+      && family.every((member) => member.analysisResultId !== familyResultId);
+    if (familyResultId === undefined || usesDistinctMemberResults) {
       assertUnique(
         family.map((member) => member.analysisResultId),
         'decision-policy:family-analysis-result',
       );
-    } else if (family.length === 0
+    }
+    if (familyResultId !== undefined && (family.length === 0
         || !definition.decisionPolicy.analysisResultIds.includes(familyResultId)
-        || family.some((member) => member.analysisResultId !== familyResultId)) {
+        || (!sharesFamilyResult && !usesDistinctMemberResults)
+        || (usesDistinctMemberResults && family.length < 2)
+        || hypothesisMembers.length > 0)) {
       throw definitionError(
         'EVAL_DEFINITION_MISSING_REFERENCE',
-        '权威 comparison family result 必须由每个 member 共同绑定并被 DecisionPolicy 消费。',
+        '权威 comparison family result 必须采用完整的 shared-result 或 distinct-member 形态，且不能伪装成 raw-hypothesis family。',
         { referenceId: familyResultId },
       );
     }
@@ -973,7 +982,7 @@ export function validateDefinitionSemantics(
       ].sort();
       const actualInputs = producer?.inputs.map((input) => canonicalizeJson(input)).sort();
       if (producer === undefined
-          || (familyResultId === undefined
+          || (!sharesFamilyResult
             && canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs))) {
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
@@ -1026,13 +1035,32 @@ export function validateDefinitionSemantics(
           { referenceId: correctionId },
         );
       }
+    } else if (correctionId !== undefined && usesDistinctMemberResults) {
+      const familyProducer = nodeByResultId.get(familyResultId as string);
+      const familyInputs = familyProducer?.inputs.flatMap((input) => (
+        input.inputKind === 'analysis-result' ? [input.referenceId] : []
+      )).sort() ?? [];
+      const memberResultIds = family.map((member) => member.analysisResultId).sort();
+      if ((familyProducer?.analysisNodeKind !== 'estimator'
+          && familyProducer?.analysisNodeKind !== 'correction')
+          || (familyProducer.analysisNodeKind === 'correction'
+            && correctionId === 'bonferroni/v1')
+          || familyProducer.implementationId !== correctionId
+          || familyInputs.length !== familyProducer.inputs.length
+          || canonicalizeJson(familyInputs) !== canonicalizeJson(memberResultIds)) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          '权威 comparison family result 必须由声明的 family standard 精确消费全部 member result 后产生。',
+          { referenceId: correctionId },
+        );
+      }
     } else if (correctionId !== undefined) {
       const familyProducer = nodeByResultId.get(familyResultId as string);
       if (familyProducer?.analysisNodeKind !== 'estimator'
           || familyProducer.implementationId !== correctionId) {
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
-          '权威 comparison family result 必须由声明的 estimator-owned standard 产生。',
+          'Shared-result comparison family 必须由声明的 estimator-owned standard 产生。',
           { referenceId: correctionId },
         );
       }
@@ -1063,6 +1091,41 @@ export function validateMaterializedAnalysisSemantics(
   definition: EvaluationDefinition,
 ): void {
   validateSimultaneousIntervalFamilies(definition, true);
+}
+
+export function validateMaterializedDecisionSemantics(
+  definition: EvaluationDefinition,
+): void {
+  const policy = definition.decisionPolicy;
+  if (policy?.implementationId !== 'release-family/v1') return;
+  const family = policy.comparisonFamily ?? [];
+  const familyResultId = policy.comparisonFamilyResultId;
+  const parameters = policy.parameters;
+  const criteria = parameters !== undefined && parameters !== null
+      && !Array.isArray(parameters) && typeof parameters === 'object'
+    ? (parameters as Record<string, unknown>).criteria
+    : undefined;
+  const criterionIds = (Array.isArray(criteria) ? criteria.flatMap((criterion) => (
+    criterion !== null && !Array.isArray(criterion) && typeof criterion === 'object'
+      && typeof (criterion as Record<string, unknown>).analysisResultId === 'string'
+      ? [(criterion as Record<string, unknown>).analysisResultId as string]
+      : []
+  )) : []).sort();
+  const memberIds = family.map((member) => member.analysisResultId).sort();
+  if (familyResultId === undefined
+      || policy.analysisResultIds.length !== 1
+      || policy.analysisResultIds[0] !== familyResultId
+      || policy.multipleComparisonPolicyId !== 'simultaneous-intervals.bonferroni/v1'
+      || family.length < 2
+      || family.some((member) => member.analysisResultId === familyResultId)
+      || family.some((member) => 'hypothesisId' in member)
+      || canonicalizeJson(criterionIds) !== canonicalizeJson(memberIds)) {
+    throw definitionError(
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+      'release-family/v1 必须精确绑定一份权威 simultaneous family 与全部 member criterion。',
+      { referenceId: policy.decisionPolicyId },
+    );
+  }
 }
 
 export function validateAnalysisInputs(
