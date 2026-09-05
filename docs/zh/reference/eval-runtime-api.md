@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`checkExecutor`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
+这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -14,9 +14,12 @@
 |---|---|
 | `evaluate` | 运行一份显式的 solo、paired 或 independent-group 评测设计，包括多臂与多指标比较。 |
 | `prepareEvaluation` | 在任何 Target 或 Evaluator 调用前，封存并检查最终 Definition、Policy、Plan、Runtime resolution、digest 和工作量估计。 |
+| `checkContentStore` | 验证宿主 ContentStore／ContentResolver 的 descriptor 完整性与稳定性、幂等写入，以及回读 value、classification 和 media type；宿主异常只会归约为稳定 reason code。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量检查认证 Executor。 |
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
+
+内容存储一致性检查使用 `ContentStoreCheckInput`、`ContentStoreCheckResult` 与 `ContentStoreConformanceCheck`。
 
 公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`AllowedToolsInput`、`AllowedToolsPlan`、`WorkspaceDescriptor`、`WorkspaceInput`、`WorkspacePlan`、`WorkspaceProvider`、`WorkspaceOpenRequest`、`WorkspaceLease`、`WorkspaceAccess`、`ContentDescriptor`、`ContentValue`、`ContentStoreRequest`、`ContentStore`、`ContentResolver`、`EvaluationInfrastructure`、`Dataset`、`Sample`、`EvaluationExecutor`、`Executor`、`InvokeExecutor`、`SessionExecutor`、`ExecutorSessionContext`、`ExecutorSessionAttempt`、`ExecutorSession`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RetrievalEvaluator`、`RetrievalMetricIds`、`ToolTrajectoryEvaluator`、`ToolTrajectoryMatchMode`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`CompositeMetricComponent`、`CompositeAggregation`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`EvidencePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 

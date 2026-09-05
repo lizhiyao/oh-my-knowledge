@@ -170,7 +170,7 @@ Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因
 默认的 `full` mode 会内联保存 output、trace 和 Evaluator evidence。面对较大或敏感的值时，注入一个内容寻址 store 及其 resolver：
 
 ```ts
-import type { ContentResolver, ContentStore } from 'oh-my-knowledge';
+import { checkContentStore, type ContentResolver, type ContentStore } from 'oh-my-knowledge';
 
 const contentStore: ContentStore = {
   async put(request) {
@@ -184,6 +184,9 @@ const contentResolver: ContentResolver = {
     return objectStore.resolveVerified(descriptor);
   },
 };
+
+const storageCheck = await checkContentStore({ contentStore, contentResolver });
+if (!storageCheck.conformant) throw new Error('内容存储未通过一致性检查。');
 
 const result = await evaluate({
   ...input,
@@ -200,7 +203,9 @@ const result = await evaluate({
 });
 ```
 
-`full` 内联 canonical JSON 值，`reference` 持久化该值并记录经过验证的 descriptor，`digest` 只保留 canonical value digest，`none` 则省略该项捕获；output、trace 与 `evaluatorEvidence` 可以分别选择。内容超过 `maximumClassification` 时会失败关闭。Evaluator 把 output 或 trace 声明为输入后，对应 capture 必须保留为 `full` 或 `reference`；reference 输入还必须提供 resolver。OMK 会在 prepare 阶段、任何 Target 调用之前校验这些依赖。Store 实现与 credential 绝不进入 Definition；返回的 descriptor 会进入 run artifact，因此可选 `uri` 必须是稳定、opaque 且不含 credential 的 locator，不能是物理路径或 signed URL。授权与大小限制仍由宿主负责。
+`checkContentStore()` 会写入两次相同的固定 public probe，再回读一次；稳定 reason code 不会保留 payload 或宿主异常文本。`full` 内联 canonical JSON 值，`reference` 持久化该值并记录经过验证的 descriptor，`digest` 只保留 canonical value digest，`none` 则省略该项捕获；output、trace 与 `evaluatorEvidence` 可以分别选择。内容超过 `maximumClassification` 时会失败关闭。Evaluator 把 output 或 trace 声明为输入后，对应 capture 必须保留为 `full` 或 `reference`；reference 输入还必须提供 resolver。OMK 会在 prepare 阶段、任何 Target 调用之前校验这些依赖。Store 实现与 credential 绝不进入 Definition；返回的 descriptor 会进入 run artifact，因此可选 `uri` 必须是稳定、opaque 且不含 credential 的 locator，不能是物理路径或 signed URL。授权与大小限制仍由宿主负责。
+
+检查默认最多等待每个操作 5 秒；若存储服务使用不同的本地 SLO，可显式设置 `timeoutMs`。Content port 不暴露取消能力，因此 timeout 后停止底层操作仍由宿主负责。
 
 ## 内容寻址 Workspace
 

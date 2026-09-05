@@ -2,6 +2,7 @@
 export {
   EvaluationConfigurationError,
   EvaluationEventConsumptionError,
+  checkContentStore,
   checkExecutor,
   evaluate,
   prepareEvaluation,
@@ -20,6 +21,8 @@ export type {
   ComparisonFamilyMember,
   CompositeAggregation,
   CompositeMetricComponent,
+  ContentStoreCheckInput,
+  ContentStoreCheckResult,
   Dataset,
   Decision,
   EvaluateInput,
@@ -68,6 +71,7 @@ export type {
   Variant,
   VariantExecution,
 } from './evaluate.js';
+export type { ContentStoreConformanceCheck } from './conformance/content-store.js';
 export type {
   ContentDescriptor,
   ContentResolver,

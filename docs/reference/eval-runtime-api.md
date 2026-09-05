@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-The recommended ordinary-user entry. It exposes exactly the same canonical Runtime façade as `oh-my-knowledge/eval-runtime`: `evaluate`, `prepareEvaluation`, `checkExecutor`, their stable errors, and their public model types. Core engines, builders, registrations, and adapters are intentionally absent.
+The recommended ordinary-user entry. It exposes exactly the same canonical Runtime façade as `oh-my-knowledge/eval-runtime`: `evaluate`, `prepareEvaluation`, `checkExecutor`, `checkContentStore`, their stable errors, and their public model types. Core engines, builders, registrations, and adapters are intentionally absent.
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -14,9 +14,12 @@ The canonical API for application developers:
 |---|---|
 | `evaluate` | Run one explicit solo, paired, or independent-group evaluation design, including multi-arm and multi-metric comparisons. |
 | `prepareEvaluation` | Seal and inspect the exact Definition, Policy, Plan, Runtime resolutions, digest, and work estimate before any Target or Evaluator call. |
+| `checkContentStore` | Exercise a host ContentStore／ContentResolver pair for descriptor integrity and stability, idempotent writes, and round-trip value, classification, and media type; host exceptions are reduced to stable reason codes. |
 | `checkExecutor` | Certify an Executor through success, failure, cancellation, cleanup, and measurement checks. |
 | `EvaluationConfigurationError` | Stable caller-configuration failure with a public code and no rejected payload. |
 | `EvaluationEventConsumptionError` | Stable, redacted observer／event-stream failure that retains the terminal `EvaluationResult` when available. |
+
+Content storage conformance uses `ContentStoreCheckInput`, `ContentStoreCheckResult`, and `ContentStoreConformanceCheck`.
 
 Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, `VariantExecution`, `RuntimeContext`, `AllowedToolsInput`, `AllowedToolsPlan`, `WorkspaceDescriptor`, `WorkspaceInput`, `WorkspacePlan`, `WorkspaceProvider`, `WorkspaceOpenRequest`, `WorkspaceLease`, `WorkspaceAccess`, `ContentDescriptor`, `ContentValue`, `ContentStoreRequest`, `ContentStore`, `ContentResolver`, `EvaluationInfrastructure`, `Dataset`, `Sample`, `EvaluationExecutor`, `Executor`, `InvokeExecutor`, `SessionExecutor`, `ExecutorSessionContext`, `ExecutorSessionAttempt`, `ExecutorSession`, `ExecutorCapabilities`, `ExecutorInvocation`, `ExecutorResult`, `Evaluator`, `ExactMatchEvaluator`, `RetrievalEvaluator`, `RetrievalMetricIds`, `ToolTrajectoryEvaluator`, `ToolTrajectoryMatchMode`, `RubricJudgeEvaluator`, `RubricJudgeMember`, `RubricJudgeAggregation`, `CustomEvaluator`, `CustomEvaluatorInvocation`, `CustomEvaluatorResult`, `CustomEvaluatorBinding`, `CustomEvaluatorContent`, `Metric`, `Judge`, `Rubric`, `Experiment`, `SamplingDesign`, `AnalysisRequest`, `CohortFilter`, `Comparison`, `ComparisonFamilyMember`, `CompositeMetricComponent`, `CompositeAggregation`, `Decision`, `FamilyDecisionCriterion`, `Policy`, `StagePolicy`, `RetryPolicy`, `RetryBackoff`, `FailurePolicy`, `EvidencePolicy`, `BudgetPolicy`, `BudgetScope`, `RunBudgetScope`, `AttemptBudgetScope`, `ProviderCostLimit`, `EvaluateInput`, `EvaluationRunOptions`, `EvaluationResult`, `PreparedEvaluation`, `PreparedEvaluationPlan`, `RuntimeCapabilityResolution`, `EvaluationWorkEstimate`, `EventObserver`, and `Clock`. Executor certification uses `ExecutorCheckInput`, `ExecutorCheckResult`, and `RuntimeConformanceCheck`.
 

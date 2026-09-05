@@ -173,7 +173,7 @@ Variant `config` and `runtimeContext` are serialized into the sealed Definition.
 The default `full` mode keeps output, trace, and Evaluator evidence inline. For larger or sensitive values, inject one content-addressed store and its resolver:
 
 ```ts
-import type { ContentResolver, ContentStore } from 'oh-my-knowledge';
+import { checkContentStore, type ContentResolver, type ContentStore } from 'oh-my-knowledge';
 
 const contentStore: ContentStore = {
   async put(request) {
@@ -187,6 +187,9 @@ const contentResolver: ContentResolver = {
     return objectStore.resolveVerified(descriptor);
   },
 };
+
+const storageCheck = await checkContentStore({ contentStore, contentResolver });
+if (!storageCheck.conformant) throw new Error('Content storage is not conformant.');
 
 const result = await evaluate({
   ...input,
@@ -203,7 +206,9 @@ const result = await evaluate({
 });
 ```
 
-`full` embeds the canonical JSON value, `reference` persists it and records a verified descriptor, `digest` keeps only the canonical value digest, and `none` omits the capture. These choices are independent for output, trace, and `evaluatorEvidence`. A capture above `maximumClassification` fails closed. If an Evaluator declares output or trace as an input, that capture must remain `full` or `reference`; reference input also requires a resolver. OMK validates these dependencies during prepare, before any Target call. Store implementations and credentials never enter the Definition. A returned descriptor does enter the run artifact, so any optional `uri` must be a stable, opaque, credential-free locator rather than a physical path or signed URL; the host remains responsible for authorization and size limits.
+`checkContentStore()` writes the same fixed public probe twice and resolves it once; the stable reason codes retain neither payloads nor host exception text. `full` embeds the canonical JSON value, `reference` persists it and records a verified descriptor, `digest` keeps only the canonical value digest, and `none` omits the capture. These choices are independent for output, trace, and `evaluatorEvidence`. A capture above `maximumClassification` fails closed. If an Evaluator declares output or trace as an input, that capture must remain `full` or `reference`; reference input also requires a resolver. OMK validates these dependencies during prepare, before any Target call. Store implementations and credentials never enter the Definition. A returned descriptor does enter the run artifact, so any optional `uri` must be a stable, opaque, credential-free locator rather than a physical path or signed URL; the host remains responsible for authorization and size limits.
+
+The check waits at most five seconds for each operation by default; set `timeoutMs` explicitly when the storage service has a different local SLO. Content ports do not expose cancellation, so the host remains responsible for stopping an operation after a timeout.
 
 ## Content-addressed workspaces
 

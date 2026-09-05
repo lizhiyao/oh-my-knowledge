@@ -129,8 +129,14 @@ import {
 import { evaluationExecutionControls } from './execution-controls.js';
 import {
   captureEvaluationInfrastructure,
+  type ContentValue,
   type EvaluationInfrastructure,
 } from './infrastructure.js';
+import {
+  runContentStoreConformance,
+  type ContentStoreCheckInput,
+  type ContentStoreCheckResult,
+} from './conformance/content-store.js';
 
 const ARTIFACT_KINDS = ['baseline', 'skill', 'prompt', 'agent', 'workflow'] as const;
 const ARTIFACT_SOURCES = [
@@ -143,6 +149,12 @@ const ARTIFACT_SOURCES = [
 ] as const;
 const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v3' as const;
 const MAX_RUBRIC_PANEL_COORDINATES = 1_000;
+
+const ContentValueSchema = z.object({
+  value: JsonValueSchema,
+  classification: z.enum(['public', 'sensitive', 'secret', 'gold']),
+  mediaType: z.string().min(1).optional(),
+}).strict();
 
 const ArtifactSchema = z.object({
   name: z.string().min(1),
@@ -988,6 +1000,7 @@ export interface ExecutorCheckInput<
 }
 
 export type ExecutorCheckResult = ExecutorConformanceResult;
+export type { ContentStoreCheckInput, ContentStoreCheckResult };
 export type { RuntimeConformanceCheck };
 
 export class EvaluationConfigurationError extends TypeError {
@@ -3431,5 +3444,64 @@ export async function checkExecutor<
     },
     ...(input.seed === undefined ? {} : { seed: input.seed }),
     ...(input.runId === undefined ? {} : { runId: input.runId }),
+  });
+}
+
+/** Checks one host ContentStore／ContentResolver pair through an idempotent round trip. */
+export async function checkContentStore(
+  input: Readonly<ContentStoreCheckInput>,
+): Promise<ContentStoreCheckResult> {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)
+      || Object.keys(input).some((key) => ![
+        'contentStore',
+        'contentResolver',
+        'probe',
+        'timeoutMs',
+      ].includes(key))) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check input 无效。',
+    );
+  }
+  const timeoutMs = input.timeoutMs ?? 5_000;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check timeoutMs 必须是 1 到 60000 之间的整数。',
+    );
+  }
+  const declaredContentStore = input.contentStore;
+  const declaredContentResolver = input.contentResolver;
+  let support: EvaluationRuntimeSupportPorts | undefined;
+  let probe: ContentValue;
+  try {
+    support = captureEvaluationInfrastructure({
+      contentStore: declaredContentStore,
+      contentResolver: declaredContentResolver,
+    });
+    probe = deepFreezeCanonicalJson(ContentValueSchema.parse(structuredClone(
+      input.probe ?? {
+        value: { conformance: 'omk-content-store/v1' },
+        classification: 'public',
+        mediaType: 'application/json',
+      },
+    ))) as ContentValue;
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check declaration 无效。',
+    );
+  }
+  if (support?.executionContentStore === undefined || support.contentResolver === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check 需要 contentStore 与 contentResolver。',
+    );
+  }
+  return runContentStoreConformance({
+    contentStore: support.executionContentStore,
+    contentResolver: support.contentResolver,
+    probe,
+    timeoutMs,
   });
 }

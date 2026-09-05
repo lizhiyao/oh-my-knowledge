@@ -6,6 +6,7 @@ import { setImmediate as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import {
   EvaluationEventConsumptionError,
+  checkContentStore,
   checkExecutor,
   evaluate,
   prepareEvaluation,
@@ -188,6 +189,10 @@ const contentResolver = {
     };
   },
 };
+const contentStoreCheck = await checkContentStore({ contentStore, contentResolver });
+assert.equal(contentStoreCheck.conformant, true);
+persistedContentWrites = 0;
+persistedContentReads = 0;
 const workspaceExecutor = {
   executorId: 'clean-room.workspace-agent/v1',
   version: '1.0.0',

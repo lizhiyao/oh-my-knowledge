@@ -214,6 +214,7 @@ const PUBLIC_API = {
     values: [
       'EvaluationConfigurationError',
       'EvaluationEventConsumptionError',
+      'checkContentStore',
       'checkExecutor',
       'evaluate',
       'prepareEvaluation',
@@ -237,6 +238,9 @@ const PUBLIC_API = {
       'ContentDescriptor',
       'ContentResolver',
       'ContentStore',
+      'ContentStoreCheckInput',
+      'ContentStoreCheckResult',
+      'ContentStoreConformanceCheck',
       'ContentStoreRequest',
       'ContentValue',
       'CustomEvaluator',
