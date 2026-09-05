@@ -847,11 +847,10 @@ function assertCachePolicy(
   const expectedCacheKey = closure.bindings === undefined
     ? undefined
     : digestCanonicalJson({
-      derivation: 'omk.evaluation-cache-key/v1',
+      derivation: 'omk.evaluation-cache-key/v2',
       evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
       evaluationId: expected.evaluationId,
       evaluatorRuntime: runtime,
-      sourceRecordDigest,
       sourceTrust: effectiveSourceTrust,
       bindings: closure.bindings,
     });
@@ -871,17 +870,8 @@ function assertCachePolicy(
         provenanceKind: 'replay',
         trust: expectedTrust,
         parentDigests: [cache.sourceRecordDigest],
-      })) {
-    const nativeRecord = {
-      ...record,
-      provenance: expectedNativeProvenance,
-      cache: {
-        cacheStatus: 'miss' as const,
-        cacheKeyDigest: cache.cacheKeyDigest,
-      },
-    };
-    if (digestCanonicalJson(nativeRecord) === cache.sourceRecordDigest
-        && evaluationRecordUsageMatchesAttempts(record)
+      })
+      && evaluationRecordUsageMatchesAttempts(record)
         && evaluationRecordSatisfiesCacheCostPolicy(
           record,
           mostRestrictiveProviderCostLimit(
@@ -891,7 +881,6 @@ function assertCachePolicy(
           ),
           plan.evaluation.policy.budget.attempt.maxProviderCost,
         )) return true;
-  }
   throw new EvaluationBundleValidationError(
     'EVALUATION_BUNDLE_CACHE_POLICY_INVALID',
     'EvaluationRecord cache facts do not satisfy the sealed reuse policy.',

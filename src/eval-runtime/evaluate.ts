@@ -22,6 +22,7 @@ import {
   type EvaluatorDefinition,
   type JsonValue,
   type MetricDefinition,
+  type RuntimeIdentity,
   type UsageRecord,
 } from '../eval-core/contracts/index.js';
 import {
@@ -49,6 +50,7 @@ import {
   type MeasurementAttemptBudgetScopeInput,
   type MeasurementBudgetPolicyInput,
   type MeasurementBudgetScopeInput,
+  type MeasurementCachePolicyInput,
   type MeasurementEvidencePolicyInput,
   type MeasurementPolicyBuilderInput,
   type MeasurementProviderCostLimitInput,
@@ -129,7 +131,9 @@ import {
 import { evaluationExecutionControls } from './execution-controls.js';
 import {
   captureEvaluationInfrastructure,
+  promoteVerifiedExecutorIdentity,
   type ContentValue,
+  type ExecutorIdentityVerifier,
   type EvaluationInfrastructure,
 } from './infrastructure.js';
 import {
@@ -896,6 +900,7 @@ export type BudgetScope = MeasurementBudgetScopeInput;
 export type RunBudgetScope = MeasurementRunBudgetScopeInput;
 export type AttemptBudgetScope = MeasurementAttemptBudgetScopeInput;
 export type BudgetPolicy = MeasurementBudgetPolicyInput;
+export type CachePolicy = MeasurementCachePolicyInput;
 export type EvidencePolicy = MeasurementEvidencePolicyInput;
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
@@ -1024,6 +1029,7 @@ interface CapturedExecutor<
   Trace extends JsonValue,
 > {
   readonly declaration: EvaluationExecutor<Input, Config, Output, Trace>;
+  readonly identity: RuntimeIdentity;
   readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
   readonly inputParser: RuntimeValueParser<Input>;
   readonly configParser: RuntimeValueParser<Config>;
@@ -1032,6 +1038,7 @@ interface CapturedExecutor<
   readonly supportsToolAllowList: boolean;
   readonly createPort: (
     targetId: string,
+    identity?: RuntimeIdentity,
   ) => ReturnType<typeof createJsonExecutorAdapter<Input, JsonValue, Output, Trace>>;
 }
 
@@ -1308,7 +1315,6 @@ function captureExecutor<
   }
 
   const adapterInput = {
-    identity,
     inputParser,
     targetConfigParser: {
       parse(raw: unknown): JsonValue {
@@ -1335,9 +1341,10 @@ function captureExecutor<
     ...(value.traceMediaType === undefined ? {} : { traceMediaType: value.traceMediaType }),
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
   };
-  const createPort = (targetId: string) => protocol === 'session'
+  const createPort = (targetId: string, runtimeIdentity = identity) => protocol === 'session'
     ? createJsonSessionExecutorAdapter({
       ...adapterInput,
+      identity: runtimeIdentity,
       async openSession(sessionContext) {
         const targetConfig = VariantConfigEnvelopeSchema.parse(sessionContext.targetConfig);
         const host = declaration as SessionExecutor<Input, Config, Output, Trace>;
@@ -1388,6 +1395,7 @@ function captureExecutor<
     })
     : createJsonExecutorAdapter({
       ...adapterInput,
+      identity: runtimeIdentity,
       async invoke(invocation) {
         const targetConfig = VariantConfigEnvelopeSchema.parse(invocation.targetConfig);
         const host = declaration as InvokeExecutor<Input, Config, Output, Trace>;
@@ -1420,6 +1428,7 @@ function captureExecutor<
 
   return Object.freeze({
     declaration,
+    identity,
     protocolId: protocol === 'session' ? 'omk.session/v1' : 'omk.invoke/v1',
     inputParser,
     configParser,
@@ -1450,6 +1459,7 @@ interface CapturedVariant {
   envelope: JsonValue;
   workspace?: CapturedWorkspacePlan;
   allowedTools?: CapturedAllowedToolsPlan;
+  runtimeIdentity: RuntimeIdentity;
   executor: CapturedExecutor<JsonValue, JsonValue | undefined, JsonValue, JsonValue>;
 }
 
@@ -1517,6 +1527,7 @@ function captureVariant(
     envelope,
     ...(workspace === undefined ? {} : { workspace }),
     ...(allowedTools === undefined ? {} : { allowedTools }),
+    runtimeIdentity: executor.identity,
     executor,
   });
 }
@@ -3204,6 +3215,52 @@ function validateEvidenceInfrastructure(
   }
 }
 
+function validateCacheInfrastructure(
+  policy: ReturnType<typeof createMeasurementPolicy>,
+  support: EvaluationRuntimeSupportPorts | undefined,
+  verifier: ExecutorIdentityVerifier | undefined,
+): void {
+  if (policy.cache.executionMode !== 'disabled' && support?.executionCache === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Execution cache policy requires infrastructure.executionCache。',
+    );
+  }
+  if (policy.cache.evaluationMode === 'reuse' && support?.evaluationCache === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation cache policy requires infrastructure.evaluationCache。',
+    );
+  }
+  if (policy.cache.executionMode === 'transparent-deterministic' && verifier === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Execution cache reuse requires infrastructure.executorIdentityVerifier。',
+    );
+  }
+}
+
+async function verifyVariantRuntimeIdentities(
+  variants: readonly Readonly<CapturedVariant>[],
+  verifier: Readonly<ExecutorIdentityVerifier>,
+): Promise<readonly Readonly<CapturedVariant>[]> {
+  try {
+    return Object.freeze(await Promise.all(variants.map(async (variant) => Object.freeze({
+      ...variant,
+      runtimeIdentity: await promoteVerifiedExecutorIdentity(
+        verifier,
+        variant.executor.declaration,
+        variant.runtimeIdentity,
+      ),
+    }))));
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Executor identity verification failed。',
+    );
+  }
+}
+
 async function runPrepared(
   prepared: CorePreparedEvaluation,
   optionsInput?: Readonly<EvaluationRunOptions>,
@@ -3251,24 +3308,25 @@ export async function prepareEvaluation(
     );
   }
   assertEvaluateInput(input);
-  let support: EvaluationRuntimeSupportPorts | undefined;
+  let capturedInfrastructure: ReturnType<typeof captureEvaluationInfrastructure>;
   try {
-    support = captureEvaluationInfrastructure(input.infrastructure);
+    capturedInfrastructure = captureEvaluationInfrastructure(input.infrastructure);
   } catch {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
       'Evaluation infrastructure declaration 无效。',
     );
   }
+  const support = capturedInfrastructure?.support;
   const dataset = captureDataset(input.dataset);
   const sampleIds = new Set(dataset.samples.map((sample) => sample.sampleId));
-  const variants = input.variants.map((variant) => captureVariant(variant, sampleIds));
+  const capturedVariants = input.variants.map((variant) => captureVariant(variant, sampleIds));
   const evaluators = captureEvaluators(dataset, input.evaluators);
 
   let definition: EvaluationDefinition;
   try {
     definition = createGeneralDefinition({
-      variants,
+      variants: capturedVariants,
       evaluators,
       comparisons: input.comparisons,
       experiment: input.experiment,
@@ -3299,7 +3357,18 @@ export async function prepareEvaluation(
       'Evaluation policy 无效。',
     );
   }
-  validateEvidenceInfrastructure(definition, policy, variants, support);
+  validateEvidenceInfrastructure(definition, policy, capturedVariants, support);
+  validateCacheInfrastructure(
+    policy,
+    support,
+    capturedInfrastructure?.executorIdentityVerifier,
+  );
+  const variants = policy.cache.executionMode === 'transparent-deterministic'
+    ? await verifyVariantRuntimeIdentities(
+        capturedVariants,
+        capturedInfrastructure!.executorIdentityVerifier!,
+      )
+    : capturedVariants;
   const variantsByExecutor = new Map<string, Map<string, Readonly<CapturedVariant>>>();
   for (const variant of variants) {
     const executorId = variant.executor.declaration.executorId;
@@ -3320,7 +3389,7 @@ export async function prepareEvaluation(
               'Evaluation Runtime 收到了未知 variant binding。',
             );
           }
-          return variant.executor.createPort(variant.variantId);
+          return variant.executor.createPort(variant.variantId, variant.runtimeIdentity);
         },
     })),
     evaluators: evaluators.registrations,
@@ -3472,10 +3541,10 @@ export async function checkContentStore(
   }
   const declaredContentStore = input.contentStore;
   const declaredContentResolver = input.contentResolver;
-  let support: EvaluationRuntimeSupportPorts | undefined;
+  let capturedInfrastructure: ReturnType<typeof captureEvaluationInfrastructure>;
   let probe: ContentValue;
   try {
-    support = captureEvaluationInfrastructure({
+    capturedInfrastructure = captureEvaluationInfrastructure({
       contentStore: declaredContentStore,
       contentResolver: declaredContentResolver,
     });
@@ -3492,6 +3561,7 @@ export async function checkContentStore(
       'ContentStore check declaration 无效。',
     );
   }
+  const support = capturedInfrastructure?.support;
   if (support?.executionContentStore === undefined || support.contentResolver === undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',

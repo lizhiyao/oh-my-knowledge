@@ -829,6 +829,95 @@ assert.equal(observerFailure.runResult.policy.execution.maxConcurrency, 1);
 assert.equal(observerFailure.cause, undefined);
 assert.equal(JSON.stringify(observerFailure).includes(observerSecret), false);
 
+const cacheClock = {
+  monotonicNow: () => 0,
+  timestamp: () => '2026-09-06T00:00:00.000Z',
+  sleep: () => Promise.resolve(),
+};
+const executionCacheEntries = new Map();
+const executionCache = {
+  async get(key) { return executionCacheEntries.get(key); },
+  async put(entry) { executionCacheEntries.set(entry.cacheKeyDigest, entry); },
+};
+const evaluationCacheEntries = new Map();
+const evaluationCache = {
+  async get(key) { return evaluationCacheEntries.get(key); },
+  async put(entry) { evaluationCacheEntries.set(entry.cacheKeyDigest, entry); },
+};
+let cachedTargetCalls = 0;
+const cacheExecutor = {
+  ...executor,
+  executorId: 'clean-room.cache-executor/v1',
+  async execute(invocation) {
+    cachedTargetCalls += 1;
+    return executor.execute(invocation);
+  },
+};
+const cacheVariants = evaluationInput().variants.map((candidate) => ({
+  ...candidate,
+  execution: { executor: cacheExecutor },
+}));
+const executorIdentityVerifier = {
+  verifierId: 'clean-room-signed-registry/v1',
+  async verify({ executor: capturedExecutor, declaredIdentity }) {
+    assert.equal(capturedExecutor.executorId, cacheExecutor.executorId);
+    assert.equal(declaredIdentity.assuranceLevel, 'declared');
+    return { attestationDigest: `sha256:${'b'.repeat(64)}` };
+  },
+};
+const executionCacheInput = evaluationInput({
+  variants: cacheVariants,
+  policy: { cache: { execution: 'reuse' } },
+  infrastructure: { executionCache, executorIdentityVerifier },
+});
+const executionCacheFirst = await evaluate(executionCacheInput, {
+  runId: 'clean-room-execution-cache-first',
+  clock: cacheClock,
+});
+const callsAfterExecutionMiss = cachedTargetCalls;
+const executionCacheSecond = await evaluate(executionCacheInput, {
+  runId: 'clean-room-execution-cache-second',
+  clock: cacheClock,
+});
+assert.equal(executionCacheFirst.status, 'completed');
+assert.equal(executionCacheSecond.status, 'completed');
+assert.equal(callsAfterExecutionMiss, 4);
+assert.equal(cachedTargetCalls, callsAfterExecutionMiss);
+assert.ok(executionCacheFirst.artifacts.execution.records.every((record) => (
+  record.cache.cacheStatus === 'miss'
+)));
+assert.ok(executionCacheSecond.artifacts.execution.records.every((record) => (
+  record.cache.cacheStatus === 'transparent-hit'
+)));
+assert.ok(executionCacheSecond.artifacts.execution.records.every((record) => (
+  record.runtime.assuranceLevel === 'verified'
+  && record.runtime.provenanceFacets.attestation.attestorId
+    === 'clean-room-signed-registry/v1'
+)));
+
+cachedTargetCalls = 0;
+const evaluationCacheInput = evaluationInput({
+  variants: cacheVariants,
+  policy: { cache: { evaluation: 'reuse' } },
+  infrastructure: { evaluationCache },
+});
+const evaluationCacheFirst = await evaluate(evaluationCacheInput, {
+  runId: 'clean-room-evaluation-cache-first',
+});
+await delay(5);
+const evaluationCacheSecond = await evaluate(evaluationCacheInput, {
+  runId: 'clean-room-evaluation-cache-second',
+});
+assert.equal(evaluationCacheFirst.status, 'completed');
+assert.equal(evaluationCacheSecond.status, 'completed');
+assert.equal(cachedTargetCalls, 8);
+assert.ok(evaluationCacheFirst.artifacts.evaluation.records.every((record) => (
+  record.cache.cacheStatus === 'miss'
+)));
+assert.ok(evaluationCacheSecond.artifacts.evaluation.records.every((record) => (
+  record.cache.cacheStatus === 'transparent-hit'
+)));
+
 const conformance = await checkExecutor({
   variant,
   success: { input: 'success', expected: 'expected' },

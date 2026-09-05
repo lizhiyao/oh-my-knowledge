@@ -210,6 +210,48 @@ const result = await evaluate({
 
 The check waits at most five seconds for each operation by default; set `timeoutMs` explicitly when the storage service has a different local SLO. Content ports do not expose cancellation, so the host remains responsible for stopping an operation after a timeout.
 
+## Reuse execution and evaluation results
+
+Execution and Evaluation caches are independent host-injected ports. Core derives keys, validates entries, and records hit provenance:
+
+```ts
+import type {
+  EvaluationCache,
+  ExecutionCache,
+  ExecutorIdentityVerifier,
+} from 'oh-my-knowledge';
+
+const executionCache: ExecutionCache = durableExecutionCache;
+const evaluationCache: EvaluationCache = durableEvaluationCache;
+const executorIdentityVerifier: ExecutorIdentityVerifier = {
+  verifierId: 'acme.signed-deployment-registry/v1',
+  async verify({ executor, declaredIdentity }) {
+    const attestation = await deploymentRegistry.verifyCallable({
+      implementation: executor,
+      declaredIdentity,
+    });
+    return { attestationDigest: attestation.digest };
+  },
+};
+
+const cached = await evaluate({
+  ...input,
+  policy: {
+    ...input.policy,
+    cache: { execution: 'reuse', evaluation: 'reuse' },
+  },
+  infrastructure: {
+    executionCache,
+    evaluationCache,
+    executorIdentityVerifier,
+  },
+});
+```
+
+`execution: 'reuse'` reuses a hit, executes on a miss, and writes the completed result. It accepts only an Executor declared deterministic, and an independent verifier must bind the captured callable, dependencies, and deployment configuration to a stable attestation. `checkExecutor()` checks behavioral conformance; it does not upgrade a self-reported identity to verified. A verifier must not merely echo `declaredIdentity`. `execution: 'replay-only'` never writes and fails before calling the Target if any coordinate misses, making it suitable for explicit offline replay. `evaluation: 'reuse'` independently reuses completed evaluation records.
+
+`prepareEvaluation()` fails closed when a required cache port or the verifier needed for transparent Execution reuse is absent. Cache implementations and credentials never enter the Definition. `ExecutionCacheEntry` and `EvaluationCacheEntry` are public types, but hosts must not relax or replace Core entry validation. A changed implementation, workspace, tool policy, evaluation input, or measurement policy invalidates the affected cache through sealed identity.
+
 ## Content-addressed workspaces
 
 When an Agent or Workflow needs files, declare the files by content identity and let the host materialize them. Do not put `cwd`, a checkout path, credentials, or a CAS URL in `runtimeContext`:
