@@ -139,6 +139,45 @@ const analysis: AnalysisRequest = {
 
 The entry deliberately exposes no Definition builder, Runtime registry, Core Target, lifecycle adapter, or raw Rubric factory. `Artifact` is what is evaluated, `Variant` binds it to an Executor, config, and runtime context, and control／treatment roles exist only inside an explicit `Comparison`.
 
+## Mixed retrieval and abstention evaluation
+
+`createRetrievalAbstentionEvaluation` is an opt-in composition taking `RetrievalAbstentionEvaluationInput` and returning `RetrievalAbstentionEvaluation`. Pass its `dataset` and `evaluators` to `evaluate()`; use `metricIds` for summaries, intervals and comparisons. It reuses Custom Evaluator, Core Analysis and Report contracts, without a parallel protocol or changes to retrieval v1.
+
+```ts
+const evaluation = createRetrievalAbstentionEvaluation({
+  dataset,
+  cutoff: 3,
+  ranking: { source: 'output', pointer: '/solutionIds' },
+  pendingPolicy: 'error',
+});
+// evaluate({ dataset: evaluation.dataset, evaluators: evaluation.evaluators, ...hostDesign })
+```
+
+Bind `ranking` to final threshold-filtered ordered recommendations in output or trace, not an internal candidate pool. Only a successful execution returning a valid empty array is actual abstention. Failures, timeouts, missing fields, non-string IDs, blank IDs and duplicate IDs are not successful abstention. IDs use case-sensitive exact comparison without implicit trimming or deduplication.
+
+By default `sample.expected` contains required `shouldAbstain`, `acceptableSolutionIds`, `forbiddenSolutionIds`, plus optional `reviewStatus`. `false` requires nonempty relevant IDs, `true` requires empty relevant IDs, and `null` means pending annotation. Relevant and forbidden IDs cannot overlap. `reviewStatus === 'pending_human_annotation'` overrides an AI-proposed label to pending. Without reviewStatus the explicit boolean is authoritative; hosts must preserve existing review status rather than drop it before preparing the evaluation.
+
+The host converts business JSON into the OMK Dataset: for example, copy `sample.quality.reviewStatus` into `expected.reviewStatus`, never into target input. Override `expected.shouldAbstainPointer`, `relevantDocumentIdsPointer`, `forbiddenDocumentIdsPointer` and `reviewStatusPointer` to map other names. These JSON Pointers are relative to `sample.expected`, such as `/expectedShouldAbstain` or `/quality/reviewStatus`. Gold is not provided to Executor invocation.
+
+Pending samples block preparation by default with `RetrievalAbstentionInputError`; its `code` and `sampleIds` identify the problem without exposing prompts or Gold. Explicit `pendingPolicy: 'exclude'` excludes them and rejects an empty remaining dataset. Duplicate sample IDs, invalid options and inconsistent labels also fail before execution.
+
+| Metric suffix | Eligible population / denominator | Direction |
+|---|---|---|
+| `recallAtK`, `precisionAtK`, `reciprocalRankAtK`, `ndcgAtK` | Valid labeled positive samples; retrieval v1 formulas, Precision denominator fixed at K | Higher is better |
+| `abstentionCorrect` | Fraction of valid expected-abstention samples returning an empty final list | Higher is better |
+| `falseAbstention` | Fraction of valid positive samples returning an empty final list | Lower is better |
+| `forbiddenHitAtK` | Fraction of valid labeled samples with a nonempty forbidden list hitting any forbidden ID in the first K recommendations | Lower is better |
+
+Metric IDs default to `retrieval-abstention.<suffix>`; `metricPrefix` overrides the prefix. The first four metrics are numeric (summary `statistic: 'mean'`), the last three boolean (`statistic: 'rate'`). Valid means successful execution, valid output and valid labels. Any nonempty recommendation is a failure on an abstention sample, even if not explicitly forbidden. Correct and forbidden hits can coexist and are measured independently.
+
+Inapplicable metrics use existing `missing` observations with reason `retrieval-abstention-not-applicable`, excluded by `exclude/v1`. They never become 0 or 1 and do not change Core missingness. Always display Analysis `coverage.included` (actual analysis denominator), `missing`, `invalid`, `sourceUnavailable`, `evaluationFailed` and other coverage alongside scores and Execution coverage. When the denominator is zero, retain the non-completed Analysis state and show not applicable, not a fabricated zero. Per-observation evidence retains the expected label, relevant/forbidden IDs, final recommendations and K, classified as Gold; protect it accordingly in storage and UI.
+
+Original Dataset annotations are retained under `dataset.annotations.original`. `dataset.annotations.retrievalAbstention` records `omk.retrieval-abstention/v1`, source Dataset digest, pending policy, original/positive/abstention/pending counts and excluded IDs. Display the pending count as well as scored samples. Apart from this annotation envelope and explicit exclusion, samples, cohorts, input and Gold are unchanged. Do not combine these evaluators with a different unvalidated Dataset.
+
+Each metric has a separate versioned implementation identity; cutoff, bindings and pending policy participate in fingerprints. This evaluation is not directly comparable with historical metrics that score empty Gold as perfect recall: establish a new baseline, never overwrite historical reports silently. This version evaluates structured recommendations only, does not judge natural-language refusal, connect to business platforms, or change retrieval thresholds.
+
+After building the repository, run `node examples/eval-runtime/retrieval-abstention.mjs` for a complete offline example with synthetic data and a local Executor. No credentials, models or business network are required.
+
 ## `oh-my-knowledge/eval-runtime/advanced`
 
 Low-level host assembly and extension SPI. Applications should prefer `evaluate()`.

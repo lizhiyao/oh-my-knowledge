@@ -139,6 +139,45 @@ const analysis: AnalysisRequest = {
 
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 
+## 召回与拒答混合评测
+
+`createRetrievalAbstentionEvaluation` 是显式启用的评分组合，输入类型为 `RetrievalAbstentionEvaluationInput`，返回 `RetrievalAbstentionEvaluation`。将返回的 `dataset`、`evaluators` 传给 `evaluate()`；`metricIds` 可用于声明 summary、区间和比较。它复用现有 Custom Evaluator、Core Analysis 和 Report，不增加平行的评测协议，也不改变 `retrieval` v1。
+
+```ts
+const evaluation = createRetrievalAbstentionEvaluation({
+  dataset,
+  cutoff: 3,
+  ranking: { source: 'output', pointer: '/solutionIds' },
+  pendingPolicy: 'error',
+});
+// evaluate({ dataset: evaluation.dataset, evaluators: evaluation.evaluators, ...hostDesign })
+```
+
+`ranking` 必须绑定最终经过阈值过滤的有序推荐列表，可来自 output 或 trace；不应绑定内部候选池。只有成功执行且提供合法空数组才是实际拒答。失败、超时、缺字段、非字符串 ID、空白 ID 和重复 ID 均不是正确拒答。ID 按大小写敏感的原值比较，不进行隐式 trim 或去重。
+
+每条 `sample.expected` 默认包含 `shouldAbstain`、`acceptableSolutionIds`、`forbiddenSolutionIds` 和可选 `reviewStatus`。前三个字段必填：`false` 要求正确方案非空，`true` 要求正确方案为空，`null` 表示待标注；正确与禁用列表不能重叠。`reviewStatus === 'pending_human_annotation'` 始终覆盖 AI 初始标签为待标注。缺少 reviewStatus 时，以显式布尔标签为准；宿主必须保留原始人工状态，不能丢弃后再调用本组合。
+
+宿主负责把业务 JSON 转换为 OMK Dataset。例如将 `sample.quality.reviewStatus` 放入 `expected.reviewStatus`，不要把它塞入被测 input。可通过 `expected.shouldAbstainPointer`、`relevantDocumentIdsPointer`、`forbiddenDocumentIdsPointer`、`reviewStatusPointer` 映射其它命名；所有这些 JSON Pointer 都相对 `sample.expected`，例如 `/expectedShouldAbstain` 或 `/quality/reviewStatus`。Gold 不进入 Executor invocation。
+
+默认有待标注样本就抛出 `RetrievalAbstentionInputError`，其 `code` 与 `sampleIds` 可用于定位，不包含提示词或 Gold。只有显式 `pendingPolicy: 'exclude'` 才排除；排除后为空仍报错。重复 sampleId、非法配置和矛盾标签也在运行前报错。
+
+| Metric 后缀 | 适用范围与分母 | 方向 |
+|---|---|---|
+| `recallAtK`、`precisionAtK`、`reciprocalRankAtK`、`ndcgAtK` | 有效已标注正向样本；算法复用 retrieval v1，Precision 分母固定 K | 越高越好 |
+| `abstentionCorrect` | 有效应拒答样本中最终返回空列表的比例 | 越高越好 |
+| `falseAbstention` | 有效正向样本中最终返回空列表的比例 | 越低越好 |
+| `forbiddenHitAtK` | 有效且禁用列表非空的已标注样本中，前 K 项命中任一禁用 ID 的比例 | 越低越好 |
+
+默认 Metric ID 为 `retrieval-abstention.<后缀>`，可用 `metricPrefix` 改前缀。前四项为 numeric，summary 使用 `statistic: 'mean'`；后三项为 boolean，使用 `statistic: 'rate'`。有效指执行成功、输出合法、标签合法。应拒答时返回任何非空推荐都是失败，即使它不在禁用列表中。禁用命中独立于正向命中，两者可同时发生。
+
+跨类别不适用的指标使用现有 `missing` observation，reason 为 `retrieval-abstention-not-applicable`，经 `exclude/v1` 排除；不伪装成 0 或 1，也不修改 Core missingness。报告必须同时展示 Analysis `coverage.included`（实际分析分母）、`missing`、`invalid`、`sourceUnavailable`、`evaluationFailed` 等覆盖率，以及 Execution coverage。分母为零时保留未完成 Analysis 状态、展示不适用，不能回填零分。逐项 observation 的 Gold 分类 evidence 保留预期标签、正确／禁用 ID、最终推荐列表与 K；展示和存储时按 Gold 敏感级别处理。
+
+原始 Dataset annotations 保留在 `dataset.annotations.original`。`dataset.annotations.retrievalAbstention` 保存版本 `omk.retrieval-abstention/v1`、原始 Dataset digest、待标注策略、原始／正向／拒答／待标注数量及排除 ID。宿主应一并展示待标注数，避免只展示剩余样本的高分。除这份注解封装与显式排除外，sample、cohort、input 和 Gold 保持原样。不要将返回的 evaluators 与未经过预检的另一份 Dataset 拼接。
+
+每个指标使用独立版本化 implementation identity；K、绑定路径、待标注策略等进入 fingerprint。新组合不与历史将空 Gold 当作召回满分的评分口径直接可比，迁移时应重新建立基线，不能静默覆盖旧报告。首期仅处理结构化推荐，不判断自然语言拒答，不连接业务平台，也不改变召回阈值。
+
+完整的离线例子：在仓库构建后运行 `node examples/eval-runtime/retrieval-abstention.mjs`。只使用虚构数据和本地 Executor，无需凭证、模型或业务网络。
+
 ## `oh-my-knowledge/eval-runtime/advanced`
 
 面向底层宿主装配与扩展的 SPI。普通应用应优先使用 `evaluate()`。
