@@ -168,6 +168,56 @@ Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults,
 
 Variant `config` and `runtimeContext` are serialized into the sealed Definition. Put only reproducible, non-secret measurement inputs there. Credentials, clients, and process-local resources stay in the Executor closure and never enter the Definition.
 
+## Content-addressed workspaces
+
+When an Agent or Workflow needs files, declare the files by content identity and let the host materialize them. Do not put `cwd`, a checkout path, credentials, or a CAS URL in `runtimeContext`:
+
+```ts
+import type {
+  Executor,
+  WorkspaceDescriptor,
+  WorkspaceProvider,
+} from 'oh-my-knowledge';
+
+const workspace: WorkspaceDescriptor = {
+  resourceId: 'support-repository',
+  digest: `sha256:${'a'.repeat(64)}`,
+  mediaType: 'application/vnd.acme.source-tree',
+  classification: 'sensitive',
+  size: 184_320,
+};
+
+const workspaceProvider: WorkspaceProvider = {
+  providerId: 'acme.cas-overlay/v1',
+  version: '2.1.0',
+  fingerprintFacets: { materializer: 'overlayfs-v2' },
+  async open({ descriptor, runId, trialId }) {
+    // Verify descriptor.digest before returning a writable, trial-private overlay.
+    const root = await cas.createOverlay(descriptor, { runId, trialId });
+    return { root, close: () => cas.removeOverlay(root) };
+  },
+};
+
+const executor: Executor<{ task: string }, undefined, string> = {
+  executorId: 'acme.workspace-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.object({ task: z.string() }), output: z.string() },
+  workspaceProvider,
+  async execute({ input, workspace, signal }) {
+    if (workspace === undefined) return { errorCode: 'workspace-required' };
+    return { output: await agent.run(input.task, { cwd: workspace.root, signal }) };
+  },
+};
+
+const variant = {
+  variantId: 'workspace-agent',
+  artifact: { name: 'agent', kind: 'agent', source: 'inline', content: '...' },
+  execution: { executor, workspace },
+};
+```
+
+Use `{ default, bySampleId }` instead of one descriptor when samples need different snapshots; a `null` override explicitly selects no workspace for that sample. OMK seals descriptors and provider identity before execution, opens one fresh lease per Target × Sample × Trial, reuses it only for retries of that trial, and closes it on every terminal path. Physical roots never become measurement identity or automatic evidence. The provider must perform bounded local acquisition and verify content itself; OMK deliberately does not discover files, locators, or credentials. A writable lease isolates measurements but is not a sandbox for untrusted code.
+
 ## Stateful Agent sessions
 
 Use `SessionExecutor` when one Agent or stateful Workflow needs an isolated per-trial session. `Executor` remains the concise stateless `omk.invoke/v1` interface; `EvaluationExecutor` is the union accepted by a Variant, and `InvokeExecutor` is the explicit name for the stateless form:

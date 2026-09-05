@@ -62,6 +62,15 @@ export type {
   RuntimeValueParser,
 } from './adapters/json-executor.js';
 export type {
+  WorkspaceAccess,
+  WorkspaceDescriptor,
+  WorkspaceInput,
+  WorkspaceLease,
+  WorkspaceOpenRequest,
+  WorkspacePlan,
+  WorkspaceProvider,
+} from './workspace.js';
+export type {
   OmkLlmJudgeEffort,
   OmkLlmJudgeInvocationPort,
   OmkLlmJudgeInvocationRequest,

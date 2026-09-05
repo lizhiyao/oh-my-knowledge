@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setImmediate as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import {
@@ -153,6 +156,80 @@ assert.equal(preparedResult.status, 'completed');
 assert.equal(preparedResult.runId, 'clean-room-prepared');
 assert.equal(preparedTargetCalls, 4);
 assert.equal(preparedResult.definition.dataset.samples[0].input, 'success');
+
+const workspaceDescriptor = {
+  resourceId: 'clean-room-workspace',
+  digest: `sha256:${'a'.repeat(64)}`,
+  mediaType: 'application/vnd.omk.workspace-tree',
+  classification: 'sensitive',
+  size: 8,
+};
+const workspaceRoots = [];
+const closedWorkspaceRoots = [];
+const workspaceExecutor = {
+  executorId: 'clean-room.workspace-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.string(), config: z.undefined(), output: z.string() },
+  outputClassification: 'public',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: { trace: 'unsupported', usage: 'optional' },
+  },
+  workspaceProvider: {
+    providerId: 'clean-room.temp-workspace/v1',
+    version: '1.0.0',
+    fingerprintFacets: { source: 'verified-fixture/v1' },
+    async open({ descriptor }) {
+      assert.deepEqual(descriptor, workspaceDescriptor);
+      const root = await mkdtemp(join(tmpdir(), 'omk-clean-room-workspace-'));
+      workspaceRoots.push(root);
+      await writeFile(join(root, 'answer.txt'), 'workspace-answer', 'utf8');
+      return {
+        root,
+        async close() {
+          await rm(root, { recursive: true, force: true });
+          closedWorkspaceRoots.push(root);
+        },
+      };
+    },
+  },
+  async execute({ workspace }) {
+    assert.ok(workspace);
+    assert.deepEqual(workspace.descriptor, workspaceDescriptor);
+    return { output: await readFile(join(workspace.root, 'answer.txt'), 'utf8') };
+  },
+};
+const workspaceEvaluation = await evaluate({
+  dataset: {
+    datasetId: 'clean-room-workspace',
+    samples: [{ sampleId: 'workspace', input: 'read', expected: 'workspace-answer' }],
+  },
+  variants: [{
+    variantId: 'workspace-agent',
+    artifact: {
+      name: 'workspace-agent', kind: 'agent', source: 'inline', content: 'Read the workspace.',
+    },
+    execution: { executor: workspaceExecutor, workspace: workspaceDescriptor },
+  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [],
+  analyses: [{
+    analysisId: 'workspace-correct', analysisKind: 'summary', statistic: 'rate',
+    variantId: 'workspace-agent', metricId: 'correct',
+  }],
+  experiment: { seed: 'clean-room-workspace', sampling: { samplingKind: 'solo' } },
+  policy: {},
+}, { runId: 'clean-room-workspace' });
+assert.equal(workspaceEvaluation.status, 'completed');
+assert.equal(workspaceEvaluation.analysisResults['workspace-correct'].value, 1);
+assert.deepEqual(closedWorkspaceRoots, workspaceRoots);
+assert.equal(JSON.stringify(workspaceEvaluation).includes(tmpdir()), false);
+for (const root of workspaceRoots) {
+  await assert.rejects(access(root));
+}
 
 const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');

@@ -49,6 +49,8 @@ import {
   type CohortFilter,
   type Executor as CanonicalExecutor,
   type PreparedEvaluation,
+  type WorkspaceDescriptor,
+  type WorkspaceProvider,
 } from 'oh-my-knowledge';
 import {
   createEvalSampleSetDocument,
@@ -126,6 +128,38 @@ const canonicalExecutor: CanonicalExecutor<string, undefined, string> = {
     return { output: input };
   },
 };
+const workspaceDescriptor: WorkspaceDescriptor = {
+  resourceId: 'typescript-workspace',
+  digest: `sha256:${'a'.repeat(64)}`,
+  mediaType: 'application/vnd.omk.workspace-tree',
+  classification: 'sensitive',
+  size: 1,
+};
+const workspaceProvider: WorkspaceProvider = {
+  providerId: 'typescript.workspace-provider/v1',
+  version: '1.0.0',
+  async open({ descriptor }) {
+    const digest: string = descriptor.digest;
+    void digest;
+    return { root: '/virtual/typescript-workspace', close() {} };
+  },
+};
+const workspaceExecutor: CanonicalExecutor<string, undefined, string> = {
+  ...canonicalExecutor,
+  executorId: 'typescript-workspace/v1',
+  workspaceProvider,
+  async execute({ input, workspace }) {
+    const root: string | undefined = workspace?.root;
+    void root;
+    return { output: input };
+  },
+};
+const workspaceVariant = {
+  variantId: 'typescript-workspace',
+  artifact: { name: 'workspace', kind: 'agent', source: 'inline', content: 'Use workspace.' },
+  execution: { executor: workspaceExecutor, workspace: workspaceDescriptor },
+} as const;
+void workspaceVariant;
 const canonicalCohortFilter: CohortFilter = { includeCohortIds: ['release'] };
 const canonicalAnalysis: AnalysisRequest = {
   analysisId: 'baseline-vs-prompt-v2-correct',

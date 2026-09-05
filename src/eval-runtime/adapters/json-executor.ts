@@ -1,8 +1,12 @@
+import { dirname, isAbsolute, normalize } from 'node:path';
 import {
   IdentifierSchema,
   JsonValueSchema,
+  RuntimeIdentitySchema,
   UsageRecordSchema,
   canonicalizeJson,
+  deepFreezeCanonicalJson,
+  digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
   type UsageRecord,
@@ -11,7 +15,16 @@ import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorRunContext,
+  type ExecutorTrialContext,
 } from '../../eval-core/execution/index.js';
+import {
+  captureWorkspaceProvider,
+  type CapturedWorkspaceProvider,
+  type WorkspaceAccess,
+  type WorkspaceLease,
+  type WorkspaceProvider,
+} from '../workspace.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
 import {
   executorProtocol,
@@ -22,6 +35,8 @@ import {
 } from './invoke-contract.js';
 
 const OPENED_EXECUTOR_SESSIONS = new WeakSet<object>();
+const OPENED_WORKSPACE_LEASES = new WeakSet<object>();
+const ACTIVE_WORKSPACE_ROOTS = new Set<string>();
 
 /** Internal process-wide guard shared by the canonical facade and advanced adapter. */
 export function assertFreshExecutorSessionObject(session: object): void {
@@ -46,6 +61,7 @@ export interface JsonExecutorInvocation<Input, TargetConfig> {
   readonly trialSeed?: string;
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
+  readonly workspace?: WorkspaceAccess;
 }
 
 export type JsonExecutorInvocationResult<Output extends JsonValue, Trace extends JsonValue> =
@@ -72,6 +88,7 @@ export interface JsonSessionExecutorContext<Input, TargetConfig> {
   readonly targetId: string;
   readonly trialIndex: number;
   readonly trialSeed?: string;
+  readonly workspace?: WorkspaceAccess;
 }
 
 export interface JsonSessionExecutorAttempt {
@@ -106,6 +123,7 @@ export interface CreateJsonExecutorAdapterInput<
   readonly outputMediaType?: string;
   readonly traceMediaType?: string;
   readonly sessionIsolationKey?: string;
+  readonly workspaceProvider?: WorkspaceProvider;
 }
 
 export interface CreateJsonSessionExecutorAdapterInput<
@@ -127,6 +145,110 @@ export interface CreateJsonSessionExecutorAdapterInput<
   readonly outputMediaType?: string;
   readonly traceMediaType?: string;
   readonly sessionIsolationKey?: string;
+  readonly workspaceProvider?: WorkspaceProvider;
+}
+
+interface OpenedWorkspace {
+  readonly access: WorkspaceAccess;
+  close(): Promise<void>;
+}
+
+async function rejectInvalidWorkspaceLease(lease: unknown): Promise<never> {
+  if (lease !== null && typeof lease === 'object'
+      && typeof (lease as Partial<WorkspaceLease>).close === 'function') {
+    try {
+      await Reflect.apply((lease as WorkspaceLease).close, lease, []);
+    } catch {
+      // The public failure remains a single redacted resource-open error.
+    }
+  }
+  throw new TypeError('Workspace provider returned an invalid lease.');
+}
+
+async function openWorkspace(
+  provider: CapturedWorkspaceProvider | undefined,
+  run: Readonly<ExecutorRunContext>,
+  trial: Readonly<ExecutorTrialContext>,
+): Promise<OpenedWorkspace | undefined> {
+  const control = trial.executionControl.workspace;
+  if (control.workspaceMode === 'not-required') return undefined;
+  if (provider === undefined) {
+    throw new TypeError('Workspace execution requires a WorkspaceProvider.');
+  }
+  const lease = await provider.open(Object.freeze({
+    descriptor: control.descriptor,
+    runId: run.runId,
+    trialId: trial.trialId,
+    sampleId: trial.sampleId,
+    variantId: trial.targetId,
+    trialIndex: trial.trialIndex,
+    ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
+  }));
+  if (lease === null || typeof lease !== 'object'
+      || typeof lease.root !== 'string' || lease.root.trim() === ''
+      || lease.root.includes('\0') || !isAbsolute(lease.root)
+      || typeof lease.close !== 'function') {
+    return rejectInvalidWorkspaceLease(lease);
+  }
+  const root = normalize(lease.root);
+  if (dirname(root) === root) return rejectInvalidWorkspaceLease(lease);
+  if (OPENED_WORKSPACE_LEASES.has(lease)) {
+    throw new TypeError('Workspace provider reused one lease object across trials or runs.');
+  }
+  if (ACTIVE_WORKSPACE_ROOTS.has(root)) {
+    OPENED_WORKSPACE_LEASES.add(lease);
+    throw new TypeError('Workspace provider reused an active workspace root.');
+  }
+  OPENED_WORKSPACE_LEASES.add(lease);
+  ACTIVE_WORKSPACE_ROOTS.add(root);
+  const close = lease.close;
+  return Object.freeze({
+    access: Object.freeze({ descriptor: control.descriptor, root }),
+    async close() {
+      await Reflect.apply(close, lease, []);
+      ACTIVE_WORKSPACE_ROOTS.delete(root);
+    },
+  });
+}
+
+function requireWorkspaceCapability(
+  protocol: ReturnType<typeof executorProtocol>,
+  provider: CapturedWorkspaceProvider | undefined,
+): void {
+  const supportsWorkspace = protocol.execution.features.workspace.includes(
+    'copy-on-write-overlay',
+  );
+  if (provider !== undefined && !supportsWorkspace) {
+    throw new TypeError(
+      'WorkspaceProvider requires copy-on-write-overlay Runtime capability.',
+    );
+  }
+  if (provider === undefined && supportsWorkspace) {
+    throw new TypeError(
+      'copy-on-write-overlay Runtime capability requires a WorkspaceProvider.',
+    );
+  }
+}
+
+function bindWorkspaceIdentity(
+  identity: RuntimeIdentity,
+  provider: CapturedWorkspaceProvider | undefined,
+): RuntimeIdentity {
+  if (provider === undefined) return identity;
+  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
+    ...structuredClone(identity),
+    fingerprint: digestCanonicalJson({
+      derivation: 'omk.eval-runtime.workspace-bound-identity/v1',
+      executorIdentity: identity,
+      workspaceProvider: {
+        providerId: provider.providerId,
+        version: provider.version,
+        ...(provider.fingerprintFacets === undefined
+          ? {}
+          : { fingerprintFacets: provider.fingerprintFacets }),
+      },
+    }),
+  }));
 }
 
 function structuredFailure(code: string, usage?: UsageRecord): never {
@@ -277,7 +399,9 @@ export function createJsonExecutorAdapter<
   input: Readonly<CreateJsonExecutorAdapterInput<Input, TargetConfig, Output, Trace>>,
 ): ExecutionExecutor {
   const protocol = invokeProtocol(input.identity);
-  const identity = input.identity;
+  const workspaceProvider = captureWorkspaceProvider(input.workspaceProvider);
+  requireWorkspaceCapability(protocol, workspaceProvider);
+  const identity = bindWorkspaceIdentity(input.identity, workspaceProvider);
   const invoke = input.invoke;
   const inputParser = captureParser(input.inputParser);
   const targetConfigParser = captureParser(input.targetConfigParser);
@@ -302,10 +426,16 @@ export function createJsonExecutorAdapter<
       ?? `eval-runtime:${identity.implementationId}`,
     resourceLeases: { forRun: () => undefined },
     implementation: {
-      openRun: () => undefined,
-      openTrial: ({ trial }) => trial,
-      async execute({ trial, attempt }): Promise<ExecutorAttemptResult> {
+      openRun: ({ run }) => run,
+      async openTrial({ run, trial }) {
+        return Object.freeze({
+          trial,
+          workspace: await openWorkspace(workspaceProvider, run, trial),
+        });
+      },
+      async execute({ trialState, attempt }): Promise<ExecutorAttemptResult> {
         if (attempt.signal.aborted) throw attempt.signal.reason;
+        const { trial, workspace } = trialState;
         const invocation: JsonExecutorInvocation<Input, TargetConfig> = Object.freeze({
           input: parseJsonUnchanged(
             inputParser,
@@ -326,6 +456,7 @@ export function createJsonExecutorAdapter<
           ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
           attemptNumber: attempt.attemptNumber,
           signal: attempt.signal,
+          ...(workspace === undefined ? {} : { workspace: workspace.access }),
         });
         return executeJsonHost(
           protocol,
@@ -334,7 +465,7 @@ export function createJsonExecutorAdapter<
           resultContract,
         );
       },
-      disposeTrial: () => undefined,
+      disposeTrial: ({ trialState }) => trialState.workspace?.close(),
       disposeRun: () => undefined,
     },
   });
@@ -350,7 +481,9 @@ export function createJsonSessionExecutorAdapter<
   input: Readonly<CreateJsonSessionExecutorAdapterInput<Input, TargetConfig, Output, Trace>>,
 ): ExecutionExecutor {
   const protocol = sessionProtocol(input.identity);
-  const identity = input.identity;
+  const workspaceProvider = captureWorkspaceProvider(input.workspaceProvider);
+  requireWorkspaceCapability(protocol, workspaceProvider);
+  const identity = bindWorkspaceIdentity(input.identity, workspaceProvider);
   const inputParser = captureParser(input.inputParser);
   const targetConfigParser = captureParser(input.targetConfigParser);
   const outputParser = captureParser(input.outputParser);
@@ -380,39 +513,53 @@ export function createJsonSessionExecutorAdapter<
     implementation: {
       openRun: ({ run }) => run,
       async openTrial({ run, trial }) {
-        const context: JsonSessionExecutorContext<Input, TargetConfig> = Object.freeze({
-          runId: run.runId,
-          trialId: trial.trialId,
-          input: parseJsonUnchanged(
-            inputParser,
-            trial.input,
-            'EVAL_RUNTIME_EXECUTOR_INPUT_INVALID',
-          ),
-          targetConfig: parseOptionalJsonUnchanged(
-            targetConfigParser,
-            trial.targetConfig,
-            'EVAL_RUNTIME_EXECUTOR_TARGET_CONFIG_INVALID',
-          ),
-          ...(trial.executionContext === undefined
-            ? {}
-            : { executionContext: structuredClone(trial.executionContext) }),
-          sampleId: trial.sampleId,
-          targetId: trial.targetId,
-          trialIndex: trial.trialIndex,
-          ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
-        });
-        const session = await Reflect.apply(openSession, input, [context]);
-        if (session === null || typeof session !== 'object'
-            || typeof session.execute !== 'function'
-            || typeof session.close !== 'function') {
-          throw new TypeError('Session Executor returned an invalid session lifecycle.');
+        const workspace = await openWorkspace(workspaceProvider, run, trial);
+        try {
+          const context: JsonSessionExecutorContext<Input, TargetConfig> = Object.freeze({
+            runId: run.runId,
+            trialId: trial.trialId,
+            input: parseJsonUnchanged(
+              inputParser,
+              trial.input,
+              'EVAL_RUNTIME_EXECUTOR_INPUT_INVALID',
+            ),
+            targetConfig: parseOptionalJsonUnchanged(
+              targetConfigParser,
+              trial.targetConfig,
+              'EVAL_RUNTIME_EXECUTOR_TARGET_CONFIG_INVALID',
+            ),
+            ...(trial.executionContext === undefined
+              ? {}
+              : { executionContext: structuredClone(trial.executionContext) }),
+            sampleId: trial.sampleId,
+            targetId: trial.targetId,
+            trialIndex: trial.trialIndex,
+            ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
+            ...(workspace === undefined ? {} : { workspace: workspace.access }),
+          });
+          const session = await Reflect.apply(openSession, input, [context]);
+          if (session === null || typeof session !== 'object'
+              || typeof session.execute !== 'function'
+              || typeof session.close !== 'function') {
+            throw new TypeError('Session Executor returned an invalid session lifecycle.');
+          }
+          assertFreshExecutorSessionObject(session);
+          return Object.freeze({
+            session,
+            execute: session.execute,
+            close: session.close,
+            workspace,
+          });
+        } catch (error) {
+          if (workspace !== undefined) {
+            try {
+              await workspace.close();
+            } catch {
+              throw new TypeError('Workspace cleanup failed while opening a session.');
+            }
+          }
+          throw error;
         }
-        assertFreshExecutorSessionObject(session);
-        return Object.freeze({
-          session,
-          execute: session.execute,
-          close: session.close,
-        });
       },
       async execute({ trialState, attempt }) {
         if (attempt.signal.aborted) throw attempt.signal.reason;
@@ -428,9 +575,24 @@ export function createJsonSessionExecutorAdapter<
           resultContract,
         );
       },
-      disposeTrial: ({ trialState }) => (
-        Reflect.apply(trialState.close, trialState.session, []) as void | Promise<void>
-      ),
+      async disposeTrial({ trialState }) {
+        let cleanupFailed = false;
+        try {
+          await Reflect.apply(trialState.close, trialState.session, []) as void | Promise<void>;
+        } catch {
+          cleanupFailed = true;
+        }
+        if (trialState.workspace !== undefined) {
+          try {
+            await trialState.workspace.close();
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        if (cleanupFailed) {
+          throw new TypeError('Session or workspace cleanup failed.');
+        }
+      },
       disposeRun: () => undefined,
     },
   });
