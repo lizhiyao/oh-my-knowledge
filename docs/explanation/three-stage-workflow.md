@@ -8,6 +8,10 @@ omk is organized around three stages that map onto the lifecycle of a piece of L
 | **eval** | `omk eval` | Did this change actually make it better — provably? | the CI test suite |
 | **observe** | `omk observe` | Does it hold up on real production traces? | production monitoring |
 
+<a id="knowledge-entities-and-carriers"></a>
+
+See [How OMK understands knowledge](./knowledge.md) for the conceptual foundation of knowledge, entities, and carriers. This page focuses on how the three stages work together.
+
 ## The trunk: can I ship this change?
 
 The first useful omk loop should feel like a release checklist:

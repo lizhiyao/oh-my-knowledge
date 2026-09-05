@@ -29,7 +29,7 @@ export default defineConfig({
           { text: 'Quickstart', link: '/quickstart-skill-eval' },
           { text: 'How-to', link: '/guides/agent-eval' },
           { text: 'Reference', link: '/reference/cli' },
-          { text: 'Explanation', link: '/explanation/three-stage-workflow' },
+          { text: 'Explanation', link: '/explanation/knowledge' },
           { text: 'Specs', link: '/specs/terminology-spec' },
         ],
         sidebar: [
@@ -64,6 +64,7 @@ export default defineConfig({
           {
             text: 'Understand how it works',
             items: [
+              { text: 'How OMK understands knowledge', link: '/explanation/knowledge' },
               { text: 'Who omk is for', link: '/explanation/who-omk-is-for' },
               { text: 'The three stages', link: '/explanation/three-stage-workflow' },
               { text: 'Architecture', link: '/explanation/architecture' },
@@ -99,7 +100,7 @@ export default defineConfig({
           { text: '快速上手', link: '/zh/quickstart-skill-eval' },
           { text: '操作指南', link: '/zh/guides/agent-eval' },
           { text: '参考', link: '/zh/reference/cli' },
-          { text: '原理', link: '/zh/explanation/three-stage-workflow' },
+          { text: '原理', link: '/zh/explanation/knowledge' },
           { text: '规范', link: '/zh/specs/terminology-spec' },
         ],
         sidebar: [
@@ -134,6 +135,7 @@ export default defineConfig({
           {
             text: '我想懂工作原理',
             items: [
+              { text: 'OMK 如何理解知识', link: '/zh/explanation/knowledge' },
               { text: '为谁、解决什么', link: '/zh/explanation/who-omk-is-for' },
               { text: '三阶段', link: '/zh/explanation/three-stage-workflow' },
               { text: '工作原理', link: '/zh/explanation/architecture' },

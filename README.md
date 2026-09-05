@@ -22,6 +22,16 @@ Observe real-world performance, measure version differences, and determine wheth
 
 📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)
 
+## What knowledge means in OMK
+
+**Entities are the things knowledge describes; knowledge expresses their states, relationships, or actions in a specific context.**
+
+**How knowledge is expressed:**
+
+> **Time scope + scenario + conditions + entity A + relation or action + entity B (if any)**
+
+See [How OMK understands knowledge](docs/explanation/knowledge.md) for entity roles, shared relationships, and the distinction between knowledge and its carriers. Entity-based retrieval remains a design direction.
+
 ## What OMK helps you know
 
 | Decision | Command | Evidence you get |
