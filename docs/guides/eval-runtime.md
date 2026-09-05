@@ -179,6 +179,37 @@ experiment: {
 
 OMK deterministically seals one Variant per sample before execution. Repeated trials reuse that assignment; changing the seed, weights, strata, or minima produces a different randomization identity.
 
+When several preregistered contrasts belong to one inference family, declare them together instead of running several nominal 95% intervals:
+
+```ts
+analysis: { analyses: [{
+  analysisId: 'release-family',
+  analysisKind: 'comparison-family',
+  statistic: 'mean-difference',
+  members: [
+    {
+      analysisId: 'v2-correctness',
+      comparisonId: 'prompt-v1-vs-v2',
+      treatmentVariantId: 'prompt-v2',
+      metricId: 'correctness',
+    },
+    {
+      analysisId: 'v2-safety',
+      comparisonId: 'prompt-v1-vs-v2',
+      treatmentVariantId: 'prompt-v2',
+      metricId: 'safety',
+    },
+  ],
+  confidence: {
+    method: 'bonferroni-percentile-bootstrap',
+    level: 0.95,
+    resamples: 10_000,
+  },
+}] },
+```
+
+The two member records use 97.5% marginal intervals, targeting at least 95% simultaneous coverage when the marginal interval procedure has its stated coverage. Percentile Bootstrap remains an approximate method, so this correction is not an unconditional finite-sample coverage guarantee. The family record is available as `result.analysisResults['release-family']`; each member remains available under its own `analysisId`. Members are fixed before execution, and the preset never derives p-values from bootstrap intervals. A singleton `decision` may select one adjusted member, but the family table itself has no implicit all/any release verdict.
+
 `exact-match` compares the canonical JSON value of the actual output with the sample's `expected` value. It is not byte-for-byte string comparison.
 
 `onEvent` is an optional, best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
