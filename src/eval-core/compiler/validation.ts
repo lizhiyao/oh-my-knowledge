@@ -14,6 +14,7 @@ import {
   type MeasurementPolicy,
   type MetricDefinition,
 } from '../contracts/index.js';
+import { analysisComparisonAppliesToMetricInput } from '../contracts/analysis-input-matching.js';
 import { definitionError } from './errors.js';
 
 function assertUnique(
@@ -1111,22 +1112,31 @@ export function validateDefinitionSemantics(
         );
       }
       const producer = nodeByResultId.get(member.analysisResultId);
-      const expectedInputs = [
-        canonicalizeJson({
-          inputKind: 'metric-observations',
-          referenceId: member.metricId,
-        }),
-        canonicalizeJson({
-          inputKind: 'comparison',
-          referenceId: member.comparisonId,
-          treatmentTargetId: member.treatmentTargetId,
-          metricId: member.metricId,
-        }),
-      ].sort();
-      const actualInputs = producer?.inputs.map((input) => canonicalizeJson(input)).sort();
+      const producerMetricInputs = producer?.inputs.filter(
+        (input) => input.inputKind === 'metric-observations',
+      ) ?? [];
+      const producerComparisonInputs = producer?.inputs.filter(
+        (input) => input.inputKind === 'comparison',
+      ) ?? [];
+      const expectedComparisonInput = canonicalizeJson({
+        inputKind: 'comparison',
+        referenceId: member.comparisonId,
+        treatmentTargetId: member.treatmentTargetId,
+        metricId: member.metricId,
+      });
+      const consumesOnlySelectedContrast = producer !== undefined
+        && producer.inputs.length === producerMetricInputs.length + 1
+        && producerMetricInputs.length > 0
+        && producerMetricInputs.every((input) => analysisComparisonAppliesToMetricInput(
+          producer,
+          member.metricId,
+          input.referenceId,
+        ))
+        && producerComparisonInputs.length === 1
+        && canonicalizeJson(producerComparisonInputs[0]) === expectedComparisonInput;
       if (producer === undefined
           || (!sharesFamilyResult
-            && canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs))) {
+            && !consumesOnlySelectedContrast)) {
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
           'Comparison family member 必须精确绑定只消费该 contrast 的 AnalysisResult。',

@@ -18,6 +18,8 @@ export type {
   CohortFilter,
   Comparison,
   ComparisonFamilyMember,
+  CompositeAggregation,
+  CompositeMetricComponent,
   Dataset,
   Decision,
   EvaluateInput,

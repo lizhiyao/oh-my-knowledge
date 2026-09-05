@@ -51,9 +51,33 @@ const incompleteFamily: AnalysisRequest = {
     resamples: 1_000,
   },
 };
+const publicComposite: AnalysisRequest = {
+  analysisId: 'overall-quality',
+  analysisKind: 'composite-quality-interval',
+  compositeMetricId: 'overall-quality',
+  variantId: 'candidate',
+  components: [
+    { metricId: 'correct', weight: 0.6 },
+    { metricId: 'concise', weight: 0.4 },
+  ],
+  aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+  confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
+};
+const incompleteComposite: AnalysisRequest = {
+  analysisId: 'invalid-overall-quality',
+  analysisKind: 'composite-quality-interval',
+  compositeMetricId: 'invalid-overall-quality',
+  variantId: 'candidate',
+  // @ts-expect-error composite analysis requires at least two components.
+  components: [{ metricId: 'correct', weight: 1 }],
+  aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+  confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
+};
 void incompleteQuantile;
 void emptyCohortFilter;
 void incompleteFamily;
+void publicComposite;
+void incompleteComposite;
 const unboundedFamilyDecision: Decision = {
   decisionKind: 'comparison-family',
   analysisId: 'release-family',
@@ -149,6 +173,8 @@ const PUBLIC_API = {
       'CohortFilter',
       'Comparison',
       'ComparisonFamilyMember',
+      'CompositeAggregation',
+      'CompositeMetricComponent',
       'CustomEvaluator',
       'CustomEvaluatorBinding',
       'CustomEvaluatorContent',

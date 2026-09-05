@@ -199,6 +199,7 @@ const lengthEvaluator = {
   metric: {
     metricId: 'output-length',
     valueType: 'numeric',
+    scale: { min: 0, max: 20 },
     direction: 'lower-is-better',
     missingPolicyId: 'exclude/v1',
   },
@@ -276,6 +277,29 @@ const customEvaluation = await evaluation({
     confidence: {
       method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 100,
     },
+  }, {
+    analysisId: 'prompt-v2-overall-quality',
+    analysisKind: 'composite-quality-interval',
+    compositeMetricId: 'overall-quality',
+    variantId: 'prompt-v2',
+    components: [
+      { metricId: 'correct', weight: 0.5 },
+      { metricId: 'output-length', weight: 0.5 },
+    ],
+    aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }, {
+    analysisId: 'paired-overall-quality-difference',
+    analysisKind: 'composite-comparison-interval',
+    compositeMetricId: 'overall-quality',
+    comparisonId: 'baseline-vs-prompt-v2',
+    treatmentVariantId: 'prompt-v2',
+    components: [
+      { metricId: 'correct', weight: 0.5 },
+      { metricId: 'output-length', weight: 0.5 },
+    ],
+    aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+    confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
   }],
   decision: {
     decisionKind: 'comparison-family',
@@ -289,12 +313,22 @@ const customEvaluation = await evaluation({
   },
 }, { runId: 'clean-room-custom-evaluator' });
 assert.equal(customEvaluation.status, 'completed');
-assert.equal(customEvaluation.artifacts.analysis.records.length, 7);
+assert.equal(customEvaluation.artifacts.analysis.records.length, 9);
 assert.equal(customEvaluation.analysisResults['baseline-mean-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['prompt-v2-mean-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['prompt-v2-smoke-p50-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['paired-correct-member'].value.confidenceLevel, 0.975);
 assert.equal(customEvaluation.analysisResults['paired-release-family'].value.familySize, 2);
+assert.equal(customEvaluation.analysisResults['prompt-v2-overall-quality'].value.estimate, 0.8);
+assert.equal(customEvaluation.analysisResults['prompt-v2-overall-quality'].value.unitCount, 2);
+assert.equal(
+  customEvaluation.analysisResults['paired-overall-quality-difference'].value.estimate,
+  0,
+);
+assert.equal(
+  customEvaluation.analysisResults['paired-overall-quality-difference'].value.unitCount,
+  2,
+);
 assert.equal(customEvaluation.artifacts.decision.decisionStatus, 'decided');
 assert.equal(customEvaluation.artifacts.decision.verdict, 'RELEASE');
 assert.ok(customEvaluation.artifacts.evaluation.records.every((record) => (

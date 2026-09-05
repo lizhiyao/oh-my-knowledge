@@ -6,12 +6,19 @@
  * This is an internal contract projection shared by runtime materialization and
  * persisted Bundle verification. It is intentionally not exported by contracts/index.
  */
+const COMPOSITE_COMPARISON_IMPLEMENTATION_IDS = new Set([
+  'bootstrap.composite-paired-difference-percentile/v1',
+  'bootstrap.composite-unpaired-difference-percentile/v1',
+]);
+
 export function analysisComparisonAppliesToMetricInput(
-  node: Readonly<{ parameters?: unknown }>,
+  node: Readonly<{ implementationId?: string; parameters?: unknown }>,
   comparisonMetricId: string,
   inputMetricId: string,
 ): boolean {
   if (comparisonMetricId === inputMetricId) return true;
+  if (node.implementationId === undefined
+      || !COMPOSITE_COMPARISON_IMPLEMENTATION_IDS.has(node.implementationId)) return false;
   const parameters = node.parameters;
   if (parameters === undefined || parameters === null || Array.isArray(parameters)
       || typeof parameters !== 'object') return false;
