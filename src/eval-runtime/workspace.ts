@@ -6,7 +6,6 @@ import {
   deepFreezeCanonicalJson,
   type ExecutionResourceDescriptor,
   type JsonValue,
-  type TargetExecutionControls,
 } from '../eval-core/contracts/index.js';
 
 export type WorkspaceDescriptor = Readonly<ExecutionResourceDescriptor>;
@@ -156,26 +155,5 @@ export function captureWorkspacePlan(
   return Object.freeze({
     ...(defaultWorkspace === undefined ? {} : { default: defaultWorkspace }),
     bySampleId: deepFreezeCanonicalJson(bySampleId),
-  });
-}
-
-function workspaceControl(descriptor: WorkspaceDescriptor | null | undefined) {
-  return descriptor === null || descriptor === undefined
-    ? { workspaceMode: 'not-required' as const }
-    : { workspaceMode: 'copy-on-write-overlay' as const, descriptor };
-}
-
-export function workspaceExecutionControls(
-  plan: CapturedWorkspacePlan | undefined,
-): Readonly<Pick<TargetExecutionControls, 'defaults' | 'sampleOverrides'>> {
-  return deepFreezeCanonicalJson({
-    defaults: {
-      workspace: workspaceControl(plan?.default),
-      tools: { toolPolicyKind: 'runtime-default' },
-    },
-    sampleOverrides: Object.entries(plan?.bySampleId ?? {}).map(([sampleId, descriptor]) => ({
-      sampleId,
-      workspace: workspaceControl(descriptor),
-    })),
   });
 }

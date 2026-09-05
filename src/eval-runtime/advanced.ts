@@ -62,6 +62,10 @@ export type {
   RuntimeValueParser,
 } from './adapters/json-executor.js';
 export type {
+  AllowedToolsInput,
+  AllowedToolsPlan,
+} from './tool-policy.js';
+export type {
   WorkspaceAccess,
   WorkspaceDescriptor,
   WorkspaceInput,

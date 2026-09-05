@@ -46,9 +46,11 @@ import {
   evaluate,
   prepareEvaluation,
   type AnalysisRequest,
+  type AllowedToolsPlan,
   type CohortFilter,
   type Executor as CanonicalExecutor,
   type PreparedEvaluation,
+  type Variant as CanonicalVariant,
   type WorkspaceDescriptor,
   type WorkspaceProvider,
 } from 'oh-my-knowledge';
@@ -147,18 +149,25 @@ const workspaceProvider: WorkspaceProvider = {
 const workspaceExecutor: CanonicalExecutor<string, undefined, string> = {
   ...canonicalExecutor,
   executorId: 'typescript-workspace/v1',
+  capabilities: { toolPolicy: 'allow-list' },
   workspaceProvider,
-  async execute({ input, workspace }) {
+  async execute({ input, workspace, allowedTools }) {
     const root: string | undefined = workspace?.root;
+    const tools: readonly string[] | undefined = allowedTools;
     void root;
+    void tools;
     return { output: input };
   },
 };
-const workspaceVariant = {
+const allowedTools: AllowedToolsPlan = {
+  default: ['Read'],
+  bySampleId: { one: [] },
+};
+const workspaceVariant: CanonicalVariant<string, undefined, string> = {
   variantId: 'typescript-workspace',
   artifact: { name: 'workspace', kind: 'agent', source: 'inline', content: 'Use workspace.' },
-  execution: { executor: workspaceExecutor, workspace: workspaceDescriptor },
-} as const;
+  execution: { executor: workspaceExecutor, workspace: workspaceDescriptor, allowedTools },
+};
 void workspaceVariant;
 const canonicalCohortFilter: CohortFilter = { includeCohortIds: ['release'] };
 const canonicalAnalysis: AnalysisRequest = {

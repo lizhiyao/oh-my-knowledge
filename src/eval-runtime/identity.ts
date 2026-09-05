@@ -78,6 +78,7 @@ export interface InvokeExecutorIdentityDeclaration {
   }>;
   readonly seedControl: 'unsupported' | 'optional' | 'required';
   readonly workspace?: 'copy-on-write-overlay';
+  readonly toolPolicy?: 'allow-list';
   readonly telemetry: Readonly<{
     trace: 'unsupported' | 'optional' | 'required';
     usage: 'unsupported' | 'optional' | 'required';
@@ -102,6 +103,9 @@ function createJsonExecutorIdentity(
   if (declaration.telemetry.trace === 'unsupported'
       && declaration.traceSchema !== undefined) {
     throw new TypeError('traceSchema 不能与 unsupported trace telemetry 同时声明。');
+  }
+  if (declaration.toolPolicy !== undefined && declaration.toolPolicy !== 'allow-list') {
+    throw new TypeError('toolPolicy 只支持 allow-list。');
   }
   const protocol = protocolId === 'omk.invoke/v1' ? 'invoke' : 'session';
   const traceSchema = declaration.telemetry.trace === 'unsupported'
@@ -136,7 +140,9 @@ function createJsonExecutorIdentity(
             workspace: declaration.workspace === undefined ? [] : [declaration.workspace],
             mcp: [],
             mockInterception: [],
-            toolPolicies: ['runtime-default'],
+            toolPolicies: declaration.toolPolicy === undefined
+              ? ['runtime-default']
+              : ['allow-list', 'runtime-default'],
             skillDiscovery: ['runtime-default'],
             sandboxIds: [],
           },
