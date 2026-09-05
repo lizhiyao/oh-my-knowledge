@@ -12,6 +12,7 @@ describe('autonomous review governance', () => {
     expect(agents).toContain('## Code Review Rules');
     expect(agents).toContain('必须完整阅读 [`CODE_REVIEW.md`](./CODE_REVIEW.md)');
     expect(agents).toContain('### CR 运行产物隔离');
+    expect(agents).toContain('只有实际运行会写盘的 CR 工具时');
     expect(agents).toContain('不得在仓库内创建或保留');
     expect(agents).toContain('不得执行回写仓库的结果同步');
     expect(Buffer.byteLength(agents, 'utf8')).toBeLessThan(32 * 1024);
@@ -20,6 +21,7 @@ describe('autonomous review governance', () => {
     const playbook = read('CODE_REVIEW.md');
     expect(playbook).toContain('CR 工具产物必须与源码工作树隔离');
     expect(playbook).toContain('`mktemp -d`');
+    expect(playbook).toContain('只有所用工具实际需要写盘时');
     expect(playbook).toContain('不得用 `.gitignore` 掩盖工具写入');
   });
 
