@@ -16,6 +16,12 @@ export {
   prepareEvaluationSeries,
 } from './series.js';
 export {
+  EVALUATION_RESULT_MEDIA_TYPE,
+  EvaluationResultStoreError,
+  loadEvaluationResult,
+  saveEvaluationResult,
+} from './result-store.js';
+export {
   RUNTIME_CHECK_RESULT_SCHEMA_VERSION,
   checkRuntime,
 } from './conformance/runtime.js';
@@ -98,6 +104,13 @@ export type {
   PreparedEvaluationSeries,
   RunStabilityValue,
 } from './series.js';
+export type {
+  EvaluationResultVerification,
+  EvaluationResultVerificationRequest,
+  EvaluationResultVerifier,
+  LoadEvaluationResultInput,
+  SaveEvaluationResultInput,
+} from './result-store.js';
 export type { ContentStoreConformanceCheck } from './conformance/content-store.js';
 export type {
   CacheRuntimeCheckInput,
