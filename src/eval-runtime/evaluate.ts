@@ -36,7 +36,12 @@ import type {
 } from '../eval-core/compiler/index.js';
 import { EvaluationDefinitionError } from '../eval-core/compiler/index.js';
 import type { EvaluationEvaluator } from '../eval-core/evaluation/index.js';
-import { createJsonExecutorAdapter, type RuntimeValueParser } from './adapters/json-executor.js';
+import {
+  assertFreshExecutorSessionObject,
+  createJsonExecutorAdapter,
+  createJsonSessionExecutorAdapter,
+  type RuntimeValueParser,
+} from './adapters/json-executor.js';
 import {
   createMeasurementPolicy,
   MeasurementPolicyBuilderInputSchema,
@@ -66,7 +71,11 @@ import {
   type ToolTrajectoryMatchMode,
 } from './evaluators/tool-trajectory.js';
 import { SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION } from './traces/source-neutral.js';
-import { createInvokeExecutorIdentity, createRuntimeIdentity } from './identity.js';
+import {
+  createInvokeExecutorIdentity,
+  createRuntimeIdentity,
+  createSessionExecutorIdentity,
+} from './identity.js';
 import {
   captureCustomEvaluator,
   type CustomEvaluator,
@@ -399,7 +408,7 @@ export interface VariantExecution<
   Output extends JsonValue = JsonValue,
   Trace extends JsonValue = JsonValue,
 > {
-  readonly executor: Executor<Input, Config, Output, Trace>;
+  readonly executor: EvaluationExecutor<Input, Config, Output, Trace>;
   readonly runtimeContext?: RuntimeContext;
   readonly config?: Config;
 }
@@ -457,6 +466,29 @@ export interface ExecutorInvocation<
   readonly signal: AbortSignal;
 }
 
+export interface ExecutorSessionContext<
+  Input,
+  Config extends JsonValue | undefined,
+> {
+  readonly runId: string;
+  readonly trialId: string;
+  readonly input: Input;
+  readonly artifact: Artifact;
+  readonly runtimeContext?: RuntimeContext;
+  readonly config: Config;
+  readonly executionContext?: JsonValue;
+  readonly sampleId: string;
+  readonly variantId: string;
+  readonly trialIndex: number;
+  readonly trialSeed?: string;
+}
+
+export interface ExecutorSessionAttempt {
+  readonly attemptId: string;
+  readonly attemptNumber: number;
+  readonly signal: AbortSignal;
+}
+
 export type ExecutorResult<Output extends JsonValue, Trace extends JsonValue = JsonValue> =
   | {
       readonly output?: Output;
@@ -472,7 +504,7 @@ export type ExecutorResult<Output extends JsonValue, Trace extends JsonValue = J
       readonly trace?: never;
     };
 
-export interface Executor<
+interface ExecutorDeclaration<
   Input extends JsonValue,
   Config extends JsonValue | undefined,
   Output extends JsonValue,
@@ -494,10 +526,52 @@ export interface Executor<
   readonly capabilities?: ExecutorCapabilities;
   /** Host-declared deployment or implementation facets beyond executorId and version. */
   readonly fingerprintFacets?: JsonValue;
+}
+
+export interface Executor<
+  Input extends JsonValue,
+  Config extends JsonValue | undefined,
+  Output extends JsonValue,
+  Trace extends JsonValue = JsonValue,
+> extends ExecutorDeclaration<Input, Config, Output, Trace> {
+  readonly protocol?: 'invoke';
   execute(
     invocation: Readonly<ExecutorInvocation<Input, Config>>,
   ): Promise<ExecutorResult<Output, Trace>>;
 }
+
+export type InvokeExecutor<
+  Input extends JsonValue,
+  Config extends JsonValue | undefined,
+  Output extends JsonValue,
+  Trace extends JsonValue = JsonValue,
+> = Executor<Input, Config, Output, Trace>;
+
+export interface ExecutorSession<Output extends JsonValue, Trace extends JsonValue = JsonValue> {
+  execute(
+    attempt: Readonly<ExecutorSessionAttempt>,
+  ): Promise<ExecutorResult<Output, Trace>>;
+  close(): void | Promise<void>;
+}
+
+export interface SessionExecutor<
+  Input extends JsonValue,
+  Config extends JsonValue | undefined,
+  Output extends JsonValue,
+  Trace extends JsonValue = JsonValue,
+> extends ExecutorDeclaration<Input, Config, Output, Trace> {
+  readonly protocol: 'session';
+  openSession(
+    context: Readonly<ExecutorSessionContext<Input, Config>>,
+  ): Promise<ExecutorSession<Output, Trace>>;
+}
+
+export type EvaluationExecutor<
+  Input extends JsonValue,
+  Config extends JsonValue | undefined,
+  Output extends JsonValue,
+  Trace extends JsonValue = JsonValue,
+> = Executor<Input, Config, Output, Trace> | SessionExecutor<Input, Config, Output, Trace>;
 
 export interface ExactMatchEvaluator {
   readonly evaluatorKind: 'exact-match';
@@ -898,7 +972,8 @@ interface CapturedExecutor<
   Output extends JsonValue,
   Trace extends JsonValue,
 > {
-  readonly declaration: Executor<Input, Config, Output, Trace>;
+  readonly declaration: EvaluationExecutor<Input, Config, Output, Trace>;
+  readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
   readonly inputParser: RuntimeValueParser<Input>;
   readonly configParser: RuntimeValueParser<Config>;
   readonly outputParser: RuntimeValueParser<Output>;
@@ -1014,13 +1089,18 @@ function captureExecutor<
   Output extends JsonValue,
   Trace extends JsonValue,
 >(
-  value: Readonly<Executor<Input, Config, Output, Trace>>,
+  value: Readonly<EvaluationExecutor<Input, Config, Output, Trace>>,
 ): CapturedExecutor<Input, Config, Output, Trace> {
   const executorId = IdentifierSchema.safeParse(value?.executorId);
+  const protocol = value?.protocol ?? 'invoke';
   if (!executorId.success
       || typeof value?.version !== 'string'
       || value.version.length === 0
-      || typeof value?.execute !== 'function') {
+      || (protocol !== 'invoke' && protocol !== 'session')
+      || (protocol === 'invoke'
+        ? typeof (value as InvokeExecutor<Input, Config, Output, Trace>)?.execute !== 'function'
+        : typeof (value as SessionExecutor<Input, Config, Output, Trace>)?.openSession
+          !== 'function')) {
     return configurationFailure(
       'EVAL_RUNTIME_EXECUTOR_INVALID',
       'Evaluation executor declaration 无效。',
@@ -1054,7 +1134,10 @@ function captureExecutor<
   const traceClassification = value.traceClassification ?? outputClassification;
   const identity = (() => {
     try {
-      return createInvokeExecutorIdentity({
+      const createIdentity = protocol === 'session'
+        ? createSessionExecutorIdentity
+        : createInvokeExecutorIdentity;
+      return createIdentity({
         implementationId: executorId.data,
         version: value.version,
         determinism: capabilities.determinism ?? 'unknown',
@@ -1098,8 +1181,7 @@ function captureExecutor<
       'Evaluation executor classification declaration 无效。',
     );
   }
-  const execute = value.execute;
-  const declaration: Executor<Input, Config, Output, Trace> = Object.freeze({
+  const commonDeclaration = {
     executorId: executorId.data,
     version: value.version,
     schemas: Object.freeze({
@@ -1120,12 +1202,39 @@ function captureExecutor<
     ...(value.fingerprintFacets === undefined ? {} : {
       fingerprintFacets: deepFreezeCanonicalJson(structuredClone(value.fingerprintFacets)),
     }),
-    execute,
-  });
+  };
+  const declaration: EvaluationExecutor<Input, Config, Output, Trace> = protocol === 'session'
+    ? Object.freeze({
+      ...commonDeclaration,
+      protocol: 'session' as const,
+      openSession: (value as SessionExecutor<Input, Config, Output, Trace>).openSession,
+    })
+    : Object.freeze({
+      ...commonDeclaration,
+      ...(value.protocol === 'invoke' ? { protocol: 'invoke' as const } : {}),
+      execute: (value as InvokeExecutor<Input, Config, Output, Trace>).execute,
+    });
 
-  const createPort = (
-    targetId: string,
-  ) => createJsonExecutorAdapter({
+  function adaptResult(result: ExecutorResult<Output, Trace>) {
+    if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+      return result as never;
+    }
+    if ('errorCode' in result) {
+      return {
+        invocationStatus: 'failed' as const,
+        errorCode: result.errorCode as string,
+        ...(result.usage === undefined ? {} : { usage: result.usage }),
+      };
+    }
+    return {
+      invocationStatus: 'completed' as const,
+      ...(result.output === undefined ? {} : { output: result.output }),
+      ...(result.trace === undefined ? {} : { trace: result.trace }),
+      ...(result.usage === undefined ? {} : { usage: result.usage }),
+    };
+  }
+
+  const adapterInput = {
     identity,
     inputParser,
     targetConfigParser: {
@@ -1151,45 +1260,86 @@ function captureExecutor<
       : { traceClassification: value.traceClassification }),
     ...(value.outputMediaType === undefined ? {} : { outputMediaType: value.outputMediaType }),
     ...(value.traceMediaType === undefined ? {} : { traceMediaType: value.traceMediaType }),
-    async invoke(invocation) {
-      const targetConfig = VariantConfigEnvelopeSchema.parse(invocation.targetConfig);
-      const result = await Reflect.apply(execute, declaration, [{
-        input: invocation.input,
-        artifact: targetConfig.artifact,
-        ...(targetConfig.runtimeContext === undefined
-          ? {}
-          : { runtimeContext: targetConfig.runtimeContext }),
-        config: targetConfig.executorConfig as Config,
-        ...(invocation.executionContext === undefined
-          ? {}
-          : { executionContext: invocation.executionContext }),
-        sampleId: invocation.sampleId,
-        variantId: targetId,
-        trialIndex: invocation.trialIndex,
-        ...(invocation.trialSeed === undefined ? {} : { trialSeed: invocation.trialSeed }),
-        attemptNumber: invocation.attemptNumber,
-        signal: invocation.signal,
-      }]) as ExecutorResult<Output, Trace>;
-      if (result === null || typeof result !== 'object' || Array.isArray(result)) {
-        return result as never;
-      }
-      if ('errorCode' in result) {
-        return {
-          invocationStatus: 'failed' as const,
-          errorCode: result.errorCode as string,
-          ...(result.usage === undefined ? {} : { usage: result.usage }),
-        };
-      }
-      return {
-        invocationStatus: 'completed' as const,
-        ...(result.output === undefined ? {} : { output: result.output }),
-        ...(result.trace === undefined ? {} : { trace: result.trace }),
-        ...(result.usage === undefined ? {} : { usage: result.usage }),
-      };
-    },
-  });
+  };
+  const createPort = (targetId: string) => protocol === 'session'
+    ? createJsonSessionExecutorAdapter({
+      ...adapterInput,
+      async openSession(sessionContext) {
+        const targetConfig = VariantConfigEnvelopeSchema.parse(sessionContext.targetConfig);
+        const host = declaration as SessionExecutor<Input, Config, Output, Trace>;
+        const session = await Reflect.apply(host.openSession, host, [{
+          runId: sessionContext.runId,
+          trialId: sessionContext.trialId,
+          input: sessionContext.input,
+          artifact: targetConfig.artifact,
+          ...(targetConfig.runtimeContext === undefined
+            ? {}
+            : { runtimeContext: targetConfig.runtimeContext }),
+          config: targetConfig.executorConfig as Config,
+          ...(sessionContext.executionContext === undefined
+            ? {}
+            : { executionContext: sessionContext.executionContext }),
+          sampleId: sessionContext.sampleId,
+          variantId: targetId,
+          trialIndex: sessionContext.trialIndex,
+          ...(sessionContext.trialSeed === undefined
+            ? {}
+            : { trialSeed: sessionContext.trialSeed }),
+        }]) as ExecutorSession<Output, Trace>;
+        if (session === null || typeof session !== 'object'
+            || typeof session.execute !== 'function'
+            || typeof session.close !== 'function') {
+          throw new TypeError('Session Executor returned an invalid session lifecycle.');
+        }
+        assertFreshExecutorSessionObject(session);
+        const executeSession = session.execute;
+        const closeSession = session.close;
+        return Object.freeze({
+          execute: async (attempt: Readonly<ExecutorSessionAttempt>) => adaptResult(
+            await Reflect.apply(
+              executeSession,
+              session,
+              [attempt],
+            ) as ExecutorResult<Output, Trace>,
+          ),
+          close: () => Reflect.apply(closeSession, session, []) as void | Promise<void>,
+        });
+      },
+    })
+    : createJsonExecutorAdapter({
+      ...adapterInput,
+      async invoke(invocation) {
+        const targetConfig = VariantConfigEnvelopeSchema.parse(invocation.targetConfig);
+        const host = declaration as InvokeExecutor<Input, Config, Output, Trace>;
+        const result = await Reflect.apply(host.execute, host, [{
+          input: invocation.input,
+          artifact: targetConfig.artifact,
+          ...(targetConfig.runtimeContext === undefined
+            ? {}
+            : { runtimeContext: targetConfig.runtimeContext }),
+          config: targetConfig.executorConfig as Config,
+          ...(invocation.executionContext === undefined
+            ? {}
+            : { executionContext: invocation.executionContext }),
+          sampleId: invocation.sampleId,
+          variantId: targetId,
+          trialIndex: invocation.trialIndex,
+          ...(invocation.trialSeed === undefined ? {} : { trialSeed: invocation.trialSeed }),
+          attemptNumber: invocation.attemptNumber,
+          signal: invocation.signal,
+        }]) as ExecutorResult<Output, Trace>;
+        return adaptResult(result);
+      },
+    });
 
-  return Object.freeze({ declaration, inputParser, configParser, outputParser, createPort });
+  return Object.freeze({
+    declaration,
+    protocolId: protocol === 'session' ? 'omk.session/v1' : 'omk.invoke/v1',
+    inputParser,
+    configParser,
+    outputParser,
+    createPort,
+  });
 }
 
 function captureDataset(value: Readonly<Dataset>): Dataset {
@@ -1908,7 +2058,7 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
   return {
     targetId: variant.variantId,
     targetKind: variant.artifact.kind,
-    protocolId: 'omk.invoke/v1' as const,
+    protocolId: variant.executor.protocolId,
     executorId: variant.executor.declaration.executorId,
     executionRequirements: {
       systemInstructions: 'not-required' as const,
@@ -3054,6 +3204,7 @@ export async function checkExecutor<
   }
   return runExecutorConformance({
     implementationId: executor.declaration.executorId,
+    protocolId: executor.protocolId,
     createExecutor() {
       return executor.createPort(variant.variantId);
     },

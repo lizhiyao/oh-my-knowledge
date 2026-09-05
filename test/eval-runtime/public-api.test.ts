@@ -11,15 +11,43 @@ import type {
   CohortFilter,
   CustomEvaluator,
   Decision,
+  EvaluationExecutor,
+  ExecutorSessionAttempt,
+  ExecutorSessionContext,
   Policy,
   ProviderCostLimit,
   RetrievalEvaluator,
   RetrievalMetricIds,
   RunBudgetScope,
   SamplingDesign,
+  SessionExecutor,
   ToolTrajectoryEvaluator,
   ToolTrajectoryMatchMode,
 } from '../../src/eval-runtime/index.js';
+
+const publicSessionExecutor: SessionExecutor<{ query: string }, undefined, string> = {
+  protocol: 'session',
+  executorId: 'public.session/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ query: z.string() }).strict(),
+    output: z.string(),
+  },
+  async openSession(context: Readonly<ExecutorSessionContext<{ query: string }, undefined>>) {
+    void context.runId;
+    return {
+      async execute(attempt: Readonly<ExecutorSessionAttempt>) {
+        attempt.signal.throwIfAborted();
+        return { output: context.input.query };
+      },
+      close() {},
+    };
+  },
+};
+const publicEvaluationExecutor: EvaluationExecutor<
+  { query: string }, undefined, string
+> = publicSessionExecutor;
+void publicEvaluationExecutor;
 
 const independentSampling: SamplingDesign = {
   samplingKind: 'independent',
@@ -212,6 +240,7 @@ const PUBLIC_API = {
       'Dataset',
       'Decision',
       'EvaluateInput',
+      'EvaluationExecutor',
       'EvaluationRunOptions',
       'EvaluationResult',
       'EvaluationWorkEstimate',
@@ -226,7 +255,11 @@ const PUBLIC_API = {
       'ExecutorCheckResult',
       'ExecutorInvocation',
       'ExecutorResult',
+      'ExecutorSession',
+      'ExecutorSessionAttempt',
+      'ExecutorSessionContext',
       'Experiment',
+      'InvokeExecutor',
       'Judge',
       'Metric',
       'Policy',
@@ -247,6 +280,7 @@ const PUBLIC_API = {
       'RunBudgetScope',
       'Sample',
       'SamplingDesign',
+      'SessionExecutor',
       'StagePolicy',
       'ToolTrajectoryEvaluator',
       'ToolTrajectoryMatchMode',
@@ -263,6 +297,9 @@ const PUBLIC_API = {
       'INVOKE_JSON_INPUT_SCHEMA',
       'INVOKE_JSON_OUTPUT_SCHEMA',
       'INVOKE_JSON_TRACE_SCHEMA',
+      'SESSION_JSON_INPUT_SCHEMA',
+      'SESSION_JSON_OUTPUT_SCHEMA',
+      'SESSION_JSON_TRACE_SCHEMA',
       'RuntimeConformanceError',
       'assertExecutorConformance',
       'createEvaluationRuntime',
@@ -272,6 +309,7 @@ const PUBLIC_API = {
       'createExecutorFnAdapter',
       'createInvokeExecutorIdentity',
       'createJsonExecutorAdapter',
+      'createJsonSessionExecutorAdapter',
       'createMeasurementPolicy',
       'createNodeEvaluationClock',
       'createPairedComparisonDefinition',
@@ -287,6 +325,7 @@ const PUBLIC_API = {
       'createRubricJudgeRegistration',
       'createRubricJudgeRuntimeConfig',
       'createRuntimeIdentity',
+      'createSessionExecutorIdentity',
       'createSameProcessEvaluatorAdapter',
       'createSameProcessExecutorAdapter',
       'rubricJudgeInstrumentId',
@@ -298,6 +337,7 @@ const PUBLIC_API = {
       'CreateExactMatchEvaluatorInput',
       'CreateExecutorFnAdapterInput',
       'CreateJsonExecutorAdapterInput',
+      'CreateJsonSessionExecutorAdapterInput',
       'CreateRubricJudgeKitInput',
       'CreateRubricJudgeEvaluatorInput',
       'CreateSameProcessEvaluatorAdapterInput',
@@ -317,6 +357,9 @@ const PUBLIC_API = {
       'InvokeExecutorIdentityDeclaration',
       'JsonExecutorInvocation',
       'JsonExecutorInvocationResult',
+      'JsonExecutorSession',
+      'JsonSessionExecutorAttempt',
+      'JsonSessionExecutorContext',
       'MeasurementEventDeliveryInput',
       'MeasurementFailurePolicyInput',
       'MeasurementAttemptBudgetScopeInput',
@@ -339,6 +382,7 @@ const PUBLIC_API = {
       'RunEvaluationInput',
       'RuntimeConformanceCheck',
       'RuntimeIdentityDeclaration',
+      'SessionExecutorIdentityDeclaration',
       'RuntimePortRegistration',
       'RuntimeValueParser',
       'SameProcessEvaluatorImplementation',
