@@ -10,9 +10,9 @@ import {
 } from '../../eval-core/execution/index.js';
 import type { EvaluationRunResult, Executor } from '../../eval-core/engine/index.js';
 import {
-  invokeProtocol,
-  validateInvokeFailureTelemetry,
-  validateInvokeTelemetry,
+  executorProtocol,
+  validateExecutorFailureTelemetry,
+  validateExecutorTelemetry,
 } from '../adapters/invoke-contract.js';
 import { createExactMatchDefinition } from '../builders/exact-match.js';
 import { createMeasurementPolicy } from '../builders/policy.js';
@@ -27,6 +27,7 @@ export interface ExecutorConformanceProbeCase {
 
 export interface ExecutorConformanceProbeInput {
   readonly implementationId: string;
+  readonly protocolId?: 'omk.invoke/v1' | 'omk.session/v1';
   /** A fresh Core Executor is required for each Target binding and probe phase. */
   readonly createExecutor: (targetId: string) => Executor;
   readonly success: ExecutorConformanceProbeCase & { readonly expected: JsonValue };
@@ -89,6 +90,7 @@ interface LifecycleObservation {
 
 interface ProbeObservations {
   phase: ProbePhase;
+  readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
   readonly lifecycles: LifecycleObservation[];
   readonly attemptSignals: boolean[];
   readonly telemetry: boolean[];
@@ -132,7 +134,10 @@ function instrumentTrial(
           observations.cancellationRejected = false;
         }
         try {
-          validateInvokeTelemetry(invokeProtocol(lifecycle.executor.identity), result);
+          validateExecutorTelemetry(
+            executorProtocol(lifecycle.executor.identity, observations.protocolId),
+            result,
+          );
           observations.telemetry.push(true);
         } catch {
           observations.telemetry.push(false);
@@ -147,8 +152,8 @@ function instrumentTrial(
           observations.telemetry.push(false);
         } else if (error instanceof ExecutionPortFailure) {
           try {
-            validateInvokeFailureTelemetry(
-              invokeProtocol(lifecycle.executor.identity),
+            validateExecutorFailureTelemetry(
+              executorProtocol(lifecycle.executor.identity, observations.protocolId),
               error.usage,
             );
             observations.telemetry.push(true);
@@ -216,6 +221,7 @@ function definition(
   const target = (targetId: 'control' | 'treatment') => ({
     targetId,
     executorId: input.implementationId,
+    protocolId: input.protocolId ?? 'omk.invoke/v1',
     ...(probe.targetConfig === undefined
       ? {}
       : { config: structuredClone(probe.targetConfig) }),
@@ -278,7 +284,7 @@ function lifecycleConforms(lifecycles: readonly LifecycleObservation[]): boolean
 }
 
 /**
- * Exercises a framework-neutral `omk.invoke/v1` adapter through real success,
+ * Exercises a framework-neutral invoke or session adapter through real success,
  * structured-failure, and externally cancelled Core runs.
  */
 export async function runExecutorConformance(
@@ -286,6 +292,7 @@ export async function runExecutorConformance(
 ): Promise<ExecutorConformanceResult> {
   const observations: ProbeObservations = {
     phase: 'success',
+    protocolId: input.protocolId ?? 'omk.invoke/v1',
     lifecycles: [],
     attemptSignals: [],
     telemetry: [],

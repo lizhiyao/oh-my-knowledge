@@ -8,15 +8,26 @@ import {
   type ExecutorAttemptResult,
 } from '../../eval-core/execution/index.js';
 
-export function invokeProtocol(identity: Readonly<RuntimeIdentity>) {
+export function executorProtocol(
+  identity: Readonly<RuntimeIdentity>,
+  protocolId: 'omk.invoke/v1' | 'omk.session/v1',
+) {
   const capabilities = ExecutorCapabilitiesSchema.parse(identity.capabilities);
   const protocol = capabilities.protocols.find((candidate) => (
-    candidate.protocolId === 'omk.invoke/v1'
+    candidate.protocolId === protocolId
   ));
   if (protocol === undefined) {
-    throw new TypeError('Executor adapter identity 必须声明 omk.invoke/v1 capability。');
+    throw new TypeError(`Executor adapter identity 必须声明 ${protocolId} capability。`);
   }
   return protocol;
+}
+
+export function invokeProtocol(identity: Readonly<RuntimeIdentity>) {
+  return executorProtocol(identity, 'omk.invoke/v1');
+}
+
+export function sessionProtocol(identity: Readonly<RuntimeIdentity>) {
+  return executorProtocol(identity, 'omk.session/v1');
 }
 
 export function executorContractViolation(message: string, usage?: UsageRecord): never {
@@ -27,8 +38,8 @@ export function executorContractViolation(message: string, usage?: UsageRecord):
   }, usage);
 }
 
-export function validateInvokeTelemetry(
-  protocol: ReturnType<typeof invokeProtocol>,
+export function validateExecutorTelemetry(
+  protocol: ReturnType<typeof executorProtocol>,
   result: Readonly<ExecutorAttemptResult>,
 ): void {
   const telemetry = protocol.execution.telemetry;
@@ -60,8 +71,8 @@ export function validateInvokeTelemetry(
 }
 
 /** Failed invocations may lack telemetry, but must never contradict unsupported declarations. */
-export function validateInvokeFailureTelemetry(
-  protocol: ReturnType<typeof invokeProtocol>,
+export function validateExecutorFailureTelemetry(
+  protocol: ReturnType<typeof executorProtocol>,
   usage: UsageRecord | undefined,
 ): void {
   const telemetry = protocol.execution.telemetry;

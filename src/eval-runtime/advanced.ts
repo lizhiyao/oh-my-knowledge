@@ -35,21 +35,30 @@ export type { CreateExactMatchEvaluatorInput } from './evaluators/exact-match.js
 export {
   createInvokeExecutorIdentity,
   createRuntimeIdentity,
+  createSessionExecutorIdentity,
 } from './identity.js';
 export type {
   InvokeExecutorIdentityDeclaration,
   RuntimeIdentityDeclaration,
+  SessionExecutorIdentityDeclaration,
 } from './identity.js';
 export {
   EvaluationRuntimeAssemblyError,
   createEvaluationRuntime,
 } from './runtime.js';
 export type { CreateEvaluationRuntimeInput } from './runtime.js';
-export { createJsonExecutorAdapter } from './adapters/json-executor.js';
+export {
+  createJsonExecutorAdapter,
+  createJsonSessionExecutorAdapter,
+} from './adapters/json-executor.js';
 export type {
   CreateJsonExecutorAdapterInput,
+  CreateJsonSessionExecutorAdapterInput,
   JsonExecutorInvocation,
   JsonExecutorInvocationResult,
+  JsonExecutorSession,
+  JsonSessionExecutorAttempt,
+  JsonSessionExecutorContext,
   RuntimeValueParser,
 } from './adapters/json-executor.js';
 export type {
@@ -86,6 +95,9 @@ export {
   INVOKE_JSON_INPUT_SCHEMA,
   INVOKE_JSON_OUTPUT_SCHEMA,
   INVOKE_JSON_TRACE_SCHEMA,
+  SESSION_JSON_INPUT_SCHEMA,
+  SESSION_JSON_OUTPUT_SCHEMA,
+  SESSION_JSON_TRACE_SCHEMA,
 } from './identity.js';
 export type {
   EvaluationRuntimeSupportPorts,

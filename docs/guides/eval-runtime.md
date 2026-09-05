@@ -168,6 +168,41 @@ Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults,
 
 Variant `config` and `runtimeContext` are serialized into the sealed Definition. Put only reproducible, non-secret measurement inputs there. Credentials, clients, and process-local resources stay in the Executor closure and never enter the Definition.
 
+## Stateful Agent sessions
+
+Use `SessionExecutor` when one Agent or stateful Workflow needs an isolated per-trial session. `Executor` remains the concise stateless `omk.invoke/v1` interface; `EvaluationExecutor` is the union accepted by a Variant, and `InvokeExecutor` is the explicit name for the stateless form:
+
+```ts
+import type { SessionExecutor } from 'oh-my-knowledge';
+
+const agentExecutor: SessionExecutor<{ task: string }, undefined, string> = {
+  protocol: 'session',
+  executorId: 'acme.research-agent/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ task: z.string() }).strict(),
+    output: z.string(),
+  },
+  capabilities: {
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    telemetry: { trace: 'unsupported', usage: 'optional' },
+  },
+  async openSession({ runId, trialId, input }) {
+    const handle = agentClient.createLocalHandle({ runId, trialId, task: input.task });
+    return {
+      async execute({ attemptId, signal }) {
+        const response = await handle.run({ idempotencyKey: `${runId}:${attemptId}`, signal });
+        return { output: response.text, usage: response.usage };
+      },
+      close: () => handle.close(),
+    };
+  },
+};
+```
+
+OMK opens one new `ExecutorSession` object for each Target × Sample × Trial and rejects object reuse across trials or Runs. Retries call the same session with a new `ExecutorSessionAttempt`. An `attemptId` is stable for its measurement coordinate but may recur in a separate Run, so namespace provider idempotency with `runId` (or an equivalent provider-session scope), and fail closed when a remote commit is ambiguous. `ExecutorSessionContext` contains `runId`, `trialId`, the Variant projection, and execution context; it never contains Gold, evaluation context, or analysis membership. `close()` runs once after success, failure, timeout, or cancellation. `openSession()` and `close()` must be bounded local lifecycle work; opening is unmetered resource acquisition, so it must not perform model inference or other billable attempt work. This lifecycle is a temporary measurement boundary, not a persistent end-user conversation store.
+
 For independent groups, change only the sampling declaration. Sampling Design is the single source of paired／independent semantics, and every Variant must have one allocation:
 
 ```ts

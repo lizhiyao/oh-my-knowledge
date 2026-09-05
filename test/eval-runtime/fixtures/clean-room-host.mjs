@@ -508,6 +508,91 @@ assert.equal(
   false,
 );
 
+const openedSessions = [];
+const sessionExecutor = {
+  protocol: 'session',
+  executorId: 'clean-room.session-agent/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ task: z.string() }).strict(),
+    config: z.object({ answer: z.string() }).strict(),
+    output: z.string(),
+  },
+  outputClassification: 'public',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: { trace: 'unsupported', usage: 'optional' },
+  },
+  fingerprintFacets: { revision: 'clean-room-session-one' },
+  async openSession(context) {
+    const observed = {
+      runId: context.runId,
+      trialId: context.trialId,
+      context: structuredClone(context),
+      attempts: [],
+      closes: 0,
+    };
+    openedSessions.push(observed);
+    return {
+      async execute(attempt) {
+        observed.attempts.push({
+          attemptId: attempt.attemptId,
+          attemptNumber: attempt.attemptNumber,
+        });
+        if (attempt.attemptNumber === 1) return { errorCode: 'temporary-session-failure' };
+        return { output: context.config.answer };
+      },
+      close() { observed.closes += 1; },
+    };
+  },
+};
+const sessionEvaluation = await evaluate({
+  dataset: {
+    datasetId: 'clean-room-session-agent',
+    samples: [{
+      sampleId: 'session-agent-one',
+      input: { task: 'Research the policy.' },
+      expected: 'done',
+      evaluationContext: { privateJudgeContext: 'not-for-session' },
+    }],
+  },
+  variants: [{
+    variantId: 'session-agent',
+    artifact: {
+      name: 'session-agent', kind: 'agent', source: 'inline', content: 'Research carefully.',
+    },
+    execution: { executor: sessionExecutor, config: { answer: 'done' } },
+  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [],
+  analyses: [{
+    analysisId: 'session-agent-correct',
+    analysisKind: 'summary', statistic: 'rate',
+    variantId: 'session-agent', metricId: 'correct',
+  }],
+  experiment: { seed: 'clean-room-session-agent', sampling: { samplingKind: 'solo' } },
+  policy: {
+    execution: {
+      retry: {
+        maxAttempts: 2,
+        retryableErrorCodes: ['temporary-session-failure'],
+        backoff: { backoffKind: 'none' },
+      },
+    },
+  },
+}, { runId: 'clean-room-session-agent' });
+assert.equal(sessionEvaluation.status, 'completed');
+assert.equal(sessionEvaluation.definition.targets[0].protocolId, 'omk.session/v1');
+assert.equal(sessionEvaluation.analysisResults['session-agent-correct'].value, 1);
+assert.equal(openedSessions.length, 1);
+assert.equal(openedSessions[0].closes, 1);
+assert.deepEqual(openedSessions[0].attempts.map((attempt) => attempt.attemptNumber), [1, 2]);
+assert.equal(new Set(openedSessions[0].attempts.map((attempt) => attempt.attemptId)).size, 2);
+assert.equal(JSON.stringify(openedSessions[0].context).includes('not-for-session'), false);
+
 const independent = await evaluation({
   dataset: {
     datasetId: 'clean-room-independent',

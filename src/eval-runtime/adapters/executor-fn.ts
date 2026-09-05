@@ -13,8 +13,8 @@ import type { ExecResult } from '../../executors/contracts/result.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
 import {
   invokeProtocol,
-  validateInvokeFailureTelemetry,
-  validateInvokeTelemetry,
+  validateExecutorFailureTelemetry,
+  validateExecutorTelemetry,
 } from './invoke-contract.js';
 
 export type ExecutorFnInputMapper = (
@@ -82,7 +82,7 @@ export function createExecutorFnAdapter(
         });
         const usage = reportedUsage(result);
         if (!result.ok) {
-          validateInvokeFailureTelemetry(protocol, usage);
+          validateExecutorFailureTelemetry(protocol, usage);
           throw new ExecutionPortFailure({
             code: 'EVAL_RUNTIME_EXECUTOR_FAILED',
             stage: 'execution',
@@ -101,7 +101,7 @@ export function createExecutorFnAdapter(
               }),
           ...(usage === undefined ? {} : { usage }),
         };
-        validateInvokeTelemetry(protocol, mapped);
+        validateExecutorTelemetry(protocol, mapped);
         return mapped;
       },
       disposeTrial: () => undefined,

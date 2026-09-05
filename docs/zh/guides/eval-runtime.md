@@ -165,6 +165,41 @@ Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 
 
 Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因此只应放入可重放、非敏感的测量输入。凭证、client 与进程内资源应保留在 Executor closure 中，绝不能进入 Definition。
 
+## 有状态 Agent Session
+
+当 Agent 或有状态 Workflow 需要按 trial 隔离的 session 时，使用 `SessionExecutor`。`Executor` 继续表示简洁的无状态 `omk.invoke/v1` 接口；`EvaluationExecutor` 是 Variant 接受的联合类型，`InvokeExecutor` 是无状态形态的显式名称：
+
+```ts
+import type { SessionExecutor } from 'oh-my-knowledge';
+
+const agentExecutor: SessionExecutor<{ task: string }, undefined, string> = {
+  protocol: 'session',
+  executorId: 'acme.research-agent/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ task: z.string() }).strict(),
+    output: z.string(),
+  },
+  capabilities: {
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    telemetry: { trace: 'unsupported', usage: 'optional' },
+  },
+  async openSession({ runId, trialId, input }) {
+    const handle = agentClient.createLocalHandle({ runId, trialId, task: input.task });
+    return {
+      async execute({ attemptId, signal }) {
+        const response = await handle.run({ idempotencyKey: `${runId}:${attemptId}`, signal });
+        return { output: response.text, usage: response.usage };
+      },
+      close: () => handle.close(),
+    };
+  },
+};
+```
+
+OMK 会为每个 Target × Sample × Trial 打开一个新的 `ExecutorSession` object，并拒绝跨 trial 或 Run 复用同一个 object。Retry 会以新的 `ExecutorSessionAttempt` 调用同一 session。`attemptId` 在对应测量坐标内稳定，但可能在另一个 Run 中重复，因此 provider 幂等键必须用 `runId`（或等价的 provider session scope）限定命名空间；远端提交状态不明确时要失败关闭。`ExecutorSessionContext` 包含 `runId`、`trialId`、Variant 最小投影与 execution context，不包含 Gold、evaluation context 或 analysis membership。成功、失败、timeout 或取消后，`close()` 都只运行一次。`openSession()` 与 `close()` 必须是有界的本地生命周期工作；打开 session 是未计量的资源获取，不得执行模型推理或其它计费 attempt 工作。这个生命周期是临时测量边界，不是产品用户的持久 conversation store。
+
 使用独立组时，只需调整 sampling 声明。Sampling Design 是 paired／independent 语义的唯一来源，同时必须为每个 Variant 声明一个 allocation：
 
 ```ts
