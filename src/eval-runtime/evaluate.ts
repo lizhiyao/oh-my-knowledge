@@ -226,13 +226,44 @@ const ComparisonInputSchema = z.object({
   metricIds: z.array(IdentifierSchema).min(1),
 }).strict();
 
-const DecisionInputSchema = z.object({
-  decisionKind: z.literal('analysis'),
+const FamilyDecisionCriterionInputSchema = z.object({
   analysisId: IdentifierSchema,
-  threshold: z.number().optional(),
-  equivalence: z.number().nonnegative().optional(),
-  minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
-}).strict();
+  minimumEffect: z.number().finite().optional(),
+  maximumEffect: z.number().finite().optional(),
+}).strict().superRefine((criterion, context) => {
+  if (criterion.minimumEffect === undefined && criterion.maximumEffect === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'A comparison-family decision criterion requires an effect boundary',
+    });
+  }
+  if (criterion.minimumEffect !== undefined
+      && criterion.maximumEffect !== undefined
+      && criterion.minimumEffect > criterion.maximumEffect) {
+    context.addIssue({
+      code: 'custom',
+      path: ['minimumEffect'],
+      message: 'minimumEffect must not exceed maximumEffect',
+    });
+  }
+});
+
+const DecisionInputSchema = z.union([
+  z.object({
+    decisionKind: z.literal('analysis'),
+    analysisId: IdentifierSchema,
+    threshold: z.number().finite().optional(),
+    equivalence: z.number().finite().nonnegative().optional(),
+    minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
+  }).strict(),
+  z.object({
+    decisionKind: z.literal('comparison-family'),
+    analysisId: IdentifierSchema,
+    rule: z.literal('all'),
+    criteria: z.array(FamilyDecisionCriterionInputSchema).min(2),
+    minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']).optional(),
+  }).strict(),
+]);
 
 const PolicyInputSchema = z.object({
   maxConcurrency: z.number().int().positive().optional(),
@@ -547,16 +578,32 @@ export interface Comparison {
   readonly metricIds: readonly string[];
 }
 
-interface DecisionBase {
+interface AnalysisDecision {
+  readonly decisionKind: 'analysis';
+  readonly analysisId: string;
   readonly threshold?: number;
   readonly equivalence?: number;
   readonly minimumEvidenceStatus?: 'complete' | 'partial' | 'unresolvable';
 }
 
-export type Decision = DecisionBase & Readonly<{
-  decisionKind: 'analysis';
-  analysisId: string;
-}>;
+export type FamilyDecisionCriterion = Readonly<
+  | { analysisId: string; minimumEffect: number; maximumEffect?: number }
+  | { analysisId: string; minimumEffect?: number; maximumEffect: number }
+>;
+
+interface ComparisonFamilyDecision {
+  readonly decisionKind: 'comparison-family';
+  readonly analysisId: string;
+  readonly rule: 'all';
+  readonly criteria: readonly [
+    FamilyDecisionCriterion,
+    FamilyDecisionCriterion,
+    ...FamilyDecisionCriterion[],
+  ];
+  readonly minimumEvidenceStatus?: 'complete' | 'partial' | 'unresolvable';
+}
+
+export type Decision = Readonly<AnalysisDecision | ComparisonFamilyDecision>;
 
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
@@ -1877,7 +1924,7 @@ function createGeneralDefinition(input: Readonly<{
   }
   let decisionPolicy;
   if (input.decision !== undefined) {
-    let parsedDecision: Decision;
+    let parsedDecision: z.infer<typeof DecisionInputSchema>;
     try {
       parsedDecision = DecisionInputSchema.parse(structuredClone(input.decision));
     } catch {
@@ -1886,47 +1933,105 @@ function createGeneralDefinition(input: Readonly<{
         'Evaluation decision declaration 无效。',
       );
     }
-    const selected = analysisBindings.filter((binding) => (
-      binding.analysisId === parsedDecision.analysisId
-    ));
-    if (selected.length !== 1
-        || (selected[0].analysisKind !== 'quality-interval'
-          && selected[0].analysisKind !== 'comparison-interval')) {
-      return configurationFailure(
-        'EVAL_RUNTIME_INPUT_INVALID',
-        'Evaluation decision 必须精确选择一个 interval analysis。',
-      );
+    if (parsedDecision.decisionKind === 'comparison-family') {
+      const family = requests.find((request) => (
+        request.analysisId === parsedDecision.analysisId
+        && request.analysisKind === 'comparison-family'
+      ));
+      if (family === undefined || family.analysisKind !== 'comparison-family') {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Evaluation comparison-family decision 必须精确选择一个 comparison-family analysis。',
+        );
+      }
+      const criteria = [...parsedDecision.criteria].sort((left, right) => (
+        compareStrings(left.analysisId, right.analysisId)
+      ));
+      const criterionIds = criteria.map((criterion) => criterion.analysisId);
+      const memberIds = [...family.members]
+        .map((member) => member.analysisId)
+        .sort(compareStrings);
+      if (new Set(criterionIds).size !== criterionIds.length
+          || canonicalizeJson(criterionIds) !== canonicalizeJson(memberIds)) {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Evaluation comparison-family decision criteria 必须恰好覆盖全部 family member。',
+        );
+      }
+      const members = [...family.members].sort((left, right) => (
+        compareStrings(left.analysisId, right.analysisId)
+      ));
+      decisionPolicy = {
+        decisionPolicyId: stableFacadeId('decision', {
+          decisionKind: parsedDecision.decisionKind,
+          resultId: family.analysisId,
+        }),
+        implementationId: 'release-family/v1',
+        analysisResultIds: [family.analysisId],
+        comparisonFamily: members.map((member) => ({
+          comparisonId: member.comparisonId,
+          treatmentTargetId: member.treatmentVariantId,
+          metricId: member.metricId,
+          analysisResultId: member.analysisId,
+        })),
+        comparisonFamilyResultId: family.analysisId,
+        multipleComparisonPolicyId: 'simultaneous-intervals.bonferroni/v1',
+        minimumEvidenceStatus: parsedDecision.minimumEvidenceStatus ?? 'complete',
+        parameters: {
+          rule: parsedDecision.rule,
+          criteria: criteria.map((criterion) => ({
+            analysisResultId: criterion.analysisId,
+            ...(criterion.minimumEffect === undefined ? {} : {
+              minimumEffect: criterion.minimumEffect,
+            }),
+            ...(criterion.maximumEffect === undefined ? {} : {
+              maximumEffect: criterion.maximumEffect,
+            }),
+          })),
+        },
+      };
+    } else {
+      const selected = analysisBindings.filter((binding) => (
+        binding.analysisId === parsedDecision.analysisId
+      ));
+      if (selected.length !== 1
+          || (selected[0].analysisKind !== 'quality-interval'
+            && selected[0].analysisKind !== 'comparison-interval')) {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Evaluation decision 必须精确选择一个 interval analysis。',
+        );
+      }
+      const chosen = selected[0];
+      const decisionMetric = metrics.find((metric) => metric.metricId === chosen.metricId);
+      if (decisionMetric?.direction !== 'higher-is-better') {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Canonical progress Decision 只接受 higher-is-better Metric。',
+        );
+      }
+      decisionPolicy = {
+        decisionPolicyId: stableFacadeId('decision', {
+          decisionKind: parsedDecision.decisionKind,
+          resultId: chosen.resultId,
+        }),
+        implementationId: 'progress/v2',
+        analysisResultIds: [chosen.resultId],
+        ...(chosen.comparisonId === undefined ? {} : {
+          comparisonFamily: [{
+            comparisonId: chosen.comparisonId,
+            treatmentTargetId: chosen.treatmentVariantId as string,
+            metricId: chosen.metricId,
+            analysisResultId: chosen.resultId,
+          }],
+        }),
+        minimumEvidenceStatus: parsedDecision.minimumEvidenceStatus ?? 'complete',
+        parameters: {
+          threshold: parsedDecision.threshold ?? 0,
+          equivalence: parsedDecision.equivalence ?? 0,
+        },
+      };
     }
-    const chosen = selected[0];
-    const decisionMetric = metrics.find((metric) => metric.metricId === chosen.metricId);
-    if (decisionMetric?.direction !== 'higher-is-better') {
-      return configurationFailure(
-        'EVAL_RUNTIME_INPUT_INVALID',
-        'Canonical progress Decision 只接受 higher-is-better Metric。',
-      );
-    }
-    const decisionPolicyId = stableFacadeId('decision', {
-      decisionKind: parsedDecision.decisionKind,
-      resultId: chosen.resultId,
-    });
-    decisionPolicy = {
-      decisionPolicyId,
-      implementationId: 'progress/v2',
-      analysisResultIds: [chosen.resultId],
-      ...(chosen.comparisonId === undefined ? {} : {
-        comparisonFamily: [{
-          comparisonId: chosen.comparisonId,
-          treatmentTargetId: chosen.treatmentVariantId as string,
-          metricId: chosen.metricId,
-          analysisResultId: chosen.resultId,
-        }],
-      }),
-      minimumEvidenceStatus: parsedDecision.minimumEvidenceStatus ?? 'complete',
-      parameters: {
-        threshold: parsedDecision.threshold ?? 0,
-        equivalence: parsedDecision.equivalence ?? 0,
-      },
-    };
   }
   const trials = input.experiment.trials ?? 1;
   const hasHierarchicalMeasurement = input.evaluators.measurementAggregations.size > 0;

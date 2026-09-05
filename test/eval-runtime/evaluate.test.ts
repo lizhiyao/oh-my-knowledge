@@ -345,7 +345,20 @@ describe('canonical eval-runtime API', () => {
         metricIds: ['correct', 'family-length-score'],
       }],
       analysis: { analyses: [family] },
-      decision: undefined,
+      decision: {
+        decisionKind: 'comparison-family',
+        analysisId: 'release-family',
+        rule: 'all',
+        criteria: [{
+          analysisId: 'length-difference',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }, {
+          analysisId: 'correct-difference',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }],
+      },
       runId: 'simultaneous-family',
       clock: fixedClock,
     });
@@ -431,6 +444,40 @@ describe('canonical eval-runtime API', () => {
       outputResultId: 'release-family',
       parameters: { familyConfidenceLevel: 0.95, resamples: 64 },
     });
+    expect(result.definition.decisionPolicy).toEqual({
+      decisionPolicyId: stableFacadeId('decision', {
+        decisionKind: 'comparison-family',
+        resultId: 'release-family',
+      }),
+      implementationId: 'release-family/v1',
+      analysisResultIds: ['release-family'],
+      comparisonFamily: [{
+        comparisonId: 'baseline-vs-candidate',
+        treatmentTargetId: 'prompt-v2',
+        metricId: 'correct',
+        analysisResultId: 'correct-difference',
+      }, {
+        comparisonId: 'baseline-vs-candidate',
+        treatmentTargetId: 'prompt-v2',
+        metricId: 'family-length-score',
+        analysisResultId: 'length-difference',
+      }],
+      comparisonFamilyResultId: 'release-family',
+      multipleComparisonPolicyId: 'simultaneous-intervals.bonferroni/v1',
+      minimumEvidenceStatus: 'complete',
+      parameters: {
+        rule: 'all',
+        criteria: [{
+          analysisResultId: 'correct-difference',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }, {
+          analysisResultId: 'length-difference',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }],
+      },
+    });
     expect(result.analysisResults['correct-difference']).toMatchObject({
       analysisStatus: 'completed',
       value: { confidenceLevel: 0.975, resamples: 64, unitCount: 2 },
@@ -460,6 +507,15 @@ describe('canonical eval-runtime API', () => {
       if (memberRecord?.analysisStatus !== 'completed') throw new Error('missing member result');
       expect(member.interval).toEqual(memberRecord.value);
     }
+    expect(result.artifacts.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'RELEASE',
+      reasonCodes: ['all-family-criteria-acceptable'],
+    });
+    expect(result.report.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'RELEASE',
+    });
 
     const reversed = await evaluate({
       ...input,
@@ -472,7 +528,20 @@ describe('canonical eval-runtime API', () => {
         ...family,
         members: [family.members[1], family.members[0]],
       }] },
-      decision: undefined,
+      decision: {
+        decisionKind: 'comparison-family',
+        analysisId: 'release-family',
+        rule: 'all',
+        criteria: [{
+          analysisId: 'correct-difference',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }, {
+          analysisId: 'length-difference',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }],
+      },
       runId: 'simultaneous-family',
       clock: fixedClock,
     });
@@ -655,12 +724,26 @@ describe('canonical eval-runtime API', () => {
           method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 32,
         },
       }] },
-      decision: undefined,
+      decision: {
+        decisionKind: 'comparison-family',
+        analysisId: 'incomplete-release-family',
+        rule: 'all',
+        criteria: [{
+          analysisId: 'complete-member',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }, {
+          analysisId: 'incomplete-member',
+          minimumEffect: -100,
+          maximumEffect: 100,
+        }],
+      },
       runId: 'incomplete-family',
       clock: fixedClock,
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
+    if (result.status !== 'completed') return;
     expect(result.analysisResults['complete-member']).toMatchObject({
       analysisStatus: 'completed',
     });
@@ -670,6 +753,13 @@ describe('canonical eval-runtime API', () => {
     expect(result.analysisResults['incomplete-release-family']).toMatchObject({
       analysisStatus: 'not-evaluated',
       reasonCodes: ['analysis-parent-not-completed'],
+    });
+    expect(result.artifacts.decision).toMatchObject({
+      decisionStatus: 'not-decided',
+      reasonCodes: expect.arrayContaining([
+        'decision-analysis-result-unavailable',
+        'decision-evidence-gate-failed',
+      ]),
     });
   });
 
@@ -2756,6 +2846,66 @@ describe('canonical eval-runtime API', () => {
       }] },
       decision: { decisionKind: 'analysis', analysisId: 'decision-family' },
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+
+    const decisionFamily = {
+      analysisId: 'bounded-family',
+      analysisKind: 'comparison-family' as const,
+      statistic: 'mean-difference' as const,
+      members: [{
+        analysisId: 'bounded-correct', comparisonId: 'baseline-vs-candidate',
+        treatmentVariantId: treatmentSpec.variantId, metricId: 'correct',
+      }, {
+        analysisId: 'bounded-length', comparisonId: 'baseline-vs-candidate',
+        treatmentVariantId: treatmentSpec.variantId,
+        metricId: 'decision-family-length-score',
+      }],
+      confidence: {
+        method: 'bonferroni-percentile-bootstrap' as const, level: 0.95, resamples: 32,
+      },
+    };
+    const invalidFamilyDecisions: unknown[] = [{
+      decisionKind: 'comparison-family', analysisId: 'missing-family', rule: 'all',
+      criteria: [
+        { analysisId: 'bounded-correct', minimumEffect: 0 },
+        { analysisId: 'bounded-length', maximumEffect: 0 },
+      ],
+    }, {
+      decisionKind: 'comparison-family', analysisId: 'bounded-family', rule: 'all',
+      criteria: [
+        { analysisId: 'bounded-correct', minimumEffect: 0 },
+        { analysisId: 'extra', maximumEffect: 0 },
+      ],
+    }, {
+      decisionKind: 'comparison-family', analysisId: 'bounded-family', rule: 'all',
+      criteria: [
+        { analysisId: 'bounded-correct', minimumEffect: 0 },
+        { analysisId: 'bounded-correct', maximumEffect: 0 },
+      ],
+    }, {
+      decisionKind: 'comparison-family', analysisId: 'bounded-family', rule: 'all',
+      criteria: [
+        { analysisId: 'bounded-correct' },
+        { analysisId: 'bounded-length', maximumEffect: 0 },
+      ],
+    }, {
+      decisionKind: 'comparison-family', analysisId: 'bounded-family', rule: 'all',
+      criteria: [
+        { analysisId: 'bounded-correct', minimumEffect: 1, maximumEffect: 0 },
+        { analysisId: 'bounded-length', maximumEffect: 0 },
+      ],
+    }];
+    for (const decision of invalidFamilyDecisions) {
+      await expect(evaluate({
+        ...common,
+        evaluators: [...common.evaluators, decisionLength],
+        comparisons: [{
+          ...common.comparisons[0],
+          metricIds: ['correct', 'decision-family-length-score'],
+        }],
+        analysis: { analyses: [decisionFamily] },
+        decision,
+      } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+    }
     expect(invocations).toBe(0);
   });
 

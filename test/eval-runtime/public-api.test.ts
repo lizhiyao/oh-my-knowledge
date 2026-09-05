@@ -7,6 +7,7 @@ import type {
   AnalysisRequest,
   CohortFilter,
   CustomEvaluator,
+  Decision,
   SamplingDesign,
 } from '../../src/eval-runtime/index.js';
 
@@ -47,6 +48,17 @@ const incompleteFamily: AnalysisRequest = {
 void incompleteQuantile;
 void emptyCohortFilter;
 void incompleteFamily;
+const unboundedFamilyDecision: Decision = {
+  decisionKind: 'comparison-family',
+  analysisId: 'release-family',
+  rule: 'all',
+  criteria: [
+    // @ts-expect-error comparison-family criteria must declare at least one effect boundary.
+    { analysisId: 'correctness' },
+    { analysisId: 'latency-ms', maximumEffect: 20 },
+  ],
+};
+void unboundedFamilyDecision;
 
 const publicCustomEvaluator = {
   evaluatorKind: 'custom',
@@ -109,6 +121,7 @@ const PUBLIC_API = {
       'Evaluator',
       'EventObserver',
       'ExactMatchEvaluator',
+      'FamilyDecisionCriterion',
       'Executor',
       'ExecutorCapabilities',
       'ExecutorCheckInput',

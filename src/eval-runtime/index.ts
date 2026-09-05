@@ -22,6 +22,7 @@ export type {
   Evaluator,
   EventObserver,
   ExactMatchEvaluator,
+  FamilyDecisionCriterion,
   Executor,
   ExecutorCapabilities,
   ExecutorCheckInput,

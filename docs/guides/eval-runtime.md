@@ -206,9 +206,20 @@ analysis: { analyses: [{
     resamples: 10_000,
   },
 }] },
+decision: {
+  decisionKind: 'comparison-family',
+  analysisId: 'release-family',
+  rule: 'all',
+  criteria: [
+    { analysisId: 'v2-correctness', minimumEffect: -0.01 },
+    { analysisId: 'v2-safety', minimumEffect: 0 },
+  ],
+},
 ```
 
-The two member records use 97.5% marginal intervals, targeting at least 95% simultaneous coverage when the marginal interval procedure has its stated coverage. Percentile Bootstrap remains an approximate method, so this correction is not an unconditional finite-sample coverage guarantee. The family record is available as `result.analysisResults['release-family']`; each member remains available under its own `analysisId`. Members are fixed before execution, and the preset never derives p-values from bootstrap intervals. A singleton `decision` may select one adjusted member, but the family table itself has no implicit all/any release verdict.
+The two member records use 97.5% marginal intervals, targeting at least 95% simultaneous coverage when the marginal interval procedure has its stated coverage. Percentile Bootstrap remains an approximate method, so this correction is not an unconditional finite-sample coverage guarantee. The family record is available as `result.analysisResults['release-family']`; each member remains available under its own `analysisId`. Members are fixed before execution, and the preset never derives p-values from bootstrap intervals.
+
+The optional family `decision` names that outer family plus one bounded criterion for every member. Bounds use raw treatment-minus-control effect units and equality is acceptable. With `rule: 'all'`, OMK returns `RELEASE` only when every complete simultaneous interval lies inside its declared bounds, `BLOCK` when at least one interval lies wholly outside a bound, and not-decided when any interval still crosses a bound. Criteria cannot be omitted, duplicated, added after results, weighted, or collapsed into a composite score.
 
 `exact-match` compares the canonical JSON value of the actual output with the sample's `expected` value. It is not byte-for-byte string comparison.
 
@@ -273,7 +284,7 @@ Bindings are a least-authority allowlist. Declare `expected` or `evaluation-cont
 
 The callback may return `score`, `missing`, `invalid`, or `failed`. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
 
-Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. One custom evaluator cannot emit multiple Metrics or represent an ensemble member. Numeric and boolean Metrics require a monotonic direction. They become analysis results only when the caller declares a compatible named summary or interval; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The canonical Decision accepts only `higher-is-better` and selects one interval by `analysisId`; for a lower-is-better Metric, omit `decision` and interpret the signed interval, or return a higher-is-better utility score.
+Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. One custom evaluator cannot emit multiple Metrics or represent an ensemble member. Numeric and boolean Metrics require a monotonic direction. They become analysis results only when the caller declares a compatible named summary or interval; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The single-analysis progress Decision accepts only `higher-is-better`; use an explicit comparison-family criterion when each raw signed effect has its own release boundary.
 
 ## Rubric Judge evaluation
 
