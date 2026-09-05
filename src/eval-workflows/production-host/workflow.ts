@@ -1,3 +1,4 @@
+import { EvaluationRuntimeLifecycleError } from '../../eval-runtime/execution.js';
 import {
   TimestampSchema,
   type CoreSchemaValidator,
@@ -21,20 +22,18 @@ import {
   type CoreResumeAdmissionRequest,
   type CoreResumeAdmissionResult,
 } from '../resume-admission/index.js';
+import type {
+  EvaluationRuntimeProvider,
+  EvaluationPreparationOptions as OmkEvaluationPreflightOptions,
+  EvaluationReadiness as OmkEvaluationPreflightResult,
+  PreparedRuntimeEvaluation,
+} from '../../eval-runtime/provider.js';
+import type { EvaluationExecutionInput, EvaluationExecutionOptions } from '../../eval-runtime/execution.js';
 import {
-  createOmkEvaluationRuntime,
-  createOmkEvaluationSchemaValidators,
-  type CreateOmkEvaluationRuntimeInput,
-  type OmkEvaluationPreflightOptions,
-  type OmkEvaluationPreflightResult,
-  type OmkEvaluationRunOptions,
-  type OmkEvaluationRuntime,
-  type OmkRuntimeBindingFactories,
-} from '../runtime-adapter/index.js';
-
-type RuntimeFactory = (
-  input: Readonly<CreateOmkEvaluationRuntimeInput>,
-) => Promise<OmkEvaluationRuntime>;
+  attachOmkEvaluationProgressProjection,
+  captureOmkEvaluationProgressProjection,
+  type OmkEvaluationProgressSink,
+} from '../projections/runtime-progress.js';
 
 type PersistableArtifacts = Pick<
   SaveCoreRunArtifactsRequest,
@@ -43,15 +42,14 @@ type PersistableArtifacts = Pick<
 
 export interface ProductionEvaluationHostInput {
   readonly compiled: CliEvaluationCompileResult;
-  readonly factories: OmkRuntimeBindingFactories;
-  readonly support: CreateOmkEvaluationRuntimeInput['support'];
-  readonly resources: CreateOmkEvaluationRuntimeInput['resources'];
+  readonly runtime: EvaluationRuntimeProvider;
+  readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
   readonly artifactStore: CoreRunArtifactStore;
-  /** Alternate platform composition seam; production defaults to the OMK Runtime. */
-  readonly createRuntime?: RuntimeFactory;
 }
 
-export interface ProductionEvaluationExecuteOptions extends OmkEvaluationRunOptions {
+export interface ProductionEvaluationExecuteOptions extends EvaluationExecutionOptions {
+  readonly progressSink?: OmkEvaluationProgressSink;
+  readonly progressBufferCapacity?: number;
   /** Caller-owned publication timestamp; never derived inside Core. */
   readonly createdAt: string;
 }
@@ -103,6 +101,7 @@ export type ProductionEvaluationHostErrorCode =
   | 'PRODUCTION_EVALUATION_BATCH_PERSIST_FAILED'
   | 'PRODUCTION_EVALUATION_BATCH_CHILD_START_FAILED'
   | 'PRODUCTION_EVALUATION_SERIES_MEMBER_START_FAILED'
+  | 'PRODUCTION_EVALUATION_SERIES_MEMBER_RUNTIME_FAILED'
   | 'PRODUCTION_EVALUATION_SERIES_SOURCE_INVALID';
 
 export class ProductionEvaluationHostError extends Error {
@@ -201,7 +200,7 @@ async function persistResult(input: {
 }
 
 export interface BindProductionPreparedEvaluationInput {
-  readonly prepared: Awaited<ReturnType<OmkEvaluationRuntime['prepare']>>;
+  readonly prepared: PreparedRuntimeEvaluation;
   readonly artifactStore: CoreRunArtifactStore;
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
   readonly executionMode?: 'dry-run' | 'execute';
@@ -274,8 +273,17 @@ export function bindProductionPreparedEvaluation(
         fieldPath: 'execute.createdAt',
         message: 'Core artifact publication timestamp 不合法。',
       });
-      const { createdAt, ...runOptions } = options;
-      const coreRun = await start(runOptions);
+      const { createdAt, progressSink, progressBufferCapacity, ...runOptions } = options;
+      if (progressSink === undefined && progressBufferCapacity !== undefined) {
+        throw new TypeError('未提供 progress sink 时不能配置 progress buffer。');
+      }
+      const projection = progressSink === undefined ? undefined : captureOmkEvaluationProgressProjection(
+        progressSink, progressBufferCapacity === undefined ? {} : { progressBufferCapacity },
+      );
+      const started = await start(runOptions);
+      const coreRun = projection === undefined ? started : attachOmkEvaluationProgressProjection(
+        started, projection, runOptions.eventBufferCapacity,
+      );
       const result = coreRun.result;
       const persistence = result.then(
         (value) => persistResult({
@@ -285,10 +293,16 @@ export function bindProductionPreparedEvaluation(
           createdAt,
           result: value,
         }),
-        () => Object.freeze({
-          persistenceStatus: 'skipped' as const,
-          reasonCode: 'CORE_RESULT_UNAVAILABLE' as const,
-        }),
+        (cause: unknown) => cause instanceof EvaluationRuntimeLifecycleError
+          && cause.runResult !== undefined
+          ? persistResult({
+              store: artifactStore, plan, runId: options.runId, createdAt,
+              result: cause.runResult,
+            })
+          : Object.freeze({
+              persistenceStatus: 'skipped' as const,
+              reasonCode: 'CORE_RESULT_UNAVAILABLE' as const,
+            }),
       );
       return Object.freeze({ events: coreRun.events, result, persistence });
     },
@@ -300,39 +314,37 @@ export function bindProductionPreparedEvaluation(
   });
 }
 
-/**
- * Creates the single production boundary around compile output, Runtime
- * preparation, Core execution, resume admission, and atomic publication.
- */
+/** Projects product compilation onto the host-independent Runtime execution contract. */
+export function evaluationExecutionInput(compiled: CliEvaluationCompileResult): EvaluationExecutionInput {
+  return {
+    definition: compiled.definition,
+    policy: compiled.policy,
+    ...(compiled.runOptions.metadata?.annotations === undefined ? {} : {
+      annotations: compiled.runOptions.metadata.annotations,
+    }),
+    ...(compiled.runOptions.metadata?.summaries === undefined ? {} : {
+      summaries: compiled.runOptions.metadata.summaries,
+    }),
+  };
+}
+
+/** Adds persistence, resume admission and release policy to an injected Runtime capability. */
 export function createProductionEvaluationHost(
   input: Readonly<ProductionEvaluationHostInput>,
 ): ProductionEvaluationHost {
   const artifactStore = captureArtifactStore(input.artifactStore);
-  const createRuntime = input.createRuntime ?? createOmkEvaluationRuntime;
-  if (typeof createRuntime !== 'function') fail({
-    code: 'PRODUCTION_EVALUATION_HOST_INPUT_INVALID',
-    fieldPath: 'createRuntime',
-    message: 'Evaluation Runtime factory 不合法。',
+  if (typeof input.runtime?.prepare !== 'function') fail({
+    code: 'PRODUCTION_EVALUATION_HOST_INPUT_INVALID', fieldPath: 'runtime',
+    message: '必须显式注入 Evaluation Runtime。',
   });
-  const schemaValidators = createOmkEvaluationSchemaValidators(
-    input.support?.schemaValidators,
-  );
+  const prepare = input.runtime.prepare.bind(input.runtime);
+  const schemaValidators = new Map(input.schemaValidators);
+  const executionInput = evaluationExecutionInput(input.compiled);
+  const executionMode = input.compiled.orchestration.dryRun ? 'dry-run' : 'execute';
   return Object.freeze({
-    async prepare(
-      options?: Readonly<OmkEvaluationPreflightOptions>,
-    ): Promise<ProductionPreparedEvaluation> {
-      const runtime = await createRuntime({
-        compiled: input.compiled,
-        factories: input.factories,
-        support: input.support,
-        resources: input.resources,
-      });
-      const prepared = await runtime.prepare(options);
+    async prepare(options?: Readonly<OmkEvaluationPreflightOptions>): Promise<ProductionPreparedEvaluation> {
       return bindProductionPreparedEvaluation({
-        prepared,
-        artifactStore,
-        schemaValidators,
-        executionMode: input.compiled.orchestration.dryRun ? 'dry-run' : 'execute',
+        prepared: await prepare(executionInput, options), artifactStore, schemaValidators, executionMode,
       });
     },
   });

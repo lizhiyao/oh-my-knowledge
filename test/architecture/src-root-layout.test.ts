@@ -8,6 +8,7 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'diagnosis',
   'dsh-plugin',
   'eval-core',
+  'eval-hosts',
   'eval-runtime',
   'eval-workflows',
   'evidence',

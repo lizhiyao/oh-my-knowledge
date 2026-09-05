@@ -17,11 +17,11 @@ import {
   SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceWithoutMocksSchema,
-} from '../eval-workflows/runtime-adapter/source-neutral-trace.js';
+} from '../eval-runtime/traces/source-neutral.js';
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { supportsDshTraceEventType } from './trace-adapter.js';
 
-export const DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
+export const DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.0' as const;
 
 export interface ParsedDshHostCoreResult {
   readonly output?: string;

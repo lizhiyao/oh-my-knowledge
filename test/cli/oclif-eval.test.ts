@@ -189,6 +189,37 @@ describe('oclif eval', () => {
     }
   });
 
+  it('管道中的大 Series JSON 在发布门禁退出前完整写出', async () => {
+    // This regression requires a real process: immediate oclif exit used to truncate pipe writes.
+    const dir = await mkdtemp(join(tmpdir(), 'omk-eval-series-pipe-'));
+    try {
+      for (const name of ['control', 'treatment']) {
+        await mkdir(join(dir, 'skills', name), { recursive: true });
+        await writeFile(join(dir, 'skills', name, 'SKILL.md'), `# ${name}\nAnswer directly.\n`);
+      }
+      const result = await execFileAsync(process.execPath, [
+        CLI, 'eval', '--samples', EXAMPLE_SAMPLES, '--skill-dir', join(dir, 'skills'),
+        '--control', 'control', '--treatment', 'treatment', '--executor', CUSTOM_EXECUTOR,
+        '--no-judge', '--repeat', '2', '--bootstrap-samples', '100',
+        '--skip-doctor', '--skip-connectivity', '--no-serve',
+        '--output-dir', join(dir, 'reports'), '--lang', 'zh',
+      ], {
+        cwd: dir, maxBuffer: 4 * 1024 * 1024,
+        env: { ...process.env, HOME: dir, OMK_HOME: join(dir, 'omk-home') },
+      }).then((value) => ({ ...value, code: 0 }), (error: ExecError) => error);
+      assert.equal(result.code, 1);
+      assert.ok(result.stdout.length > 65_536);
+      const output = JSON.parse(result.stdout);
+      assert.equal(output.projectionKind, 'core-cli-series-outcome');
+      assert.equal(output.coverage.completed, 2);
+      assert.equal(output.coverage.failed, 0);
+      assert.equal(output.gate.gateStatus, 'blocked');
+      assert.equal(output.gate.exitCode, 1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('eval 找不到 samples 时输出友好错误而不是裸 ENOENT', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-eval-no-samples-'));
     try {

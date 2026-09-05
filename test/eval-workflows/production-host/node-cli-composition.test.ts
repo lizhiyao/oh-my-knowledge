@@ -3,9 +3,9 @@ import { digestCanonicalJson } from '../../../src/eval-core/contracts/index.js';
 import type { ExecutorRuntimeFingerprint } from '../../../src/executors/contracts/runtime.js';
 import {
   classifyNodeCliEnvironment,
-} from '../../../src/eval-workflows/production-host/node-cli-composition.js';
-import { createJudgeProviderRuntimeIdentity } from '../../../src/eval-workflows/production-host/judge-provider-identity.js';
-import { captureClassifiedEnvironment } from '../../../src/eval-workflows/runtime-adapter/adapters/shared/classified-environment.js';
+} from '../../../src/eval-hosts/node/node-cli-composition.js';
+import { createJudgeProviderRuntimeIdentity } from '../../../src/eval-hosts/node/judge-provider-identity.js';
+import { captureClassifiedEnvironment } from '../../../src/eval-hosts/runtime-adapter/adapters/shared/classified-environment.js';
 
 const EXECUTOR_RUNTIME: ExecutorRuntimeFingerprint = {
   executor: 'openai-api',

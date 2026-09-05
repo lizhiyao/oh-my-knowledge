@@ -12,7 +12,7 @@ import {
   attachOmkEvaluationProgressProjection,
   captureOmkEvaluationProgressProjection,
   projectOmkEvaluationEvent,
-} from '../../../src/eval-workflows/runtime-adapter/event-projection.js';
+} from '../../../src/eval-workflows/projections/runtime-progress.js';
 
 function event(
   sequence: number,

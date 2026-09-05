@@ -17,15 +17,15 @@ import {
   ASSERTION_LAYER_ANALYSIS_IDENTITY,
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
   createAssertionLayerAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer-node.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-node.js';
 import {
   ASSERTION_LAYER_PARAMETERS_SCHEMA,
   type AssertionLayerCriterionParameter,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
 import {
   ASSERTION_LAYER_TABLE_SCHEMA,
   createAssertionLayerTableSchemaValidators,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
 
 const ANALYSIS_PLAN_DIGEST = digestCanonicalJson({ fixture: 'assertion-plan' });
 const EVALUATION_BUNDLE_DIGEST = digestCanonicalJson({ fixture: 'assertion-evaluation' });

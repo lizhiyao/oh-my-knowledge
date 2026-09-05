@@ -19,15 +19,23 @@ import {
 } from '../../../../../src/eval-core/execution/index.js';
 import {
   createAnthropicApiCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/anthropic/protocol.js';
+import {
   createAnthropicApiExecutorAdapter,
   type AnthropicApiCoreConfiguration,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/anthropic/api.js';
+import {
   type CoreApiTransport,
   type CoreApiTransportRequest,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/shared/api-http.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

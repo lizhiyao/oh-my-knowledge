@@ -46,32 +46,66 @@ import {
 import {
   createJudgeAggregationAnalysisNodes,
   createJudgeAggregationSchemaValidators,
-  createDimensionAnalysisNodes,
-  createDimensionParameterSchemaValidators,
-  createDimensionTableSchemaValidators,
-  createCompositeAnalysisNodes,
-  createCompositeParameterSchemaValidators,
-  createCompositeTableSchemaValidators,
-  createAgreementAnalysisNodes,
-  createAgreementParameterSchemaValidators,
-  createAgreementTableSchemaValidators,
-  AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
-  createBootstrapFamilyAnalysisNodes,
-  createBootstrapFamilyParameterSchemaValidators,
-  createBootstrapFamilyTableSchemaValidators,
-  BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
-  createReleaseDecisionPolicies,
-  createReleaseDecisionParameterSchemaValidators,
-  RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
-  COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
-  DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_REPLICATE_ANALYSIS_IDENTITY,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_TABLE_SCHEMA,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
+import {
+  createDimensionAnalysisNodes,
+  DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/dimension-node.js';
+import {
+  createDimensionParameterSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
+import {
+  createDimensionTableSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
+import {
+  createCompositeAnalysisNodes,
+} from '../../../src/eval-workflows/measurement/analysis/composite-node.js';
+import {
+  createCompositeParameterSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
+import {
+  createCompositeTableSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
+import {
+  createAgreementAnalysisNodes,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-node.js';
+import {
+  createAgreementParameterSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
+import {
+  createAgreementTableSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
+import {
+  AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-node-contract.js';
+import {
+  createBootstrapFamilyAnalysisNodes,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node.js';
+import {
+  createBootstrapFamilyParameterSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
+import {
+  createBootstrapFamilyTableSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
+import {
+  BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
+import {
+  createReleaseDecisionPolicies,
+  RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/release-decision.js';
+import {
+  createReleaseDecisionParameterSchemaValidators,
+} from '../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
+import {
+  COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/composite-node-contract.js';
 import {
   testRuntime,
   validDefinition,

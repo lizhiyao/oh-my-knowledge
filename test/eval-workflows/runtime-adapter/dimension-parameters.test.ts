@@ -6,7 +6,7 @@ import {
   DIMENSION_PARAMETERS_SCHEMA,
   createDimensionParameterSchemaValidators,
   parseDimensionParameters,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/dimension-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
 
 const security = {
   dimensionId: 'security',

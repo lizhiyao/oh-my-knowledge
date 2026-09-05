@@ -21,18 +21,18 @@ import {
   type AssertionEntry,
   type AssertionLayerGroup,
   type AssertionLayerTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
 import {
   COMPOSITE_ANALYSIS_IDENTITY,
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   createCompositeAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-node.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-node.js';
 import {
   COMPOSITE_PARAMETERS_SCHEMA,
   type CompositeLayerParameter,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-parameters.js';
-import { COMPOSITE_SOURCE_SCHEMAS } from '../../../src/eval-workflows/runtime-adapter/analysis/composite-source-adapter.js';
-import { COMPOSITE_TABLE_SCHEMA } from '../../../src/eval-workflows/runtime-adapter/analysis/composite-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
+import { COMPOSITE_SOURCE_SCHEMAS } from '../../../src/eval-workflows/measurement/analysis/composite-source-adapter.js';
+import { COMPOSITE_TABLE_SCHEMA } from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA_VERSION,
@@ -42,13 +42,13 @@ import {
   type DimensionEntry,
   type DimensionGroup,
   type DimensionTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/dimension-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   type JudgeEnsembleGroup,
   type JudgeEnsembleTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/judge-aggregation.js';
+} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
 
 const planDigest = digestCanonicalJson('composite-plan');
 const bundleDigest = digestCanonicalJson('composite-bundle');

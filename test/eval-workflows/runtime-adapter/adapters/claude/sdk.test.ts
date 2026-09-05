@@ -26,17 +26,25 @@ import {
 } from '../../../../../src/eval-core/execution/index.js';
 import {
   createClaudeSdkCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/claude/sdk-protocol.js';
+import {
   createClaudeSdkExecutorAdapter,
   type ClaudeSdkCoreConfiguration,
   type ClaudeSdkEnvironmentEntry,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/claude/sdk.js';
+import {
   type ClaudeSdkQuery,
   type ClaudeSdkQueryInput,
+  type ResolvedClaudeSdkRuntime,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/claude/sdk-runtime.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
-  type ResolvedClaudeSdkRuntime,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

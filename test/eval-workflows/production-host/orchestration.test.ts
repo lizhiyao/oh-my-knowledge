@@ -1,3 +1,5 @@
+import { prepareRuntimeSeries } from '../../../src/eval-runtime/provider.js';
+import { EvaluationRuntimeLifecycleError } from '../../../src/eval-runtime/execution.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -24,7 +26,7 @@ import {
 import {
   createOmkEvaluationSchemaValidators,
   type OmkEvaluationRuntime,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/composition.js';
 import {
   prepareConformancePlan,
   runConformanceScenario,
@@ -280,6 +282,7 @@ describe('production independent Series orchestration', () => {
     const runStore = createNodeCoreRunArtifactStore(
       await temporaryRoot('omk-host-series-runs-'),
     );
+    let cleanupFails = false;
     const host = {
       compiled: {
         definition: basePlan.definition,
@@ -308,34 +311,39 @@ describe('production independent Series orchestration', () => {
           policy: digestCanonicalJson(basePlan.measurementPolicy),
         },
       } as unknown as ProductionEvaluationHostInput['compiled'],
-      factories: {} as ProductionEvaluationHostInput['factories'],
-      support: {
-        clock: { timestamp: () => '2026-09-01T03:00:00.000Z' } as never,
-        schemaValidators: new Map([[schemaIdentityKey(seriesOutputSchema), validator]]),
-      },
-      resources: { leaseRoot: '/not-used-by-series-fixture' },
+      schemaValidators: createOmkEvaluationSchemaValidators(new Map([[schemaIdentityKey(seriesOutputSchema), validator]])),
       artifactStore: runStore,
-      async createRuntime(runtimeInput) {
-        const membership = runtimeInput.compiled.definition.seriesMembership;
-        const fixture = membership === undefined
-          ? undefined
-          : fixtureByMember.get(membership.memberId);
-        if (fixture === undefined) throw new Error('missing fixture member');
-        return {
-          series: runtimeSeries,
-          async prepare() {
-            return {
-              plan: fixture.plan,
-              preflight: { records: [] },
-              async start() {
-                return {
-                  events: (async function* emptyEvents() {})(),
-                  result: Promise.resolve(completedResult(fixture)),
-                };
-              },
-            };
-          },
-        };
+      runtime: {
+        async prepare(runtimeInput) {
+          const membership = runtimeInput.definition.seriesMembership;
+          const fixture = membership === undefined ? undefined : fixtureByMember.get(membership.memberId);
+          if (fixture === undefined) throw new Error('missing fixture member');
+          return {
+            plan: fixture.plan,
+            preflight: { records: [] },
+            async start() {
+              return {
+                events: (async function* emptyEvents() {})(),
+                result: cleanupFails
+                  ? Promise.reject(new EvaluationRuntimeLifecycleError({
+                      code: 'EVAL_RUNTIME_RUN_CLEANUP_FAILED', runId: 'host-cleanup-fixture',
+                      message: 'fixture cleanup failed', runResult: completedResult(fixture),
+                    }))
+                  : Promise.resolve(completedResult(fixture)),
+              };
+            },
+          };
+        },
+        async prepareSeries(definition) {
+          return prepareRuntimeSeries({
+            definition, runtimes: runtimeSeries.runtimes,
+            ports: {
+              ...runtimeSeries.ports,
+              clock: { timestamp: () => '2026-09-01T03:00:00.000Z' },
+              schemaValidators: createOmkEvaluationSchemaValidators(new Map([[schemaIdentityKey(seriesOutputSchema), validator]])),
+            },
+          });
+        },
       },
     } satisfies ProductionEvaluationHostInput;
 
@@ -393,5 +401,21 @@ describe('production independent Series orchestration', () => {
     });
     await expect(cancelled.result).resolves.toMatchObject({ status: 'cancelled' });
     await expect(cancelled.evolution).resolves.toBeUndefined();
+
+    cleanupFails = true;
+    const failed = await executeProductionEvaluationSeries({
+      host,
+      members: [
+        { runId: 'host-cleanup-repeat-0', createdAt: '2026-09-01T05:00:00.000Z' },
+        { runId: 'host-cleanup-repeat-1', createdAt: '2026-09-01T05:00:01.000Z' },
+      ],
+      bundleId: 'host-cleanup-bundle', reportId: 'host-cleanup-report',
+    });
+    await Promise.all([
+      expect(failed.result).rejects.toMatchObject({ code: 'PRODUCTION_EVALUATION_SERIES_MEMBER_RUNTIME_FAILED' }),
+      expect(failed.evolution).rejects.toMatchObject({ code: 'PRODUCTION_EVALUATION_SERIES_MEMBER_RUNTIME_FAILED' }),
+    ]);
+    expect((await runStore.get('host-cleanup-repeat-0'))?.report).toEqual(fixtures[0].report);
+    expect((await runStore.get('host-cleanup-repeat-1'))?.report).toEqual(fixtures[1].report);
   });
 });

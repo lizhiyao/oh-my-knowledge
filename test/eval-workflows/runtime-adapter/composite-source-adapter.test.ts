@@ -12,12 +12,12 @@ import {
   type AssertionEntry,
   type AssertionLayerGroup,
   type AssertionLayerTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer.js';
-import type { CompositeLayerParameter } from '../../../src/eval-workflows/runtime-adapter/analysis/composite-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
+import type { CompositeLayerParameter } from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
 import {
   compositeSourceSchema,
   extractCompositeSourceLayers,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-source-adapter.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-source-adapter.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA_VERSION,
@@ -27,12 +27,12 @@ import {
   type DimensionEntry,
   type DimensionGroup,
   type DimensionTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/dimension-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   type JudgeEnsembleTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/judge-aggregation.js';
+} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
 
 const trialId = digestCanonicalJson('composite-source-trial');
 const samplingUnitIds = { pairingBlockId: digestCanonicalJson('composite-source-pair') };

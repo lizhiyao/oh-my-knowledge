@@ -18,10 +18,10 @@ import {
   AGREEMENT_ANALYSIS_V1_IDENTITY,
   AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
   createAgreementAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-node.js';
-import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-parameters.js';
-import { AGREEMENT_SOURCE_SCHEMAS } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-source-adapter.js';
-import { AGREEMENT_TABLE_SCHEMA } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/agreement-node.js';
+import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
+import { AGREEMENT_SOURCE_SCHEMAS } from '../../../src/eval-workflows/measurement/analysis/agreement-source-adapter.js';
+import { AGREEMENT_TABLE_SCHEMA } from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA_VERSION,
@@ -31,7 +31,7 @@ import {
   dimensionGroupId,
   type DimensionEntry,
   type DimensionGroup,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/dimension-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 
 const planDigest = digestCanonicalJson('agreement-plan');
 const bundleDigest = digestCanonicalJson('agreement-bundle');

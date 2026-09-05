@@ -6,7 +6,7 @@ import {
   ASSERTION_LAYER_PARAMETERS_SCHEMA,
   createAssertionLayerParameterSchemaValidators,
   parseAssertionLayerParameters,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
 
 const fact = {
   criterionId: 'fact-a',

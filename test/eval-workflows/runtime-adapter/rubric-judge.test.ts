@@ -27,9 +27,10 @@ import {
 } from '../../../src/eval-core/evaluation/index.js';
 import {
   createRubricJudgeEvaluatorBindingFactory,
+} from '../../../src/eval-hosts/runtime-adapter/evaluators/rubric-judge.js';
+import {
   createRubricJudgeEvaluatorIdentity,
   createRubricJudgeEvaluatorImplementation,
-  createSameProcessEvaluatorAdapter,
   captureLlmJudgeInvocationPort,
   rubricJudgeInstrument,
   rubricJudgeInstrumentId,
@@ -40,7 +41,10 @@ import {
   type OmkLlmJudgeInvocationRequest,
   type OmkLlmJudgeInvocationResult,
   type RubricJudgeTracePolicy,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/index.js';
+import {
+  createSameProcessEvaluatorAdapter,
+} from '../../../src/eval-runtime/adapters/same-process.js';
 import {
   buildJudgePrompt,
   getJudgePromptHash,

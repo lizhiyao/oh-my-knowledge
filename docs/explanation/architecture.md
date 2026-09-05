@@ -37,14 +37,16 @@ Directories under `src` express domain ownership rather than one mechanical repo
 
 - **Runtime implementation edges** must remain acyclic. A domain implementation may depend on facts it consumes or lower-level capabilities, but it may not create a reverse dependency through a facade, dynamic import, or utility module. The graph retains value imports into `contracts`; an audited cycle is registered by its complete domain and intra-cycle edge topology, so any new return path invalidates the registration. Non-literal dynamic imports across TypeScript and executable JavaScript sources are likewise fail-closed unless their importer, expression, and canonical source digest are explicitly registered.
 - **Contract edges** share stable data shapes across domains. A bidirectional domain relationship is valid only when its return edge has been audited and registered; architecture tests reject new bidirectional relationships and stale registrations.
-- **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-workflows/production-host`. They may assemble domains and effects, while domain implementations may not import delivery composition.
+- **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-hosts`. They may assemble domains and effects, while domain implementations may not import delivery composition.
 
 `shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. `eval-runtime` is the lightweight service-host adoption layer: its canonical façade compiles ordinary `evaluate()` input into existing Core contracts, while its foundation assembles explicit ports and Core built-ins without owning product workflows or infrastructure. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
 
 ```text
-eval-core ← eval-runtime ← eval-workflows ← CLI / DSH
+eval-core ← eval-runtime ← eval-workflows
                 ↑               ↑
-        executors / FaaS   OMK product workflows
+                └── eval-hosts ──┘
+                         ↑
+                     CLI / DSH
 ```
 
 The arrow points from consumer to dependency. `eval-runtime` may depend on Core and type-only Executor contracts; it must not import `eval-workflows`, provider implementations, or delivery surfaces. `eval-workflows` reuses Runtime foundation leaf modules instead of importing the canonical user façade or maintaining a second lifecycle implementation.
@@ -79,8 +81,8 @@ eval-workflows/
 ├── instruments/        # evaluator configuration and frozen prompt assets
 ├── projections/        # authenticated downstream views of Core artifacts
 ├── resume-admission/   # persisted-run integrity and resume admission
-├── runtime-adapter/    # Core bindings, analysis nodes, evaluators, and adapters
-└── production-host/    # Node host composition and effect orchestration
+├── measurement/        # product scoring, analysis nodes, and evaluator implementations
+└── production-host/    # product orchestration, persistence, and injected Runtime consumption
 
 executors/
 ├── contracts/          # executor ports, runtime identity, result, and trace facts
@@ -91,26 +93,30 @@ executors/
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
 judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,
 `executors/preflight` reports environment readiness facts, while
-`eval-workflows/runtime-adapter/preflight.ts` decides workflow admission from binding declarations.
+`eval-hosts/runtime-adapter/preflight.ts` decides workflow admission from binding declarations.
 These subdomains remain separate dependency-graph vertices even though they are physically grouped.
 
-`eval-workflows` is an ownership umbrella, not permission to grow a second monolith. Every direct
-subdirectory above is a separate dependency-graph vertex. Its root is limited to cross-workflow defaults,
-user messages, and repository guidance; new behavior belongs in an owning subdomain. The next decomposition
-boundary is `runtime-adapter`, whose growth must stay within four capability partitions:
+`eval-workflows` consumes an explicitly injected `EvaluationRuntimeProvider`. Product compilation
+supplies Definition, Policy and run metadata through `EvaluationExecutionInput`; Workflow never
+constructs a Core engine, provider adapter or resource lease. Runtime owns single-run execution and
+Series preparation/execution. Workflow may orchestrate concurrent independent Series members while
+Core alone owns their scheduling, retry, timeout, budget and measurement contracts.
 
 ```text
-runtime-adapter/
-├── adapters/         # provider protocol bridges
-├── analysis/         # registered Core AnalysisNode implementations
-├── evaluators/       # evaluator ports adapted to Core instruments
-└── resource-leases/  # declared host-resource acquisition and cleanup
+eval-hosts/
+├── node/                    # Node input resolution, environment, registry and delivery assembly
+└── runtime-adapter/
+    ├── adapters/            # concrete provider protocol bridges
+    ├── evaluators/          # product evaluator factory wiring
+    └── resource-leases/     # verified Node snapshots and host resource access
 ```
 
-A partition moves out of `eval-workflows` only when its contract is stable, it has an independent
-consumer or lifecycle, it no longer imports product-host composition, and its new owner is unambiguous.
-Line count alone is not a reason to add another top-level domain. Until those conditions hold, architecture
-tests keep every workflow subdomain visible to cycle analysis and reject unplanned root-level expansion.
+Host assembly consumes product declarations and injects Runtime capabilities into Workflow. Lower
+layers cannot import `eval-hosts`, including type-only imports. Product measurement implementations
+remain in `eval-workflows/measurement`; generic execution and lifecycle bridges remain in Runtime.
+The obsolete Workflow Runtime directory and forwarding wrappers are removed without a 0.x compatibility
+path. Correct Core/Runtime contracts take precedence over existing Workflow/CLI behavior. Legitimate
+missing capabilities belong in the responsible lower layer rather than a product execution bypass.
 
 Evidence persistence and cross-source association have one non-decision boundary:
 

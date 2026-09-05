@@ -20,8 +20,10 @@ import {
   createAgreementTableSchemaValidators,
   parseAgreementTableEnvelope,
   type AgreementPair,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
+import {
   type AgreementParameters,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
+} from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
 
 function parameters(
   sampleIds: string[],

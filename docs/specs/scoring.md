@@ -35,7 +35,7 @@ layerScore = 1 + passedObservedWeight / observedWeight × 4
 
 The result is rounded to two decimals on a 1–5 scale. Structural non-applicability is excluded from assertion scoring coverage. Analysis Bundle v2 still retains the rectangular input coordinate, classifies it separately as `notApplicable`, and authenticates its row identity and reason through `notApplicableRows`, so it does not degrade evidence completeness. Missing, invalid, failed, unavailable, and not-started observations remain explicit coverage states and never become `false`. If no weight was observed, the layer is missing rather than zero.
 
-Implementation: `omk.assertion-layer-table/v1` in `src/eval-workflows/runtime-adapter/analysis/assertion-layer.ts`.
+Implementation: `omk.assertion-layer-table/v1` in `src/eval-workflows/measurement/analysis/assertion-layer.ts`.
 
 ## Judge and dimension derivation
 
@@ -57,7 +57,7 @@ composite = mean(observed present layers)
 
 The aggregate is rounded to two decimals. An absent layer is structural non-applicability; a present but missing layer remains explicit missing evidence. If no planned layer is observed, the composite is missing rather than numeric zero. Every source group and binding is retained in lineage, and transported tables are recomputed during validation.
 
-Implementation: `omk.composite-table/v2` in `src/eval-workflows/runtime-adapter/analysis/composite-table.ts`.
+Implementation: `omk.composite-table/v2` in `src/eval-workflows/measurement/analysis/composite-table.ts`.
 
 ## What the composite can answer
 

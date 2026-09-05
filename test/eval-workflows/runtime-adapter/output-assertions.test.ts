@@ -27,13 +27,17 @@ import {
 } from '../../../src/eval-core/evaluation/index.js';
 import {
   createSameProcessEvaluatorAdapter,
+} from '../../../src/eval-runtime/adapters/same-process.js';
+import {
   createBuiltinOmkScoringBindingFactories,
+} from '../../../src/eval-hosts/runtime-adapter/builtins.js';
+import {
   createOutputAssertionEvaluatorImplementation,
   OUTPUT_ASSERTION_BINDINGS,
   OUTPUT_ASSERTION_CONTEXT_SCHEMA_VERSION,
   OUTPUT_ASSERTION_EVALUATOR_IDENTITY,
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-workflows/measurement/evaluators/output-assertions.js';
 import { SYNC_ASSERTION_TYPE_NAMES } from '../../../src/eval-workflows/inputs/assertion-types.js';
 import {
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,

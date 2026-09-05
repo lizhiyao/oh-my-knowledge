@@ -213,6 +213,10 @@ async function runEval(
         + `Gate: ${outcome.gate?.gateStatus ?? 'not-applicable'}${outcome.gate?.reasonCodes?.length ? `（${outcome.gate.reasonCodes.join(', ')}）` : ''}\n`,
       );
     }
+    // A blocked gate exits immediately through oclif; flush a piped JSON report first.
+    await new Promise<void>((resolve, reject) => {
+      process.stdout.write('', (error) => error ? reject(error) : resolve());
+    });
     throw new CliExit(result.exitCode);
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
