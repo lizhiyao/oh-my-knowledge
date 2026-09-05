@@ -59,18 +59,17 @@ const result = await evaluate({
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [{
     comparisonId: 'control-vs-treatment',
-    comparisonKind: 'paired',
     controlVariantId: 'control',
     treatmentVariantIds: ['treatment'],
     metricIds: ['correct'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'control-vs-treatment-correct',
     analysisKind: 'comparison-interval', statistic: 'mean-difference',
     comparisonId: 'control-vs-treatment', treatmentVariantId: 'treatment',
     metricId: 'correct',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
-  }] },
+  }],
   decision: {
     decisionKind: 'analysis',
     analysisId: 'control-vs-treatment-correct',

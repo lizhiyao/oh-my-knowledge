@@ -175,8 +175,7 @@ const ComparisonFamilyMemberInputSchema = z.object({
   metricId: IdentifierSchema,
 }).strict();
 
-const AnalysisInputSchema = z.object({
-  analyses: z.array(z.discriminatedUnion('analysisKind', [
+const AnalysesInputSchema = z.array(z.discriminatedUnion('analysisKind', [
     z.object({
       analysisId: IdentifierSchema,
       analysisKind: z.literal('summary'),
@@ -225,12 +224,10 @@ const AnalysisInputSchema = z.object({
       }).strict(),
       cohortFilter: CohortFilterInputSchema.optional(),
     }).strict(),
-  ])),
-}).strict();
+  ]));
 
 const ComparisonInputSchema = z.object({
   comparisonId: IdentifierSchema,
-  comparisonKind: z.enum(['paired', 'independent']),
   controlVariantId: IdentifierSchema,
   treatmentVariantIds: z.array(IdentifierSchema).min(1),
   metricIds: z.array(IdentifierSchema).min(1),
@@ -569,13 +566,8 @@ export type AnalysisRequest =
       cohortFilter?: CohortFilter;
     }>;
 
-export interface Analysis {
-  readonly analyses: readonly AnalysisRequest[];
-}
-
 export interface Comparison {
   readonly comparisonId: string;
-  readonly comparisonKind: 'paired' | 'independent';
   readonly controlVariantId: string;
   readonly treatmentVariantIds: readonly string[];
   readonly metricIds: readonly string[];
@@ -652,7 +644,7 @@ export interface EvaluateInput {
   readonly variants: readonly Variant[];
   readonly evaluators: readonly Evaluator[];
   readonly comparisons: readonly Comparison[];
-  readonly analysis: Analysis;
+  readonly analyses: readonly AnalysisRequest[];
   readonly decision?: Decision;
   readonly experiment: Experiment;
   readonly policy: Policy;
@@ -1569,7 +1561,7 @@ function createGeneralDefinition(input: Readonly<{
   evaluators: CapturedEvaluators;
   comparisons: readonly Comparison[];
   experiment: Experiment;
-  analysis: Analysis;
+  analyses: readonly AnalysisRequest[];
   decision?: Decision;
 }>): EvaluationDefinition {
   const variants = [...input.variants].sort((left, right) => (
@@ -1610,9 +1602,7 @@ function createGeneralDefinition(input: Readonly<{
         || treatmentIds.has(comparison.controlVariantId)
         || [...treatmentIds].some((variantId) => !variantIdSet.has(variantId))
         || new Set(comparison.metricIds).size !== comparison.metricIds.length
-        || comparison.metricIds.some((metricId) => !metricIds.has(metricId))
-        || (input.experiment.sampling.samplingKind !== 'solo'
-          && comparison.comparisonKind !== input.experiment.sampling.samplingKind)) {
+        || comparison.metricIds.some((metricId) => !metricIds.has(metricId))) {
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
         'Evaluation comparison 引用了无效或重复的 Variant／Metric。',
@@ -1652,16 +1642,16 @@ function createGeneralDefinition(input: Readonly<{
       }
     }
   }
-  let analysis: z.infer<typeof AnalysisInputSchema>;
+  let analyses: z.infer<typeof AnalysesInputSchema>;
   try {
-    analysis = AnalysisInputSchema.parse(structuredClone(input.analysis));
+    analyses = AnalysesInputSchema.parse(structuredClone(input.analyses));
   } catch {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
       'Evaluation analysis declaration 无效。',
     );
   }
-  const requests = [...analysis.analyses].sort((left, right) => (
+  const requests = [...analyses].sort((left, right) => (
     compareStrings(left.analysisId, right.analysisId)
   ));
   const declaredAnalysisIds = requests.flatMap((request) => [
@@ -1749,7 +1739,7 @@ function createGeneralDefinition(input: Readonly<{
     analysisNodes.push({
       analysisNodeKind: 'estimator',
       nodeId: stableFacadeId('node', { analysisId: selector.analysisId }),
-      implementationId: comparison.comparisonKind === 'independent'
+      implementationId: sampling.samplingKind === 'independent'
         ? measurementAggregation === undefined
           ? 'bootstrap.unpaired-difference-percentile/v1'
           : 'bootstrap.hierarchical-unpaired-difference-percentile/v1'
@@ -2151,7 +2141,7 @@ function assertCommonInput(input: Readonly<{
   evaluators: readonly Evaluator[];
   comparisons: readonly Comparison[];
   experiment: Experiment;
-  analysis: Analysis;
+  analyses: readonly AnalysisRequest[];
   decision?: Decision;
   policy: Policy;
   eventBufferCapacity?: number;
@@ -2163,7 +2153,7 @@ function assertCommonInput(input: Readonly<{
     'variants',
     'evaluators',
     'comparisons',
-    'analysis',
+    'analyses',
     'decision',
     'experiment',
     'policy',
@@ -2181,7 +2171,7 @@ function assertCommonInput(input: Readonly<{
       || !Array.isArray(input.evaluators) || input.evaluators.length === 0
       || !Array.isArray(input.comparisons)
       || !ExperimentSchema.safeParse(input.experiment).success
-      || !AnalysisInputSchema.safeParse(input.analysis).success
+      || !AnalysesInputSchema.safeParse(input.analyses).success
       || (input.decision !== undefined && !DecisionInputSchema.safeParse(input.decision).success)
       || !z.array(ComparisonInputSchema).safeParse(input.comparisons).success
       || !PolicyInputSchema.safeParse(input.policy).success
@@ -2224,7 +2214,7 @@ export async function evaluate(
       evaluators,
       comparisons: input.comparisons,
       experiment: input.experiment,
-      analysis: input.analysis,
+      analyses: input.analyses,
       ...(input.decision === undefined ? {} : { decision: input.decision }),
     });
   } catch (error) {

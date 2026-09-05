@@ -82,18 +82,17 @@ const evaluation = (overrides = {}) => evaluate({
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [{
     comparisonId: 'baseline-vs-prompt-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'baseline',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'baseline-vs-prompt-v2-correct',
     analysisKind: 'comparison-interval', statistic: 'mean-difference',
     comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
     metricId: 'correct',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
-  }] },
+  }],
   decision: {
     decisionKind: 'analysis',
     analysisId: 'baseline-vs-prompt-v2-correct',
@@ -200,12 +199,11 @@ const customEvaluation = await evaluation({
   evaluators: [{ evaluatorKind: 'exact-match' }, lengthEvaluator],
   comparisons: [{
     comparisonId: 'baseline-vs-prompt-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'baseline',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct', 'output-length'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'baseline-mean-length',
     analysisKind: 'summary', statistic: 'mean',
     variantId: 'baseline', metricId: 'output-length',
@@ -239,7 +237,7 @@ const customEvaluation = await evaluation({
     confidence: {
       method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 100,
     },
-  }] },
+  }],
   decision: {
     decisionKind: 'comparison-family',
     analysisId: 'paired-release-family',
@@ -278,12 +276,11 @@ const independent = await evaluation({
   evaluators: [{ evaluatorKind: 'exact-match' }, lengthEvaluator],
   comparisons: [{
     comparisonId: 'baseline-vs-prompt-v2',
-    comparisonKind: 'independent',
     controlVariantId: 'baseline',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct', 'output-length'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'independent-release-family',
     analysisKind: 'comparison-family', statistic: 'mean-difference',
     members: [{
@@ -298,7 +295,7 @@ const independent = await evaluation({
     confidence: {
       method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 100,
     },
-  }] },
+  }],
   decision: undefined,
   experiment: {
     seed: 'clean-room-independent-seed',
@@ -340,12 +337,12 @@ const clustered = await evaluate({
   variants: [variant],
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'clustered-correctness',
     analysisKind: 'quality-interval', statistic: 'mean',
     variantId: 'prompt-v2', metricId: 'correct',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 64 },
-  }] },
+  }],
   experiment: {
     seed: 'clean-room-cluster-seed',
     sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },

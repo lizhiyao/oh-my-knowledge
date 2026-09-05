@@ -9,7 +9,6 @@ export type {
   Artifact,
   ArtifactKind,
   ArtifactSource,
-  Analysis,
   AnalysisRequest,
   AttemptBudgetScope,
   BudgetPolicy,

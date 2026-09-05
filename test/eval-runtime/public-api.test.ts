@@ -140,7 +140,6 @@ const PUBLIC_API = {
       'Artifact',
       'ArtifactKind',
       'ArtifactSource',
-      'Analysis',
       'AnalysisRequest',
       'AttemptBudgetScope',
       'BudgetPolicy',

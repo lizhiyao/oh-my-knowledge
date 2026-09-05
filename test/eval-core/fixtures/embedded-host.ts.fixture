@@ -152,12 +152,11 @@ const canonicalEvaluation = evaluate({
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [{
     comparisonId: 'baseline-vs-prompt-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'baseline',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { analyses: [canonicalAnalysis] },
+  analyses: [canonicalAnalysis],
   experiment: { seed: 'typescript-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
   runId: 'typescript-canonical-runtime',
