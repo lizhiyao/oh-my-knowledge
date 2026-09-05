@@ -91,6 +91,15 @@ export type {
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {
+  McpConfigAccess,
+  McpConfigDescriptor,
+  McpConfigInput,
+  McpConfigLease,
+  McpConfigOpenRequest,
+  McpConfigPlan,
+  McpConfigProvider,
+} from './mcp-config.js';
+export type {
   AllowedToolsInput,
   AllowedToolsPlan,
 } from './tool-policy.js';

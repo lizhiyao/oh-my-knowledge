@@ -15,6 +15,10 @@ import {
   CURRENT_RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
+import {
+  canonicalizeJson,
+  digestCanonicalJson,
+} from '../../../src/eval-core/contracts/index.js';
 
 const roots: string[] = [];
 
@@ -90,14 +94,15 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
 describe('resolveNodeCliEvaluationRequest', () => {
   it('classifies MCP config as secret because it may contain credentials', async () => {
     const root = await fixture('mcp-config-classification');
-    await writeFile(join(root, 'mcp.json'), JSON.stringify({
+    const nativeConfig = {
       mcpServers: {
         docs: {
           command: 'node',
           env: { DOCS_TOKEN: 'credential' },
         },
       },
-    }));
+    };
+    await writeFile(join(root, 'mcp.json'), `${JSON.stringify(nativeConfig, null, 2)}\n`);
 
     const resolved = await resolveNodeCliEvaluationRequest(request(root, {
       'mcp-config': 'mcp.json',
@@ -110,6 +115,14 @@ describe('resolveNodeCliEvaluationRequest', () => {
     ));
 
     expect(mcpConfig?.descriptor.classification).toBe('secret');
+    expect(mcpConfig?.descriptor.digest).toBe(digestCanonicalJson(nativeConfig));
+    expect(mcpConfig?.descriptor.size).toBe(Buffer.byteLength(canonicalizeJson(nativeConfig)));
+    expect(await readFile(mcpConfig!.locator, 'utf8')).toBe(canonicalizeJson(nativeConfig));
+    expect(resolved.targets.every((target) => (
+      target.executionControls.defaults.mcp.mcpMode === 'native-config'
+      && target.executionControls.defaults.mcp.descriptor.digest === mcpConfig?.descriptor.digest
+    ))).toBe(true);
+    expect(() => compileCliEvaluationInput(resolved)).not.toThrow();
   });
 
   it('resolves URL content before Dataset compilation and seals provenance outside measurement identity', async () => {
@@ -610,6 +623,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(target?.executionControls.defaults).toEqual({
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
+      mcp: { mcpMode: 'not-required' },
     });
     expect(target?.executionControls.sampleOverrides).toEqual([
       expect.objectContaining({

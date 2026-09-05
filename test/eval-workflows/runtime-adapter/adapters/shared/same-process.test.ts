@@ -122,12 +122,14 @@ function executorRun(runId = 'run-a'): ExecutorRunContext {
 
 function executorTrial(trialLabel = 'trial-a'): ExecutorTrialContext {
   return {
+    signal: new AbortController().signal,
     sampleId: 'sample-a',
     targetId: 'target-a',
     executionCoordinateDigest: digest({ trialLabel, coordinate: 0 }),
     executionControl: {
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
+      mcp: { mcpMode: 'not-required' },
     },
     protocolId: 'omk.invoke/v1',
     input: { prompt: 'hello' },

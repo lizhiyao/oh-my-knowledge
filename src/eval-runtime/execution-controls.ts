@@ -3,6 +3,7 @@ import {
   type TargetExecutionControls,
 } from '../eval-core/contracts/index.js';
 import type { CapturedAllowedToolsPlan } from './tool-policy.js';
+import type { CapturedMcpConfigPlan, McpConfigDescriptor } from './mcp-config.js';
 import type { CapturedWorkspacePlan, WorkspaceDescriptor } from './workspace.js';
 
 function compareStrings(left: string, right: string): number {
@@ -21,18 +22,27 @@ function toolControl(tools: readonly string[] | null | undefined) {
     : { toolPolicyKind: 'allow-list' as const, allowedTools: [...tools] };
 }
 
+function mcpControl(descriptor: McpConfigDescriptor | null | undefined) {
+  return descriptor === null || descriptor === undefined
+    ? { mcpMode: 'not-required' as const }
+    : { mcpMode: 'native-config' as const, descriptor };
+}
+
 export function evaluationExecutionControls(
   workspace: CapturedWorkspacePlan | undefined,
   allowedTools: CapturedAllowedToolsPlan | undefined,
+  mcpConfig: CapturedMcpConfigPlan | undefined,
 ): TargetExecutionControls {
   const sampleIds = [...new Set([
     ...Object.keys(workspace?.bySampleId ?? {}),
     ...Object.keys(allowedTools?.bySampleId ?? {}),
+    ...Object.keys(mcpConfig?.bySampleId ?? {}),
   ])].sort(compareStrings);
   return deepFreezeCanonicalJson({
     defaults: {
       workspace: workspaceControl(workspace?.default),
       tools: toolControl(allowedTools?.default),
+      mcp: mcpControl(mcpConfig?.default),
     },
     sampleOverrides: sampleIds.map((sampleId) => ({
       sampleId,
@@ -41,6 +51,9 @@ export function evaluationExecutionControls(
         : {}),
       ...(Object.prototype.hasOwnProperty.call(allowedTools?.bySampleId ?? {}, sampleId)
         ? { tools: toolControl(allowedTools?.bySampleId[sampleId]) }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(mcpConfig?.bySampleId ?? {}, sampleId)
+        ? { mcp: mcpControl(mcpConfig?.bySampleId[sampleId]) }
         : {}),
     })),
   });

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -267,6 +268,59 @@ assert.equal(JSON.stringify(workspaceEvaluation).includes(tmpdir()), false);
 for (const root of workspaceRoots) {
   await assert.rejects(access(root));
 }
+
+const nativeMcpConfig = { mcpServers: { docs: { command: 'fixture', token: 'private-mcp' } } };
+const nativeMcpBytes = JSON.stringify(nativeMcpConfig);
+const mcpConfigDescriptor = {
+  resourceId: 'clean-room-mcp-config',
+  digest: `sha256:${createHash('sha256').update(nativeMcpBytes).digest('hex')}`,
+  mediaType: 'application/json',
+  classification: 'secret',
+  size: Buffer.byteLength(nativeMcpBytes, 'utf8'),
+};
+let mcpLeasesClosed = 0;
+const mcpExecutor = {
+  ...executor,
+  executorId: 'clean-room.mcp-agent/v1',
+  capabilities: { ...executor.capabilities, mcp: 'native-config' },
+  mcpConfigProvider: {
+    providerId: 'clean-room.mcp-provider/v1',
+    version: '1.0.0',
+    async open({ descriptor }) {
+      assert.deepEqual(descriptor, mcpConfigDescriptor);
+      return {
+        config: nativeMcpConfig,
+        close() { mcpLeasesClosed += 1; },
+      };
+    },
+  },
+  async execute({ input, mcpConfig }) {
+    assert.deepEqual(mcpConfig.descriptor, mcpConfigDescriptor);
+    assert.deepEqual(mcpConfig.config, nativeMcpConfig);
+    return { output: input, usage: { totalTokens: 1 } };
+  },
+};
+const mcpEvaluation = await evaluate({
+  dataset: {
+    datasetId: 'clean-room-mcp',
+    samples: [{ sampleId: 'mcp', input: 'success', expected: 'success' }],
+  },
+  variants: [{
+    variantId: 'mcp-agent',
+    artifact: {
+      name: 'mcp-agent', kind: 'agent', source: 'inline', content: 'Use native MCP.',
+    },
+    execution: { executor: mcpExecutor, mcpConfig: mcpConfigDescriptor },
+  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }],
+  comparisons: [],
+  analyses: [],
+  experiment: { seed: 'clean-room-mcp', sampling: { samplingKind: 'solo' } },
+  policy: {},
+}, { runId: 'clean-room-mcp' });
+assert.equal(mcpEvaluation.status, 'completed');
+assert.equal(mcpLeasesClosed, 1);
+assert.equal(JSON.stringify(mcpEvaluation).includes('private-mcp'), false);
 
 const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');

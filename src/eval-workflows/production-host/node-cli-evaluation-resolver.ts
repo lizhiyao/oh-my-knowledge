@@ -4,6 +4,7 @@ import { extname, isAbsolute, join, resolve } from 'node:path';
 import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
+  JsonValueSchema,
   type JsonValue,
   type TargetExecutionControls,
 } from '../../eval-core/contracts/index.js';
@@ -66,6 +67,11 @@ type ExecutionWorkspaceDescriptor = Extract<
   { workspaceMode: 'copy-on-write-overlay' }
 >['descriptor'];
 
+type ExecutionMcpDescriptor = Extract<
+  TargetExecutionControls['defaults']['mcp'],
+  { mcpMode: 'native-config' }
+>['descriptor'];
+
 function fail(input: ConstructorParameters<typeof CliEvaluationInputError>[0]): never {
   throw new CliEvaluationInputError(input);
 }
@@ -99,6 +105,17 @@ function executionWorkspaceDescriptor(
     message: 'Executor workspace 不得使用 Gold classification。',
   });
   return descriptor as ExecutionWorkspaceDescriptor;
+}
+
+function executionMcpDescriptor(
+  descriptor: ResolvedResourceDescriptor,
+): ExecutionMcpDescriptor {
+  if (descriptor.classification === 'gold') fail({
+    code: 'CLI_INPUT_RESOLUTION_FAILED',
+    fieldPath: 'executionControls.mcp.descriptor.classification',
+    message: 'Executor MCP config 不得使用 Gold classification。',
+  });
+  return descriptor as ExecutionMcpDescriptor;
 }
 
 function mediaType(path: string): string {
@@ -491,6 +508,7 @@ async function resolvedExecutionControls(
   samples: readonly Readonly<Sample>[],
   projectRoot: string,
   targetWorkspaceLocator: string | undefined,
+  mcpConfig: ResolvedResourceDescriptor | undefined,
 ): Promise<TargetExecutionControls> {
   const defaultWorkspace = targetWorkspaceLocator === undefined
     ? undefined
@@ -536,6 +554,9 @@ async function resolvedExecutionControls(
             descriptor: executionWorkspaceDescriptor(defaultWorkspace),
           },
       tools: { toolPolicyKind: 'runtime-default' },
+      mcp: mcpConfig === undefined
+        ? { mcpMode: 'not-required' }
+        : { mcpMode: 'native-config', descriptor: executionMcpDescriptor(mcpConfig) },
     },
     sampleOverrides,
   };
@@ -544,6 +565,7 @@ async function resolvedExecutionControls(
 async function optionalFileResource(
   resources: ResourceRegistry,
   projectRoot: string,
+  materializationRoot: string,
   locator: string | undefined,
   resourceKind: 'mcp-config' | 'gold-dataset',
 ): Promise<ResolvedResourceDescriptor | undefined> {
@@ -578,6 +600,30 @@ async function optionalFileResource(
     sourcePath: path,
     message: '资源 locator 必须指向普通文件或受支持目录。',
   });
+  if (resourceKind === 'mcp-config') {
+    let value: JsonValue;
+    try {
+      value = JsonValueSchema.parse(JSON.parse(await readFile(path, 'utf8')));
+    } catch (cause) {
+      return fail({
+        code: 'CLI_INPUT_RESOLUTION_FAILED',
+        sourcePath: path,
+        message: 'MCP config 必须是合法 JSON。',
+        cause,
+      });
+    }
+    const canonicalPath = await materializeBytes(
+      materializationRoot,
+      Buffer.from(canonicalizeJson(value)),
+      '.json',
+    );
+    return fileResource(resources, {
+      resourceKind,
+      path: canonicalPath,
+      classification: 'secret',
+      mediaType: 'application/json',
+    });
+  }
   return fileResource(resources, {
     resourceKind,
     path,
@@ -838,12 +884,14 @@ export async function resolveNodeCliEvaluationRequest(
   const mcpConfig = await optionalFileResource(
     resources,
     options.projectRoot,
+    options.materializationRoot,
     request.values.locators.mcpConfig,
     'mcp-config',
   );
   const gold = await optionalFileResource(
     resources,
     options.projectRoot,
+    options.materializationRoot,
     request.values.locators.gold,
     'gold-dataset',
   );
@@ -863,6 +911,7 @@ export async function resolveNodeCliEvaluationRequest(
       resolvedSamples,
       options.projectRoot,
       variant.workspaceLocator,
+      mcpConfig,
     );
     return {
       targetId: variant.targetId,

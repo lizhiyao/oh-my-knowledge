@@ -145,6 +145,7 @@ async function fixture(options: Readonly<{
         tools: options.requirementPatch?.toolPolicy === 'allow-list'
           ? { toolPolicyKind: 'allow-list', allowedTools: [] }
           : { toolPolicyKind: 'runtime-default' },
+        mcp: { mcpMode: 'not-required' },
       },
       sampleOverrides: [],
     },
@@ -241,12 +242,14 @@ async function execute(
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    signal: new AbortController().signal,
     sampleId: 'sample-a',
     targetId: 'target-a',
     executionCoordinateDigest: digest({ coordinate: 'a' }),
     executionControl: {
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
+      mcp: { mcpMode: 'not-required' },
     },
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q' },

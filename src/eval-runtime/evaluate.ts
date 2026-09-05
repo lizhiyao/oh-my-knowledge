@@ -124,6 +124,15 @@ import {
   type WorkspaceProvider,
 } from './workspace.js';
 import {
+  captureMcpConfigPlan,
+  captureMcpConfigProvider,
+  type CapturedMcpConfigPlan,
+  type CapturedMcpConfigProvider,
+  type McpConfigAccess,
+  type McpConfigInput,
+  type McpConfigProvider,
+} from './mcp-config.js';
+import {
   captureAllowedToolsPlan,
   type AllowedToolsInput,
   type CapturedAllowedToolsPlan,
@@ -452,6 +461,8 @@ export interface VariantExecution<
   readonly workspace?: WorkspaceInput;
   /** Exact tool allow-list; an empty list disables every tool. */
   readonly allowedTools?: AllowedToolsInput;
+  /** Logical native MCP configuration; config values remain inside the provider lease. */
+  readonly mcpConfig?: McpConfigInput;
 }
 
 export interface Variant<
@@ -480,6 +491,8 @@ export interface ExecutorCapabilities {
     maxInFlight?: number;
   }>;
   readonly seedControl?: 'unsupported' | 'optional' | 'required';
+  /** Declares that the Executor consumes a native per-trial MCP configuration. */
+  readonly mcp?: 'native-config';
   /** Declares that the Executor strictly enforces per-trial tool allow-lists. */
   readonly toolPolicy?: 'allow-list';
   readonly telemetry?: Readonly<{
@@ -508,6 +521,7 @@ export interface ExecutorInvocation<
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
   readonly workspace?: WorkspaceAccess;
+  readonly mcpConfig?: McpConfigAccess;
   /** Undefined means use the Executor runtime default; an empty list denies every tool. */
   readonly allowedTools?: readonly string[];
 }
@@ -528,6 +542,7 @@ export interface ExecutorSessionContext<
   readonly trialIndex: number;
   readonly trialSeed?: string;
   readonly workspace?: WorkspaceAccess;
+  readonly mcpConfig?: McpConfigAccess;
   /** Undefined means use the Executor runtime default; an empty list denies every tool. */
   readonly allowedTools?: readonly string[];
 }
@@ -575,6 +590,8 @@ interface ExecutorDeclaration<
   readonly capabilities?: ExecutorCapabilities;
   /** Host-owned materializer for fresh, trial-private workspace overlays. */
   readonly workspaceProvider?: WorkspaceProvider;
+  /** Host-owned materializer for validated, trial-private native MCP config. */
+  readonly mcpConfigProvider?: McpConfigProvider;
   /** Host-declared deployment or implementation facets beyond executorId and version. */
   readonly fingerprintFacets?: JsonValue;
 }
@@ -1035,6 +1052,7 @@ interface CapturedExecutor<
   readonly configParser: RuntimeValueParser<Config>;
   readonly outputParser: RuntimeValueParser<Output>;
   readonly workspaceProvider?: CapturedWorkspaceProvider;
+  readonly mcpConfigProvider?: CapturedMcpConfigProvider;
   readonly supportsToolAllowList: boolean;
   readonly createPort: (
     targetId: string,
@@ -1197,7 +1215,23 @@ function captureExecutor<
       'Evaluation executor workspaceProvider declaration 无效。',
     );
   }
+  let mcpConfigProvider: CapturedMcpConfigProvider | undefined;
+  try {
+    mcpConfigProvider = captureMcpConfigProvider(value.mcpConfigProvider);
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_EXECUTOR_INVALID',
+      'Evaluation executor mcpConfigProvider declaration 无效。',
+    );
+  }
   const capabilities = value.capabilities ?? {};
+  if ((capabilities.mcp !== undefined && capabilities.mcp !== 'native-config')
+      || (capabilities.mcp === 'native-config') !== (mcpConfigProvider !== undefined)) {
+    return configurationFailure(
+      'EVAL_RUNTIME_EXECUTOR_INVALID',
+      'Evaluation executor native-config capability 与 mcpConfigProvider 必须成对声明。',
+    );
+  }
   const telemetry = capabilities.telemetry ?? {};
   const outputClassification = value.outputClassification ?? 'sensitive';
   const traceClassification = value.traceClassification ?? outputClassification;
@@ -1219,6 +1253,7 @@ function captureExecutor<
         ...(workspaceProvider === undefined
           ? {}
           : { workspace: 'copy-on-write-overlay' as const }),
+        ...(capabilities.mcp === undefined ? {} : { mcp: capabilities.mcp }),
         telemetry: {
           trace: telemetry.trace ?? (traceParser === undefined ? 'unsupported' : 'optional'),
           usage: telemetry.usage ?? 'optional',
@@ -1226,11 +1261,13 @@ function captureExecutor<
         },
         fingerprintFacets: {
           facade: {
-            version: capabilities.toolPolicy === 'allow-list'
-              ? 'omk.eval-runtime.evaluate/v5'
-              : workspaceProvider === undefined
-                ? 'omk.eval-runtime.evaluate/v3'
-                : 'omk.eval-runtime.evaluate/v4',
+            version: mcpConfigProvider === undefined
+              ? capabilities.toolPolicy === 'allow-list'
+                ? 'omk.eval-runtime.evaluate/v5'
+                : workspaceProvider === undefined
+                  ? 'omk.eval-runtime.evaluate/v3'
+                  : 'omk.eval-runtime.evaluate/v4'
+              : 'omk.eval-runtime.evaluate/v6',
             outputClassification,
             traceClassification,
             ...(value.outputMediaType === undefined
@@ -1279,6 +1316,7 @@ function captureExecutor<
       capabilities: deepFreezeCanonicalJson(structuredClone(value.capabilities)),
     }),
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
+    ...(mcpConfigProvider === undefined ? {} : { mcpConfigProvider }),
     ...(value.fingerprintFacets === undefined ? {} : {
       fingerprintFacets: deepFreezeCanonicalJson(structuredClone(value.fingerprintFacets)),
     }),
@@ -1340,6 +1378,7 @@ function captureExecutor<
     ...(value.outputMediaType === undefined ? {} : { outputMediaType: value.outputMediaType }),
     ...(value.traceMediaType === undefined ? {} : { traceMediaType: value.traceMediaType }),
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
+    ...(mcpConfigProvider === undefined ? {} : { mcpConfigProvider }),
   };
   const createPort = (targetId: string, runtimeIdentity = identity) => protocol === 'session'
     ? createJsonSessionExecutorAdapter({
@@ -1369,6 +1408,9 @@ function captureExecutor<
           ...(sessionContext.workspace === undefined
             ? {}
             : { workspace: sessionContext.workspace }),
+          ...(sessionContext.mcpConfig === undefined
+            ? {}
+            : { mcpConfig: sessionContext.mcpConfig }),
           ...(sessionContext.allowedTools === undefined
             ? {}
             : { allowedTools: sessionContext.allowedTools }),
@@ -1418,6 +1460,9 @@ function captureExecutor<
           ...(invocation.workspace === undefined
             ? {}
             : { workspace: invocation.workspace }),
+          ...(invocation.mcpConfig === undefined
+            ? {}
+            : { mcpConfig: invocation.mcpConfig }),
           ...(invocation.allowedTools === undefined
             ? {}
             : { allowedTools: invocation.allowedTools }),
@@ -1434,6 +1479,7 @@ function captureExecutor<
     configParser,
     outputParser,
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
+    ...(mcpConfigProvider === undefined ? {} : { mcpConfigProvider }),
     supportsToolAllowList: capabilities.toolPolicy === 'allow-list',
     createPort,
   });
@@ -1459,6 +1505,7 @@ interface CapturedVariant {
   envelope: JsonValue;
   workspace?: CapturedWorkspacePlan;
   allowedTools?: CapturedAllowedToolsPlan;
+  mcpConfig?: CapturedMcpConfigPlan;
   runtimeIdentity: RuntimeIdentity;
   executor: CapturedExecutor<JsonValue, JsonValue | undefined, JsonValue, JsonValue>;
 }
@@ -1495,6 +1542,15 @@ function captureVariant(
       'Evaluation variant allowedTools selection 无效。',
     );
   }
+  let mcpConfig: CapturedMcpConfigPlan | undefined;
+  try {
+    mcpConfig = captureMcpConfigPlan(value.execution.mcpConfig, sampleIds);
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant mcpConfig selection 无效。',
+    );
+  }
   if (workspace !== undefined && executor.workspaceProvider === undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_VARIANT_INVALID',
@@ -1505,6 +1561,12 @@ function captureVariant(
     return configurationFailure(
       'EVAL_RUNTIME_VARIANT_INVALID',
       'Evaluation variant allowedTools requires an Executor allow-list toolPolicy capability。',
+    );
+  }
+  if (mcpConfig !== undefined && executor.mcpConfigProvider === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant mcpConfig requires an Executor mcpConfigProvider。',
     );
   }
   const config = parseOptionalWithoutTransform(
@@ -1527,6 +1589,7 @@ function captureVariant(
     envelope,
     ...(workspace === undefined ? {} : { workspace }),
     ...(allowedTools === undefined ? {} : { allowedTools }),
+    ...(mcpConfig === undefined ? {} : { mcpConfig }),
     runtimeIdentity: executor.identity,
     executor,
   });
@@ -2194,6 +2257,7 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
   const executionControls = evaluationExecutionControls(
     variant.workspace,
     variant.allowedTools,
+    variant.mcpConfig,
   );
   return {
     targetId: variant.variantId,
@@ -2205,7 +2269,9 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
       workspace: variant.workspace === undefined
         ? 'not-required' as const
         : 'copy-on-write-overlay' as const,
-      mcp: 'not-required' as const,
+      mcp: variant.mcpConfig === undefined
+        ? 'not-required' as const
+        : 'native-config' as const,
       mockInterception: 'not-required' as const,
       toolPolicy: variant.allowedTools === undefined
         ? 'runtime-default' as const
@@ -3453,10 +3519,13 @@ export async function checkExecutor<
   if (input.variant?.execution?.workspace !== undefined
       || input.variant?.execution?.executor?.workspaceProvider !== undefined
       || input.variant?.execution?.allowedTools !== undefined
-      || input.variant?.execution?.executor?.capabilities?.toolPolicy !== undefined) {
+      || input.variant?.execution?.executor?.capabilities?.toolPolicy !== undefined
+      || input.variant?.execution?.mcpConfig !== undefined
+      || input.variant?.execution?.executor?.mcpConfigProvider !== undefined
+      || input.variant?.execution?.executor?.capabilities?.mcp !== undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
-      'Executor check 暂不认证 workspaceProvider 或 toolPolicy；请使用真实 Evaluation 验证资源隔离与工具约束。',
+      'Executor check 暂不认证 workspaceProvider、toolPolicy 或 mcpConfigProvider；请使用真实 Evaluation 验证资源隔离、工具约束与 MCP 配置。',
     );
   }
   const variant = captureVariant(input.variant, new Set());

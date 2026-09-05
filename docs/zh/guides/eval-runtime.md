@@ -340,6 +340,50 @@ const variant = {
 
 直接传入数组时，该列表适用于所有 sample。在 plan 中，`[]` 表示禁用全部工具，`null` 表示为该 sample 有意恢复 Executor runtime 默认值。OMK 会为 canonical identity 排序，始终隔离不同 Sample 的列表，并在一个 Trial 的 retry 间传递同一份不可变列表；OMK 本身既不发现工具，也不执行 provider 调用限制。Executor 必须把 `allowedTools` 转换为后端的准确约束；如果后端只能近似执行、忽略或扩大列表，就绝不能声明 `toolPolicy: 'allow-list'`。Variant 请求列表而 Executor 缺少 capability 时，`prepareEvaluation()` 会失败关闭。
 
+## 按用例选择原生 MCP 配置
+
+不同 sample 需要不同的原生 MCP server 配置时，使用 secret、内容寻址的 descriptor。Descriptor 是可安全进入测量 identity 的声明；宿主持有的 provider 则把 credential、物理位置与 JSON byte 保留在 Definition 之外：
+
+```ts
+const executor: Executor<{ task: string }, undefined, string> = {
+  executorId: 'acme.mcp-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.object({ task: z.string() }), output: z.string() },
+  capabilities: { mcp: 'native-config' },
+  mcpConfigProvider: {
+    providerId: 'acme.secret-store/v1',
+    version: '1.0.0',
+    async open({ descriptor }) {
+      const config = await secretStore.readJson(descriptor.resourceId);
+      return { config, close: () => secretStore.release(descriptor.resourceId) };
+    },
+  },
+  async execute({ input, mcpConfig, signal }) {
+    return { output: await agent.run(input.task, { mcp: mcpConfig?.config, signal }) };
+  },
+};
+
+const variant = {
+  variantId: 'mcp-agent',
+  artifact: { name: 'agent', kind: 'agent', source: 'inline', content: '...' },
+  execution: {
+    executor,
+    mcpConfig: {
+      default: {
+        resourceId: 'mcp-config-a',
+        digest: 'sha256:<canonical-json-digest>',
+        size: 123,
+        mediaType: 'application/json',
+        classification: 'secret',
+      },
+      bySampleId: { offline: null },
+    },
+  },
+};
+```
+
+OMK 会验证 provider 返回值的 canonical JSON digest 与 byte size，为每个 Trial 打开一份新 lease，只在该 Trial 的 retry 间复用，并在所有终态路径关闭。原生配置只对选中用例的 Executor invocation 或 session 可见，OMK 不会把它写入 result 或 error；Executor 自己也不能通过 output 或 trace 返回 secret。逐 sample descriptor 变化只会失效选择该 descriptor 的 coordinate；provider identity 变化则会保守失效使用该 Executor 的全部 coordinate。Runtime 有意不发现 MCP 文件，也不选择 provider 默认值；产品层 discovery 与 Workflow 到 Runtime 的装配属于 `eval-workflows`。
+
 ## 有状态 Agent Session
 
 当 Agent 或有状态 Workflow 需要按 trial 隔离的 session 时，使用 `SessionExecutor`。`Executor` 继续表示简洁的无状态 `omk.invoke/v1` 接口；`EvaluationExecutor` 是 Variant 接受的联合类型，`InvokeExecutor` 是无状态形态的显式名称：

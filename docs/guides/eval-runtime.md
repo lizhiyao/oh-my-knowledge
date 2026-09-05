@@ -343,6 +343,50 @@ const variant = {
 
 A direct array applies to every sample. In a plan, `[]` denies every tool and `null` deliberately restores the Executor runtime default for that sample. OMK sorts lists for canonical identity, keeps each Sample's list separate, and passes the same immutable list across retries of one Trial. It never discovers tools or enforces provider calls itself. The Executor must translate `allowedTools` into an exact backend restriction; if its backend can only approximate, ignore, or widen the list, it must not declare `toolPolicy: 'allow-list'`. `prepareEvaluation()` fails closed when a Variant requests a list from an Executor without that capability.
 
+## Per-sample native MCP configuration
+
+Use a secret, content-addressed descriptor when different samples need different native MCP server configurations. The descriptor is safe measurement identity; the host-owned provider keeps credentials, physical locations, and the JSON bytes outside the Definition:
+
+```ts
+const executor: Executor<{ task: string }, undefined, string> = {
+  executorId: 'acme.mcp-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.object({ task: z.string() }), output: z.string() },
+  capabilities: { mcp: 'native-config' },
+  mcpConfigProvider: {
+    providerId: 'acme.secret-store/v1',
+    version: '1.0.0',
+    async open({ descriptor }) {
+      const config = await secretStore.readJson(descriptor.resourceId);
+      return { config, close: () => secretStore.release(descriptor.resourceId) };
+    },
+  },
+  async execute({ input, mcpConfig, signal }) {
+    return { output: await agent.run(input.task, { mcp: mcpConfig?.config, signal }) };
+  },
+};
+
+const variant = {
+  variantId: 'mcp-agent',
+  artifact: { name: 'agent', kind: 'agent', source: 'inline', content: '...' },
+  execution: {
+    executor,
+    mcpConfig: {
+      default: {
+        resourceId: 'mcp-config-a',
+        digest: 'sha256:<canonical-json-digest>',
+        size: 123,
+        mediaType: 'application/json',
+        classification: 'secret',
+      },
+      bySampleId: { offline: null },
+    },
+  },
+};
+```
+
+OMK verifies the provider's canonical JSON digest and byte size, opens one fresh lease per Trial, reuses it only across that Trial's retries, and closes it on every terminal path. The native config is visible only to the selected Executor invocation or session and never enters results or errors through OMK. The Executor must not return secrets in its own output or trace. A per-sample descriptor change invalidates only coordinates selecting that descriptor; a provider identity change conservatively invalidates every coordinate using that Executor. Runtime deliberately does not discover MCP files or choose provider defaults; product-level discovery and Workflow-to-Runtime assembly belong in `eval-workflows`.
+
 ## Stateful Agent sessions
 
 Use `SessionExecutor` when one Agent or stateful Workflow needs an isolated per-trial session. `Executor` remains the concise stateless `omk.invoke/v1` interface; `EvaluationExecutor` is the union accepted by a Variant, and `InvokeExecutor` is the explicit name for the stateless form:

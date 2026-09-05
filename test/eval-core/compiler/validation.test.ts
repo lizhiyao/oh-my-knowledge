@@ -320,6 +320,34 @@ describe('Compiler definition validation', () => {
     };
     duplicateTools.targets[0].executionRequirements.toolPolicy = 'allow-list';
     await expectCode(duplicateTools, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const understatedMcp = validDefinition();
+    understatedMcp.targets[0].executionControls.sampleOverrides = [{
+      sampleId: 'sample-1',
+      mcp: {
+        mcpMode: 'native-config',
+        descriptor: {
+          resourceId: 'mcp-sample-1',
+          digest: `sha256:${'c'.repeat(64)}`,
+          mediaType: 'application/json',
+          classification: 'secret',
+          size: 1,
+        },
+      },
+    }];
+    await expectCode(
+      understatedMcp,
+      validPolicy(),
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+    );
+
+    const overstatedMcp = validDefinition();
+    overstatedMcp.targets[0].executionRequirements.mcp = 'native-config';
+    await expectCode(
+      overstatedMcp,
+      validPolicy(),
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+    );
   });
 
   it('requires every applicable sample to satisfy evaluator input bindings', async () => {
@@ -668,6 +696,16 @@ describe('Compiler definition validation', () => {
           },
         },
         tools: { toolPolicyKind: 'allow-list', allowedTools: ['read'] },
+        mcp: {
+          mcpMode: 'native-config',
+          descriptor: {
+            resourceId: 'mcp-config-1',
+            digest: `sha256:${'b'.repeat(64)}`,
+            mediaType: 'application/json',
+            classification: 'secret',
+            size: 1,
+          },
+        },
       },
       sampleOverrides: [],
     };

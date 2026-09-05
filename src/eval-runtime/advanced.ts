@@ -68,6 +68,15 @@ export type {
   AllowedToolsPlan,
 } from './tool-policy.js';
 export type {
+  McpConfigAccess,
+  McpConfigDescriptor,
+  McpConfigInput,
+  McpConfigLease,
+  McpConfigOpenRequest,
+  McpConfigPlan,
+  McpConfigProvider,
+} from './mcp-config.js';
+export type {
   WorkspaceAccess,
   WorkspaceDescriptor,
   WorkspaceInput,

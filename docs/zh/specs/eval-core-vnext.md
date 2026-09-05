@@ -101,7 +101,7 @@ Definition 是不可变、可序列化的意图，不包含函数、类实例、
 
 ```ts
 interface EvaluationDefinition {
-  schemaVersion: 'omk.evaluation-definition/v3';
+  schemaVersion: 'omk.evaluation-definition/v4';
   dataset: EvaluationDataset;
   targets: readonly TargetDefinition[];
   evaluators: readonly EvaluatorDefinition[];
@@ -933,7 +933,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/eval-core/contracts/`，不导入 CLI、executor、grading、renderer、server 或其它应用层；历史评测实现已经删除。
 
-当前 catalog 在 `schemas/eval-core/v1/` 与 `schemas/eval-core/v2/` 共发布二十一个有效 JSON Schema 2020-12 根契约：Analysis Bundle、Evaluation Report、ComparabilityAssessment 与 SeriesAnalysisBundle 为 v2；ExecutionFacts、ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、Event、BudgetSummary、Execution／Evaluation Bundle，以及其它三个 Evaluation Series 契约仍为 v1。被替代的冻结根契约继续保留在原 catalog identity，供历史解析。TypeScript 类型从有效 Zod 4 schema 推导；`yarn build:schemas` 重新生成有效文件但不改写历史根契约，`yarn build` 检查已提交产物是否漂移，并把整个 catalog 复制到 package build。
+当前 catalog 在 `schemas/eval-core/v1/` 至 `schemas/eval-core/v4/` 共发布二十一个有效 JSON Schema 2020-12 根契约。EvaluationDefinition 与 RunPlan 为 v4；ExecutionPlan 与 AnalysisPlan 为 v3；AnalysisBundle、EvaluationReport、ComparabilityAssessment 与 SeriesAnalysisBundle 为 v2；其余根契约仍为 v1。被替代的冻结根契约继续保留在原 catalog identity，并由已提交 digest 防止改写。TypeScript 类型从有效 Zod 4 schema 推导；`yarn build:schemas` 重新生成有效文件但不改写历史根契约，`yarn build` 检查已提交产物是否漂移，并把整个 catalog 复制到 package build。
 
 Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
 
@@ -1089,13 +1089,15 @@ admission 采用 reservation。一个 scheduling block 会在一次操作中提�
 
 ## 二十三、Sample-scoped execution control
 
-[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) 将 workspace 与工具授权提升为显式的 sample-scoped Core 契约。这属于 `BREAKING-SCHEMA` 变更，不提供旧 schema reader 或迁移路径。Target 声明 canonical `executionControls.defaults` 与稀疏的 `sampleOverrides`。每条 override 完整替换 workspace 字段、tools 字段或两者；继承只按字段发生，工具集合永远不做 union。`allow-list` 的空列表因此表示禁用全部工具，`runtime-default` 则是另一种明确策略。
+[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) 将 workspace 与工具授权提升为显式的 sample-scoped Core 契约；[#667](https://github.com/lizhiyao/oh-my-knowledge/issues/667) 用同一授权模型补入 native MCP 配置。MCP 改造把 EvaluationDefinition 升级到 v4、ExecutionPlan 升级到 v3、RunPlan 升级到 v4，并把 execution-coordinate derivation 升级到 v2。这属于 `BREAKING-SCHEMA` 与 `BREAKING-COMPARABILITY` 切换，不提供旧 schema reader、检测或迁移路径；存量 Definition 与 Plan 必须重新生成。Target 声明 canonical `executionControls.defaults` 与稀疏的 `sampleOverrides`。每条 override 完整替换 workspace、tools 或 MCP 字段；继承只按字段发生，工具集合永远不做 union。`allow-list` 的空列表因此表示禁用全部工具，`runtime-default` 与 MCP `not-required` 则是彼此独立的明确策略。
 
 workspace control 只能是 `not-required`，或携带内容寻址 descriptor 的 `copy-on-write-overlay`。descriptor 只包含 `resourceId`、digest、media type、classification 与 size；Core JSON 禁止 locator、credential、资源字节和 `gold` classification。宿主持有 resource lease，在使用前完成 descriptor、locator 与内容的校验。`TargetDefinition.executionRequirements` 只是全部有效 Sample control 的聚合 capability 请求，不代表授予单个 Trial 聚合后的权限。
 
-Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `EffectiveExecutionControl`，并把这一冻结值准确传给 Executor Trial。execution-coordinate digest、Trial identity、native provenance 与 v2 cache key 都绑定该有效 control。只改变 Sample A 的 workspace 或工具策略时，只有 Sample A 的 coordinate 与 cache entry 失效，Sample B identity 保持稳定。Gold、expected、evaluation context、annotations、其它 Sample 的 workspace locator 与工具授权永远不能进入 Trial 投影。
+MCP control 只能是 `not-required`，或携带同类无 locator 内容 descriptor 的 `native-config`。Runtime façade 进一步要求 native config 是 classification 为 `secret` 的 canonical JSON，并在向所选 Executor Trial 暴露值前校验 digest、media type、classification 与 byte size。MCP bytes、credential、文件路径与 provider locator 永远不能进入 Core artifact。宿主持有的 provider lease 每个 Trial 只打开一次，在该 Trial 的 retry 间复用，并在 Executor session 之后、workspace lease 之前准确关闭一次。
 
-Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table，并通过聚合 resource lease 绑定全部必要 workspace。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace 与工具策略，并且只暴露被选中的 workspace lease；若后端无法准确表达该策略，则必须在 prepare 阶段 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
+Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `EffectiveExecutionControl`，并把这一冻结值准确传给 Executor Trial。execution-coordinate digest、Trial identity、native provenance 与 v2 cache key 都绑定该有效 control。只改变 Sample A 的 workspace、工具策略或 MCP descriptor 时，只有 Sample A 的 coordinate 与 cache entry 失效，Sample B identity 保持稳定。Gold、expected、evaluation context、annotations、其它 Sample 的资源 locator 与授权永远不能进入 Trial 投影。
+
+Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table；宿主持有的 provider 再把所选 workspace 与 MCP descriptor 绑定到 trial-private lease。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace、工具策略与 native MCP config，并且只暴露被选中的 lease；若后端无法准确表达该策略，则必须在 prepare 阶段 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
 
 ## 二十四、ADR：通过 prepared capability 发布分阶段执行
 

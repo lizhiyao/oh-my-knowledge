@@ -345,6 +345,7 @@ function definition(targetKind) {
         defaults: {
           workspace: { workspaceMode: 'not-required' },
           tools: { toolPolicyKind: 'runtime-default' },
+          mcp: { mcpMode: 'not-required' },
         },
         sampleOverrides: [],
       },

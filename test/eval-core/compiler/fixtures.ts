@@ -77,6 +77,7 @@ export function validDefinition(): EvaluationDefinition {
           defaults: {
             workspace: { workspaceMode: 'not-required' },
             tools: { toolPolicyKind: 'runtime-default' },
+            mcp: { mcpMode: 'not-required' },
           },
           sampleOverrides: [],
         },
@@ -99,6 +100,7 @@ export function validDefinition(): EvaluationDefinition {
           defaults: {
             workspace: { workspaceMode: 'not-required' },
             tools: { toolPolicyKind: 'runtime-default' },
+            mcp: { mcpMode: 'not-required' },
           },
           sampleOverrides: [],
         },
