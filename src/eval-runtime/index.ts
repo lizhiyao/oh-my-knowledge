@@ -27,6 +27,7 @@ export type {
   EvaluationRunOptions,
   EvaluationResult,
   EvaluationWorkEstimate,
+  EvidencePolicy,
   Evaluator,
   EventObserver,
   ExactMatchEvaluator,
@@ -67,6 +68,14 @@ export type {
   Variant,
   VariantExecution,
 } from './evaluate.js';
+export type {
+  ContentDescriptor,
+  ContentResolver,
+  ContentStore,
+  ContentStoreRequest,
+  ContentValue,
+  EvaluationInfrastructure,
+} from './infrastructure.js';
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {

@@ -165,6 +165,43 @@ Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 
 
 Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因此只应放入可重放、非敏感的测量输入。凭证、client 与进程内资源应保留在 Executor closure 中，绝不能进入 Definition。
 
+## Reference 证据与宿主内容存储
+
+默认的 `full` mode 会内联保存 output、trace 和 Evaluator evidence。面对较大或敏感的值时，注入一个内容寻址 store 及其 resolver：
+
+```ts
+import type { ContentResolver, ContentStore } from 'oh-my-knowledge';
+
+const contentStore: ContentStore = {
+  async put(request) {
+    // 验证 request.digest，持久化 canonical JSON 值，再返回 descriptor。
+    return objectStore.putVerified(request);
+  },
+};
+
+const contentResolver: ContentResolver = {
+  async resolve(descriptor) {
+    return objectStore.resolveVerified(descriptor);
+  },
+};
+
+const result = await evaluate({
+  ...input,
+  policy: {
+    ...input.policy,
+    evidence: {
+      output: 'reference',
+      trace: 'digest',
+      evaluatorEvidence: 'reference',
+      maximumClassification: 'sensitive',
+    },
+  },
+  infrastructure: { contentStore, contentResolver },
+});
+```
+
+`full` 内联 canonical JSON 值，`reference` 持久化该值并记录经过验证的 descriptor，`digest` 只保留 canonical value digest，`none` 则省略该项捕获；output、trace 与 `evaluatorEvidence` 可以分别选择。内容超过 `maximumClassification` 时会失败关闭。Evaluator 把 output 或 trace 声明为输入后，对应 capture 必须保留为 `full` 或 `reference`；reference 输入还必须提供 resolver。OMK 会在 prepare 阶段、任何 Target 调用之前校验这些依赖。Store 实现与 credential 绝不进入 Definition；返回的 descriptor 会进入 run artifact，因此可选 `uri` 必须是稳定、opaque 且不含 credential 的 locator，不能是物理路径或 signed URL。授权与大小限制仍由宿主负责。
+
 ## 内容寻址 Workspace
 
 Agent 或 Workflow 需要文件时，应通过内容身份声明文件，由宿主负责物化；不要把 `cwd`、checkout 路径、credential 或 CAS URL 放进 `runtimeContext`：

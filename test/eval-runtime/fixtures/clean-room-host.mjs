@@ -166,6 +166,28 @@ const workspaceDescriptor = {
 };
 const workspaceRoots = [];
 const closedWorkspaceRoots = [];
+const persistedContent = new Map();
+let persistedContentWrites = 0;
+let persistedContentReads = 0;
+const contentStore = {
+  async put(request) {
+    persistedContentWrites += 1;
+    persistedContent.set(request.digest, structuredClone(request));
+    return { digest: request.digest, mediaType: request.mediaType };
+  },
+};
+const contentResolver = {
+  async resolve(descriptor) {
+    persistedContentReads += 1;
+    const stored = persistedContent.get(descriptor.digest);
+    assert.ok(stored);
+    return {
+      value: stored.value,
+      classification: stored.classification,
+      mediaType: stored.mediaType,
+    };
+  },
+};
 const workspaceExecutor = {
   executorId: 'clean-room.workspace-agent/v1',
   version: '1.0.0',
@@ -227,10 +249,14 @@ const workspaceEvaluation = await evaluate({
     variantId: 'workspace-agent', metricId: 'correct',
   }],
   experiment: { seed: 'clean-room-workspace', sampling: { samplingKind: 'solo' } },
-  policy: {},
+  policy: { evidence: { output: 'reference', trace: 'none' } },
+  infrastructure: { contentStore, contentResolver },
 }, { runId: 'clean-room-workspace' });
 assert.equal(workspaceEvaluation.status, 'completed');
 assert.equal(workspaceEvaluation.analysisResults['workspace-correct'].value, 1);
+assert.equal(workspaceEvaluation.artifacts.execution.records[0].output.contentKind, 'descriptor');
+assert.equal(persistedContentWrites, 1);
+assert.equal(persistedContentReads, 1);
 assert.deepEqual(closedWorkspaceRoots, workspaceRoots);
 assert.equal(JSON.stringify(workspaceEvaluation).includes(tmpdir()), false);
 for (const root of workspaceRoots) {
