@@ -71,14 +71,22 @@ function fixture() {
     treatment: { targetId: 'treatment', executorId: identity.implementationId },
     bootstrap: { resamples: 100 },
   });
-  return { runtime, definition, policy: createMeasurementPolicy({ maxConcurrency: 1 }) };
+  return {
+    runtime,
+    definition,
+    policy: createMeasurementPolicy({
+      execution: { maxConcurrency: 1 },
+      evaluation: { maxConcurrency: 1 },
+    }),
+  };
 }
 
 describe('eval-runtime high-level runner', () => {
   it('bounds a slow observer with drop-oldest progress while EventWriter remains lossless', async () => {
     const { runtime, definition } = fixture();
     const policy = createMeasurementPolicy({
-      maxConcurrency: 1,
+      execution: { maxConcurrency: 1 },
+      evaluation: { maxConcurrency: 1 },
       eventDelivery: { writerMode: 'optional' },
     });
     const sequences: number[] = [];

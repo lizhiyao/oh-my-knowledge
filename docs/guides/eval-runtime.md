@@ -136,7 +136,10 @@ const result = await evaluate({
     trials: 1,
     sampling: { samplingKind: 'paired' },
   },
-  policy: { maxConcurrency: 4 },
+  policy: {
+    execution: { maxConcurrency: 4 },
+    evaluation: { maxConcurrency: 4 },
+  },
   runId: crypto.randomUUID(),
 });
 
@@ -225,6 +228,42 @@ The optional family `decision` names that outer family plus one bounded criterio
 
 `onEvent` is an optional, best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
 
+## Production policy
+
+Execution and evaluation are separate runtime stages. Configure their concurrency, timeout, and retry independently; OMK seals every default before the first Target call and Core remains the only scheduler:
+
+```ts
+policy: {
+  execution: {
+    maxConcurrency: 8,
+    timeoutMs: 30_000,
+    retry: {
+      maxAttempts: 3,
+      retryableErrorCodes: ['rate-limit', 'timeout'],
+      backoff: {
+        backoffKind: 'exponential',
+        initialDelayMs: 250,
+        maxDelayMs: 5_000,
+      },
+    },
+  },
+  evaluation: {
+    maxConcurrency: 4,
+    timeoutMs: 10_000,
+    retry: {
+      maxAttempts: 2,
+      retryableErrorCodes: ['judge-rate-limit'],
+      backoff: { backoffKind: 'fixed', initialDelayMs: 200 },
+    },
+  },
+  failure: { failureMode: 'failure-threshold', maxFailures: 2 },
+  budget: { maxInvocations: 1_000 },
+  evidence: { maximumClassification: 'sensitive' },
+},
+```
+
+`maxAttempts` includes the first attempt. A host-defined, stable error code is retried only when explicitly listed; ordinary thrown errors remain redacted and are not silently classified as retryable. `none` retries immediately, `fixed` uses one delay, and `exponential` grows from `initialDelayMs` up to the optional `maxDelayMs`. `continue` and `fail-fast` do not accept `maxFailures`; `failure-threshold` requires it and stops future scheduling blocks after completed failures exceed the threshold. Defaults are execution／evaluation concurrency 4, no timeout, no retry, failure `continue`, 10,000 total invocations, and maximum classification `gold`.
+
 ## Custom Evaluator
 
 Use `evaluatorKind: 'custom'` for a deterministic rule, a domain-specific parser, or a host-owned evaluation service that does not fit exact match or the built-in Rubric Judge. A custom evaluator measures exactly one sample-scope `Metric`:
@@ -275,7 +314,7 @@ const result = await evaluate({
     metricIds: ['output-length-chars'],
   }],
   experiment: { seed: 'length-release-42', sampling: { samplingKind: 'paired' } },
-  policy: { evaluationTimeoutMs: 5_000 },
+  policy: { evaluation: { timeoutMs: 5_000 } },
   runId: crypto.randomUUID(),
 });
 ```

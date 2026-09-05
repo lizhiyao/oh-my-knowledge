@@ -8,6 +8,7 @@ import type {
   CohortFilter,
   CustomEvaluator,
   Decision,
+  Policy,
   SamplingDesign,
 } from '../../src/eval-runtime/index.js';
 
@@ -59,6 +60,14 @@ const unboundedFamilyDecision: Decision = {
   ],
 };
 void unboundedFamilyDecision;
+const invalidFailurePolicy: Policy = {
+  failure: {
+    failureMode: 'continue',
+    // @ts-expect-error failure thresholds are valid only with failure-threshold mode.
+    maxFailures: 1,
+  },
+};
+void invalidFailurePolicy;
 
 const publicCustomEvaluator = {
   evaluatorKind: 'custom',
@@ -121,6 +130,7 @@ const PUBLIC_API = {
       'Evaluator',
       'EventObserver',
       'ExactMatchEvaluator',
+      'FailurePolicy',
       'FamilyDecisionCriterion',
       'Executor',
       'ExecutorCapabilities',
@@ -132,6 +142,8 @@ const PUBLIC_API = {
       'Judge',
       'Metric',
       'Policy',
+      'RetryBackoff',
+      'RetryPolicy',
       'Rubric',
       'RubricJudgeAggregation',
       'RubricJudgeEvaluator',
@@ -140,6 +152,7 @@ const PUBLIC_API = {
       'RuntimeContext',
       'Sample',
       'SamplingDesign',
+      'StagePolicy',
       'Variant',
       'VariantExecution',
     ],
@@ -208,7 +221,11 @@ const PUBLIC_API = {
       'JsonExecutorInvocation',
       'JsonExecutorInvocationResult',
       'MeasurementEventDeliveryInput',
+      'MeasurementFailurePolicyInput',
       'MeasurementPolicyBuilderInput',
+      'MeasurementRetryBackoffInput',
+      'MeasurementRetryPolicyInput',
+      'MeasurementStagePolicyInput',
       'OmkLlmJudgeEffort',
       'OmkLlmJudgeInvocationPort',
       'OmkLlmJudgeInvocationRequest',

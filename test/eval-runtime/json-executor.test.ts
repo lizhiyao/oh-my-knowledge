@@ -67,7 +67,10 @@ async function execute(
   return runEvaluation({
     runtime,
     definition,
-    policy: createMeasurementPolicy({ maxConcurrency: 1 }),
+    policy: createMeasurementPolicy({
+      execution: { maxConcurrency: 1 },
+      evaluation: { maxConcurrency: 1 },
+    }),
     runId: 'json-adapter-run',
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
@@ -185,7 +188,10 @@ describe('source-neutral JSON Executor adapter', () => {
     const result = await runEvaluation({
       runtime,
       definition,
-      policy: createMeasurementPolicy({ maxConcurrency: 1 }),
+      policy: createMeasurementPolicy({
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+      }),
       runId: 'invalid-target-config',
     });
 
