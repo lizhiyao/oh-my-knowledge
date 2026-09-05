@@ -77,6 +77,7 @@ export interface InvokeExecutorIdentityDeclaration {
     maxInFlight?: number;
   }>;
   readonly seedControl: 'unsupported' | 'optional' | 'required';
+  readonly workspace?: 'copy-on-write-overlay';
   readonly telemetry: Readonly<{
     trace: 'unsupported' | 'optional' | 'required';
     usage: 'unsupported' | 'optional' | 'required';
@@ -132,7 +133,7 @@ function createJsonExecutorIdentity(
           determinism: declaration.determinism,
           features: {
             systemInstructions: 'unsupported',
-            workspace: [],
+            workspace: declaration.workspace === undefined ? [] : [declaration.workspace],
             mcp: [],
             mockInterception: [],
             toolPolicies: ['runtime-default'],

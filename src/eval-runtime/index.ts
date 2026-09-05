@@ -70,6 +70,15 @@ export type {
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {
+  WorkspaceAccess,
+  WorkspaceDescriptor,
+  WorkspaceInput,
+  WorkspaceLease,
+  WorkspaceOpenRequest,
+  WorkspacePlan,
+  WorkspaceProvider,
+} from './workspace.js';
+export type {
   CustomEvaluator,
   CustomEvaluatorBinding,
   CustomEvaluatorContent,

@@ -110,6 +110,16 @@ import {
   type ExecutorConformanceResult,
   type RuntimeConformanceCheck,
 } from './conformance/executor.js';
+import {
+  captureWorkspacePlan,
+  captureWorkspaceProvider,
+  workspaceExecutionControls,
+  type CapturedWorkspacePlan,
+  type CapturedWorkspaceProvider,
+  type WorkspaceAccess,
+  type WorkspaceInput,
+  type WorkspaceProvider,
+} from './workspace.js';
 
 const ARTIFACT_KINDS = ['baseline', 'skill', 'prompt', 'agent', 'workflow'] as const;
 const ARTIFACT_SOURCES = [
@@ -411,6 +421,8 @@ export interface VariantExecution<
   readonly executor: EvaluationExecutor<Input, Config, Output, Trace>;
   readonly runtimeContext?: RuntimeContext;
   readonly config?: Config;
+  /** Logical, content-addressed workspace selection; physical paths belong to the provider. */
+  readonly workspace?: WorkspaceInput;
 }
 
 export interface Variant<
@@ -464,6 +476,7 @@ export interface ExecutorInvocation<
   readonly trialSeed?: string;
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
+  readonly workspace?: WorkspaceAccess;
 }
 
 export interface ExecutorSessionContext<
@@ -481,6 +494,7 @@ export interface ExecutorSessionContext<
   readonly variantId: string;
   readonly trialIndex: number;
   readonly trialSeed?: string;
+  readonly workspace?: WorkspaceAccess;
 }
 
 export interface ExecutorSessionAttempt {
@@ -524,6 +538,8 @@ interface ExecutorDeclaration<
   readonly outputMediaType?: string;
   readonly traceMediaType?: string;
   readonly capabilities?: ExecutorCapabilities;
+  /** Host-owned materializer for fresh, trial-private workspace overlays. */
+  readonly workspaceProvider?: WorkspaceProvider;
   /** Host-declared deployment or implementation facets beyond executorId and version. */
   readonly fingerprintFacets?: JsonValue;
 }
@@ -977,6 +993,7 @@ interface CapturedExecutor<
   readonly inputParser: RuntimeValueParser<Input>;
   readonly configParser: RuntimeValueParser<Config>;
   readonly outputParser: RuntimeValueParser<Output>;
+  readonly workspaceProvider?: CapturedWorkspaceProvider;
   readonly createPort: (
     targetId: string,
   ) => ReturnType<typeof createJsonExecutorAdapter<Input, JsonValue, Output, Trace>>;
@@ -1128,6 +1145,15 @@ function captureExecutor<
       'Evaluation executor 必须声明 input 与 output schema。',
     );
   }
+  let workspaceProvider: CapturedWorkspaceProvider | undefined;
+  try {
+    workspaceProvider = captureWorkspaceProvider(value.workspaceProvider);
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_EXECUTOR_INVALID',
+      'Evaluation executor workspaceProvider declaration 无效。',
+    );
+  }
   const capabilities = value.capabilities ?? {};
   const telemetry = capabilities.telemetry ?? {};
   const outputClassification = value.outputClassification ?? 'sensitive';
@@ -1144,6 +1170,9 @@ function captureExecutor<
         cancellation: capabilities.cancellation ?? 'best-effort',
         concurrency: capabilities.concurrency ?? { safety: 'serialized' },
         seedControl: capabilities.seedControl ?? 'unsupported',
+        ...(workspaceProvider === undefined
+          ? {}
+          : { workspace: 'copy-on-write-overlay' as const }),
         telemetry: {
           trace: telemetry.trace ?? (traceParser === undefined ? 'unsupported' : 'optional'),
           usage: telemetry.usage ?? 'optional',
@@ -1151,7 +1180,9 @@ function captureExecutor<
         },
         fingerprintFacets: {
           facade: {
-            version: 'omk.eval-runtime.evaluate/v3',
+            version: workspaceProvider === undefined
+              ? 'omk.eval-runtime.evaluate/v3'
+              : 'omk.eval-runtime.evaluate/v4',
             outputClassification,
             traceClassification,
             ...(value.outputMediaType === undefined
@@ -1199,6 +1230,7 @@ function captureExecutor<
     ...(value.capabilities === undefined ? {} : {
       capabilities: deepFreezeCanonicalJson(structuredClone(value.capabilities)),
     }),
+    ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
     ...(value.fingerprintFacets === undefined ? {} : {
       fingerprintFacets: deepFreezeCanonicalJson(structuredClone(value.fingerprintFacets)),
     }),
@@ -1260,6 +1292,7 @@ function captureExecutor<
       : { traceClassification: value.traceClassification }),
     ...(value.outputMediaType === undefined ? {} : { outputMediaType: value.outputMediaType }),
     ...(value.traceMediaType === undefined ? {} : { traceMediaType: value.traceMediaType }),
+    ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
   };
   const createPort = (targetId: string) => protocol === 'session'
     ? createJsonSessionExecutorAdapter({
@@ -1285,6 +1318,9 @@ function captureExecutor<
           ...(sessionContext.trialSeed === undefined
             ? {}
             : { trialSeed: sessionContext.trialSeed }),
+          ...(sessionContext.workspace === undefined
+            ? {}
+            : { workspace: sessionContext.workspace }),
         }]) as ExecutorSession<Output, Trace>;
         if (session === null || typeof session !== 'object'
             || typeof session.execute !== 'function'
@@ -1327,6 +1363,9 @@ function captureExecutor<
           ...(invocation.trialSeed === undefined ? {} : { trialSeed: invocation.trialSeed }),
           attemptNumber: invocation.attemptNumber,
           signal: invocation.signal,
+          ...(invocation.workspace === undefined
+            ? {}
+            : { workspace: invocation.workspace }),
         }]) as ExecutorResult<Output, Trace>;
         return adaptResult(result);
       },
@@ -1338,6 +1377,7 @@ function captureExecutor<
     inputParser,
     configParser,
     outputParser,
+    ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
     createPort,
   });
 }
@@ -1360,10 +1400,14 @@ interface CapturedVariant {
   runtimeContext?: RuntimeContext;
   config?: JsonValue;
   envelope: JsonValue;
+  workspace?: CapturedWorkspacePlan;
   executor: CapturedExecutor<JsonValue, JsonValue | undefined, JsonValue, JsonValue>;
 }
 
-function captureVariant(value: Readonly<Variant>): Readonly<CapturedVariant> {
+function captureVariant(
+  value: Readonly<Variant>,
+  sampleIds: ReadonlySet<string>,
+): Readonly<CapturedVariant> {
   const variantId = IdentifierSchema.safeParse(value?.variantId);
   if (!variantId.success || value.execution === null || typeof value.execution !== 'object') {
     return configurationFailure(
@@ -1374,6 +1418,21 @@ function captureVariant(value: Readonly<Variant>): Readonly<CapturedVariant> {
   const executor = captureExecutor(value.execution.executor);
   const artifact = captureArtifact(value.artifact);
   const runtimeContext = captureRuntimeContext(value.execution.runtimeContext);
+  let workspace: CapturedWorkspacePlan | undefined;
+  try {
+    workspace = captureWorkspacePlan(value.execution.workspace, sampleIds);
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant workspace selection 无效。',
+    );
+  }
+  if (workspace !== undefined && executor.workspaceProvider === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant workspace requires an Executor workspaceProvider。',
+    );
+  }
   const config = parseOptionalWithoutTransform(
     executor.configParser,
     value.execution.config,
@@ -1392,6 +1451,7 @@ function captureVariant(value: Readonly<Variant>): Readonly<CapturedVariant> {
     ...(runtimeContext === undefined ? {} : { runtimeContext }),
     ...(config === undefined ? {} : { config }),
     envelope,
+    ...(workspace === undefined ? {} : { workspace }),
     executor,
   });
 }
@@ -2055,6 +2115,7 @@ function stableFacadeId(
 }
 
 function targetDefinition(variant: Readonly<CapturedVariant>) {
+  const executionControls = workspaceExecutionControls(variant.workspace);
   return {
     targetId: variant.variantId,
     targetKind: variant.artifact.kind,
@@ -2062,19 +2123,15 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
     executorId: variant.executor.declaration.executorId,
     executionRequirements: {
       systemInstructions: 'not-required' as const,
-      workspace: 'not-required' as const,
+      workspace: variant.workspace === undefined
+        ? 'not-required' as const
+        : 'copy-on-write-overlay' as const,
       mcp: 'not-required' as const,
       mockInterception: 'not-required' as const,
       toolPolicy: 'runtime-default' as const,
       skillDiscovery: 'runtime-default' as const,
     },
-    executionControls: {
-      defaults: {
-        workspace: { workspaceMode: 'not-required' as const },
-        tools: { toolPolicyKind: 'runtime-default' as const },
-      },
-      sampleOverrides: [],
-    },
+    executionControls,
     config: variant.envelope,
   };
 }
@@ -3053,7 +3110,8 @@ export async function prepareEvaluation(
   }
   assertEvaluateInput(input);
   const dataset = captureDataset(input.dataset);
-  const variants = input.variants.map(captureVariant);
+  const sampleIds = new Set(dataset.samples.map((sample) => sample.sampleId));
+  const variants = input.variants.map((variant) => captureVariant(variant, sampleIds));
   const evaluators = captureEvaluators(dataset, input.evaluators);
 
   let definition: EvaluationDefinition;
@@ -3170,7 +3228,14 @@ export async function checkExecutor<
       'Executor check probe declaration 无效。',
     );
   }
-  const variant = captureVariant(input.variant);
+  if (input.variant?.execution?.workspace !== undefined
+      || input.variant?.execution?.executor?.workspaceProvider !== undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Executor check 暂不认证 workspaceProvider；请使用真实 Evaluation 验证 workspace 生命周期。',
+    );
+  }
+  const variant = captureVariant(input.variant, new Set());
   const executor = variant.executor;
   const successInput = parseWithoutTransform(
     executor.inputParser,

@@ -165,6 +165,56 @@ Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 
 
 Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因此只应放入可重放、非敏感的测量输入。凭证、client 与进程内资源应保留在 Executor closure 中，绝不能进入 Definition。
 
+## 内容寻址 Workspace
+
+Agent 或 Workflow 需要文件时，应通过内容身份声明文件，由宿主负责物化；不要把 `cwd`、checkout 路径、credential 或 CAS URL 放进 `runtimeContext`：
+
+```ts
+import type {
+  Executor,
+  WorkspaceDescriptor,
+  WorkspaceProvider,
+} from 'oh-my-knowledge';
+
+const workspace: WorkspaceDescriptor = {
+  resourceId: 'support-repository',
+  digest: `sha256:${'a'.repeat(64)}`,
+  mediaType: 'application/vnd.acme.source-tree',
+  classification: 'sensitive',
+  size: 184_320,
+};
+
+const workspaceProvider: WorkspaceProvider = {
+  providerId: 'acme.cas-overlay/v1',
+  version: '2.1.0',
+  fingerprintFacets: { materializer: 'overlayfs-v2' },
+  async open({ descriptor, runId, trialId }) {
+    // 返回可写、trial 私有 overlay 前，必须验证 descriptor.digest。
+    const root = await cas.createOverlay(descriptor, { runId, trialId });
+    return { root, close: () => cas.removeOverlay(root) };
+  },
+};
+
+const executor: Executor<{ task: string }, undefined, string> = {
+  executorId: 'acme.workspace-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.object({ task: z.string() }), output: z.string() },
+  workspaceProvider,
+  async execute({ input, workspace, signal }) {
+    if (workspace === undefined) return { errorCode: 'workspace-required' };
+    return { output: await agent.run(input.task, { cwd: workspace.root, signal }) };
+  },
+};
+
+const variant = {
+  variantId: 'workspace-agent',
+  artifact: { name: 'agent', kind: 'agent', source: 'inline', content: '...' },
+  execution: { executor, workspace },
+};
+```
+
+不同 sample 需要不同 snapshot 时，使用 `{ default, bySampleId }`，其中 `null` override 表示该 sample 显式不使用 workspace。OMK 会在执行前封存 descriptor 与 provider identity，为每个 Target × Sample × Trial 打开一份新 lease，只在该 trial 的 retry 间复用，并在所有终态路径关闭。物理 root 不会成为测量 identity 或自动 evidence。Provider 必须完成有界的本地资源获取并自行验证内容；OMK 不发现文件、locator 或 credential。可写 lease 用于隔离测量，不是不可信代码的 sandbox。
+
 ## 有状态 Agent Session
 
 当 Agent 或有状态 Workflow 需要按 trial 隔离的 session 时，使用 `SessionExecutor`。`Executor` 继续表示简洁的无状态 `omk.invoke/v1` 接口；`EvaluationExecutor` 是 Variant 接受的联合类型，`InvokeExecutor` 是无状态形态的显式名称：
