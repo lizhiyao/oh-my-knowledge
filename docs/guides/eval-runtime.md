@@ -307,6 +307,31 @@ const result = await evaluate({
 
 The ranking must be an ordered array of unique, non-empty string IDs. It can come from `output` or `trace`; relevant IDs always come from `expected`, so they are never passed to the Executor. The preset truncates to `cutoff`, uses `hits / known relevant` for Recall, `hits / cutoff` for Precision, the first relevant rank for Reciprocal Rank, and binary log2-discounted nDCG. An empty returned ranking is a valid zero score. Duplicate or malformed IDs and an empty relevant set are invalid evidence. A mean summary of Reciprocal Rank is MRR; do not label each sample observation as MRR.
 
+## Tool trajectory evaluation
+
+Use `ToolTrajectoryEvaluator` for deterministic expectations over source-neutral Agent tool calls. The Executor trace must satisfy `omk.source-neutral-trace/v2`; provider adapters should normalize their native events before returning it:
+
+```ts
+import { evaluate, type ToolTrajectoryEvaluator } from 'oh-my-knowledge';
+
+const trajectory: ToolTrajectoryEvaluator = {
+  evaluatorKind: 'tool-trajectory',
+  evaluatorId: 'tool-trajectory',
+  metricId: 'tool-trajectory-match',
+  tracePointer: '',
+  expectedToolNamesPointer: '/expectedToolNames',
+  match: 'contains-in-order',
+};
+
+const sample = {
+  sampleId: 'research-policy',
+  input: { request: 'Research and summarize the policy.' },
+  expected: { expectedToolNames: ['Search', 'Read'] },
+};
+```
+
+The modes are intentionally named from actual trajectory to expected trajectory: `exact-order` requires the same sequence, `same-tools` ignores order, `contains-in-order` allows extra calls while preserving the expected subsequence, and `contains-any-order` allows extra calls and arbitrary order. Every mode preserves duplicate-call multiplicity and compares source-neutral tool names case-sensitively. All success, failure, cancelled, and unknown calls participate; tool outcome is a separate construct. Empty actual trajectories are valid. Empty expected trajectories are allowed only by the exact modes to assert that no tool should be called. Combine this boolean Metric with final-output or Rubric Judge evaluators when both path and outcome matter.
+
 ## Production policy
 
 Execution and evaluation are separate runtime stages. Configure their concurrency, timeout, and retry independently; OMK seals every default before the first Target call and Core remains the only scheduler:

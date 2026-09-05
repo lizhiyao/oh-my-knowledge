@@ -412,6 +412,102 @@ assert.equal(retrievalEvaluation.definition.metrics.length, 4);
 assert.equal(retrievalEvaluation.analysisResults['mean-reciprocal-rank-at-3'].value, 0.75);
 assert.equal(JSON.stringify(retrievalInvocations).includes('relevantDocumentIds'), false);
 
+const trajectoryInvocations = [];
+const trajectoryExecutor = {
+  executorId: 'clean-room.agent/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ request: z.string() }).strict(),
+    config: z.undefined(),
+    output: z.string(),
+    trace: z.object({
+      schemaVersion: z.literal('omk.source-neutral-trace/v2'),
+      turns: z.array(z.json()),
+      toolCalls: z.array(z.object({
+        tool: z.string(), input: z.json(), output: z.json(), success: z.boolean(),
+        status: z.enum(['success', 'failure', 'cancelled', 'unknown']),
+        statusSource: z.enum(['runtime', 'tool-output', 'inferred', 'unknown']),
+      }).strict()),
+      numTurns: z.number().int().nonnegative(),
+      fullNumTurns: z.number().int().nonnegative(),
+      numSubAgents: z.number().int().nonnegative(),
+    }).strict(),
+  },
+  outputClassification: 'public',
+  traceClassification: 'sensitive',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: { trace: 'required', usage: 'optional' },
+  },
+  fingerprintFacets: { revision: 'clean-room-agent-one' },
+  async execute(invocation) {
+    trajectoryInvocations.push(structuredClone(invocation));
+    return {
+      output: 'done',
+      trace: {
+        schemaVersion: 'omk.source-neutral-trace/v2',
+        turns: [],
+        toolCalls: [{
+          tool: 'List', input: null, output: null, success: true,
+          status: 'success', statusSource: 'runtime',
+        }, {
+          tool: 'Search', input: null, output: null, success: false,
+          status: 'failure', statusSource: 'runtime',
+        }, {
+          tool: 'Read', input: null, output: null, success: true,
+          status: 'success', statusSource: 'runtime',
+        }],
+        numTurns: 1,
+        fullNumTurns: 1,
+        numSubAgents: 0,
+      },
+    };
+  },
+};
+const trajectoryEvaluation = await evaluate({
+  dataset: {
+    datasetId: 'clean-room-tool-trajectory',
+    samples: [{
+      sampleId: 'research-policy',
+      input: { request: 'Research the policy.' },
+      expected: { expectedToolNames: ['Search', 'Read'] },
+    }],
+  },
+  variants: [{
+    variantId: 'agent-v1',
+    artifact: {
+      name: 'agent-v1', kind: 'agent', source: 'inline', content: 'Research with tools.',
+    },
+    execution: { executor: trajectoryExecutor },
+  }],
+  evaluators: [{
+    evaluatorKind: 'tool-trajectory',
+    evaluatorId: 'tool-trajectory',
+    metricId: 'tool-trajectory-match',
+    tracePointer: '',
+    expectedToolNamesPointer: '/expectedToolNames',
+    match: 'contains-in-order',
+  }],
+  comparisons: [],
+  analyses: [{
+    analysisId: 'tool-trajectory-rate',
+    analysisKind: 'summary', statistic: 'rate',
+    variantId: 'agent-v1', metricId: 'tool-trajectory-match',
+  }],
+  experiment: { seed: 'clean-room-tool-trajectory', sampling: { samplingKind: 'solo' } },
+  policy: {},
+}, { runId: 'clean-room-tool-trajectory' });
+assert.equal(trajectoryEvaluation.status, 'completed');
+assert.equal(trajectoryEvaluation.analysisResults['tool-trajectory-rate'].value, 1);
+assert.equal(JSON.stringify(trajectoryInvocations).includes('expectedToolNames'), false);
+assert.equal(
+  Object.hasOwn(trajectoryEvaluation.artifacts.evaluation.records[0].observations[0], 'evidence'),
+  false,
+);
+
 const independent = await evaluation({
   dataset: {
     datasetId: 'clean-room-independent',
