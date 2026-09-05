@@ -866,24 +866,27 @@ const result = await evaluate({
 
 The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes the whole Target × Sample × Trial panel reading if any planned coordinate is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge/eval-runtime/contracts`.
 
-## Certify an Executor
+## Check Runtime components
 
-Run `checkExecutor()` before adopting an adapter. It drives the same declaration through real successful, failed, and cancelled Core runs, and checks binding isolation, lifecycle cleanup, telemetry, observations, paired analysis, and Decision:
+Run `checkRuntime()` before adopting an injected component. One call checks exactly one component and returns a versioned behavioral-evidence envelope. For an Executor it drives the same declaration through real successful, failed, and cancelled Core runs, then checks binding isolation, lifecycle cleanup, telemetry, observations, paired analysis, and Decision:
 
 ```ts
-import { checkExecutor } from 'oh-my-knowledge';
+import { checkRuntime } from 'oh-my-knowledge';
 
-const certification = await checkExecutor({
+const runtimeCheck = await checkRuntime({
+  runtimeKind: 'executor',
   variant: variants[1],
   success: { input: successInput, expected: expectedOutput },
   failure: { input: failureInput, expectedErrorCode: 'model-unavailable' },
   cancellation: { input: longRunningInput },
 });
 
-if (!certification.conformant) console.error(certification.checks);
+if (!runtimeCheck.conformant) console.error(runtimeCheck.checks);
 ```
 
-The cancellation input must remain bounded if the implementation ignores its signal; the in-process check does not isolate hostile code.
+The `runtimeKind` discriminator also selects `evaluator`, `judge`, `cache`, `content-store`, or `workspace-provider`. `checkExecutor()` and `checkContentStore()` remain focused convenience entries backed by the same existing probes. Invalid declarations reject with `EVAL_RUNTIME_INPUT_INVALID`; host behavioral failures return `conformant: false` with stable reason codes. A passing check does not upgrade self-reported Runtime identity or prove the quality of a model provider. Run the intended component composition through a real `evaluate()` afterward.
+
+The cancellation case must remain bounded if the implementation ignores its signal; an in-process check cannot contain hostile code. Evaluation-cache, Custom Evaluator, and Judge checks exercise overlapping calls through Core; execution-cache behavior is checked on Core's current serial read path without claiming more. Cache and ContentStore checks perform writes, so use disposable resources and a unique `probeNamespace` for cache checks. Workspace checks observe lease isolation, retry reuse, and cleanup but cannot prove physical deletion or sandboxing; `timeoutMs` bounds the check's cleanup wait but cannot stop the provider's underlying promise. Judge checks make up to four provider calls and may incur cost; they require `allowExternalCalls: true`, and every `publicProbeText` is sent to the provider and must be harmless public data. The result reports measured invocation and provider-cost totals. Stable results retain none of the probe payload, provider exception text, prompt, model output, cache entries, workspace roots, locators, or credentials.
 
 ## Advanced integration and migration
 
