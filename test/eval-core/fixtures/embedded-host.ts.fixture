@@ -41,17 +41,21 @@ import {
   type RuntimePortRegistration,
 } from 'oh-my-knowledge/eval-runtime/advanced';
 import {
+  assessComparability as assessRuntimeComparability,
   checkExecutor,
   EvaluationEventConsumptionError,
   evaluate,
   prepareEvaluation,
   type AnalysisRequest,
+  type AssessComparabilityInput,
   type AllowedToolsPlan,
   type CachePolicy,
   type CohortFilter,
   type ContentResolver,
   type ContentStore,
   type EvaluationCache,
+  type EvaluationComparabilityAssessment,
+  type EvaluationComparabilitySubject,
   type EvaluationCacheEntry,
   type EvaluationInfrastructure,
   type EvidencePolicy,
@@ -291,6 +295,21 @@ async function canonicalResultBoundary(): Promise<void> {
   void datasetId;
   void maxConcurrency;
   void runStatus;
+  const subject: EvaluationComparabilitySubject = {
+    subjectId: 'candidate-under-test',
+    leftVariantId: 'prompt-v2',
+    rightVariantId: 'prompt-v2',
+  };
+  const comparisonInput: AssessComparabilityInput = {
+    comparisonScope: 'evaluation',
+    subjects: [subject],
+    left: result,
+    right: result,
+  };
+  const comparison: EvaluationComparabilityAssessment = assessRuntimeComparability(
+    comparisonInput,
+  );
+  void comparison;
 }
 void canonicalResultBoundary;
 

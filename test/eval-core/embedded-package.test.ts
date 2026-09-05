@@ -184,7 +184,7 @@ const assert = require('node:assert/strict');
   assert.equal(api.digestCanonicalJson, undefined);
   assert.equal(api.createCoreStudioCatalog, undefined);
   assert.equal(api.projectCoreArtifactGraph, undefined);
-  assert.equal(api.assessComparability, undefined);
+  assert.equal(typeof api.assessComparability, 'function');
   assert.equal(typeof advanced.assessComparability, 'function');
   assert.equal(typeof evalRuntime.evaluate, 'function');
   assert.equal(typeof evalRuntime.checkContentStore, 'function');

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
+  COMPARABILITY_POLICY_SCHEMA_VERSION,
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   IdentifierSchema,
   EvaluationDefinitionSchema,
@@ -13,11 +14,15 @@ import {
   bonferroniMarginalConfidenceLevel,
   deepFreezeCanonicalJson,
   canonicalizeJson,
+  assessComparability as assessCoreComparability,
+  createComparabilityPolicy,
   derivePlannedExecutionCoordinates,
   digestCanonicalJson,
   type EvaluationDefinition,
   type AnalysisCohortDefinition,
   type AnalysisRecord,
+  type ComparabilityAssessment,
+  type ComparisonScope,
   type EvaluationSample,
   type EvaluatorDefinition,
   type JsonValue,
@@ -27,6 +32,8 @@ import {
 } from '../eval-core/contracts/index.js';
 import {
   createEvaluationEngine as createCoreEvaluationEngine,
+  getAuthenticatedEvaluationRunSources,
+  type AuthenticatedEvaluationRunSources,
   type EvaluationEngineClock,
   type EvaluationRunResult,
   type PreparedEvaluation as CorePreparedEvaluation,
@@ -966,6 +973,31 @@ export type EvaluationResult = EvaluationRunResult & Readonly<{
   policy: PreparedEvaluationPlan['measurementPolicy'];
   analysisResults: Readonly<Record<string, AnalysisRecord>>;
 }>;
+
+/** One intentional subject mapping between two independently sealed Runs. */
+export interface EvaluationComparabilitySubject {
+  readonly subjectId: string;
+  readonly leftVariantId: string;
+  readonly rightVariantId: string;
+}
+
+/** Cross-Run comparability request over canonical results retained in this process. */
+export interface AssessComparabilityInput {
+  readonly comparisonScope: ComparisonScope;
+  readonly subjects: readonly EvaluationComparabilitySubject[];
+  readonly left: EvaluationResult;
+  readonly right: EvaluationResult;
+}
+
+/** Core-authored assessment; its three statuses must be interpreted independently. */
+export type EvaluationComparabilityAssessment = ComparabilityAssessment;
+
+interface AuthenticatedCanonicalRun {
+  readonly plan: SealedRunPlan;
+  readonly sources: AuthenticatedEvaluationRunSources;
+}
+
+const authenticatedCanonicalRuns = new WeakMap<object, AuthenticatedCanonicalRun>();
 export type EventObserver = EvaluationEventObserver;
 export type Clock = EvaluationEngineClock;
 
@@ -1047,7 +1079,8 @@ export class EvaluationConfigurationError extends TypeError {
     | 'EVAL_RUNTIME_INPUT_INVALID'
     | 'EVAL_RUNTIME_EXECUTOR_INVALID'
     | 'EVAL_RUNTIME_VARIANT_INVALID'
-    | 'EVAL_RUNTIME_EVALUATOR_INVALID';
+    | 'EVAL_RUNTIME_EVALUATOR_INVALID'
+    | 'EVAL_RUNTIME_COMPARABILITY_INVALID';
 
   constructor(code: EvaluationConfigurationError['code'], message: string) {
     super(message);
@@ -1719,8 +1752,7 @@ function captureJudge(value: Readonly<Judge>) {
 function attachDefinition(
   result: EvaluationRunResult,
   runId: string,
-  definition: PreparedEvaluationPlan['definition'],
-  policy: PreparedEvaluationPlan['measurementPolicy'],
+  plan: PreparedEvaluationPlan,
 ): EvaluationResult {
   const records = result.artifacts?.analysis?.records ?? [];
   const analysisResults = Object.freeze(Object.fromEntries(
@@ -1728,7 +1760,18 @@ function attachDefinition(
       .sort((left, right) => compareStrings(left.resultId, right.resultId))
       .map((record) => [record.resultId, record]),
   ));
-  return Object.freeze({ ...result, runId, definition, policy, analysisResults });
+  const attached = Object.freeze({
+    ...result,
+    runId,
+    definition: plan.definition,
+    policy: plan.measurementPolicy,
+    analysisResults,
+  });
+  const sources = getAuthenticatedEvaluationRunSources(result);
+  if (sources !== undefined) {
+    authenticatedCanonicalRuns.set(attached, Object.freeze({ plan, sources }));
+  }
+  return attached;
 }
 
 interface CapturedEvaluators {
@@ -3407,8 +3450,6 @@ async function runPrepared(
 ): Promise<EvaluationResult> {
   const options = captureRunOptions(optionsInput);
   const runId = options.runId ?? `run-${randomUUID()}`;
-  const definition = prepared.plan.definition;
-  const policy = prepared.plan.measurementPolicy;
   try {
     const result = await runPreparedEvaluation({
       prepared,
@@ -3422,7 +3463,7 @@ async function runPrepared(
         : { eventBufferCapacity: options.eventBufferCapacity }),
       ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
     });
-    return attachDefinition(result, runId, definition, policy);
+    return attachDefinition(result, runId, prepared.plan);
   } catch (error) {
     if (error instanceof AdvancedEvaluationEventConsumptionError) {
       throw new EvaluationEventConsumptionError({
@@ -3430,7 +3471,7 @@ async function runPrepared(
         message: error.message,
         ...(error.runResult === undefined
           ? {}
-          : { runResult: attachDefinition(error.runResult, runId, definition, policy) }),
+          : { runResult: attachDefinition(error.runResult, runId, prepared.plan) }),
       });
     }
     throw error;
@@ -3563,6 +3604,73 @@ export async function evaluate(
 ): Promise<EvaluationResult> {
   const capturedOptions = captureRunOptions(options);
   return (await prepareEvaluation(input)).run(capturedOptions);
+}
+
+function comparabilitySourcePrefix(
+  run: AuthenticatedCanonicalRun,
+  scope: ComparisonScope,
+) {
+  return Object.freeze({
+    ...(run.sources.execution === undefined ? {} : { execution: run.sources.execution }),
+    ...(run.sources.evaluation === undefined ? {} : { evaluation: run.sources.evaluation }),
+    ...(scope === 'evaluation' || run.sources.analysis === undefined
+      ? {}
+      : { analysis: run.sources.analysis }),
+    ...(scope !== 'decision' || run.sources.decision === undefined
+      ? {}
+      : { decision: run.sources.decision }),
+  });
+}
+
+/**
+ * Checks whether two canonical Runs can support an exact cross-Run comparison.
+ * Target changes are allowed only when explicitly mapped as subjects.
+ */
+export function assessComparability(
+  input: Readonly<AssessComparabilityInput>,
+): EvaluationComparabilityAssessment {
+  const allowedKeys = new Set(['comparisonScope', 'subjects', 'left', 'right']);
+  if (input === null
+      || typeof input !== 'object'
+      || Object.keys(input).some((key) => !allowedKeys.has(key))
+      || !Array.isArray(input.subjects)) {
+    return configurationFailure(
+      'EVAL_RUNTIME_COMPARABILITY_INVALID',
+      'Evaluation comparability input 无效。',
+    );
+  }
+  const left = authenticatedCanonicalRuns.get(input.left);
+  const right = authenticatedCanonicalRuns.get(input.right);
+  if (left === undefined || right === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_COMPARABILITY_INVALID',
+      'Evaluation comparability 只接受当前进程由 canonical Runtime 产生的 Run result。',
+    );
+  }
+  try {
+    const policy = createComparabilityPolicy({
+      schemaVersion: COMPARABILITY_POLICY_SCHEMA_VERSION,
+      designMode: 'exact-measurement-design',
+      comparisonScope: input.comparisonScope,
+      subjects: input.subjects.map((subject) => ({
+        subjectId: subject.subjectId,
+        leftTargetId: subject.leftVariantId,
+        rightTargetId: subject.rightVariantId,
+      })),
+    });
+    return assessCoreComparability(
+      policy,
+      left.plan,
+      right.plan,
+      comparabilitySourcePrefix(left, input.comparisonScope),
+      comparabilitySourcePrefix(right, input.comparisonScope),
+    ).assessment;
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_COMPARABILITY_INVALID',
+      'Evaluation comparability 无法验证输入、subject mapping 或 source lineage。',
+    );
+  }
 }
 
 /** Exercises one Executor through success, failure, cancellation, cleanup, and measurement checks. */

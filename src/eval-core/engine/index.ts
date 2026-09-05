@@ -325,6 +325,25 @@ function artifactId(runId: string, artifactKind: string): string {
   })}`;
 }
 
+export interface AuthenticatedEvaluationRunSources {
+  readonly execution?: ExecutionBundleSource;
+  readonly evaluation?: EvaluationBundleSource;
+  readonly analysis?: AnalysisBundleSource;
+  readonly decision?: DecisionResultSource;
+}
+
+const authenticatedEvaluationRunSources = new WeakMap<
+  object,
+  AuthenticatedEvaluationRunSources
+>();
+
+/** Internal bridge for façades that preserve the exact Engine result object. */
+export function getAuthenticatedEvaluationRunSources(
+  result: EvaluationRunResult,
+): AuthenticatedEvaluationRunSources | undefined {
+  return authenticatedEvaluationRunSources.get(result);
+}
+
 async function settleStage<T>(
   run: StageRun<T>,
   output: BoundedEventStream,
@@ -453,6 +472,15 @@ async function executePipeline(
   let evaluationSource: EvaluationBundleSource | undefined;
   let analysisSource: AnalysisBundleSource | undefined;
   let decisionSource: DecisionResultSource | undefined;
+  const authenticate = (result: EvaluationRunResult): EvaluationRunResult => {
+    authenticatedEvaluationRunSources.set(result, Object.freeze({
+      ...(executionSource === undefined ? {} : { execution: executionSource }),
+      ...(evaluationSource === undefined ? {} : { evaluation: evaluationSource }),
+      ...(analysisSource === undefined ? {} : { analysis: analysisSource }),
+      ...(decisionSource === undefined ? {} : { decision: decisionSource }),
+    }));
+    return result;
+  };
   try {
     const { plan, bindings, runtime } = await preparedPromise;
     const sequencer = new InMemoryRuntimeEventSequencer();
@@ -540,7 +568,7 @@ async function executePipeline(
       ...(decision === undefined ? {} : { decision: decision.result }),
     };
     if (report.status.runStatus === 'failed') {
-      return {
+      return authenticate({
         status: 'failed',
         error: firstArtifactError(
           artifacts.execution,
@@ -554,9 +582,9 @@ async function executePipeline(
         },
         artifacts,
         report,
-      };
+      });
     }
-    return { status: report.status.runStatus, artifacts, report };
+    return authenticate({ status: report.status.runStatus, artifacts, report });
   } catch (error) {
     const artifacts: PartialEvaluationRunArtifacts = {
       ...(executionSource === undefined ? {} : { execution: executionSource.bundle }),
@@ -564,11 +592,11 @@ async function executePipeline(
       ...(analysisSource === undefined ? {} : { analysis: analysisSource.bundle }),
       ...(decisionSource === undefined ? {} : { decision: decisionSource.result }),
     };
-    return {
+    return authenticate({
       status: 'failed',
       error: runtimeError(error),
       ...(Object.keys(artifacts).length === 0 ? {} : { artifacts }),
-    };
+    });
   } finally {
     events.close();
   }
