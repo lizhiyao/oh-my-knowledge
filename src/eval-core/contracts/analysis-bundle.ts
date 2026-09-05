@@ -12,6 +12,7 @@ import {
   type CoreSchemaValidator,
   type Provenance,
 } from './common.js';
+import { analysisComparisonAppliesToMetricInput } from './analysis-input-matching.js';
 import { derivePlannedEvaluationCoordinates } from './evaluation-identities.js';
 import {
   countAnalysisResamplingUnits,
@@ -480,7 +481,9 @@ function expectedRows(
     if (evaluator === undefined) continue;
     for (const metricId of evaluator.metricIds) {
       if (!metricIds.has(metricId)) continue;
-      const matchingContrasts = comparisonInputs.filter((input) => input.metricId === metricId);
+      const matchingContrasts = comparisonInputs.filter((input) => (
+        analysisComparisonAppliesToMetricInput(node, input.metricId, metricId)
+      ));
       if (comparisonInputs.length > 0 && matchingContrasts.length === 0) continue;
       const allowedTargets = matchingContrasts.length === 0 ? undefined : new Set(
         matchingContrasts.flatMap((input) => {

@@ -716,6 +716,149 @@ function validateSimultaneousIntervalFamilies(
   }
 }
 
+const COMPOSITE_ANALYSIS_IMPLEMENTATION_IDS = new Set([
+  'bootstrap.composite-mean-percentile/v1',
+  'bootstrap.composite-cluster-percentile/v1',
+  'bootstrap.composite-paired-difference-percentile/v1',
+  'bootstrap.composite-unpaired-difference-percentile/v1',
+]);
+
+export function isCompositeAnalysisImplementationId(implementationId: string): boolean {
+  return COMPOSITE_ANALYSIS_IMPLEMENTATION_IDS.has(implementationId);
+}
+
+function validateCompositeAnalysisSemantics(definition: EvaluationDefinition): void {
+  const metricsById = new Map(definition.metrics.map((metric) => [metric.metricId, metric]));
+  for (const node of definition.analysisGraph.nodes) {
+    if (!isCompositeAnalysisImplementationId(node.implementationId)) continue;
+    const parameters = node.parameters;
+    if (parameters === undefined || parameters === null || Array.isArray(parameters)
+        || typeof parameters !== 'object') {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Composite Analysis 缺少已物化参数。',
+        { nodeId: node.nodeId },
+      );
+    }
+    const parameterObject = parameters as Record<string, unknown>;
+    const compositeMetricId = parameterObject.compositeMetricId;
+    const components = parameterObject.components;
+    if (typeof compositeMetricId !== 'string' || !Array.isArray(components)) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Composite Analysis 参数未完整物化。',
+        { nodeId: node.nodeId },
+      );
+    }
+    const componentMetricIds = components.flatMap((component) => (
+      component !== null && !Array.isArray(component) && typeof component === 'object'
+        && typeof (component as Record<string, unknown>).metricId === 'string'
+        ? [(component as Record<string, unknown>).metricId as string]
+        : []
+    ));
+    const metricInputs = node.inputs.filter(
+      (input) => input.inputKind === 'metric-observations',
+    );
+    const inputMetricIds = metricInputs.map((input) => input.referenceId);
+    const comparisonInputs = node.inputs.filter((input) => input.inputKind === 'comparison');
+    const expectsComparison = node.implementationId.includes('-difference-');
+    const selectedTargetIds = node.targetFilter?.includeTargetIds ?? [];
+    if (expectsComparison ? node.targetFilter !== undefined : selectedTargetIds.length !== 1) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        expectsComparison
+          ? 'Composite difference 由 contrast 封存 Variant，不接受额外 target filter。'
+          : 'Composite quality 必须通过 target filter 精确封存一个 Variant。',
+        { nodeId: node.nodeId },
+      );
+    }
+    if (node.analysisNodeKind !== 'estimator'
+        || componentMetricIds.length !== components.length
+        || componentMetricIds.length < 2
+        || canonicalizeJson(componentMetricIds) !== canonicalizeJson([...componentMetricIds].sort())
+        || canonicalizeJson(inputMetricIds) !== canonicalizeJson(componentMetricIds)
+        || node.inputs.some((input) => input.inputKind === 'analysis-result')
+        || comparisonInputs.length !== (expectsComparison ? 1 : 0)
+        || (expectsComparison && comparisonInputs[0].metricId !== compositeMetricId)) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Composite Analysis 必须按 canonical component 顺序精确绑定 source Metrics 与所需 contrast。',
+        { nodeId: node.nodeId },
+      );
+    }
+    const compositeMetric = metricsById.get(compositeMetricId);
+    if (compositeMetric === undefined
+        || compositeMetric.valueType !== 'numeric'
+        || compositeMetric.scope !== 'sample'
+        || compositeMetric.scale?.min !== 0
+        || compositeMetric.scale.max !== 1
+        || compositeMetric.scale.target !== undefined
+        || compositeMetric.direction !== 'higher-is-better'
+        || compositeMetric.missingPolicyId !== 'exclude/v1'
+        || compositeMetric.unit !== 'utility'
+        || definition.evaluators.some((evaluator) => (
+          evaluator.metricIds.includes(compositeMetricId)
+        ))) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Composite derived Metric 必须是无 Evaluator 产出的 [0, 1] higher-is-better sample utility。',
+        { nodeId: node.nodeId, metricId: compositeMetricId },
+      );
+    }
+    for (const [componentIndex, componentMetricId] of componentMetricIds.entries()) {
+      const metric = metricsById.get(componentMetricId);
+      const supportedDirection = metric?.direction === 'higher-is-better'
+        || metric?.direction === 'lower-is-better';
+      const supportedNumeric = metric?.valueType === 'numeric'
+        && typeof metric.scale?.min === 'number'
+        && Number.isFinite(metric.scale.min)
+        && typeof metric.scale.max === 'number'
+        && Number.isFinite(metric.scale.max)
+        && metric.scale.min < metric.scale.max;
+      if (metric === undefined || metric.scope !== 'sample'
+          || metric.missingPolicyId !== 'exclude/v1' || !supportedDirection
+          || (metric.valueType !== 'boolean' && !supportedNumeric)) {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'Composite component 只接受具备 sealed monotonic utility 的 sample Metric。',
+          { nodeId: node.nodeId, metricId: componentMetricId },
+        );
+      }
+      const producingEvaluators = definition.evaluators.filter((evaluator) => (
+        evaluator.metricIds.includes(componentMetricId)
+      ));
+      const component = components[componentIndex] as Record<string, unknown>;
+      const aggregation = component.measurementAggregation;
+      const aggregateEvaluatorIds = aggregation !== undefined && aggregation !== null
+          && !Array.isArray(aggregation) && typeof aggregation === 'object'
+        ? ((aggregation as Record<string, unknown>).members as unknown[] | undefined)?.flatMap(
+          (member) => member !== null && !Array.isArray(member) && typeof member === 'object'
+            ? (((member as Record<string, unknown>).replicates as unknown[] | undefined) ?? [])
+              .flatMap((replicate) => replicate !== null && !Array.isArray(replicate)
+                && typeof replicate === 'object'
+                && typeof (replicate as Record<string, unknown>).evaluatorId === 'string'
+                ? [(replicate as Record<string, unknown>).evaluatorId as string]
+                : [])
+            : [],
+        ) ?? []
+        : [];
+      const producingEvaluatorIds = producingEvaluators.map(
+        (evaluator) => evaluator.evaluatorId,
+      ).sort();
+      if (producingEvaluatorIds.length === 0
+          || (aggregation === undefined && producingEvaluatorIds.length !== 1)
+          || (aggregation !== undefined && canonicalizeJson([...aggregateEvaluatorIds].sort())
+            !== canonicalizeJson(producingEvaluatorIds))) {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'Composite component 的 measurement aggregation 必须精确覆盖全部 source Evaluator。',
+          { nodeId: node.nodeId, metricId: componentMetricId },
+        );
+      }
+    }
+  }
+}
+
 export function validateDefinitionSemantics(
   definition: EvaluationDefinition,
   policy: MeasurementPolicy,
@@ -1091,6 +1234,7 @@ export function validateMaterializedAnalysisSemantics(
   definition: EvaluationDefinition,
 ): void {
   validateSimultaneousIntervalFamilies(definition, true);
+  validateCompositeAnalysisSemantics(definition);
 }
 
 export function validateMaterializedDecisionSemantics(

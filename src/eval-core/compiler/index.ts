@@ -56,6 +56,7 @@ import {
 import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
+  isCompositeAnalysisImplementationId,
   validateMaterializedAnalysisSemantics,
   validateMaterializedDecisionSemantics,
 } from './validation.js';
@@ -1089,9 +1090,19 @@ function normalizeDefinitionParameters(
       node.nodeId,
     );
     try {
+      const parameters = validator.parse(node.parameters ?? {});
+      const inputs = isCompositeAnalysisImplementationId(node.implementationId)
+        ? [...node.inputs].sort((left, right) => {
+          const leftRank = left.inputKind === 'metric-observations' ? 0 : 1;
+          const rightRank = right.inputKind === 'metric-observations' ? 0 : 1;
+          return leftRank - rightRank
+            || compareStrings(canonicalizeJson(left), canonicalizeJson(right));
+        })
+        : node.inputs;
       return {
         ...node,
-        parameters: validator.parse(node.parameters ?? {}),
+        inputs,
+        parameters,
       };
     } catch {
       throw new EvaluationDefinitionError({

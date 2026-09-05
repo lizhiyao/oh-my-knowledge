@@ -318,6 +318,8 @@ The built-in reducer and estimator set remains deliberately small:
 - `bootstrap.hierarchical-unpaired-difference-percentile/v1`;
 - `bootstrap.cluster-percentile/v1`;
 - `bootstrap.hierarchical-cluster-percentile/v1`;
+- `bootstrap.composite-mean-percentile/v1` and `bootstrap.composite-cluster-percentile/v1`;
+- `bootstrap.composite-paired-difference-percentile/v1` and `bootstrap.composite-unpaired-difference-percentile/v1`;
 - `bonferroni/v1` for correction of genuine raw p-values;
 - `simultaneous-intervals.bonferroni/v1` for Bonferroni simultaneous percentile intervals;
 - `release-family/v1` for explicit all-member release decisions over those intervals.
@@ -327,6 +329,8 @@ Alpha, resample count, resampling unit, and seed enter AnalysisPlan. v1 does not
 The unpaired estimator requires disjoint sample identities between the declared control and treatment arms and independently resamples each arm. For stratified inputs, it resamples within arm × stratum cells and combines within-stratum differences using pooled observed stratum proportions. A missing arm in any observed stratum makes the result inconclusive; the estimator never falls back to a paired or unstratified analysis.
 
 The hierarchical estimators seal one complete measurement panel in their parameters. They average evaluator replicates within each ensemble member, apply the declared equal or positive normalized member weights, and then average complete Target trials within each sample. A trial contributes only when every sealed evaluator, instrument, member, group, and replicate coordinate is observed. Bootstrap still resamples only samples or paired blocks; panel members and replicates never increase `unitCount`. The non-hierarchical estimator identities keep their original semantics.
+
+The composite estimators derive one explicitly named sample-scope utility Metric from at least two source Metrics. Every positive component weight is sealed and the weights sum exactly to one; there is no default component set or equal-weight fallback. Boolean values map to unit utility directly, while numeric sources require a finite non-degenerate sealed range; `lower-is-better` reverses the utility and out-of-range evidence fails closed rather than being clamped. Qualitative and target-optimum Metrics are not accepted by v1. A quality estimator seals exactly one Variant through its Target filter; a difference estimator seals its two Variants through the contrast and accepts no additional Target filter. Each source Metric first applies its own sealed measurement-panel aggregation, then complete source values are combined within the same Target／sample／trial coordinate, repeated trials are averaged within a sample, and only then does Core resample samples, clusters, paired blocks, or independent arms. Missing components never renormalize the remaining weights. The Analysis record retains contributing source-row lineage and reports planned, complete, and missing composite coordinates in its assumption evidence. The derived Metric, source contracts, weights, confidence parameters, and sampling design all remain part of the sealed Definition and Plan identity.
 
 Re-analysis and re-decision preserve parent Bundle digest, policy digest, derivation time, and `analysisMode: preregistered | exploratory`. Thresholds or methods chosen after observing results cannot masquerade as pre-sealed release gates.
 

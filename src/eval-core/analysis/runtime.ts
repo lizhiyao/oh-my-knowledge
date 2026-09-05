@@ -34,6 +34,7 @@ import {
   type SchemaIdentity,
   type Sha256Digest,
 } from '../contracts/index.js';
+import { analysisComparisonAppliesToMetricInput } from '../contracts/analysis-input-matching.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import type { SealedRunPlan } from '../compiler/index.js';
 import { BoundedEventStream } from '../runtime/event-stream.js';
@@ -626,7 +627,11 @@ function materializeNodeInputs(
       const input = inputs[index];
       if (input.inputKind !== 'metric-observations') continue;
       const matchingContrasts = comparisons.filter(
-        (comparison) => comparison.contrast.metricId === input.referenceId,
+        (comparison) => analysisComparisonAppliesToMetricInput(
+          binding.node,
+          comparison.contrast.metricId,
+          input.referenceId,
+        ),
       );
       const allowedTargets = new Set(matchingContrasts.flatMap((comparison) => [
         comparison.contrast.controlTargetId,

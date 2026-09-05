@@ -34,26 +34,28 @@ function categorical(next: () => number, probabilities: readonly number[]): numb
 function metricRow(input: {
   sampleId: string;
   targetId?: string;
+  metricId?: string;
   value: number;
   pairingBlockId?: Sha256Digest;
 }): AnalysisMetricRow {
   const targetId = input.targetId ?? 'target';
+  const metricId = input.metricId ?? 'score';
   const trialId = digestCanonicalJson({ targetId, sampleId: input.sampleId, trialIndex: 0 });
   return {
-    rowId: digestCanonicalJson({ trialId, metricId: 'score' }),
+    rowId: digestCanonicalJson({ trialId, metricId }),
     targetId,
     sampleId: input.sampleId,
     trialIndex: 0,
     trialId,
-    evaluatorId: 'score-evaluator',
+    evaluatorId: `${metricId}-evaluator`,
     measurement: {
-      instrumentId: 'score-instrument',
-      ensembleMemberId: 'score-member',
-      replicateGroupId: 'score-primary',
+      instrumentId: `${metricId}-instrument`,
+      ensembleMemberId: `${metricId}-member`,
+      replicateGroupId: `${metricId}-primary`,
       replicateIndex: 0,
     },
     cohortIds: [],
-    metricId: 'score',
+    metricId,
     valueType: 'numeric',
     samplingUnitIds: input.pairingBlockId === undefined
       ? {}
@@ -67,11 +69,14 @@ function metricRow(input: {
 async function interval(input: {
   implementationId: 'bootstrap.mean-percentile/v1'
     | 'bootstrap.paired-difference-percentile/v1'
-    | 'bootstrap.unpaired-difference-percentile/v1';
+    | 'bootstrap.unpaired-difference-percentile/v1'
+    | 'bootstrap.composite-mean-percentile/v1';
   rows: AnalysisMetricRow[];
+  secondaryRows?: AnalysisMetricRow[];
   simulation: number;
 }): Promise<{ lower: number; upper: number; estimate: number; unitCount: number }> {
-  const comparison = input.implementationId !== 'bootstrap.mean-percentile/v1';
+  const composite = input.implementationId === 'bootstrap.composite-mean-percentile/v1';
+  const comparison = input.implementationId.includes('difference');
   const paired = input.implementationId === 'bootstrap.paired-difference-percentile/v1';
   const implementation = ANALYSIS_NODES.get(input.implementationId);
   if (implementation === undefined) throw new Error('Missing bootstrap implementation.');
@@ -87,7 +92,11 @@ async function interval(input: {
       nodeId: 'estimate',
       implementationId: input.implementationId,
       inputs: [
-        { inputKind: 'metric-observations', referenceId: 'score' },
+        { inputKind: 'metric-observations', referenceId: composite ? 'score-a' : 'score' },
+        ...(composite ? [{
+          inputKind: 'metric-observations' as const,
+          referenceId: 'score-b',
+        }] : []),
         ...(comparison ? [{
           inputKind: 'comparison' as const,
           referenceId: 'comparison',
@@ -96,20 +105,42 @@ async function interval(input: {
         }] : []),
       ],
       outputResultId: 'interval',
-      parameters: { resamples: 256, alpha: 0.1 },
+      parameters: composite ? {
+        compositeMetricId: 'overall-quality',
+        components: [
+          { metricId: 'score-a', weight: 0.5 },
+          { metricId: 'score-b', weight: 0.5 },
+        ],
+        aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+        resamples: 256,
+        alpha: 0.1,
+      } : { resamples: 256, alpha: 0.1 },
     },
     inputs: [{
       inputKind: 'metric-observations',
-      referenceId: 'score',
+      referenceId: composite ? 'score-a' : 'score',
       metric: {
-        metricId: 'score',
+        metricId: composite ? 'score-a' : 'score',
         valueType: 'numeric',
         scope: 'sample',
+        ...(composite ? { scale: { min: 0, max: 1 } } : {}),
         direction: 'higher-is-better',
         missingPolicyId: 'exclude/v1',
       },
       rows: input.rows,
-    }, ...(comparison ? [{
+    }, ...(composite ? [{
+      inputKind: 'metric-observations' as const,
+      referenceId: 'score-b',
+      metric: {
+        metricId: 'score-b',
+        valueType: 'numeric' as const,
+        scope: 'sample' as const,
+        scale: { min: 0, max: 1 },
+        direction: 'higher-is-better' as const,
+        missingPolicyId: 'exclude/v1',
+      },
+      rows: input.secondaryRows ?? [],
+    }] : []), ...(comparison ? [{
       inputKind: 'comparison' as const,
       referenceId: 'comparison',
       contrast: {
@@ -198,6 +229,26 @@ describe('Evaluation Core deterministic statistical conformance', () => {
     expect(mean).toEqual({ lower: 1.5, upper: 3.25, estimate: 2.5, unitCount: 4 });
     expect(paired).toEqual({ lower: 1.5, upper: 3.5, estimate: 2.5, unitCount: 4 });
     expect(unpaired).toEqual({ lower: 0.75, upper: 3.5, estimate: 2, unitCount: 8 });
+  });
+
+  it('pins unit-first composite covariance with a known reference vector', async () => {
+    const first = [0, 1, 0, 1];
+    const composite = await interval({
+      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      simulation: 0,
+      rows: first.map((value, index) => metricRow({
+        metricId: 'score-a',
+        sampleId: `sample-${index}`,
+        value,
+      })),
+      secondaryRows: first.map((value, index) => metricRow({
+        metricId: 'score-b',
+        sampleId: `sample-${index}`,
+        value: 1 - value,
+      })),
+    });
+
+    expect(composite).toEqual({ lower: 0.5, upper: 0.5, estimate: 0.5, unitCount: 4 });
   });
 
   it('pins the deterministic continuous 90% mean-interval coverage profile', async () => {
