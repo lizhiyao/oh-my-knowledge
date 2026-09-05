@@ -31,7 +31,12 @@ import type { EvaluationEvaluator } from '../eval-core/evaluation/index.js';
 import { createJsonExecutorAdapter, type RuntimeValueParser } from './adapters/json-executor.js';
 import {
   createMeasurementPolicy,
+  MeasurementPolicyBuilderInputSchema,
+  type MeasurementFailurePolicyInput,
   type MeasurementPolicyBuilderInput,
+  type MeasurementRetryBackoffInput,
+  type MeasurementRetryPolicyInput,
+  type MeasurementStagePolicyInput,
 } from './builders/policy.js';
 import {
   EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
@@ -265,14 +270,7 @@ const DecisionInputSchema = z.union([
   }).strict(),
 ]);
 
-const PolicyInputSchema = z.object({
-  maxConcurrency: z.number().int().positive().optional(),
-  executionTimeoutMs: z.number().nonnegative().optional(),
-  evaluationTimeoutMs: z.number().nonnegative().optional(),
-  maxInvocations: z.number().int().positive().optional(),
-  failureMode: z.enum(['continue', 'fail-fast']).optional(),
-  maximumClassification: z.enum(['public', 'sensitive', 'secret', 'gold']).optional(),
-}).strict();
+const PolicyInputSchema = MeasurementPolicyBuilderInputSchema.omit({ eventDelivery: true });
 
 const VariantConfigEnvelopeSchema = z.object({
   schemaVersion: z.literal(VARIANT_CONFIG_SCHEMA_VERSION),
@@ -605,6 +603,10 @@ interface ComparisonFamilyDecision {
 
 export type Decision = Readonly<AnalysisDecision | ComparisonFamilyDecision>;
 
+export type RetryBackoff = MeasurementRetryBackoffInput;
+export type RetryPolicy = MeasurementRetryPolicyInput;
+export type StagePolicy = MeasurementStagePolicyInput;
+export type FailurePolicy = MeasurementFailurePolicyInput;
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
 /** Core run result plus the exact sealed Definition compiled by the façade. */

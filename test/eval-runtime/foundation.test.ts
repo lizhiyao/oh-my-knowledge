@@ -85,7 +85,10 @@ describe('eval-runtime foundation', () => {
       treatment: { targetId: 'treatment', executorId: 'test.faas-function/v1' },
       bootstrap: { resamples: 100, alpha: 0.1 },
     });
-    const policy = createMeasurementPolicy({ maxConcurrency: 2 });
+    const policy = createMeasurementPolicy({
+      execution: { maxConcurrency: 2 },
+      evaluation: { maxConcurrency: 2 },
+    });
     const engine = createEvaluationEngine(runtime);
     const [first, second] = await Promise.all([
       engine.prepare(definition, policy),
@@ -155,7 +158,167 @@ describe('eval-runtime foundation', () => {
     });
     expect(() => createMeasurementPolicy({
       eventDelivery: { writerMode: 'required', writerFailureMode: 'ignore' },
-    } as never)).toThrow('EventWriter mode and failure mode are inconsistent.');
+    } as never)).toThrow();
+
+    const configured = createMeasurementPolicy({
+      execution: {
+        maxConcurrency: 8,
+        timeoutMs: 30_000,
+        retry: {
+          maxAttempts: 3,
+          retryableErrorCodes: ['timeout', 'rate-limit'],
+          backoff: {
+            backoffKind: 'exponential',
+            initialDelayMs: 250,
+            maxDelayMs: 5_000,
+          },
+        },
+      },
+      evaluation: {
+        maxConcurrency: 2,
+        timeoutMs: 10_000,
+        retry: {
+          maxAttempts: 2,
+          retryableErrorCodes: ['judge-rate-limit'],
+          backoff: { backoffKind: 'fixed', initialDelayMs: 200 },
+        },
+      },
+      budget: { maxInvocations: 500 },
+      failure: { failureMode: 'failure-threshold', maxFailures: 2 },
+      evidence: { maximumClassification: 'sensitive' },
+    });
+    expect(configured).toMatchObject({
+      execution: { maxConcurrency: 8, timeoutMs: 30_000 },
+      retry: {
+        maxAttempts: 3,
+        retryableErrorCodes: ['rate-limit', 'timeout'],
+        backoff: {
+          backoffKind: 'exponential', initialDelayMs: 250, maxDelayMs: 5_000,
+        },
+      },
+      evaluation: {
+        maxConcurrency: 2,
+        timeoutMs: 10_000,
+        retry: {
+          maxAttempts: 2,
+          retryableErrorCodes: ['judge-rate-limit'],
+          backoff: { backoffKind: 'fixed', initialDelayMs: 200 },
+        },
+      },
+      budget: {
+        run: { maxInvocations: 500 },
+        stages: {
+          execution: { maxInvocations: 500 },
+          evaluation: { maxInvocations: 500 },
+        },
+      },
+      failure: { failureMode: 'failure-threshold', maxFailures: 2 },
+      evidence: { maximumClassification: 'sensitive' },
+    });
+    expect(createMeasurementPolicy({
+      execution: {
+        retry: {
+          maxAttempts: 3,
+          retryableErrorCodes: ['rate-limit', 'timeout'],
+          backoff: {
+            backoffKind: 'exponential', initialDelayMs: 250, maxDelayMs: 5_000,
+          },
+        },
+      },
+    }).retry).toEqual(configured.retry);
+
+    for (const invalid of [
+      { maxConcurrency: 2 },
+      { execution: { timeoutMs: 0 } },
+      { execution: { retry: {
+        maxAttempts: 1,
+        retryableErrorCodes: ['timeout'],
+        backoff: { backoffKind: 'none' },
+      } } },
+      { execution: { retry: {
+        maxAttempts: 2,
+        retryableErrorCodes: ['timeout', 'timeout'],
+        backoff: { backoffKind: 'none' },
+      } } },
+      { execution: { retry: {
+        maxAttempts: 2,
+        retryableErrorCodes: [''],
+        backoff: { backoffKind: 'none' },
+      } } },
+      { execution: { retry: {
+        maxAttempts: 2,
+        retryableErrorCodes: ['timeout'],
+        backoff: { backoffKind: 'exponential', initialDelayMs: 10, maxDelayMs: 5 },
+      } } },
+      { failure: { failureMode: 'continue', maxFailures: 1 } },
+      { failure: { failureMode: 'failure-threshold' } },
+    ]) {
+      expect(
+        () => createMeasurementPolicy(invalid as never),
+        JSON.stringify(invalid),
+      ).toThrow();
+    }
+  });
+
+  it('invalidates only the configured stage and its causal downstream identities', async () => {
+    const identity = executorIdentity();
+    const runtime = createEvaluationRuntime({
+      executors: [{
+        implementationId: identity.implementationId,
+        createPort: () => createExecutorFnAdapter({
+          identity,
+          outputClassification: 'public',
+          mapInput: ({ targetId, input }) => ({ model: targetId, prompt: String(input) }),
+          executor: async () => result('expected'),
+        }),
+      }],
+      evaluators: [{ port: createExactMatchEvaluator() }],
+    });
+    const definition = createExactMatchDefinition({
+      datasetId: 'policy-identity',
+      seed: 'policy-identity-seed',
+      samples: [
+        { sampleId: 'one', input: 'one', expected: 'expected' },
+        { sampleId: 'two', input: 'two', expected: 'expected' },
+      ],
+      control: { targetId: 'control', executorId: identity.implementationId },
+      treatment: { targetId: 'treatment', executorId: identity.implementationId },
+    });
+    const engine = createEvaluationEngine(runtime);
+    const prepare = (policy: Parameters<typeof createMeasurementPolicy>[0]) => (
+      engine.prepare(definition, createMeasurementPolicy(policy))
+    );
+    const base = await prepare({});
+    const executionChanged = await prepare({ execution: { maxConcurrency: 5 } });
+    const evaluationChanged = await prepare({ evaluation: { maxConcurrency: 5 } });
+
+    expect(executionChanged.plan.digests.executionPlanDigest)
+      .not.toBe(base.plan.digests.executionPlanDigest);
+    expect(executionChanged.plan.digests.evaluationPlanDigest)
+      .not.toBe(base.plan.digests.evaluationPlanDigest);
+    expect(executionChanged.plan.digests.runContractDigest)
+      .not.toBe(base.plan.digests.runContractDigest);
+
+    expect(evaluationChanged.plan.digests.executionPlanDigest)
+      .toBe(base.plan.digests.executionPlanDigest);
+    expect(evaluationChanged.plan.digests.evaluationPlanDigest)
+      .not.toBe(base.plan.digests.evaluationPlanDigest);
+    expect(evaluationChanged.plan.digests.runContractDigest)
+      .not.toBe(base.plan.digests.runContractDigest);
+
+    const retry = {
+      maxAttempts: 2,
+      retryableErrorCodes: ['timeout', 'rate-limit'],
+      backoff: { backoffKind: 'none' as const },
+    };
+    const retryReordered = {
+      ...retry,
+      retryableErrorCodes: [...retry.retryableErrorCodes].reverse(),
+    };
+    const firstRetry = await prepare({ execution: { retry } });
+    const secondRetry = await prepare({ execution: { retry: retryReordered } });
+    expect(secondRetry.plan.digests.runContractDigest)
+      .toBe(firstRetry.plan.digests.runContractDigest);
   });
 
   it('maps an ExecutorFn failure into a stable Core execution error', async () => {

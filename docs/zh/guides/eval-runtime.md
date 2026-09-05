@@ -133,7 +133,10 @@ const result = await evaluate({
     trials: 1,
     sampling: { samplingKind: 'paired' },
   },
-  policy: { maxConcurrency: 4 },
+  policy: {
+    execution: { maxConcurrency: 4 },
+    evaluation: { maxConcurrency: 4 },
+  },
   runId: crypto.randomUUID(),
 });
 
@@ -222,6 +225,42 @@ decision: {
 
 `onEvent` 是可选的 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
 
+## 生产策略
+
+Execution 与 evaluation 是相互独立的 runtime stage。两者分别配置并发、timeout 与 retry；OMK 会在第一次 Target 调用前封存全部默认值，scheduler 仍只由 Core 实现：
+
+```ts
+policy: {
+  execution: {
+    maxConcurrency: 8,
+    timeoutMs: 30_000,
+    retry: {
+      maxAttempts: 3,
+      retryableErrorCodes: ['rate-limit', 'timeout'],
+      backoff: {
+        backoffKind: 'exponential',
+        initialDelayMs: 250,
+        maxDelayMs: 5_000,
+      },
+    },
+  },
+  evaluation: {
+    maxConcurrency: 4,
+    timeoutMs: 10_000,
+    retry: {
+      maxAttempts: 2,
+      retryableErrorCodes: ['judge-rate-limit'],
+      backoff: { backoffKind: 'fixed', initialDelayMs: 200 },
+    },
+  },
+  failure: { failureMode: 'failure-threshold', maxFailures: 2 },
+  budget: { maxInvocations: 1_000 },
+  evidence: { maximumClassification: 'sensitive' },
+},
+```
+
+`maxAttempts` 包含第一次尝试。只有显式列出的宿主稳定错误码可以重试；普通抛错仍会脱敏，绝不被静默归类为可重试。`none` 立即重试，`fixed` 使用固定 delay，`exponential` 从 `initialDelayMs` 增长到可选的 `maxDelayMs`。`continue` 与 `fail-fast` 不接受 `maxFailures`；`failure-threshold` 必须声明它，并在已完成的失败数超过 threshold 后停止接纳后续 scheduling block。默认值为 execution／evaluation 并发 4、无 timeout、不重试、failure `continue`、总 invocation 上限 10,000，以及 maximum classification `gold`。
+
 ## Custom Evaluator
 
 确定性规则、领域 parser 或宿主持有的评价服务不适合 exact match 或内置 Rubric 评委时，使用 `evaluatorKind: 'custom'`。一个 custom evaluator 只测量一个 sample-scope `Metric`：
@@ -272,7 +311,7 @@ const result = await evaluate({
     metricIds: ['output-length-chars'],
   }],
   experiment: { seed: 'length-release-42', sampling: { samplingKind: 'paired' } },
-  policy: { evaluationTimeoutMs: 5_000 },
+  policy: { evaluation: { timeoutMs: 5_000 } },
   runId: crypto.randomUUID(),
 });
 ```

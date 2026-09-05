@@ -256,7 +256,10 @@ async function runProbe(
   return runEvaluation({
     runtime,
     definition: definition(input, phase, probe, expected),
-    policy: createMeasurementPolicy({ maxConcurrency: 1 }),
+    policy: createMeasurementPolicy({
+      execution: { maxConcurrency: 1 },
+      evaluation: { maxConcurrency: 1 },
+    }),
     runId: `${input.runId ?? 'eval-runtime-conformance'}-${phase}`,
     eventBufferCapacity: 1,
     ...(signal === undefined ? {} : { signal }),

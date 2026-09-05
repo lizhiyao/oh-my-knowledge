@@ -77,7 +77,10 @@ const definition = createExactMatchDefinition({
 
 const prepared = await createEvaluationEngine(runtime).prepare(
   definition,
-  createMeasurementPolicy({ maxConcurrency: 2 }),
+  createMeasurementPolicy({
+    execution: { maxConcurrency: 2 },
+    evaluation: { maxConcurrency: 2 },
+  }),
 );
 const stages = prepared.stages({ runId: 'advanced-staged-host', eventBufferCapacity: 128 });
 try {

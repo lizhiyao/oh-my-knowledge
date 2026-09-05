@@ -143,7 +143,10 @@ function pairedInput(
       decisionKind: 'analysis' as const,
       analysisId: 'baseline-vs-candidate-correct',
     },
-    policy: { maxConcurrency: 2 },
+    policy: {
+      execution: { maxConcurrency: 2 },
+      evaluation: { maxConcurrency: 2 },
+    },
     runId: 'canonical-evaluate',
   };
 }
@@ -1326,7 +1329,10 @@ describe('canonical eval-runtime API', () => {
       comparisons: [{ ...input.comparisons[0], metricIds: ['slow-score'] }],
       analysis: comparisonAnalysis('slow-score'),
       decision: undefined,
-      policy: { ...input.policy, evaluationTimeoutMs: 5 },
+      policy: {
+        ...input.policy,
+        evaluation: { ...input.policy.evaluation, timeoutMs: 5 },
+      },
       runId: 'custom-evaluator-timeout',
     });
     expect(timedOut.status).toBe('completed');
@@ -1373,7 +1379,7 @@ describe('canonical eval-runtime API', () => {
       comparisons: [{ ...input.comparisons[0], metricIds: ['budgeted-score'] }],
       analysis: comparisonAnalysis('budgeted-score'),
       decision: undefined,
-      policy: { ...input.policy, maxInvocations: 4 },
+      policy: { ...input.policy, budget: { maxInvocations: 4 } },
       runId: 'custom-evaluator-budget',
       clock: fixedClock,
     });
@@ -1382,6 +1388,175 @@ describe('canonical eval-runtime API', () => {
     expect(budgeted.artifacts?.evaluation?.records.every((record) => (
       record.evaluationStatus === 'not-evaluated'
     ))).toBe(true);
+  });
+
+  it('delegates execution and evaluation retries to the sealed Core stage policies', async () => {
+    const executionAttempts: number[] = [];
+    const executionSleeps: number[] = [];
+    const flakyExecutor = executor(async ({ attemptNumber, input, config, signal }) => {
+      signal.throwIfAborted();
+      executionAttempts.push(attemptNumber);
+      return attemptNumber === 1
+        ? { errorCode: 'temporary-executor-failure' }
+        : { output: config.answers[input.prompt] };
+    });
+    const executionResult = await evaluate({
+      ...pairedInput(flakyExecutor),
+      policy: {
+        execution: {
+          maxConcurrency: 1,
+          retry: {
+            maxAttempts: 2,
+            retryableErrorCodes: ['temporary-executor-failure'],
+            backoff: { backoffKind: 'fixed', initialDelayMs: 7 },
+          },
+        },
+        evaluation: { maxConcurrency: 1 },
+      },
+      runId: 'execution-retry',
+      clock: {
+        ...fixedClock,
+        sleep(delayMs) {
+          executionSleeps.push(delayMs);
+          return Promise.resolve();
+        },
+      },
+    });
+    expect(executionResult.status).toBe('completed');
+    expect(executionAttempts.filter((attempt) => attempt === 1)).toHaveLength(4);
+    expect(executionAttempts.filter((attempt) => attempt === 2)).toHaveLength(4);
+    expect(executionSleeps).toEqual([7, 7, 7, 7]);
+    expect(executionResult.artifacts?.execution?.records.every((record) => (
+      record.executionStatus === 'completed' && record.attempts.length === 2
+    ))).toBe(true);
+
+    const evaluationAttempts: number[] = [];
+    const retryingEvaluator = numericCustomEvaluator(
+      'retrying-evaluator',
+      ({ attemptNumber }) => {
+        evaluationAttempts.push(attemptNumber);
+        return attemptNumber === 1
+          ? { resultKind: 'failed', errorCode: 'temporary-evaluator-failure' }
+          : { resultKind: 'score', value: 1 };
+      },
+    );
+    const evaluationResult = await evaluate({
+      ...pairedInput(),
+      evaluators: [retryingEvaluator],
+      comparisons: [{
+        ...pairedInput().comparisons[0],
+        metricIds: ['retrying-evaluator-score'],
+      }],
+      analysis: comparisonAnalysis('retrying-evaluator-score'),
+      decision: undefined,
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: {
+          maxConcurrency: 1,
+          retry: {
+            maxAttempts: 2,
+            retryableErrorCodes: ['temporary-evaluator-failure'],
+            backoff: { backoffKind: 'none' },
+          },
+        },
+      },
+      runId: 'evaluation-retry',
+      clock: fixedClock,
+    });
+    expect(evaluationResult.status).toBe('completed');
+    expect(evaluationAttempts.filter((attempt) => attempt === 1)).toHaveLength(4);
+    expect(evaluationAttempts.filter((attempt) => attempt === 2)).toHaveLength(4);
+    expect(evaluationResult.artifacts?.evaluation?.records.every((record) => (
+      record.evaluationStatus === 'completed' && record.attempts.length === 2
+    ))).toBe(true);
+
+    let nonRetryableCalls = 0;
+    const nonRetryable = await evaluate({
+      ...pairedInput(),
+      evaluators: [numericCustomEvaluator('non-retryable', () => {
+        nonRetryableCalls += 1;
+        return { resultKind: 'failed', errorCode: 'permanent-evaluator-failure' };
+      })],
+      comparisons: [{
+        ...pairedInput().comparisons[0],
+        metricIds: ['non-retryable-score'],
+      }],
+      analysis: comparisonAnalysis('non-retryable-score'),
+      decision: undefined,
+      policy: {
+        evaluation: {
+          maxConcurrency: 1,
+          retry: {
+            maxAttempts: 3,
+            retryableErrorCodes: ['temporary-evaluator-failure'],
+            backoff: { backoffKind: 'none' },
+          },
+        },
+      },
+      runId: 'non-retryable-evaluation',
+      clock: fixedClock,
+    });
+    expect(nonRetryable.status).toBe('completed');
+    expect(nonRetryableCalls).toBe(4);
+    expect(nonRetryable.artifacts?.evaluation?.records.every((record) => (
+      record.evaluationStatus === 'failed' && record.attempts.length === 1
+    ))).toBe(true);
+  });
+
+  it('applies the canonical failure threshold before admitting a later paired block', async () => {
+    let calls = 0;
+    const failingExecutor = executor(async () => {
+      calls += 1;
+      return { errorCode: 'permanent-executor-failure' };
+    });
+    const result = await evaluate({
+      ...pairedInput(failingExecutor),
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        failure: { failureMode: 'failure-threshold', maxFailures: 0 },
+      },
+      runId: 'failure-threshold',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(calls).toBe(2);
+    expect(result.artifacts?.execution).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'failure-policy-threshold',
+      coverage: { started: 2, failed: 2, notStarted: 2 },
+    });
+  });
+
+  it('rejects invalid or legacy policy shapes before the first Target invocation', async () => {
+    let calls = 0;
+    const countedExecutor = executor(async () => {
+      calls += 1;
+      return { output: 'A' };
+    });
+    const invalidPolicies: unknown[] = [
+      { maxConcurrency: 2 },
+      {
+        execution: {
+          retry: {
+            maxAttempts: 2,
+            retryableErrorCodes: ['timeout', 'timeout'],
+            backoff: { backoffKind: 'none' },
+          },
+        },
+      },
+      { failure: { failureMode: 'continue', maxFailures: 1 } },
+    ];
+
+    for (const policy of invalidPolicies) {
+      await expect(evaluate({
+        ...pairedInput(countedExecutor),
+        policy,
+        runId: 'invalid-policy-before-target',
+      } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+    }
+    expect(calls).toBe(0);
   });
 
   it('captures the active callback and changes Runtime identity when declared facets change', async () => {
@@ -1848,7 +2023,10 @@ describe('canonical eval-runtime API', () => {
         sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
       },
       decision: undefined,
-      policy: { maxConcurrency: 2 },
+      policy: {
+        execution: { maxConcurrency: 2 },
+        evaluation: { maxConcurrency: 2 },
+      },
       runId: 'rubric-panel',
       clock: fixedClock,
     });

@@ -77,7 +77,10 @@ const result = await evaluate({
     analysisId: 'baseline-vs-candidate-correct',
   },
   experiment: { seed: 'explicit-example-seed', sampling: { samplingKind: 'paired' } },
-  policy: { maxConcurrency: 2 },
+  policy: {
+    execution: { maxConcurrency: 2 },
+    evaluation: { maxConcurrency: 2 },
+  },
   runId: 'eval-runtime-example',
 });
 

@@ -7,6 +7,7 @@ import {
   evaluate,
 } from 'oh-my-knowledge/eval-runtime';
 
+const retryAttempts = [];
 const executor = {
   executorId: 'clean-room.json-host/v1',
   version: '1.0.0',
@@ -24,7 +25,13 @@ const executor = {
     },
   },
   fingerprintFacets: { revision: 'clean-room-one' },
-  async execute({ input, signal }) {
+  async execute({ input, attemptNumber, signal }) {
+    if (input === 'retry') {
+      retryAttempts.push(attemptNumber);
+      if (attemptNumber === 1) {
+        return { errorCode: 'clean-room-retryable', usage: { inputTokens: 1 } };
+      }
+    }
     if (input === 'failure') {
       return { errorCode: 'clean-room-expected-failure', usage: { inputTokens: 1 } };
     }
@@ -92,7 +99,10 @@ const evaluation = (overrides = {}) => evaluate({
     analysisId: 'baseline-vs-prompt-v2-correct',
   },
   experiment: { seed: 'clean-room-seed', sampling: { samplingKind: 'paired' } },
-  policy: { maxConcurrency: 1 },
+  policy: {
+    execution: { maxConcurrency: 1 },
+    evaluation: { maxConcurrency: 1 },
+  },
   runId: 'clean-room-evaluate',
   ...overrides,
 });
@@ -100,6 +110,29 @@ const evaluation = (overrides = {}) => evaluate({
 const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
+
+const withRetry = await evaluation({
+  dataset: {
+    datasetId: 'clean-room-retry',
+    samples: [{ sampleId: 'retry', input: 'retry', expected: 'expected' }],
+  },
+  policy: {
+    execution: {
+      maxConcurrency: 1,
+      retry: {
+        maxAttempts: 2,
+        retryableErrorCodes: ['clean-room-retryable'],
+        backoff: { backoffKind: 'none' },
+      },
+    },
+    evaluation: { maxConcurrency: 1 },
+    failure: { failureMode: 'fail-fast' },
+  },
+  runId: 'clean-room-retry',
+});
+assert.equal(withRetry.status, 'completed');
+assert.deepEqual(retryAttempts, [1, 2, 1, 2]);
+assert.ok(withRetry.artifacts.execution.records.every((record) => record.attempts.length === 2));
 
 const lengthEvaluator = {
   evaluatorKind: 'custom',
