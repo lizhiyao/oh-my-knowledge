@@ -304,6 +304,31 @@ const result = await evaluate({
 
 Ranking 必须是由不重复、非空字符串 ID 组成的有序数组，可来自 `output` 或 `trace`；relevant ID 始终来自 `expected`，不会传给 Executor。该预设先按 `cutoff` 截断，再以 `hits / known relevant` 计算 Recall、以 `hits / cutoff` 计算 Precision、以首个 relevant 文档的名次计算 Reciprocal Rank，并使用 binary gain 与 log2 discount 计算 nDCG。空返回 ranking 是合法的零分；重复或非法 ID、空 relevant 集合会产出 invalid evidence。Reciprocal Rank 的 mean summary 才是 MRR，不要把单个 sample 的观测称为 MRR。
 
+## 工具轨迹评测
+
+需要对 source-neutral Agent 工具调用提出确定性预期时，使用 `ToolTrajectoryEvaluator`。Executor trace 必须满足 `omk.source-neutral-trace/v2`；provider adapter 应先把原生 event 归一化，再返回给 Runtime：
+
+```ts
+import { evaluate, type ToolTrajectoryEvaluator } from 'oh-my-knowledge';
+
+const trajectory: ToolTrajectoryEvaluator = {
+  evaluatorKind: 'tool-trajectory',
+  evaluatorId: 'tool-trajectory',
+  metricId: 'tool-trajectory-match',
+  tracePointer: '',
+  expectedToolNamesPointer: '/expectedToolNames',
+  match: 'contains-in-order',
+};
+
+const sample = {
+  sampleId: 'research-policy',
+  input: { request: '检索并总结这项规则。' },
+  expected: { expectedToolNames: ['Search', 'Read'] },
+};
+```
+
+模式名直接描述 actual trajectory 与 expected trajectory 的关系：`exact-order` 要求序列完全相同；`same-tools` 忽略顺序；`contains-in-order` 允许额外调用，但 expected 必须保持为 subsequence；`contains-any-order` 同时允许额外调用与任意顺序。所有模式都保留重复调用 multiplicity，并区分 source-neutral 工具名的大小写。Success、failure、cancelled 与 unknown 调用全部参与；工具执行结果属于另一项 construct。空 actual 轨迹合法；空 expected 只允许 exact 模式，用于断言“不应调用工具”。如果路径和最终结果都重要，可将这个 boolean Metric 与 final-output 或 Rubric 评委 evaluator 组合。
+
 ## 生产策略
 
 Execution 与 evaluation 是相互独立的 runtime stage。两者分别配置并发、timeout 与 retry；OMK 会在第一次 Target 调用前封存全部默认值，scheduler 仍只由 Core 实现：

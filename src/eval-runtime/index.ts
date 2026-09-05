@@ -57,10 +57,12 @@ export type {
   Sample,
   SamplingDesign,
   StagePolicy,
+  ToolTrajectoryEvaluator,
   Variant,
   VariantExecution,
 } from './evaluate.js';
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
+export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {
   CustomEvaluator,
   CustomEvaluatorBinding,

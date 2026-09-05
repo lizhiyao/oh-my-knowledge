@@ -60,6 +60,12 @@ import {
   createRetrievalEvaluator,
   type RetrievalMetricIds,
 } from './evaluators/retrieval.js';
+import {
+  TOOL_TRAJECTORY_EVALUATOR_IMPLEMENTATION_ID,
+  createToolTrajectoryEvaluator,
+  type ToolTrajectoryMatchMode,
+} from './evaluators/tool-trajectory.js';
+import { SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION } from './traces/source-neutral.js';
 import { createInvokeExecutorIdentity, createRuntimeIdentity } from './identity.js';
 import {
   captureCustomEvaluator,
@@ -162,6 +168,20 @@ const RetrievalEvaluatorInputSchema = z.object({
     });
   }
 });
+
+const ToolTrajectoryEvaluatorInputSchema = z.object({
+  evaluatorKind: z.literal('tool-trajectory'),
+  evaluatorId: IdentifierSchema,
+  metricId: IdentifierSchema,
+  tracePointer: JsonPointerSchema,
+  expectedToolNamesPointer: JsonPointerSchema,
+  match: z.enum([
+    'exact-order',
+    'same-tools',
+    'contains-in-order',
+    'contains-any-order',
+  ]),
+}).strict();
 
 const SamplingDesignInputSchema = z.discriminatedUnion('samplingKind', [
   z.object({
@@ -497,6 +517,15 @@ export interface RetrievalEvaluator {
   readonly metricIds: RetrievalMetricIds;
 }
 
+export interface ToolTrajectoryEvaluator {
+  readonly evaluatorKind: 'tool-trajectory';
+  readonly evaluatorId: string;
+  readonly metricId: string;
+  readonly tracePointer: string;
+  readonly expectedToolNamesPointer: string;
+  readonly match: ToolTrajectoryMatchMode;
+}
+
 export interface Judge {
   readonly judgeId: string;
   readonly version: string;
@@ -553,6 +582,7 @@ export interface RubricJudgeEvaluator {
 export type Evaluator =
   | ExactMatchEvaluator
   | RetrievalEvaluator
+  | ToolTrajectoryEvaluator
   | RubricJudgeEvaluator
   | CustomEvaluator;
 
@@ -1434,6 +1464,62 @@ function retrievalDefinition(input: Readonly<RetrievalEvaluator>): Readonly<{
   });
 }
 
+function toolTrajectoryDefinition(input: Readonly<ToolTrajectoryEvaluator>): Readonly<{
+  definition: EvaluatorDefinition;
+  metric: MetricDefinition;
+  port: EvaluationEvaluator;
+}> {
+  const parsed = ToolTrajectoryEvaluatorInputSchema.parse(structuredClone(input));
+  const portInput = {
+    evaluatorId: parsed.evaluatorId,
+    metricId: parsed.metricId,
+    tracePointer: parsed.tracePointer,
+    expectedToolNamesPointer: parsed.expectedToolNamesPointer,
+    match: parsed.match,
+  };
+  return Object.freeze({
+    definition: EvaluatorDefinitionSchema.parse({
+      evaluatorId: parsed.evaluatorId,
+      evaluatorKind: 'assertion',
+      implementationId: TOOL_TRAJECTORY_EVALUATOR_IMPLEMENTATION_ID,
+      measurement: {
+        instrumentId: 'source-neutral-tool-trajectory-v1',
+        ensembleMemberId: 'deterministic-local',
+        replicateGroupId: 'deterministic-primary',
+        replicateIndex: 0,
+      },
+      metricIds: [parsed.metricId],
+      inputs: [{
+        bindingId: 'trace',
+        sourceKind: 'trace',
+        pointer: parsed.tracePointer,
+      }, {
+        bindingId: 'expected-tool-names',
+        sourceKind: 'expected',
+        pointer: parsed.expectedToolNamesPointer,
+      }],
+      config: {
+        match: parsed.match,
+        traceSchemaVersion: SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
+        toolIdentityComparison: 'case-sensitive',
+        toolCallCollection: 'top-level-toolCalls',
+        toolCallOrder: 'array-order',
+        toolCallSelection: 'all-statuses',
+        traceRoleSelection: 'all',
+        multiplicity: 'preserved',
+      },
+    }),
+    metric: MetricDefinitionSchema.parse({
+      metricId: parsed.metricId,
+      valueType: 'boolean',
+      scope: 'sample',
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    }),
+    port: createToolTrajectoryEvaluator(portInput),
+  });
+}
+
 function captureEvaluators(
   dataset: Readonly<Dataset>,
   values: readonly Evaluator[],
@@ -1449,6 +1535,7 @@ function captureEvaluators(
   const measurementAggregations = new Map<string, MeasurementAggregationPlan>();
   const exactPorts = new Map<string, EvaluationEvaluator>();
   const retrievalPorts = new Map<string, EvaluationEvaluator>();
+  const toolTrajectoryPorts = new Map<string, EvaluationEvaluator>();
   const rubricEntries: Array<Readonly<{
     kit: Readonly<RubricJudgeKit>;
     criterion: Readonly<RubricJudgeCriterion>;
@@ -1481,6 +1568,21 @@ function captureEvaluators(
         definitions.push(captured.definition);
         metrics.push(...captured.metrics);
         retrievalPorts.set(captured.definition.evaluatorId, captured.port);
+        continue;
+      }
+      if (value.evaluatorKind === 'tool-trajectory') {
+        let captured;
+        try {
+          captured = toolTrajectoryDefinition(value);
+        } catch {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Tool Trajectory Evaluator 配置无效。',
+          );
+        }
+        definitions.push(captured.definition);
+        metrics.push(captured.metric);
+        toolTrajectoryPorts.set(captured.definition.evaluatorId, captured.port);
         continue;
       }
       if (value.evaluatorKind === 'custom') {
@@ -1713,6 +1815,21 @@ function captureEvaluators(
           return configurationFailure(
             'EVAL_RUNTIME_EVALUATOR_INVALID',
             'Evaluation Runtime 收到了未知 retrieval evaluator binding。',
+          );
+        }
+        return port;
+      },
+    });
+  }
+  if (toolTrajectoryPorts.size > 0) {
+    registrations.push({
+      implementationId: TOOL_TRAJECTORY_EVALUATOR_IMPLEMENTATION_ID,
+      createPort(requirement) {
+        const port = toolTrajectoryPorts.get(requirement.referenceId);
+        if (port === undefined) {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Evaluation Runtime 收到了未知 tool trajectory evaluator binding。',
           );
         }
         return port;

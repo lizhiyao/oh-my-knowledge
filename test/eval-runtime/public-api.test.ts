@@ -17,6 +17,8 @@ import type {
   RetrievalMetricIds,
   RunBudgetScope,
   SamplingDesign,
+  ToolTrajectoryEvaluator,
+  ToolTrajectoryMatchMode,
 } from '../../src/eval-runtime/index.js';
 
 const independentSampling: SamplingDesign = {
@@ -132,6 +134,16 @@ const publicRetrievalEvaluator: RetrievalEvaluator = {
   metricIds: publicRetrievalMetrics,
 };
 void publicRetrievalEvaluator;
+const publicTrajectoryMatch: ToolTrajectoryMatchMode = 'contains-in-order';
+const publicToolTrajectoryEvaluator: ToolTrajectoryEvaluator = {
+  evaluatorKind: 'tool-trajectory',
+  evaluatorId: 'tool-trajectory',
+  metricId: 'tool-trajectory-match',
+  tracePointer: '',
+  expectedToolNamesPointer: '/expectedToolNames',
+  match: publicTrajectoryMatch,
+};
+void publicToolTrajectoryEvaluator;
 const invalidAttemptBudget: AttemptBudgetScope = {
   // @ts-expect-error an attempt budget only supports provider cost.
   maxInvocations: 1,
@@ -236,6 +248,8 @@ const PUBLIC_API = {
       'Sample',
       'SamplingDesign',
       'StagePolicy',
+      'ToolTrajectoryEvaluator',
+      'ToolTrajectoryMatchMode',
       'Variant',
       'VariantExecution',
     ],
