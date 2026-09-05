@@ -69,11 +69,18 @@ export interface MeasurementEvidencePolicyInput {
   readonly maximumClassification?: 'public' | 'sensitive' | 'secret' | 'gold';
 }
 
+export interface MeasurementCachePolicyInput {
+  /** `reuse` executes on miss; `replay-only` fails instead of calling the Target. */
+  readonly execution?: 'disabled' | 'reuse' | 'replay-only';
+  readonly evaluation?: 'disabled' | 'reuse';
+}
+
 export interface MeasurementPolicyBuilderInput {
   readonly execution?: MeasurementStagePolicyInput;
   readonly evaluation?: MeasurementStagePolicyInput;
   readonly budget?: MeasurementBudgetPolicyInput;
   readonly failure?: MeasurementFailurePolicyInput;
+  readonly cache?: MeasurementCachePolicyInput;
   readonly evidence?: MeasurementEvidencePolicyInput;
   readonly eventDelivery?: MeasurementEventDeliveryInput;
 }
@@ -198,6 +205,10 @@ export const MeasurementPolicyBuilderInputSchema = z.object({
   evaluation: StagePolicyInputSchema.optional(),
   budget: BudgetInputSchema.optional(),
   failure: FailurePolicyInputSchema.optional(),
+  cache: z.object({
+    execution: z.enum(['disabled', 'reuse', 'replay-only']).optional(),
+    evaluation: z.enum(['disabled', 'reuse']).optional(),
+  }).strict().optional(),
   evidence: z.object({
     output: z.enum(['full', 'reference', 'digest', 'none']).optional(),
     trace: z.enum(['full', 'reference', 'digest', 'none']).optional(),
@@ -288,7 +299,12 @@ export function createMeasurementPolicy(
         : { timeoutMs: evaluation.timeoutMs }),
       retry: materializeRetry(evaluation.retry),
     },
-    cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
+    cache: {
+      executionMode: parsed.cache?.execution === 'reuse'
+        ? 'transparent-deterministic'
+        : (parsed.cache?.execution ?? 'disabled'),
+      evaluationMode: parsed.cache?.evaluation ?? 'disabled',
+    },
     evidence: {
       output: parsed.evidence?.output ?? 'full',
       trace: parsed.evidence?.trace ?? 'full',

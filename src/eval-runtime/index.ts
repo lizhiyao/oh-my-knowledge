@@ -15,6 +15,7 @@ export type {
   AttemptBudgetScope,
   BudgetPolicy,
   BudgetScope,
+  CachePolicy,
   Clock,
   CohortFilter,
   Comparison,
@@ -78,7 +79,14 @@ export type {
   ContentStore,
   ContentStoreRequest,
   ContentValue,
+  EvaluationCache,
+  EvaluationCacheEntry,
   EvaluationInfrastructure,
+  ExecutionCache,
+  ExecutionCacheEntry,
+  ExecutorIdentityVerification,
+  ExecutorIdentityVerificationRequest,
+  ExecutorIdentityVerifier,
 } from './infrastructure.js';
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';

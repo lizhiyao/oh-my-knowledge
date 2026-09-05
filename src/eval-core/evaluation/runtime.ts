@@ -705,16 +705,14 @@ function cacheKey(
   plan: SealedRunPlan,
   coordinate: PlannedEvaluationCoordinate,
   binding: EvaluatorBinding,
-  sourceRecordDigest: Sha256Digest,
   sourceTrust: Provenance['trust'],
   bindings: readonly EvaluatorBindingValue[],
 ): Sha256Digest {
   return digestCanonicalJson({
-    derivation: 'omk.evaluation-cache-key/v1',
+    derivation: 'omk.evaluation-cache-key/v2',
     evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
     evaluationId: coordinate.evaluationId,
     evaluatorRuntime: binding.runtime,
-    sourceRecordDigest,
     sourceTrust,
     bindings,
   });
@@ -744,7 +742,7 @@ function replayRecord(
   const expectedNativeProvenance = {
     provenanceKind: 'native' as const,
     trust: expectedTrust,
-    parentDigests: [plan.evaluation.evaluationPlanDigest, sourceRecordDigest],
+    parentDigests: [plan.evaluation.evaluationPlanDigest, record.sourceRecordDigest],
   };
   const contractInvalid = record.targetId !== coordinate.targetId
     || record.sampleId !== coordinate.sampleId
@@ -752,7 +750,6 @@ function replayRecord(
     || record.trialId !== coordinate.trialId
     || record.evaluatorId !== coordinate.evaluatorId
     || record.evaluationId !== coordinate.evaluationId
-    || record.sourceRecordDigest !== sourceRecordDigest
     || canonicalizeJson(record.runtime) !== canonicalizeJson(binding.runtime)
     || canonicalizeJson(record.provenance) !== canonicalizeJson(expectedNativeProvenance)
     || canonicalizeJson(record.cache) !== canonicalizeJson({
@@ -810,6 +807,7 @@ function replayRecord(
   }
   return {
     ...snapshotJson(record),
+    sourceRecordDigest,
     provenance: {
       provenanceKind: 'replay',
       trust: expectedTrust,
@@ -843,7 +841,6 @@ async function evaluateCoordinate(
     plan,
     coordinate,
     binding,
-    sourceRecordDigest,
     sourceTrust,
     inputs,
   );

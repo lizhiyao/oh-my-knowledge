@@ -207,6 +207,48 @@ const result = await evaluate({
 
 检查默认最多等待每个操作 5 秒；若存储服务使用不同的本地 SLO，可显式设置 `timeoutMs`。Content port 不暴露取消能力，因此 timeout 后停止底层操作仍由宿主负责。
 
+## 复用执行与评价结果
+
+Execution 与 Evaluation 缓存相互独立，由宿主注入存储 port，由 Core 派生 key、验证 entry 并记录命中 provenance：
+
+```ts
+import type {
+  EvaluationCache,
+  ExecutionCache,
+  ExecutorIdentityVerifier,
+} from 'oh-my-knowledge';
+
+const executionCache: ExecutionCache = durableExecutionCache;
+const evaluationCache: EvaluationCache = durableEvaluationCache;
+const executorIdentityVerifier: ExecutorIdentityVerifier = {
+  verifierId: 'acme.signed-deployment-registry/v1',
+  async verify({ executor, declaredIdentity }) {
+    const attestation = await deploymentRegistry.verifyCallable({
+      implementation: executor,
+      declaredIdentity,
+    });
+    return { attestationDigest: attestation.digest };
+  },
+};
+
+const cached = await evaluate({
+  ...input,
+  policy: {
+    ...input.policy,
+    cache: { execution: 'reuse', evaluation: 'reuse' },
+  },
+  infrastructure: {
+    executionCache,
+    evaluationCache,
+    executorIdentityVerifier,
+  },
+});
+```
+
+`execution: 'reuse'` 表示命中时复用，miss 时执行并写入；它只适用于声明为 deterministic 的 Executor，并且必须由独立认证器把捕获的实际 callable、依赖和部署配置绑定到稳定 attestation。`checkExecutor()` 只检查行为一致性，不会把自报身份升级为 verified；认证器也不能只复述 `declaredIdentity`。`execution: 'replay-only'` 不写入，任一 miss 都会在调用 Target 前失败，适合显式离线重放。`evaluation: 'reuse'` 独立复用已完成的评价记录。
+
+缺少所需 cache port 或透明 Execution 复用所需的认证器时，`prepareEvaluation()` 会失败关闭。缓存实现和 credential 不进入 Definition；缓存 entry 类型是公开的 `ExecutionCacheEntry` 与 `EvaluationCacheEntry`，但调用方不应自行放宽或重写 Core 的验证规则。不同实现、workspace、工具策略、评测输入或测量策略会通过 sealed identity 失效相应缓存。
+
 ## 内容寻址 Workspace
 
 Agent 或 Workflow 需要文件时，应通过内容身份声明文件，由宿主负责物化；不要把 `cwd`、checkout 路径、credential 或 CAS URL 放进 `runtimeContext`：

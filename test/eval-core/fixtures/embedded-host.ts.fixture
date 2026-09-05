@@ -47,12 +47,18 @@ import {
   prepareEvaluation,
   type AnalysisRequest,
   type AllowedToolsPlan,
+  type CachePolicy,
   type CohortFilter,
   type ContentResolver,
   type ContentStore,
+  type EvaluationCache,
+  type EvaluationCacheEntry,
   type EvaluationInfrastructure,
   type EvidencePolicy,
+  type ExecutionCache,
+  type ExecutionCacheEntry,
   type Executor as CanonicalExecutor,
+  type ExecutorIdentityVerifier,
   type PreparedEvaluation,
   type Variant as CanonicalVariant,
   type WorkspaceDescriptor,
@@ -150,8 +156,36 @@ const contentResolver: ContentResolver = {
     return { value: null, classification: 'sensitive', mediaType: descriptor.mediaType };
   },
 };
-const evaluationInfrastructure: EvaluationInfrastructure = { contentStore, contentResolver };
+const executionCacheEntries = new Map<string, ExecutionCacheEntry>();
+const executionCache: ExecutionCache = {
+  async get(key) { return executionCacheEntries.get(key); },
+  async put(entry) { executionCacheEntries.set(entry.cacheKeyDigest, entry); },
+};
+const evaluationCacheEntries = new Map<string, EvaluationCacheEntry>();
+const evaluationCache: EvaluationCache = {
+  async get(key) { return evaluationCacheEntries.get(key); },
+  async put(entry) { evaluationCacheEntries.set(entry.cacheKeyDigest, entry); },
+};
+const executorIdentityVerifier: ExecutorIdentityVerifier = {
+  verifierId: 'typescript.signed-registry/v1',
+  async verify({ executor: capturedExecutor, declaredIdentity }) {
+    const executorId: string = capturedExecutor.executorId;
+    const fingerprint: string = declaredIdentity.fingerprint;
+    void executorId;
+    void fingerprint;
+    return { attestationDigest: `sha256:${'a'.repeat(64)}` };
+  },
+};
+const cachePolicy: CachePolicy = { execution: 'reuse', evaluation: 'reuse' };
+const evaluationInfrastructure: EvaluationInfrastructure = {
+  contentStore,
+  contentResolver,
+  executionCache,
+  evaluationCache,
+  executorIdentityVerifier,
+};
 void evidencePolicy;
+void cachePolicy;
 void evaluationInfrastructure;
 const workspaceDescriptor: WorkspaceDescriptor = {
   resourceId: 'typescript-workspace',

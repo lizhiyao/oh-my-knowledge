@@ -7,6 +7,7 @@ import {
   effectiveExecutionBundleTrust,
   parseExecutionBundle,
   parseEvaluationBundle,
+  verifyExecutionBundle,
   verifyEvaluationBundle,
   type BudgetLedgerEntry,
   type BudgetScopeSummary,
@@ -752,7 +753,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(bundle.coverage.completed).toBe(0);
   });
 
-  it('reuses cache by source digest and commits only after clean resource teardown', async () => {
+  it('reuses validated cache entries and commits only after clean resource teardown', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
     });
@@ -803,6 +804,55 @@ describe('Evaluation Core Evaluation runtime', () => {
       { runId: 'cache-dirty', bundleId: 'cache-dirty-bundle' },
     )).resolves.toMatchObject({ evaluationBundleStatus: 'failed' });
     expect(dirtyCache.puts).toBe(0);
+  });
+
+  it('reuses cached Evaluation across timing-only Execution changes', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan);
+    const cache = new MemoryCache();
+    const first = evaluator(plan);
+    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+      runId: 'timing-cache-first',
+      bundleId: 'timing-cache-first-bundle',
+    });
+    const timingChangedBundle = resealExecutionBundle(source.bundle, (draft) => {
+      for (const record of draft.records) {
+        if (record.executionStatus === 'budget-censored') continue;
+        record.timing.startedAt = '2026-09-07T00:00:00.000Z';
+        record.timing.completedAt = '2026-09-07T00:00:01.000Z';
+        for (const attempt of record.attempts) {
+          attempt.timing.startedAt = '2026-09-07T00:00:00.000Z';
+          attempt.timing.completedAt = '2026-09-07T00:00:01.000Z';
+        }
+      }
+    });
+    const changedSource = verifyExecutionBundle(timingChangedBundle, plan, {
+      verifiedProvenanceBundleDigests: new Set([
+        timingChangedBundle.bundleDigest as Sha256Digest,
+      ]),
+    });
+    const second = evaluator(plan);
+    const replay = await evaluateExecutionBundle(
+      plan,
+      changedSource,
+      ports(plan, second.port, { cache }),
+      { runId: 'timing-cache-second', bundleId: 'timing-cache-second-bundle' },
+    );
+
+    expect(second.state.attempts).toBe(0);
+    expect(replay.records.every((record) => (
+      record.evaluationStatus === 'completed'
+      && record.cache.cacheStatus === 'transparent-hit'
+      && record.sourceRecordDigest === digestCanonicalJson(
+        changedSource.bundle.records.find((sourceRecord) => (
+          sourceRecord.targetId === record.targetId
+          && sourceRecord.sampleId === record.sampleId
+          && sourceRecord.trialIndex === record.trialIndex
+        )),
+      )
+    ))).toBe(true);
   });
 
   it('does not exempt a structurally valid but externally unverified cache-hit claim', async () => {
