@@ -110,12 +110,11 @@ const result = await evaluate({
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'prompt-v1',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'prompt-v1-vs-v2-correct',
     analysisKind: 'comparison-interval',
     statistic: 'mean-difference',
@@ -123,7 +122,7 @@ const result = await evaluate({
     treatmentVariantId: 'prompt-v2',
     metricId: 'correct',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
-  }] },
+  }],
   decision: {
     decisionKind: 'analysis',
     analysisId: 'prompt-v1-vs-v2-correct',
@@ -152,12 +151,11 @@ Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 
 
 Variant `config` 与 `runtimeContext` 会序列化进入 sealed Definition，因此只应放入可重放、非敏感的测量输入。凭证、client 与进程内资源应保留在 Executor closure 中，绝不能进入 Definition。
 
-使用独立组时，必须同时调整 comparison 与 sampling 声明，并为每个 Variant 声明一个 allocation：
+使用独立组时，只需调整 sampling 声明。Sampling Design 是 paired／independent 语义的唯一来源，同时必须为每个 Variant 声明一个 allocation：
 
 ```ts
 comparisons: [{
   comparisonId: 'prompt-v1-vs-v2',
-  comparisonKind: 'independent',
   controlVariantId: 'prompt-v1',
   treatmentVariantIds: ['prompt-v2'],
   metricIds: ['correct'],
@@ -182,7 +180,7 @@ OMK 会在执行前确定性地为每个 sample 封存唯一 Variant。重复 tr
 多个预注册 contrast 属于同一个推断 family 时，应把它们共同声明，不能分别运行多个 nominal 95% 区间：
 
 ```ts
-analysis: { analyses: [{
+analyses: [{
   analysisId: 'release-family',
   analysisKind: 'comparison-family',
   statistic: 'mean-difference',
@@ -205,7 +203,7 @@ analysis: { analyses: [{
     level: 0.95,
     resamples: 10_000,
   },
-}] },
+}],
 decision: {
   decisionKind: 'comparison-family',
   analysisId: 'release-family',
@@ -323,7 +321,6 @@ const result = await evaluate({
   evaluators: [outputLength],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'prompt-v1',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['output-length-chars'],
@@ -382,7 +379,6 @@ const result = await evaluate({
   }],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'prompt-v1',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correctness-score'],

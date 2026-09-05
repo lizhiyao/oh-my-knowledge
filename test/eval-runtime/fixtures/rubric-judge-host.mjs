@@ -75,18 +75,17 @@ const base = {
   }],
   comparisons: [{
     comparisonId: 'control-vs-treatment',
-    comparisonKind: 'paired',
     controlVariantId: 'control',
     treatmentVariantIds: ['treatment'],
     metricIds: ['rubric-score'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'control-vs-treatment-rubric',
     analysisKind: 'comparison-interval', statistic: 'mean-difference',
     comparisonId: 'control-vs-treatment', treatmentVariantId: 'treatment',
     metricId: 'rubric-score',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
-  }] },
+  }],
   decision: {
     decisionKind: 'analysis',
     analysisId: 'control-vs-treatment-rubric',

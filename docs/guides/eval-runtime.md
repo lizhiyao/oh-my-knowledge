@@ -113,12 +113,11 @@ const result = await evaluate({
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'prompt-v1',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correct'],
   }],
-  analysis: { analyses: [{
+  analyses: [{
     analysisId: 'prompt-v1-vs-v2-correct',
     analysisKind: 'comparison-interval',
     statistic: 'mean-difference',
@@ -126,7 +125,7 @@ const result = await evaluate({
     treatmentVariantId: 'prompt-v2',
     metricId: 'correct',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
-  }] },
+  }],
   decision: {
     decisionKind: 'analysis',
     analysisId: 'prompt-v1-vs-v2-correct',
@@ -155,12 +154,11 @@ Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults,
 
 Variant `config` and `runtimeContext` are serialized into the sealed Definition. Put only reproducible, non-secret measurement inputs there. Credentials, clients, and process-local resources stay in the Executor closure and never enter the Definition.
 
-For independent groups, change the comparison and sampling declarations together. Every Variant must have one allocation:
+For independent groups, change only the sampling declaration. Sampling Design is the single source of paired／independent semantics, and every Variant must have one allocation:
 
 ```ts
 comparisons: [{
   comparisonId: 'prompt-v1-vs-v2',
-  comparisonKind: 'independent',
   controlVariantId: 'prompt-v1',
   treatmentVariantIds: ['prompt-v2'],
   metricIds: ['correct'],
@@ -185,7 +183,7 @@ OMK deterministically seals one Variant per sample before execution. Repeated tr
 When several preregistered contrasts belong to one inference family, declare them together instead of running several nominal 95% intervals:
 
 ```ts
-analysis: { analyses: [{
+analyses: [{
   analysisId: 'release-family',
   analysisKind: 'comparison-family',
   statistic: 'mean-difference',
@@ -208,7 +206,7 @@ analysis: { analyses: [{
     level: 0.95,
     resamples: 10_000,
   },
-}] },
+}],
 decision: {
   decisionKind: 'comparison-family',
   analysisId: 'release-family',
@@ -326,7 +324,6 @@ const result = await evaluate({
   evaluators: [outputLength],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'prompt-v1',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['output-length-chars'],
@@ -385,7 +382,6 @@ const result = await evaluate({
   }],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
-    comparisonKind: 'paired',
     controlVariantId: 'prompt-v1',
     treatmentVariantIds: ['prompt-v2'],
     metricIds: ['correctness-score'],
