@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`evaluateSeries`、`prepareEvaluationSeries`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`checkRuntime`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
+这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`evaluateSeries`、`prepareEvaluationSeries`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`saveEvaluationResult`、`loadEvaluationResult`、`checkRuntime`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -20,6 +20,10 @@
 | `reanalyze` | 复用已认证的 Execution 与 Evaluation stage，再按新封存声明执行 Analysis、Decision 与 Report。 |
 | `redecide` | 复用已认证的 Execution、Evaluation 与 Analysis stage，再执行新声明的 Decision 与 Report。 |
 | `assessComparability` | 在不重新执行 Target 的前提下，按 evaluation、analysis 或 decision scope 评估两份已认证 canonical Run result 的可比性。 |
+| `saveEvaluationResult` | 通过宿主注入的 `ContentStore` 持久化一份已认证 canonical result；版本化 envelope 始终按 Gold 分类。 |
+| `loadEvaluationResult` | 按准确的 `PreparedEvaluation` 解析并重新接纳已存结果；恢复 provenance authority 前必须通过独立宿主 verifier。 |
+| `EVALUATION_RESULT_MEDIA_TYPE` | 已存 result envelope 的版本化 media type。 |
+| `EvaluationResultStoreError` | 稳定且脱敏的存储、解析、认证、plan 或 content 错误。 |
 | `checkRuntime` | 通过版本化行为探针检查单个注入的 Runtime 组件。当前支持 Executor、Custom Evaluator、Judge、execution／evaluation cache、ContentStore／ContentResolver 与 WorkspaceProvider。 |
 | `checkContentStore` | 验证宿主 ContentStore／ContentResolver 的 descriptor 完整性与稳定性、幂等写入，以及回读 value、classification 和 media type；宿主异常只会归约为稳定 reason code。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量探针检查 Executor 行为。 |
@@ -49,7 +53,7 @@ Mock interception type 包括 `MockInterceptionDescriptor`、`MockInterceptionIn
 
 `RuntimeContext` 只包含可重放的宿主自定义 JSON `values`。Variant 使用内容寻址的 `WorkspaceDescriptor` 选择逻辑 workspace，也可以使用包含一个 `default` 和 `bySampleId` override 的 `WorkspacePlan`；`null` 表示为该 sample 显式禁用默认 workspace。Executor 持有对应的 `WorkspaceProvider`：稳定的 `providerId`、`version` 和可选的测量相关 `fingerprintFacets` 进入 Runtime identity，credential、CAS locator、cache 与 base directory 则只保留在 provider closure 内；canonical 与 advanced JSON adapter 都会把 provider identity 强制组合到最终 Executor fingerprint。`prepareEvaluation()` 只封存 descriptor，不打开 lease。执行时 provider 必须验证请求的不可变 descriptor，并返回一份带绝对路径、trial 私有 `root` 的新 `WorkspaceLease`。同一 trial 的 retry 复用同一个 `WorkspaceAccess`，随后无论成功、失败、timeout 还是取消，Runtime 都会调用 `close()`。OMK 自身绝不会把物理 root 或 provider 私有状态加入 Definition、result 或 error；Executor 同样不应通过自己的 output 或 trace 返回 locator。Invoke 与 session Executor 只能看到 `{ descriptor, root }`，无法关闭其它组件持有的 lease。跨 trial 复用 lease object、复用仍活跃的物理 root，都会失败关闭；清理失败的 root 在当前进程中保持隔离。`open()` 与 `close()` 必须是有界的本地资源工作。Lease 提供的是测量隔离，不是安全 sandbox；不可信代码的 containment 仍由宿主负责。
 
-Variant 还可以把 `execution.allowedTools` 设为一份准确列表，或设为带 `default` 与 `bySampleId` 的 `AllowedToolsPlan`。OMK 会为身份计算排序，但绝不会把不同 sample 的列表取并集。`[]` 表示禁用全部工具；sample override 的 `null` 表示显式恢复 Executor runtime 默认值。Executor 必须声明 `capabilities.toolPolicy: 'allow-list'`，并严格执行 `execute()` 或 `openSession()` 收到的 `allowedTools`；`undefined` 表示使用 runtime 默认值。缺少 capability 时，OMK 会在执行前失败关闭；但 capability 属于自我声明，后端无法准确执行列表时绝不能声明。工具名和 workspace control 都不会进入 Gold 或 evaluation-only context。`checkExecutor()` 当前会拒绝启用 workspace 或 tool policy 的声明，因为通用 probe 无法证明其隔离或执行效果；专用 conformance probe 完成前，应运行真实 Evaluation 验证。
+Variant 还可以把 `execution.allowedTools` 设为一份准确列表，或设为带 `default` 与 `bySampleId` 的 `AllowedToolsPlan`。OMK 会为身份计算排序，但绝不会把不同 sample 的列表取并集。`[]` 表示禁用全部工具；sample override 的 `null` 表示显式恢复 Executor runtime 默认值。Executor 必须声明 `capabilities.toolPolicy: 'allow-list'`，并严格执行 `execute()` 或 `openSession()` 收到的 `allowedTools`；`undefined` 表示使用 runtime 默认值。缺少 capability 时，OMK 会在执行前失败关闭；但 capability 属于自我声明，后端无法准确执行列表时绝不能声明。工具名和 workspace control 都不会进入 Gold 或 evaluation-only context。Skill discovery、安装与名称解析仍由宿主／Workflow 负责；Runtime 只封存最终 execution contract，不增加 `allowedSkills` policy。`checkExecutor()` 当前会拒绝启用 workspace 或 tool policy 的声明，因为通用 probe 无法证明其隔离或执行效果；专用 conformance probe 完成前，应运行真实 Evaluation 验证。
 
 原生 MCP 配置由 Variant 直接选择 secret `application/json` `McpConfigDescriptor`，或通过 `McpConfigPlan` 逐 sample 选择；`null` 表示为该 sample 禁用默认配置。Executor 必须成对声明 `capabilities.mcp: 'native-config'` 与 `McpConfigProvider`。Provider identity 与被选中的 descriptor 进入 Runtime 和 execution-coordinate identity，credential、locator 与配置 byte 则留在 provider 内。Provider 返回的 canonical JSON 必须匹配声明的 digest 与 byte size。Runtime 为每个 Trial 打开一份新 lease，只在该 Trial 的 retry 间复用，只向 Executor 暴露 `{ descriptor, config }`，并在所有终态路径关闭。OMK 不会把配置内容序列化进自己的 result 或 error；Executor 仍须避免通过 output 或 trace 回显 secret。在专用 isolation probe 完成前，`checkExecutor()` 会拒绝启用 MCP 的声明，应使用真实 Evaluation 验证。Discovery、默认值与产品特定的 Workflow 装配不属于该 Runtime port。
 
@@ -86,9 +90,11 @@ const variant: Variant<string, undefined, string> = {
 
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加实际使用的 `runId`、`definition`、`policy` 与 `analysisResults`。最后一项只是按 `analysisId` 索引同一批 Core Analysis record 的只读视图，不是第二套分析实现。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
+`saveEvaluationResult()` 只接受带完整 Execution／Evaluation／Analysis source chain 的原始已认证 result，通过调用方的 `ContentStore` 写入版本化 canonical JSON envelope，并返回内容寻址的 `ContentDescriptor`。Result 包含 sealed Definition 与 Dataset Gold，因此 Runtime 始终以 `classification: 'gold'` 写入，宿主必须实施匹配的访问控制。`loadEvaluationResult()` 要求调用方重新 prepare 完全相同的声明，保持调用方指定的 descriptor 不可变，通过注入的 `ContentResolver` 验证外层值，以及每份以 reference 捕获的 output、trace 与 Evaluator evidence，随后要求 `EvaluationResultVerifier` 认证准确 envelope，最后才让 Core 重新接纳每个 bundle 与 report。Verifier 是宿主信任边界，其 `EvaluationResultVerification` 必须显式列出经过独立认证的 provenance Bundle digest、cache receipt digest 与 Decision policy-execution digest。Runtime 只向 Core 传递这些事实，绝不从已存 Bundle 自身的 claim 推导 verified receipt；只重新计算公开 envelope checksum 不足以构成认证。Store、resolver 与 verifier 可以在宿主内部使用文件或数据库，但 Runtime 不会发现它们，并会同时脱敏 rejected promise 与 malformed return value。不一致 plan、不完整 result、保存 clone、丢失 reference content、被篡改 content 或认证不足均失败关闭。相关 type 包括 `SaveEvaluationResultInput`、`LoadEvaluationResultInput`、`EvaluationResultVerifier`、`EvaluationResultVerificationRequest` 与 `EvaluationResultVerification`。
+
 `EvaluateInput` 只包含测量声明；`EvaluationRunOptions` 容纳单次运行的 `runId`、取消、进度观察、报告 annotation／summary、event buffer 容量与 clock。省略 `runId` 时由 Runtime 生成，并通过 `EvaluationResult.runId` 返回。`prepareEvaluation(input)` 会捕获全部可变声明、物化默认值、解析 Runtime capability，并在不调用 Target 或 Evaluator 的情况下封存 Core Plan。冻结的 `PreparedEvaluation` 暴露准确的 `definition`、`policy`、`plan`、完整运行契约 `planDigest`、`resolvedRuntimes` 与 `estimatedWork`；`run(options)` 直接执行同一份 sealed Plan，不重新读取 input 或重新编译。计划 coordinate 不包含 retry 与提前终止带来的变化，duration 和 provider cost 在执行前会明确保持不确定。
 
-`assessComparability()` 只接受当前进程中由 canonical `evaluate()` 或 `PreparedEvaluation.run()` 返回的两份原始 `EvaluationResult`。Clone 或反序列化文档不具备 source authority，会被拒绝而不是冒充已认证证据。`comparisonScope` 选择需要保持不变的最深契约阶段，每个 `EvaluationComparabilitySubject` 显式映射左右两侧有意变化的 Variant。返回的 `EvaluationComparabilityAssessment` 完全由 Core 生成，并将 `designStatus`、`evidenceQualificationStatus` 与总的 `comparabilityStatus` 分开保留；已映射 subject 的变化只是 identity 事实，不会被误判为设计漂移，未闭合的 Runtime assurance 则保持 conditional。持久化 artifact 的重新 admission 在 Runtime artifact-store contract 落地前仍属于显式的高级 Core 职责。
+`assessComparability()` 接受 canonical evaluation 或 `loadEvaluationResult()` 返回的两份原始已认证 `EvaluationResult`。普通 clone 或反序列化文档不具备 source authority，会被拒绝而不是冒充已认证证据。`comparisonScope` 选择需要保持不变的最深契约阶段，每个 `EvaluationComparabilitySubject` 显式映射左右两侧有意变化的 Variant。返回的 `EvaluationComparabilityAssessment` 完全由 Core 生成，并将 `designStatus`、`evidenceQualificationStatus` 与总的 `comparabilityStatus` 分开保留；已映射 subject 的变化只是 identity 事实，不会被误判为设计漂移，未闭合的 Runtime assurance 则保持 conditional。
 
 `evaluateSeries()` 测量固定设计下的重复性。`repeatCount` 会预注册完整的 member Run 数量；整份 Dataset、SamplingDesign、Evaluator、Analysis graph、policy、Runtime identity 与测量 seed 只捕获一次，并在执行前封存到每个 member。一个 Run 才是一个实验单位；Target trial、retry 与 Rubric 评委 replicate 都是 Run 内嵌套测量，不能增加 Series 的 `runCount`。Member 顺序执行，Execution／Evaluation cache 必须禁用；失败或取消后的 slot 不会被替换，所有缺失都保留在 coverage 中。`stability.sourceAnalysisId` 选择一个既有的 scalar Analysis result，也可以通过显式 `interval-estimate` projection 选择区间的点估计。内置结果只报告 mean、分母为 `n - 1` 的贝塞尔校正样本方差、标准差、最小值、最大值与极差，不产生 verdict 或置信区间。只有全部预注册 slot 都符合 evidence 门槛并可比较时才会完成；否则 stability record 为 inconclusive，不会发布 complete-case 估计。这是同一封存设计下的描述性重复性证据，不代表跨环境复现性，也不主张各 Run 独立同分布。因此，支持 seed 的 Executor 会在每个 member 收到相同的封存 trial seed；有意改变 Run-level seed 属于另一种实验设计，不由首版 façade 表达。
 
@@ -203,4 +209,4 @@ Advanced adapter 还暴露 `McpConfigAccess`、`McpConfigDescriptor`、`McpConfi
 
 预算 limit 现在位于显式 scope 下：将 `budget.maxInvocations` 改为 `budget.run.maxInvocations`。旧结构不会被读取或检测。
 
-自定义 analysis graph、持久 artifact admission、分阶段重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。
+自定义 analysis graph、分阶段重放、transported 自定义 comparability policy，或不符合上述 canonical 完整结果契约的 artifact admission，使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。
