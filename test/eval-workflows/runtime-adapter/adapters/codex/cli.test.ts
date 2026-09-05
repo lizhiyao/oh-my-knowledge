@@ -140,6 +140,7 @@ async function adapterFixture(options: Readonly<{
         tools: options.allowedTools === undefined
           ? { toolPolicyKind: 'runtime-default' }
           : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools] },
+        mcp: { mcpMode: 'not-required' },
       },
       sampleOverrides: [],
     },
@@ -255,10 +256,12 @@ async function execute(
   executionControl: ExecutorTrialContext['executionControl'] = {
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
+    mcp: { mcpMode: 'not-required' },
   },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    signal: new AbortController().signal,
     sampleId: 'sample-a',
     targetId: 'target-a',
     executionCoordinateDigest: digest({ coordinate: 'a' }),

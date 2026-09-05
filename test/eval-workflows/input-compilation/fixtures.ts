@@ -166,6 +166,10 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
               descriptor: { ...workspace, classification: 'sensitive' },
             },
             tools: { toolPolicyKind: 'allow-list', allowedTools: ['search'] },
+            mcp: {
+              mcpMode: 'native-config',
+              descriptor: { ...mcp, classification: 'secret' },
+            },
           },
           sampleOverrides: [],
         },
@@ -200,6 +204,10 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
               descriptor: { ...workspace, classification: 'sensitive' },
             },
             tools: { toolPolicyKind: 'allow-list', allowedTools: ['search'] },
+            mcp: {
+              mcpMode: 'native-config',
+              descriptor: { ...mcp, classification: 'secret' },
+            },
           },
           sampleOverrides: [],
         },

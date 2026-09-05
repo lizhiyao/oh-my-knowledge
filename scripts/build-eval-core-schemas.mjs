@@ -26,6 +26,9 @@ const historicalSchemaDigests = new Map([
   ['v1/comparability-assessment.schema.json', '1e9e264e11bb136d1b17373981878788ffa30a0a1eebf32b070af43a1c2dbd79'],
   ['v1/evaluation-report.schema.json', '57089f7538da7347870426ed9b499adc289660500b8931f278eb2640d39fee8a'],
   ['v1/series-analysis-bundle.schema.json', '6838725aefbe299c51c84b541114f2785e2739bea31cf8beccc0efc238a72a12'],
+  ['v2/execution-plan.schema.json', 'e07ad839db119beb590b2d598f410ec9eb1efef9cf8824a93d0818a03ff4be85'],
+  ['v3/evaluation-definition.schema.json', '88b1014e72aabc2c91eda810c5c59a50d088a801dc6464784c02c0f7e6b46541'],
+  ['v3/run-plan.schema.json', '52ce28e0a05d6183bb71b3f81d1e1a6af1e7e1fcb39714d9de10e9a3f5acd0a6'],
 ]);
 
 function sortJson(value) {

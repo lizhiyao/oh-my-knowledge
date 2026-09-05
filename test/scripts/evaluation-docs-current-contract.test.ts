@@ -19,13 +19,13 @@ const RELEASE_DECISION_DOCS = [
 const SCHEMA_CATALOG_DOCS = [
   {
     path: 'docs/reference/embedded-api.md',
-    counts: (total: number, v3: number, v2: number, v1: number) =>
-      `The catalog contains ${total} root contract names; ${v3} current roots use v3, ${v2} use v2, and ${v1} use v1.`,
+    counts: (total: number, v4: number, v3: number, v2: number, v1: number) =>
+      `The catalog contains ${total} root contract names; ${v4} current roots use v4, ${v3} use v3, ${v2} use v2, and ${v1} use v1.`,
   },
   {
     path: 'docs/zh/reference/embedded-api.md',
-    counts: (total: number, v3: number, v2: number, v1: number) =>
-      `Catalog 共包含 ${total} 个根契约名称；当前有 ${v3} 个根契约使用 v3，${v2} 个使用 v2，${v1} 个使用 v1。`,
+    counts: (total: number, v4: number, v3: number, v2: number, v1: number) =>
+      `Catalog 共包含 ${total} 个根契约名称；当前有 ${v4} 个根契约使用 v4，${v3} 个使用 v3，${v2} 个使用 v2，${v1} 个使用 v1。`,
   },
 ] as const;
 
@@ -46,10 +46,11 @@ describe('current evaluation contract documentation', () => {
     const v1 = counts.get('v1') ?? 0;
     const v2 = counts.get('v2') ?? 0;
     const v3 = counts.get('v3') ?? 0;
+    const v4 = counts.get('v4') ?? 0;
 
     for (const { path, counts: expectedCounts } of SCHEMA_CATALOG_DOCS) {
       const source = readFileSync(resolve(path), 'utf8');
-      expect(source).toContain(expectedCounts(WIRE_SCHEMA_CATALOG.length, v3, v2, v1));
+      expect(source).toContain(expectedCounts(WIRE_SCHEMA_CATALOG.length, v4, v3, v2, v1));
       expect(source).toContain('resolveEvaluationCoreJsonSchema');
     }
   });

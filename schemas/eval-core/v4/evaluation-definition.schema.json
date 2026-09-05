@@ -1,0 +1,1407 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.evaluation-definition/v4",
+      "type": "string"
+    },
+    "__schema1": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisCohorts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "classification": {
+                "$ref": "#/$defs/__schema5"
+              },
+              "cohortId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "cohortSetId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "cohortSetKind": {
+                "enum": [
+                  "partition",
+                  "cohort"
+                ],
+                "type": "string"
+              },
+              "derivation": {
+                "additionalProperties": false,
+                "properties": {
+                  "algorithmId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "seed": {
+                    "$ref": "#/$defs/__schema6"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema6"
+                  }
+                },
+                "required": [
+                  "algorithmId",
+                  "seed"
+                ],
+                "type": "object"
+              },
+              "disclosure": {
+                "enum": [
+                  "identity-only",
+                  "full"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "cohortId",
+              "cohortSetId",
+              "cohortSetKind",
+              "classification",
+              "disclosure"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "annotations": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "datasetId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "samples": {
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "datasetId",
+        "samples"
+      ],
+      "type": "object"
+    },
+    "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "public",
+            "sensitive",
+            "secret"
+          ],
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "mediaType": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "resourceId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "size": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resourceId",
+        "digest",
+        "mediaType",
+        "classification",
+        "size"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema12": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "toolPolicyKind": {
+              "const": "runtime-default",
+              "type": "string"
+            }
+          },
+          "required": [
+            "toolPolicyKind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowedTools": {
+              "items": {
+                "$ref": "#/$defs/__schema6"
+              },
+              "type": "array"
+            },
+            "toolPolicyKind": {
+              "const": "allow-list",
+              "type": "string"
+            }
+          },
+          "required": [
+            "toolPolicyKind",
+            "allowedTools"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema13": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mcpMode": {
+              "const": "not-required",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mcpMode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "descriptor": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "mcpMode": {
+              "const": "native-config",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mcpMode",
+            "descriptor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema14": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "__schema15": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "__schema16": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "__schema17": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "applicableSampleIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "config": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "evaluatorId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "evaluatorKind": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "implementationId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "inputs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "bindingId": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "pointer": {
+                  "$ref": "#/$defs/__schema18"
+                },
+                "sourceKind": {
+                  "enum": [
+                    "output",
+                    "trace",
+                    "expected",
+                    "evaluation-context",
+                    "execution-facts"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bindingId",
+                "sourceKind",
+                "pointer"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "measurement": {
+            "additionalProperties": false,
+            "properties": {
+              "ensembleMemberId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "instrumentId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "replicateGroupId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "replicateIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "instrumentId",
+              "ensembleMemberId",
+              "replicateGroupId",
+              "replicateIndex"
+            ],
+            "type": "object"
+          },
+          "metricIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "versionConstraint": {
+            "$ref": "#/$defs/__schema6"
+          }
+        },
+        "required": [
+          "evaluatorId",
+          "evaluatorKind",
+          "implementationId",
+          "measurement",
+          "metricIds",
+          "inputs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema18": {
+      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
+      "type": "string"
+    },
+    "__schema19": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "higher-is-better",
+              "lower-is-better",
+              "target-is-best"
+            ],
+            "type": "string"
+          },
+          "metricId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "missingPolicyId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "scale": {
+            "additionalProperties": false,
+            "properties": {
+              "max": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "target": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "scope": {
+            "enum": [
+              "sample",
+              "target",
+              "comparison",
+              "run"
+            ],
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/$defs/__schema6"
+          },
+          "valueType": {
+            "enum": [
+              "numeric",
+              "boolean",
+              "categorical",
+              "text",
+              "ranking"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "metricId",
+          "valueType",
+          "scope",
+          "missingPolicyId"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema2": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema20": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "algorithmId": {
+                  "const": "assignment.complete-block/v1",
+                  "type": "string"
+                },
+                "assignmentKind": {
+                  "const": "complete-block",
+                  "type": "string"
+                },
+                "randomizationSlotIds": {
+                  "items": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "stratumKey": {
+                  "$ref": "#/$defs/__schema21"
+                }
+              },
+              "required": [
+                "assignmentKind",
+                "algorithmId",
+                "randomizationSlotIds"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "algorithmId": {
+                  "const": "assignment.stratified-fixed-quota/v1",
+                  "type": "string"
+                },
+                "allocations": {
+                  "items": {
+                    "$ref": "#/$defs/__schema22"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "assignmentKind": {
+                  "const": "independent-groups",
+                  "type": "string"
+                },
+                "minimumUnitsPerTarget": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "minimumUnitsPerTargetPerStratum": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "stratumKey": {
+                  "$ref": "#/$defs/__schema21"
+                }
+              },
+              "required": [
+                "assignmentKind",
+                "algorithmId",
+                "allocations",
+                "minimumUnitsPerTarget",
+                "minimumUnitsPerTargetPerStratum"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "randomizationSlots": {
+          "items": {
+            "$ref": "#/$defs/__schema23"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "sampling": {
+          "additionalProperties": false,
+          "properties": {
+            "clusterKey": {
+              "$ref": "#/$defs/__schema18"
+            },
+            "estimatorId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "experimentalUnit": {
+              "enum": [
+                "sample",
+                "run",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "pairingKey": {
+              "$ref": "#/$defs/__schema18"
+            },
+            "repeatedMeasures": {
+              "type": "boolean"
+            },
+            "resamplingUnit": {
+              "enum": [
+                "sample",
+                "paired-block",
+                "cluster",
+                "run"
+              ],
+              "type": "string"
+            },
+            "seedCoupling": {
+              "enum": [
+                "shared-within-block",
+                "independent-by-target",
+                "uncontrolled"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "experimentalUnit",
+            "repeatedMeasures",
+            "resamplingUnit",
+            "estimatorId",
+            "seedCoupling"
+          ],
+          "type": "object"
+        },
+        "scheduling": {
+          "additionalProperties": false,
+          "properties": {
+            "blockSize": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "schedulingKind": {
+              "enum": [
+                "sequential",
+                "interleaved",
+                "randomized-block"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedulingKind"
+          ],
+          "type": "object"
+        },
+        "seed": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "trials": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trials",
+        "seed",
+        "assignment",
+        "sampling",
+        "scheduling",
+        "randomizationSlots"
+      ],
+      "type": "object"
+    },
+    "__schema21": {
+      "$ref": "#/$defs/__schema18"
+    },
+    "__schema22": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "weight": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "randomizationSlotId",
+        "weight"
+      ],
+      "type": "object"
+    },
+    "__schema23": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema24": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisMode": {
+          "enum": [
+            "preregistered",
+            "exploratory"
+          ],
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "analysisNodeKind": {
+                    "const": "reducer",
+                    "type": "string"
+                  },
+                  "cohortFilter": {
+                    "$ref": "#/$defs/__schema29"
+                  },
+                  "implementationId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "inputs": {
+                    "$ref": "#/$defs/__schema26"
+                  },
+                  "nodeId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "outputResultId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/__schema30"
+                  },
+                  "targetFilter": {
+                    "$ref": "#/$defs/__schema28"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema25"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "implementationId",
+                  "inputs",
+                  "outputResultId",
+                  "analysisNodeKind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "analysisNodeKind": {
+                    "const": "estimator",
+                    "type": "string"
+                  },
+                  "cohortFilter": {
+                    "$ref": "#/$defs/__schema29"
+                  },
+                  "implementationId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "inputs": {
+                    "$ref": "#/$defs/__schema26"
+                  },
+                  "nodeId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "outputResultId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/__schema30"
+                  },
+                  "targetFilter": {
+                    "$ref": "#/$defs/__schema28"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema25"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "implementationId",
+                  "inputs",
+                  "outputResultId",
+                  "analysisNodeKind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "analysisNodeKind": {
+                    "const": "correction",
+                    "type": "string"
+                  },
+                  "cohortFilter": {
+                    "$ref": "#/$defs/__schema29"
+                  },
+                  "implementationId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "inputs": {
+                    "$ref": "#/$defs/__schema26"
+                  },
+                  "nodeId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "outputResultId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/__schema30"
+                  },
+                  "targetFilter": {
+                    "$ref": "#/$defs/__schema28"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema25"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "implementationId",
+                  "inputs",
+                  "outputResultId",
+                  "analysisNodeKind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "analysisMode",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "__schema25": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "__schema26": {
+      "items": {
+        "$ref": "#/$defs/__schema27"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema27": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "metric-observations",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "analysis-result",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "comparison",
+              "type": "string"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId",
+            "treatmentTargetId",
+            "metricId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema28": {
+      "additionalProperties": false,
+      "properties": {
+        "includeTargetIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "includeTargetIds"
+      ],
+      "type": "object"
+    },
+    "__schema29": {
+      "additionalProperties": false,
+      "properties": {
+        "excludeCohortIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "includeCohortIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis": {
+          "additionalProperties": false,
+          "properties": {
+            "context": {
+              "additionalProperties": false,
+              "properties": {
+                "classification": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "value": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              },
+              "required": [
+                "value",
+                "classification"
+              ],
+              "type": "object"
+            },
+            "memberships": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cohortId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "membershipValue": {
+                    "$ref": "#/$defs/__schema4"
+                  }
+                },
+                "required": [
+                  "cohortId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "memberships"
+          ],
+          "type": "object"
+        },
+        "annotations": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "evaluationContext": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "executionContext": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "expected": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "input": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "sampleId",
+        "input"
+      ],
+      "type": "object"
+    },
+    "__schema30": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "__schema31": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisonId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "controlTargetId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "metricIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "treatmentTargetIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "comparisonId",
+          "controlTargetId",
+          "treatmentTargetIds",
+          "metricIds"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema32": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisResultIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "comparisonFamily": {
+          "items": {
+            "$ref": "#/$defs/__schema33"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "comparisonFamilyResultId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "decisionPolicyId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "minimumEvidenceStatus": {
+          "enum": [
+            "complete",
+            "partial",
+            "unresolvable"
+          ],
+          "type": "string"
+        },
+        "multipleComparisonPolicyId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "parameters": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "versionConstraint": {
+          "$ref": "#/$defs/__schema6"
+        }
+      },
+      "required": [
+        "decisionPolicyId",
+        "implementationId",
+        "analysisResultIds",
+        "minimumEvidenceStatus"
+      ],
+      "type": "object"
+    },
+    "__schema33": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "analysisResultId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "comparisonId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "required": [
+            "comparisonId",
+            "treatmentTargetId",
+            "metricId",
+            "analysisResultId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "analysisResultId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "comparisonId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "hypothesisId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "required": [
+            "comparisonId",
+            "treatmentTargetId",
+            "metricId",
+            "analysisResultId",
+            "hypothesisId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema34": {
+      "additionalProperties": false,
+      "properties": {
+        "memberId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "replicateIndex": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "seriesDesignDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seriesDesignDigest",
+        "memberId",
+        "replicateIndex"
+      ],
+      "type": "object"
+    },
+    "__schema35": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema11"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema36"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema36"
+      },
+      "type": "object"
+    },
+    "__schema36": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema4": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema5": {
+      "enum": [
+        "public",
+        "sensitive",
+        "secret",
+        "gold"
+      ],
+      "type": "string"
+    },
+    "__schema6": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema7": {
+      "items": {
+        "$ref": "#/$defs/__schema8"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema8": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "executionControls": {
+          "additionalProperties": false,
+          "properties": {
+            "defaults": {
+              "additionalProperties": false,
+              "properties": {
+                "mcp": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "tools": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "workspace": {
+                  "$ref": "#/$defs/__schema9"
+                }
+              },
+              "required": [
+                "workspace",
+                "tools",
+                "mcp"
+              ],
+              "type": "object"
+            },
+            "sampleOverrides": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "mcp": {
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  "sampleId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "tools": {
+                    "$ref": "#/$defs/__schema15"
+                  },
+                  "workspace": {
+                    "$ref": "#/$defs/__schema14"
+                  }
+                },
+                "required": [
+                  "sampleId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "defaults",
+            "sampleOverrides"
+          ],
+          "type": "object"
+        },
+        "executionRequirements": {
+          "additionalProperties": false,
+          "properties": {
+            "mcp": {
+              "enum": [
+                "not-required",
+                "native-config"
+              ],
+              "type": "string"
+            },
+            "mockInterception": {
+              "enum": [
+                "not-required",
+                "pre-tool-call"
+              ],
+              "type": "string"
+            },
+            "sandboxId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "skillDiscovery": {
+              "enum": [
+                "runtime-default",
+                "disabled",
+                "allow-list"
+              ],
+              "type": "string"
+            },
+            "systemInstructions": {
+              "enum": [
+                "required",
+                "not-required"
+              ],
+              "type": "string"
+            },
+            "toolPolicy": {
+              "enum": [
+                "runtime-default",
+                "allow-list"
+              ],
+              "type": "string"
+            },
+            "workspace": {
+              "enum": [
+                "not-required",
+                "copy-on-write-overlay"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "systemInstructions",
+            "workspace",
+            "mcp",
+            "mockInterception",
+            "toolPolicy",
+            "skillDiscovery"
+          ],
+          "type": "object"
+        },
+        "executorId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "protocolId": {
+          "enum": [
+            "omk.invoke/v1",
+            "omk.session/v1"
+          ],
+          "type": "string"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "targetKind": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "versionConstraint": {
+          "$ref": "#/$defs/__schema6"
+        }
+      },
+      "required": [
+        "targetId",
+        "targetKind",
+        "protocolId",
+        "executorId",
+        "executionRequirements",
+        "executionControls"
+      ],
+      "type": "object"
+    },
+    "__schema9": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "workspaceMode": {
+              "const": "not-required",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspaceMode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "descriptor": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "workspaceMode": {
+              "const": "copy-on-write-overlay",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspaceMode",
+            "descriptor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v4/evaluation-definition.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "analysisGraph": {
+      "$ref": "#/$defs/__schema24"
+    },
+    "comparisons": {
+      "$ref": "#/$defs/__schema31"
+    },
+    "dataset": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "decisionPolicy": {
+      "$ref": "#/$defs/__schema32"
+    },
+    "evaluators": {
+      "$ref": "#/$defs/__schema17"
+    },
+    "experiment": {
+      "$ref": "#/$defs/__schema20"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema35"
+    },
+    "metrics": {
+      "$ref": "#/$defs/__schema19"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "seriesMembership": {
+      "$ref": "#/$defs/__schema34"
+    },
+    "targets": {
+      "$ref": "#/$defs/__schema7"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "dataset",
+    "targets",
+    "evaluators",
+    "metrics",
+    "experiment",
+    "analysisGraph",
+    "comparisons"
+  ],
+  "title": "OMK Evaluation Definition v4",
+  "type": "object"
+}

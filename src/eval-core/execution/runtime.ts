@@ -629,13 +629,14 @@ function trialContext(
   plan: SealedRunPlan,
   binding: TargetRuntimeBinding,
   coordinate: PlannedExecutionCoordinate,
+  signal: AbortSignal,
 ): ExecutorTrialContext {
   const sample = plan.execution.samples.find(
     (candidate) => candidate.sampleId === coordinate.sampleId,
   );
   if (sample === undefined) throw new Error('Planned sample disappeared');
   const controlled = plan.execution.experiment.sampling.seedCoupling !== 'uncontrolled';
-  return deepFreeze(snapshotJson({
+  const snapshot = deepFreeze(snapshotJson({
     sampleId: coordinate.sampleId,
     targetId: coordinate.targetId,
     executionCoordinateDigest: coordinate.executionCoordinateDigest,
@@ -651,7 +652,8 @@ function trialContext(
     schedulingBlockId: coordinate.schedulingBlockId,
     samplingUnitIds: coordinate.samplingUnitIds,
     ...(controlled ? { trialSeed: coordinate.trialSeed } : {}),
-  })) as ExecutorTrialContext;
+  }));
+  return Object.freeze({ ...snapshot, signal }) as ExecutorTrialContext;
 }
 
 function executionRecordIdentity(coordinate: PlannedExecutionCoordinate) {
@@ -731,7 +733,12 @@ async function executeCoordinate(
     );
     if (!trialEventDelivered || runSignal.aborted) return { failed: false };
     const runSession = await sessions.get(binding.target.targetId, binding.executor);
-    trial = await runSession.openTrial(trialContext(plan, binding, coordinate.coordinate));
+    trial = await runSession.openTrial(trialContext(
+      plan,
+      binding,
+      coordinate.coordinate,
+      runSignal,
+    ));
     const retryPolicy = plan.execution.policy.retry;
     for (let attemptNumber = 1; attemptNumber <= retryPolicy.maxAttempts; attemptNumber += 1) {
       const attemptId = deriveAttemptId({
@@ -959,6 +966,8 @@ async function executeCoordinate(
       terminalStatus = 'failed';
       cacheEligible = false;
       setStop('failed', evaluationError.code, evaluationError);
+    } else if (attempts.length === 0 && runSignal.aborted) {
+      cacheEligible = false;
     } else if (attempts.length === 0) {
       const evaluationError = safeError(error);
       cacheEligible = false;

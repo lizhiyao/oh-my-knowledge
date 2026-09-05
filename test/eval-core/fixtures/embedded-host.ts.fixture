@@ -59,6 +59,8 @@ import {
   type ExecutionCacheEntry,
   type Executor as CanonicalExecutor,
   type ExecutorIdentityVerifier,
+  type McpConfigDescriptor,
+  type McpConfigProvider,
   type PreparedEvaluation,
   type Variant as CanonicalVariant,
   type WorkspaceDescriptor,
@@ -187,6 +189,20 @@ const evaluationInfrastructure: EvaluationInfrastructure = {
 void evidencePolicy;
 void cachePolicy;
 void evaluationInfrastructure;
+const mcpConfigDescriptor: McpConfigDescriptor = {
+  resourceId: 'typescript-mcp-config',
+  digest: `sha256:${'c'.repeat(64)}`,
+  mediaType: 'application/json',
+  classification: 'secret',
+  size: 2,
+};
+const mcpConfigProvider: McpConfigProvider = {
+  providerId: 'typescript-mcp-provider/v1',
+  version: '1.0.0',
+  async open() { return { config: {}, close() {} }; },
+};
+void mcpConfigDescriptor;
+void mcpConfigProvider;
 const workspaceDescriptor: WorkspaceDescriptor = {
   resourceId: 'typescript-workspace',
   digest: `sha256:${'a'.repeat(64)}`,

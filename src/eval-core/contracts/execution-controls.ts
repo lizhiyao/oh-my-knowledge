@@ -34,17 +34,31 @@ export const ToolExecutionControlSchema = z.discriminatedUnion('toolPolicyKind',
   }).strict(),
 ]);
 
+export const McpExecutionControlSchema = z.discriminatedUnion('mcpMode', [
+  z.object({
+    mcpMode: z.literal('not-required'),
+  }).strict(),
+  z.object({
+    mcpMode: z.literal('native-config'),
+    descriptor: ExecutionResourceDescriptorSchema,
+  }).strict(),
+]);
+
 export const EffectiveExecutionControlSchema = z.object({
   workspace: WorkspaceExecutionControlSchema,
   tools: ToolExecutionControlSchema,
+  mcp: McpExecutionControlSchema,
 }).strict();
 
 export const SampleExecutionControlOverrideSchema = z.object({
   sampleId: IdentifierSchema,
   workspace: WorkspaceExecutionControlSchema.optional(),
   tools: ToolExecutionControlSchema.optional(),
+  mcp: McpExecutionControlSchema.optional(),
 }).strict().refine(
-  (value) => value.workspace !== undefined || value.tools !== undefined,
+  (value) => value.workspace !== undefined
+    || value.tools !== undefined
+    || value.mcp !== undefined,
   { message: 'A sample execution-control override must replace at least one control.' },
 );
 
@@ -56,6 +70,7 @@ export const TargetExecutionControlsSchema = z.object({
 export type ExecutionResourceDescriptor = z.infer<typeof ExecutionResourceDescriptorSchema>;
 export type WorkspaceExecutionControl = z.infer<typeof WorkspaceExecutionControlSchema>;
 export type ToolExecutionControl = z.infer<typeof ToolExecutionControlSchema>;
+export type McpExecutionControl = z.infer<typeof McpExecutionControlSchema>;
 export type EffectiveExecutionControl = z.infer<typeof EffectiveExecutionControlSchema>;
 export type SampleExecutionControlOverride = z.infer<
   typeof SampleExecutionControlOverrideSchema
@@ -85,12 +100,14 @@ export function normalizeTargetExecutionControls(
     defaults: {
       workspace: controls.defaults.workspace,
       tools: normalizeTools(controls.defaults.tools),
+      mcp: controls.defaults.mcp,
     },
     sampleOverrides: controls.sampleOverrides
       .map((override) => ({
         sampleId: override.sampleId,
         ...(override.workspace === undefined ? {} : { workspace: override.workspace }),
         ...(override.tools === undefined ? {} : { tools: normalizeTools(override.tools) }),
+        ...(override.mcp === undefined ? {} : { mcp: override.mcp }),
       }))
       .sort((left, right) => compareStrings(left.sampleId, right.sampleId)),
   };
@@ -103,6 +120,7 @@ export function resolveEffectiveExecutionControl(
   const override = controls.sampleOverrides.find((candidate) => candidate.sampleId === sampleId);
   const workspace = override?.workspace ?? controls.defaults.workspace;
   const tools = override?.tools ?? controls.defaults.tools;
+  const mcp = override?.mcp ?? controls.defaults.mcp;
   return {
     workspace: workspace.workspaceMode === 'not-required'
       ? { workspaceMode: 'not-required' }
@@ -111,5 +129,8 @@ export function resolveEffectiveExecutionControl(
           descriptor: { ...workspace.descriptor },
         },
     tools: normalizeTools(tools),
+    mcp: mcp.mcpMode === 'not-required'
+      ? { mcpMode: 'not-required' }
+      : { mcpMode: 'native-config', descriptor: { ...mcp.descriptor } },
   };
 }

@@ -135,6 +135,7 @@ async function createAdapter(
     defaults: {
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
+      mcp: { mcpMode: 'not-required' },
     },
     sampleOverrides: [],
   };
@@ -255,6 +256,7 @@ async function execute(
   executionControl: ExecutorTrialContext['executionControl'] = {
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
+    mcp: { mcpMode: 'not-required' },
   },
   sampleId = 'sample-a',
 ): Promise<ExecutorAttemptResult> {
@@ -264,6 +266,7 @@ async function execute(
   });
   try {
     const trial = await run.openTrial({
+      signal: new AbortController().signal,
       sampleId,
       targetId: 'target-a',
       executionCoordinateDigest: digest({ coordinate: 'a' }),
@@ -512,6 +515,7 @@ describe('custom-command Core Executor adapter', () => {
             descriptor: workspace.descriptor,
           },
           tools: { toolPolicyKind: 'runtime-default' },
+          mcp: { mcpMode: 'not-required' },
         },
         sampleOverrides: [],
       },
@@ -521,6 +525,7 @@ describe('custom-command Core Executor adapter', () => {
         descriptor: workspace.descriptor,
       },
       tools: { toolPolicyKind: 'runtime-default' },
+      mcp: { mcpMode: 'not-required' },
     });
 
     expect(result.trace?.value).toMatchObject({
@@ -574,6 +579,7 @@ describe('custom-command Core Executor adapter', () => {
         descriptor: workspaceA.descriptor,
       },
       tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['read'] },
+      mcp: { mcpMode: 'not-required' as const },
     };
     const controlB = {
       workspace: {
@@ -581,6 +587,7 @@ describe('custom-command Core Executor adapter', () => {
         descriptor: workspaceB.descriptor,
       },
       tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['shell'] },
+      mcp: { mcpMode: 'not-required' as const },
     };
     const port = await createAdapter(root, {
       resourceLeases: resourceAccess(lease),
@@ -675,12 +682,14 @@ describe('custom-command Core Executor adapter', () => {
       executionPlanDigest: digest({ plan: 'dispose-race' }),
     });
     const trial = await run.openTrial({
+      signal: new AbortController().signal,
       sampleId: 'sample-a',
       targetId: 'target-a',
       executionCoordinateDigest: digest({ coordinate: 'dispose-race' }),
       executionControl: {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'runtime-default' },
+        mcp: { mcpMode: 'not-required' },
       },
       protocolId: 'omk.invoke/v1',
       input: { prompt: 'hello' },

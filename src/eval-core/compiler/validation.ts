@@ -205,8 +205,12 @@ function validateTargetExecutionControls(definition: EvaluationDefinition): void
     const expectedToolPolicy = effective.some((control) => (
       control.tools.toolPolicyKind === 'allow-list'
     )) ? 'allow-list' : 'runtime-default';
+    const expectedMcp = effective.some((control) => (
+      control.mcp.mcpMode === 'native-config'
+    )) ? 'native-config' : 'not-required';
     if (target.executionRequirements.workspace !== expectedWorkspace
-        || target.executionRequirements.toolPolicy !== expectedToolPolicy) {
+        || target.executionRequirements.toolPolicy !== expectedToolPolicy
+        || target.executionRequirements.mcp !== expectedMcp) {
       throw definitionError(
         'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
         'Target executionRequirements 必须精确覆盖所有 sample 的 effective execution control。',
@@ -214,6 +218,7 @@ function validateTargetExecutionControls(definition: EvaluationDefinition): void
           targetId: target.targetId,
           expectedWorkspace,
           expectedToolPolicy,
+          expectedMcp,
         },
       );
     }

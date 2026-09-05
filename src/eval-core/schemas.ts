@@ -28,15 +28,17 @@ export type EvaluationCoreJsonSchemaFile =
 export function evaluationCoreJsonSchemaLocation(
   fileName: EvaluationCoreJsonSchemaFile,
 ): `v${number}/${EvaluationCoreJsonSchemaFile}` {
-  if (fileName === 'analysis-plan.schema.json'
-    || fileName === 'evaluation-definition.schema.json'
+  if (fileName === 'evaluation-definition.schema.json'
     || fileName === 'run-plan.schema.json') {
+    return `v4/${fileName}`;
+  }
+  if (fileName === 'analysis-plan.schema.json'
+    || fileName === 'execution-plan.schema.json') {
     return `v3/${fileName}`;
   }
   return fileName === 'analysis-bundle.schema.json'
     || fileName === 'comparability-assessment.schema.json'
     || fileName === 'evaluation-report.schema.json'
-    || fileName === 'execution-plan.schema.json'
     || fileName === 'series-analysis-bundle.schema.json'
     ? `v2/${fileName}`
     : `v1/${fileName}`;

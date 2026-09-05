@@ -358,6 +358,7 @@ async function fixture(options: Readonly<{
         tools: options.allowedTools === undefined
           ? { toolPolicyKind: 'runtime-default' as const }
           : { toolPolicyKind: 'allow-list' as const, allowedTools: [...options.allowedTools] },
+        mcp: { mcpMode: 'not-required' as const },
       },
       sampleOverrides: [],
     },
@@ -430,10 +431,12 @@ async function execute(
   executionControl: ExecutorTrialContext['executionControl'] = {
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
+    mcp: { mcpMode: 'not-required' },
   },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId, executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    signal: new AbortController().signal,
     sampleId: 'sample-a',
     targetId: 'target-a',
     executionCoordinateDigest: digest({ coordinate: 'a' }),

@@ -19,6 +19,14 @@ import {
   type ExecutorTrialContext,
 } from '../../eval-core/execution/index.js';
 import {
+  captureMcpConfigProvider,
+  validateMcpConfigValue,
+  type CapturedMcpConfigProvider,
+  type McpConfigAccess,
+  type McpConfigLease,
+  type McpConfigProvider,
+} from '../mcp-config.js';
+import {
   captureWorkspaceProvider,
   type CapturedWorkspaceProvider,
   type WorkspaceAccess,
@@ -37,6 +45,7 @@ import {
 const OPENED_EXECUTOR_SESSIONS = new WeakSet<object>();
 const OPENED_WORKSPACE_LEASES = new WeakSet<object>();
 const ACTIVE_WORKSPACE_ROOTS = new Set<string>();
+const OPENED_MCP_CONFIG_LEASES = new WeakSet<object>();
 
 /** Internal process-wide guard shared by the canonical facade and advanced adapter. */
 export function assertFreshExecutorSessionObject(session: object): void {
@@ -62,6 +71,7 @@ export interface JsonExecutorInvocation<Input, TargetConfig> {
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
   readonly workspace?: WorkspaceAccess;
+  readonly mcpConfig?: McpConfigAccess;
   /** Undefined means runtime default; an empty list denies every tool. */
   readonly allowedTools?: readonly string[];
 }
@@ -91,6 +101,7 @@ export interface JsonSessionExecutorContext<Input, TargetConfig> {
   readonly trialIndex: number;
   readonly trialSeed?: string;
   readonly workspace?: WorkspaceAccess;
+  readonly mcpConfig?: McpConfigAccess;
   /** Undefined means runtime default; an empty list denies every tool. */
   readonly allowedTools?: readonly string[];
 }
@@ -128,6 +139,7 @@ export interface CreateJsonExecutorAdapterInput<
   readonly traceMediaType?: string;
   readonly sessionIsolationKey?: string;
   readonly workspaceProvider?: WorkspaceProvider;
+  readonly mcpConfigProvider?: McpConfigProvider;
 }
 
 export interface CreateJsonSessionExecutorAdapterInput<
@@ -150,10 +162,16 @@ export interface CreateJsonSessionExecutorAdapterInput<
   readonly traceMediaType?: string;
   readonly sessionIsolationKey?: string;
   readonly workspaceProvider?: WorkspaceProvider;
+  readonly mcpConfigProvider?: McpConfigProvider;
 }
 
 interface OpenedWorkspace {
   readonly access: WorkspaceAccess;
+  close(): Promise<void>;
+}
+
+interface OpenedMcpConfig {
+  readonly access: McpConfigAccess;
   close(): Promise<void>;
 }
 
@@ -221,6 +239,110 @@ async function openWorkspace(
   });
 }
 
+async function rejectInvalidMcpConfigLease(lease: unknown): Promise<never> {
+  if (lease !== null && typeof lease === 'object'
+      && !OPENED_MCP_CONFIG_LEASES.has(lease)
+      && typeof (lease as Partial<McpConfigLease>).close === 'function') {
+    OPENED_MCP_CONFIG_LEASES.add(lease);
+    try {
+      await Reflect.apply((lease as McpConfigLease).close, lease, []);
+    } catch {
+      // The public failure remains a single redacted resource-open error.
+    }
+  }
+  throw new TypeError('MCP config provider returned an invalid lease.');
+}
+
+async function closeLateMcpConfigLease(lease: unknown): Promise<void> {
+  if (lease === null || typeof lease !== 'object'
+      || OPENED_MCP_CONFIG_LEASES.has(lease)
+      || typeof (lease as Partial<McpConfigLease>).close !== 'function') return;
+  OPENED_MCP_CONFIG_LEASES.add(lease);
+  try {
+    await Reflect.apply((lease as McpConfigLease).close, lease, []);
+  } catch {
+    // Cancellation is already authoritative; late cleanup failure must not leak provider details.
+  }
+}
+
+async function openMcpConfig(
+  provider: CapturedMcpConfigProvider | undefined,
+  run: Readonly<ExecutorRunContext>,
+  trial: Readonly<ExecutorTrialContext>,
+): Promise<OpenedMcpConfig | undefined> {
+  const control = trial.executionControl.mcp;
+  if (control.mcpMode === 'not-required') return undefined;
+  if (provider === undefined) throw new TypeError('MCP execution requires an McpConfigProvider.');
+  if (trial.signal.aborted) throw trial.signal.reason;
+  if (control.descriptor.mediaType !== 'application/json'
+      || control.descriptor.classification !== 'secret') {
+    throw new TypeError('MCP config descriptors require secret application/json content.');
+  }
+  let abortListener: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    abortListener = () => reject(trial.signal.reason);
+    trial.signal.addEventListener('abort', abortListener, { once: true });
+    if (trial.signal.aborted) abortListener();
+  });
+  const opening = Promise.resolve().then(() => {
+    if (trial.signal.aborted) throw trial.signal.reason;
+    return provider.open(Object.freeze({
+      descriptor: control.descriptor,
+      runId: run.runId,
+      trialId: trial.trialId,
+      sampleId: trial.sampleId,
+      variantId: trial.targetId,
+      trialIndex: trial.trialIndex,
+      ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
+      signal: trial.signal,
+    }));
+  });
+  let lease: McpConfigLease;
+  try {
+    lease = await Promise.race([opening, aborted]);
+  } catch (error) {
+    if (trial.signal.aborted) {
+      void opening.then(closeLateMcpConfigLease, () => undefined);
+    }
+    throw error;
+  } finally {
+    if (abortListener !== undefined) {
+      trial.signal.removeEventListener('abort', abortListener);
+    }
+  }
+  if (trial.signal.aborted) {
+    await closeLateMcpConfigLease(lease);
+    throw trial.signal.reason;
+  }
+  if (lease === null || typeof lease !== 'object'
+      || !Object.prototype.hasOwnProperty.call(lease, 'config')
+      || typeof lease.close !== 'function') {
+    return rejectInvalidMcpConfigLease(lease);
+  }
+  if (OPENED_MCP_CONFIG_LEASES.has(lease)) {
+    throw new TypeError('MCP config provider reused one lease object across trials or runs.');
+  }
+  OPENED_MCP_CONFIG_LEASES.add(lease);
+  let config: JsonValue;
+  try {
+    config = validateMcpConfigValue(control.descriptor, lease.config);
+  } catch {
+    try {
+      await Reflect.apply(lease.close, lease, []);
+    } catch {
+      // The public failure remains a single redacted resource-open error.
+    }
+    throw new TypeError('MCP config provider returned invalid content.');
+  }
+  const close = lease.close;
+  return Object.freeze({
+    access: Object.freeze({ descriptor: control.descriptor, config }),
+    async close() {
+      await Reflect.apply(close, lease, []) as void | Promise<void>;
+    },
+  });
+}
+
 function requireWorkspaceCapability(
   protocol: ReturnType<typeof executorProtocol>,
   provider: CapturedWorkspaceProvider | undefined,
@@ -240,6 +362,19 @@ function requireWorkspaceCapability(
   }
 }
 
+function requireMcpConfigCapability(
+  protocol: ReturnType<typeof executorProtocol>,
+  provider: CapturedMcpConfigProvider | undefined,
+): void {
+  const supportsMcp = protocol.execution.features.mcp.includes('native-config');
+  if (provider !== undefined && !supportsMcp) {
+    throw new TypeError('McpConfigProvider requires native-config Runtime capability.');
+  }
+  if (provider === undefined && supportsMcp) {
+    throw new TypeError('native-config Runtime capability requires an McpConfigProvider.');
+  }
+}
+
 function bindWorkspaceIdentity(
   identity: RuntimeIdentity,
   provider: CapturedWorkspaceProvider | undefined,
@@ -251,6 +386,27 @@ function bindWorkspaceIdentity(
       derivation: 'omk.eval-runtime.workspace-bound-identity/v1',
       executorIdentity: identity,
       workspaceProvider: {
+        providerId: provider.providerId,
+        version: provider.version,
+        ...(provider.fingerprintFacets === undefined
+          ? {}
+          : { fingerprintFacets: provider.fingerprintFacets }),
+      },
+    }),
+  }));
+}
+
+function bindMcpConfigIdentity(
+  identity: RuntimeIdentity,
+  provider: CapturedMcpConfigProvider | undefined,
+): RuntimeIdentity {
+  if (provider === undefined) return identity;
+  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
+    ...structuredClone(identity),
+    fingerprint: digestCanonicalJson({
+      derivation: 'omk.eval-runtime.mcp-config-bound-identity/v1',
+      executorIdentity: identity,
+      mcpConfigProvider: {
         providerId: provider.providerId,
         version: provider.version,
         ...(provider.fingerprintFacets === undefined
@@ -410,8 +566,13 @@ export function createJsonExecutorAdapter<
 ): ExecutionExecutor {
   const protocol = invokeProtocol(input.identity);
   const workspaceProvider = captureWorkspaceProvider(input.workspaceProvider);
+  const mcpConfigProvider = captureMcpConfigProvider(input.mcpConfigProvider);
   requireWorkspaceCapability(protocol, workspaceProvider);
-  const identity = bindWorkspaceIdentity(input.identity, workspaceProvider);
+  requireMcpConfigCapability(protocol, mcpConfigProvider);
+  const identity = bindMcpConfigIdentity(
+    bindWorkspaceIdentity(input.identity, workspaceProvider),
+    mcpConfigProvider,
+  );
   const invoke = input.invoke;
   const inputParser = captureParser(input.inputParser);
   const targetConfigParser = captureParser(input.targetConfigParser);
@@ -438,15 +599,22 @@ export function createJsonExecutorAdapter<
     implementation: {
       openRun: ({ run }) => run,
       async openTrial({ run, trial }) {
-        return Object.freeze({
-          trial,
-          workspace: await openWorkspace(workspaceProvider, run, trial),
-          allowedTools: effectiveAllowedTools(trial),
-        });
+        const workspace = await openWorkspace(workspaceProvider, run, trial);
+        try {
+          return Object.freeze({
+            trial,
+            workspace,
+            mcpConfig: await openMcpConfig(mcpConfigProvider, run, trial),
+            allowedTools: effectiveAllowedTools(trial),
+          });
+        } catch (error) {
+          if (workspace !== undefined) await workspace.close();
+          throw error;
+        }
       },
       async execute({ trialState, attempt }): Promise<ExecutorAttemptResult> {
         if (attempt.signal.aborted) throw attempt.signal.reason;
-        const { trial, workspace, allowedTools } = trialState;
+        const { trial, workspace, mcpConfig, allowedTools } = trialState;
         const invocation: JsonExecutorInvocation<Input, TargetConfig> = Object.freeze({
           input: parseJsonUnchanged(
             inputParser,
@@ -468,6 +636,7 @@ export function createJsonExecutorAdapter<
           attemptNumber: attempt.attemptNumber,
           signal: attempt.signal,
           ...(workspace === undefined ? {} : { workspace: workspace.access }),
+          ...(mcpConfig === undefined ? {} : { mcpConfig: mcpConfig.access }),
           ...(allowedTools === undefined ? {} : { allowedTools }),
         });
         return executeJsonHost(
@@ -477,7 +646,24 @@ export function createJsonExecutorAdapter<
           resultContract,
         );
       },
-      disposeTrial: ({ trialState }) => trialState.workspace?.close(),
+      async disposeTrial({ trialState }) {
+        let cleanupFailed = false;
+        if (trialState.mcpConfig !== undefined) {
+          try {
+            await trialState.mcpConfig.close();
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        if (trialState.workspace !== undefined) {
+          try {
+            await trialState.workspace.close();
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        if (cleanupFailed) throw new TypeError('Executor resource cleanup failed.');
+      },
       disposeRun: () => undefined,
     },
   });
@@ -494,8 +680,13 @@ export function createJsonSessionExecutorAdapter<
 ): ExecutionExecutor {
   const protocol = sessionProtocol(input.identity);
   const workspaceProvider = captureWorkspaceProvider(input.workspaceProvider);
+  const mcpConfigProvider = captureMcpConfigProvider(input.mcpConfigProvider);
   requireWorkspaceCapability(protocol, workspaceProvider);
-  const identity = bindWorkspaceIdentity(input.identity, workspaceProvider);
+  requireMcpConfigCapability(protocol, mcpConfigProvider);
+  const identity = bindMcpConfigIdentity(
+    bindWorkspaceIdentity(input.identity, workspaceProvider),
+    mcpConfigProvider,
+  );
   const inputParser = captureParser(input.inputParser);
   const targetConfigParser = captureParser(input.targetConfigParser);
   const outputParser = captureParser(input.outputParser);
@@ -526,8 +717,10 @@ export function createJsonSessionExecutorAdapter<
       openRun: ({ run }) => run,
       async openTrial({ run, trial }) {
         const workspace = await openWorkspace(workspaceProvider, run, trial);
+        let mcpConfig: OpenedMcpConfig | undefined;
         const allowedTools = effectiveAllowedTools(trial);
         try {
+          mcpConfig = await openMcpConfig(mcpConfigProvider, run, trial);
           const context: JsonSessionExecutorContext<Input, TargetConfig> = Object.freeze({
             runId: run.runId,
             trialId: trial.trialId,
@@ -549,8 +742,10 @@ export function createJsonSessionExecutorAdapter<
             trialIndex: trial.trialIndex,
             ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
             ...(workspace === undefined ? {} : { workspace: workspace.access }),
+            ...(mcpConfig === undefined ? {} : { mcpConfig: mcpConfig.access }),
             ...(allowedTools === undefined ? {} : { allowedTools }),
           });
+          if (trial.signal.aborted) throw trial.signal.reason;
           const session = await Reflect.apply(openSession, input, [context]);
           if (session === null || typeof session !== 'object'
               || typeof session.execute !== 'function'
@@ -563,15 +758,25 @@ export function createJsonSessionExecutorAdapter<
             execute: session.execute,
             close: session.close,
             workspace,
+            mcpConfig,
           });
         } catch (error) {
+          let cleanupFailed = false;
+          if (mcpConfig !== undefined) {
+            try {
+              await mcpConfig.close();
+            } catch {
+              cleanupFailed = true;
+            }
+          }
           if (workspace !== undefined) {
             try {
               await workspace.close();
             } catch {
-              throw new TypeError('Workspace cleanup failed while opening a session.');
+              cleanupFailed = true;
             }
           }
+          if (cleanupFailed) throw new TypeError('Resource cleanup failed while opening a session.');
           throw error;
         }
       },
@@ -596,6 +801,13 @@ export function createJsonSessionExecutorAdapter<
         } catch {
           cleanupFailed = true;
         }
+        if (trialState.mcpConfig !== undefined) {
+          try {
+            await trialState.mcpConfig.close();
+          } catch {
+            cleanupFailed = true;
+          }
+        }
         if (trialState.workspace !== undefined) {
           try {
             await trialState.workspace.close();
@@ -604,7 +816,7 @@ export function createJsonSessionExecutorAdapter<
           }
         }
         if (cleanupFailed) {
-          throw new TypeError('Session or workspace cleanup failed.');
+          throw new TypeError('Session or Executor resource cleanup failed.');
         }
       },
       disposeRun: () => undefined,

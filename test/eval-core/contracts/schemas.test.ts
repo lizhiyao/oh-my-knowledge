@@ -62,6 +62,17 @@ describe('Evaluation Core wire schemas', () => {
     }
   });
 
+  it('keeps active schema titles aligned with their public version identities', () => {
+    const generated = generateWireJsonSchemas();
+    expect(generated['evaluation-definition.schema.json']).toMatchObject({
+      title: 'OMK Evaluation Definition v4',
+    });
+    expect(generated['execution-plan.schema.json']).toMatchObject({
+      title: 'OMK Execution Plan v3',
+    });
+    expect(generated['run-plan.schema.json']).toMatchObject({ title: 'OMK Run Plan v4' });
+  });
+
   it('derives full schema identities from generated schema bytes', () => {
     const identities = generateWireSchemaIdentities();
     expect(identities).toHaveLength(WIRE_SCHEMA_CATALOG.length);
@@ -168,6 +179,7 @@ describe('Evaluation Core wire schemas', () => {
           defaults: {
             workspace: { workspaceMode: 'not-required' },
             tools: { toolPolicyKind: 'runtime-default' },
+            mcp: { mcpMode: 'not-required' },
           },
           sampleOverrides: [],
         },
@@ -265,6 +277,7 @@ describe('Evaluation Core wire schemas', () => {
           defaults: {
             workspace: { workspaceMode: 'not-required' },
             tools: { toolPolicyKind: 'runtime-default' },
+            mcp: { mcpMode: 'not-required' },
           },
           sampleOverrides: [],
         },

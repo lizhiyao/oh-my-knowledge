@@ -70,6 +70,8 @@ export interface ExecutorTrialContext {
     stratumId?: Sha256Digest;
   };
   trialSeed?: Sha256Digest;
+  /** Cancels trial-scoped resource acquisition before the first measured attempt. */
+  signal: AbortSignal;
 }
 
 export interface ExecutorAttemptContext {

@@ -78,6 +78,7 @@ export interface InvokeExecutorIdentityDeclaration {
   }>;
   readonly seedControl: 'unsupported' | 'optional' | 'required';
   readonly workspace?: 'copy-on-write-overlay';
+  readonly mcp?: 'native-config';
   readonly toolPolicy?: 'allow-list';
   readonly telemetry: Readonly<{
     trace: 'unsupported' | 'optional' | 'required';
@@ -106,6 +107,9 @@ function createJsonExecutorIdentity(
   }
   if (declaration.toolPolicy !== undefined && declaration.toolPolicy !== 'allow-list') {
     throw new TypeError('toolPolicy 只支持 allow-list。');
+  }
+  if (declaration.mcp !== undefined && declaration.mcp !== 'native-config') {
+    throw new TypeError('mcp 只支持 native-config。');
   }
   const protocol = protocolId === 'omk.invoke/v1' ? 'invoke' : 'session';
   const traceSchema = declaration.telemetry.trace === 'unsupported'
@@ -138,7 +142,7 @@ function createJsonExecutorIdentity(
           features: {
             systemInstructions: 'unsupported',
             workspace: declaration.workspace === undefined ? [] : [declaration.workspace],
-            mcp: [],
+            mcp: declaration.mcp === undefined ? [] : [declaration.mcp],
             mockInterception: [],
             toolPolicies: declaration.toolPolicy === undefined
               ? ['runtime-default']
