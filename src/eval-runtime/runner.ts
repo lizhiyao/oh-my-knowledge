@@ -5,9 +5,12 @@ import type {
   MeasurementPolicy,
 } from '../eval-core/contracts/index.js';
 import type {
+  EvaluationEngineClock,
   EvaluationEngineEventWriter,
   EvaluationEngineRuntime,
+  EvaluationRun,
   EvaluationRunResult,
+  PreparedEvaluation,
 } from '../eval-core/engine/index.js';
 import { createEvaluationEngine as createCoreEvaluationEngine } from '../eval-core/engine/index.js';
 
@@ -32,6 +35,17 @@ export interface RunEvaluationInput {
    */
   readonly eventBufferCapacity?: number;
   /** Ordered, best-effort progress projection. Durable lossless delivery belongs to `eventWriter`. */
+  readonly onEvent?: EvaluationEventObserver;
+}
+
+export interface RunPreparedEvaluationInput {
+  readonly prepared: PreparedEvaluation;
+  readonly runId: string;
+  readonly clock?: EvaluationEngineClock;
+  readonly signal?: AbortSignal;
+  readonly annotations?: JsonValue;
+  readonly summaries?: JsonValue;
+  readonly eventBufferCapacity?: number;
   readonly onEvent?: EvaluationEventObserver;
 }
 
@@ -62,31 +76,24 @@ export class EvaluationEventConsumptionError extends Error {
  * A slow observer applies no measurement backpressure: Core's bounded stream retains recent progress
  * and may expose sequence gaps rather than creating an unbounded callback backlog.
  */
-export async function runEvaluation(
-  input: Readonly<RunEvaluationInput>,
+async function consumeEvaluationRun(
+  start: (signal: AbortSignal) => EvaluationRun,
+  input: Readonly<{
+    signal?: AbortSignal;
+    onEvent?: EvaluationEventObserver;
+  }>,
 ): Promise<EvaluationRunResult> {
-  if (input.eventWriter !== undefined
-      && input.policy.eventDelivery.writerMode === 'disabled') {
-    throw new TypeError(
-      'eventWriter requires an explicit optional or required eventDelivery policy.',
-    );
-  }
   const controller = new AbortController();
   const externalAbort = (): void => controller.abort(input.signal?.reason);
   if (input.signal?.aborted) externalAbort();
   else input.signal?.addEventListener('abort', externalAbort, { once: true });
-
-  const run = createCoreEvaluationEngine(input.runtime).start(input.definition, {
-    policy: input.policy,
-    runId: input.runId,
-    signal: controller.signal,
-    ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
-    ...(input.summaries === undefined ? {} : { summaries: input.summaries }),
-    ...(input.eventWriter === undefined ? {} : { eventWriter: input.eventWriter }),
-    ...(input.eventBufferCapacity === undefined
-      ? {}
-      : { eventBufferCapacity: input.eventBufferCapacity }),
-  });
+  let run: EvaluationRun;
+  try {
+    run = start(controller.signal);
+  } catch (error) {
+    input.signal?.removeEventListener('abort', externalAbort);
+    throw error;
+  }
 
   let observerFailed = false;
   let observerFailure: unknown;
@@ -134,4 +141,44 @@ export async function runEvaluation(
   } finally {
     input.signal?.removeEventListener('abort', externalAbort);
   }
+}
+
+export async function runEvaluation(
+  input: Readonly<RunEvaluationInput>,
+): Promise<EvaluationRunResult> {
+  if (input.eventWriter !== undefined
+      && input.policy.eventDelivery.writerMode === 'disabled') {
+    throw new TypeError(
+      'eventWriter requires an explicit optional or required eventDelivery policy.',
+    );
+  }
+  return consumeEvaluationRun((signal) => (
+    createCoreEvaluationEngine(input.runtime).start(input.definition, {
+      policy: input.policy,
+      runId: input.runId,
+      signal,
+      ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
+      ...(input.summaries === undefined ? {} : { summaries: input.summaries }),
+      ...(input.eventWriter === undefined ? {} : { eventWriter: input.eventWriter }),
+      ...(input.eventBufferCapacity === undefined
+        ? {}
+        : { eventBufferCapacity: input.eventBufferCapacity }),
+    })
+  ), input);
+}
+
+/** Runs one already sealed Core Plan without re-reading or recompiling its declaration. */
+export async function runPreparedEvaluation(
+  input: Readonly<RunPreparedEvaluationInput>,
+): Promise<EvaluationRunResult> {
+  return consumeEvaluationRun((signal) => input.prepared.start({
+    runId: input.runId,
+    ...(input.clock === undefined ? {} : { clock: input.clock }),
+    signal,
+    ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
+    ...(input.summaries === undefined ? {} : { summaries: input.summaries }),
+    ...(input.eventBufferCapacity === undefined
+      ? {}
+      : { eventBufferCapacity: input.eventBufferCapacity }),
+  }), input);
 }

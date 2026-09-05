@@ -116,6 +116,8 @@ export interface EvaluationEngineEventWriter {
 export interface EvaluationRunOptions {
   policy: MeasurementPolicy;
   runId: string;
+  /** Optional run-scoped clock override; preparation and Plan identity never depend on it. */
+  clock?: EvaluationEngineClock;
   signal?: AbortSignal;
   annotations?: JsonValue;
   summaries?: JsonValue;

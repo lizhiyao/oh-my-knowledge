@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`checkExecutor`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
+这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`checkExecutor`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -13,17 +13,20 @@
 | Export | 用途 |
 |---|---|
 | `evaluate` | 运行一份显式的 solo、paired 或 independent-group 评测设计，包括多臂与多指标比较。 |
+| `prepareEvaluation` | 在任何 Target 或 Evaluator 调用前，封存并检查最终 Definition、Policy、Plan、Runtime resolution、digest 和工作量估计。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量检查认证 Executor。 |
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`Analysis`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationResult`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
 `Policy` 使用相互独立的 execution／evaluation `StagePolicy`。每个 stage 分别封存 concurrency、timeout 与可选 `RetryPolicy`；retry error code 是宿主定义的稳定 identifier，`RetryBackoff` 是显式的 `none`／`fixed`／`exponential` 判别联合。`FailurePolicy` 同样使用判别联合，只有 `failure-threshold` 可以携带 `maxFailures`。`BudgetPolicy` 暴露 run、stage、coordinate 与 attempt scope，以及可审计的 invocation、active-duration、wall-clock 和 provider-cost limit。Provider-cost admission 固定为 bounded overshoot；`onUnreportedProviderCost` 选择失败关闭或不可验证处理。Façade 只负责把声明物化为 Core Measurement Policy；scheduler、timeout、retry、取消、预算计量和 failure-threshold 行为仍全部由 Core 实现。
 
 `RuntimeContext` 只包含可重放的宿主自定义 JSON `values`。canonical façade 不接受文件系统路径充当 workspace identity；在一般化 Runtime 提供内容寻址 workspace descriptor 与宿主持有的 lease 前，需要 workspace 的宿主应使用 advanced Core assembly 路径。`Sample.executionContext` 是单条用例中仅供 Executor 使用的输入，`Sample.evaluationContext` 是仅供 Evaluator 使用的输入；这两个用例投影都不描述宿主运行环境。
 
-`EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加 `definition`、`policy` 与 `analysisResults`。最后一项只是按 `analysisId` 索引同一批 Core Analysis record 的只读视图，不是第二套分析实现。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
+`EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加实际使用的 `runId`、`definition`、`policy` 与 `analysisResults`。最后一项只是按 `analysisId` 索引同一批 Core Analysis record 的只读视图，不是第二套分析实现。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
+
+`EvaluateInput` 只包含测量声明；`EvaluationRunOptions` 容纳单次运行的 `runId`、取消、进度观察、报告 annotation／summary、event buffer 容量与 clock。省略 `runId` 时由 Runtime 生成，并通过 `EvaluationResult.runId` 返回。`prepareEvaluation(input)` 会捕获全部可变声明、物化默认值、解析 Runtime capability，并在不调用 Target 或 Evaluator 的情况下封存 Core Plan。冻结的 `PreparedEvaluation` 暴露准确的 `definition`、`policy`、`plan`、完整运行契约 `planDigest`、`resolvedRuntimes` 与 `estimatedWork`；`run(options)` 直接执行同一份 sealed Plan，不重新读取 input 或重新编译。计划 coordinate 不包含 retry 与提前终止带来的变化，duration 和 provider cost 在执行前会明确保持不确定。
 
 `SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较，也是 paired／independent 语义的唯一持有者。solo 设计可以声明 `clusterKey`，此时 Core 将完整 cluster 作为实验单位与重采样单位。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric，不再包含重复的 sampling 判别字段。`evaluators` 可包含多个 exact-match、Rubric 评委或 custom evaluator，但 evaluator ID 与 metric ID 必须分别唯一。
 
@@ -98,7 +101,7 @@ Advanced budget builder type 包括 `MeasurementBudgetPolicyInput`、`Measuremen
 
 ## 迁移
 
-`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons, analyses }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，Sampling Design 独占 paired／independent 语义，每项 summary 或 interval 都是具名的 `analyses[]` 请求。删除 `comparisonKind`，并将多余的 `analysis: { analyses: [...] }` 包装直接改为 `analyses: [...]`；旧结构不会被读取或检测。Decision 可省略；传入时通过 `analysisId` 精确选择一个 interval，或选择一份显式有界的 comparison family。Rubric 评测必须使用 `judges + aggregation`，不接受单数 `judge + model + effort` 结构。Policy 字段统一归入 `execution`、`evaluation`、`failure`、`budget` 与 `evidence`；早期扁平的 concurrency、timeout、invocation、failure 与 classification 字段不再接受。它不提供 0.x 兼容读取或旧结构检测。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons, analyses }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，Sampling Design 独占 paired／independent 语义，每项 summary 或 interval 都是具名的 `analyses[]` 请求。删除 `comparisonKind`，并将多余的 `analysis: { analyses: [...] }` 包装直接改为 `analyses: [...]`；旧结构不会被读取或检测。把 `runId`、`signal`、`onEvent`、`clock`、`annotations`、`summaries` 与 `eventBufferCapacity` 从声明移到可选的第二个 `EvaluationRunOptions` 参数；省略 `runId` 时自动生成。Decision 可省略；传入时通过 `analysisId` 精确选择一个 interval，或选择一份显式有界的 comparison family。Rubric 评测必须使用 `judges + aggregation`，不接受单数 `judge + model + effort` 结构。Policy 字段统一归入 `execution`、`evaluation`、`failure`、`budget` 与 `evidence`；早期扁平的 concurrency、timeout、invocation、failure 与 classification 字段不再接受。它不提供 0.x 兼容读取、旧 overload 或旧结构检测。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate`、`prepareEvaluation` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
 
 预算 limit 现在位于显式 scope 下：将 `budget.maxInvocations` 改为 `budget.run.maxInvocations`。旧结构不会被读取或检测。
 

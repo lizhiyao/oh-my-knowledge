@@ -8,29 +8,29 @@ const answers = {
 };
 
 const executor = {
-    executorId: 'example.faas/v1',
-    version: '1.0.0',
-    schemas: {
-      input: z.object({ prompt: z.string() }).strict(),
-      config: z.object({ role: z.enum(['control', 'treatment']) }).strict(),
-      output: z.string(),
-    },
-    outputClassification: 'public',
-    capabilities: {
-      determinism: 'deterministic',
-      cancellation: 'cooperative',
-      concurrency: { safety: 'parallel-safe' },
-      seedControl: 'unsupported',
-      telemetry: { trace: 'unsupported', usage: 'required' },
-    },
-    fingerprintFacets: { deploymentRevision: 'example-1' },
-    async execute({ input, config, signal }) {
-      signal.throwIfAborted();
-      return {
-        output: answers[config.role][input.prompt],
-        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-      };
-    },
+  executorId: 'example.faas/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ prompt: z.string() }).strict(),
+    config: z.object({ role: z.enum(['control', 'treatment']) }).strict(),
+    output: z.string(),
+  },
+  outputClassification: 'public',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: { trace: 'unsupported', usage: 'required' },
+  },
+  fingerprintFacets: { deploymentRevision: 'example-1' },
+  async execute({ input, config, signal }) {
+    signal.throwIfAborted();
+    return {
+      output: answers[config.role][input.prompt],
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    };
+  },
 };
 
 const result = await evaluate({
@@ -76,6 +76,7 @@ const result = await evaluate({
   },
   experiment: { seed: 'explicit-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
+}, {
   runId: 'embedded-faas',
 });
 

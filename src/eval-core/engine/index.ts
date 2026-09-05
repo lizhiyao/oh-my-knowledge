@@ -396,7 +396,7 @@ function executionPorts(
 ): ExecutionRuntimePorts {
   return {
     executorsByTargetId: bindings.executorsByTargetId,
-    clock: runtime.clock,
+    clock: options.clock ?? runtime.clock,
     eventSequencer: sequencer,
     ...(runtime.executionCache === undefined ? {} : { cache: runtime.executionCache }),
     ...(runtime.executionContentStore === undefined
@@ -414,7 +414,7 @@ function evaluationPorts(
 ): EvaluationRuntimePorts {
   return {
     evaluatorsByEvaluatorId: bindings.evaluatorsByEvaluatorId,
-    clock: runtime.clock,
+    clock: options.clock ?? runtime.clock,
     eventSequencer: sequencer,
     ...(runtime.contentResolver === undefined
       ? {}
@@ -438,7 +438,7 @@ function analysisPorts(
     schemaValidators: runtime.schemaValidators,
     missingPoliciesByPolicyId: bindings.missingPoliciesByPolicyId,
     decisionPoliciesByDecisionPolicyId: bindings.decisionPoliciesByDecisionPolicyId,
-    clock: runtime.clock,
+    clock: options.clock ?? runtime.clock,
     eventSequencer: sequencer,
     ...(options.eventWriter === undefined ? {} : { eventWriter: options.eventWriter }),
   };
@@ -456,7 +456,11 @@ async function executePipeline(
   try {
     const { plan, bindings, runtime } = await preparedPromise;
     const sequencer = new InMemoryRuntimeEventSequencer();
-    const budgetSource = createRunBudgetSource(plan, options.runId, runtime.clock);
+    const budgetSource = createRunBudgetSource(
+      plan,
+      options.runId,
+      options.clock ?? runtime.clock,
+    );
     const stageCapacity = options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY;
     const execution = await settleStage(startExecution(
       plan,
@@ -624,6 +628,7 @@ function createStageSession(
   const runtime = prepared.runtime;
   const options: PreparedEvaluationRunOptions = Object.freeze({
     runId: inputOptions.runId,
+    ...(inputOptions.clock === undefined ? {} : { clock: inputOptions.clock }),
     ...(inputOptions.signal === undefined ? {} : { signal: inputOptions.signal }),
     ...(inputOptions.annotations === undefined
       ? {}
@@ -900,6 +905,7 @@ export function createEvaluationEngine(runtime: EvaluationEngineRuntime): Advanc
     start(definition, options: EvaluationRunOptions): EvaluationRun {
       const runOptions: PreparedEvaluationRunOptions = {
         runId: options.runId,
+        ...(options.clock === undefined ? {} : { clock: options.clock }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(options.annotations === undefined ? {} : { annotations: options.annotations }),
         ...(options.summaries === undefined ? {} : { summaries: options.summaries }),

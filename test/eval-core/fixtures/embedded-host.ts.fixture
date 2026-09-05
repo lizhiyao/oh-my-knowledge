@@ -44,9 +44,11 @@ import {
   checkExecutor,
   EvaluationEventConsumptionError,
   evaluate,
+  prepareEvaluation,
   type AnalysisRequest,
   type CohortFilter,
   type Executor as CanonicalExecutor,
+  type PreparedEvaluation,
 } from 'oh-my-knowledge';
 import {
   createEvalSampleSetDocument,
@@ -116,13 +118,13 @@ void publicPolicy;
 void registration;
 
 const canonicalExecutor: CanonicalExecutor<string, undefined, string> = {
-    executorId: 'typescript-canonical/v1',
-    version: '1.0.0',
-    schemas: { input: z.string(), output: z.string() },
-    async execute({ input, signal }) {
-      signal.throwIfAborted();
-      return { output: input };
-    },
+  executorId: 'typescript-canonical/v1',
+  version: '1.0.0',
+  schemas: { input: z.string(), output: z.string() },
+  async execute({ input, signal }) {
+    signal.throwIfAborted();
+    return { output: input };
+  },
 };
 const canonicalCohortFilter: CohortFilter = { includeCohortIds: ['release'] };
 const canonicalAnalysis: AnalysisRequest = {
@@ -135,7 +137,7 @@ const canonicalAnalysis: AnalysisRequest = {
   confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
 };
 void canonicalCohortFilter;
-const canonicalEvaluation = evaluate({
+const canonicalInput = {
   dataset: {
     datasetId: 'typescript-canonical-runtime',
     samples: [{ sampleId: 'one', input: 'question', expected: 'answer' }],
@@ -159,8 +161,12 @@ const canonicalEvaluation = evaluate({
   analyses: [canonicalAnalysis],
   experiment: { seed: 'typescript-seed', sampling: { samplingKind: 'paired' } },
   policy: {},
+} as const;
+const canonicalEvaluation = evaluate(canonicalInput, {
   runId: 'typescript-canonical-runtime',
 });
+const canonicalPreparation: Promise<PreparedEvaluation> = prepareEvaluation(canonicalInput);
+void canonicalPreparation;
 async function canonicalResultBoundary(): Promise<void> {
   const result = await canonicalEvaluation;
   const datasetId: string = result.definition.dataset.datasetId;

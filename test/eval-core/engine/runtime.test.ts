@@ -206,6 +206,32 @@ async function collectEvents(events: AsyncIterable<EvaluationEvent>): Promise<Ev
 }
 
 describe('embedded Evaluation Engine', () => {
+  it('uses a run-scoped clock without changing the prepared Plan', async () => {
+    const fixture = await createRuntime();
+    const prepared = await createEvaluationEngine(fixture.runtime).prepare(
+      fixture.definition,
+      fixture.policy,
+    );
+    const planDigest = prepared.plan.digests.runContractDigest;
+    let elapsed = 0;
+    const { events, result } = await consume(prepared.start({
+      runId: 'run-clock-override',
+      clock: {
+        monotonicNow: () => elapsed,
+        timestamp: () => new Date(Date.UTC(2030, 0, 1) + elapsed++).toISOString(),
+        async sleep(delayMs, signal) {
+          signal.throwIfAborted();
+          elapsed += delayMs;
+        },
+      },
+    }));
+
+    expect(result.status).toBe('completed');
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((event) => event.time.startsWith('2030-01-01T'))).toBe(true);
+    expect(prepared.plan.digests.runContractDigest).toBe(planDigest);
+  });
+
   it('runs and re-scores through a prepared stage capability without re-executing Targets', async () => {
     const fixture = await createRuntime();
     let executorRuns = 0;

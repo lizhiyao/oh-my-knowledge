@@ -5,6 +5,7 @@ import {
   EvaluationEventConsumptionError,
   checkExecutor,
   evaluate,
+  prepareEvaluation,
 } from 'oh-my-knowledge/eval-runtime';
 
 const retryAttempts = [];
@@ -65,7 +66,7 @@ const variant = {
   execution: { executor },
 };
 
-const evaluation = (overrides = {}) => evaluate({
+const evaluationInput = (overrides = {}) => ({
   dataset: {
     datasetId: 'clean-room-runner',
     samples: ['one', 'two'].map((sampleId) => ({
@@ -111,12 +112,51 @@ const evaluation = (overrides = {}) => evaluate({
       onUnreportedProviderCost: 'fail-run',
     },
   },
-  runId: 'clean-room-evaluate',
   ...overrides,
 });
 
+const evaluation = (overrides = {}, options = {}) => evaluate(
+  evaluationInput(overrides),
+  { runId: 'clean-room-evaluate', ...options },
+);
+
+let preparedTargetCalls = 0;
+const preparationInput = evaluationInput({
+  variants: evaluationInput().variants.map((candidate) => ({
+    ...candidate,
+    execution: {
+      executor: {
+        ...candidate.execution.executor,
+        async execute(invocation) {
+          preparedTargetCalls += 1;
+          return candidate.execution.executor.execute(invocation);
+        },
+      },
+    },
+  })),
+});
+const prepared = await prepareEvaluation(preparationInput);
+assert.equal(preparedTargetCalls, 0);
+assert.ok(Object.isFrozen(prepared.plan));
+assert.equal(prepared.planDigest, prepared.plan.digests.runContractDigest);
+assert.equal(prepared.estimatedWork.executionCoordinates, 4);
+assert.equal(prepared.estimatedWork.evaluationCoordinates, 4);
+assert.equal(prepared.estimatedWork.plannedInvocations, 8);
+assert.deepEqual(
+  new Set(prepared.resolvedRuntimes.map(({ runtimeKind }) => runtimeKind)),
+  new Set(['executor', 'evaluator', 'analysis-node', 'missing-policy', 'decision-policy']),
+);
+
+preparationInput.dataset.samples[0].input = 'changed-after-prepare';
+const preparedResult = await prepared.run({ runId: 'clean-room-prepared' });
+assert.equal(preparedResult.status, 'completed');
+assert.equal(preparedResult.runId, 'clean-room-prepared');
+assert.equal(preparedTargetCalls, 4);
+assert.equal(preparedResult.definition.dataset.samples[0].input, 'success');
+
 const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
+assert.equal(withoutObserver.runId, 'clean-room-evaluate');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
 assert.deepEqual(withoutObserver.policy.budget.run, {
   maxInvocations: 50,
@@ -147,8 +187,7 @@ const withRetry = await evaluation({
     evaluation: { maxConcurrency: 1 },
     failure: { failureMode: 'fail-fast' },
   },
-  runId: 'clean-room-retry',
-});
+}, { runId: 'clean-room-retry' });
 assert.equal(withRetry.status, 'completed');
 assert.deepEqual(retryAttempts, [1, 2, 1, 2]);
 assert.ok(withRetry.artifacts.execution.records.every((record) => record.attempts.length === 2));
@@ -248,8 +287,7 @@ const customEvaluation = await evaluation({
       analysisId: 'paired-length-member', minimumEffect: -100, maximumEffect: 100,
     }],
   },
-  runId: 'clean-room-custom-evaluator',
-});
+}, { runId: 'clean-room-custom-evaluator' });
 assert.equal(customEvaluation.status, 'completed');
 assert.equal(customEvaluation.artifacts.analysis.records.length, 7);
 assert.equal(customEvaluation.analysisResults['baseline-mean-length'].value, 8);
@@ -309,8 +347,7 @@ const independent = await evaluation({
       minimumSamplesPerVariantPerStratum: 1,
     },
   },
-  runId: 'clean-room-independent',
-});
+}, { runId: 'clean-room-independent' });
 assert.equal(independent.status, 'completed');
 assert.equal(independent.artifacts.execution.records.length, 4);
 assert.equal(
@@ -347,14 +384,15 @@ const clustered = await evaluate({
     seed: 'clean-room-cluster-seed',
     sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
   },
-  policy: {},
-  runId: 'clean-room-clustered',
+  policy: {}
+}, {
+  runId: 'clean-room-clustered'
 });
 assert.equal(clustered.status, 'completed');
 assert.equal(clustered.analysisResults['clustered-correctness'].value.unitCount, 2);
 
 const sequences = [];
-const withSlowObserver = await evaluation({
+const withSlowObserver = await evaluation({}, {
   runId: 'clean-room-slow-observer',
   eventBufferCapacity: 1,
   async onEvent(event) {
@@ -369,7 +407,7 @@ assert.ok(sequences.every((sequence, index) => index === 0 || sequence > sequenc
 const observerSecret = 'private progress sink payload';
 let observerFailure;
 try {
-  await evaluation({
+  await evaluation({}, {
     runId: 'clean-room-observer-failure',
     eventBufferCapacity: 1,
     onEvent() {
