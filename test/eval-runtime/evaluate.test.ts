@@ -413,6 +413,316 @@ describe('canonical eval-runtime API', () => {
     });
   });
 
+  it('materializes one sealed composite Metric for quality and paired comparison analyses', async () => {
+    const input = pairedInput();
+    const baseLength = numericCustomEvaluator('response-length', ({ bindings }) => ({
+      resultKind: 'score',
+      value: bindings.actual.length,
+    }));
+    const length: CustomEvaluator<{ actual: string }> = {
+      ...baseLength,
+      metric: {
+        metricId: 'response-length-score',
+        valueType: 'numeric',
+        scale: { min: 0, max: 5 },
+        direction: 'lower-is-better',
+        missingPolicyId: 'exclude/v1',
+      },
+    };
+    const components = [
+      { metricId: 'correct', weight: 0.5 },
+      { metricId: 'response-length-score', weight: 0.5 },
+    ] as const;
+    const composite = {
+      compositeMetricId: 'overall-quality',
+      components,
+      aggregation: { method: 'weighted-mean' as const, missing: 'require-complete' as const },
+      confidence: { method: 'percentile-bootstrap' as const, level: 0.95, resamples: 64 },
+    };
+    const declaration = {
+      ...input,
+      evaluators: [...input.evaluators, length],
+      analyses: [{
+        analysisId: 'candidate-overall-quality',
+        analysisKind: 'composite-quality-interval' as const,
+        variantId: treatmentSpec.variantId,
+        ...composite,
+      }, {
+        analysisId: 'overall-quality-difference',
+        analysisKind: 'composite-comparison-interval' as const,
+        comparisonId: 'baseline-vs-candidate',
+        treatmentVariantId: treatmentSpec.variantId,
+        ...composite,
+      }],
+      decision: {
+        decisionKind: 'analysis' as const,
+        analysisId: 'overall-quality-difference',
+        threshold: 0,
+      },
+    };
+    const canonical = await prepareEvaluation(declaration);
+    const reversed = await prepareEvaluation({
+      ...declaration,
+      analyses: declaration.analyses.map((analysis) => ({
+        ...analysis,
+        components: [...analysis.components].reverse() as [
+          typeof components[number],
+          typeof components[number],
+        ],
+      })),
+    });
+    const base = await prepareEvaluation({
+      ...declaration,
+      analyses: [],
+      decision: undefined,
+    });
+    const compositeMetric = {
+      metricId: 'overall-quality',
+      valueType: 'numeric' as const,
+      scope: 'sample' as const,
+      scale: { min: 0, max: 1 },
+      unit: 'utility',
+      direction: 'higher-is-better' as const,
+      missingPolicyId: 'exclude/v1',
+    };
+    const compositeParameters = {
+      compositeMetricId: 'overall-quality',
+      components: [
+        { metricId: 'correct', weight: 0.5 },
+        { metricId: 'response-length-score', weight: 0.5 },
+      ],
+      aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+      resamples: 64,
+      alpha: 0.05,
+    };
+    const manualCoreDefinition = EvaluationDefinitionSchema.parse({
+      ...base.definition,
+      metrics: [...base.definition.metrics, compositeMetric],
+      comparisons: base.definition.comparisons.map((comparison) => ({
+        ...comparison,
+        metricIds: [...comparison.metricIds, compositeMetric.metricId],
+      })),
+      analysisGraph: {
+        analysisMode: 'preregistered',
+        nodes: [{
+          analysisNodeKind: 'estimator',
+          nodeId: stableFacadeId('node', { analysisId: 'candidate-overall-quality' }),
+          implementationId: 'bootstrap.composite-mean-percentile/v1',
+          inputs: compositeParameters.components.map((component) => ({
+            inputKind: 'metric-observations',
+            referenceId: component.metricId,
+          })),
+          outputResultId: 'candidate-overall-quality',
+          targetFilter: { includeTargetIds: ['prompt-v2'] },
+          parameters: compositeParameters,
+        }, {
+          analysisNodeKind: 'estimator',
+          nodeId: stableFacadeId('node', { analysisId: 'overall-quality-difference' }),
+          implementationId: 'bootstrap.composite-paired-difference-percentile/v1',
+          inputs: [
+            ...compositeParameters.components.map((component) => ({
+              inputKind: 'metric-observations' as const,
+              referenceId: component.metricId,
+            })),
+            {
+              inputKind: 'comparison',
+              referenceId: 'baseline-vs-candidate',
+              treatmentTargetId: 'prompt-v2',
+              metricId: 'overall-quality',
+            },
+          ],
+          outputResultId: 'overall-quality-difference',
+          parameters: compositeParameters,
+        }],
+      },
+      decisionPolicy: {
+        decisionPolicyId: stableFacadeId('decision', {
+          decisionKind: 'analysis',
+          resultId: 'overall-quality-difference',
+        }),
+        implementationId: 'progress/v2',
+        analysisResultIds: ['overall-quality-difference'],
+        comparisonFamily: [{
+          comparisonId: 'baseline-vs-candidate',
+          treatmentTargetId: 'prompt-v2',
+          metricId: 'overall-quality',
+          analysisResultId: 'overall-quality-difference',
+        }],
+        minimumEvidenceStatus: 'complete',
+        parameters: { threshold: 0, equivalence: 0 },
+      },
+    });
+
+    expect(canonical.definition).toEqual(manualCoreDefinition);
+    expect(reversed.definition).toEqual(canonical.definition);
+    expect(reversed.planDigest).toBe(canonical.planDigest);
+    expect(canonical.definition.metrics).toContainEqual({
+      metricId: 'overall-quality',
+      valueType: 'numeric',
+      scope: 'sample',
+      scale: { min: 0, max: 1 },
+      unit: 'utility',
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    });
+    expect(canonical.definition.comparisons[0].metricIds).toEqual([
+      'correct',
+      'overall-quality',
+    ]);
+    expect(canonical.definition.decisionPolicy).toMatchObject({
+      analysisResultIds: ['overall-quality-difference'],
+      comparisonFamily: [{
+        comparisonId: 'baseline-vs-candidate',
+        treatmentTargetId: 'prompt-v2',
+        metricId: 'overall-quality',
+        analysisResultId: 'overall-quality-difference',
+      }],
+    });
+    expect(canonical.definition.analysisGraph.nodes.map((node) => ({
+      implementationId: node.implementationId,
+      outputResultId: node.outputResultId,
+    }))).toEqual(expect.arrayContaining([{
+      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      outputResultId: 'candidate-overall-quality',
+    }, {
+      implementationId: 'bootstrap.composite-paired-difference-percentile/v1',
+      outputResultId: 'overall-quality-difference',
+    }]));
+
+    const result = await canonical.run({ runId: 'runtime-composite', clock: fixedClock });
+    const reorderedResult = await reversed.run({ runId: 'runtime-composite', clock: fixedClock });
+    expect(result.status, JSON.stringify(result)).toBe('completed');
+    expect(reorderedResult.artifacts).toEqual(result.artifacts);
+    expect(result.analysisResults['candidate-overall-quality']).toMatchObject({
+      analysisStatus: 'completed',
+      value: { estimate: 0.9, unitCount: 2 },
+      coverage: { included: 4, comparable: 4 },
+    });
+    expect(result.analysisResults['overall-quality-difference']).toMatchObject({
+      analysisStatus: 'completed',
+      value: { unitCount: 2 },
+      coverage: { included: 8, comparable: 8 },
+    });
+    const difference = result.analysisResults['overall-quality-difference'];
+    if (difference.analysisStatus !== 'completed' || difference.resultType !== 'interval'
+        || difference.value === null || Array.isArray(difference.value)
+        || typeof difference.value !== 'object') throw new Error('Expected composite interval.');
+    expect((difference.value as { estimate: number }).estimate).toBeCloseTo(0.45);
+    expect(result.artifacts?.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'NOISE',
+    });
+  });
+
+  it('rejects unbounded source Metrics and inexact composite weights before execution', async () => {
+    let targetInvocations = 0;
+    const input = pairedInput(executor(async ({ input: sample, config }) => {
+      targetInvocations += 1;
+      return { output: config.answers[sample.prompt] };
+    }));
+    const unbounded = numericCustomEvaluator('unbounded-length', ({ bindings }) => ({
+      resultKind: 'score',
+      value: bindings.actual.length,
+    }));
+    const analysis = {
+      analysisId: 'invalid-composite',
+      analysisKind: 'composite-quality-interval' as const,
+      compositeMetricId: 'overall-quality',
+      variantId: treatmentSpec.variantId,
+      components: [
+        { metricId: 'correct', weight: 0.5 },
+        { metricId: 'unbounded-length-score', weight: 0.5 },
+      ] as const,
+      aggregation: { method: 'weighted-mean' as const, missing: 'require-complete' as const },
+      confidence: { method: 'percentile-bootstrap' as const, level: 0.95, resamples: 64 },
+    };
+    await expect(prepareEvaluation({
+      ...input,
+      evaluators: [...input.evaluators, unbounded],
+      analyses: [analysis],
+      decision: undefined,
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+
+    const bounded: CustomEvaluator<{ actual: string }> = {
+      ...unbounded,
+      metric: {
+        metricId: 'unbounded-length-score',
+        valueType: 'numeric',
+        scale: { min: 0, max: 5 },
+        direction: 'lower-is-better',
+        missingPolicyId: 'exclude/v1',
+      },
+    };
+    await expect(prepareEvaluation({
+      ...input,
+      evaluators: [...input.evaluators, bounded],
+      analyses: [{
+        ...analysis,
+        components: [
+          { metricId: 'correct', weight: 0.5 },
+          { metricId: 'unbounded-length-score', weight: 0.5000000000005 },
+        ],
+      }],
+      decision: undefined,
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+    expect(targetInvocations).toBe(0);
+  });
+
+  it('does not expose a derived composite Metric as direct observation evidence', async () => {
+    const input = pairedInput();
+    const baseLength = numericCustomEvaluator('derived-boundary-length', ({ bindings }) => ({
+      resultKind: 'score',
+      value: bindings.actual.length,
+    }));
+    const length: CustomEvaluator<{ actual: string }> = {
+      ...baseLength,
+      metric: {
+        metricId: 'derived-boundary-length-score',
+        valueType: 'numeric',
+        scale: { min: 0, max: 5 },
+        direction: 'lower-is-better',
+        missingPolicyId: 'exclude/v1',
+      },
+    };
+    const composite = {
+      analysisId: 'candidate-derived-quality',
+      analysisKind: 'composite-quality-interval' as const,
+      compositeMetricId: 'derived-quality',
+      variantId: treatmentSpec.variantId,
+      components: [
+        { metricId: 'correct', weight: 0.5 },
+        { metricId: 'derived-boundary-length-score', weight: 0.5 },
+      ] as const,
+      aggregation: { method: 'weighted-mean' as const, missing: 'require-complete' as const },
+      confidence: { method: 'percentile-bootstrap' as const, level: 0.95, resamples: 32 },
+    };
+
+    await expect(prepareEvaluation({
+      ...input,
+      evaluators: [...input.evaluators, length],
+      analyses: [composite, {
+        analysisId: 'invalid-direct-derived-quality',
+        analysisKind: 'quality-interval',
+        statistic: 'mean',
+        variantId: treatmentSpec.variantId,
+        metricId: 'derived-quality',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }],
+      decision: undefined,
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+
+    await expect(prepareEvaluation({
+      ...input,
+      evaluators: [...input.evaluators, length],
+      comparisons: [{
+        ...input.comparisons[0],
+        metricIds: [...input.comparisons[0].metricIds, 'derived-quality'],
+      }],
+      analyses: [composite],
+      decision: undefined,
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+  });
+
   it('preregisters a Bonferroni simultaneous interval family without inventing p-values', async () => {
     const input = pairedInput();
     const length = numericCustomEvaluator('family-length', ({ bindings }) => ({
@@ -881,6 +1191,20 @@ describe('canonical eval-runtime API', () => {
       return { output: invocation.config.answers[invocation.input.prompt] };
     });
     const input = pairedInput(declaration);
+    const baseLength = numericCustomEvaluator('independent-length', ({ bindings }) => ({
+      resultKind: 'score',
+      value: bindings.actual.length,
+    }));
+    const length: CustomEvaluator<{ actual: string }> = {
+      ...baseLength,
+      metric: {
+        metricId: 'independent-length-score',
+        valueType: 'numeric',
+        scale: { min: 0, max: 5 },
+        direction: 'lower-is-better',
+        missingPolicyId: 'exclude/v1',
+      },
+    };
     const result = await evaluate({
       ...input,
       dataset: {
@@ -894,6 +1218,7 @@ describe('canonical eval-runtime API', () => {
       comparisons: [{
         ...input.comparisons[0],
       }],
+      evaluators: [...input.evaluators, length],
       experiment: {
         seed: 'independent-seed',
         trials: 2,
@@ -913,6 +1238,17 @@ describe('canonical eval-runtime API', () => {
         statistic: 'mean',
         variantId: treatmentSpec.variantId,
         metricId: 'correct',
+        confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
+      }, {
+        analysisId: 'independent-overall-difference',
+        analysisKind: 'composite-comparison-interval',
+        compositeMetricId: 'independent-overall-quality',
+        comparisonId: 'baseline-vs-candidate',
+        treatmentVariantId: treatmentSpec.variantId,
+        components: [{ metricId: 'correct', weight: 0.5 }, {
+          metricId: 'independent-length-score', weight: 0.5,
+        }],
+        aggregation: { method: 'weighted-mean', missing: 'require-complete' },
         confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
       }],
       decision: undefined
@@ -951,6 +1287,14 @@ describe('canonical eval-runtime API', () => {
     expect(result.analysisResults['candidate-independent-quality']).toMatchObject({
       analysisStatus: 'completed',
       value: { unitCount: 3 },
+    });
+    expect(result.definition.analysisGraph.nodes.find(
+      (node) => node.outputResultId === 'independent-overall-difference',
+    )?.implementationId).toBe('bootstrap.composite-unpaired-difference-percentile/v1');
+    expect(result.analysisResults['independent-overall-difference']).toMatchObject({
+      analysisStatus: 'completed',
+      value: { unitCount: 6 },
+      coverage: { included: 24, comparable: 24 },
     });
   });
 

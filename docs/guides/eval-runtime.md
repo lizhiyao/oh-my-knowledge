@@ -236,6 +236,26 @@ The two member records use 97.5% marginal intervals, targeting at least 95% simu
 
 The optional family `decision` names that outer family plus one bounded criterion for every member. Bounds use raw treatment-minus-control effect units and equality is acceptable. With `rule: 'all'`, OMK returns `RELEASE` only when every complete simultaneous interval lies inside its declared bounds, `BLOCK` when at least one interval lies wholly outside a bound, and not-decided when any interval still crosses a bound. Criteria cannot be omitted, duplicated, added after results, weighted, or collapsed into a composite score.
 
+Use a composite interval only when the product construct itself is an explicit weighted utility, rather than a set of independent release criteria:
+
+```ts
+analyses: [{
+  analysisId: 'v2-overall-quality',
+  analysisKind: 'composite-comparison-interval',
+  compositeMetricId: 'overall-quality',
+  comparisonId: 'prompt-v1-vs-v2',
+  treatmentVariantId: 'prompt-v2',
+  components: [
+    { metricId: 'correctness', weight: 0.7 },
+    { metricId: 'conciseness', weight: 0.3 },
+  ],
+  aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+  confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 10_000 },
+}],
+```
+
+Every component must be a boolean Metric or a bounded numeric Metric with a monotonic direction. OMK converts each sealed source Metric to `[0, 1]`, composes complete readings within the experimental unit, and only then bootstraps the derived Metric. Weights are positive, unique by `metricId`, and sum exactly to one; there is no default weighting, scale override, clamp, or renormalization after missing evidence. Use `composite-quality-interval` with `variantId` for one-Variant quality. Use `composite-comparison-interval` with a paired or independent Sampling Design for treatment-minus-control change. A Decision selects either result by its `analysisId`.
+
 `exact-match` compares the canonical JSON value of the actual output with the sample's `expected` value. It is not byte-for-byte string comparison.
 
 `runId`, `signal`, `onEvent`, `clock`, report annotations／summaries, and `eventBufferCapacity` belong to the optional second `EvaluationRunOptions` argument; they are not measurement declarations. `onEvent` is a best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.

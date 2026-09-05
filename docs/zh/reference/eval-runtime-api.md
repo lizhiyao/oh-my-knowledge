@@ -18,7 +18,7 @@
 | `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`Dataset`、`Sample`、`Executor`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`CompositeMetricComponent`、`CompositeAggregation`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver` 与 `Clock`。Executor 认证使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
 `Policy` 使用相互独立的 execution／evaluation `StagePolicy`。每个 stage 分别封存 concurrency、timeout 与可选 `RetryPolicy`；retry error code 是宿主定义的稳定 identifier，`RetryBackoff` 是显式的 `none`／`fixed`／`exponential` 判别联合。`FailurePolicy` 同样使用判别联合，只有 `failure-threshold` 可以携带 `maxFailures`。`BudgetPolicy` 暴露 run、stage、coordinate 与 attempt scope，以及可审计的 invocation、active-duration、wall-clock 和 provider-cost limit。Provider-cost admission 固定为 bounded overshoot；`onUnreportedProviderCost` 选择失败关闭或不可验证处理。Façade 只负责把声明物化为 Core Measurement Policy；scheduler、timeout、retry、取消、预算计量和 failure-threshold 行为仍全部由 Core 实现。
 
@@ -40,7 +40,24 @@ Numeric 与 boolean custom Metric 必须显式声明 `higher-is-better` 或 `low
 
 `independent` 必须为每个 Variant 显式声明 allocation，以及全局和逐 stratum 的最小样本数。seed、可选 `stratumKey`、weight 与 minimum 会在任何 Executor 调用前封存；Core 把每个 sample 恰好分给一个 Variant，重复 trial 沿用同一分组，任何 minimum 无法满足时都在执行前失败。每项比较使用非配对 percentile Bootstrap estimator，绝不把独立组数据伪装成 paired data。
 
-Analysis 必须显式声明并在执行前预注册。顶层 `analyses[]` 接受具名的 `summary`、`quality-interval`、`comparison-interval` 与 `comparison-family`：summary 支持 numeric `mean`、boolean `rate` 和 numeric `quantile`；单项区间显式声明置信水平与重采样次数。Comparison family 至少声明两个全局具名 contrast 和一个整族置信水平。其 `bonferroni-percentile-bootstrap` 方法会在执行前把每项边际置信水平封存为 `1 - (1 - family level) / family size`，再产生一份由 Core 独立验证的 simultaneous-family table；该 family level 是标称目标，实际覆盖依赖边际 Bootstrap 区间达到其标称覆盖率。它不会伪造 p-value，也不会在看到结果后筛选 family member。每项请求可以应用一份封存的 Dataset cohort filter。Rubric panel 会先在成员内平均 replicate，再按声明聚合成员，最后在 sample 内归约重复 Target trial；paired 与 independent member 分别保持自身重采样单位。Metric direction 不会被用于静默翻转结果符号。Analysis `decision` 选择一个 interval；`comparison-family` decision 则选择外层 family，并为每个 member 提供一项原始 effect 单位的 `FamilyDecisionCriterion`。显式 `all` 规则只有在全部 simultaneous interval 满足 inclusive boundary 时才发布，已证明违反任一 criterion 时阻断，其余情况保持 not-decided。空 analysis 列表只保留类型化 evaluation evidence，不会虚构统计量或 composite verdict。
+Analysis 必须显式声明并在执行前预注册。顶层 `analyses[]` 接受具名的 `summary`、`quality-interval`、`comparison-interval`、`comparison-family`、`composite-quality-interval` 与 `composite-comparison-interval`：summary 支持 numeric `mean`、boolean `rate` 和 numeric `quantile`；单项区间显式声明置信水平与重采样次数。Comparison family 至少声明两个全局具名 contrast 和一个整族置信水平。其 `bonferroni-percentile-bootstrap` 方法会在执行前把每项边际置信水平封存为 `1 - (1 - family level) / family size`，再产生一份由 Core 独立验证的 simultaneous-family table；该 family level 是标称目标，实际覆盖依赖边际 Bootstrap 区间达到其标称覆盖率。它不会伪造 p-value，也不会在看到结果后筛选 family member。每项请求可以应用一份封存的 Dataset cohort filter。Rubric panel 会先在成员内平均 replicate，再按声明聚合成员，最后在 sample 内归约重复 Target trial；paired 与 independent member 分别保持自身重采样单位。Metric direction 不会被用于静默翻转结果符号。Analysis `decision` 选择一个 interval；`comparison-family` decision 则选择外层 family，并为每个 member 提供一项原始 effect 单位的 `FamilyDecisionCriterion`。显式 `all` 规则只有在全部 simultaneous interval 满足 inclusive boundary 时才发布，已证明违反任一 criterion 时阻断，其余情况保持 not-decided。空 analysis 列表只保留类型化 evaluation evidence，不会虚构统计量或 composite verdict。
+
+Composite request 使用 `compositeMetricId` 命名派生的 `[0, 1]` higher-is-better Metric，并显式声明至少两个 `CompositeMetricComponent` 与一份 `CompositeAggregation`。Component 的 source Metric ID 必须唯一，权重必须为正且严格求和为一；v1 唯一支持的聚合方式是 `{ method: 'weighted-mean', missing: 'require-complete' }`。它只接受 boolean Metric，以及声明了单调 direction 和完整边界的 numeric Metric；调用点不能覆盖 source Metric 已封存的 scale 或 direction。Runtime 会物化 derived Metric，并在 composite comparison 中把它加入选定的 Core Comparison；归一化、panel 聚合、实验单位内合成、缺失 component 排除、重采样、coverage 与 source-row lineage 仍只由 Core 负责。
+
+```ts
+const analysis: AnalysisRequest = {
+  analysisId: 'overall-quality',
+  analysisKind: 'composite-quality-interval',
+  compositeMetricId: 'overall-quality',
+  variantId: 'prompt-v2',
+  components: [
+    { metricId: 'correct', weight: 0.6 },
+    { metricId: 'rubric-quality', weight: 0.4 },
+  ],
+  aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+  confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
+};
+```
 
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 

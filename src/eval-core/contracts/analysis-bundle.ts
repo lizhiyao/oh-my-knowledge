@@ -7,6 +7,7 @@ import {
   type ExecutionBundle,
 } from './artifacts.js';
 import {
+  RuntimeIdentitySchema,
   SchemaIdentitySchema,
   schemaIdentityKey,
   type CoreSchemaValidator,
@@ -443,6 +444,14 @@ function expectedRows(
   evaluation: EvaluationBundle,
   node: AnalysisBundlePlanContext['analysis']['analysisGraph']['nodes'][number],
 ): ExpectedAnalysisRow[] {
+  const analysisRuntime = plan.analysis.runtimes.find((runtime) => (
+    runtime.runtimeKind === 'analysis-node' && runtime.referenceId === node.nodeId
+  ));
+  const runtimeIdentity = RuntimeIdentitySchema.safeParse(analysisRuntime?.identity);
+  const implementationId = runtimeIdentity.success
+    ? runtimeIdentity.data.implementationId
+    : undefined;
+  const matchingNode = { ...node, ...(implementationId === undefined ? {} : { implementationId }) };
   const metricIds = new Set(node.inputs
     .filter((input) => input.inputKind === 'metric-observations')
     .map((input) => input.referenceId));
@@ -482,7 +491,7 @@ function expectedRows(
     for (const metricId of evaluator.metricIds) {
       if (!metricIds.has(metricId)) continue;
       const matchingContrasts = comparisonInputs.filter((input) => (
-        analysisComparisonAppliesToMetricInput(node, input.metricId, metricId)
+        analysisComparisonAppliesToMetricInput(matchingNode, input.metricId, metricId)
       ));
       if (comparisonInputs.length > 0 && matchingContrasts.length === 0) continue;
       const allowedTargets = matchingContrasts.length === 0 ? undefined : new Set(

@@ -60,6 +60,63 @@ async function expectCode(
 }
 
 describe('Compiler definition validation', () => {
+  it('does not let arbitrary estimators impersonate a composite comparison', () => {
+    const definition = validDefinition();
+    const node = definition.analysisGraph.nodes[0];
+    if (node === undefined) throw new Error('Expected one analysis node.');
+    node.inputs = [
+      { inputKind: 'metric-observations', referenceId: 'correct' },
+      { inputKind: 'metric-observations', referenceId: 'source-score' },
+      {
+        inputKind: 'comparison',
+        referenceId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment',
+        metricId: 'derived-score',
+      },
+    ];
+    node.parameters = {
+      compositeMetricId: 'derived-score',
+      components: [
+        { metricId: 'correct', weight: 0.5 },
+        { metricId: 'source-score', weight: 0.5 },
+      ],
+    };
+    definition.metrics.push({
+      metricId: 'source-score',
+      valueType: 'numeric',
+      scope: 'sample',
+      scale: { min: 0, max: 1 },
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    }, {
+      metricId: 'derived-score',
+      valueType: 'numeric',
+      scope: 'sample',
+      scale: { min: 0, max: 1 },
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    });
+    definition.evaluators[0].metricIds.push('source-score');
+    definition.comparisons[0].metricIds.push('derived-score');
+    definition.decisionPolicy = {
+      decisionPolicyId: 'derived-decision',
+      implementationId: 'progress/v2',
+      analysisResultIds: [node.outputResultId],
+      comparisonFamily: [{
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment',
+        metricId: 'derived-score',
+        analysisResultId: node.outputResultId,
+      }],
+      minimumEvidenceStatus: 'complete',
+      parameters: { threshold: 0, equivalence: 0 },
+    };
+
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+  });
+
   function simultaneousIntervalDefinition() {
     const definition = validDefinition();
     definition.metrics.push({

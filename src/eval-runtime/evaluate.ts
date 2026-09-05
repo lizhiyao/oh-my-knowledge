@@ -183,6 +183,28 @@ const ComparisonFamilyMemberInputSchema = z.object({
   metricId: IdentifierSchema,
 }).strict();
 
+const CompositeComponentInputSchema = z.object({
+  metricId: IdentifierSchema,
+  weight: z.number().finite().positive(),
+}).strict();
+
+const CompositeAggregationInputSchema = z.object({
+  method: z.literal('weighted-mean'),
+  missing: z.literal('require-complete'),
+}).strict();
+
+const CompositeRequestFieldsSchema = z.object({
+  compositeMetricId: IdentifierSchema,
+  components: z.array(CompositeComponentInputSchema).min(2),
+  aggregation: CompositeAggregationInputSchema,
+  confidence: z.object({
+    method: z.literal('percentile-bootstrap'),
+    level: z.number().gt(0).lt(1),
+    resamples: z.number().int().positive(),
+  }).strict(),
+  cohortFilter: CohortFilterInputSchema.optional(),
+}).strict();
+
 const AnalysesInputSchema = z.array(z.discriminatedUnion('analysisKind', [
     z.object({
       analysisId: IdentifierSchema,
@@ -231,6 +253,17 @@ const AnalysesInputSchema = z.array(z.discriminatedUnion('analysisKind', [
         resamples: z.number().int().positive(),
       }).strict(),
       cohortFilter: CohortFilterInputSchema.optional(),
+    }).strict(),
+    CompositeRequestFieldsSchema.extend({
+      analysisId: IdentifierSchema,
+      analysisKind: z.literal('composite-quality-interval'),
+      variantId: IdentifierSchema,
+    }).strict(),
+    CompositeRequestFieldsSchema.extend({
+      analysisId: IdentifierSchema,
+      analysisKind: z.literal('composite-comparison-interval'),
+      comparisonId: IdentifierSchema,
+      treatmentVariantId: IdentifierSchema,
     }).strict(),
   ]));
 
@@ -523,6 +556,16 @@ export interface ComparisonFamilyMember {
   readonly metricId: string;
 }
 
+export interface CompositeMetricComponent {
+  readonly metricId: string;
+  readonly weight: number;
+}
+
+export interface CompositeAggregation {
+  readonly method: 'weighted-mean';
+  readonly missing: 'require-complete';
+}
+
 export type AnalysisRequest =
   | (Readonly<{
       analysisId: string;
@@ -568,6 +611,43 @@ export type AnalysisRequest =
       members: readonly [ComparisonFamilyMember, ComparisonFamilyMember, ...ComparisonFamilyMember[]];
       confidence: Readonly<{
         method: 'bonferroni-percentile-bootstrap';
+        level: number;
+        resamples: number;
+      }>;
+      cohortFilter?: CohortFilter;
+    }>
+  | Readonly<{
+      analysisId: string;
+      analysisKind: 'composite-quality-interval';
+      compositeMetricId: string;
+      variantId: string;
+      components: readonly [
+        CompositeMetricComponent,
+        CompositeMetricComponent,
+        ...CompositeMetricComponent[],
+      ];
+      aggregation: CompositeAggregation;
+      confidence: Readonly<{
+        method: 'percentile-bootstrap';
+        level: number;
+        resamples: number;
+      }>;
+      cohortFilter?: CohortFilter;
+    }>
+  | Readonly<{
+      analysisId: string;
+      analysisKind: 'composite-comparison-interval';
+      compositeMetricId: string;
+      comparisonId: string;
+      treatmentVariantId: string;
+      components: readonly [
+        CompositeMetricComponent,
+        CompositeMetricComponent,
+        ...CompositeMetricComponent[],
+      ];
+      aggregation: CompositeAggregation;
+      confidence: Readonly<{
+        method: 'percentile-bootstrap';
         level: number;
         resamples: number;
       }>;
@@ -1619,8 +1699,17 @@ function createGeneralDefinition(input: Readonly<{
       'Evaluation variantId 必须唯一。',
     );
   }
-  const metrics = input.evaluators.metrics;
-  const metricIds = new Set(metrics.map((metric) => metric.metricId));
+  const metrics = [...input.evaluators.metrics];
+  const declaredCompositeMetricIds = new Set(input.analyses.flatMap((request) => (
+    request.analysisKind === 'composite-quality-interval'
+      || request.analysisKind === 'composite-comparison-interval'
+      ? [request.compositeMetricId]
+      : []
+  )));
+  const metricIds = new Set([
+    ...metrics.map((metric) => metric.metricId),
+    ...declaredCompositeMetricIds,
+  ]);
   let comparisons: Comparison[];
   try {
     comparisons = input.comparisons.map((comparison) => (
@@ -1711,6 +1800,88 @@ function createGeneralDefinition(input: Readonly<{
       'Evaluation analysisId 必须唯一。',
     );
   }
+  const sourceMetricsById = new Map(input.evaluators.metrics.map((metric) => [
+    metric.metricId,
+    metric,
+  ]));
+  const compositeContractById = new Map<string, string>();
+  for (const request of requests) {
+    if (request.analysisKind !== 'composite-quality-interval'
+        && request.analysisKind !== 'composite-comparison-interval') continue;
+    const components = [...request.components].sort((left, right) => (
+      compareStrings(left.metricId, right.metricId)
+    ));
+    const componentIds = components.map((component) => component.metricId);
+    const totalWeight = components.reduce((sum, component) => sum + component.weight, 0);
+    const sourcesSupported = components.every((component) => {
+      const metric = sourceMetricsById.get(component.metricId);
+      if (metric === undefined || metric.scope !== 'sample'
+          || metric.missingPolicyId !== 'exclude/v1'
+          || (metric.direction !== 'higher-is-better'
+            && metric.direction !== 'lower-is-better')) return false;
+      return metric.valueType === 'boolean'
+        || (metric.valueType === 'numeric'
+          && typeof metric.scale?.min === 'number'
+          && Number.isFinite(metric.scale.min)
+          && typeof metric.scale.max === 'number'
+          && Number.isFinite(metric.scale.max)
+          && metric.scale.min < metric.scale.max
+          && metric.scale.target === undefined);
+    });
+    if (sourceMetricsById.has(request.compositeMetricId)
+        || componentIds.length < 2
+        || new Set(componentIds).size !== componentIds.length
+        || componentIds.includes(request.compositeMetricId)
+        || totalWeight !== 1
+        || !sourcesSupported) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Composite analysis 要求唯一的 derived Metric、至少两个受支持 source Metric，以及严格求和为一的正权重。',
+      );
+    }
+    const contract = canonicalizeJson({
+      components,
+      aggregation: request.aggregation,
+    });
+    const existing = compositeContractById.get(request.compositeMetricId);
+    if (existing !== undefined && existing !== contract) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        '同一 compositeMetricId 在一次 Evaluation 中必须声明完全一致的 construct。',
+      );
+    }
+    compositeContractById.set(request.compositeMetricId, contract);
+  }
+  const compositeComparisonBindings = new Set(requests.flatMap((request) => (
+    request.analysisKind === 'composite-comparison-interval'
+      ? [canonicalizeJson([request.comparisonId, request.compositeMetricId])]
+      : []
+  )));
+  for (const comparison of comparisons) {
+    if (comparison.metricIds.some((metricId) => (
+      compositeContractById.has(metricId)
+      && !compositeComparisonBindings.has(canonicalizeJson([
+        comparison.comparisonId,
+        metricId,
+      ]))
+    ))) {
+      return configurationFailure(
+        'EVAL_RUNTIME_INPUT_INVALID',
+        'Derived composite Metric 只能绑定到声明它的 composite comparison。',
+      );
+    }
+  }
+  for (const compositeMetricId of [...compositeContractById.keys()].sort(compareStrings)) {
+    metrics.push(MetricDefinitionSchema.parse({
+      metricId: compositeMetricId,
+      valueType: 'numeric',
+      scope: 'sample',
+      scale: { min: 0, max: 1 },
+      unit: 'utility',
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    }));
+  }
   const cohortIds = new Set(
     (input.evaluators.dataset.analysisCohorts ?? []).map((cohort) => cohort.cohortId),
   );
@@ -1761,7 +1932,7 @@ function createGeneralDefinition(input: Readonly<{
     parameters: Readonly<{ alpha: number; resamples: number }>,
     cohortFilter: CanonicalCohortFilter | undefined,
   ): void => {
-    const metric = metrics.find((candidate) => candidate.metricId === selector.metricId);
+    const metric = sourceMetricsById.get(selector.metricId);
     if (metric === undefined
         || (metric.valueType !== 'numeric' && metric.valueType !== 'boolean')) {
       return configurationFailure(
@@ -1870,7 +2041,99 @@ function createGeneralDefinition(input: Readonly<{
       });
       continue;
     }
-    const metric = metrics.find((candidate) => candidate.metricId === request.metricId);
+    if (request.analysisKind === 'composite-quality-interval'
+        || request.analysisKind === 'composite-comparison-interval') {
+      const components = [...request.components].sort((left, right) => (
+        compareStrings(left.metricId, right.metricId)
+      ));
+      const parameters = {
+        compositeMetricId: request.compositeMetricId,
+        components: components.map((component) => {
+          const measurementAggregation = input.evaluators.measurementAggregations.get(
+            component.metricId,
+          );
+          return {
+            metricId: component.metricId,
+            weight: component.weight,
+            ...(measurementAggregation === undefined ? {} : {
+              measurementAggregation: JsonValueSchema.parse(
+                structuredClone(measurementAggregation),
+              ),
+            }),
+          };
+        }),
+        aggregation: request.aggregation,
+        resamples: request.confidence.resamples,
+        alpha: alphaFromConfidenceLevel(request.confidence.level),
+      };
+      const common = {
+        analysisNodeKind: 'estimator' as const,
+        nodeId: stableFacadeId('node', { analysisId: request.analysisId }),
+        inputs: components.map((component) => ({
+          inputKind: 'metric-observations' as const,
+          referenceId: component.metricId,
+        })),
+        outputResultId: request.analysisId,
+        ...(cohortFilter === undefined ? {} : { cohortFilter }),
+        parameters,
+      };
+      if (request.analysisKind === 'composite-quality-interval') {
+        if (!variantIdSet.has(request.variantId)) {
+          return configurationFailure(
+            'EVAL_RUNTIME_INPUT_INVALID',
+            'Composite quality interval 引用了未知 Variant。',
+          );
+        }
+        analysisNodes.push({
+          ...common,
+          targetFilter: { includeTargetIds: [request.variantId] },
+          implementationId: isClustered
+            ? 'bootstrap.composite-cluster-percentile/v1'
+            : 'bootstrap.composite-mean-percentile/v1',
+        });
+        analysisBindings.push({
+          analysisId: request.analysisId,
+          analysisKind: request.analysisKind,
+          resultId: request.analysisId,
+          metricId: request.compositeMetricId,
+          variantId: request.variantId,
+        });
+        continue;
+      }
+      const comparison = comparisons.find((candidate) => (
+        candidate.comparisonId === request.comparisonId
+      ));
+      if (sampling.samplingKind === 'solo'
+          || comparison === undefined
+          || !comparison.treatmentVariantIds.includes(request.treatmentVariantId)) {
+        return configurationFailure(
+          'EVAL_RUNTIME_INPUT_INVALID',
+          'Composite comparison interval 要求 paired 或 independent sampling，以及有效的 Comparison 与 Treatment。',
+        );
+      }
+      analysisNodes.push({
+        ...common,
+        implementationId: sampling.samplingKind === 'independent'
+          ? 'bootstrap.composite-unpaired-difference-percentile/v1'
+          : 'bootstrap.composite-paired-difference-percentile/v1',
+        inputs: [...common.inputs, {
+          inputKind: 'comparison',
+          referenceId: request.comparisonId,
+          treatmentTargetId: request.treatmentVariantId,
+          metricId: request.compositeMetricId,
+        }],
+      });
+      analysisBindings.push({
+        analysisId: request.analysisId,
+        analysisKind: request.analysisKind,
+        resultId: request.analysisId,
+        metricId: request.compositeMetricId,
+        comparisonId: request.comparisonId,
+        treatmentVariantId: request.treatmentVariantId,
+      });
+      continue;
+    }
+    const metric = sourceMetricsById.get(request.metricId);
     if (metric === undefined) {
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
@@ -2043,7 +2306,9 @@ function createGeneralDefinition(input: Readonly<{
       ));
       if (selected.length !== 1
           || (selected[0].analysisKind !== 'quality-interval'
-            && selected[0].analysisKind !== 'comparison-interval')) {
+            && selected[0].analysisKind !== 'comparison-interval'
+            && selected[0].analysisKind !== 'composite-quality-interval'
+            && selected[0].analysisKind !== 'composite-comparison-interval')) {
         return configurationFailure(
           'EVAL_RUNTIME_INPUT_INVALID',
           'Evaluation decision 必须精确选择一个 interval analysis。',
@@ -2107,6 +2372,13 @@ function createGeneralDefinition(input: Readonly<{
   const slotByVariant = new Map(randomizationSlots.map((slot) => (
     [slot.targetId, slot.randomizationSlotId] as const
   )));
+  const derivedComparisonMetricIds = new Map<string, Set<string>>();
+  for (const request of requests) {
+    if (request.analysisKind !== 'composite-comparison-interval') continue;
+    const ids = derivedComparisonMetricIds.get(request.comparisonId) ?? new Set<string>();
+    ids.add(request.compositeMetricId);
+    derivedComparisonMetricIds.set(request.comparisonId, ids);
+  }
   const definition = EvaluationDefinitionSchema.parse({
     schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,
     dataset: input.evaluators.dataset,
@@ -2173,7 +2445,12 @@ function createGeneralDefinition(input: Readonly<{
       comparisonId: comparison.comparisonId,
       controlTargetId: comparison.controlVariantId,
       treatmentTargetIds: [...comparison.treatmentVariantIds].sort(compareStrings),
-      metricIds: [...comparison.metricIds].sort(compareStrings),
+      metricIds: [
+        ...new Set([
+          ...comparison.metricIds,
+          ...(derivedComparisonMetricIds.get(comparison.comparisonId) ?? []),
+        ]),
+      ].sort(compareStrings),
     })),
     ...(decisionPolicy === undefined ? {} : { decisionPolicy }),
   });
