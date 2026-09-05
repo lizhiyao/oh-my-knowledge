@@ -185,6 +185,30 @@ if (assessment.comparabilityStatus !== 'compatible') {
 
 The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. Persistent cross-process admission remains available through the advanced Core surface until the Runtime artifact-store adapter lands.
 
+When only a downstream measurement declaration changes, reuse the authenticated prefix instead of paying for the same Target work again:
+
+```ts
+import { reanalyze, redecide, rescore } from 'oh-my-knowledge';
+
+const rescored = await rescore(
+  { ...input, dataset: correctedGoldDataset },
+  originalResult,
+  { runId: 'corrected-gold' },
+);
+const reanalyzed = await reanalyze(
+  { ...input, analyses: revisedAnalyses },
+  rescored,
+  { runId: 'revised-analysis' },
+);
+const redecided = await redecide(
+  { ...input, analyses: revisedAnalyses, decision: revisedDecision },
+  reanalyzed,
+  { runId: 'revised-decision' },
+);
+```
+
+`rescore()` reuses Execution, `reanalyze()` reuses Execution plus Evaluation, and `redecide()` reuses Execution plus Evaluation plus Analysis. Each call takes a complete new declaration so defaults and identities are sealed before the suffix runs. Core rejects any change that belongs to a skipped stage, and only exact canonical result objects from the current process carry the required source authority. Run options, progress events, and budget consumption apply to the newly executed suffix; reused bundles retain their original identity and historical evidence without charging their work again. To reuse persisted Bundle documents across processes, use explicit Core admission with independent provenance verification; a report or JSON clone is never sufficient evidence.
+
 `executor.execute()` receives `variantId` in addition to the values shown above. Comparison roles belong to `comparisons`, not to the Executor invocation. Return `{ errorCode }` for an expected, stable, non-sensitive host failure; throwing an ordinary error becomes the redacted `EVAL_RUNTIME_EXECUTOR_FAILED` failure.
 
 Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults, or drop JSON fields, because that would silently change the measured invocation under the same identity. Perform intentional transformations inside `execute()` and bump `version` or a measurement-relevant `fingerprintFacets` value.

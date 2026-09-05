@@ -10,6 +10,7 @@ import {
   type EvaluationEvent,
   type EvaluationBundle,
   type EvaluationBundleSource,
+  type EvaluationReport,
   type ExecutionBundle,
   type ExecutionBundleSource,
   type AnalysisBundleSource,
@@ -344,6 +345,59 @@ export function getAuthenticatedEvaluationRunSources(
   return authenticatedEvaluationRunSources.get(result);
 }
 
+export interface AuthenticatedEvaluationRunResultInput {
+  readonly plan: SealedRunPlan;
+  readonly execution: ExecutionBundleSource;
+  readonly evaluation: EvaluationBundleSource;
+  readonly analysis: AnalysisBundleSource;
+  readonly decision?: DecisionResultSource;
+  readonly report: EvaluationReport;
+}
+
+/** Internal result materializer shared by full and staged façade runs. */
+export function materializeAuthenticatedEvaluationRunResult(
+  input: Readonly<AuthenticatedEvaluationRunResultInput>,
+): EvaluationRunResult {
+  const report = parseEvaluationReport(
+    input.report,
+    input.plan,
+    input.execution,
+    input.evaluation,
+    input.analysis,
+    input.decision,
+  );
+  const artifacts: EvaluationRunArtifacts = {
+    execution: input.execution.bundle,
+    evaluation: input.evaluation.bundle,
+    analysis: input.analysis.bundle,
+    ...(input.decision === undefined ? {} : { decision: input.decision.result }),
+  };
+  const result: EvaluationRunResult = report.status.runStatus === 'failed'
+    ? {
+        status: 'failed',
+        error: firstArtifactError(
+          artifacts.execution,
+          artifacts.evaluation,
+          artifacts.analysis,
+          artifacts.decision,
+        ) ?? {
+          code: 'EVALUATION_RUN_FAILED',
+          stage: 'internal',
+          message: 'Evaluation run 以 failed 状态结束。',
+        },
+        artifacts,
+        report,
+      }
+    : { status: report.status.runStatus, artifacts, report };
+  authenticatedEvaluationRunSources.set(result, Object.freeze({
+    execution: input.execution,
+    evaluation: input.evaluation,
+    analysis: input.analysis,
+    ...(input.decision === undefined ? {} : { decision: input.decision }),
+  }));
+  return result;
+}
+
 async function settleStage<T>(
   run: StageRun<T>,
   output: BoundedEventStream,
@@ -561,30 +615,14 @@ async function executePipeline(
       events: reportRun.events,
       source: reportRun.result,
     }, events);
-    const artifacts: EvaluationRunArtifacts = {
-      execution: execution.bundle,
-      evaluation: evaluation.bundle,
-      analysis: analysis.bundle,
-      ...(decision === undefined ? {} : { decision: decision.result }),
-    };
-    if (report.status.runStatus === 'failed') {
-      return authenticate({
-        status: 'failed',
-        error: firstArtifactError(
-          artifacts.execution,
-          artifacts.evaluation,
-          artifacts.analysis,
-          artifacts.decision,
-        ) ?? {
-          code: 'EVALUATION_RUN_FAILED',
-          stage: 'internal',
-          message: 'Evaluation run 以 failed 状态结束。',
-        },
-        artifacts,
-        report,
-      });
-    }
-    return authenticate({ status: report.status.runStatus, artifacts, report });
+    return materializeAuthenticatedEvaluationRunResult({
+      plan,
+      execution,
+      evaluation,
+      analysis,
+      ...(decision === undefined ? {} : { decision }),
+      report,
+    });
   } catch (error) {
     const artifacts: PartialEvaluationRunArtifacts = {
       ...(executionSource === undefined ? {} : { execution: executionSource.bundle }),

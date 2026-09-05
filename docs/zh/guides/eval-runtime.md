@@ -182,6 +182,30 @@ if (assessment.comparabilityStatus !== 'compatible') {
 
 该 Assessment 不会比较分数，也不会判断候选是否进步；它只检查声明 subject 变化后，测量设计是否保持不变，以及两条 source chain 是否具备足够的认证证据。必须保留原始 result object：clone 或反序列化 artifact 无法保留进程内 Core source authority，因此会失败关闭。跨进程持久化 admission 在 Runtime artifact-store adapter 落地前继续由高级 Core surface 提供。
 
+只有下游测量声明发生变化时，可以复用已经认证的前缀，避免再次支付相同 Target 工作的成本：
+
+```ts
+import { reanalyze, redecide, rescore } from 'oh-my-knowledge';
+
+const rescored = await rescore(
+  { ...input, dataset: correctedGoldDataset },
+  originalResult,
+  { runId: 'corrected-gold' },
+);
+const reanalyzed = await reanalyze(
+  { ...input, analyses: revisedAnalyses },
+  rescored,
+  { runId: 'revised-analysis' },
+);
+const redecided = await redecide(
+  { ...input, analyses: revisedAnalyses, decision: revisedDecision },
+  reanalyzed,
+  { runId: 'revised-decision' },
+);
+```
+
+`rescore()` 复用 Execution，`reanalyze()` 复用 Execution 与 Evaluation，`redecide()` 复用 Execution、Evaluation 与 Analysis。每次调用都接收一份完整的新声明，确保默认值与 identity 在后缀运行前封存。Core 会拒绝任何属于已跳过阶段的变化；只有当前进程中的原始 canonical result object 携带所需 source authority。Run options、进度事件与预算消耗只作用于新执行的后缀；复用 bundle 保留原始 identity 与历史 evidence，不会再次计费。跨进程复用持久化 Bundle 时，应通过 Core 显式 admission 并独立验证 provenance；report 或 JSON clone 绝不是充分证据。
+
 除上面展示的值外，`executor.execute()` 还会收到 `variantId`。比较角色属于 `comparisons`，不会注入 Executor invocation。可预期的宿主失败应返回 `{ errorCode }`，其中 error code 必须稳定且不包含敏感信息；普通异常会统一成为脱敏的 `EVAL_RUNTIME_EXECUTOR_FAILED`。
 
 Schema 只能校验并收窄。若 parser coercion、补默认值或删除 JSON 字段，OMK 会拒绝执行，因为这些行为会在同一 identity 下静默改变实际测量。需要有意变换时，应在 `execute()` 内完成，并提升 `version` 或测量相关的 `fingerprintFacets`。

@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`assessComparability`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
+这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -14,6 +14,9 @@
 |---|---|
 | `evaluate` | 运行一份显式的 solo、paired 或 independent-group 评测设计，包括多臂与多指标比较。 |
 | `prepareEvaluation` | 在任何 Target 或 Evaluator 调用前，封存并检查最终 Definition、Policy、Plan、Runtime resolution、digest 和工作量估计。 |
+| `rescore` | 复用已认证的 Execution stage，再按新封存声明执行 Evaluation、Analysis、Decision 与 Report。 |
+| `reanalyze` | 复用已认证的 Execution 与 Evaluation stage，再按新封存声明执行 Analysis、Decision 与 Report。 |
+| `redecide` | 复用已认证的 Execution、Evaluation 与 Analysis stage，再执行新声明的 Decision 与 Report。 |
 | `assessComparability` | 在不重新执行 Target 的前提下，按 evaluation、analysis 或 decision scope 评估两份已认证 canonical Run result 的可比性。 |
 | `checkContentStore` | 验证宿主 ContentStore／ContentResolver 的 descriptor 完整性与稳定性、幂等写入，以及回读 value、classification 和 media type；宿主异常只会归约为稳定 reason code。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量检查认证 Executor。 |
@@ -74,6 +77,8 @@ const variant: Variant<string, undefined, string> = {
 `EvaluateInput` 只包含测量声明；`EvaluationRunOptions` 容纳单次运行的 `runId`、取消、进度观察、报告 annotation／summary、event buffer 容量与 clock。省略 `runId` 时由 Runtime 生成，并通过 `EvaluationResult.runId` 返回。`prepareEvaluation(input)` 会捕获全部可变声明、物化默认值、解析 Runtime capability，并在不调用 Target 或 Evaluator 的情况下封存 Core Plan。冻结的 `PreparedEvaluation` 暴露准确的 `definition`、`policy`、`plan`、完整运行契约 `planDigest`、`resolvedRuntimes` 与 `estimatedWork`；`run(options)` 直接执行同一份 sealed Plan，不重新读取 input 或重新编译。计划 coordinate 不包含 retry 与提前终止带来的变化，duration 和 provider cost 在执行前会明确保持不确定。
 
 `assessComparability()` 只接受当前进程中由 canonical `evaluate()` 或 `PreparedEvaluation.run()` 返回的两份原始 `EvaluationResult`。Clone 或反序列化文档不具备 source authority，会被拒绝而不是冒充已认证证据。`comparisonScope` 选择需要保持不变的最深契约阶段，每个 `EvaluationComparabilitySubject` 显式映射左右两侧有意变化的 Variant。返回的 `EvaluationComparabilityAssessment` 完全由 Core 生成，并将 `designStatus`、`evidenceQualificationStatus` 与总的 `comparabilityStatus` 分开保留；已映射 subject 的变化只是 identity 事实，不会被误判为设计漂移，未闭合的 Runtime assurance 则保持 conditional。持久化 artifact 的重新 admission 在 Runtime artifact-store contract 落地前仍属于显式的高级 Core 职责。
+
+`rescore()`、`reanalyze()` 与 `redecide()` 接收一份完整的新 `EvaluateInput`、一份原始 `EvaluationResult`，以及可选的 `EvaluationRunOptions`。Runtime 会先封存新声明，再由 Core 递归验证保留的 source capability 与全部跳过阶段一致：`rescore` 不能隐藏 Target 输入变化，`reanalyze` 不能隐藏 Gold 或 Evaluator 变化，`redecide` 不能隐藏 Analysis 变化。Clone、反序列化 report 或 Bundle JSON 不具备进程内 source authority，都会被拒绝。复用的上游 bundle 保留原始 identity 与历史 evidence；新执行的后缀阶段使用新 Run identity，只为后缀产生新进度事件，也只消耗新 Run 的后缀预算。Façade 不重建 evidence、不调用被跳过的 callback，也不复制 Core 的评分、统计、Decision、Report、预算、缓存或调度实现。
 
 `SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较，也是 paired／independent 语义的唯一持有者。solo 设计可以声明 `clusterKey`，此时 Core 将完整 cluster 作为实验单位与重采样单位。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric，不再包含重复的 sampling 判别字段。`evaluators` 可包含多个 exact-match、retrieval、tool-trajectory、Rubric 评委或 custom evaluator，但 evaluator ID 与 metric ID 必须分别唯一。
 

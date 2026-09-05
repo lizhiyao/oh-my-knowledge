@@ -220,6 +220,9 @@ const PUBLIC_API = {
       'checkExecutor',
       'evaluate',
       'prepareEvaluation',
+      'reanalyze',
+      'redecide',
+      'rescore',
     ],
     types: [
       'AllowedToolsInput',
