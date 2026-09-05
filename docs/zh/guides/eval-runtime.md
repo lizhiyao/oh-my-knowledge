@@ -1,9 +1,9 @@
 # 在 Node.js 服务中嵌入 OMK
 
-应用自行负责模型调用，而希望 OMK 负责测量、对比和报告时，使用 `oh-my-knowledge` 包根入口。普通接入只有一个主入口：
+应用自行负责模型调用，而希望 OMK 负责测量、对比和报告时，使用 `oh-my-knowledge` 包根入口。多数接入直接调用 `evaluate`；需要执行前检查或审批的宿主使用 `prepareEvaluation`：
 
 ```ts
-import { evaluate } from 'oh-my-knowledge';
+import { evaluate, prepareEvaluation } from 'oh-my-knowledge';
 ```
 
 该包仅支持 ESM，要求 Node.js 22 或更高版本。它不会自行发现凭证、provider、文件、环境变量、CLI 配置或 Studio 状态。
@@ -98,7 +98,7 @@ const variants: Variant<Input, Config, string>[] = [{
   },
 }];
 
-const result = await evaluate({
+const input = {
   dataset: {
     datasetId: 'answer-regression',
     samples: [
@@ -136,14 +136,28 @@ const result = await evaluate({
     execution: { maxConcurrency: 4 },
     evaluation: { maxConcurrency: 4 },
   },
-  runId: crypto.randomUUID(),
-});
+};
+const result = await evaluate(input);
 
 if (result.status !== 'completed') throw new Error(result.error.code);
 await reportStore.put(result.report);
 ```
 
-`result.definition` 与 `result.policy` 是 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。`result.analysisResults[analysisId]` 是同一批 Core Analysis record 的只读索引，不会重新计算统计量。其余 Core 运行结果字段保持不变：evidence 位于 `result.artifacts`，Decision 位于 `result.artifacts.decision`，Report 位于 `result.report`。
+`result.runId` 是实际运行身份；未在可选第二参数中传入时由 OMK 自动生成。`result.definition` 与 `result.policy` 是 façade 实际编译出的 sealed Core Definition 和完整物化的 Measurement Policy。`result.analysisResults[analysisId]` 是同一批 Core Analysis record 的只读索引，不会重新计算统计量。其余 Core 运行结果字段保持不变：evidence 位于 `result.artifacts`，Decision 位于 `result.artifacts.decision`，Report 位于 `result.report`。
+
+需要 dry-run 检查、预算复核或人工审批时，先完成准备：
+
+```ts
+const prepared = await prepareEvaluation(input);
+
+console.log(prepared.definition, prepared.policy);
+console.log(prepared.planDigest, prepared.resolvedRuntimes);
+console.log(prepared.estimatedWork);
+
+const result = await prepared.run({ runId: 'approved-release-42', signal });
+```
+
+准备阶段会解析 capability 并封存完整 Core Plan，不会调用 Target 或 Evaluator。`prepared.run()` 精确执行这份不可变 Plan；准备后修改原始 input，不会改变 Definition、Policy、digest 或执行行为。`estimatedWork` 给出 retry 或提前终止前计划的 execution／evaluation coordinate，并明确标出只有运行时才能确定的 duration 与 provider cost。直接调用 `evaluate(input, options)` 与 `prepareEvaluation(input).run(options)` 保持 canonical equivalence。
 
 除上面展示的值外，`executor.execute()` 还会收到 `variantId`。比较角色属于 `comparisons`，不会注入 Executor invocation。可预期的宿主失败应返回 `{ errorCode }`，其中 error code 必须稳定且不包含敏感信息；普通异常会统一成为脱敏的 `EVAL_RUNTIME_EXECUTOR_FAILED`。
 
@@ -221,7 +235,7 @@ decision: {
 
 `exact-match` 比较 actual output 与 sample `expected` 的 canonical JSON 值，不是字符串字节逐一比较。
 
-`onEvent` 是可选的 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
+`runId`、`signal`、`onEvent`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
 
 ## 生产策略
 
@@ -327,7 +341,6 @@ const result = await evaluate({
   }],
   experiment: { seed: 'length-release-42', sampling: { samplingKind: 'paired' } },
   policy: { evaluation: { timeoutMs: 5_000 } },
-  runId: crypto.randomUUID(),
 });
 ```
 
@@ -385,7 +398,6 @@ const result = await evaluate({
   }],
   experiment: { seed: 'rubric-release-42', sampling: { samplingKind: 'paired' } },
   policy: {},
-  runId: crypto.randomUUID(),
 });
 ```
 

@@ -123,7 +123,9 @@ const evaluator = {
   tracePolicy: 'none',
 };
 
-const pending = evaluate({ ...base, evaluators: [evaluator], runId: 'embedded-faas-rubric' });
+const pending = evaluate({ ...base, evaluators: [evaluator] }, {
+  runId: 'embedded-faas-rubric',
+});
 judge.invoke = async () => {
   throw new Error('evaluate must retain the Judge method captured at construction.');
 };
@@ -169,6 +171,7 @@ const failureResult = await evaluate({
       },
     })),
   }],
+}, {
   runId: 'embedded-faas-rubric-failure',
 });
 assert.equal(failureResult.status, 'completed');

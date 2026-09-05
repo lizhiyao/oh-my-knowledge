@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
@@ -11,6 +12,7 @@ import {
   bonferroniMarginalConfidenceLevel,
   deepFreezeCanonicalJson,
   canonicalizeJson,
+  derivePlannedExecutionCoordinates,
   digestCanonicalJson,
   type EvaluationDefinition,
   type AnalysisCohortDefinition,
@@ -18,15 +20,20 @@ import {
   type EvaluationSample,
   type EvaluatorDefinition,
   type JsonValue,
-  type MeasurementPolicy,
   type MetricDefinition,
   type UsageRecord,
 } from '../eval-core/contracts/index.js';
-import type {
-  EvaluationEngineClock,
-  EvaluationRunResult,
+import {
+  createEvaluationEngine as createCoreEvaluationEngine,
+  type EvaluationEngineClock,
+  type EvaluationRunResult,
+  type PreparedEvaluation as CorePreparedEvaluation,
 } from '../eval-core/engine/index.js';
-import type { EvaluatorRuntimeRequirement } from '../eval-core/compiler/index.js';
+import type {
+  EvaluatorRuntimeRequirement,
+  SealedRunPlan,
+} from '../eval-core/compiler/index.js';
+import { EvaluationDefinitionError } from '../eval-core/compiler/index.js';
 import type { EvaluationEvaluator } from '../eval-core/evaluation/index.js';
 import { createJsonExecutorAdapter, type RuntimeValueParser } from './adapters/json-executor.js';
 import {
@@ -69,11 +76,12 @@ import type {
 } from './judges/rubric-contracts.js';
 import {
   EvaluationEventConsumptionError as AdvancedEvaluationEventConsumptionError,
-  runEvaluation,
+  runPreparedEvaluation,
   type EvaluationEventObserver,
 } from './runner.js';
 import {
   createEvaluationRuntime,
+  EvaluationRuntimeAssemblyError,
   type RuntimePortRegistration,
 } from './runtime.js';
 import {
@@ -611,10 +619,32 @@ export type AttemptBudgetScope = MeasurementAttemptBudgetScopeInput;
 export type BudgetPolicy = MeasurementBudgetPolicyInput;
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
-/** Core run result plus the exact sealed Definition compiled by the façade. */
+export type PreparedEvaluationPlan = SealedRunPlan;
+export type RuntimeCapabilityResolution = PreparedEvaluationPlan['execution']['runtimes'][number];
+
+export interface EvaluationWorkEstimate {
+  readonly sampleCount: number;
+  readonly variantCount: number;
+  readonly trialCount: number;
+  readonly executionCoordinates: number;
+  readonly evaluationCoordinates: number;
+  /** Planned Target plus Evaluator calls before retries or early termination. */
+  readonly plannedInvocations: number;
+  /** Quantities that cannot be known exactly before runtime observations exist. */
+  readonly uncertain: readonly (
+    | 'retries'
+    | 'early-termination'
+    | 'active-duration'
+    | 'wall-clock'
+    | 'provider-cost'
+  )[];
+}
+
+/** Core run result plus the exact sealed contract executed by the façade. */
 export type EvaluationResult = EvaluationRunResult & Readonly<{
-  definition: EvaluationDefinition;
-  policy: MeasurementPolicy;
+  runId: string;
+  definition: PreparedEvaluationPlan['definition'];
+  policy: PreparedEvaluationPlan['measurementPolicy'];
   analysisResults: Readonly<Record<string, AnalysisRecord>>;
 }>;
 export type EventObserver = EvaluationEventObserver;
@@ -648,13 +678,27 @@ export interface EvaluateInput {
   readonly decision?: Decision;
   readonly experiment: Experiment;
   readonly policy: Policy;
-  readonly runId: string;
+}
+
+export interface EvaluationRunOptions {
+  readonly runId?: string;
   readonly signal?: AbortSignal;
   readonly annotations?: JsonValue;
   readonly summaries?: JsonValue;
   readonly eventBufferCapacity?: number;
   readonly onEvent?: EventObserver;
   readonly clock?: Clock;
+}
+
+export interface PreparedEvaluation {
+  readonly definition: PreparedEvaluationPlan['definition'];
+  readonly policy: PreparedEvaluationPlan['measurementPolicy'];
+  readonly plan: PreparedEvaluationPlan;
+  /** Digest of the complete sealed run contract. */
+  readonly planDigest: PreparedEvaluationPlan['digests']['runContractDigest'];
+  readonly resolvedRuntimes: readonly RuntimeCapabilityResolution[];
+  readonly estimatedWork: EvaluationWorkEstimate;
+  run(options?: Readonly<EvaluationRunOptions>): Promise<EvaluationResult>;
 }
 
 export interface ExecutorCheckInput<
@@ -1098,8 +1142,9 @@ function captureJudge(value: Readonly<Judge>) {
 
 function attachDefinition(
   result: EvaluationRunResult,
-  definition: EvaluationDefinition,
-  policy: MeasurementPolicy,
+  runId: string,
+  definition: PreparedEvaluationPlan['definition'],
+  policy: PreparedEvaluationPlan['measurementPolicy'],
 ): EvaluationResult {
   const records = result.artifacts?.analysis?.records ?? [];
   const analysisResults = Object.freeze(Object.fromEntries(
@@ -1107,7 +1152,7 @@ function attachDefinition(
       .sort((left, right) => compareStrings(left.resultId, right.resultId))
       .map((record) => [record.resultId, record]),
   ));
-  return Object.freeze({ ...result, definition, policy, analysisResults });
+  return Object.freeze({ ...result, runId, definition, policy, analysisResults });
 }
 
 interface CapturedEvaluators {
@@ -2135,8 +2180,7 @@ function createGeneralDefinition(input: Readonly<{
   return deepFreezeCanonicalJson(definition);
 }
 
-function assertCommonInput(input: Readonly<{
-  runId: string;
+function assertEvaluateInput(input: Readonly<{
   variants: readonly Variant[];
   evaluators: readonly Evaluator[];
   comparisons: readonly Comparison[];
@@ -2144,9 +2188,6 @@ function assertCommonInput(input: Readonly<{
   analyses: readonly AnalysisRequest[];
   decision?: Decision;
   policy: Policy;
-  eventBufferCapacity?: number;
-  annotations?: JsonValue;
-  summaries?: JsonValue;
 }>) {
   const allowedKeys = new Set([
     'dataset',
@@ -2157,6 +2198,28 @@ function assertCommonInput(input: Readonly<{
     'decision',
     'experiment',
     'policy',
+  ]);
+  if (Object.keys(input).some((key) => !allowedKeys.has(key))
+      || !Array.isArray(input.variants) || input.variants.length === 0
+      || !Array.isArray(input.evaluators) || input.evaluators.length === 0
+      || !Array.isArray(input.comparisons)
+      || !ExperimentSchema.safeParse(input.experiment).success
+      || !AnalysesInputSchema.safeParse(input.analyses).success
+      || (input.decision !== undefined && !DecisionInputSchema.safeParse(input.decision).success)
+      || !z.array(ComparisonInputSchema).safeParse(input.comparisons).success
+      || !PolicyInputSchema.safeParse(input.policy).success) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation input 包含无效或不受支持的字段。',
+    );
+  }
+}
+
+function captureRunOptions(
+  value: Readonly<EvaluationRunOptions> | undefined,
+): Readonly<EvaluationRunOptions> {
+  const input = value === undefined ? {} : value;
+  const allowedKeys = new Set([
     'runId',
     'signal',
     'annotations',
@@ -2165,45 +2228,148 @@ function assertCommonInput(input: Readonly<{
     'onEvent',
     'clock',
   ]);
-  if (Object.keys(input).some((key) => !allowedKeys.has(key))
-      || !IdentifierSchema.safeParse(input.runId).success
-      || !Array.isArray(input.variants) || input.variants.length === 0
-      || !Array.isArray(input.evaluators) || input.evaluators.length === 0
-      || !Array.isArray(input.comparisons)
-      || !ExperimentSchema.safeParse(input.experiment).success
-      || !AnalysesInputSchema.safeParse(input.analyses).success
-      || (input.decision !== undefined && !DecisionInputSchema.safeParse(input.decision).success)
-      || !z.array(ComparisonInputSchema).safeParse(input.comparisons).success
-      || !PolicyInputSchema.safeParse(input.policy).success
+  if (input === null || typeof input !== 'object'
+      || Object.keys(input).some((key) => !allowedKeys.has(key))
+      || (input.runId !== undefined && !IdentifierSchema.safeParse(input.runId).success)
       || (input.eventBufferCapacity !== undefined
         && (!Number.isSafeInteger(input.eventBufferCapacity) || input.eventBufferCapacity < 1))
+      || (input.signal !== undefined && (
+        input.signal === null || typeof input.signal !== 'object'
+        || typeof input.signal.aborted !== 'boolean'
+        || typeof input.signal.addEventListener !== 'function'
+        || typeof input.signal.removeEventListener !== 'function'
+      ))
       || (input.annotations !== undefined && !JsonValueSchema.safeParse(input.annotations).success)
-      || (input.summaries !== undefined && !JsonValueSchema.safeParse(input.summaries).success)) {
+      || (input.summaries !== undefined && !JsonValueSchema.safeParse(input.summaries).success)
+      || (input.onEvent !== undefined && typeof input.onEvent !== 'function')
+      || (input.clock !== undefined && (
+        input.clock === null || typeof input.clock !== 'object'
+        || typeof input.clock.monotonicNow !== 'function'
+        || typeof input.clock.timestamp !== 'function'
+        || typeof input.clock.sleep !== 'function'
+      ))) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
-      'Evaluation input 包含无效或不受支持的字段。',
+      'Evaluation run options 包含无效或不受支持的字段。',
     );
+  }
+  return Object.freeze({
+    ...(input.runId === undefined ? {} : { runId: input.runId }),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+    ...(input.annotations === undefined ? {} : {
+      annotations: deepFreezeCanonicalJson(structuredClone(input.annotations)),
+    }),
+    ...(input.summaries === undefined ? {} : {
+      summaries: deepFreezeCanonicalJson(structuredClone(input.summaries)),
+    }),
+    ...(input.eventBufferCapacity === undefined
+      ? {}
+      : { eventBufferCapacity: input.eventBufferCapacity }),
+    ...(input.onEvent === undefined ? {} : { onEvent: input.onEvent }),
+    ...(input.clock === undefined ? {} : { clock: input.clock }),
+  });
+}
+
+function collectResolvedRuntimes(plan: SealedRunPlan): readonly RuntimeCapabilityResolution[] {
+  const unique = new Map<string, RuntimeCapabilityResolution>();
+  for (const runtime of [
+    ...plan.execution.runtimes,
+    ...plan.evaluation.runtimes,
+    ...plan.analysis.runtimes,
+    ...plan.decision.runtimes,
+  ]) {
+    unique.set(canonicalizeJson(runtime), runtime);
+  }
+  return Object.freeze([...unique.values()].sort((left, right) => (
+    compareStrings(
+      `${left.runtimeKind}\u0000${left.referenceId}\u0000${canonicalizeJson(left.identity)}`,
+      `${right.runtimeKind}\u0000${right.referenceId}\u0000${canonicalizeJson(right.identity)}`,
+    )
+  )));
+}
+
+function estimateEvaluationWork(plan: SealedRunPlan): EvaluationWorkEstimate {
+  const trials = plan.execution.experiment.trials;
+  const executionCoordinates = derivePlannedExecutionCoordinates(plan);
+  const evaluatorsBySampleId = new Map<string, number>();
+  for (const sample of plan.evaluation.samples) {
+    evaluatorsBySampleId.set(sample.sampleId, plan.evaluation.evaluators.filter((evaluator) => (
+      evaluator.applicableSampleIds === undefined
+      || evaluator.applicableSampleIds.includes(sample.sampleId)
+    )).length);
+  }
+  const evaluationCoordinates = executionCoordinates.reduce((total, coordinate) => (
+    total + (evaluatorsBySampleId.get(coordinate.sampleId) ?? 0)
+  ), 0);
+  const uncertain: EvaluationWorkEstimate['uncertain'][number][] = [
+    'early-termination',
+    'active-duration',
+    'wall-clock',
+    'provider-cost',
+  ];
+  if (plan.measurementPolicy.retry.maxAttempts > 1
+      || plan.measurementPolicy.evaluation.retry.maxAttempts > 1) {
+    uncertain.unshift('retries');
+  }
+  return Object.freeze({
+    sampleCount: plan.execution.samples.length,
+    variantCount: plan.execution.targets.length,
+    trialCount: trials,
+    executionCoordinates: executionCoordinates.length,
+    evaluationCoordinates,
+    plannedInvocations: executionCoordinates.length + evaluationCoordinates,
+    uncertain: Object.freeze(uncertain),
+  });
+}
+
+async function runPrepared(
+  prepared: CorePreparedEvaluation,
+  optionsInput?: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  const options = captureRunOptions(optionsInput);
+  const runId = options.runId ?? `run-${randomUUID()}`;
+  const definition = prepared.plan.definition;
+  const policy = prepared.plan.measurementPolicy;
+  try {
+    const result = await runPreparedEvaluation({
+      prepared,
+      runId,
+      ...(options.clock === undefined ? {} : { clock: options.clock }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.annotations === undefined ? {} : { annotations: options.annotations }),
+      ...(options.summaries === undefined ? {} : { summaries: options.summaries }),
+      ...(options.eventBufferCapacity === undefined
+        ? {}
+        : { eventBufferCapacity: options.eventBufferCapacity }),
+      ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
+    });
+    return attachDefinition(result, runId, definition, policy);
+  } catch (error) {
+    if (error instanceof AdvancedEvaluationEventConsumptionError) {
+      throw new EvaluationEventConsumptionError({
+        code: error.code,
+        message: error.message,
+        ...(error.runResult === undefined
+          ? {}
+          : { runResult: attachDefinition(error.runResult, runId, definition, policy) }),
+      });
+    }
+    throw error;
   }
 }
 
-/** Runs one explicit evaluation design through OMK's canonical user-facing API. */
-export async function evaluate(
+/** Seals one evaluation declaration without calling a Target or Evaluator. */
+export async function prepareEvaluation(
   input: Readonly<EvaluateInput>,
-): Promise<EvaluationResult> {
+): Promise<PreparedEvaluation> {
   if (input === null || typeof input !== 'object') {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
       'Evaluation input 无效。',
     );
   }
-  assertCommonInput(input);
+  assertEvaluateInput(input);
   const dataset = captureDataset(input.dataset);
-  const annotations = input.annotations === undefined
-    ? undefined
-    : deepFreezeCanonicalJson(structuredClone(input.annotations));
-  const summaries = input.summaries === undefined
-    ? undefined
-    : deepFreezeCanonicalJson(structuredClone(input.summaries));
   const variants = input.variants.map(captureVariant);
   const evaluators = captureEvaluators(dataset, input.evaluators);
 
@@ -2219,6 +2385,13 @@ export async function evaluate(
     });
   } catch (error) {
     if (error instanceof EvaluationConfigurationError) throw error;
+    if (error instanceof EvaluationDefinitionError && error.stage !== 'configuration') {
+      throw error;
+    }
+    if (!(error instanceof EvaluationDefinitionError)
+        && !(error instanceof EvaluationRuntimeAssemblyError)) {
+      throw error;
+    }
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
       'Evaluation experiment 无法编译为 Core Definition。',
@@ -2256,37 +2429,37 @@ export async function evaluate(
           }
           return variant.executor.createPort(variant.variantId);
         },
-      })),
+    })),
     evaluators: evaluators.registrations,
-    ...(input.clock === undefined ? {} : { clock: input.clock }),
   });
   try {
-    const result = await runEvaluation({
-      runtime,
-      definition,
-      policy,
-      runId: input.runId,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-      ...(annotations === undefined ? {} : { annotations }),
-      ...(summaries === undefined ? {} : { summaries }),
-      ...(input.eventBufferCapacity === undefined
-        ? {}
-        : { eventBufferCapacity: input.eventBufferCapacity }),
-      ...(input.onEvent === undefined ? {} : { onEvent: input.onEvent }),
+    const prepared = await createCoreEvaluationEngine(runtime).prepare(definition, policy);
+    const plan = prepared.plan;
+    return Object.freeze({
+      definition: plan.definition,
+      policy: plan.measurementPolicy,
+      plan,
+      planDigest: plan.digests.runContractDigest,
+      resolvedRuntimes: collectResolvedRuntimes(plan),
+      estimatedWork: estimateEvaluationWork(plan),
+      run: (options?: Readonly<EvaluationRunOptions>) => runPrepared(prepared, options),
     });
-    return attachDefinition(result, definition, policy);
   } catch (error) {
-    if (error instanceof AdvancedEvaluationEventConsumptionError) {
-      throw new EvaluationEventConsumptionError({
-        code: error.code,
-        message: error.message,
-        ...(error.runResult === undefined
-          ? {}
-          : { runResult: attachDefinition(error.runResult, definition, policy) }),
-      });
-    }
-    throw error;
+    if (error instanceof EvaluationConfigurationError) throw error;
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation 无法封存为可执行 Plan。',
+    );
   }
+}
+
+/** Runs one explicit evaluation declaration through OMK's canonical user-facing API. */
+export async function evaluate(
+  input: Readonly<EvaluateInput>,
+  options?: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  const capturedOptions = captureRunOptions(options);
+  return (await prepareEvaluation(input)).run(capturedOptions);
 }
 
 /** Exercises one Executor through success, failure, cancellation, cleanup, and measurement checks. */

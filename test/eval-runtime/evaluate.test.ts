@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  EvaluationConfigurationError,
   EvaluationEventConsumptionError,
   checkExecutor,
   evaluate,
+  prepareEvaluation,
   type Clock,
   type CustomEvaluator,
   type Executor,
@@ -18,12 +20,12 @@ import {
   type JsonValue,
 } from '../../src/eval-core/contracts/index.js';
 
-type Input = { prompt: string };
-type Config = { answers: Record<string, string> };
+type Input = { prompt: string; };
+type Config = { answers: Record<string, string>; };
 
 function executor(
   execute?: Executor<Input, Config, string>['execute'],
-  input: Readonly<{ executorId?: string; revision?: string }> = {},
+  input: Readonly<{ executorId?: string; revision?: string; }> = {},
 ): Executor<Input, Config, string> {
   return {
     executorId: input.executorId ?? 'test.answer-executor/v1',
@@ -120,18 +122,18 @@ function pairedInput(
       metricIds: ['correct'],
     }],
     analyses: [{
-        analysisId: 'baseline-vs-candidate-correct',
-        analysisKind: 'comparison-interval' as const,
-        statistic: 'mean-difference' as const,
-        comparisonId: 'baseline-vs-candidate',
-        treatmentVariantId: treatmentSpec.variantId,
-        metricId: 'correct',
-        confidence: {
-          method: 'percentile-bootstrap' as const,
-          level: 0.95,
-          resamples: 100,
-        },
-      }],
+      analysisId: 'baseline-vs-candidate-correct',
+      analysisKind: 'comparison-interval' as const,
+      statistic: 'mean-difference' as const,
+      comparisonId: 'baseline-vs-candidate',
+      treatmentVariantId: treatmentSpec.variantId,
+      metricId: 'correct',
+      confidence: {
+        method: 'percentile-bootstrap' as const,
+        level: 0.95,
+        resamples: 100,
+      },
+    }],
     experiment: {
       seed: 'fixed-seed',
       sampling: { samplingKind: 'paired' as const },
@@ -144,31 +146,30 @@ function pairedInput(
       execution: { maxConcurrency: 2 },
       evaluation: { maxConcurrency: 2 },
     },
-    runId: 'canonical-evaluate',
   };
 }
 
 function comparisonAnalysis(metricId: string, analysisId = `${metricId}-difference`) {
   return [{
-      analysisId,
-      analysisKind: 'comparison-interval' as const,
-      statistic: 'mean-difference' as const,
-      comparisonId: 'baseline-vs-candidate',
-      treatmentVariantId: treatmentSpec.variantId,
-      metricId,
-      confidence: {
-        method: 'percentile-bootstrap' as const,
-        level: 0.95,
-        resamples: 100,
-      },
-    }];
+    analysisId,
+    analysisKind: 'comparison-interval' as const,
+    statistic: 'mean-difference' as const,
+    comparisonId: 'baseline-vs-candidate',
+    treatmentVariantId: treatmentSpec.variantId,
+    metricId,
+    confidence: {
+      method: 'percentile-bootstrap' as const,
+      level: 0.95,
+      resamples: 100,
+    },
+  }];
 }
 
 function numericCustomEvaluator(
   evaluatorId: string,
-  callback: CustomEvaluator<{ actual: string }>['implementation']['evaluate'],
+  callback: CustomEvaluator<{ actual: string; }>['implementation']['evaluate'],
   revision = 'test-one',
-): CustomEvaluator<{ actual: string }> {
+): CustomEvaluator<{ actual: string; }> {
   return {
     evaluatorKind: 'custom',
     evaluatorId,
@@ -197,9 +198,9 @@ function numericCustomEvaluator(
 function qualitativeCustomEvaluator(
   evaluatorId: string,
   valueType: 'categorical' | 'text' | 'ranking',
-  valueParser: Readonly<{ parse(value: unknown): JsonValue }>,
-  callback: CustomEvaluator<{ actual: string }>['implementation']['evaluate'],
-): CustomEvaluator<{ actual: string }> {
+  valueParser: Readonly<{ parse(value: unknown): JsonValue; }>,
+  callback: CustomEvaluator<{ actual: string; }>['implementation']['evaluate'],
+): CustomEvaluator<{ actual: string; }> {
   return {
     evaluatorKind: 'custom',
     evaluatorId,
@@ -231,13 +232,116 @@ function stableFacadeId(
 }
 
 describe('canonical eval-runtime API', () => {
+  it('prepares one immutable executable Plan without calling a Target or Evaluator', async () => {
+    let targetInvocations = 0;
+    const declaration = executor(async ({ input, config, signal }) => {
+      targetInvocations += 1;
+      signal.throwIfAborted();
+      return { output: config.answers[input.prompt] };
+    });
+    const input = pairedInput(declaration);
+    const prepared = await prepareEvaluation(input);
+    const sealedDefinition = digestCanonicalJson(prepared.definition);
+
+    expect(targetInvocations).toBe(0);
+    expect(Object.isFrozen(prepared)).toBe(true);
+    expect(Object.isFrozen(prepared.plan)).toBe(true);
+    expect(Object.isFrozen(prepared.definition.dataset.samples)).toBe(true);
+    expect(prepared.definition).toBe(prepared.plan.definition);
+    expect(prepared.policy).toBe(prepared.plan.measurementPolicy);
+    expect(prepared.planDigest).toBe(prepared.plan.digests.runContractDigest);
+    expect(prepared.estimatedWork).toEqual({
+      sampleCount: 2,
+      variantCount: 2,
+      trialCount: 1,
+      executionCoordinates: 4,
+      evaluationCoordinates: 4,
+      plannedInvocations: 8,
+      uncertain: [
+        'early-termination',
+        'active-duration',
+        'wall-clock',
+        'provider-cost',
+      ],
+    });
+    expect(prepared.resolvedRuntimes.map(({ runtimeKind }) => runtimeKind)).toEqual(
+      expect.arrayContaining(['executor', 'evaluator', 'analysis-node', 'decision-policy']),
+    );
+
+    input.dataset.samples[0].input.prompt = 'two';
+    (input.variants[1].execution as { config?: Config; }).config = {
+      answers: { ...input.variants[1].execution.config!.answers, one: 'wrong' },
+    };
+    input.analyses[0].confidence.resamples = 32;
+    input.policy.execution.maxConcurrency = 1;
+
+    const result = await prepared.run({ runId: 'prepared-immutable', clock: fixedClock });
+    expect(result.status).toBe('completed');
+    expect(result.runId).toBe('prepared-immutable');
+    expect(targetInvocations).toBe(4);
+    expect(digestCanonicalJson(result.definition)).toBe(sealedDefinition);
+    expect(result.definition).toBe(prepared.definition);
+    expect(result.policy).toBe(prepared.policy);
+    if (result.status !== 'completed') return;
+    expect(result.artifacts.execution.runContractDigest).toBe(prepared.planDigest);
+  });
+
+  it('makes direct evaluate canonically equivalent and generates an omitted runId', async () => {
+    const input = pairedInput();
+    const prepared = await prepareEvaluation(input);
+    const direct = await evaluate(input, { clock: fixedClock });
+    const staged = await prepared.run({ clock: fixedClock });
+
+    expect(direct.runId).toMatch(/^run-[0-9a-f-]{36}$/u);
+    expect(staged.runId).toMatch(/^run-[0-9a-f-]{36}$/u);
+    expect(staged.runId).not.toBe(direct.runId);
+    expect(staged.definition).toEqual(direct.definition);
+    expect(staged.policy).toEqual(direct.policy);
+    expect(staged.status).toBe('completed');
+    expect(direct.status).toBe('completed');
+    if (staged.status !== 'completed' || direct.status !== 'completed') return;
+    expect(staged.artifacts.execution.runContractDigest)
+      .toBe(direct.artifacts.execution.runContractDigest);
+    expect(staged.artifacts.execution.executionPlanDigest)
+      .toBe(direct.artifacts.execution.executionPlanDigest);
+    expect(staged.artifacts.evaluation.evaluationPlanDigest)
+      .toBe(direct.artifacts.evaluation.evaluationPlanDigest);
+    expect(staged.artifacts.analysis.analysisPlanDigest)
+      .toBe(direct.artifacts.analysis.analysisPlanDigest);
+  });
+
+  it('captures direct run options before asynchronous preparation', async () => {
+    const options = { runId: 'captured-run-options', clock: fixedClock };
+    const pending = evaluate(pairedInput(), options);
+    options.runId = 'mutated-run-options';
+
+    const result = await pending;
+    expect(result.runId).toBe('captured-run-options');
+  });
+
+  it('strictly separates declaration fields from run options before Target calls', async () => {
+    let invocations = 0;
+    const input = pairedInput(executor(async () => {
+      invocations += 1;
+      return { output: 'A' };
+    }));
+
+    await expect(prepareEvaluation({ ...input, runId: 'old-shape' } as never))
+      .rejects.toBeInstanceOf(EvaluationConfigurationError);
+    await expect(evaluate(input, { runId: 'valid', legacy: true } as never))
+      .rejects.toBeInstanceOf(EvaluationConfigurationError);
+    await expect(evaluate(input, { signal: {} } as never))
+      .rejects.toBeInstanceOf(EvaluationConfigurationError);
+    expect(invocations).toBe(0);
+  });
+
   it('evaluates an explicit paired comparison without assigning a global experiment role', async () => {
-    const seen: Array<{ variantId: string; artifactName: string; model?: string }> = [];
+    const seen: Array<{ variantId: string; artifactName: string; model?: string; }> = [];
     const declaration = executor(async (invocation) => {
       seen.push({
         variantId: invocation.variantId,
         artifactName: invocation.artifact.name,
-        model: (invocation.runtimeContext?.values as { model?: string } | undefined)?.model,
+        model: (invocation.runtimeContext?.values as { model?: string; } | undefined)?.model,
       });
       return { output: invocation.config.answers[invocation.input.prompt] };
     });
@@ -246,7 +350,7 @@ describe('canonical eval-runtime API', () => {
     expect(result.status).toBe('completed');
     if (result.status !== 'completed' || result.artifacts === undefined) return;
     expect(result.definition.targets.map((target) => (
-      (target.config as { schemaVersion: string }).schemaVersion
+      (target.config as { schemaVersion: string; }).schemaVersion
     ))).toEqual([
       'omk.eval-runtime.variant-config/v3',
       'omk.eval-runtime.variant-config/v3',
@@ -296,9 +400,10 @@ describe('canonical eval-runtime API', () => {
         metricId: 'correct',
         confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
       }],
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'paired-quality',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -356,9 +461,10 @@ describe('canonical eval-runtime API', () => {
           minimumEffect: -100,
           maximumEffect: 100,
         }],
-      },
+      }
+    }, {
       runId: 'simultaneous-family',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -498,7 +604,7 @@ describe('canonical eval-runtime API', () => {
     const familyRecord = result.analysisResults['release-family'];
     if (familyRecord?.analysisStatus !== 'completed') throw new Error('missing family result');
     const familyMembers = (familyRecord.value as {
-      members: Array<{ analysisResultId: string; interval: JsonValue }>;
+      members: Array<{ analysisResultId: string; interval: JsonValue; }>;
     }).members;
     for (const member of familyMembers) {
       const memberRecord = result.analysisResults[member.analysisResultId];
@@ -539,9 +645,10 @@ describe('canonical eval-runtime API', () => {
           minimumEffect: -100,
           maximumEffect: 100,
         }],
-      },
+      }
+    }, {
       runId: 'simultaneous-family',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(reversed.definition).toEqual(result.definition);
   });
@@ -598,9 +705,10 @@ describe('canonical eval-runtime API', () => {
           minimumSamplesPerVariantPerStratum: 1,
         },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'independent-family',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -664,9 +772,10 @@ describe('canonical eval-runtime API', () => {
         },
       }],
       experiment: { seed: 'panel-family-seed', trials: 2, sampling: { samplingKind: 'paired' } },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'panel-family',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -734,9 +843,10 @@ describe('canonical eval-runtime API', () => {
           minimumEffect: -100,
           maximumEffect: 100,
         }],
-      },
+      }
+    }, {
       runId: 'incomplete-family',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -761,7 +871,7 @@ describe('canonical eval-runtime API', () => {
   });
 
   it('seals one stable Variant assignment per sample for independent comparisons', async () => {
-    const calls: Array<{ sampleId: string; variantId: string; trialIndex: number }> = [];
+    const calls: Array<{ sampleId: string; variantId: string; trialIndex: number; }> = [];
     const declaration = executor(async (invocation) => {
       calls.push({
         sampleId: invocation.sampleId,
@@ -805,9 +915,10 @@ describe('canonical eval-runtime API', () => {
         metricId: 'correct',
         confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 32 },
       }],
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'independent-assignment',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -881,19 +992,20 @@ describe('canonical eval-runtime API', () => {
           };
         },
       },
-    } satisfies CustomEvaluator<{ actual: string }>;
+    } satisfies CustomEvaluator<{ actual: string; }>;
     const input = pairedInput();
     const result = await evaluate({
       ...input,
       evaluators: [...input.evaluators, custom],
       comparisons: [{ ...input.comparisons[0], metricIds: ['correct', 'length'] }],
       analyses: [
-          ...input.analyses,
-          ...comparisonAnalysis('length'),
-        ],
-      decision: undefined,
+        ...input.analyses,
+        ...comparisonAnalysis('length'),
+      ],
+      decision: undefined
+    }, {
       runId: 'custom-evaluator',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -958,9 +1070,10 @@ describe('canonical eval-runtime API', () => {
       }],
       comparisons: [{ ...input.comparisons[0], metricIds: ['strict-score'] }],
       analyses: comparisonAnalysis('strict-score'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-invalid',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -1002,9 +1115,10 @@ describe('canonical eval-runtime API', () => {
         metricIds: ['transformed-bindings-score'],
       }],
       analyses: comparisonAnalysis('transformed-bindings-score'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-transformed-bindings',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(transformedResult.status).toBe('completed');
     expect(transformedBindingCalls).toBe(0);
@@ -1020,7 +1134,7 @@ describe('canonical eval-runtime API', () => {
 
   it('projects every supported custom binding source through its declared JSON Pointer', async () => {
     const base = executor();
-    const traceExecutor: Executor<Input, Config, string, { steps: string[] }> = {
+    const traceExecutor: Executor<Input, Config, string, { steps: string[]; }> = {
       ...base,
       schemas: {
         ...base.schemas,
@@ -1101,9 +1215,10 @@ describe('canonical eval-runtime API', () => {
       }>],
       comparisons: [{ ...input.comparisons[0], metricIds: ['all-bindings-valid'] }],
       analyses: comparisonAnalysis('all-bindings-valid'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-all-bindings',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -1117,41 +1232,27 @@ describe('canonical eval-runtime API', () => {
     const result = await evaluate({
       ...input,
       evaluators: [
-        qualitativeCustomEvaluator(
-          'answer-category',
-          'categorical',
-          z.string(),
-          ({ sampleId, bindings }) => sampleId === 'two'
-            ? { resultKind: 'missing', reasonCode: 'label-not-available' }
-            : { resultKind: 'score', value: bindings.actual },
-        ),
-        qualitativeCustomEvaluator(
-          'answer-text',
-          'text',
-          z.enum(['empty', 'non-empty']),
-          ({ bindings }) => ({
-            resultKind: 'score',
-            value: bindings.actual === '' ? 'empty' : 'non-empty',
-          }),
-        ),
-        qualitativeCustomEvaluator(
-          'answer-ranking',
-          'ranking',
-          z.array(z.enum(['empty', 'non-empty', 'fallback'])).min(1),
-          ({ bindings }) => ({
-            resultKind: 'score',
-            value: bindings.actual === '' ? ['empty'] : ['non-empty', 'fallback'],
-          }),
-        ),
+        qualitativeCustomEvaluator('answer-category', 'categorical', z.string(), ({ sampleId, bindings }) => sampleId === 'two'
+          ? { resultKind: 'missing', reasonCode: 'label-not-available' }
+          : { resultKind: 'score', value: bindings.actual }),
+        qualitativeCustomEvaluator('answer-text', 'text', z.enum(['empty', 'non-empty']), ({ bindings }) => ({
+          resultKind: 'score',
+          value: bindings.actual === '' ? 'empty' : 'non-empty',
+        })),
+        qualitativeCustomEvaluator('answer-ranking', 'ranking', z.array(z.enum(['empty', 'non-empty', 'fallback'])).min(1), ({ bindings }) => ({
+          resultKind: 'score',
+          value: bindings.actual === '' ? ['empty'] : ['non-empty', 'fallback'],
+        })),
       ],
       comparisons: [{
         ...input.comparisons[0],
         metricIds: ['answer-category-value', 'answer-text-value', 'answer-ranking-value'],
       }],
       analyses: [],
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-categorical',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -1186,7 +1287,7 @@ describe('canonical eval-runtime API', () => {
         resultKind: 'score' as const,
         value: suffix === 'length' ? bindings.actual.length : Number(bindings.actual === 'A'),
       }),
-    } satisfies CustomEvaluator<{ actual: string }>['implementation']);
+    } satisfies CustomEvaluator<{ actual: string; }>['implementation']);
     const result = await evaluate({
       ...input,
       evaluators: [{
@@ -1219,12 +1320,13 @@ describe('canonical eval-runtime API', () => {
         metricIds: ['shared-length-score', 'shared-is-a-score'],
       }],
       analyses: [
-          ...comparisonAnalysis('shared-length-score'),
-          ...comparisonAnalysis('shared-is-a-score'),
-        ],
-      decision: undefined,
+        ...comparisonAnalysis('shared-length-score'),
+        ...comparisonAnalysis('shared-is-a-score'),
+      ],
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-shared-implementation',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -1266,9 +1368,10 @@ describe('canonical eval-runtime API', () => {
       }],
       comparisons: [{ ...input.comparisons[0], metricIds: ['throwing-score'] }],
       analyses: comparisonAnalysis('throwing-score'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-thrown-failure',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(failed.status).toBe('completed');
     expect(JSON.stringify(failed)).not.toContain(privateMessage);
@@ -1308,8 +1411,10 @@ describe('canonical eval-runtime API', () => {
                 observedAbort = true;
                 reject(signal.reason);
               };
-              if (signal.aborted) abort();
-              else signal.addEventListener('abort', abort, { once: true });
+              if (signal.aborted)
+                abort();
+              else
+                signal.addEventListener('abort', abort, { once: true });
             });
             return { resultKind: 'score', value: 1 };
           },
@@ -1321,8 +1426,9 @@ describe('canonical eval-runtime API', () => {
       policy: {
         ...input.policy,
         evaluation: { ...input.policy.evaluation, timeoutMs: 5 },
-      },
-      runId: 'custom-evaluator-timeout',
+      }
+    }, {
+      runId: 'custom-evaluator-timeout'
     });
     expect(timedOut.status).toBe('completed');
     expect(observedAbort).toBe(true);
@@ -1345,9 +1451,10 @@ describe('canonical eval-runtime API', () => {
       }))],
       comparisons: [{ ...input.comparisons[0], metricIds: ['stable-failure-score'] }],
       analyses: comparisonAnalysis('stable-failure-score'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-stable-failure',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(stableFailure.status).toBe('completed');
     expect(stableFailure.artifacts?.evaluation?.records).toEqual(expect.arrayContaining([
@@ -1368,9 +1475,10 @@ describe('canonical eval-runtime API', () => {
       comparisons: [{ ...input.comparisons[0], metricIds: ['budgeted-score'] }],
       analyses: comparisonAnalysis('budgeted-score'),
       decision: undefined,
-      policy: { ...input.policy, budget: { run: { maxInvocations: 4 } } },
+      policy: { ...input.policy, budget: { run: { maxInvocations: 4 } } }
+    }, {
       runId: 'custom-evaluator-budget',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(budgeted.status).toBe('budget-exhausted');
     expect(calls).toBe(0);
@@ -1410,9 +1518,10 @@ describe('canonical eval-runtime API', () => {
           execution: { maxProviderCost: { amount: 1, currency: 'USD' } },
         },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-provider-cost-budget',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('budget-exhausted');
@@ -1475,9 +1584,10 @@ describe('canonical eval-runtime API', () => {
           onUnreportedProviderCost: 'mark-unverifiable',
         },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-unreported-cost-unverifiable',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(unverifiable.status).toBe('completed');
     if (unverifiable.status === 'failed') return;
@@ -1497,9 +1607,10 @@ describe('canonical eval-runtime API', () => {
           onUnreportedProviderCost: 'fail-run',
         },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-unreported-cost-failed',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(failed.status).toBe('failed');
     if (failed.status !== 'failed') return;
@@ -1522,13 +1633,14 @@ describe('canonical eval-runtime API', () => {
         evaluation: { maxConcurrency: 1 },
         budget: { execution: { maxActiveDurationMs: 5 } },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-active-duration-budget',
       clock: {
         monotonicNow: () => activeNow,
         timestamp: fixedClock.timestamp,
         sleep: fixedClock.sleep,
-      },
+      }
     });
     expect(active.status).toBe('budget-exhausted');
     expect(activeCalls).toBe(2);
@@ -1545,9 +1657,10 @@ describe('canonical eval-runtime API', () => {
       policy: {
         execution: { maxConcurrency: 1 },
         evaluation: { maxConcurrency: 1 },
-        budget: { run: { maxWallClockMs: 1_000 } },
+        budget: { run: { maxWallClockMs: 1000 } },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-wall-clock-budget',
       clock: {
         monotonicNow: () => wallNow,
@@ -1555,11 +1668,13 @@ describe('canonical eval-runtime API', () => {
         sleep(_delayMs, signal) {
           return new Promise((_resolve, reject) => {
             const abort = () => reject(signal?.reason);
-            if (signal?.aborted) abort();
-            else signal?.addEventListener('abort', abort, { once: true });
+            if (signal?.aborted)
+              abort();
+            else
+              signal?.addEventListener('abort', abort, { once: true });
           });
         },
-      },
+      }
     });
     expect(wall.status).toBe('budget-exhausted');
     expect(wallCalls).toBe(2);
@@ -1576,9 +1691,10 @@ describe('canonical eval-runtime API', () => {
         evaluation: { maxConcurrency: 1 },
         budget: { execution: { maxInvocations: 2 } },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-stage-invocation-budget',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(stage.status).toBe('budget-exhausted');
     expect(stageCalls).toBe(2);
@@ -1606,9 +1722,10 @@ describe('canonical eval-runtime API', () => {
         evaluation: { maxConcurrency: 1 },
         budget: { coordinate: { maxInvocations: 1 } },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-coordinate-budget',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(coordinate.status).toBe('budget-exhausted');
     expect(retryCalls).toBe(2);
@@ -1640,9 +1757,10 @@ describe('canonical eval-runtime API', () => {
         evaluation: { maxConcurrency: 1 },
         budget: { attempt: { maxProviderCost: { amount: 0.2, currency: 'USD' } } },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'canonical-attempt-budget',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(attempt.status).toBe('budget-exhausted');
     expect(attemptCalls).toBe(2);
@@ -1655,14 +1773,15 @@ describe('canonical eval-runtime API', () => {
       policy: {
         ...common.policy,
         budget: {
-          run: { maxInvocations: 100, maxActiveDurationMs: 5_000 },
+          run: { maxInvocations: 100, maxActiveDurationMs: 5000 },
           execution: { maxInvocations: 80 },
           evaluation: { maxInvocations: 20 },
           coordinate: { maxInvocations: 3 },
         },
-      },
+      }
+    }, {
       runId: 'canonical-budget-identity-first',
-      clock: fixedClock,
+      clock: fixedClock
     });
     const reordered = await evaluate({
       ...common,
@@ -1672,33 +1791,35 @@ describe('canonical eval-runtime API', () => {
           coordinate: { maxInvocations: 3 },
           evaluation: { maxInvocations: 20 },
           execution: { maxInvocations: 80 },
-          run: { maxActiveDurationMs: 5_000, maxInvocations: 100 },
+          run: { maxActiveDurationMs: 5000, maxInvocations: 100 },
         },
-      },
+      }
+    }, {
       runId: 'canonical-budget-identity-reordered',
-      clock: fixedClock,
+      clock: fixedClock
     });
     const changed = await evaluate({
       ...common,
       policy: {
         ...common.policy,
         budget: {
-          run: { maxInvocations: 101, maxActiveDurationMs: 5_000 },
+          run: { maxInvocations: 101, maxActiveDurationMs: 5000 },
           execution: { maxInvocations: 80 },
           evaluation: { maxInvocations: 20 },
           coordinate: { maxInvocations: 3 },
         },
-      },
+      }
+    }, {
       runId: 'canonical-budget-identity-changed',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(first.status).toBe('completed');
     expect(reordered.status).toBe('completed');
     expect(changed.status).toBe('completed');
     if (first.status !== 'completed'
-        || reordered.status !== 'completed'
-        || changed.status !== 'completed') return;
+      || reordered.status !== 'completed'
+      || changed.status !== 'completed') return;
     expect(reordered.policy).toEqual(first.policy);
     expect(reordered.artifacts.execution.runContractDigest)
       .toBe(first.artifacts.execution.runContractDigest);
@@ -1728,7 +1849,8 @@ describe('canonical eval-runtime API', () => {
           },
         },
         evaluation: { maxConcurrency: 1 },
-      },
+      }
+    }, {
       runId: 'execution-retry',
       clock: {
         ...fixedClock,
@@ -1736,7 +1858,7 @@ describe('canonical eval-runtime API', () => {
           executionSleeps.push(delayMs);
           return Promise.resolve();
         },
-      },
+      }
     });
     expect(executionResult.status).toBe('completed');
     expect(executionAttempts.filter((attempt) => attempt === 1)).toHaveLength(4);
@@ -1775,9 +1897,10 @@ describe('canonical eval-runtime API', () => {
             backoff: { backoffKind: 'none' },
           },
         },
-      },
+      }
+    }, {
       runId: 'evaluation-retry',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(evaluationResult.status).toBe('completed');
     expect(evaluationAttempts.filter((attempt) => attempt === 1)).toHaveLength(4);
@@ -1808,9 +1931,10 @@ describe('canonical eval-runtime API', () => {
             backoff: { backoffKind: 'none' },
           },
         },
-      },
+      }
+    }, {
       runId: 'non-retryable-evaluation',
-      clock: fixedClock,
+      clock: fixedClock
     });
     expect(nonRetryable.status).toBe('completed');
     expect(nonRetryableCalls).toBe(4);
@@ -1831,9 +1955,10 @@ describe('canonical eval-runtime API', () => {
         execution: { maxConcurrency: 1 },
         evaluation: { maxConcurrency: 1 },
         failure: { failureMode: 'failure-threshold', maxFailures: 0 },
-      },
+      }
+    }, {
       runId: 'failure-threshold',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('failed');
@@ -1896,26 +2021,24 @@ describe('canonical eval-runtime API', () => {
       evaluators: [custom],
       comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
       analyses: comparisonAnalysis('captured-callback-score'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-captured-callback',
-      clock: fixedClock,
+      clock: fixedClock
     });
     (custom.implementation as {
-      evaluate: CustomEvaluator<{ actual: string }>['implementation']['evaluate'];
+      evaluate: CustomEvaluator<{ actual: string; }>['implementation']['evaluate'];
     }).evaluate = () => ({ resultKind: 'score', value: 99 });
     const first = await pending;
     const second = await evaluate({
       ...input,
-      evaluators: [numericCustomEvaluator(
-        'captured-callback',
-        () => ({ resultKind: 'score', value: 1 }),
-        'revision-two',
-      )],
+      evaluators: [numericCustomEvaluator('captured-callback', () => ({ resultKind: 'score', value: 1 }), 'revision-two')],
       comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
       analyses: comparisonAnalysis('captured-callback-score'),
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'custom-evaluator-new-identity',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(first.status).toBe('completed');
@@ -1953,9 +2076,10 @@ describe('canonical eval-runtime API', () => {
         analysisId: 'candidate-quality',
         threshold: 0.5,
       },
-      policy: {},
+      policy: {}
+    }, {
       runId: 'solo-quality',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status).toBe('completed');
@@ -2026,9 +2150,10 @@ describe('canonical eval-runtime API', () => {
         variantId: treatmentSpec.variantId,
         metricId: 'summary-length-score',
       }],
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'explicit-summaries',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -2091,9 +2216,10 @@ describe('canonical eval-runtime API', () => {
         seed: 'clustered-quality-seed',
         sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
       },
-      policy: {},
+      policy: {}
+    }, {
       runId: 'clustered-quality',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -2118,7 +2244,7 @@ describe('canonical eval-runtime API', () => {
     });
     const input = pairedInput(declaration);
 
-    const result = await evaluate({
+    await expect(evaluate({
       dataset: input.dataset,
       variants: [variant(declaration, treatmentSpec)],
       evaluators: [{ evaluatorKind: 'exact-match' }],
@@ -2135,13 +2261,10 @@ describe('canonical eval-runtime API', () => {
         seed: 'missing-cluster-membership',
         sampling: { samplingKind: 'solo', clusterKey: '/executionContext/cluster' },
       },
-      policy: {},
-      runId: 'missing-cluster-membership',
-    });
-    expect(result).toMatchObject({
-      status: 'failed',
-      error: { code: 'EVAL_DEFINITION_MISSING_REFERENCE', stage: 'configuration' },
-    });
+      policy: {}
+    }, {
+      runId: 'missing-cluster-membership'
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
     expect(invocations).toBe(0);
   });
 
@@ -2212,21 +2335,19 @@ describe('canonical eval-runtime API', () => {
         treatmentVariantIds: [thirdSpec.variantId, treatmentSpec.variantId],
         metricIds: ['quality-score', 'correct', 'length-score'],
       }],
-      analyses: ['prompt-v2', 'prompt-v3'].flatMap((treatmentVariantId) => (
-          ['quality-score', 'correct', 'length-score'].map((metricId) => ({
-            analysisId: `${treatmentVariantId}-${metricId}`,
-            analysisKind: 'comparison-interval' as const,
-            statistic: 'mean-difference' as const,
-            comparisonId: 'baseline-vs-candidates',
-            treatmentVariantId,
-            metricId,
-            confidence: {
-              method: 'percentile-bootstrap' as const,
-              level: 0.95,
-              resamples: 100,
-            },
-          }))
-        )),
+      analyses: ['prompt-v2', 'prompt-v3'].flatMap((treatmentVariantId) => (['quality-score', 'correct', 'length-score'].map((metricId) => ({
+        analysisId: `${treatmentVariantId}-${metricId}`,
+        analysisKind: 'comparison-interval' as const,
+        statistic: 'mean-difference' as const,
+        comparisonId: 'baseline-vs-candidates',
+        treatmentVariantId,
+        metricId,
+        confidence: {
+          method: 'percentile-bootstrap' as const,
+          level: 0.95,
+          resamples: 100,
+        },
+      })))),
       experiment: {
         seed: 'multi-arm-independent-seed',
         sampling: {
@@ -2240,9 +2361,10 @@ describe('canonical eval-runtime API', () => {
           minimumSamplesPerVariantPerStratum: 1,
         },
       },
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'multi-arm-multi-metric',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -2348,9 +2470,10 @@ describe('canonical eval-runtime API', () => {
       policy: {
         execution: { maxConcurrency: 2 },
         evaluation: { maxConcurrency: 2 },
-      },
+      }
+    }, {
       runId: 'rubric-panel',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(result.status, JSON.stringify(result)).toBe('completed');
@@ -2425,8 +2548,9 @@ describe('canonical eval-runtime API', () => {
       comparisons: [],
       analyses: [],
       experiment: { seed: 'invalid-panel-seed', sampling: { samplingKind: 'solo' } },
-      policy: {},
-      runId: 'invalid-panel',
+      policy: {}
+    }, {
+      runId: 'invalid-panel'
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
     expect(executeTarget).not.toHaveBeenCalled();
   });
@@ -2449,7 +2573,6 @@ describe('canonical eval-runtime API', () => {
       analyses: [],
       experiment: { seed: 'panel-validation-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
-      runId: 'panel-validation',
     };
     const panel = {
       evaluatorKind: 'rubric-judge',
@@ -2509,20 +2632,19 @@ describe('canonical eval-runtime API', () => {
       variants: [variant(declaration, treatmentSpec)],
       comparisons: [],
       analyses: [{
-          analysisId: 'order-panel-quality',
-          analysisKind: 'quality-interval' as const,
-          statistic: 'mean' as const,
-          variantId: treatmentSpec.variantId,
-          metricId: 'quality-score',
-          confidence: {
-            method: 'percentile-bootstrap' as const,
-            level: 0.95,
-            resamples: 32,
-          },
-        }],
+        analysisId: 'order-panel-quality',
+        analysisKind: 'quality-interval' as const,
+        statistic: 'mean' as const,
+        variantId: treatmentSpec.variantId,
+        metricId: 'quality-score',
+        confidence: {
+          method: 'percentile-bootstrap' as const,
+          level: 0.95,
+          resamples: 32,
+        },
+      }],
       experiment: { seed: 'panel-order-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
-      clock: fixedClock,
     };
     const evaluator = (judges: RubricJudgeEvaluator['judges']): RubricJudgeEvaluator => ({
       evaluatorKind: 'rubric-judge',
@@ -2534,13 +2656,17 @@ describe('canonical eval-runtime API', () => {
     });
     const first = await evaluate({
       ...common,
-      evaluators: [evaluator(members)],
+      evaluators: [evaluator(members)]
+    }, {
       runId: 'panel-order-first',
+      clock: fixedClock
     });
     const second = await evaluate({
       ...common,
-      evaluators: [evaluator([...members].reverse())],
+      evaluators: [evaluator([...members].reverse())]
+    }, {
       runId: 'panel-order-second',
+      clock: fixedClock
     });
 
     expect(first.status).toBe('completed');
@@ -2551,7 +2677,9 @@ describe('canonical eval-runtime API', () => {
   it('compiles equivalent declarations to one canonical Core Definition', async () => {
     const declaration = executor();
     const common = pairedInput(declaration);
-    const first = await evaluate({ ...common, clock: fixedClock });
+    const first = await evaluate({ ...common }, {
+      clock: fixedClock
+    });
     const second = await evaluate({
       ...common,
       variants: [...common.variants].reverse(),
@@ -2559,8 +2687,9 @@ describe('canonical eval-runtime API', () => {
         ...common.comparisons[0],
         treatmentVariantIds: [...common.comparisons[0].treatmentVariantIds].reverse(),
         metricIds: [...common.comparisons[0].metricIds].reverse(),
-      }],
-      clock: fixedClock,
+      }]
+    }, {
+      clock: fixedClock
     });
 
     const selector = { analysisId: 'baseline-vs-candidate-correct' };
@@ -2744,21 +2873,21 @@ describe('canonical eval-runtime API', () => {
       ...base,
       dataset,
       analyses,
-      decision: undefined,
+      decision: undefined
+    }, {
       runId: 'analysis-order-first',
-      clock: fixedClock,
+      clock: fixedClock
     });
     const second = await evaluate({
       ...base,
       dataset,
-      analyses: [...analyses].reverse().map((request) => (
-          request.analysisKind === 'summary'
-            ? { ...request, cohortFilter: { includeCohortIds: ['alpha', 'beta'] } }
-            : request
-        )),
-      decision: undefined,
+      analyses: [...analyses].reverse().map((request) => (request.analysisKind === 'summary'
+        ? { ...request, cohortFilter: { includeCohortIds: ['alpha', 'beta'] } }
+        : request)),
+      decision: undefined
+    }, {
       runId: 'analysis-order-second',
-      clock: fixedClock,
+      clock: fixedClock
     });
 
     expect(first.status).toBe('completed');
@@ -2767,7 +2896,7 @@ describe('canonical eval-runtime API', () => {
   });
 
   it('preserves Executor trace, usage, and required-telemetry failures end to end', async () => {
-    const declaration: Executor<string, undefined, { answer: string }, { steps: string[] }> = {
+    const declaration: Executor<string, undefined, { answer: string; }, { steps: string[]; }> = {
       executorId: 'test.telemetry-executor/v1',
       version: '1.0.0',
       schemas: {
@@ -2798,9 +2927,9 @@ describe('canonical eval-runtime API', () => {
     };
     const makeVariant = (
       variantId: string,
-      artifact: Variant<string, undefined, { answer: string }>['artifact'],
+      artifact: Variant<string, undefined, { answer: string; }>['artifact'],
       boundExecutor = declaration,
-    ): Variant<string, undefined, { answer: string }, { steps: string[] }> => ({
+    ): Variant<string, undefined, { answer: string; }, { steps: string[]; }> => ({
       variantId,
       artifact,
       execution: { executor: boundExecutor },
@@ -2816,24 +2945,25 @@ describe('canonical eval-runtime API', () => {
       evaluators: [{ evaluatorKind: 'exact-match' as const }],
       comparisons: [],
       analyses: [{
-          analysisId: 'only-correct',
-          analysisKind: 'quality-interval' as const,
-          statistic: 'mean' as const,
-          variantId: 'only',
-          metricId: 'correct',
-          confidence: {
-            method: 'percentile-bootstrap' as const,
-            level: 0.95,
-            resamples: 100,
-          },
-        }],
+        analysisId: 'only-correct',
+        analysisKind: 'quality-interval' as const,
+        statistic: 'mean' as const,
+        variantId: 'only',
+        metricId: 'correct',
+        confidence: {
+          method: 'percentile-bootstrap' as const,
+          level: 0.95,
+          resamples: 100,
+        },
+      }],
       experiment: { seed: 'telemetry-seed', sampling: { samplingKind: 'solo' as const } },
       policy: {},
-      runId: 'telemetry-evaluate',
-      clock: fixedClock,
     };
 
-    const result = await evaluate(input);
+    const result = await evaluate(input, {
+      runId: 'telemetry-evaluate',
+      clock: fixedClock,
+    });
     expect(result.status).toBe('completed');
     if (result.status !== 'completed') return;
     expect(result.artifacts.execution.records[0]).toMatchObject({
@@ -2854,8 +2984,10 @@ describe('canonical eval-runtime API', () => {
     };
     const missingTrace = await evaluate({
       ...input,
-      variants: [makeVariant('only', input.variants[0].artifact, missingTraceExecutor)],
+      variants: [makeVariant('only', input.variants[0].artifact, missingTraceExecutor)]
+    }, {
       runId: 'telemetry-missing-trace',
+      clock: fixedClock
     });
     expect(missingTrace.status).toBe('completed');
     if (missingTrace.status !== 'completed') return;
@@ -2870,16 +3002,17 @@ describe('canonical eval-runtime API', () => {
     const mutable = structuredClone(treatmentSpec) as {
       variantId: string;
       artifact: typeof treatmentSpec.artifact;
-      runtimeContext: { values: { model: string } };
+      runtimeContext: { values: { model: string; }; };
       config: Config;
     };
     const pending = evaluate({
       ...pairedInput(declaration),
-      variants: [variant(declaration, controlSpec), variant(declaration, mutable)],
-      clock: fixedClock,
+      variants: [variant(declaration, controlSpec), variant(declaration, mutable)]
+    }, {
+      clock: fixedClock
     });
     mutable.config.answers.one = 'mutated';
-    (declaration as { execute: Executor<Input, Config, string>['execute'] }).execute = async () => ({
+    (declaration as { execute: Executor<Input, Config, string>['execute']; }).execute = async () => ({
       output: 'mutated',
     });
 
@@ -2901,7 +3034,7 @@ describe('canonical eval-runtime API', () => {
       version: '1.0.0',
       providerCost: { reporting: 'optional' as const },
       fingerprintFacets: { deploymentRevision: 'judge-one' },
-      async invoke(this: { fingerprintFacets?: { deploymentRevision?: string } }) {
+      async invoke(this: { fingerprintFacets?: { deploymentRevision?: string; }; }) {
         seenRevisions.push(this.fingerprintFacets?.deploymentRevision ?? 'missing');
         return { invocationStatus: 'completed' as const, output: '{"score":5,"reason":"ok"}' };
       },
@@ -2924,8 +3057,9 @@ describe('canonical eval-runtime API', () => {
         metricIds: ['captured-score'],
       }],
       analyses: comparisonAnalysis('captured-score'),
-      decision: undefined,
-      runId: 'captured-judge',
+      decision: undefined
+    }, {
+      runId: 'captured-judge'
     });
     mutableJudge.fingerprintFacets.deploymentRevision = 'mutated';
     mutableJudge.invoke = async () => { throw new Error('must retain captured method'); };
@@ -2967,8 +3101,9 @@ describe('canonical eval-runtime API', () => {
         metricIds: ['schema-safe-correct'],
       }],
       analyses: comparisonAnalysis('schema-safe-correct'),
-      decision: undefined,
-      runId: 'schema-mismatch',
+      decision: undefined
+    }, {
+      runId: 'schema-mismatch'
     });
 
     expect(result.status).toBe('completed');
@@ -3008,9 +3143,10 @@ describe('canonical eval-runtime API', () => {
     const remove = vi.spyOn(controller.signal, 'removeEventListener');
     controller.abort(new Error('cancel before start'));
     const cancelled = await evaluate({
-      ...pairedInput(),
+      ...pairedInput()
+    }, {
       runId: 'cancelled-evaluate',
-      signal: controller.signal,
+      signal: controller.signal
     });
     expect(cancelled.status).toBe('cancelled');
     expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
@@ -3019,9 +3155,10 @@ describe('canonical eval-runtime API', () => {
     let caught: unknown;
     try {
       await evaluate({
-        ...pairedInput(),
+        ...pairedInput()
+      }, {
         runId: 'observer-failure',
-        onEvent() { throw { privateValue }; },
+        onEvent() { throw { privateValue }; }
       });
     } catch (error) {
       caught = error;
@@ -3434,8 +3571,9 @@ describe('canonical eval-runtime API', () => {
       comparisons: [],
       analyses: [],
       experiment: { seed: 'long-metric-id', sampling: { samplingKind: 'solo' } },
-      policy: {},
-      runId: 'long-metric-id',
+      policy: {}
+    }, {
+      runId: 'long-metric-id'
     });
 
     expect(result.status).toBe('completed');
