@@ -30,16 +30,22 @@ import {
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {
   CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
-  buildCodexCliCoreArguments,
   createCodexCliCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/cli-protocol.js';
+import {
+  buildCodexCliCoreArguments,
   createCodexCliExecutorAdapter,
   type CodexCliCoreConfiguration,
   type CodexCliEnvironmentEntry,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/cli.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

@@ -22,7 +22,7 @@ const EVALUATION_CORE_DIR = join(SRC_DIR, 'eval-core');
 const EVALUATION_CORE_DIR_NORMALIZED = EVALUATION_CORE_DIR.replace(/\\/g, '/');
 const RUNTIME_ADAPTERS_DIR = join(
   SRC_DIR,
-  'eval-workflows',
+  'eval-hosts',
   'runtime-adapter',
   'adapters',
 );
@@ -41,6 +41,10 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
+  ...['eval-core/', 'eval-runtime/', 'eval-workflows/', 'executors/'].map((from) => ({
+    from, to: 'eval-hosts/',
+    reason: '具体宿主由外层装配并注入；领域、Runtime 和 Core 不得反向导入宿主实现。',
+  })),
   {
     from: 'eval-core/',
     to: 'evidence/',

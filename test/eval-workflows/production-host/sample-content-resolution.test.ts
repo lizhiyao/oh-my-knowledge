@@ -4,15 +4,17 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SampleContentResolutionError,
-  createNodeSampleContentResolver,
   hasResolvableSampleUrls,
   isPlaceholderSampleUrl,
-  loadNodeSampleContentMcpServers,
   resolveSampleContents,
   type SampleContentResolverSession,
 } from '../../../src/eval-workflows/production-host/index.js';
+import {
+  createNodeSampleContentResolver,
+  loadNodeSampleContentMcpServers,
+} from '../../../src/eval-hosts/node/node-sample-content-resolver.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
-import { isPublicNetworkAddress } from '../../../src/eval-workflows/production-host/safe-http-content-resolver.js';
+import { isPublicNetworkAddress } from '../../../src/eval-hosts/node/safe-http-content-resolver.js';
 
 const roots: string[] = [];
 

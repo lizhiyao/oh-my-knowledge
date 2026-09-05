@@ -18,10 +18,14 @@ import type {
 import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
+} from '../../../../../src/eval-runtime/adapters/same-process.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type SameProcessOperationScope,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/index.js';
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);

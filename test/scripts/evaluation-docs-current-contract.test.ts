@@ -7,7 +7,7 @@ import {
 } from '../../src/eval-core/contracts/index.js';
 import {
   CURRENT_RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
-} from '../../src/eval-workflows/runtime-adapter/analysis/release-decision.js';
+} from '../../src/eval-workflows/measurement/analysis/release-decision.js';
 
 const RELEASE_DECISION_DOCS = [
   'docs/explanation/architecture.md',

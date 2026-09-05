@@ -32,35 +32,35 @@ import {
 import {
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
   createAssertionLayerAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer-node.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-node.js';
 import {
   createAssertionLayerParameterSchemaValidators,
   parseAssertionLayerParameters,
   type AssertionLayerCriterionParameter,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
 import {
   createAssertionLayerTableSchemaValidators,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
 import {
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   createCompositeAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-node.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-node.js';
 import {
   createCompositeParameterSchemaValidators,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
 import {
   createCompositeTableSchemaValidators,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   createBootstrapFamilyAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-node.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node.js';
 import {
   createBootstrapFamilyParameterSchemaValidators,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
 import {
   createBootstrapFamilyTableSchemaValidators,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
 import {
   testRuntime,
   validDefinition,

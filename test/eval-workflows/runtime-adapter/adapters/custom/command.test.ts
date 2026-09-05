@@ -34,10 +34,14 @@ import {
 import {
   CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
   createCustomCommandExecutorAdapter,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/custom/command.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

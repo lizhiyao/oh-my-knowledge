@@ -1,3 +1,4 @@
+import { createOmkEvaluationSchemaValidators } from '../../../src/eval-hosts/runtime-adapter/composition.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,7 +17,7 @@ import {
 import type {
   OmkEvaluationRuntime,
   OmkPreparedEvaluation,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/composition.js';
 import {
   runConformanceScenario,
   type ConformanceResult,
@@ -77,14 +78,14 @@ function hostInput(input: {
 }): ProductionEvaluationHostInput {
   return {
     compiled: {
-      orchestration: { dryRun: input.dryRun ?? false },
+      definition: input.fixture.plan.definition, policy: input.fixture.plan.measurementPolicy,
+      runOptions: {}, orchestration: { dryRun: input.dryRun ?? false },
     } as ProductionEvaluationHostInput['compiled'],
-    factories: {} as ProductionEvaluationHostInput['factories'],
-    support: { clock: {} as never },
-    resources: { leaseRoot: '/not-used-by-fake-runtime' },
+    schemaValidators: createOmkEvaluationSchemaValidators(undefined),
     artifactStore: input.store,
-    async createRuntime() {
-      return fakeRuntime(input.fixture, input.result, input.onStart);
+    runtime: {
+      async prepare() { return fakeRuntime(input.fixture, input.result, input.onStart).prepare(); },
+      async prepareSeries() { throw new Error('unexpected Series preparation'); },
     },
   };
 }
@@ -103,6 +104,23 @@ function recordingStore(input: {
 }
 
 describe('production evaluation host workflow', () => {
+  it('requires an injected Runtime and passes only neutral measurement input to preparation', async () => {
+    const fixture = await runConformanceScenario('function', { runId: 'injected-runtime-fixture' });
+    const input = hostInput({ fixture, result: Promise.resolve(completedResult(fixture)), store: recordingStore() });
+    expect(() => createProductionEvaluationHost({ ...input, runtime: undefined } as unknown as ProductionEvaluationHostInput))
+      .toThrow(expect.objectContaining({ code: 'PRODUCTION_EVALUATION_HOST_INPUT_INVALID', fieldPath: 'runtime' }));
+    const prepare = vi.spyOn(input.runtime, 'prepare');
+    const controller = new AbortController();
+    const prepared = await createProductionEvaluationHost(input).prepare({ signal: controller.signal });
+    expect(prepare).toHaveBeenCalledOnce();
+    const [request, options] = prepare.mock.calls[0];
+    expect(Object.keys(request).sort()).toEqual(['definition', 'policy']);
+    expect(request.definition).toEqual(fixture.plan.definition);
+    expect(request.policy).toEqual(fixture.plan.measurementPolicy);
+    expect(options?.signal).toBe(controller.signal);
+    expect(prepared.plan).toBe(fixture.plan);
+  });
+
   it.each(['function', 'rag', 'agent'] as const)(
     'keeps prepare side-effect free and publishes an exact completed %s five-document chain',
     async (target: ConformanceTarget) => {

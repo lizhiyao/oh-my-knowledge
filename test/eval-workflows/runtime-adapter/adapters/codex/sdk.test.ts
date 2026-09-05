@@ -26,17 +26,25 @@ import {
 import {
   CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexSdkCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/sdk-protocol.js';
+import {
   createCodexSdkExecutorAdapter,
-  type CodexSdkClientOptions,
   type CodexSdkCoreConfiguration,
   type CodexSdkEnvironmentEntry,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/sdk.js';
+import {
+  type CodexSdkClientOptions,
   type CodexSdkThreadOptions,
+  type ResolvedCodexSdkRuntime,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/sdk-runtime.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
-  type ResolvedCodexSdkRuntime,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

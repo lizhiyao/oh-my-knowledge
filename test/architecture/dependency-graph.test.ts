@@ -8,7 +8,7 @@ const SRC_DIR = resolve('src');
 const COMPOSITION_ROOT_PREFIXES = [
   'cli/',
   'dsh-plugin/',
-  'eval-workflows/production-host/',
+  'eval-hosts/',
   'mcp/',
   'studio/',
 ] as const;
@@ -27,10 +27,10 @@ const EVAL_WORKFLOW_SUBDOMAINS = new Set([
   'input-compilation',
   'inputs',
   'instruments',
+  'measurement',
   'production-host',
   'projections',
   'resume-admission',
-  'runtime-adapter',
 ]);
 
 interface ModuleEdge {
@@ -78,13 +78,13 @@ const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
     rationale: 'Loads the fixed optional Codex SDK package; the source hash seals its binding.',
   },
   {
-    importer: 'eval-workflows/runtime-adapter/adapters/claude/sdk-runtime.ts',
+    importer: 'eval-hosts/runtime-adapter/adapters/claude/sdk-runtime.ts',
     expression: 'sdkModuleUrl.href',
     sourceSha256: 'ecc6f7786371066da5853a70b1fe1fe6fd1af088f8a9e1207e626670e6830c21',
     rationale: 'Loads the resolved optional Claude SDK entrypoint with a per-runtime file URL.',
   },
   {
-    importer: 'eval-workflows/runtime-adapter/adapters/codex/sdk-runtime.ts',
+    importer: 'eval-hosts/runtime-adapter/adapters/codex/sdk-runtime.ts',
     expression: 'sdkModuleUrl.href',
     sourceSha256: '779eb62d9a6d67712ce454466e47802901637b00b6c2e99056dcd8b06fcedac1',
     rationale: 'Loads the resolved optional Codex SDK entrypoint with a per-runtime file URL.',
@@ -383,7 +383,8 @@ describe('src 依赖图', () => {
     expect(moduleDomain('eval-workflows/production-host/orchestration.ts')).toBe('eval-workflows/production-host');
     expect(moduleDomain('eval-workflows/projections/cli.ts')).toBe('eval-workflows/projections');
     expect(moduleDomain('eval-workflows/resume-admission/admit.ts')).toBe('eval-workflows/resume-admission');
-    expect(moduleDomain('eval-workflows/runtime-adapter/assembly.ts')).toBe('eval-workflows/runtime-adapter');
+    expect(moduleDomain('eval-workflows/measurement/analysis/composite-node.ts')).toBe('eval-workflows/measurement');
+    expect(moduleDomain('eval-hosts/runtime-adapter/assembly.ts')).toBe('eval-hosts');
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
     expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
@@ -408,6 +409,14 @@ describe('src 依赖图', () => {
           && edge.typeOnly
           && edge.target.startsWith('executors/contracts/'))
       ))
+      .map(describeEdge);
+    expect(violations).toEqual([]);
+  });
+
+  it('Workflow 只通过 Runtime 获取 Core 执行能力', () => {
+    const violations = edges.filter((edge) => edge.importer.startsWith('eval-workflows/')
+      && !edge.typeOnly
+      && (edge.target.startsWith('eval-core/engine/') || edge.target.startsWith('eval-core/series/')))
       .map(describeEdge);
     expect(violations).toEqual([]);
   });

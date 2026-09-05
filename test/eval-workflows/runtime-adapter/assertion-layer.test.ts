@@ -15,7 +15,7 @@ import {
   createAssertionLayerTableSchemaValidators,
   type AssertionEntry,
   type AssertionLayerGroup,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer.js';
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
 
 const TRIAL_ID = digestCanonicalJson({ fixture: 'assertion-layer-trial' });
 const PAIRING_BLOCK_ID = digestCanonicalJson({ fixture: 'assertion-layer-pair' });

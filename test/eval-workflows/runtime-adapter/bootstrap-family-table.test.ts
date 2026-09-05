@@ -11,18 +11,22 @@ import {
 } from '../../../src/eval-core/contracts/index.js';
 import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  buildBootstrapFamilyTable,
+  createBootstrapFamilyTableSchemaValidators,
+  parseBootstrapFamilyTableEnvelope,
+  type BootstrapObservation,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
+import {
   BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
   BOOTSTRAP_MONTE_CARLO_METHOD_ID,
-  buildBootstrapFamilyTable,
   buildBootstrapFamilyTableV2,
   bootstrapSignificanceEvidence,
-  createBootstrapFamilyTableSchemaValidators,
   createBootstrapFamilyTableV2SchemaValidators,
-  parseBootstrapFamilyTableEnvelope,
   parseBootstrapFamilyTableV2Envelope,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.js';
+import {
   type BootstrapFamilyParameters,
-  type BootstrapObservation,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
 
 const sampleIds = ['sample-1', 'sample-2', 'sample-3', 'sample-4'];
 const controlScores = [1, 2, 3, 4];

@@ -13,7 +13,7 @@ import {
   type DimensionEntry,
   type DimensionGroup,
   type DimensionTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/dimension-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 
 const trialId = digestCanonicalJson('dimension-trial');
 const securitySource = digestCanonicalJson('security-source');

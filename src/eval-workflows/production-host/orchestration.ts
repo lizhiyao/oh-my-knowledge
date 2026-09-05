@@ -1,12 +1,10 @@
 import {
-  canonicalizeJson,
   createEvaluationSeriesMemberSource,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   effectiveAnalysisBundleTrust,
   effectiveEvaluationBundleTrust,
   effectiveExecutionBundleTrust,
-  prepareEvaluationSeriesPlan,
   verifyAnalysisBundle,
   verifyDecisionResult,
   verifyEvaluationBundle,
@@ -21,7 +19,6 @@ import {
 } from '../../eval-core/contracts/index.js';
 import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
-  runEvaluationSeries,
   type EvaluationSeriesRunResult,
 } from '../../eval-core/series/index.js';
 import {
@@ -30,18 +27,14 @@ import {
   type StoredCoreRunArtifacts,
 } from '../artifact-store/index.js';
 import type { CoreResumeVerificationContexts } from '../resume-admission/index.js';
-import {
-  createOmkEvaluationRuntime,
-  createOmkEvaluationSchemaValidators,
-  type OmkEvaluationPreflightOptions,
-  type OmkEvaluationRuntime,
-} from '../runtime-adapter/index.js';
+import type { EvaluationPreparationOptions as OmkEvaluationPreflightOptions } from '../../eval-runtime/provider.js';
 import {
   projectCoreEvolutionEvidence,
 } from '../projections/evolution.js';
 import type { CoreEvolutionEvidence } from '../projections/contracts.js';
 import {
   bindProductionPreparedEvaluation,
+  evaluationExecutionInput,
   ProductionEvaluationHostError,
   type ProductionEvaluationExecuteOptions,
   type ProductionEvaluationHostInput,
@@ -302,26 +295,14 @@ async function prepareSeriesMember(input: {
   membership: EvaluationSeriesMembership;
   preflight?: Readonly<OmkEvaluationPreflightOptions>;
   validators: ReadonlyMap<string, CoreSchemaValidator>;
-}): Promise<{
-  runtime: OmkEvaluationRuntime;
-  prepared: ProductionPreparedEvaluation;
-}> {
-  const createRuntime = input.host.createRuntime ?? createOmkEvaluationRuntime;
-  const runtime = await createRuntime({
-    compiled: memberCompiled(input.host.compiled, input.membership),
-    factories: input.host.factories,
-    support: input.host.support,
-    resources: input.host.resources,
+}): Promise<ProductionPreparedEvaluation> {
+  return bindProductionPreparedEvaluation({
+    prepared: await input.host.runtime.prepare(
+      evaluationExecutionInput(memberCompiled(input.host.compiled, input.membership)), input.preflight,
+    ),
+    artifactStore: input.host.artifactStore,
+    schemaValidators: input.validators,
   });
-  const platformPrepared = await runtime.prepare(input.preflight);
-  return {
-    runtime,
-    prepared: bindProductionPreparedEvaluation({
-      prepared: platformPrepared,
-      artifactStore: input.host.artifactStore,
-      schemaValidators: input.validators,
-    }),
-  };
 }
 
 /** Runs preregistered independent repeats as run-level Series members. */
@@ -350,9 +331,7 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
       message: 'Independent Series member options 与预注册 slot 不一致。',
     });
   }
-  const validators = createOmkEvaluationSchemaValidators(
-    input.host.support.schemaValidators,
-  );
+  const validators = new Map(input.host.schemaValidators);
   const preparedMembers = await Promise.all(series.memberships.map(async (membership) => (
     prepareSeriesMember({
       host: input.host,
@@ -361,18 +340,9 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
       ...(input.preflight === undefined ? {} : { preflight: input.preflight }),
     })
   )));
-  const seriesAssembly = preparedMembers[0]?.runtime.series;
-  if (seriesAssembly === undefined
-      || preparedMembers.some(({ runtime }) => runtime.series === undefined
-        || canonicalizeJson(runtime.series.runtimes)
-          !== canonicalizeJson(seriesAssembly.runtimes))) {
-    throw new ProductionEvaluationHostError({
-      code: 'PRODUCTION_EVALUATION_SERIES_SOURCE_INVALID',
-      message: 'Independent Series Runtime binding 缺失或跨 member 不一致。',
-    });
-  }
-  const plan = prepareEvaluationSeriesPlan(series.definition, seriesAssembly.runtimes);
-  const members = await Promise.all(preparedMembers.map(async ({ prepared }, index) => {
+  const preparedSeries = await input.host.runtime.prepareSeries(series.definition);
+  const plan = preparedSeries.plan;
+  const members = await Promise.all(preparedMembers.map(async (prepared, index) => {
     const membership = series.memberships[index]!;
     try {
       return Object.freeze({
@@ -395,14 +365,30 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
       });
     }
   }));
-  const result = Promise.all(members.map(async (member, index) => ({
-    membership: member.membership,
-    plan: member.prepared.plan,
-    verification: input.members[index]?.verification,
-    persistence: member.executionStatus === 'started'
-      ? await member.run.persistence
-      : undefined,
-  }))).then(async (outcomes) => {
+  const result = Promise.all(members.map(async (member, index) => {
+    if (member.executionStatus !== 'started') return {
+      membership: member.membership, plan: member.prepared.plan,
+      verification: input.members[index]?.verification,
+      persistence: undefined,
+    };
+    const [runtimeOutcome, persistence] = await Promise.all([
+      member.run.result.then(() => ({ succeeded: true as const }), (cause: unknown) => ({
+        succeeded: false as const, cause,
+      })),
+      member.run.persistence,
+    ]);
+    return {
+      membership: member.membership, plan: member.prepared.plan,
+      verification: input.members[index]?.verification, persistence, runtimeOutcome,
+    };
+  })).then(async (outcomes) => {
+    for (const outcome of outcomes) {
+      if (outcome.runtimeOutcome?.succeeded === false) throw new ProductionEvaluationHostError({
+        code: 'PRODUCTION_EVALUATION_SERIES_MEMBER_RUNTIME_FAILED',
+        message: 'Series member 的运行环境失败；已保存的测量证据不能授权本次发布。',
+        cause: outcome.runtimeOutcome.cause,
+      });
+    }
     const sources = outcomes.flatMap(({ membership, plan: memberPlan, persistence, verification }) => {
       if (persistence?.persistenceStatus !== 'stored') return [];
       try {
@@ -422,11 +408,7 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
         });
       }
     });
-    return runEvaluationSeries(plan, sources, {
-      ...seriesAssembly.ports,
-      schemaValidators: validators,
-      clock: input.host.support.clock,
-    }, {
+    return preparedSeries.run(sources, {
       runId: input.reportId,
       bundleId: input.bundleId,
       reportId: input.reportId,
@@ -442,6 +424,9 @@ export async function executeProductionEvaluationSeries(input: Readonly<{
       })
       : undefined
   ));
+  // Each outcome remains awaitable; consuming one must not require consuming its sibling.
+  void result.catch(() => {});
+  void evolution.catch(() => {});
   return Object.freeze({
     plan,
     members: Object.freeze(members),

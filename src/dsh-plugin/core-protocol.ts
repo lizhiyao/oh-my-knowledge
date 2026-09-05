@@ -17,7 +17,7 @@ import {
   SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceWithoutMocksSchema,
-} from '../eval-workflows/runtime-adapter/source-neutral-trace.js';
+} from '../eval-runtime/traces/source-neutral.js';
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { supportsDshTraceEventType } from './trace-adapter.js';
 

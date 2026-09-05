@@ -29,16 +29,22 @@ import {
 } from '../../../src/eval-core/execution/index.js';
 import {
   createBuiltinOmkScoringBindingFactories,
+} from '../../../src/eval-hosts/runtime-adapter/builtins.js';
+import {
   createExecutionAssertionEvaluatorImplementation,
-  createSameProcessEvaluatorAdapter,
   EXECUTION_ASSERTION_BINDINGS,
   EXECUTION_ASSERTION_CONTEXT_SCHEMA_VERSION,
   EXECUTION_ASSERTION_EVALUATOR_IDENTITY,
   EXECUTION_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/evaluators/execution-assertions.js';
+import {
+  createSameProcessEvaluatorAdapter,
+} from '../../../src/eval-runtime/adapters/same-process.js';
+import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceSchema,
   type SourceNeutralTrace,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/index.js';
 import {
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,

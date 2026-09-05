@@ -23,12 +23,16 @@ import {
 } from '../../../src/eval-workflows/input-compilation/index.js';
 import {
   OMK_TREE_DIGEST_ALGORITHM,
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/index.js';
+import {
   digestNodeFileResource,
   digestNodePinnedGitTreeResource,
   digestNodeTreeResource,
   materializeNodeRunResourceLeases,
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/node.js';
+import {
   type OmkPinnedGitVerifier,
-} from '../../../src/eval-workflows/runtime-adapter/resource-leases/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
 
 let sourceRoot: string;
 let leaseRoot: string;
@@ -777,4 +781,37 @@ describe('Verified HostResource leases', () => {
       } as unknown as ResolvedHostResources,
     })).rejects.toMatchObject({ code: 'OMK_RESOURCE_LEASE_INPUT_INVALID' });
   });
+});
+
+
+it('forwards cancellation to Git verification and removes partially acquired resources', async () => {
+  const path = join(sourceRoot, 'pinned');
+  mkdirSync(path);
+  writeFileSync(join(path, 'README.md'), '# input');
+  const actual = await digestNodePinnedGitTreeResource(path);
+  const commitId = 'a'.repeat(40);
+  const controller = new AbortController();
+  const reason = new Error('cancel acquisition');
+  const resource: ResolvedHostResource = {
+    resourceKind: 'artifact',
+    descriptor: { resourceId: 'artifact', ...actual, mediaType: 'application/vnd.omk.tree', classification: 'public' },
+    locator: path,
+    verification: { verificationKind: 'pinned-git', verifiedDigest: actual.digest, commitId },
+  };
+  await expect(materializeNodeRunResourceLeases({
+    runId: 'cancel-pinned', leaseRoot, signal: controller.signal,
+    hostResources: inventory([resource]),
+    bindings: [{ consumerKind: 'executor', bindingId: 'executor', requirements: [requirement('artifact', 'artifact')] }],
+    pinnedGitVerifier: {
+      async verifyPinnedCommit(request) {
+        expect(request.signal).toBe(controller.signal);
+        expect(readdirSync(leaseRoot)).toHaveLength(1);
+        controller.abort(reason);
+        request.signal?.throwIfAborted();
+        throw new Error('unreachable');
+      },
+    },
+  })).rejects.toBe(reason);
+  expect(readdirSync(leaseRoot)).toEqual([]);
+  expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('# input');
 });

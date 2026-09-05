@@ -27,18 +27,24 @@ import {
 } from '../../../src/eval-core/evaluation/index.js';
 import {
   createLlmAssertionEvaluatorBindingFactory,
+} from '../../../src/eval-hosts/runtime-adapter/evaluators/llm-assertion-factory.js';
+import {
   createLlmAssertionEvaluatorIdentity,
   createLlmAssertionEvaluatorImplementation,
-  createSameProcessEvaluatorAdapter,
   llmAssertionInstrument,
   LLM_ASSERTION_BINDINGS,
   LLM_ASSERTION_CONTEXT_SCHEMA_VERSION,
   LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
   type LlmAssertionType,
+} from '../../../src/eval-workflows/measurement/evaluators/llm-assertions.js';
+import {
+  createSameProcessEvaluatorAdapter,
+} from '../../../src/eval-runtime/adapters/same-process.js';
+import {
   type OmkLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationRequest,
   type OmkLlmJudgeInvocationResult,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/index.js';
 import {
   getRagJudgePromptHash,
   getSemanticPromptHash,

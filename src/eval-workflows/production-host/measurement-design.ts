@@ -28,31 +28,49 @@ import type {
 } from '../input-compilation/index.js';
 import {
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
+} from '../measurement/analysis/assertion-layer-node.js';
+import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+} from '../measurement/analysis/bootstrap-family-node-v2.js';
+import {
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+} from '../measurement/analysis/composite-node-contract.js';
+import {
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+} from '../measurement/analysis/dimension-node.js';
+import {
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
+} from '../measurement/analysis/judge-aggregation.js';
+import {
   CURRENT_RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
-} from '../runtime-adapter/analysis/index.js';
+} from '../measurement/analysis/release-decision.js';
 import {
   EXECUTION_ASSERTION_BINDINGS,
   EXECUTION_ASSERTION_CONTEXT_SCHEMA_VERSION,
   EXECUTION_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from '../measurement/evaluators/execution-assertions.js';
+import {
   LLM_ASSERTION_BINDINGS,
   LLM_ASSERTION_CONTEXT_SCHEMA_VERSION,
   LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+  llmAssertionInstrument,
+  type LlmAssertionType,
+} from '../measurement/evaluators/llm-assertions.js';
+import {
   OUTPUT_ASSERTION_BINDINGS,
   OUTPUT_ASSERTION_CONTEXT_SCHEMA_VERSION,
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from '../measurement/evaluators/output-assertions.js';
+import {
   RUBRIC_JUDGE_BINDINGS,
   RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
   RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
-  llmAssertionInstrument,
+} from '../../eval-runtime/judges/rubric-contracts.js';
+import {
   rubricJudgeInstrument,
   rubricJudgeInstrumentId,
-  type LlmAssertionType,
-} from '../runtime-adapter/evaluators/index.js';
+} from '../../eval-runtime/judges/rubric-judge.js';
 import { CliEvaluationInputError } from '../input-compilation/error.js';
 
 const LLM_ASSERTION_TYPES = new Set<LlmAssertionType>([

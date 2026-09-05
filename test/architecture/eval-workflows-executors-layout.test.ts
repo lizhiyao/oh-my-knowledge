@@ -14,31 +14,28 @@ describe('eval-workflows 与 executors 领域布局', () => {
         'input-compilation',
         'inputs',
         'instruments',
+        'measurement',
         'production-host',
         'projections',
         'resume-admission',
-        'runtime-adapter',
       ]);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual(['AGENTS.md', 'evaluation-defaults.ts', 'messages.ts']);
   });
 
   it('runtime-adapter 的增长进入能力子域而不是继续堆入根目录', () => {
-    const entries = readdirSync(resolve('src/eval-workflows/runtime-adapter'), {
+    const entries = readdirSync(resolve('src/eval-hosts/runtime-adapter'), {
       withFileTypes: true,
     });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['adapters', 'analysis', 'evaluators', 'resource-leases']);
+      .toEqual(['adapters', 'evaluators', 'resource-leases']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual([
         'assembly.ts',
         'builtins.ts',
         'composition.ts',
-        'event-projection.ts',
         'index.ts',
         'preflight.ts',
-        'series-variance.ts',
-        'source-neutral-trace.ts',
         'types.ts',
       ]);
   });

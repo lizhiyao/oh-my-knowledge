@@ -32,15 +32,21 @@ import {
 } from '../../../../../src/eval-core/execution/index.js';
 import {
   buildClaudeCliCoreArguments,
-  createClaudeCliCoreSchemaValidators,
   createClaudeCliExecutorAdapter,
   type ClaudeCliCoreConfiguration,
   type ClaudeCliEnvironmentEntry,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/claude/cli.js';
+import {
+  createClaudeCliCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/claude/cli-protocol.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

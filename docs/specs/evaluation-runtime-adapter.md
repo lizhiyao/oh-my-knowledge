@@ -4,6 +4,14 @@
 
 ## Boundary
 
+Concrete host assembly lives in `eval-hosts`; it is not the Runtime layer. `createOmkRuntimeProvider()`
+accepts the product compile result at this outer boundary and returns the Runtime-owned
+`EvaluationRuntimeProvider` capability. Workflow receives that capability and verification validators
+explicitly, then supplies only `EvaluationExecutionInput` to preparation. It has no default Node factory,
+resource directory, or direct Core engine/Series execution path. Product analysis and evaluator
+implementations live in `eval-workflows/measurement`; generic lifecycle and Series execution live in Runtime.
+
+
 The OMK host consumes the complete output of `compileCliEvaluationInput()` and performs effects outside Evaluation Core. Binding assembly does not create a second plan, reinterpret CLI input, or trust a registry declaration as actual Runtime identity.
 
 ```text
@@ -16,6 +24,9 @@ The OMK host consumes the complete output of `compileCliEvaluationInput()` and p
         ▼           ▼                ▼
  binding entries  support ports  run lease registry
         └───────────┼────────────────┘
+                    ▼
+       createEvaluationExecution().prepare()
+                    │ Runtime-owned execution seam
                     ▼
        createEvaluationEngine().prepare()
                     │ actual identity and capabilities
@@ -165,11 +176,17 @@ File identity is SHA-256 over the consumed bytes. Tree identity uses `omk.tree-s
 
 Per-resource and whole-run byte／entry limits include writable overlays. Planned logical bytes are rejected before copying; entry limits are enforced while bounded resources are materialized. Errors carry stable codes and resource／binding identity but never include locator strings, secret bytes, or Gold content. Structurally valid inventory entries that no active binding requests are not opened, hashed, Git-probed, or copied; this preserves the no-Judge side-effect boundary.
 
-The composition root acquires the complete active-binding lease before Core can call any `openRun()`. It validates exact binding and resource coverage, captures immutable map and descriptor snapshots, and only then registers binding-scoped access. Registration is removed after all Core port teardown has settled, followed by one lease-disposal attempt. Acquisition, cancellation-before-start, EventWriter construction, Core start, Core completion, and failure paths share the same idempotent cleanup promise. Duplicate active `runId` values are rejected before a second acquisition. Gold declared for exploratory post-hoc comparison is not materialized by the single-run Core composition; the separate analysis-host workflow requests that lease when it has an actual consumer.
+Runtime owns the run lifecycle through `createEvaluationExecution()`. It receives Core Definition, MeasurementPolicy, optional run metadata, explicit engine ports, and an optional `acquireRun` host callback. No Workflow or CLI type enters this interface. Preparation seals the Core plan before physical preflight; start acquires host resources, activates their binding-scoped access, and starts Core only if acquisition has succeeded and cancellation has not won. Core alone owns scheduling, timeout, retry and budget control.
+
+The host validates exact binding/resource coverage and snapshots its lease descriptors. Its returned lease supplies `activate()`, optional EventWriter, and `close()`. Runtime invokes close once after Core teardown, or after a failed activation/start. Active run IDs remain reserved until resource cleanup settles. Gold used only for exploratory post-hoc comparison is acquired by that separate consumer.
+
+Cancellation is forwarded to resource acquisition and EventWriter construction. Node acquisition checks cancellation while copying and hashing files and forwards it to Git verification. Runtime rejects a cancelled start promptly even if a custom host ignores the signal. The cancellation error exposes a `cleanup` promise for the eventual acquisition settlement and late-lease cleanup; a late lease is never activated. A non-cooperative host can delay resource release, but cannot start a measurement after cancellation. Its late acquisition or cleanup failure remains observable.
+
+A cleanup failure after a Core result rejects with `EvaluationRuntimeLifecycleError` and retains the exact result in `runResult`. The product persistence path still saves the complete evidence chain. CLI and DSH wait for persistence before returning the runtime error; Series rejects publication/evolution after any member runtime rejection, even when that member's report was successfully stored. Saving measurement evidence does not convert a failed host lifecycle into release approval.
 
 ## Core composition and support ports
 
-`createOmkEvaluationRuntime()` consumes one complete `CliEvaluationCompileResult`; callers cannot pass a replacement Definition or Policy to `prepare()` or `start()`. The composition root validates the compiled canonical digests, snapshots all host-owned configuration, merges Core-owned Analysis schema validators and Runtime factories, assembles bindings, and invokes the real `createEvaluationEngine(...).prepare(...)`. It exposes the independent Series assembly separately rather than placing Series ports in the single-run engine.
+`createOmkEvaluationRuntime()` consumes one complete `CliEvaluationCompileResult`; callers cannot pass a replacement Definition or Policy to `prepare()` or `start()`. The composition root validates the compiled canonical digests, snapshots all host-owned configuration, merges Core-owned Analysis schema validators and Runtime factories, assembles bindings, and passes only measurement declarations and injected ports to the Runtime-owned `createEvaluationExecution()` interface. It exposes the independent Series assembly separately rather than placing Series ports in the single-run engine.
 
 Support ports are captured as bound immutable method views. Their presence is derived from the sealed Policy without changing it:
 
@@ -186,7 +203,8 @@ EventWriter is deliberately not stored in the static `EvaluationEngineRuntime`. 
 ## Failure ownership
 
 - malformed input, coverage, duplicate, Definition mismatch, missing factory, factory failure, and invalid port use stable `OmkRuntimeAssemblyError` codes before a Run starts;
-- compiled-input, support-port, cache-source, schema conflict, writer construction, active-run, and host cleanup failures use stable `OmkEvaluationRuntimeError` codes;
+- compiled-input, support-port, cache-source, schema conflict, and writer construction failures use stable `OmkEvaluationRuntimeError` codes;
+- active-run, pre-start cancellation, invalid run leases, and cleanup failures belong to `EvaluationRuntimeLifecycleError` in Runtime; no legacy error-code aliases are retained;
 - capability, schema, protocol support, identity assurance, and version satisfaction remain Core preparation errors;
 - credentials, connectivity, and physical readiness remain separate adapter preflight concerns; verified resource materialization is a run-scoped host failure before Core starts;
 - provider, session, attempt, cancellation, and dispose failures belong to Runtime ports after the Run starts.
@@ -197,6 +215,6 @@ This layer does not modify frozen prompts, scoring stages, statistical formulas,
 
 The composition root treats each `runId` as an independent failure domain. Concurrent runs have separate lease registrations, adapter sessions, raw-event mirrors, progress queues, cancellation signals, and teardown promises. Cancelling one in-flight run cannot cancel its peer, publish into the peer's event／progress channels, or release the peer's resources. Both the Runtime port lifecycle and the host lease are still disposed exactly once after their own run settles.
 
-Fault-injection coverage exercises failures before acquisition, during acquisition, while constructing EventWriter, during Core start／execution, in non-authoritative progress rendering, and during Runtime／lease disposal. Every path either performs no effect or joins the same idempotent cleanup promise; no rejected callback, cancellation race, or renderer promise is allowed to leave authoritative work running in the background.
+Fault-injection coverage exercises failures before acquisition, during acquisition, while constructing EventWriter, during Core start／execution, in non-authoritative progress rendering, and during Runtime／lease disposal. Every acquired lease joins a single cleanup attempt. Cancellation during acquisition never starts Core; delayed host acquisition is observed through the cancellation error’s cleanup promise.
 
 Evaluation Core is also protected by a source dependency guard. Core TypeScript may import only another file under `src/eval-core`, `zod`, or `node:crypto`; it may not import the CLI, host orchestration, filesystem APIs, provider SDKs, or ambient `process.env`／`process.cwd()` state. This makes the architectural boundary executable in CI instead of relying on convention.

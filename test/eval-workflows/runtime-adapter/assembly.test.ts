@@ -1,3 +1,6 @@
+import { EvaluationRuntimeLifecycleError } from '../../../src/eval-runtime/execution.js';
+import { bindProductionPreparedEvaluation } from '../../../src/eval-workflows/production-host/workflow.js';
+import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,36 +32,78 @@ import type { ExecutionExecutor } from '../../../src/eval-core/execution/index.j
 import type { SeriesAnalysisNodeRuntime } from '../../../src/eval-core/series/index.js';
 import {
   assembleOmkRuntimeBindings,
+} from '../../../src/eval-hosts/runtime-adapter/assembly.js';
+import {
   createBuiltinOmkAnalysisBindingFactories,
+} from '../../../src/eval-hosts/runtime-adapter/builtins.js';
+import {
   createOmkEvaluationRuntime,
+  type OmkEvaluationRuntimeSupportPorts,
+} from '../../../src/eval-hosts/runtime-adapter/composition.js';
+import {
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/evaluators/output-assertions.js';
+import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
+} from '../../../src/eval-runtime/adapters/same-process.js';
+import {
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-node.js';
+import {
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/dimension-node.js';
+import {
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/composite-node-contract.js';
+import {
   COMPOSITE_PARAMETERS_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
+import {
   COMPOSITE_TABLE_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
+import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
+import {
   BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
+import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
+import {
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-node-contract.js';
+import {
   AGREEMENT_PARAMETERS_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
+import {
   AGREEMENT_TABLE_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
+import {
   RELEASE_DECISION_PARAMETERS_SCHEMA,
+} from '../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
+import {
   RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/release-decision.js';
+import {
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
+import {
   resourceLeaseRequestsFromBindingEntries,
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/node.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseRequest,
-  type OmkEvaluationRuntimeSupportPorts,
+  type OmkRunResourceLeases,
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type OmkRuntimePreflightDeclaration,
   type OmkRuntimePreflightContext,
-  type OmkRunResourceLeases,
   type OmkRuntimeBindingFactories,
   type RuntimeBindingOf,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   compileCliEvaluationInput,
   type ResolvedHostResources,
@@ -1933,7 +1978,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     const prepared = await runtime.prepare();
     const first = await prepared.start({ runId: 'same-run' });
     await expect(prepared.start({ runId: 'same-run' })).rejects.toMatchObject({
-      code: 'OMK_EVALUATION_RUNTIME_RUN_ACTIVE',
+      code: 'EVAL_RUNTIME_RUN_ACTIVE',
     });
     expect(acquireCalls).toBe(1);
 
@@ -2164,6 +2209,8 @@ describe('OMK Evaluation Runtime composition root', () => {
     const controller = new AbortController();
     let finishAcquisition: (() => void) | undefined;
     const acquisitionGate = new Promise<void>((resolve) => { finishAcquisition = resolve; });
+    let entered!: (signal: AbortSignal | undefined) => void;
+    const acquisitionStarted = new Promise<AbortSignal | undefined>((resolve) => { entered = resolve; });
     let disposeCalls = 0;
     const runtime = await createOmkEvaluationRuntime({
       compiled,
@@ -2173,6 +2220,7 @@ describe('OMK Evaluation Runtime composition root', () => {
         leaseRoot: '/unused-test-lease-root',
         async materialize(request) {
           lifecycle.push(`lease.acquire:${request.runId}`);
+          entered(request.signal);
           await acquisitionGate;
           return fakeLeases(
             request.runId,
@@ -2185,12 +2233,14 @@ describe('OMK Evaluation Runtime composition root', () => {
     });
     const prepared = await runtime.prepare();
     const start = prepared.start({ runId: 'cancel-acquisition', signal: controller.signal });
+    const hostSignal = await acquisitionStarted;
     controller.abort();
+    const error = await start.catch((cause: unknown) => cause) as EvaluationRuntimeLifecycleError;
+    expect(error.code).toBe('EVAL_RUNTIME_RUN_ABORTED_BEFORE_START');
+    expect(hostSignal?.aborted).toBe(true);
+    expect(disposeCalls).toBe(0);
     finishAcquisition?.();
-
-    await expect(start).rejects.toMatchObject({
-      code: 'OMK_EVALUATION_RUNTIME_RUN_ABORTED_BEFORE_START',
-    });
+    await error.cleanup;
     expect(lifecycle.some((entry) => entry.startsWith('executor.open:'))).toBe(false);
     expect(disposeCalls).toBe(1);
   });
@@ -2390,7 +2440,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     const run = await (await runtime.prepare()).start({ runId: 'dispose-failure' });
 
     await expect(run.result).rejects.toMatchObject({
-      code: 'OMK_EVALUATION_RUNTIME_CLEANUP_FAILED',
+      code: 'EVAL_RUNTIME_RUN_CLEANUP_FAILED',
     });
     expect(disposeCalls).toBe(1);
   });
@@ -2469,4 +2519,38 @@ describe('OMK Evaluation Runtime composition root', () => {
       })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_SCHEMA_VALIDATOR_CONFLICT' });
     },
   );
+});
+
+
+it('persists completed measurement evidence when the host lease cannot be released', async () => {
+  const compiled = compositionInput({ executionTimeout: false, evaluationTimeout: false, providerCostBudget: false });
+  const root = await mkdtemp(join(tmpdir(), 'omk-cleanup-persistence-'));
+  try {
+    const artifactStore = createNodeCoreRunArtifactStore(root);
+    const runtime = await createOmkEvaluationRuntime({
+      compiled, factories: runnableFactoriesFor(compiled, []), support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-root',
+        async materialize(request) {
+          return fakeLeases(request.runId, request.bindings, request.hostResources, () => {
+            throw new Error('cannot release resources');
+          });
+        },
+      },
+    });
+    const prepared = bindProductionPreparedEvaluation({
+      prepared: await runtime.prepare(), artifactStore,
+      schemaValidators: compositionSupport().schemaValidators!,
+    });
+    const run = await prepared.execute({ runId: 'cleanup-persistence', createdAt: '2026-09-05T00:00:00.000Z' });
+    const failure = await run.result.catch((cause: unknown) => cause) as EvaluationRuntimeLifecycleError;
+    expect(failure.code).toBe('EVAL_RUNTIME_RUN_CLEANUP_FAILED');
+    expect(failure.runResult?.status).toBe('completed');
+    const persistence = await run.persistence;
+    expect(persistence.persistenceStatus).toBe('stored');
+    const saved = await artifactStore.get('cleanup-persistence');
+    expect(saved?.report).toEqual(failure.runResult?.report);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

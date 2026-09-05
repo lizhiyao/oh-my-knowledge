@@ -23,7 +23,7 @@ omk 评估一次知识改动时，会固定模型和用例设计，只改变 art
 
 这把总体抽样不确定性与 Monte Carlo 近似误差明确分开，符合 [Koehler、Brown 与 Haneuse](https://pmc.ncbi.nlm.nih.gov/articles/PMC3337209/) 强调的区分；精确二项区间采用 [Clopper 与 Pearson](https://doi.org/10.1093/biomet/26.4.404) 的方法。
 
-实现：`src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table-v2.ts` 与 `bootstrap-family-parameters.ts`。
+实现：`src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.ts` 与 `bootstrap-family-parameters.ts`。
 
 ## 二、Gold agreement 是显式校准
 
@@ -42,7 +42,7 @@ Bootstrap uncertainty 回答的是观测差异能否与重采样噪声区分，�
 
 事后 Gold comparison 属于 exploratory calibration，不会反向改写预注册的 release Decision。
 
-实现：显式 projection 位于 `src/eval-workflows/projections/gold.ts`；预注册 Core Analysis node 位于 `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`。
+实现：显式 projection 位于 `src/eval-workflows/projections/gold.ts`；预注册 Core Analysis node 位于 `src/eval-workflows/measurement/analysis/agreement-table.ts`。
 
 ## 三、评委去偏与 prompt identity
 
@@ -116,7 +116,7 @@ omk 会在执行前封存最小有意义的 treatment-minus-control 差异、来
 
 规划依据：[NIST 的双侧样本量公式](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm)、[CONSORT 2025 对目标差异、假设、alpha 与功效预先声明的要求](https://www.bmj.com/content/389/bmj-2024-081124)，以及 [Hoenig 与 Heisey 对事后功效滥用的论证](https://doi.org/10.1198/000313001300339897)。
 
-实现：`src/eval-workflows/runtime-adapter/analysis/release-decision.ts`。
+实现：`src/eval-workflows/measurement/analysis/release-decision.ts`。
 
 ## Construct validity 与审计链
 

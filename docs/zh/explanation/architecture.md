@@ -37,7 +37,7 @@ flowchart TD
 
 - **运行时实现边**必须保持无环。领域实现只能依赖它所消费的事实或更低层能力，不能借 facade、动态 import 或工具函数形成反向依赖。依赖图会保留指向 `contracts` 的 value import；已审计环按完整领域集合与环内边拓扑登记，新增任何返回路径都会使登记失效。TypeScript 与可执行 JavaScript 源码中的非字面量 dynamic import 也默认拒绝，必须按 importer、表达式与 canonical source digest 显式登记；
 - **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的回边才成立，架构测试会同时拒绝新增双向关系和失效登记；
-- **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/production-host` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
+- **composition edge**由 `cli`、`dsh-plugin` 与 `eval-hosts` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
 
 `shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
@@ -77,8 +77,8 @@ eval-workflows/
 ├── instruments/        # evaluator 配置与冻结 prompt 资产
 ├── projections/        # 基于认证 Core 产物的下游视图
 ├── resume-admission/   # 持久化 run 完整性与 resume 准入
-├── runtime-adapter/    # Core binding、analysis node、evaluator 与 adapter
-└── production-host/    # Node 宿主组合与副作用编排
+├── measurement/        # 产品评分、analysis node 与 evaluator 实现
+└── production-host/    # 产品编排、持久化与注入的 Runtime 消费
 
 executors/
 ├── contracts/          # executor 端口、Runtime 身份、结果与 trace 事实
@@ -88,24 +88,27 @@ executors/
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
 适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
-`eval-workflows/runtime-adapter/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
+`eval-hosts/runtime-adapter/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
 这些子域即使在物理目录上聚合，仍作为独立节点参与依赖图检查。
 
-`eval-workflows` 是所有权边界，不是继续形成第二个单体的理由。上面每个直属目录都是独立的
-依赖图节点；根目录只允许跨 workflow 的默认值、用户文案和仓库规则，新行为必须进入明确的所属
-子域。下一轮拆分首先关注 `runtime-adapter`，新增内容必须归入四个能力分区：
+`eval-workflows` 消费显式注入的 `EvaluationRuntimeProvider`。产品编译通过
+`EvaluationExecutionInput` 提供 Definition、Policy 与运行元数据；Workflow 不创建 Core engine、
+provider adapter 或资源租约。单次执行和 Series 准备／执行归 Runtime。Workflow 可以并行编排
+独立 Series member，调度、重试、超时、预算和测量契约仍由 Core 独占。
 
 ```text
-runtime-adapter/
-├── adapters/         # provider 协议桥接
-├── analysis/         # 已注册的 Core AnalysisNode 实现
-├── evaluators/       # 把 evaluator port 适配为 Core instrument
-└── resource-leases/  # 声明式宿主资源获取与清理
+eval-hosts/
+├── node/                    # Node 输入解析、环境、工厂注册与交付装配
+└── runtime-adapter/
+    ├── adapters/            # 具体 provider 协议桥接
+    ├── evaluators/          # 产品 evaluator 工厂接线
+    └── resource-leases/     # 已验证的 Node snapshot 与宿主资源访问
 ```
 
-只有当某个分区具备稳定 contract、独立 consumer 或 lifecycle、不再依赖产品宿主装配，且新
-所有者明确时，才把它移出 `eval-workflows`。代码行数本身不是增加顶层领域的理由。在这些条件
-成立前，架构测试会确保每个 workflow 子域都参与环检测，并拒绝未经规划的根目录扩张。
+宿主装配消费产品声明，再向 Workflow 注入 Runtime 能力。下层不得反向导入 `eval-hosts`，包括
+纯类型导入。产品测量实现在 `eval-workflows/measurement`，通用执行与生命周期桥接留在 Runtime。
+旧 Workflow Runtime 目录和转发包装已删除，不保留 0.x 兼容路径。Core／Runtime 的正确契约优先于
+Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，不建立产品执行旁路。
 
 Evidence 持久化与跨来源关联属于同一个不做决策的边界：
 

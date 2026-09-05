@@ -4,6 +4,13 @@
 
 ## 一、边界
 
+具体宿主装配位于 `eval-hosts`，与 Runtime 层分离。`createOmkRuntimeProvider()` 在这个外层边界
+接收产品编译产物，返回 Runtime 拥有的 `EvaluationRuntimeProvider` 能力。Workflow 显式接收该能力
+和验证器，准备评测时只传入 `EvaluationExecutionInput`。它没有默认 Node 工厂、租约目录或直接
+执行 Core engine／Series 的路径。产品 analysis 和 evaluator 实现在 `eval-workflows/measurement`，
+通用生命周期与 Series 执行归 Runtime。
+
+
 OMK 宿主完整消费 `compileCliEvaluationInput()` 的输出，并在 Evaluation Core 外执行 effect。Binding assembly 不创建第二套 plan、不重新解释 CLI 输入，也不把 registry 声明当成 Runtime 实际身份。
 
 ```text
@@ -16,6 +23,9 @@ OMK 宿主完整消费 `compileCliEvaluationInput()` 的输出，并在 Evaluati
         ▼           ▼                ▼
  binding entries  support ports  run lease registry
         └───────────┼────────────────┘
+                    ▼
+       createEvaluationExecution().prepare()
+                    │ Runtime 执行接口
                     ▼
        createEvaluationEngine().prepare()
                     │ actual identity／capabilities
@@ -159,11 +169,17 @@ Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 
 
 单资源和整个 run 的字节／条目上限都包含可写 overlay。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
 
-Composition root 在 Core 能调用任何 `openRun()` 前取得完整的 active-binding run lease。它验证 binding／resource 精确覆盖，捕获不可变 map 与 descriptor 快照，然后才注册 binding-scoped access。所有 Core port teardown settle 后先撤销注册，再执行一次 lease disposal。Acquisition、Core start 前取消、EventWriter 创建、Core start、正常完成与失败路径共享同一个幂等 cleanup promise。重复 active `runId` 会在第二次 acquisition 前被拒绝。用于 exploratory post-hoc comparison 的 Gold 不会被 single-run Core composition 提前物化；独立 analysis-host workflow 在存在真实消费者时再请求对应 lease。
+Runtime 通过 `createEvaluationExecution()` 持有运行生命周期。接口只接收 Core Definition、MeasurementPolicy、可选运行元数据、显式 engine port，以及可选的宿主 `acquireRun` 回调，不依赖 Workflow／CLI 类型。Prepare 在物理 preflight 前封存 Core Plan；start 获取宿主资源、激活 binding-scoped access，只有获取成功且未取消时才启动 Core。调度、超时、重试和预算仍由 Core 独占。
+
+宿主验证 binding／resource 精确覆盖并快照化租约描述符。返回的租约提供 `activate()`、可选 EventWriter 和 `close()`。Runtime 在 Core teardown 后、activation 失败或 start 失败时准确调用一次 close。资源清理完成前，active run ID 不允许重用。仅用于探索性事后比较的 Gold 由其独立消费者获取。
+
+取消信号传递给资源获取和 EventWriter 构造。Node 在复制、哈希文件时检查取消，并向 Git 验证传递信号。即使自定义宿主忽略信号，Runtime 也会立即拒绝已取消的 start。取消错误通过 `cleanup` promise 暴露迟到获取操作和租约清理的最终结果，迟到租约绝不激活。不配合取消的宿主可能延迟资源释放，但不能在取消后启动测量；迟到的获取或清理失败仍可被观察。
+
+已有 Core 结果后发生清理失败时，Runtime 抛出 `EvaluationRuntimeLifecycleError`，并在 `runResult` 中保留原始结果。产品持久化路径仍保存完整证据链。CLI 和 DSH 等待持久化后再返回运行错误；Series 的任一 member 发生运行拒绝时，即使报告成功保存，也会拒绝本次发布与自动迭代。保存测量证据不等于批准失败的宿主生命周期通过发布门禁。
 
 ## 十二、Core Composition 与 Support Ports
 
-`createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，并调用真实的 `createEvaluationEngine(...).prepare(...)`。独立 Series assembly 单独暴露，不进入 single-run engine。
+`createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，再把测量声明和注入端口传给 Runtime 拥有的 `createEvaluationExecution()` 接口。独立 Series assembly 单独暴露，不进入 single-run engine。
 
 Support port 被捕获为绑定原实例方法的不可变 view。是否必需完全由 sealed Policy 推导，且不会改写 Policy：
 
@@ -180,7 +196,8 @@ EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required deli
 ## 十三、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；
-- compiled input、support port、cache source、schema conflict、writer construction、active run 与 host cleanup failure 使用稳定 `OmkEvaluationRuntimeError` code；
+- compiled input、support port、cache source、schema conflict 与 writer construction 使用稳定 `OmkEvaluationRuntimeError` code；
+- active run、启动前取消、非法 run lease 和 cleanup failure 归属 Runtime 的 `EvaluationRuntimeLifecycleError`，不保留旧错误码别名；
 - capability、schema、protocol support、identity assurance 和 version satisfaction 仍由 Core preparation 报错；
 - credential、connectivity 与 physical readiness 仍属于独立 adapter preflight；verified resource materialization 是 Core start 前的 run-scoped host failure；
 - provider、session、attempt、cancellation 和 dispose failure 在 Run 开始后属于 Runtime port。
@@ -191,6 +208,6 @@ EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required deli
 
 Composition root 把每个 `runId` 视为独立 failure domain。并发 run 拥有彼此独立的 lease registration、adapter session、raw-event mirror、progress queue、cancellation signal 与 teardown promise。取消一个进行中的 run，不能取消另一个 run、向对方的 event／progress channel 发布内容，或释放对方资源。Runtime port lifecycle 与宿主 lease 都只在各自 run settle 后准确释放一次。
 
-Fault-injection 覆盖 acquisition 前失败、acquisition 过程失败、EventWriter 构造失败、Core start／execution 失败、非权威 progress rendering 失败，以及 Runtime／lease disposal 失败。每条路径要么不产生 effect，要么汇入同一个幂等 cleanup promise；被拒绝的 callback、cancellation race 或 renderer promise 都不能让权威工作遗留在后台。
+Fault-injection 覆盖 acquisition 前失败、acquisition 过程失败、EventWriter 构造失败、Core start／execution 失败、非权威 progress rendering 失败，以及 Runtime／lease disposal 失败。每个已获取租约汇入单次清理。获取期间取消绝不启动 Core；迟到的宿主获取结果通过取消错误的 cleanup promise 观察。
 
 源码依赖守卫同样保护 Evaluation Core。Core TypeScript 只能导入 `src/eval-core` 内其它文件、`zod` 或 `node:crypto`；不能导入 CLI、宿主 orchestration、filesystem API、provider SDK，也不能读取环境态 `process.env`／`process.cwd()`。这让架构边界成为 CI 可执行规则，而不只是一项约定。
