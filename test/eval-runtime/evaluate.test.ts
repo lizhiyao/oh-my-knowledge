@@ -1379,7 +1379,7 @@ describe('canonical eval-runtime API', () => {
       comparisons: [{ ...input.comparisons[0], metricIds: ['budgeted-score'] }],
       analysis: comparisonAnalysis('budgeted-score'),
       decision: undefined,
-      policy: { ...input.policy, budget: { maxInvocations: 4 } },
+      policy: { ...input.policy, budget: { run: { maxInvocations: 4 } } },
       runId: 'custom-evaluator-budget',
       clock: fixedClock,
     });
@@ -1388,6 +1388,333 @@ describe('canonical eval-runtime API', () => {
     expect(budgeted.artifacts?.evaluation?.records.every((record) => (
       record.evaluationStatus === 'not-evaluated'
     ))).toBe(true);
+  });
+
+  it('enforces a stage provider-cost budget and exposes auditable bounded overshoot', async () => {
+    let calls = 0;
+    const base = executor(async ({ input, config, signal }) => {
+      signal.throwIfAborted();
+      calls += 1;
+      return {
+        output: config.answers[input.prompt],
+        usage: {
+          providerCost: { amount: 0.6, currency: 'USD', reportedByProvider: true },
+        },
+      };
+    });
+    const metered: Executor<Input, Config, string> = {
+      ...base,
+      capabilities: {
+        ...base.capabilities!,
+        telemetry: {
+          ...base.capabilities!.telemetry,
+          providerCost: { reporting: 'optional' },
+        },
+      },
+    };
+    const result = await evaluate({
+      ...pairedInput(metered),
+      policy: {
+        execution: { maxConcurrency: 2 },
+        evaluation: { maxConcurrency: 1 },
+        budget: {
+          execution: { maxProviderCost: { amount: 1, currency: 'USD' } },
+        },
+      },
+      decision: undefined,
+      runId: 'canonical-provider-cost-budget',
+      clock: fixedClock,
+    });
+
+    expect(result.status).toBe('budget-exhausted');
+    if (result.status === 'failed') return;
+    expect(calls).toBe(4);
+    expect(result.report.budgetSummary.admissionMode).toBe('bounded-overshoot');
+    expect(result.report.budgetSummary.summaryStatus).toBe('exhausted');
+    expect(result.report.budgetSummary.entries).toHaveLength(4);
+    expect(result.report.budgetSummary.entries.every((entry) => (
+      entry.stage === 'execution'
+      && entry.providerCostStatus === 'reported'
+      && entry.admissionKind === 'bounded-overshoot'
+    ))).toBe(true);
+    expect(result.report.budgetSummary.termination).toEqual({
+      terminationKind: 'active-budget-exhausted',
+      resourceKind: 'provider-cost',
+      scopeKind: 'stage',
+      scopeId: 'execution',
+      reasonCode: 'stage-provider-cost-budget-exhausted',
+    });
+    expect(result.report.budgetSummary.scopes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        scopeKind: 'stage',
+        scopeId: 'execution',
+        limits: { maxProviderCost: { amount: 1, currency: 'USD' } },
+        totals: expect.objectContaining({
+          reportedProviderCosts: [{ amount: 2.4, currency: 'USD' }],
+        }),
+        overshoot: expect.objectContaining({
+          providerCost: { amount: expect.closeTo(1.4), currency: 'USD' },
+        }),
+      }),
+    ]));
+  });
+
+  it('makes unreported provider cost explicitly unverifiable or fail-closed', async () => {
+    let calls = 0;
+    const base = executor(async ({ input, config }) => {
+      calls += 1;
+      return { output: config.answers[input.prompt] };
+    });
+    const unmetered: Executor<Input, Config, string> = {
+      ...base,
+      capabilities: {
+        ...base.capabilities!,
+        telemetry: {
+          ...base.capabilities!.telemetry,
+          providerCost: { reporting: 'optional' },
+        },
+      },
+    };
+    const common = pairedInput(unmetered);
+    const unverifiable = await evaluate({
+      ...common,
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        budget: {
+          execution: { maxProviderCost: { amount: 1, currency: 'USD' } },
+          onUnreportedProviderCost: 'mark-unverifiable',
+        },
+      },
+      decision: undefined,
+      runId: 'canonical-unreported-cost-unverifiable',
+      clock: fixedClock,
+    });
+    expect(unverifiable.status).toBe('completed');
+    if (unverifiable.status === 'failed') return;
+    expect(unverifiable.report.budgetSummary.summaryStatus).toBe('unverifiable');
+    expect(unverifiable.report.budgetSummary.scopes.find(
+      (scope) => scope.scopeKind === 'stage' && scope.scopeId === 'execution',
+    )?.totals.unreportedProviderCostInvocations).toBe(4);
+
+    calls = 0;
+    const failed = await evaluate({
+      ...common,
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        budget: {
+          execution: { maxProviderCost: { amount: 1, currency: 'USD' } },
+          onUnreportedProviderCost: 'fail-run',
+        },
+      },
+      decision: undefined,
+      runId: 'canonical-unreported-cost-failed',
+      clock: fixedClock,
+    });
+    expect(failed.status).toBe('failed');
+    if (failed.status !== 'failed') return;
+    expect(failed.error).toMatchObject({ code: 'provider-cost-unreported' });
+    expect(calls).toBe(1);
+  });
+
+  it('enforces active, wall-clock, coordinate, and attempt budget scopes in Core', async () => {
+    let activeNow = 0;
+    let activeCalls = 0;
+    const activeExecutor = executor(async ({ input, config }) => {
+      activeCalls += 1;
+      activeNow += 5;
+      return { output: config.answers[input.prompt] };
+    });
+    const active = await evaluate({
+      ...pairedInput(activeExecutor),
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        budget: { execution: { maxActiveDurationMs: 5 } },
+      },
+      decision: undefined,
+      runId: 'canonical-active-duration-budget',
+      clock: {
+        monotonicNow: () => activeNow,
+        timestamp: fixedClock.timestamp,
+        sleep: fixedClock.sleep,
+      },
+    });
+    expect(active.status).toBe('budget-exhausted');
+    expect(activeCalls).toBe(2);
+
+    let wallNow = 0;
+    let wallCalls = 0;
+    const wallExecutor = executor(async ({ input, config }) => {
+      wallCalls += 1;
+      wallNow += 1_000;
+      return { output: config.answers[input.prompt] };
+    });
+    const wall = await evaluate({
+      ...pairedInput(wallExecutor),
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        budget: { run: { maxWallClockMs: 1_000 } },
+      },
+      decision: undefined,
+      runId: 'canonical-wall-clock-budget',
+      clock: {
+        monotonicNow: () => wallNow,
+        timestamp: fixedClock.timestamp,
+        sleep(_delayMs, signal) {
+          return new Promise((_resolve, reject) => {
+            const abort = () => reject(signal?.reason);
+            if (signal?.aborted) abort();
+            else signal?.addEventListener('abort', abort, { once: true });
+          });
+        },
+      },
+    });
+    expect(wall.status).toBe('budget-exhausted');
+    expect(wallCalls).toBe(2);
+
+    let stageCalls = 0;
+    const stageExecutor = executor(async ({ input, config }) => {
+      stageCalls += 1;
+      return { output: config.answers[input.prompt] };
+    });
+    const stage = await evaluate({
+      ...pairedInput(stageExecutor),
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        budget: { execution: { maxInvocations: 2 } },
+      },
+      decision: undefined,
+      runId: 'canonical-stage-invocation-budget',
+      clock: fixedClock,
+    });
+    expect(stage.status).toBe('budget-exhausted');
+    expect(stageCalls).toBe(2);
+    expect(stage.artifacts?.execution?.coverage).toMatchObject({
+      started: 2,
+      budgetCensored: 2,
+    });
+
+    let retryCalls = 0;
+    const retrying = executor(async () => {
+      retryCalls += 1;
+      return { errorCode: 'retry-me' };
+    });
+    const coordinate = await evaluate({
+      ...pairedInput(retrying),
+      policy: {
+        execution: {
+          maxConcurrency: 1,
+          retry: {
+            maxAttempts: 2,
+            retryableErrorCodes: ['retry-me'],
+            backoff: { backoffKind: 'none' },
+          },
+        },
+        evaluation: { maxConcurrency: 1 },
+        budget: { coordinate: { maxInvocations: 1 } },
+      },
+      decision: undefined,
+      runId: 'canonical-coordinate-budget',
+      clock: fixedClock,
+    });
+    expect(coordinate.status).toBe('budget-exhausted');
+    expect(retryCalls).toBe(2);
+
+    let attemptCalls = 0;
+    const attemptBase = executor(async ({ input, config }) => {
+      attemptCalls += 1;
+      return {
+        output: config.answers[input.prompt],
+        usage: {
+          providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+        },
+      };
+    });
+    const attemptExecutor: Executor<Input, Config, string> = {
+      ...attemptBase,
+      capabilities: {
+        ...attemptBase.capabilities!,
+        telemetry: {
+          ...attemptBase.capabilities!.telemetry,
+          providerCost: { reporting: 'optional' },
+        },
+      },
+    };
+    const attempt = await evaluate({
+      ...pairedInput(attemptExecutor),
+      policy: {
+        execution: { maxConcurrency: 1 },
+        evaluation: { maxConcurrency: 1 },
+        budget: { attempt: { maxProviderCost: { amount: 0.2, currency: 'USD' } } },
+      },
+      decision: undefined,
+      runId: 'canonical-attempt-budget',
+      clock: fixedClock,
+    });
+    expect(attempt.status).toBe('budget-exhausted');
+    expect(attemptCalls).toBe(2);
+  });
+
+  it('canonicalizes equivalent budgets and seals budget changes into run identity', async () => {
+    const common = pairedInput();
+    const first = await evaluate({
+      ...common,
+      policy: {
+        ...common.policy,
+        budget: {
+          run: { maxInvocations: 100, maxActiveDurationMs: 5_000 },
+          execution: { maxInvocations: 80 },
+          evaluation: { maxInvocations: 20 },
+          coordinate: { maxInvocations: 3 },
+        },
+      },
+      runId: 'canonical-budget-identity-first',
+      clock: fixedClock,
+    });
+    const reordered = await evaluate({
+      ...common,
+      policy: {
+        ...common.policy,
+        budget: {
+          coordinate: { maxInvocations: 3 },
+          evaluation: { maxInvocations: 20 },
+          execution: { maxInvocations: 80 },
+          run: { maxActiveDurationMs: 5_000, maxInvocations: 100 },
+        },
+      },
+      runId: 'canonical-budget-identity-reordered',
+      clock: fixedClock,
+    });
+    const changed = await evaluate({
+      ...common,
+      policy: {
+        ...common.policy,
+        budget: {
+          run: { maxInvocations: 101, maxActiveDurationMs: 5_000 },
+          execution: { maxInvocations: 80 },
+          evaluation: { maxInvocations: 20 },
+          coordinate: { maxInvocations: 3 },
+        },
+      },
+      runId: 'canonical-budget-identity-changed',
+      clock: fixedClock,
+    });
+
+    expect(first.status).toBe('completed');
+    expect(reordered.status).toBe('completed');
+    expect(changed.status).toBe('completed');
+    if (first.status !== 'completed'
+        || reordered.status !== 'completed'
+        || changed.status !== 'completed') return;
+    expect(reordered.policy).toEqual(first.policy);
+    expect(reordered.artifacts.execution.runContractDigest)
+      .toBe(first.artifacts.execution.runContractDigest);
+    expect(changed.artifacts.execution.runContractDigest)
+      .not.toBe(first.artifacts.execution.runContractDigest);
   });
 
   it('delegates execution and evaluation retries to the sealed Core stage policies', async () => {
@@ -1547,6 +1874,15 @@ describe('canonical eval-runtime API', () => {
         },
       },
       { failure: { failureMode: 'continue', maxFailures: 1 } },
+      { budget: { maxInvocations: 1 } },
+      { budget: { execution: { maxWallClockMs: 1 } } },
+      { budget: { attempt: { maxInvocations: 1 } } },
+      {
+        budget: {
+          run: { maxProviderCost: { amount: 1, currency: 'USD' } },
+          evaluation: { maxProviderCost: { amount: 1, currency: 'CNY' } },
+        },
+      },
     ];
 
     for (const policy of invalidPolicies) {

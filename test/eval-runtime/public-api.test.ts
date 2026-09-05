@@ -5,10 +5,15 @@ import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import type {
   AnalysisRequest,
+  AttemptBudgetScope,
+  BudgetPolicy,
+  BudgetScope,
   CohortFilter,
   CustomEvaluator,
   Decision,
   Policy,
+  ProviderCostLimit,
+  RunBudgetScope,
   SamplingDesign,
 } from '../../src/eval-runtime/index.js';
 
@@ -68,6 +73,29 @@ const invalidFailurePolicy: Policy = {
   },
 };
 void invalidFailurePolicy;
+const publicProviderCost: ProviderCostLimit = { amount: 1, currency: 'USD' };
+const publicBudgetScope: BudgetScope = {
+  maxInvocations: 10,
+  maxActiveDurationMs: 1_000,
+  maxProviderCost: publicProviderCost,
+};
+const publicRunBudget: RunBudgetScope = {
+  ...publicBudgetScope,
+  maxWallClockMs: 2_000,
+};
+const publicAttemptBudget: AttemptBudgetScope = { maxProviderCost: publicProviderCost };
+const publicBudget: BudgetPolicy = {
+  run: publicRunBudget,
+  execution: publicBudgetScope,
+  attempt: publicAttemptBudget,
+  onUnreportedProviderCost: 'fail-run',
+};
+void publicBudget;
+const invalidAttemptBudget: AttemptBudgetScope = {
+  // @ts-expect-error an attempt budget only supports provider cost.
+  maxInvocations: 1,
+};
+void invalidAttemptBudget;
 
 const publicCustomEvaluator = {
   evaluatorKind: 'custom',
@@ -114,6 +142,9 @@ const PUBLIC_API = {
       'ArtifactSource',
       'Analysis',
       'AnalysisRequest',
+      'AttemptBudgetScope',
+      'BudgetPolicy',
+      'BudgetScope',
       'Clock',
       'CohortFilter',
       'Comparison',
@@ -142,6 +173,7 @@ const PUBLIC_API = {
       'Judge',
       'Metric',
       'Policy',
+      'ProviderCostLimit',
       'RetryBackoff',
       'RetryPolicy',
       'Rubric',
@@ -150,6 +182,7 @@ const PUBLIC_API = {
       'RubricJudgeMember',
       'RuntimeConformanceCheck',
       'RuntimeContext',
+      'RunBudgetScope',
       'Sample',
       'SamplingDesign',
       'StagePolicy',
@@ -222,9 +255,14 @@ const PUBLIC_API = {
       'JsonExecutorInvocationResult',
       'MeasurementEventDeliveryInput',
       'MeasurementFailurePolicyInput',
+      'MeasurementAttemptBudgetScopeInput',
+      'MeasurementBudgetPolicyInput',
+      'MeasurementBudgetScopeInput',
       'MeasurementPolicyBuilderInput',
+      'MeasurementProviderCostLimitInput',
       'MeasurementRetryBackoffInput',
       'MeasurementRetryPolicyInput',
+      'MeasurementRunBudgetScopeInput',
       'MeasurementStagePolicyInput',
       'OmkLlmJudgeEffort',
       'OmkLlmJudgeInvocationPort',

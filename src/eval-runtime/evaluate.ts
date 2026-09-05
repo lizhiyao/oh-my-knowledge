@@ -33,9 +33,14 @@ import {
   createMeasurementPolicy,
   MeasurementPolicyBuilderInputSchema,
   type MeasurementFailurePolicyInput,
+  type MeasurementAttemptBudgetScopeInput,
+  type MeasurementBudgetPolicyInput,
+  type MeasurementBudgetScopeInput,
   type MeasurementPolicyBuilderInput,
+  type MeasurementProviderCostLimitInput,
   type MeasurementRetryBackoffInput,
   type MeasurementRetryPolicyInput,
+  type MeasurementRunBudgetScopeInput,
   type MeasurementStagePolicyInput,
 } from './builders/policy.js';
 import {
@@ -607,6 +612,11 @@ export type RetryBackoff = MeasurementRetryBackoffInput;
 export type RetryPolicy = MeasurementRetryPolicyInput;
 export type StagePolicy = MeasurementStagePolicyInput;
 export type FailurePolicy = MeasurementFailurePolicyInput;
+export type ProviderCostLimit = MeasurementProviderCostLimitInput;
+export type BudgetScope = MeasurementBudgetScopeInput;
+export type RunBudgetScope = MeasurementRunBudgetScopeInput;
+export type AttemptBudgetScope = MeasurementAttemptBudgetScopeInput;
+export type BudgetPolicy = MeasurementBudgetPolicyInput;
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
 /** Core run result plus the exact sealed Definition compiled by the façade. */
