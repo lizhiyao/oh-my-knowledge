@@ -187,7 +187,16 @@ const customEvaluation = await evaluation({
       method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 100,
     },
   }] },
-  decision: undefined,
+  decision: {
+    decisionKind: 'comparison-family',
+    analysisId: 'paired-release-family',
+    rule: 'all',
+    criteria: [{
+      analysisId: 'paired-correct-member', minimumEffect: -100, maximumEffect: 100,
+    }, {
+      analysisId: 'paired-length-member', minimumEffect: -100, maximumEffect: 100,
+    }],
+  },
   runId: 'clean-room-custom-evaluator',
 });
 assert.equal(customEvaluation.status, 'completed');
@@ -197,6 +206,8 @@ assert.equal(customEvaluation.analysisResults['prompt-v2-mean-length'].value, 8)
 assert.equal(customEvaluation.analysisResults['prompt-v2-smoke-p50-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['paired-correct-member'].value.confidenceLevel, 0.975);
 assert.equal(customEvaluation.analysisResults['paired-release-family'].value.familySize, 2);
+assert.equal(customEvaluation.artifacts.decision.decisionStatus, 'decided');
+assert.equal(customEvaluation.artifacts.decision.verdict, 'RELEASE');
 assert.ok(customEvaluation.artifacts.evaluation.records.every((record) => (
   record.evaluationStatus === 'completed'
   && record.observations[0]?.observationStatus === 'observed'
