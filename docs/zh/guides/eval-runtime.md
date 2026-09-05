@@ -215,6 +215,47 @@ const variant = {
 
 不同 sample 需要不同 snapshot 时，使用 `{ default, bySampleId }`，其中 `null` override 表示该 sample 显式不使用 workspace。OMK 会在执行前封存 descriptor 与 provider identity，为每个 Target × Sample × Trial 打开一份新 lease，只在该 trial 的 retry 间复用，并在所有终态路径关闭。物理 root 不会成为测量 identity 或自动 evidence。Provider 必须完成有界的本地资源获取并自行验证内容；OMK 不发现文件、locator 或 credential。可写 lease 用于隔离测量，不是不可信代码的 sandbox。
 
+## 按用例约束工具访问
+
+当 Agent 后端能够准确执行工具列表时，在 Executor 上声明 capability，并在 Variant 上选择工具：
+
+```ts
+const executor: Executor<{ task: string }, undefined, string> = {
+  executorId: 'acme.tool-restricted-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.object({ task: z.string() }), output: z.string() },
+  capabilities: {
+    toolPolicy: 'allow-list',
+    cancellation: 'cooperative',
+  },
+  async execute({ input, allowedTools, signal }) {
+    return {
+      output: await agent.run(input.task, {
+        tools: allowedTools,
+        signal,
+      }),
+    };
+  },
+};
+
+const variant = {
+  variantId: 'restricted-agent',
+  artifact: { name: 'agent', kind: 'agent', source: 'inline', content: '...' },
+  execution: {
+    executor,
+    allowedTools: {
+      default: ['Read', 'Search'],
+      bySampleId: {
+        offline: [],
+        unrestricted: null,
+      },
+    },
+  },
+};
+```
+
+直接传入数组时，该列表适用于所有 sample。在 plan 中，`[]` 表示禁用全部工具，`null` 表示为该 sample 有意恢复 Executor runtime 默认值。OMK 会为 canonical identity 排序，始终隔离不同 Sample 的列表，并在一个 Trial 的 retry 间传递同一份不可变列表；OMK 本身既不发现工具，也不执行 provider 调用限制。Executor 必须把 `allowedTools` 转换为后端的准确约束；如果后端只能近似执行、忽略或扩大列表，就绝不能声明 `toolPolicy: 'allow-list'`。Variant 请求列表而 Executor 缺少 capability 时，`prepareEvaluation()` 会失败关闭。
+
 ## 有状态 Agent Session
 
 当 Agent 或有状态 Workflow 需要按 trial 隔离的 session 时，使用 `SessionExecutor`。`Executor` 继续表示简洁的无状态 `omk.invoke/v1` 接口；`EvaluationExecutor` 是 Variant 接受的联合类型，`InvokeExecutor` 是无状态形态的显式名称：

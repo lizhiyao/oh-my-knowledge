@@ -62,6 +62,8 @@ export interface JsonExecutorInvocation<Input, TargetConfig> {
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
   readonly workspace?: WorkspaceAccess;
+  /** Undefined means runtime default; an empty list denies every tool. */
+  readonly allowedTools?: readonly string[];
 }
 
 export type JsonExecutorInvocationResult<Output extends JsonValue, Trace extends JsonValue> =
@@ -89,6 +91,8 @@ export interface JsonSessionExecutorContext<Input, TargetConfig> {
   readonly trialIndex: number;
   readonly trialSeed?: string;
   readonly workspace?: WorkspaceAccess;
+  /** Undefined means runtime default; an empty list denies every tool. */
+  readonly allowedTools?: readonly string[];
 }
 
 export interface JsonSessionExecutorAttempt {
@@ -151,6 +155,12 @@ export interface CreateJsonSessionExecutorAdapterInput<
 interface OpenedWorkspace {
   readonly access: WorkspaceAccess;
   close(): Promise<void>;
+}
+
+function effectiveAllowedTools(trial: Readonly<ExecutorTrialContext>): readonly string[] | undefined {
+  return trial.executionControl.tools.toolPolicyKind === 'runtime-default'
+    ? undefined
+    : Object.freeze([...trial.executionControl.tools.allowedTools]);
 }
 
 async function rejectInvalidWorkspaceLease(lease: unknown): Promise<never> {
@@ -431,11 +441,12 @@ export function createJsonExecutorAdapter<
         return Object.freeze({
           trial,
           workspace: await openWorkspace(workspaceProvider, run, trial),
+          allowedTools: effectiveAllowedTools(trial),
         });
       },
       async execute({ trialState, attempt }): Promise<ExecutorAttemptResult> {
         if (attempt.signal.aborted) throw attempt.signal.reason;
-        const { trial, workspace } = trialState;
+        const { trial, workspace, allowedTools } = trialState;
         const invocation: JsonExecutorInvocation<Input, TargetConfig> = Object.freeze({
           input: parseJsonUnchanged(
             inputParser,
@@ -457,6 +468,7 @@ export function createJsonExecutorAdapter<
           attemptNumber: attempt.attemptNumber,
           signal: attempt.signal,
           ...(workspace === undefined ? {} : { workspace: workspace.access }),
+          ...(allowedTools === undefined ? {} : { allowedTools }),
         });
         return executeJsonHost(
           protocol,
@@ -514,6 +526,7 @@ export function createJsonSessionExecutorAdapter<
       openRun: ({ run }) => run,
       async openTrial({ run, trial }) {
         const workspace = await openWorkspace(workspaceProvider, run, trial);
+        const allowedTools = effectiveAllowedTools(trial);
         try {
           const context: JsonSessionExecutorContext<Input, TargetConfig> = Object.freeze({
             runId: run.runId,
@@ -536,6 +549,7 @@ export function createJsonSessionExecutorAdapter<
             trialIndex: trial.trialIndex,
             ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
             ...(workspace === undefined ? {} : { workspace: workspace.access }),
+            ...(allowedTools === undefined ? {} : { allowedTools }),
           });
           const session = await Reflect.apply(openSession, input, [context]);
           if (session === null || typeof session !== 'object'

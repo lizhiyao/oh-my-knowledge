@@ -176,6 +176,7 @@ const workspaceExecutor = {
     cancellation: 'cooperative',
     concurrency: { safety: 'parallel-safe' },
     seedControl: 'unsupported',
+    toolPolicy: 'allow-list',
     telemetry: { trace: 'unsupported', usage: 'optional' },
   },
   workspaceProvider: {
@@ -196,9 +197,10 @@ const workspaceExecutor = {
       };
     },
   },
-  async execute({ workspace }) {
+  async execute({ workspace, allowedTools }) {
     assert.ok(workspace);
     assert.deepEqual(workspace.descriptor, workspaceDescriptor);
+    assert.deepEqual(allowedTools, ['Read']);
     return { output: await readFile(join(workspace.root, 'answer.txt'), 'utf8') };
   },
 };
@@ -212,7 +214,11 @@ const workspaceEvaluation = await evaluate({
     artifact: {
       name: 'workspace-agent', kind: 'agent', source: 'inline', content: 'Read the workspace.',
     },
-    execution: { executor: workspaceExecutor, workspace: workspaceDescriptor },
+    execution: {
+      executor: workspaceExecutor,
+      workspace: workspaceDescriptor,
+      allowedTools: ['Read'],
+    },
   }],
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [],

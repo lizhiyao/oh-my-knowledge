@@ -70,6 +70,10 @@ export type {
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {
+  AllowedToolsInput,
+  AllowedToolsPlan,
+} from './tool-policy.js';
+export type {
   WorkspaceAccess,
   WorkspaceDescriptor,
   WorkspaceInput,

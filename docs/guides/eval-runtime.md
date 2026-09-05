@@ -218,6 +218,47 @@ const variant = {
 
 Use `{ default, bySampleId }` instead of one descriptor when samples need different snapshots; a `null` override explicitly selects no workspace for that sample. OMK seals descriptors and provider identity before execution, opens one fresh lease per Target × Sample × Trial, reuses it only for retries of that trial, and closes it on every terminal path. Physical roots never become measurement identity or automatic evidence. The provider must perform bounded local acquisition and verify content itself; OMK deliberately does not discover files, locators, or credentials. A writable lease isolates measurements but is not a sandbox for untrusted code.
 
+## Per-sample tool access
+
+When an Agent backend can enforce an exact tool list, declare that capability on the Executor and select the tools on the Variant:
+
+```ts
+const executor: Executor<{ task: string }, undefined, string> = {
+  executorId: 'acme.tool-restricted-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.object({ task: z.string() }), output: z.string() },
+  capabilities: {
+    toolPolicy: 'allow-list',
+    cancellation: 'cooperative',
+  },
+  async execute({ input, allowedTools, signal }) {
+    return {
+      output: await agent.run(input.task, {
+        tools: allowedTools,
+        signal,
+      }),
+    };
+  },
+};
+
+const variant = {
+  variantId: 'restricted-agent',
+  artifact: { name: 'agent', kind: 'agent', source: 'inline', content: '...' },
+  execution: {
+    executor,
+    allowedTools: {
+      default: ['Read', 'Search'],
+      bySampleId: {
+        offline: [],
+        unrestricted: null,
+      },
+    },
+  },
+};
+```
+
+A direct array applies to every sample. In a plan, `[]` denies every tool and `null` deliberately restores the Executor runtime default for that sample. OMK sorts lists for canonical identity, keeps each Sample's list separate, and passes the same immutable list across retries of one Trial. It never discovers tools or enforces provider calls itself. The Executor must translate `allowedTools` into an exact backend restriction; if its backend can only approximate, ignore, or widen the list, it must not declare `toolPolicy: 'allow-list'`. `prepareEvaluation()` fails closed when a Variant requests a list from an Executor without that capability.
+
 ## Stateful Agent sessions
 
 Use `SessionExecutor` when one Agent or stateful Workflow needs an isolated per-trial session. `Executor` remains the concise stateless `omk.invoke/v1` interface; `EvaluationExecutor` is the union accepted by a Variant, and `InvokeExecutor` is the explicit name for the stateless form:

@@ -219,6 +219,8 @@ const PUBLIC_API = {
       'prepareEvaluation',
     ],
     types: [
+      'AllowedToolsInput',
+      'AllowedToolsPlan',
       'Artifact',
       'ArtifactKind',
       'ArtifactSource',
@@ -397,6 +399,8 @@ const PUBLIC_API = {
       'SameProcessOperationScope',
       'SameProcessResourceLeaseAccess',
       'SameProcessRunScope',
+      'AllowedToolsInput',
+      'AllowedToolsPlan',
       'WorkspaceAccess',
       'WorkspaceDescriptor',
       'WorkspaceInput',

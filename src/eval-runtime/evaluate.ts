@@ -113,13 +113,18 @@ import {
 import {
   captureWorkspacePlan,
   captureWorkspaceProvider,
-  workspaceExecutionControls,
   type CapturedWorkspacePlan,
   type CapturedWorkspaceProvider,
   type WorkspaceAccess,
   type WorkspaceInput,
   type WorkspaceProvider,
 } from './workspace.js';
+import {
+  captureAllowedToolsPlan,
+  type AllowedToolsInput,
+  type CapturedAllowedToolsPlan,
+} from './tool-policy.js';
+import { evaluationExecutionControls } from './execution-controls.js';
 
 const ARTIFACT_KINDS = ['baseline', 'skill', 'prompt', 'agent', 'workflow'] as const;
 const ARTIFACT_SOURCES = [
@@ -423,6 +428,8 @@ export interface VariantExecution<
   readonly config?: Config;
   /** Logical, content-addressed workspace selection; physical paths belong to the provider. */
   readonly workspace?: WorkspaceInput;
+  /** Exact tool allow-list; an empty list disables every tool. */
+  readonly allowedTools?: AllowedToolsInput;
 }
 
 export interface Variant<
@@ -451,6 +458,8 @@ export interface ExecutorCapabilities {
     maxInFlight?: number;
   }>;
   readonly seedControl?: 'unsupported' | 'optional' | 'required';
+  /** Declares that the Executor strictly enforces per-trial tool allow-lists. */
+  readonly toolPolicy?: 'allow-list';
   readonly telemetry?: Readonly<{
     trace?: 'unsupported' | 'optional' | 'required';
     usage?: 'unsupported' | 'optional' | 'required';
@@ -477,6 +486,8 @@ export interface ExecutorInvocation<
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
   readonly workspace?: WorkspaceAccess;
+  /** Undefined means use the Executor runtime default; an empty list denies every tool. */
+  readonly allowedTools?: readonly string[];
 }
 
 export interface ExecutorSessionContext<
@@ -495,6 +506,8 @@ export interface ExecutorSessionContext<
   readonly trialIndex: number;
   readonly trialSeed?: string;
   readonly workspace?: WorkspaceAccess;
+  /** Undefined means use the Executor runtime default; an empty list denies every tool. */
+  readonly allowedTools?: readonly string[];
 }
 
 export interface ExecutorSessionAttempt {
@@ -994,6 +1007,7 @@ interface CapturedExecutor<
   readonly configParser: RuntimeValueParser<Config>;
   readonly outputParser: RuntimeValueParser<Output>;
   readonly workspaceProvider?: CapturedWorkspaceProvider;
+  readonly supportsToolAllowList: boolean;
   readonly createPort: (
     targetId: string,
   ) => ReturnType<typeof createJsonExecutorAdapter<Input, JsonValue, Output, Trace>>;
@@ -1170,6 +1184,9 @@ function captureExecutor<
         cancellation: capabilities.cancellation ?? 'best-effort',
         concurrency: capabilities.concurrency ?? { safety: 'serialized' },
         seedControl: capabilities.seedControl ?? 'unsupported',
+        ...(capabilities.toolPolicy === undefined
+          ? {}
+          : { toolPolicy: capabilities.toolPolicy }),
         ...(workspaceProvider === undefined
           ? {}
           : { workspace: 'copy-on-write-overlay' as const }),
@@ -1180,9 +1197,11 @@ function captureExecutor<
         },
         fingerprintFacets: {
           facade: {
-            version: workspaceProvider === undefined
-              ? 'omk.eval-runtime.evaluate/v3'
-              : 'omk.eval-runtime.evaluate/v4',
+            version: capabilities.toolPolicy === 'allow-list'
+              ? 'omk.eval-runtime.evaluate/v5'
+              : workspaceProvider === undefined
+                ? 'omk.eval-runtime.evaluate/v3'
+                : 'omk.eval-runtime.evaluate/v4',
             outputClassification,
             traceClassification,
             ...(value.outputMediaType === undefined
@@ -1321,6 +1340,9 @@ function captureExecutor<
           ...(sessionContext.workspace === undefined
             ? {}
             : { workspace: sessionContext.workspace }),
+          ...(sessionContext.allowedTools === undefined
+            ? {}
+            : { allowedTools: sessionContext.allowedTools }),
         }]) as ExecutorSession<Output, Trace>;
         if (session === null || typeof session !== 'object'
             || typeof session.execute !== 'function'
@@ -1366,6 +1388,9 @@ function captureExecutor<
           ...(invocation.workspace === undefined
             ? {}
             : { workspace: invocation.workspace }),
+          ...(invocation.allowedTools === undefined
+            ? {}
+            : { allowedTools: invocation.allowedTools }),
         }]) as ExecutorResult<Output, Trace>;
         return adaptResult(result);
       },
@@ -1378,6 +1403,7 @@ function captureExecutor<
     configParser,
     outputParser,
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
+    supportsToolAllowList: capabilities.toolPolicy === 'allow-list',
     createPort,
   });
 }
@@ -1401,6 +1427,7 @@ interface CapturedVariant {
   config?: JsonValue;
   envelope: JsonValue;
   workspace?: CapturedWorkspacePlan;
+  allowedTools?: CapturedAllowedToolsPlan;
   executor: CapturedExecutor<JsonValue, JsonValue | undefined, JsonValue, JsonValue>;
 }
 
@@ -1427,10 +1454,25 @@ function captureVariant(
       'Evaluation variant workspace selection 无效。',
     );
   }
+  let allowedTools: CapturedAllowedToolsPlan | undefined;
+  try {
+    allowedTools = captureAllowedToolsPlan(value.execution.allowedTools, sampleIds);
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant allowedTools selection 无效。',
+    );
+  }
   if (workspace !== undefined && executor.workspaceProvider === undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_VARIANT_INVALID',
       'Evaluation variant workspace requires an Executor workspaceProvider。',
+    );
+  }
+  if (allowedTools !== undefined && !executor.supportsToolAllowList) {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant allowedTools requires an Executor allow-list toolPolicy capability。',
     );
   }
   const config = parseOptionalWithoutTransform(
@@ -1452,6 +1494,7 @@ function captureVariant(
     ...(config === undefined ? {} : { config }),
     envelope,
     ...(workspace === undefined ? {} : { workspace }),
+    ...(allowedTools === undefined ? {} : { allowedTools }),
     executor,
   });
 }
@@ -2115,7 +2158,10 @@ function stableFacadeId(
 }
 
 function targetDefinition(variant: Readonly<CapturedVariant>) {
-  const executionControls = workspaceExecutionControls(variant.workspace);
+  const executionControls = evaluationExecutionControls(
+    variant.workspace,
+    variant.allowedTools,
+  );
   return {
     targetId: variant.variantId,
     targetKind: variant.artifact.kind,
@@ -2128,7 +2174,9 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
         : 'copy-on-write-overlay' as const,
       mcp: 'not-required' as const,
       mockInterception: 'not-required' as const,
-      toolPolicy: 'runtime-default' as const,
+      toolPolicy: variant.allowedTools === undefined
+        ? 'runtime-default' as const
+        : 'allow-list' as const,
       skillDiscovery: 'runtime-default' as const,
     },
     executionControls,
@@ -3229,10 +3277,12 @@ export async function checkExecutor<
     );
   }
   if (input.variant?.execution?.workspace !== undefined
-      || input.variant?.execution?.executor?.workspaceProvider !== undefined) {
+      || input.variant?.execution?.executor?.workspaceProvider !== undefined
+      || input.variant?.execution?.allowedTools !== undefined
+      || input.variant?.execution?.executor?.capabilities?.toolPolicy !== undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
-      'Executor check 暂不认证 workspaceProvider；请使用真实 Evaluation 验证 workspace 生命周期。',
+      'Executor check 暂不认证 workspaceProvider 或 toolPolicy；请使用真实 Evaluation 验证资源隔离与工具约束。',
     );
   }
   const variant = captureVariant(input.variant, new Set());
