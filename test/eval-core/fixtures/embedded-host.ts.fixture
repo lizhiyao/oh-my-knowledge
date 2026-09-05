@@ -43,9 +43,12 @@ import {
 import {
   assessComparability as assessRuntimeComparability,
   checkExecutor,
+  checkRuntime,
   EvaluationEventConsumptionError,
   evaluate,
+  evaluateSeries,
   prepareEvaluation,
+  prepareEvaluationSeries,
   type AnalysisRequest,
   type AssessComparabilityInput,
   type AllowedToolsPlan,
@@ -58,14 +61,23 @@ import {
   type EvaluationComparabilitySubject,
   type EvaluationCacheEntry,
   type EvaluationInfrastructure,
+  type Judge,
+  type JudgeRuntimeCheckInput,
+  type EvaluationSeriesInput,
+  type EvaluationSeriesResult,
   type EvidencePolicy,
   type ExecutionCache,
   type ExecutionCacheEntry,
   type Executor as CanonicalExecutor,
+  type ExecutorRuntimeCheckResult,
   type ExecutorIdentityVerifier,
   type McpConfigDescriptor,
   type McpConfigProvider,
   type PreparedEvaluation,
+  type PreparedEvaluationSeries,
+  type RunStabilityValue,
+  type RuntimeCheckInput,
+  type RuntimeCheckResult,
   type Variant as CanonicalVariant,
   type WorkspaceDescriptor,
   type WorkspaceProvider,
@@ -146,6 +158,43 @@ const canonicalExecutor: CanonicalExecutor<string, undefined, string> = {
     return { output: input };
   },
 };
+const canonicalExecutorRuntimeCheck: Promise<ExecutorRuntimeCheckResult> = checkRuntime({
+  runtimeKind: 'executor',
+  variant: {
+    variantId: 'typescript-runtime-check',
+    artifact: { name: 'runtime-check', kind: 'baseline', source: 'baseline', content: null },
+    execution: { executor: canonicalExecutor },
+  },
+  success: { input: 'success', expected: 'success' },
+  failure: { input: 'failure', expectedErrorCode: 'expected-failure' },
+  cancellation: { input: 'cancellation' },
+});
+declare const canonicalJudge: Judge;
+const canonicalJudgeRuntimeCheckInput: JudgeRuntimeCheckInput = {
+  runtimeKind: 'judge',
+  judge: canonicalJudge,
+  model: 'typescript-host-model',
+  probeNamespace: 'typescript-judge-runtime-check',
+  allowExternalCalls: true,
+  success: { publicProbeText: 'public-success-probe', expectedScore: 4 },
+  invalidResponse: {
+    publicProbeText: 'public-invalid-response-probe',
+    expectedReasonCode: 'judge-response-non-json',
+  },
+  failure: { publicProbeText: 'public-failure-probe' },
+  cancellation: { publicProbeText: 'public-cancellation-probe' },
+};
+async function consumeRuntimeCheck(input: RuntimeCheckInput): Promise<RuntimeCheckResult> {
+  const result = await checkRuntime(input);
+  if (result.runtimeKind === 'judge') {
+    const invocationCount: number = result.externalCalls.invocationCount;
+    void invocationCount;
+  }
+  return result;
+}
+void canonicalExecutorRuntimeCheck;
+void canonicalJudgeRuntimeCheckInput;
+void consumeRuntimeCheck;
 const evidencePolicy: EvidencePolicy = {
   output: 'reference',
   trace: 'none',
@@ -287,6 +336,38 @@ const canonicalEvaluation = evaluate(canonicalInput, {
 });
 const canonicalPreparation: Promise<PreparedEvaluation> = prepareEvaluation(canonicalInput);
 void canonicalPreparation;
+const seriesInput: EvaluationSeriesInput = {
+  evaluation: canonicalInput,
+  seriesInstanceId: 'typescript-series',
+  repeatCount: 2,
+  stability: {
+    sourceAnalysisId: 'baseline-vs-prompt-v2-correct',
+    projection: 'interval-estimate',
+  },
+};
+const canonicalSeries: Promise<EvaluationSeriesResult> = evaluateSeries(seriesInput);
+const canonicalSeriesPreparation: Promise<PreparedEvaluationSeries> =
+  prepareEvaluationSeries(seriesInput);
+function consumeStability(value: RunStabilityValue): number {
+  return value.sampleStandardDeviation;
+}
+void canonicalSeriesPreparation;
+void consumeStability;
+async function canonicalSeriesBoundary(): Promise<void> {
+  const result = await canonicalSeries;
+  if (result.status === 'failed') {
+    const errorCode: string = result.error.code;
+    void errorCode;
+    return;
+  }
+  if (result.status === 'cancelled') return;
+  if (result.stability.analysisStatus !== 'completed') return;
+  const runCount: number = result.stability.value.runCount;
+  const standardDeviation: number = consumeStability(result.stability.value);
+  void runCount;
+  void standardDeviation;
+}
+void canonicalSeriesBoundary;
 async function canonicalResultBoundary(): Promise<void> {
   const result = await canonicalEvaluation;
   const datasetId: string = result.definition.dataset.datasetId;

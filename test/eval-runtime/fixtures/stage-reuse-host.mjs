@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { evaluate, reanalyze, redecide, rescore } from 'oh-my-knowledge';
+import {
+  assessComparability,
+  evaluate,
+  loadEvaluationResult,
+  prepareEvaluation,
+  reanalyze,
+  redecide,
+  rescore,
+  saveEvaluationResult,
+} from 'oh-my-knowledge';
 
 let targetInvocations = 0;
 const executor = {
@@ -75,12 +85,99 @@ const source = await evaluate(sourceInput, { runId: 'stage-reuse-source' });
 assert.equal(source.status, 'completed');
 assert.equal(targetInvocations, 4);
 
+const storedResults = new Map();
+const resultStore = {
+  async put(request) {
+    storedResults.set(request.digest, JSON.stringify({
+      value: request.value,
+      classification: request.classification,
+      mediaType: request.mediaType,
+    }));
+    return { digest: request.digest, mediaType: request.mediaType };
+  },
+};
+const resultReference = await saveEvaluationResult({ result: source, store: resultStore });
+const trustedReceipt = Object.freeze({
+  verifiedProvenanceBundleDigests: Object.freeze([
+    source.artifacts.execution.bundleDigest,
+    source.artifacts.evaluation.bundleDigest,
+    source.artifacts.analysis.bundleDigest,
+  ]),
+  verifiedCacheRecordDigests: Object.freeze([]),
+  verifiedPolicyExecutionDigests: Object.freeze([
+    source.artifacts.decision.decisionDigest,
+  ]),
+});
+await assert.rejects(
+  loadEvaluationResult({
+    prepared: await prepareEvaluation(declaration()),
+    reference: JSON.parse(JSON.stringify(resultReference)),
+    resolver: {
+      async resolve(reference) {
+        return JSON.parse(storedResults.get(reference.digest));
+      },
+    },
+    verifier: {
+      verifierId: 'clean-room.incomplete-result-authority/v1',
+      async verify({ reference }) {
+        return {
+          verifiedResultDigest: reference.digest,
+          attestationDigest: `sha256:${createHash('sha256')
+            .update(`incomplete-result:${reference.digest}`)
+            .digest('hex')}`,
+          verifiedProvenanceBundleDigests: [],
+          verifiedCacheRecordDigests: [],
+          verifiedPolicyExecutionDigests: [],
+        };
+      },
+    },
+  }),
+  (error) => error?.code === 'EVAL_RUNTIME_RESULT_CONTENT_INVALID',
+);
+const restoredSource = await loadEvaluationResult({
+  prepared: await prepareEvaluation(declaration()),
+  reference: JSON.parse(JSON.stringify(resultReference)),
+  resolver: {
+    async resolve(reference) {
+      return JSON.parse(storedResults.get(reference.digest));
+    },
+  },
+  verifier: {
+    verifierId: 'clean-room.result-authority/v1',
+    async verify({ reference }) {
+      assert.ok(storedResults.has(reference.digest));
+      return {
+        verifiedResultDigest: reference.digest,
+        attestationDigest: `sha256:${createHash('sha256')
+          .update(`trusted-result:${reference.digest}`)
+          .digest('hex')}`,
+        ...trustedReceipt,
+      };
+    },
+  },
+});
+assert.deepEqual(restoredSource, source);
+assert.notEqual(restoredSource, source);
+assert.equal(assessComparability({
+  comparisonScope: 'decision',
+  subjects: [{
+    subjectId: 'restored-candidate',
+    leftVariantId: 'candidate',
+    rightVariantId: 'candidate',
+  }],
+  left: source,
+  right: restoredSource,
+}).designStatus, 'compatible');
+
 const rescoreInput = declaration();
 rescoreInput.dataset.samples[0].expected = 'wrong';
-const rescored = await rescore(rescoreInput, source, { runId: 'stage-reuse-rescored' });
+const rescored = await rescore(rescoreInput, restoredSource, { runId: 'stage-reuse-rescored' });
 assert.equal(targetInvocations, 4);
-assert.equal(rescored.artifacts.execution, source.artifacts.execution);
-assert.notEqual(rescored.artifacts.evaluation.bundleDigest, source.artifacts.evaluation.bundleDigest);
+assert.equal(rescored.artifacts.execution, restoredSource.artifacts.execution);
+assert.notEqual(
+  rescored.artifacts.evaluation.bundleDigest,
+  restoredSource.artifacts.evaluation.bundleDigest,
+);
 
 const reanalyzeInput = declaration();
 reanalyzeInput.dataset.samples[0].expected = 'wrong';

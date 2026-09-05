@@ -709,10 +709,14 @@ const sessionExecutor = {
     cancellation: 'cooperative',
     concurrency: { safety: 'parallel-safe' },
     seedControl: 'unsupported',
+    toolPolicy: 'allow-list',
     telemetry: { trace: 'unsupported', usage: 'optional' },
   },
+  workspaceProvider: workspaceExecutor.workspaceProvider,
   fingerprintFacets: { revision: 'clean-room-session-one' },
   async openSession(context) {
+    assert.deepEqual(context.workspace.descriptor, workspaceDescriptor);
+    assert.deepEqual(context.allowedTools, ['Read']);
     const observed = {
       runId: context.runId,
       trialId: context.trialId,
@@ -723,6 +727,7 @@ const sessionExecutor = {
     openedSessions.push(observed);
     return {
       async execute(attempt) {
+        assert.equal(await readFile(join(context.workspace.root, 'answer.txt'), 'utf8'), 'workspace-answer');
         observed.attempts.push({
           attemptId: attempt.attemptId,
           attemptNumber: attempt.attemptNumber,
@@ -749,7 +754,12 @@ const sessionEvaluation = await evaluate({
     artifact: {
       name: 'session-agent', kind: 'agent', source: 'inline', content: 'Research carefully.',
     },
-    execution: { executor: sessionExecutor, config: { answer: 'done' } },
+    execution: {
+      executor: sessionExecutor,
+      config: { answer: 'done' },
+      workspace: workspaceDescriptor,
+      allowedTools: ['Read'],
+    },
   }],
   evaluators: [{ evaluatorKind: 'exact-match' }],
   comparisons: [],
@@ -777,6 +787,7 @@ assert.equal(openedSessions[0].closes, 1);
 assert.deepEqual(openedSessions[0].attempts.map((attempt) => attempt.attemptNumber), [1, 2]);
 assert.equal(new Set(openedSessions[0].attempts.map((attempt) => attempt.attemptId)).size, 2);
 assert.equal(JSON.stringify(openedSessions[0].context).includes('not-for-session'), false);
+await assert.rejects(access(openedSessions[0].context.workspace.root));
 
 const independent = await evaluation({
   dataset: {

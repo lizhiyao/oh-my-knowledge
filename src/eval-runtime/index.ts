@@ -11,6 +11,20 @@ export {
   redecide,
   rescore,
 } from './evaluate.js';
+export {
+  evaluateSeries,
+  prepareEvaluationSeries,
+} from './series.js';
+export {
+  EVALUATION_RESULT_MEDIA_TYPE,
+  EvaluationResultStoreError,
+  loadEvaluationResult,
+  saveEvaluationResult,
+} from './result-store.js';
+export {
+  RUNTIME_CHECK_RESULT_SCHEMA_VERSION,
+  checkRuntime,
+} from './conformance/runtime.js';
 export type {
   Artifact,
   ArtifactKind,
@@ -79,7 +93,64 @@ export type {
   Variant,
   VariantExecution,
 } from './evaluate.js';
+export type {
+  EvaluationSeriesInput,
+  EvaluationSeriesMemberResult,
+  EvaluationSeriesResult,
+  EvaluationSeriesRunOptions,
+  EvaluationSeriesStability,
+  EvaluationSeriesStabilityResult,
+  EvaluationSeriesWorkEstimate,
+  PreparedEvaluationSeries,
+  RunStabilityValue,
+} from './series.js';
+export type {
+  EvaluationResultVerification,
+  EvaluationResultVerificationRequest,
+  EvaluationResultVerifier,
+  LoadEvaluationResultInput,
+  SaveEvaluationResultInput,
+} from './result-store.js';
 export type { ContentStoreConformanceCheck } from './conformance/content-store.js';
+export type {
+  CacheRuntimeCheckInput,
+  CacheRuntimeCheckResult,
+  ContentStoreRuntimeCheckInput,
+  ContentStoreRuntimeCheckResult,
+  ExecutorRuntimeCheckInput,
+  ExecutorRuntimeCheckResult,
+  EvaluatorRuntimeCheckInput,
+  EvaluatorRuntimeCheckResult,
+  JudgeRuntimeCheckInput,
+  JudgeRuntimeCheckResult,
+  RuntimeCheckInput,
+  RuntimeCheckKind,
+  RuntimeCheckResult,
+  WorkspaceProviderRuntimeCheckInput,
+  WorkspaceProviderRuntimeCheckResult,
+} from './conformance/runtime.js';
+export type {
+  CacheConformanceCheck,
+  CacheConformanceProbeInput,
+  CacheConformanceResult,
+} from './conformance/cache.js';
+export type {
+  WorkspaceProviderConformanceCheck,
+  WorkspaceProviderConformanceProbeInput,
+  WorkspaceProviderConformanceResult,
+} from './conformance/workspace-provider.js';
+export type {
+  EvaluatorConformanceCheck,
+  EvaluatorConformanceProbeInput,
+  EvaluatorConformanceProbeSources,
+  EvaluatorConformanceResult,
+} from './conformance/evaluator.js';
+export type {
+  JudgeConformanceCheck,
+  JudgeConformanceProbeCase,
+  JudgeConformanceProbeInput,
+  JudgeConformanceResult,
+} from './conformance/judge.js';
 export type {
   ContentDescriptor,
   ContentResolver,

@@ -185,6 +185,42 @@ if (assessment.comparabilityStatus !== 'compatible') {
 
 The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. Persistent cross-process admission remains available through the advanced Core surface until the Runtime artifact-store adapter lands.
 
+## Repeat-run stability
+
+Use an Evaluation Series when the question is whether the same sealed evaluation is stable across complete member Runs:
+
+```ts
+import { prepareEvaluationSeries } from 'oh-my-knowledge';
+
+const preparedSeries = await prepareEvaluationSeries({
+  evaluation: input,
+  seriesInstanceId: 'release-42-repeatability',
+  repeatCount: 10,
+  stability: {
+    sourceAnalysisId: 'candidate-correct-rate',
+    projection: 'scalar',
+  },
+});
+
+// No Target or Evaluator has run yet.
+console.log(preparedSeries.memberPlans, preparedSeries.estimatedWork);
+
+const series = await preparedSeries.run({ signal });
+if (series.status === 'failed') throw new Error(series.error.code);
+if (series.status === 'cancelled') throw new Error('Series was cancelled.');
+if (series.stability?.analysisStatus !== 'completed') {
+  throw new Error(series.stability?.reasonCodes.join(', '));
+}
+console.log(series.stability.value.mean);
+console.log(series.stability.value.sampleStandardDeviation);
+```
+
+Declare the full `repeatCount` before execution. OMK captures the Evaluation declaration once, preregisters every membership, and verifies that all stage-plan digests remain identical while each member receives a unique Run contract. Members run sequentially with Execution and Evaluation cache disabled. A failed or cancelled member retains its actual partial, failed, cancelled, or missing coverage state and is never replaced; the API does not stop early based on observed values. Each member receives its own Run budgets.
+
+The Series experimental unit is one complete Run. Trials, retries, samples, and Judge replicates remain nested within that Run and do not increase `runCount`. The measurement seed is held fixed with the rest of the design, so seed-aware Executors receive the same trial seeds in each member; intentionally varying a Run-level seed requires a different experiment contract. The stability table is descriptive: mean, Bessel-corrected sample variance with denominator `n - 1`, standard deviation, minimum, maximum, and range. It does not issue a release verdict, estimate an iid confidence interval, or establish reproducibility across environments. Every preregistered slot must be eligible and comparable; otherwise stability is inconclusive rather than silently dropping failed or missing Runs. Select a scalar Analysis result with `projection: 'scalar'`; selecting the point estimate from an interval requires the explicit `interval-estimate` projection. Complete evidence is required by default. Allow partial evidence only when that missingness policy is defensible for the intended claim.
+
+`PreparedEvaluationSeries` is single-use, and `seriesInstanceId` names that intentional execution. Use a fresh value for a genuinely new Series. For a direct shortcut, `evaluateSeries(input, options)` is equivalent to preparing and running once.
+
 When only a downstream measurement declaration changes, reuse the authenticated prefix instead of paying for the same Target work again:
 
 ```ts
@@ -830,24 +866,27 @@ const result = await evaluate({
 
 The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes the whole Target × Sample × Trial panel reading if any planned coordinate is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge/eval-runtime/contracts`.
 
-## Certify an Executor
+## Check Runtime components
 
-Run `checkExecutor()` before adopting an adapter. It drives the same declaration through real successful, failed, and cancelled Core runs, and checks binding isolation, lifecycle cleanup, telemetry, observations, paired analysis, and Decision:
+Run `checkRuntime()` before adopting an injected component. One call checks exactly one component and returns a versioned behavioral-evidence envelope. For an Executor it drives the same declaration through real successful, failed, and cancelled Core runs, then checks binding isolation, lifecycle cleanup, telemetry, observations, paired analysis, and Decision:
 
 ```ts
-import { checkExecutor } from 'oh-my-knowledge';
+import { checkRuntime } from 'oh-my-knowledge';
 
-const certification = await checkExecutor({
+const runtimeCheck = await checkRuntime({
+  runtimeKind: 'executor',
   variant: variants[1],
   success: { input: successInput, expected: expectedOutput },
   failure: { input: failureInput, expectedErrorCode: 'model-unavailable' },
   cancellation: { input: longRunningInput },
 });
 
-if (!certification.conformant) console.error(certification.checks);
+if (!runtimeCheck.conformant) console.error(runtimeCheck.checks);
 ```
 
-The cancellation input must remain bounded if the implementation ignores its signal; the in-process check does not isolate hostile code.
+The `runtimeKind` discriminator also selects `evaluator`, `judge`, `cache`, `content-store`, or `workspace-provider`. `checkExecutor()` and `checkContentStore()` remain focused convenience entries backed by the same existing probes. Invalid declarations reject with `EVAL_RUNTIME_INPUT_INVALID`; host behavioral failures return `conformant: false` with stable reason codes. A passing check does not upgrade self-reported Runtime identity or prove the quality of a model provider. Run the intended component composition through a real `evaluate()` afterward.
+
+The cancellation case must remain bounded if the implementation ignores its signal; an in-process check cannot contain hostile code. Evaluation-cache, Custom Evaluator, and Judge checks exercise overlapping calls through Core; execution-cache behavior is checked on Core's current serial read path without claiming more. Cache and ContentStore checks perform writes, so use disposable resources and a unique `probeNamespace` for cache checks. Workspace checks observe lease isolation, retry reuse, and cleanup but cannot prove physical deletion or sandboxing; `timeoutMs` bounds the check's cleanup wait but cannot stop the provider's underlying promise. Judge checks make up to four provider calls and may incur cost; they require `allowExternalCalls: true`, and every `publicProbeText` is sent to the provider and must be harmless public data. The result reports measured invocation and provider-cost totals. Stable results retain none of the probe payload, provider exception text, prompt, model output, cache entries, workspace roots, locators, or credentials.
 
 ## Advanced integration and migration
 

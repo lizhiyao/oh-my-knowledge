@@ -18,6 +18,7 @@ import {
   assertAnalysisBundleSourceMatchesPlan,
   assertEvaluationBundleSourceMatchesPlan,
   assertExecutionBundleSourceMatchesPlan,
+  createEvaluationSeriesMemberSource,
   createComparabilityPolicy,
   derivePlannedExecutionCoordinates,
   digestCanonicalJson,
@@ -30,12 +31,15 @@ import {
   type EvaluationBundleSource,
   type EvaluationDefinition,
   type EvaluationEvent,
+  type EvaluationSeriesMemberSource,
+  type EvaluationSeriesMembership,
   type EvaluationSample,
   type EvaluatorDefinition,
   type ExecutionBundleSource,
   type JsonValue,
   type MetricDefinition,
   type RuntimeIdentity,
+  type Sha256Digest,
   type UsageRecord,
 } from '../eval-core/contracts/index.js';
 import {
@@ -1012,6 +1016,51 @@ const corePreparedEvaluations = new WeakMap<object, CoreAdvancedPreparedEvaluati
 export type EventObserver = EvaluationEventObserver;
 export type Clock = EvaluationEngineClock;
 
+function hasExactArtifactSlot(
+  artifacts: Readonly<Record<string, unknown>>,
+  key: 'execution' | 'evaluation' | 'analysis' | 'decision',
+  expected: unknown,
+): boolean {
+  const descriptor = Object.getOwnPropertyDescriptor(artifacts, key);
+  return expected === undefined
+    ? descriptor === undefined
+    : descriptor !== undefined
+      && descriptor.enumerable === true
+      && 'value' in descriptor
+      && descriptor.value === expected;
+}
+
+/** @internal Returns the sealed contract only for a complete, restorable canonical result. */
+export function getRestorableEvaluationResultPlanDigest(
+  result: EvaluationResult,
+): PreparedEvaluationPlan['digests']['runContractDigest'] | undefined {
+  const authenticated = authenticatedCanonicalRuns.get(result);
+  const artifacts = result.artifacts;
+  const sources = authenticated?.sources;
+  const artifactRecord = artifacts as Readonly<Record<string, unknown>> | undefined;
+  const expectedArtifactKeys = sources?.decision === undefined ? 3 : 4;
+  return authenticated !== undefined
+      && sources?.execution !== undefined
+      && sources.evaluation !== undefined
+      && sources.analysis !== undefined
+      && artifactRecord !== undefined
+      && Object.keys(artifactRecord).length === expectedArtifactKeys
+      && hasExactArtifactSlot(artifactRecord, 'execution', sources.execution.bundle)
+      && hasExactArtifactSlot(artifactRecord, 'evaluation', sources.evaluation.bundle)
+      && hasExactArtifactSlot(artifactRecord, 'analysis', sources.analysis.bundle)
+      && hasExactArtifactSlot(artifactRecord, 'decision', sources.decision?.result)
+      && result.report !== undefined
+    ? authenticated.plan.digests.runContractDigest
+    : undefined;
+}
+
+/** @internal Returns the sealed contract only for a capability created by this Runtime. */
+export function getPreparedEvaluationPlanDigest(
+  prepared: PreparedEvaluation,
+): PreparedEvaluationPlan['digests']['runContractDigest'] | undefined {
+  return corePreparedEvaluations.get(prepared)?.plan.digests.runContractDigest;
+}
+
 /** Stable, redacted event-consumption failure from the canonical facade. */
 export class EvaluationEventConsumptionError extends Error {
   readonly code:
@@ -1092,7 +1141,8 @@ export class EvaluationConfigurationError extends TypeError {
     | 'EVAL_RUNTIME_VARIANT_INVALID'
     | 'EVAL_RUNTIME_EVALUATOR_INVALID'
     | 'EVAL_RUNTIME_COMPARABILITY_INVALID'
-    | 'EVAL_RUNTIME_REUSE_INVALID';
+    | 'EVAL_RUNTIME_REUSE_INVALID'
+    | 'EVAL_RUNTIME_SERIES_INVALID';
 
   constructor(code: EvaluationConfigurationError['code'], message: string) {
     super(message);
@@ -1766,6 +1816,7 @@ function attachDefinition(
   runId: string,
   plan: PreparedEvaluationPlan,
 ): EvaluationResult {
+  if (result.artifacts !== undefined) Object.freeze(result.artifacts);
   const records = result.artifacts?.analysis?.records ?? [];
   const analysisResults = Object.freeze(Object.fromEntries(
     [...records]
@@ -3491,9 +3542,15 @@ async function runPrepared(
 }
 
 /** Seals one evaluation declaration without calling a Target or Evaluator. */
-export async function prepareEvaluation(
+interface CapturedEvaluationAssembly {
+  readonly definition: EvaluationDefinition;
+  readonly policy: ReturnType<typeof createMeasurementPolicy>;
+  readonly runtime: ReturnType<typeof createEvaluationRuntime>;
+}
+
+async function captureEvaluationAssembly(
   input: Readonly<EvaluateInput>,
-): Promise<PreparedEvaluation> {
+): Promise<CapturedEvaluationAssembly> {
   if (input === null || typeof input !== 'object') {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
@@ -3588,8 +3645,24 @@ export async function prepareEvaluation(
     evaluators: evaluators.registrations,
     ...(support === undefined ? {} : { support }),
   });
+  return Object.freeze({ definition, policy, runtime });
+}
+
+async function prepareCapturedEvaluation(
+  assembly: CapturedEvaluationAssembly,
+  seriesMembership?: Readonly<EvaluationSeriesMembership>,
+): Promise<PreparedEvaluation> {
   try {
-    const prepared = await createCoreEvaluationEngine(runtime).prepare(definition, policy);
+    const definition = seriesMembership === undefined
+      ? assembly.definition
+      : deepFreezeCanonicalJson(EvaluationDefinitionSchema.parse({
+          ...assembly.definition,
+          seriesMembership,
+        }));
+    const prepared = await createCoreEvaluationEngine(assembly.runtime).prepare(
+      definition,
+      assembly.policy,
+    );
     const plan = prepared.plan;
     const facade: PreparedEvaluation = Object.freeze({
       definition: plan.definition,
@@ -3611,6 +3684,148 @@ export async function prepareEvaluation(
   }
 }
 
+/** @internal Captures one declaration once, then seals preregistered Series members from it. */
+export async function prepareEvaluationSeriesTemplate(
+  input: Readonly<EvaluateInput>,
+): Promise<Readonly<{
+  base: PreparedEvaluation;
+  prepareMembers(
+    memberships: readonly Readonly<EvaluationSeriesMembership>[],
+  ): Promise<readonly PreparedEvaluation[]>;
+}>> {
+  const assembly = await captureEvaluationAssembly(input);
+  const base = await prepareCapturedEvaluation(assembly);
+  let consumed = false;
+  return Object.freeze({
+    base,
+    async prepareMembers(memberships) {
+      if (consumed) {
+        return configurationFailure(
+          'EVAL_RUNTIME_SERIES_INVALID',
+          'Evaluation Series member preparation capability 只能使用一次。',
+        );
+      }
+      consumed = true;
+      return Promise.all(memberships.map((membership) => (
+        prepareCapturedEvaluation(assembly, membership)
+      )));
+    },
+  });
+}
+
+/** Seals one evaluation declaration without calling a Target or Evaluator. */
+export async function prepareEvaluation(
+  input: Readonly<EvaluateInput>,
+): Promise<PreparedEvaluation> {
+  return prepareCapturedEvaluation(await captureEvaluationAssembly(input));
+}
+
+/** @internal Re-admits one serialized result against an exact prepared contract. */
+export function restorePreparedEvaluationResult(
+  preparedFacade: PreparedEvaluation,
+  value: unknown,
+  verification: Readonly<{
+    verifiedProvenanceBundleDigests: ReadonlySet<Sha256Digest>;
+    verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>;
+    verifiedPolicyExecutionDigests: ReadonlySet<Sha256Digest>;
+  }>,
+): EvaluationResult {
+  const prepared = corePreparedEvaluations.get(preparedFacade);
+  if (prepared === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation prepared capability 无法用于结果恢复。',
+    );
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation stored result 无效。',
+    );
+  }
+  const candidate = value as Readonly<Record<string, unknown>>;
+  const runId = candidate.runId;
+  const artifacts = candidate.artifacts;
+  const report = candidate.report;
+  const reportRunId = report !== null && typeof report === 'object' && !Array.isArray(report)
+    ? (report as { budgetSummary?: { runId?: unknown } }).budgetSummary?.runId
+    : undefined;
+  if (typeof runId !== 'string'
+      || reportRunId !== runId
+      || artifacts === null
+      || typeof artifacts !== 'object'
+      || Array.isArray(artifacts)
+      || report === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation stored result 缺少完整的 canonical artifacts。',
+    );
+  }
+  const artifactRecord = artifacts as Readonly<Record<string, unknown>>;
+  try {
+    const executionBundle = artifactRecord.execution as Readonly<Record<string, unknown>>;
+    const evaluationBundle = artifactRecord.evaluation as Readonly<Record<string, unknown>>;
+    const execution = prepared.admitExecutionBundle(
+      executionBundle,
+      {
+        verifiedProvenanceBundleDigests: verification.verifiedProvenanceBundleDigests,
+        verifiedCacheRecordDigests: verification.verifiedCacheRecordDigests,
+      },
+    );
+    const evaluation = prepared.admitEvaluationBundle(evaluationBundle, {
+      execution,
+      verification: {
+        verifiedProvenanceBundleDigests: verification.verifiedProvenanceBundleDigests,
+        verifiedCacheRecordDigests: verification.verifiedCacheRecordDigests,
+      },
+    });
+    const analysis = prepared.admitAnalysisBundle(artifactRecord.analysis, {
+      execution,
+      evaluation,
+      verification: {
+        verifiedProvenanceBundleDigests: verification.verifiedProvenanceBundleDigests,
+      },
+    });
+    const decision = artifactRecord.decision === undefined
+      ? undefined
+      : prepared.admitDecisionResult(artifactRecord.decision, {
+          execution,
+          evaluation,
+          analysis,
+          verification: {
+            verifiedPolicyExecutionDigests: verification.verifiedPolicyExecutionDigests,
+          },
+        });
+    const admittedReport = prepared.admitReport(report, {
+      execution,
+      evaluation,
+      analysis,
+      ...(decision === undefined ? {} : { decision }),
+    });
+    const restored = attachDefinition(materializeAuthenticatedEvaluationRunResult({
+      plan: prepared.plan,
+      execution,
+      evaluation,
+      analysis,
+      ...(decision === undefined ? {} : { decision }),
+      report: admittedReport,
+    }), runId, prepared.plan);
+    if (canonicalizeJson(restored) !== canonicalizeJson(value as JsonValue)) {
+      return configurationFailure(
+        'EVAL_RUNTIME_REUSE_INVALID',
+        'Evaluation stored result 与 canonical Runtime result 不一致。',
+      );
+    }
+    return restored;
+  } catch (error) {
+    if (error instanceof EvaluationConfigurationError) throw error;
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation stored result 未通过 Core admission。',
+    );
+  }
+}
+
 /** Runs one explicit evaluation declaration through OMK's canonical user-facing API. */
 export async function evaluate(
   input: Readonly<EvaluateInput>,
@@ -3618,6 +3833,33 @@ export async function evaluate(
 ): Promise<EvaluationResult> {
   const capturedOptions = captureRunOptions(options);
   return (await prepareEvaluation(input)).run(capturedOptions);
+}
+
+/** @internal Admits an exact canonical result as its preregistered Series slot. */
+export function createCanonicalEvaluationSeriesMemberSource(
+  result: EvaluationResult,
+  membership: Readonly<EvaluationSeriesMembership>,
+): EvaluationSeriesMemberSource | undefined {
+  const authenticated = authenticatedCanonicalRuns.get(result);
+  const { execution, evaluation, analysis, decision } = authenticated?.sources ?? {};
+  if (authenticated === undefined
+      || execution === undefined
+      || evaluation === undefined
+      || analysis === undefined
+      || result.report === undefined
+      || canonicalizeJson(authenticated.plan.definition.seriesMembership)
+        !== canonicalizeJson(membership)) {
+    return undefined;
+  }
+  return createEvaluationSeriesMemberSource({
+    ...membership,
+    plan: authenticated.plan,
+    execution,
+    evaluation,
+    analysis,
+    ...(decision === undefined ? {} : { decision }),
+    report: result.report,
+  });
 }
 
 type EvaluationReuseKind = 'rescore' | 'reanalyze' | 'redecide';
