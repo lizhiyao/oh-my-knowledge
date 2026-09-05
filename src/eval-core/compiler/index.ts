@@ -56,13 +56,17 @@ import {
 import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
+  validateMaterializedAnalysisSemantics,
 } from './validation.js';
 import { sealRunPlan } from '../contracts/sealed-run-plan.js';
 
 export * from './errors.js';
 export * from './types.js';
 export { assertSealedRunPlan } from '../contracts/sealed-run-plan.js';
-export { validateDefinitionSemantics } from './validation.js';
+export {
+  validateDefinitionSemantics,
+  validateMaterializedAnalysisSemantics,
+} from './validation.js';
 
 interface StageExtensions {
   execution?: Extensions;
@@ -1305,6 +1309,7 @@ export async function prepareEvaluationPlan(
     decisionRuntimes,
     runtime,
   );
+  validateMaterializedAnalysisSemantics(definition);
   const stageExtensions = await resolveExtensions(
     definition.extensions,
     measurementPolicy.extensions,

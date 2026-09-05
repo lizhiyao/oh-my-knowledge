@@ -3,9 +3,12 @@ import {
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
   createBuiltinDecisionPolicies,
+  bonferroniMarginalAlpha,
+  bonferroniMarginalConfidenceLevel,
   BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
   BUILTIN_INTERVAL_RESULT_SCHEMA,
   BUILTIN_SCALAR_RESULT_SCHEMA,
+  BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA,
   type AnalysisMetricRow,
   type AnalysisNodeExecutionContext,
   type DecisionPolicyContext,
@@ -243,6 +246,14 @@ describe('Evaluation Core built-in estimators', () => {
         samplingUnitIds: { pairingBlockId: 'pair-2' },
       },
     ], ['control', 'treatment'])).toBe(1);
+  });
+
+  it('derives the Bonferroni marginal interval from the sealed family level', () => {
+    expect(bonferroniMarginalAlpha(0.95, 2)).toBe(0.025);
+    expect(bonferroniMarginalConfidenceLevel(0.95, 2)).toBe(0.975);
+    expect(() => bonferroniMarginalAlpha(0.95, 1)).toThrow(/at least two/);
+    expect(() => bonferroniMarginalConfidenceLevel(1 - Number.EPSILON / 2, 2))
+      .toThrow(/not representable/);
   });
 
   it('validates the complete result envelope and Bonferroni invariants', () => {
@@ -836,6 +847,102 @@ describe('Evaluation Core built-in estimators', () => {
           },
         ],
       },
+    });
+  });
+
+  it('materializes and independently validates a simultaneous interval family', async () => {
+    const interval = (estimate: number) => ({
+      estimate,
+      lower: estimate - 0.2,
+      upper: estimate + 0.2,
+      confidenceLevel: 0.975,
+      resamples: 64,
+      unitCount: 4,
+      method: 'percentile' as const,
+    });
+    const sourceIntervals = [
+      { referenceId: 'safety', resultType: 'interval' as const, value: interval(0.4) },
+      { referenceId: 'correctness', resultType: 'interval' as const, value: interval(0.2) },
+    ];
+    const input = {
+      node: {
+        analysisNodeKind: 'correction',
+        nodeId: 'simultaneous-family',
+        implementationId: 'simultaneous-intervals.bonferroni/v1',
+        inputs: [
+          { inputKind: 'analysis-result', referenceId: 'safety' },
+          { inputKind: 'analysis-result', referenceId: 'correctness' },
+        ],
+        outputResultId: 'release-family',
+        parameters: { familyConfidenceLevel: 0.95, resamples: 64 },
+      },
+      inputs: sourceIntervals.map((source) => ({
+        inputKind: 'analysis-result',
+        referenceId: source.referenceId,
+        record: { analysisStatus: 'completed', resultType: source.resultType, value: source.value },
+      })),
+      analysisPlanDigest: digestCanonicalJson({ analysisPlan: 1 }),
+      sampling: {
+        experimentalUnit: 'sample',
+        repeatedMeasures: false,
+        resamplingUnit: 'paired-block',
+        estimatorId: 'bootstrap.paired-difference-percentile/v1',
+        seedCoupling: 'shared-within-block',
+      },
+      rootSeed: 'stable-seed',
+      cohorts: [],
+      signal: new AbortController().signal,
+    } as unknown as AnalysisNodeExecutionContext;
+    const result = await execute(input);
+    if (result.analysisStatus !== 'completed') throw new Error('expected completed family');
+
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      resultType: 'table',
+      value: {
+        adjustmentMethod: 'bonferroni',
+        familyConfidenceLevel: 0.95,
+        marginalConfidenceLevel: 0.975,
+        familySize: 2,
+        resamples: 64,
+        members: [
+          { analysisResultId: 'correctness', interval: interval(0.2) },
+          { analysisResultId: 'safety', interval: interval(0.4) },
+        ],
+      },
+    });
+    const validators = createBuiltinAnalysisSchemaValidators();
+    const validator = validators.get(schemaIdentityKey(
+      BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA,
+    ));
+    const envelope = { resultType: result.resultType, value: result.value };
+    const validationContext = {
+      validationKind: 'analysis-output' as const,
+      parameters: input.node.parameters,
+      inputFacts: {
+        resamplingUnitCount: 0,
+        analysisResultInputs: sourceIntervals,
+      },
+    };
+    expect(validator?.parse(envelope, validationContext)).toEqual(envelope);
+    const familyValue = envelope.value as {
+      members: Array<{ analysisResultId: string; interval: Record<string, JsonValue> }>;
+    } & Record<string, JsonValue>;
+    expect(() => validator?.parse({
+      ...envelope,
+      value: {
+        ...familyValue,
+        members: familyValue.members.map((member, index) => (
+          index === 0
+            ? { ...member, interval: { ...member.interval, estimate: 999 } }
+            : member
+        )),
+      },
+    }, validationContext)).toThrow(/sealed Core inputs/);
+    expect(createBuiltinAnalysisNodes().get(
+      'simultaneous-intervals.bonferroni/v1',
+    )?.identity.capabilities).toMatchObject({
+      inputCardinalities: { analysisResults: { min: 2 } },
     });
   });
 

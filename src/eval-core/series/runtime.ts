@@ -669,7 +669,18 @@ async function runAnalysisNodes(
         if (canonicalizeJson(validator.parse(envelope, {
           validationKind: 'analysis-output',
           parameters: node.parameters ?? {},
-          inputFacts: { resamplingUnitCount: eligible.length },
+          inputFacts: {
+            resamplingUnitCount: eligible.length,
+            analysisResultInputs: inputs.flatMap((input) => (
+              input.seriesInputKind === 'analysis-result'
+                ? [{
+                  referenceId: input.referenceId,
+                  resultType: input.record.resultType,
+                  value: input.record.value,
+                }]
+                : []
+            )),
+          },
         })) !== canonicalizeJson(envelope)) {
           throw new TypeError('Series Analysis output validator must preserve the sealed envelope.');
         }

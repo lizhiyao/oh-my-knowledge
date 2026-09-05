@@ -18,3 +18,4 @@ export * from './json.js';
 export * from './plans.js';
 export * from './runtime-capabilities.js';
 export * from './series.js';
+export * from './statistics.js';

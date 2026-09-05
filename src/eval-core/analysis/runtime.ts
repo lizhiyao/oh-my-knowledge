@@ -1090,6 +1090,15 @@ async function runAnalysis(
                 ? [input.contrast.controlTargetId, input.contrast.treatmentTargetId]
                 : []),
             ),
+            analysisResultInputs: inputs.flatMap((input) => (
+              input.inputKind === 'analysis-result'
+                ? [{
+                  referenceId: input.referenceId,
+                  resultType: input.record.resultType,
+                  value: input.record.value,
+                }]
+                : []
+            )),
           },
         })) !== canonicalizeJson(envelope)) {
           throw new TypeError('Analysis output does not match the sealed schema.');
