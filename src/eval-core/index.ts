@@ -109,7 +109,15 @@ export type {
   SeriesMemberCoverage,
   SeriesMemberReference,
 } from './contracts/index.js';
-export { runEvaluationSeries, startEvaluationSeries } from './series/index.js';
+export {
+  RUN_STABILITY_IMPLEMENTATION_ID,
+  RUN_STABILITY_SCHEMA_VERSION,
+  RunStabilityValueSchema,
+  createRunStabilityRuntime,
+  createRunStabilitySchemaValidators,
+  runEvaluationSeries,
+  startEvaluationSeries,
+} from './series/index.js';
 export type {
   CompletedEvaluationSeriesRunResult,
   EvaluationSeriesClock,
@@ -129,6 +137,7 @@ export type {
   SeriesDecisionRun,
   SeriesDecisionRunContext,
   SeriesDecisionRuntime,
+  RunStabilityValue,
 } from './series/index.js';
 
 export type { ExecutionRun as ExecutionStageRun } from './execution/index.js';

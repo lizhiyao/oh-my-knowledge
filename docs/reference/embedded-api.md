@@ -3,20 +3,27 @@
 When a Node.js host owns model invocation while OMK owns measurement, comparison, and reporting, use the package-root Runtime façade. It is ESM-only and requires Node.js 22 or newer:
 
 ```ts
-import { evaluate, assessComparability, checkExecutor } from 'oh-my-knowledge';
+import {
+  assessComparability,
+  checkExecutor,
+  evaluate,
+  evaluateSeries,
+  prepareEvaluationSeries,
+} from 'oh-my-knowledge';
 ```
 
 CommonJS hosts use dynamic import:
 
 ```js
-const { evaluate } = await import('oh-my-knowledge');
+const { evaluate, evaluateSeries, prepareEvaluationSeries } =
+  await import('oh-my-knowledge');
 ```
 
 Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does not ship a second CommonJS build, avoiding two module instances with diverging runtime registries. Only these public entry points are supported:
 
 | Entry point | Ownership |
 |---|---|
-| `oh-my-knowledge` | recommended `evaluate()`, `assessComparability()`, and conformance-check façade for ordinary hosts |
+| `oh-my-knowledge` | recommended `evaluate()`, repeat-run `evaluateSeries()`, `assessComparability()`, and conformance-check façade for ordinary hosts |
 | `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
 | `oh-my-knowledge/eval-runtime` | explicit equivalent of the package-root Runtime façade |
 | `oh-my-knowledge/eval-runtime/advanced` | low-level Runtime assembly, identities, adapters, builders, and lifecycle SPI |

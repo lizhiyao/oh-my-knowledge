@@ -11,6 +11,10 @@ export {
   redecide,
   rescore,
 } from './evaluate.js';
+export {
+  evaluateSeries,
+  prepareEvaluationSeries,
+} from './series.js';
 export type {
   Artifact,
   ArtifactKind,
@@ -79,6 +83,17 @@ export type {
   Variant,
   VariantExecution,
 } from './evaluate.js';
+export type {
+  EvaluationSeriesInput,
+  EvaluationSeriesMemberResult,
+  EvaluationSeriesResult,
+  EvaluationSeriesRunOptions,
+  EvaluationSeriesStability,
+  EvaluationSeriesStabilityResult,
+  EvaluationSeriesWorkEstimate,
+  PreparedEvaluationSeries,
+  RunStabilityValue,
+} from './series.js';
 export type { ContentStoreConformanceCheck } from './conformance/content-store.js';
 export type {
   ContentDescriptor,

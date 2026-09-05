@@ -3,20 +3,27 @@
 当 Node.js 宿主自行负责模型调用，而希望 OMK 负责测量、对比与报告时，使用包根 Runtime façade。它仅提供 ESM 构建，要求 Node.js 22 或更高版本：
 
 ```ts
-import { evaluate, assessComparability, checkExecutor } from 'oh-my-knowledge';
+import {
+  assessComparability,
+  checkExecutor,
+  evaluate,
+  evaluateSeries,
+  prepareEvaluationSeries,
+} from 'oh-my-knowledge';
 ```
 
 CommonJS 宿主通过动态导入使用：
 
 ```js
-const { evaluate } = await import('oh-my-knowledge');
+const { evaluate, evaluateSeries, prepareEvaluationSeries } =
+  await import('oh-my-knowledge');
 ```
 
 OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 CommonJS 构建，从而避免两个模块实例持有相互分裂的 Runtime registry。只支持以下公共入口：
 
 | 入口 | 职责 |
 |---|---|
-| `oh-my-knowledge` | 面向普通宿主的推荐 `evaluate()`、`assessComparability()` 与一致性检查 façade |
+| `oh-my-knowledge` | 面向普通宿主的推荐 `evaluate()`、重复运行 `evaluateSeries()`、`assessComparability()` 与一致性检查 façade |
 | `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
 | `oh-my-knowledge/eval-runtime` | 与包根 Runtime façade 完全等价的显式入口 |
 | `oh-my-knowledge/eval-runtime/advanced` | 底层 Runtime 装配、identity、adapter、builder 与生命周期 SPI |

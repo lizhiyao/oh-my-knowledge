@@ -182,6 +182,42 @@ if (assessment.comparabilityStatus !== 'compatible') {
 
 该 Assessment 不会比较分数，也不会判断候选是否进步；它只检查声明 subject 变化后，测量设计是否保持不变，以及两条 source chain 是否具备足够的认证证据。必须保留原始 result object：clone 或反序列化 artifact 无法保留进程内 Core source authority，因此会失败关闭。跨进程持久化 admission 在 Runtime artifact-store adapter 落地前继续由高级 Core surface 提供。
 
+## 重复运行稳定性
+
+需要判断同一份封存评测在多个完整 member Run 之间是否稳定时，使用 Evaluation Series：
+
+```ts
+import { prepareEvaluationSeries } from 'oh-my-knowledge';
+
+const preparedSeries = await prepareEvaluationSeries({
+  evaluation: input,
+  seriesInstanceId: 'release-42-repeatability',
+  repeatCount: 10,
+  stability: {
+    sourceAnalysisId: 'candidate-correct-rate',
+    projection: 'scalar',
+  },
+});
+
+// 此时尚未调用 Target 或 Evaluator。
+console.log(preparedSeries.memberPlans, preparedSeries.estimatedWork);
+
+const series = await preparedSeries.run({ signal });
+if (series.status === 'failed') throw new Error(series.error.code);
+if (series.status === 'cancelled') throw new Error('Series 已取消。');
+if (series.stability?.analysisStatus !== 'completed') {
+  throw new Error(series.stability?.reasonCodes.join(', '));
+}
+console.log(series.stability.value.mean);
+console.log(series.stability.value.sampleStandardDeviation);
+```
+
+必须在执行前声明完整 `repeatCount`。OMK 只捕获一次 Evaluation 声明，预注册全部 membership，并验证每个 member 的各阶段 plan digest 保持一致，同时为其分配唯一 Run contract。Member 按顺序执行，Execution／Evaluation cache 必须禁用。失败或取消的 member 会保留真实的 partial、failed、cancelled 或 missing coverage 状态，绝不会被替换；API 也不会根据已观察值提前停止。每个 member 独立使用自己的 Run budget。
+
+Series 的实验单位是一轮完整 Run。Trial、retry、sample 与评委 replicate 仍嵌套在 Run 内，不会增加 `runCount`。测量 seed 与其它设计条件一起保持固定，因此支持 seed 的 Executor 会在各 member 收到相同 trial seed；有意改变 Run-level seed 需要另一种实验契约。稳定性表只提供描述性统计：mean、分母为 `n - 1` 的贝塞尔校正样本方差、标准差、最小值、最大值与极差；它不会发布 release verdict、估计 iid 置信区间，也不能证明跨环境复现性。全部预注册 slot 都必须符合 evidence 门槛并可比较，否则 stability 为 inconclusive，不会静默删除失败或缺失 Run。使用 `projection: 'scalar'` 选择 scalar Analysis result；需要提取区间点估计时，必须显式使用 `interval-estimate` projection。默认只接纳完整 evidence；只有对应 missingness policy 对目标结论合理时，才显式允许 partial evidence。
+
+`PreparedEvaluationSeries` 只能使用一次，`seriesInstanceId` 标识本次有意执行。真正开始一轮新 Series 时应使用新的值。直接调用 `evaluateSeries(input, options)` 等价于准备后运行一次。
+
 只有下游测量声明发生变化时，可以复用已经认证的前缀，避免再次支付相同 Target 工作的成本：
 
 ```ts
