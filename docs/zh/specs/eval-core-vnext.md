@@ -318,6 +318,8 @@ DecisionPolicy 的每个 comparison family member 都声明 `(comparisonId, trea
 - `bootstrap.hierarchical-unpaired-difference-percentile/v1`；
 - `bootstrap.cluster-percentile/v1`；
 - `bootstrap.hierarchical-cluster-percentile/v1`；
+- `bootstrap.composite-mean-percentile/v1` 与 `bootstrap.composite-cluster-percentile/v1`；
+- `bootstrap.composite-paired-difference-percentile/v1` 与 `bootstrap.composite-unpaired-difference-percentile/v1`；
 - 校正真实 raw p-value 的 `bonferroni/v1`；
 - 聚合 Bonferroni 同时 percentile interval 的 `simultaneous-intervals.bonferroni/v1`；
 - 基于上述区间执行显式全成员发布决策的 `release-family/v1`。
@@ -327,6 +329,8 @@ alpha、重采样次数、resampling unit 和 seed 都进入 AnalysisPlan。v1 �
 非配对 estimator 要求声明的 control 与 treatment 臂使用互不重叠的 sample identity，并对两臂独立重采样。存在 stratum 时，它在 arm × stratum 单元内重采样，再按计划总体的 stratum 比例组合组内差值；任一已观察 stratum 缺少一侧臂时结果为 inconclusive，绝不自动退化成 paired 或 unstratified analysis。
 
 分层 estimator 会在参数中封存完整 measurement panel：先在每个 ensemble member 内平均 evaluator replicate，再执行已声明的成员等权或正数归一化权重聚合，最后在每个 sample 内平均完整的 Target trial。只有所有已封存 evaluator、instrument、member、group 与 replicate 坐标都已观察时，trial 才能进入分析。Bootstrap 仍只重采样 sample 或 paired block；panel member 与 replicate 永远不增加 `unitCount`。非分层 estimator identity 保持原有语义。
+
+Composite estimator 会从至少两个 source Metric 派生一项显式命名的 sample-scope utility Metric。每个 component 的正权重都要封存，且权重和严格为一；不存在默认 component 集合或默认等权回退。Boolean 值直接映射为单位 utility，numeric source 必须声明有限且非退化的 sealed range；`lower-is-better` 会反转 utility，越界证据失败关闭而不做 clamp。v1 不接受定性 Metric 或 target optimum。Quality estimator 必须通过 Target filter 精确封存一个 Variant；difference estimator 通过 contrast 封存两个 Variant，不接受额外 Target filter。每项 source Metric 先执行自身封存的 measurement-panel aggregation，再在同一 Target／sample／trial 坐标内合并完整 source value，然后在 sample 内平均重复 trial，最后才由 Core 对 sample、cluster、paired block 或 independent arm 重采样。Component 缺失时绝不重新归一化剩余权重。Analysis record 保留参与计算的 source-row lineage，并在 assumption evidence 中报告计划、完整与缺失 composite coordinate 数。Derived Metric、source contract、权重、置信度参数和 sampling design 都属于封存的 Definition 与 Plan identity。
 
 重新分析和重新决策保留 parent bundle digest、policy digest、生成时间以及 `analysisMode: preregistered | exploratory`。执行后修改的阈值或方法不能冒充预先封存的发布门槛。
 

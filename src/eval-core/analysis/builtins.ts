@@ -120,6 +120,45 @@ const HierarchicalQuantileParametersSchema = z.object({
   probability: ProbabilitySchema,
   measurementAggregation: MeasurementAggregationSchema,
 }).strict();
+const CompositeComponentSchema = z.object({
+  metricId: z.string().min(1).max(256),
+  weight: FiniteNumberSchema.positive(),
+  measurementAggregation: MeasurementAggregationSchema.optional(),
+}).strict();
+const CompositeBootstrapParametersSchema = z.object({
+  compositeMetricId: z.string().min(1).max(256),
+  components: z.array(CompositeComponentSchema).min(2),
+  aggregation: z.object({
+    method: z.literal('weighted-mean'),
+    missing: z.literal('require-complete'),
+  }).strict(),
+  resamples: z.number().int().positive().safe().default(1_000),
+  alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
+}).strict().superRefine((parameters, context) => {
+  const metricIds = parameters.components.map((component) => component.metricId);
+  if (new Set(metricIds).size !== metricIds.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['components'],
+      message: 'Composite component Metric IDs must be unique',
+    });
+  }
+  if (metricIds.includes(parameters.compositeMetricId)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['compositeMetricId'],
+      message: 'Composite Metric cannot also be a source component',
+    });
+  }
+  const total = parameters.components.reduce((sum, component) => sum + component.weight, 0);
+  if (total !== 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['components'],
+      message: 'Composite component weights must sum to one',
+    });
+  }
+});
 const BonferroniParametersSchema = z.object({
   alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
 }).strict();
@@ -373,6 +412,17 @@ const HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA = schemaIdentity(
   'urn:omk:parameters:hierarchical-measurement-quantile:v1',
   jsonSchema(HierarchicalQuantileParametersSchema),
 );
+const COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.composite-bootstrap/v1',
+  'urn:omk:parameters:composite-bootstrap:v1',
+  jsonSchema(CompositeBootstrapParametersSchema, [
+    'components contain at least two unique Metric IDs in lexicographic order',
+    'component weights are positive and sum to one',
+    'the composite Metric is not a source component',
+    'each target/sample/trial contributes only when every component coordinate is observed',
+    'component utilities are combined before repeated-measure and resampling aggregation',
+  ]),
+);
 const BONFERRONI_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.bonferroni/v1', 'urn:omk:parameters:bonferroni:v1', jsonSchema(BonferroniParametersSchema),
 );
@@ -428,6 +478,7 @@ function nodeCapabilities(input: {
   missingPolicyIds?: string[];
   analysisResultSchemaUris?: string[];
   analysisResultCardinality?: { min: number; max?: number };
+  metricObservationCardinality?: { min: number; max?: number };
   comparison?: boolean;
   outputSchema: SchemaIdentity;
   parameterSchema: SchemaIdentity;
@@ -467,7 +518,9 @@ function nodeCapabilities(input: {
     outputSchema: input.outputSchema,
     parameterSchema: input.parameterSchema,
     inputCardinalities: {
-      metricObservations: input.valueTypes !== undefined ? { min: 1, max: 1 } : { min: 0, max: 0 },
+      metricObservations: input.valueTypes !== undefined
+        ? input.metricObservationCardinality ?? { min: 1, max: 1 }
+        : { min: 0, max: 0 },
       analysisResults: input.analysisResultSchemaUris !== undefined
         ? input.analysisResultCardinality ?? { min: 1 }
         : { min: 0, max: 0 },
@@ -739,6 +792,11 @@ interface AggregatedMeasurementUnit extends BootstrapUnit {
   rowIds: Sha256Digest[];
 }
 
+interface AggregatedMeasurementTrial extends AggregatedMeasurementUnit {
+  trialIndex: number;
+  trialId: Sha256Digest;
+}
+
 function metricInput(context: AnalysisNodeExecutionContext): Extract<
   AnalysisNodeInput,
   { inputKind: 'metric-observations' }
@@ -760,35 +818,38 @@ function singleOptionalCoordinate<T>(
   return select(rows[0]);
 }
 
-function aggregateMeasurementUnits(
-  context: AnalysisNodeExecutionContext,
-): AggregatedMeasurementUnit[] {
-  const input = metricInput(context);
-  const aggregation = MeasurementAggregationSchema.parse(
-    parameters(context).measurementAggregation,
-  ) as MeasurementAggregation;
+function aggregateMeasurementTrials(
+  input: Extract<AnalysisNodeInput, { inputKind: 'metric-observations' }>,
+  aggregation: MeasurementAggregation | undefined,
+): AggregatedMeasurementTrial[] {
+  if (input.metric.metricId !== input.referenceId
+      || input.rows.some((row) => row.metricId !== input.referenceId)) {
+    throw new TypeError('Metric input identity differs from its measurement rows.');
+  }
   const expected = new Map<string, Readonly<{
     ensembleMemberId: string;
     instrumentId: string;
     replicateIndex: number;
   }>>();
-  for (const member of aggregation.members) {
-    for (const replicate of member.replicates) {
-      expected.set(replicate.evaluatorId, {
-        ensembleMemberId: member.ensembleMemberId,
-        instrumentId: replicate.instrumentId,
-        replicateIndex: replicate.replicateIndex,
-      });
+  if (aggregation !== undefined) {
+    for (const member of aggregation.members) {
+      for (const replicate of member.replicates) {
+        expected.set(replicate.evaluatorId, {
+          ensembleMemberId: member.ensembleMemberId,
+          instrumentId: replicate.instrumentId,
+          replicateIndex: replicate.replicateIndex,
+        });
+      }
     }
-  }
-  for (const row of input.rows) {
-    const coordinate = expected.get(row.evaluatorId);
-    if (coordinate === undefined
-        || row.measurement.instrumentId !== coordinate.instrumentId
-        || row.measurement.ensembleMemberId !== coordinate.ensembleMemberId
-        || row.measurement.replicateGroupId !== aggregation.replicateGroupId
-        || row.measurement.replicateIndex !== coordinate.replicateIndex) {
-      throw new TypeError('Measurement row differs from the sealed panel coordinates.');
+    for (const row of input.rows) {
+      const coordinate = expected.get(row.evaluatorId);
+      if (coordinate === undefined
+          || row.measurement.instrumentId !== coordinate.instrumentId
+          || row.measurement.ensembleMemberId !== coordinate.ensembleMemberId
+          || row.measurement.replicateGroupId !== aggregation.replicateGroupId
+          || row.measurement.replicateIndex !== coordinate.replicateIndex) {
+        throw new TypeError('Measurement row differs from the sealed panel coordinates.');
+      }
     }
   }
   const trials = groupRows(input.rows, (row) => canonicalizeJson([
@@ -796,8 +857,11 @@ function aggregateMeasurementUnits(
     row.sampleId,
     row.trialIndex,
   ]));
-  const completeTrials: Array<AggregatedMeasurementUnit & { trialIndex: number }> = [];
+  const completeTrials: AggregatedMeasurementTrial[] = [];
   for (const rows of trials.values()) {
+    if (new Set(rows.map((row) => row.trialId)).size !== 1) {
+      throw new TypeError('One measurement trial cannot cross trial identity.');
+    }
     const byEvaluator = new Map<string, AnalysisMetricRow>();
     for (const row of rows) {
       if (byEvaluator.has(row.evaluatorId)) {
@@ -805,27 +869,36 @@ function aggregateMeasurementUnits(
       }
       byEvaluator.set(row.evaluatorId, row);
     }
-    if (byEvaluator.size !== expected.size
-        || [...expected.keys()].some((evaluatorId) => !byEvaluator.has(evaluatorId))) {
+    if (aggregation === undefined) {
+      if (rows.length !== 1) {
+        throw new TypeError('A non-panel Metric trial requires exactly one evaluator coordinate.');
+      }
+    } else if (byEvaluator.size !== expected.size
+      || [...expected.keys()].some((evaluatorId) => !byEvaluator.has(evaluatorId))) {
       throw new TypeError('Measurement trial is missing a sealed evaluator coordinate.');
     }
     if (rows.some((row) => row.rowStatus !== 'observed')) continue;
-    const memberValues = aggregation.members.map((member) => {
-      const values = member.replicates.map((replicate) => numericValue(
-        byEvaluator.get(replicate.evaluatorId)!,
-      ));
-      return {
-        value: mean(values),
-        weight: 'weight' in member ? member.weight : 1,
-      };
-    });
-    const value = aggregation.method === 'weighted-mean'
-      ? memberValues.reduce((sum, member) => sum + member.value * member.weight, 0)
-      : mean(memberValues.map((member) => member.value));
+    const value = aggregation === undefined
+      ? numericValue(rows[0])
+      : (() => {
+        const memberValues = aggregation.members.map((member) => {
+          const values = member.replicates.map((replicate) => numericValue(
+            byEvaluator.get(replicate.evaluatorId)!,
+          ));
+          return {
+            value: mean(values),
+            weight: 'weight' in member ? member.weight : 1,
+          };
+        });
+        return aggregation.method === 'weighted-mean'
+          ? memberValues.reduce((sum, member) => sum + member.value * member.weight, 0)
+          : mean(memberValues.map((member) => member.value));
+      })();
     completeTrials.push({
       targetId: rows[0].targetId,
       sampleId: rows[0].sampleId,
       trialIndex: rows[0].trialIndex,
+      trialId: rows[0].trialId,
       value,
       rowIds: rows.map((row) => row.rowId),
       ...(singleOptionalCoordinate(
@@ -851,6 +924,12 @@ function aggregateMeasurementUnits(
       }),
     });
   }
+  return completeTrials;
+}
+
+function averageMeasurementTrials(
+  completeTrials: readonly AggregatedMeasurementTrial[],
+): AggregatedMeasurementUnit[] {
   return [...groupRows(completeTrials, (trial) => (
     canonicalizeJson([trial.targetId, trial.sampleId])
   )).values()].map((group) => {
@@ -887,6 +966,266 @@ function aggregateMeasurementUnits(
       ...(pairingBlockId === undefined ? {} : { pairingBlockId }),
     };
   });
+}
+
+function aggregateMeasurementUnits(
+  context: AnalysisNodeExecutionContext,
+): AggregatedMeasurementUnit[] {
+  const aggregation = MeasurementAggregationSchema.parse(
+    parameters(context).measurementAggregation,
+  ) as MeasurementAggregation;
+  return averageMeasurementTrials(aggregateMeasurementTrials(metricInput(context), aggregation));
+}
+
+type CompositeBootstrapParameters = z.infer<typeof CompositeBootstrapParametersSchema>;
+
+interface CompositeCoverage {
+  unitKind: 'target-sample-trial';
+  planned: number;
+  complete: number;
+  missing: number;
+}
+
+type CompositeUnitBuild = {
+  units: AggregatedMeasurementUnit[];
+  plannedRows: AnalysisMetricRow[];
+  coverage: CompositeCoverage;
+  parameters: CompositeBootstrapParameters;
+} | {
+  result: AnalysisNodeExecutionResult;
+};
+
+function compositeFailure(
+  reasonCode: string,
+  coverage: CompositeCoverage,
+  details?: JsonValue,
+): AnalysisNodeExecutionResult {
+  return {
+    analysisStatus: 'inconclusive',
+    reasonCodes: [reasonCode],
+    includedRowIds: [],
+    comparableRowIds: [],
+    assumptionChecks: [{
+      assumptionId: 'composite-source-domain',
+      checkStatus: 'failed',
+      reasonCode,
+      ...(details === undefined ? {} : { details }),
+    }, {
+      assumptionId: 'composite-require-complete',
+      checkStatus: 'not-evaluated',
+      reasonCode,
+      details: {
+        unitKind: coverage.unitKind,
+        planned: coverage.planned,
+        complete: coverage.complete,
+        missing: coverage.missing,
+      },
+    }],
+  };
+}
+
+function compositeInputFailureReason(
+  input: Extract<AnalysisNodeInput, { inputKind: 'metric-observations' }>,
+): string | undefined {
+  const metric = input.metric;
+  if (metric.scope !== 'sample'
+      || metric.missingPolicyId !== 'exclude/v1'
+      || (metric.direction !== 'higher-is-better'
+        && metric.direction !== 'lower-is-better')) {
+    return 'analysis-composite-metric-contract-unsupported';
+  }
+  if (metric.valueType === 'numeric') {
+    const min = metric.scale?.min;
+    const max = metric.scale?.max;
+    if (typeof min !== 'number' || !Number.isFinite(min)
+        || typeof max !== 'number' || !Number.isFinite(max) || min >= max) {
+      return 'analysis-composite-numeric-scale-invalid';
+    }
+    for (const row of input.rows) {
+      if (row.rowStatus !== 'observed') continue;
+      if (typeof row.value !== 'number' || !Number.isFinite(row.value)) {
+        return 'analysis-composite-value-type-invalid';
+      }
+      if (row.value < min || row.value > max) {
+        return 'analysis-composite-value-outside-scale';
+      }
+    }
+    return undefined;
+  }
+  if (metric.valueType === 'boolean') {
+    return input.rows.some((row) => row.rowStatus === 'observed' && typeof row.value !== 'boolean')
+      ? 'analysis-composite-value-type-invalid'
+      : undefined;
+  }
+  return 'analysis-composite-metric-contract-unsupported';
+}
+
+function compositeUtility(
+  input: Extract<AnalysisNodeInput, { inputKind: 'metric-observations' }>,
+  value: number,
+): number {
+  const metric = input.metric;
+  let normalized: number;
+  if (metric.valueType === 'boolean') {
+    if (value < 0 || value > 1) {
+      throw new TypeError('Aggregated boolean Metric value must remain in [0, 1].');
+    }
+    normalized = value;
+  } else if (metric.valueType === 'numeric') {
+    const min = metric.scale?.min;
+    const max = metric.scale?.max;
+    if (typeof min !== 'number' || typeof max !== 'number' || min >= max
+        || value < min || value > max) {
+      throw new TypeError('Aggregated numeric Metric value differs from its sealed scale.');
+    }
+    normalized = (value - min) / (max - min);
+  } else {
+    throw new TypeError('Composite utility supports only boolean and numeric Metrics.');
+  }
+  return metric.direction === 'lower-is-better' ? 1 - normalized : normalized;
+}
+
+function compositeCoverageAssumption(
+  coverage: CompositeCoverage,
+): NonNullable<AnalysisNodeExecutionResult['assumptionChecks']>[number] {
+  return {
+    assumptionId: 'composite-require-complete',
+    checkStatus: 'passed',
+    details: {
+      unitKind: coverage.unitKind,
+      planned: coverage.planned,
+      complete: coverage.complete,
+      missing: coverage.missing,
+    },
+  };
+}
+
+function buildCompositeUnits(context: AnalysisNodeExecutionContext): CompositeUnitBuild {
+  const sealed = CompositeBootstrapParametersSchema.parse(
+    context.node.parameters ?? {},
+  ) as CompositeBootstrapParameters;
+  const inputs = metricInputs(context);
+  if (inputs.length !== sealed.components.length) {
+    throw new TypeError('Composite Analysis requires exactly its sealed component Metric inputs.');
+  }
+  const inputsByMetric = new Map(inputs.map((input) => [input.referenceId, input]));
+  if (inputsByMetric.size !== inputs.length
+      || sealed.components.some((component) => !inputsByMetric.has(component.metricId))) {
+    throw new TypeError('Composite Analysis inputs differ from its sealed components.');
+  }
+  const plannedRows = inputs.flatMap((input) => input.rows);
+  const plannedCoordinates = new Set<string>();
+  for (const row of plannedRows) {
+    plannedCoordinates.add(canonicalizeJson([
+      row.targetId,
+      row.sampleId,
+      row.trialIndex,
+    ]));
+  }
+  const completeTrialsByMetric = new Map<string, Map<string, AggregatedMeasurementTrial>>();
+  for (const component of sealed.components) {
+    const input = inputsByMetric.get(component.metricId)!;
+    const reasonCode = compositeInputFailureReason(input);
+    if (reasonCode !== undefined) {
+      return {
+        result: compositeFailure(reasonCode, {
+          unitKind: 'target-sample-trial',
+          planned: plannedCoordinates.size,
+          complete: 0,
+          missing: plannedCoordinates.size,
+        }, { metricId: component.metricId }),
+      };
+    }
+    const aggregation = component.measurementAggregation === undefined
+      ? undefined
+      : component.measurementAggregation as MeasurementAggregation;
+    const trials = aggregateMeasurementTrials(input, aggregation);
+    completeTrialsByMetric.set(component.metricId, new Map(trials.map((trial) => [
+      canonicalizeJson([trial.targetId, trial.sampleId, trial.trialIndex]),
+      trial,
+    ])));
+  }
+  const completeCompositeTrials: AggregatedMeasurementTrial[] = [];
+  for (const coordinate of [...plannedCoordinates].sort()) {
+    const componentTrials = sealed.components.map((component) => (
+      completeTrialsByMetric.get(component.metricId)?.get(coordinate)
+    ));
+    if (componentTrials.some((trial) => trial === undefined)) continue;
+    const complete = componentTrials as AggregatedMeasurementTrial[];
+    const targetId = complete[0].targetId;
+    const sampleId = complete[0].sampleId;
+    const trialIndex = complete[0].trialIndex;
+    if (complete.some((trial) => trial.targetId !== targetId
+      || trial.sampleId !== sampleId || trial.trialIndex !== trialIndex)) {
+      throw new TypeError('Composite coordinate crosses target, sample, or trial identity.');
+    }
+    if (new Set(complete.map((trial) => trial.trialId)).size !== 1) {
+      throw new TypeError('Composite coordinate crosses trial identity.');
+    }
+    const trialId = complete[0].trialId;
+    const clusterId = singleOptionalCoordinate(complete, (trial) => trial.clusterId, 'clusters');
+    const stratumId = singleOptionalCoordinate(complete, (trial) => trial.stratumId, 'strata');
+    const pairingBlockId = singleOptionalCoordinate(
+      complete,
+      (trial) => trial.pairingBlockId,
+      'pairing blocks',
+    );
+    const value = sealed.components.reduce((sum, component, index) => (
+      sum + component.weight * compositeUtility(
+        inputsByMetric.get(component.metricId)!,
+        complete[index].value,
+      )
+    ), 0);
+    if (value < 0 || value > 1) {
+      throw new TypeError('Composite utility must remain within its sealed [0, 1] range.');
+    }
+    completeCompositeTrials.push({
+      targetId,
+      sampleId,
+      trialIndex,
+      trialId,
+      value,
+      rowIds: complete.flatMap((trial) => trial.rowIds),
+      ...(clusterId === undefined ? {} : { clusterId }),
+      ...(stratumId === undefined ? {} : { stratumId }),
+      ...(pairingBlockId === undefined ? {} : { pairingBlockId }),
+    });
+  }
+  const coverage: CompositeCoverage = {
+    unitKind: 'target-sample-trial',
+    planned: plannedCoordinates.size,
+    complete: completeCompositeTrials.length,
+    missing: plannedCoordinates.size - completeCompositeTrials.length,
+  };
+  return {
+    units: averageMeasurementTrials(completeCompositeTrials),
+    plannedRows,
+    coverage,
+    parameters: sealed,
+  };
+}
+
+function withCompositeEvidence(
+  result: AnalysisNodeExecutionResult,
+  units: readonly AggregatedMeasurementUnit[],
+  coverage: CompositeCoverage,
+): AnalysisNodeExecutionResult {
+  const coverageCheck = compositeCoverageAssumption(coverage);
+  const rowIds = units.flatMap((unit) => unit.rowIds);
+  if (result.analysisStatus !== 'completed') {
+    return {
+      ...result,
+      includedRowIds: result.includedRowIds ?? rowIds,
+      comparableRowIds: result.comparableRowIds ?? result.includedRowIds ?? rowIds,
+      assumptionChecks: [...(result.assumptionChecks ?? []), coverageCheck],
+    };
+  }
+  return {
+    ...result,
+    includedRowIds: result.includedRowIds ?? rowIds,
+    comparableRowIds: result.comparableRowIds ?? result.includedRowIds ?? rowIds,
+    assumptionChecks: [...(result.assumptionChecks ?? []), coverageCheck],
+  };
 }
 
 function hierarchicalScalarResult(
@@ -1168,6 +1507,135 @@ function executeHierarchicalPairedBootstrap(
   } : interval;
 }
 
+function compositeBuildOrResult(context: AnalysisNodeExecutionContext): Exclude<
+  CompositeUnitBuild,
+  { result: AnalysisNodeExecutionResult }
+> | AnalysisNodeExecutionResult {
+  const built = buildCompositeUnits(context);
+  return 'result' in built ? built.result : built;
+}
+
+function executeCompositeMeanBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const built = compositeBuildOrResult(context);
+  if ('analysisStatus' in built) return built;
+  let bootstrapUnits: readonly BootstrapUnit[] = built.units;
+  if (context.sampling.resamplingUnit === 'paired-block') {
+    if (built.units.some((unit) => unit.pairingBlockId === undefined)) {
+      return withCompositeEvidence(
+        incomplete('analysis-pairing-membership-missing'),
+        built.units,
+        built.coverage,
+      );
+    }
+    bootstrapUnits = [...groupRows(built.units, (unit) => unit.pairingBlockId).values()].map(
+      (members) => {
+        const stratumId = singleOptionalCoordinate(members, (member) => member.stratumId, 'strata');
+        return {
+          value: mean(members.map((member) => member.value)),
+          ...(stratumId === undefined ? {} : { stratumId }),
+        };
+      },
+    );
+  } else if (context.sampling.resamplingUnit !== 'sample') {
+    return withCompositeEvidence(
+      incomplete('analysis-composite-resampling-unit-unsupported'),
+      built.units,
+      built.coverage,
+    );
+  }
+  return withCompositeEvidence(
+    percentileInterval(context, bootstrapUnits),
+    built.units,
+    built.coverage,
+  );
+}
+
+function executeCompositeClusterBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const built = compositeBuildOrResult(context);
+  if ('analysisStatus' in built) return built;
+  const groups = new Map<string, AggregatedMeasurementUnit[]>();
+  for (const unit of built.units) {
+    if (unit.clusterId === undefined) {
+      return withCompositeEvidence(
+        incomplete('analysis-cluster-membership-missing'),
+        built.units,
+        built.coverage,
+      );
+    }
+    groups.set(unit.clusterId, [...(groups.get(unit.clusterId) ?? []), unit]);
+  }
+  const clusterUnits = [...groups.values()].map((members) => {
+    const stratumId = singleOptionalCoordinate(members, (member) => member.stratumId, 'strata');
+    return {
+      value: mean(members.map((member) => member.value)),
+      ...(stratumId === undefined ? {} : { stratumId }),
+    };
+  });
+  return withCompositeEvidence(
+    percentileInterval(context, clusterUnits),
+    built.units,
+    built.coverage,
+  );
+}
+
+function executeCompositePairedBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const built = compositeBuildOrResult(context);
+  if ('analysisStatus' in built) return built;
+  const comparisonInputs = context.inputs.filter(
+    (input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
+      input.inputKind === 'comparison'
+    ),
+  );
+  if (comparisonInputs.length !== 1) {
+    throw new TypeError('Composite paired bootstrap requires exactly one Comparison contrast.');
+  }
+  const comparison = comparisonInputs[0].contrast;
+  if (comparison.metricId !== built.parameters.compositeMetricId) {
+    return withCompositeEvidence(
+      incomplete('analysis-composite-comparison-metric-mismatch'),
+      built.units,
+      built.coverage,
+    );
+  }
+  if (built.units.some((unit) => unit.pairingBlockId === undefined)) {
+    return withCompositeEvidence(
+      incomplete('analysis-pairing-membership-missing'),
+      built.units,
+      built.coverage,
+    );
+  }
+  const differences: BootstrapUnit[] = [];
+  const includedUnits: AggregatedMeasurementUnit[] = [];
+  for (const group of groupRows(built.units, (unit) => unit.pairingBlockId).values()) {
+    const control = group.filter((unit) => unit.targetId === comparison.controlTargetId);
+    const treatment = group.filter((unit) => unit.targetId === comparison.treatmentTargetId);
+    if (control.length === 0 || treatment.length === 0) continue;
+    const stratumId = singleOptionalCoordinate(group, (unit) => unit.stratumId, 'strata');
+    differences.push({
+      value: mean(treatment.map((unit) => unit.value))
+        - mean(control.map((unit) => unit.value)),
+      ...(stratumId === undefined ? {} : { stratumId }),
+    });
+    includedUnits.push(...control, ...treatment);
+  }
+  const interval = percentileInterval(context, differences);
+  return withCompositeEvidence(
+    interval.analysisStatus === 'completed' ? {
+      ...interval,
+      includedRowIds: includedUnits.flatMap((unit) => unit.rowIds),
+      comparableRowIds: includedUnits.flatMap((unit) => unit.rowIds),
+    } : interval,
+    includedUnits,
+    built.coverage,
+  );
+}
+
 function bootstrapArmStratumMean(
   seed: Sha256Digest,
   armId: string,
@@ -1190,6 +1658,7 @@ function executeUnpairedBootstrapWithUnits(
   context: AnalysisNodeExecutionContext,
   units: readonly AggregatedMeasurementUnit[],
   plannedRows: readonly AnalysisMetricRow[],
+  expectedMetricId?: string,
 ): AnalysisNodeExecutionResult {
   const comparisonInputs = context.inputs.filter(
     (input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
@@ -1200,8 +1669,8 @@ function executeUnpairedBootstrapWithUnits(
     throw new TypeError('Unpaired bootstrap requires exactly one Comparison contrast.');
   }
   const comparisonInput = comparisonInputs[0];
-  const metricInput = metricInputs(context)[0];
-  if (metricInput === undefined || comparisonInput.contrast.metricId !== metricInput.referenceId) {
+  const metricId = expectedMetricId ?? metricInputs(context)[0]?.referenceId;
+  if (metricId === undefined || comparisonInput.contrast.metricId !== metricId) {
     return incomplete('analysis-unpaired-bootstrap-requires-one-matching-metric');
   }
   const controlId = comparisonInput.contrast.controlTargetId;
@@ -1301,6 +1770,23 @@ function executeUnpairedBootstrapWithUnits(
     comparableRowIds: includedRowIds,
     assumptionChecks: passedAssumption('independent-non-overlapping-samples'),
   };
+}
+
+function executeCompositeUnpairedBootstrap(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const built = compositeBuildOrResult(context);
+  if ('analysisStatus' in built) return built;
+  return withCompositeEvidence(
+    executeUnpairedBootstrapWithUnits(
+      context,
+      built.units,
+      built.plannedRows,
+      built.parameters.compositeMetricId,
+    ),
+    built.units,
+    built.coverage,
+  );
 }
 
 function executeUnpairedBootstrap(context: AnalysisNodeExecutionContext): AnalysisNodeExecutionResult {
@@ -1712,6 +2198,88 @@ register(
   executeHierarchicalClusterBootstrap,
 );
 register(
+  'bootstrap.composite-mean-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    metricObservationCardinality: { min: 2 },
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['complete-block', 'independent-groups'],
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['sample', 'paired-block'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeCompositeMeanBootstrap,
+);
+register(
+  'bootstrap.composite-cluster-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    metricObservationCardinality: { min: 2 },
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['complete-block'],
+      experimentalUnits: ['cluster'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['cluster'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeCompositeClusterBootstrap,
+);
+register(
+  'bootstrap.composite-paired-difference-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    metricObservationCardinality: { min: 2 },
+    comparison: true,
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['complete-block'],
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['paired-block'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeCompositePairedBootstrap,
+);
+register(
+  'bootstrap.composite-unpaired-difference-percentile/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'estimator',
+    valueTypes: ['numeric', 'boolean'],
+    missingPolicyIds: ['exclude/v1'],
+    metricObservationCardinality: { min: 2 },
+    comparison: true,
+    outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+    sampling: {
+      assignmentKinds: ['independent-groups'],
+      experimentalUnits: ['sample'],
+      repeatedMeasures: [false, true],
+      resamplingUnits: ['sample'],
+    },
+  }),
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
+  COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+  executeCompositeUnpairedBootstrap,
+);
+register(
   'simultaneous-intervals.bonferroni/v1',
   nodeCapabilities({
     analysisNodeKind: 'correction',
@@ -1803,9 +2371,12 @@ function validateIntervalContext(
 ): void {
   const rawParameters = requireAnalysisOutputContext(context).parameters;
   const sealed = rawParameters !== null && typeof rawParameters === 'object'
-    && !Array.isArray(rawParameters) && 'measurementAggregation' in rawParameters
-    ? HierarchicalBootstrapParametersSchema.parse(rawParameters)
-    : BootstrapParametersSchema.parse(rawParameters);
+      && !Array.isArray(rawParameters) && 'compositeMetricId' in rawParameters
+    ? CompositeBootstrapParametersSchema.parse(rawParameters)
+    : rawParameters !== null && typeof rawParameters === 'object'
+        && !Array.isArray(rawParameters) && 'measurementAggregation' in rawParameters
+      ? HierarchicalBootstrapParametersSchema.parse(rawParameters)
+      : BootstrapParametersSchema.parse(rawParameters);
   const envelope = IntervalEnvelopeSchema.parse(value);
   if (envelope.value.resamples !== sealed.resamples
       || envelope.value.confidenceLevel !== 1 - sealed.alpha
@@ -2077,6 +2648,20 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
     [HIERARCHICAL_BOOTSTRAP_PARAMETERS_SCHEMA, HierarchicalBootstrapParametersSchema],
     [HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA, HierarchicalReducerParametersSchema],
     [HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA, HierarchicalQuantileParametersSchema],
+    [
+      COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA,
+      CompositeBootstrapParametersSchema,
+      undefined,
+      (value) => {
+        const parsed = value as CompositeBootstrapParameters;
+        return {
+          ...parsed,
+          components: [...parsed.components].sort((left, right) => (
+            left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
+          )),
+        };
+      },
+    ],
     [BONFERRONI_PARAMETERS_SCHEMA, BonferroniParametersSchema],
     [
       SIMULTANEOUS_INTERVAL_FAMILY_PARAMETERS_SCHEMA,
