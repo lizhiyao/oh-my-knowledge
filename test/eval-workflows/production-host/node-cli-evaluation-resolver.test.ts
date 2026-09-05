@@ -324,6 +324,21 @@ describe('resolveNodeCliEvaluationRequest', () => {
       resource.resourceKind === 'mock-payload'
       && resource.descriptor.classification === 'secret'
     ))).toBe(true);
+    expect(compiled.hostResources.resources.some((resource) => (
+      resource.resourceKind === 'mock-plan'
+      && resource.descriptor.classification === 'secret'
+      && resource.descriptor.mediaType
+        === 'application/vnd.omk.mock-interception-plan+json'
+    ))).toBe(true);
+    expect(compiled.definition.targets.every((target) => (
+      target.executionRequirements.mockInterception === 'pre-tool-call'
+      && target.executionControls.sampleOverrides.some((override) => (
+        override.mockInterception?.mockInterceptionMode === 'pre-tool-call'
+      ))
+    ))).toBe(true);
+    expect(compiled.definition.targets.every((target) => (
+      !JSON.stringify(target.config).includes('mocks')
+    ))).toBe(true);
     expect(Object.isFrozen(resolved)).toBe(true);
   });
 
@@ -347,12 +362,27 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const rule = resolved.hostResources.resources.find(
       (resource) => resource.resourceKind === 'mock-rule',
     );
+    const plan = resolved.hostResources.resources.find(
+      (resource) => resource.resourceKind === 'mock-plan',
+    );
 
     expect(payload).toBeDefined();
     expect(rule).toBeDefined();
+    expect(plan).toBeDefined();
     expect((await stat(payload!.locator)).mode & 0o777).toBe(0o600);
     expect((await stat(rule!.locator)).mode & 0o777).toBe(0o600);
+    expect((await stat(plan!.locator)).mode & 0o777).toBe(0o600);
     expect(JSON.parse(await readFile(rule!.locator, 'utf8'))).toEqual({ tool: 'Read' });
+    expect(JSON.parse(await readFile(plan!.locator, 'utf8'))).toMatchObject({
+      schemaVersion: 'omk.mock-interception-plan/v1',
+      strict: true,
+      rules: [{ mockId: 'mock-1', rule: rule!.descriptor, payloads: [payload!.descriptor] }],
+    });
+    expect(await readFile(plan!.locator, 'utf8')).not.toContain('inline-secret');
+    const compiled = compileCliEvaluationInput(resolved);
+    expect(compiled.definition.targets.every((target) => (
+      !JSON.stringify(target.config).includes('mocks')
+    ))).toBe(true);
     expect((await stat(join(root, '.omk', 'resolved', 'content'))).mode & 0o777).toBe(0o700);
   });
 
@@ -624,6 +654,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
       mcp: { mcpMode: 'not-required' },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     });
     expect(target?.executionControls.sampleOverrides).toEqual([
       expect.objectContaining({

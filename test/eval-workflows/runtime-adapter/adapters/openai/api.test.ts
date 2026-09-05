@@ -159,6 +159,7 @@ async function fixture(options: Readonly<{
           ? { toolPolicyKind: 'allow-list', allowedTools: [] }
           : { toolPolicyKind: 'runtime-default' },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [],
     },
@@ -259,6 +260,7 @@ async function execute(
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
       mcp: { mcpMode: 'not-required' },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     },
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q' },

@@ -35,6 +35,7 @@ import {
   type ExecutorRunContext,
   type ExecutorTrialContext,
 } from '../../../../eval-core/execution/index.js';
+import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../../eval-runtime/mock-interception.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,
@@ -149,12 +150,23 @@ const ResourceDescriptorSchema = z.object({
   size: z.number().int().nonnegative(),
 }).strict();
 
+const CustomCommandMockPlanSchema = z.object({
+  schemaVersion: z.literal('omk.mock-interception-plan/v1'),
+  strict: z.boolean(),
+  rules: z.array(z.object({
+    mockId: IdentifierSchema,
+    rule: ResourceDescriptorSchema,
+    payloads: z.array(ResourceDescriptorSchema),
+  }).strict()).min(1),
+}).strict();
+
 const CustomCommandResourceSchema = z.discriminatedUnion('leaseMode', [
   z.object({
     resourceId: IdentifierSchema,
     resourceKind: z.enum([
       'artifact',
       'mcp-config',
+      'mock-plan',
       'mock-rule',
       'mock-payload',
       'runtime-implementation',
@@ -316,6 +328,7 @@ interface CustomCommandRunState {
   readonly privateWorkingDirectory: string;
   readonly executablePath: string;
   readonly resources: readonly CustomCommandRequest['resources'][number][];
+  readonly mockResourceIdsByPlanId: ReadonlyMap<string, ReadonlySet<string>>;
   readonly executionControls: EvaluationDefinition['targets'][number]['executionControls'];
   acquireTrial(): void;
   releaseTrial(): Promise<void>;
@@ -325,6 +338,7 @@ interface CustomCommandRunState {
 interface CustomCommandTrialState {
   readonly workingDirectory: string;
   readonly resources: readonly CustomCommandRequest['resources'][number][];
+  readonly mockOutputClassification: 'public' | 'secret';
 }
 
 function sha256Bytes(bytes: Uint8Array): Sha256Digest {
@@ -576,6 +590,163 @@ function projectResource(resource: OmkLeasedHostResource): CustomCommandRequest[
   };
 }
 
+function isMockResource(
+  resource: CustomCommandRequest['resources'][number],
+): boolean {
+  return resource.resourceKind === 'mock-plan'
+    || resource.resourceKind === 'mock-rule'
+    || resource.resourceKind === 'mock-payload';
+}
+
+async function captureMockResourceClosures(
+  resources: readonly CustomCommandRequest['resources'][number][],
+  executionControls: EvaluationDefinition['targets'][number]['executionControls'],
+): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const resourcesById = new Map(resources.map((resource) => [resource.resourceId, resource]));
+  const planDescriptors = new Map<string, z.infer<typeof ResourceDescriptorSchema>>();
+  const controls = [
+    executionControls.defaults.mockInterception,
+    ...executionControls.sampleOverrides.flatMap((override) => (
+      override.mockInterception === undefined ? [] : [override.mockInterception]
+    )),
+  ];
+  for (const control of controls) {
+    if (control.mockInterceptionMode !== 'pre-tool-call') continue;
+    const descriptor = ResourceDescriptorSchema.parse(control.descriptor);
+    if (descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE
+        || descriptor.classification !== 'secret') {
+      fail(
+        'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+        'infrastructure',
+        'Custom-command mock plan descriptor is invalid.',
+      );
+    }
+    const existing = planDescriptors.get(descriptor.resourceId);
+    if (existing !== undefined
+        && canonicalizeJson(existing) !== canonicalizeJson(descriptor)) {
+      fail(
+        'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+        'infrastructure',
+        'Custom-command mock plan identity is inconsistent.',
+      );
+    }
+    planDescriptors.set(descriptor.resourceId, descriptor);
+  }
+  const expectedHelpers = new Map<string, {
+    resourceKind: 'mock-rule' | 'mock-payload';
+    descriptor: z.infer<typeof ResourceDescriptorSchema>;
+  }>();
+  const registerHelper = (
+    resourceKind: 'mock-rule' | 'mock-payload',
+    descriptor: z.infer<typeof ResourceDescriptorSchema>,
+  ): void => {
+    const existing = expectedHelpers.get(descriptor.resourceId);
+    if (existing !== undefined && (
+      existing.resourceKind !== resourceKind
+      || canonicalizeJson(existing.descriptor) !== canonicalizeJson(descriptor)
+    )) {
+      fail(
+        'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+        'infrastructure',
+        'Custom-command mock helper identity is inconsistent.',
+      );
+    }
+    expectedHelpers.set(descriptor.resourceId, { resourceKind, descriptor });
+  };
+  const closures = new Map<string, ReadonlySet<string>>();
+  for (const descriptor of planDescriptors.values()) {
+    const resource = resourcesById.get(descriptor.resourceId);
+    if (resource?.resourceKind !== 'mock-plan'
+        || resource.leaseMode !== 'immutable-snapshot'
+        || resource.snapshotKind !== 'file'
+        || canonicalizeJson(resource.descriptor) !== canonicalizeJson(descriptor)) {
+      fail(
+        'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+        'infrastructure',
+        'Custom-command mock plan lease does not match the sealed control.',
+      );
+    }
+    let plan: z.infer<typeof CustomCommandMockPlanSchema>;
+    try {
+      plan = CustomCommandMockPlanSchema.parse(JSON.parse(
+        await readFile(resource.snapshotPath, 'utf8'),
+      ) as unknown);
+    } catch {
+      fail(
+        'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+        'infrastructure',
+        'Custom-command mock plan is unavailable or invalid.',
+      );
+    }
+    if (new Set(plan.rules.map((entry) => entry.mockId)).size !== plan.rules.length) {
+      fail(
+        'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+        'infrastructure',
+        'Custom-command mock plan contains duplicate mock identities.',
+      );
+    }
+    const closure = new Set<string>([descriptor.resourceId]);
+    for (const entry of plan.rules) {
+      const helpers = [
+        { resourceKind: 'mock-rule' as const, descriptor: entry.rule },
+        ...entry.payloads.map((payload) => ({
+          resourceKind: 'mock-payload' as const,
+          descriptor: payload,
+        })),
+      ];
+      for (const helper of helpers) {
+        if (helper.descriptor.classification !== 'secret'
+            || (helper.resourceKind === 'mock-rule'
+              && helper.descriptor.mediaType !== 'application/json')) {
+          fail(
+            'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+            'infrastructure',
+            'Custom-command mock helper descriptor is invalid.',
+          );
+        }
+        registerHelper(helper.resourceKind, helper.descriptor);
+        const helperResource = resourcesById.get(helper.descriptor.resourceId);
+        if (helperResource?.resourceKind !== helper.resourceKind
+            || helperResource.leaseMode !== 'immutable-snapshot'
+            || canonicalizeJson(helperResource.descriptor)
+              !== canonicalizeJson(helper.descriptor)) {
+          fail(
+            'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+            'infrastructure',
+            'Custom-command mock helper lease does not match the sealed plan.',
+          );
+        }
+        closure.add(helper.descriptor.resourceId);
+      }
+    }
+    closures.set(descriptor.resourceId, Object.freeze(closure));
+  }
+  const actualHelpers = resources.filter((resource) => (
+    resource.resourceKind === 'mock-rule' || resource.resourceKind === 'mock-payload'
+  ));
+  if (actualHelpers.length !== expectedHelpers.size || actualHelpers.some((resource) => {
+    const expected = expectedHelpers.get(resource.resourceId);
+    return expected === undefined
+      || resource.resourceKind !== expected.resourceKind
+      || canonicalizeJson(resource.descriptor) !== canonicalizeJson(expected.descriptor);
+  })) {
+    fail(
+      'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+      'infrastructure',
+      'Custom-command mock helper leases do not match the sealed plans.',
+    );
+  }
+  const actualPlans = resources.filter((resource) => resource.resourceKind === 'mock-plan');
+  if (actualPlans.length !== planDescriptors.size) {
+    fail(
+      'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+      'infrastructure',
+      'Custom-command mock plan leases do not match the sealed controls.',
+    );
+  }
+  return closures;
+}
+
 async function captureRunState(
   lease: OmkBindingResourceLease,
   binding: RuntimeBindingOf<'executor'>,
@@ -639,6 +810,13 @@ async function captureRunState(
       'Custom-command Executor requires exactly one immutable Runtime implementation lease.',
     );
   }
+  const projectedResources = Object.freeze(capturedResources.filter((resource) => (
+    resource.resourceKind !== 'runtime-implementation'
+  )));
+  const mockResourceIdsByPlanId = await captureMockResourceClosures(
+    projectedResources,
+    executionControls,
+  );
   let privateWorkingDirectory: string;
   try {
     privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-custom-command-run-'));
@@ -670,9 +848,8 @@ async function captureRunState(
   return Object.freeze({
     privateWorkingDirectory,
     executablePath: runtimeImplementations[0].snapshotPath,
-    resources: Object.freeze(capturedResources.filter((resource) => (
-      resource.resourceKind !== 'runtime-implementation'
-    ))),
+    resources: projectedResources,
+    mockResourceIdsByPlanId,
     executionControls,
     acquireTrial() {
       if (disposeRequested) {
@@ -731,14 +908,30 @@ function openCustomCommandTrial(
       'Custom-command Trial workspace overlay lease is missing.',
     );
   }
+  const mockInterception = trial.executionControl.mockInterception;
+  const activeMockResourceIds = mockInterception.mockInterceptionMode === 'not-required'
+    ? undefined
+    : runState.mockResourceIdsByPlanId.get(mockInterception.descriptor.resourceId);
+  if (mockInterception.mockInterceptionMode === 'pre-tool-call'
+      && activeMockResourceIds === undefined) {
+    fail(
+      'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID',
+      'infrastructure',
+      'Custom-command Trial mock plan is absent from the sealed lease.',
+    );
+  }
   return Object.freeze({
     workingDirectory: workspaceResource?.resourceKind === 'workspace'
       ? workspaceResource.overlayPath
       : runState.privateWorkingDirectory,
     resources: Object.freeze(runState.resources.filter((resource) => (
-      resource.resourceKind !== 'workspace'
-      || resource.resourceId === workspaceResource?.resourceId
+      (resource.resourceKind !== 'workspace'
+        || resource.resourceId === workspaceResource?.resourceId)
+      && (!isMockResource(resource) || activeMockResourceIds?.has(resource.resourceId) === true)
     ))),
+    mockOutputClassification: mockInterception.mockInterceptionMode === 'pre-tool-call'
+      ? 'secret'
+      : 'public',
   });
 }
 
@@ -951,7 +1144,10 @@ export async function createCustomCommandExecutorAdapter(
               ...response.output,
               classification: mergeOutputClassification(
                 response.output.classification,
-                configuration.environmentOutputClassification,
+                mergeOutputClassification(
+                  configuration.environmentOutputClassification,
+                  trialState.mockOutputClassification,
+                ),
               ),
             } as ExecutionContent,
           }),
@@ -960,7 +1156,10 @@ export async function createCustomCommandExecutorAdapter(
               ...response.trace,
               classification: mergeOutputClassification(
                 response.trace.classification,
-                configuration.environmentOutputClassification,
+                mergeOutputClassification(
+                  configuration.environmentOutputClassification,
+                  trialState.mockOutputClassification,
+                ),
               ),
             } as ExecutionContent,
           }),

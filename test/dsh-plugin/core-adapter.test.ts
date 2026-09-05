@@ -359,6 +359,7 @@ async function fixture(options: Readonly<{
           ? { toolPolicyKind: 'runtime-default' as const }
           : { toolPolicyKind: 'allow-list' as const, allowedTools: [...options.allowedTools] },
         mcp: { mcpMode: 'not-required' as const },
+        mockInterception: { mockInterceptionMode: 'not-required' as const },
       },
       sampleOverrides: [],
     },
@@ -432,6 +433,7 @@ async function execute(
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
     mcp: { mcpMode: 'not-required' },
+    mockInterception: { mockInterceptionMode: 'not-required' },
   },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId, executionPlanDigest: digest({ plan: 'a' }) });

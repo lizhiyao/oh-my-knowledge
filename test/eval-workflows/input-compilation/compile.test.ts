@@ -3,11 +3,14 @@ import {
   EvaluationDefinitionSchema,
   MeasurementPolicySchema,
   canonicalizeJson,
+  deriveExecutionCoordinateDigest,
   digestCanonicalJson,
   projectAnalysisInputs,
   projectEvaluationInputs,
   projectExecutionInputs,
+  resolveEffectiveExecutionControl,
 } from '../../../src/eval-core/contracts/index.js';
+import { createInvokeExecutorIdentity } from '../../../src/eval-runtime/identity.js';
 import {
   CliEvaluationInputError,
   compileCliEvaluationInput,
@@ -593,7 +596,12 @@ describe('compileCliEvaluationInput', () => {
 
   it('does not claim mock interception for an explicitly empty mock set', () => {
     const input = deepClone(validResolvedCliInput());
-    for (const target of input.targets) target.behavior.mocks = [];
+    for (const target of input.targets) {
+      target.behavior.mocks = [];
+      target.executionControls.sampleOverrides = target.executionControls.sampleOverrides
+        .map(({ mockInterception: _mockInterception, ...override }) => override)
+        .filter((override) => Object.keys(override).length > 1);
+    }
     const result = compileCliEvaluationInput(input);
 
     expect(result.definition.targets.every((target) => (
@@ -602,31 +610,115 @@ describe('compileCliEvaluationInput', () => {
     expect(result.runtimeBinding.bindings.filter((binding) => binding.runtimeKind === 'executor')
       .every((binding) => (
         binding.qualification.executionRequirements.mockInterception === 'not-required'
-      ))).toBe(true);
+    ))).toBe(true);
   });
 
-  it('preserves mock return-sequence order as observable Target behavior', () => {
-    const input = deepClone(validResolvedCliInput());
-    const resource = input.hostResources.resources.find((candidate) => (
-      candidate.resourceKind === 'mock-payload'
+  it('rejects drift between mock behavior bindings and sample-scoped controls', () => {
+    const missingControl = deepClone(validResolvedCliInput());
+    const target = missingControl.targets.find((candidate) => candidate.targetId === 'treatment')!;
+    target.executionControls.sampleOverrides = target.executionControls.sampleOverrides
+      .map(({ mockInterception: _mockInterception, ...override }) => override);
+
+    expect(() => compileCliEvaluationInput(missingControl)).toThrow(expect.objectContaining({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: 'targets.treatment.executionControls.mockInterception',
+    }));
+
+    const missingBehavior = deepClone(validResolvedCliInput());
+    const secondTarget = missingBehavior.targets.find((candidate) => candidate.targetId === 'treatment')!;
+    secondTarget.behavior.mocks = [];
+
+    expect(() => compileCliEvaluationInput(missingBehavior)).toThrow(expect.objectContaining({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: 'targets.treatment.executionControls.mockInterception',
+    }));
+  });
+
+  it('keeps mock identity sample-local and out of Target-wide config', () => {
+    const baseInput = deepClone(validResolvedCliInput());
+    const changedInput = deepClone(validResolvedCliInput());
+    const plan = changedInput.hostResources.resources.find((candidate) => (
+      candidate.resourceKind === 'mock-plan'
     ))!;
-    const second = {
-      ...structuredClone(resource),
-      descriptor: { ...structuredClone(resource.descriptor), resourceId: 'mock-second' },
-      locator: '/repo/mocks/second.json',
+    const changedPlan = {
+      ...structuredClone(plan),
+      descriptor: {
+        ...structuredClone(plan.descriptor),
+        resourceId: 'mock-plan-changed',
+        digest: `sha256:${'f'.repeat(64)}` as const,
+        classification: 'secret' as const,
+      },
+      locator: '/repo/mocks/changed-plan.json',
+      verification: {
+        verificationKind: 'content-digest' as const,
+        verifiedDigest: `sha256:${'f'.repeat(64)}` as const,
+      },
     };
-    input.hostResources.resources.push(second);
-    const target = input.targets.find((candidate) => candidate.targetId === 'treatment')!;
-    target.behavior.mocks![0].payloads = [second.descriptor, resource.descriptor];
+    changedInput.hostResources.resources.push(changedPlan);
+    const changedTarget = changedInput.targets.find((target) => target.targetId === 'treatment')!;
+    changedTarget.behavior.mocks![0].strict = false;
+    changedTarget.executionControls.sampleOverrides[0]!.mockInterception = {
+      mockInterceptionMode: 'pre-tool-call',
+      descriptor: changedPlan.descriptor,
+    };
 
-    const compiled = compileCliEvaluationInput(input);
-    const behavior = compiled.definition.targets.find((candidate) => (
-      candidate.targetId === 'treatment'
-    ))!.config as { behavior: { mocks: Array<{ payloads: Array<{ resourceId: string }> }> } };
+    const before = compileCliEvaluationInput(baseInput);
+    const after = compileCliEvaluationInput(changedInput);
+    const beforeTarget = before.definition.targets.find((target) => target.targetId === 'treatment')!;
+    const afterTarget = after.definition.targets.find((target) => target.targetId === 'treatment')!;
+    expect(JSON.stringify(beforeTarget.config)).not.toContain('mocks');
+    expect(afterTarget.config).toEqual(beforeTarget.config);
 
-    expect(behavior.behavior.mocks[0].payloads.map((payload) => payload.resourceId)).toEqual([
-      'mock-second', 'mock-search-response',
-    ]);
+    const runtime = {
+      runtimeKind: 'executor' as const,
+      referenceId: 'treatment',
+      identity: createInvokeExecutorIdentity({
+        implementationId: 'codex-adapter/v1',
+        version: '1.0.0',
+        determinism: 'unknown',
+        cancellation: 'best-effort',
+        concurrency: { safety: 'serialized' },
+        seedControl: 'unsupported',
+        mockInterception: 'pre-tool-call',
+        telemetry: {
+          trace: 'optional',
+          usage: 'optional',
+          providerCost: { reporting: 'optional' },
+        },
+        fingerprintFacets: { fixture: 'workflow-mock-locality' },
+      }),
+    };
+    const executionPolicy = {
+      execution: before.policy.execution,
+      retry: before.policy.retry,
+      budget: before.policy.budget,
+      executionCacheMode: before.policy.cache.executionMode,
+      evidence: {
+        output: before.policy.evidence.output,
+        trace: before.policy.evidence.trace,
+        maximumClassification: before.policy.evidence.maximumClassification,
+      },
+      failure: before.policy.failure,
+    };
+    const coordinate = (
+      compiled: typeof before,
+      sampleId: 'sample-1' | 'sample-2',
+    ) => deriveExecutionCoordinateDigest({
+      randomizationDesignDigest: digestCanonicalJson({ fixture: 'randomization' }),
+      sample: projectExecutionInputs(compiled.definition.dataset)
+        .find((sample) => sample.sampleId === sampleId)!,
+      target: compiled.definition.targets.find((target) => target.targetId === 'treatment')!,
+      runtime,
+      executionControl: resolveEffectiveExecutionControl(
+        compiled.definition.targets.find((target) => target.targetId === 'treatment')!
+          .executionControls,
+        sampleId,
+      ),
+      policy: executionPolicy,
+    });
+
+    expect(coordinate(after, 'sample-2')).not.toBe(coordinate(before, 'sample-2'));
+    expect(coordinate(after, 'sample-1')).toBe(coordinate(before, 'sample-1'));
   });
 
   it('rejects inline secret evaluator or target configuration', () => {

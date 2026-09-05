@@ -327,13 +327,15 @@ function roleResourceKind(role: RuntimeResourceLeaseRequirement['resourceRole'])
       ? 'workspace' as const
       : role === 'mcp-config'
         ? 'mcp-config' as const
-        : role === 'mock-rule'
-          ? 'mock-rule' as const
-        : role === 'mock-payload'
-          ? 'mock-payload' as const
-          : role === 'runtime-implementation'
-            ? 'runtime-implementation' as const
-            : 'content' as const;
+        : role === 'mock-plan'
+          ? 'mock-plan' as const
+          : role === 'mock-rule'
+            ? 'mock-rule' as const
+            : role === 'mock-payload'
+              ? 'mock-payload' as const
+              : role === 'runtime-implementation'
+                ? 'runtime-implementation' as const
+                : 'content' as const;
 }
 
 function validateLimits(input: Partial<OmkResourceLeaseLimits> | undefined): OmkResourceLeaseLimits {
@@ -373,6 +375,7 @@ function snapshotBindingRequests(
         'artifact',
         'workspace',
         'mcp-config',
+        'mock-plan',
         'mock-rule',
         'mock-payload',
         'runtime-implementation',
@@ -426,7 +429,7 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'HostResource inventory 包含重复 resourceId。',
     });
-    if (!['artifact', 'workspace', 'mcp-config', 'mock-rule', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
+    if (!['artifact', 'workspace', 'mcp-config', 'mock-plan', 'mock-rule', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
       .includes(resource.resourceKind)
         || !['public', 'sensitive', 'secret', 'gold'].includes(descriptor.classification)
         || !['content-digest', 'tree-digest', 'pinned-git']
@@ -451,7 +454,7 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'Gold classification 只能用于 gold-dataset，且 gold-dataset 必须标记为 gold。',
     });
-    if (['mcp-config', 'mock-rule', 'mock-payload'].includes(resource.resourceKind)
+    if (['mcp-config', 'mock-plan', 'mock-rule', 'mock-payload'].includes(resource.resourceKind)
         && descriptor.classification !== 'secret') fail({
       code: 'OMK_RESOURCE_LEASE_CLASSIFICATION_DENIED',
       resourceId: descriptor.resourceId,
@@ -463,7 +466,13 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'Mock rule 必须使用 application/json media type。',
     });
-    const fileOnly = ['mcp-config', 'mock-rule', 'mock-payload', 'runtime-implementation', 'content']
+    if (resource.resourceKind === 'mock-plan'
+        && descriptor.mediaType !== 'application/vnd.omk.mock-interception-plan+json') fail({
+      code: 'OMK_RESOURCE_LEASE_INPUT_INVALID',
+      resourceId: descriptor.resourceId,
+      message: 'Mock plan media type 不合法。',
+    });
+    const fileOnly = ['mcp-config', 'mock-plan', 'mock-rule', 'mock-payload', 'runtime-implementation', 'content']
       .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact' || resource.resourceKind === 'workspace';
     if ((fileOnly && verification.verificationKind !== 'content-digest')

@@ -106,6 +106,7 @@ async function completeFixture() {
   const artifactPath = join(sourceRoot, 'artifact.md');
   const workspacePath = join(sourceRoot, 'workspace');
   const mcpPath = join(sourceRoot, 'mcp.json');
+  const mockPlanPath = join(sourceRoot, 'mock-plan.json');
   const mockRulePath = join(sourceRoot, 'mock-rule.json');
   const mockPath = join(sourceRoot, 'mock.json');
   const contentPath = join(sourceRoot, 'rubric.json');
@@ -116,6 +117,7 @@ async function completeFixture() {
   writeFileSync(join(workspacePath, 'run.sh'), '#!/bin/sh\necho ok\n');
   chmodSync(join(workspacePath, 'run.sh'), 0o755);
   writeFileSync(mcpPath, '{"servers":["test"]}');
+  writeFileSync(mockPlanPath, '{"schemaVersion":"omk.mock-interception-plan/v1"}');
   writeFileSync(mockRulePath, '{"tool":"search"}');
   writeFileSync(mockPath, '{"answer":"A"}');
   writeFileSync(contentPath, '{"rubric":"correctness"}');
@@ -126,6 +128,11 @@ async function completeFixture() {
     fileResource({
       resourceId: 'mcp', resourceKind: 'mcp-config', path: mcpPath,
       classification: 'secret', mediaType: 'application/json',
+    }),
+    fileResource({
+      resourceId: 'mock-plan', resourceKind: 'mock-plan', path: mockPlanPath,
+      classification: 'secret',
+      mediaType: 'application/vnd.omk.mock-interception-plan+json',
     }),
     fileResource({
       resourceId: 'mock-rule', resourceKind: 'mock-rule', path: mockRulePath,
@@ -162,6 +169,7 @@ describe('Verified HostResource leases', () => {
             requirement('artifact', 'artifact'),
             requirement('workspace', 'workspace'),
             requirement('mcp-config', 'mcp'),
+            requirement('mock-plan', 'mock-plan'),
             requirement('mock-rule', 'mock-rule'),
             requirement('mock-payload', 'mock'),
           ],
@@ -421,6 +429,7 @@ describe('Verified HostResource leases', () => {
     const fixture = await completeFixture();
     for (const [resourceKind, resourceRole] of [
       ['mcp-config', 'mcp-config'],
+      ['mock-plan', 'mock-plan'],
       ['mock-rule', 'mock-rule'],
       ['mock-payload', 'mock-payload'],
     ] as const) {
@@ -467,6 +476,27 @@ describe('Verified HostResource leases', () => {
     })).rejects.toMatchObject({
       code: 'OMK_RESOURCE_LEASE_INPUT_INVALID',
       resourceId: mockRule.descriptor.resourceId,
+    });
+
+    const mockPlan = fixture.resources.find((resource) => (
+      resource.resourceKind === 'mock-plan'
+    ));
+    if (mockPlan === undefined) throw new Error('missing mock plan fixture');
+    await expect(materializeNodeRunResourceLeases({
+      runId: 'run-mock-plan-media-type',
+      leaseRoot,
+      hostResources: inventory([{
+        ...mockPlan,
+        descriptor: { ...mockPlan.descriptor, mediaType: 'application/json' },
+      }]),
+      bindings: [{
+        consumerKind: 'executor',
+        bindingId: 'executor',
+        requirements: [requirement('mock-plan', mockPlan.descriptor.resourceId)],
+      }],
+    })).rejects.toMatchObject({
+      code: 'OMK_RESOURCE_LEASE_INPUT_INVALID',
+      resourceId: mockPlan.descriptor.resourceId,
     });
     expect(readdirSync(leaseRoot)).toEqual([]);
   });

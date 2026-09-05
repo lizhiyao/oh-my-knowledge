@@ -706,6 +706,16 @@ describe('Compiler definition validation', () => {
             size: 1,
           },
         },
+        mockInterception: {
+          mockInterceptionMode: 'pre-tool-call',
+          descriptor: {
+            resourceId: 'mock-plan-1',
+            digest: `sha256:${'c'.repeat(64)}`,
+            mediaType: 'application/vnd.omk.mock-interception-plan+json',
+            classification: 'secret',
+            size: 1,
+          },
+        },
       },
       sampleOverrides: [],
     };

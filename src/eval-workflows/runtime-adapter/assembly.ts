@@ -230,32 +230,26 @@ function expectedExecutorResourceRequirements(
       leaseMode: 'copy-on-write-overlay',
     });
   }
+  const mockControls = [
+    target.executionControls.defaults.mockInterception,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.mockInterception === undefined ? [] : [override.mockInterception]
+    )),
+  ];
+  for (const mockInterception of mockControls) {
+    if (mockInterception.mockInterceptionMode !== 'pre-tool-call') continue;
+    requirements.push({
+      resourceId: mockInterception.descriptor.resourceId,
+      resourceRole: 'mock-plan',
+      leaseMode: 'immutable-snapshot',
+    });
+  }
   const mcpConfigId = descriptorResourceId(behavior?.mcpConfig);
   if (mcpConfigId !== undefined) requirements.push({
     resourceId: mcpConfigId,
     resourceRole: 'mcp-config',
     leaseMode: 'immutable-snapshot',
   });
-  if (Array.isArray(behavior?.mocks)) {
-    for (const mockValue of behavior.mocks) {
-      const mock = record(mockValue);
-      const ruleId = descriptorResourceId(mock?.rule);
-      if (ruleId !== undefined) requirements.push({
-        resourceId: ruleId,
-        resourceRole: 'mock-rule',
-        leaseMode: 'immutable-snapshot',
-      });
-      if (!Array.isArray(mock?.payloads)) continue;
-      for (const payload of mock.payloads) {
-        const resourceId = descriptorResourceId(payload);
-        if (resourceId !== undefined) requirements.push({
-          resourceId,
-          resourceRole: 'mock-payload',
-          leaseMode: 'immutable-snapshot',
-        });
-      }
-    }
-  }
   const runtimeImplementationId = descriptorResourceId(runtime?.implementationResource);
   if (runtimeImplementationId !== undefined) requirements.push({
     resourceId: runtimeImplementationId,
@@ -280,7 +274,7 @@ function assertResourceRequirements(
       ? 'copy-on-write-overlay'
       : 'immutable-snapshot';
     const allowedRole = binding.runtimeKind === 'executor'
-      ? ['artifact', 'workspace', 'mcp-config', 'mock-rule', 'mock-payload', 'runtime-implementation']
+      ? ['artifact', 'workspace', 'mcp-config', 'mock-plan', 'mock-rule', 'mock-payload', 'runtime-implementation']
         .includes(requirement.resourceRole)
       : requirement.resourceRole === 'content';
     const key = `${requirement.resourceRole}\u0000${requirement.resourceId}`;
@@ -303,14 +297,24 @@ function assertExecutorBinding(
   const config = record(target.config);
   const runtime = record(config?.runtime);
   const expectedEffort = typeof runtime?.effort === 'string' ? runtime.effort : undefined;
+  const expectedResourceRequirements = expectedExecutorResourceRequirements(target);
+  const hasMockPlan = expectedResourceRequirements.some((requirement) => (
+    requirement.resourceRole === 'mock-plan'
+  ));
+  const structuralResourceRequirements = binding.resourceLeaseRequirements.filter((requirement) => (
+    requirement.resourceRole !== 'mock-rule' && requirement.resourceRole !== 'mock-payload'
+  ));
+  const hasUnexpectedMockHelpers = !hasMockPlan && structuralResourceRequirements.length
+    !== binding.resourceLeaseRequirements.length;
   if (binding.targetId !== target.targetId
       || binding.implementationId !== target.executorId
       || !sameOptionalString(binding.versionConstraint, target.versionConstraint)
       || binding.protocolId !== target.protocolId
       || binding.behaviorConfigDigest !== digestCanonicalJson(target.config ?? null)
       || binding.executionControlsDigest !== digestCanonicalJson(target.executionControls)
-      || canonicalizeJson(binding.resourceLeaseRequirements)
-        !== canonicalizeJson(expectedExecutorResourceRequirements(target))
+      || hasUnexpectedMockHelpers
+      || canonicalizeJson(structuralResourceRequirements)
+        !== canonicalizeJson(expectedResourceRequirements)
       || canonicalizeJson(binding.qualification.executionRequirements)
         !== canonicalizeJson(target.executionRequirements)
       || binding.qualification.model !== runtime?.model

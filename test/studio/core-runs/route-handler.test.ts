@@ -239,7 +239,7 @@ function detail(run: CoreStudioRunCard = card()): CoreStudioRunDetail {
     },
     reportProvenance: provenance,
     lineage: [
-      ['run-plan', 'omk.run-plan/v4', 'plan'],
+      ['run-plan', 'omk.run-plan/v5', 'plan'],
       ['execution-bundle', 'omk.execution-bundle/v1', 'execution'],
       ['evaluation-bundle', 'omk.evaluation-bundle/v1', 'evaluation'],
       ['analysis-bundle', 'omk.analysis-bundle/v2', 'analysis'],

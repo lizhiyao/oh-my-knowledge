@@ -29,6 +29,9 @@ const historicalSchemaDigests = new Map([
   ['v2/execution-plan.schema.json', 'e07ad839db119beb590b2d598f410ec9eb1efef9cf8824a93d0818a03ff4be85'],
   ['v3/evaluation-definition.schema.json', '88b1014e72aabc2c91eda810c5c59a50d088a801dc6464784c02c0f7e6b46541'],
   ['v3/run-plan.schema.json', '52ce28e0a05d6183bb71b3f81d1e1a6af1e7e1fcb39714d9de10e9a3f5acd0a6'],
+  ['v4/evaluation-definition.schema.json', '5b070fbbff3770851611e3848d054a279cd2b0a7fd5a4975b876665c7fc7322e'],
+  ['v3/execution-plan.schema.json', 'e460c9588c1502bac84a82630cac7b7274ecccb1b699ea3450b009e4f5983f0e'],
+  ['v4/run-plan.schema.json', 'ddadf61e19d44a5ab93a95639482024860c899b93f4304ec1f3000df1fe685f8'],
 ]);
 
 function sortJson(value) {

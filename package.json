@@ -28,6 +28,8 @@
     "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
     "./eval-core/schemas/v2/*": "./dist/eval-core/contracts/schemas/v2/*",
     "./eval-core/schemas/v3/*": "./dist/eval-core/contracts/schemas/v3/*",
+    "./eval-core/schemas/v4/*": "./dist/eval-core/contracts/schemas/v4/*",
+    "./eval-core/schemas/v5/*": "./dist/eval-core/contracts/schemas/v5/*",
     "./eval-samples": {
       "types": "./dist/eval-workflows/inputs/eval-samples.d.ts",
       "import": "./dist/eval-workflows/inputs/eval-samples.js"

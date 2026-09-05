@@ -44,10 +44,24 @@ export const McpExecutionControlSchema = z.discriminatedUnion('mcpMode', [
   }).strict(),
 ]);
 
+export const MockInterceptionExecutionControlSchema = z.discriminatedUnion(
+  'mockInterceptionMode',
+  [
+    z.object({
+      mockInterceptionMode: z.literal('not-required'),
+    }).strict(),
+    z.object({
+      mockInterceptionMode: z.literal('pre-tool-call'),
+      descriptor: ExecutionResourceDescriptorSchema,
+    }).strict(),
+  ],
+);
+
 export const EffectiveExecutionControlSchema = z.object({
   workspace: WorkspaceExecutionControlSchema,
   tools: ToolExecutionControlSchema,
   mcp: McpExecutionControlSchema,
+  mockInterception: MockInterceptionExecutionControlSchema,
 }).strict();
 
 export const SampleExecutionControlOverrideSchema = z.object({
@@ -55,10 +69,12 @@ export const SampleExecutionControlOverrideSchema = z.object({
   workspace: WorkspaceExecutionControlSchema.optional(),
   tools: ToolExecutionControlSchema.optional(),
   mcp: McpExecutionControlSchema.optional(),
+  mockInterception: MockInterceptionExecutionControlSchema.optional(),
 }).strict().refine(
   (value) => value.workspace !== undefined
     || value.tools !== undefined
-    || value.mcp !== undefined,
+    || value.mcp !== undefined
+    || value.mockInterception !== undefined,
   { message: 'A sample execution-control override must replace at least one control.' },
 );
 
@@ -71,6 +87,9 @@ export type ExecutionResourceDescriptor = z.infer<typeof ExecutionResourceDescri
 export type WorkspaceExecutionControl = z.infer<typeof WorkspaceExecutionControlSchema>;
 export type ToolExecutionControl = z.infer<typeof ToolExecutionControlSchema>;
 export type McpExecutionControl = z.infer<typeof McpExecutionControlSchema>;
+export type MockInterceptionExecutionControl = z.infer<
+  typeof MockInterceptionExecutionControlSchema
+>;
 export type EffectiveExecutionControl = z.infer<typeof EffectiveExecutionControlSchema>;
 export type SampleExecutionControlOverride = z.infer<
   typeof SampleExecutionControlOverrideSchema
@@ -101,6 +120,7 @@ export function normalizeTargetExecutionControls(
       workspace: controls.defaults.workspace,
       tools: normalizeTools(controls.defaults.tools),
       mcp: controls.defaults.mcp,
+      mockInterception: controls.defaults.mockInterception,
     },
     sampleOverrides: controls.sampleOverrides
       .map((override) => ({
@@ -108,6 +128,9 @@ export function normalizeTargetExecutionControls(
         ...(override.workspace === undefined ? {} : { workspace: override.workspace }),
         ...(override.tools === undefined ? {} : { tools: normalizeTools(override.tools) }),
         ...(override.mcp === undefined ? {} : { mcp: override.mcp }),
+        ...(override.mockInterception === undefined
+          ? {}
+          : { mockInterception: override.mockInterception }),
       }))
       .sort((left, right) => compareStrings(left.sampleId, right.sampleId)),
   };
@@ -121,6 +144,7 @@ export function resolveEffectiveExecutionControl(
   const workspace = override?.workspace ?? controls.defaults.workspace;
   const tools = override?.tools ?? controls.defaults.tools;
   const mcp = override?.mcp ?? controls.defaults.mcp;
+  const mockInterception = override?.mockInterception ?? controls.defaults.mockInterception;
   return {
     workspace: workspace.workspaceMode === 'not-required'
       ? { workspaceMode: 'not-required' }
@@ -132,5 +156,11 @@ export function resolveEffectiveExecutionControl(
     mcp: mcp.mcpMode === 'not-required'
       ? { mcpMode: 'not-required' }
       : { mcpMode: 'native-config', descriptor: { ...mcp.descriptor } },
+    mockInterception: mockInterception.mockInterceptionMode === 'not-required'
+      ? { mockInterceptionMode: 'not-required' }
+      : {
+          mockInterceptionMode: 'pre-tool-call',
+          descriptor: { ...mockInterception.descriptor },
+        },
   };
 }

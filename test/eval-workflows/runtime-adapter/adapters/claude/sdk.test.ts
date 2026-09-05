@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
+  resolveEffectiveExecutionControl,
   schemaIdentityKey,
   type EvaluationDefinition,
   type JsonValue,
@@ -163,6 +164,7 @@ async function fixture(options: Readonly<{
   const mockPath = join(root, 'mock.json');
   const mockRuleText = JSON.stringify({ tool: options.mockTool ?? 'Bash' });
   const mockRulePath = join(root, 'mock-rule.json');
+  const mockPlanPath = join(root, 'mock-plan.json');
   if (options.mocks) await Promise.all([
     writeFile(mockPath, mockText),
     writeFile(mockRulePath, mockRuleText),
@@ -181,18 +183,23 @@ async function fixture(options: Readonly<{
     classification: 'secret' as const,
     size: Buffer.byteLength(mockText),
   };
+  const mockPlanText = JSON.stringify({
+    schemaVersion: 'omk.mock-interception-plan/v1',
+    strict: true,
+    rules: [{ mockId: 'mock-1', rule: mockRuleDescriptor, payloads: [mockDescriptor] }],
+  });
+  const mockPlanDescriptor = {
+    resourceId: 'mock-plan-a',
+    digest: digest({ mockPlanText }),
+    mediaType: 'application/vnd.omk.mock-interception-plan+json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(mockPlanText),
+  };
+  if (options.mocks) await writeFile(mockPlanPath, mockPlanText);
   const config = {
     behavior: {
       artifact: artifactDescriptor,
       ...(options.mcp ? { mcpConfig: mcpDescriptor } : {}),
-      ...(options.mocks ? {
-        mocks: [{
-          sampleIds: ['sample-a'],
-          rule: mockRuleDescriptor,
-          strict: true,
-          payloads: [mockDescriptor],
-        }],
-      } : {}),
       ...(options.allowedSkills === undefined ? {} : { allowedSkills: [...options.allowedSkills] }),
     },
     runtime: { model: 'claude-test', effort: 'high' as const },
@@ -222,8 +229,15 @@ async function fixture(options: Readonly<{
           ? { toolPolicyKind: 'runtime-default' }
           : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools] },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
-      sampleOverrides: [],
+      sampleOverrides: options.mocks ? [{
+        sampleId: 'sample-a',
+        mockInterception: {
+          mockInterceptionMode: 'pre-tool-call',
+          descriptor: mockPlanDescriptor,
+        },
+      }] : [],
     },
     config,
   };
@@ -244,6 +258,10 @@ async function fixture(options: Readonly<{
       resourceRole: 'mcp-config' as const,
       leaseMode: 'immutable-snapshot' as const,
     }] : []), ...(options.mocks ? [{
+      resourceId: 'mock-plan-a',
+      resourceRole: 'mock-plan' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    }, {
       resourceId: 'mock-rule-a',
       resourceRole: 'mock-rule' as const,
       leaseMode: 'immutable-snapshot' as const,
@@ -282,6 +300,14 @@ async function fixture(options: Readonly<{
     snapshotKind: 'file',
     leaseMode: 'immutable-snapshot',
     snapshotPath: mockPath,
+  });
+  if (options.mocks) resources.set('mock-plan-a', {
+    resourceId: 'mock-plan-a',
+    resourceKind: 'mock-plan',
+    descriptor: mockPlanDescriptor,
+    snapshotKind: 'file',
+    leaseMode: 'immutable-snapshot',
+    snapshotPath: mockPlanPath,
   });
   if (options.mocks) resources.set('mock-rule-a', {
     resourceId: 'mock-rule-a',
@@ -396,6 +422,7 @@ async function execute(
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
     mcp: { mcpMode: 'not-required' },
+    mockInterception: { mockInterceptionMode: 'not-required' },
   },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
@@ -577,7 +604,12 @@ describe('Claude SDK Core Executor adapter', () => {
 
   it('supports MCP hook mocks only when the sealed server exists', async () => {
     const valid = await fixture({ mcp: true, mocks: true, mockTool: 'mcp__search__query' });
-    const result = await execute(await createAdapter(valid), valid.target.config as JsonValue);
+    const result = await execute(
+      await createAdapter(valid),
+      valid.target.config as JsonValue,
+      new AbortController().signal,
+      resolveEffectiveExecutionControl(valid.target.executionControls, 'sample-a'),
+    );
     expect(valid.observations.queries[0]!.options.mcpServers).toHaveProperty('search');
     expect(valid.observations.queries[0]!.options.hooks).toHaveProperty('PreToolUse');
     expect(result.trace?.value).toMatchObject({

@@ -91,6 +91,18 @@ export type {
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {
+  MockInterceptionAccess,
+  MockInterceptionDecision,
+  MockInterceptionDescriptor,
+  MockInterceptionInput,
+  MockInterceptionLease,
+  MockInterceptionOpenRequest,
+  MockInterceptionPlan,
+  MockInterceptionProvider,
+  MockInterceptionRequest,
+} from './mock-interception.js';
+export { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from './mock-interception.js';
+export type {
   McpConfigAccess,
   McpConfigDescriptor,
   McpConfigInput,

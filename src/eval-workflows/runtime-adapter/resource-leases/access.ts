@@ -25,11 +25,13 @@ function resourceKindForRole(
 ) {
   return role === 'mcp-config'
     ? 'mcp-config'
-    : role === 'mock-rule'
-      ? 'mock-rule'
-    : role === 'mock-payload'
-      ? 'mock-payload'
-      : role;
+    : role === 'mock-plan'
+      ? 'mock-plan'
+      : role === 'mock-rule'
+        ? 'mock-rule'
+        : role === 'mock-payload'
+          ? 'mock-payload'
+          : role;
 }
 
 export interface OmkResourceLeaseAccessRegistry {

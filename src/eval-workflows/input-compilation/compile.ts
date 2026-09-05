@@ -162,7 +162,7 @@ function normalizeHostResources(
   const resources = [...input.resources]
     .sort((left, right) => compareStrings(left.descriptor.resourceId, right.descriptor.resourceId))
     .map((resource) => {
-      if (!['artifact', 'workspace', 'mcp-config', 'mock-rule', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
+      if (!['artifact', 'workspace', 'mcp-config', 'mock-plan', 'mock-rule', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
         .includes(resource.resourceKind)
           || !['public', 'sensitive', 'secret', 'gold']
             .includes(resource.descriptor.classification)
@@ -221,7 +221,7 @@ function validateHostResourceMaterializationSemantics(
   hostResources: ResolvedHostResources,
 ): void {
   for (const resource of hostResources.resources) {
-    const fileOnly = ['mcp-config', 'mock-rule', 'mock-payload', 'runtime-implementation', 'content']
+    const fileOnly = ['mcp-config', 'mock-plan', 'mock-rule', 'mock-payload', 'runtime-implementation', 'content']
       .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact'
       || resource.resourceKind === 'workspace';
@@ -231,10 +231,13 @@ function validateHostResourceMaterializationSemantics(
         || (resource.verification.verificationKind === 'pinned-git' && !gitAllowed)
         || ((resource.resourceKind === 'gold-dataset')
           !== (resource.descriptor.classification === 'gold'))
-        || (['mcp-config', 'mock-rule', 'mock-payload'].includes(resource.resourceKind)
+        || (['mcp-config', 'mock-plan', 'mock-rule', 'mock-payload'].includes(resource.resourceKind)
           && resource.descriptor.classification !== 'secret')
         || (resource.resourceKind === 'mock-rule'
-          && resource.descriptor.mediaType !== 'application/json')) fail({
+          && resource.descriptor.mediaType !== 'application/json')
+        || (resource.resourceKind === 'mock-plan'
+          && resource.descriptor.mediaType
+            !== 'application/vnd.omk.mock-interception-plan+json')) fail({
       code: 'CLI_INPUT_INVALID',
       sourcePath: resource.locator,
       fieldPath: `hostResources.${resource.descriptor.resourceId}`,
@@ -452,6 +455,21 @@ function validateResourceReferences(
         assertUnique(tools.allowedTools, `${controlPrefix}.tools.${controlIndex}.allowedTools`);
       }
     }
+    const mockControls = [
+      target.executionControls.defaults.mockInterception,
+      ...target.executionControls.sampleOverrides.flatMap((override) => (
+        override.mockInterception === undefined ? [] : [override.mockInterception]
+      )),
+    ];
+    for (const [controlIndex, mockInterception] of mockControls.entries()) {
+      if (mockInterception.mockInterceptionMode === 'pre-tool-call') {
+        validateReference(
+          mockInterception.descriptor as ResolvedResourceDescriptor,
+          ['mock-plan'],
+          `${controlPrefix}.mockInterception.${controlIndex}.descriptor`,
+        );
+      }
+    }
     if (target.behavior.mcpConfig !== undefined) {
       validateReference(target.behavior.mcpConfig, ['mcp-config'], `${prefix}.mcpConfig`);
     }
@@ -475,6 +493,23 @@ function validateResourceReferences(
           `${prefix}.mocks.${mockIndex}.payloads.${payloadIndex}`,
         );
       }
+    }
+    const behaviorMockSampleIds = new Set(
+      (target.behavior.mocks ?? []).flatMap((mock) => mock.sampleIds),
+    );
+    const controlledMockSampleIds = new Set(
+      [...sampleIds].filter((sampleId) => (
+        resolveEffectiveExecutionControl(target.executionControls, sampleId)
+          .mockInterception.mockInterceptionMode === 'pre-tool-call'
+      )),
+    );
+    if (behaviorMockSampleIds.size !== controlledMockSampleIds.size
+        || [...behaviorMockSampleIds].some((sampleId) => !controlledMockSampleIds.has(sampleId))) {
+      fail({
+        code: 'CLI_INPUT_INVALID',
+        fieldPath: `${controlPrefix}.mockInterception`,
+        message: 'Mock behavior 与按 sample 生效的 interception control 必须覆盖同一组 sample。',
+      });
     }
   }
   for (const template of input.evaluatorTemplates) {
@@ -510,15 +545,6 @@ function behaviorConfig(
     behavior: {
       artifact: descriptorSnapshot(behavior.artifact),
       ...(behavior.mcpConfig === undefined ? {} : { mcpConfig: descriptorSnapshot(behavior.mcpConfig) }),
-      ...(behavior.mocks === undefined ? {} : {
-        mocks: behavior.mocks.map((mock) => ({
-          sampleIds: [...mock.sampleIds].sort(compareStrings),
-          rule: descriptorSnapshot(mock.rule),
-          strict: mock.strict,
-          // Payload order is the observable return-sequence contract.
-          payloads: mock.payloads.map(descriptorSnapshot),
-        })),
-      }),
       ...(behavior.allowedSkills === undefined ? {} : {
         allowedSkills: [...behavior.allowedSkills].sort(compareStrings),
       }),
@@ -564,9 +590,9 @@ function executionRequirementsForTarget(
       control.workspace.workspaceMode === 'copy-on-write-overlay'
     )) ? 'copy-on-write-overlay' : 'not-required',
     mcp: behavior.mcpConfig === undefined ? 'not-required' : 'native-config',
-    mockInterception: (behavior.mocks?.length ?? 0) === 0
-      ? 'not-required'
-      : 'pre-tool-call',
+    mockInterception: effectiveControls.some((control) => (
+      control.mockInterception.mockInterceptionMode === 'pre-tool-call'
+    )) ? 'pre-tool-call' : 'not-required',
     toolPolicy: effectiveControls.some((control) => (
       control.tools.toolPolicyKind === 'allow-list'
     )) ? 'allow-list' : 'runtime-default',
@@ -925,6 +951,14 @@ function resourceLeaseRequirementsForTarget(
   ].flatMap((workspace) => workspace.workspaceMode === 'copy-on-write-overlay'
     ? [workspace.descriptor]
     : []);
+  const mockPlans = [
+    controls.defaults.mockInterception,
+    ...controls.sampleOverrides.flatMap((override) => (
+      override.mockInterception === undefined ? [] : [override.mockInterception]
+    )),
+  ].flatMap((control) => control.mockInterceptionMode === 'pre-tool-call'
+    ? [control.descriptor]
+    : []);
   const requirements = [
     {
       resourceId: behavior.artifact.resourceId,
@@ -935,6 +969,11 @@ function resourceLeaseRequirementsForTarget(
       resourceId: workspace.resourceId,
       resourceRole: 'workspace' as const,
       leaseMode: 'copy-on-write-overlay' as const,
+    })),
+    ...mockPlans.map((plan) => ({
+      resourceId: plan.resourceId,
+      resourceRole: 'mock-plan' as const,
+      leaseMode: 'immutable-snapshot' as const,
     })),
     ...(behavior.mcpConfig === undefined ? [] : [{
       resourceId: behavior.mcpConfig.resourceId,

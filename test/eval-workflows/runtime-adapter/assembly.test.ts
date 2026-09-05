@@ -799,6 +799,7 @@ describe('OMK Evaluation Runtime binding assembly', () => {
       'artifact:immutable-snapshot',
       'mcp-config:immutable-snapshot',
       'mock-payload:immutable-snapshot',
+      'mock-plan:immutable-snapshot',
       'mock-rule:immutable-snapshot',
       'workspace:copy-on-write-overlay',
     ]);

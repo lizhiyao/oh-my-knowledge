@@ -13,6 +13,7 @@ import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';
 import type { Mock } from '../../executors/contracts/mock.js';
 import type { Sample } from '../inputs/contracts/sample.js';
+import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../eval-runtime/mock-interception.js';
 import {
   RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION,
   RESOLVED_HOST_RESOURCES_SCHEMA_VERSION,
@@ -72,6 +73,11 @@ type ExecutionMcpDescriptor = Extract<
   { mcpMode: 'native-config' }
 >['descriptor'];
 
+type ExecutionMockDescriptor = Extract<
+  TargetExecutionControls['defaults']['mockInterception'],
+  { mockInterceptionMode: 'pre-tool-call' }
+>['descriptor'];
+
 function fail(input: ConstructorParameters<typeof CliEvaluationInputError>[0]): never {
   throw new CliEvaluationInputError(input);
 }
@@ -116,6 +122,18 @@ function executionMcpDescriptor(
     message: 'Executor MCP config 不得使用 Gold classification。',
   });
   return descriptor as ExecutionMcpDescriptor;
+}
+
+function executionMockDescriptor(
+  descriptor: ResolvedResourceDescriptor,
+): ExecutionMockDescriptor {
+  if (descriptor.classification !== 'secret'
+      || descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE) fail({
+    code: 'CLI_INPUT_RESOLUTION_FAILED',
+    fieldPath: 'executionControls.mockInterception.descriptor',
+    message: 'Executor mock interception plan 必须使用 secret 专用 media type。',
+  });
+  return descriptor as ExecutionMockDescriptor;
 }
 
 function mediaType(path: string): string {
@@ -483,11 +501,16 @@ async function resolvedMocks(
   samples: readonly Readonly<Sample>[],
   samplesBaseDir: string,
   materializationRoot: string,
-): Promise<readonly ResolvedMockBinding[]> {
+): Promise<Readonly<{
+  bindings: readonly ResolvedMockBinding[];
+  plansBySampleId: ReadonlyMap<string, ResolvedResourceDescriptor>;
+}>> {
   const bindings: ResolvedMockBinding[] = [];
+  const plansBySampleId = new Map<string, ResolvedResourceDescriptor>();
   for (const sample of samples) {
+    const sampleBindings: ResolvedMockBinding[] = [];
     for (const mock of sample.mocks ?? []) {
-      bindings.push({
+      const binding: ResolvedMockBinding = {
         sampleIds: [sample.sample_id],
         rule: await mockRuleDescriptor(resources, mock, materializationRoot),
         strict: sample.mocksStrict ?? true,
@@ -497,10 +520,30 @@ async function resolvedMocks(
           samplesBaseDir,
           materializationRoot,
         ),
-      });
+      };
+      bindings.push(binding);
+      sampleBindings.push(binding);
+    }
+    if (sampleBindings.length > 0) {
+      const bytes = Buffer.from(canonicalizeJson({
+        schemaVersion: 'omk.mock-interception-plan/v1',
+        strict: sampleBindings[0]!.strict,
+        rules: sampleBindings.map((binding, index) => ({
+          mockId: `mock-${index + 1}`,
+          rule: binding.rule,
+          payloads: binding.payloads,
+        })),
+      }));
+      const path = await materializeBytes(materializationRoot, bytes, '.json');
+      plansBySampleId.set(sample.sample_id, await fileResource(resources, {
+        resourceKind: 'mock-plan',
+        path,
+        classification: 'secret',
+        mediaType: MOCK_INTERCEPTION_PLAN_MEDIA_TYPE,
+      }));
     }
   }
-  return bindings;
+  return Object.freeze({ bindings, plansBySampleId });
 }
 
 async function resolvedExecutionControls(
@@ -509,6 +552,7 @@ async function resolvedExecutionControls(
   projectRoot: string,
   targetWorkspaceLocator: string | undefined,
   mcpConfig: ResolvedResourceDescriptor | undefined,
+  mockPlansBySampleId: ReadonlyMap<string, ResolvedResourceDescriptor>,
 ): Promise<TargetExecutionControls> {
   const defaultWorkspace = targetWorkspaceLocator === undefined
     ? undefined
@@ -533,7 +577,8 @@ async function resolvedExecutionControls(
           toolPolicyKind: 'allow-list' as const,
           allowedTools: [...sample.allowedTools].sort(),
         };
-    if (workspace === undefined && tools === undefined) return undefined;
+    const mockPlan = mockPlansBySampleId.get(sample.sample_id);
+    if (workspace === undefined && tools === undefined && mockPlan === undefined) return undefined;
     return {
       sampleId: sample.sample_id,
       ...(workspace === undefined ? {} : {
@@ -543,6 +588,12 @@ async function resolvedExecutionControls(
         },
       }),
       ...(tools === undefined ? {} : { tools }),
+      ...(mockPlan === undefined ? {} : {
+        mockInterception: {
+          mockInterceptionMode: 'pre-tool-call' as const,
+          descriptor: executionMockDescriptor(mockPlan),
+        },
+      }),
     };
   }))).filter((override) => override !== undefined);
   return {
@@ -557,6 +608,7 @@ async function resolvedExecutionControls(
       mcp: mcpConfig === undefined
         ? { mcpMode: 'not-required' }
         : { mcpMode: 'native-config', descriptor: executionMcpDescriptor(mcpConfig) },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     },
     sampleOverrides,
   };
@@ -875,12 +927,13 @@ export async function resolveNodeCliEvaluationRequest(
     request.values.targetRuntime.executorId,
     hostExecutorImplementationIds,
   );
-  const mocks = await resolvedMocks(
+  const resolvedMockControls = await resolvedMocks(
     resources,
     resolvedSamples,
     loaded.baseDir,
     options.materializationRoot,
   );
+  const mocks = resolvedMockControls.bindings;
   const mcpConfig = await optionalFileResource(
     resources,
     options.projectRoot,
@@ -912,6 +965,7 @@ export async function resolveNodeCliEvaluationRequest(
       options.projectRoot,
       variant.workspaceLocator,
       mcpConfig,
+      resolvedMockControls.plansBySampleId,
     );
     return {
       targetId: variant.targetId,

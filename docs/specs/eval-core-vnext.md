@@ -101,7 +101,7 @@ A Definition is immutable, serializable intent. It contains no function, class i
 
 ```ts
 interface EvaluationDefinition {
-  schemaVersion: 'omk.evaluation-definition/v4';
+  schemaVersion: 'omk.evaluation-definition/v5';
   dataset: EvaluationDataset;
   targets: readonly TargetDefinition[];
   evaluators: readonly EvaluatorDefinition[];
@@ -176,6 +176,8 @@ interface TargetDefinition {
       sampleId: string;
       workspace?: WorkspaceExecutionControl;
       tools?: ToolExecutionControl;
+      mcp?: McpExecutionControl;
+      mockInterception?: MockInterceptionExecutionControl;
     }>;
   };
   config?: JsonValue;
@@ -1100,15 +1102,17 @@ This design follows resource-quota admission practice rather than billing dashbo
 
 ## 23. Sample-scoped execution controls
 
-[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) makes workspace and tool authority an explicit, sample-scoped Core contract. [#667](https://github.com/lizhiyao/oh-my-knowledge/issues/667) extends that same authority model to native MCP configuration. The MCP addition advances EvaluationDefinition to v4, ExecutionPlan to v3, RunPlan to v4, and the execution-coordinate derivation to v2. This is a `BREAKING-SCHEMA` and `BREAKING-COMPARABILITY` cutover with no legacy reader, detection, or migration path; persisted definitions and plans must be regenerated. A Target declares canonical `executionControls.defaults` plus sparse `sampleOverrides`. Each override replaces the complete workspace, tools, or MCP field; inheritance is field-by-field and never unions tool sets. `allow-list` with an empty list therefore means deny all tools, while `runtime-default` and MCP `not-required` remain distinct policies.
+[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) makes workspace and tool authority an explicit, sample-scoped Core contract. [#667](https://github.com/lizhiyao/oh-my-knowledge/issues/667) extends that model to native MCP configuration and pre-tool-call mock interception. The mock-control addition advances EvaluationDefinition to v5, ExecutionPlan to v4, RunPlan to v5, and the execution-coordinate derivation to v3. This is a `BREAKING-SCHEMA` and `BREAKING-COMPARABILITY` cutover with no legacy reader, detection, or migration path; persisted definitions and plans must be regenerated. A Target declares canonical `executionControls.defaults` plus sparse `sampleOverrides`. Each override replaces the complete workspace, tools, MCP, or mock-interception field; inheritance is field-by-field and never unions tool sets or mock plans. `allow-list` with an empty list therefore means deny all tools, while `runtime-default`, MCP `not-required`, and mock `not-required` remain distinct policies.
 
 A workspace control is either `not-required` or `copy-on-write-overlay` with a content-addressed descriptor containing only `resourceId`, digest, media type, classification, and size. Locator, credentials, bytes, and `gold` classification are forbidden in Core JSON. Host-owned resource leases bind the descriptor to the locator and verify it before use. `TargetDefinition.executionRequirements` is only the aggregate capability request across all effective sample controls; it does not grant a Trial the aggregate authority.
 
 An MCP control is either `not-required` or `native-config` with the same locator-free content descriptor. The Runtime façade further requires native config to be canonical JSON classified as `secret`; it validates digest, media type, classification, and byte size before exposing the value to the selected Executor Trial. MCP bytes, credentials, file paths, and provider locators never enter Core artifacts. A host-owned provider lease is opened once per Trial, reused for its retries, and closed exactly once after the Executor session and before the workspace lease.
 
-The Compiler resolves one canonical `EffectiveExecutionControl` for every `(targetId, sampleId)` coordinate and passes exactly that frozen value to the Executor Trial. The execution-coordinate digest, Trial identity, native provenance, and v2 cache key bind that effective control. Changing sample A's workspace, tools, or MCP descriptor invalidates only sample A coordinates and cache entries; sample B identity remains stable. Gold, expected values, evaluation context, annotations, other samples' resource locators, and other samples' grants never enter the Trial projection.
+A mock-interception control is either `not-required` or `pre-tool-call` with one locator-free descriptor for a versioned, digest-bound aggregate plan. The plan identity covers strictness, first-match rule order, and each rule's ordered return payload descriptors. Core treats the plan as opaque and never parses provider-specific matching syntax. Runtime opens a fresh host-owned lease for every attempt, exposes only a validated interception port to that attempt, and closes it after the Target call settles. Retries therefore reset return-sequence and hit state. Rule bytes, payload bytes, locators, and provider errors never enter Core artifacts; a backend that cannot intercept before the real tool call must fail closed rather than pass through.
 
-Runtime preparation separately binds the complete canonical control table through `RuntimeBinding.executionControlsDigest`; host-owned providers bind the selected workspace and MCP descriptors to concrete trial-private leases. This prevents a host from pairing a validated Runtime with a different control table while preserving coordinate-local cache identity. An adapter must enforce the exact Trial workspace, exact tool policy, and exact native MCP config, expose only the selected leases, or fail closed during preparation when its backend cannot represent that policy. It may not approximate sample controls with a Target-wide union, common subset, process working directory, or best-effort filtering.
+The Compiler resolves one canonical `EffectiveExecutionControl` for every `(targetId, sampleId)` coordinate and passes exactly that frozen value to the Executor Trial. The execution-coordinate digest, Trial identity, native provenance, and v2 cache key bind that effective control. Changing sample A's workspace, tools, MCP descriptor, or mock plan invalidates only sample A coordinates and cache entries; sample B identity remains stable. Gold, expected values, evaluation context, annotations, other samples' resource locators, and other samples' grants never enter the Trial projection.
+
+Runtime preparation separately binds the complete canonical control table through `RuntimeBinding.executionControlsDigest`; host-owned providers bind selected workspace and MCP descriptors to trial-private leases and the selected mock descriptor to an attempt-private lease. This prevents a host from pairing a validated Runtime with a different control table while preserving coordinate-local cache identity. An adapter must enforce the exact Trial workspace, tool policy, native MCP config, and pre-tool-call interceptor, expose only the selected leases, or fail closed when its backend cannot represent that policy. It may not approximate sample controls with a Target-wide union, common subset, process working directory, or best-effort filtering.
 
 ## 24. ADR: publish staged execution through prepared capabilities
 

@@ -27,6 +27,17 @@ const mcpA = {
   },
 };
 
+const mockPlanA = {
+  mockInterceptionMode: 'pre-tool-call' as const,
+  descriptor: {
+    resourceId: 'mock-plan-a',
+    digest: `sha256:${'c'.repeat(64)}` as const,
+    mediaType: 'application/vnd.omk.mock-interception-plan+json',
+    classification: 'secret' as const,
+    size: 96,
+  },
+};
+
 describe('sample-scoped execution controls', () => {
   it('normalizes unordered allow-lists and overrides into one canonical form', () => {
     expect(normalizeTargetExecutionControls({
@@ -34,6 +45,7 @@ describe('sample-scoped execution controls', () => {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'allow-list', allowedTools: ['write', 'read'] },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [
         {
@@ -47,6 +59,7 @@ describe('sample-scoped execution controls', () => {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'allow-list', allowedTools: ['read', 'write'] },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [
         { sampleId: 'sample-a', workspace: workspaceA },
@@ -64,6 +77,7 @@ describe('sample-scoped execution controls', () => {
         workspace: { workspaceMode: 'not-required' as const },
         tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['read', 'write'] },
         mcp: { mcpMode: 'not-required' as const },
+        mockInterception: { mockInterceptionMode: 'not-required' as const },
       },
       sampleOverrides: [{
         sampleId: 'sample-a',
@@ -76,6 +90,7 @@ describe('sample-scoped execution controls', () => {
       workspace: workspaceA,
       tools: { toolPolicyKind: 'allow-list', allowedTools: ['shell'] },
       mcp: { mcpMode: 'not-required' },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     });
     expect(resolveEffectiveExecutionControl(controls, 'sample-b')).toEqual(controls.defaults);
   });
@@ -86,6 +101,7 @@ describe('sample-scoped execution controls', () => {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'allow-list', allowedTools: [] },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [],
     }).success).toBe(true);
@@ -97,6 +113,7 @@ describe('sample-scoped execution controls', () => {
         workspace: { workspaceMode: 'not-required' as const },
         tools: { toolPolicyKind: 'runtime-default' as const },
         mcp: mcpA,
+        mockInterception: { mockInterceptionMode: 'not-required' as const },
       },
       sampleOverrides: [{
         sampleId: 'sample-a',
@@ -109,12 +126,33 @@ describe('sample-scoped execution controls', () => {
     expect(resolveEffectiveExecutionControl(controls, 'sample-b').mcp).toEqual(mcpA);
   });
 
+  it('replaces a mock plan as one sample-scoped field without merging descriptors', () => {
+    const controls = {
+      defaults: {
+        workspace: { workspaceMode: 'not-required' as const },
+        tools: { toolPolicyKind: 'runtime-default' as const },
+        mcp: { mcpMode: 'not-required' as const },
+        mockInterception: mockPlanA,
+      },
+      sampleOverrides: [{
+        sampleId: 'sample-a',
+        mockInterception: { mockInterceptionMode: 'not-required' as const },
+      }],
+    };
+
+    expect(resolveEffectiveExecutionControl(controls, 'sample-a').mockInterception)
+      .toEqual({ mockInterceptionMode: 'not-required' });
+    expect(resolveEffectiveExecutionControl(controls, 'sample-b').mockInterception)
+      .toEqual(mockPlanA);
+  });
+
   it('rejects empty overrides, locators, and Gold workspace descriptors', () => {
     const base = {
       defaults: {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'runtime-default' },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [],
     };
