@@ -14,6 +14,7 @@ export type {
   Clock,
   CohortFilter,
   Comparison,
+  ComparisonFamilyMember,
   Dataset,
   Decision,
   EvaluateInput,

@@ -101,6 +101,32 @@ const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
 
+const lengthEvaluator = {
+  evaluatorKind: 'custom',
+  evaluatorId: 'clean-room-length',
+  instrumentId: 'clean-room-length-v1',
+  metric: {
+    metricId: 'output-length',
+    valueType: 'numeric',
+    direction: 'lower-is-better',
+    missingPolicyId: 'exclude/v1',
+  },
+  bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+  implementation: {
+    implementationId: 'clean-room.length/v1',
+    version: '1.0.0',
+    schemas: {
+      bindings: z.object({ actual: z.string() }).strict(),
+      value: z.number(),
+      fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
+    },
+    fingerprintFacets: { revision: 'clean-room-one' },
+    evaluate({ bindings }) {
+      return { resultKind: 'score', value: bindings.actual.length };
+    },
+  },
+};
+
 const customEvaluation = await evaluation({
   dataset: {
     datasetId: 'clean-room-analysis-presets',
@@ -118,37 +144,13 @@ const customEvaluation = await evaluation({
       ...(index === 0 ? { analysis: { memberships: [{ cohortId: 'smoke' }] } } : {}),
     })),
   },
-  evaluators: [{
-    evaluatorKind: 'custom',
-    evaluatorId: 'clean-room-length',
-    instrumentId: 'clean-room-length-v1',
-    metric: {
-      metricId: 'output-length',
-      valueType: 'numeric',
-      direction: 'lower-is-better',
-      missingPolicyId: 'exclude/v1',
-    },
-    bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
-    implementation: {
-      implementationId: 'clean-room.length/v1',
-      version: '1.0.0',
-      schemas: {
-        bindings: z.object({ actual: z.string() }).strict(),
-        value: z.number(),
-        fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
-      },
-      fingerprintFacets: { revision: 'clean-room-one' },
-      evaluate({ bindings }) {
-        return { resultKind: 'score', value: bindings.actual.length };
-      },
-    },
-  }],
+  evaluators: [{ evaluatorKind: 'exact-match' }, lengthEvaluator],
   comparisons: [{
     comparisonId: 'baseline-vs-prompt-v2',
     comparisonKind: 'paired',
     controlVariantId: 'baseline',
     treatmentVariantIds: ['prompt-v2'],
-    metricIds: ['output-length'],
+    metricIds: ['correct', 'output-length'],
   }],
   analysis: { analyses: [{
     analysisId: 'baseline-mean-length',
@@ -169,15 +171,32 @@ const customEvaluation = await evaluation({
     comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
     metricId: 'output-length',
     confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 },
+  }, {
+    analysisId: 'paired-release-family',
+    analysisKind: 'comparison-family', statistic: 'mean-difference',
+    members: [{
+      analysisId: 'paired-correct-member',
+      comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
+      metricId: 'correct',
+    }, {
+      analysisId: 'paired-length-member',
+      comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
+      metricId: 'output-length',
+    }],
+    confidence: {
+      method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 100,
+    },
   }] },
   decision: undefined,
   runId: 'clean-room-custom-evaluator',
 });
 assert.equal(customEvaluation.status, 'completed');
-assert.equal(customEvaluation.artifacts.analysis.records.length, 4);
+assert.equal(customEvaluation.artifacts.analysis.records.length, 7);
 assert.equal(customEvaluation.analysisResults['baseline-mean-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['prompt-v2-mean-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['prompt-v2-smoke-p50-length'].value, 8);
+assert.equal(customEvaluation.analysisResults['paired-correct-member'].value.confidenceLevel, 0.975);
+assert.equal(customEvaluation.analysisResults['paired-release-family'].value.familySize, 2);
 assert.ok(customEvaluation.artifacts.evaluation.records.every((record) => (
   record.evaluationStatus === 'completed'
   && record.observations[0]?.observationStatus === 'observed'
@@ -192,13 +211,30 @@ const independent = await evaluation({
       expected: 'expected',
     })),
   },
+  evaluators: [{ evaluatorKind: 'exact-match' }, lengthEvaluator],
   comparisons: [{
     comparisonId: 'baseline-vs-prompt-v2',
     comparisonKind: 'independent',
     controlVariantId: 'baseline',
     treatmentVariantIds: ['prompt-v2'],
-    metricIds: ['correct'],
+    metricIds: ['correct', 'output-length'],
   }],
+  analysis: { analyses: [{
+    analysisId: 'independent-release-family',
+    analysisKind: 'comparison-family', statistic: 'mean-difference',
+    members: [{
+      analysisId: 'independent-correct-member',
+      comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
+      metricId: 'correct',
+    }, {
+      analysisId: 'independent-length-member',
+      comparisonId: 'baseline-vs-prompt-v2', treatmentVariantId: 'prompt-v2',
+      metricId: 'output-length',
+    }],
+    confidence: {
+      method: 'bonferroni-percentile-bootstrap', level: 0.95, resamples: 100,
+    },
+  }] },
   decision: undefined,
   experiment: {
     seed: 'clean-room-independent-seed',
@@ -221,6 +257,11 @@ assert.equal(
   4,
 );
 assert.equal(independent.artifacts.analysis.records[0].analysisStatus, 'completed');
+assert.equal(
+  independent.analysisResults['independent-correct-member'].implementation.implementationId,
+  'bootstrap.unpaired-difference-percentile/v1',
+);
+assert.equal(independent.analysisResults['independent-release-family'].value.familySize, 2);
 
 const clustered = await evaluate({
   dataset: {

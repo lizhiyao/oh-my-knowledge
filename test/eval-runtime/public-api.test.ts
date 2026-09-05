@@ -27,8 +27,26 @@ const incompleteQuantile: AnalysisRequest = {
 };
 // @ts-expect-error an explicit cohort filter must select or exclude at least one cohort.
 const emptyCohortFilter: CohortFilter = {};
+const incompleteFamily: AnalysisRequest = {
+  analysisId: 'release-family',
+  analysisKind: 'comparison-family',
+  statistic: 'mean-difference',
+  // @ts-expect-error simultaneous interval families require at least two declared members.
+  members: [{
+    analysisId: 'only-member',
+    comparisonId: 'baseline-vs-candidate',
+    treatmentVariantId: 'candidate',
+    metricId: 'correct',
+  }],
+  confidence: {
+    method: 'bonferroni-percentile-bootstrap',
+    level: 0.95,
+    resamples: 1_000,
+  },
+};
 void incompleteQuantile;
 void emptyCohortFilter;
+void incompleteFamily;
 
 const publicCustomEvaluator = {
   evaluatorKind: 'custom',
@@ -78,6 +96,7 @@ const PUBLIC_API = {
       'Clock',
       'CohortFilter',
       'Comparison',
+      'ComparisonFamilyMember',
       'CustomEvaluator',
       'CustomEvaluatorBinding',
       'CustomEvaluatorContent',

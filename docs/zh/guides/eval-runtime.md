@@ -176,6 +176,37 @@ experiment: {
 
 OMK 会在执行前确定性地为每个 sample 封存唯一 Variant。重复 trial 沿用该分组；改变 seed、weight、stratum 或 minimum 都会产生新的 randomization identity。
 
+多个预注册 contrast 属于同一个推断 family 时，应把它们共同声明，不能分别运行多个 nominal 95% 区间：
+
+```ts
+analysis: { analyses: [{
+  analysisId: 'release-family',
+  analysisKind: 'comparison-family',
+  statistic: 'mean-difference',
+  members: [
+    {
+      analysisId: 'v2-correctness',
+      comparisonId: 'prompt-v1-vs-v2',
+      treatmentVariantId: 'prompt-v2',
+      metricId: 'correctness',
+    },
+    {
+      analysisId: 'v2-safety',
+      comparisonId: 'prompt-v1-vs-v2',
+      treatmentVariantId: 'prompt-v2',
+      metricId: 'safety',
+    },
+  ],
+  confidence: {
+    method: 'bonferroni-percentile-bootstrap',
+    level: 0.95,
+    resamples: 10_000,
+  },
+}] },
+```
+
+上例两个 member 使用 97.5% 边际区间；当边际区间过程达到其标称覆盖率时，目标是让已声明 family 的同时覆盖率至少为 95%。Percentile Bootstrap 仍是近似方法，因此这项校正不构成无条件的有限样本覆盖保证。Family record 位于 `result.analysisResults['release-family']`，每个 member 仍可通过自己的 `analysisId` 定位。成员会在执行前固定，preset 绝不会从 Bootstrap 区间伪造 p-value。Singleton `decision` 可以选择一个已调整 member，但 family table 本身没有隐式的 all／any 发布 verdict。
+
 `exact-match` 比较 actual output 与 sample `expected` 的 canonical JSON 值，不是字符串字节逐一比较。
 
 `onEvent` 是可选的 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
