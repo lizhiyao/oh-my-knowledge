@@ -336,6 +336,82 @@ assert.ok(customEvaluation.artifacts.evaluation.records.every((record) => (
   && record.observations[0]?.observationStatus === 'observed'
 )));
 
+const retrievalInvocations = [];
+const retrievalExecutor = {
+  executorId: 'clean-room.retriever/v1',
+  version: '1.0.0',
+  schemas: {
+    input: z.object({ query: z.string() }).strict(),
+    config: z.undefined(),
+    output: z.object({ documents: z.array(z.string()) }).strict(),
+  },
+  outputClassification: 'public',
+  capabilities: {
+    determinism: 'deterministic',
+    cancellation: 'cooperative',
+    concurrency: { safety: 'parallel-safe' },
+    seedControl: 'unsupported',
+    telemetry: { trace: 'unsupported', usage: 'optional' },
+  },
+  fingerprintFacets: { revision: 'clean-room-retrieval-one' },
+  async execute(invocation) {
+    retrievalInvocations.push(structuredClone(invocation));
+    return {
+      output: {
+        documents: invocation.input.query === 'one' ? ['doc-x', 'doc-a'] : ['doc-b'],
+      },
+    };
+  },
+};
+const retrievalEvaluation = await evaluate({
+  dataset: {
+    datasetId: 'clean-room-retrieval',
+    samples: [{
+      sampleId: 'retrieval-one',
+      input: { query: 'one' },
+      expected: { relevantDocumentIds: ['doc-a'] },
+    }, {
+      sampleId: 'retrieval-two',
+      input: { query: 'two' },
+      expected: { relevantDocumentIds: ['doc-b'] },
+    }],
+  },
+  variants: [{
+    variantId: 'retriever-v1',
+    artifact: {
+      name: 'retriever-v1', kind: 'workflow', source: 'inline', content: 'Retrieve documents.',
+    },
+    execution: { executor: retrievalExecutor },
+  }],
+  evaluators: [{
+    evaluatorKind: 'retrieval',
+    evaluatorId: 'retrieval-quality',
+    cutoff: 3,
+    ranking: { source: 'output', pointer: '/documents' },
+    relevantDocumentIdsPointer: '/relevantDocumentIds',
+    metricIds: {
+      recallAtK: 'recall-at-3',
+      precisionAtK: 'precision-at-3',
+      reciprocalRankAtK: 'reciprocal-rank-at-3',
+      ndcgAtK: 'ndcg-at-3',
+    },
+  }],
+  comparisons: [],
+  analyses: [{
+    analysisId: 'mean-reciprocal-rank-at-3',
+    analysisKind: 'summary',
+    statistic: 'mean',
+    variantId: 'retriever-v1',
+    metricId: 'reciprocal-rank-at-3',
+  }],
+  experiment: { seed: 'clean-room-retrieval', sampling: { samplingKind: 'solo' } },
+  policy: {},
+}, { runId: 'clean-room-retrieval' });
+assert.equal(retrievalEvaluation.status, 'completed');
+assert.equal(retrievalEvaluation.definition.metrics.length, 4);
+assert.equal(retrievalEvaluation.analysisResults['mean-reciprocal-rank-at-3'].value, 0.75);
+assert.equal(JSON.stringify(retrievalInvocations).includes('relevantDocumentIds'), false);
+
 const independent = await evaluation({
   dataset: {
     datasetId: 'clean-room-independent',

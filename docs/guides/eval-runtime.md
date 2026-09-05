@@ -260,6 +260,53 @@ Every component must be a boolean Metric or a bounded numeric Metric with a mono
 
 `runId`, `signal`, `onEvent`, `clock`, report annotations／summaries, and `eventBufferCapacity` belong to the optional second `EvaluationRunOptions` argument; they are not measurement declarations. `onEvent` is a best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
 
+## Retrieval evaluation
+
+Use the built-in `RetrievalEvaluator` when an Executor returns ranked document IDs and each sample declares known relevant IDs. No Core Definition or custom callback is needed:
+
+```ts
+import { evaluate, type RetrievalEvaluator } from 'oh-my-knowledge';
+
+const retrieval: RetrievalEvaluator = {
+  evaluatorKind: 'retrieval',
+  evaluatorId: 'retrieval-quality',
+  cutoff: 10,
+  ranking: { source: 'output', pointer: '/documents' },
+  relevantDocumentIdsPointer: '/relevantDocumentIds',
+  metricIds: {
+    recallAtK: 'recall-at-10',
+    precisionAtK: 'precision-at-10',
+    reciprocalRankAtK: 'reciprocal-rank-at-10',
+    ndcgAtK: 'ndcg-at-10',
+  },
+};
+
+const result = await evaluate({
+  dataset: {
+    datasetId: 'search-regression',
+    samples: [{
+      sampleId: 'refund-policy',
+      input: { query: 'How do refunds work?' },
+      expected: { relevantDocumentIds: ['refund-policy', 'billing-faq'] },
+    }],
+  },
+  variants: [retrieverVariant],
+  evaluators: [retrieval],
+  comparisons: [],
+  analyses: [{
+    analysisId: 'mean-reciprocal-rank-at-10',
+    analysisKind: 'summary',
+    statistic: 'mean',
+    variantId: retrieverVariant.variantId,
+    metricId: 'reciprocal-rank-at-10',
+  }],
+  experiment: { seed: 'search-v1', sampling: { samplingKind: 'solo' } },
+  policy: {},
+});
+```
+
+The ranking must be an ordered array of unique, non-empty string IDs. It can come from `output` or `trace`; relevant IDs always come from `expected`, so they are never passed to the Executor. The preset truncates to `cutoff`, uses `hits / known relevant` for Recall, `hits / cutoff` for Precision, the first relevant rank for Reciprocal Rank, and binary log2-discounted nDCG. An empty returned ranking is a valid zero score. Duplicate or malformed IDs and an empty relevant set are invalid evidence. A mean summary of Reciprocal Rank is MRR; do not label each sample observation as MRR.
+
 ## Production policy
 
 Execution and evaluation are separate runtime stages. Configure their concurrency, timeout, and retry independently; OMK seals every default before the first Target call and Core remains the only scheduler:
