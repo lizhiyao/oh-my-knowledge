@@ -312,7 +312,7 @@ Using a case both to derive a change and to validate it demonstrates coverage of
 | Sample drafts | Support case authoring from confirmed gaps; knowledge does not automatically become a formal sample or enter an independent validation set |
 | Report, Decision, and governance | Reference existing reports and adoption workflows without duplicating scoring, creating verdicts, or bypassing publication authorization |
 
-Mining and extraction sit at the collaboration boundary of observation and subsequent authoring/governance. They must not introduce log reading, model calls, or knowledge storage dependencies into `eval-core`. Concrete module ownership follows the case walkthroughs.
+Mining and extraction sit at the collaboration boundary of observation and subsequent authoring/governance. They must not introduce log reading, model calls, or knowledge storage dependencies into `eval-core`. Section 10 defines concrete module ownership and dependency directions.
 
 This design performs no field renaming, data migration, or Schema release. Implementation must define storage and version contracts first; persistence or public identity changes receive separate review. Existing observations must not silently acquire the semantics of the new model.
 
@@ -361,7 +361,7 @@ The first product slice closes “real work log → candidate knowledge → insp
 
 ## 9. Minimal contracts for the first implementation
 
-This section resolves section 7 decisions as acceptance criteria for supporting capabilities when implemented, without requiring all infrastructure before validating log-mining value. Section 3.1 continues to describe domain content; these read/write boundaries do not add storage metadata to statements. Start with a local-file adapter, without a new database dependency, CLI/MCP release, public Schema, or migration of existing observations.
+This section resolves section 7 decisions as acceptance criteria for supporting capabilities when implemented, without requiring all infrastructure before validating log-mining value. Section 3.1 continues to describe domain content; these read/write boundaries do not add storage metadata to statements. Start with a local-file adapter, without a new database dependency or migration of existing observations. This section does not specify CLI/MCP delivery or a public Schema; section 10 defines the initial product entry and admission boundaries.
 
 ### 9.1 Source resolution
 
@@ -425,7 +425,7 @@ Command digests use deterministic JSON: sorted object keys, preserved array orde
 
 Prefer existing `withFileLock` and `writeJsonFileAtomic`, while testing this transaction's concurrency and interruption paths. Existing atomic writes use rename to prevent partial JSON reads, without file/directory durability synchronization. V1 promises atomic visibility across process interruption, not guaranteed retention of the latest commit after sudden power loss. Lock timeout, unverifiable orphan ownership, or storage failure must fail explicitly rather than unconditionally stealing a lock. The existing helper includes stale-lock recovery; verify recovery races and ownership checks against this contract before reuse, adding a conservative mode if needed. Its existence does not establish concurrency acceptance.
 
-The initial adapter limits each UTF-8 serialized envelope to 16 MiB. Exceeding the limit returns `capacity_exceeded`, never truncated history, references, or receipts. This is an adapter limit, not a semantic knowledge constraint. History compaction, storage replacement, and retention changes require explicit migration. V1 supplies no deletion or cross-item merge transaction.
+The initial adapter limits each UTF-8 serialized envelope to 16 MiB. Exceeding the limit returns `capacity_exceeded`, never truncated history, references, or receipts. This is an adapter limit, not a semantic knowledge constraint. History compaction, storage replacement, and retention changes require explicit migration. V1 supplies no knowledge-item deletion or cross-item merge transaction. Source-snapshot deletion has its own availability contract (section 10.5).
 
 ### 9.4 Internal interface shapes
 
@@ -536,7 +536,102 @@ type KnowledgeWriteResult =
 | Capacity and interruption | Reject oversized/corrupt data without truncation; temporary files and lock failures cannot masquerade as commits |
 | Host boundary | Pure validation/projection has no fs, network, CLI, or model dependencies; tests use explicit temporary roots |
 
-Prioritize extracting candidate knowledge from one real work log and letting the user inspect each source. Implement the necessary source locators, candidate generation, and structural checks first; examine usefulness, scope completeness, and source fidelity. Introduce review projection and file transactions as usage requires, rather than making complete infrastructure a prerequisite. Specific CLI/Studio entry points, entity search, carrier changes, and evaluation integration remain subsequent decisions. The appendices supply seed examples; supporting implementations must still satisfy the authority, concurrency, and failure acceptance criteria above.
+Prioritize extracting candidate knowledge from one real work log and letting the user inspect each source. Implement the necessary source locators, candidate generation, and structural checks first; examine usefulness, scope completeness, and source fidelity. Introduce review projection and file transactions as usage requires, rather than making complete infrastructure a prerequisite. Section 10 defines initial CLI responsibilities; entity search, carrier changes, and evaluation integration follow actual needs. The appendices supply seed examples; supporting implementations must still satisfy the authority, concurrency, and failure acceptance criteria above.
+
+## 10. Architecture decisions for knowledge extraction from work logs
+
+The first product slice is “select logs → identify entity mentions → extract candidates → inspect sources → human handling”. This section settles ownership, dependencies, and admission boundaries. It describes implementation design, not delivered modules or commands. Section 3 owns knowledge content and section 9 owns supporting contracts; this section does not introduce a parallel persisted candidate model.
+
+### 10.1 Domain ownership and dependencies
+
+| Owner | Responsibilities | Exclusions |
+|---|---|---|
+| `observability/trace` and source adapters | Parse platform records; preserve source identity, order, roles, original locations, and coverage limits | Knowledge truth judgments or knowledge identity allocation |
+| Evidence ingestion in `observability` | Register explicitly selected records or existing archives as immutable evidence bindings; bounded resolution | Reading additional model-supplied paths or silently following current source content |
+| New `knowledge` domain | Entity and knowledge contracts, revision admission, reference constraints, review and lifecycle rules | Codex protocol parsing, log reads, provider calls, page rendering |
+| `observability/knowledge-extraction` application flow | Assemble evidence windows, invoke an injected extraction port, record extraction runs, submit output to knowledge admission | A second knowledge model, scoring, automatic publication |
+| Knowledge storage adapter | Implement section 9 versioned writes, atomicity, and recovery | Entity merging, review judgments, choosing recommended revisions |
+| CLI/Studio hosts | Select sources, compose adapters and executors, display results, submit user operations | Duplicating business rules or bypassing admission through direct file writes |
+| `knowledge-artifacts` and existing evaluation flow | Later apply selected knowledge revisions to carriers and compare actual versions | Making extraction depend on full evaluation or rewriting knowledge truth |
+
+`knowledge` adds domain ownership distinct from the existing `knowledge-artifacts` carrier domain. Knowledge content must exist independently of observation sources, carriers, and evaluation; this is not a repository-wide layering template. When implementing the directory, update the source domain map and architecture guards together. Separate packages, services, or databases are unnecessary.
+
+Arrows below indicate calls or dependencies:
+
+```text
+CLI / Studio composition
+  → observability/knowledge-extraction
+      → source-neutral evidence port ← observation source adapter
+      → extraction port ← configured executor adapter
+      → knowledge contracts / admission / review
+      → knowledge store port ← local-file adapter
+
+knowledge-artifacts / future carrier-change workflow
+  → explicit knowledge revision references
+  → existing evaluation contracts
+```
+
+Ports belong to consumer contracts and adapters implement them; a source adapter need not depend on the extraction application's implementation. Pure knowledge logic must not import `observability`, `executors`, CLI, Studio, filesystem, or network implementations. Existing observation ingestion and trajectory views must work without the new knowledge module. Generic physical storage primitives may come from `evidence/storage`, which must not make knowledge decisions. Neither `eval-core` nor `eval-runtime` owns this product flow.
+
+### 10.2 Separate entity mentions from entity identity
+
+Names, pronouns, and descriptions in logs are `EntityMention` records, not confirmed entity identities. A mention references immutable evidence and an original selection, retaining display text, context, and the basis for explicit occurrence or inference. `Entity` keeps the identity and description from section 3; occurrence positions, extraction confidence, and alias history do not belong in its descriptor.
+
+Extractors propose local entities and reference mappings; admission allocates stable identities. Local identifiers are scoped to one extraction and cannot directly name existing entities. Multiple names require evidence before sharing an identity; identical names do not prove identity. Unresolved cases retain separate local entities and explicit ambiguity, allowing pending knowledge without first building a complete entity registry.
+
+Entity identification and statement extraction may revise each other. They are logical responsibilities, not mandatory separate model calls; one call may return mentions, entity proposals, and statements. Initially, identity resolution is restricted to the selected log. Future cross-log merges use reviewable mapping records without rewriting entity snapshots in historical revisions. Entity and knowledge identities are not derived from labels, paths, or content hashes.
+
+### 10.3 Evidence windows and extraction runs
+
+Extraction consumes a source-neutral evidence window rather than the Codex protocol. An explicit selection produces registered evidence references, visible content, roles/event types, record order, recorded timestamps, and coverage limits. The source adapter retains original records for inspection and maps original locations to window fragments. Existing Trace IR can support projection; clipped display snippets must not substitute for complete original text.
+
+Codex, other platforms, explicit feedback, and document excerpts change source adapters, not knowledge models or admission rules. Model output cannot expand input selection or trigger reads through paths, URLs, or record numbers. Missing context is returned as a gap; hosts explicitly select and register additional evidence. Regeneration creates another run record.
+
+Each `KnowledgeExtractionRun` records at least:
+
+- Run and request identity, start and completion state.
+- Selected source bindings, input-window digest, projection version, and coverage limits.
+- Extractor version, prompt version/hash, actual executor/model configuration, and available runtime identity. Missing information stays missing rather than implying reproducibility.
+- Parsing/admission results, candidate revision references, and failure or rejection reasons.
+
+Source version, input-projection version, extractor version, storage Schema version, knowledge revision identity, and review-policy version are distinct. Equal inputs/configuration can produce different generations; retrying is not deterministic replay. Explicit regeneration preserves a new run and candidates without replacing previous runs. Model-reported runtime identity is not a host fact.
+
+### 10.4 Admission from model output to knowledge revisions
+
+Model responses are untrusted transport data. Convenient local references may exist within extraction, but do not become another long-lived `KnowledgeItem` Schema. Admission proceeds in order:
+
+1. Validate response structure and size; reject invalid fields, duplicate local IDs, and excessive collections. An empty candidate collection is valid.
+2. Check closure of entity mentions, statements, organization roles, and evidence references. Evidence must belong to the registered window; quotations must match the selected snapshot, not merely an existing record number.
+3. Separate mechanically provable structure from semantic faithfulness requiring human inspection. Matching quotations do not establish support; observation, source assertion, and inference classifications remain reviewable.
+4. Use host-supplied identities, time, and generation-run references to form section 3 revisions. Preserve run-to-revision mappings; models cannot assign reviewed status or reviewer identity.
+5. Admit through section 9 writes with `pending` status. Display admitted candidates, rejected output, and reasons separately; partial failure is not total success.
+
+Admission is atomic per candidate, not a global transaction across all candidates, entities, and sources. Stable candidate write-request identities reuse section 9 idempotent receipts. Persist the validated admission intent, allocated identities, and write-request identities before committing candidates. After interruption, recovery reconciles that intent with store receipts and resumes remaining work without allocating duplicate knowledge identities. Recovering admission does not re-invoke the model; retrying generation creates a new attempt and cannot reuse an old candidate request for different output. Unadmitted output does not enter normal knowledge retrieval.
+
+### 10.5 Human handling, storage, and source retention
+
+Retaining, discarding, reviewing content, and publishing are separate operations. Retain/discard records express maintenance choices with a target revision, actor, timestamp, and rationale; they do not turn `pending` into `supported`. Editing uses an expected predecessor to create a revision while preserving previous content, sources, and operations. New revisions await review. Correcting entity mappings likewise cannot mutate historical knowledge. Maintenance choices are separate associated records, not new `KnowledgeReviewVerdict` values.
+
+CLI and Studio invoke the same application interface. JSON views/exports do not bypass validation or overwrite stores directly. Start with a CLI accepting an explicit file and optional record range, with source inspection and human handling; future Studio integration reuses the same read and operation contracts. Choose exact command names and flags alongside the existing command tree during implementation, without creating a second top-level lifecycle.
+
+Initially, source snapshots live in the user's explicitly chosen local workspace, with visible storage and executor-transmission scope. Do not scan global history, fetch sources automatically, or assume unlimited conversation retention. Retention limits and a deletion entry are part of the initial storage contract. Deleting a snapshot makes source resolution `unavailable`; permitted bindings/history remain without claiming current availability. Discarding a candidate is not source deletion, and one discarded candidate cannot delete a shared source.
+
+Source reads, snapshot persistence, model transmission, and candidate admission are separate failure boundaries. Reject oversized selections before transmission with actionable errors; never silently truncate and claim complete coverage. Cancellation, timeout, model failure, and parsing failure retain explicit outcomes and clean up temporary resources without touching original logs or active carriers. Model calls follow configured capability boundaries; text extraction requires no tool execution, and log instructions never become host instructions.
+
+### 10.6 Initial scope and architecture acceptance
+
+Ship one source adapter, one knowledge admission implementation, one file-storage adapter, and one CLI path. Extraction runs, evidence bindings, and maintenance choices use ordinary modules and records. Do not prebuild a plugin registry, generic workflow engine, message bus, vector store, or graph database.
+
+| Verification | Boundary to establish |
+|---|---|
+| Pure knowledge tests and import guards | No filesystem, network, executor, or UI dependency; identical explicit input yields identical admission/rejection |
+| Source-neutral in-memory source and Codex adapter contract tests | Source replacement preserves knowledge structure; original positions, selections, and missing states map accurately |
+| Untrusted extraction-output tests | Invented references, mismatched quotes, identity collisions, unknown entities, wrong roles, and invalid states cannot enter admitted revisions |
+| Idempotency, concurrency, and fault injection | No duplicate retries or overwritten revisions; partial commits, cancellation, and deletion remain explainable and recoverable |
+| Real CLI entry acceptance | Selected log through extraction, source inspection, retain/discard/edit and reread, without changing original logs or active carriers |
+| Human inspection of the three existing real cases | Reuse value, applicability, and source faithfulness; one success never proves general method effectiveness |
+
+Architecture guards protect established ownership and dependencies. Do not register unanalyzed cycles or permit arbitrary cross-domain imports merely to pass tests. Adding a source, changing extractors, or replacing storage should primarily add/replace adapters. If it requires simultaneous changes to knowledge expression, review rules, and UI state machines, reassess boundary leakage. Evolve knowledge semantics only for actual domain needs, not platform response fields.
 
 <a id="cr-case"></a>
 
