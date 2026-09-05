@@ -575,9 +575,9 @@ describe('custom-command Core Executor adapter', () => {
   it('projects only verified leases and runs inside the requested workspace overlay', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-workspace-'));
     const baseSnapshotPath = join(root, 'base');
-    const overlayPath = join(root, 'overlay');
+
     await mkdir(baseSnapshotPath);
-    await mkdir(overlayPath);
+
     const workspace = Object.freeze({
       resourceId: 'workspace-a',
       resourceKind: 'workspace' as const,
@@ -591,7 +591,7 @@ describe('custom-command Core Executor adapter', () => {
       snapshotKind: 'directory' as const,
       leaseMode: 'copy-on-write-overlay' as const,
       baseSnapshotPath,
-      overlayPath,
+
     });
     const lease = Object.freeze({
       bindingId: 'executor-a',
@@ -623,13 +623,13 @@ describe('custom-command Core Executor adapter', () => {
     });
 
     expect(result.trace?.value).toMatchObject({
-      cwd: await realpath(overlayPath),
+      cwd: expect.stringMatching(/omk-custom-command-run-[^/]+\/trial-/),
       request: {
         resources: [{
           resourceId: 'workspace-a',
           leaseMode: 'copy-on-write-overlay',
           baseSnapshotPath,
-          overlayPath,
+
         }],
       },
     });
@@ -639,9 +639,9 @@ describe('custom-command Core Executor adapter', () => {
     const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-sample-controls-'));
     const workspace = async (suffix: 'a' | 'b') => {
       const baseSnapshotPath = join(root, `base-${suffix}`);
-      const overlayPath = join(root, `overlay-${suffix}`);
+
       await mkdir(baseSnapshotPath);
-      await mkdir(overlayPath);
+
       return Object.freeze({
         resourceId: `workspace-${suffix}`,
         resourceKind: 'workspace' as const,
@@ -655,7 +655,7 @@ describe('custom-command Core Executor adapter', () => {
         snapshotKind: 'directory' as const,
         leaseMode: 'copy-on-write-overlay' as const,
         baseSnapshotPath,
-        overlayPath,
+
       });
     };
     const [workspaceA, workspaceB] = await Promise.all([workspace('a'), workspace('b')]);
@@ -700,7 +700,7 @@ describe('custom-command Core Executor adapter', () => {
     }, 'sample-b');
 
     expect(resultA.trace?.value).toMatchObject({
-      cwd: await realpath(workspaceA.overlayPath),
+      cwd: expect.stringMatching(/trial-/),
       request: {
         trial: {
           executionControl: {
@@ -711,7 +711,7 @@ describe('custom-command Core Executor adapter', () => {
       },
     });
     expect(resultB.trace?.value).toMatchObject({
-      cwd: await realpath(workspaceB.overlayPath),
+      cwd: expect.stringMatching(/trial-/),
       request: {
         trial: {
           executionControl: {
@@ -721,8 +721,8 @@ describe('custom-command Core Executor adapter', () => {
         resources: [{ resourceId: workspaceB.resourceId }],
       },
     });
-    expect(JSON.stringify(resultA.trace?.value)).not.toContain(workspaceB.overlayPath);
-    expect(JSON.stringify(resultB.trace?.value)).not.toContain(workspaceA.overlayPath);
+    expect(JSON.stringify(resultA.trace?.value)).not.toContain(workspaceB.baseSnapshotPath);
+    expect(JSON.stringify(resultB.trace?.value)).not.toContain(workspaceA.baseSnapshotPath);
     await expect(execute(port, new AbortController().signal, controlB, 'sample-a'))
       .rejects.toMatchObject({
         evaluationError: { code: 'OMK_CUSTOM_COMMAND_EXECUTION_CONTROL_MISMATCH' },

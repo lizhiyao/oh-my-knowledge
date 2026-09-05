@@ -1,3 +1,4 @@
+import { openNodeTrialWorkspace } from '../shared/trial-workspace.js';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -160,8 +161,7 @@ const CustomCommandMockPlanSchema = z.object({
   }).strict()).min(1),
 }).strict();
 
-const CustomCommandResourceSchema = z.discriminatedUnion('leaseMode', [
-  z.object({
+const CustomCommandImmutableResourceSchema = z.object({
     resourceId: IdentifierSchema,
     resourceKind: z.enum([
       'artifact',
@@ -176,16 +176,25 @@ const CustomCommandResourceSchema = z.discriminatedUnion('leaseMode', [
     snapshotKind: z.enum(['file', 'directory']),
     leaseMode: z.literal('immutable-snapshot'),
     snapshotPath: z.string().min(1),
-  }).strict(),
-  z.object({
+  }).strict();
+
+const CustomCommandWorkspaceBaseSchema = z.object({
     resourceId: IdentifierSchema,
     resourceKind: z.literal('workspace'),
     descriptor: ResourceDescriptorSchema,
     snapshotKind: z.literal('directory'),
     leaseMode: z.literal('copy-on-write-overlay'),
     baseSnapshotPath: z.string().min(1),
-    overlayPath: z.string().min(1),
-  }).strict(),
+  }).strict();
+
+const CustomCommandRunResourceSchema = z.discriminatedUnion('leaseMode', [
+  CustomCommandImmutableResourceSchema, CustomCommandWorkspaceBaseSchema,
+]);
+type CustomCommandRunResource = z.infer<typeof CustomCommandRunResourceSchema>;
+
+const CustomCommandResourceSchema = z.discriminatedUnion('leaseMode', [
+  CustomCommandImmutableResourceSchema,
+  CustomCommandWorkspaceBaseSchema.extend({ overlayPath: z.string().min(1) }),
 ]).superRefine((resource, context) => {
   if (resource.resourceId !== resource.descriptor.resourceId) {
     context.addIssue({
@@ -327,7 +336,7 @@ interface CapturedConfiguration {
 interface CustomCommandRunState {
   readonly privateWorkingDirectory: string;
   readonly executablePath: string;
-  readonly resources: readonly CustomCommandRequest['resources'][number][];
+  readonly resources: readonly CustomCommandRunResource[];
   readonly mockResourceIdsByPlanId: ReadonlyMap<string, ReadonlySet<string>>;
   readonly executionControls: EvaluationDefinition['targets'][number]['executionControls'];
   acquireTrial(): void;
@@ -336,6 +345,7 @@ interface CustomCommandRunState {
 }
 
 interface CustomCommandTrialState {
+  closeWorkspace(): Promise<void>;
   readonly workingDirectory: string;
   readonly resources: readonly CustomCommandRequest['resources'][number][];
   readonly mockOutputClassification: 'public' | 'secret';
@@ -425,7 +435,7 @@ function identityFacets(
     value: { maxOutputBytes: configuration.maxOutputBytes },
   }, {
     facetId: 'command.working-directory',
-    value: { workingDirectoryKind: 'sample-scoped-sealed-control' },
+    value: { workingDirectoryKind: 'trial-private-sealed-snapshot-v2' },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
 }
@@ -543,7 +553,11 @@ async function assertIdentityFilesUnchanged(
   }
 }
 
-function projectResource(resource: OmkLeasedHostResource): CustomCommandRequest['resources'][number] {
+function projectResource(resource: OmkLeasedHostResource): CustomCommandRunResource {
+  if (resource.resourceId !== resource.descriptor.resourceId) {
+    fail('OMK_CUSTOM_COMMAND_RESOURCE_INVALID', 'infrastructure',
+      'Custom-command resource and descriptor identities must match.');
+  }
   if (resource.descriptor.classification === 'gold' || resource.resourceKind === 'gold-dataset') {
     fail(
       'OMK_CUSTOM_COMMAND_RESOURCE_FORBIDDEN',
@@ -586,12 +600,11 @@ function projectResource(resource: OmkLeasedHostResource): CustomCommandRequest[
     snapshotKind: 'directory',
     leaseMode: resource.leaseMode,
     baseSnapshotPath: resource.baseSnapshotPath,
-    overlayPath: resource.overlayPath,
   };
 }
 
 function isMockResource(
-  resource: CustomCommandRequest['resources'][number],
+  resource: CustomCommandRunResource,
 ): boolean {
   return resource.resourceKind === 'mock-plan'
     || resource.resourceKind === 'mock-rule'
@@ -599,7 +612,7 @@ function isMockResource(
 }
 
 async function captureMockResourceClosures(
-  resources: readonly CustomCommandRequest['resources'][number][],
+  resources: readonly CustomCommandRunResource[],
   executionControls: EvaluationDefinition['targets'][number]['executionControls'],
 ): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
   const resourcesById = new Map(resources.map((resource) => [resource.resourceId, resource]));
@@ -796,7 +809,7 @@ async function captureRunState(
       return projectResource(resource);
     });
   const capturedResources = deepFreezeCanonicalJson(
-    CustomCommandResourcesSchema.parse(resources),
+    z.array(CustomCommandRunResourceSchema).parse(resources),
   );
   const runtimeImplementations = capturedResources.filter((resource) => (
     resource.resourceKind === 'runtime-implementation'
@@ -879,10 +892,10 @@ async function captureRunState(
   });
 }
 
-function openCustomCommandTrial(
+async function openCustomCommandTrial(
   runState: CustomCommandRunState,
   trial: Readonly<ExecutorTrialContext>,
-): CustomCommandTrialState {
+): Promise<CustomCommandTrialState> {
   if (canonicalizeJson(trial.executionControl) !== canonicalizeJson(
     resolveEffectiveExecutionControl(runState.executionControls, trial.sampleId),
   )) {
@@ -920,15 +933,21 @@ function openCustomCommandTrial(
       'Custom-command Trial mock plan is absent from the sealed lease.',
     );
   }
+  const trialWorkspace = await openNodeTrialWorkspace({
+    parentRoot: runState.privateWorkingDirectory,
+    ...(workspaceResource?.resourceKind === 'workspace'
+      ? { baseSnapshotPath: workspaceResource.baseSnapshotPath } : {}),
+    signal: trial.signal,
+  });
   return Object.freeze({
-    workingDirectory: workspaceResource?.resourceKind === 'workspace'
-      ? workspaceResource.overlayPath
-      : runState.privateWorkingDirectory,
+    workingDirectory: trialWorkspace.workingDirectory,
+    closeWorkspace: trialWorkspace.close,
     resources: Object.freeze(runState.resources.filter((resource) => (
       (resource.resourceKind !== 'workspace'
         || resource.resourceId === workspaceResource?.resourceId)
       && (!isMockResource(resource) || activeMockResourceIds?.has(resource.resourceId) === true)
-    ))),
+    )).map((resource) => resource.resourceKind === 'workspace'
+      ? { ...resource, overlayPath: trialWorkspace.workingDirectory } : resource)),
     mockOutputClassification: mockInterception.mockInterceptionMode === 'pre-tool-call'
       ? 'secret'
       : 'public',
@@ -1111,7 +1130,7 @@ export async function createCustomCommandExecutorAdapter(
       async openTrial({ runState, trial }) {
         runState.acquireTrial();
         try {
-          return openCustomCommandTrial(runState, trial);
+          return await openCustomCommandTrial(runState, trial);
         } catch (error) {
           await runState.releaseTrial();
           throw error;
@@ -1166,8 +1185,12 @@ export async function createCustomCommandExecutorAdapter(
           ...(usage === undefined ? {} : { usage }),
         };
       },
-      disposeTrial({ runState }) {
-        return runState.releaseTrial();
+      async disposeTrial({ runState, trialState }) {
+        try {
+          await trialState.closeWorkspace();
+        } finally {
+          await runState.releaseTrial();
+        }
       },
       disposeRun({ runState }) {
         return runState.requestDispose();

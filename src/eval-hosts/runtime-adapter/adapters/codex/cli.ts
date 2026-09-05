@@ -45,7 +45,7 @@ import {
   captureCodexCliTarget,
   promptForCodexCliTrial,
   selectCodexCliSandbox,
-  workingDirectoryForCodexCliTrial,
+  openCodexCliTrialWorkspace,
   type CapturedCodexCliTarget,
   type CodexCliRunState,
 } from './cli-resources.js';
@@ -57,7 +57,7 @@ export {
   createCodexCliCoreSchemaValidators,
 } from './cli-protocol.js';
 
-export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
+export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.0' as const;
 export const DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_MAX_PROMPT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_IDENTITY_PROBE_TIMEOUT_MS = 5_000;
@@ -357,13 +357,13 @@ async function executeCodex(
   configuration: CapturedConfiguration,
   target: CapturedCodexCliTarget,
   state: CodexCliRunState,
+  workingDirectory: string,
   trial: Readonly<ExecutorTrialContext>,
   attempt: Readonly<ExecutorAttemptContext>,
 ): Promise<ParsedCodexCliStream> {
   if (attempt.signal.aborted) {
     fail('OMK_CODEX_CLI_CANCELLED', 'execution', 'Codex CLI execution was cancelled.');
   }
-  const workingDirectory = workingDirectoryForCodexCliTrial(trial, state, target);
   const args = buildCodexCliCoreArguments({
     model: target.binding.qualification.model,
     ...(target.binding.qualification.effort === undefined
@@ -441,7 +441,7 @@ export async function createCodexCliExecutorAdapter(
       openRun({ resources }) {
         return captureCodexCliRunState(resources, target);
       },
-      openTrial({ runState, trial }) {
+      async openTrial({ runState, trial }) {
         if (
           trial.protocolId !== target.binding.protocolId
           || trial.targetId !== target.binding.targetId
@@ -455,11 +455,18 @@ export async function createCodexCliExecutorAdapter(
           );
         }
         runState.acquireTrial();
-        return undefined;
+        try {
+          return await openCodexCliTrialWorkspace(trial, runState, target);
+        } catch (error) {
+          await runState.releaseTrial();
+          throw error;
+        }
       },
-      async execute({ runState, trial, attempt }) {
+      async execute({ runState, trialState, trial, attempt }) {
         await assertIdentityFilesUnchanged(files, attempt.signal);
-        const parsed = await executeCodex(configuration, target, runState, trial, attempt);
+        const parsed = await executeCodex(
+          configuration, target, runState, trialState.workingDirectory, trial, attempt,
+        );
         if (parsed.terminalStatus === 'failed') {
           fail(
             'OMK_CODEX_CLI_TURN_FAILED',
@@ -490,8 +497,12 @@ export async function createCodexCliExecutorAdapter(
           ...(parsed.usage === undefined ? {} : { usage: parsed.usage }),
         };
       },
-      disposeTrial({ runState }) {
-        return runState.releaseTrial();
+      async disposeTrial({ runState, trialState }) {
+        try {
+          await trialState.close();
+        } finally {
+          await runState.releaseTrial();
+        }
       },
       disposeRun({ runState }) {
         return runState.requestDispose();

@@ -829,7 +829,7 @@ export async function createClaudeCliExecutorAdapter(
         }
         runState.acquireTrial();
         try {
-          return openClaudeCliTrial(
+          return await openClaudeCliTrial(
             trial,
             runState,
             configuration.maxInputBytes,
@@ -843,8 +843,8 @@ export async function createClaudeCliExecutorAdapter(
         await assertIdentityUnchanged(files, attempt.signal);
         return executeAttempt(configuration, target, runState, trialState, attempt);
       },
-      disposeTrial({ runState }) {
-        return disposeClaudeCliTrial(runState);
+      disposeTrial({ runState, trialState }) {
+        return disposeClaudeCliTrial(runState, trialState);
       },
       disposeRun({ runState }) {
         return runState.requestDispose();

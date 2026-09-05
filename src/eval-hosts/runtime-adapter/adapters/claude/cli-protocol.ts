@@ -27,7 +27,7 @@ import {
   SourceNeutralTraceSchema,
 } from '../../../../eval-runtime/traces/source-neutral.js';
 
-export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
+export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.0' as const;
 
 export interface ParsedClaudeCliStream {
   readonly messages: readonly ClaudeMessage[];

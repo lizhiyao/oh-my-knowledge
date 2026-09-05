@@ -1,3 +1,4 @@
+import { openNodeTrialWorkspace, type NodeTrialWorkspace } from '../shared/trial-workspace.js';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -364,7 +365,7 @@ export async function captureCodexRunState(
     ) {
       fail(profile, 'WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
     }
-    workspaceDirectoriesByResourceId.set(descriptor.resourceId, workspace.overlayPath);
+    workspaceDirectoriesByResourceId.set(descriptor.resourceId, workspace.baseSnapshotPath);
   }
   const privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-codex-run-'));
   const dispose = async (): Promise<void> => {
@@ -412,12 +413,12 @@ export async function captureCodexRunState(
   });
 }
 
-export function workingDirectoryForCodexTrial(
+export async function openCodexTrialWorkspace(
   trial: Readonly<ExecutorTrialContext>,
   runState: CodexRunState,
   profile: CodexResourceProfile,
   target?: CapturedCodexTarget,
-): string {
+): Promise<NodeTrialWorkspace> {
   if (target !== undefined && canonicalizeJson(trial.executionControl) !== canonicalizeJson(
     resolveEffectiveExecutionControl(target.target.executionControls, trial.sampleId),
   )) {
@@ -427,14 +428,17 @@ export function workingDirectoryForCodexTrial(
     fail(profile, 'TOOL_POLICY_UNSUPPORTED', 'received an unsupported Trial tool policy.');
   }
   const workspace = trial.executionControl.workspace;
-  if (workspace.workspaceMode === 'not-required') return runState.privateWorkingDirectory;
-  const workingDirectory = runState.workspaceDirectoriesByResourceId.get(
-    workspace.descriptor.resourceId,
-  );
-  if (workingDirectory === undefined) {
+  const baseSnapshotPath = workspace.workspaceMode === 'not-required'
+    ? undefined
+    : runState.workspaceDirectoriesByResourceId.get(workspace.descriptor.resourceId);
+  if (workspace.workspaceMode !== 'not-required' && baseSnapshotPath === undefined) {
     fail(profile, 'WORKSPACE_INVALID', 'Trial workspace is absent from the sealed resource lease.');
   }
-  return workingDirectory;
+  return openNodeTrialWorkspace({
+    parentRoot: runState.privateWorkingDirectory,
+    ...(baseSnapshotPath === undefined ? {} : { baseSnapshotPath }),
+    signal: trial.signal,
+  });
 }
 
 export function promptForCodexTrial(

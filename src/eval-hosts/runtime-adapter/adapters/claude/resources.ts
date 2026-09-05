@@ -1,3 +1,4 @@
+import { openNodeTrialWorkspace } from '../shared/trial-workspace.js';
 import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -114,6 +115,7 @@ export interface ClaudeCliRunState {
 }
 
 export interface ClaudeCliTrialState {
+  closeWorkspace(): Promise<void>;
   readonly prompt: string;
   readonly workingDirectory: string;
   readonly allowedTools?: readonly string[];
@@ -813,7 +815,7 @@ export async function captureClaudeCliRunState(
         || workspace.leaseMode !== 'copy-on-write-overlay'
         || !sameDescriptor(workspace, workspaceDescriptor)
       ) fail(profile, 'WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
-      workspaceDirectoriesByResourceId.set(workspaceDescriptor.resourceId, workspace.overlayPath);
+      workspaceDirectoriesByResourceId.set(workspaceDescriptor.resourceId, workspace.baseSnapshotPath);
     }
     privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-claude-run-'));
     let systemPromptBytes = 0;
@@ -890,20 +892,20 @@ export async function captureClaudeCliRunState(
   }
 }
 
-export function openClaudeCliTrial(
+export async function openClaudeCliTrial(
   trial: Readonly<ExecutorTrialContext>,
   runState: ClaudeCliRunState,
   maxInputBytes: number,
   profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
-): ClaudeCliTrialState {
+): Promise<ClaudeCliTrialState> {
   if (canonicalizeJson(trial.executionControl) !== canonicalizeJson(
     resolveEffectiveExecutionControl(runState.executionControls, trial.sampleId),
   )) {
     fail(profile, 'EXECUTION_CONTROL_MISMATCH', 'Trial control differs from the sealed Target.');
   }
   const workspace = trial.executionControl.workspace;
-  const workingDirectory = workspace.workspaceMode === 'not-required'
-    ? runState.privateWorkingDirectory
+  const baseSnapshotPath = workspace.workspaceMode === 'not-required'
+    ? undefined
     : runState.workspaceDirectoriesByResourceId.get(workspace.descriptor.resourceId)
       ?? fail(profile, 'WORKSPACE_INVALID', 'Trial workspace is absent from the sealed lease.');
   const toolControl = trial.executionControl.tools;
@@ -943,9 +945,15 @@ export function openClaudeCliTrial(
   if (Buffer.byteLength(prompt) + runState.systemPromptBytes > maxInputBytes) {
     fail(profile, 'INPUT_LIMIT_EXCEEDED', 'prompt exceeds the adapter input limit.');
   }
+  const trialWorkspace = await openNodeTrialWorkspace({
+    parentRoot: runState.privateWorkingDirectory,
+    ...(baseSnapshotPath === undefined ? {} : { baseSnapshotPath }),
+    signal: trial.signal,
+  });
   return Object.freeze({
     prompt,
-    workingDirectory,
+    workingDirectory: trialWorkspace.workingDirectory,
+    closeWorkspace: trialWorkspace.close,
     ...(allowedTools === undefined ? {} : { allowedTools: Object.freeze(allowedTools) }),
     ...(mockControls === undefined ? {} : { mocks: mockControls.mocks }),
     mocksStrict: mockControls?.strict ?? false,
@@ -958,10 +966,15 @@ export function openClaudeCliTrial(
 
 export async function disposeClaudeCliTrial(
   runState: ClaudeCliRunState,
+  trialState: ClaudeCliTrialState,
   profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): Promise<void> {
   try {
-    await runState.releaseTrial();
+    try {
+      await trialState.closeWorkspace();
+    } finally {
+      await runState.releaseTrial();
+    }
   } catch {
     fail(profile, 'TRIAL_DISPOSE_FAILED', 'trial state could not be released.');
   }

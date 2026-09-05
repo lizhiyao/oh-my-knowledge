@@ -159,7 +159,7 @@ async function completeFixture() {
 }
 
 describe('Verified HostResource leases', () => {
-  it('materializes immutable snapshots, isolated workspace overlays and analysis-only Gold', async () => {
+  it('materializes immutable workspace bases shared by bindings and analysis-only Gold', async () => {
     const fixture = await completeFixture();
     const leases = await materializeNodeRunResourceLeases({
       runId: 'run-resource-isolation',
@@ -211,10 +211,8 @@ describe('Verified HostResource leases', () => {
     expect(readFileSync(artifact.snapshotPath, 'utf8')).toBe('# Skill\nverified\n');
     expect(statSync(artifact.snapshotPath).mode & 0o222).toBe(0);
     expect(workspaceA.baseSnapshotPath).toBe(workspaceB.baseSnapshotPath);
-    expect(workspaceA.overlayPath).not.toBe(workspaceB.overlayPath);
-    writeFileSync(join(workspaceA.overlayPath, 'src', 'index.ts'), 'changed in A\n');
-    expect(readFileSync(join(workspaceB.overlayPath, 'src', 'index.ts'), 'utf8'))
-      .toBe('export const value = 1;\n');
+    expect(workspaceA).not.toHaveProperty('overlayPath');
+    expect(statSync(workspaceA.baseSnapshotPath).mode & 0o222).toBe(0);
     expect(readFileSync(join(workspaceA.baseSnapshotPath, 'src', 'index.ts'), 'utf8'))
       .toBe('export const value = 1;\n');
     expect(readFileSync(join(fixture.workspacePath, 'src', 'index.ts'), 'utf8'))
@@ -267,7 +265,7 @@ describe('Verified HostResource leases', () => {
     await leases.dispose();
   });
 
-  it('isolates writable workspaces across concurrent runs and independent teardown', async () => {
+  it('isolates snapshot ownership across concurrent runs and independent teardown', async () => {
     const workspacePath = join(sourceRoot, 'workspace');
     mkdirSync(workspacePath);
     writeFileSync(join(workspacePath, 'state.txt'), 'base');
@@ -293,9 +291,8 @@ describe('Verified HostResource leases', () => {
         || secondLease?.leaseMode !== 'copy-on-write-overlay') {
       throw new Error('missing workspace lease');
     }
-    expect(firstLease.overlayPath).not.toBe(secondLease.overlayPath);
-    writeFileSync(join(firstLease.overlayPath, 'state.txt'), 'run-a');
-    expect(readFileSync(join(secondLease.overlayPath, 'state.txt'), 'utf8')).toBe('base');
+    expect(firstLease.baseSnapshotPath).not.toBe(secondLease.baseSnapshotPath);
+    expect(readFileSync(join(secondLease.baseSnapshotPath, 'state.txt'), 'utf8')).toBe('base');
     const secondRunRoot = dirname(dirname(secondLease.baseSnapshotPath));
     await first.dispose();
     expect(existsSync(secondRunRoot)).toBe(true);
@@ -749,11 +746,10 @@ describe('Verified HostResource leases', () => {
         consumerKind: 'executor', bindingId: 'executor',
         requirements: [requirement('workspace', 'workspace')],
       }],
-      limits: { maxRunMaterializedBytes: 9 },
+      limits: { maxRunMaterializedBytes: 4 },
     })).rejects.toMatchObject({
       code: 'OMK_RESOURCE_LEASE_LIMIT_EXCEEDED',
       resourceId: 'workspace',
-      bindingId: 'executor',
     });
     expect(readdirSync(leaseRoot)).toEqual([]);
 
@@ -765,11 +761,10 @@ describe('Verified HostResource leases', () => {
         consumerKind: 'executor', bindingId: 'executor',
         requirements: [requirement('workspace', 'workspace')],
       }],
-      limits: { maxRunMaterializedEntries: 2 },
+      limits: { maxRunMaterializedEntries: 1 },
     })).rejects.toMatchObject({
       code: 'OMK_RESOURCE_LEASE_LIMIT_EXCEEDED',
       resourceId: 'workspace',
-      bindingId: 'executor',
     });
     expect(readdirSync(leaseRoot)).toEqual([]);
 

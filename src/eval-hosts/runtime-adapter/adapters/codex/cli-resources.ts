@@ -12,7 +12,7 @@ import {
   captureCodexTarget,
   promptForCodexTrial,
   selectCodexSandbox,
-  workingDirectoryForCodexTrial,
+  openCodexTrialWorkspace,
   type CapturedCodexTarget,
   type CodexRunState,
   type CodexTargetConfig,
@@ -36,12 +36,12 @@ export function selectCodexCliSandbox(
   return selectCodexSandbox(config, workspaceMode, CODEX_CLI_RESOURCE_PROFILE);
 }
 
-export function workingDirectoryForCodexCliTrial(
+export function openCodexCliTrialWorkspace(
   trial: Readonly<ExecutorTrialContext>,
   runState: CodexCliRunState,
   target: CapturedCodexCliTarget,
-): string {
-  return workingDirectoryForCodexTrial(
+): ReturnType<typeof openCodexTrialWorkspace> {
+  return openCodexTrialWorkspace(
     trial,
     runState,
     CODEX_CLI_RESOURCE_PROFILE,

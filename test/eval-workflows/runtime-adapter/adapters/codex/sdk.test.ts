@@ -206,7 +206,7 @@ async function adapterFixture(options: Readonly<{
           snapshotKind: 'directory' as const,
           leaseMode: 'copy-on-write-overlay' as const,
           baseSnapshotPath: workspacePath,
-          overlayPath: workspacePath,
+
         },
       ] as const] : []),
     ]),
@@ -520,7 +520,7 @@ describe('Codex SDK Core Executor adapter', () => {
     expect(unknown.usage).toBeUndefined();
   });
 
-  it('uses the exact workspace overlay and elevates output classification', async () => {
+  it('uses a trial-private workspace copy and elevates output classification', async () => {
     const fixture = await adapterFixture({ workspace: true });
     const result = await execute(
       await createAdapter(fixture),
@@ -530,7 +530,7 @@ describe('Codex SDK Core Executor adapter', () => {
     );
     expect(fixture.observations.threadOptions[0]).toMatchObject({
       sandboxMode: 'workspace-write',
-      workingDirectory: join(fixture.root, 'workspace'),
+      workingDirectory: expect.stringMatching(/omk-codex-run-[^/]+\/trial-/),
     });
     expect(result.output?.classification).toBe('sensitive');
   });

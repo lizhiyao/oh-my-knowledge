@@ -21,7 +21,7 @@ import {
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { supportsDshTraceEventType } from './trace-adapter.js';
 
-export const DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
+export const DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.0' as const;
 
 export interface ParsedDshHostCoreResult {
   readonly output?: string;

@@ -627,21 +627,20 @@ function capturePort(
   switch (binding.runtimeKind) {
     case 'executor':
     case 'evaluator': return Object.freeze({ identity, openRun: boundMethod(port, 'openRun') });
-    case 'analysis-node': return Object.freeze({
+    case 'analysis-node':
+    case 'series-analysis-node': return Object.freeze({
       identity,
       outputSchema: deepFreezeCanonicalJson(SchemaIdentitySchema.parse(port.outputSchema)),
       openRun: boundMethod(port, 'openRun'),
     });
     case 'missing-policy':
-    case 'decision-policy':
-    case 'series-decision-policy': return Object.freeze({
+    case 'decision-policy': return Object.freeze({
       identity,
       decide: boundMethod(port, 'decide'),
     });
-    case 'series-analysis-node': return Object.freeze({
+    case 'series-decision-policy': return Object.freeze({
       identity,
-      outputSchema: deepFreezeCanonicalJson(SchemaIdentitySchema.parse(port.outputSchema)),
-      analyze: boundMethod(port, 'analyze'),
+      openRun: boundMethod(port, 'openRun'),
     });
   }
 }

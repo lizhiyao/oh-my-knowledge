@@ -784,7 +784,7 @@ function fakeLeases(
               snapshotKind: 'directory' as const,
               leaseMode: requirement.leaseMode,
               baseSnapshotPath: `/lease/${runId}/${requirement.resourceId}/base`,
-              overlayPath: `/lease/${runId}/${binding.bindingId}/${requirement.resourceId}/overlay`,
+
             }
           : {
               resourceId: requirement.resourceId,
@@ -1187,6 +1187,15 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     const plan = prepareEvaluationSeriesPlan(seriesDefinition, assembly.series.runtimes);
     expect(plan.definition.seriesDesignDigest).toBe(seriesDefinition.seriesDesignDigest);
     expect(assembly.series.ports.analysisNodesByNodeId.has('run-variance')).toBe(true);
+    const runtime = assembly.series.ports.analysisNodesByNodeId.get('run-variance')!;
+    const opened = await runtime.openRun({
+      runId: 'series-lifecycle', seriesPlanDigest: digestCanonicalJson(plan),
+      bundleId: digestCanonicalJson('series-bundle'), analysisMode: plan.definition.analysisMode,
+      nodeId: 'run-variance',
+    });
+    expect(typeof opened.analyze).toBe('function');
+    await opened.dispose();
+
     expect((assembly.series.ports.analysisNodesByNodeId as unknown as { set?: unknown }).set)
       .toBeUndefined();
     expect(assembly.evaluation.entries.some((entry) => (
@@ -2160,47 +2169,6 @@ describe('OMK Evaluation Runtime composition root', () => {
       }
     }
     expect(disposed.sort()).toEqual(['isolated-a', 'isolated-b']);
-  });
-
-  it('rejects writable overlay reuse across active runs before opening the second run', async () => {
-    const compiled = compositionInput();
-    let releaseExecution: (() => void) | undefined;
-    const executeGate = new Promise<void>((resolve) => { releaseExecution = resolve; });
-    const disposed: string[] = [];
-    const runtime = await createOmkEvaluationRuntime({
-      compiled,
-      factories: runnableFactoriesFor(compiled, [], executeGate),
-      support: compositionSupport(),
-      resources: {
-        leaseRoot: '/unused-test-lease-root',
-        async materialize(request) {
-          const leases = fakeLeases(
-            request.runId,
-            request.bindings,
-            request.hostResources,
-            () => disposed.push(request.runId),
-          );
-          for (const binding of leases.bindingsByBindingId.values()) {
-            for (const resource of binding.resourcesByResourceId.values()) {
-              if (resource.leaseMode === 'copy-on-write-overlay') {
-                (resource as { overlayPath: string }).overlayPath =
-                  `/lease/shared-overlay/${binding.bindingId}`;
-              }
-            }
-          }
-          return leases;
-        },
-      },
-    });
-    const prepared = await runtime.prepare();
-    const first = await prepared.start({ runId: 'overlay-a' });
-
-    await expect(prepared.start({ runId: 'overlay-b' })).rejects.toMatchObject({
-      code: 'OMK_RESOURCE_LEASE_ISOLATION_MISMATCH',
-    });
-    releaseExecution?.();
-    await first.result;
-    expect(disposed.sort()).toEqual(['overlay-a', 'overlay-b']);
   });
 
   it('cleans an acquired lease without opening a port when cancellation wins acquisition', async () => {

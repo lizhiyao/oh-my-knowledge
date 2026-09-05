@@ -103,8 +103,14 @@ export async function runCommand(
   let stdout = '';
   let stderr = '';
 
-  const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => {
+  const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation(((
+    chunk: string | Uint8Array,
+    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void,
+  ) => {
     stdout += chunkText(chunk);
+    const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+    done?.();
     return true;
   }) as typeof process.stdout.write);
   const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => {

@@ -3,7 +3,6 @@ import { createHash, type Hash } from 'node:crypto';
 import { constants } from 'node:fs';
 import {
   chmod,
-  cp,
   lstat,
   mkdir,
   mkdtemp,
@@ -548,28 +547,20 @@ function requiredResourceIds(input: ResourceLeaseRequestsSnapshot): Set<string> 
 }
 
 function validatePlannedRunBytes(
-  requests: ResourceLeaseRequestsSnapshot,
   requested: readonly ResolvedHostResource[],
-  resources: ReadonlyMap<string, ResolvedHostResource>,
   limits: OmkResourceLeaseLimits,
 ): void {
   let bytes = 0;
-  const account = (resource: ResolvedHostResource, bindingId?: string): void => {
+  const account = (resource: ResolvedHostResource): void => {
     if (bytes > limits.maxRunMaterializedBytes - resource.descriptor.size) fail({
       code: 'OMK_RESOURCE_LEASE_LIMIT_EXCEEDED',
       resourceId: resource.descriptor.resourceId,
-      ...(bindingId === undefined ? {} : { bindingId }),
       message: 'Run-scoped resource lease 物化字节超过上限。',
     });
     bytes += resource.descriptor.size;
   };
   for (const resource of requested) account(resource);
-  for (const binding of requests.bindings) {
-    for (const requirement of binding.requirements) {
-      if (requirement.leaseMode !== 'copy-on-write-overlay') continue;
-      account(resources.get(requirement.resourceId) as ResolvedHostResource, binding.bindingId);
-    }
-  }
+
 }
 
 function snapshotAnalysisOnlyRequests(
@@ -738,17 +729,12 @@ function immutableLease(base: MaterializedBase): OmkLeasedHostResource {
   });
 }
 
-async function workspaceLease(
-  base: MaterializedBase,
-  overlayPath: string,
-): Promise<OmkLeasedHostResource> {
+function workspaceLease(base: MaterializedBase): OmkLeasedHostResource {
   if (base.resource.resourceKind !== 'workspace' || base.snapshotKind !== 'directory') fail({
     code: 'OMK_RESOURCE_LEASE_ROLE_MISMATCH',
     resourceId: base.resource.descriptor.resourceId,
     message: '只有 directory workspace 可以创建 COW overlay。',
   });
-  await cp(base.path, overlayPath, { recursive: true, errorOnExist: true, force: false });
-  await makeTreeWritable(overlayPath);
   return Object.freeze({
     resourceId: base.resource.descriptor.resourceId,
     resourceKind: 'workspace',
@@ -756,7 +742,6 @@ async function workspaceLease(
     snapshotKind: 'directory',
     leaseMode: 'copy-on-write-overlay',
     baseSnapshotPath: base.path,
-    overlayPath,
   });
 }
 
@@ -785,7 +770,7 @@ async function validateRootSeparation(
 
 /**
  * Materializes all active binding resources before any Runtime port opens a Run.
- * Only verified snapshots／overlays are returned; original locators stay private.
+ * Only verified snapshots are returned; writable copies belong to individual Trials.
  */
 export async function materializeNodeRunResourceLeases(
   input: Readonly<MaterializeNodeRunResourceLeasesInput>,
@@ -814,7 +799,7 @@ export async function materializeNodeRunResourceLeases(
   const requested = [...requiredResourceIds(requests)].sort(compareStrings).map((resourceId) => (
     resources.get(resourceId) as ResolvedHostResource
   ));
-  validatePlannedRunBytes(requests, requested, resources, limits);
+  validatePlannedRunBytes(requested, limits);
   const rootPath = await validateRootSeparation(leaseRoot, requested);
   signal?.throwIfAborted();
   const runRoot = await mkdtemp(join(rootPath, 'omk-resource-lease-'));
@@ -822,15 +807,11 @@ export async function materializeNodeRunResourceLeases(
     signal?.throwIfAborted();
     const bases = new Map<string, MaterializedBase>();
     let materializedEntries = 0;
-    const accountEntries = (
-      base: MaterializedBase,
-      bindingId?: string,
-    ): void => {
+    const accountEntries = (base: MaterializedBase): void => {
       if (materializedEntries > limits.maxRunMaterializedEntries - base.entryCount) fail({
         code: 'OMK_RESOURCE_LEASE_LIMIT_EXCEEDED',
         resourceId: base.resource.descriptor.resourceId,
-        ...(bindingId === undefined ? {} : { bindingId }),
-        message: 'Run-scoped resource lease 物化条目数超过上限。',
+          message: 'Run-scoped resource lease 物化条目数超过上限。',
       });
       materializedEntries += base.entryCount;
     };
@@ -858,21 +839,15 @@ export async function materializeNodeRunResourceLeases(
       }
     }
     const bindings = new Map<string, OmkBindingResourceLease>();
-    await mkdir(join(runRoot, 'overlays'), { mode: 0o700 });
-    for (const [bindingIndex, request] of bindingsSnapshot.entries()) {
+    for (const request of bindingsSnapshot) {
       const leased = new Map<string, OmkLeasedHostResource>();
-      for (const [resourceIndex, requirement] of request.requirements.entries()) {
+      for (const requirement of request.requirements) {
         signal?.throwIfAborted();
         const base = bases.get(requirement.resourceId) as MaterializedBase;
         let value: OmkLeasedHostResource;
         try {
           if (requirement.leaseMode === 'copy-on-write-overlay') {
-            accountEntries(base, request.bindingId);
-            value = await workspaceLease(base, join(
-              runRoot,
-              'overlays',
-              `${bindingIndex}-${resourceIndex}`,
-            ));
+            value = workspaceLease(base);
           } else {
             value = immutableLease(base);
           }

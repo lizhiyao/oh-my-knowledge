@@ -939,7 +939,7 @@ export async function createDshHostCoreExecutorAdapter(
         }
         runState.acquireTrial();
         try {
-          return openClaudeCliTrial(trial, runState, host.maxInputBytes, RESOURCE_PROFILE);
+          return await openClaudeCliTrial(trial, runState, host.maxInputBytes, RESOURCE_PROFILE);
         } catch (error) {
           await runState.releaseTrial();
           throw error;
@@ -955,8 +955,8 @@ export async function createDshHostCoreExecutorAdapter(
           scope.operationIsolationKey,
         );
       },
-      disposeTrial({ runState }) {
-        return disposeClaudeCliTrial(runState, RESOURCE_PROFILE);
+      disposeTrial({ runState, trialState }) {
+        return disposeClaudeCliTrial(runState, trialState, RESOURCE_PROFILE);
       },
       disposeRun({ runState }) {
         return runState.requestDispose();

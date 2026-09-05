@@ -291,7 +291,7 @@ async function adapterFixture(options: Readonly<{
     snapshotKind: 'directory',
     leaseMode: 'copy-on-write-overlay',
     baseSnapshotPath: workspacePath,
-    overlayPath: workspacePath,
+
   });
   if (options.mcp) resources.set('mcp-a', {
     resourceId: 'mcp-a',

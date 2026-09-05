@@ -669,7 +669,7 @@ function captureMaterializedLeases(
       const expected = inventory.get(resource.resourceId);
       const snapshotPaths = resource.leaseMode === 'immutable-snapshot'
         ? [resource.snapshotPath]
-        : [resource.baseSnapshotPath, resource.overlayPath];
+        : [resource.baseSnapshotPath];
       if (expected !== undefined && resource.resourceKind === expected.resourceKind
           && canonicalizeJson(resource.descriptor) === canonicalizeJson(expected.descriptor)
           && !snapshotPaths.includes(expected.locator)) return;

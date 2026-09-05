@@ -73,7 +73,6 @@ export type OmkLeasedHostResource =
       readonly snapshotKind: 'directory';
       readonly leaseMode: 'copy-on-write-overlay';
       readonly baseSnapshotPath: string;
-      readonly overlayPath: string;
     });
 
 export interface OmkBindingResourceLease {

@@ -694,7 +694,7 @@ export async function createClaudeSdkExecutorAdapter(
         }
         runState.acquireTrial();
         try {
-          return openClaudeCliTrial(
+          return await openClaudeCliTrial(
             trial,
             runState,
             configuration.maxInputBytes,
@@ -716,8 +716,8 @@ export async function createClaudeSdkExecutorAdapter(
           attempt,
         );
       },
-      async disposeTrial({ runState }) {
-        await disposeClaudeCliTrial(runState, CLAUDE_SDK_RESOURCE_PROFILE);
+      async disposeTrial({ runState, trialState }) {
+        await disposeClaudeCliTrial(runState, trialState, CLAUDE_SDK_RESOURCE_PROFILE);
       },
       async disposeRun({ runState }) {
         await runState.requestDispose();

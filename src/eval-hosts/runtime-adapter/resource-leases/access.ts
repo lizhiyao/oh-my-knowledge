@@ -51,23 +51,6 @@ export function createOmkResourceLeaseAccessRegistry(
   ]));
   const active = new Map<string, OmkRunResourceLeases>();
 
-  const activePaths = (): { readOnly: Set<string>; writable: Set<string> } => {
-    const readOnly = new Set<string>();
-    const writable = new Set<string>();
-    for (const leases of active.values()) {
-      for (const binding of leases.bindingsByBindingId.values()) {
-        for (const resource of binding.resourcesByResourceId.values()) {
-          if (resource.leaseMode === 'immutable-snapshot') readOnly.add(resource.snapshotPath);
-          else {
-            readOnly.add(resource.baseSnapshotPath);
-            writable.add(resource.overlayPath);
-          }
-        }
-      }
-    }
-    return { readOnly, writable };
-  };
-
   const lifecycle: OmkRunResourceLeaseRegistry = Object.freeze({
     register(leases: OmkRunResourceLeases): void {
       if (active.has(leases.runId)) fail({
@@ -83,9 +66,6 @@ export function createOmkResourceLeaseAccessRegistry(
         runId: leases.runId,
         message: 'Run resource lease 未精确覆盖 active Executor／Evaluator bindings。',
       });
-      const occupied = activePaths();
-      const currentReadonly = new Set<string>();
-      const currentWritable = new Set<string>();
       for (const [bindingId, binding] of expected) {
         const lease = leases.bindingsByBindingId.get(bindingId);
         if (lease === undefined || lease.bindingId !== bindingId
@@ -117,10 +97,7 @@ export function createOmkResourceLeaseAccessRegistry(
                 && (typeof resource.snapshotPath !== 'string' || resource.snapshotPath === ''))
               || (resource.leaseMode === 'copy-on-write-overlay'
                 && (typeof resource.baseSnapshotPath !== 'string'
-                  || resource.baseSnapshotPath === ''
-                  || typeof resource.overlayPath !== 'string'
-                  || resource.overlayPath === ''
-                  || resource.baseSnapshotPath === resource.overlayPath))
+                  || resource.baseSnapshotPath === ''))
               || (binding.runtimeKind === 'executor'
                 && resource.descriptor?.classification === 'gold')) fail({
             code: 'OMK_RESOURCE_LEASE_BINDING_COVERAGE_MISMATCH',
@@ -128,27 +105,8 @@ export function createOmkResourceLeaseAccessRegistry(
             bindingId,
             message: 'Binding resource lease 的 resource identity、mode 或 classification 不合法。',
           });
-          if (resource.leaseMode === 'immutable-snapshot') {
-            currentReadonly.add(resource.snapshotPath);
-          } else {
-            if (currentWritable.has(resource.overlayPath)
-                || occupied.writable.has(resource.overlayPath)
-                || occupied.readOnly.has(resource.overlayPath)) fail({
-              code: 'OMK_RESOURCE_LEASE_ISOLATION_MISMATCH',
-              runId: leases.runId,
-              bindingId,
-              message: 'Writable resource overlay 与其它 binding／run 路径冲突。',
-            });
-            currentReadonly.add(resource.baseSnapshotPath);
-            currentWritable.add(resource.overlayPath);
-          }
         }
       }
-      if ([...currentWritable].some((path) => currentReadonly.has(path))) fail({
-        code: 'OMK_RESOURCE_LEASE_ISOLATION_MISMATCH',
-        runId: leases.runId,
-        message: 'Writable resource overlay 与当前 run 的只读 snapshot 路径冲突。',
-      });
       active.set(leases.runId, leases);
     },
     unregister(runId: string): void {
