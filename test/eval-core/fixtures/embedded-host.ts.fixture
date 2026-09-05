@@ -48,6 +48,10 @@ import {
   type AnalysisRequest,
   type AllowedToolsPlan,
   type CohortFilter,
+  type ContentResolver,
+  type ContentStore,
+  type EvaluationInfrastructure,
+  type EvidencePolicy,
   type Executor as CanonicalExecutor,
   type PreparedEvaluation,
   type Variant as CanonicalVariant,
@@ -130,6 +134,25 @@ const canonicalExecutor: CanonicalExecutor<string, undefined, string> = {
     return { output: input };
   },
 };
+const evidencePolicy: EvidencePolicy = {
+  output: 'reference',
+  trace: 'none',
+  evaluatorEvidence: 'digest',
+  maximumClassification: 'sensitive',
+};
+const contentStore: ContentStore = {
+  async put(request) {
+    return { digest: request.digest, mediaType: request.mediaType };
+  },
+};
+const contentResolver: ContentResolver = {
+  async resolve(descriptor) {
+    return { value: null, classification: 'sensitive', mediaType: descriptor.mediaType };
+  },
+};
+const evaluationInfrastructure: EvaluationInfrastructure = { contentStore, contentResolver };
+void evidencePolicy;
+void evaluationInfrastructure;
 const workspaceDescriptor: WorkspaceDescriptor = {
   resourceId: 'typescript-workspace',
   digest: `sha256:${'a'.repeat(64)}`,

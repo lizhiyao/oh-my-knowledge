@@ -49,6 +49,7 @@ import {
   type MeasurementAttemptBudgetScopeInput,
   type MeasurementBudgetPolicyInput,
   type MeasurementBudgetScopeInput,
+  type MeasurementEvidencePolicyInput,
   type MeasurementPolicyBuilderInput,
   type MeasurementProviderCostLimitInput,
   type MeasurementRetryBackoffInput,
@@ -103,6 +104,7 @@ import {
 import {
   createEvaluationRuntime,
   EvaluationRuntimeAssemblyError,
+  type EvaluationRuntimeSupportPorts,
   type RuntimePortRegistration,
 } from './runtime.js';
 import {
@@ -125,6 +127,16 @@ import {
   type CapturedAllowedToolsPlan,
 } from './tool-policy.js';
 import { evaluationExecutionControls } from './execution-controls.js';
+import {
+  captureEvaluationInfrastructure,
+  type ContentValue,
+  type EvaluationInfrastructure,
+} from './infrastructure.js';
+import {
+  runContentStoreConformance,
+  type ContentStoreCheckInput,
+  type ContentStoreCheckResult,
+} from './conformance/content-store.js';
 
 const ARTIFACT_KINDS = ['baseline', 'skill', 'prompt', 'agent', 'workflow'] as const;
 const ARTIFACT_SOURCES = [
@@ -137,6 +149,12 @@ const ARTIFACT_SOURCES = [
 ] as const;
 const VARIANT_CONFIG_SCHEMA_VERSION = 'omk.eval-runtime.variant-config/v3' as const;
 const MAX_RUBRIC_PANEL_COORDINATES = 1_000;
+
+const ContentValueSchema = z.object({
+  value: JsonValueSchema,
+  classification: z.enum(['public', 'sensitive', 'secret', 'gold']),
+  mediaType: z.string().min(1).optional(),
+}).strict();
 
 const ArtifactSchema = z.object({
   name: z.string().min(1),
@@ -878,6 +896,7 @@ export type BudgetScope = MeasurementBudgetScopeInput;
 export type RunBudgetScope = MeasurementRunBudgetScopeInput;
 export type AttemptBudgetScope = MeasurementAttemptBudgetScopeInput;
 export type BudgetPolicy = MeasurementBudgetPolicyInput;
+export type EvidencePolicy = MeasurementEvidencePolicyInput;
 export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
 export type Sample = EvaluationSample;
 export type PreparedEvaluationPlan = SealedRunPlan;
@@ -939,6 +958,8 @@ export interface EvaluateInput {
   readonly decision?: Decision;
   readonly experiment: Experiment;
   readonly policy: Policy;
+  /** Host infrastructure ports; implementations and credentials never enter the Definition. */
+  readonly infrastructure?: EvaluationInfrastructure;
 }
 
 export interface EvaluationRunOptions {
@@ -979,6 +1000,7 @@ export interface ExecutorCheckInput<
 }
 
 export type ExecutorCheckResult = ExecutorConformanceResult;
+export type { ContentStoreCheckInput, ContentStoreCheckResult };
 export type { RuntimeConformanceCheck };
 
 export class EvaluationConfigurationError extends TypeError {
@@ -2976,6 +2998,7 @@ function assertEvaluateInput(input: Readonly<{
   analyses: readonly AnalysisRequest[];
   decision?: Decision;
   policy: Policy;
+  infrastructure?: EvaluationInfrastructure;
 }>) {
   const allowedKeys = new Set([
     'dataset',
@@ -2986,6 +3009,7 @@ function assertEvaluateInput(input: Readonly<{
     'decision',
     'experiment',
     'policy',
+    'infrastructure',
   ]);
   if (Object.keys(input).some((key) => !allowedKeys.has(key))
       || !Array.isArray(input.variants) || input.variants.length === 0
@@ -2995,7 +3019,10 @@ function assertEvaluateInput(input: Readonly<{
       || !AnalysesInputSchema.safeParse(input.analyses).success
       || (input.decision !== undefined && !DecisionInputSchema.safeParse(input.decision).success)
       || !z.array(ComparisonInputSchema).safeParse(input.comparisons).success
-      || !PolicyInputSchema.safeParse(input.policy).success) {
+      || !PolicyInputSchema.safeParse(input.policy).success
+      || (input.infrastructure !== undefined
+        && (input.infrastructure === null || typeof input.infrastructure !== 'object'
+          || Array.isArray(input.infrastructure)))) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
       'Evaluation input 包含无效或不受支持的字段。',
@@ -3110,6 +3137,73 @@ function estimateEvaluationWork(plan: SealedRunPlan): EvaluationWorkEstimate {
   });
 }
 
+function validateEvidenceInfrastructure(
+  definition: EvaluationDefinition,
+  policy: ReturnType<typeof createMeasurementPolicy>,
+  variants: readonly Readonly<CapturedVariant>[],
+  support: EvaluationRuntimeSupportPorts | undefined,
+): void {
+  const { evidence } = policy;
+  const classificationLevel = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
+  const needsOutput = definition.evaluators.some((evaluator) => (
+    evaluator.inputs.some((input) => input.sourceKind === 'output')
+  ));
+  const needsTrace = definition.evaluators.some((evaluator) => (
+    evaluator.inputs.some((input) => input.sourceKind === 'trace')
+  ));
+  if (needsOutput && evidence.output !== 'full' && evidence.output !== 'reference') {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluator 需要 output；evidence.output 必须是 full 或 reference。',
+    );
+  }
+  if (needsTrace && evidence.trace !== 'full' && evidence.trace !== 'reference') {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluator 需要 trace；evidence.trace 必须是 full 或 reference。',
+    );
+  }
+  if (needsOutput && variants.some((variant) => (
+    classificationLevel[variant.executor.declaration.outputClassification ?? 'sensitive']
+      > classificationLevel[evidence.maximumClassification]
+  ))) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluator 需要 output；evidence.maximumClassification 低于 Executor output classification。',
+    );
+  }
+  if (needsTrace && variants.some((variant) => {
+    const declaration = variant.executor.declaration;
+    const traceClassification = declaration.traceClassification
+      ?? declaration.outputClassification
+      ?? 'sensitive';
+    return classificationLevel[traceClassification]
+      > classificationLevel[evidence.maximumClassification];
+  })) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluator 需要 trace；evidence.maximumClassification 低于 Executor trace classification。',
+    );
+  }
+  const needsContentStore = evidence.output === 'reference'
+    || evidence.trace === 'reference'
+    || evidence.evidence === 'reference';
+  if (needsContentStore && support?.executionContentStore === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Reference evidence capture requires an infrastructure.contentStore。',
+    );
+  }
+  const needsContentResolver = (needsOutput && evidence.output === 'reference')
+    || (needsTrace && evidence.trace === 'reference');
+  if (needsContentResolver && support?.contentResolver === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluator 读取 reference content 时需要 infrastructure.contentResolver。',
+    );
+  }
+}
+
 async function runPrepared(
   prepared: CorePreparedEvaluation,
   optionsInput?: Readonly<EvaluationRunOptions>,
@@ -3157,6 +3251,15 @@ export async function prepareEvaluation(
     );
   }
   assertEvaluateInput(input);
+  let support: EvaluationRuntimeSupportPorts | undefined;
+  try {
+    support = captureEvaluationInfrastructure(input.infrastructure);
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation infrastructure declaration 无效。',
+    );
+  }
   const dataset = captureDataset(input.dataset);
   const sampleIds = new Set(dataset.samples.map((sample) => sample.sampleId));
   const variants = input.variants.map((variant) => captureVariant(variant, sampleIds));
@@ -3196,6 +3299,7 @@ export async function prepareEvaluation(
       'Evaluation policy 无效。',
     );
   }
+  validateEvidenceInfrastructure(definition, policy, variants, support);
   const variantsByExecutor = new Map<string, Map<string, Readonly<CapturedVariant>>>();
   for (const variant of variants) {
     const executorId = variant.executor.declaration.executorId;
@@ -3220,6 +3324,7 @@ export async function prepareEvaluation(
         },
     })),
     evaluators: evaluators.registrations,
+    ...(support === undefined ? {} : { support }),
   });
   try {
     const prepared = await createCoreEvaluationEngine(runtime).prepare(definition, policy);
@@ -3339,5 +3444,64 @@ export async function checkExecutor<
     },
     ...(input.seed === undefined ? {} : { seed: input.seed }),
     ...(input.runId === undefined ? {} : { runId: input.runId }),
+  });
+}
+
+/** Checks one host ContentStore／ContentResolver pair through an idempotent round trip. */
+export async function checkContentStore(
+  input: Readonly<ContentStoreCheckInput>,
+): Promise<ContentStoreCheckResult> {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)
+      || Object.keys(input).some((key) => ![
+        'contentStore',
+        'contentResolver',
+        'probe',
+        'timeoutMs',
+      ].includes(key))) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check input 无效。',
+    );
+  }
+  const timeoutMs = input.timeoutMs ?? 5_000;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check timeoutMs 必须是 1 到 60000 之间的整数。',
+    );
+  }
+  const declaredContentStore = input.contentStore;
+  const declaredContentResolver = input.contentResolver;
+  let support: EvaluationRuntimeSupportPorts | undefined;
+  let probe: ContentValue;
+  try {
+    support = captureEvaluationInfrastructure({
+      contentStore: declaredContentStore,
+      contentResolver: declaredContentResolver,
+    });
+    probe = deepFreezeCanonicalJson(ContentValueSchema.parse(structuredClone(
+      input.probe ?? {
+        value: { conformance: 'omk-content-store/v1' },
+        classification: 'public',
+        mediaType: 'application/json',
+      },
+    ))) as ContentValue;
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check declaration 无效。',
+    );
+  }
+  if (support?.executionContentStore === undefined || support.contentResolver === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'ContentStore check 需要 contentStore 与 contentResolver。',
+    );
+  }
+  return runContentStoreConformance({
+    contentStore: support.executionContentStore,
+    contentResolver: support.contentResolver,
+    probe,
+    timeoutMs,
   });
 }

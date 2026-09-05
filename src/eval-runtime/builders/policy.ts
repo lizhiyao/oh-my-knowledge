@@ -62,14 +62,19 @@ export interface MeasurementBudgetPolicyInput {
   readonly onUnreportedProviderCost?: 'fail-run' | 'mark-unverifiable';
 }
 
+export interface MeasurementEvidencePolicyInput {
+  readonly output?: 'full' | 'reference' | 'digest' | 'none';
+  readonly trace?: 'full' | 'reference' | 'digest' | 'none';
+  readonly evaluatorEvidence?: 'full' | 'reference' | 'digest' | 'none';
+  readonly maximumClassification?: 'public' | 'sensitive' | 'secret' | 'gold';
+}
+
 export interface MeasurementPolicyBuilderInput {
   readonly execution?: MeasurementStagePolicyInput;
   readonly evaluation?: MeasurementStagePolicyInput;
   readonly budget?: MeasurementBudgetPolicyInput;
   readonly failure?: MeasurementFailurePolicyInput;
-  readonly evidence?: Readonly<{
-    maximumClassification?: 'public' | 'sensitive' | 'secret' | 'gold';
-  }>;
+  readonly evidence?: MeasurementEvidencePolicyInput;
   readonly eventDelivery?: MeasurementEventDeliveryInput;
 }
 
@@ -194,6 +199,9 @@ export const MeasurementPolicyBuilderInputSchema = z.object({
   budget: BudgetInputSchema.optional(),
   failure: FailurePolicyInputSchema.optional(),
   evidence: z.object({
+    output: z.enum(['full', 'reference', 'digest', 'none']).optional(),
+    trace: z.enum(['full', 'reference', 'digest', 'none']).optional(),
+    evaluatorEvidence: z.enum(['full', 'reference', 'digest', 'none']).optional(),
     maximumClassification: z.enum(['public', 'sensitive', 'secret', 'gold']).optional(),
   }).strict().optional(),
   eventDelivery: EventDeliveryInputSchema.optional(),
@@ -282,9 +290,9 @@ export function createMeasurementPolicy(
     },
     cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
     evidence: {
-      output: 'full',
-      trace: 'full',
-      evidence: 'full',
+      output: parsed.evidence?.output ?? 'full',
+      trace: parsed.evidence?.trace ?? 'full',
+      evidence: parsed.evidence?.evaluatorEvidence ?? 'full',
       maximumClassification: parsed.evidence?.maximumClassification ?? 'gold',
     },
     failure: parsed.failure ?? { failureMode: 'continue' },

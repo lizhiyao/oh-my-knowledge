@@ -18,6 +18,7 @@ export type {
   MeasurementAttemptBudgetScopeInput,
   MeasurementBudgetPolicyInput,
   MeasurementBudgetScopeInput,
+  MeasurementEvidencePolicyInput,
   MeasurementPolicyBuilderInput,
   MeasurementProviderCostLimitInput,
   MeasurementRetryBackoffInput,
