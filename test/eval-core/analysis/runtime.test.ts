@@ -1206,6 +1206,110 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     )).toThrow(/sealed output schema/);
   });
 
+  it('revalidates a transported simultaneous family against its exact upstream intervals', async () => {
+    const fixture = await makeAnalysisFixture('simultaneous-family-validator', (definition) => {
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+      });
+      definition.targets.push({
+        ...structuredClone(definition.targets[1]),
+        targetId: 'treatment-secondary',
+      });
+      definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
+      definition.experiment.sampling = {
+        experimentalUnit: 'sample',
+        repeatedMeasures: false,
+        resamplingUnit: 'paired-block',
+        estimatorId: 'bootstrap.paired-difference-percentile/v1',
+        seedCoupling: 'shared-within-block',
+        pairingKey: '/sampleId',
+      };
+      definition.analysisGraph.nodes = [
+        {
+          analysisNodeKind: 'estimator',
+          nodeId: 'primary-interval',
+          implementationId: 'bootstrap.paired-difference-percentile/v1',
+          inputs: [
+            { inputKind: 'metric-observations', referenceId: 'correct' },
+            {
+              inputKind: 'comparison',
+              referenceId: 'control-vs-treatment',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
+            },
+          ],
+          outputResultId: 'primary-result',
+          parameters: { alpha: 0.025, resamples: 64 },
+        },
+        {
+          analysisNodeKind: 'estimator',
+          nodeId: 'secondary-interval',
+          implementationId: 'bootstrap.paired-difference-percentile/v1',
+          inputs: [
+            { inputKind: 'metric-observations', referenceId: 'correct' },
+            {
+              inputKind: 'comparison',
+              referenceId: 'control-vs-treatment',
+              treatmentTargetId: 'treatment-secondary',
+              metricId: 'correct',
+            },
+          ],
+          outputResultId: 'secondary-result',
+          parameters: { alpha: 0.025, resamples: 64 },
+        },
+        {
+          analysisNodeKind: 'correction',
+          nodeId: 'release-family',
+          implementationId: 'simultaneous-intervals.bonferroni/v1',
+          inputs: [
+            { inputKind: 'analysis-result', referenceId: 'primary-result' },
+            { inputKind: 'analysis-result', referenceId: 'secondary-result' },
+          ],
+          outputResultId: 'release-family-result',
+          parameters: { familyConfidenceLevel: 0.95, resamples: 64 },
+        },
+      ];
+      delete definition.decisionPolicy;
+    });
+
+    expect(fixture.analysis).toMatchObject({
+      analysisBundleStatus: 'completed',
+      records: expect.arrayContaining([expect.objectContaining({
+        resultId: 'release-family-result',
+        analysisStatus: 'completed',
+      })]),
+    });
+    const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
+      const family = draft.records.find((record) => record.resultId === 'release-family-result');
+      if (family?.analysisStatus !== 'completed'
+          || family.value === null
+          || Array.isArray(family.value)
+          || typeof family.value !== 'object') {
+        throw new Error('expected completed family result');
+      }
+      const members = family.value.members;
+      if (!Array.isArray(members)
+          || members[0] === null
+          || Array.isArray(members[0])
+          || typeof members[0] !== 'object'
+          || members[0].interval === null
+          || Array.isArray(members[0].interval)
+          || typeof members[0].interval !== 'object') {
+        throw new Error('expected family member interval');
+      }
+      members[0].interval.estimate = 999;
+    });
+
+    expect(() => parseAnalysisBundle(
+      forged,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { schemaValidators: fixture.ports.schemaValidators },
+    )).toThrow(/sealed output schema/);
+  });
+
   it('rejects extra provenance parents even when the bundle is fully resealed', async () => {
     const fixture = await makeAnalysisFixture('provenance-parent');
     const forged = resealAnalysisBundle(fixture.analysis, (draft) => {

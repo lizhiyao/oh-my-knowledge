@@ -11,6 +11,7 @@ import {
 import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
+  validateMaterializedAnalysisSemantics,
 } from '../../../src/eval-core/compiler/validation.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
@@ -58,6 +59,96 @@ async function expectCode(
 }
 
 describe('Compiler definition validation', () => {
+  function simultaneousIntervalDefinition() {
+    const definition = validDefinition();
+    definition.metrics.push({
+      ...structuredClone(definition.metrics[0]),
+      metricId: 'safety',
+    });
+    definition.evaluators[0].metricIds.push('safety');
+    definition.comparisons[0].metricIds.push('safety');
+    definition.analysisGraph.nodes = [
+      {
+        analysisNodeKind: 'estimator',
+        nodeId: 'correct-interval',
+        implementationId: 'bootstrap.paired-difference-percentile/v1',
+        inputs: [
+          { inputKind: 'metric-observations', referenceId: 'correct' },
+          {
+            inputKind: 'comparison',
+            referenceId: 'control-vs-treatment',
+            treatmentTargetId: 'treatment',
+            metricId: 'correct',
+          },
+        ],
+        outputResultId: 'correct-result',
+        parameters: { alpha: 0.025, resamples: 1000 },
+      },
+      {
+        analysisNodeKind: 'estimator',
+        nodeId: 'safety-interval',
+        implementationId: 'bootstrap.paired-difference-percentile/v1',
+        inputs: [
+          { inputKind: 'metric-observations', referenceId: 'safety' },
+          {
+            inputKind: 'comparison',
+            referenceId: 'control-vs-treatment',
+            treatmentTargetId: 'treatment',
+            metricId: 'safety',
+          },
+        ],
+        outputResultId: 'safety-result',
+        parameters: { alpha: 0.025, resamples: 1000 },
+      },
+      {
+        analysisNodeKind: 'correction',
+        nodeId: 'release-family',
+        implementationId: 'simultaneous-intervals.bonferroni/v1',
+        inputs: [
+          { inputKind: 'analysis-result', referenceId: 'correct-result' },
+          { inputKind: 'analysis-result', referenceId: 'safety-result' },
+        ],
+        outputResultId: 'release-family-result',
+        parameters: { familyConfidenceLevel: 0.95, resamples: 1000 },
+      },
+    ];
+    definition.decisionPolicy = undefined;
+    return definition;
+  }
+
+  it('seals canonical simultaneous-interval family membership and Bonferroni parameters', () => {
+    const valid = simultaneousIntervalDefinition();
+    expect(() => validateDefinitionSemantics(valid, validPolicy())).not.toThrow();
+    expect(() => validateMaterializedAnalysisSemantics(valid)).not.toThrow();
+
+    const nonCanonical = simultaneousIntervalDefinition();
+    nonCanonical.analysisGraph.nodes[2].inputs.reverse();
+    expect(() => validateDefinitionSemantics(nonCanonical, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
+
+    const wrongAlpha = simultaneousIntervalDefinition();
+    const parameters = wrongAlpha.analysisGraph.nodes[0].parameters as Record<string, unknown>;
+    parameters.alpha = 0.05;
+    expect(() => validateMaterializedAnalysisSemantics(wrongAlpha)).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
+
+    const duplicateContrast = simultaneousIntervalDefinition();
+    duplicateContrast.analysisGraph.nodes[1].inputs = structuredClone(
+      duplicateContrast.analysisGraph.nodes[0].inputs,
+    );
+    expect(() => validateMaterializedAnalysisSemantics(duplicateContrast)).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
+
+    const nonEstimator = simultaneousIntervalDefinition();
+    nonEstimator.analysisGraph.nodes[0].analysisNodeKind = 'reducer';
+    expect(() => validateMaterializedAnalysisSemantics(nonEstimator)).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
+  });
+
   it('rejects schema and semantic failures before any runtime resolution', async () => {
     const schemaRuntime = testRuntime();
     await expectCode(

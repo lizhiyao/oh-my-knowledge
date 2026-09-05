@@ -21,6 +21,11 @@ export interface CoreSchemaValidationContext {
   readonly parameters: unknown;
   readonly inputFacts: {
     readonly resamplingUnitCount: number;
+    readonly analysisResultInputs?: readonly {
+      readonly referenceId: string;
+      readonly resultType: 'scalar' | 'interval' | 'distribution' | 'table' | 'matrix' | 'curve';
+      readonly value: JsonValue;
+    }[];
   };
 }
 

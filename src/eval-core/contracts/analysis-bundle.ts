@@ -816,6 +816,17 @@ function assertMatchesPlan(
                   : [comparison.controlTargetId, input.treatmentTargetId];
               }),
             ),
+            analysisResultInputs: node.inputs.flatMap((input) => {
+              if (input.inputKind !== 'analysis-result') return [];
+              const sourceRecord = recordByResultId.get(input.referenceId);
+              return sourceRecord?.analysisStatus === 'completed'
+                ? [{
+                  referenceId: input.referenceId,
+                  resultType: sourceRecord.resultType,
+                  value: sourceRecord.value,
+                }]
+                : [];
+            }),
           },
         })) === canonicalizeJson(envelope);
       } catch {

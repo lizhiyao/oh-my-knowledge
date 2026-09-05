@@ -3,6 +3,8 @@ import type {
 } from './types.js';
 import {
   canonicalizeJson,
+  bonferroniMarginalAlpha,
+  bonferroniMarginalConfidenceLevel,
   deriveAssignmentMemberships,
   deriveSchedulingTargetGroups,
   projectExecutionInputs,
@@ -597,6 +599,123 @@ function validateGraph(
   for (const node of nodes) visit(node.nodeId);
 }
 
+function validateSimultaneousIntervalFamilies(
+  definition: EvaluationDefinition,
+  parametersMaterialized: boolean,
+): void {
+  const nodeByResultId = new Map(definition.analysisGraph.nodes.map(
+    (node) => [node.outputResultId, node],
+  ));
+  for (const node of definition.analysisGraph.nodes) {
+    if (node.implementationId !== 'simultaneous-intervals.bonferroni/v1') continue;
+    const memberResultIds = node.inputs.flatMap((input) => (
+      input.inputKind === 'analysis-result' ? [input.referenceId] : []
+    ));
+    if (node.analysisNodeKind !== 'correction'
+        || memberResultIds.length !== node.inputs.length
+        || memberResultIds.length < 2
+        || new Set(memberResultIds).size !== memberResultIds.length
+        || canonicalizeJson(memberResultIds) !== canonicalizeJson([...memberResultIds].sort())) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Bonferroni simultaneous interval family 必须按 canonical 顺序绑定至少两个唯一 AnalysisResult。',
+        { nodeId: node.nodeId },
+      );
+    }
+    const parameters = node.parameters;
+    if (parameters === undefined || parameters === null || Array.isArray(parameters)
+        || typeof parameters !== 'object') {
+      if (!parametersMaterialized) continue;
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Bonferroni simultaneous interval family 缺少已物化参数。',
+        { nodeId: node.nodeId },
+      );
+    }
+    const familyConfidenceLevel = (parameters as Record<string, unknown>).familyConfidenceLevel;
+    const resamples = (parameters as Record<string, unknown>).resamples;
+    if (typeof familyConfidenceLevel !== 'number'
+        || typeof resamples !== 'number'
+        || !Number.isFinite(familyConfidenceLevel)
+        || !Number.isSafeInteger(resamples)) {
+      if (!parametersMaterialized) continue;
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Bonferroni simultaneous interval family 参数未完整物化。',
+        { nodeId: node.nodeId },
+      );
+    }
+    let expectedAlpha: number;
+    try {
+      expectedAlpha = bonferroniMarginalAlpha(
+        familyConfidenceLevel,
+        memberResultIds.length,
+      );
+      bonferroniMarginalConfidenceLevel(familyConfidenceLevel, memberResultIds.length);
+    } catch {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Bonferroni simultaneous interval family 无法表示有效的边际置信度。',
+        { nodeId: node.nodeId },
+      );
+    }
+    const contrastSelectors: string[] = [];
+    for (const resultId of memberResultIds) {
+      const parent = nodeByResultId.get(resultId);
+      const comparisonInputs = parent?.inputs.filter((input) => input.inputKind === 'comparison')
+        ?? [];
+      const metricInputs = parent?.inputs.filter(
+        (input) => input.inputKind === 'metric-observations',
+      ) ?? [];
+      if (parent?.analysisNodeKind !== 'estimator'
+          || comparisonInputs.length !== 1
+          || metricInputs.length !== 1
+          || metricInputs[0].referenceId !== comparisonInputs[0].metricId) {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'Simultaneous interval member 必须精确绑定一个 comparison contrast 与对应 Metric。',
+          { nodeId: node.nodeId, referenceId: resultId },
+        );
+      }
+      contrastSelectors.push(canonicalizeJson([
+        comparisonInputs[0].referenceId,
+        comparisonInputs[0].treatmentTargetId,
+        comparisonInputs[0].metricId,
+      ]));
+      const parentParameters = parent?.parameters;
+      const parentObject = parentParameters !== undefined
+        && parentParameters !== null
+        && !Array.isArray(parentParameters)
+        && typeof parentParameters === 'object'
+        ? parentParameters as Record<string, unknown>
+        : undefined;
+      if (typeof parentObject?.alpha !== 'number'
+          || typeof parentObject.resamples !== 'number') {
+        if (!parametersMaterialized) continue;
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'Simultaneous interval member 必须公开标准 alpha 与 resamples 参数。',
+          { nodeId: node.nodeId, referenceId: resultId },
+        );
+      }
+      if (parentObject.alpha !== expectedAlpha || parentObject.resamples !== resamples) {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'Simultaneous interval member 必须使用由封存 family level 与 size 推导的 alpha 和 resamples。',
+          { nodeId: node.nodeId, referenceId: resultId },
+        );
+      }
+    }
+    if (new Set(contrastSelectors).size !== contrastSelectors.length) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Bonferroni simultaneous interval family 不能重复声明同一个 contrast。',
+        { nodeId: node.nodeId },
+      );
+    }
+  }
+}
+
 export function validateDefinitionSemantics(
   definition: EvaluationDefinition,
   policy: MeasurementPolicy,
@@ -781,6 +900,7 @@ export function validateDefinitionSemantics(
       );
     }
   }
+  validateSimultaneousIntervalFamilies(definition, false);
   if (definition.decisionPolicy !== undefined) {
     assertUnique(definition.decisionPolicy.analysisResultIds, 'decision-policy:analysis-result');
     for (const resultId of definition.decisionPolicy.analysisResultIds) {
@@ -937,6 +1057,12 @@ export function validateDefinitionSemantics(
     new Map(definition.comparisons.map((comparison) => [comparison.comparisonId, comparison])),
   );
   validatePolicy(definition, policy);
+}
+
+export function validateMaterializedAnalysisSemantics(
+  definition: EvaluationDefinition,
+): void {
+  validateSimultaneousIntervalFamilies(definition, true);
 }
 
 export function validateAnalysisInputs(

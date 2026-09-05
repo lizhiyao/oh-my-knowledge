@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   canonicalizeJson,
+  bonferroniMarginalConfidenceLevel,
   digestCanonicalJson,
   schemaIdentityKey,
   type CoreSchemaValidator,
@@ -25,6 +26,11 @@ import type {
   DecisionPolicyContext,
   DecisionPolicyOutput,
 } from './types.js';
+
+export {
+  bonferroniMarginalAlpha,
+  bonferroniMarginalConfidenceLevel,
+} from '../contracts/statistics.js';
 
 const FiniteNumberSchema = z.number().finite();
 const ProbabilitySchema = FiniteNumberSchema.min(0).max(1);
@@ -117,6 +123,10 @@ const HierarchicalQuantileParametersSchema = z.object({
 const BonferroniParametersSchema = z.object({
   alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
 }).strict();
+const SimultaneousIntervalFamilyParametersSchema = z.object({
+  familyConfidenceLevel: FiniteNumberSchema.gt(0).lt(1),
+  resamples: z.number().int().positive().safe(),
+}).strict();
 const ProgressParametersSchema = z.object({
   threshold: FiniteNumberSchema.default(0),
   equivalence: FiniteNumberSchema.nonnegative().default(0),
@@ -126,23 +136,67 @@ const ScalarEnvelopeSchema = z.object({
   resultType: z.literal('scalar'),
   value: FiniteNumberSchema,
 }).strict();
+const PercentileIntervalValueSchema = z.object({
+  estimate: FiniteNumberSchema,
+  lower: FiniteNumberSchema,
+  upper: FiniteNumberSchema,
+  confidenceLevel: FiniteNumberSchema.gt(0).lt(1),
+  resamples: z.number().int().positive().safe(),
+  unitCount: z.number().int().positive().safe(),
+  method: z.literal('percentile'),
+}).strict();
 const IntervalEnvelopeSchema = z.object({
   resultType: z.literal('interval'),
-  value: z.object({
-    estimate: FiniteNumberSchema,
-    lower: FiniteNumberSchema,
-    upper: FiniteNumberSchema,
-    confidenceLevel: FiniteNumberSchema.gt(0).lt(1),
-    resamples: z.number().int().positive().safe(),
-    unitCount: z.number().int().positive().safe(),
-    method: z.literal('percentile'),
-  }).strict(),
+  value: PercentileIntervalValueSchema,
 }).strict().superRefine((envelope, context) => {
   if (envelope.value.lower > envelope.value.upper) {
     context.addIssue({
       code: 'custom',
       path: ['value'],
       message: 'Interval bounds must satisfy lower <= upper',
+    });
+  }
+});
+const SimultaneousIntervalFamilyEnvelopeSchema = z.object({
+  resultType: z.literal('table'),
+  value: z.object({
+    adjustmentMethod: z.literal('bonferroni'),
+    familyConfidenceLevel: FiniteNumberSchema.gt(0).lt(1),
+    marginalConfidenceLevel: FiniteNumberSchema.gt(0).lt(1),
+    familySize: z.number().int().min(2).safe(),
+    resamples: z.number().int().positive().safe(),
+    members: z.array(z.object({
+      analysisResultId: z.string().min(1).max(256),
+      interval: PercentileIntervalValueSchema,
+    }).strict()).min(2),
+  }).strict(),
+}).strict().superRefine((envelope, context) => {
+  const { value } = envelope;
+  const memberIds = value.members.map((member) => member.analysisResultId);
+  if (value.familySize !== value.members.length) {
+    context.addIssue({ code: 'custom', path: ['value', 'familySize'], message: 'familySize mismatch' });
+  }
+  if (new Set(memberIds).size !== memberIds.length
+      || canonicalizeJson(memberIds) !== canonicalizeJson([...memberIds].sort())) {
+    context.addIssue({
+      code: 'custom',
+      path: ['value', 'members'],
+      message: 'Member IDs must be unique and canonical',
+    });
+  }
+  const expectedConfidence = bonferroniMarginalConfidenceLevel(
+    value.familyConfidenceLevel,
+    value.familySize,
+  );
+  if (value.marginalConfidenceLevel !== expectedConfidence
+      || value.members.some((member) => (
+        member.interval.confidenceLevel !== expectedConfidence
+        || member.interval.resamples !== value.resamples
+      ))) {
+    context.addIssue({
+      code: 'custom',
+      path: ['value', 'members'],
+      message: 'Member interval metadata does not match the Bonferroni family',
     });
   }
 });
@@ -224,6 +278,18 @@ export const BUILTIN_INTERVAL_RESULT_SCHEMA = schemaIdentity(
   ]),
 );
 
+export const BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA = schemaIdentity(
+  'omk.analysis-result.simultaneous-interval-family/v1',
+  'urn:omk:analysis-result:simultaneous-interval-family:v1',
+  jsonSchema(SimultaneousIntervalFamilyEnvelopeSchema, [
+    'familySize equals members.length and is at least two',
+    'analysisResultId values are unique and lexicographically sorted',
+    'marginalConfidenceLevel equals 1 - (1 - familyConfidenceLevel) / familySize',
+    'every member interval confidence and resamples match the sealed family parameters',
+    'every member interval is identical to its referenced Core Analysis result',
+  ]),
+);
+
 export const BUILTIN_HYPOTHESIS_TABLE_SCHEMA = schemaIdentity(
   'omk.analysis-result.hypothesis-table/v1',
   'urn:omk:analysis-result:hypothesis-table:v1',
@@ -275,6 +341,14 @@ const HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA = schemaIdentity(
 const BONFERRONI_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.bonferroni/v1', 'urn:omk:parameters:bonferroni:v1', jsonSchema(BonferroniParametersSchema),
 );
+const SIMULTANEOUS_INTERVAL_FAMILY_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.simultaneous-interval-family/v1',
+  'urn:omk:parameters:simultaneous-interval-family:v1',
+  jsonSchema(SimultaneousIntervalFamilyParametersSchema, [
+    'familyConfidenceLevel is the simultaneous coverage target',
+    'member alpha equals (1 - familyConfidenceLevel) divided by the sealed input count',
+  ]),
+);
 const PROGRESS_PARAMETERS_SCHEMA = schemaIdentity(
   'omk.parameters.progress/v1', 'urn:omk:parameters:progress:v1', jsonSchema(ProgressParametersSchema),
 );
@@ -308,6 +382,7 @@ function nodeCapabilities(input: {
   valueTypes?: Array<'numeric' | 'boolean'>;
   missingPolicyIds?: string[];
   analysisResultSchemaUris?: string[];
+  analysisResultCardinality?: { min: number; max?: number };
   comparison?: boolean;
   outputSchema: SchemaIdentity;
   parameterSchema: SchemaIdentity;
@@ -348,7 +423,9 @@ function nodeCapabilities(input: {
     parameterSchema: input.parameterSchema,
     inputCardinalities: {
       metricObservations: input.valueTypes !== undefined ? { min: 1, max: 1 } : { min: 0, max: 0 },
-      analysisResults: input.analysisResultSchemaUris !== undefined ? { min: 1 } : { min: 0, max: 0 },
+      analysisResults: input.analysisResultSchemaUris !== undefined
+        ? input.analysisResultCardinality ?? { min: 1 }
+        : { min: 0, max: 0 },
       comparisons: input.comparison === true ? { min: 1, max: 1 } : { min: 0, max: 0 },
     },
     ...(input.sampling !== undefined ? {
@@ -1250,6 +1327,74 @@ function executeBonferroni(context: AnalysisNodeExecutionContext): AnalysisNodeE
   };
 }
 
+type SimultaneousIntervalInput = NonNullable<
+  CoreSchemaValidationContext['inputFacts']['analysisResultInputs']
+>[number];
+
+function buildSimultaneousIntervalFamilyValue(
+  rawParameters: unknown,
+  rawInputs: readonly SimultaneousIntervalInput[],
+): z.infer<typeof SimultaneousIntervalFamilyEnvelopeSchema>['value'] {
+  const sealed = SimultaneousIntervalFamilyParametersSchema.parse(rawParameters);
+  if (rawInputs.length < 2) {
+    throw new TypeError('A simultaneous interval family requires at least two interval results.');
+  }
+  const ids = rawInputs.map((input) => input.referenceId);
+  if (new Set(ids).size !== ids.length) {
+    throw new TypeError('A simultaneous interval family cannot repeat a result identity.');
+  }
+  const marginalConfidenceLevel = bonferroniMarginalConfidenceLevel(
+    sealed.familyConfidenceLevel,
+    rawInputs.length,
+  );
+  const members = rawInputs.map((input) => {
+    const interval = IntervalEnvelopeSchema.parse({
+      resultType: input.resultType,
+      value: input.value,
+    }).value;
+    if (interval.confidenceLevel !== marginalConfidenceLevel
+        || interval.resamples !== sealed.resamples) {
+      throw new TypeError('An interval result does not match the sealed Bonferroni family.');
+    }
+    return { analysisResultId: input.referenceId, interval };
+  }).sort((left, right) => (
+    left.analysisResultId < right.analysisResultId
+      ? -1
+      : left.analysisResultId > right.analysisResultId ? 1 : 0
+  ));
+  return SimultaneousIntervalFamilyEnvelopeSchema.parse({
+    resultType: 'table',
+    value: {
+      adjustmentMethod: 'bonferroni',
+      familyConfidenceLevel: sealed.familyConfidenceLevel,
+      marginalConfidenceLevel,
+      familySize: members.length,
+      resamples: sealed.resamples,
+      members,
+    },
+  }).value;
+}
+
+function executeSimultaneousIntervalFamily(
+  context: AnalysisNodeExecutionContext,
+): AnalysisNodeExecutionResult {
+  const inputs = context.inputs.flatMap((input): SimultaneousIntervalInput[] => (
+    input.inputKind === 'analysis-result'
+      ? [{
+        referenceId: input.referenceId,
+        resultType: input.record.resultType,
+        value: input.record.value,
+      }]
+      : []
+  ));
+  return {
+    analysisStatus: 'completed',
+    resultType: 'table',
+    value: buildSimultaneousIntervalFamilyValue(context.node.parameters ?? {}, inputs),
+    assumptionChecks: passedAssumption('complete-simultaneous-interval-family'),
+  };
+}
+
 const BUILTIN_DEFINITIONS = new Map<string, BuiltinDefinition>();
 
 function register(
@@ -1502,6 +1647,19 @@ register(
   executeHierarchicalClusterBootstrap,
 );
 register(
+  'simultaneous-intervals.bonferroni/v1',
+  nodeCapabilities({
+    analysisNodeKind: 'correction',
+    analysisResultSchemaUris: [BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri],
+    analysisResultCardinality: { min: 2 },
+    outputSchema: BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA,
+    parameterSchema: SIMULTANEOUS_INTERVAL_FAMILY_PARAMETERS_SCHEMA,
+  }),
+  BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA,
+  SIMULTANEOUS_INTERVAL_FAMILY_PARAMETERS_SCHEMA,
+  executeSimultaneousIntervalFamily,
+);
+register(
   'bonferroni/v1',
   nodeCapabilities({
     analysisNodeKind: 'correction',
@@ -1595,6 +1753,21 @@ function validateBonferroniContext(
   const envelope = HypothesisTableEnvelopeSchema.parse(value);
   if (envelope.value.alpha !== sealed.alpha) {
     throw new TypeError('Bonferroni alpha does not match the sealed node parameters.');
+  }
+}
+
+function validateSimultaneousIntervalFamilyContext(
+  value: JsonValue,
+  context?: Readonly<CoreSchemaValidationContext>,
+): void {
+  const sealedContext = requireAnalysisOutputContext(context);
+  const envelope = SimultaneousIntervalFamilyEnvelopeSchema.parse(value);
+  const expected = buildSimultaneousIntervalFamilyValue(
+    sealedContext.parameters,
+    sealedContext.inputFacts.analysisResultInputs ?? [],
+  );
+  if (canonicalizeJson(envelope.value) !== canonicalizeJson(expected)) {
+    throw new TypeError('Simultaneous interval family does not match its sealed Core inputs.');
   }
 }
 
@@ -1739,6 +1912,11 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
   ]> = [
     [BUILTIN_SCALAR_RESULT_SCHEMA, ScalarEnvelopeSchema],
     [BUILTIN_INTERVAL_RESULT_SCHEMA, IntervalEnvelopeSchema, validateIntervalContext],
+    [
+      BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA,
+      SimultaneousIntervalFamilyEnvelopeSchema,
+      validateSimultaneousIntervalFamilyContext,
+    ],
     [BUILTIN_HYPOTHESIS_INPUT_SCHEMA, HypothesisInputEnvelopeSchema],
     [BUILTIN_HYPOTHESIS_TABLE_SCHEMA, HypothesisTableEnvelopeSchema, validateBonferroniContext],
     [EMPTY_PARAMETERS_SCHEMA, StrictEmptyParametersSchema],
@@ -1748,6 +1926,10 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
     [HIERARCHICAL_REDUCER_PARAMETERS_SCHEMA, HierarchicalReducerParametersSchema],
     [HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA, HierarchicalQuantileParametersSchema],
     [BONFERRONI_PARAMETERS_SCHEMA, BonferroniParametersSchema],
+    [
+      SIMULTANEOUS_INTERVAL_FAMILY_PARAMETERS_SCHEMA,
+      SimultaneousIntervalFamilyParametersSchema,
+    ],
     [PROGRESS_PARAMETERS_SCHEMA, ProgressParametersSchema],
   ];
   for (const [schema, zodSchema, validateContext] of entries) {
