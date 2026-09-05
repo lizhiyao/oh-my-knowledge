@@ -185,6 +185,42 @@ if (assessment.comparabilityStatus !== 'compatible') {
 
 The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. Persistent cross-process admission remains available through the advanced Core surface until the Runtime artifact-store adapter lands.
 
+## Repeat-run stability
+
+Use an Evaluation Series when the question is whether the same sealed evaluation is stable across complete member Runs:
+
+```ts
+import { prepareEvaluationSeries } from 'oh-my-knowledge';
+
+const preparedSeries = await prepareEvaluationSeries({
+  evaluation: input,
+  seriesInstanceId: 'release-42-repeatability',
+  repeatCount: 10,
+  stability: {
+    sourceAnalysisId: 'candidate-correct-rate',
+    projection: 'scalar',
+  },
+});
+
+// No Target or Evaluator has run yet.
+console.log(preparedSeries.memberPlans, preparedSeries.estimatedWork);
+
+const series = await preparedSeries.run({ signal });
+if (series.status === 'failed') throw new Error(series.error.code);
+if (series.status === 'cancelled') throw new Error('Series was cancelled.');
+if (series.stability?.analysisStatus !== 'completed') {
+  throw new Error(series.stability?.reasonCodes.join(', '));
+}
+console.log(series.stability.value.mean);
+console.log(series.stability.value.sampleStandardDeviation);
+```
+
+Declare the full `repeatCount` before execution. OMK captures the Evaluation declaration once, preregisters every membership, and verifies that all stage-plan digests remain identical while each member receives a unique Run contract. Members run sequentially with Execution and Evaluation cache disabled. A failed or cancelled member retains its actual partial, failed, cancelled, or missing coverage state and is never replaced; the API does not stop early based on observed values. Each member receives its own Run budgets.
+
+The Series experimental unit is one complete Run. Trials, retries, samples, and Judge replicates remain nested within that Run and do not increase `runCount`. The measurement seed is held fixed with the rest of the design, so seed-aware Executors receive the same trial seeds in each member; intentionally varying a Run-level seed requires a different experiment contract. The stability table is descriptive: mean, Bessel-corrected sample variance with denominator `n - 1`, standard deviation, minimum, maximum, and range. It does not issue a release verdict, estimate an iid confidence interval, or establish reproducibility across environments. Every preregistered slot must be eligible and comparable; otherwise stability is inconclusive rather than silently dropping failed or missing Runs. Select a scalar Analysis result with `projection: 'scalar'`; selecting the point estimate from an interval requires the explicit `interval-estimate` projection. Complete evidence is required by default. Allow partial evidence only when that missingness policy is defensible for the intended claim.
+
+`PreparedEvaluationSeries` is single-use, and `seriesInstanceId` names that intentional execution. Use a fresh value for a genuinely new Series. For a direct shortcut, `evaluateSeries(input, options)` is equivalent to preparing and running once.
+
 When only a downstream measurement declaration changes, reuse the authenticated prefix instead of paying for the same Target work again:
 
 ```ts

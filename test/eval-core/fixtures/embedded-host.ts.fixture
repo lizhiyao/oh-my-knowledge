@@ -45,7 +45,9 @@ import {
   checkExecutor,
   EvaluationEventConsumptionError,
   evaluate,
+  evaluateSeries,
   prepareEvaluation,
+  prepareEvaluationSeries,
   type AnalysisRequest,
   type AssessComparabilityInput,
   type AllowedToolsPlan,
@@ -58,6 +60,8 @@ import {
   type EvaluationComparabilitySubject,
   type EvaluationCacheEntry,
   type EvaluationInfrastructure,
+  type EvaluationSeriesInput,
+  type EvaluationSeriesResult,
   type EvidencePolicy,
   type ExecutionCache,
   type ExecutionCacheEntry,
@@ -66,6 +70,8 @@ import {
   type McpConfigDescriptor,
   type McpConfigProvider,
   type PreparedEvaluation,
+  type PreparedEvaluationSeries,
+  type RunStabilityValue,
   type Variant as CanonicalVariant,
   type WorkspaceDescriptor,
   type WorkspaceProvider,
@@ -287,6 +293,38 @@ const canonicalEvaluation = evaluate(canonicalInput, {
 });
 const canonicalPreparation: Promise<PreparedEvaluation> = prepareEvaluation(canonicalInput);
 void canonicalPreparation;
+const seriesInput: EvaluationSeriesInput = {
+  evaluation: canonicalInput,
+  seriesInstanceId: 'typescript-series',
+  repeatCount: 2,
+  stability: {
+    sourceAnalysisId: 'baseline-vs-prompt-v2-correct',
+    projection: 'interval-estimate',
+  },
+};
+const canonicalSeries: Promise<EvaluationSeriesResult> = evaluateSeries(seriesInput);
+const canonicalSeriesPreparation: Promise<PreparedEvaluationSeries> =
+  prepareEvaluationSeries(seriesInput);
+function consumeStability(value: RunStabilityValue): number {
+  return value.sampleStandardDeviation;
+}
+void canonicalSeriesPreparation;
+void consumeStability;
+async function canonicalSeriesBoundary(): Promise<void> {
+  const result = await canonicalSeries;
+  if (result.status === 'failed') {
+    const errorCode: string = result.error.code;
+    void errorCode;
+    return;
+  }
+  if (result.status === 'cancelled') return;
+  if (result.stability.analysisStatus !== 'completed') return;
+  const runCount: number = result.stability.value.runCount;
+  const standardDeviation: number = consumeStability(result.stability.value);
+  void runCount;
+  void standardDeviation;
+}
+void canonicalSeriesBoundary;
 async function canonicalResultBoundary(): Promise<void> {
   const result = await canonicalEvaluation;
   const datasetId: string = result.definition.dataset.datasetId;

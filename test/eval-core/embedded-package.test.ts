@@ -40,6 +40,10 @@ const STAGE_REUSE_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/stage-reuse-host.mjs',
 );
+const SERIES_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-runtime/fixtures/series-host.mjs',
+);
 const ADVANCED_RUNTIME_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/advanced-host.mjs',
@@ -153,6 +157,7 @@ describe('published embedded Evaluation API', () => {
     copyFileSync(RUBRIC_JUDGE_HOST_FIXTURE, join(projectRoot, 'rubric-judge-host.mjs'));
     copyFileSync(CLEAN_ROOM_HOST_FIXTURE, join(projectRoot, 'clean-room-host.mjs'));
     copyFileSync(STAGE_REUSE_HOST_FIXTURE, join(projectRoot, 'stage-reuse-host.mjs'));
+    copyFileSync(SERIES_HOST_FIXTURE, join(projectRoot, 'series-host.mjs'));
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
@@ -183,6 +188,8 @@ const assert = require('node:assert/strict');
   const dshPlugin = await import('oh-my-knowledge/dsh-plugin');
   assert.deepEqual(Object.keys(api).sort(), Object.keys(evalRuntime).sort());
   assert.equal(typeof api.evaluate, 'function');
+  assert.equal(typeof api.evaluateSeries, 'function');
+  assert.equal(typeof api.prepareEvaluationSeries, 'function');
   assert.equal(typeof api.rescore, 'function');
   assert.equal(typeof api.reanalyze, 'function');
   assert.equal(typeof api.redecide, 'function');
@@ -195,6 +202,8 @@ const assert = require('node:assert/strict');
   assert.equal(typeof api.assessComparability, 'function');
   assert.equal(typeof advanced.assessComparability, 'function');
   assert.equal(typeof evalRuntime.evaluate, 'function');
+  assert.equal(typeof evalRuntime.evaluateSeries, 'function');
+  assert.equal(typeof evalRuntime.prepareEvaluationSeries, 'function');
   assert.equal(typeof evalRuntime.rescore, 'function');
   assert.equal(typeof evalRuntime.reanalyze, 'function');
   assert.equal(typeof evalRuntime.redecide, 'function');
@@ -404,6 +413,34 @@ const assert = require('node:assert/strict');
     const isolatedCache = join(projectRoot, 'stage-reuse-cache');
     for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
     const result = spawnSync(process.execPath, [join(projectRoot, 'stage-reuse-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({ status: result.status, signal: result.signal, stderr: result.stderr }).toEqual({
+      status: 0,
+      signal: null,
+      stderr: '',
+    });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
+  it('tarball clean-room 通过包根与 Runtime 子路径运行固定设计 Series', () => {
+    const isolatedHome = join(projectRoot, 'series-home');
+    const isolatedConfig = join(projectRoot, 'series-config');
+    const isolatedCache = join(projectRoot, 'series-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'series-host.mjs')], {
       cwd: projectRoot,
       encoding: 'utf8',
       timeout: 30_000,

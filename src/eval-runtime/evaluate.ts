@@ -18,6 +18,7 @@ import {
   assertAnalysisBundleSourceMatchesPlan,
   assertEvaluationBundleSourceMatchesPlan,
   assertExecutionBundleSourceMatchesPlan,
+  createEvaluationSeriesMemberSource,
   createComparabilityPolicy,
   derivePlannedExecutionCoordinates,
   digestCanonicalJson,
@@ -30,6 +31,8 @@ import {
   type EvaluationBundleSource,
   type EvaluationDefinition,
   type EvaluationEvent,
+  type EvaluationSeriesMemberSource,
+  type EvaluationSeriesMembership,
   type EvaluationSample,
   type EvaluatorDefinition,
   type ExecutionBundleSource,
@@ -1092,7 +1095,8 @@ export class EvaluationConfigurationError extends TypeError {
     | 'EVAL_RUNTIME_VARIANT_INVALID'
     | 'EVAL_RUNTIME_EVALUATOR_INVALID'
     | 'EVAL_RUNTIME_COMPARABILITY_INVALID'
-    | 'EVAL_RUNTIME_REUSE_INVALID';
+    | 'EVAL_RUNTIME_REUSE_INVALID'
+    | 'EVAL_RUNTIME_SERIES_INVALID';
 
   constructor(code: EvaluationConfigurationError['code'], message: string) {
     super(message);
@@ -3491,9 +3495,15 @@ async function runPrepared(
 }
 
 /** Seals one evaluation declaration without calling a Target or Evaluator. */
-export async function prepareEvaluation(
+interface CapturedEvaluationAssembly {
+  readonly definition: EvaluationDefinition;
+  readonly policy: ReturnType<typeof createMeasurementPolicy>;
+  readonly runtime: ReturnType<typeof createEvaluationRuntime>;
+}
+
+async function captureEvaluationAssembly(
   input: Readonly<EvaluateInput>,
-): Promise<PreparedEvaluation> {
+): Promise<CapturedEvaluationAssembly> {
   if (input === null || typeof input !== 'object') {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
@@ -3588,8 +3598,24 @@ export async function prepareEvaluation(
     evaluators: evaluators.registrations,
     ...(support === undefined ? {} : { support }),
   });
+  return Object.freeze({ definition, policy, runtime });
+}
+
+async function prepareCapturedEvaluation(
+  assembly: CapturedEvaluationAssembly,
+  seriesMembership?: Readonly<EvaluationSeriesMembership>,
+): Promise<PreparedEvaluation> {
   try {
-    const prepared = await createCoreEvaluationEngine(runtime).prepare(definition, policy);
+    const definition = seriesMembership === undefined
+      ? assembly.definition
+      : deepFreezeCanonicalJson(EvaluationDefinitionSchema.parse({
+          ...assembly.definition,
+          seriesMembership,
+        }));
+    const prepared = await createCoreEvaluationEngine(assembly.runtime).prepare(
+      definition,
+      assembly.policy,
+    );
     const plan = prepared.plan;
     const facade: PreparedEvaluation = Object.freeze({
       definition: plan.definition,
@@ -3611,6 +3637,42 @@ export async function prepareEvaluation(
   }
 }
 
+/** @internal Captures one declaration once, then seals preregistered Series members from it. */
+export async function prepareEvaluationSeriesTemplate(
+  input: Readonly<EvaluateInput>,
+): Promise<Readonly<{
+  base: PreparedEvaluation;
+  prepareMembers(
+    memberships: readonly Readonly<EvaluationSeriesMembership>[],
+  ): Promise<readonly PreparedEvaluation[]>;
+}>> {
+  const assembly = await captureEvaluationAssembly(input);
+  const base = await prepareCapturedEvaluation(assembly);
+  let consumed = false;
+  return Object.freeze({
+    base,
+    async prepareMembers(memberships) {
+      if (consumed) {
+        return configurationFailure(
+          'EVAL_RUNTIME_SERIES_INVALID',
+          'Evaluation Series member preparation capability 只能使用一次。',
+        );
+      }
+      consumed = true;
+      return Promise.all(memberships.map((membership) => (
+        prepareCapturedEvaluation(assembly, membership)
+      )));
+    },
+  });
+}
+
+/** Seals one evaluation declaration without calling a Target or Evaluator. */
+export async function prepareEvaluation(
+  input: Readonly<EvaluateInput>,
+): Promise<PreparedEvaluation> {
+  return prepareCapturedEvaluation(await captureEvaluationAssembly(input));
+}
+
 /** Runs one explicit evaluation declaration through OMK's canonical user-facing API. */
 export async function evaluate(
   input: Readonly<EvaluateInput>,
@@ -3618,6 +3680,33 @@ export async function evaluate(
 ): Promise<EvaluationResult> {
   const capturedOptions = captureRunOptions(options);
   return (await prepareEvaluation(input)).run(capturedOptions);
+}
+
+/** @internal Admits an exact canonical result as its preregistered Series slot. */
+export function createCanonicalEvaluationSeriesMemberSource(
+  result: EvaluationResult,
+  membership: Readonly<EvaluationSeriesMembership>,
+): EvaluationSeriesMemberSource | undefined {
+  const authenticated = authenticatedCanonicalRuns.get(result);
+  const { execution, evaluation, analysis, decision } = authenticated?.sources ?? {};
+  if (authenticated === undefined
+      || execution === undefined
+      || evaluation === undefined
+      || analysis === undefined
+      || result.report === undefined
+      || canonicalizeJson(authenticated.plan.definition.seriesMembership)
+        !== canonicalizeJson(membership)) {
+    return undefined;
+  }
+  return createEvaluationSeriesMemberSource({
+    ...membership,
+    plan: authenticated.plan,
+    execution,
+    evaluation,
+    analysis,
+    ...(decision === undefined ? {} : { decision }),
+    report: result.report,
+  });
 }
 
 type EvaluationReuseKind = 'rescore' | 'reanalyze' | 'redecide';
