@@ -7,6 +7,7 @@ import { setImmediate as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import {
   EvaluationEventConsumptionError,
+  assessComparability,
   checkContentStore,
   checkExecutor,
   evaluate,
@@ -158,6 +159,22 @@ assert.equal(preparedResult.status, 'completed');
 assert.equal(preparedResult.runId, 'clean-room-prepared');
 assert.equal(preparedTargetCalls, 4);
 assert.equal(preparedResult.definition.dataset.samples[0].input, 'success');
+const preparedRepeat = await prepared.run({ runId: 'clean-room-prepared-repeat' });
+const comparability = assessComparability({
+  comparisonScope: 'decision',
+  subjects: [{
+    subjectId: 'candidate-under-test',
+    leftVariantId: 'prompt-v2',
+    rightVariantId: 'prompt-v2',
+  }],
+  left: preparedResult,
+  right: preparedRepeat,
+});
+assert.equal(comparability.designStatus, 'compatible');
+assert.ok(!comparability.reasons.some(({ reasonCode }) => (
+  reasonCode === 'comparability-evidence-source-absent'
+  || reasonCode === 'comparability-evidence-verification-indeterminate'
+)));
 
 const workspaceDescriptor = {
   resourceId: 'clean-room-workspace',

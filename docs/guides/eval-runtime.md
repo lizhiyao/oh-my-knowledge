@@ -162,6 +162,29 @@ const result = await prepared.run({ runId: 'approved-release-42', signal });
 
 Preparation resolves capabilities and seals the complete Core Plan without calling a Target or Evaluator. `prepared.run()` executes that exact immutable Plan; mutating the original input after preparation cannot change its Definition, Policy, digest, or behavior. `estimatedWork` reports planned execution and evaluation coordinates before retries or early termination, and explicitly lists duration and provider cost as runtime-dependent. Direct `evaluate(input, options)` is canonically equivalent to `prepareEvaluation(input).run(options)`.
 
+To check whether two independent Runs support an exact comparison, pass their original results to `assessComparability()` and map every intentionally changed Variant as one subject:
+
+```ts
+import { assessComparability } from 'oh-my-knowledge';
+
+const assessment = assessComparability({
+  comparisonScope: 'decision',
+  subjects: [{
+    subjectId: 'candidate-under-test',
+    leftVariantId: 'candidate',
+    rightVariantId: 'candidate',
+  }],
+  left: previousResult,
+  right: candidateResult,
+});
+
+if (assessment.comparabilityStatus !== 'compatible') {
+  console.error(assessment.designStatus, assessment.evidenceQualificationStatus);
+}
+```
+
+The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. Persistent cross-process admission remains available through the advanced Core surface until the Runtime artifact-store adapter lands.
+
 `executor.execute()` receives `variantId` in addition to the values shown above. Comparison roles belong to `comparisons`, not to the Executor invocation. Return `{ errorCode }` for an expected, stable, non-sensitive host failure; throwing an ordinary error becomes the redacted `EVAL_RUNTIME_EXECUTOR_FAILED` failure.
 
 Schemas validate and narrow only. OMK rejects parsers that coerce, add defaults, or drop JSON fields, because that would silently change the measured invocation under the same identity. Perform intentional transformations inside `execute()` and bump `version` or a measurement-relevant `fingerprintFacets` value.
@@ -815,6 +838,6 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-The explicit `oh-my-knowledge/eval-runtime` subpath exposes the same canonical façade as the package root. Use `oh-my-knowledge/eval-runtime/advanced` for custom ports, staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, or explicit cross-run comparability. `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
+The explicit `oh-my-knowledge/eval-runtime` subpath exposes the same canonical façade as the package root. Use `oh-my-knowledge/eval-runtime/advanced` for custom ports, staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, transported cross-process comparability, or custom comparability policies. `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
 
 The runnable [minimal example](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime) and packed-package fixtures exercise the canonical API in a clean host.

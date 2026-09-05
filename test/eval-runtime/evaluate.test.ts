@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   EvaluationConfigurationError,
   EvaluationEventConsumptionError,
+  assessComparability,
   checkExecutor,
   evaluate,
   prepareEvaluation,
@@ -308,6 +309,87 @@ describe('canonical eval-runtime API', () => {
       .toBe(direct.artifacts.evaluation.evaluationPlanDigest);
     expect(staged.artifacts.analysis.analysisPlanDigest)
       .toBe(direct.artifacts.analysis.analysisPlanDigest);
+  });
+
+  it('assesses independent Runs through their authenticated Core source chains', async () => {
+    const input = pairedInput();
+    const left = await evaluate(input, { runId: 'comparability-left', clock: fixedClock });
+    const changed = pairedInput();
+    const right = await evaluate({
+      ...changed,
+      variants: changed.variants.map((candidate) => (
+        candidate.variantId === treatmentSpec.variantId
+          ? {
+              ...candidate,
+              artifact: { ...candidate.artifact, content: 'Answer exactly and briefly.' },
+            }
+          : candidate
+      )),
+    }, { runId: 'comparability-right', clock: fixedClock });
+
+    const assessment = assessComparability({
+      comparisonScope: 'decision',
+      subjects: [{
+        subjectId: 'candidate-under-test',
+        leftVariantId: treatmentSpec.variantId,
+        rightVariantId: treatmentSpec.variantId,
+      }],
+      left,
+      right,
+    });
+
+    expect(assessment.designStatus).toBe('compatible');
+    expect(assessment.reasons).toContainEqual(expect.objectContaining({
+      reasonCode: 'comparability-identity-declared-subject-change',
+      axis: 'identity',
+    }));
+    expect(assessment.reasons.map((reason) => reason.reasonCode)).not.toContain(
+      'comparability-evidence-source-absent',
+    );
+    expect(assessment.reasons.map((reason) => reason.reasonCode)).not.toContain(
+      'comparability-evidence-verification-indeterminate',
+    );
+    expect(Object.isFrozen(assessment)).toBe(true);
+
+    const evaluationScope = assessComparability({
+      comparisonScope: 'evaluation',
+      subjects: [{
+        subjectId: 'candidate-under-test',
+        leftVariantId: treatmentSpec.variantId,
+        rightVariantId: treatmentSpec.variantId,
+      }],
+      left,
+      right,
+    });
+    expect(evaluationScope.designStatus).toBe('compatible');
+
+    const invalidMapping = assessComparability({
+      comparisonScope: 'analysis',
+      subjects: [{
+        subjectId: 'unknown-candidate',
+        leftVariantId: 'missing',
+        rightVariantId: treatmentSpec.variantId,
+      }],
+      left,
+      right,
+    });
+    expect(invalidMapping.designStatus).toBe('incompatible');
+    expect(invalidMapping.reasons).toContainEqual(expect.objectContaining({
+      reasonCode: 'comparability-design-subject-mapping-invalid',
+    }));
+
+    expect(() => assessComparability({
+      comparisonScope: 'evaluation',
+      subjects: [{
+        subjectId: 'candidate-under-test',
+        leftVariantId: treatmentSpec.variantId,
+        rightVariantId: treatmentSpec.variantId,
+      }],
+      left: structuredClone(left),
+      right,
+    })).toThrowError(expect.objectContaining({
+      code: 'EVAL_RUNTIME_COMPARABILITY_INVALID',
+    }));
   });
 
   it('captures direct run options before asynchronous preparation', async () => {
