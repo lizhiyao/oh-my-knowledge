@@ -18,6 +18,8 @@ export interface WorkspaceOpenRequest {
   readonly variantId: string;
   readonly trialIndex: number;
   readonly trialSeed?: string;
+  /** Cancels resource acquisition; a late lease is closed without entering the Target. */
+  readonly signal: AbortSignal;
 }
 
 export interface WorkspaceLease {

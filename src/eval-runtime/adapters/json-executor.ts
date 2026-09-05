@@ -56,6 +56,7 @@ import {
 const OPENED_EXECUTOR_SESSIONS = new WeakSet<object>();
 const OPENED_WORKSPACE_LEASES = new WeakSet<object>();
 const ACTIVE_WORKSPACE_ROOTS = new Set<string>();
+const ACTIVE_WORKSPACE_ROOT_RELEASES = new Map<string, Promise<void>>();
 const OPENED_MCP_CONFIG_LEASES = new WeakSet<object>();
 const OPENED_MOCK_INTERCEPTION_LEASES = new WeakSet<object>();
 
@@ -203,15 +204,48 @@ function effectiveAllowedTools(trial: Readonly<ExecutorTrialContext>): readonly 
 }
 
 async function rejectInvalidWorkspaceLease(lease: unknown): Promise<never> {
-  if (lease !== null && typeof lease === 'object'
-      && typeof (lease as Partial<WorkspaceLease>).close === 'function') {
+  if (lease !== null && typeof lease === 'object') {
+    let close: WorkspaceLease['close'] | undefined;
     try {
-      await Reflect.apply((lease as WorkspaceLease).close, lease, []);
+      close = (lease as Partial<WorkspaceLease>).close;
+      if (typeof close === 'function') await Reflect.apply(close, lease, []);
     } catch {
       // The public failure remains a single redacted resource-open error.
     }
   }
   throw new TypeError('Workspace provider returned an invalid lease.');
+}
+
+async function closeLateWorkspaceLease(lease: unknown): Promise<void> {
+  if (lease === null || typeof lease !== 'object' || OPENED_WORKSPACE_LEASES.has(lease)) return;
+  OPENED_WORKSPACE_LEASES.add(lease);
+  let close: WorkspaceLease['close'] | undefined;
+  let root: string | undefined;
+  try {
+    close = (lease as Partial<WorkspaceLease>).close;
+    const declaredRoot = (lease as Partial<WorkspaceLease>).root;
+    if (typeof declaredRoot === 'string' && isAbsolute(declaredRoot)) {
+      root = normalize(declaredRoot);
+    }
+    const activeRelease = root === undefined
+      ? undefined
+      : ACTIVE_WORKSPACE_ROOT_RELEASES.get(root);
+    if (activeRelease !== undefined) await activeRelease;
+    if (typeof close === 'function') await Reflect.apply(close, lease, []);
+  } catch {
+    // Cancellation is authoritative; late cleanup failure must not expose provider details.
+  }
+}
+
+async function closeRejectedWorkspaceLease(
+  lease: WorkspaceLease,
+  close: WorkspaceLease['close'],
+): Promise<void> {
+  try {
+    await Reflect.apply(close, lease, []);
+  } catch {
+    // The public failure remains a single redacted root-isolation error.
+  }
 }
 
 async function openWorkspace(
@@ -224,19 +258,51 @@ async function openWorkspace(
   if (provider === undefined) {
     throw new TypeError('Workspace execution requires a WorkspaceProvider.');
   }
-  const lease = await provider.open(Object.freeze({
-    descriptor: control.descriptor,
-    runId: run.runId,
-    trialId: trial.trialId,
-    sampleId: trial.sampleId,
-    variantId: trial.targetId,
-    trialIndex: trial.trialIndex,
-    ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
-  }));
+  if (trial.signal.aborted) throw trial.signal.reason;
+  let abortListener: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    abortListener = () => reject(trial.signal.reason);
+    trial.signal.addEventListener('abort', abortListener, { once: true });
+    if (trial.signal.aborted) abortListener();
+  });
+  const opening = Promise.resolve().then(() => {
+    if (trial.signal.aborted) throw trial.signal.reason;
+    return provider.open(Object.freeze({
+      descriptor: control.descriptor,
+      runId: run.runId,
+      trialId: trial.trialId,
+      sampleId: trial.sampleId,
+      variantId: trial.targetId,
+      trialIndex: trial.trialIndex,
+      ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
+      signal: trial.signal,
+    }));
+  });
+  let lease: WorkspaceLease;
+  try {
+    lease = await Promise.race([opening, aborted]);
+  } catch (error) {
+    if (trial.signal.aborted) {
+      void opening.then(closeLateWorkspaceLease, () => undefined);
+    }
+    throw error;
+  } finally {
+    if (abortListener !== undefined) trial.signal.removeEventListener('abort', abortListener);
+  }
+  if (trial.signal.aborted) {
+    await closeLateWorkspaceLease(lease);
+    throw trial.signal.reason;
+  }
+  let close: WorkspaceLease['close'] | undefined;
+  try {
+    close = lease?.close;
+  } catch {
+    return rejectInvalidWorkspaceLease(lease);
+  }
   if (lease === null || typeof lease !== 'object'
       || typeof lease.root !== 'string' || lease.root.trim() === ''
       || lease.root.includes('\0') || !isAbsolute(lease.root)
-      || typeof lease.close !== 'function') {
+      || typeof close !== 'function') {
     return rejectInvalidWorkspaceLease(lease);
   }
   const root = normalize(lease.root);
@@ -246,16 +312,36 @@ async function openWorkspace(
   }
   if (ACTIVE_WORKSPACE_ROOTS.has(root)) {
     OPENED_WORKSPACE_LEASES.add(lease);
+    const activeRelease = ACTIVE_WORKSPACE_ROOT_RELEASES.get(root);
+    if (activeRelease === undefined) {
+      await closeRejectedWorkspaceLease(lease, close);
+    } else {
+      void activeRelease.then(() => closeRejectedWorkspaceLease(lease, close));
+    }
     throw new TypeError('Workspace provider reused an active workspace root.');
   }
   OPENED_WORKSPACE_LEASES.add(lease);
   ACTIVE_WORKSPACE_ROOTS.add(root);
-  const close = lease.close;
+  let markReleased: (() => void) | undefined;
+  const released = new Promise<void>((resolve) => { markReleased = resolve; });
+  ACTIVE_WORKSPACE_ROOT_RELEASES.set(root, released);
+  let closed = false;
   return Object.freeze({
     access: Object.freeze({ descriptor: control.descriptor, root }),
     async close() {
-      await Reflect.apply(close, lease, []);
-      ACTIVE_WORKSPACE_ROOTS.delete(root);
+      if (closed) return;
+      closed = true;
+      let cleaned = false;
+      try {
+        await Reflect.apply(close, lease, []);
+        cleaned = true;
+      } finally {
+        if (cleaned) ACTIVE_WORKSPACE_ROOTS.delete(root);
+        if (ACTIVE_WORKSPACE_ROOT_RELEASES.get(root) === released) {
+          ACTIVE_WORKSPACE_ROOT_RELEASES.delete(root);
+        }
+        markReleased?.();
+      }
     },
   });
 }

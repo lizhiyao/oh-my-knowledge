@@ -863,24 +863,27 @@ const result = await evaluate({
 
 评委 callback 只执行一次 provider 调用，不得自行重试。`replicateCount` 只重复评测，不重复 Target 执行，也不增加 Bootstrap 样本量。存在多个成员时，`mean` 会在各成员的 replicate 先求均值后赋予成员等权；`weighted-mean` 要求为每个 `memberId` 显式提供正权重，且总和为 1。`require-complete` 会在任一计划坐标不可用时排除整个 Target × Sample × Trial panel 读数。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge/eval-runtime/contracts` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
 
-## 认证 Executor
+## 检查 Runtime 组件
 
-接纳 adapter 前运行 `checkExecutor()`。它会让同一份 declaration 经历真实的成功、失败和取消 Core run，并检查 binding 隔离、生命周期清理、telemetry、observation、配对分析与 Decision：
+接纳注入组件前运行 `checkRuntime()`。每次调用只检查一个组件，并返回版本化的行为证据 envelope。检查 Executor 时，它会让同一份 declaration 经历真实的成功、失败和取消 Core run，再检查 binding 隔离、生命周期清理、telemetry、observation、配对分析与 Decision：
 
 ```ts
-import { checkExecutor } from 'oh-my-knowledge';
+import { checkRuntime } from 'oh-my-knowledge';
 
-const certification = await checkExecutor({
+const runtimeCheck = await checkRuntime({
+  runtimeKind: 'executor',
   variant: variants[1],
   success: { input: successInput, expected: expectedOutput },
   failure: { input: failureInput, expectedErrorCode: 'model-unavailable' },
   cancellation: { input: longRunningInput },
 });
 
-if (!certification.conformant) console.error(certification.checks);
+if (!runtimeCheck.conformant) console.error(runtimeCheck.checks);
 ```
 
-若实现忽略取消信号，cancellation input 仍必须自行保证有界；进程内检查不会隔离恶意代码。
+`runtimeKind` 判别字段还可以选择 `evaluator`、`judge`、`cache`、`content-store` 或 `workspace-provider`。`checkExecutor()` 与 `checkContentStore()` 继续作为复用既有探针的聚焦入口。无效声明会以 `EVAL_RUNTIME_INPUT_INVALID` 拒绝；宿主行为不符合契约时返回带稳定 reason code 的 `conformant: false`。检查通过不会把自报 Runtime identity 升级为已认证，也不证明模型 provider 的质量；随后仍应通过真实 `evaluate()` 验证预期组件组合。
+
+若实现忽略取消信号，cancellation case 仍必须自行保证有界；进程内检查无法 containment 恶意代码。Evaluation cache、Custom Evaluator 与 Judge 检查会经 Core 运行重叠调用；execution cache 只按 Core 当前的串行读取路径检查，不声称更多保证。Cache 与 ContentStore 检查会写入数据，因此应使用可丢弃资源，并为 cache 提供唯一 `probeNamespace`。Workspace 检查会观察 lease 隔离、retry 复用与清理，但不能证明物理删除或 sandbox；`timeoutMs` 会限制检查等待清理的时间，但无法停止 provider 底层 promise。Judge 检查最多执行四次 provider 调用并可能产生费用，因此必须显式设置 `allowExternalCalls: true`；每个 `publicProbeText` 都会发送给 provider，只能包含无害的 public data。结果会返回实际 invocation 数与 provider-cost 汇总。稳定结果不会保留 probe payload、provider exception 文本、prompt、模型 output、cache entry、workspace root、locator 或 credential。
 
 ## 高级接入与迁移
 

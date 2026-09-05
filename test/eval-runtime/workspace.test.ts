@@ -162,7 +162,7 @@ describe('eval-runtime workspace lease', () => {
     const accesses: Array<{ sampleId: string; attemptNumber: number; root?: string; }> = [];
     let rootSequence = 0;
     const declaration = executor(provider(async (request) => {
-      requests.push(structuredClone(request));
+      requests.push(request);
       const root = `/virtual/omk-workspace-${rootSequence += 1}`;
       return { root, close: () => { closed.push(root); } };
     }), async ({ sampleId, input, attemptNumber, workspace }) => {
@@ -188,7 +188,8 @@ describe('eval-runtime workspace lease', () => {
       && request.variantId === 'workspace-variant'
       && request.descriptor.digest === workspaceA.digest
       && Object.keys(request).sort().join(',')
-        === 'descriptor,runId,sampleId,trialId,trialIndex,trialSeed,variantId'
+        === 'descriptor,runId,sampleId,signal,trialId,trialIndex,trialSeed,variantId'
+      && request.signal instanceof AbortSignal
     ))).toBe(true);
     expect(accesses).toHaveLength(8);
     for (const root of new Set(accesses.map((access) => access.root))) {
@@ -443,6 +444,86 @@ describe('eval-runtime workspace lease', () => {
     expect(closed.sort()).toEqual(opened.sort());
   });
 
+  it('cancels a pending workspace open and closes a late lease before Target execution', async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    let resolveOpen: ((lease: { root: string; close(): void }) => void) | undefined;
+    let markOpening: (() => void) | undefined;
+    const opening = new Promise<void>((resolve) => { markOpening = resolve; });
+    let markClosed: (() => void) | undefined;
+    const closed = new Promise<void>((resolve) => { markClosed = resolve; });
+    const execute = vi.fn(async () => ({ output: 'unused' }));
+    const declaration = executor(provider(async ({ signal }) => {
+      observedSignal = signal;
+      markOpening?.();
+      return new Promise((resolve) => { resolveOpen = resolve; });
+    }), execute);
+    const base = evaluationInput(declaration);
+    const pending = evaluate({
+      ...base,
+      dataset: { ...base.dataset, samples: [base.dataset.samples[0]!] },
+    }, { runId: 'workspace-pending-open-cancel', signal: controller.signal });
+
+    await opening;
+    controller.abort('cancel pending workspace open');
+    const result = await pending;
+
+    expect(result.status).toBe('cancelled');
+    expect(observedSignal?.aborted).toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+    resolveOpen?.({
+      root: '/virtual/late-workspace',
+      close() { markClosed?.(); },
+    });
+    await closed;
+    expect(JSON.stringify(result)).not.toContain('/virtual/late-workspace');
+  });
+
+  it('closes a fresh lease rejected for reusing an active workspace root', async () => {
+    const closeCounts = new Map<string, number>();
+    let markFirstExecution: (() => void) | undefined;
+    const firstExecution = new Promise<void>((resolve) => { markFirstExecution = resolve; });
+    let releaseFirstExecution: (() => void) | undefined;
+    const firstMayFinish = new Promise<void>((resolve) => { releaseFirstExecution = resolve; });
+    let markSecondLeaseOpened: (() => void) | undefined;
+    const secondLeaseOpened = new Promise<void>((resolve) => { markSecondLeaseOpened = resolve; });
+    let markSecondLeaseClosed: (() => void) | undefined;
+    const secondLeaseClosed = new Promise<void>((resolve) => { markSecondLeaseClosed = resolve; });
+    const declaration = executor(provider(async ({ sampleId }) => {
+      if (sampleId === 'two') await firstExecution;
+      if (sampleId === 'two') markSecondLeaseOpened?.();
+      return {
+        root: '/virtual/shared-active-root',
+        close() {
+          closeCounts.set(sampleId, (closeCounts.get(sampleId) ?? 0) + 1);
+          if (sampleId === 'two') markSecondLeaseClosed?.();
+        },
+      };
+    }), async ({ sampleId, input }) => {
+      if (sampleId === 'one') {
+        markFirstExecution?.();
+        await firstMayFinish;
+      }
+      return { output: input };
+    });
+
+    const pending = evaluate({
+      ...evaluationInput(declaration),
+      policy: { execution: { maxConcurrency: 2 } },
+    }, { runId: 'workspace-active-root-reuse' });
+
+    await secondLeaseOpened;
+    await Promise.resolve();
+    expect(closeCounts.get('two')).toBeUndefined();
+    releaseFirstExecution?.();
+    const result = await pending;
+    await secondLeaseClosed;
+
+    expect(closeCounts).toEqual(new Map([['two', 1], ['one', 1]]));
+    expect(result.status).toBe('failed');
+    expect(JSON.stringify(result)).not.toContain('/virtual/shared-active-root');
+  });
+
   it('closes every opened lease after an Executor attempt times out', async () => {
     const opened: string[] = [];
     const closed: string[] = [];
@@ -494,7 +575,7 @@ describe('eval-runtime workspace lease', () => {
     expect(first.status).toBe('failed');
     expect(second.status).toBe('failed');
     expect(invocations).toBe(1);
-    expect(closes).toBe(1);
+    expect(closes).toBe(2);
   });
 
   it('does not falsely certify a provider without exercising a workspace lease', async () => {

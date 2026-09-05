@@ -44,6 +44,10 @@ const SERIES_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/series-host.mjs',
 );
+const RUNTIME_CONFORMANCE_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-runtime/fixtures/runtime-conformance-host.mjs',
+);
 const ADVANCED_RUNTIME_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/advanced-host.mjs',
@@ -158,6 +162,10 @@ describe('published embedded Evaluation API', () => {
     copyFileSync(CLEAN_ROOM_HOST_FIXTURE, join(projectRoot, 'clean-room-host.mjs'));
     copyFileSync(STAGE_REUSE_HOST_FIXTURE, join(projectRoot, 'stage-reuse-host.mjs'));
     copyFileSync(SERIES_HOST_FIXTURE, join(projectRoot, 'series-host.mjs'));
+    copyFileSync(
+      RUNTIME_CONFORMANCE_HOST_FIXTURE,
+      join(projectRoot, 'runtime-conformance-host.mjs'),
+    );
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
@@ -195,6 +203,8 @@ const assert = require('node:assert/strict');
   assert.equal(typeof api.redecide, 'function');
   assert.equal(typeof api.checkContentStore, 'function');
   assert.equal(typeof api.checkExecutor, 'function');
+  assert.equal(typeof api.checkRuntime, 'function');
+  assert.equal(api.RUNTIME_CHECK_RESULT_SCHEMA_VERSION, 'omk.runtime-check-result/v1');
   assert.equal(api.createEvaluationEngine, undefined);
   assert.equal(api.digestCanonicalJson, undefined);
   assert.equal(api.createCoreStudioCatalog, undefined);
@@ -209,6 +219,8 @@ const assert = require('node:assert/strict');
   assert.equal(typeof evalRuntime.redecide, 'function');
   assert.equal(typeof evalRuntime.checkContentStore, 'function');
   assert.equal(typeof evalRuntime.checkExecutor, 'function');
+  assert.equal(typeof evalRuntime.checkRuntime, 'function');
+  assert.equal(evalRuntime.RUNTIME_CHECK_RESULT_SCHEMA_VERSION, 'omk.runtime-check-result/v1');
   assert.equal(evalRuntime.createExecutorFnAdapter, undefined);
   assert.equal(evalRuntime.createJsonExecutorAdapter, undefined);
   assert.equal(evalRuntime.createRubricJudgeKit, undefined);
@@ -441,6 +453,36 @@ const assert = require('node:assert/strict');
     const isolatedCache = join(projectRoot, 'series-cache');
     for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
     const result = spawnSync(process.execPath, [join(projectRoot, 'series-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({ status: result.status, signal: result.signal, stderr: result.stderr }).toEqual({
+      status: 0,
+      signal: null,
+      stderr: '',
+    });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
+  it('tarball clean-room 通过包根与 Runtime 子路径检查全部公开 Runtime 组件', () => {
+    const isolatedHome = join(projectRoot, 'runtime-conformance-home');
+    const isolatedConfig = join(projectRoot, 'runtime-conformance-config');
+    const isolatedCache = join(projectRoot, 'runtime-conformance-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [
+      join(projectRoot, 'runtime-conformance-host.mjs'),
+    ], {
       cwd: projectRoot,
       encoding: 'utf8',
       timeout: 30_000,
