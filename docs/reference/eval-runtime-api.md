@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-The recommended ordinary-user entry. It exposes exactly the same canonical Runtime façade as `oh-my-knowledge/eval-runtime`: `evaluate`, `prepareEvaluation`, `assessComparability`, `checkExecutor`, `checkContentStore`, their stable errors, and their public model types. Core engines, builders, registrations, and adapters are intentionally absent.
+The recommended ordinary-user entry. It exposes exactly the same canonical Runtime façade as `oh-my-knowledge/eval-runtime`: `evaluate`, `prepareEvaluation`, `rescore`, `reanalyze`, `redecide`, `assessComparability`, `checkExecutor`, `checkContentStore`, their stable errors, and their public model types. Core engines, builders, registrations, and adapters are intentionally absent.
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -14,6 +14,9 @@ The canonical API for application developers:
 |---|---|
 | `evaluate` | Run one explicit solo, paired, or independent-group evaluation design, including multi-arm and multi-metric comparisons. |
 | `prepareEvaluation` | Seal and inspect the exact Definition, Policy, Plan, Runtime resolutions, digest, and work estimate before any Target or Evaluator call. |
+| `rescore` | Reuse one authenticated Execution stage, then run Evaluation, Analysis, Decision, and Report under a newly sealed declaration. |
+| `reanalyze` | Reuse authenticated Execution and Evaluation stages, then run Analysis, Decision, and Report under a newly sealed declaration. |
+| `redecide` | Reuse authenticated Execution, Evaluation, and Analysis stages, then run a newly declared Decision and Report. |
 | `assessComparability` | Assess two authenticated canonical Run results at evaluation, analysis, or decision scope without rerunning either Target. |
 | `checkContentStore` | Exercise a host ContentStore／ContentResolver pair for descriptor integrity and stability, idempotent writes, and round-trip value, classification, and media type; host exceptions are reduced to stable reason codes. |
 | `checkExecutor` | Certify an Executor through success, failure, cancellation, cleanup, and measurement checks. |
@@ -74,6 +77,8 @@ const variant: Variant<string, undefined, string> = {
 `EvaluateInput` contains only the measurement declaration. `EvaluationRunOptions` contains run-scoped `runId`, cancellation, progress observation, report annotations／summaries, event-buffer capacity, and clock. Omitting `runId` generates one and returns it as `EvaluationResult.runId`. `prepareEvaluation(input)` captures all mutable declarations, materializes defaults, resolves Runtime capabilities, and seals the Core Plan without calling a Target or Evaluator. Its frozen `PreparedEvaluation` exposes the exact `definition`, `policy`, `plan`, complete-contract `planDigest`, `resolvedRuntimes`, and `estimatedWork`; `run(options)` executes that same sealed Plan without re-reading the input or recompiling. Planned coordinates exclude retries and early termination, while duration and provider cost remain explicitly uncertain until execution.
 
 `assessComparability()` consumes two exact `EvaluationResult` objects returned by canonical `evaluate()` or `PreparedEvaluation.run()` in the current process. A clone or deserialized document has no source authority and is rejected instead of being treated as verified. `comparisonScope` selects the deepest invariant contract to compare, while each `EvaluationComparabilitySubject` explicitly maps the intentionally changed Variant on the left and right. The returned `EvaluationComparabilityAssessment` is authored by Core and keeps `designStatus`, `evidenceQualificationStatus`, and overall `comparabilityStatus` separate. A mapped subject change is identity information, not a design mismatch; incomplete Runtime assurance remains conditional rather than being silently promoted. Persisted artifact admission remains an explicit advanced Core responsibility until the Runtime artifact-store contract is available.
+
+`rescore()`, `reanalyze()`, and `redecide()` take a complete new `EvaluateInput`, an exact prior `EvaluationResult`, and optional `EvaluationRunOptions`. The new declaration is sealed before reuse. Core recursively verifies that the retained source capability matches every skipped stage: changed Target input cannot be hidden behind `rescore`, changed Gold or Evaluator cannot be hidden behind `reanalyze`, and changed Analysis cannot be hidden behind `redecide`. A clone, deserialized report, or Bundle JSON has no in-process source authority and is rejected. Reused upstream bundles retain their original identities and historical evidence; every executed suffix stage receives the new Run identity, emits the only new progress events, and consumes only the new Run's suffix budget. The façade does not reconstruct evidence, rerun skipped callbacks, or duplicate Core scoring, statistics, Decision, Report, budget, cache, or scheduler behavior.
 
 `SamplingDesign` supports a one-Variant `solo` quality profile, complete-block `paired` comparisons, and fixed-quota `independent` comparisons. It is the only owner of paired／independent semantics. A solo design may declare `clusterKey`; Core then treats whole clusters as the experimental and resampling unit. A `Comparison` declares one control, one or more treatments, and the Metrics to analyze; it contains no duplicate sampling discriminator. `evaluators` may contain multiple exact-match, retrieval, tool-trajectory, Rubric Judge, or custom evaluators, provided evaluator and metric IDs are unique.
 

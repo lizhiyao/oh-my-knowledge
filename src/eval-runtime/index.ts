@@ -7,6 +7,9 @@ export {
   checkExecutor,
   evaluate,
   prepareEvaluation,
+  reanalyze,
+  redecide,
+  rescore,
 } from './evaluate.js';
 export type {
   Artifact,

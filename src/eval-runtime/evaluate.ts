@@ -15,16 +15,24 @@ import {
   deepFreezeCanonicalJson,
   canonicalizeJson,
   assessComparability as assessCoreComparability,
+  assertAnalysisBundleSourceMatchesPlan,
+  assertEvaluationBundleSourceMatchesPlan,
+  assertExecutionBundleSourceMatchesPlan,
   createComparabilityPolicy,
   derivePlannedExecutionCoordinates,
   digestCanonicalJson,
-  type EvaluationDefinition,
+  type AnalysisBundleSource,
   type AnalysisCohortDefinition,
   type AnalysisRecord,
   type ComparabilityAssessment,
   type ComparisonScope,
+  type DecisionResultSource,
+  type EvaluationBundleSource,
+  type EvaluationDefinition,
+  type EvaluationEvent,
   type EvaluationSample,
   type EvaluatorDefinition,
+  type ExecutionBundleSource,
   type JsonValue,
   type MetricDefinition,
   type RuntimeIdentity,
@@ -33,6 +41,8 @@ import {
 import {
   createEvaluationEngine as createCoreEvaluationEngine,
   getAuthenticatedEvaluationRunSources,
+  materializeAuthenticatedEvaluationRunResult,
+  type AdvancedPreparedEvaluation as CoreAdvancedPreparedEvaluation,
   type AuthenticatedEvaluationRunSources,
   type EvaluationEngineClock,
   type EvaluationRunResult,
@@ -998,6 +1008,7 @@ interface AuthenticatedCanonicalRun {
 }
 
 const authenticatedCanonicalRuns = new WeakMap<object, AuthenticatedCanonicalRun>();
+const corePreparedEvaluations = new WeakMap<object, CoreAdvancedPreparedEvaluation>();
 export type EventObserver = EvaluationEventObserver;
 export type Clock = EvaluationEngineClock;
 
@@ -1080,7 +1091,8 @@ export class EvaluationConfigurationError extends TypeError {
     | 'EVAL_RUNTIME_EXECUTOR_INVALID'
     | 'EVAL_RUNTIME_VARIANT_INVALID'
     | 'EVAL_RUNTIME_EVALUATOR_INVALID'
-    | 'EVAL_RUNTIME_COMPARABILITY_INVALID';
+    | 'EVAL_RUNTIME_COMPARABILITY_INVALID'
+    | 'EVAL_RUNTIME_REUSE_INVALID';
 
   constructor(code: EvaluationConfigurationError['code'], message: string) {
     super(message);
@@ -3579,7 +3591,7 @@ export async function prepareEvaluation(
   try {
     const prepared = await createCoreEvaluationEngine(runtime).prepare(definition, policy);
     const plan = prepared.plan;
-    return Object.freeze({
+    const facade: PreparedEvaluation = Object.freeze({
       definition: plan.definition,
       policy: plan.measurementPolicy,
       plan,
@@ -3588,6 +3600,8 @@ export async function prepareEvaluation(
       estimatedWork: estimateEvaluationWork(plan),
       run: (options?: Readonly<EvaluationRunOptions>) => runPrepared(prepared, options),
     });
+    corePreparedEvaluations.set(facade, prepared);
+    return facade;
   } catch (error) {
     if (error instanceof EvaluationConfigurationError) throw error;
     return configurationFailure(
@@ -3604,6 +3618,254 @@ export async function evaluate(
 ): Promise<EvaluationResult> {
   const capturedOptions = captureRunOptions(options);
   return (await prepareEvaluation(input)).run(capturedOptions);
+}
+
+type EvaluationReuseKind = 'rescore' | 'reanalyze' | 'redecide';
+
+interface ReuseEventConsumerState {
+  observerFailed: boolean;
+  observerFailure?: unknown;
+  streamFailed: boolean;
+  streamFailure?: unknown;
+}
+
+function createReuseEventConsumer(
+  observer: EventObserver | undefined,
+  controller: AbortController,
+) {
+  const state: ReuseEventConsumerState = {
+    observerFailed: false,
+    streamFailed: false,
+  };
+  let draining = Promise.resolve();
+  return Object.freeze({
+    state,
+    enqueue(events: AsyncIterable<EvaluationEvent>): void {
+      draining = draining.then(async () => {
+        try {
+          for await (const event of events) {
+            if (observer === undefined || state.observerFailed) continue;
+            try {
+              await observer(event);
+            } catch (error) {
+              state.observerFailed = true;
+              state.observerFailure = error;
+            }
+          }
+        } catch (error) {
+          if (!state.streamFailed) {
+            state.streamFailed = true;
+            state.streamFailure = error;
+            controller.abort(error);
+          }
+        }
+      });
+    },
+    async wait(): Promise<void> {
+      await draining;
+    },
+  });
+}
+
+function reuseSource(
+  result: EvaluationResult,
+): AuthenticatedCanonicalRun {
+  const source = authenticatedCanonicalRuns.get(result);
+  if (source === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation stage reuse 只接受当前进程由 canonical Runtime 产生的原始 Run result。',
+    );
+  }
+  return source;
+}
+
+function assertReusablePrefix(
+  reuseKind: EvaluationReuseKind,
+  plan: SealedRunPlan,
+  source: AuthenticatedCanonicalRun,
+): Readonly<{
+  execution: ExecutionBundleSource;
+  evaluation?: EvaluationBundleSource;
+  analysis?: AnalysisBundleSource;
+}> {
+  const execution = source.sources.execution;
+  if (execution === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation source result 缺少可复用的 Execution stage。',
+    );
+  }
+  try {
+    if (reuseKind === 'rescore') {
+      assertExecutionBundleSourceMatchesPlan(execution, plan);
+      return Object.freeze({ execution });
+    }
+    const evaluation = source.sources.evaluation;
+    if (evaluation === undefined) {
+      return configurationFailure(
+        'EVAL_RUNTIME_REUSE_INVALID',
+        'Evaluation source result 缺少可复用的 Evaluation stage。',
+      );
+    }
+    assertEvaluationBundleSourceMatchesPlan(plan, execution, evaluation);
+    if (reuseKind === 'reanalyze') {
+      return Object.freeze({ execution, evaluation });
+    }
+    const analysis = source.sources.analysis;
+    if (analysis === undefined) {
+      return configurationFailure(
+        'EVAL_RUNTIME_REUSE_INVALID',
+        'Evaluation source result 缺少可复用的 Analysis stage。',
+      );
+    }
+    assertAnalysisBundleSourceMatchesPlan(plan, execution, evaluation, analysis);
+    return Object.freeze({ execution, evaluation, analysis });
+  } catch (error) {
+    if (error instanceof EvaluationConfigurationError) throw error;
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation source result 与新声明的可复用阶段不一致。',
+    );
+  }
+}
+
+async function runEvaluationSuffix(
+  reuseKind: EvaluationReuseKind,
+  input: Readonly<EvaluateInput>,
+  sourceResult: EvaluationResult,
+  options: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  const source = reuseSource(sourceResult);
+  const preparedFacade = await prepareEvaluation(input);
+  if (reuseKind === 'redecide' && preparedFacade.definition.decisionPolicy === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'redecide() 需要新声明包含 Decision。',
+    );
+  }
+  const prepared = corePreparedEvaluations.get(preparedFacade);
+  if (prepared === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation prepared capability 无法用于阶段复用。',
+    );
+  }
+  const prefix = assertReusablePrefix(reuseKind, prepared.plan, source);
+  const runId = options.runId ?? `run-${randomUUID()}`;
+  const controller = new AbortController();
+  const abortFromCaller = (): void => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) abortFromCaller();
+  else options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const consumer = createReuseEventConsumer(options.onEvent, controller);
+  let session: ReturnType<CoreAdvancedPreparedEvaluation['stages']> | undefined;
+  let result: EvaluationResult | undefined;
+  let stageFailure: unknown;
+  try {
+    session = prepared.stages({
+      runId,
+      ...(options.clock === undefined ? {} : { clock: options.clock }),
+      signal: controller.signal,
+      ...(options.annotations === undefined ? {} : { annotations: options.annotations }),
+      ...(options.summaries === undefined ? {} : { summaries: options.summaries }),
+      ...(options.eventBufferCapacity === undefined
+        ? {}
+        : { eventBufferCapacity: options.eventBufferCapacity }),
+    });
+    const execution = prefix.execution;
+    let evaluation = prefix.evaluation;
+    if (reuseKind === 'rescore') {
+      const evaluationRun = session.evaluate({ execution });
+      consumer.enqueue(evaluationRun.events);
+      evaluation = await evaluationRun.source;
+    }
+    if (evaluation === undefined) {
+      throw new TypeError('Evaluation stage source is unavailable.');
+    }
+    let analysis = prefix.analysis;
+    if (reuseKind !== 'redecide') {
+      const analysisRun = session.analyze({ execution, evaluation });
+      consumer.enqueue(analysisRun.events);
+      analysis = await analysisRun.source;
+    }
+    if (analysis === undefined) {
+      throw new TypeError('Analysis stage source is unavailable.');
+    }
+    const decisionRun = session.decide({ execution, evaluation, analysis });
+    consumer.enqueue(decisionRun.events);
+    const decision: DecisionResultSource | undefined = await decisionRun.source;
+    const reportRun = session.materializeReport({
+      execution,
+      evaluation,
+      analysis,
+      ...(decision === undefined ? {} : { decision }),
+    });
+    consumer.enqueue(reportRun.events);
+    const report = await reportRun.result;
+    const coreResult = materializeAuthenticatedEvaluationRunResult({
+      plan: prepared.plan,
+      execution,
+      evaluation,
+      analysis,
+      ...(decision === undefined ? {} : { decision }),
+      report,
+    });
+    result = attachDefinition(coreResult, runId, prepared.plan);
+  } catch (error) {
+    stageFailure = error;
+  } finally {
+    await session?.close();
+    await consumer.wait();
+    options.signal?.removeEventListener('abort', abortFromCaller);
+  }
+  if (stageFailure !== undefined || result === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation stage reuse 无法完成。',
+    );
+  }
+  if (consumer.state.observerFailed) {
+    throw new EvaluationEventConsumptionError({
+      code: 'EVAL_RUNTIME_EVENT_OBSERVER_FAILED',
+      message: 'Evaluation event observer 执行失败；评测保持 Core 终态并完成清理。',
+      runResult: result,
+    });
+  }
+  if (consumer.state.streamFailed) {
+    throw new EvaluationEventConsumptionError({
+      code: 'EVAL_RUNTIME_EVENT_STREAM_FAILED',
+      message: 'Evaluation event stream 消费失败；评测已取消并完成清理。',
+      runResult: result,
+    });
+  }
+  return result;
+}
+
+/** Reuses an authenticated Execution stage and runs Evaluation onward. */
+export async function rescore(
+  input: Readonly<EvaluateInput>,
+  source: EvaluationResult,
+  options?: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  return runEvaluationSuffix('rescore', input, source, captureRunOptions(options));
+}
+
+/** Reuses authenticated Execution and Evaluation stages and runs Analysis onward. */
+export async function reanalyze(
+  input: Readonly<EvaluateInput>,
+  source: EvaluationResult,
+  options?: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  return runEvaluationSuffix('reanalyze', input, source, captureRunOptions(options));
+}
+
+/** Reuses authenticated Execution, Evaluation and Analysis stages and runs Decision onward. */
+export async function redecide(
+  input: Readonly<EvaluateInput>,
+  source: EvaluationResult,
+  options?: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  return runEvaluationSuffix('redecide', input, source, captureRunOptions(options));
 }
 
 function comparabilitySourcePrefix(
