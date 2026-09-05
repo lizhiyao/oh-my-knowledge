@@ -124,6 +124,15 @@ import {
   type WorkspaceProvider,
 } from './workspace.js';
 import {
+  captureMockInterceptionPlan,
+  captureMockInterceptionProvider,
+  type CapturedMockInterceptionPlan,
+  type CapturedMockInterceptionProvider,
+  type MockInterceptionAccess,
+  type MockInterceptionInput,
+  type MockInterceptionProvider,
+} from './mock-interception.js';
+import {
   captureMcpConfigPlan,
   captureMcpConfigProvider,
   type CapturedMcpConfigPlan,
@@ -463,6 +472,8 @@ export interface VariantExecution<
   readonly allowedTools?: AllowedToolsInput;
   /** Logical native MCP configuration; config values remain inside the provider lease. */
   readonly mcpConfig?: McpConfigInput;
+  /** Logical pre-tool-call interception plan; rules remain inside attempt-scoped provider leases. */
+  readonly mockInterception?: MockInterceptionInput;
 }
 
 export interface Variant<
@@ -493,6 +504,8 @@ export interface ExecutorCapabilities {
   readonly seedControl?: 'unsupported' | 'optional' | 'required';
   /** Declares that the Executor consumes a native per-trial MCP configuration. */
   readonly mcp?: 'native-config';
+  /** Declares that the Executor applies an attempt-private pre-tool-call interceptor. */
+  readonly mockInterception?: 'pre-tool-call';
   /** Declares that the Executor strictly enforces per-trial tool allow-lists. */
   readonly toolPolicy?: 'allow-list';
   readonly telemetry?: Readonly<{
@@ -522,6 +535,7 @@ export interface ExecutorInvocation<
   readonly signal: AbortSignal;
   readonly workspace?: WorkspaceAccess;
   readonly mcpConfig?: McpConfigAccess;
+  readonly mockInterception?: MockInterceptionAccess;
   /** Undefined means use the Executor runtime default; an empty list denies every tool. */
   readonly allowedTools?: readonly string[];
 }
@@ -551,6 +565,7 @@ export interface ExecutorSessionAttempt {
   readonly attemptId: string;
   readonly attemptNumber: number;
   readonly signal: AbortSignal;
+  readonly mockInterception?: MockInterceptionAccess;
 }
 
 export type ExecutorResult<Output extends JsonValue, Trace extends JsonValue = JsonValue> =
@@ -592,6 +607,8 @@ interface ExecutorDeclaration<
   readonly workspaceProvider?: WorkspaceProvider;
   /** Host-owned materializer for validated, trial-private native MCP config. */
   readonly mcpConfigProvider?: McpConfigProvider;
+  /** Host-owned materializer for fresh, attempt-private mock interception. */
+  readonly mockInterceptionProvider?: MockInterceptionProvider;
   /** Host-declared deployment or implementation facets beyond executorId and version. */
   readonly fingerprintFacets?: JsonValue;
 }
@@ -1053,6 +1070,7 @@ interface CapturedExecutor<
   readonly outputParser: RuntimeValueParser<Output>;
   readonly workspaceProvider?: CapturedWorkspaceProvider;
   readonly mcpConfigProvider?: CapturedMcpConfigProvider;
+  readonly mockInterceptionProvider?: CapturedMockInterceptionProvider;
   readonly supportsToolAllowList: boolean;
   readonly createPort: (
     targetId: string,
@@ -1224,12 +1242,32 @@ function captureExecutor<
       'Evaluation executor mcpConfigProvider declaration 无效。',
     );
   }
+  let mockInterceptionProvider: CapturedMockInterceptionProvider | undefined;
+  try {
+    mockInterceptionProvider = captureMockInterceptionProvider(
+      value.mockInterceptionProvider,
+    );
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_EXECUTOR_INVALID',
+      'Evaluation executor mockInterceptionProvider declaration 无效。',
+    );
+  }
   const capabilities = value.capabilities ?? {};
   if ((capabilities.mcp !== undefined && capabilities.mcp !== 'native-config')
       || (capabilities.mcp === 'native-config') !== (mcpConfigProvider !== undefined)) {
     return configurationFailure(
       'EVAL_RUNTIME_EXECUTOR_INVALID',
       'Evaluation executor native-config capability 与 mcpConfigProvider 必须成对声明。',
+    );
+  }
+  if ((capabilities.mockInterception !== undefined
+        && capabilities.mockInterception !== 'pre-tool-call')
+      || (capabilities.mockInterception === 'pre-tool-call')
+        !== (mockInterceptionProvider !== undefined)) {
+    return configurationFailure(
+      'EVAL_RUNTIME_EXECUTOR_INVALID',
+      'Evaluation executor pre-tool-call capability 与 mockInterceptionProvider 必须成对声明。',
     );
   }
   const telemetry = capabilities.telemetry ?? {};
@@ -1254,6 +1292,9 @@ function captureExecutor<
           ? {}
           : { workspace: 'copy-on-write-overlay' as const }),
         ...(capabilities.mcp === undefined ? {} : { mcp: capabilities.mcp }),
+        ...(capabilities.mockInterception === undefined
+          ? {}
+          : { mockInterception: capabilities.mockInterception }),
         telemetry: {
           trace: telemetry.trace ?? (traceParser === undefined ? 'unsupported' : 'optional'),
           usage: telemetry.usage ?? 'optional',
@@ -1261,7 +1302,9 @@ function captureExecutor<
         },
         fingerprintFacets: {
           facade: {
-            version: mcpConfigProvider === undefined
+            version: mockInterceptionProvider !== undefined
+              ? 'omk.eval-runtime.evaluate/v7'
+              : mcpConfigProvider === undefined
               ? capabilities.toolPolicy === 'allow-list'
                 ? 'omk.eval-runtime.evaluate/v5'
                 : workspaceProvider === undefined
@@ -1317,6 +1360,7 @@ function captureExecutor<
     }),
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
     ...(mcpConfigProvider === undefined ? {} : { mcpConfigProvider }),
+    ...(mockInterceptionProvider === undefined ? {} : { mockInterceptionProvider }),
     ...(value.fingerprintFacets === undefined ? {} : {
       fingerprintFacets: deepFreezeCanonicalJson(structuredClone(value.fingerprintFacets)),
     }),
@@ -1379,6 +1423,7 @@ function captureExecutor<
     ...(value.traceMediaType === undefined ? {} : { traceMediaType: value.traceMediaType }),
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
     ...(mcpConfigProvider === undefined ? {} : { mcpConfigProvider }),
+    ...(mockInterceptionProvider === undefined ? {} : { mockInterceptionProvider }),
   };
   const createPort = (targetId: string, runtimeIdentity = identity) => protocol === 'session'
     ? createJsonSessionExecutorAdapter({
@@ -1463,6 +1508,9 @@ function captureExecutor<
           ...(invocation.mcpConfig === undefined
             ? {}
             : { mcpConfig: invocation.mcpConfig }),
+          ...(invocation.mockInterception === undefined
+            ? {}
+            : { mockInterception: invocation.mockInterception }),
           ...(invocation.allowedTools === undefined
             ? {}
             : { allowedTools: invocation.allowedTools }),
@@ -1480,6 +1528,7 @@ function captureExecutor<
     outputParser,
     ...(workspaceProvider === undefined ? {} : { workspaceProvider }),
     ...(mcpConfigProvider === undefined ? {} : { mcpConfigProvider }),
+    ...(mockInterceptionProvider === undefined ? {} : { mockInterceptionProvider }),
     supportsToolAllowList: capabilities.toolPolicy === 'allow-list',
     createPort,
   });
@@ -1506,6 +1555,7 @@ interface CapturedVariant {
   workspace?: CapturedWorkspacePlan;
   allowedTools?: CapturedAllowedToolsPlan;
   mcpConfig?: CapturedMcpConfigPlan;
+  mockInterception?: CapturedMockInterceptionPlan;
   runtimeIdentity: RuntimeIdentity;
   executor: CapturedExecutor<JsonValue, JsonValue | undefined, JsonValue, JsonValue>;
 }
@@ -1551,6 +1601,18 @@ function captureVariant(
       'Evaluation variant mcpConfig selection 无效。',
     );
   }
+  let mockInterception: CapturedMockInterceptionPlan | undefined;
+  try {
+    mockInterception = captureMockInterceptionPlan(
+      value.execution.mockInterception,
+      sampleIds,
+    );
+  } catch {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant mockInterception selection 无效。',
+    );
+  }
   if (workspace !== undefined && executor.workspaceProvider === undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_VARIANT_INVALID',
@@ -1567,6 +1629,12 @@ function captureVariant(
     return configurationFailure(
       'EVAL_RUNTIME_VARIANT_INVALID',
       'Evaluation variant mcpConfig requires an Executor mcpConfigProvider。',
+    );
+  }
+  if (mockInterception !== undefined && executor.mockInterceptionProvider === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_VARIANT_INVALID',
+      'Evaluation variant mockInterception requires an Executor mockInterceptionProvider。',
     );
   }
   const config = parseOptionalWithoutTransform(
@@ -1590,6 +1658,7 @@ function captureVariant(
     ...(workspace === undefined ? {} : { workspace }),
     ...(allowedTools === undefined ? {} : { allowedTools }),
     ...(mcpConfig === undefined ? {} : { mcpConfig }),
+    ...(mockInterception === undefined ? {} : { mockInterception }),
     runtimeIdentity: executor.identity,
     executor,
   });
@@ -2258,6 +2327,7 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
     variant.workspace,
     variant.allowedTools,
     variant.mcpConfig,
+    variant.mockInterception,
   );
   return {
     targetId: variant.variantId,
@@ -2272,7 +2342,9 @@ function targetDefinition(variant: Readonly<CapturedVariant>) {
       mcp: variant.mcpConfig === undefined
         ? 'not-required' as const
         : 'native-config' as const,
-      mockInterception: 'not-required' as const,
+      mockInterception: variant.mockInterception === undefined
+        ? 'not-required' as const
+        : 'pre-tool-call' as const,
       toolPolicy: variant.allowedTools === undefined
         ? 'runtime-default' as const
         : 'allow-list' as const,
@@ -3241,7 +3313,9 @@ function validateEvidenceInfrastructure(
     );
   }
   if (needsOutput && variants.some((variant) => (
-    classificationLevel[variant.executor.declaration.outputClassification ?? 'sensitive']
+    classificationLevel[variant.mockInterception === undefined
+      ? variant.executor.declaration.outputClassification ?? 'sensitive'
+      : 'secret']
       > classificationLevel[evidence.maximumClassification]
   ))) {
     return configurationFailure(
@@ -3251,9 +3325,9 @@ function validateEvidenceInfrastructure(
   }
   if (needsTrace && variants.some((variant) => {
     const declaration = variant.executor.declaration;
-    const traceClassification = declaration.traceClassification
-      ?? declaration.outputClassification
-      ?? 'sensitive';
+    const traceClassification = variant.mockInterception === undefined
+      ? declaration.traceClassification ?? declaration.outputClassification ?? 'sensitive'
+      : 'secret';
     return classificationLevel[traceClassification]
       > classificationLevel[evidence.maximumClassification];
   })) {
@@ -3522,10 +3596,13 @@ export async function checkExecutor<
       || input.variant?.execution?.executor?.capabilities?.toolPolicy !== undefined
       || input.variant?.execution?.mcpConfig !== undefined
       || input.variant?.execution?.executor?.mcpConfigProvider !== undefined
-      || input.variant?.execution?.executor?.capabilities?.mcp !== undefined) {
+      || input.variant?.execution?.executor?.capabilities?.mcp !== undefined
+      || input.variant?.execution?.mockInterception !== undefined
+      || input.variant?.execution?.executor?.mockInterceptionProvider !== undefined
+      || input.variant?.execution?.executor?.capabilities?.mockInterception !== undefined) {
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
-      'Executor check 暂不认证 workspaceProvider、toolPolicy 或 mcpConfigProvider；请使用真实 Evaluation 验证资源隔离、工具约束与 MCP 配置。',
+      'Executor check 暂不认证 workspaceProvider、toolPolicy、mcpConfigProvider 或 mockInterceptionProvider；请使用真实 Evaluation 验证受控资源与工具调用拦截。',
     );
   }
   const variant = captureVariant(input.variant, new Set());

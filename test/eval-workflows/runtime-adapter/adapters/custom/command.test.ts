@@ -62,7 +62,7 @@ function schema(name: string): SchemaIdentity {
   };
 }
 
-function capabilities(): ExecutorCapabilities {
+function capabilities(supportsMockInterception = false): ExecutorCapabilities {
   return {
     schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
     protocols: [{
@@ -80,7 +80,7 @@ function capabilities(): ExecutorCapabilities {
           systemInstructions: 'unsupported',
           workspace: ['copy-on-write-overlay'],
           mcp: [],
-          mockInterception: [],
+          mockInterception: supportsMockInterception ? ['pre-tool-call'] : [],
           toolPolicies: ['allow-list', 'runtime-default'],
           skillDiscovery: ['runtime-default'],
           sandboxIds: [],
@@ -106,6 +106,80 @@ function resourceAccess(
   };
 }
 
+async function mockResources(root: string, suffix: 'a' | 'b') {
+  const rulePath = join(root, `mock-rule-${suffix}.json`);
+  const payloadPath = join(root, `mock-payload-${suffix}.json`);
+  const planPath = join(root, `mock-plan-${suffix}.json`);
+  const ruleText = JSON.stringify({ tool: 'Read', match: { file_path_endswith: `-${suffix}` } });
+  const payloadText = JSON.stringify({ content: `secret-${suffix}` });
+  await Promise.all([
+    writeFile(rulePath, ruleText),
+    writeFile(payloadPath, payloadText),
+  ]);
+  const ruleDescriptor = {
+    resourceId: `mock-rule-${suffix}`,
+    digest: digest({ ruleText }),
+    mediaType: 'application/json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(ruleText),
+  };
+  const payloadDescriptor = {
+    resourceId: `mock-payload-${suffix}`,
+    digest: digest({ payloadText }),
+    mediaType: 'application/json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(payloadText),
+  };
+  const planText = JSON.stringify({
+    schemaVersion: 'omk.mock-interception-plan/v1',
+    strict: true,
+    rules: [{
+      mockId: `mock-${suffix}`,
+      rule: ruleDescriptor,
+      payloads: [payloadDescriptor],
+    }],
+  });
+  await writeFile(planPath, planText);
+  const planDescriptor = {
+    resourceId: `mock-plan-${suffix}`,
+    digest: digest({ planText }),
+    mediaType: 'application/vnd.omk.mock-interception-plan+json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(planText),
+  };
+  const resources = [{
+    resourceId: planDescriptor.resourceId,
+    resourceKind: 'mock-plan' as const,
+    descriptor: planDescriptor,
+    snapshotKind: 'file' as const,
+    leaseMode: 'immutable-snapshot' as const,
+    snapshotPath: planPath,
+  }, {
+    resourceId: ruleDescriptor.resourceId,
+    resourceKind: 'mock-rule' as const,
+    descriptor: ruleDescriptor,
+    snapshotKind: 'file' as const,
+    leaseMode: 'immutable-snapshot' as const,
+    snapshotPath: rulePath,
+  }, {
+    resourceId: payloadDescriptor.resourceId,
+    resourceKind: 'mock-payload' as const,
+    descriptor: payloadDescriptor,
+    snapshotKind: 'file' as const,
+    leaseMode: 'immutable-snapshot' as const,
+    snapshotPath: payloadPath,
+  }];
+  return {
+    planDescriptor,
+    resources,
+    requirements: resources.map((resource) => ({
+      resourceId: resource.resourceId,
+      resourceRole: resource.resourceKind,
+      leaseMode: 'immutable-snapshot' as const,
+    })),
+  };
+}
+
 async function createAdapter(
   _workingDirectory: string,
   options: Readonly<{
@@ -114,6 +188,8 @@ async function createAdapter(
     maxOutputBytes?: number;
     resourceLeases?: OmkBindingResourceLeaseAccess;
     executionControls?: TargetExecutionControls;
+    additionalResourceLeaseRequirements?: RuntimeBindingOf<'executor'>['resourceLeaseRequirements'];
+    supportsMockInterception?: boolean;
   }> = {},
 ): Promise<ExecutionExecutor> {
   const identityFile = options.identityFile === false ? undefined : options.identityFile ?? FIXTURE;
@@ -136,6 +212,7 @@ async function createAdapter(
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
       mcp: { mcpMode: 'not-required' },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     },
     sampleOverrides: [],
   };
@@ -151,7 +228,10 @@ async function createAdapter(
         leaseMode: 'copy-on-write-overlay' as const,
       }]
     : []);
-  const resourceLeaseRequirements = [...new Map(workspaceRequirements.map((requirement) => (
+  const resourceLeaseRequirements = [...new Map([
+    ...workspaceRequirements,
+    ...(options.additionalResourceLeaseRequirements ?? []),
+  ].map((requirement) => (
     [requirement.resourceId, requirement]
   ))).values(), {
     resourceId: 'runtime-implementation-test',
@@ -192,7 +272,14 @@ async function createAdapter(
       ? 'not-required' as const
       : 'copy-on-write-overlay' as const,
     mcp: 'not-required' as const,
-    mockInterception: 'not-required' as const,
+    mockInterception: [
+      executionControls.defaults.mockInterception,
+      ...executionControls.sampleOverrides.flatMap((override) => (
+        override.mockInterception === undefined ? [] : [override.mockInterception]
+      )),
+    ].some((control) => control.mockInterceptionMode === 'pre-tool-call')
+      ? 'pre-tool-call' as const
+      : 'not-required' as const,
     toolPolicy: [
       executionControls.defaults.tools,
       ...executionControls.sampleOverrides.flatMap((override) => (
@@ -232,7 +319,7 @@ async function createAdapter(
     runtime: {
       implementationId: 'test.omk.custom-command/v1',
       version: '1.0.0',
-      capabilities: capabilities(),
+      capabilities: capabilities(options.supportsMockInterception),
       ...(identityFile === undefined ? {} : {
         contentIdentityFiles: [{ facetId: 'runtime-script', path: identityFile }],
       }),
@@ -257,6 +344,7 @@ async function execute(
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
     mcp: { mcpMode: 'not-required' },
+    mockInterception: { mockInterceptionMode: 'not-required' },
   },
   sampleId = 'sample-a',
 ): Promise<ExecutorAttemptResult> {
@@ -516,6 +604,7 @@ describe('custom-command Core Executor adapter', () => {
           },
           tools: { toolPolicyKind: 'runtime-default' },
           mcp: { mcpMode: 'not-required' },
+          mockInterception: { mockInterceptionMode: 'not-required' },
         },
         sampleOverrides: [],
       },
@@ -526,6 +615,7 @@ describe('custom-command Core Executor adapter', () => {
       },
       tools: { toolPolicyKind: 'runtime-default' },
       mcp: { mcpMode: 'not-required' },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     });
 
     expect(result.trace?.value).toMatchObject({
@@ -580,6 +670,7 @@ describe('custom-command Core Executor adapter', () => {
       },
       tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['read'] },
       mcp: { mcpMode: 'not-required' as const },
+      mockInterception: { mockInterceptionMode: 'not-required' as const },
     };
     const controlB = {
       workspace: {
@@ -588,6 +679,7 @@ describe('custom-command Core Executor adapter', () => {
       },
       tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['shell'] },
       mcp: { mcpMode: 'not-required' as const },
+      mockInterception: { mockInterceptionMode: 'not-required' as const },
     };
     const port = await createAdapter(root, {
       resourceLeases: resourceAccess(lease),
@@ -631,6 +723,138 @@ describe('custom-command Core Executor adapter', () => {
       .rejects.toMatchObject({
         evaluationError: { code: 'OMK_CUSTOM_COMMAND_EXECUTION_CONTROL_MISMATCH' },
       });
+  });
+
+  it('projects only the current Trial mock plan closure from an aggregate lease', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-sample-mocks-'));
+    const [mockA, mockB] = await Promise.all([
+      mockResources(root, 'a'),
+      mockResources(root, 'b'),
+    ]);
+    const lease = Object.freeze({
+      bindingId: 'executor-a',
+      consumerKind: 'executor' as const,
+      resourcesByResourceId: new Map(
+        [...mockA.resources, ...mockB.resources].map((resource) => (
+          [resource.resourceId, resource] as const
+        )),
+      ),
+    });
+    const noMocks = {
+      workspace: { workspaceMode: 'not-required' as const },
+      tools: { toolPolicyKind: 'runtime-default' as const },
+      mcp: { mcpMode: 'not-required' as const },
+      mockInterception: { mockInterceptionMode: 'not-required' as const },
+    };
+    const controlA = {
+      ...noMocks,
+      mockInterception: {
+        mockInterceptionMode: 'pre-tool-call' as const,
+        descriptor: mockA.planDescriptor,
+      },
+    };
+    const controlB = {
+      ...noMocks,
+      mockInterception: {
+        mockInterceptionMode: 'pre-tool-call' as const,
+        descriptor: mockB.planDescriptor,
+      },
+    };
+    const port = await createAdapter(root, {
+      resourceLeases: resourceAccess(lease),
+      executionControls: {
+        defaults: noMocks,
+        sampleOverrides: [
+          { sampleId: 'sample-a', mockInterception: controlA.mockInterception },
+          { sampleId: 'sample-b', mockInterception: controlB.mockInterception },
+        ],
+      },
+      additionalResourceLeaseRequirements: [
+        ...mockA.requirements,
+        ...mockB.requirements,
+      ],
+      supportsMockInterception: true,
+    });
+    const resultA = await execute(port, new AbortController().signal, controlA, 'sample-a');
+    const resultB = await execute(port, new AbortController().signal, controlB, 'sample-b');
+    const resultWithoutMocks = await execute(
+      port,
+      new AbortController().signal,
+      noMocks,
+      'sample-c',
+    );
+    const ids = (result: ExecutorAttemptResult): string[] => {
+      const trace = result.trace?.value as {
+        request: { resources: Array<{ resourceId: string }> };
+      };
+      return trace.request.resources.map((resource) => resource.resourceId);
+    };
+
+    expect(ids(resultA)).toEqual(['mock-payload-a', 'mock-plan-a', 'mock-rule-a']);
+    expect(ids(resultB)).toEqual(['mock-payload-b', 'mock-plan-b', 'mock-rule-b']);
+    expect(ids(resultWithoutMocks)).toEqual([]);
+    expect(resultA.output?.classification).toBe('secret');
+    expect(resultA.trace?.classification).toBe('secret');
+    expect(resultWithoutMocks.output?.classification).toBe('public');
+    expect(resultWithoutMocks.trace?.classification).toBe('sensitive');
+  });
+
+  it('rejects unreferenced mock helper leases before spawning', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-mock-closure-'));
+    const mock = await mockResources(root, 'a');
+    const invocations = join(root, 'invocations.log');
+    const extraPath = join(root, 'mock-payload-extra.json');
+    await writeFile(extraPath, '{}');
+    const extra = {
+      resourceId: 'mock-payload-extra',
+      resourceKind: 'mock-payload' as const,
+      descriptor: {
+        resourceId: 'mock-payload-extra',
+        digest: digest({ extra: true }),
+        mediaType: 'application/json',
+        classification: 'secret' as const,
+        size: 2,
+      },
+      snapshotKind: 'file' as const,
+      leaseMode: 'immutable-snapshot' as const,
+      snapshotPath: extraPath,
+    };
+    const lease = Object.freeze({
+      bindingId: 'executor-a',
+      consumerKind: 'executor' as const,
+      resourcesByResourceId: new Map([...mock.resources, extra].map((resource) => (
+        [resource.resourceId, resource] as const
+      ))),
+    });
+    const control = {
+      workspace: { workspaceMode: 'not-required' as const },
+      tools: { toolPolicyKind: 'runtime-default' as const },
+      mcp: { mcpMode: 'not-required' as const },
+      mockInterception: {
+        mockInterceptionMode: 'pre-tool-call' as const,
+        descriptor: mock.planDescriptor,
+      },
+    };
+    const port = await createAdapter(root, {
+      environment: { OMK_TEST_INVOCATIONS: invocations },
+      resourceLeases: resourceAccess(lease),
+      executionControls: { defaults: control, sampleOverrides: [] },
+      additionalResourceLeaseRequirements: [
+        ...mock.requirements,
+        {
+          resourceId: extra.resourceId,
+          resourceRole: extra.resourceKind,
+          leaseMode: extra.leaseMode,
+        },
+      ],
+      supportsMockInterception: true,
+    });
+
+    await expect(execute(port, new AbortController().signal, control))
+      .rejects.toMatchObject({
+        evaluationError: { code: 'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID' },
+      });
+    expect(existsSync(invocations)).toBe(false);
   });
 
   it('delivers the Core AbortSignal to the child and waits for termination', async () => {
@@ -690,6 +914,7 @@ describe('custom-command Core Executor adapter', () => {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'runtime-default' },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       protocolId: 'omk.invoke/v1',
       input: { prompt: 'hello' },

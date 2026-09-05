@@ -60,6 +60,16 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     'secret',
   );
   const mockPayload = descriptor('mock-search-response', { answer: 'A' }, 'secret');
+  const mockPlan = descriptor(
+    'mock-plan-search',
+    {
+      schemaVersion: 'omk.mock-interception-plan/v1',
+      strict: true,
+      rules: [{ mockId: 'mock-1', rule: mockRule, payloads: [mockPayload] }],
+    } as unknown as JsonValue,
+    'secret',
+    'application/vnd.omk.mock-interception-plan+json',
+  );
   const rubric = descriptor('rubric-correctness', { rubric: 'correctness' });
   const gold = descriptor('gold-dataset', { version: 1 }, 'gold');
   const resources = [
@@ -73,6 +83,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     hostResource('mcp-config', mcp, '/repo/mcp.json'),
     hostResource('mock-rule', mockRule, '/repo/mocks/search-rule.json'),
     hostResource('mock-payload', mockPayload, '/repo/mocks/search.json'),
+    hostResource('mock-plan', mockPlan, '/repo/mocks/search-plan.json'),
     hostResource('content', rubric, '/repo/rubrics/correctness.json'),
     hostResource('gold-dataset', gold, '/repo/gold/v1'),
   ];
@@ -170,8 +181,15 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
               mcpMode: 'native-config',
               descriptor: { ...mcp, classification: 'secret' },
             },
+            mockInterception: { mockInterceptionMode: 'not-required' },
           },
-          sampleOverrides: [],
+          sampleOverrides: [{
+            sampleId: 'sample-2',
+            mockInterception: {
+              mockInterceptionMode: 'pre-tool-call',
+              descriptor: { ...mockPlan, classification: 'secret' },
+            },
+          }],
         },
       },
       {
@@ -208,8 +226,15 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
               mcpMode: 'native-config',
               descriptor: { ...mcp, classification: 'secret' },
             },
+            mockInterception: { mockInterceptionMode: 'not-required' },
           },
-          sampleOverrides: [],
+          sampleOverrides: [{
+            sampleId: 'sample-2',
+            mockInterception: {
+              mockInterceptionMode: 'pre-tool-call',
+              descriptor: { ...mockPlan, classification: 'secret' },
+            },
+          }],
         },
       },
     ],

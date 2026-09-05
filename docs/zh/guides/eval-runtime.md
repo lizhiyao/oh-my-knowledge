@@ -384,6 +384,37 @@ const variant = {
 
 OMK 会验证 provider 返回值的 canonical JSON digest 与 byte size，为每个 Trial 打开一份新 lease，只在该 Trial 的 retry 间复用，并在所有终态路径关闭。原生配置只对选中用例的 Executor invocation 或 session 可见，OMK 不会把它写入 result 或 error；Executor 自己也不能通过 output 或 trace 返回 secret。逐 sample descriptor 变化只会失效选择该 descriptor 的 coordinate；provider identity 变化则会保守失效使用该 Executor 的全部 coordinate。Runtime 有意不发现 MCP 文件，也不选择 provider 默认值；产品层 discovery 与 Workflow 到 Runtime 的装配属于 `eval-workflows`。
 
+## 按 attempt 隔离 Mock interception
+
+当某个 sample 必须在真实 provider 收到请求前替换特定工具调用时，使用 `execution.mockInterception`。它可以直接接收一个 secret `MockInterceptionDescriptor`，也可以使用 `{ default, bySampleId }`，其中 `null` 表示为该 sample 禁用 interception。Executor 必须成对声明 `capabilities.mockInterception: 'pre-tool-call'` 与 `mockInterceptionProvider`：
+
+```ts
+const executor: Executor<string, undefined, string> = {
+  executorId: 'acme.mockable-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.string(), output: z.string() },
+  capabilities: { mockInterception: 'pre-tool-call' },
+  mockInterceptionProvider: {
+    providerId: 'acme.mock-provider/v1',
+    version: '1.0.0',
+    async open({ descriptor, signal }) {
+      const plan = await mockStore.readAndVerify(descriptor, signal);
+      const matcher = createMatcher(plan);
+      return {
+        intercept: ({ callId, toolName, input, signal: callSignal }) =>
+          matcher.intercept({ callId, toolName, input, signal: callSignal }),
+        close: () => matcher.close(),
+      };
+    },
+  },
+  async execute({ input, signal, mockInterception }) {
+    return { output: await agent.run(input, { signal, mockInterception }) };
+  },
+};
+```
+
+Descriptor media type 固定为 `application/vnd.omk.mock-interception-plan+json`；其 digest-bound plan 必须覆盖 strictness、first-match 规则顺序和有序返回 payload descriptor。Provider 负责加载 plan，并在返回 lease 前校验 digest、byte size、media type 与 classification。Runtime 为每个 attempt 打开一份新 lease，retry 也不复用，因此返回序列和命中状态会重置。Runtime 校验 `mocked`、`pass-through` 与 `denied` decision，等待 Target 调用 settle 后再清理，并对 provider failure 脱敏。Interception 生效时产生的 output 与 trace 会保守标记为 `secret`。Strict miss 必须返回 `denied`，绝不能静默调用真实工具。`checkExecutor()` 暂不认证 interception，应通过真实 Evaluation 验证。
+
 ## 有状态 Agent Session
 
 当 Agent 或有状态 Workflow 需要按 trial 隔离的 session 时，使用 `SessionExecutor`。`Executor` 继续表示简洁的无状态 `omk.invoke/v1` 接口；`EvaluationExecutor` 是 Variant 接受的联合类型，`InvokeExecutor` 是无状态形态的显式名称：

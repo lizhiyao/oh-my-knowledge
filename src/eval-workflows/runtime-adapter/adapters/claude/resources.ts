@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { z } from 'zod';
 import {
+  IdentifierSchema,
   JsonValueSchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
@@ -17,6 +18,7 @@ import {
   type ExecutionContent,
   type ExecutorTrialContext,
 } from '../../../../eval-core/execution/index.js';
+import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../../eval-runtime/mock-interception.js';
 import type { CliMockHandle } from '../../../../executors/mock-runtime/runtime.js';
 import type { Mock, MockMatch, MockReturn } from '../../../../executors/contracts/mock.js';
 import type { RuntimeBindingOf } from '../../types.js';
@@ -48,6 +50,16 @@ const ClaudeMockRulesSchema = z.object({
   match: ClaudeMockMatchSchema.optional(),
 }).strict();
 
+const ClaudeMockPlanSchema = z.object({
+  schemaVersion: z.literal('omk.mock-interception-plan/v1'),
+  strict: z.boolean(),
+  rules: z.array(z.object({
+    mockId: IdentifierSchema,
+    rule: DescriptorSchema,
+    payloads: z.array(DescriptorSchema),
+  }).strict()).min(1),
+}).strict();
+
 const ClaudeAllowedToolSchema = z.string().min(1).refine((value) => (
   !/[\u0000-\u001f\u007f]/.test(value)
   && !value.startsWith('-')
@@ -58,12 +70,6 @@ const ClaudeTargetConfigSchema = z.object({
   behavior: z.object({
     artifact: DescriptorSchema,
     mcpConfig: DescriptorSchema.optional(),
-    mocks: z.array(z.object({
-      sampleIds: z.array(z.string().min(1)).min(1),
-      rule: DescriptorSchema,
-      strict: z.boolean(),
-      payloads: z.array(DescriptorSchema),
-    }).strict()).optional(),
     allowedSkills: z.array(z.string().min(1)).optional(),
     sandbox: z.object({
       sandboxId: z.string().min(1),
@@ -100,7 +106,7 @@ export interface ClaudeCliRunState {
   readonly supportingFiles?: readonly { readonly path: string; readonly content: string }[];
   readonly mcpConfigFile?: string;
   readonly mcpServers?: Readonly<Record<string, unknown>>;
-  readonly mockControlsBySampleId: ReadonlyMap<string, ClaudeTrialMockControls>;
+  readonly mockControlsByResourceId: ReadonlyMap<string, ClaudeTrialMockControls>;
   readonly classification: ExecutionContent['classification'];
   acquireTrial(): void;
   releaseTrial(): Promise<void>;
@@ -120,6 +126,7 @@ export interface ClaudeTrialMockControls {
   readonly mocks: readonly Mock[];
   readonly strict: boolean;
   readonly classification: ExecutionContent['classification'];
+  readonly mcpServerNames: readonly string[];
 }
 
 export interface ClaudeResourceProjectionProfile {
@@ -167,6 +174,33 @@ function fail(
   });
 }
 
+function mockPlanDescriptors(
+  target: EvaluationDefinition['targets'][number],
+): readonly z.infer<typeof DescriptorSchema>[] {
+  const byResourceId = new Map<string, z.infer<typeof DescriptorSchema>>();
+  const controls = [
+    target.executionControls.defaults.mockInterception,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.mockInterception === undefined ? [] : [override.mockInterception]
+    )),
+  ];
+  for (const control of controls) {
+    if (control.mockInterceptionMode !== 'pre-tool-call') continue;
+    const descriptor = DescriptorSchema.parse(control.descriptor);
+    if (descriptor.classification !== 'secret'
+        || descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE) {
+      throw new TypeError('Claude mock plan descriptor is invalid.');
+    }
+    const existing = byResourceId.get(descriptor.resourceId);
+    if (existing !== undefined
+        && canonicalizeJson(existing) !== canonicalizeJson(descriptor)) {
+      throw new TypeError('Claude mock plan resourceId maps to conflicting descriptors.');
+    }
+    byResourceId.set(descriptor.resourceId, descriptor);
+  }
+  return Object.freeze([...byResourceId.values()]);
+}
+
 export function captureClaudeCliTarget(
   targetInput: EvaluationDefinition['targets'][number],
   bindingInput: RuntimeBindingOf<'executor'>,
@@ -199,25 +233,26 @@ export function captureClaudeCliTarget(
       override.tools === undefined ? [] : [override.tools]
     )),
   ];
+  const mockPlans = mockPlanDescriptors(target);
   const configuredDescriptors = [
     config.behavior.artifact,
     ...workspaceControls.flatMap((workspace) => (
       workspace.workspaceMode === 'copy-on-write-overlay' ? [workspace.descriptor] : []
     )),
     ...(config.behavior.mcpConfig === undefined ? [] : [config.behavior.mcpConfig]),
-    ...(config.behavior.mocks ?? []).flatMap((mock) => [mock.rule, ...mock.payloads]),
+    ...mockPlans,
   ];
   if (configuredDescriptors.some((descriptor) => descriptor.classification === 'gold')) {
     throw new TypeError(`${profile.adapterLabel} Executor Target must not reference Gold resources.`);
   }
   const expectedRequirements = new Map<string, {
     resourceId: string;
-    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-rule' | 'mock-payload';
+    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-plan';
     leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay';
   }>();
   const addRequirement = (
     resourceId: string,
-    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-rule' | 'mock-payload',
+    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-plan',
     leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay',
   ): void => {
     const next = { resourceId, resourceRole, leaseMode } as const;
@@ -240,13 +275,19 @@ export function captureClaudeCliTarget(
   if (config.behavior.mcpConfig !== undefined) {
     addRequirement(config.behavior.mcpConfig.resourceId, 'mcp-config', 'immutable-snapshot');
   }
-  for (const mock of config.behavior.mocks ?? []) {
-    addRequirement(mock.rule.resourceId, 'mock-rule', 'immutable-snapshot');
-    for (const payload of mock.payloads) {
-      addRequirement(payload.resourceId, 'mock-payload', 'immutable-snapshot');
-    }
+  for (const mockPlan of mockPlans) {
+    addRequirement(mockPlan.resourceId, 'mock-plan', 'immutable-snapshot');
   }
-  const expectedRequirementList = [...expectedRequirements.values()].sort((left, right) => (
+  const helperRequirements = binding.resourceLeaseRequirements.filter((requirement) => (
+    requirement.resourceRole === 'mock-rule' || requirement.resourceRole === 'mock-payload'
+  ));
+  if (mockPlans.length === 0 && helperRequirements.length > 0) {
+    throw new TypeError(`${profile.adapterLabel} received mock helper resources without a plan.`);
+  }
+  const expectedRequirementList = [
+    ...expectedRequirements.values(),
+    ...helperRequirements,
+  ].sort((left, right) => (
     left.resourceId < right.resourceId ? -1 : left.resourceId > right.resourceId ? 1 : 0
   ));
   const actualRequirementList = [...binding.resourceLeaseRequirements].sort((left, right) => (
@@ -268,30 +309,9 @@ export function captureClaudeCliTarget(
   if (config.behavior.config !== undefined) {
     throw new TypeError(`${profile.adapterLabel} Core adapter does not accept opaque provider config.`);
   }
-  const mockBindings = config.behavior.mocks ?? [];
   if (config.behavior.mcpConfig !== undefined
       && config.behavior.mcpConfig.classification !== 'secret') {
     throw new TypeError(`${profile.adapterLabel} MCP config must use secret classification.`);
-  }
-  if (mockBindings.some((mock) => (
-    mock.rule.classification !== 'secret'
-      || mock.rule.mediaType !== 'application/json'
-      || mock.payloads.some((payload) => payload.classification !== 'secret')
-  ))) {
-    throw new TypeError(`${profile.adapterLabel} mock rules and payloads must be secret resources.`);
-  }
-  if (mockBindings.some((mock) => new Set(mock.sampleIds).size !== mock.sampleIds.length)) {
-    throw new TypeError(`${profile.adapterLabel} mock binding sampleIds must be unique.`);
-  }
-  const strictBySampleId = new Map<string, boolean>();
-  for (const mock of mockBindings) {
-    for (const sampleId of mock.sampleIds) {
-      const existing = strictBySampleId.get(sampleId);
-      if (existing !== undefined && existing !== mock.strict) {
-        throw new TypeError(`${profile.adapterLabel} mock bindings for one sample must use one strictness policy.`);
-      }
-      strictBySampleId.set(sampleId, mock.strict);
-    }
   }
   const toolAllowLists = toolControls.flatMap((control) => (
     control.toolPolicyKind === 'allow-list' ? [control.allowedTools] : []
@@ -573,83 +593,129 @@ async function readMockRule(
   }
 }
 
+async function readMockPlan(
+  profile: ClaudeResourceProjectionProfile,
+  resource: OmkLeasedHostResource,
+  expected: z.infer<typeof DescriptorSchema>,
+): Promise<z.infer<typeof ClaudeMockPlanSchema>> {
+  if (
+    resource.resourceKind !== 'mock-plan'
+    || resource.leaseMode !== 'immutable-snapshot'
+    || resource.snapshotKind !== 'file'
+    || resource.descriptor.classification !== 'secret'
+    || resource.descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE
+    || !sameDescriptor(resource, expected)
+  ) fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan lease does not match the sealed control.');
+  const text = await readTextFile(
+    profile,
+    resource.snapshotPath,
+    'MOCK_CONFIG_INVALID',
+    'mock plan',
+  );
+  try {
+    const plan = ClaudeMockPlanSchema.parse(JSON.parse(text) as unknown);
+    if (new Set(plan.rules.map((rule) => rule.mockId)).size !== plan.rules.length
+        || plan.rules.some((rule) => (
+          rule.rule.classification !== 'secret'
+          || rule.rule.mediaType !== 'application/json'
+          || rule.payloads.some((payload) => payload.classification !== 'secret')
+        ))) throw new Error();
+    return plan;
+  } catch {
+    fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan is not a valid interception contract.');
+  }
+}
+
 async function projectMocks(
   profile: ClaudeResourceProjectionProfile,
   lease: OmkBindingResourceLease,
-  config: ClaudeCliTargetConfig,
+  target: EvaluationDefinition['targets'][number],
 ): Promise<{
-  bySampleId: ReadonlyMap<string, ClaudeTrialMockControls>;
+  byResourceId: ReadonlyMap<string, ClaudeTrialMockControls>;
   mcpServerNames: readonly string[];
 }> {
-  const bindings = config.behavior.mocks ?? [];
-  if (bindings.length === 0) return {
-    bySampleId: readonlyMapSnapshot(new Map()),
+  const planDescriptors = mockPlanDescriptors(target);
+  if (planDescriptors.length === 0) return {
+    byResourceId: readonlyMapSnapshot(new Map()),
     mcpServerNames: [],
   };
-  const mutableBySampleId = new Map<string, {
-    mocks: Mock[];
-    strict: boolean;
-    classification: ExecutionContent['classification'];
-  }>();
+  const expectedHelpers = new Map<string, Readonly<{
+    resourceKind: 'mock-rule' | 'mock-payload';
+    descriptor: z.infer<typeof DescriptorSchema>;
+  }>>();
+  const registerHelper = (
+    resourceKind: 'mock-rule' | 'mock-payload',
+    descriptor: z.infer<typeof DescriptorSchema>,
+  ): void => {
+    const existing = expectedHelpers.get(descriptor.resourceId);
+    if (existing !== undefined
+        && (existing.resourceKind !== resourceKind
+          || canonicalizeJson(existing.descriptor) !== canonicalizeJson(descriptor))) {
+      fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan contains conflicting resource descriptors.');
+    }
+    expectedHelpers.set(descriptor.resourceId, { resourceKind, descriptor });
+  };
+  const byResourceId = new Map<string, ClaudeTrialMockControls>();
   const mcpServerNames = new Set<string>();
-  for (const binding of bindings) {
-    const ruleResource = lease.resourcesByResourceId.get(binding.rule.resourceId);
-    if (ruleResource === undefined) {
-      fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule resource is missing.');
-    }
-    const rules = await readMockRule(profile, ruleResource, binding.rule);
-    const returns: MockReturn[] = [];
-    const mcpServerName = mockMcpServerName(rules.tool);
-    if (mcpServerName !== undefined) mcpServerNames.add(mcpServerName);
-    for (const descriptor of binding.payloads) {
-      const resource = lease.resourcesByResourceId.get(descriptor.resourceId);
-      if (resource === undefined || !sameDescriptor(resource, descriptor)) {
-        fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload lease does not match the sealed Target.');
+  for (const planDescriptor of planDescriptors) {
+    const planResource = lease.resourcesByResourceId.get(planDescriptor.resourceId)
+      ?? fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan resource is missing.');
+    const plan = await readMockPlan(profile, planResource, planDescriptor);
+    const mocks: Mock[] = [];
+    const planMcpServerNames = new Set<string>();
+    let classification: ExecutionContent['classification'] = planDescriptor.classification;
+    for (const entry of plan.rules) {
+      registerHelper('mock-rule', entry.rule);
+      const ruleResource = lease.resourcesByResourceId.get(entry.rule.resourceId);
+      if (ruleResource === undefined) {
+        fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule resource is missing.');
       }
-      returns.push(await readMockPayload(profile, resource));
-    }
-    const mock: Mock = {
-      tool: rules.tool,
-      ...(rules.match === undefined ? {} : { match: rules.match as MockMatch }),
-      ...(returns.length === 0
-        ? { return: '' }
-        : returns.length === 1
-          ? { return: returns[0] }
-          : { return_seq: returns }),
-    };
-    for (const sampleId of binding.sampleIds) {
-      const existing = mutableBySampleId.get(sampleId);
-      if (existing !== undefined && existing.strict !== binding.strict) {
-        fail(profile, 'MOCK_CONFIG_INVALID', 'mock bindings for one sample must agree on strictness.');
+      const rules = await readMockRule(profile, ruleResource, entry.rule);
+      const returns: MockReturn[] = [];
+      const mcpServerName = mockMcpServerName(rules.tool);
+      if (mcpServerName !== undefined) {
+        mcpServerNames.add(mcpServerName);
+        planMcpServerNames.add(mcpServerName);
       }
-      if (existing === undefined) {
-        mutableBySampleId.set(sampleId, {
-          mocks: [mock],
-          strict: binding.strict,
-          classification: binding.payloads.reduce<ExecutionContent['classification']>(
-            (current, descriptor) => higherClassification(current, descriptor.classification),
-            binding.rule.classification,
-          ),
-        });
-      } else {
-        existing.mocks.push(mock);
-        existing.classification = binding.payloads.reduce<ExecutionContent['classification']>(
-          (current, descriptor) => higherClassification(current, descriptor.classification),
-          higherClassification(existing.classification, binding.rule.classification),
-        );
+      classification = higherClassification(classification, entry.rule.classification);
+      for (const descriptor of entry.payloads) {
+        registerHelper('mock-payload', descriptor);
+        const resource = lease.resourcesByResourceId.get(descriptor.resourceId);
+        if (resource === undefined || !sameDescriptor(resource, descriptor)) {
+          fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload lease does not match the sealed plan.');
+        }
+        returns.push(await readMockPayload(profile, resource));
+        classification = higherClassification(classification, descriptor.classification);
       }
+      mocks.push({
+        tool: rules.tool,
+        ...(rules.match === undefined ? {} : { match: rules.match as MockMatch }),
+        ...(returns.length === 0
+          ? { return: '' }
+          : returns.length === 1
+            ? { return: returns[0] }
+            : { return_seq: returns }),
+      });
     }
+    byResourceId.set(planDescriptor.resourceId, Object.freeze({
+      mocks: Object.freeze(mocks),
+      strict: plan.strict,
+      classification,
+      mcpServerNames: Object.freeze([...planMcpServerNames].sort()),
+    }));
   }
-  const bySampleId = new Map([...mutableBySampleId.entries()].map(([sampleId, controls]) => [
-    sampleId,
-    Object.freeze({
-      mocks: Object.freeze(controls.mocks),
-      strict: controls.strict,
-      classification: controls.classification,
-    }),
-  ]));
+  const actualHelpers = [...lease.resourcesByResourceId.values()].filter((resource) => (
+    resource.resourceKind === 'mock-rule' || resource.resourceKind === 'mock-payload'
+  ));
+  if (actualHelpers.length !== expectedHelpers.size
+      || actualHelpers.some((resource) => {
+        const expected = expectedHelpers.get(resource.resourceId);
+        return expected === undefined
+          || expected.resourceKind !== resource.resourceKind
+          || !sameDescriptor(resource, expected.descriptor);
+      })) fail(profile, 'MOCK_CONFIG_INVALID', 'mock helper leases do not match the sealed plans.');
   return {
-    bySampleId: readonlyMapSnapshot(bySampleId),
+    byResourceId: readonlyMapSnapshot(byResourceId),
     mcpServerNames: Object.freeze([...mcpServerNames].sort()),
   };
 }
@@ -719,22 +785,7 @@ export async function captureClaudeCliRunState(
           ?? fail(profile, 'MCP_CONFIG_INVALID', 'MCP config resource is missing.'),
         mcpDescriptor,
       );
-  const mockProjection = await projectMocks(profile, lease, target.config);
-  const toolAllowLists = [
-    target.target.executionControls.defaults.tools,
-    ...target.target.executionControls.sampleOverrides.flatMap((override) => (
-      override.tools === undefined ? [] : [override.tools]
-    )),
-  ].flatMap((control) => (
-    control.toolPolicyKind === 'allow-list' ? [control.allowedTools] : []
-  ));
-  if (toolAllowLists.length > 0 && mockProjection.mcpServerNames.length > 0) {
-    fail(
-      profile,
-      'MOCK_CONFIG_INVALID',
-      'built-in tool allow-list cannot be combined with MCP tool mocks.',
-    );
-  }
+  const mockProjection = await projectMocks(profile, lease, target.target);
   if (profile.mcpMockMode === 'synthetic-server') {
     if (mcpConfig !== undefined && mockProjection.mcpServerNames.some((serverName) => (
       mcpConfig.serverNames.includes(serverName)
@@ -802,9 +853,11 @@ export async function captureClaudeCliRunState(
       ),
       ...(mcpConfig === undefined ? {} : { mcpConfigFile: mcpConfig.path }),
       ...(mcpConfig === undefined ? {} : { mcpServers: mcpConfig.servers }),
-      mockControlsBySampleId: mockProjection.bySampleId,
+      mockControlsByResourceId: mockProjection.byResourceId,
       classification: maxClassification(resources.filter((resource) => (
-        resource.resourceKind !== 'mock-rule' && resource.resourceKind !== 'mock-payload'
+        resource.resourceKind !== 'mock-plan'
+          && resource.resourceKind !== 'mock-rule'
+          && resource.resourceKind !== 'mock-payload'
       ))),
       acquireTrial() {
         if (disposeRequested) fail(profile, 'RUN_DISPOSED', 'run is disposing.');
@@ -857,7 +910,19 @@ export function openClaudeCliTrial(
   const allowedTools = toolControl.toolPolicyKind === 'runtime-default'
     ? undefined
     : [...toolControl.allowedTools];
-  const mockControls = runState.mockControlsBySampleId.get(trial.sampleId);
+  const mockInterception = trial.executionControl.mockInterception;
+  const mockControls = mockInterception.mockInterceptionMode === 'not-required'
+    ? undefined
+    : runState.mockControlsByResourceId.get(mockInterception.descriptor.resourceId)
+      ?? fail(profile, 'MOCK_CONFIG_INVALID', 'Trial mock plan is absent from the sealed lease.');
+  if (toolControl.toolPolicyKind === 'allow-list'
+      && (mockControls?.mcpServerNames.length ?? 0) > 0) {
+    fail(
+      profile,
+      'MOCK_CONFIG_INVALID',
+      'built-in tool allow-list cannot be combined with MCP tool mocks for the same Trial.',
+    );
+  }
   const envelope = {
     schemaVersion: profile.promptSchemaVersion,
     ...(runState.supportingFiles === undefined

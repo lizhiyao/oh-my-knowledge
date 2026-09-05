@@ -115,6 +115,18 @@ describe('published embedded Evaluation API', () => {
       packageDirectory,
       'dist/eval-core/contracts/schemas/v3/evaluation-definition.schema.json',
     ), 'utf8')).title).toBe('OMK Evaluation Definition v3');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v5/evaluation-definition.schema.json',
+    ), 'utf8')).title).toBe('OMK Evaluation Definition v5');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v4/execution-plan.schema.json',
+    ), 'utf8')).title).toBe('OMK Execution Plan v4');
+    expect(JSON.parse(readFileSync(join(
+      packageDirectory,
+      'dist/eval-core/contracts/schemas/v5/run-plan.schema.json',
+    ), 'utf8')).title).toBe('OMK Run Plan v5');
     expect(existsSync(join(
       packageDirectory,
       'dist/eval-core/contracts/schemas/v1/comparability-assessment.schema.json',
@@ -211,6 +223,16 @@ const assert = require('node:assert/strict');
     { with: { type: 'json' } }
   );
   assert.equal(definitionSchema.default.title, 'OMK Evaluation Definition v3');
+  const activeDefinitionSchema = await import(
+    'oh-my-knowledge/eval-core/schemas/v5/evaluation-definition.schema.json',
+    { with: { type: 'json' } }
+  );
+  assert.equal(activeDefinitionSchema.default.title, 'OMK Evaluation Definition v5');
+  const executionPlanSchema = await import(
+    'oh-my-knowledge/eval-core/schemas/v4/execution-plan.schema.json',
+    { with: { type: 'json' } }
+  );
+  assert.equal(executionPlanSchema.default.title, 'OMK Execution Plan v4');
   const sampleSchema = await import(
     'oh-my-knowledge/eval-samples/schemas/v2/eval-sample-set.schema.json',
     { with: { type: 'json' } }
@@ -473,6 +495,8 @@ const assert = require('node:assert/strict');
       './eval-core/schemas/v1/*',
       './eval-core/schemas/v2/*',
       './eval-core/schemas/v3/*',
+      './eval-core/schemas/v4/*',
+      './eval-core/schemas/v5/*',
       './eval-runtime',
       './eval-runtime/advanced',
       './eval-runtime/contracts',

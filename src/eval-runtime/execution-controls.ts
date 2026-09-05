@@ -4,6 +4,10 @@ import {
 } from '../eval-core/contracts/index.js';
 import type { CapturedAllowedToolsPlan } from './tool-policy.js';
 import type { CapturedMcpConfigPlan, McpConfigDescriptor } from './mcp-config.js';
+import type {
+  CapturedMockInterceptionPlan,
+  MockInterceptionDescriptor,
+} from './mock-interception.js';
 import type { CapturedWorkspacePlan, WorkspaceDescriptor } from './workspace.js';
 
 function compareStrings(left: string, right: string): number {
@@ -28,21 +32,32 @@ function mcpControl(descriptor: McpConfigDescriptor | null | undefined) {
     : { mcpMode: 'native-config' as const, descriptor };
 }
 
+function mockInterceptionControl(
+  descriptor: MockInterceptionDescriptor | null | undefined,
+) {
+  return descriptor === null || descriptor === undefined
+    ? { mockInterceptionMode: 'not-required' as const }
+    : { mockInterceptionMode: 'pre-tool-call' as const, descriptor };
+}
+
 export function evaluationExecutionControls(
   workspace: CapturedWorkspacePlan | undefined,
   allowedTools: CapturedAllowedToolsPlan | undefined,
   mcpConfig: CapturedMcpConfigPlan | undefined,
+  mockInterception: CapturedMockInterceptionPlan | undefined,
 ): TargetExecutionControls {
   const sampleIds = [...new Set([
     ...Object.keys(workspace?.bySampleId ?? {}),
     ...Object.keys(allowedTools?.bySampleId ?? {}),
     ...Object.keys(mcpConfig?.bySampleId ?? {}),
+    ...Object.keys(mockInterception?.bySampleId ?? {}),
   ])].sort(compareStrings);
   return deepFreezeCanonicalJson({
     defaults: {
       workspace: workspaceControl(workspace?.default),
       tools: toolControl(allowedTools?.default),
       mcp: mcpControl(mcpConfig?.default),
+      mockInterception: mockInterceptionControl(mockInterception?.default),
     },
     sampleOverrides: sampleIds.map((sampleId) => ({
       sampleId,
@@ -54,6 +69,13 @@ export function evaluationExecutionControls(
         : {}),
       ...(Object.prototype.hasOwnProperty.call(mcpConfig?.bySampleId ?? {}, sampleId)
         ? { mcp: mcpControl(mcpConfig?.bySampleId[sampleId]) }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(mockInterception?.bySampleId ?? {}, sampleId)
+        ? {
+            mockInterception: mockInterceptionControl(
+              mockInterception?.bySampleId[sampleId],
+            ),
+          }
         : {}),
     })),
   });

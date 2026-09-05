@@ -387,6 +387,37 @@ const variant = {
 
 OMK verifies the provider's canonical JSON digest and byte size, opens one fresh lease per Trial, reuses it only across that Trial's retries, and closes it on every terminal path. The native config is visible only to the selected Executor invocation or session and never enters results or errors through OMK. The Executor must not return secrets in its own output or trace. A per-sample descriptor change invalidates only coordinates selecting that descriptor; a provider identity change conservatively invalidates every coordinate using that Executor. Runtime deliberately does not discover MCP files or choose provider defaults; product-level discovery and Workflow-to-Runtime assembly belong in `eval-workflows`.
 
+## Attempt-scoped mock interception
+
+Use `execution.mockInterception` when a sample must replace selected tool calls before they reach the real provider. It accepts one secret `MockInterceptionDescriptor`, or `{ default, bySampleId }` with `null` to disable interception for a sample. Pair it with `capabilities.mockInterception: 'pre-tool-call'` and a `mockInterceptionProvider`:
+
+```ts
+const executor: Executor<string, undefined, string> = {
+  executorId: 'acme.mockable-agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.string(), output: z.string() },
+  capabilities: { mockInterception: 'pre-tool-call' },
+  mockInterceptionProvider: {
+    providerId: 'acme.mock-provider/v1',
+    version: '1.0.0',
+    async open({ descriptor, signal }) {
+      const plan = await mockStore.readAndVerify(descriptor, signal);
+      const matcher = createMatcher(plan);
+      return {
+        intercept: ({ callId, toolName, input, signal: callSignal }) =>
+          matcher.intercept({ callId, toolName, input, signal: callSignal }),
+        close: () => matcher.close(),
+      };
+    },
+  },
+  async execute({ input, signal, mockInterception }) {
+    return { output: await agent.run(input, { signal, mockInterception }) };
+  },
+};
+```
+
+The descriptor media type is `application/vnd.omk.mock-interception-plan+json`; its digest-bound plan must cover strictness, first-match rule order, and ordered return payload descriptors. The provider owns plan loading and must verify digest, byte size, media type, and classification before returning a lease. Runtime opens a fresh lease per attempt, including retries, so return-sequence and hit state reset. It validates `mocked`, `pass-through`, and `denied` decisions, waits for the Target call to settle before cleanup, and redacts provider failures. Outputs and traces produced under interception are conservatively classified as `secret`. Strict misses must become `denied`; a provider must never silently call the real tool. `checkExecutor()` does not certify interception yet, so validate it with a real Evaluation.
+
 ## Stateful Agent sessions
 
 Use `SessionExecutor` when one Agent or stateful Workflow needs an isolated per-trial session. `Executor` remains the concise stateless `omk.invoke/v1` interface; `EvaluationExecutor` is the union accepted by a Variant, and `InvokeExecutor` is the explicit name for the stateless form:

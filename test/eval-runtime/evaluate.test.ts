@@ -3056,6 +3056,7 @@ describe('canonical eval-runtime API', () => {
             workspace: { workspaceMode: 'not-required' },
             tools: { toolPolicyKind: 'runtime-default' },
             mcp: { mcpMode: 'not-required' },
+            mockInterception: { mockInterceptionMode: 'not-required' },
           },
           sampleOverrides: [],
         },

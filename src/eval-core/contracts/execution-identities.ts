@@ -393,7 +393,7 @@ export function deriveExecutionCoordinateDigest(
       : { executionContext: input.sample.executionContext }),
   };
   return digestCanonicalJson({
-    derivation: 'omk.execution-coordinate/v2',
+    derivation: 'omk.execution-coordinate/v3',
     randomizationDesignDigest: input.randomizationDesignDigest,
     sample,
     target: {
@@ -403,6 +403,7 @@ export function deriveExecutionCoordinateDigest(
         workspace: input.executionControl.workspace.workspaceMode,
         toolPolicy: input.executionControl.tools.toolPolicyKind,
         mcp: input.executionControl.mcp.mcpMode,
+        mockInterception: input.executionControl.mockInterception.mockInterceptionMode,
       },
     },
     runtime: input.runtime,

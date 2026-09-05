@@ -101,7 +101,7 @@ Definition 是不可变、可序列化的意图，不包含函数、类实例、
 
 ```ts
 interface EvaluationDefinition {
-  schemaVersion: 'omk.evaluation-definition/v4';
+  schemaVersion: 'omk.evaluation-definition/v5';
   dataset: EvaluationDataset;
   targets: readonly TargetDefinition[];
   evaluators: readonly EvaluatorDefinition[];
@@ -176,6 +176,8 @@ interface TargetDefinition {
       sampleId: string;
       workspace?: WorkspaceExecutionControl;
       tools?: ToolExecutionControl;
+      mcp?: McpExecutionControl;
+      mockInterception?: MockInterceptionExecutionControl;
     }>;
   };
   config?: JsonValue;
@@ -1089,15 +1091,17 @@ admission 采用 reservation。一个 scheduling block 会在一次操作中提�
 
 ## 二十三、Sample-scoped execution control
 
-[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) 将 workspace 与工具授权提升为显式的 sample-scoped Core 契约；[#667](https://github.com/lizhiyao/oh-my-knowledge/issues/667) 用同一授权模型补入 native MCP 配置。MCP 改造把 EvaluationDefinition 升级到 v4、ExecutionPlan 升级到 v3、RunPlan 升级到 v4，并把 execution-coordinate derivation 升级到 v2。这属于 `BREAKING-SCHEMA` 与 `BREAKING-COMPARABILITY` 切换，不提供旧 schema reader、检测或迁移路径；存量 Definition 与 Plan 必须重新生成。Target 声明 canonical `executionControls.defaults` 与稀疏的 `sampleOverrides`。每条 override 完整替换 workspace、tools 或 MCP 字段；继承只按字段发生，工具集合永远不做 union。`allow-list` 的空列表因此表示禁用全部工具，`runtime-default` 与 MCP `not-required` 则是彼此独立的明确策略。
+[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) 将 workspace 与工具授权提升为显式的 sample-scoped Core 契约；[#667](https://github.com/lizhiyao/oh-my-knowledge/issues/667) 用同一授权模型补入 native MCP 配置与工具调用前 mock interception。Mock control 改造把 EvaluationDefinition 升级到 v5、ExecutionPlan 升级到 v4、RunPlan 升级到 v5，并把 execution-coordinate derivation 升级到 v3。这属于 `BREAKING-SCHEMA` 与 `BREAKING-COMPARABILITY` 切换，不提供旧 schema reader、检测或迁移路径；存量 Definition 与 Plan 必须重新生成。Target 声明 canonical `executionControls.defaults` 与稀疏的 `sampleOverrides`。每条 override 完整替换 workspace、tools、MCP 或 mock interception 字段；继承只按字段发生，工具集合和 mock plan 永远不做 union。`allow-list` 的空列表因此表示禁用全部工具，`runtime-default`、MCP `not-required` 与 mock `not-required` 则是彼此独立的明确策略。
 
 workspace control 只能是 `not-required`，或携带内容寻址 descriptor 的 `copy-on-write-overlay`。descriptor 只包含 `resourceId`、digest、media type、classification 与 size；Core JSON 禁止 locator、credential、资源字节和 `gold` classification。宿主持有 resource lease，在使用前完成 descriptor、locator 与内容的校验。`TargetDefinition.executionRequirements` 只是全部有效 Sample control 的聚合 capability 请求，不代表授予单个 Trial 聚合后的权限。
 
 MCP control 只能是 `not-required`，或携带同类无 locator 内容 descriptor 的 `native-config`。Runtime façade 进一步要求 native config 是 classification 为 `secret` 的 canonical JSON，并在向所选 Executor Trial 暴露值前校验 digest、media type、classification 与 byte size。MCP bytes、credential、文件路径与 provider locator 永远不能进入 Core artifact。宿主持有的 provider lease 每个 Trial 只打开一次，在该 Trial 的 retry 间复用，并在 Executor session 之后、workspace lease 之前准确关闭一次。
 
-Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `EffectiveExecutionControl`，并把这一冻结值准确传给 Executor Trial。execution-coordinate digest、Trial identity、native provenance 与 v2 cache key 都绑定该有效 control。只改变 Sample A 的 workspace、工具策略或 MCP descriptor 时，只有 Sample A 的 coordinate 与 cache entry 失效，Sample B identity 保持稳定。Gold、expected、evaluation context、annotations、其它 Sample 的资源 locator 与授权永远不能进入 Trial 投影。
+Mock interception control 只能是 `not-required`，或携带一个无 locator descriptor 的 `pre-tool-call`。该 descriptor 指向版本化、digest-bound 的聚合 plan；plan identity 完整覆盖 strictness、first-match 规则顺序和每条规则的有序返回 payload descriptor。Core 把 plan 视为 opaque，不解析 provider-specific matching syntax。Runtime 为每个 attempt 打开一份新的宿主 lease，只向该 attempt 暴露经过校验的 interception port，并在 Target 调用 settle 后关闭；retry 因而会重置返回序列与命中状态。规则字节、payload 字节、locator 和 provider error 永远不能进入 Core artifact；后端无法在真实工具调用前准确拦截时必须 fail closed，不能退化为 pass-through。
 
-Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table；宿主持有的 provider 再把所选 workspace 与 MCP descriptor 绑定到 trial-private lease。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace、工具策略与 native MCP config，并且只暴露被选中的 lease；若后端无法准确表达该策略，则必须在 prepare 阶段 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
+Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `EffectiveExecutionControl`，并把这一冻结值准确传给 Executor Trial。execution-coordinate digest、Trial identity、native provenance 与 v2 cache key 都绑定该有效 control。只改变 Sample A 的 workspace、工具策略、MCP descriptor 或 mock plan 时，只有 Sample A 的 coordinate 与 cache entry 失效，Sample B identity 保持稳定。Gold、expected、evaluation context、annotations、其它 Sample 的资源 locator 与授权永远不能进入 Trial 投影。
+
+Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table；宿主持有的 provider 再把所选 workspace 与 MCP descriptor 绑定到 trial-private lease，并把所选 mock descriptor 绑定到 attempt-private lease。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace、工具策略、native MCP config 与工具调用前 interceptor，并且只暴露被选中的 lease；若后端无法准确表达该策略，则必须 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
 
 ## 二十四、ADR：通过 prepared capability 发布分阶段执行
 

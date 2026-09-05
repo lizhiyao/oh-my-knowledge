@@ -130,6 +130,7 @@ function executorTrial(trialLabel = 'trial-a'): ExecutorTrialContext {
       workspace: { workspaceMode: 'not-required' },
       tools: { toolPolicyKind: 'runtime-default' },
       mcp: { mcpMode: 'not-required' },
+      mockInterception: { mockInterceptionMode: 'not-required' },
     },
     protocolId: 'omk.invoke/v1',
     input: { prompt: 'hello' },

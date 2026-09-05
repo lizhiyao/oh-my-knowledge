@@ -148,6 +148,7 @@ async function adapterFixture(options: Readonly<{
           ? { toolPolicyKind: 'runtime-default' }
           : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools] },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [],
     },
@@ -347,6 +348,7 @@ async function execute(
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
     mcp: { mcpMode: 'not-required' },
+    mockInterception: { mockInterceptionMode: 'not-required' },
   },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
@@ -452,6 +454,7 @@ describe('Codex SDK Core Executor adapter', () => {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'runtime-default' },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       protocolId: 'omk.invoke/v1',
       input: 'Q',
@@ -613,6 +616,7 @@ describe('Codex SDK Core Executor adapter', () => {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'runtime-default' },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       protocolId: 'omk.invoke/v1',
       input: 'Q',

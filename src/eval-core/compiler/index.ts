@@ -93,7 +93,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'executionRequirements', 'systemInstructions', 'workspace', 'mcp',
   'executionControls', 'defaults', 'sampleOverrides', 'workspaceMode', 'descriptor',
   'resourceId', 'digest', 'mediaType', 'size', 'tools', 'toolPolicyKind', 'allowedTools',
-  'mockInterception', 'toolPolicy', 'toolPolicies', 'skillDiscovery',
+  'mockInterception', 'mockInterceptionMode', 'toolPolicy', 'toolPolicies', 'skillDiscovery',
   'sandboxId', 'sandboxIds', 'protocols', 'inputSchema', 'outputSchema', 'traceSchema',
   'concurrency', 'safety', 'maxInFlight', 'cancellation', 'state',
   'resourceLifecycle', 'trialState', 'seedControl', 'determinism', 'features',

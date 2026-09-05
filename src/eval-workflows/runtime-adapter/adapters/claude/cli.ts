@@ -796,7 +796,7 @@ export async function createClaudeCliExecutorAdapter(
   const target = captureClaudeCliTarget(input.target, input.binding);
   const configuration = await captureConfiguration(
     input.command,
-    (target.config.behavior.mocks?.length ?? 0) > 0,
+    target.target.executionRequirements.mockInterception === 'pre-tool-call',
   );
   const { identity, files } = await resolveIdentity(
     configuration,

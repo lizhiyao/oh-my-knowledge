@@ -104,6 +104,7 @@ const definition: EvaluationDefinition = {
         workspace: { workspaceMode: 'not-required' },
         tools: { toolPolicyKind: 'runtime-default' },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
       sampleOverrides: [],
     },

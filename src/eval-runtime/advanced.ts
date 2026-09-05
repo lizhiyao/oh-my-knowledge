@@ -3,6 +3,16 @@ export {
   runEvaluation,
 } from './runner.js';
 export type {
+  MockInterceptionAccess,
+  MockInterceptionDecision,
+  MockInterceptionDescriptor,
+  MockInterceptionLease,
+  MockInterceptionOpenRequest,
+  MockInterceptionProvider,
+  MockInterceptionRequest,
+} from './mock-interception.js';
+export { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from './mock-interception.js';
+export type {
   EvaluationEventObserver,
   RunEvaluationInput,
 } from './runner.js';

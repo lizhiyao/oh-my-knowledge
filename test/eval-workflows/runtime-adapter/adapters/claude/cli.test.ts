@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
+  resolveEffectiveExecutionControl,
   schemaIdentityKey,
   type EvaluationDefinition,
   type JsonValue,
@@ -137,6 +138,7 @@ async function adapterFixture(options: Readonly<{
   const mockPath = join(root, 'mock.json');
   const mockText = JSON.stringify({ stdout: 'mocked', exit: 0 });
   const mockRulePath = join(root, 'mock-rule.json');
+  const mockPlanPath = join(root, 'mock-plan.json');
   const mockRuleText = JSON.stringify({
     tool: options.mockTool ?? 'Bash',
     match: { command_glob: '*' },
@@ -159,18 +161,23 @@ async function adapterFixture(options: Readonly<{
     classification: 'secret' as const,
     size: Buffer.byteLength(mockText),
   };
+  const mockPlanText = JSON.stringify({
+    schemaVersion: 'omk.mock-interception-plan/v1',
+    strict: true,
+    rules: [{ mockId: 'mock-1', rule: mockRuleDescriptor, payloads: [mockDescriptor] }],
+  });
+  const mockPlanDescriptor = {
+    resourceId: 'mock-plan-a',
+    digest: digest({ mockPlanText }),
+    mediaType: 'application/vnd.omk.mock-interception-plan+json',
+    classification: 'secret' as const,
+    size: Buffer.byteLength(mockPlanText),
+  };
+  if (options.mocks) await writeFile(mockPlanPath, mockPlanText);
   const config = {
     behavior: {
       artifact: artifactDescriptor,
       ...(options.mcp ? { mcpConfig: mcpDescriptor } : {}),
-      ...(options.mocks ? {
-        mocks: [{
-          sampleIds: [...(options.mockSampleIds ?? ['sample-a'])],
-          rule: mockRuleDescriptor,
-          strict: true,
-          payloads: [mockDescriptor],
-        }],
-      } : {}),
       ...(options.allowedSkills === undefined ? {} : { allowedSkills: [...options.allowedSkills] }),
       ...(options.sandboxId === undefined ? {} : {
         sandbox: { sandboxId: options.sandboxId },
@@ -206,8 +213,17 @@ async function adapterFixture(options: Readonly<{
           ? { toolPolicyKind: 'runtime-default' }
           : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools].sort() },
         mcp: { mcpMode: 'not-required' },
+        mockInterception: { mockInterceptionMode: 'not-required' },
       },
-      sampleOverrides: [],
+      sampleOverrides: options.mocks
+        ? (options.mockSampleIds ?? ['sample-a']).map((sampleId) => ({
+            sampleId,
+            mockInterception: {
+              mockInterceptionMode: 'pre-tool-call' as const,
+              descriptor: mockPlanDescriptor,
+            },
+          }))
+        : [],
     },
     config,
   };
@@ -224,6 +240,10 @@ async function adapterFixture(options: Readonly<{
     resourceRole: 'mcp-config' as const,
     leaseMode: 'immutable-snapshot' as const,
   }] : []), ...(options.mocks ? [{
+    resourceId: 'mock-plan-a',
+    resourceRole: 'mock-plan' as const,
+    leaseMode: 'immutable-snapshot' as const,
+  }, {
     resourceId: 'mock-rule-a',
     resourceRole: 'mock-rule' as const,
     leaseMode: 'immutable-snapshot' as const,
@@ -282,6 +302,14 @@ async function adapterFixture(options: Readonly<{
     snapshotKind: 'file',
     leaseMode: 'immutable-snapshot',
     snapshotPath: mockPath,
+  });
+  if (options.mocks) resources.set('mock-plan-a', {
+    resourceId: 'mock-plan-a',
+    resourceKind: 'mock-plan',
+    descriptor: mockPlanDescriptor,
+    snapshotKind: 'file',
+    leaseMode: 'immutable-snapshot',
+    snapshotPath: mockPlanPath,
   });
   if (options.mocks) resources.set('mock-rule-a', {
     resourceId: 'mock-rule-a',
@@ -353,6 +381,7 @@ async function execute(
     workspace: { workspaceMode: 'not-required' },
     tools: { toolPolicyKind: 'runtime-default' },
     mcp: { mcpMode: 'not-required' },
+    mockInterception: { mockInterceptionMode: 'not-required' },
   },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
@@ -613,7 +642,7 @@ describe('Claude CLI Core Executor adapter', () => {
       fixture.target.config as JsonValue,
       new AbortController().signal,
       'sample-a',
-      fixture.target.executionControls.defaults,
+      resolveEffectiveExecutionControl(fixture.target.executionControls, 'sample-a'),
     );
     const observed = JSON.parse(await readFile(capture, 'utf8')) as {
       settingsExists: boolean;
@@ -644,6 +673,37 @@ describe('Claude CLI Core Executor adapter', () => {
     await expect(readFile(invocations, 'utf8')).rejects.toThrow();
   });
 
+  it('treats the sample-scoped mock plan as the authoritative helper manifest', async () => {
+    const fixture = await adapterFixture({ mocks: true });
+    const invocations = join(fixture.root, 'invocations');
+    await writeFile(join(fixture.root, 'mock-plan.json'), JSON.stringify({
+      schemaVersion: 'omk.mock-interception-plan/v1',
+      strict: true,
+      rules: [{
+        mockId: 'mock-1',
+        rule: {
+          resourceId: 'unknown-rule',
+          digest: digest({ unknown: 'rule' }),
+          mediaType: 'application/json',
+          classification: 'secret',
+          size: 1,
+        },
+        payloads: [],
+      }],
+    }));
+
+    await expect(execute(
+      await createAdapter(fixture, { OMK_TEST_INVOCATIONS: invocations }),
+      fixture.target.config as JsonValue,
+      new AbortController().signal,
+      'sample-a',
+      resolveEffectiveExecutionControl(fixture.target.executionControls, 'sample-a'),
+    )).rejects.toMatchObject({
+        evaluationError: { code: 'OMK_CLAUDE_CLI_MOCK_CONFIG_INVALID' },
+      });
+    await expect(readFile(invocations, 'utf8')).rejects.toThrow();
+  });
+
   it('isolates CLI config and mock state across retry attempts', async () => {
     const fixture = await adapterFixture({ mocks: true });
     const captureLog = join(fixture.root, 'capture.jsonl');
@@ -657,11 +717,10 @@ describe('Claude CLI Core Executor adapter', () => {
       sampleId: 'sample-a',
       targetId: 'target-a',
       executionCoordinateDigest: digest({ coordinate: 'a' }),
-      executionControl: {
-        workspace: { workspaceMode: 'not-required' },
-        tools: { toolPolicyKind: 'runtime-default' },
-        mcp: { mcpMode: 'not-required' },
-      },
+      executionControl: resolveEffectiveExecutionControl(
+        fixture.target.executionControls,
+        'sample-a',
+      ),
       protocolId: 'omk.invoke/v1',
       input: { question: 'Q' },
       targetConfig: fixture.target.config as JsonValue,
@@ -752,6 +811,9 @@ describe('Claude CLI Core Executor adapter', () => {
     await expect(execute(
       await createAdapter(mockedMcpTools),
       mockedMcpTools.target.config as JsonValue,
+      new AbortController().signal,
+      'sample-a',
+      resolveEffectiveExecutionControl(mockedMcpTools.target.executionControls, 'sample-a'),
     )).rejects.toThrow(/MCP tool mocks/);
 
     const duplicateTools = await adapterFixture({ allowedTools: ['Read', 'Read'] });

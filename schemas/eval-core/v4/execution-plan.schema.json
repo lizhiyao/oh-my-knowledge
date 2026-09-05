@@ -1,0 +1,1221 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.execution-plan/v4",
+      "type": "string"
+    },
+    "__schema1": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": [
+            "public",
+            "sensitive",
+            "secret"
+          ],
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "mediaType": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "resourceId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "size": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "resourceId",
+        "digest",
+        "mediaType",
+        "classification",
+        "size"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "toolPolicyKind": {
+              "const": "runtime-default",
+              "type": "string"
+            }
+          },
+          "required": [
+            "toolPolicyKind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowedTools": {
+              "items": {
+                "$ref": "#/$defs/__schema8"
+              },
+              "type": "array"
+            },
+            "toolPolicyKind": {
+              "const": "allow-list",
+              "type": "string"
+            }
+          },
+          "required": [
+            "toolPolicyKind",
+            "allowedTools"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema12": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mcpMode": {
+              "const": "not-required",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mcpMode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "descriptor": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "mcpMode": {
+              "const": "native-config",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mcpMode",
+            "descriptor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema13": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mockInterceptionMode": {
+              "const": "not-required",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mockInterceptionMode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "descriptor": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "mockInterceptionMode": {
+              "const": "pre-tool-call",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mockInterceptionMode",
+            "descriptor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema14": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "__schema15": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "__schema16": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "__schema17": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "__schema18": {
+      "items": {
+        "$ref": "#/$defs/__schema19"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema19": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "sampleId",
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema2": {
+      "items": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema20": {
+      "items": {
+        "$ref": "#/$defs/__schema21"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema21": {
+      "items": {
+        "$ref": "#/$defs/__schema4"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema22": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "algorithmId": {
+                  "const": "assignment.complete-block/v1",
+                  "type": "string"
+                },
+                "assignmentKind": {
+                  "const": "complete-block",
+                  "type": "string"
+                },
+                "randomizationSlotIds": {
+                  "items": {
+                    "$ref": "#/$defs/__schema4"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "stratumKey": {
+                  "$ref": "#/$defs/__schema23"
+                }
+              },
+              "required": [
+                "assignmentKind",
+                "algorithmId",
+                "randomizationSlotIds"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "algorithmId": {
+                  "const": "assignment.stratified-fixed-quota/v1",
+                  "type": "string"
+                },
+                "allocations": {
+                  "items": {
+                    "$ref": "#/$defs/__schema25"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "assignmentKind": {
+                  "const": "independent-groups",
+                  "type": "string"
+                },
+                "minimumUnitsPerTarget": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "minimumUnitsPerTargetPerStratum": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "stratumKey": {
+                  "$ref": "#/$defs/__schema23"
+                }
+              },
+              "required": [
+                "assignmentKind",
+                "algorithmId",
+                "allocations",
+                "minimumUnitsPerTarget",
+                "minimumUnitsPerTargetPerStratum"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "randomizationSlots": {
+          "items": {
+            "$ref": "#/$defs/__schema26"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "sampling": {
+          "additionalProperties": false,
+          "properties": {
+            "clusterKey": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "experimentalUnit": {
+              "enum": [
+                "sample",
+                "run",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "pairingKey": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "repeatedMeasures": {
+              "type": "boolean"
+            },
+            "resamplingUnit": {
+              "enum": [
+                "sample",
+                "paired-block",
+                "cluster",
+                "run"
+              ],
+              "type": "string"
+            },
+            "seedCoupling": {
+              "enum": [
+                "shared-within-block",
+                "independent-by-target",
+                "uncontrolled"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "experimentalUnit",
+            "repeatedMeasures",
+            "resamplingUnit",
+            "seedCoupling"
+          ],
+          "type": "object"
+        },
+        "scheduling": {
+          "additionalProperties": false,
+          "properties": {
+            "blockSize": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "schedulingKind": {
+              "enum": [
+                "sequential",
+                "interleaved",
+                "randomized-block"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedulingKind"
+          ],
+          "type": "object"
+        },
+        "seed": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "trials": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trials",
+        "seed",
+        "assignment",
+        "sampling",
+        "scheduling",
+        "randomizationSlots"
+      ],
+      "type": "object"
+    },
+    "__schema23": {
+      "$ref": "#/$defs/__schema24"
+    },
+    "__schema24": {
+      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
+      "type": "string"
+    },
+    "__schema25": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "weight": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "randomizationSlotId",
+        "weight"
+      ],
+      "type": "object"
+    },
+    "__schema26": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema27": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "additionalProperties": false,
+            "properties": {
+              "assuranceLevel": {
+                "enum": [
+                  "verified",
+                  "declared",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              "capabilities": {
+                "$ref": "#/$defs/__schema5"
+              },
+              "fingerprint": {
+                "$ref": "#/$defs/__schema8"
+              },
+              "fingerprintBasis": {
+                "enum": [
+                  "content-derived",
+                  "environment-derived",
+                  "self-reported",
+                  "opaque"
+                ],
+                "type": "string"
+              },
+              "implementationId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "implementationManifest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/__schema28"
+                  },
+                  {
+                    "$ref": "#/$defs/__schema29"
+                  }
+                ]
+              },
+              "provenanceFacets": {
+                "additionalProperties": false,
+                "properties": {
+                  "attestation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestationDigest": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "attestorId": {
+                        "$ref": "#/$defs/__schema4"
+                      }
+                    },
+                    "required": [
+                      "attestationDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "observation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedAt": {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                        "type": "string"
+                      },
+                      "observerId": {
+                        "$ref": "#/$defs/__schema4"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "version": {
+                "$ref": "#/$defs/__schema8"
+              }
+            },
+            "required": [
+              "implementationId",
+              "fingerprint",
+              "fingerprintBasis",
+              "assuranceLevel",
+              "capabilities",
+              "implementationManifest"
+            ],
+            "type": "object"
+          },
+          "referenceId": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "runtimeKind": {
+            "enum": [
+              "executor",
+              "evaluator",
+              "analysis-node",
+              "missing-policy",
+              "decision-policy"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeKind",
+          "referenceId",
+          "identity"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema28": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema29": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema30"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "executionContext": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "input": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "sampleId",
+        "input"
+      ],
+      "type": "object"
+    },
+    "__schema30": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema31": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "additionalProperties": false,
+          "properties": {
+            "attempt": {
+              "$ref": "#/$defs/__schema39"
+            },
+            "coordinate": {
+              "$ref": "#/$defs/__schema38"
+            },
+            "providerCostAdmission": {
+              "$ref": "#/$defs/__schema40"
+            },
+            "run": {
+              "$ref": "#/$defs/__schema32"
+            },
+            "stages": {
+              "$ref": "#/$defs/__schema37"
+            }
+          },
+          "required": [
+            "run",
+            "stages",
+            "coordinate",
+            "attempt",
+            "providerCostAdmission"
+          ],
+          "type": "object"
+        },
+        "evidence": {
+          "additionalProperties": false,
+          "properties": {
+            "maximumClassification": {
+              "enum": [
+                "public",
+                "sensitive",
+                "secret",
+                "gold"
+              ],
+              "type": "string"
+            },
+            "output": {
+              "$ref": "#/$defs/__schema41"
+            },
+            "trace": {
+              "$ref": "#/$defs/__schema41"
+            }
+          },
+          "required": [
+            "output",
+            "trace",
+            "maximumClassification"
+          ],
+          "type": "object"
+        },
+        "execution": {
+          "additionalProperties": false,
+          "properties": {
+            "maxConcurrency": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "timeoutMs": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "maxConcurrency"
+          ],
+          "type": "object"
+        },
+        "executionCacheMode": {
+          "enum": [
+            "disabled",
+            "replay-only",
+            "transparent-deterministic"
+          ],
+          "type": "string"
+        },
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "failureMode": {
+              "enum": [
+                "continue",
+                "fail-fast",
+                "failure-threshold"
+              ],
+              "type": "string"
+            },
+            "maxFailures": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "failureMode"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "additionalProperties": false,
+          "properties": {
+            "backoff": {
+              "additionalProperties": false,
+              "properties": {
+                "backoffKind": {
+                  "enum": [
+                    "none",
+                    "fixed",
+                    "exponential"
+                  ],
+                  "type": "string"
+                },
+                "initialDelayMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxDelayMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "backoffKind",
+                "initialDelayMs"
+              ],
+              "type": "object"
+            },
+            "maxAttempts": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "retryableErrorCodes": {
+              "items": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "maxAttempts",
+            "retryableErrorCodes",
+            "backoff"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "execution",
+        "retry",
+        "budget",
+        "executionCacheMode",
+        "evidence",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "__schema32": {
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema34"
+        },
+        "maxWallClockMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "__schema33": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "__schema34": {
+      "$ref": "#/$defs/__schema35"
+    },
+    "__schema35": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "type": "object"
+    },
+    "__schema36": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "__schema37": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluation": {
+          "$ref": "#/$defs/__schema38"
+        },
+        "execution": {
+          "$ref": "#/$defs/__schema38"
+        }
+      },
+      "required": [
+        "execution",
+        "evaluation"
+      ],
+      "type": "object"
+    },
+    "__schema38": {
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema36"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema33"
+        },
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema34"
+        }
+      },
+      "type": "object"
+    },
+    "__schema39": {
+      "additionalProperties": false,
+      "properties": {
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema35"
+        }
+      },
+      "type": "object"
+    },
+    "__schema4": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema40": {
+      "additionalProperties": false,
+      "properties": {
+        "admissionMode": {
+          "enum": [
+            "strict-reservation",
+            "bounded-overshoot"
+          ],
+          "type": "string"
+        },
+        "unknownCostMode": {
+          "enum": [
+            "fail-run",
+            "mark-unverifiable"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "admissionMode",
+        "unknownCostMode"
+      ],
+      "type": "object"
+    },
+    "__schema41": {
+      "enum": [
+        "full",
+        "reference",
+        "digest",
+        "none"
+      ],
+      "type": "string"
+    },
+    "__schema42": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema43"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema43"
+      },
+      "type": "object"
+    },
+    "__schema43": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema6": {
+      "items": {
+        "$ref": "#/$defs/__schema7"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema7": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "executionControls": {
+          "additionalProperties": false,
+          "properties": {
+            "defaults": {
+              "additionalProperties": false,
+              "properties": {
+                "mcp": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "mockInterception": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "tools": {
+                  "$ref": "#/$defs/__schema11"
+                },
+                "workspace": {
+                  "$ref": "#/$defs/__schema9"
+                }
+              },
+              "required": [
+                "workspace",
+                "tools",
+                "mcp",
+                "mockInterception"
+              ],
+              "type": "object"
+            },
+            "sampleOverrides": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "mcp": {
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  "mockInterception": {
+                    "$ref": "#/$defs/__schema17"
+                  },
+                  "sampleId": {
+                    "$ref": "#/$defs/__schema4"
+                  },
+                  "tools": {
+                    "$ref": "#/$defs/__schema15"
+                  },
+                  "workspace": {
+                    "$ref": "#/$defs/__schema14"
+                  }
+                },
+                "required": [
+                  "sampleId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "defaults",
+            "sampleOverrides"
+          ],
+          "type": "object"
+        },
+        "executionRequirements": {
+          "additionalProperties": false,
+          "properties": {
+            "mcp": {
+              "enum": [
+                "not-required",
+                "native-config"
+              ],
+              "type": "string"
+            },
+            "mockInterception": {
+              "enum": [
+                "not-required",
+                "pre-tool-call"
+              ],
+              "type": "string"
+            },
+            "sandboxId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "skillDiscovery": {
+              "enum": [
+                "runtime-default",
+                "disabled",
+                "allow-list"
+              ],
+              "type": "string"
+            },
+            "systemInstructions": {
+              "enum": [
+                "required",
+                "not-required"
+              ],
+              "type": "string"
+            },
+            "toolPolicy": {
+              "enum": [
+                "runtime-default",
+                "allow-list"
+              ],
+              "type": "string"
+            },
+            "workspace": {
+              "enum": [
+                "not-required",
+                "copy-on-write-overlay"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "systemInstructions",
+            "workspace",
+            "mcp",
+            "mockInterception",
+            "toolPolicy",
+            "skillDiscovery"
+          ],
+          "type": "object"
+        },
+        "executorId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "protocolId": {
+          "enum": [
+            "omk.invoke/v1",
+            "omk.session/v1"
+          ],
+          "type": "string"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetKind": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "versionConstraint": {
+          "$ref": "#/$defs/__schema8"
+        }
+      },
+      "required": [
+        "targetId",
+        "targetKind",
+        "protocolId",
+        "executorId",
+        "executionRequirements",
+        "executionControls"
+      ],
+      "type": "object"
+    },
+    "__schema8": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema9": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "workspaceMode": {
+              "const": "not-required",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspaceMode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "descriptor": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "workspaceMode": {
+              "const": "copy-on-write-overlay",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspaceMode",
+            "descriptor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-core/v4/execution-plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assignments": {
+      "$ref": "#/$defs/__schema18"
+    },
+    "executionInputDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "executionPlanDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "experiment": {
+      "$ref": "#/$defs/__schema22"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema42"
+    },
+    "policy": {
+      "$ref": "#/$defs/__schema31"
+    },
+    "randomizationDesignDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "runtimes": {
+      "$ref": "#/$defs/__schema27"
+    },
+    "samples": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "schedulingTargetGroups": {
+      "$ref": "#/$defs/__schema20"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "targets": {
+      "$ref": "#/$defs/__schema6"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "executionInputDigest",
+    "randomizationDesignDigest",
+    "samples",
+    "targets",
+    "assignments",
+    "schedulingTargetGroups",
+    "experiment",
+    "runtimes",
+    "policy",
+    "executionPlanDigest"
+  ],
+  "title": "OMK Execution Plan v4",
+  "type": "object"
+}

@@ -161,7 +161,8 @@ const schemaUrl = resolveEvaluationCoreJsonSchema('execution-bundle.schema.json'
 
 Each published file uses its canonical raw catalog URL as `$id`, so JSON Schema tooling can
 resolve the document identity.
-The catalog contains 21 root contract names; 2 current roots use v4, 2 use v3, 4 use v2, and 13 use v1. Their package paths are
+The catalog contains 21 root contract names; 2 current roots use v5, 1 use v4, 1 use v3, 4 use v2, and 13 use v1. Their package paths are
+`oh-my-knowledge/eval-core/schemas/v5/<file>.schema.json`,
 `oh-my-knowledge/eval-core/schemas/v4/<file>.schema.json`,
 `oh-my-knowledge/eval-core/schemas/v3/<file>.schema.json`,
 `oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json`, and
