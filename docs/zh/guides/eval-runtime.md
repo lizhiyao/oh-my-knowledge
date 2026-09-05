@@ -254,12 +254,30 @@ policy: {
     },
   },
   failure: { failureMode: 'failure-threshold', maxFailures: 2 },
-  budget: { maxInvocations: 1_000 },
+  budget: {
+    run: {
+      maxInvocations: 1_000,
+      maxActiveDurationMs: 300_000,
+      maxWallClockMs: 600_000,
+      maxProviderCost: { amount: 20, currency: 'USD' },
+    },
+    execution: { maxInvocations: 800, maxProviderCost: { amount: 12, currency: 'USD' } },
+    evaluation: { maxInvocations: 200, maxProviderCost: { amount: 8, currency: 'USD' } },
+    coordinate: { maxInvocations: 4 },
+    attempt: { maxProviderCost: { amount: 0.25, currency: 'USD' } },
+    onUnreportedProviderCost: 'fail-run',
+  },
   evidence: { maximumClassification: 'sensitive' },
 },
 ```
 
-`maxAttempts` 包含第一次尝试。只有显式列出的宿主稳定错误码可以重试；普通抛错仍会脱敏，绝不被静默归类为可重试。`none` 立即重试，`fixed` 使用固定 delay，`exponential` 从 `initialDelayMs` 增长到可选的 `maxDelayMs`。`continue` 与 `fail-fast` 不接受 `maxFailures`；`failure-threshold` 必须声明它，并在已完成的失败数超过 threshold 后停止接纳后续 scheduling block。默认值为 execution／evaluation 并发 4、无 timeout、不重试、failure `continue`、总 invocation 上限 10,000，以及 maximum classification `gold`。
+`maxAttempts` 包含第一次尝试。只有显式列出的宿主稳定错误码可以重试；普通抛错仍会脱敏，绝不被静默归类为可重试。`none` 立即重试，`fixed` 使用固定 delay，`exponential` 从 `initialDelayMs` 增长到可选的 `maxDelayMs`。`continue` 与 `fail-fast` 不接受 `maxFailures`；`failure-threshold` 必须声明它，并在已完成的失败数超过 threshold 后停止接纳后续 scheduling block。
+
+预算采用分层且可审计的模型。`run` 同时覆盖 execution 与 evaluation；`execution` 和 `evaluation` 分别限制对应 stage；`coordinate` 作用于每个 Target／Sample／Trial 坐标；`attempt` 限制一次 attempt 上报的 provider cost。Invocation 数量包含 retry。`maxActiveDurationMs` 累加已完成 attempt 的执行时长；仅属于 run 的 `maxWallClockMs` 使用单调时钟计量完整经过时间，包括排队与 backoff。同一 run 中配置的所有 provider-cost limit 必须使用相同的三位大写货币代码。
+
+Canonical façade 固定采用 Core 的 `bounded-overshoot` admission。它会在接纳新工作前检查已累计上报成本，但这不是调用前的硬性金额上限：已经接纳的并发调用仍可能让最终金额超过 limit，签名预算摘要会如实记录 overshoot。Provider cost 缺失时需要失败关闭，可设置 `onUnreportedProviderCost: 'fail-run'`；默认 `mark-unverifiable` 会保留 run，同时把成本验证标为 indeterminate。Attempt cost 同样根据调用结束后的上报 usage 判断；attempt 时长由 stage `timeoutMs` 控制，不属于 attempt budget。
+
+默认值为 execution／evaluation 并发 4、无 timeout、不重试、failure `continue`、`run.maxInvocations` 10,000、无其它 budget limit、`onUnreportedProviderCost: 'mark-unverifiable'`，以及 maximum classification `gold`。
 
 ## Custom Evaluator
 

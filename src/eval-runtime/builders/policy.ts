@@ -34,10 +34,38 @@ export type MeasurementFailurePolicyInput =
   | Readonly<{ failureMode: 'fail-fast' }>
   | Readonly<{ failureMode: 'failure-threshold'; maxFailures: number }>;
 
+export interface MeasurementProviderCostLimitInput {
+  readonly amount: number;
+  readonly currency: string;
+}
+
+export interface MeasurementBudgetScopeInput {
+  readonly maxInvocations?: number;
+  readonly maxActiveDurationMs?: number;
+  readonly maxProviderCost?: MeasurementProviderCostLimitInput;
+}
+
+export interface MeasurementRunBudgetScopeInput extends MeasurementBudgetScopeInput {
+  readonly maxWallClockMs?: number;
+}
+
+export interface MeasurementAttemptBudgetScopeInput {
+  readonly maxProviderCost?: MeasurementProviderCostLimitInput;
+}
+
+export interface MeasurementBudgetPolicyInput {
+  readonly run?: MeasurementRunBudgetScopeInput;
+  readonly execution?: MeasurementBudgetScopeInput;
+  readonly evaluation?: MeasurementBudgetScopeInput;
+  readonly coordinate?: MeasurementBudgetScopeInput;
+  readonly attempt?: MeasurementAttemptBudgetScopeInput;
+  readonly onUnreportedProviderCost?: 'fail-run' | 'mark-unverifiable';
+}
+
 export interface MeasurementPolicyBuilderInput {
   readonly execution?: MeasurementStagePolicyInput;
   readonly evaluation?: MeasurementStagePolicyInput;
-  readonly budget?: Readonly<{ maxInvocations?: number }>;
+  readonly budget?: MeasurementBudgetPolicyInput;
   readonly failure?: MeasurementFailurePolicyInput;
   readonly evidence?: Readonly<{
     maximumClassification?: 'public' | 'sensitive' | 'secret' | 'gold';
@@ -104,6 +132,47 @@ const FailurePolicyInputSchema = z.discriminatedUnion('failureMode', [
   }).strict(),
 ]);
 
+const ProviderCostLimitInputSchema = z.object({
+  amount: z.number().finite().nonnegative(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+}).strict();
+
+const BudgetScopeInputSchema = z.object({
+  maxInvocations: z.number().int().positive().optional(),
+  maxActiveDurationMs: z.number().int().positive().optional(),
+  maxProviderCost: ProviderCostLimitInputSchema.optional(),
+}).strict();
+
+const RunBudgetScopeInputSchema = BudgetScopeInputSchema.extend({
+  maxWallClockMs: z.number().int().positive().optional(),
+}).strict();
+
+const BudgetInputSchema = z.object({
+  run: RunBudgetScopeInputSchema.optional(),
+  execution: BudgetScopeInputSchema.optional(),
+  evaluation: BudgetScopeInputSchema.optional(),
+  coordinate: BudgetScopeInputSchema.optional(),
+  attempt: z.object({
+    maxProviderCost: ProviderCostLimitInputSchema.optional(),
+  }).strict().optional(),
+  onUnreportedProviderCost: z.enum(['fail-run', 'mark-unverifiable']).optional(),
+}).strict().superRefine((budget, context) => {
+  const currencies = [
+    budget.run?.maxProviderCost,
+    budget.execution?.maxProviderCost,
+    budget.evaluation?.maxProviderCost,
+    budget.coordinate?.maxProviderCost,
+    budget.attempt?.maxProviderCost,
+  ].flatMap((limit) => limit === undefined ? [] : [limit.currency]);
+  if (new Set(currencies).size > 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['run', 'maxProviderCost'],
+      message: 'All provider-cost limits in one Run must use the same currency',
+    });
+  }
+});
+
 const EventDeliveryInputSchema = z.discriminatedUnion('writerMode', [
   z.object({
     writerMode: z.literal('disabled'),
@@ -122,9 +191,7 @@ const EventDeliveryInputSchema = z.discriminatedUnion('writerMode', [
 export const MeasurementPolicyBuilderInputSchema = z.object({
   execution: StagePolicyInputSchema.optional(),
   evaluation: StagePolicyInputSchema.optional(),
-  budget: z.object({
-    maxInvocations: z.number().int().positive().optional(),
-  }).strict().optional(),
+  budget: BudgetInputSchema.optional(),
   failure: FailurePolicyInputSchema.optional(),
   evidence: z.object({
     maximumClassification: z.enum(['public', 'sensitive', 'secret', 'gold']).optional(),
@@ -169,7 +236,7 @@ export function createMeasurementPolicy(
   const parsed = MeasurementPolicyBuilderInputSchema.parse(structuredClone(input));
   const execution = parsed.execution ?? {};
   const evaluation = parsed.evaluation ?? {};
-  const maxInvocations = parsed.budget?.maxInvocations ?? 10_000;
+  const budget = parsed.budget ?? {};
   const eventDelivery = parsed.eventDelivery ?? { writerMode: 'disabled' as const };
   const writerFailureMode = eventDelivery.writerFailureMode
     ?? (eventDelivery.writerMode === 'required' ? 'fail-run' : 'ignore');
@@ -183,16 +250,27 @@ export function createMeasurementPolicy(
     },
     retry: materializeRetry(execution.retry),
     budget: {
-      run: { maxInvocations },
-      stages: {
-        execution: { maxInvocations },
-        evaluation: { maxInvocations },
+      run: {
+        maxInvocations: budget.run?.maxInvocations ?? 10_000,
+        ...(budget.run?.maxActiveDurationMs === undefined
+          ? {}
+          : { maxActiveDurationMs: budget.run.maxActiveDurationMs }),
+        ...(budget.run?.maxWallClockMs === undefined
+          ? {}
+          : { maxWallClockMs: budget.run.maxWallClockMs }),
+        ...(budget.run?.maxProviderCost === undefined
+          ? {}
+          : { maxProviderCost: budget.run.maxProviderCost }),
       },
-      coordinate: {},
-      attempt: {},
+      stages: {
+        execution: budget.execution ?? {},
+        evaluation: budget.evaluation ?? {},
+      },
+      coordinate: budget.coordinate ?? {},
+      attempt: budget.attempt ?? {},
       providerCostAdmission: {
         admissionMode: 'bounded-overshoot',
-        unknownCostMode: 'mark-unverifiable',
+        unknownCostMode: budget.onUnreportedProviderCost ?? 'mark-unverifiable',
       },
     },
     evaluation: {

@@ -257,12 +257,30 @@ policy: {
     },
   },
   failure: { failureMode: 'failure-threshold', maxFailures: 2 },
-  budget: { maxInvocations: 1_000 },
+  budget: {
+    run: {
+      maxInvocations: 1_000,
+      maxActiveDurationMs: 300_000,
+      maxWallClockMs: 600_000,
+      maxProviderCost: { amount: 20, currency: 'USD' },
+    },
+    execution: { maxInvocations: 800, maxProviderCost: { amount: 12, currency: 'USD' } },
+    evaluation: { maxInvocations: 200, maxProviderCost: { amount: 8, currency: 'USD' } },
+    coordinate: { maxInvocations: 4 },
+    attempt: { maxProviderCost: { amount: 0.25, currency: 'USD' } },
+    onUnreportedProviderCost: 'fail-run',
+  },
   evidence: { maximumClassification: 'sensitive' },
 },
 ```
 
-`maxAttempts` includes the first attempt. A host-defined, stable error code is retried only when explicitly listed; ordinary thrown errors remain redacted and are not silently classified as retryable. `none` retries immediately, `fixed` uses one delay, and `exponential` grows from `initialDelayMs` up to the optional `maxDelayMs`. `continue` and `fail-fast` do not accept `maxFailures`; `failure-threshold` requires it and stops future scheduling blocks after completed failures exceed the threshold. Defaults are execution／evaluation concurrency 4, no timeout, no retry, failure `continue`, 10,000 total invocations, and maximum classification `gold`.
+`maxAttempts` includes the first attempt. A host-defined, stable error code is retried only when explicitly listed; ordinary thrown errors remain redacted and are not silently classified as retryable. `none` retries immediately, `fixed` uses one delay, and `exponential` grows from `initialDelayMs` up to the optional `maxDelayMs`. `continue` and `fail-fast` do not accept `maxFailures`; `failure-threshold` requires it and stops future scheduling blocks after completed failures exceed the threshold.
+
+Budgets are hierarchical and auditable. `run` covers execution and evaluation together; `execution` and `evaluation` limit their respective stages; `coordinate` applies to each Target／Sample／Trial coordinate; and `attempt` limits the reported provider cost of one attempt. Invocation limits include retries. `maxActiveDurationMs` sums completed attempt durations, while run-only `maxWallClockMs` measures elapsed monotonic time, including queueing and backoff. Every configured provider-cost limit in one run must use the same three-letter uppercase currency.
+
+The canonical façade uses Core's `bounded-overshoot` admission. It checks accumulated reported cost before admitting more work, but it is not a pre-invocation hard monetary cap: already admitted concurrent calls can finish above a limit, and the signed budget summary records that overshoot. Use `onUnreportedProviderCost: 'fail-run'` when missing provider cost must fail closed; the default `mark-unverifiable` preserves the run while marking cost verification indeterminate. Attempt cost is also evaluated from reported usage after the call; stage `timeoutMs`, not the attempt budget, bounds attempt duration.
+
+Defaults are execution／evaluation concurrency 4, no timeout, no retry, failure `continue`, `run.maxInvocations` 10,000, no other budget limits, `onUnreportedProviderCost: 'mark-unverifiable'`, and maximum classification `gold`.
 
 ## Custom Evaluator
 

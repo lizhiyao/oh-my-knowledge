@@ -135,6 +135,16 @@ describe('eval-runtime foundation', () => {
     expect(Object.isFrozen(definition)).toBe(true);
     expect(Object.isFrozen(definition.experiment.sampling)).toBe(true);
     expect(Object.isFrozen(policy)).toBe(true);
+    expect(policy.budget).toEqual({
+      run: { maxInvocations: 10_000 },
+      stages: { execution: {}, evaluation: {} },
+      coordinate: {},
+      attempt: {},
+      providerCostAdmission: {
+        admissionMode: 'bounded-overshoot',
+        unknownCostMode: 'mark-unverifiable',
+      },
+    });
     expect(definition.experiment.seed).toBe('seed');
     expect(definition.experiment.sampling).toMatchObject({
       estimatorId: 'bootstrap.paired-difference-percentile/v1',
@@ -183,7 +193,31 @@ describe('eval-runtime foundation', () => {
           backoff: { backoffKind: 'fixed', initialDelayMs: 200 },
         },
       },
-      budget: { maxInvocations: 500 },
+      budget: {
+        run: {
+          maxInvocations: 500,
+          maxActiveDurationMs: 100_000,
+          maxWallClockMs: 120_000,
+          maxProviderCost: { amount: 5, currency: 'USD' },
+        },
+        execution: {
+          maxInvocations: 300,
+          maxActiveDurationMs: 80_000,
+          maxProviderCost: { amount: 4, currency: 'USD' },
+        },
+        evaluation: {
+          maxInvocations: 200,
+          maxActiveDurationMs: 20_000,
+          maxProviderCost: { amount: 1, currency: 'USD' },
+        },
+        coordinate: {
+          maxInvocations: 3,
+          maxActiveDurationMs: 30_000,
+          maxProviderCost: { amount: 0.1, currency: 'USD' },
+        },
+        attempt: { maxProviderCost: { amount: 0.05, currency: 'USD' } },
+        onUnreportedProviderCost: 'fail-run',
+      },
       failure: { failureMode: 'failure-threshold', maxFailures: 2 },
       evidence: { maximumClassification: 'sensitive' },
     });
@@ -206,10 +240,33 @@ describe('eval-runtime foundation', () => {
         },
       },
       budget: {
-        run: { maxInvocations: 500 },
+        run: {
+          maxInvocations: 500,
+          maxActiveDurationMs: 100_000,
+          maxWallClockMs: 120_000,
+          maxProviderCost: { amount: 5, currency: 'USD' },
+        },
         stages: {
-          execution: { maxInvocations: 500 },
-          evaluation: { maxInvocations: 500 },
+          execution: {
+            maxInvocations: 300,
+            maxActiveDurationMs: 80_000,
+            maxProviderCost: { amount: 4, currency: 'USD' },
+          },
+          evaluation: {
+            maxInvocations: 200,
+            maxActiveDurationMs: 20_000,
+            maxProviderCost: { amount: 1, currency: 'USD' },
+          },
+        },
+        coordinate: {
+          maxInvocations: 3,
+          maxActiveDurationMs: 30_000,
+          maxProviderCost: { amount: 0.1, currency: 'USD' },
+        },
+        attempt: { maxProviderCost: { amount: 0.05, currency: 'USD' } },
+        providerCostAdmission: {
+          admissionMode: 'bounded-overshoot',
+          unknownCostMode: 'fail-run',
         },
       },
       failure: { failureMode: 'failure-threshold', maxFailures: 2 },
@@ -229,6 +286,16 @@ describe('eval-runtime foundation', () => {
 
     for (const invalid of [
       { maxConcurrency: 2 },
+      { budget: { maxInvocations: 2 } },
+      { budget: { run: { maxInvocations: 0 } } },
+      { budget: { execution: { maxWallClockMs: 1 } } },
+      { budget: { attempt: { maxInvocations: 1 } } },
+      { budget: { run: { maxProviderCost: { amount: -1, currency: 'USD' } } } },
+      { budget: { run: { maxProviderCost: { amount: 1, currency: 'usd' } } } },
+      { budget: {
+        run: { maxProviderCost: { amount: 1, currency: 'USD' } },
+        evaluation: { maxProviderCost: { amount: 1, currency: 'CNY' } },
+      } },
       { execution: { timeoutMs: 0 } },
       { execution: { retry: {
         maxAttempts: 1,

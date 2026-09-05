@@ -102,6 +102,15 @@ const evaluation = (overrides = {}) => evaluate({
   policy: {
     execution: { maxConcurrency: 1 },
     evaluation: { maxConcurrency: 1 },
+    budget: {
+      run: { maxInvocations: 50, maxWallClockMs: 60_000 },
+      execution: {
+        maxActiveDurationMs: 30_000,
+        maxProviderCost: { amount: 0.01, currency: 'USD' },
+      },
+      coordinate: { maxInvocations: 4 },
+      onUnreportedProviderCost: 'fail-run',
+    },
   },
   runId: 'clean-room-evaluate',
   ...overrides,
@@ -110,6 +119,17 @@ const evaluation = (overrides = {}) => evaluate({
 const withoutObserver = await evaluation();
 assert.equal(withoutObserver.status, 'completed');
 assert.equal(withoutObserver.definition.dataset.datasetId, 'clean-room-runner');
+assert.deepEqual(withoutObserver.policy.budget.run, {
+  maxInvocations: 50,
+  maxWallClockMs: 60_000,
+});
+assert.deepEqual(withoutObserver.policy.budget.stages.execution, {
+  maxActiveDurationMs: 30_000,
+  maxProviderCost: { amount: 0.01, currency: 'USD' },
+});
+assert.equal(withoutObserver.policy.budget.providerCostAdmission.admissionMode, 'bounded-overshoot');
+assert.equal(withoutObserver.policy.budget.providerCostAdmission.unknownCostMode, 'fail-run');
+assert.equal(withoutObserver.report.budgetSummary.summaryStatus, 'within-budget');
 
 const withRetry = await evaluation({
   dataset: {

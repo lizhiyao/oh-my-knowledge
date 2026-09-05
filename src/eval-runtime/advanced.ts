@@ -15,9 +15,14 @@ export { createMeasurementPolicy } from './builders/policy.js';
 export type {
   MeasurementEventDeliveryInput,
   MeasurementFailurePolicyInput,
+  MeasurementAttemptBudgetScopeInput,
+  MeasurementBudgetPolicyInput,
+  MeasurementBudgetScopeInput,
   MeasurementPolicyBuilderInput,
+  MeasurementProviderCostLimitInput,
   MeasurementRetryBackoffInput,
   MeasurementRetryPolicyInput,
+  MeasurementRunBudgetScopeInput,
   MeasurementStagePolicyInput,
 } from './builders/policy.js';
 export { createPairedComparisonDefinition } from './builders/paired-comparison.js';
