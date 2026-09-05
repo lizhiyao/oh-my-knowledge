@@ -6,6 +6,7 @@ import {
   EvaluationDefinitionSchema,
   EvaluationDatasetSchema,
   EvaluatorDefinitionSchema,
+  JsonPointerSchema,
   JsonValueSchema,
   MetricDefinitionSchema,
   bonferroniMarginalAlpha,
@@ -54,6 +55,11 @@ import {
   EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
   createExactMatchEvaluator,
 } from './evaluators/exact-match.js';
+import {
+  RETRIEVAL_EVALUATOR_IMPLEMENTATION_ID,
+  createRetrievalEvaluator,
+  type RetrievalMetricIds,
+} from './evaluators/retrieval.js';
 import { createInvokeExecutorIdentity, createRuntimeIdentity } from './identity.js';
 import {
   captureCustomEvaluator,
@@ -130,6 +136,32 @@ const ArtifactSchema = z.object({
 const RuntimeContextSchema = z.object({
   values: JsonValueSchema.optional(),
 }).strict();
+
+const RetrievalEvaluatorInputSchema = z.object({
+  evaluatorKind: z.literal('retrieval'),
+  evaluatorId: IdentifierSchema,
+  cutoff: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  ranking: z.object({
+    source: z.enum(['output', 'trace']),
+    pointer: JsonPointerSchema,
+  }).strict(),
+  relevantDocumentIdsPointer: JsonPointerSchema,
+  metricIds: z.object({
+    recallAtK: IdentifierSchema,
+    precisionAtK: IdentifierSchema,
+    reciprocalRankAtK: IdentifierSchema,
+    ndcgAtK: IdentifierSchema,
+  }).strict(),
+}).strict().superRefine((value, context) => {
+  const ids = Object.values(value.metricIds);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['metricIds'],
+      message: 'Retrieval Metric IDs must be unique',
+    });
+  }
+});
 
 const SamplingDesignInputSchema = z.discriminatedUnion('samplingKind', [
   z.object({
@@ -453,6 +485,18 @@ export interface ExactMatchEvaluator {
   readonly metricId?: string;
 }
 
+export interface RetrievalEvaluator {
+  readonly evaluatorKind: 'retrieval';
+  readonly evaluatorId: string;
+  readonly cutoff: number;
+  readonly ranking: Readonly<{
+    readonly source: 'output' | 'trace';
+    readonly pointer: string;
+  }>;
+  readonly relevantDocumentIdsPointer: string;
+  readonly metricIds: RetrievalMetricIds;
+}
+
 export interface Judge {
   readonly judgeId: string;
   readonly version: string;
@@ -506,7 +550,11 @@ export interface RubricJudgeEvaluator {
   readonly classification?: 'public' | 'sensitive';
 }
 
-export type Evaluator = ExactMatchEvaluator | RubricJudgeEvaluator | CustomEvaluator;
+export type Evaluator =
+  | ExactMatchEvaluator
+  | RetrievalEvaluator
+  | RubricJudgeEvaluator
+  | CustomEvaluator;
 
 export interface Experiment {
   /** Required measurement seed; never sourced from time, environment, or randomness. */
@@ -1326,6 +1374,66 @@ function exactMatchDefinition(input: Readonly<ExactMatchEvaluator>): Readonly<{
   });
 }
 
+function retrievalDefinition(input: Readonly<RetrievalEvaluator>): Readonly<{
+  definition: EvaluatorDefinition;
+  metrics: readonly MetricDefinition[];
+  port: EvaluationEvaluator;
+}> {
+  const parsed = RetrievalEvaluatorInputSchema.parse(structuredClone(input));
+  const metricIds = [
+    parsed.metricIds.recallAtK,
+    parsed.metricIds.precisionAtK,
+    parsed.metricIds.reciprocalRankAtK,
+    parsed.metricIds.ndcgAtK,
+  ];
+  const portInput = {
+    evaluatorId: parsed.evaluatorId,
+    cutoff: parsed.cutoff,
+    metricIds: parsed.metricIds,
+    rankingSource: parsed.ranking.source,
+    rankingPointer: parsed.ranking.pointer,
+    relevantDocumentIdsPointer: parsed.relevantDocumentIdsPointer,
+  };
+  return Object.freeze({
+    definition: EvaluatorDefinitionSchema.parse({
+      evaluatorId: parsed.evaluatorId,
+      evaluatorKind: 'assertion',
+      implementationId: RETRIEVAL_EVALUATOR_IMPLEMENTATION_ID,
+      measurement: {
+        instrumentId: 'binary-top-k-retrieval-v1',
+        ensembleMemberId: 'deterministic-local',
+        replicateGroupId: 'deterministic-primary',
+        replicateIndex: 0,
+      },
+      metricIds,
+      inputs: [{
+        bindingId: 'ranking',
+        sourceKind: parsed.ranking.source,
+        pointer: parsed.ranking.pointer,
+      }, {
+        bindingId: 'relevant-document-ids',
+        sourceKind: 'expected',
+        pointer: parsed.relevantDocumentIdsPointer,
+      }],
+      config: {
+        cutoff: parsed.cutoff,
+        relevance: 'binary',
+        discount: 'log2',
+        precisionDenominator: 'cutoff',
+      },
+    }),
+    metrics: metricIds.map((metricId) => MetricDefinitionSchema.parse({
+      metricId,
+      valueType: 'numeric',
+      scope: 'sample',
+      scale: { min: 0, max: 1 },
+      direction: 'higher-is-better',
+      missingPolicyId: 'exclude/v1',
+    })),
+    port: createRetrievalEvaluator(portInput),
+  });
+}
+
 function captureEvaluators(
   dataset: Readonly<Dataset>,
   values: readonly Evaluator[],
@@ -1340,6 +1448,7 @@ function captureEvaluators(
   const metrics: MetricDefinition[] = [];
   const measurementAggregations = new Map<string, MeasurementAggregationPlan>();
   const exactPorts = new Map<string, EvaluationEvaluator>();
+  const retrievalPorts = new Map<string, EvaluationEvaluator>();
   const rubricEntries: Array<Readonly<{
     kit: Readonly<RubricJudgeKit>;
     criterion: Readonly<RubricJudgeCriterion>;
@@ -1357,6 +1466,21 @@ function captureEvaluators(
         definitions.push(captured.definition);
         metrics.push(captured.metric);
         exactPorts.set(captured.definition.evaluatorId, captured.port);
+        continue;
+      }
+      if (value.evaluatorKind === 'retrieval') {
+        let captured;
+        try {
+          captured = retrievalDefinition(value);
+        } catch {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Retrieval Evaluator 配置无效。',
+          );
+        }
+        definitions.push(captured.definition);
+        metrics.push(...captured.metrics);
+        retrievalPorts.set(captured.definition.evaluatorId, captured.port);
         continue;
       }
       if (value.evaluatorKind === 'custom') {
@@ -1574,6 +1698,21 @@ function captureEvaluators(
           return configurationFailure(
             'EVAL_RUNTIME_EVALUATOR_INVALID',
             'Evaluation Runtime 收到了未知 exact-match evaluator binding。',
+          );
+        }
+        return port;
+      },
+    });
+  }
+  if (retrievalPorts.size > 0) {
+    registrations.push({
+      implementationId: RETRIEVAL_EVALUATOR_IMPLEMENTATION_ID,
+      createPort(requirement) {
+        const port = retrievalPorts.get(requirement.referenceId);
+        if (port === undefined) {
+          return configurationFailure(
+            'EVAL_RUNTIME_EVALUATOR_INVALID',
+            'Evaluation Runtime 收到了未知 retrieval evaluator binding。',
           );
         }
         return port;

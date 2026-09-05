@@ -13,6 +13,8 @@ import type {
   Decision,
   Policy,
   ProviderCostLimit,
+  RetrievalEvaluator,
+  RetrievalMetricIds,
   RunBudgetScope,
   SamplingDesign,
 } from '../../src/eval-runtime/index.js';
@@ -115,6 +117,21 @@ const publicBudget: BudgetPolicy = {
   onUnreportedProviderCost: 'fail-run',
 };
 void publicBudget;
+const publicRetrievalMetrics: RetrievalMetricIds = {
+  recallAtK: 'recall-at-10',
+  precisionAtK: 'precision-at-10',
+  reciprocalRankAtK: 'reciprocal-rank-at-10',
+  ndcgAtK: 'ndcg-at-10',
+};
+const publicRetrievalEvaluator: RetrievalEvaluator = {
+  evaluatorKind: 'retrieval',
+  evaluatorId: 'retrieval-quality',
+  cutoff: 10,
+  ranking: { source: 'output', pointer: '/documents' },
+  relevantDocumentIdsPointer: '/relevantDocumentIds',
+  metricIds: publicRetrievalMetrics,
+};
+void publicRetrievalEvaluator;
 const invalidAttemptBudget: AttemptBudgetScope = {
   // @ts-expect-error an attempt budget only supports provider cost.
   maxInvocations: 1,
@@ -206,6 +223,8 @@ const PUBLIC_API = {
       'ProviderCostLimit',
       'RetryBackoff',
       'RetryPolicy',
+      'RetrievalEvaluator',
+      'RetrievalMetricIds',
       'Rubric',
       'RubricJudgeAggregation',
       'RubricJudgeEvaluator',

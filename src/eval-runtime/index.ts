@@ -45,6 +45,7 @@ export type {
   ProviderCostLimit,
   RetryBackoff,
   RetryPolicy,
+  RetrievalEvaluator,
   Rubric,
   RubricJudgeAggregation,
   RubricJudgeEvaluator,
@@ -59,6 +60,7 @@ export type {
   Variant,
   VariantExecution,
 } from './evaluate.js';
+export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type {
   CustomEvaluator,
   CustomEvaluatorBinding,

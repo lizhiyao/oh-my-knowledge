@@ -257,6 +257,53 @@ analyses: [{
 
 `runId`、`signal`、`onEvent`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
 
+## Retrieval 评测
+
+Executor 返回有序文档 ID，并且每个 sample 声明已知 relevant ID 时，使用内置 `RetrievalEvaluator`。普通用户不需要手写 Core Definition 或 custom callback：
+
+```ts
+import { evaluate, type RetrievalEvaluator } from 'oh-my-knowledge';
+
+const retrieval: RetrievalEvaluator = {
+  evaluatorKind: 'retrieval',
+  evaluatorId: 'retrieval-quality',
+  cutoff: 10,
+  ranking: { source: 'output', pointer: '/documents' },
+  relevantDocumentIdsPointer: '/relevantDocumentIds',
+  metricIds: {
+    recallAtK: 'recall-at-10',
+    precisionAtK: 'precision-at-10',
+    reciprocalRankAtK: 'reciprocal-rank-at-10',
+    ndcgAtK: 'ndcg-at-10',
+  },
+};
+
+const result = await evaluate({
+  dataset: {
+    datasetId: 'search-regression',
+    samples: [{
+      sampleId: 'refund-policy',
+      input: { query: '退款规则是什么？' },
+      expected: { relevantDocumentIds: ['refund-policy', 'billing-faq'] },
+    }],
+  },
+  variants: [retrieverVariant],
+  evaluators: [retrieval],
+  comparisons: [],
+  analyses: [{
+    analysisId: 'mean-reciprocal-rank-at-10',
+    analysisKind: 'summary',
+    statistic: 'mean',
+    variantId: retrieverVariant.variantId,
+    metricId: 'reciprocal-rank-at-10',
+  }],
+  experiment: { seed: 'search-v1', sampling: { samplingKind: 'solo' } },
+  policy: {},
+});
+```
+
+Ranking 必须是由不重复、非空字符串 ID 组成的有序数组，可来自 `output` 或 `trace`；relevant ID 始终来自 `expected`，不会传给 Executor。该预设先按 `cutoff` 截断，再以 `hits / known relevant` 计算 Recall、以 `hits / cutoff` 计算 Precision、以首个 relevant 文档的名次计算 Reciprocal Rank，并使用 binary gain 与 log2 discount 计算 nDCG。空返回 ranking 是合法的零分；重复或非法 ID、空 relevant 集合会产出 invalid evidence。Reciprocal Rank 的 mean summary 才是 MRR，不要把单个 sample 的观测称为 MRR。
+
 ## 生产策略
 
 Execution 与 evaluation 是相互独立的 runtime stage。两者分别配置并发、timeout 与 retry；OMK 会在第一次 Target 调用前封存全部默认值，scheduler 仍只由 Core 实现：
