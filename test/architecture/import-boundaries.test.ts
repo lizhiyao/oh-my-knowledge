@@ -59,6 +59,20 @@ const RULES: ForbiddenRule[] = [
     from, to,
     reason: '宿主适配与资源实现不得反向依赖产品装配或通过聚合入口绕过边界。',
   }))),
+
+  {
+    from: 'eval-runtime/evaluation/',
+    to: 'eval-runtime/evaluate.ts',
+    reason: 'Runtime 内部实现不得反向依赖用户 façade，避免循环初始化与重复状态。',
+  },
+  ...['schemas', 'capture-input', 'capture-evaluators', 'definition'].flatMap((module) => (
+    ['prepare', 'reuse', 'result-state'].map((target) => ({
+      from: `eval-runtime/evaluation/${module}.ts`,
+      to: `eval-runtime/evaluation/${target}.ts`,
+      reason: '声明捕获与编译不得依赖运行、结果复用或已认证运行状态。',
+    }))
+  )),
+
   ...['eval-core/', 'eval-runtime/', 'eval-workflows/', 'executors/'].map((from) => ({
     from, to: 'eval-hosts/',
     reason: '具体宿主由外层装配并注入；领域、Runtime 和 Core 不得反向导入宿主实现。',
