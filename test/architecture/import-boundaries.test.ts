@@ -254,7 +254,6 @@ const RULES: ForbiddenRule[] = [
       'studio/presentation/observation-inbox/experience-workspace-renderer.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/helpers.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/metric-renderer.ts::observability/inbox/view-model.ts',
-      'studio/presentation/observation-inbox/metric-renderer.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/page-renderer.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/process-workspace-renderer.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/review-renderer.ts::observability/inbox/view-model.ts',

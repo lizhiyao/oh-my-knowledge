@@ -101,11 +101,6 @@ export function createObservationExperienceWorkspace({
   const {
     canonicalFeedbackSignalsForDisplay,
     compactRankedCountText,
-    displayAssistiveInference,
-    displayBasisCodes,
-    displayIndicatorsForSession,
-    displayPriority,
-    displayRuleFindings,
     formatAttributionSource,
     formatEntrypoint,
     metric,
@@ -191,7 +186,7 @@ export function createObservationExperienceWorkspace({
     ));
     const sourceMetadataHtml = renderOpenClawSourceMetadata(skill.sourceMetadataCounts);
     const hardRuleSession = (experience?.sessions ?? []).find((session) =>
-      session.skillName === skill.skillName && (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0) > 0
+      session.skillName === skill.skillName && (session.indicators.hardRuleTextHitCount ?? 0) > 0
     );
     // 旧版按钮挂的是 onclick="event.stopPropagation()"，
     // 这会阻止冒泡到 document 上的 [data-open-experience-session] 全局监听器，
@@ -228,11 +223,11 @@ export function createObservationExperienceWorkspace({
   const renderExperienceSessionRows = (sessions: ExperienceSessionSummary[], idPrefix: string): string => sessions.map((session, index) => {
     const detailId = `${idPrefix}-session-${index}`;
     const evidenceChain = session.evidenceChain ?? fallbackEvidenceChain(session);
-    const indicators = displayIndicatorsForSession(session);
-    const shownPriority = displayPriority(indicators);
-    const shownRuleFindings = displayRuleFindings(session, indicators);
-    const shownInference = displayAssistiveInference(indicators, session.assistiveInference);
-    const shownBasisCodes = displayBasisCodes(indicators);
+    const indicators = session.indicators;
+    const shownPriority = session.reviewPriority;
+    const shownRuleFindings = session.ruleFindings;
+    const shownInference = session.assistiveInference;
+    const shownBasisCodes = session.reviewBasisCodes;
     const pluginNames = session.pluginNames ?? [];
     const commandNames = session.commandNames ?? [];
     const attributionSources = session.attributionSources ?? [];
@@ -394,13 +389,13 @@ export function createObservationExperienceWorkspace({
   const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) === 'review_first').length ?? 0;
   const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) === 'sample_review').length ?? 0;
   const experienceHardRuleCount = experience?.sessions.reduce((sum, session) =>
-    sum + (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0), 0
+    sum + (session.indicators.hardRuleTextHitCount ?? 0), 0
   ) ?? 0;
   const experienceFirstHardRuleSession = experience?.sessions.find((session) =>
-    (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0) > 0
+    (session.indicators.hardRuleTextHitCount ?? 0) > 0
   );
   const experienceFirstReviewSession = experienceFirstHardRuleSession
-    ?? experience?.sessions.find((session) => displayPriority(displayIndicatorsForSession(session)) !== 'routine_sample');
+    ?? experience?.sessions.find((session) => session.reviewPriority !== 'routine_sample');
   const experienceInsightText = experienceReviewFirstSessionCount > 0
     ? `这次 trace 有 ${experienceReviewFirstSessionCount} 个优先复盘 session，建议先看异常证据。`
     : experienceHardRuleCount > 0
@@ -557,7 +552,7 @@ export function createObservationExperienceWorkspace({
 	      if (finding.level !== 'attention') continue;
 	      push(inboxAttentionFindingLabel(finding.ruleSource));
 	    }
-	    const indicators = displayIndicatorsForSession(session);
+	    const indicators = session.indicators;
 	    if (indicators.toolFailureCount > 0) push(inboxAttentionFindingLabel('tool_error_recovery'));
 	    if (indicators.userCorrectionCount > 0) push(inboxAttentionFindingLabel('user_correction'));
 	    if (indicators.userInterruptionCount > 0) push(inboxAttentionFindingLabel('user_interruption'));
@@ -706,7 +701,7 @@ export function createObservationExperienceWorkspace({
 	    const link = skill.sessionStory?.skillLinks?.find((l) => l.skillName === skill.skillName);
 	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
 	    const roleHelpKey = inboxSkillRoleHelpKey(link?.role ?? 'executor');
-	    const indicators = displayIndicatorsForSession(skill);
+	    const indicators = skill.indicators;
 	    const dur = observedSessionRange(skill);
 	    const startTime = sessionTimestampedInvocationCount(skill) > 0
         ? skill.startTimestamp.slice(5, 16).replace('T', ' ')
@@ -1055,7 +1050,7 @@ export function createObservationExperienceWorkspace({
 	    }
 	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || inboxLlmEnhancedGoalKeywords(skill.skillName);
 	    const chain = skillChains[skill.skillName];
-	    const displayIndicators = displayIndicatorsForSession(skill);
+	    const displayIndicators = skill.indicators;
 	    const hasGoalKeyword = goalKeywords.length > 0;
 	    const hasCompletionResult = displayIndicators.assistantDeliverySignalCount > 0;
 	    const hasDeliverableArtifact = displayIndicators.deliverableArtifactSignalCount > 0;
@@ -1212,7 +1207,7 @@ export function createObservationExperienceWorkspace({
       if (typeSuggestion) out.push(typeSuggestion);
       const typeFallbackSuggestion = inboxTypeFallbackSuggestion(resolved);
       if (typeFallbackSuggestion) out.push(typeFallbackSuggestion);
-      const indicators = displayIndicatorsForSession(skill);
+      const indicators = skill.indicators;
       const downstreamSignals = canonicalFeedbackSignalsForDisplay(skill).filter((signal) =>
         (signal.type === 'follow_up' || signal.type === 'interruption')
         && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
@@ -1290,7 +1285,7 @@ export function createObservationExperienceWorkspace({
 	    }
 	    const chain = skillChains[skill.skillName];
 	    const findings = skill.reviewerReport?.findings ?? [];
-      const displayIndicators = displayIndicatorsForSession(skill);
+      const displayIndicators = skill.indicators;
 	    const hasFinding = (source: string): boolean => findings.some((finding) => finding.ruleSource === source);
 	    const storyAnswers = skill.sessionStory?.answers ?? [];
 	    const goalAnswer = storyAnswers.find((answer) => answer.key === 'goal_satisfaction');
@@ -1620,7 +1615,7 @@ export function createObservationExperienceWorkspace({
 	    const evidenceJumpId = `inbox-sec-evidence-${e(skill.id)}`;
 	    const toolDetail = inboxBuildToolDetail(skill);
 	    const toolFailureDetail = inboxBuildToolFailureDetail(skill);
-	    const indicators = displayIndicatorsForSession(skill);
+	    const indicators = skill.indicators;
 	    const runtimeModel = [
 	      skill.sourceMetadata?.provider,
 	      skill.sourceMetadata?.model,
@@ -1676,9 +1671,9 @@ export function createObservationExperienceWorkspace({
 	    </article>`;
 	  };
 	  const inboxRenderEvidence = (session: ExperienceSessionSummary, summaryText: string): string => {
-	    const indicators = displayIndicatorsForSession(session);
-	    const shownRuleFindings = displayRuleFindings(session, indicators);
-	    const shownInference = displayAssistiveInference(indicators, session.assistiveInference);
+	    const indicators = session.indicators;
+	    const shownRuleFindings = session.ruleFindings;
+	    const shownInference = session.assistiveInference;
 	    const evidenceChain = session.evidenceChain ?? fallbackEvidenceChain(session);
 	    const safeId = e(session.id);
 	    const evidenceClass = indicators.toolFailureCount > 0 ? 'is-attention' : 'is-neutral';
@@ -1708,7 +1703,7 @@ export function createObservationExperienceWorkspace({
 	  };
 	  const inboxRenderSessionContent = (cardSkillName: string, session: ExperienceSessionSummary, isActive: boolean): string => {
 	    const siblings = inboxSiblingsMap.get(session.sessionId) ?? [session];
-	    const indicators = displayIndicatorsForSession(session);
+	    const indicators = session.indicators;
 	    const safeId = e(session.id);
 	    const completionAttentionCount = (session.reviewerReport?.findings ?? []).filter((f) => f.level === 'attention').length;
 	    const completionSummaryText = completionAttentionCount > 0

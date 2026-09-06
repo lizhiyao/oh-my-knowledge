@@ -1,46 +1,19 @@
 import { e } from '../layout.js';
 import { incrementRecordCount } from '../../../shared/record-count.js';
 import {
-  hasAssistantDeliverableArtifactText,
-  hasAssistantDeliverySignalText,
-  hasUserHardRuleText,
-  isSyntheticUserMessageText,
-  isUserInteractionMetricText,
-  observationMetricAnnotationEntry,
+  INDICATOR_FOR_METRIC,
+  observationMetricAnnotationVerdict,
+  canonicalFeedbackSignalsForSession,
+  metricKeyForFeedbackSignal,
+  shouldIncludeDownstreamFeedbackForSession as shouldIncludeDownstreamFeedbackForDisplay,
+  type ExperienceProblemBucket,
+  type ExperienceProblemPattern,
+  type ExperienceProblemSignal,
+  type ObservationInboxViewModel,
+  type ObservationMetricKey,
+  type ExperienceSessionSummary,
+  type ExperienceFeedbackSignal,
 } from '../../../observability/inbox/view-model.js';
-import type {
-  ExperienceProblemBucket,
-  ExperienceProblemPattern,
-  ExperienceProblemSignal,
-  ObservationInboxViewModel,
-  ObservationMetricKey,
-} from '../../../observability/inbox/view-model.js';
-import {
-  findNegativeFeedbackMatches,
-  findPositiveFeedbackMatches,
-  findUserCorrectionMatches,
-  findUserGoalShiftMatches,
-  hasUserGoalShiftSignal,
-} from '../../../observability/inbox/feedback-projection.js';
-import type {
-  ExperienceAssistiveInference,
-  ExperienceAssistiveInferenceCode,
-  ExperienceEvidenceRef,
-  ExperienceFeedbackAttribution,
-  ExperienceFeedbackSignal,
-  ExperienceReviewBasisCode,
-  ExperienceReviewIndicators,
-  ExperienceReviewPriority,
-  ExperienceRuleFinding,
-  ExperienceRuleFindingCode,
-  ExperienceRuleFindingLevel,
-  ExperienceSessionSummary,
-  ExperienceTimelineEvent,
-} from '../../../observability/inbox/feedback-projection.js';
-import {
-  hasRepeatedExecutionSignal,
-  hasSelfCorrectionSignal,
-} from './timeline.js';
 
 export type IndicatorHelpKey =
   | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule' | 'selfCorrection' | 'repeatedExecution'
@@ -54,9 +27,11 @@ export type ObservationMetricRenderers = ReturnType<typeof createObservationMetr
 export function createObservationMetricRenderers({
   experience,
   reviewState,
+  unappliedMetricAnnotations,
 }: {
   readonly experience: ObservationInboxViewModel['experienceReports'][number] | undefined;
   readonly reviewState: ObservationInboxViewModel['reviewState'];
+  readonly unappliedMetricAnnotations: ObservationInboxViewModel['unappliedMetricAnnotations'];
 }) {
   const experienceSessionIdBySkillAndSession = new Map(
     (experience?.sessions ?? []).map((session) => [
@@ -389,367 +364,30 @@ export function createObservationMetricRenderers({
       return `<button type="button" class="problem-pattern-chip" data-no-rollup-click="1"${sessionId ? ` data-open-experience-session="${e(sessionId)}"` : ''}${tag ? ` data-open-timeline-tag="${e(tag)}"` : ''} title="${e(title)}"><span class="pattern-bucket">${e(problemBucketLabels[pattern.bucket])}</span><span class="pattern-key">${e(patternKeywordLabel(pattern))}</span><span class="pattern-count">${pattern.count} 次 / ${pattern.sessionCount} 个 session</span></button>`;
     }).join('')}</span></div>`;
   };
-  const ZERO_DISPLAY_INDICATORS: ExperienceReviewIndicators = {
-    userMessageCount: 0,
-    userFollowUpCount: 0,
-    userCorrectionCount: 0,
-    userInterruptionCount: 0,
-    sessionInterruptedCount: 0,
-    negativeFeedbackCount: 0,
-    positiveFeedbackCount: 0,
-    userGoalShiftCount: 0,
-    hardRuleTextHitCount: 0,
-	    assistantDeliverySignalCount: 0,
-	    deliverableArtifactSignalCount: 0,
-	    routerDownstreamCompleted: 0,
-	    routerDownstreamFailed: 0,
-	    selfCorrectionCount: 0,
-    repeatedExecutionCount: 0,
-    toolCallCount: 0,
-    toolFailureCount: 0,
-    toolCancelledCount: 0,
-    toolUnknownCount: 0,
-    highObservationCount: 0,
-    mediumObservationCount: 0,
-    hedgingCount: 0,
-    explicitMarkerCount: 0,
-  };
-  const USER_INTERRUPTION_DISPLAY_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
-  const displayRegexMatches = (pattern: RegExp, value: string): boolean => {
-    pattern.lastIndex = 0;
-    return pattern.test(value);
-  };
-  const displayMetricVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
-    const entry = observationMetricAnnotationEntry(
-      reviewState,
-      { ...event, metricScopeId },
-      metricKey,
-    );
-    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
-  };
-  const displayMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
-    const verdict = displayMetricVerdict(event, metricKey, metricScopeId);
-    if (verdict === 'confirmed') return true;
-    if (verdict === 'rejected') return false;
-    return ruleDetected;
-  };
-  const displayMetricCount = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleCount: number, metricScopeId?: string): number => {
-    const verdict = displayMetricVerdict(event, metricKey, metricScopeId);
-    if (verdict === 'confirmed') return Math.max(1, ruleCount);
-    if (verdict === 'rejected') return 0;
-    return ruleCount;
-  };
-  const shouldIncludeDownstreamFeedbackForDisplay = (session: ExperienceSessionSummary): boolean => {
-    const episodes = session.sessionStory?.episodes ?? [];
-    const segmentIds = new Set(episodes.flatMap((episode) =>
-      (episode.skillSegments ?? [])
-        .filter((segment) => segment.skillName === session.skillName)
-        .map((segment) => segment.id)
-    ));
-    if (segmentIds.size === 0) return false;
-    const ownSegments = episodes.flatMap((episode) => episode.skillSegments ?? [])
-      .filter((segment) => segment.skillName === session.skillName);
-    if (ownSegments.some((segment) =>
-      segment.skillType === 'router'
-      || segment.skillType === 'delegation'
-      || segment.episodeRole === 'router'
-      || segment.episodeRole === 'delegator'
-    )) return true;
-    return episodes.some((episode) =>
-      (episode.orchestrationEdges ?? []).some((edge) =>
-        Boolean(edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId))
-      )
-    );
-  };
-  const feedbackAttributionBelongsToDisplaySession = (
-    attribution: ExperienceFeedbackAttribution,
-    session: ExperienceSessionSummary,
-    includeDownstream = shouldIncludeDownstreamFeedbackForDisplay(session),
-  ): boolean =>
-    attribution.skillName === session.skillName
-    && (
-      attribution.attributionRole === 'primary_fault'
-      || includeDownstream && attribution.attributionRole === 'downstream_related'
-    );
-  const canonicalFeedbackSignalsForDisplay = (
-    session: ExperienceSessionSummary,
-    signalType?: ExperienceFeedbackSignal['type'],
-  ): ExperienceFeedbackSignal[] => {
-    const includeDownstream = shouldIncludeDownstreamFeedbackForDisplay(session);
-    return (session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [])
-      .filter((signal) =>
-        (!signalType || signal.type === signalType)
-        && displayFeedbackSignalIsActive(signal, session)
-        && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
-          feedbackAttributionBelongsToDisplaySession(attribution, session, includeDownstream)
-        )
-      );
-  };
-  const metricKeyForFeedbackSignal = (signal: ExperienceFeedbackSignal): ObservationMetricKey | undefined => {
-    if (signal.type === 'follow_up') return 'user_follow_up';
-    if (signal.type === 'correction') return 'user_correction';
-    if (signal.type === 'interruption') return 'user_interruption';
-    if (signal.type === 'frustration') return 'negative_feedback';
-    if (signal.type === 'positive') return 'positive_feedback';
-    return undefined;
-  };
-  const displayFeedbackSignalIsActive = (signal: ExperienceFeedbackSignal, session: ExperienceSessionSummary): boolean => {
-    const metricKey = metricKeyForFeedbackSignal(signal);
-    if (!metricKey) return true;
-    const verdict = displayMetricVerdict(signal.evidenceRef as ExperienceTimelineEvent, metricKey, session.id);
-    if (verdict === 'confirmed') return true;
-    if (verdict === 'rejected') return false;
-    return true;
-  };
-  const feedbackSignalTypeForMetric = (metricKey: ObservationMetricKey): ExperienceFeedbackSignal['type'] | undefined => {
-    if (metricKey === 'user_follow_up') return 'follow_up';
-    if (metricKey === 'user_correction') return 'correction';
-    if (metricKey === 'user_interruption') return 'interruption';
-    if (metricKey === 'negative_feedback') return 'frustration';
-    if (metricKey === 'positive_feedback') return 'positive';
-    return undefined;
-  };
-  const canonicalFeedbackCountsForDisplay = (session: ExperienceSessionSummary): Pick<ExperienceReviewIndicators, 'userFollowUpCount' | 'userCorrectionCount' | 'userInterruptionCount' | 'negativeFeedbackCount' | 'positiveFeedbackCount'> | undefined => {
-    const signals = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
-    if (signals.length === 0) return undefined;
-    const owned = canonicalFeedbackSignalsForDisplay(session);
-    return {
-      userFollowUpCount: owned.filter((signal) => signal.type === 'follow_up').length,
-      userCorrectionCount: owned.filter((signal) => signal.type === 'correction').length,
-      userInterruptionCount: owned.filter((signal) => signal.type === 'interruption').length,
-      negativeFeedbackCount: owned.filter((signal) => signal.type === 'frustration').length,
-      positiveFeedbackCount: owned.filter((signal) => signal.type === 'positive').length,
-    };
-  };
-  const displayIndicatorsForSession = (session: ExperienceSessionSummary): ExperienceReviewIndicators => {
-    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
-    const interactionEvents = humanEvents.filter((event) => isUserInteractionMetricText(event.snippet ?? ''));
-    const canonicalFeedback = canonicalFeedbackCountsForDisplay(session);
-    return {
-      ...session.indicators,
-      userFollowUpCount: canonicalFeedback?.userFollowUpCount ?? interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(event.snippet ?? ''), session.id) ? 1 : 0), 0),
-      userCorrectionCount: canonicalFeedback?.userCorrectionCount ?? interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length, session.id), 0),
-      userInterruptionCount: canonicalFeedback?.userInterruptionCount ?? interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? ''), session.id) ? 1 : 0), 0),
-      negativeFeedbackCount: canonicalFeedback?.negativeFeedbackCount ?? interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
-      positiveFeedbackCount: canonicalFeedback?.positiveFeedbackCount ?? interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
-      userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length, session.id), 0),
-      hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), session.id) ? 1 : 0), 0),
-      assistantDeliverySignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'completion_result', event.kind === 'assistant_message' && hasAssistantDeliverySignalText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
-      deliverableArtifactSignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'deliverable_artifact', event.kind === 'assistant_message' && hasAssistantDeliverableArtifactText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
-      selfCorrectionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event)) ? 1 : 0), 0),
-      repeatedExecutionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event)) ? 1 : 0), 0),
-    };
-  };
+  const canonicalFeedbackSignalsForDisplay = (session: ExperienceSessionSummary, signalType?: ExperienceFeedbackSignal['type']) =>
+    canonicalFeedbackSignalsForSession(session, reviewState).filter((signal) => !signalType || signal.type === signalType);
+  const displayIndicatorsBySkill = new Map((experience?.skills ?? []).map((skill) => [skill.skillName, skill.indicators]));
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
-    const canonicalType = feedbackSignalTypeForMetric(metricKey);
-    if (canonicalType) {
-      const signals = canonicalFeedbackSignalsForDisplay(session, canonicalType);
-      if (signals.length > 0) {
-        const rows = signals.slice(0, 8).map((signal) => {
-          const role = (signal.canonicalAttributions ?? signal.attributions ?? [])
-            .filter((attribution) => feedbackAttributionBelongsToDisplaySession(attribution, session))
-            .map((attribution) => attribution.attributionRole === 'downstream_related' ? '下游调用链路' : '直接归因')
-            .find(Boolean) ?? '归因命中';
-          return `#${signal.evidenceRef.messageIndex ?? '—'} ${role}：${signal.text.slice(0, 80).replace(/\s+/g, ' ')}`;
-        });
-        return [
-          `${label}：最终计入 ${signals.length}`,
-          '来源：任务执行归因模型',
-          `证据：${rows.join('；')}`,
-          '点击原文回溯中的同名标签，可以定位到这些 evidenceRef。',
-        ].join('\n');
-      }
-    }
-    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
-    const rows: string[] = [];
-    let ruleCount = 0;
+    const field = INDICATOR_FOR_METRIC[metricKey as keyof typeof INDICATOR_FOR_METRIC];
+    const count = field ? session.indicators[field] : undefined;
+    const signals = canonicalFeedbackSignalsForSession(session, reviewState)
+      .filter((signal) => metricKeyForFeedbackSignal(signal) === metricKey);
+    const refs = signals.length > 0 ? signals.map((signal) => signal.evidenceRef) : session.timelinePreview;
     let confirmed = 0;
     let rejected = 0;
-    let finalCount = 0;
-    let interactionIndex = 0;
-    humanEvents.forEach((event) => {
-      const text = event.snippet ?? '';
-      if (!isUserInteractionMetricText(text)) return;
-      const effectiveIndex = interactionIndex;
-      interactionIndex += 1;
-      const rule = metricKey === 'user_follow_up'
-        ? (effectiveIndex > 0 && !hasUserGoalShiftSignal(text) ? 1 : 0)
-        : metricKey === 'user_correction'
-          ? findUserCorrectionMatches(text).length
-          : metricKey === 'user_interruption'
-            ? (displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, text) ? 1 : 0)
-            : metricKey === 'negative_feedback'
-              ? findNegativeFeedbackMatches(text).length
-              : metricKey === 'positive_feedback'
-                ? findPositiveFeedbackMatches(text).length
-                : metricKey === 'hard_rule'
-                  ? (hasUserHardRuleText(text) ? 1 : 0)
-                  : metricKey === 'user_goal_shift'
-                    ? findUserGoalShiftMatches(text).length
-                    : 0;
-      const verdict = displayMetricVerdict(event, metricKey, session.id);
-      const finalValue = displayMetricCount(event, metricKey, rule, session.id);
-      ruleCount += rule;
+    for (const ref of refs) {
+      const verdict = observationMetricAnnotationVerdict(reviewState, { ...ref, metricScopeId: session.id }, metricKey);
       if (verdict === 'confirmed') confirmed += 1;
       if (verdict === 'rejected') rejected += 1;
-      finalCount += finalValue;
-      if (rule > 0 || verdict) {
-        rows.push(`#${event.messageIndex ?? '—'} ${verdict === 'confirmed' ? '人工同意' : verdict === 'rejected' ? '人工反对' : '规则命中'}：${text.slice(0, 80).replace(/\s+/g, ' ')}`);
-      }
-    });
+    }
     return [
-      `${label}：最终计入 ${finalCount}`,
-      `规则命中 ${ruleCount}，人工同意 ${confirmed}，人工反对 ${rejected}`,
-      rows.length > 0 ? `来源：${rows.join('；')}` : '来源：无',
-      '点击按钮查看指标定义；人工反对只扣掉对应消息，不会自动扣掉其它来源。',
+      `${label}：最终计入 ${count ?? '未记录'}`,
+      unappliedMetricAnnotations[session.id]?.includes(metricKey)
+        ? '证据不完整：该指标的人工标注尚未应用，当前保留原始报告计数。'
+        : '来源：领域有效观测投影；原始报告与人工审阅分别保留。',
+      `人工同意 ${confirmed}，人工反对 ${rejected}`,
+      signals.length > 0 ? `证据：${signals.slice(0, 8).map((signal) => signal.text.slice(0, 80)).join('；')}` : '预览不是完整计数来源；证据不完整时保留报告指标。',
     ].join('\n');
-  };
-  const displayIndicatorsBySkill = new Map<string, ExperienceReviewIndicators>();
-  for (const session of experience?.sessions ?? []) {
-    const current = displayIndicatorsBySkill.get(session.skillName) ?? { ...ZERO_DISPLAY_INDICATORS };
-    const next = displayIndicatorsForSession(session);
-    displayIndicatorsBySkill.set(session.skillName, {
-      userMessageCount: current.userMessageCount + next.userMessageCount,
-      userFollowUpCount: current.userFollowUpCount + next.userFollowUpCount,
-      userCorrectionCount: current.userCorrectionCount + next.userCorrectionCount,
-      userInterruptionCount: current.userInterruptionCount + next.userInterruptionCount,
-      sessionInterruptedCount: current.sessionInterruptedCount + (next.sessionInterruptedCount ?? 0),
-      negativeFeedbackCount: current.negativeFeedbackCount + next.negativeFeedbackCount,
-      positiveFeedbackCount: current.positiveFeedbackCount + next.positiveFeedbackCount,
-      userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
-      hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
-	      assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
-	      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
-	      routerDownstreamCompleted: current.routerDownstreamCompleted + (next.routerDownstreamCompleted ?? 0),
-	      routerDownstreamFailed: current.routerDownstreamFailed + (next.routerDownstreamFailed ?? 0),
-	      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
-      repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
-      toolCallCount: current.toolCallCount + next.toolCallCount,
-      toolFailureCount: current.toolFailureCount + next.toolFailureCount,
-      toolCancelledCount: (current.toolCancelledCount ?? 0) + (next.toolCancelledCount ?? 0),
-      toolUnknownCount: (current.toolUnknownCount ?? 0) + (next.toolUnknownCount ?? 0),
-      highObservationCount: current.highObservationCount + next.highObservationCount,
-      mediumObservationCount: current.mediumObservationCount + next.mediumObservationCount,
-      hedgingCount: current.hedgingCount + next.hedgingCount,
-      explicitMarkerCount: current.explicitMarkerCount + next.explicitMarkerCount,
-    });
-  }
-  const displayBasisCodes = (indicators: ExperienceReviewIndicators): ExperienceReviewBasisCode[] => {
-    const codes: ExperienceReviewBasisCode[] = [];
-    if (indicators.highObservationCount > 0) codes.push('has_high_observation');
-    if (indicators.mediumObservationCount > 0) codes.push('has_medium_observation');
-    if (indicators.userCorrectionCount > 0) codes.push('user_correction');
-    if (indicators.userInterruptionCount > 0) codes.push('user_interruption');
-    if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted');
-    if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback');
-    if (indicators.hardRuleTextHitCount > 0) codes.push('hard_rule_text_hit');
-    if (indicators.toolFailureCount > 0) codes.push('tool_failure');
-    if (indicators.hedgingCount > 0) codes.push('hedging_signal');
-    if (indicators.explicitMarkerCount > 0) codes.push('explicit_marker');
-    return codes;
-  };
-  const displayPriority = (indicators: ExperienceReviewIndicators): ExperienceReviewPriority => {
-    if (indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.sessionInterruptedCount > 0 || indicators.negativeFeedbackCount > 0) return 'review_first';
-    if (indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0) return 'sample_review';
-    return 'routine_sample';
-  };
-  const displayInferenceBasisCodes = (indicators: ExperienceReviewIndicators): ExperienceRuleFindingCode[] => {
-    const codes: ExperienceRuleFindingCode[] = [];
-    if (indicators.highObservationCount > 0) codes.push('high_observation_seen');
-    if (indicators.userCorrectionCount > 0) codes.push('user_correction_seen');
-    if (indicators.userInterruptionCount > 0) codes.push('user_interruption_seen');
-    if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted_seen');
-    if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback_seen');
-    if (indicators.toolFailureCount > 0) codes.push('tool_failure_seen');
-    if (indicators.mediumObservationCount > 0) codes.push('medium_observation_seen');
-    if (indicators.hedgingCount > 0) codes.push('hedging_seen');
-    if (indicators.explicitMarkerCount > 0) codes.push('explicit_marker_seen');
-    if (indicators.hardRuleTextHitCount > 0) codes.push('hard_rule_seen');
-    if (indicators.positiveFeedbackCount > 0) codes.push('positive_feedback_seen');
-    if (indicators.userGoalShiftCount > 0) codes.push('user_goal_shift_seen');
-    return codes;
-  };
-  const displayAssistiveInference = (
-    indicators: ExperienceReviewIndicators,
-    fallback?: ExperienceAssistiveInference,
-  ): ExperienceAssistiveInference => {
-    const basisRuleCodes = displayInferenceBasisCodes(indicators);
-    const code: ExperienceAssistiveInferenceCode =
-      indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.sessionInterruptedCount > 0 || indicators.negativeFeedbackCount > 0
-        ? 'review_recommended'
-        : indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0
-          ? 'sample_recommended'
-          : indicators.positiveFeedbackCount > 0
-            ? 'positive_signal_observed'
-            : indicators.userGoalShiftCount > 0
-              ? 'user_switched_topic_neutral'
-              : 'no_obvious_issue_from_rules';
-    return {
-      mode: 'deterministic_rules_only',
-      code,
-      confidence: fallback?.confidence ?? 'medium',
-      basisRuleCodes,
-      cautionCodes: fallback?.cautionCodes ?? ['no_llm_judge', 'rule_only'],
-      evidenceRefs: fallback?.evidenceRefs ?? [],
-    };
-  };
-  const displayRuleFindings = (
-    session: ExperienceSessionSummary,
-    indicators: ExperienceReviewIndicators,
-  ): ExperienceRuleFinding[] => {
-    const old = session.ruleFindings ?? [];
-    const oldByCode = new Map(old.map((finding) => [finding.code, finding]));
-    const next: ExperienceRuleFinding[] = [];
-    const refsForCode = (code: ExperienceRuleFindingCode): ExperienceEvidenceRef[] | undefined => {
-      const signalType =
-        code === 'user_correction_seen' ? 'correction'
-        : code === 'user_interruption_seen' ? 'interruption'
-        : code === 'negative_feedback_seen' ? 'frustration'
-        : code === 'positive_feedback_seen' ? 'positive'
-        : undefined;
-      if (!signalType) return undefined;
-      const refs = canonicalFeedbackSignalsForDisplay(session, signalType).map((signal) => signal.evidenceRef);
-      return refs.length > 0 ? refs : undefined;
-    };
-    const push = (code: ExperienceRuleFindingCode, level: ExperienceRuleFindingLevel, count: number): void => {
-      if (count <= 0) return;
-      const previous = oldByCode.get(code);
-      next.push({ code, level, count, evidenceRefs: refsForCode(code) ?? previous?.evidenceRefs ?? [] });
-    };
-    push('high_observation_seen', 'attention', indicators.highObservationCount);
-    push('user_correction_seen', 'attention', indicators.userCorrectionCount);
-    push('user_interruption_seen', 'attention', indicators.userInterruptionCount);
-    push('session_interrupted_seen', 'attention', indicators.sessionInterruptedCount);
-    push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount);
-    push('tool_failure_seen', 'sample', indicators.toolFailureCount);
-    push('medium_observation_seen', 'sample', indicators.mediumObservationCount);
-    push('hedging_seen', 'sample', indicators.hedgingCount);
-    push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount);
-    push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount);
-    push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount);
-    push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount);
-    for (const finding of old) {
-      if ([
-        'high_observation_seen',
-        'user_correction_seen',
-        'user_interruption_seen',
-        'session_interrupted_seen',
-        'negative_feedback_seen',
-        'tool_failure_seen',
-        'medium_observation_seen',
-        'hedging_seen',
-        'explicit_marker_seen',
-        'hard_rule_seen',
-        'positive_feedback_seen',
-        'user_goal_shift_seen',
-        'no_priority_signal',
-      ].includes(finding.code)) continue;
-      next.push(finding);
-    }
-    if (next.filter((finding) => finding.level !== 'normal').length === 0) {
-      next.push({ code: 'no_priority_signal', level: 'normal', count: 1, evidenceRefs: [] });
-    }
-    return next;
   };
   return {
     confidenceHeaderHelp,
@@ -774,12 +412,7 @@ export function createObservationMetricRenderers({
     renderSkillProblemPatterns,
     shouldIncludeDownstreamFeedbackForDisplay,
     canonicalFeedbackSignalsForDisplay,
-    displayIndicatorsForSession,
     sessionMetricSourceTitle,
     displayIndicatorsBySkill,
-    displayBasisCodes,
-    displayPriority,
-    displayAssistiveInference,
-    displayRuleFindings,
   };
 }

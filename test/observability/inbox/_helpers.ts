@@ -1,23 +1,13 @@
 import type { ObservationInboxItem } from '../../../src/observability/inbox/index.js';
-import {
-  resolveObservationReviewSession,
-  type ResolvedObservationReviewSession,
-} from '../../../src/observability/inbox/resolved-review.js';
+import { projectEffectiveObservationReview } from '../../../src/observability/inbox/effective-review.js';
 import type {
   ExperienceChecklistItem,
   ObservationExperienceReport,
   ObservationReviewState,
 } from '../../../src/observability/experience.js';
 
-export function resolvedReviewSessionsForFixture(
-  experience: ObservationExperienceReport,
-  reviewState: ObservationReviewState,
-): Record<string, ResolvedObservationReviewSession> {
-  return Object.fromEntries(experience.sessions.map((session) => [session.id, resolveObservationReviewSession({
-    session,
-    enhancedReview: undefined,
-    reviewState,
-  })]));
+export function reviewProjectionForFixture(experience: ObservationExperienceReport, reviewState: ObservationReviewState) {
+  return projectEffectiveObservationReview([experience], reviewState);
 }
 
 export function businessActionTag(name: string, text: string): string {

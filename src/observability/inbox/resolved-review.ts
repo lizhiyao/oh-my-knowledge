@@ -131,12 +131,10 @@ function resolvePriority(
   suppressTypeSpecific = false,
 ): ExperienceReviewPriority {
   if (hasManualReview) return priority;
-  const attributionPriority = priorityFromEpisodeAttribution(session);
-  if (attributionPriority === 'review_first') return 'review_first';
   const assessment = enhancedReview?.runtimeAssessment;
   const typeChecklist = suppressTypeSpecific ? [] : enhancedReview?.typeSpecificAssessment?.checklist ?? [];
   const nodeAssessments = enhancedReview ? runtimeNodeChecklistItems(enhancedReview) : [];
-  if (!assessment && typeChecklist.length === 0 && nodeAssessments.length === 0) return attributionPriority ?? priority;
+  if (!assessment && typeChecklist.length === 0 && nodeAssessments.length === 0) return priority;
   const attributionMode = episodeAttributionMode(session);
   if (typeChecklist.some((item) => item.status === 'failed' || item.status === 'degraded')
     || nodeAssessments.some((item) => item.status === 'failed' || item.status === 'degraded')) {
@@ -158,8 +156,8 @@ function resolvePriority(
     || assessment.userFeeling === 'neutral'))
     || typeChecklist.some((item) => item.status === 'unknown')
     || nodeAssessments.some((item) => item.status === 'unknown');
-  if (hasUnknown && priority === 'routine_sample') return maxPriority(attributionPriority ?? priority, 'sample_review');
-  return attributionPriority ? maxPriority(priority, attributionPriority) : priority;
+  if (hasUnknown && priority === 'routine_sample') return 'sample_review';
+  return priority;
 }
 
 function episodeAttributionMode(session?: ResolveObservationReviewSessionOptions['session']): 'primary' | 'downstream_only' | 'context_or_none' {
@@ -170,16 +168,6 @@ function episodeAttributionMode(session?: ResolveObservationReviewSessionOptions
   if (currentSkillAttributions.some((attribution) => attribution.attributionRole === 'primary_fault')) return 'primary';
   if (currentSkillAttributions.some((attribution) => attribution.attributionRole === 'downstream_related')) return 'downstream_only';
   return 'context_or_none';
-}
-
-function priorityFromEpisodeAttribution(session?: ResolveObservationReviewSessionOptions['session']): ExperienceReviewPriority | undefined {
-  const signals = session?.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
-  const currentSkillSignals = signals.filter((signal) =>
-    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) => attribution.skillName === session?.skillName && attribution.attributionRole === 'primary_fault')
-  );
-  if (currentSkillSignals.some((signal) => signal.type === 'correction' || signal.type === 'frustration' || signal.type === 'interruption')) return 'review_first';
-  if (currentSkillSignals.length > 0) return 'sample_review';
-  return undefined;
 }
 
 function maxPriority(a: ExperienceReviewPriority, b: ExperienceReviewPriority): ExperienceReviewPriority {

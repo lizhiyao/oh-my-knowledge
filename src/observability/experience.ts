@@ -508,7 +508,7 @@ function evidenceChainForTimeline(
   };
 }
 
-function ruleFindingsForEvidence(
+export function ruleFindingsForEvidence(
   indicators: ExperienceReviewIndicators,
   timeline: ExperienceTimelineEvent[],
   observationRefs: ExperienceEvidenceRef[],
@@ -553,7 +553,7 @@ function ruleFindingsForEvidence(
   return findings;
 }
 
-function assistiveInferenceForEvidence(
+export function assistiveInferenceForEvidence(
   indicators: ExperienceReviewIndicators,
   evidenceChain: ExperienceEvidenceChain,
   ruleFindings: ExperienceRuleFinding[],
@@ -615,13 +615,11 @@ function assistiveInferenceForEvidence(
   };
 }
 
-function indicatorsForSegment(
-  segment: SkillSegment,
-  relatedItems: ObservationInboxItem[],
+export function timelineIndicators(
   timeline: ExperienceTimelineEvent[],
   metricScopeId: string,
   reviewState?: ObservationReviewState,
-): ExperienceReviewIndicators {
+) {
   const userRefs = timeline.filter((event) => event.kind === 'user_message');
   const humanUserRefs = userRefs.filter((ref) => Boolean(ref.snippet) && !isSyntheticUserMessageText(ref.snippet ?? ''));
   const interactionUserRefs = humanUserRefs.filter((ref) => isUserInteractionMetricText(ref.snippet ?? ''));
@@ -641,6 +639,18 @@ function indicatorsForSegment(
     routerDownstreamFailed: 0,
     selfCorrectionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'self_correction', hasSelfCorrectionSignal(ref), reviewState) ? 1 : 0), 0),
     repeatedExecutionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'repeated_execution', hasRepeatedExecutionSignal(ref), reviewState) ? 1 : 0), 0),
+  };
+}
+
+function indicatorsForSegment(
+  segment: SkillSegment,
+  relatedItems: ObservationInboxItem[],
+  timeline: ExperienceTimelineEvent[],
+  metricScopeId: string,
+  reviewState?: ObservationReviewState,
+): ExperienceReviewIndicators {
+  return {
+    ...timelineIndicators(timeline, metricScopeId, reviewState),
     toolCallCount: segment.metrics.numToolCalls,
     toolFailureCount: Math.max(segment.metrics.numToolFailures, timeline.filter(isToolFailureEvent).length),
     toolCancelledCount: segment.metrics.numToolCancelled,

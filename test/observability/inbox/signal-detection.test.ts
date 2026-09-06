@@ -36,7 +36,7 @@ import {
   observationReviewStateKey,
 } from '../../../src/observability/inbox/review-state.js';
 import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
-import { businessActionTag, checklistItem, resolvedReviewSessionsForFixture } from './_helpers.js';
+import { businessActionTag, checklistItem, reviewProjectionForFixture } from './_helpers.js';
 
 describe('observe inbox - signal detection', () => {
   it('does not count embedded words as user correction signals', () => {
@@ -351,7 +351,7 @@ describe('observe inbox - signal detection', () => {
       reportCount: 1,
       latestSeenLabel: '2026-05-10 00:00:02',
       reviewState,
-      resolvedReviewSessions: resolvedReviewSessionsForFixture(annotatedReport.experience!, reviewState),
+      ...reviewProjectionForFixture(annotatedReport.experience!, reviewState),
     });
     assert.match(rendered, /<span class="inbox-answer-check is-(?:detected|absent)"[^>]*>[\s\S]*(?:没给可点开的产物|给了可点开的产物|会话进行中)/);
   });
