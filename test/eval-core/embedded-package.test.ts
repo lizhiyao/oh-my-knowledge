@@ -404,9 +404,9 @@ const assert = require('node:assert/strict');
       positiveCount: 1, abstentionCount: 1, pendingCount: 1, excluded: [{ sampleId: 'pending', reason: 'pending-human-annotation' }],
     });
     expect(output.metrics['correct-abstention']).toMatchObject({
-      value: 1, coverage: { included: 1 },
+      value: 1, coverage: { planned: 1, included: 1, missing: 0, sourceUnavailable: 0 },
     });
-    expect(output.metrics['false-abstention']).toMatchObject({ value: 0, coverage: { included: 1 } });
+    expect(output.metrics['false-abstention']).toMatchObject({ value: 0, coverage: { planned: 1, included: 1, missing: 0, sourceUnavailable: 0 } });
     expect(output.metrics['forbidden-hit']).toMatchObject({ value: 0, coverage: { included: 2 } });
     expect(output.metrics['precision-at-3']).toMatchObject({
       value: 1 / 3, coverage: { included: 1 },

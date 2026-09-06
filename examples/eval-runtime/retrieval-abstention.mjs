@@ -41,7 +41,10 @@ export function prepareRecommendationDataset(source, { sourceRevision, pendingPo
         relevantDocumentIds: acceptableSolutionIds,
         forbiddenDocumentIds: forbiddenSolutionIds,
       },
-      analysis: { memberships: [{ cohortId: shouldAbstain ? 'unanswerable' : 'answerable' }] },
+      analysis: { memberships: [
+        { cohortId: shouldAbstain ? 'unanswerable' : 'answerable' },
+        ...(forbiddenSolutionIds.length > 0 ? [{ cohortId: 'has-forbidden' }] : []),
+      ] },
     });
   }
   if (pendingPolicy === 'error' && excluded.length > 0) throw new Error('存在待人工标注样本；请完成标注或显式排除。');
@@ -55,10 +58,14 @@ export function prepareRecommendationDataset(source, { sourceRevision, pendingPo
   return {
     dataset: {
       datasetId: 'synthetic-retrieval-abstention', samples,
-      analysisCohorts: ['answerable', 'unanswerable'].map((cohortId) => ({
-        cohortId, cohortSetId: 'answerability', cohortSetKind: 'cohort',
-        classification: 'gold', disclosure: 'identity-only',
-      })),
+      analysisCohorts: [
+        ...['answerable', 'unanswerable'].map((cohortId) => ({
+          cohortId, cohortSetId: 'answerability', cohortSetKind: 'cohort',
+          classification: 'gold', disclosure: 'identity-only',
+        })),
+        { cohortId: 'has-forbidden', cohortSetId: 'constraint-annotations', cohortSetKind: 'cohort',
+          classification: 'gold', disclosure: 'identity-only' },
+      ],
       annotations: { selection: audit },
     },
     audit,
@@ -115,7 +122,7 @@ const { dataset, audit } = prepareRecommendationDataset(source, {
 const retrievalMetricIds = {
   recallAtK: 'recall-at-3', precisionAtK: 'precision-at-3', reciprocalRankAtK: 'rr-at-3', ndcgAtK: 'ndcg-at-3',
 };
-const evaluators = [{
+export const evaluators = [{
   evaluatorKind: 'retrieval', evaluatorId: 'retrieval-quality', cutoff: 3,
   ranking: { source: 'output', pointer: '/solutionIds' },
   relevantDocumentIdsPointer: '/relevantDocumentIds', metricIds: retrievalMetricIds,
@@ -125,6 +132,21 @@ const evaluators = [{
   shouldAbstainPointer: '/shouldAbstain',
   metricIds: { abstentionCorrect: 'correct-abstention', falseAbstention: 'false-abstention' },
 }, forbiddenIdEvaluator(3)];
+
+export const analyses = [
+  ...Object.values(retrievalMetricIds).map((metricId) => ({
+    analysisId: metricId, analysisKind: 'summary', statistic: 'mean', variantId: 'candidate', metricId,
+    cohortFilter: { includeCohortIds: ['answerable'] },
+  })),
+  ...[
+    ['correct-abstention', 'unanswerable'],
+    ['false-abstention', 'answerable'],
+    ['forbidden-hit', 'has-forbidden'],
+  ].map(([metricId, cohortId]) => ({
+    analysisId: metricId, analysisKind: 'summary', statistic: 'rate', variantId: 'candidate', metricId,
+    cohortFilter: { includeCohortIds: [cohortId] },
+  })),
+];
 
 const executor = {
   executorId: 'example.abstention-retriever/v1', version: '1.0.0',
@@ -148,15 +170,7 @@ const result = await evaluate({
     execution: { executor },
   }],
   comparisons: [],
-  analyses: [
-    ...Object.values(retrievalMetricIds).map((metricId) => ({
-      analysisId: metricId, analysisKind: 'summary', statistic: 'mean', variantId: 'candidate', metricId,
-      cohortFilter: { includeCohortIds: ['answerable'] },
-    })),
-    ...['correct-abstention', 'false-abstention', 'forbidden-hit'].map((metricId) => ({
-      analysisId: metricId, analysisKind: 'summary', statistic: 'rate', variantId: 'candidate', metricId,
-    })),
-  ],
+  analyses,
   experiment: { seed: 'synthetic-abstention-v1', sampling: { samplingKind: 'solo' } },
   policy: { execution: { maxConcurrency: 1 }, evaluation: { maxConcurrency: 1 } },
 });

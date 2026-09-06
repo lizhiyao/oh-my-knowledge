@@ -172,6 +172,8 @@ const abstention: AbstentionEvaluator = {
 
 示例在执行前准备并校验标签，默认拒绝待标注样本，允许显式排除，并记录来源版本、数量和原因。业务 `quality.reviewStatus` 只由该辅助函数解释，实际纳入的 Dataset 由 Core 封存。示例组合内置 retrieval、内置 abstention，以及独立的禁用 ID 命中 Custom Evaluator。全部样本提供相关 ID 绑定；负例的空相关集保留 retrieval v1 既有的 `invalid` 观测。召回分析显式选择 `answerable` cohort，在聚合前排除负例；弃答按自身适用范围评分。独立禁用命中示例检查最终结果的前三项，只纳入输出合法且禁用列表非空的样本，不将禁用列表当成所有错误结果的全集。正确召回与禁用命中可以同时发生。
 
+示例还将正确弃答分析限定到 `unanswerable`，错误弃答分析限定到 `answerable`，禁用命中分析限定到 `has-forbidden`。这样，即使执行在评分器读取标签前失败，`coverage.planned`、不可用证据数和实际分母也只描述各自适用的样本群，另一类样本的失败不会混入当前指标的不可用证据数。
+
 数据准备与禁用 ID 辅助函数是示例代码，不是额外的 OMK 公开 API。调用方可以替换它们而不改变内置弃答 instrument。本次增加可组合评分能力，不规定固定七指标套件。
 
 ## `oh-my-knowledge/eval-runtime/advanced`
