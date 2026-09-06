@@ -1,18 +1,17 @@
 import { join, resolve } from 'node:path';
-import type { RuntimeIdentity, UsageRecord } from '../eval-core/contracts/index.js';
+import type { RuntimeIdentity } from '../eval-core/contracts/index.js';
 import {
   createHostedEvaluationApplication,
+  createExecutorJudgeInvocationPort,
   createJudgeProviderRuntimeIdentity,
   parseCliEvaluationRequest,
   type HostedEvaluationCapabilities,
   type StoredCoreRunArtifacts,
   type OmkLlmJudgeInvocationBinding,
-  type OmkLlmJudgeInvocationRequest,
 } from '../eval-workflows/hosts/application.js';
 import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
 import type { CoreCliRunOutcome, CoreCliSeriesOutcome } from '../eval-workflows/projections/contracts.js';
 import { managedDir } from '../knowledge-artifacts/governance/index.js';
-import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
 import type { JudgeConfig } from '../eval-workflows/instruments/contracts/config.js';
@@ -39,24 +38,6 @@ function withoutExecutor(config: Readonly<EvalConfig>): EvalConfig {
   const result = { ...config };
   delete result.executor;
   return result;
-}
-
-function usage(result: Readonly<ExecResult>): UsageRecord | undefined {
-  const value: UsageRecord = {
-    ...(result.tokenUsageReportedByExecutor === false ? {} : {
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      totalTokens: result.inputTokens + result.outputTokens,
-    }),
-    ...(result.costReportedByExecutor === false ? {} : {
-      providerCost: {
-        amount: result.costUSD,
-        currency: 'USD',
-        reportedByProvider: true,
-      },
-    }),
-  };
-  return Object.keys(value).length === 0 ? undefined : value;
 }
 
 function runtimeIdentity(
@@ -98,42 +79,7 @@ function judgeResolver(
       );
     identities.set(identityKey, identity);
     return Object.freeze({
-      port: Object.freeze({
-        identity,
-        providerCost: { reporting: 'optional' as const },
-        async invoke(request: Readonly<OmkLlmJudgeInvocationRequest>) {
-          try {
-            const result = await executor({
-              model: request.model,
-              system: request.system,
-              prompt: request.prompt,
-              effort: request.effort,
-              abortSignal: request.signal,
-            });
-            const measured = usage(result);
-            return result.ok && result.output !== null
-              ? {
-                  invocationStatus: 'completed' as const,
-                  output: result.output,
-                  ...(measured === undefined ? {} : { usage: measured }),
-                }
-              : {
-                  invocationStatus: 'failed' as const,
-                  reasonCode: request.signal.aborted
-                    ? 'provider-invocation-cancelled'
-                    : 'provider-invocation-failed',
-                  ...(measured === undefined ? {} : { usage: measured }),
-                };
-          } catch {
-            return {
-              invocationStatus: 'failed' as const,
-              reasonCode: request.signal.aborted
-                ? 'provider-invocation-cancelled'
-                : 'provider-invocation-failed',
-            };
-          }
-        },
-      }),
+      port: createExecutorJudgeInvocationPort(executor, identity),
       preflightDeclarations: Object.freeze([
         Object.freeze({
           preflightKind: 'credential' as const,
