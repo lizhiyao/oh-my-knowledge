@@ -95,7 +95,7 @@ Runtime 的标准入口 `evaluate.ts` 从内部 `evaluation/` 模块导出原有
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
 适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
-`eval-hosts/runtime-adapter/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
+`eval-hosts/composition/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
 这些子域即使在物理目录上聚合，仍作为独立节点参与依赖图检查。
 
 `eval-workflows` 消费显式注入的 `EvaluationRuntimeProvider`。产品编译通过
@@ -105,12 +105,15 @@ provider adapter 或资源租约。单次执行和 Series 准备／执行归 Run
 
 ```text
 eval-hosts/
-├── node/                    # 共用 Node 解析、工厂注册与运行前检查
-└── runtime-adapter/
-    ├── adapters/            # 具体 provider 协议桥接
-    ├── evaluators/          # 产品 evaluator 工厂接线
-    └── resource-leases/     # 已验证的 Node snapshot 与宿主资源访问
+├── composition/       # 共用注册、绑定、运行前检查与装配
+├── input-resolution/  # 宿主侧请求与内容解析
+├── adapters/          # provider 执行协议适配
+├── evaluators/        # 产品评委工厂接线
+└── resource-leases/   # 资源物化、访问与清理
 ```
+
+同级目录统一按职责划分。Node 专属实现保留在所属职责下，例如 `resource-leases/node.ts`，不再以运行环境与职责混合分类。共用类型位于 `types.ts`；适配器、评委接线和资源实现不得反向导入 `composition`、`input-resolution` 或宿主聚合入口。
+
 
 宿主装配消费产品声明，再向 Workflow 注入 Runtime 能力。下层不得反向导入 `eval-hosts`，包括
 纯类型导入。产品测量实现在 `eval-workflows/measurement`，通用执行与生命周期桥接留在 Runtime。
@@ -139,12 +142,12 @@ DSH 不通过 CLI 模块获取共用能力。当前保留 `eval-hosts` 的依据
 
 | 模块 | 实际消费者 | 契约、失败与资源边界 |
 |---|---|---|
-| `node/preflight.ts` | CLI 与 DSH | 显式接收编译结果、环境和项目根；延迟运行检查，失败按既有准入规则传播 |
-| `node/node-cli-evaluation-resolver.ts` | CLI 与 DSH | 共用产品请求解析；虽保留请求协议命名，并非 CLI 入口策略 |
-| `node/node-sample-content-resolver.ts`、`safe-http-content-resolver.ts` | 上述共用解析器 | 文件／网络内容解析与会话清理；验证来源限制、取消和内容身份 |
-| `node/runtime-registry.ts`、`judge-provider-identity.ts` | CLI 与 DSH | 显式注册配置与评委身份；不在共用注册中替入口选择 provider 或读取凭证 |
-| `runtime-adapter/assembly.ts`、`composition.ts`、`builtins.ts`、`preflight.ts` | CLI 与 DSH 经 Runtime provider 消费 | 绑定、注册、准入及运行资源接线；具体资源清理由宿主提供，生命周期由 Runtime 控制 |
-| `runtime-adapter/adapters`、`evaluators`、`resource-leases` | 上述装配；DSH 复用资源接口 | provider 桥接、评分工厂接线与资源实现；不得反向依赖入口装配或通过聚合入口绕行 |
+| `composition/node-preflight.ts` | CLI 与 DSH | 显式接收编译结果、环境和项目根；延迟运行检查，失败按既有准入规则传播 |
+| `input-resolution/node-cli-evaluation-resolver.ts` | CLI 与 DSH | 共用产品请求解析；虽保留请求协议命名，并非 CLI 入口策略 |
+| `input-resolution/node-sample-content-resolver.ts`、`input-resolution/safe-http-content-resolver.ts` | 上述共用解析器 | 文件／网络内容解析与会话清理；验证来源限制、取消和内容身份 |
+| `composition/runtime-registry.ts`、`composition/judge-provider-identity.ts` | CLI 与 DSH | 显式注册配置与评委身份；不在共用注册中替入口选择 provider 或读取凭证 |
+| `composition/assembly.ts`、`composition/runtime.ts`、`composition/builtins.ts`、`composition/preflight.ts` | CLI 与 DSH 经 Runtime provider 消费 | 绑定、注册、准入及运行资源接线；具体资源清理由宿主提供，生命周期由 Runtime 控制 |
+| `adapters`、`evaluators`、`resource-leases` | 上述装配；DSH 复用资源接口 | provider 桥接、评分工厂接线与资源实现；不得反向依赖入口装配或通过聚合入口绕行 |
 
 服务直接调用 `evaluate()` 时使用 Runtime／Core；CLI 与 DSH 使用编译、宿主装配和注入的
 Runtime；生成、修复及辅助分析可以直接使用 `ExecutorFn`；观测事实经诊断与领域投影进入

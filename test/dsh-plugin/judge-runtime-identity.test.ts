@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { digestCanonicalJson } from '../../src/eval-core/contracts/index.js';
 import type { ExecutorRuntimeFingerprint } from '../../src/executors/contracts/runtime.js';
-import { createJudgeProviderRuntimeIdentity } from '../../src/eval-hosts/node/judge-provider-identity.js';
+import { createJudgeProviderRuntimeIdentity } from '../../src/eval-hosts/composition/judge-provider-identity.js';
 
 const RUNTIME: ExecutorRuntimeFingerprint = {
   executor: 'dsh-host',

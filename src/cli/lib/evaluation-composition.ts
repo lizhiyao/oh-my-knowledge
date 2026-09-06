@@ -1,5 +1,5 @@
-import { createNodeHostPreflightDeclarations } from '../../eval-hosts/node/preflight.js';
-import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../../eval-hosts/runtime-adapter/composition.js';
+import { createNodeHostPreflightDeclarations } from '../../eval-hosts/composition/node-preflight.js';
+import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../../eval-hosts/composition/runtime.js';
 import type { EvaluationRuntimeProvider } from '../../eval-runtime/provider.js';
 import { access, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -16,39 +16,39 @@ import { resolveExecutorRuntimeFingerprint } from '../../executors/core/runtime-
 import type { CliEvaluationCompileResult } from '../../eval-workflows/input-compilation/index.js';
 import type {
   OmkLlmJudgeInvocationBinding,
-} from '../../eval-hosts/runtime-adapter/evaluators/llm-judge-invocation.js';
+} from '../../eval-hosts/evaluators/llm-judge-invocation.js';
 import type {
   OmkLlmJudgeInvocationRequest,
-} from '../../eval-hosts/runtime-adapter/index.js';
+} from '../../eval-hosts/index.js';
 import {
   createAnthropicApiCoreSchemaValidators,
-} from '../../eval-hosts/runtime-adapter/adapters/anthropic/protocol.js';
+} from '../../eval-hosts/adapters/anthropic/protocol.js';
 import {
   createClaudeCliCoreSchemaValidators,
-} from '../../eval-hosts/runtime-adapter/adapters/claude/cli-protocol.js';
+} from '../../eval-hosts/adapters/claude/cli-protocol.js';
 import {
   createClaudeSdkCoreSchemaValidators,
-} from '../../eval-hosts/runtime-adapter/adapters/claude/sdk-protocol.js';
+} from '../../eval-hosts/adapters/claude/sdk-protocol.js';
 import {
   createCodexCliCoreSchemaValidators,
-} from '../../eval-hosts/runtime-adapter/adapters/codex/cli-protocol.js';
+} from '../../eval-hosts/adapters/codex/cli-protocol.js';
 import {
   createCodexSdkCoreSchemaValidators,
-} from '../../eval-hosts/runtime-adapter/adapters/codex/sdk-protocol.js';
+} from '../../eval-hosts/adapters/codex/sdk-protocol.js';
 import {
   createCustomCommandCoreSchemaValidators,
   customCommandExecutorCapabilities,
-} from '../../eval-hosts/runtime-adapter/adapters/custom/command.js';
+} from '../../eval-hosts/adapters/custom/command.js';
 import {
   createOpenAIApiCoreSchemaValidators,
-} from '../../eval-hosts/runtime-adapter/adapters/openai/protocol.js';
-import type { ClassifiedEnvironmentEntry } from '../../eval-hosts/runtime-adapter/adapters/shared/classified-environment.js';
-import { createJudgeProviderRuntimeIdentity } from '../../eval-hosts/node/judge-provider-identity.js';
+} from '../../eval-hosts/adapters/openai/protocol.js';
+import type { ClassifiedEnvironmentEntry } from '../../eval-hosts/adapters/shared/classified-environment.js';
+import { createJudgeProviderRuntimeIdentity } from '../../eval-hosts/composition/judge-provider-identity.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createProductionRuntimeFactoryRegistry,
   type ProductionExecutorAdapterConfiguration,
-} from '../../eval-hosts/node/runtime-registry.js';
+} from '../../eval-hosts/composition/runtime-registry.js';
 
 const CREDENTIAL_ENVIRONMENT = new Set([
   'ANTHROPIC_API_KEY',

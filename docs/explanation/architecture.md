@@ -106,7 +106,7 @@ Artifact discovery, local and Git source resolution, and content-addressed copie
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
 judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,
 `executors/preflight` reports environment readiness facts, while
-`eval-hosts/runtime-adapter/preflight.ts` decides workflow admission from binding declarations.
+`eval-hosts/composition/preflight.ts` decides workflow admission from binding declarations.
 These subdomains remain separate dependency-graph vertices even though they are physically grouped.
 
 `eval-workflows` consumes an explicitly injected `EvaluationRuntimeProvider`. Product compilation
@@ -117,12 +117,15 @@ Core alone owns their scheduling, retry, timeout, budget and measurement contrac
 
 ```text
 eval-hosts/
-├── node/                    # shared Node resolution, registry and preflight
-└── runtime-adapter/
-    ├── adapters/            # concrete provider protocol bridges
-    ├── evaluators/          # product evaluator factory wiring
-    └── resource-leases/     # verified Node snapshots and host resource access
+├── composition/       # shared registration, binding, preflight and assembly
+├── input-resolution/  # host request and content resolution
+├── adapters/          # provider execution protocol bridges
+├── evaluators/        # product judge factory wiring
+└── resource-leases/   # resource materialization, access and cleanup
 ```
+
+Sibling directories represent responsibilities. Node-specific implementations stay within their responsibility, such as `resource-leases/node.ts`, rather than mixing environment and responsibility categories. Shared types live in `types.ts`; adapters, evaluator wiring and resources cannot import `composition`, `input-resolution` or the aggregate host entrypoint.
+
 
 Host assembly consumes product declarations and injects Runtime capabilities into Workflow. Lower
 layers cannot import `eval-hosts`, including type-only imports. Product measurement implementations
@@ -154,12 +157,12 @@ CLI modules. The retained `eval-hosts` boundary currently serves these shared co
 
 | Module | Actual consumers | Contract, failure and resource boundary |
 |---|---|---|
-| `node/preflight.ts` | CLI and DSH | Explicit compiled input, environment and project root; lazy checks propagate failures through existing admission rules |
-| `node/node-cli-evaluation-resolver.ts` | CLI and DSH | Shared product request resolution; the retained request protocol name does not make it CLI entry policy |
-| `node/node-sample-content-resolver.ts`, `safe-http-content-resolver.ts` | Shared resolver above | File/network content resolution and session cleanup; verify source restrictions, cancellation and content identity |
-| `node/runtime-registry.ts`, `judge-provider-identity.ts` | CLI and DSH | Explicit registration and judge identity; shared registry does not select providers or read credentials on behalf of an entrypoint |
-| `runtime-adapter/assembly.ts`, `composition.ts`, `builtins.ts`, `preflight.ts` | CLI and DSH via Runtime provider | Binding, registration, admission and run-resource wiring; hosts implement cleanup while Runtime controls lifecycle |
-| `runtime-adapter/adapters`, `evaluators`, `resource-leases` | Composition above; DSH also uses resource interfaces | Provider bridges, evaluator wiring and resources cannot depend back on entry composition or bypass boundaries through aggregate exports |
+| `composition/node-preflight.ts` | CLI and DSH | Explicit compiled input, environment and project root; lazy checks propagate failures through existing admission rules |
+| `input-resolution/node-cli-evaluation-resolver.ts` | CLI and DSH | Shared product request resolution; the retained request protocol name does not make it CLI entry policy |
+| `input-resolution/node-sample-content-resolver.ts`, `input-resolution/safe-http-content-resolver.ts` | Shared resolver above | File/network content resolution and session cleanup; verify source restrictions, cancellation and content identity |
+| `composition/runtime-registry.ts`, `composition/judge-provider-identity.ts` | CLI and DSH | Explicit registration and judge identity; shared registry does not select providers or read credentials on behalf of an entrypoint |
+| `composition/assembly.ts`, `composition/runtime.ts`, `composition/builtins.ts`, `composition/preflight.ts` | CLI and DSH via Runtime provider | Binding, registration, admission and run-resource wiring; hosts implement cleanup while Runtime controls lifecycle |
+| `adapters`, `evaluators`, `resource-leases` | Composition above; DSH also uses resource interfaces | Provider bridges, evaluator wiring and resources cannot depend back on entry composition or bypass boundaries through aggregate exports |
 
 Direct service `evaluate()` uses Runtime/Core. CLI and DSH use compilation, host assembly and injected
 Runtime. Generation, repair and auxiliary analysis may directly use `ExecutorFn`. Observation facts

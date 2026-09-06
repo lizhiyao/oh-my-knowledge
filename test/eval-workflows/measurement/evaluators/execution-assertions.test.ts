@@ -29,7 +29,7 @@ import {
 } from '../../../../src/eval-core/execution/index.js';
 import {
   createBuiltinOmkScoringBindingFactories,
-} from '../../../../src/eval-hosts/runtime-adapter/builtins.js';
+} from '../../../../src/eval-hosts/composition/builtins.js';
 import {
   createExecutionAssertionEvaluatorImplementation,
   EXECUTION_ASSERTION_BINDINGS,
@@ -44,7 +44,7 @@ import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceSchema,
   type SourceNeutralTrace,
-} from '../../../../src/eval-hosts/runtime-adapter/index.js';
+} from '../../../../src/eval-hosts/index.js';
 import {
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,

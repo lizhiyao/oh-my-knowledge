@@ -23,7 +23,6 @@ const EVALUATION_CORE_DIR_NORMALIZED = EVALUATION_CORE_DIR.replace(/\\/g, '/');
 const RUNTIME_ADAPTERS_DIR = join(
   SRC_DIR,
   'eval-hosts',
-  'runtime-adapter',
   'adapters',
 );
 
@@ -46,15 +45,13 @@ const RULES: ForbiddenRule[] = [
     reason: '共用宿主只接收显式输入，不得经交付入口导入入口策略。',
   })),
   ...[
-    'eval-hosts/runtime-adapter/adapters/',
-    'eval-hosts/runtime-adapter/resource-leases/',
-    'eval-hosts/runtime-adapter/evaluators/',
+    'eval-hosts/adapters/',
+    'eval-hosts/resource-leases/',
+    'eval-hosts/evaluators/',
   ].flatMap((from) => [
-    'eval-hosts/node/',
-    'eval-hosts/runtime-adapter/assembly.ts',
-    'eval-hosts/runtime-adapter/builtins.ts',
-    'eval-hosts/runtime-adapter/composition.ts',
-    'eval-hosts/runtime-adapter/index.ts',
+    'eval-hosts/composition/',
+    'eval-hosts/input-resolution/',
+    'eval-hosts/index.ts',
   ].map((to) => ({
     from, to,
     reason: '宿主适配与资源实现不得反向依赖产品装配或通过聚合入口绕过边界。',

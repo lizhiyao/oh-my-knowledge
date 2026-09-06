@@ -27,7 +27,7 @@ import {
 } from '../../../../src/eval-core/evaluation/index.js';
 import {
   createLlmAssertionEvaluatorBindingFactory,
-} from '../../../../src/eval-hosts/runtime-adapter/evaluators/llm-assertion-factory.js';
+} from '../../../../src/eval-hosts/evaluators/llm-assertion-factory.js';
 import {
   createLlmAssertionEvaluatorIdentity,
   createLlmAssertionEvaluatorImplementation,
@@ -44,7 +44,7 @@ import {
   type OmkLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationRequest,
   type OmkLlmJudgeInvocationResult,
-} from '../../../../src/eval-hosts/runtime-adapter/index.js';
+} from '../../../../src/eval-hosts/index.js';
 import {
   getRagJudgePromptHash,
   getSemanticPromptHash,
