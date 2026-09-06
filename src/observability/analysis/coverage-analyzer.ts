@@ -189,62 +189,6 @@ export function buildKnowledgeIndex(cwd: string): KnowledgeIndex {
   };
 }
 
-export function buildFullKnowledgeIndex(artifactContent: string | null, cwd: string | null): KnowledgeIndex {
-  const entriesMap = new Map<string, KnowledgeEntry>();
-
-  if (cwd) {
-    const dirIndex = buildKnowledgeIndex(cwd);
-    for (const entry of dirIndex.entries) {
-      entriesMap.set(entry.path, entry);
-    }
-  }
-
-  if (artifactContent) {
-    const refPaths = extractReferencedPaths(artifactContent);
-    for (const path of refPaths) {
-      if (!entriesMap.has(path)) {
-        const existing = [...entriesMap.values()].find((entry) =>
-          [entry.path, ...(entry.aliases ?? [])].some((candidate) =>
-            candidate.endsWith('/' + path) || candidate === path
-          )
-        );
-        if (!existing) {
-          let lineCount: number | undefined;
-          if (cwd) {
-            const fullPath = resolveInside(cwd, path);
-            try {
-              if (fullPath && existsSync(fullPath) && statSync(fullPath).isFile()) {
-                lineCount = readFileSync(fullPath, 'utf-8').split('\n').length;
-              }
-            } catch { }
-          }
-          if (!cwd || resolveInside(cwd, path)) {
-            entriesMap.set(path, { path, type: classifyEntry(path), lineCount });
-          }
-        }
-      }
-    }
-  }
-
-  const entries = [...entriesMap.values()];
-  const totalLines = entries.reduce((sum, entry) => sum + (entry.lineCount || 0), 0);
-  return {
-    entries,
-    totalFiles: entries.length,
-    totalLines,
-  };
-}
-
-function resolveInside(root: string, path: string): string | null {
-  const absoluteRoot = resolve(root);
-  const candidate = resolve(absoluteRoot, path);
-  const relativePath = relative(absoluteRoot, candidate);
-  return relativePath === ''
-    || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
-    ? candidate
-    : null;
-}
-
 export function extractKnowledgeConsumption(toolCalls: ToolCallInfo[]): KnowledgeConsumption {
   const filesRead: string[] = [];
   const grepPatterns: Array<{ pattern: string; path?: string }> = [];

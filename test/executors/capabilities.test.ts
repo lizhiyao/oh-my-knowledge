@@ -1,14 +1,13 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  assertSamplesCompatibleWithExecutor,
+  assertExecutorInputCapabilities,
   enforceExecutorCapabilities,
   executorSupportsSampleMocks,
   getExecutorCapabilities,
 } from '../../src/executors/core/capabilities.js';
 import { createExecutor } from '../../src/executors/index.js';
-import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
-import type { Sample } from '../../src/eval-workflows/inputs/contracts/sample.js';
+import type { ExecutorFn, ExecutorInput } from '../../src/executors/contracts/ports.js';
 
 const okExecutor: ExecutorFn = async () => ({
   ok: true,
@@ -38,21 +37,23 @@ describe('executor sample-mock capabilities', () => {
     );
   });
 
-  it('rejects incompatible samples before evaluation starts', () => {
-    const samples: Sample[] = [{
-      sample_id: 'codex-impossible',
+  it('preflights production executor inputs before dispatch', () => {
+    const input: ExecutorInput = {
+      model: 'test',
       prompt: 'read a file',
       mocks: [{ tool: 'Read', return: 'fixture' }],
-      assertions: [{ type: 'mock_hit', value: 'Read:1' }],
-    }];
-
-    assert.throws(
-      () => assertSamplesCompatibleWithExecutor(samples, 'codex'),
-      /不支持 Sample\.mocks.*伪证据.*codex-impossible/,
-    );
-    assert.doesNotThrow(
-      () => assertSamplesCompatibleWithExecutor(samples, 'claude'),
-    );
+    };
+    for (const executor of ['codex', 'codex-sdk', 'dsh-host', 'openai-api', 'anthropic-api']) {
+      assert.throws(
+        () => assertExecutorInputCapabilities(executor, input),
+        /不支持 Sample\.mocks.*伪证据.*<programmatic-input>/,
+      );
+      assert.doesNotThrow(() => assertExecutorInputCapabilities(executor, { ...input, mocks: [] }));
+      assert.doesNotThrow(() => assertExecutorInputCapabilities(executor, { model: 'test', prompt: 'test' }));
+    }
+    for (const executor of ['claude', 'claude-sdk', './custom-executor.sh']) {
+      assert.doesNotThrow(() => assertExecutorInputCapabilities(executor, input));
+    }
   });
 
   it('guards direct executor calls instead of silently dropping mocks', async () => {

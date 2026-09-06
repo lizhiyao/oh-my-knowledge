@@ -20,7 +20,6 @@ import type {
   SkillDerivedStandardStatus,
   SkillDerivedStandards,
 } from './types.js';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../../shared/timestamp.js';
 import { resolveObservationsDir } from '../inbox/paths.js';
 
@@ -75,31 +74,6 @@ function applySoftStandardReviews(
       return standard;
     }),
   };
-}
-
-export function updateSkillDerivedStandardStatus(
-  observationsDir: string,
-  skillName: string,
-  standardId: string,
-  status: SkillDerivedStandardStatus,
-  now = new Date().toISOString(),
-): SkillDerivedStandards {
-  const filePath = skillDerivedStandardsPath(observationsDir, skillName);
-  const existing = loadExisting(filePath);
-  if (!existing) throw new Error(`skill derived standards not found: ${skillName}`);
-  let found = false;
-  const next: SkillDerivedStandards = {
-    ...existing,
-    generatedAt: now,
-    standards: existing.standards.map((item) => {
-      if (item.id !== standardId) return item;
-      found = true;
-      return { ...item, status };
-    }),
-  };
-  if (!found) throw new Error(`skill derived standard not found: ${standardId}`);
-  writeJsonFileAtomic(filePath, next);
-  return next;
 }
 
 export function resolveSkillStandards(skillName: string, options: ResolveSkillStandardsOptions): ResolvedSkillStandards {
