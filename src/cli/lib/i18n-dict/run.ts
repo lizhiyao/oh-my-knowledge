@@ -1,17 +1,6 @@
 import type { CliMessage } from './types.js';
 
 export type RunMessageKey =
-  | 'cli.progress.preflight_starting'
-  | 'cli.progress.sample_retry'
-  | 'cli.progress.sample_error'
-  | 'cli.progress.sample_executing'
-  | 'cli.progress.sample_exec_done'
-  | 'cli.progress.output_preview'
-  | 'cli.progress.judging'
-  | 'cli.progress.judged'
-  | 'cli.progress.skipped'
-  | 'cli.progress.sample_done'
-  | 'cli.progress.sample_failed_done'
   | 'cli.run.batch_verdict_header'
   | 'cli.run.codex_fallback_hint'
   | 'cli.run.codex_auth_hint'
@@ -22,50 +11,6 @@ export type RunMessageKey =
   | 'cli.run.anthropic_api_model_hint';
 
 export const runDict: Record<RunMessageKey, CliMessage> = {
-  'cli.progress.preflight_starting': {
-    zh: '⏳ 正在预检模型连通性...\n',
-    en: '⏳ Preflight: checking model connectivity...\n',
-  },
-  'cli.progress.sample_retry': {
-    zh: '[{i}/{n}] {sample}/{variant} 🔄 重试 {attempt}/{max}...\n',
-    en: '[{i}/{n}] {sample}/{variant} 🔄 retry {attempt}/{max}...\n',
-  },
-  'cli.progress.sample_error': {
-    zh: '[{i}/{n}] {sample}/{variant} ⚠️ {error}\n',
-    en: '[{i}/{n}] {sample}/{variant} ⚠️ {error}\n',
-  },
-  'cli.progress.sample_executing': {
-    zh: '[{i}/{n}] {sample}/{variant} ⏳ 执行中...\n',
-    en: '[{i}/{n}] {sample}/{variant} ⏳ running...\n',
-  },
-  'cli.progress.sample_exec_done': {
-    zh: '[{i}/{n}] {sample}/{variant} 执行完成 {ms}ms {input}+{output} tokens{cost}\n',
-    en: '[{i}/{n}] {sample}/{variant} done {ms}ms {input}+{output} tokens{cost}\n',
-  },
-  'cli.progress.output_preview': {
-    zh: '  输出预览: {preview}\n',
-    en: '  output preview: {preview}\n',
-  },
-  'cli.progress.judging': {
-    zh: '[{i}/{n}] {sample}/{variant} 评委评审中{dim}...\n',
-    en: '[{i}/{n}] {sample}/{variant} judging{dim}...\n',
-  },
-  'cli.progress.judged': {
-    zh: '[{i}/{n}] {sample}/{variant} 评委评审完成{dim} score={score}\n',
-    en: '[{i}/{n}] {sample}/{variant} judged{dim} score={score}\n',
-  },
-  'cli.progress.skipped': {
-    zh: '[{i}/{n}] {sample}/{variant} ⏭ 已跳过 (已有结果)\n',
-    en: '[{i}/{n}] {sample}/{variant} ⏭ skipped (cached)\n',
-  },
-  'cli.progress.sample_done': {
-    zh: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
-    en: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
-  },
-  'cli.progress.sample_failed_done': {
-    zh: '[{i}/{n}] {sample}/{variant} ⚠️ {ms}ms {input}+{output} tokens{cost} error={error}\n',
-    en: '[{i}/{n}] {sample}/{variant} ⚠️ {ms}ms {input}+{output} tokens{cost} error={error}\n',
-  },
   'cli.run.batch_verdict_header': {
     zh: '批量评测结论：{status}（{passed}/{total} 通过）',
     en: 'Batch verdict: {status} ({passed}/{total} passed)',
