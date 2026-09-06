@@ -31,10 +31,8 @@
  */
 
 import {
-  bootstrapWithMetric,
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-  type BootstrapCI,
 } from '../analysis/bootstrap.js';
 
 export interface RatingPair {
@@ -46,18 +44,6 @@ export interface RatingPair {
   coderB: number;
 }
 
-export interface AgreementResult {
-  /** Krippendorff α (interval weights). 1 = perfect, 0 = chance, < 0 = worse than chance. */
-  alpha: number;
-  /** 95% bootstrap CI on α — width signals uncertainty due to sample size. */
-  alphaCI: BootstrapCI;
-  /** Quadratic-weighted κ. */
-  weightedKappa: number;
-  /** Pearson product-moment correlation. NaN if either coder has zero variance. */
-  pearson: number;
-  /** How many rating pairs went into the calculation. */
-  sampleCount: number;
-}
 
 export type AgreementStatisticEvidence =
   | Readonly<{ statisticStatus: 'observed'; value: number }>
@@ -373,47 +359,6 @@ export function computeAgreementEvidence(
     },
     weightedKappa,
     pearson,
-    sampleCount: pairs.length,
-  };
-}
-
-/**
- * Compute α + κ + Pearson, with bootstrap CI on α.
- *
- * Bootstrap resamples pairs (units), not individual ratings — pairs are the
- * unit of replication; resampling individual ratings would break the (a,b) tie.
- */
-export function computeAgreementWithCI(
-  pairs: RatingPair[],
-  options: { samples?: number; seed?: number; alpha?: number; scale?: { min: number; max: number } } = {},
-): AgreementResult {
-  const { samples = 1000, seed, alpha = 0.05, scale } = options;
-
-  if (pairs.length === 0) {
-    return {
-      alpha: NaN,
-      alphaCI: { low: NaN, high: NaN, estimate: NaN, samples: 0 },
-      weightedKappa: NaN,
-      pearson: NaN,
-      sampleCount: 0,
-    };
-  }
-
-  // Encode pairs as indices so bootstrapWithMetric can resample them.
-  const indices = pairs.map((_, i) => i);
-  const alphaCI = bootstrapWithMetric(
-    indices,
-    (resampledIdx) => computeKrippendorffAlpha(resampledIdx.map((i) => pairs[i])),
-    alpha,
-    samples,
-    seed,
-  );
-
-  return {
-    alpha: roundOrNaN(computeKrippendorffAlpha(pairs)),
-    alphaCI,
-    weightedKappa: roundOrNaN(computeWeightedKappa(pairs, scale)),
-    pearson: roundOrNaN(computePearson(pairs)),
     sampleCount: pairs.length,
   };
 }

@@ -5,7 +5,6 @@ import {
   summarizeBootstrapMetric,
 } from '../../../../src/eval-workflows/analysis/bootstrap.js';
 import {
-  computeAgreementWithCI,
   computeKrippendorffAlpha,
 } from '../../../../src/eval-workflows/gold/human.js';
 import {
@@ -108,9 +107,14 @@ describe('Agreement Analysis table', () => {
       pearson: { statisticStatus: 'observed', value: 0.9058 },
     });
 
-    const legacy = computeAgreementWithCI(values.map(([coderA, coderB], index) => ({
-      unitId: `sample-${index}`, coderA, coderB,
-    })), { samples: 1_000, seed: 7, alpha: 0.05 });
+    // Frozen from the removed unit-resampling wrapper with seed 7 and 1000 draws.
+    // v2 fixes expected disagreement instead; these historical bounds must differ.
+    const legacy = {
+      alpha: 0.8939,
+      alphaCI: { low: 0.7177, high: 0.9719 },
+      weightedKappa: 0.8889,
+      pearson: 0.9058,
+    };
     expect(value.statistics).toMatchObject({
       krippendorffAlpha: { value: legacy.alpha },
       weightedKappa: { value: legacy.weightedKappa },
