@@ -186,6 +186,12 @@ export function parseCliEvaluationRequest(
 ): CliEvaluationRequest {
   const flags = input.explicitCliFlags;
   const config = input.evalConfig;
+  if (Object.hasOwn(flags, 'no-cache')) {
+    invalid('no-cache', '--no-cache 已移除。当前产品评测已禁用执行与评分缓存，请删除该选项。');
+  }
+  if (config && Object.hasOwn(config, 'noCache')) {
+    invalid('noCache', 'noCache 已移除。当前产品评测已禁用执行与评分缓存，请删除该字段。');
+  }
   const fieldSources: CliEvaluationFieldSource[] = [];
   const pick = <Value>(candidate: PickInput<Value>): Value | undefined => {
     if (candidate.cliValue !== undefined && candidate.cliKey !== undefined) {
@@ -496,24 +502,8 @@ export function parseCliEvaluationRequest(
     cliKey: 'retry', cliValue: numericValue(flags.retry, 'retry', { integer: true, min: 0 }),
     defaultValue: 0, defaultSource: 'documented',
   }) as number;
-  const legacyCacheMode = (
-    value: boolean | undefined,
-    fieldPath: string,
-  ): 'disabled' | undefined => {
-    if (value === undefined) return undefined;
-    if (value) return 'disabled';
-    throw new CliEvaluationInputError({
-      code: 'CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED',
-      fieldPath,
-      message: `输入字段「${fieldPath}」无法映射到新 Core：请在正式切换后使用显式 cache mode。`,
-    });
-  };
   const executionCacheMode = pick({
     normalizedField: 'values.measurement.cache.executionMode',
-    cliKey: 'no-cache',
-    cliValue: legacyCacheMode(booleanValue(flags['no-cache'], 'no-cache'), 'no-cache'),
-    configKey: 'noCache',
-    configValue: legacyCacheMode(booleanValue(config?.noCache, 'noCache'), 'noCache'),
     defaultValue: 'disabled' as const,
     defaultSource: 'documented',
   }) as 'disabled';

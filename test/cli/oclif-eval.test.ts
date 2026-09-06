@@ -38,6 +38,15 @@ interface ExecError extends Error {
 
 
 describe('oclif eval', () => {
+  it('rejects the removed --no-cache option before execution', async () => {
+    await assert.rejects(() => runCommand(EvalCommand, ['--no-cache']), (error: unknown) => {
+      const err = error as ExecError;
+      assert.equal(err.code, 2);
+      assert.match(err.stderr, /no-cache/);
+      return true;
+    });
+  });
+
   it('eval --help 含 41 flag', async () => {
     const stdout = await renderCommandHelp('eval');
     assert.ok(stdout.includes('跑评测'), `default eval --help missing zh:\n${stdout.slice(0, 200)}`);

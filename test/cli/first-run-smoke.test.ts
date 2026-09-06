@@ -105,7 +105,6 @@ describe('first-run smoke path', () => {
         '--no-diagnostic',
         '--no-serve',
         '--bootstrap-samples', '100',
-        '--no-cache',
         '--report-only',
       ], { cwd: project, env });
       const report = parseFirstJsonObject(run.stdout) as {

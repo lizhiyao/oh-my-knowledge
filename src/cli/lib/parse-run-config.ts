@@ -43,7 +43,6 @@ export interface RunConfig {
   model: string;
   outputDir: string;
   noJudge: boolean | undefined;
-  noCache: boolean | undefined;
   dryRun: boolean | undefined;
   concurrency: number;
   timeoutMs: number;
@@ -184,7 +183,6 @@ export function parseRunConfig(
     Number(timeoutSec) || DEFAULT_EVALUATION_TIMEOUT_MS / 1000,
   ) * 1000;
   const noJudge = (values['no-judge'] as boolean | undefined) ?? evalConfig?.noJudge ?? false;
-  const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
   const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
   const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? evalConfig?.skipDoctor ?? false;
@@ -234,7 +232,6 @@ export function parseRunConfig(
       model,
       outputDir,
       noJudge,
-      noCache,
       dryRun,
       concurrency,
       timeoutMs,

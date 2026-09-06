@@ -52,6 +52,8 @@ omk eval --dry-run --samples eval-samples.yaml \
 
 ## 四、更新 CLI 自动化
 
+请从命令中删除 `--no-cache`，从 `eval.yaml` 中删除 `noCache`。产品评测本就禁用执行与评分缓存；无需替代选项，旧配置字段会报错并提示删除。既有 `--resume` 续跑契约不变。
+
 - `omk init` 仍默认生成 3 条低成本起步用例；较完整的官方起步集使用 `omk init --samples 20`。把它当发布证据前必须人工复核或替换。
 - `omk init` 不再覆盖已有脚手架文件，除非显式传入 `--force`。
 - `omk eval --resume` 接受 Core `runId`，不再接受报告路径。

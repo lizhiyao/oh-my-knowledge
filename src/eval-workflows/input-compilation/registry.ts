@@ -124,14 +124,6 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
   cli('no-judge', 'definition.judges.enabled', 'Definition', 'evaluation', {
     defaultValue: true, defaultSource: 'documented',
   }),
-  cli('no-cache', 'policy.cache.executionMode', 'MeasurementPolicy', 'execution', {
-    defaultValue: 'disabled', defaultSource: 'documented',
-    errorCode: 'CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED',
-    migration: {
-      migrationKind: 'replace',
-      target: '--execution-cache-mode / --evaluation-cache-mode',
-    },
-  }),
   cli('dry-run', 'orchestration.dryRun', 'Orchestration', 'none', {
     defaultValue: false, defaultSource: 'documented',
   }),
@@ -262,14 +254,6 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
   }),
   config('timeoutMs', 'policy.executionTimeoutMs', 'MeasurementPolicy', 'execution', {
     defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS, defaultSource: 'documented',
-  }),
-  config('noCache', 'policy.cache.executionMode', 'MeasurementPolicy', 'execution', {
-    defaultValue: 'disabled', defaultSource: 'documented',
-    errorCode: 'CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED',
-    migration: {
-      migrationKind: 'replace',
-      target: 'cache.executionMode / cache.evaluationMode',
-    },
   }),
   config('noJudge', 'definition.judges.enabled', 'Definition', 'evaluation', {
     defaultValue: true, defaultSource: 'documented',

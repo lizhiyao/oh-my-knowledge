@@ -100,7 +100,7 @@ cache:
 
 `replay-only` 是 fail-closed 只读路径。coordinate 缺失、source 不可用、entry 损坏或 identity 不匹配都会终止运行，绝不回退为实时 Target 调用。Replay record 沿用原 trial identity、Runtime identity、usage、cost 和 provenance；既不新增 native invocation，也不增加独立 replicate。在 Series 具备显式 effective-independent-sample 模型前，Compile 会拒绝任何非 disabled cache mode 与独立 Series repeat 组合，也会拒绝在同一请求中混用 cache reuse 与 resume。只有 Core prepare 验证 execution 为 deterministic 且 Runtime identity 为 verified 时，才能使用 `transparent-deterministic`。Evaluation `reuse` 与 Execution 独立，并继续绑定完整 evaluation contract，包括 evaluator／model／prompt variant、replicate identity、Gold-facing input、metric 和 evidence policy。
 
-Core contract 为 `--execution-cache-mode`、`--evaluation-cache-mode`、`--execution-cache-source` 和 `--evaluation-cache-source` 预留语义；`eval.yaml` 相应预留 `cache.executionMode`、`cache.evaluationMode`、`cache.executionSource` 和 `cache.evaluationSource`。当前正式 CLI 尚未开放这些显式复用控制。省略 cache 输入或传入 disable-only 的 `--no-cache` 都会规范化为 fresh 双 disabled policy；显式请求 cache enable 会直接失败，不猜测成透明复用。
+当前产品 CLI 的 Execution 与 Evaluation cache 均固定为 disabled，既有续跑契约不变。Core 与 Runtime 保留各自独立的缓存契约；产品入口尚未通过 CLI 参数或 eval 配置开放缓存复用。
 
 ## 五、确定性与校验
 
@@ -116,7 +116,7 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 
 当前边界输出 `omk.cli-evaluation-request/v3`、`omk.resolved-cli-evaluation-input/v6`、`omk.resolved-host-resources/v3` 与 `omk.runtime-binding-request/v5`。Request v3、resolved input v6 和 binding request v5 会把 `eval.yaml` 中可选的宿主声明 judge deployment revision 传入 evaluator Runtime qualification。更早的 request 结构不会被接受。
 
-disable-only 的 `--no-cache`／`noCache` 没有忠实的 Core cache-enable 等价语义：已删除实现中的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。当前 Registry 只规范化 disabled 状态，并把显式 cache reuse 留给未来单独设计的接口；旧 cache 文件不会被读取。
+`--no-cache` 与配置字段 `noCache` 已移除，因为它们已不改变产品行为。请从命令和 `eval.yaml` 中删除，无需替代选项。Core 缓存契约和当前测量 policy digest 保持不变，旧 cache 文件不会被读取。
 
 ## 七、完整输入 registry
 
@@ -147,7 +147,6 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | CLI | `--layered-stats` | `presentation.layeredView` | 300 | `false` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--mcp-config` | `resources.mcpConfigLocator` | 300 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--no-cache` | `policy.cache.executionMode` | 300 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → --execution-cache-mode / --evaluation-cache-mode |
 | CLI | `--no-debias-length` | `definition.judges.lengthDebias` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-diagnostic` | `orchestration.diagnostic` | 300 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-evidence` | `orchestration.managedEvidence` | 300 | `"append"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
@@ -199,7 +198,6 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | eval.yaml | `lengthDebias` | `definition.judges.lengthDebias` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `mcpConfig` | `resources.mcpConfigLocator` | 200 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `model` | `definition.targetRuntime.model` | 200 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| eval.yaml | `noCache` | `policy.cache.executionMode` | 200 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → cache.executionMode / cache.evaluationMode |
 | eval.yaml | `noDiagnostic` | `orchestration.diagnostic` | 200 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `noJudge` | `definition.judges.enabled` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `repeat` | `orchestration.independentSeries.repeatCount` | 200 | `1` (documented) | Orchestration | run | — | `CLI_INPUT_INVALID`<br>retain |

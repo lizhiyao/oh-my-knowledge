@@ -7,7 +7,7 @@
 export OPENAI_API_KEY="your Zhipu API key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk eval --executor openai-api --model glm-4-plus \
-  --judge-models openai-api:glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus
 
 # Qwen (Alibaba)
 export OPENAI_API_KEY="your Qwen API key"

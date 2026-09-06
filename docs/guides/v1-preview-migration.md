@@ -52,6 +52,8 @@ Runs that previously measured a real URL as literal text are not directly compar
 
 ## 4. Update CLI automation
 
+Remove `--no-cache` from commands and `noCache` from `eval.yaml`. Product evaluations already disable Execution and Evaluation caches; the removed options have no replacement. The existing `--resume` contract is unchanged. Old config fields are rejected with a removal hint.
+
 - `omk init` still creates three low-cost starter cases. Use `omk init --samples 20` for the larger first-party starter set; review or replace it before treating it as release evidence.
 - `omk init` no longer overwrites scaffold files unless `--force` is explicit.
 - `omk eval --resume` accepts a Core `runId`, not a report path.

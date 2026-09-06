@@ -44,7 +44,6 @@ const equivalentConfig: EvalConfig = {
   ],
   concurrency: 2,
   timeoutMs: 90_000,
-  noCache: true,
   noJudge: false,
   mcpConfig: 'mcp.json',
   variants: [
@@ -132,7 +131,6 @@ describe('parseCliEvaluationRequest', () => {
         'judge-models': 'anthropic-api:judge-a,openai-api:judge-b',
         concurrency: '2',
         timeout: '90',
-        'no-cache': true,
         'mcp-config': 'mcp.json',
         'budget-usd': '10',
         'budget-per-sample-usd': '1',
@@ -246,7 +244,6 @@ describe('parseCliEvaluationRequest', () => {
     ['fractional bootstrap samples', { bootstrapSamples: 100.5 }, 'bootstrapSamples'],
     ['non-finite budget', { budget: { totalUSD: Number.NaN } }, 'budget.totalUSD'],
     ['zero duration budget', { budget: { perSampleMs: 0 } }, 'budget.perSampleMs'],
-    ['non-boolean legacy cache toggle', { noCache: 'false' as unknown as boolean }, 'noCache'],
   ])('rejects invalid syntax-normalized eval config values: %s', (_name, override, fieldPath) => {
     expect(() => parseCliEvaluationRequest({
       explicitCliFlags: {},
@@ -399,36 +396,28 @@ describe('parseCliEvaluationRequest', () => {
     })).toThrowError(expect.objectContaining({ code: 'CLI_INPUT_INVALID', fieldPath }));
   });
 
-  it('accepts legacy disable-only input without inferring a cache-enabled mode', () => {
+  it('uses fresh disabled cache policy without a cache toggle', () => {
     const request = parseCliEvaluationRequest({
-      explicitCliFlags: {
-        control: 'control', treatment: 'treatment', 'no-cache': true,
-      },
-      defaults,
+      explicitCliFlags: { control: 'control', treatment: 'treatment' }, defaults,
     });
-
     expect(request.values.measurement.cache).toEqual({
-      executionMode: 'disabled',
-      evaluationMode: 'disabled',
+      executionMode: 'disabled', evaluationMode: 'disabled',
     });
     expect(request.fieldSources).toContainEqual({
       normalizedField: 'values.measurement.cache.executionMode',
-      sourceKind: 'cli-flag',
-      sourceKey: 'no-cache',
+      sourceKind: 'documented-default',
+      sourceKey: 'values.measurement.cache.executionMode',
+      defaultSource: 'documented',
     });
   });
 
-  it.each([
-    ['CLI', { explicitCliFlags: {
-      control: 'control', treatment: 'treatment', 'no-cache': false,
-    } }],
-    ['eval.yaml', { explicitCliFlags: {}, evalConfig: {
-      ...equivalentConfig, noCache: false,
-    } }],
-  ] as const)('rejects legacy cache enablement from %s', (_label, input) => {
-    expect(() => parseCliEvaluationRequest({ ...input, defaults }))
-      .toThrowError(expect.objectContaining({
-        code: 'CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED',
-      }));
+  it.each([true, false])('rejects removed cache toggles with value %s', (value) => {
+    for (const input of [
+      { explicitCliFlags: { 'no-cache': value } },
+      { explicitCliFlags: {}, evalConfig: { ...equivalentConfig, noCache: value } },
+    ]) {
+      expect(() => parseCliEvaluationRequest({ ...input, defaults }))
+        .toThrowError(expect.objectContaining({ code: 'CLI_INPUT_INVALID' }));
+    }
   });
 });

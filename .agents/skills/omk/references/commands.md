@@ -95,7 +95,6 @@ omk eval [flags]
 - `--layered-stats` `boolean`:输出分层统计
 - `--mcp-config` `option`:MCP 配置文件路径
 - `--model` `option`:被测模型
-- `--no-cache` `boolean`:跳过 executor cache
 - `--no-debias-length` `boolean`:关 length-debias（默认开）
 - `--no-diagnostic` `boolean`:关闭基于 Core 失败、缺失、排除与稳定 reason code 的诊断投影。
 - `--no-evidence` `boolean`:不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。

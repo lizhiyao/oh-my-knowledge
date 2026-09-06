@@ -495,7 +495,7 @@ variants:
   });
 
   it('reuses inherited host connectivity without extra model calls', async () => {
-    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\n`);
+    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nbootstrap: false\n`);
     assert.equal(result.kind, 'success', result.text);
     assert.equal(result.created, 1);
     assert.ok(result.artifactFiles.some((file) => file.endsWith('manifest.json')));
@@ -507,25 +507,25 @@ variants:
   });
 
   it('reuses inherited connectivity for the default same-model DSH judge', async () => {
-    const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\n`);
+    const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nbootstrap: false\n`);
     assert.equal(result.kind, 'success', result.text);
     assert.deepEqual(result.models, ['configured-model']);
   });
 
   it('does not invoke an explicitly configured judge when the sample has no LLM-scored layer', async () => {
-    const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unproven-judge\n`);
+    const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unproven-judge\n`);
     assert.equal(result.kind, 'success', result.text);
     assert.deepEqual(result.models, ['configured-model']);
   });
 
   it('ignores unused judge models when noJudge is enabled', async () => {
-    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unused-judge\n`);
+    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unused-judge\n`);
     assert.equal(result.kind, 'success', result.text);
     assert.deepEqual(result.models, ['configured-model']);
   });
 
   it('fails closed on gold loading failures instead of silently ignoring goldDir', async () => {
-    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\ngoldDir: ./missing-gold\n`);
+    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nbootstrap: false\ngoldDir: ./missing-gold\n`);
     assert.equal(result.kind, 'error');
     assert.match(result.text ?? '', /无法读取可选宿主资源/);
     assert.equal(result.created, 0);

@@ -250,7 +250,6 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --layered-stats                 Emit layered stats
   --mcp-config <value>            MCP config path
   --model <value>                 Evaluated model
-  --no-cache                      Skip executor cache
   --no-debias-length              Disable length-debias (default on)
   --no-diagnostic                 Disable the diagnostic projection over Core failures, missing evidence, exclusions, and stable reason codes.
   --no-evidence                   Do not append this run as evidence to managed records (auto-written for installed skills by default).
