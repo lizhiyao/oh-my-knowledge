@@ -74,13 +74,13 @@ interface ApplicationHost {
   readonly environment?: NodeJS.ProcessEnv;
   readonly implementationIds?: readonly string[];
   readonly idPrefix?: string;
-  readonly globalFallback: boolean;
+  readonly globalFallbackDirectory?: string;
   compose(input: CompositionInput): EvaluationRuntimeComposition | Promise<EvaluationRuntimeComposition>;
 }
 
-function runStore(outputDirectory: string, contentResolver: EvaluationRuntimeComposition['contentResolver'], fallback: boolean): CoreRunArtifactStore {
+function runStore(outputDirectory: string, contentResolver: EvaluationRuntimeComposition['contentResolver'], projectRoot: string, fallbackDirectory?: string): CoreRunArtifactStore {
   const primary = createNodeCoreRunArtifactStore(outputDirectory, { contentResolver });
-  const fallbackDirs = fallback && resolve(outputDirectory) === resolve(projectLayout().evalDir) ? [globalLayout().evalDir] : [];
+  const fallbackDirs = fallbackDirectory !== undefined && resolve(outputDirectory) === resolve(projectLayout(projectRoot).evalDir) ? [fallbackDirectory] : [];
   const unique = [...new Set(fallbackDirs.map((dir) => resolve(dir)))].filter((dir) => dir !== resolve(outputDirectory));
   return unique.length === 0 ? primary : createOverlayCoreRunArtifactStore(primary, unique.map((dir) => createNodeCoreRunArtifactStore(dir, { contentResolver: createNodeCoreContentStore(join(dir, 'content')) })));
 }
@@ -118,7 +118,7 @@ function createApplication(host: ApplicationHost): EvaluationApplication {
         if (child.outcomeKind !== 'run') throw new Error('Core Batch child 缺少持久化产物。');
         return child.artifacts;
       });
-      const store = input.store ?? runStore(outputDirectory, createNodeCoreContentStore(join(outputDirectory, 'content')), host.globalFallback);
+      const store = input.store ?? runStore(outputDirectory, createNodeCoreContentStore(join(outputDirectory, 'content')), projectRoot, host.globalFallbackDirectory);
       const batch = await createNodeCoreBatchArtifactStore(outputDirectory, store).save({ batchId: generateRunId(['batch']), createdAt: new Date().toISOString(), children: artifacts.map((child, index) => ({ itemId: entries[index]!.name, runId: child.manifest.runId })) });
       return { outcomeKind: 'batch', outputDirectory, outcome: projectCoreCliBatchOutcome({ batch, children: artifacts, exitMode: request.values.presentation.exitMode, diagnosticMode: request.values.orchestration.diagnostic === 'enabled-outside-core' ? 'enabled' : 'disabled' }) };
     }
@@ -131,7 +131,7 @@ function createApplication(host: ApplicationHost): EvaluationApplication {
     });
     const compiled = compileCliEvaluationInput(resolved);
     const composition = await host.compose({ compiled, projectRoot, outputDirectory, resourceLeaseRoot: input.resourceLeaseRoot });
-    const store = input.store ?? runStore(outputDirectory, composition.contentResolver, host.globalFallback);
+    const store = input.store ?? runStore(outputDirectory, composition.contentResolver, projectRoot, host.globalFallbackDirectory);
     const result = await executeProductEvaluation({ host: { compiled, ...composition, artifactStore: store }, request, signal: input.signal, createProgressSink: input.createProgressSink, idPrefix: host.idPrefix });
     if (result.outcomeKind !== 'dry-run') {
       const artifacts = result.outcomeKind === 'run' ? [result.artifacts] : result.artifacts;
@@ -155,7 +155,7 @@ function createApplication(host: ApplicationHost): EvaluationApplication {
 }
 
 export function createNodeEvaluationApplication(capabilities: NodeEvaluationEnvironment): EvaluationApplication {
-  return createApplication({ environment: capabilities.environment, globalFallback: true, compose: (input) => createNodeProductionComposition({ ...input, capabilities }) });
+  return createApplication({ environment: capabilities.environment, globalFallbackDirectory: globalLayout(capabilities.environment.OMK_HOME).evalDir, compose: (input) => createNodeProductionComposition({ ...input, capabilities }) });
 }
 
 export interface HostedEvaluationCapabilities {
@@ -169,7 +169,7 @@ export interface HostedEvaluationCapabilities {
 
 export function createHostedEvaluationApplication(capabilities: HostedEvaluationCapabilities): EvaluationApplication {
   return createApplication({
-    environment: capabilities.environment, implementationIds: [capabilities.implementationId], idPrefix: capabilities.idPrefix, globalFallback: false,
+    environment: capabilities.environment, implementationIds: [capabilities.implementationId], idPrefix: capabilities.idPrefix,
     compose(input) {
       const preflightDeclarations = createNodeHostPreflightDeclarations(input.compiled, capabilities.environment, input.projectRoot);
       return createRegisteredEvaluationComposition({

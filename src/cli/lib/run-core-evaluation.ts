@@ -11,7 +11,7 @@ import {
 } from '../../eval-workflows/hosts/application.js';
 import { captureNodeCliEvaluationEnvironment } from './evaluation-composition.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
-import { projectReportsDir, globalReportsDir } from '../../evidence/storage/directories.js';
+import { projectReportsDir } from '../../evidence/storage/directories.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';
@@ -35,7 +35,7 @@ export interface RunCoreEvaluationCommandResult {
   readonly outputDirectory: string;
 }
 
-function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string): CliEvaluationRequest {
+function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string, globalOutputDirectory: string): CliEvaluationRequest {
   const projectMcpConfig = join(projectRoot, '.mcp.json');
   return parseCliEvaluationRequest({
     explicitCliFlags: input.flags,
@@ -57,8 +57,8 @@ function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string): 
           : { deploymentRevision: judge.deploymentRevision }),
       })),
       presentation: {
-        projectOutputDirectoryLocator: projectReportsDir(),
-        globalOutputDirectoryLocator: globalReportsDir(),
+        projectOutputDirectoryLocator: projectReportsDir(projectRoot),
+        globalOutputDirectoryLocator: globalOutputDirectory,
         language: input.lang,
         languageDefaultSource: 'environment-selection',
       },
@@ -143,16 +143,17 @@ function renderNotice(notice: EvaluationNotice, lang: CliLang): void {
 
 export async function runCoreEvaluationCommand(input: Readonly<RunCoreEvaluationCommandInput>): Promise<RunCoreEvaluationCommandResult> {
   const projectRoot = resolve(input.projectRoot ?? process.cwd());
-  const machineLayout = globalLayout(input.environment?.OMK_HOME);
-  const application = createNodeEvaluationApplication(captureNodeCliEvaluationEnvironment(input.environment));
+  const environment = captureNodeCliEvaluationEnvironment(input.environment);
+  const machineLayout = globalLayout(environment.environment.OMK_HOME);
+  const application = createNodeEvaluationApplication(environment);
   try {
     const result = await application.run({
-      request: requestFor(input, projectRoot), projectRoot,
+      request: requestFor(input, projectRoot, machineLayout.evalDir), projectRoot,
       materializationRoot: machineLayout.resolvedInputsDir, resourceLeaseRoot: machineLayout.resourceLeasesDir,
       store: input.store,
       createProgressSink: () => emitProgress(input.lang),
       onNotice: (notice) => renderNotice(notice, input.lang),
-      requestForBatchItem: (entry) => requestFor({ ...input, flags: { ...input.flags, batch: undefined, control: 'baseline', treatment: entry.skillPath, samples: entry.samplesPath, 'no-serve': true } }, projectRoot),
+      requestForBatchItem: (entry) => requestFor({ ...input, flags: { ...input.flags, batch: undefined, control: 'baseline', treatment: entry.skillPath, samples: entry.samplesPath, 'no-serve': true } }, projectRoot, machineLayout.evalDir),
       async onCompleted(completed, request) {
         if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve, input.lang);
         if (completed.outcomeKind === 'series') process.stderr.write(input.lang === 'zh'
