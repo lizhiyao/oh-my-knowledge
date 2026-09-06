@@ -32,7 +32,6 @@ export const EVAL_CONFIG_SCHEMA_SOURCE_PATHS = [
   'judgeModels[].deploymentRevision',
   'concurrency',
   'timeoutMs',
-  'noCache',
   'noJudge',
   'mcpConfig',
   'variants',
@@ -110,6 +109,9 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     throw new Error(`${configPath}: top level must be an object`);
   }
   const obj = parsed as Record<string, unknown>;
+  if (Object.hasOwn(obj, 'noCache')) {
+    throw new Error(`${configPath}: noCache 已移除。当前产品评测已禁用执行与评分缓存，请删除该字段。`);
+  }
 
   if (typeof obj.samples !== 'string' || !obj.samples) {
     throw new Error(`${configPath}: 'samples' is required and must be a string`);
@@ -231,7 +233,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       `${configPath}: \`blind\` (judge blind mode) was removed — delete it from your eval.yaml; reports are no longer blinded.`,
     );
   }
-  assertBoolOpt('noCache');
   assertBoolOpt('noJudge');
   assertStringOpt('mcpConfig');
   assertStringOpt('goldDir');
@@ -449,7 +450,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     judgeModels: judgeModelsParsed,
     concurrency: obj.concurrency as number | undefined,
     timeoutMs: obj.timeoutMs as number | undefined,
-    noCache: obj.noCache as boolean | undefined,
     noJudge: obj.noJudge as boolean | undefined,
     mcpConfig: obj.mcpConfig as string | undefined,
     variants,

@@ -7,7 +7,7 @@
 export OPENAI_API_KEY="你的智谱 API Key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk eval --executor openai-api --model glm-4-plus \
-  --judge-models openai-api:glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus
 
 # 通义千问
 export OPENAI_API_KEY="你的通义 API Key"

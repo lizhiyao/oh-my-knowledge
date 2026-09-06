@@ -316,9 +316,6 @@ export default class Eval extends BaseCommand {
     'no-judge': Flags.boolean({
       description: bilingual({ zh: '跳过 LLM 评委', en: 'Skip LLM judge' }),
     }),
-    'no-cache': Flags.boolean({
-      description: bilingual({ zh: '跳过 executor cache', en: 'Skip executor cache' }),
-    }),
     'dry-run': Flags.boolean({
       description: bilingual({ zh: '只 plan 不实跑', en: 'Plan only, no real exec' }),
     }),

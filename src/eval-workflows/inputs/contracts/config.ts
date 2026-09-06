@@ -52,7 +52,6 @@ export interface EvalConfig {
   judgeModels?: JudgeConfig[];
   concurrency?: number;
   timeoutMs?: number;
-  noCache?: boolean;
   noJudge?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];

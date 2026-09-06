@@ -100,7 +100,7 @@ cache:
 
 `replay-only` is a fail-closed read path. A missing, unavailable, corrupt, or identity-mismatched coordinate terminates the run and never falls back to a live Target call. Replayed records retain the original trial identity, Runtime identity, usage, cost, and provenance; they add neither a native invocation nor an independent replicate. Until Series has an explicit effective-independent-sample model, compilation rejects every non-disabled cache mode together with an independent Series repeat. It also rejects mixing cache reuse with resume in one request. `transparent-deterministic` is available only when Core prepare verifies deterministic execution and a verified Runtime identity. Evaluation `reuse` is independent and remains bound to the complete evaluation contract, including evaluator/model/prompt variant, replicate identity, Gold-facing inputs, metrics, and evidence policy.
 
-The Core contract reserves `--execution-cache-mode`, `--evaluation-cache-mode`, `--execution-cache-source`, and `--evaluation-cache-source`; `eval.yaml` reserves `cache.executionMode`, `cache.evaluationMode`, `cache.executionSource`, and `cache.evaluationSource`. These explicit reuse controls are not exposed by the current production CLI. Production runs normalize omitted cache input and the disable-only `--no-cache` input to a fresh, double-disabled policy. An explicit cache-enable request fails instead of being guessed as transparent reuse.
+The current product CLI disables both Execution and Evaluation cache. The existing resume contract is unchanged. Core and Runtime retain their independent cache contracts; product cache reuse is not exposed through CLI flags or eval config.
 
 ## 5. Determinism and validation
 
@@ -116,7 +116,7 @@ This layer is the production boundary. `omk eval` consumes its contracts through
 
 The current boundary emits `omk.cli-evaluation-request/v3`, `omk.resolved-cli-evaluation-input/v6`, `omk.resolved-host-resources/v3`, and `omk.runtime-binding-request/v5`. Request v3, resolved input v6, and binding request v5 carry the optional host-declared judge deployment revision from `eval.yaml` into evaluator Runtime qualification. Earlier request shapes are not accepted.
 
-The disable-only `--no-cache`／`noCache` surface has no faithful Core cache-enable equivalent: the removed implementation used stochastic read-through execution reuse and expressed nothing about Evaluation cache. The current registry therefore normalizes only the disabled state and marks explicit cache reuse for a future, separately designed interface. Old cache files are not read.
+`--no-cache` and the `noCache` config field have been removed because they no longer changed product behavior. Remove them from commands and `eval.yaml`; no replacement option is needed. Existing Core cache contracts and current measurement policy digests remain unchanged. Old cache files are not read.
 
 ## 7. Exhaustive input registry
 
@@ -147,7 +147,6 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | CLI | `--layered-stats` | `presentation.layeredView` | 300 | `false` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--mcp-config` | `resources.mcpConfigLocator` | 300 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--no-cache` | `policy.cache.executionMode` | 300 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → --execution-cache-mode / --evaluation-cache-mode |
 | CLI | `--no-debias-length` | `definition.judges.lengthDebias` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-diagnostic` | `orchestration.diagnostic` | 300 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-evidence` | `orchestration.managedEvidence` | 300 | `"append"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
@@ -199,7 +198,6 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | eval.yaml | `lengthDebias` | `definition.judges.lengthDebias` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `mcpConfig` | `resources.mcpConfigLocator` | 200 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `model` | `definition.targetRuntime.model` | 200 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| eval.yaml | `noCache` | `policy.cache.executionMode` | 200 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → cache.executionMode / cache.evaluationMode |
 | eval.yaml | `noDiagnostic` | `orchestration.diagnostic` | 200 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `noJudge` | `definition.judges.enabled` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `repeat` | `orchestration.independentSeries.repeatCount` | 200 | `1` (documented) | Orchestration | run | — | `CLI_INPUT_INVALID`<br>retain |

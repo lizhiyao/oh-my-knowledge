@@ -94,7 +94,6 @@ export interface EvalFlags {
   // boolean 的三态区分 CLI 没传 vs 显式开关 vs 走 eval.yaml fallback;不能简化
   // 成 `boolean`,会让维护者直接读 flags.X 时悄悄覆盖 config fallback。
   'no-judge'?: boolean;
-  'no-cache'?: boolean;
   'dry-run'?: boolean;
   concurrency?: string;
   timeout?: string;

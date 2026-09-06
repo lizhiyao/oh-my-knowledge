@@ -107,7 +107,6 @@ describe('public examples catalog', () => {
         '--no-judge',
         '--no-diagnostic',
         '--no-serve',
-        '--no-cache',
         '--bootstrap-samples', '100',
         '--output-dir', outputDirectory,
         '--report-only',

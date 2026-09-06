@@ -32,6 +32,12 @@ function assertYamlThrows(content: string, expected: RegExp, message: string): v
 }
 
 describe('loadEvalConfig', () => {
+  it.each([true, false])('rejects removed noCache config value %s with an actionable message', (value) => {
+    withYaml(`noCache: ${value}`, (path) => {
+      assert.throws(() => loadEvalConfig(path), /noCache 已移除.*请删除该字段/);
+    });
+  });
+
   it('parses a valid yaml config with control + treatment variants', () => {
     const dir = makeTmpDir();
     try {

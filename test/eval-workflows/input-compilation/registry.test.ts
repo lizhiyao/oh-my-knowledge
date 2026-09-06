@@ -42,7 +42,6 @@ describe('CLI evaluation input registry', () => {
       .filter((entry) => entry.sourceKind === 'cli-flag')
       .map((entry) => [entry.sourceKey, entry.defaultValue]));
     expect(defaults.get('no-judge')).toBe(true);
-    expect(defaults.get('no-cache')).toBe('disabled');
     expect(defaults.get('no-serve')).toBe(true);
     expect(defaults.get('no-debias-length')).toBe(true);
     expect(defaults.get('no-diagnostic')).toBe('enabled-outside-core');
@@ -73,29 +72,4 @@ describe('CLI evaluation input registry', () => {
     expect(language).toMatchObject({ defaultValue: 'zh', defaultSource: 'environment-selection' });
   });
 
-  it('marks the legacy cache boolean for replacement by independent modes', () => {
-    const cli = CLI_EVALUATION_INPUT_REGISTRY.find((entry) => (
-      entry.sourceKind === 'cli-flag' && entry.sourceKey === 'no-cache'
-    ));
-    const config = CLI_EVALUATION_INPUT_REGISTRY.find((entry) => (
-      entry.sourceKind === 'eval-config' && entry.sourceKey === 'noCache'
-    ));
-
-    expect(cli).toMatchObject({
-      normalizedField: 'policy.cache.executionMode',
-      defaultValue: 'disabled',
-      migration: {
-        migrationKind: 'replace',
-        target: '--execution-cache-mode / --evaluation-cache-mode',
-      },
-    });
-    expect(config).toMatchObject({
-      normalizedField: 'policy.cache.executionMode',
-      defaultValue: 'disabled',
-      migration: {
-        migrationKind: 'replace',
-        target: 'cache.executionMode / cache.evaluationMode',
-      },
-    });
-  });
 });
