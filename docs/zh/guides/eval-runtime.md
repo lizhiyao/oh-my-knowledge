@@ -672,6 +672,88 @@ const result = await evaluate({
 
 Ranking 必须是由不重复、非空字符串 ID 组成的有序数组，可来自 `output` 或 `trace`；relevant ID 始终来自 `expected`，不会传给 Executor。该预设先按 `cutoff` 截断，再以 `hits / known relevant` 计算 Recall、以 `hits / cutoff` 计算 Precision、以首个 relevant 文档的名次计算 Reciprocal Rank，并使用 binary gain 与 log2 discount 计算 nDCG。空返回 ranking 是合法的零分；重复或非法 ID、空 relevant 集合会产出 invalid evidence。Reciprocal Rank 的 mean summary 才是 MRR，不要把单个 sample 的观测称为 MRR。
 
+<a id="retrieval-abstention"></a>
+
+## 召回与空返回混合评测
+
+要同时回答「有方案时找得对吗」「没方案时能正确空返回吗」「是否推荐了明确不可用的方案」，从单文件 `examples/eval-runtime/retrieval-abstention.mjs` 开始。OMK 内置召回与弃答评分；文件中的数据准备和禁用 ID 检查是可修改的业务示例，不需要自己重写弃答评分器。
+
+### 1．先跑通示例
+
+使用 Node.js 22 或更高版本，在包含该示例的源码检出目录运行：
+
+```bash
+yarn install --immutable
+yarn build
+node examples/eval-runtime/retrieval-abstention.mjs
+```
+
+示例使用合成数据，不需要 API Key 或业务服务。独立项目只需复制这一个 `.mjs` 文件，安装包含 `AbstentionEvaluator` 的 OMK 版本及示例直接使用的 Zod：
+
+```bash
+npm install oh-my-knowledge zod
+node retrieval-abstention.mjs
+```
+
+如果功能尚未随 npm 版本发布，先使用上面的源码运行方式；复制新示例配合旧版安装包不会获得新增能力。
+
+### 2．替换 `source` 数据
+
+保持每个 `sampleId` 唯一。下面是一条已确认没有适用方案的样本：
+
+```js
+{
+  sampleId: 'no-solution-001',
+  input: { query: '这个问题没有适用的现有方案' },
+  expected: {
+    shouldAbstain: true,
+    acceptableSolutionIds: [],
+    forbiddenSolutionIds: ['solution-wrong'],
+  },
+  quality: { reviewStatus: 'reviewed' },
+}
+```
+
+| 样本情况 | 填写方式 |
+|---|---|
+| 有适用方案 | `shouldAbstain: false`，`acceptableSolutionIds` 非空。 |
+| 没有适用方案 | `shouldAbstain: true`，`acceptableSolutionIds: []`。 |
+| 尚未确认答案 | `shouldAbstain: null`，或 `reviewStatus: 'pending_human_annotation'`；即使已有 AI 初始标签，也按待标注处理。 |
+| 已知不可用方案 | 写入 `forbiddenSolutionIds`；为空时不参与禁用命中统计。 |
+
+`prepareRecommendationDataset()` 默认遇到待标注就报错；演示代码显式使用 `pendingPolicy: 'exclude'`，运行结果的 `audit.excluded` 会列出排除对象和原因。正式评测可删除这个选项以恢复默认阻止行为，同时把 `sourceRevision` 改为真实数据版本。
+
+`query` 是示例字段，不是 OMK 的固定要求。若业务数据使用 `input.prompt`，可以先映射成 `query`；也可同步修改示例的 `Row`、Executor input schema 和调用代码。期望答案、禁用标签和审核状态留在评测侧，不放入发给被测系统的 `input`。
+
+### 3．替换 `executor.execute()`
+
+在该函数中调用自己的检索服务，并把经过应用过滤后的**最终有序方案 ID 列表**映射为以下返回值：
+
+| 执行结果 | 返回形式 |
+|---|---|
+| 成功推荐方案 | `return { output: { solutionIds: ['solution-a', 'solution-b'] } };` |
+| 成功执行，但没有推荐方案 | `return { output: { solutionIds: [] } };` |
+| 调用失败 | 抛出异常，或 `return { errorCode: 'recommendation-request-failed' };`；不能伪装成成功空返回。 |
+
+向业务调用传递收到的 `signal`，并如实更新 Executor 的 `version`、`fingerprintFacets` 和 `capabilities`。示例的 `deterministic` 只描述合成检索器；当前 `solo` 配置要求被测系统确定性执行，或实际支持并消费 OMK 传入的 `seed`。无 seed 支持的随机服务不能通过照抄 `deterministic` 声明接入；需要选择支持无控随机性的测量设计，参见[公开采样契约](../reference/eval-runtime-api.md)。
+
+按示例输出 `solutionIds` 时，`evaluators` 和 `analyses` 可直接使用。需要改为其它输出结构时，同步修改 output schema 和各评分器的绑定；JSON Pointer `/solutionIds` 表示读取输出对象的 `solutionIds` 字段。默认召回和禁用检查都取 top-3；调整范围时分别修改 retrieval 的 `cutoff`、`forbiddenIdEvaluator(3)` 的参数及相应指标名称。保留 `analyses` 中的 cohort 过滤，使各项失败覆盖数仍对应自己的适用样本群。
+
+### 4．解读输出
+
+原样运行示例，应排除 1 条待标注样本，并成功执行剩余 2 条。`metrics` 中的预期结果如下：
+
+| 指标 | 含义 | 示例值／有效分母 |
+|---|---|---|
+| `recall-at-3` | 正向样本的已知正确方案召回比例，越高越好。 | `1`／`1` |
+| `precision-at-3` | 前三项中正确方案数除以 3，越高越好。只返回 1 个正确方案仍为三分之一。 | `0.333…`／`1` |
+| `rr-at-3`、`ndcg-at-3` | 首个正确方案的位置、排序质量，越高越好。`rr-at-3` 的均值即 MRR。 | 均为 `1`／`1` |
+| `correct-abstention` | 应空返回样本的成功、合法响应中，空列表的比例，越高越好。 | `1`／`1` |
+| `false-abstention` | 应返回方案样本的成功、合法响应中，空列表的比例，越低越好。 | `0`／`1` |
+| `forbidden-hit` | 有禁用标注且响应成功、合法的样本中，前三项命中禁用 ID 的比例，越低越好。 | `0`／`2` |
+
+每项先看 `status` 和 `coverage`：`planned` 是对应样本群的计划数，`included` 是实际参与计算的分母；`sourceUnavailable` 可能来自执行失败或缺失输出，`invalid` 表示非法证据。没有有效观测时 `value` 为 `null`，不是零分。再看 `executionCoverage` 的整体执行情况；有效响应上的百分之百不代表全部请求都成功。完整协议与限制见[内置弃答参考](../reference/eval-runtime-api.md#内置弃答与混合召回评测)。
+
 ## 工具轨迹评测
 
 需要对 source-neutral Agent 工具调用提出确定性预期时，使用 `ToolTrajectoryEvaluator`。Executor trace 必须满足 `omk.source-neutral-trace/v2`；provider adapter 应先把原生 event 归一化，再返回给 Runtime：

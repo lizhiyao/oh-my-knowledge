@@ -17,7 +17,7 @@ node examples/eval-runtime/run.mjs
 
 命令会输出一行 JSON，其中 `runStatus` 为 `"completed"`，treatment 改进估计值为 `0.6666666666666666`，Decision 已完成，并包含 report ID。
 
-在独立服务中使用时，先运行 `npm install oh-my-knowledge`，再复制 `run.mjs`，并用服务的 Target 调用替换确定性的 `executor` 函数体。凭证、租户鉴权、队列与存储仍由宿主持有。
+在独立服务中使用时，先运行 `npm install oh-my-knowledge zod`，再复制 `run.mjs`，并用服务的 Target 调用替换确定性的 `executor` 函数体。凭证、租户鉴权、队列与存储仍由宿主持有。
 
 ## 证据边界
 
@@ -25,4 +25,13 @@ node examples/eval-runtime/run.mjs
 
 ## 混合召回与弃答
 
-构建后运行 `node examples/eval-runtime/retrieval-abstention.mjs`，组合内置召回、内置弃答与独立禁用 ID 评分。数据集选择和标注审核由宿主负责。独立使用时复制 `retrieval-abstention.mjs` 单个文件并安装 OMK。
+这个单文件示例同时评估正确召回、正确空返回、误弃答和禁用 ID 命中，无需外部凭证。
+
+```bash
+yarn build
+node examples/eval-runtime/retrieval-abstention.mjs
+```
+
+原样运行会排除 1 条待标注样本，执行 2 条已标注样本；正确弃答为 `1`，误弃答与禁用命中为 `0`。独立项目复制 `retrieval-abstention.mjs`，并安装包含该能力的 OMK 版本与 Zod。尚未发版的能力先使用对应源码检出运行。
+
+接入自己的系统时，先替换 `source`，再修改 `executor.execute()`，最后核对各项 `coverage`。完整的数据规则、返回格式、能力声明和结果解释见[四步使用指南](../../docs/zh/guides/eval-runtime.md#retrieval-abstention)。

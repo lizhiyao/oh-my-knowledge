@@ -675,6 +675,88 @@ const result = await evaluate({
 
 The ranking must be an ordered array of unique, non-empty string IDs. It can come from `output` or `trace`; relevant IDs always come from `expected`, so they are never passed to the Executor. The preset truncates to `cutoff`, uses `hits / known relevant` for Recall, `hits / cutoff` for Precision, the first relevant rank for Reciprocal Rank, and binary log2-discounted nDCG. An empty returned ranking is a valid zero score. Duplicate or malformed IDs and an empty relevant set are invalid evidence. A mean summary of Reciprocal Rank is MRR; do not label each sample observation as MRR.
 
+<a id="retrieval-abstention"></a>
+
+## Mixed retrieval and empty-result evaluation
+
+To assess correct retrieval, appropriate empty results, and explicitly forbidden recommendations together, start with the single file `examples/eval-runtime/retrieval-abstention.mjs`. OMK provides the retrieval and abstention scorers. Dataset preparation and forbidden-ID checks are editable business examples; you do not need to implement the abstention scorer yourself.
+
+### 1. Run the example first
+
+Use Node.js 22 or newer. From a source checkout containing the example, run:
+
+```bash
+yarn install --immutable
+yarn build
+node examples/eval-runtime/retrieval-abstention.mjs
+```
+
+The synthetic example needs no API key or business service. In a separate project, copy this one `.mjs` file and install an OMK version containing `AbstentionEvaluator`, plus Zod, which the example imports directly:
+
+```bash
+npm install oh-my-knowledge zod
+node retrieval-abstention.mjs
+```
+
+If the feature has not yet shipped to npm, use the source-checkout instructions above. Copying a new example alongside an older installed package does not add the new capability.
+
+### 2. Replace the `source` data
+
+Keep every `sampleId` unique. This sample has been reviewed and has no applicable solution:
+
+```js
+{
+  sampleId: 'no-solution-001',
+  input: { query: 'No existing solution applies to this problem' },
+  expected: {
+    shouldAbstain: true,
+    acceptableSolutionIds: [],
+    forbiddenSolutionIds: ['solution-wrong'],
+  },
+  quality: { reviewStatus: 'reviewed' },
+}
+```
+
+| Situation | Fields |
+|---|---|
+| An applicable solution exists | `shouldAbstain: false`, with nonempty `acceptableSolutionIds`. |
+| No applicable solution exists | `shouldAbstain: true`, with `acceptableSolutionIds: []`. |
+| The answer has not been confirmed | `shouldAbstain: null` or `reviewStatus: 'pending_human_annotation'`; AI-generated initial labels do not make it reviewed. |
+| Explicitly unusable solutions are known | Put them in `forbiddenSolutionIds`; an empty list excludes the sample from forbidden-hit analysis. |
+
+`prepareRecommendationDataset()` rejects pending samples by default. The demo explicitly sets `pendingPolicy: 'exclude'`, and `audit.excluded` lists excluded samples and reasons. Remove that option to restore rejection for a formal evaluation, and set `sourceRevision` to the actual dataset revision.
+
+`query` is an example field, not an OMK requirement. If your data uses `input.prompt`, map it to `query`, or update the example's `Row`, Executor input schema, and invocation together. Keep expected answers, forbidden labels, and review status on the evaluation side, outside the `input` sent to the system under test.
+
+### 3. Replace `executor.execute()`
+
+Call your retrieval service in this function and map its **final ordered solution IDs**, after application filtering, to one of these results:
+
+| Execution outcome | Return form |
+|---|---|
+| Successful recommendations | `return { output: { solutionIds: ['solution-a', 'solution-b'] } };` |
+| Successful execution without recommendations | `return { output: { solutionIds: [] } };` |
+| Failed invocation | Throw or `return { errorCode: 'recommendation-request-failed' };`; never report a successful empty result. |
+
+Forward the received `signal` to your service, and update the Executor's `version`, `fingerprintFacets`, and `capabilities` truthfully. The demo's `deterministic` declaration only describes its synthetic retriever. The current `solo` design requires deterministic execution or actual support for consuming OMK's supplied `seed`. Do not copy a deterministic declaration onto a stochastic service without seed support; choose a measurement design supporting uncontrolled randomness instead. See the [public sampling contract](../reference/eval-runtime-api.md).
+
+With the demonstrated `solutionIds` output, reuse `evaluators` and `analyses` as supplied. For another output shape, update the output schema and scorer bindings together; JSON Pointer `/solutionIds` selects that field from the output object. Retrieval and forbidden checks both default to top-3. To change the range, update retrieval's `cutoff`, the argument to `forbiddenIdEvaluator(3)`, and the corresponding metric names as appropriate. Keep the cohort filters in `analyses` so failure coverage remains scoped to each metric's applicable population.
+
+### 4. Read the output
+
+The unmodified example excludes one pending sample and successfully executes the other two. Expected values in `metrics` are:
+
+| Metric | Meaning | Example value / effective denominator |
+|---|---|---|
+| `recall-at-3` | Fraction of known correct solutions retrieved on answerable samples; higher is better. | `1` / `1` |
+| `precision-at-3` | Correct results in the top three divided by 3; higher is better. Returning only one correct solution still yields one third. | `0.333…` / `1` |
+| `rr-at-3`, `ndcg-at-3` | First correct rank and ranking quality; higher is better. Mean `rr-at-3` is MRR. | Both `1` / `1` |
+| `correct-abstention` | Empty outputs among successful, valid responses that should abstain; higher is better. | `1` / `1` |
+| `false-abstention` | Empty outputs among successful, valid responses that should return a solution; lower is better. | `0` / `1` |
+| `forbidden-hit` | Top-three forbidden-ID hits among successful, valid responses with forbidden annotations; lower is better. | `0` / `2` |
+
+Read each metric's `status` and `coverage` first: `planned` counts the selected population, and `included` is the actual denominator. `sourceUnavailable` can mean execution failure or missing output, while `invalid` means invalid evidence. With no valid observations, the example prints `value: null`, not zero. Then check overall `executionCoverage`: 100% among valid responses does not mean all requests succeeded. See the [built-in abstention reference](../reference/eval-runtime-api.md#built-in-abstention-and-mixed-retrieval-evaluation) for the complete protocol and limitations.
+
 ## Tool trajectory evaluation
 
 Use `ToolTrajectoryEvaluator` for deterministic expectations over source-neutral Agent tool calls. The Executor trace must satisfy `omk.source-neutral-trace/v2`; provider adapters should normalize their native events before returning it:

@@ -141,6 +141,8 @@ const analysis: AnalysisRequest = {
 
 ## 内置弃答与混合召回评测
 
+首次接入请先看[四步使用指南](../guides/eval-runtime.md#retrieval-abstention)，包含运行命令、数据规则、服务接入点和预期输出。
+
 `AbstentionEvaluator` 是内置的 `evaluators[]` 声明，可通过包根与 `/eval-runtime` 使用。它编译为既有 Core 契约，产生两个布尔型 `AbstentionMetricIds`，不引入单独的评测工厂、数据集选择器或执行生命周期。
 
 ```ts
