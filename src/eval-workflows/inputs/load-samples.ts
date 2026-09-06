@@ -42,11 +42,6 @@ export interface LoadSamplesResult {
   sampleSourceById: Record<string, string>;
 }
 
-export interface LoadSamplesOptions {
-  /** Production measurement resolution must not depend on ambient compatibility switches. */
-  readonly assertionValidationMode?: 'environment-compatible' | 'strict';
-}
-
 /**
  * Load samples from a single file OR a directory of sample files.
  *
@@ -61,13 +56,12 @@ export interface LoadSamplesOptions {
  */
 export function loadSamples(
   samplesPath: string,
-  options: Readonly<LoadSamplesOptions> = {},
 ): LoadSamplesResult {
   const abs = resolve(samplesPath);
   if (statSync(abs).isDirectory()) {
-    return loadSamplesFromDir(abs, options);
+    return loadSamplesFromDir(abs);
   }
-  const inner = loadSampleFile(abs, options);
+  const inner = loadSampleFile(abs);
   return {
     ...inner,
     baseDir: dirname(abs),
@@ -90,7 +84,6 @@ export function listSampleFilesInDir(dir: string): string[] {
 
 function loadSamplesFromDir(
   dir: string,
-  options: Readonly<LoadSamplesOptions>,
 ): LoadSamplesResult {
   const files = listSampleFilesInDir(dir);
   if (files.length === 0) {
@@ -109,7 +102,7 @@ function loadSamplesFromDir(
   for (const f of files) {
     const path = join(dir, f);
     sourceFiles.push(path);
-    const single = loadSampleFile(path, options);
+    const single = loadSampleFile(path);
     for (const s of single.samples) {
       const prev = seenIds.get(s.sample_id);
       if (prev) {
@@ -154,7 +147,6 @@ interface LoadSamplesInner { samples: Sample[]; requires?: DependencyRequirement
 
 export function validateSamples(
   samples: Sample[],
-  options: Readonly<LoadSamplesOptions> = {},
 ): void {
   // sample design metadata enums (capability/difficulty/construct/provenance).
   // Pure documentation/diagnostic fields; do NOT participate in grading/judge/verdict.
@@ -267,14 +259,10 @@ export function validateSamples(
     // assertion values must not contain CJK / fullwidth punctuation / internal
     // whitespace, and length ∈ [2, 40]. Loader has no SKILL.md context here so
     // rule B (tool-name-must-exist-in-SKILL.md) is left to generator boundary.
-    // Lenient escape hatch: OMK_LENIENT_ASSERTIONS=1 downgrades these violations
-    // to stderr warnings for legacy sample files.
     const TEXT_VALUE_TYPES_LOADER = new Set([
       'contains', 'not_contains', 'contains_all', 'contains_any', 'equals', 'not_equals',
     ]);
     const LOADER_CJK = /[　-〿一-鿿㐀-䶿＀-￯]/;
-    const isLenient = options.assertionValidationMode !== 'strict'
-      && process.env.OMK_LENIENT_ASSERTIONS === '1';
     const checkAsciiTokenValue = (label: string, raw: unknown): string | null => {
       if (typeof raw !== 'string') return `${label} value 必须是字符串 (实际类型 ${typeof raw})`;
       const s = raw.trim();
@@ -282,13 +270,6 @@ export function validateSamples(
       if (LOADER_CJK.test(s)) return `${label} value 含 CJK 字符或全角标点 — 文本字面匹配在 LLM 输出上不稳,应改用 sample.rubric → judge 评分: ${JSON.stringify(raw)}`;
       if (/\s/.test(s)) return `${label} value 含内部空白(短语),应只测单个 ASCII token,语义匹配走 rubric: ${JSON.stringify(raw)}`;
       return null;
-    };
-    const emitViolation = (msg: string): void => {
-      if (isLenient) {
-        process.stderr.write(`[omk loadSamples] ⚠ lenient mode: ${msg}\n`);
-      } else {
-        throw new Error(msg + '\n  (设 OMK_LENIENT_ASSERTIONS=1 改为 warning 给历史 sample 留迁移逃生口)');
-      }
     };
     for (const [j, a] of assertions.entries()) {
       if (a?.type === 'tools_called' || a?.type === 'tools_not_called') {
@@ -328,18 +309,16 @@ export function validateSamples(
           : a.value !== undefined ? [a.value]
           : [];
         if (items.length === 0) {
-          emitViolation(`${label}: value/values 不能为空`);
-          continue;
+          throw new Error(`${label}: value/values 不能为空`);
         }
         for (const item of items) {
           const err = checkAsciiTokenValue(label, item);
           if (err) {
-            emitViolation(err);
-            break;
+            throw new Error(err);
           }
         }
       } else if (a?.type === 'regex' && typeof a.pattern === 'string' && LOADER_CJK.test(a.pattern)) {
-        emitViolation(`${label}: regex pattern 含 CJK 字符 — 同样的语义匹配应走 rubric → judge,而不是字面正则: ${JSON.stringify(a.pattern)}`);
+        throw new Error(`${label}: regex pattern 含 CJK 字符 — 同样的语义匹配应走 rubric → judge,而不是字面正则: ${JSON.stringify(a.pattern)}`);
       }
     }
 
@@ -354,7 +333,6 @@ export function validateSamples(
 
 function loadSampleFile(
   samplesPath: string,
-  options: Readonly<LoadSamplesOptions>,
 ): LoadSamplesInner {
   const rawContent = readFileSync(samplesPath, 'utf-8');
   const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
@@ -371,7 +349,7 @@ function loadSampleFile(
   const samples = document.data.samples;
   const requires = document.data.requires as DependencyRequirements | undefined;
 
-  validateSamples(samples, options);
+  validateSamples(samples);
 
   return { samples, requires };
 }

@@ -4,7 +4,7 @@
 
 ## 通用约定
 
-- **样本断言合规**：所有 `*.eval-samples.json` 的 `contains` / `not_contains` / `contains_any` 值都是单个 ASCII token（长度 2–40、无内部空白），语义判断交给 `rubric` 或 `regex`（`regex` 不受 token 规则约束）。这样 `loadSamples` 在 lenient 模式下不会对这些 fixture 报警告。新增样本请沿用此约定。
+- **样本断言合规**：所有 `*.eval-samples.json` 的 `contains` / `not_contains` / `contains_any` 值都是单个 ASCII token（长度 2–40、无内部空白），语义判断交给 `rubric` 或 `regex`（`regex` 不受 token 规则约束）。这些 fixture 必须通过 `loadSamples` 的严格校验。新增样本请沿用此约定。
 - 这些 fixture 故意保持**最小**：样本数、变体数、断言形态都按消费它的测试需要来定，不是示例展示。要更丰富的真实示例去看 `examples/`。
 
 ## code-review/
