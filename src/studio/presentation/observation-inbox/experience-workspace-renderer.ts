@@ -843,18 +843,6 @@ export function createObservationExperienceWorkspace({
 	    if (slots.length > 0) return slots.slice(0, 3).join(' / ');
 	    return inboxExtractGoalKeywords(goal?.summary) || inboxExtractKeyword(goal?.expectedOutcome, 36);
 	  };
-	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-	  const inboxLlmEnhancedDeclaredGoalKeywords = (skillName: string): string => {
-	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.skillDeclaredGoal;
-	    const keywords = [
-	      ...(goal?.keywords ?? []),
-	      ...(goal?.expectedOutcomes ?? []),
-	    ]
-	      .map((keyword) => inboxExtractKeyword(keyword, 18))
-	      .filter((keyword): keyword is string => Boolean(keyword));
-	    if (keywords.length > 0) return Array.from(new Set(keywords)).slice(0, 4).join(' / ');
-	    return inboxExtractGoalKeywords(goal?.summary);
-	  };
 	  const inboxExtractCompletionKeywords = (text?: string): string => {
 	    const cleaned = inboxCleanSnippet(text);
 	    if (!cleaned) return '';
@@ -1392,72 +1380,12 @@ export function createObservationExperienceWorkspace({
 	      </details>
 	    </section>`;
 	  };
-	  const inboxAnswerReasonLabel = (reason: ExperienceSessionStoryAnswer['reason']): string => {
-	    if (reason === 'data_degraded') return '数据质量不足';
-	    if (reason === 'blocking_failed') return '关键项未通过';
-	    if (reason === 'attention_accumulated') return '存在复核项';
-	    if (reason === 'unknown_dominant') return '未知项较多';
-	    if (reason === 'all_passed') return '关键项通过';
-	    return '当前不适用';
-	  };
-	  const inboxDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): { label: string; className: string; facts: string[] } => {
-	    const hasDataDegraded = answers.some((answer) => answer.status === 'degraded' || answer.reason === 'data_degraded');
-	    const hasAttention = answers.some((answer) => answer.status === 'attention' || answer.reason === 'blocking_failed' || answer.reason === 'attention_accumulated');
-	    const hasUnknown = answers.length === 0 || answers.some((answer) => answer.status === 'unknown' || answer.reason === 'unknown_dominant' || answer.reason === 'not_applicable');
-	    const label = hasDataDegraded
-	      ? '数据健康度：数据有问题'
-	      : hasAttention
-	        ? '数据健康度：要看一眼'
-	        : hasUnknown
-	          ? '数据健康度：信息不够'
-	          : '数据健康度：看起来正常';
-	    const className = hasDataDegraded
-	      ? 'is-degraded'
-	      : hasAttention
-	        ? 'is-attention'
-	        : hasUnknown
-	          ? 'is-unknown'
-	          : 'is-ok';
-	    const facts = [
-	      `真实用户消息 ${skill.evidenceChain.userMessageCount}`,
-	      `skill 上下文 ${skill.evidenceChain.skillContextCount}`,
-	      `助手回复 ${skill.evidenceChain.assistantMessageCount}`,
-	      `工具调用 ${skill.evidenceChain.toolUseCount}`,
-	    ];
-	    return { label, className, facts };
-	  };
-	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-	  const inboxRenderDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): string => {
-	    const health = inboxDataHealth(skill, answers);
-	    return `<div class="inbox-trust-layer">
-	      <span class="inbox-data-health ${health.className}">${e(health.label)}</span>
-	      ${health.facts.map((fact) => `<span class="inbox-trust-fact">${e(fact)}</span>`).join('')}
-	    </div>`;
-	  };
-	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-	  const inboxRenderParentStatuses = (answers: ExperienceSessionStoryAnswer[]): string => {
-	    if (answers.length === 0) return '';
-	    return `<div class="inbox-parent-status-row">${answers.map((answer) => `<div class="inbox-parent-status ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
-	      <span>${e(answer.label)}</span>
-	      ${inboxStatusBadge(answer.status)}
-	      <em>${e(inboxAnswerReasonLabel(answer.reason))}</em>
-	    </div>`).join('')}</div>`;
-	  };
 	  const inboxRenderTypeSpecificChecklist = (resolved: ResolvedObservationReviewSession): string => {
 	    if (resolved.typeSpecificChecklist.length === 0) return '';
 	    return `<div class="inbox-review-layer">
 	      <div class="inbox-review-layer-title">${e(inboxLlmSkillTypeLabel(resolved.skillType))}检查项</div>
 	      ${resolved.typeSpecificSummary ? `<p class="inbox-type-summary">${e(resolved.typeSpecificSummary)}</p>` : ''}
 	      ${inboxAnswerChecklistFromItems(resolved.typeSpecificChecklist)}
-	    </div>`;
-	  };
-	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-	  const inboxRenderSessionSuggestions = (skill: ExperienceSessionSummary): string => {
-	    const suggestions = inboxBuildSkillActionSuggestions(skill);
-	    if (suggestions.length === 0) return '';
-	    return `<div class="inbox-review-suggestions">
-	      <div class="inbox-review-layer-title">建议</div>
-	      <ol class="inbox-action-suggestion-list is-compact">${suggestions.slice(0, 4).map(inboxRenderActionSuggestion).join('')}</ol>
 	    </div>`;
 	  };
 	  const inboxRenderSessionReviewControl = (session: ExperienceSessionSummary): string => {

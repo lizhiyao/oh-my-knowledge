@@ -560,15 +560,6 @@ function verdictLabel(value?: string): string {
   return '无法判断';
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function feelingLabel(value?: string): string {
-  if (value === 'positive') return '正向';
-  if (value === 'neutral') return '中性';
-  if (value === 'negative') return '负向';
-  if (value === 'frustrated') return '烦躁/失望';
-  return '无法判断';
-}
-
 function reasonForStatus(status: ExperienceSessionStoryAnswer['status']): ExperienceSessionStoryAnswer['reason'] {
   if (status === 'ok') return 'all_passed';
   if (status === 'attention') return 'attention_accumulated';
@@ -649,13 +640,4 @@ function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections, s
       return arr.findIndex((candidate) => [candidate.title, candidate.body, candidate.acceptanceCriteria].filter(Boolean).join('\u0000') === key) === index;
     })
     .slice(0, 4);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function shortList(values?: string[]): string {
-  return Array.from(new Set((values ?? [])
-    .map((value) => value.replace(/\s+/g, ' ').trim())
-    .filter(Boolean)))
-    .slice(0, 4)
-    .join(' / ');
 }
