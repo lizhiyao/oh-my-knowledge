@@ -410,7 +410,7 @@ describe('loadSamples', () => {
       assert.throws(() => loadSamples(d), /duplicate sample_id "shared"/);
     });
 
-    it('maps prototype-shaped sample ids to their own source files', () => {
+    it('loads prototype-shaped sample ids across source files', () => {
       const d = makeDir('prototype-ids');
       const protoPath = join(d, 'a.json');
       const constructorPath = join(d, 'b.json');
@@ -424,10 +424,8 @@ describe('loadSamples', () => {
       );
 
       const loaded = loadSamples(d);
-      assert.equal(Object.hasOwn(loaded.sampleSourceById, '__proto__'), true);
-      assert.equal(loaded.sampleSourceById.__proto__, protoPath);
-      assert.equal(Object.hasOwn(loaded.sampleSourceById, 'constructor'), true);
-      assert.equal(loaded.sampleSourceById.constructor, constructorPath);
+      assert.deepEqual(loaded.samples.map((sample) => sample.sample_id), ['__proto__', 'constructor']);
+      assert.deepEqual(loaded.sourceFiles, [protoPath, constructorPath]);
     });
 
     it('errors when directory has no eligible sample files', () => {
