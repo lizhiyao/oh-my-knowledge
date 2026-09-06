@@ -33,7 +33,7 @@ export type {
   TraceUsageEvent,
 } from './trace-ir.js';
 export type { TraceIngestionSummary } from '../contracts/trace.js';
-export { loadCcSessions, loadTraceCorpus, loadTraceSessions } from './source.js';
+export { loadTraceCorpus, loadTraceSessions } from './source.js';
 export {
   extractAttributionSkill,
   extractAttributionSkillRef,

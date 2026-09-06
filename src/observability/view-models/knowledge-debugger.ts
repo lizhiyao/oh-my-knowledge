@@ -1,6 +1,6 @@
 import type { ToolCallStatus } from '../../executors/contracts/trace.js';
 import type { ObservationSourceRecordArchiveView } from '../contracts/inbox.js';
-import type { ObservationSourceKind, TraceSourceMetadata } from '../contracts/trace.js';
+import type { TraceSourceKind, TraceSourceMetadata } from '../contracts/trace.js';
 import type {
   ExperienceEvidenceRef,
   ExperienceReviewIndicators,
@@ -41,7 +41,7 @@ export interface TaskTrajectorySession {
   sourceThreadId: string;
   sessionId: string;
   sourceTrace: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   entrypoint?: string;
   sourceMetadata?: TraceSourceMetadata;
   cwd?: string;

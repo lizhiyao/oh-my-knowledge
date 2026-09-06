@@ -1,7 +1,7 @@
 import type { DiagnosisBundle } from '../../diagnosis/contracts.js';
 import type { ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review.js';
-import type { ObservationSourceKind, TraceIngestionSummary } from './trace.js';
+import type { TraceSourceKind, TraceIngestionSummary } from './trace.js';
 
 export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker' | 'user_feedback';
 export type ObservationSeverityReasonCode =
@@ -52,7 +52,7 @@ export interface ObservationEvidence {
   traceId?: string;
   sessionId?: string;
   sourceTrace?: string;
-  sourceKind?: ObservationSourceKind;
+  sourceKind?: TraceSourceKind;
   tool?: string;
   query?: string;
   path?: string;
@@ -93,7 +93,7 @@ export interface ObservationInboxItem {
   /** Physical evidence stream identity; unlike sessionId, unique across reused run ids. */
   traceId?: string;
   sourceTrace: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   signalType: ObservationSignalType;
   signalSubtype: ObservationSignalSubtype;
   confidence: number;
@@ -119,7 +119,7 @@ export interface ObservationSessionTimeRange {
   traceId?: string;
   sessionGroupId?: string;
   sourceTrace: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
   cwd?: string;

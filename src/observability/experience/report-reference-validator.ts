@@ -1,5 +1,5 @@
 import {
-  isTraceSourceKind as isObservationSourceKind,
+  isTraceSourceKind,
 } from '../../executors/core/trace-source-kind.js';
 import type {
   ExperienceGoalSlice,
@@ -89,7 +89,7 @@ export function isExperienceSkillSummary(value: unknown, requireToolUnknown = fa
     || !isNonNegativeInteger(value.invocationCount)
     || !isNonNegativeInteger(value.sessionCount)
     || !Array.isArray(value.sourceKinds)
-    || !value.sourceKinds.every(isObservationSourceKind)
+    || !value.sourceKinds.every(isTraceSourceKind)
     || !isStringArray(value.entrypoints)
     || !isCountRecord(value.entrypointCounts)
     || !isCountRecord(value.attributionCounts)

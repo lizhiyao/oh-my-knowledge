@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import {
-  loadCcSessions,
+  loadTraceSessions,
   segmentBySkill,
 } from '../../src/observability/trace/index.js';
 import {
@@ -367,7 +367,7 @@ describe('source-neutral orchestration contract', () => {
       it(`${sourceKind} maps a ${terminal} child trace to one directed edge`, () => {
         const writeFixture = sourceKind === 'codex' ? writeCodexFixture : writeClaudeFixture;
         writeFixture(root, terminal);
-        const sessions = loadCcSessions(root);
+        const sessions = loadTraceSessions(root);
         const built = buildObservationExperienceReport({
           sessions,
           segments: sessions.flatMap((session) => segmentBySkill(session)),
@@ -414,7 +414,7 @@ describe('source-neutral orchestration contract', () => {
 
   it('does not infer orchestration from ordinary process output or tool argument prose', () => {
     writeCodexStandaloneFixture(root);
-    const sessions = loadCcSessions(root);
+    const sessions = loadTraceSessions(root);
     const report = buildObservationExperienceReport({
       sessions,
       segments: sessions.flatMap((session) => segmentBySkill(session)),
