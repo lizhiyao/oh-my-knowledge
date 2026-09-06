@@ -92,6 +92,14 @@ executors/
 
 Product orchestration lives in `eval-workflows/orchestration`: it consumes an injected Runtime and persists evaluation results. `createProductionEvaluationWorkflow` describes this responsibility; concrete provider selection and resource assembly belong to the delivery entry or shared host modules. This internal rename does not add a package export or a compatibility forwarding module.
 
+The canonical Runtime entry `evaluate.ts` re-exports its existing API from internal
+`evaluation/` modules. Input and evaluator capture feed Definition compilation;
+preparation seals and runs the contract; reuse performs Core admission before
+rescore, reanalysis or redecision. A single result-state module owns authenticated
+results and prepared capabilities. Capture and compilation cannot depend on run
+state, and internal modules cannot import the public façade. These modules add no
+package subpaths and retain the existing identity and measurement contracts.
+
 
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
 judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,
