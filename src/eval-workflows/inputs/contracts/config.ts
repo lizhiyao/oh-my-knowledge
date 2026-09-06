@@ -1,6 +1,6 @@
+import type { RemoteGitRef } from '../../../knowledge-artifacts/contracts.js';
 import type { JudgeConfig } from '../../instruments/contracts/config.js';
 import type { ExperimentRole } from '../../../knowledge-artifacts/contracts.js';
-import type { RemoteGitRef } from './variant.js';
 
 export interface EvalConfigVariant {
   name: string;

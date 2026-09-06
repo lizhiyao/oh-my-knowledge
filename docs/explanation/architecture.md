@@ -100,6 +100,8 @@ results and prepared capabilities. Capture and compilation cannot depend on run
 state, and internal modules cannot import the public façade. These modules add no
 package subpaths and retain the existing identity and measurement contracts.
 
+Artifact discovery, local and Git source resolution, and content-addressed copies belong to `knowledge-artifacts/sources`. Doctor, installation, governance and evaluation consume that shared implementation. Batch discovery that requires evaluation samples stays in `eval-workflows/inputs/batch-discovery.ts`; the source layer must not import Workflow.
+
 
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
 judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,

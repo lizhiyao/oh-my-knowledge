@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, chmodSync, statSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { resolveInstallSource, SourceResolveError } from '../../../src/eval-workflows/inputs/source-resolver.js';
+import { resolveInstallSource, SourceResolveError } from '../../../src/knowledge-artifacts/sources/install-source.js';
 
 function git(repo: string, args: string[]): void {
   execFileSync('git', args, { cwd: repo, stdio: 'pipe' });

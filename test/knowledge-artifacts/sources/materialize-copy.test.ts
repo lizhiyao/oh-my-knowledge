@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, utimesSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { materializeIsolatedCopy, treesDir, pruneTreesDir } from '../../../src/eval-workflows/inputs/materialize-copy.js';
+import { materializeIsolatedCopy, treesDir, pruneTreesDir } from '../../../src/knowledge-artifacts/sources/materialize-copy.js';
 import { hashArtifactSource } from '../../../src/knowledge-artifacts/sources/content-hash.js';
 
 describe('materialize-copy', () => {

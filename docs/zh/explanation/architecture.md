@@ -90,6 +90,8 @@ executors/
 
 Runtime 的标准入口 `evaluate.ts` 从内部 `evaluation/` 模块导出原有 API。输入与评分器捕获供 Definition 编译使用，准备阶段负责封存和运行，结果复用先通过 Core 准入再执行重新评分、分析或决策。认证结果和 prepared capability 由同一个状态模块管理。捕获与编译不得依赖运行状态，内部模块不得反向导入用户 façade。这些内部模块不增加包子路径，也不改变现有身份与测量契约。
 
+载体发现、本地与 Git 来源解析、内容寻址副本归 `knowledge-artifacts/sources`，由 doctor、安装、治理和评测共用。要求存在评测样本的批量发现留在 `eval-workflows/inputs/batch-discovery.ts`；来源层不得导入 Workflow。
+
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
 适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，

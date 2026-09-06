@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { gitShowFile, gitShowBytes, gitLsTreeBlobs } from '../../../src/eval-workflows/inputs/skill-loader.js';
+import { gitShowFile, gitShowBytes, gitLsTreeBlobs } from '../../../src/knowledge-artifacts/sources/artifact-resolution.js';
 
 const git = (repo: string, args: string[]): void => { execFileSync('git', args, { cwd: repo, stdio: 'pipe' }); };
 

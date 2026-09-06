@@ -6,12 +6,8 @@ import { join, relative, sep } from 'node:path';
 export const OMK_TREE_DIGEST_ALGORITHM = 'omk.tree-sha256/v1' as const;
 
 /**
- * artifact「可分发树」与内容指纹 —— inputs 层的纯内容哈希工具。install(受管记录)与 eval
- * (report 的 artifactHashes)共用同一处,保证「同一个 skill,装出来与测出来的指纹落在同一空间」,
- * 是证据随 artifact 走(evidence.contentHash === record.contentHash)的承重基础。
- *
- * 放在 inputs 层而非 managed:这两个函数语义上属内容哈希、无 managed 专属依赖;skill-loader、
- * source-resolver、managed/store 都在它之上消费,inputs 是更低层,不成环。
+ * 载体可分发树的统一内容指纹。安装、评测与治理共用此算法，
+ * 确保相同载体的证据和受管记录使用相同的内容身份。
  */
 
 /**

@@ -9,8 +9,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { isPlausibleGitUrl, fetchRemoteGitRef, SourceResolveError, resolveArtifacts } from '../../../src/eval-workflows/inputs/skill-loader.js';
-import { resolveRemoteGitSource } from '../../../src/eval-workflows/inputs/source-resolver.js';
+import { isPlausibleGitUrl, fetchRemoteGitRef, SourceResolveError, resolveArtifacts } from '../../../src/knowledge-artifacts/sources/artifact-resolution.js';
+import { resolveRemoteGitSource } from '../../../src/knowledge-artifacts/sources/install-source.js';
 import { resolveVariantSpecs } from '../../../src/cli/lib/parse-run-config/variant-resolution.js';
 import { hashArtifactSource } from '../../../src/knowledge-artifacts/sources/content-hash.js';
 

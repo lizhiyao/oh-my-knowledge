@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { classifyGitSkillRef, parseGitInput, resolveGitRepoContext, materializeGitSkillTree, skillNameFromPath, SourceResolveError, fetchRemoteGitRef } from './skill-loader.js';
+import { classifyGitSkillRef, parseGitInput, resolveGitRepoContext, materializeGitSkillTree, skillNameFromPath, SourceResolveError, fetchRemoteGitRef } from './artifact-resolution.js';
 
 /**
  * 安装源解析器 —— 把"各种源"物化成统一的本地形态,让 install / managed 主干**源无关**。
@@ -11,9 +11,8 @@ import { classifyGitSkillRef, parseGitInput, resolveGitRepoContext, materializeG
  * 三者沿同一 `ResolvedSource` 契约,install / managed 主干源无关。
  */
 
-// SourceResolveError 住在 skill-loader(让共享 materializeGitSkillTree 能抛它而不成环);此处 re-export
-// 保持 install 既有 import 不破。
-export { SourceResolveError } from './skill-loader.js';
+// 本地与 Git 物化共用来源错误，由安装边界统一暴露。
+export { SourceResolveError } from './artifact-resolution.js';
 
 export type SourceKind = 'file' | 'git';
 

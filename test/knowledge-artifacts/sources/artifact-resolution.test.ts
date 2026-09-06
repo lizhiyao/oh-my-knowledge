@@ -5,30 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { discoverBatchSkills, resolveArtifacts } from '../../../src/eval-workflows/inputs/skill-loader.js';
+import { resolveArtifacts } from '../../../src/knowledge-artifacts/sources/artifact-resolution.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = join(__dirname, '..', '..', 'fixtures', 'code-review', 'skills');
+
 const MULTI_SKILL_DIR = join(__dirname, '..', '..', 'fixtures', 'multi-skills', 'skills');
-
-describe('discoverBatchSkills canonical sample layout', () => {
-  it('只发现带 .omk/eval-samples.{json,yaml} 的目录 skill', () => {
-    const entries = discoverBatchSkills(MULTI_SKILL_DIR);
-    assert.deepEqual(entries.map((entry) => entry.name), ['classifier', 'summarizer', 'translator']);
-    assert.ok(entries.every((entry) => /[/\\]\.omk[/\\]eval-samples\.json$/.test(entry.samplesPath)));
-  });
-
-  it('不再把扁平 skill sidecar 当成 batch 私有用例', () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-flat-batch-'));
-    try {
-      writeFileSync(join(root, 'review.md'), '# review\n');
-      writeFileSync(join(root, 'review.eval-samples.json'), '{}\n');
-      assert.deepEqual(discoverBatchSkills(root), []);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
 
 describe('resolveArtifacts', () => {
   it('baseline 产生 kind 为 baseline 的 artifact', () => {
@@ -102,7 +84,7 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts[0].skillRoot, dirname(skillMd));
   });
 
-  it('materialize 默认 true 设 execRoot;materialize:false(doctor/loadSkills)只算指纹不落副本', () => {
+  it('materialize 默认 true 设 execRoot;materialize:false(doctor)只算指纹不落副本', () => {
     const skillMd = join(MULTI_SKILL_DIR, 'classifier', 'SKILL.md');
     const withCopy = resolveArtifacts(SKILL_DIR, [skillMd])[0];
     assert.ok(withCopy.execRoot, 'eval 默认 materialize → 有 execRoot(隔离副本)');

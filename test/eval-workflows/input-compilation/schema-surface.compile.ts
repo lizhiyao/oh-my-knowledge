@@ -1,5 +1,5 @@
 import type { EvalBudget, EvalConfig, EvalConfigVariant } from '../../../src/eval-workflows/inputs/contracts/config.js';
-import type { RemoteGitRef } from '../../../src/eval-workflows/inputs/contracts/variant.js';
+import type { RemoteGitRef } from '../../../src/knowledge-artifacts/contracts.js';
 import type { JudgeConfig } from '../../../src/eval-workflows/instruments/contracts/config.js';
 import { EVAL_CONFIG_SCHEMA_SOURCE_PATHS } from '../../../src/eval-workflows/inputs/eval-config.js';
 

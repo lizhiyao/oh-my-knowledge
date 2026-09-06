@@ -2,16 +2,14 @@ import { readFileSync, existsSync, readdirSync, statSync, realpathSync, mkdtempS
 import { resolve, join, relative, dirname, basename, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { extractSkillHardRules, extractSkillWorkflows } from '../../knowledge-artifacts/skills/hard-rules.js';
+import { extractSkillHardRules, extractSkillWorkflows } from '../skills/hard-rules.js';
 import {
   hashArtifactSource,
   hashBytes,
   isDistributablePath,
-} from '../../knowledge-artifacts/sources/content-hash.js';
+} from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
-import { findSkillSamplesPath } from './sample-locator.js';
-import type { Artifact } from '../../knowledge-artifacts/contracts.js';
-import type { RemoteGitRef } from './contracts/variant.js';
+import type { Artifact, RemoteGitRef } from '../contracts.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -423,38 +421,6 @@ export function discoverVariants(skillDir: string): string[] {
   return variants;
 }
 
-export function discoverBatchSkills(skillDir: string): Array<{ name: string; skillPath: string; samplesPath: string }> {
-  if (!existsSync(skillDir)) return [];
-
-  const entries = readdirSync(skillDir);
-  const skills: Array<{ name: string; skillPath: string; samplesPath: string }> = [];
-
-  for (const entry of entries) {
-    const entryPath = join(skillDir, entry);
-    if (entry.endsWith('.md')) {
-      continue;
-    }
-
-    if (statSync(entryPath).isDirectory()) {
-      const skillMd = join(entryPath, 'SKILL.md');
-      if (!existsSync(skillMd)) continue;
-      if (existsSync(join(skillDir, `${entry}.md`))) continue;
-      const samplesPath = findSkillSamplesPath(entryPath);
-      if (samplesPath) {
-        skills.push({ name: entry, skillPath: skillMd, samplesPath });
-      }
-    }
-  }
-
-  skills.sort((a, b) => a.name.localeCompare(b.name));
-  return skills;
-}
-
-export function loadSkills(skillDir: string, variants: string[]): Record<string, string | null> {
-  // 只取 content 映射,不执行 → 不落副本(materialize:false)。
-  return Object.fromEntries(resolveArtifacts(skillDir, variants, { materialize: false }).map((artifact) => [artifact.name, artifact.content]));
-}
-
 /** opts for resolveArtifacts skill-isolation wiring. */
 export interface ResolveArtifactsOptions {
   /** Default true. When true, baseline-kind artifacts get allowedSkills=[] auto-injected.
@@ -462,7 +428,7 @@ export interface ResolveArtifactsOptions {
    *  不经此处——resolveArtifacts 只认 strictBaseline 默认,隔离绑定收成单一来源。 */
   strictBaseline?: boolean;
   /** Default true. dir-skill 是否落地隔离副本(写 `~/.oh-my-knowledge/state/trees` 并设 execRoot)。
-   *  只有 eval(执行隔离)需要;doctor / loadSkills 等纯读路径传 false,只算指纹与正文、不写副本。 */
+   *  只有 eval(执行隔离)需要;doctor 等纯读路径传 false,只算指纹与正文、不写副本。 */
   materialize?: boolean;
 }
 
@@ -563,7 +529,7 @@ export type VariantInput =
  * 解析一个目录-skill 的整树指纹 + SKILL.md 正文;`materialize` 为真时另落地内容寻址隔离副本、返回执行根。
  * 本地源 localDir 是真源目录;git 源 localDir 是 materializeGitSkillTree 物化出的临时目录。
  * execRoot(副本)供 executor cwd / skillDir 锚定;skillRoot(真源)由各分支自行保留。
- * 只有 eval 路径需要副本(执行隔离);doctor / loadSkills 只需指纹与正文,materialize=false 不落副本、
+ * 只有 eval 路径需要副本(执行隔离);doctor 只需指纹与正文,materialize=false 不落副本、
  * 不写 `~/.oh-my-knowledge/state/trees`(避免纯读路径的副作用 I/O 与 trees 污染)。
  */
 function isolateDirSkill(localDir: string, name: string, materialize: boolean): { execRoot?: string; contentHash: string; content: string } {
