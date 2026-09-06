@@ -1,4 +1,4 @@
-// oclif 路径专用 i18n helper。生产 i18n 还是走 ../i18n.ts (tCli / tBoth) ——
+// oclif 路径专用 i18n helper。运行期文案使用 ../lib/i18n.ts 的 tCli ——
 // 这里只提供 oclif Command static 字段需要的双语形式:
 // bilingual({zh, en}) → 字符串里 `${zh}\n${en}`,LangAwareHelp.formatCommand
 // 按 lang 切第一/第二行。
@@ -10,7 +10,7 @@
 // 都各占一行」, 错误路径下用户至少能读懂。
 //
 // 代价:flag description 里不能用真换行 — 单行写到底,需要多段时换 prose
-// 文档（legacy 路径的 cli.help.observe 等仍然承担长 prose 角色)。
+// 文档。
 //
 // 跟进(Phase B):改 oclif 上游让 errors/handle.js 尊重 helpClass / 接受双语 dump
 // 不再 fix(早期 init hook description mutate 方案 PR #124 已删,接受 BREAKING-CLI)。
@@ -32,11 +32,11 @@ export interface BiText {
 export function bilingual(text: BiText): string {
   // 真换行会破坏 pickLang 的 split:第一行被当 zh,后续全归 en,zh 用户拿不到剩余段。
   // codegen 也跟着错位且静默(因为 codegen 跟 help 共用同一份 split,两边一起错 = 自洽通过)。
-  // 单行写到底,需要多段时换 prose 文档(legacy cli.help.observe 等承担长 prose 角色)。
+  // 单行写到底，需要多段时写入 prose 文档。
   if (text.zh.includes('\n') || text.en.includes('\n')) {
     throw new Error(
       `bilingual() does not support newlines in zh/en. Got zh=${JSON.stringify(text.zh)}, en=${JSON.stringify(text.en)}. ` +
-      `Use single-line description; place long prose in legacy cli.help.* dict.`,
+      `Use single-line description; place long prose in documentation.`,
     );
   }
   // ejs 模板标记 `<% %>` 不允许出现在 description / flag.description / arg.description 里。

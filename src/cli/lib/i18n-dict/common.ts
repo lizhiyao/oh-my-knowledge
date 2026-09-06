@@ -6,10 +6,7 @@ export type CommonMessageKey =
   | 'cli.common.skill_dir_not_found'
   | 'cli.common.skill_file_not_found'
   | 'cli.common.skill_dir_no_skill_md'
-  | 'cli.common.report_not_found'
-  | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
-  | 'cli.common.warn_load_samples_failed'
   | 'cli.common.ambiguous_sample_files'
   | 'cli.common.samples_not_found'
   | 'cli.common.samples_not_found_hint'
@@ -49,21 +46,9 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     zh: '目录下未找到 SKILL.md: {path}',
     en: 'SKILL.md not found in directory: {path}',
   },
-  'cli.common.report_not_found': {
-    zh: '未找到 report: {id}',
-    en: 'Report not found: {id}',
-  },
-  'cli.common.no_judge_model': {
-    zh: '未指定评委。请加 --judge-models <executor:model>, 或确保 report.meta.judgeModels 已写。',
-    en: 'No judge configured. Pass --judge-models <executor:model> or ensure the report has meta.judgeModels.',
-  },
   'cli.common.judge_models_single_only': {
     zh: '{cmd} 仅支持单评委。--judge-models 只能传一个 executor:model entry。',
     en: '{cmd} only supports a single judge. --judge-models accepts exactly one executor:model entry.',
-  },
-  'cli.common.warn_load_samples_failed': {
-    zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
-    en: '⚠ Failed to load samples file ({path}): {message}\n',
   },
   'cli.common.ambiguous_sample_files': {
     zh: '评测用例文件存在歧义：{paths}。同一作用域只能保留 eval-samples.json 或 eval-samples.yaml 其中一个。',

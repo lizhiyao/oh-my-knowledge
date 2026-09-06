@@ -50,19 +50,3 @@ export function tCli(
   }
   return text;
 }
-
-/**
- * 一次拿到 i18n key 的 zh / en 两个串。oclif Command 的 static
- * description / examples 是模块加载期 evaluate 的字面量,跑不到 tCli 的 runtime
- * lang dispatch。tBoth 返回 {zh, en} 结构,配合 oclif/i18n.ts 的 bilingual()
- * 拼成带 sentinel 的串,LangAwareHelp 渲染时按 lang 切。
- */
-export function tBoth(
-  key: CliMessageKey,
-  params?: Record<string, string | number>,
-): { zh: string; en: string } {
-  return {
-    zh: tCli(key, 'zh', params),
-    en: tCli(key, 'en', params),
-  };
-}
