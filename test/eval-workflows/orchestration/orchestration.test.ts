@@ -420,6 +420,33 @@ describe('production independent Series orchestration', () => {
         },
       },
     });
+    // Preparation is a separate cancellation boundary from member execution and aggregation.
+    for (const alreadyAborted of [true, false]) {
+      const preparationController = new AbortController();
+      const reason = new Error('cancel member preflight');
+      if (alreadyAborted) preparationController.abort(reason);
+      let aggregatePrepared = false;
+      const cancellableHost: ProductionEvaluationWorkflowInput = {
+        ...host,
+        runtime: {
+          async prepare(_input, options) {
+            assert.equal(options?.signal, preparationController.signal);
+            if (!alreadyAborted) preparationController.abort(reason);
+            options.signal.throwIfAborted();
+            throw new Error('cancelled preparation must not return a runnable member');
+          },
+          async prepareSeries(definition) {
+            aggregatePrepared = true;
+            return host.runtime.prepareSeries(definition);
+          },
+        },
+      };
+      await expect(executeProductEvaluation({
+        host: cancellableHost, request, signal: preparationController.signal,
+      })).rejects.toBe(reason);
+      expect(aggregatePrepared).toBe(false);
+    }
+
     await expect(executeProductEvaluation({ host, request, signal: controller.signal }))
       .rejects.toThrow('Core Series 未完成');
 
