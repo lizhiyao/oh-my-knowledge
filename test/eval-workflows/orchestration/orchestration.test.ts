@@ -1,3 +1,5 @@
+import { executeProductEvaluation } from '../../../src/eval-workflows/orchestration/evaluation-service.js';
+import { parseCliEvaluationRequest } from '../../../src/eval-workflows/input-compilation/index.js';
 import { prepareRuntimeSeries } from '../../../src/eval-runtime/provider.js';
 import { EvaluationRuntimeLifecycleError } from '../../../src/eval-runtime/execution.js';
 import assert from 'node:assert/strict';
@@ -401,6 +403,23 @@ describe('production independent Series orchestration', () => {
     });
     await expect(cancelled.result).resolves.toMatchObject({ status: 'cancelled' });
     await expect(cancelled.evolution).resolves.toBeUndefined();
+
+    // Exercise the product entry as well: abort must reach aggregate analysis,
+    // even when a host has already completed and persisted all member runs.
+    const request = parseCliEvaluationRequest({
+      explicitCliFlags: { 'no-judge': true, control: 'baseline', treatment: 'fixture' },
+      defaults: {
+        samplesLocator: 'samples.json', skillDirectoryLocator: 'skills',
+        targetRuntime: { executorId: 'fixture', model: 'fixture', effort: 'low' },
+        judgeMembers: [],
+        presentation: {
+          projectOutputDirectoryLocator: '.omk/eval', globalOutputDirectoryLocator: '.omk/eval',
+          language: 'zh', languageDefaultSource: 'derived',
+        },
+      },
+    });
+    await expect(executeProductEvaluation({ host, request, signal: controller.signal }))
+      .rejects.toThrow('Core Series 未完成');
 
     cleanupFails = true;
     const failed = await executeProductionEvaluationSeries({

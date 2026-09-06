@@ -1,3 +1,4 @@
+import type { EvalConfig } from '../../src/eval-workflows/inputs/contracts/config.js';
 import { runDshCoreEvaluation } from '../../src/dsh-plugin/core-command.js';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -865,27 +866,33 @@ describe('DSH host-only Core Executor adapter', () => {
 });
 
 
+async function productFixture(repeat: number): Promise<{ root: string; config: EvalConfig }> {
+  const root = await mkdtemp(join(tmpdir(), 'omk-dsh-application-'));
+  roots.add(root);
+  vi.stubEnv('OMK_HOME', join(root, 'home'));
+  vi.stubEnv('OMK_TREES_DIR', join(root, 'trees'));
+  await mkdir(join(root, 'skills', 'answer'), { recursive: true });
+  await writeFile(join(root, 'skills', 'answer', 'SKILL.md'), '# Answer\nAnswer the question directly.\n');
+  const samples = join(root, 'samples.json');
+  await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [
+    { sample_id: 'answer', prompt: 'Answer directly.', assertions: [{ type: 'contains', value: 'host' }] },
+  ] }));
+  return { root,
+    config: { samples, variants: [
+      { name: 'control', role: 'control', artifact: 'baseline' },
+      { name: 'treatment', role: 'treatment', artifact: join(root, 'skills', 'answer') },
+    ], noJudge: true, skipDoctor: true, repeat, bootstrapSamples: 100 },
+  };
+}
 describe('DSH product evaluation application', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it.each([1, 2])('persists %i run(s) through the shared workflow and releases host sessions', async (repeat) => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-dsh-application-'));
-    roots.add(root);
-    vi.stubEnv('OMK_HOME', join(root, 'home'));
-    vi.stubEnv('OMK_TREES_DIR', join(root, 'trees'));
-    await mkdir(join(root, 'skills', 'answer'), { recursive: true });
-    await writeFile(join(root, 'skills', 'answer', 'SKILL.md'), '# Answer\nAnswer the question directly.\n');
-    const samples = join(root, 'samples.json');
-    await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [
-      { sample_id: 'answer', prompt: 'Answer directly.', assertions: [{ type: 'contains', value: 'host' }] },
-    ] }));
+    const { root, config } = await productFixture(repeat);
     const host = new FakeCoreDshHost();
     const result = await runDshCoreEvaluation({
       host, parentAgent, signal: new AbortController().signal, projectRoot: root,
-      config: { samples, variants: [
-        { name: 'control', role: 'control', artifact: 'baseline' },
-        { name: 'treatment', role: 'treatment', artifact: join(root, 'skills', 'answer') },
-      ], noJudge: true, skipDoctor: true, repeat, bootstrapSamples: 100 },
+      config,
     });
     expect(result.outcomeKind).toBe(repeat === 1 ? 'run' : 'series');
     const artifacts = result.outcomeKind === 'run' ? [result.artifacts] : result.artifacts;
@@ -896,4 +903,28 @@ describe('DSH product evaluation application', () => {
     expect(host.activeListenerCount()).toBe(0);
     expect(result.outputDirectory).toBe(join(root, '.omk', 'eval'));
   });
+
+  it.each([1, 2])('cancels %i run(s) at the product entry and releases active sessions', async (repeat) => {
+    const { root, config } = await productFixture(repeat);
+    const host = new FakeCoreDshHost({ hang: true });
+    const controller = new AbortController();
+    const pending = runDshCoreEvaluation({ host, parentAgent, signal: controller.signal, projectRoot: root, config });
+    const settled = pending.then((result) => ({ result }), (error: unknown) => ({ error }));
+    await vi.waitFor(() => expect(host.prompts.length).toBeGreaterThan(0));
+    controller.abort('fixture user cancellation');
+    const outcome = await settled;
+    if ('result' in outcome) {
+      expect(repeat).toBe(1);
+      expect(outcome.result.outcome.gate.gateStatus).toBe('blocked');
+      const artifacts = outcome.result.outcomeKind === 'run' ? [outcome.result.artifacts] : outcome.result.artifacts;
+      expect(artifacts.some((item) => item.report.status.runStatus === 'cancelled')).toBe(true);
+    } else {
+      expect(repeat).toBe(2);
+      expect(outcome.error).toMatchObject({ message: 'Core Series 未完成，无法生成 evolution evidence。' });
+    }
+    expect(host.cancelled).toBeGreaterThan(0);
+    expect(host.disposed).toBe(host.created.length);
+    expect(host.activeListenerCount()).toBe(0);
+  });
+
 });
