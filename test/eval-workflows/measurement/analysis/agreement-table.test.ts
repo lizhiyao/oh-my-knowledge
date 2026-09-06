@@ -3,15 +3,15 @@ import {
   bootstrapWithMetric,
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../../../src/eval-workflows/analysis/bootstrap.js';
+} from '../../../../src/eval-workflows/analysis/bootstrap.js';
 import {
   computeAgreementWithCI,
   computeKrippendorffAlpha,
-} from '../../../src/eval-workflows/gold/human.js';
+} from '../../../../src/eval-workflows/gold/human.js';
 import {
   digestCanonicalJson,
   schemaIdentityKey,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   AGREEMENT_TABLE_SCHEMA,
   AGREEMENT_TABLE_V1_SCHEMA,
@@ -20,10 +20,10 @@ import {
   createAgreementTableSchemaValidators,
   parseAgreementTableEnvelope,
   type AgreementPair,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-table.js';
 import {
   type AgreementParameters,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
 
 function parameters(
   sampleIds: string[],

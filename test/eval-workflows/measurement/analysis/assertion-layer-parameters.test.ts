@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   schemaIdentityKey,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   ASSERTION_LAYER_PARAMETERS_SCHEMA,
   createAssertionLayerParameterSchemaValidators,
   parseAssertionLayerParameters,
-} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
 
 const fact = {
   criterionId: 'fact-a',

@@ -110,7 +110,7 @@ import {
   type RuntimeBinding,
 } from '../../../src/eval-workflows/input-compilation/index.js';
 import { testRuntime } from '../../eval-core/compiler/fixtures.js';
-import { validResolvedCliInput } from '../input-compilation/fixtures.js';
+import { validResolvedCliInput } from '../../eval-workflows/input-compilation/fixtures.js';
 
 type Mutable<Value> = Value extends readonly (infer Item)[]
   ? Mutable<Item>[]

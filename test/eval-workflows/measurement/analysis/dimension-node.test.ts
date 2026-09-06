@@ -5,31 +5,31 @@ import {
   schemaIdentityKey,
   type JsonValue,
   type SamplingUnitIds,
-} from '../../../src/eval-core/contracts/index.js';
-import { AnalysisNodeCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
+import { AnalysisNodeCapabilitiesSchema } from '../../../../src/eval-core/compiler/index.js';
 import type {
   AnalysisNodeExecutionContext,
   AnalysisNodeExecutionResult,
   AnalysisNodeInput,
-} from '../../../src/eval-core/analysis/index.js';
+} from '../../../../src/eval-core/analysis/index.js';
 import {
   DIMENSION_ANALYSIS_IDENTITY,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   createDimensionAnalysisNodes,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-node.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-node.js';
 import {
   DIMENSION_PARAMETERS_SCHEMA,
   type DimensionParameter,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   createDimensionTableSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   parseJudgeEnsembleTableEnvelope,
-} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
+} from '../../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
 
 const ANALYSIS_PLAN_DIGEST = digestCanonicalJson('dimension-analysis-plan');
 const EVALUATION_BUNDLE_DIGEST = digestCanonicalJson('dimension-evaluation-bundle');

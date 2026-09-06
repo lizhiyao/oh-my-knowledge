@@ -6,46 +6,46 @@ import type {
   JsonValue,
   MeasurementPolicy,
   RuntimeIdentity,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   RuntimeIdentitySchema,
   digestCanonicalJson,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
   type PreparationRuntime,
-} from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/compiler/index.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/eval-core/execution/index.js';
+} from '../../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundle,
   type EvaluationEvaluator,
-} from '../../../src/eval-core/evaluation/index.js';
+} from '../../../../src/eval-core/evaluation/index.js';
 import {
   createSameProcessEvaluatorAdapter,
-} from '../../../src/eval-runtime/adapters/same-process.js';
+} from '../../../../src/eval-runtime/adapters/same-process.js';
 import {
   createBuiltinOmkScoringBindingFactories,
-} from '../../../src/eval-hosts/runtime-adapter/builtins.js';
+} from '../../../../src/eval-hosts/runtime-adapter/builtins.js';
 import {
   createOutputAssertionEvaluatorImplementation,
   OUTPUT_ASSERTION_BINDINGS,
   OUTPUT_ASSERTION_CONTEXT_SCHEMA_VERSION,
   OUTPUT_ASSERTION_EVALUATOR_IDENTITY,
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/evaluators/output-assertions.js';
-import { SYNC_ASSERTION_TYPE_NAMES } from '../../../src/eval-workflows/inputs/assertion-types.js';
+} from '../../../../src/eval-workflows/measurement/evaluators/output-assertions.js';
+import { SYNC_ASSERTION_TYPE_NAMES } from '../../../../src/eval-workflows/inputs/assertion-types.js';
 import {
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,
   createIsolatedDeterministicAssertionEvaluator,
-} from '../../../src/eval-workflows/assertions/deterministic.js';
-import type { Assertion } from '../../../src/eval-workflows/inputs/contracts/assertion.js';
-import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
+} from '../../../../src/eval-workflows/assertions/deterministic.js';
+import type { Assertion } from '../../../../src/eval-workflows/inputs/contracts/assertion.js';
+import { testRuntime, validDefinition, validPolicy } from '../../../eval-core/compiler/fixtures.js';
 
 interface ScoringFixture {
   deterministicAssertions: {
@@ -56,7 +56,7 @@ interface ScoringFixture {
 }
 
 const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
-  '../../fixtures/eval-core/scoring-equivalence-v1.json',
+  '../../../fixtures/eval-core/scoring-equivalence-v1.json',
   import.meta.url,
 )), 'utf8')) as ScoringFixture;
 

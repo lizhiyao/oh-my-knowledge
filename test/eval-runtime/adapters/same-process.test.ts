@@ -6,26 +6,26 @@ import {
   type RuntimeIdentity,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../../../src/eval-core/contracts/index.js';
+} from '../../../src/eval-core/contracts/index.js';
 import type {
   EvaluatorRecordContext,
   EvaluatorRunContext,
-} from '../../../../../src/eval-core/evaluation/index.js';
+} from '../../../src/eval-core/evaluation/index.js';
 import type {
   ExecutorRunContext,
   ExecutorTrialContext,
-} from '../../../../../src/eval-core/execution/index.js';
+} from '../../../src/eval-core/execution/index.js';
 import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
-} from '../../../../../src/eval-runtime/adapters/same-process.js';
+} from '../../../src/eval-runtime/adapters/same-process.js';
 import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
-} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
 import {
   type SameProcessOperationScope,
-} from '../../../../../src/eval-hosts/runtime-adapter/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/index.js';
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);

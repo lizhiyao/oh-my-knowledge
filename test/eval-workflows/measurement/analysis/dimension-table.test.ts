@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
   schemaIdentityKey,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA_VERSION,
@@ -13,7 +13,7 @@ import {
   type DimensionEntry,
   type DimensionGroup,
   type DimensionTableValue,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 
 const trialId = digestCanonicalJson('dimension-trial');
 const securitySource = digestCanonicalJson('security-source');

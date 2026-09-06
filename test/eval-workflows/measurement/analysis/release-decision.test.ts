@@ -1,31 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-workflows/analysis/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-workflows/analysis/bootstrap.js';
 import {
   PAIRED_NORMAL_POWER_METHOD_ID,
   requiredPairedComparisonUnits,
-} from '../../../src/eval-workflows/analysis/sample-size.js';
-import type { DecisionPolicyContext } from '../../../src/eval-core/analysis/index.js';
+} from '../../../../src/eval-workflows/analysis/sample-size.js';
+import type { DecisionPolicyContext } from '../../../../src/eval-core/analysis/index.js';
 import {
   canonicalizeJson,
   digestCanonicalJson,
   type JsonValue,
-} from '../../../src/eval-core/contracts/index.js';
-import { DecisionPolicyCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
+import { DecisionPolicyCapabilitiesSchema } from '../../../../src/eval-core/compiler/index.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
 import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
   buildBootstrapFamilyTable,
   type BootstrapObservation,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
 import {
   BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
   buildBootstrapFamilyTableV2,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.js';
 import {
   COMPOSITE_TABLE_SCHEMA,
   compareCompositeGroups,
@@ -35,12 +35,12 @@ import {
   parseCompositeTableEnvelope,
   type CompositeGroup,
   type CompositeLayerEntry,
-} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/composite-table.js';
 import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   parseJudgeEnsembleTableEnvelope,
-} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
+} from '../../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
 import {
   RELEASE_DECISION_PARAMETERS_SCHEMA,
   RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
@@ -50,7 +50,7 @@ import {
   type ReleaseDecisionParameters,
   type ReleaseDecisionParametersV1,
   type ReleaseDecisionParametersV3,
-} from '../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
 import {
   RELEASE_DECISION_POLICY_V4,
   RELEASE_DECISION_POLICY_V4_IDENTITY,
@@ -72,10 +72,10 @@ import {
   RELEASE_DECISION_POLICY_V7,
   RELEASE_DECISION_POLICY_V7_IDENTITY,
   createReleaseDecisionPolicies,
-} from '../../../src/eval-workflows/measurement/analysis/release-decision.js';
+} from '../../../../src/eval-workflows/measurement/analysis/release-decision.js';
 import {
   type BootstrapFamilyParameters,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
 
 const CONTROL = 'control';
 const TREATMENT = 'treatment';

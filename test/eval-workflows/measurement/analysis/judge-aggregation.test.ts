@@ -10,13 +10,13 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type SamplingUnitIds,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   AnalysisNodeCapabilitiesSchema,
   prepareEvaluationPlan,
   type AnalysisRuntimeRequirement,
   type PreparationRuntime,
-} from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/compiler/index.js';
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
@@ -24,25 +24,25 @@ import type {
   AnalysisNodeImplementation,
   AnalysisNodeInput,
   AnalysisNodeRunContext,
-} from '../../../src/eval-core/analysis/index.js';
+} from '../../../../src/eval-core/analysis/index.js';
 import {
   analyzeEvaluationBundleSource,
   createBuiltinAnalysisSchemaValidators,
   createBuiltinMissingPolicies,
   decideAnalysisSource,
   resolveBuiltinAnalysisRuntime,
-} from '../../../src/eval-core/analysis/index.js';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-workflows/analysis/bootstrap.js';
+} from '../../../../src/eval-core/analysis/index.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-workflows/analysis/bootstrap.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/eval-core/execution/index.js';
+} from '../../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundleSource,
   type EvaluationEvaluator,
-} from '../../../src/eval-core/evaluation/index.js';
+} from '../../../../src/eval-core/evaluation/index.js';
 import {
   createJudgeAggregationAnalysisNodes,
   createJudgeAggregationSchemaValidators,
@@ -52,65 +52,65 @@ import {
   JUDGE_REPLICATE_ANALYSIS_IDENTITY,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_TABLE_SCHEMA,
-} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
+} from '../../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
 import {
   createDimensionAnalysisNodes,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-node.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-node.js';
 import {
   createDimensionParameterSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
 import {
   createDimensionTableSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 import {
   createCompositeAnalysisNodes,
-} from '../../../src/eval-workflows/measurement/analysis/composite-node.js';
+} from '../../../../src/eval-workflows/measurement/analysis/composite-node.js';
 import {
   createCompositeParameterSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
 import {
   createCompositeTableSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/composite-table.js';
 import {
   createAgreementAnalysisNodes,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-node.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-node.js';
 import {
   createAgreementParameterSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
 import {
   createAgreementTableSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-table.js';
 import {
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-node-contract.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-node-contract.js';
 import {
   createBootstrapFamilyAnalysisNodes,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-node.js';
 import {
   createBootstrapFamilyParameterSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
 import {
   createBootstrapFamilyTableSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
+} from '../../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
 import {
   createReleaseDecisionPolicies,
   RELEASE_DECISION_POLICY_V4_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/release-decision.js';
+} from '../../../../src/eval-workflows/measurement/analysis/release-decision.js';
 import {
   createReleaseDecisionParameterSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
 import {
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/measurement/analysis/composite-node-contract.js';
+} from '../../../../src/eval-workflows/measurement/analysis/composite-node-contract.js';
 import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../eval-core/compiler/fixtures.js';
+} from '../../../eval-core/compiler/fixtures.js';
 
 const ANALYSIS_PLAN_DIGEST = digestCanonicalJson({ fixture: 'analysis-plan' });
 const EVALUATION_BUNDLE_DIGEST = digestCanonicalJson({ fixture: 'evaluation-bundle' });
@@ -135,7 +135,7 @@ interface ScoringFixture {
 }
 
 const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
-  '../../fixtures/eval-core/scoring-equivalence-v1.json',
+  '../../../fixtures/eval-core/scoring-equivalence-v1.json',
   import.meta.url,
 )), 'utf8')) as ScoringFixture;
 
