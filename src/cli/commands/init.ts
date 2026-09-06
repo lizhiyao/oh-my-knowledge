@@ -103,8 +103,7 @@ export default class Init extends BaseCommand {
       }),
       required: false,
       parse: async (input: string): Promise<string> => {
-        // 拒绝 `omk init -- --weird` 这种把 flag 当 positional 的写法 — legacy 会
-        // 创建名为 `--weird` 的目录,新人一头雾水。在 oclif Args 这层拦住更友好。
+        // 在参数解析阶段拒绝疑似遗漏的 flag，避免误建名为 `--weird` 的目录。
         if (input.startsWith('--')) {
           const lang = resolveLang();
           const msg = lang === 'zh'

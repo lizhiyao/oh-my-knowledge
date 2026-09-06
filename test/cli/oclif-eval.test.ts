@@ -47,7 +47,7 @@ describe('oclif eval', () => {
     });
   });
 
-  it('eval --help 含 41 flag', async () => {
+  it('eval --help 展示关键评测选项', async () => {
     const stdout = await renderCommandHelp('eval');
     assert.ok(stdout.includes('跑评测'), `default eval --help missing zh:\n${stdout.slice(0, 200)}`);
     // 抽样核心 flag
