@@ -91,6 +91,9 @@ function createApplication(host: ApplicationHost): EvaluationApplication {
     const projectRoot = resolve(input.projectRoot);
     if (request.values.orchestration.preflight.doctor === 'skip') input.onNotice?.({ noticeKind: 'doctor-skipped' });
     if (request.values.orchestration.batch) {
+      if (request.values.orchestration.repeatCount > 1) throw new TypeError(request.values.presentation.language === 'zh'
+        ? '批量评测不支持独立重复。请移除 --batch 后逐个评测，或使用 --repeat 1 覆盖重复次数（包括 eval.yaml 中的 repeat）。'
+        : 'Batch evaluation does not support independent repeats. Remove --batch and evaluate each skill separately, or use --repeat 1 to override the repeat count (including repeat in eval.yaml).');
       const entries = discoverBatchSkills(resolve(projectRoot, request.values.locators.skillDirectory));
       if (entries.length === 0) throw new TypeError(request.values.presentation.language === 'zh'
         ? `没有找到带 canonical 私有用例的目录 skill：${request.values.locators.skillDirectory}。每个 skill 应使用 <skill>/.omk/eval-samples.json 或 eval-samples.yaml。`

@@ -228,7 +228,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
 **Flags:**
 
 ```text
-  --batch                         Batch mode: baseline vs each skill
+  --batch                         Batch mode: baseline vs each skill; repeat must be 1
   --bootstrap                     Add bootstrap CI
   --bootstrap-samples <value>     Bootstrap resamples, default 1000
   --budget-per-sample-ms <value>  Per-sample time cap ms (must be > 0; omit for no cap)

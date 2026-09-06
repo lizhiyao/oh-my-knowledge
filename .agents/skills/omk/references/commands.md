@@ -73,7 +73,7 @@ omk eval [flags]
 
 **Flags:**
 
-- `--batch` `boolean`:batch 模式：baseline 作为对照组，逐个 skill 作为实验组
+- `--batch` `boolean`:批量评测：baseline 作为对照组，逐个 skill 作为实验组；不支持 repeat 大于 1
 - `--bootstrap` `boolean`:加 bootstrap CI
 - `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
 - `--budget-per-sample-ms` `option`:单用例时长上限 ms（必须 > 0，不传则无上限）
