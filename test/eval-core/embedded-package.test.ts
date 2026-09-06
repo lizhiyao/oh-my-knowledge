@@ -168,6 +168,7 @@ describe('published embedded Evaluation API', () => {
     );
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
+    copyFileSync(join(REPO_ROOT, 'examples/eval-runtime/retrieval-abstention.mjs'), join(projectRoot, 'retrieval-abstention.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
     writeFileSync(join(projectRoot, 'tsconfig.json'), JSON.stringify({
       compilerOptions: {
@@ -389,6 +390,24 @@ const assert = require('node:assert/strict');
       ...readdirSync(isolatedConfig),
       ...readdirSync(isolatedCache),
     ]).toEqual([]);
+  });
+
+  it('tarball 公开入口支持独立拒答评分与排除审计', () => {
+    // A separate process proves published package imports work outside the source tree.
+    const result = spawnSync(process.execPath, [join(projectRoot, 'retrieval-abstention.mjs')], {
+      cwd: projectRoot, encoding: 'utf8', timeout: 30_000,
+    });
+    expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' });
+    const output = JSON.parse(result.stdout);
+    expect(output.audit.retrievalAbstention).toMatchObject({
+      positiveCount: 1, abstentionCount: 1, pendingCount: 1, excludedSampleIds: ['pending'],
+    });
+    expect(output.metrics['retrieval-abstention.abstentionCorrect']).toMatchObject({
+      value: 1, coverage: { included: 1 },
+    });
+    expect(output.metrics['retrieval-abstention.precisionAtK']).toMatchObject({
+      value: 1 / 3, coverage: { included: 1 },
+    });
   });
 
   it('tarball clean-room 覆盖事件、失败、取消、telemetry 与生命周期契约', () => {

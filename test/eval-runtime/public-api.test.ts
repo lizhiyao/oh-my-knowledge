@@ -222,6 +222,8 @@ const PUBLIC_API = {
       'checkContentStore',
       'checkExecutor',
       'checkRuntime',
+      'createRetrievalAbstentionEvaluation',
+      'RetrievalAbstentionInputError',
       'evaluate',
       'evaluateSeries',
       'loadEvaluationResult',
@@ -233,6 +235,8 @@ const PUBLIC_API = {
       'saveEvaluationResult',
     ],
     types: [
+      'RetrievalAbstentionEvaluation',
+      'RetrievalAbstentionEvaluationInput',
       'AllowedToolsInput',
       'AllowedToolsPlan',
       'Artifact',

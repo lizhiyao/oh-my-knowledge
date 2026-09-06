@@ -1,5 +1,13 @@
 /** Canonical user-facing Evaluation Runtime API. */
 export {
+  createRetrievalAbstentionEvaluation,
+  RetrievalAbstentionInputError,
+} from './retrieval-abstention.js';
+export type {
+  RetrievalAbstentionEvaluation,
+  RetrievalAbstentionEvaluationInput,
+} from './retrieval-abstention.js';
+export {
   EvaluationConfigurationError,
   EvaluationEventConsumptionError,
   assessComparability,
