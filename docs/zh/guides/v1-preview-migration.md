@@ -19,6 +19,7 @@ omk --version
 - 机器级数据在 `~/.oh-my-knowledge/` 下采用相同领域。
 - Evaluation run 是以 `runId` 定位、经过认证的 Core bundle，`report.json` 是 canonical report。
 - `0.54` 生成的报告不能被新版本 resume、不能在新 Studio 打开、不能做 Gold 对比，也不能交给 `omk evolve`。如需查看，请单独保留 `0.54`。
+- 观测 inbox 容器仍使用 schema v2，但其中的 `observe-experience` 体验报告必须使用 schema v3。体验报告 v2 不再自动转换；inbox 读取器会跳过包含旧体验报告的文件，保留原文件不变。请使用 `omk observe ingest <trace-dir>` 重新导入原始轨迹，生成当前报告。
 - 受管记录升级为 schema v3。请重新安装 artifact，并重新评测以建立当前证据。
 
 不要把旧报告的分数复制到新布局。重新运行评测，让 sealed plan、lineage、Runtime identity 与 decision evidence 一起生成。完整边界见 [Evaluation Core 生产切换](./eval-core-cutover.md)与[存储布局 v2](../specs/storage-layout-spec.md)。

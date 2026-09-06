@@ -82,7 +82,7 @@ export function isExperienceGoalSlice(value: unknown): value is ExperienceGoalSl
     && isExperienceEvidenceRefArray(value.userMessageRefs);
 }
 
-export function isExperienceSkillSummary(value: unknown, requireToolUnknown = false): boolean {
+export function isExperienceSkillSummary(value: unknown): boolean {
   if (
     !isObjectRecord(value)
     || typeof value.skillName !== 'string'
@@ -104,15 +104,12 @@ export function isExperienceSkillSummary(value: unknown, requireToolUnknown = fa
       value.invocationCount,
     )
     || (
-      requireToolUnknown
-      && (
-        !isNonNegativeInteger(value.timestampedInvocationCount)
-        || !isRate(value.timestampCoverage)
-      )
+      !isNonNegativeInteger(value.timestampedInvocationCount)
+      || !isRate(value.timestampCoverage)
     )
     || !isNonNegativeInteger(value.reviewFirstSessionCount)
     || !isNonNegativeInteger(value.sampleReviewSessionCount)
-    || !isExperienceIndicators(value.indicators, requireToolUnknown)
+    || !isExperienceIndicators(value.indicators)
     || !isExperienceEvidenceChain(value.evidenceChain)
     || !isExperienceRuleFindingArray(value.ruleFindings)
     || !isExperienceAssistiveInference(value.assistiveInference)
@@ -127,7 +124,6 @@ export function isExperienceSkillSummary(value: unknown, requireToolUnknown = fa
 
 export function validateExperienceReferences(
   report: ObservationExperienceReport,
-  strict: boolean,
 ): boolean {
   if (
     !isObjectRecord(report.meta)
@@ -147,15 +143,14 @@ export function validateExperienceReferences(
     ) return false;
     if (
       timeline.tree.sessionId !== timeline.sessionId
-      || (strict && !traceTimelineStructureIsConsistent(timeline))
+      || !traceTimelineStructureIsConsistent(timeline)
     ) return false;
     const rawEvents = [
       ...timeline.tree.main,
       ...timeline.tree.branches.flatMap((branch) => branch.events),
     ];
     if (
-      strict
-      && (
+      (
         rawEvents.some((event) => typeof event.traceId !== 'string')
         || rawEvents.some((event) =>
           (event.kind === 'tool_use' || event.kind === 'tool_result')
@@ -181,11 +176,8 @@ export function validateExperienceReferences(
     if (
       !isExperienceGoalSlice(goalSlice)
       || (
-        strict
-        && (
-          typeof goalSlice.traceId !== 'string'
-          || typeof goalSlice.timestampObserved !== 'boolean'
-        )
+        typeof goalSlice.traceId !== 'string'
+        || typeof goalSlice.timestampObserved !== 'boolean'
       )
       || goalSliceIds.has(goalSlice.id)
     ) return false;
@@ -199,8 +191,7 @@ export function validateExperienceReferences(
     if (invocationById.has(invocation.id)) return false;
     invocationById.set(invocation.id, invocation);
     if (
-      strict
-      && (
+      (
         countRecordTotal(invocation.toolCounts) !== invocation.metrics.numToolCalls
         || !toolOutcomeCountsMatch(
           invocation.metrics,
@@ -219,20 +210,13 @@ export function validateExperienceReferences(
         || goalSlice.startTimestamp !== invocation.startTimestamp
         || goalSlice.endTimestamp !== invocation.endTimestamp
         || (
-          strict
-          && (
-            goalSlice.traceId !== invocation.traceId
-            || goalSlice.timestampObserved !== invocation.timestampObserved
-          )
+          goalSlice.traceId !== invocation.traceId
+          || goalSlice.timestampObserved !== invocation.timestampObserved
         )
       )
     ) return false;
     referencedGoalSliceIds.add(invocation.goalSliceId);
-    if (strict && (!invocation.timelineRef || !invocation.timelineEventIds)) return false;
-    if (!invocation.timelineRef) {
-      if (invocation.timeline.length === 0 && (invocation.timelineEventIds?.length ?? 0) > 0) return false;
-      continue;
-    }
+    if (!invocation.timelineRef || !invocation.timelineEventIds) return false;
     const eventIds = timelineEventsByRef.get(invocation.timelineRef);
     if (!eventIds) return false;
     if (timelineByRef.get(invocation.timelineRef)?.sessionGroupKey !== invocation.sessionGroupKey) return false;
@@ -276,7 +260,7 @@ export function validateExperienceReferences(
         (invocationReferenceCounts.get(invocation.id) ?? 0) + 1,
       );
     }
-    if (strict) {
+    {
       const timestampedInvocations = sessionInvocations.filter(invocationTimestampObserved);
       const expectedStartTimestamp = minString(
         timestampedInvocations.map((invocation) => invocation.startTimestamp),
@@ -297,10 +281,10 @@ export function validateExperienceReferences(
       const expectedReviewPriorityScore = scoreForIndicators(expectedIndicators);
       const expectedReviewPriority = session.reviewerReport
         ? priorityForReviewerFindings({
-            ...session,
-            indicators: expectedIndicators,
-            reviewPriorityScore: expectedReviewPriorityScore,
-          }, session.reviewerReport.findings)
+          ...session,
+          indicators: expectedIndicators,
+          reviewPriorityScore: expectedReviewPriorityScore,
+        }, session.reviewerReport.findings)
         : priorityForScore(expectedReviewPriorityScore);
       if (
         !indicatorRecordsEqual(session.indicators, expectedIndicators)
@@ -321,7 +305,7 @@ export function validateExperienceReferences(
         && timelineByRef.get(session.timelineRef ?? '')?.sessionGroupKey !== sessionGroupKey
       ) return false;
     }
-    if (strict && (!session.timelineRef || !session.timelinePreviewEventIds)) return false;
+    if (!session.timelineRef || !session.timelinePreviewEventIds) return false;
     if (session.timelineRef) {
       referencedTimelineIds.add(session.timelineRef);
       const eventIds = timelineEventsByRef.get(session.timelineRef);
@@ -333,8 +317,7 @@ export function validateExperienceReferences(
       ) return false;
       if (session.timelinePreviewEventIds?.some((id) => !eventIds.has(id))) return false;
       if (
-        strict
-        && (
+        (
           timeline?.sessionId !== session.sessionId
           || !timelineScopeMatches(
             session,
@@ -354,8 +337,7 @@ export function validateExperienceReferences(
       referencedStoryContextIds.add(session.sessionStory.contextRef);
     }
     if (
-      strict
-      && session.reviewerReport
+      session.reviewerReport
       && !reviewerMetricsMatch(
         session.reviewerReport,
         session,
@@ -366,7 +348,7 @@ export function validateExperienceReferences(
   }
   if (
     Array.from(invocationReferenceCounts.values()).some((count) => count !== 1)
-    || (strict && referencedTimelineIds.size !== timelineEventsByRef.size)
+    || referencedTimelineIds.size !== timelineEventsByRef.size
   ) return false;
 
   const storyContextIds = new Set<string>();
@@ -384,10 +366,10 @@ export function validateExperienceReferences(
   const skillNames = new Set<string>();
   for (const skill of report.skills) {
     if (
-      !isExperienceSkillSummary(skill, strict)
+      !isExperienceSkillSummary(skill)
       || skillNames.has(skill.skillName)
     ) return false;
-    if (strict) {
+    {
       const skillInvocations = report.invocations.filter(
         (invocation) => invocation.skillName === skill.skillName,
       );
@@ -433,20 +415,20 @@ export function validateExperienceReferences(
   if (
     report.sessions.some((session) => !skillNames.has(session.skillName))
     || report.invocations.some((invocation) => !skillNames.has(invocation.skillName))
-    || (strict && referencedStoryContextIds.size !== storyContextIds.size)
+    || referencedStoryContextIds.size !== storyContextIds.size
   ) return false;
   return report.sessions.every((session) => {
     const contextRef = session.sessionStory?.contextRef;
-    if (strict && session.sessionStory && !contextRef) return false;
+    if (session.sessionStory && !contextRef) return false;
     if (contextRef && !storyContextIds.has(contextRef)) return false;
-    if (strict && contextRef) {
+    if (contextRef) {
       const firstInvocation = session.invocationIds
         .map((id) => invocationById.get(id))
         .find((value): value is ExperienceInvocation => Boolean(value));
       const storyInvocations = firstInvocation
         ? report.invocations.filter(
-            (invocation) => invocation.sessionGroupKey === firstInvocation.sessionGroupKey,
-          )
+          (invocation) => invocation.sessionGroupKey === firstInvocation.sessionGroupKey,
+        )
         : [];
       const context = storyContextById.get(contextRef);
       const timeline = timelineByRef.get(session.timelineRef ?? '');
@@ -467,8 +449,7 @@ export function validateExperienceReferences(
       ) return false;
     }
     if (
-      strict
-      && session.reviewerReport
+      session.reviewerReport
       && session.reviewerReport.sessionStoryRef !== 'session'
       && !isObjectRecord((session.reviewerReport as unknown as Record<string, unknown>).sessionStory)
     ) return false;

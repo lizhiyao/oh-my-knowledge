@@ -25,7 +25,6 @@ import {
 
 export function normalizeExperienceInvocationShells(
   values: unknown[],
-  strict: boolean,
 ): ExperienceInvocation[] | null {
   const records = values.filter(isObjectRecord);
   if (records.length !== values.length) return null;
@@ -34,7 +33,7 @@ export function normalizeExperienceInvocationShells(
     || typeof value.skillName !== 'string'
     || typeof value.sessionId !== 'string'
     || typeof value.sessionGroupKey !== 'string'
-    || (strict ? typeof value.traceId !== 'string' : !isOptionalString(value.traceId))
+    || typeof value.traceId !== 'string'
     || typeof value.sourceTrace !== 'string'
     || !isTraceSourceKind(value.sourceKind)
     || !isOptionalString(value.entrypoint)
@@ -43,35 +42,25 @@ export function normalizeExperienceInvocationShells(
     || !isNonNegativeInteger(value.segmentIndex)
     || typeof value.goalSliceId !== 'string'
     || !isTimestampRange(value.startTimestamp, value.endTimestamp)
-    || (value.timestampObserved !== undefined && typeof value.timestampObserved !== 'boolean')
-    || (strict && typeof value.timestampObserved !== 'boolean')
+    || typeof value.timestampObserved !== 'boolean'
     || !isExperienceAttribution(value.attribution)
-    || !isExperienceInvocationMetrics(value.metrics, strict)
+    || !isExperienceInvocationMetrics(value.metrics)
     || !isCountRecord(value.toolCounts)
-    || !isExperienceIndicators(value.indicators, strict)
+    || !isExperienceIndicators(value.indicators)
     || !isExperienceEvidenceChain(value.evidenceChain)
     || !isExperienceRuleFindingArray(value.ruleFindings)
     || !isExperienceAssistiveInference(value.assistiveInference)
     || !isExperienceProblemPatternArray(value.problemPatterns)
     || !isStringArray(value.relatedObservationIds)
     || !isExperienceEvidenceRefArray(value.evidenceRefs)
-    || (
-      strict
-        ? typeof value.timelineRef !== 'string'
-          || !isStringArray(value.timelineEventIds)
-          || (value.timeline !== undefined && !isTimelineEventArray(value.timeline))
-        : !isOptionalString(value.timelineRef)
-          || (value.timelineEventIds !== undefined && !isStringArray(value.timelineEventIds))
-          || !isTimelineEventArray(value.timeline)
-    )
+    || (typeof value.timelineRef !== 'string'
+      || !isStringArray(value.timelineEventIds)
+      || (value.timeline !== undefined && !isTimelineEventArray(value.timeline)))
   )) return null;
   return records.map((value) => ({
     ...value,
     metrics: {
-      ...(value.metrics as Record<string, unknown>),
-      tokenUsageObserved: strict
-        ? (value.metrics as Record<string, unknown>).tokenUsageObserved
-        : false,
+      ...(value.metrics as ExperienceInvocation['metrics']),
     },
     timeline: isTimelineEventArray(value.timeline)
       ? value.timeline as ExperienceTimelineEvent[]
@@ -81,7 +70,6 @@ export function normalizeExperienceInvocationShells(
 
 export function normalizeExperienceSessionShells(
   values: unknown[],
-  strict: boolean,
 ): ExperienceSessionSummary[] | null {
   const records = values.filter(isObjectRecord);
   if (records.length !== values.length) return null;
@@ -105,11 +93,8 @@ export function normalizeExperienceSessionShells(
       Array.isArray(value.invocationIds) ? value.invocationIds.length : -1,
     )
     || (
-      strict
-      && (
-        !isNonNegativeInteger(value.timestampedInvocationCount)
-        || !isRate(value.timestampCoverage)
-      )
+      !isNonNegativeInteger(value.timestampedInvocationCount)
+      || !isRate(value.timestampCoverage)
     )
     || !isStringArray(value.goalSliceIds)
     || !isExperienceReviewPriority(value.reviewPriority)
@@ -128,42 +113,30 @@ export function normalizeExperienceSessionShells(
       'hedging_signal',
       'explicit_marker',
     ])
-    || !isExperienceIndicators(value.indicators, strict)
+    || !isExperienceIndicators(value.indicators)
     || !isExperienceEvidenceChain(value.evidenceChain)
     || !isExperienceRuleFindingArray(value.ruleFindings)
     || !isExperienceAssistiveInference(value.assistiveInference)
     || !isExperienceProblemPatternArray(value.problemPatterns)
     || !isStringArray(value.relatedObservationIds)
     || (value.turns !== undefined && !isExperienceTurnSummaryArray(value.turns))
-    || !(strict
-      ? isExperienceTimelineScope(value.timelineScope)
-      : isLegacyExperienceTimelineScope(value.timelineScope))
+    || !isExperienceTimelineScope(value.timelineScope)
     || !isStringArray(value.attributionSources)
     || !isStringArray(value.pluginNames)
     || !isStringArray(value.rawSkillRefs)
     || !isStringArray(value.commandNames)
-    || (
-      strict
-        ? typeof value.timelineRef !== 'string'
-          || !isStringArray(value.timelinePreviewEventIds)
-          || (value.timelinePreview !== undefined && !isTimelineEventArray(value.timelinePreview))
-          || (value.fullSessionTimeline !== undefined && !isTimelineEventArray(value.fullSessionTimeline))
-        : !isOptionalString(value.timelineRef)
-          || (
-            value.timelinePreviewEventIds !== undefined
-            && !isStringArray(value.timelinePreviewEventIds)
-          )
-          || !isTimelineEventArray(value.timelinePreview)
-          || !isTimelineEventArray(value.fullSessionTimeline)
-    )
+    || (typeof value.timelineRef !== 'string'
+      || !isStringArray(value.timelinePreviewEventIds)
+      || (value.timelinePreview !== undefined && !isTimelineEventArray(value.timelinePreview))
+      || (value.fullSessionTimeline !== undefined && !isTimelineEventArray(value.fullSessionTimeline)))
     || (value.timelineTree !== undefined && !isTimelineTree(value.timelineTree))
     || (
       value.sessionStory !== undefined
-      && !isExperienceSessionStory(value.sessionStory, strict)
+      && !isExperienceSessionStory(value.sessionStory)
     )
     || (
       value.reviewerReport !== undefined
-      && !isExperienceReviewerReport(value.reviewerReport, strict)
+      && !isExperienceReviewerReport(value.reviewerReport)
     )
   )) return null;
   return records.map((value) => {
@@ -177,13 +150,13 @@ export function normalizeExperienceSessionShells(
       : hashParts('thread', sourceThreadId);
     const sessionStory = isObjectRecord(value.sessionStory)
       ? {
-          ...value.sessionStory,
-          goalSlices: Array.isArray(value.sessionStory.goalSlices) ? value.sessionStory.goalSlices : [],
-          subagentDispatches: Array.isArray(value.sessionStory.subagentDispatches)
-            ? value.sessionStory.subagentDispatches
-            : [],
-          episodes: Array.isArray(value.sessionStory.episodes) ? value.sessionStory.episodes : [],
-        }
+        ...value.sessionStory,
+        goalSlices: Array.isArray(value.sessionStory.goalSlices) ? value.sessionStory.goalSlices : [],
+        subagentDispatches: Array.isArray(value.sessionStory.subagentDispatches)
+          ? value.sessionStory.subagentDispatches
+          : [],
+        episodes: Array.isArray(value.sessionStory.episodes) ? value.sessionStory.episodes : [],
+      }
       : undefined;
     return {
       ...value,
@@ -549,7 +522,7 @@ export function isExperienceAttribution(value: unknown): boolean {
     && isOptionalString(value.commandName);
 }
 
-export function isExperienceInvocationMetrics(value: unknown, requireSourceNeutralOutcomes = false): boolean {
+export function isExperienceInvocationMetrics(value: unknown): boolean {
   if (!isObjectRecord(value)) return false;
   const fields = [
     value.durationMs,
@@ -563,8 +536,7 @@ export function isExperienceInvocationMetrics(value: unknown, requireSourceNeutr
   ];
   if (!fields.every(isNonNegativeInteger)) return false;
   if (
-    requireSourceNeutralOutcomes
-    && (
+    (
       typeof value.tokenUsageObserved !== 'boolean'
       ||
       !isNonNegativeInteger(value.numToolCancelled)
@@ -606,15 +578,12 @@ export const EXPERIENCE_INDICATOR_KEYS = [
   'explicitMarkerCount',
 ] as const;
 
-export function isExperienceIndicators(value: unknown, requireSourceNeutralOutcomes = false): boolean {
+export function isExperienceIndicators(value: unknown): boolean {
   return isObjectRecord(value)
     && EXPERIENCE_INDICATOR_KEYS.every((key) => isNonNegativeInteger(value[key]))
     && (
-      !requireSourceNeutralOutcomes
-      || (
-        isNonNegativeInteger(value.toolCancelledCount)
-        && isNonNegativeInteger(value.toolUnknownCount)
-      )
+      isNonNegativeInteger(value.toolCancelledCount)
+      && isNonNegativeInteger(value.toolUnknownCount)
     )
     && (value.toolCancelledCount === undefined || isNonNegativeInteger(value.toolCancelledCount))
     && (value.toolUnknownCount === undefined || isNonNegativeInteger(value.toolUnknownCount))
@@ -645,39 +614,6 @@ export function isExperienceTimelineScope(value: unknown): boolean {
   ) return false;
   return value.previewEventCount <= value.segmentEventCount
     && value.segmentEventCount <= value.fullSessionEventCount
-    && value.omittedBeforeCount + value.omittedAfterCount <= value.fullSessionEventCount;
-}
-
-export function isLegacyExperienceTimelineScope(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || value.mode !== 'skill_segment_window'
-    || !isOptionalNonNegativeInteger(value.segmentStartRecordIndex)
-    || !isOptionalNonNegativeInteger(value.segmentEndRecordIndex)
-    || !isOptionalNonNegativeInteger(value.previewStartRecordIndex)
-    || !isOptionalNonNegativeInteger(value.previewEndRecordIndex)
-    || !isNonNegativeInteger(value.sessionStartRecordIndex)
-    || !isNonNegativeInteger(value.sessionEndRecordIndex)
-    || !isNonNegativeInteger(value.previewEventCount)
-    || !isNonNegativeInteger(value.fullSessionEventCount)
-    || typeof value.truncated !== 'boolean'
-    || !isNonNegativeInteger(value.omittedBeforeCount)
-    || !isNonNegativeInteger(value.omittedAfterCount)
-  ) return false;
-  const optionalRanges: Array<[unknown, unknown]> = [
-    [value.segmentStartRecordIndex, value.segmentEndRecordIndex],
-    [value.previewStartRecordIndex, value.previewEndRecordIndex],
-  ];
-  if (optionalRanges.some(([start, end]) =>
-    (start === undefined) !== (end === undefined)
-    || (
-      typeof start === 'number'
-      && typeof end === 'number'
-      && start > end
-    )
-  )) return false;
-  return value.sessionStartRecordIndex <= value.sessionEndRecordIndex
-    && value.previewEventCount <= value.fullSessionEventCount
     && value.omittedBeforeCount + value.omittedAfterCount <= value.fullSessionEventCount;
 }
 
@@ -1226,11 +1162,11 @@ export function isExperienceStoryContext(value: unknown): value is ExperienceSto
     && value.episodes.every(isExperienceEpisode);
 }
 
-export function isExperienceSessionStory(value: unknown, compact: boolean): boolean {
+export function isExperienceSessionStory(value: unknown): boolean {
   if (
     !isObjectRecord(value)
     || value.schemaVersion !== 1
-    || (compact ? typeof value.contextRef !== 'string' : !isOptionalString(value.contextRef))
+    || typeof value.contextRef !== 'string'
     || typeof value.summary !== 'string'
     || !isNonNegativeInteger(value.invocationCount)
     || !isNonNegativeInteger(value.goalSliceCount)
@@ -1250,19 +1186,9 @@ export function isExperienceSessionStory(value: unknown, compact: boolean): bool
     || !Array.isArray(value.answers)
     || !value.answers.every(isExperienceSessionStoryAnswer)
   ) return false;
-  if (compact) {
-    return value.goalSlices === undefined
-      && value.subagentDispatches === undefined
-      && value.episodes === undefined;
-  }
-  return Array.isArray(value.goalSlices)
-    && value.goalSlices.every(isExperienceSessionStoryGoalSlice)
-    && Array.isArray(value.subagentDispatches)
-    && value.subagentDispatches.every(isExperienceSessionStorySubagentDispatch)
-    && (
-      value.episodes === undefined
-      || (Array.isArray(value.episodes) && value.episodes.every(isExperienceEpisode))
-    );
+  return value.goalSlices === undefined
+    && value.subagentDispatches === undefined
+    && value.episodes === undefined;
 }
 
 export function isExperienceReviewerReportStep(value: unknown): boolean {
@@ -1298,7 +1224,7 @@ export function isExperienceReviewerReportFinding(value: unknown): boolean {
     && isOptionalTimestamp(value.reviewStateRef.reviewedAt);
 }
 
-export function isExperienceReviewerMetrics(value: unknown, requireSourceNeutralOutcomes: boolean): boolean {
+export function isExperienceReviewerMetrics(value: unknown): boolean {
   if (!isObjectRecord(value)) return false;
   const countKeys = [
     'toolCallCount',
@@ -1318,11 +1244,8 @@ export function isExperienceReviewerMetrics(value: unknown, requireSourceNeutral
   if (
     !countKeys.every((key) => isNonNegativeInteger(value[key]))
     || (
-      requireSourceNeutralOutcomes
-      && (
-        !isNonNegativeInteger(value.toolCancelledCount)
-        || !isNonNegativeInteger(value.toolUnknownCount)
-      )
+      !isNonNegativeInteger(value.toolCancelledCount)
+      || !isNonNegativeInteger(value.toolUnknownCount)
     )
     || (
       value.toolCancelledCount !== undefined
@@ -1366,14 +1289,14 @@ export function isExperienceReviewerMetrics(value: unknown, requireSourceNeutral
         ) <= 0.0001
       )
     )
-    && (!requireSourceNeutralOutcomes || hasCoverage)
+    && hasCoverage
     && (value.toolFailureCount as number)
       + (typeof value.toolCancelledCount === 'number' ? value.toolCancelledCount : 0)
       + (typeof value.toolUnknownCount === 'number' ? value.toolUnknownCount : 0)
       <= (value.toolCallCount as number);
 }
 
-export function isExperienceReviewerReport(value: unknown, compact: boolean): boolean {
+export function isExperienceReviewerReport(value: unknown): boolean {
   if (
     !isObjectRecord(value)
     || value.schemaVersion !== 1
@@ -1388,13 +1311,9 @@ export function isExperienceReviewerReport(value: unknown, compact: boolean): bo
     || !value.chainSteps.every(isExperienceReviewerReportStep)
     || !Array.isArray(value.findings)
     || !value.findings.every(isExperienceReviewerReportFinding)
-    || !isExperienceReviewerMetrics(value.oneLookMetrics, compact)
+    || !isExperienceReviewerMetrics(value.oneLookMetrics)
     || !isStringArray(value.authorSuggestions)
     || !isExperienceEvidenceRefArray(value.traceLinks)
   ) return false;
-  if (compact) {
-    return value.sessionStory === undefined && value.sessionStoryRef === 'session';
-  }
-  return isExperienceSessionStory(value.sessionStory, false)
-    && (value.sessionStoryRef === undefined || value.sessionStoryRef === 'session');
+  return value.sessionStory === undefined && value.sessionStoryRef === 'session';
 }

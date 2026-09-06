@@ -3762,25 +3762,7 @@ describe('source-neutral Trace IR', () => {
       delete legacySkill.indicators.toolCancelledCount;
       delete legacySkill.indicators.toolUnknownCount;
     }
-    const migrated = normalizeObservationExperienceReport(legacy);
-    assert.ok(migrated);
-    assert.equal(migrated.schemaVersion, 3);
-    assert.equal(migrated.traceTimelines.length, 1);
-    assert.equal(migrated.invocations[0].timeline.length, invocation.timeline.length);
-
-    const legacyMalformedMetrics = JSON.parse(JSON.stringify(legacy));
-    legacyMalformedMetrics.invocations[0].metrics = null;
-    assert.equal(normalizeObservationExperienceReport(legacyMalformedMetrics), null);
-    const legacyDanglingInvocation = JSON.parse(JSON.stringify(legacy));
-    legacyDanglingInvocation.sessions[0].invocationIds = ['missing-invocation'];
-    assert.equal(normalizeObservationExperienceReport(legacyDanglingInvocation), null);
-    const legacyMalformedSkill = JSON.parse(JSON.stringify(legacy));
-    delete legacyMalformedSkill.skills[0].toolCounts;
-    assert.equal(normalizeObservationExperienceReport(legacyMalformedSkill), null);
-    const legacyMalformedScope = JSON.parse(JSON.stringify(legacy));
-    legacyMalformedScope.sessions[0].timelineScope.sessionStartRecordIndex =
-      legacyMalformedScope.sessions[0].timelineScope.sessionEndRecordIndex + 1;
-    assert.equal(normalizeObservationExperienceReport(legacyMalformedScope), null);
+    assert.equal(normalizeObservationExperienceReport(legacy), null);
   });
 });
 

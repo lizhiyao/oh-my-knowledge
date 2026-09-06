@@ -19,6 +19,7 @@ The preview uses the domain-oriented storage v2 layout. It does not read, move, 
 - Machine-level data uses the same domains under `~/.oh-my-knowledge/`.
 - Evaluation runs are authenticated Core bundles addressed by `runId`; their canonical report is `report.json`.
 - Reports created by 0.54 cannot be resumed, opened in the new Studio, compared with Gold, or used by `omk evolve`. Keep 0.54 installed separately if you need to inspect them.
+- Observation inbox containers still use schema v2, but their embedded `observe-experience` report must use schema v3. Experience v2 reports are no longer converted; inbox readers skip the containing file without modifying it. Re-ingest the original trace with `omk observe ingest <trace-dir>` to create a current report.
 - Managed records use schema v3. Reinstall an artifact and run a new evaluation to establish current evidence.
 
 Do not copy scores from an old report into the new layout. Re-run the evaluation so the sealed plan, lineage, Runtime identity, and decision evidence are produced together. See the [Evaluation Core cutover](./eval-core-cutover.md) and [storage layout v2](../specs/storage-layout-spec.md) for the full boundary.
