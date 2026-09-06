@@ -1,6 +1,6 @@
 import type { ToolCallStatus } from '../../executors/contracts/trace.js';
 import type { ExperienceProblemPattern } from './problem-patterns.js';
-import type { ObservationSourceKind, TraceSourceMetadata } from './trace.js';
+import type { TraceSourceKind, TraceSourceMetadata } from './trace.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
@@ -601,7 +601,7 @@ export interface ExperienceInvocation {
   sessionGroupKey: string;
   traceId?: string;
   sourceTrace: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   entrypoint?: string;
   sourceMetadata?: TraceSourceMetadata;
   cwd?: string;
@@ -640,7 +640,7 @@ export interface ExperienceSessionSummary {
   sourceThreadId: string;
   sessionId: string;
   sourceTrace: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   entrypoint?: string;
   sourceMetadata?: TraceSourceMetadata;
   cwd?: string;
@@ -707,7 +707,7 @@ export interface ExperienceSkillSummary {
   skillName: string;
   invocationCount: number;
   sessionCount: number;
-  sourceKinds: ObservationSourceKind[];
+  sourceKinds: TraceSourceKind[];
   entrypoints: string[];
   entrypointCounts: Record<string, number>;
   sourceMetadataCounts: {

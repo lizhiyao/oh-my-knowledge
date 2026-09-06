@@ -1,5 +1,5 @@
 import {
-  isTraceSourceKind as isObservationSourceKind,
+  isTraceSourceKind,
 } from '../../executors/core/trace-source-kind.js';
 import type {
   ExperienceEvidenceRef,
@@ -36,7 +36,7 @@ export function normalizeExperienceInvocationShells(
     || typeof value.sessionGroupKey !== 'string'
     || (strict ? typeof value.traceId !== 'string' : !isOptionalString(value.traceId))
     || typeof value.sourceTrace !== 'string'
-    || !isObservationSourceKind(value.sourceKind)
+    || !isTraceSourceKind(value.sourceKind)
     || !isOptionalString(value.entrypoint)
     || !isOptionalTraceSourceMetadata(value.sourceMetadata)
     || !isOptionalString(value.cwd)
@@ -92,7 +92,7 @@ export function normalizeExperienceSessionShells(
     || !isOptionalString(value.sourceThreadId)
     || typeof value.sessionId !== 'string'
     || typeof value.sourceTrace !== 'string'
-    || !isObservationSourceKind(value.sourceKind)
+    || !isTraceSourceKind(value.sourceKind)
     || !isOptionalString(value.entrypoint)
     || !isOptionalTraceSourceMetadata(value.sourceMetadata)
     || !isOptionalString(value.cwd)

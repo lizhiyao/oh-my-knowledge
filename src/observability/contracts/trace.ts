@@ -1,5 +1,3 @@
-import type { TraceSourceKind } from '../../executors/contracts/trace-source.js';
-
 export type { TraceSourceKind } from '../../executors/contracts/trace-source.js';
 
 export interface TraceIngestionSummary {
@@ -21,6 +19,3 @@ export interface TraceSourceMetadata {
   modelApi?: string;
   businessActions?: string[];
 }
-
-/** @deprecated Prefer TraceSourceKind for new source-neutral APIs. */
-export type ObservationSourceKind = TraceSourceKind;

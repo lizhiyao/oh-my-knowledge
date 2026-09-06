@@ -18,7 +18,7 @@ import type {
   ObservationSignalType,
   ObservationSkillRollup,
 } from '../contracts/inbox.js';
-import type { ObservationSourceKind, TraceIngestionSummary } from '../contracts/trace.js';
+import type { TraceSourceKind, TraceIngestionSummary } from '../contracts/trace.js';
 import type { GapSignalRef } from '../analysis/contracts.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import {
@@ -32,7 +32,7 @@ import {
 import { normalizeTraceTimestamp, type TraceEvent } from '../trace/trace-ir.js';
 import { isSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
 import { isToolCallFailure, isToolCallSuccess } from '../../executors/tool-call-status.js';
-import { isTraceSourceKind as isObservationSourceKind } from '../../executors/core/trace-source-kind.js';
+import { isTraceSourceKind } from '../../executors/core/trace-source-kind.js';
 import {
   incrementRecordCount,
   ownRecordValue,
@@ -89,7 +89,7 @@ export type {
   ObservationSignalSubtype,
   ObservationSignalType,
   ObservationSkillRollup,
-  ObservationSourceKind,
+  TraceSourceKind,
 };
 
 export type PersistedObservationInboxReport = Omit<ObservationInboxReport, 'experience'> & {
@@ -107,7 +107,7 @@ function hashString(input: string): string {
 }
 
 /** Legacy migration only. New reports take sourceKind from Trace IR. */
-export function inferObservationSourceKind(sourceTrace: string): ObservationSourceKind {
+export function inferObservationSourceKind(sourceTrace: string): TraceSourceKind {
   const normalized = sourceTrace.replaceAll('\\', '/').toLowerCase();
   if (/(?:^|\/)\.?openclaw(?:\/|$)/.test(normalized)) return 'openclaw';
   if (/(?:^|\/)\.?codex\/sessions(?:\/|$)/.test(normalized)) return 'codex';
@@ -1130,7 +1130,7 @@ function isObservationSessionTimeRange(value: unknown): boolean {
     && (value.traceId === undefined || typeof value.traceId === 'string')
     && (value.sessionGroupId === undefined || typeof value.sessionGroupId === 'string')
     && typeof value.sourceTrace === 'string'
-    && isObservationSourceKind(value.sourceKind)
+    && isTraceSourceKind(value.sourceKind)
     && (
       value.traceRole === undefined
       || value.traceRole === 'standalone'
@@ -1161,7 +1161,7 @@ function isObservationInboxItem(value: unknown): value is ObservationInboxItem {
     || typeof value.sourceTrace !== 'string'
     || (
       value.sourceKind !== undefined
-      && !isObservationSourceKind(value.sourceKind)
+      && !isTraceSourceKind(value.sourceKind)
     )
     || !isObservationSignalType(value.signalType)
     || !isObservationSignalSubtype(value.signalSubtype)
@@ -1231,7 +1231,7 @@ function isObservationEvidence(value: unknown): boolean {
     value.segmentTimestamp,
   ];
   return strings.slice(0, -1).every((field) => field === undefined || typeof field === 'string')
-    && (value.sourceKind === undefined || isObservationSourceKind(value.sourceKind))
+    && (value.sourceKind === undefined || isTraceSourceKind(value.sourceKind))
     && isInboxOptionalTimestamp(value.segmentTimestamp)
     && (
       value.messageIndex === undefined

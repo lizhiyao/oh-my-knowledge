@@ -1,5 +1,5 @@
 import type { ExperienceTurnStatus } from '../contracts/experience.js';
-import type { ObservationSourceKind } from '../contracts/trace.js';
+import type { TraceSourceKind } from '../contracts/trace.js';
 
 export interface ConversationTaskItem {
   turnId: string;
@@ -22,7 +22,7 @@ export interface ConversationTaskItem {
 export interface ConversationListItem {
   threadId: string;
   sourceThreadId: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   title: string;
   preview?: string;
   cwd?: string;

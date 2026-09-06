@@ -185,9 +185,6 @@ export function loadTraceCorpus(path: string): TraceCorpus {
   };
 }
 
-/** @deprecated Use `loadTraceSessions`. */
-export const loadCcSessions = loadTraceSessions;
-
 function collectTraceFiles(
   dir: string,
   visitedDirs = new Set<string>(),

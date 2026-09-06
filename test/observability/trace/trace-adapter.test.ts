@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import {
-  loadCcSessions,
+  loadTraceSessions,
   loadTraceCorpus,
   segmentBySkill,
   segmentsToAnalysisEntries,
@@ -101,11 +101,11 @@ afterEach(() => {
 
 // ---------- Load ----------
 
-describe('loadCcSessions', () => {
+describe('loadTraceSessions', () => {
   it('skip malformed lines, does not crash', () => {
     const path = writeSession(tmpDir, 'broken.jsonl', [{ type: 'permission-mode', sessionId: 's1' }]);
     writeFileSync(path, 'not-json-line\n' + jsonl([{ type: 'permission-mode', sessionId: 's1' }]));
-    const sessions = loadCcSessions(path);
+    const sessions = loadTraceSessions(path);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].runId, 's1');
   });
@@ -113,7 +113,7 @@ describe('loadCcSessions', () => {
   it('ignores valid JSON primitives and does not synthesize empty sessions', () => {
     const path = join(tmpDir, 'non-records.jsonl');
     writeFileSync(path, 'null\n\"text\"\n[]\n{broken');
-    assert.deepEqual(loadCcSessions(path), []);
+    assert.deepEqual(loadTraceSessions(path), []);
   });
 
   it('reports malformed, ignored and unrecognized input instead of dropping it silently', () => {
@@ -163,7 +163,7 @@ describe('loadCcSessions', () => {
     const path = join(tmpDir, 'oversized-complete-record.jsonl');
     writeFileSync(path, `${'x'.repeat(32 * 1024 * 1024 + 1)}\n`);
     assert.throws(
-      () => loadCcSessions(path),
+      () => loadTraceSessions(path),
       /trace JSONL 单条记录超过 33554432 字符上限/,
     );
   });
@@ -404,7 +404,7 @@ describe('loadCcSessions', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const messages = session.events.filter((event) => event.eventKind === 'message');
     assert.equal(messages.length, 1);
     const [message] = messages;
@@ -440,7 +440,7 @@ describe('loadCcSessions', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const messages = session.events.filter((event) => event.eventKind === 'message');
     assert.deepEqual(messages.map((event) => ({
       origin: event.origin,
@@ -923,7 +923,7 @@ describe('loadCcSessions', () => {
   it('loads multiple JSONL from directory', () => {
     writeSession(tmpDir, 'a.jsonl', [{ type: 'permission-mode', sessionId: 'sa' }]);
     writeSession(tmpDir, 'b.jsonl', [{ type: 'permission-mode', sessionId: 'sb' }]);
-    const sessions = loadCcSessions(tmpDir);
+    const sessions = loadTraceSessions(tmpDir);
     assert.equal(sessions.length, 2);
     const ids = sessions.map((s) => s.runId).sort();
     assert.deepEqual(ids, ['sa', 'sb']);
@@ -942,7 +942,7 @@ describe('loadCcSessions', () => {
       asstRec('a-x1', [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/tmp/a.md' } }], { sessionId: 'child-1', timestamp: '2026-05-01T00:00:03.000Z' }),
     ]);
 
-    const sessions = loadCcSessions(sessionDir).sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
+    const sessions = loadTraceSessions(sessionDir).sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
     assert.equal(sessions.length, 2);
     assert.deepEqual(new Set(sessions.map((session) => session.rootRunId)), new Set(['sessionA']));
     assert.deepEqual(sessions.map((session) => session.role).sort(), ['main', 'subagent']);
@@ -1036,7 +1036,7 @@ describe('loadCcSessions', () => {
 ### AI 回复
 我会先处理当前模板。
 `);
-    const sessions = loadCcSessions(path);
+    const sessions = loadTraceSessions(path);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].runId, 'oc-1');
     assert.equal(sessions[0].cwd, '/tmp/agent');
@@ -1061,7 +1061,7 @@ describe('loadCcSessions', () => {
 ### AI 回复
 完成。
 `);
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.ok(session);
     assert.equal(session.startTimestamp, '2026-04-09T08:22:55.000Z');
     assert.ok(session.events.every((event) => event.timestamp === '2026-04-09T08:22:55.000Z'));
@@ -1080,7 +1080,7 @@ describe('loadCcSessions', () => {
 ### AI 回复
 完成。
 `);
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.ok(session);
     assert.equal(session.startTimestamp, undefined);
     assert.ok(session.events.every((event) => event.timestamp === undefined));
@@ -1124,7 +1124,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.startTimestamp, '2026-07-25T00:00:00.000Z');
     const segments = segmentBySkill(session);
     assert.equal(segments.length, 2);
@@ -1177,7 +1177,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const sessions = loadCcSessions(path);
+    const sessions = loadTraceSessions(path);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].runId, 'oc-1');
     assert.equal(sessions[0].sourceKind, 'openclaw');
@@ -1225,7 +1225,7 @@ describe('loadCcSessions', () => {
       }]),
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) => event.eventKind === 'tool_result');
     assert.ok(result?.eventKind === 'tool_result');
     assert.equal(result.status, 'unknown');
@@ -1251,7 +1251,7 @@ describe('loadCcSessions', () => {
       }]),
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const call = session.events.find((event) =>
       event.eventKind === 'tool_call' && event.callId === 'github-readme',
     );
@@ -1381,7 +1381,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.runId, 'codex-child');
     assert.equal(session.rootRunId, 'codex-parent');
     assert.equal(session.role, 'subagent');
@@ -1522,7 +1522,7 @@ describe('loadCcSessions', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.events.some((event) => (
       event.sourceType.startsWith('session_meta:')
       && event.eventKind === 'runtime_context'
@@ -1578,7 +1578,7 @@ describe('loadCcSessions', () => {
           model_provider: 'openai',
         },
       }]);
-      assert.equal(loadCcSessions(path)[0].entrypoint, expected);
+      assert.equal(loadTraceSessions(path)[0].entrypoint, expected);
     }
   });
 
@@ -1618,7 +1618,7 @@ describe('loadCcSessions', () => {
     });
     const path = writeSession(tmpDir, 'codex-explicit-success.jsonl', records);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const results = session.events.filter((event) => event.eventKind === 'tool_result');
     assert.deepEqual(
       results.map((result) => [result.callId, result.status, result.statusSource]),
@@ -1647,7 +1647,7 @@ describe('loadCcSessions', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.role, 'subagent');
     assert.equal(session.rootRunId, 'codex-review');
     assert.equal(session.label, 'subagent/codex-review');
@@ -1703,7 +1703,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const interrupted = session.events.find((event) =>
       event.eventKind === 'lifecycle' && event.phase === 'turn_aborted') as
       | { eventKind: string; phase: string; reason?: string; durationMs?: number; timestamp?: string; turnId?: string }
@@ -1763,7 +1763,7 @@ describe('loadCcSessions', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const interrupted = session.events.find((event) =>
       event.eventKind === 'lifecycle' && event.phase === 'turn_interrupted');
     assert.ok(interrupted && interrupted.eventKind === 'lifecycle');
@@ -1919,7 +1919,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.sourceMetadata?.model, 'gpt-5.5, gpt-5.6-sol');
 
     const segments = segmentBySkill(session);
@@ -2014,7 +2014,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 1);
     const [segment] = segmentBySkill(session);
     assert.equal(segment.metrics.inputTokens, 100);
@@ -2055,7 +2055,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const call = session.events.find((event) => event.eventKind === 'tool_call');
     assert.equal(call?.eventKind, 'tool_call');
     if (call?.eventKind !== 'tool_call') assert.fail('missing tool call');
@@ -2147,7 +2147,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const audit = segmentBySkill(session).find((segment) => segment.skillName === 'audit');
     assert.ok(audit);
     assert.deepEqual(
@@ -2198,7 +2198,7 @@ describe('loadCcSessions', () => {
       },
     ]);
 
-    const [toolCall] = segmentBySkill(loadCcSessions(path)[0])[0].toolCalls;
+    const [toolCall] = segmentBySkill(loadTraceSessions(path)[0])[0].toolCalls;
     assert.equal(toolCall.tool, 'web.run');
     assert.equal(toolCall.status, 'success');
     assert.equal(toolCall.statusSource, 'inferred');
@@ -2231,7 +2231,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    assert.deepEqual(loadCcSessions(path), []);
+    assert.deepEqual(loadTraceSessions(path), []);
   });
 
   it('groups nested Codex subagents under the root logical session', () => {
@@ -2273,7 +2273,7 @@ describe('loadCcSessions', () => {
       },
     }]);
 
-    const sessions = loadCcSessions(tmpDir).sort((a, b) => a.runId.localeCompare(b.runId));
+    const sessions = loadTraceSessions(tmpDir).sort((a, b) => a.runId.localeCompare(b.runId));
     assert.equal(sessions.length, 3);
     assert.deepEqual(sessions.map((session) => session.role), ['subagent', 'subagent', 'main']);
     assert.deepEqual(new Set(sessions.map((session) => session.rootRunId)), new Set(['codex-parent']));
@@ -2306,7 +2306,7 @@ describe('loadCcSessions', () => {
       },
     }]);
 
-    const sessions = loadCcSessions(tmpDir);
+    const sessions = loadTraceSessions(tmpDir);
     assert.equal(sessions.length, 3);
     assert.equal(new Set(sessions.map((session) => session.groupPath)).size, 3);
     assert.equal(
@@ -2341,7 +2341,7 @@ describe('loadCcSessions', () => {
       },
     }]);
 
-    const sessions = loadCcSessions(tmpDir).sort((a, b) => a.runId.localeCompare(b.runId));
+    const sessions = loadTraceSessions(tmpDir).sort((a, b) => a.runId.localeCompare(b.runId));
     assert.deepEqual(sessions.map((session) => session.rootRunId), ['cycle-a', 'cycle-b']);
     assert.equal(new Set(sessions.map((session) => session.groupPath)).size, 2);
   });
@@ -2412,7 +2412,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.deepEqual(session.sourceMetadata?.businessActions, ['生成文档', '生成页面']);
     const segs = segmentBySkill(session);
     assert.deepEqual(segs.filter((seg) => seg.skillName !== 'general').map((seg) => seg.skillName), ['prd-create', 'demo-create']);
@@ -2462,7 +2462,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const segs = segmentBySkill(session);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'task-poller');
@@ -2499,7 +2499,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const segs = segmentBySkill(session);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'task-poller');
@@ -2532,7 +2532,7 @@ describe('loadCcSessions', () => {
       },
     ]));
 
-    const [wrappedSession] = loadCcSessions(wrappedPath);
+    const [wrappedSession] = loadTraceSessions(wrappedPath);
     const wrappedSegs = segmentBySkill(wrappedSession);
     assert.equal(wrappedSegs.length, 2);
     assert.equal(wrappedSegs[1].skillName, 'task-poller');
@@ -2564,7 +2564,7 @@ describe('loadCcSessions', () => {
 ### AI 回复
 润色完成。
 `);
-    const sessions = loadCcSessions(path);
+    const sessions = loadTraceSessions(path);
     assert.equal(sessions.length, 2);
     assert.equal(sessions[0].runId, 'shared-session');
     assert.equal(sessions[0].cwd, '/repo-a');
@@ -2623,10 +2623,10 @@ ${text}
 done
 `;
     writeFileSync(path, `${block('r-a', 'A')}${block('r-b', 'B')}`);
-    const before = new Map(loadCcSessions(path).map((session) => [session.label, session.traceId]));
+    const before = new Map(loadTraceSessions(path).map((session) => [session.label, session.traceId]));
 
     writeFileSync(path, `${block('r-new', 'new')}${block('r-a', 'A')}${block('r-b', 'B')}`);
-    const after = new Map(loadCcSessions(path).map((session) => [session.label, session.traceId]));
+    const after = new Map(loadTraceSessions(path).map((session) => [session.label, session.traceId]));
 
     assert.equal(after.get('stable-agent.log#r-a'), before.get('stable-agent.log#r-a'));
     assert.equal(after.get('stable-agent.log#r-b'), before.get('stable-agent.log#r-b'));
@@ -2636,9 +2636,9 @@ done
     const path = writeSession(tmpDir, 'canonical-path.jsonl', [
       { type: 'permission-mode', sessionId: 'canonical-run' },
     ]);
-    const absolute = loadCcSessions(path)[0];
+    const absolute = loadTraceSessions(path)[0];
     const relativePath = relative(process.cwd(), path);
-    const fromRelative = loadCcSessions(relativePath)[0];
+    const fromRelative = loadTraceSessions(relativePath)[0];
 
     assert.equal(fromRelative.traceId, absolute.traceId);
   });
@@ -2780,7 +2780,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const call = session.events.find((event) => event.eventKind === 'tool_call' && event.callId === 'mcp-call-1');
     const result = session.events.find((event) => event.eventKind === 'tool_result' && event.callId === 'mcp-call-1');
     assert.ok(call?.eventKind === 'tool_call');
@@ -2862,7 +2862,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const [segment] = segmentBySkill(session);
     const calls = session.events.filter((event) => event.eventKind === 'tool_call');
     const results = session.events.filter((event) => event.eventKind === 'tool_result');
@@ -2909,7 +2909,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'mcp-call-err',
     );
@@ -2958,7 +2958,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'mcp-output-status',
     );
@@ -2996,7 +2996,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const call = session.events.find((event) =>
       event.eventKind === 'tool_call' && event.callId === 'exec-runtime-call',
     );
@@ -3041,7 +3041,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'mcp-ok-call',
     );
@@ -3075,7 +3075,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'mcp-cancelled-call'
     );
@@ -3107,7 +3107,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const call = session.events.find((event) =>
       event.eventKind === 'tool_call' && event.callId === 'node-read-skill',
     );
@@ -3144,7 +3144,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const [segment] = segmentBySkill(session);
     assert.equal(segment.skillName, 'control-chrome');
     assert.equal(segment.attribution?.source, 'skill-script');
@@ -3172,7 +3172,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const [segment] = segmentBySkill(session);
     assert.equal(segment.skillName, 'general');
     assert.equal(segment.attribution?.source, 'general');
@@ -3206,7 +3206,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'plain-call',
     );
@@ -3249,7 +3249,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'plain-call',
     );
@@ -3291,7 +3291,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const userOrigins = session.events.flatMap((event) =>
       event.eventKind === 'message' && event.role === 'user' ? [event.origin] : [],
     );
@@ -3344,7 +3344,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const segments = segmentBySkill(session);
     assert.equal(segments.length, 1);
     assert.equal(segments[0].skillName, 'skill-creator');
@@ -3422,7 +3422,7 @@ describe('source-neutral Trace IR', () => {
       },
     ]);
 
-    const sessions = loadCcSessions(tmpDir);
+    const sessions = loadTraceSessions(tmpDir);
     const segments = sessions.flatMap((session) => segmentBySkill(session));
     const report = buildObservationExperienceReport({
       sessions,
@@ -3499,7 +3499,7 @@ describe('source-neutral Trace IR', () => {
       payload: { type: 'message', role: 'assistant', content: '已修正并交付。' },
     });
     const path = writeSession(tmpDir, 'codex-long.jsonl', records);
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     const segments = segmentBySkill(session);
     const experience = buildObservationExperienceReport({
       sessions: [session],
@@ -3961,7 +3961,7 @@ describe('segmentBySkill', () => {
       }),
     ]);
 
-    const [session] = loadCcSessions(path);
+    const [session] = loadTraceSessions(path);
     assert.equal(session.startTimestamp, '2026-07-25T00:00:01.000Z');
     assert.equal(session.endTimestamp, '2026-07-25T00:00:09.000Z');
   });

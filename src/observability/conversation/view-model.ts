@@ -1,6 +1,6 @@
 import { loadLatestObservationInboxReports } from '../inbox/index.js';
 import type { ExperienceSessionSummary, ExperienceTurnSummary } from '../contracts/experience.js';
-import type { ObservationSourceKind } from '../contracts/trace.js';
+import type { TraceSourceKind } from '../contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
@@ -18,7 +18,7 @@ interface MutableTask {
 interface MutableConversation {
   threadId: string;
   sourceThreadId: string;
-  sourceKind: ObservationSourceKind;
+  sourceKind: TraceSourceKind;
   sessions: ExperienceSessionSummary[];
   tasks: Map<string, MutableTask>;
   relatedSkills: Set<string>;

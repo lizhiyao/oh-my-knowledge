@@ -261,7 +261,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
 }
 
 /**
- * 便利入口:直接从已准备好的 segments(跳过 loadCcSessions)算 report。
+ * 便利入口:直接从已准备好的 segments(跳过 loadTraceSessions)算 report。
  * 用于测试 / 已手工组装过 segments 的场景。
  */
 export function computeSkillHealthFromSegments(
