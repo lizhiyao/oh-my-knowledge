@@ -81,9 +81,7 @@ describe('oclif init', () => {
       assert.ok(stdout.includes('来源是 llm-generated'), `stdout should disclose starter provenance:\n${stdout}`);
       assert.ok(!stdout.includes('20 条以上后重跑'), `full-pack guidance should not ask for the size it already has:\n${stdout}`);
 
-      const { samples } = loadSamples(join(target, 'eval-samples.json'), {
-        assertionValidationMode: 'strict',
-      });
+      const { samples } = loadSamples(join(target, 'eval-samples.json'));
       assert.equal(samples.length, 20);
       assert.equal(new Set(samples.map((sample) => sample.sample_id)).size, 20);
       assert.ok(samples.every((sample) => sample.construct === 'quality'));
@@ -169,7 +167,7 @@ describe('oclif init', () => {
         { cwd: dir },
       );
       assert.ok(stdout.includes('已写入 20 条官方起步用例'));
-      assert.equal(loadSamples(samplesPath, { assertionValidationMode: 'strict' }).samples.length, 20);
+      assert.equal(loadSamples(samplesPath).samples.length, 20);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -790,7 +790,6 @@ export async function resolveNodeCliEvaluationRequest(
   try {
     loaded = loadSamples(
       absolute(options.projectRoot, request.values.locators.samples),
-      { assertionValidationMode: 'strict' },
     );
   } catch (cause) {
     return fail({
