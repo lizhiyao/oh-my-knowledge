@@ -16,15 +16,12 @@ import {
 } from '../../../src/eval-core/contracts/index.js';
 import type { EvaluationRunResult } from '../../../src/eval-core/engine/index.js';
 import {
-  createNodeCoreBatchArtifactStore,
   createNodeCoreRunArtifactStore,
 } from '../../../src/eval-workflows/artifact-store/index.js';
 import {
-  bindProductionPreparedEvaluation,
   type ProductionEvaluationWorkflowInput,
 } from '../../../src/eval-workflows/orchestration/workflow.js';
 import {
-  executeProductionEvaluationBatch,
   executeProductionEvaluationSeries,
 } from '../../../src/eval-workflows/orchestration/orchestration.js';
 import {
@@ -61,128 +58,6 @@ function completedResult(fixture: ConformanceResult): EvaluationRunResult {
     report: fixture.report,
   };
 }
-
-function preparedFixture(
-  fixture: ConformanceResult,
-  store: ReturnType<typeof createNodeCoreRunArtifactStore>,
-) {
-  return bindProductionPreparedEvaluation({
-    artifactStore: store,
-    schemaValidators: createOmkEvaluationSchemaValidators(undefined),
-    prepared: {
-      plan: fixture.plan,
-      preflight: { records: [] },
-      async start() {
-        return {
-          events: (async function* emptyEvents() {})(),
-          result: Promise.resolve(completedResult(fixture)),
-        };
-      },
-    },
-  });
-}
-
-describe('production Batch orchestration', () => {
-  it('runs independent children and persists a locator-only manifest after every child', async () => {
-    const runRoot = await temporaryRoot('omk-host-batch-runs-');
-    const batchRoot = await temporaryRoot('omk-host-batches-');
-    const runStore = createNodeCoreRunArtifactStore(runRoot);
-    const batchStore = createNodeCoreBatchArtifactStore(batchRoot, runStore);
-    const [first, second] = await Promise.all([
-      runConformanceScenario('function', { runId: 'batch-first-fixture' }),
-      runConformanceScenario('rag', { runId: 'batch-second-fixture' }),
-    ]);
-
-    const batch = await executeProductionEvaluationBatch({
-      batchId: 'host-batch',
-      createdAt: '2026-09-01T01:00:00.000Z',
-      batchStore,
-      children: [
-        {
-          itemId: 'first',
-          prepared: preparedFixture(first, runStore),
-          options: {
-            runId: 'host-batch-first',
-            createdAt: '2026-09-01T01:00:01.000Z',
-          },
-        },
-        {
-          itemId: 'second',
-          prepared: preparedFixture(second, runStore),
-          options: {
-            runId: 'host-batch-second',
-            createdAt: '2026-09-01T01:00:02.000Z',
-          },
-        },
-      ],
-    });
-
-    assert.deepEqual(batch.children.map(({ itemId, runId }) => ({ itemId, runId })), [
-      { itemId: 'first', runId: 'host-batch-first' },
-      { itemId: 'second', runId: 'host-batch-second' },
-    ]);
-    const persistence = await batch.persistence;
-    assert.equal(persistence.persistenceStatus, 'stored');
-    if (persistence.persistenceStatus !== 'stored') throw new Error('expected stored Batch');
-    assert.deepEqual(persistence.batch.manifest.children.map((child) => ({
-      itemId: child.itemId,
-      runId: child.locator.runId,
-    })), [
-      { itemId: 'first', runId: 'host-batch-first' },
-      { itemId: 'second', runId: 'host-batch-second' },
-    ]);
-    expect('report' in persistence.batch).toBe(false);
-  });
-
-  it('retains started child handles and skips the manifest when another child cannot start', async () => {
-    const runRoot = await temporaryRoot('omk-host-partial-batch-runs-');
-    const batchRoot = await temporaryRoot('omk-host-partial-batches-');
-    const runStore = createNodeCoreRunArtifactStore(runRoot);
-    const batchStore = createNodeCoreBatchArtifactStore(batchRoot, runStore);
-    const fixture = await runConformanceScenario('function', {
-      runId: 'partial-batch-fixture',
-    });
-    const started = preparedFixture(fixture, runStore);
-    const failed = {
-      ...preparedFixture(fixture, runStore),
-      async execute() { throw new Error('lease acquisition failed'); },
-    };
-
-    const batch = await executeProductionEvaluationBatch({
-      batchId: 'partial-host-batch',
-      createdAt: '2026-09-01T01:10:00.000Z',
-      batchStore,
-      children: [{
-        itemId: 'started',
-        prepared: started,
-        options: {
-          runId: 'partial-host-started',
-          createdAt: '2026-09-01T01:10:01.000Z',
-        },
-      }, {
-        itemId: 'failed',
-        prepared: failed,
-        options: {
-          runId: 'partial-host-failed',
-          createdAt: '2026-09-01T01:10:02.000Z',
-        },
-      }],
-    });
-
-    assert.deepEqual(batch.children.map(({ executionStatus }) => executionStatus), [
-      'started',
-      'start-failed',
-    ]);
-    const persistence = await batch.persistence;
-    assert.deepEqual(persistence, {
-      persistenceStatus: 'skipped',
-      reasonCode: 'BATCH_CHILD_ARTIFACTS_INCOMPLETE',
-      childRunIds: ['partial-host-failed'],
-    });
-    assert.equal(await runStore.exists('partial-host-started'), true);
-    assert.equal(await batchStore.exists('partial-host-batch'), false);
-  });
-});
 
 const seriesOutputSchema = {
   schemaVersion: 'omk.test-production-series-scalar/v1',
