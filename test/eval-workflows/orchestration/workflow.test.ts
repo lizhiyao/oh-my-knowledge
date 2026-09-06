@@ -11,9 +11,9 @@ import {
   type CoreRunArtifactStore,
 } from '../../../src/eval-workflows/artifact-store/index.js';
 import {
-  createProductionEvaluationHost,
-  type ProductionEvaluationHostInput,
-} from '../../../src/eval-workflows/production-host/index.js';
+  createProductionEvaluationWorkflow,
+  type ProductionEvaluationWorkflowInput,
+} from '../../../src/eval-workflows/orchestration/index.js';
 import type {
   OmkEvaluationRuntime,
   OmkPreparedEvaluation,
@@ -32,7 +32,7 @@ afterEach(async () => {
 });
 
 async function temporaryStore(): Promise<CoreRunArtifactStore> {
-  const root = await mkdtemp(join(tmpdir(), 'omk-production-host-'));
+  const root = await mkdtemp(join(tmpdir(), 'omk-orchestration-'));
   roots.push(root);
   return createNodeCoreRunArtifactStore(root);
 }
@@ -75,12 +75,12 @@ function hostInput(input: {
   store: CoreRunArtifactStore;
   onStart?: () => void;
   dryRun?: boolean;
-}): ProductionEvaluationHostInput {
+}): ProductionEvaluationWorkflowInput {
   return {
     compiled: {
       definition: input.fixture.plan.definition, policy: input.fixture.plan.measurementPolicy,
       runOptions: {}, orchestration: { dryRun: input.dryRun ?? false },
-    } as ProductionEvaluationHostInput['compiled'],
+    } as ProductionEvaluationWorkflowInput['compiled'],
     schemaValidators: createOmkEvaluationSchemaValidators(undefined),
     artifactStore: input.store,
     runtime: {
@@ -107,11 +107,11 @@ describe('production evaluation host workflow', () => {
   it('requires an injected Runtime and passes only neutral measurement input to preparation', async () => {
     const fixture = await runConformanceScenario('function', { runId: 'injected-runtime-fixture' });
     const input = hostInput({ fixture, result: Promise.resolve(completedResult(fixture)), store: recordingStore() });
-    expect(() => createProductionEvaluationHost({ ...input, runtime: undefined } as unknown as ProductionEvaluationHostInput))
+    expect(() => createProductionEvaluationWorkflow({ ...input, runtime: undefined } as unknown as ProductionEvaluationWorkflowInput))
       .toThrow(expect.objectContaining({ code: 'PRODUCTION_EVALUATION_HOST_INPUT_INVALID', fieldPath: 'runtime' }));
     const prepare = vi.spyOn(input.runtime, 'prepare');
     const controller = new AbortController();
-    const prepared = await createProductionEvaluationHost(input).prepare({ signal: controller.signal });
+    const prepared = await createProductionEvaluationWorkflow(input).prepare({ signal: controller.signal });
     expect(prepare).toHaveBeenCalledOnce();
     const [request, options] = prepare.mock.calls[0];
     expect(Object.keys(request).sort()).toEqual(['definition', 'policy']);
@@ -129,7 +129,7 @@ describe('production evaluation host workflow', () => {
     const resultPromise = Promise.resolve(coreResult);
     const store = await temporaryStore();
     const onStart = vi.fn();
-    const prepared = await createProductionEvaluationHost(hostInput({
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
       fixture,
       result: resultPromise,
       store,
@@ -173,7 +173,7 @@ describe('production evaluation host workflow', () => {
       assert.equal(fixture.report.status.runStatus, status);
       const result = { ...completedResult(fixture), status } as EvaluationRunResult;
       const store = await temporaryStore();
-      const prepared = await createProductionEvaluationHost(hostInput({
+      const prepared = await createProductionEvaluationWorkflow(hostInput({
         fixture,
         result: Promise.resolve(result),
         store,
@@ -197,7 +197,7 @@ describe('production evaluation host workflow', () => {
       artifacts: { execution: fixture.execution },
     };
     const save = vi.fn(async () => { throw new Error('must not save'); });
-    const prepared = await createProductionEvaluationHost(hostInput({
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
       fixture,
       result: Promise.resolve(result),
       store: recordingStore({ save }),
@@ -218,7 +218,7 @@ describe('production evaluation host workflow', () => {
   it('reports publication failure without rejecting or rewriting the Core result', async () => {
     const fixture = await runConformanceScenario('function', { runId: 'host-store-failure' });
     const result = completedResult(fixture);
-    const prepared = await createProductionEvaluationHost(hostInput({
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
       fixture,
       result: Promise.resolve(result),
       store: recordingStore({ save: vi.fn(async () => { throw new Error('disk full'); }) }),
@@ -247,7 +247,7 @@ describe('production evaluation host workflow', () => {
       analysis: fixture.analysis,
       report: fixture.report,
     });
-    const prepared = await createProductionEvaluationHost(hostInput({
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
       fixture,
       result: Promise.resolve(completedResult(fixture)),
       store,
@@ -298,7 +298,7 @@ describe('production evaluation host workflow', () => {
   it('rejects an invalid publication timestamp before starting any Runtime effect', async () => {
     const fixture = await runConformanceScenario('function', { runId: 'host-invalid-time' });
     const onStart = vi.fn();
-    const prepared = await createProductionEvaluationHost(hostInput({
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
       fixture,
       result: Promise.resolve(completedResult(fixture)),
       store: recordingStore(),
@@ -316,7 +316,7 @@ describe('production evaluation host workflow', () => {
   it('makes dry-run an enforced prepare-only mode', async () => {
     const fixture = await runConformanceScenario('function', { runId: 'host-dry-run' });
     const onStart = vi.fn();
-    const prepared = await createProductionEvaluationHost(hostInput({
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
       fixture,
       result: Promise.resolve(completedResult(fixture)),
       store: recordingStore(),

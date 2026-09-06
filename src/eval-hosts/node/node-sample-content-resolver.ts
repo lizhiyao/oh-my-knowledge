@@ -6,7 +6,7 @@ import {
   safeUrlLabel,
   type SampleContentResolution,
   type SampleContentResolverSession,
-} from '../../eval-workflows/production-host/sample-content-resolution.js';
+} from '../../eval-workflows/orchestration/sample-content-resolution.js';
 import { resolveSafeHttpSampleContent } from './safe-http-content-resolver.js';
 
 const MCP_TIMEOUT_MS = 30_000;

@@ -23,10 +23,10 @@ import {
   createNodeHostPreflightDeclarations,
 } from '../eval-hosts/node/preflight.js';
 import {
-  createProductionEvaluationHost,
+  createProductionEvaluationWorkflow,
   executeProductionEvaluationSeries,
   persistCoreArtifactSidecars,
-} from '../eval-workflows/production-host/index.js';
+} from '../eval-workflows/orchestration/index.js';
 import {
   createJudgeProviderRuntimeIdentity,
 } from '../eval-hosts/node/judge-provider-identity.js';
@@ -385,7 +385,7 @@ export async function runDshCoreEvaluation(input: Readonly<{
       outputDirectory,
     };
   }
-  const prepared = await createProductionEvaluationHost(host).prepare({ signal: input.signal });
+  const prepared = await createProductionEvaluationWorkflow(host).prepare({ signal: input.signal });
   const run = await prepared.execute({
     runId: generateRunId(compiled.definition.targets.map((target) => target.targetId)),
     createdAt: new Date().toISOString(),

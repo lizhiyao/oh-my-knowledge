@@ -21,8 +21,8 @@ import {
   bindProductionPreparedEvaluation,
   executeProductionEvaluationBatch,
   executeProductionEvaluationSeries,
-  type ProductionEvaluationHostInput,
-} from '../../../src/eval-workflows/production-host/index.js';
+  type ProductionEvaluationWorkflowInput,
+} from '../../../src/eval-workflows/orchestration/index.js';
 import {
   createOmkEvaluationSchemaValidators,
   type OmkEvaluationRuntime,
@@ -310,7 +310,7 @@ describe('production independent Series orchestration', () => {
           definition: digestCanonicalJson(basePlan.definition),
           policy: digestCanonicalJson(basePlan.measurementPolicy),
         },
-      } as unknown as ProductionEvaluationHostInput['compiled'],
+      } as unknown as ProductionEvaluationWorkflowInput['compiled'],
       schemaValidators: createOmkEvaluationSchemaValidators(new Map([[schemaIdentityKey(seriesOutputSchema), validator]])),
       artifactStore: runStore,
       runtime: {
@@ -345,7 +345,7 @@ describe('production independent Series orchestration', () => {
           });
         },
       },
-    } satisfies ProductionEvaluationHostInput;
+    } satisfies ProductionEvaluationWorkflowInput;
 
     const series = await executeProductionEvaluationSeries({
       host,

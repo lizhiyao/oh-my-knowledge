@@ -177,7 +177,7 @@ Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体�
 
 语义／RAG 一致性向量还冻结有意的失败语义变更：有效通过、有效阈值失败、有效取反、提供方失败、非 JSON、畸形 JSON、畸形分数、越界分数、缺失解释、超时、取消、预算截尾、未知用量／成本，以及增加基础设施失败不能降低已观测内容通过率这一不变量。旧自定义 assertion 向量覆盖有效通过／失败、取反、模块抛错与超时，以及无效结果对象。
 
-最终离线差分工具由 [#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528) 交付，并在切换后随旧基准一起移除。它的不可变输入 fixture 仍位于 `test/fixtures/eval-core/scoring-equivalence-v1.json`。当前 Core 与生产边界覆盖位于 `test/eval-core/conformance/` 和 `test/eval-workflows/production-host/`。差分工具准备并执行了一份真实密封计划，覆盖两个 Target 和四个配对样本，然后通过公开引擎 facade 遍历 `Execution -> Evaluation -> Analysis -> Decision`。计划包含仅输出和感知执行的确定性 assertion、全部四种语义／RAG 工具、两个各含两次测量重复的 rubric 集成成员，以及 assertion-layer、replicate、ensemble、dimension、composite、Bootstrap-family、Agreement 和 release-decision 节点。旧投影独立地从相同输出、固定提供方读数、Gold 评分、阈值和种子生成。
+最终离线差分工具由 [#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528) 交付，并在切换后随旧基准一起移除。它的不可变输入 fixture 仍位于 `test/fixtures/eval-core/scoring-equivalence-v1.json`。当前 Core 与生产边界覆盖位于 `test/eval-core/conformance/` 和 `test/eval-workflows/orchestration/`。差分工具准备并执行了一份真实密封计划，覆盖两个 Target 和四个配对样本，然后通过公开引擎 facade 遍历 `Execution -> Evaluation -> Analysis -> Decision`。计划包含仅输出和感知执行的确定性 assertion、全部四种语义／RAG 工具、两个各含两次测量重复的 rubric 集成成员，以及 assertion-layer、replicate、ensemble、dimension、composite、Bootstrap-family、Agreement 和 release-decision 节点。旧投影独立地从相同输出、固定提供方读数、Gold 评分、阈值和种子生成。
 
 该工具精确比较准则读数、结构化失败状态、覆盖、用量和提供方成本溯源、prompt ID 和冻结哈希、样本／试验／成员／重复测量／配对身份、层与 composite 行、Bootstrap 来源血缘、Gold 血缘、一致性统计量、发布结论和稳定理由代码。运行时生成的 schema 验证器和产物摘要检查保持启用；测试不会通过调用纯函数构造最终表。生产 CLI、Report 读取器／写入器、Studio、resume、batch、evolve 和持久化路径都不参与该运行。
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { renderEnvironmentSection } from '../../../src/eval-workflows/production-host/environment.js';
+import { renderEnvironmentSection } from '../../../src/eval-workflows/orchestration/environment.js';
 
 describe('renderEnvironmentSection', () => {
   it('returns null when no environment field', () => {

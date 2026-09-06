@@ -31,7 +31,7 @@ import {
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
 } from '../../eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
-import { buildProductionMeasurementDesign } from '../../eval-workflows/production-host/measurement-design.js';
+import { buildProductionMeasurementDesign } from '../../eval-workflows/orchestration/measurement-design.js';
 import { createNodeSampleContentResolver } from './node-sample-content-resolver.js';
 import {
   SampleContentResolutionError,
@@ -39,7 +39,7 @@ import {
   resolveSampleContents,
   type ResolvedSampleContentRecord,
   type SampleContentResolverSession,
-} from '../../eval-workflows/production-host/sample-content-resolution.js';
+} from '../../eval-workflows/orchestration/sample-content-resolution.js';
 
 export interface ResolveNodeCliEvaluationRequestOptions {
   /** Absolute semantic root for relative CLI／eval.yaml locators. */

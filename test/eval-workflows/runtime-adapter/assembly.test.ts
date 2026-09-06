@@ -1,5 +1,5 @@
 import { EvaluationRuntimeLifecycleError } from '../../../src/eval-runtime/execution.js';
-import { bindProductionPreparedEvaluation } from '../../../src/eval-workflows/production-host/workflow.js';
+import { bindProductionPreparedEvaluation } from '../../../src/eval-workflows/orchestration/workflow.js';
 import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

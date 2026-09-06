@@ -182,7 +182,7 @@ The final offline differential harness was delivered by
 after cutover. Its immutable input fixture remains at
 `test/fixtures/eval-core/scoring-equivalence-v1.json`. Current Core and production-boundary
 coverage lives under `test/eval-core/conformance/` and
-`test/eval-workflows/production-host/`. The differential harness prepared and executed one
+`test/eval-workflows/orchestration/`. The differential harness prepared and executed one
 real sealed plan across two Targets and four paired samples, then traversed
 `Execution -> Evaluation -> Analysis -> Decision` through the public engine facade. The plan
 contains output-only and execution-aware deterministic assertions, all four semantic/RAG

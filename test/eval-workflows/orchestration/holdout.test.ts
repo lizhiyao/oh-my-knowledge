@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickByStride, splitHoldout } from '../../../src/eval-workflows/production-host/holdout.js';
+import { pickByStride, splitHoldout } from '../../../src/eval-workflows/orchestration/holdout.js';
 
 describe('shared holdout assignment', () => {
   it('selects a deterministic cohort spread across canonical order', () => {
