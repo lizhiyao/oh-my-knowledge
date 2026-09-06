@@ -9,7 +9,7 @@ import {
   saveObservationInboxReport,
 } from '../../../src/observability/inbox/index.js';
 import { buildKnowledgeDebuggerViewModel } from '../../../src/observability/conversation/knowledge-debugger.js';
-import { createObservationConversationCatalog } from '../../../src/observability/conversation/view-model.js';
+import type { ConversationListItem } from '../../../src/observability/view-models/conversation.js';
 import { renderKnowledgeDebuggerPage } from '../../../src/studio/presentation/knowledge-debugger-renderer.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 
@@ -64,10 +64,42 @@ describe('Knowledge Debugger task trajectory server', () => {
     threadId = report.experience.sessions[0].threadId;
     turnId = report.experience.sessions[0].turns[0]!.turnId;
     debuggerModel = buildKnowledgeDebuggerViewModel(report.experience.sessions[0], turnId, report.meta.ingestion);
+    const session = report.experience.sessions[0];
+    const turn = session.turns[0]!;
+    // This HTTP fixture supplies one catalog task; observe replay still reads the persisted report.
+    const conversation: ConversationListItem = {
+      threadId,
+      sourceThreadId: session.sourceThreadId,
+      sourceKind: session.sourceKind,
+      title: turn.title,
+      relatedSkillNames: [session.skillName],
+      tasks: [{
+        turnId,
+        sourceTurnId: turn.sourceTurnId,
+        experienceSessionId,
+        title: turn.title,
+        status: turn.status,
+        eventCount: turn.eventIds.length,
+        toolCallCount: turn.toolCallCount,
+        toolFailureCount: turn.toolFailureCount,
+        relatedSkillNames: [session.skillName],
+      }],
+    };
     server = createReportServer({
       port: 0,
       observationsDir,
-      conversationCatalog: createObservationConversationCatalog(observationsDir),
+      conversationCatalog: {
+        async listConversations() {
+          return {
+            conversations: [conversation],
+            totalTurnCount: 1,
+            totalToolCallCount: turn.toolCallCount,
+            totalToolFailureCount: turn.toolFailureCount,
+          };
+        },
+        async getConversation(id) { return id === threadId ? conversation : undefined; },
+        async loadTaskTrajectory() { return undefined; },
+      },
     });
     baseUrl = await server.start();
   });
