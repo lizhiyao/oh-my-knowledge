@@ -4,7 +4,6 @@ import type { SyncAssertionType } from '../inputs/assertion-types.js';
 import type { Assertion } from '../inputs/contracts/assertion.js';
 
 const Ajv = _Ajv.default ?? _Ajv;
-const ajv = new Ajv();
 
 type JsonSchemaValidator = (
   data: unknown,
@@ -207,14 +206,6 @@ function validateJsonSchemaWith(
   }
 }
 
-/** Legacy-compatible module session used only by the existing grader entrypoint. */
-export function validateJsonSchema(
-  data: unknown,
-  schema: Record<string, unknown>,
-): boolean {
-  return validateJsonSchemaWith(ajv, data, schema);
-}
-
 function evaluateRaw(
   output: string,
   assertion: Assertion,
@@ -321,22 +312,6 @@ function evaluateRaw(
         >= (assertion.threshold ?? 0.5);
     default: return false;
   }
-}
-
-export function evaluateDeterministicAssertion(
-  output: string,
-  assertion: Assertion,
-  context: DeterministicAssertionContext = {},
-): boolean {
-  const toolCalls = [...(context.toolCalls ?? [])];
-  const raw = evaluateRaw(output, assertion, {
-    ...context,
-    toolCalls,
-    outputLower: output.toLowerCase(),
-    toolNames: toolCalls.map((call) => call.tool.toLowerCase()),
-    validateSchema: validateJsonSchema,
-  });
-  return assertion.not ? !raw : raw;
 }
 
 /** Creates an evaluator whose schema compilation has no cross-criterion, record, or run state. */
