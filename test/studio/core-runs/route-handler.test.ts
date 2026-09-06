@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createReportServer } from '../../../src/studio/http/report-server.js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import {
@@ -344,6 +348,28 @@ describe('Core Studio route handler', () => {
       async inspect(runId) { return runId === source.run.runId ? source.run : undefined; },
     };
   }
+
+  it('connects the production HTTP server to the evaluation catalog', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-core-route-wiring-'));
+    let server: ReturnType<typeof createReportServer> | undefined;
+    try {
+      server = createReportServer({
+        port: 0, coreStudioCatalog: catalog(),
+        observationsDir: join(root, 'observations'), doctorsDir: join(root, 'doctors'),
+        analysesDir: join(root, 'analyses'), managedDir: join(root, 'managed'),
+      });
+      const url = await server.start();
+      const list = await fetch(`${url}/api/reports`);
+      assert.equal(list.status, 200);
+      assert.deepEqual(await list.json(), [card()]);
+      const page = await fetch(`${url}/reports/core-run-1`);
+      assert.equal(page.status, 200);
+      assert.ok((await page.text()).includes('progress-policy'));
+    } finally {
+      try { await server?.stop(); }
+      finally { await rm(root, { recursive: true, force: true }); }
+    }
+  });
 
   it('serves HTML and JSON list/detail routes from the catalog port', async () => {
     const handler = createCoreStudioRouteHandler({

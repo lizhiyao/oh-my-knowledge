@@ -136,6 +136,9 @@ describe('studio --dev child spawn argv', () => {
     await runStudio({}, { lang: 'zh', port: '7799', 'no-open': true, dev: false }, 'zh');
     const opts = vi.mocked(createReportServer).mock.calls.at(-1)?.[0];
     expect(opts?.observationsDir).toBeUndefined();
+    expect(opts?.coreStudioCatalog).toMatchObject({
+      list: expect.any(Function), get: expect.any(Function), inspect: expect.any(Function),
+    });
   });
 
   it('treats BROWSER=none as no browser open', async () => {

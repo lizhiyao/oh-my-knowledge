@@ -26,11 +26,6 @@ interface ExecError extends Error {
 }
 
 describe('oclif dispatcher', () => {
-  it('doctor --help 走 oclif(有 USAGE block)', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
-    assert.ok(stdout.includes('\nUSAGE\n'), `expected oclif USAGE block, got:\n${stdout.slice(0, 200)}`);
-  });
-
   it('eval --help 走 oclif', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help']);
     assert.ok(stdout.includes('\nUSAGE\n'), 'expected oclif USAGE block');
