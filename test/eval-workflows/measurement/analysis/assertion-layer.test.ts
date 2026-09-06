@@ -5,7 +5,7 @@ import {
   digestCanonicalJson,
   schemaIdentityKey,
   type JsonValue,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   ASSERTION_LAYER_TABLE_SCHEMA,
   ASSERTION_LAYER_TABLE_SCHEMA_VERSION,
@@ -15,13 +15,13 @@ import {
   createAssertionLayerTableSchemaValidators,
   type AssertionEntry,
   type AssertionLayerGroup,
-} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
+} from '../../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
 
 const TRIAL_ID = digestCanonicalJson({ fixture: 'assertion-layer-trial' });
 const PAIRING_BLOCK_ID = digestCanonicalJson({ fixture: 'assertion-layer-pair' });
 
 const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
-  '../../fixtures/eval-core/scoring-equivalence-v1.json',
+  '../../../fixtures/eval-core/scoring-equivalence-v1.json',
   import.meta.url,
 )), 'utf8')) as {
   deterministicAssertions: {

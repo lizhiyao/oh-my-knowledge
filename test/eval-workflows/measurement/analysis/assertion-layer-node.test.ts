@@ -5,27 +5,27 @@ import {
   schemaIdentityKey,
   type JsonValue,
   type SamplingUnitIds,
-} from '../../../src/eval-core/contracts/index.js';
-import { AnalysisNodeCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
+import { AnalysisNodeCapabilitiesSchema } from '../../../../src/eval-core/compiler/index.js';
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
   AnalysisNodeExecutionResult,
   AnalysisNodeInput,
-} from '../../../src/eval-core/analysis/index.js';
+} from '../../../../src/eval-core/analysis/index.js';
 import {
   ASSERTION_LAYER_ANALYSIS_IDENTITY,
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
   createAssertionLayerAnalysisNodes,
-} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-node.js';
+} from '../../../../src/eval-workflows/measurement/analysis/assertion-layer-node.js';
 import {
   ASSERTION_LAYER_PARAMETERS_SCHEMA,
   type AssertionLayerCriterionParameter,
-} from '../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/assertion-layer-parameters.js';
 import {
   ASSERTION_LAYER_TABLE_SCHEMA,
   createAssertionLayerTableSchemaValidators,
-} from '../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
+} from '../../../../src/eval-workflows/measurement/analysis/assertion-layer.js';
 
 const ANALYSIS_PLAN_DIGEST = digestCanonicalJson({ fixture: 'assertion-plan' });
 const EVALUATION_BUNDLE_DIGEST = digestCanonicalJson({ fixture: 'assertion-evaluation' });

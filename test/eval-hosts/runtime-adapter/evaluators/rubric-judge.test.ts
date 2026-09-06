@@ -5,54 +5,56 @@ import type {
   MeasurementPolicy,
   RuntimeIdentity,
   UsageRecord,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   RuntimeIdentitySchema,
   digestCanonicalJson,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
   type PreparationRuntime,
-} from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/compiler/index.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
-} from '../../../src/eval-core/execution/index.js';
+} from '../../../../src/eval-core/execution/index.js';
 import {
   evaluateExecutionBundle,
   type EvaluationCache,
   type EvaluationCacheEntry,
-} from '../../../src/eval-core/evaluation/index.js';
+} from '../../../../src/eval-core/evaluation/index.js';
 import {
-  createLlmAssertionEvaluatorBindingFactory,
-} from '../../../src/eval-hosts/runtime-adapter/evaluators/llm-assertion-factory.js';
+  createRubricJudgeEvaluatorBindingFactory,
+} from '../../../../src/eval-hosts/runtime-adapter/evaluators/rubric-judge.js';
 import {
-  createLlmAssertionEvaluatorIdentity,
-  createLlmAssertionEvaluatorImplementation,
-  llmAssertionInstrument,
-  LLM_ASSERTION_BINDINGS,
-  LLM_ASSERTION_CONTEXT_SCHEMA_VERSION,
-  LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
-  type LlmAssertionType,
-} from '../../../src/eval-workflows/measurement/evaluators/llm-assertions.js';
-import {
-  createSameProcessEvaluatorAdapter,
-} from '../../../src/eval-runtime/adapters/same-process.js';
-import {
+  createRubricJudgeEvaluatorIdentity,
+  createRubricJudgeEvaluatorImplementation,
+  captureLlmJudgeInvocationPort,
+  rubricJudgeInstrument,
+  rubricJudgeInstrumentId,
+  RUBRIC_JUDGE_BINDINGS,
+  RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+  RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
   type OmkLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationRequest,
   type OmkLlmJudgeInvocationResult,
-} from '../../../src/eval-hosts/runtime-adapter/index.js';
+  type RubricJudgeTracePolicy,
+} from '../../../../src/eval-hosts/runtime-adapter/index.js';
 import {
-  getRagJudgePromptHash,
-  getSemanticPromptHash,
-} from '../../../src/eval-workflows/instruments/prompts/judge-prompts.js';
-import { testRuntime, validDefinition, validPolicy } from '../../eval-core/compiler/fixtures.js';
+  createSameProcessEvaluatorAdapter,
+} from '../../../../src/eval-runtime/adapters/same-process.js';
+import {
+  buildJudgePrompt,
+  getJudgePromptHash,
+  JUDGE_SYSTEM_PROMPT,
+} from '../../../../src/eval-runtime/judges/rubric-prompt.js';
+import { buildJudgeTraceSummary } from '../../../../src/eval-runtime/judges/trace-summary.js';
+import { testRuntime, validDefinition, validPolicy } from '../../../eval-core/compiler/fixtures.js';
 
-const PROVIDER_IMPLEMENTATION_ID = 'test.llm-provider/v1';
-const METRIC_ID = 'llm-assertion-pass';
+const PROVIDER_IMPLEMENTATION_ID = 'test.rubric-provider/v1';
+const METRIC_ID = 'rubric-score';
 
 type InvocationHandler = (
   request: Readonly<OmkLlmJudgeInvocationRequest>,
@@ -98,11 +100,14 @@ class MemoryEvaluationCache implements EvaluationCache {
   }
 }
 
-function providerIdentity(): RuntimeIdentity {
+function providerIdentity(revision = 1): RuntimeIdentity {
   return RuntimeIdentitySchema.parse({
     implementationId: PROVIDER_IMPLEMENTATION_ID,
     version: '1.0.0',
-    fingerprint: digestCanonicalJson({ provider: PROVIDER_IMPLEMENTATION_ID, version: 1 }),
+    fingerprint: digestCanonicalJson({
+      provider: PROVIDER_IMPLEMENTATION_ID,
+      revision,
+    }),
     fingerprintBasis: 'content-derived',
     assuranceLevel: 'verified',
     capabilities: { invocation: 'single-call', cancellation: 'cooperative' },
@@ -122,32 +127,12 @@ function invocationPort(
   });
 }
 
-function criterion(
-  assertionType: LlmAssertionType,
-  threshold = 3,
-  negated = false,
-): JsonValue {
-  let source: Record<string, JsonValue>;
-  if (assertionType === 'faithfulness') {
-    source = { context: 'The answer is grounded in this context.' };
-  } else if (assertionType === 'answer_relevancy') {
-    source = { question: 'What is the answer?' };
-  } else {
-    source = { reference: 'Expected answer' };
-  }
-  return {
-    schemaVersion: LLM_ASSERTION_CONTEXT_SCHEMA_VERSION,
-    criterionId: `${assertionType.replaceAll('_', '-')}-criterion`,
-    assertionType,
-    threshold,
-    weight: 1,
-    negated,
-    ...source,
-  };
-}
-
-function evaluatorConfig(assertionType: LlmAssertionType): JsonValue {
-  const instrument = llmAssertionInstrument(assertionType);
+function evaluatorConfig(input: {
+  lengthDebias: boolean;
+  tracePolicy: RubricJudgeTracePolicy;
+  model?: string;
+}): JsonValue {
+  const instrument = rubricJudgeInstrument(input);
   return {
     evaluator: {
       classification: 'public',
@@ -155,61 +140,75 @@ function evaluatorConfig(assertionType: LlmAssertionType): JsonValue {
     },
     runtime: {
       executorId: PROVIDER_IMPLEMENTATION_ID,
-      model: 'judge-model',
+      model: input.model ?? 'judge-model',
       effort: 'low',
       promptVariant: instrument.promptId,
     },
   } as JsonValue;
 }
 
-function definition(
-  assertionType: LlmAssertionType,
-  negated = false,
-): EvaluationDefinition {
+function definition(input: {
+  lengthDebias?: boolean;
+  tracePolicy?: RubricJudgeTracePolicy;
+} = {}): EvaluationDefinition {
+  const lengthDebias = input.lengthDebias ?? true;
+  const tracePolicy = input.tracePolicy ?? 'none';
   const value = validDefinition();
   value.dataset.samples[0].evaluationContext = {
-    llmAssertion: criterion(assertionType, 3, negated),
+    rubricJudge: {
+      schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+      criterionId: 'correctness',
+      prompt: 'Answer the question.',
+      rubric: 'The answer must be correct and concise.',
+    },
   };
+  const instrument = rubricJudgeInstrument({ lengthDebias, tracePolicy });
   value.evaluators = [{
-    evaluatorId: 'llm-assertion',
-    evaluatorKind: assertionType,
-    implementationId: LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+    evaluatorId: 'rubric-judge',
+    evaluatorKind: 'llm-rubric',
+    implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
     measurement: {
-      instrumentId: llmAssertionInstrument(assertionType).promptId,
+      instrumentId: rubricJudgeInstrumentId(instrument),
       ensembleMemberId: 'provider-member',
-      replicateGroupId: `${assertionType.replaceAll('_', '-')}-primary`,
+      replicateGroupId: 'rubric-primary',
       replicateIndex: 0,
     },
     metricIds: [METRIC_ID],
     inputs: [
-      { bindingId: LLM_ASSERTION_BINDINGS.actual, sourceKind: 'output', pointer: '/answer' },
+      { bindingId: RUBRIC_JUDGE_BINDINGS.actual, sourceKind: 'output', pointer: '/answer' },
       {
-        bindingId: LLM_ASSERTION_BINDINGS.criterion,
+        bindingId: RUBRIC_JUDGE_BINDINGS.criterion,
         sourceKind: 'evaluation-context',
-        pointer: '/llmAssertion',
+        pointer: '/rubricJudge',
       },
+      ...(tracePolicy === 'source-neutral' ? [{
+        bindingId: RUBRIC_JUDGE_BINDINGS.trace,
+        sourceKind: 'trace' as const,
+        pointer: '',
+      }] : []),
     ],
-    config: evaluatorConfig(assertionType),
+    config: evaluatorConfig({ lengthDebias, tracePolicy }),
   }];
   value.metrics = [{
     metricId: METRIC_ID,
-    valueType: 'boolean',
+    valueType: 'numeric',
     scope: 'sample',
+    scale: { min: 1, max: 5 },
     direction: 'higher-is-better',
     missingPolicyId: 'exclude/v1',
   }];
   value.analysisGraph.nodes = [{
     analysisNodeKind: 'reducer',
-    nodeId: 'llm-assertion-rate',
-    implementationId: 'descriptive.rate/v1',
+    nodeId: 'rubric-mean',
+    implementationId: 'descriptive.mean/v1',
     inputs: [{ inputKind: 'metric-observations', referenceId: METRIC_ID }],
-    outputResultId: 'llm-assertion-rate',
+    outputResultId: 'rubric-mean',
   }];
   value.comparisons[0].metricIds = [METRIC_ID];
   value.decisionPolicy = {
     decisionPolicyId: 'release-gate',
     implementationId: 'progress/v1',
-    analysisResultIds: ['llm-assertion-rate'],
+    analysisResultIds: ['rubric-mean'],
     minimumEvidenceStatus: 'complete',
     parameters: { threshold: 0 },
   };
@@ -220,6 +219,7 @@ function policy(input: {
   timeout?: boolean;
   evaluationInvocations?: number;
   retryProviderFailure?: boolean;
+  tracePolicy?: RubricJudgeTracePolicy;
 } = {}): MeasurementPolicy {
   const value = validPolicy();
   value.retry.maxAttempts = 1;
@@ -229,14 +229,11 @@ function policy(input: {
   if (input.retryProviderFailure === true) {
     value.evaluation.retry.maxAttempts = 2;
     value.evaluation.retry.retryableErrorCodes = ['judge-provider-failure'];
-    value.evaluation.retry.backoff = {
-      backoffKind: 'none',
-      initialDelayMs: 0,
-    };
+    value.evaluation.retry.backoff = { backoffKind: 'none', initialDelayMs: 0 };
   }
   if (input.timeout === true) value.evaluation.timeoutMs = 1;
   else delete value.evaluation.timeoutMs;
-  value.evidence.trace = 'none';
+  value.evidence.trace = input.tracePolicy === 'source-neutral' ? 'full' : 'none';
   value.evidence.evidence = 'full';
   value.evidence.maximumClassification = 'gold';
   if (input.evaluationInvocations !== undefined) {
@@ -246,11 +243,15 @@ function policy(input: {
 }
 
 function evaluatorIdentity(
-  assertionType: LlmAssertionType,
+  input: {
+    lengthDebias: boolean;
+    tracePolicy: RubricJudgeTracePolicy;
+    model?: string;
+  },
   port: OmkLlmJudgeInvocationPort,
 ): RuntimeIdentity {
-  const config = evaluatorConfig(assertionType) as unknown as {
-    evaluator: { value: ReturnType<typeof llmAssertionInstrument> };
+  const config = evaluatorConfig(input) as unknown as {
+    evaluator: { value: ReturnType<typeof rubricJudgeInstrument> };
     runtime: {
       executorId: string;
       model: string;
@@ -258,7 +259,7 @@ function evaluatorIdentity(
       promptVariant: string;
     };
   };
-  return createLlmAssertionEvaluatorIdentity({
+  return createRubricJudgeEvaluatorIdentity({
     instrument: config.evaluator.value,
     runtime: config.runtime,
     invocation: port,
@@ -266,7 +267,10 @@ function evaluatorIdentity(
 }
 
 function preparationRuntime(identity: RuntimeIdentity): PreparationRuntime {
-  const base = testRuntime();
+  const base = testRuntime({
+    traceCapability: 'optional',
+    analysisValueTypes: ['numeric'],
+  });
   return {
     ...base,
     resolveEvaluator() {
@@ -290,6 +294,7 @@ function runtimeIdentity(
 
 function executor(
   plan: Awaited<ReturnType<typeof prepareEvaluationPlan>>,
+  tracePolicy: RubricJudgeTracePolicy,
 ): ExecutionExecutor {
   return {
     identity: runtimeIdentity(plan, 'executor', 'control'),
@@ -303,6 +308,26 @@ function executor(
                   value: { answer: 'Actual answer' },
                   classification: 'public' as const,
                 },
+                ...(tracePolicy === 'source-neutral' ? {
+                  trace: {
+                    value: {
+                      schemaVersion: 'omk.source-neutral-trace/v2',
+                      turns: [{ role: 'assistant', content: 'Used search and answered.' }],
+                      toolCalls: [{
+                        tool: 'search',
+                        input: { query: 'Q' },
+                        output: 'A',
+                        success: true,
+                        status: 'success',
+                        statusSource: 'runtime',
+                      }],
+                      numTurns: 1,
+                      fullNumTurns: 1,
+                      numSubAgents: 0,
+                    },
+                    classification: 'sensitive' as const,
+                  },
+                } : {}),
               };
             },
             dispose() {},
@@ -315,21 +340,22 @@ function executor(
 }
 
 async function runCore(input: {
-  assertionType?: LlmAssertionType;
-  negated?: boolean;
   handler: InvocationHandler;
+  lengthDebias?: boolean;
+  tracePolicy?: RubricJudgeTracePolicy;
   policy?: MeasurementPolicy;
   clock?: TestClock;
   signal?: AbortSignal;
   reporting?: 'unsupported' | 'optional' | 'required';
   cache?: EvaluationCache;
 }) {
-  const assertionType = input.assertionType ?? 'semantic_similarity';
+  const lengthDebias = input.lengthDebias ?? true;
+  const tracePolicy = input.tracePolicy ?? 'none';
   const provider = invocationPort(input.handler, input.reporting);
-  const identity = evaluatorIdentity(assertionType, provider);
+  const identity = evaluatorIdentity({ lengthDebias, tracePolicy }, provider);
   const sealed = await prepareEvaluationPlan(
-    definition(assertionType, input.negated ?? false),
-    input.policy ?? policy(),
+    definition({ lengthDebias, tracePolicy }),
+    input.policy ?? policy({ tracePolicy }),
     preparationRuntime(identity),
   );
   const clock = input.clock ?? new TestClock();
@@ -337,22 +363,22 @@ async function runCore(input: {
   const execution = await executeRunPlanSource(sealed, {
     executorsByTargetId: new Map(sealed.execution.targets.map((target) => [
       target.targetId,
-      executor(sealed),
+      executor(sealed, tracePolicy),
     ])),
     clock,
     eventSequencer,
-  }, { runId: 'llm-assertion-run', bundleId: 'llm-assertion-execution' });
+  }, { runId: 'rubric-judge-run', bundleId: 'rubric-judge-execution' });
   const evaluator = createSameProcessEvaluatorAdapter({
     identity,
-    sessionIsolationKey: 'llm-assertion-session',
+    sessionIsolationKey: 'rubric-judge-session',
     resourceLeases: {
       forRun: () => ({
-        bindingId: 'llm-assertion-binding',
+        bindingId: 'rubric-judge-binding',
         consumerKind: 'evaluator',
         resourcesByResourceId: new Map(),
       }),
     },
-    implementation: createLlmAssertionEvaluatorImplementation(provider),
+    implementation: createRubricJudgeEvaluatorImplementation(provider),
   });
   const lifecycle = { runDisposals: 0, recordDisposals: 0 };
   const instrumentedEvaluator = {
@@ -378,21 +404,19 @@ async function runCore(input: {
     },
   };
   const evaluation = await evaluateExecutionBundle(sealed, execution, {
-    evaluatorsByEvaluatorId: new Map([['llm-assertion', instrumentedEvaluator]]),
+    evaluatorsByEvaluatorId: new Map([['rubric-judge', instrumentedEvaluator]]),
     clock,
     eventSequencer,
     ...(input.cache === undefined ? {} : { cache: input.cache }),
   }, {
-    runId: 'llm-assertion-run',
-    bundleId: 'llm-assertion-evaluation',
+    runId: 'rubric-judge-run',
+    bundleId: 'rubric-judge-evaluation',
     ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
-  return { sealed, execution, evaluation, provider, lifecycle };
+  return { sealed, evaluation, lifecycle };
 }
 
-function completedObservations(
-  result: Awaited<ReturnType<typeof runCore>>,
-) {
+function completedObservations(result: Awaited<ReturnType<typeof runCore>>) {
   return result.evaluation.records.flatMap((record) => (
     record.evaluationStatus === 'completed' ? record.observations : []
   ));
@@ -405,52 +429,24 @@ const COMPLETE_USAGE: UsageRecord = {
   providerCost: { amount: 0.001, currency: 'USD', reportedByProvider: true },
 };
 
-describe('provider-neutral LLM assertion Evaluator', () => {
-  it('preserves opaque provider provenance through evaluator composition', () => {
-    const opaqueProvider = RuntimeIdentitySchema.parse({
-      implementationId: PROVIDER_IMPLEMENTATION_ID,
-      fingerprint: digestCanonicalJson({ provider: PROVIDER_IMPLEMENTATION_ID, opaque: true }),
-      fingerprintBasis: 'opaque',
-      assuranceLevel: 'unknown',
-      capabilities: { invocation: 'single-call' },
-      implementationManifest: {
-        coverageKind: 'fingerprint-plus-facets',
-        facets: [{
-          facetId: 'provider.deployment',
-          value: { coverage: 'remote-opaque' },
-        }],
-      },
-    });
-    const identity = evaluatorIdentity(
-      'semantic_similarity',
-      invocationPort(async () => ({
-        invocationStatus: 'completed',
-        output: '{"score":5,"reason":"valid"}',
-      }), 'optional', opaqueProvider),
-    );
-
-    expect(identity.fingerprintBasis).toBe('opaque');
-    expect(identity.assuranceLevel).toBe('unknown');
-  });
-
+describe('provider-neutral rubric raw-reading Evaluator', () => {
   it.each([
-    ['semantic_similarity', 'semantic-similarity', getSemanticPromptHash()],
-    ['faithfulness', 'rag-faithfulness', getRagJudgePromptHash('faithfulness')],
-    ['answer_relevancy', 'rag-answer-relevancy', getRagJudgePromptHash('answer_relevancy')],
-    ['context_recall', 'rag-context-recall', getRagJudgePromptHash('context_recall')],
-  ] as const)('uses the frozen %s instrument without copying its prompt', async (
-    assertionType,
+    [true, 'rubric-judge-debias-on', getJudgePromptHash(true), 'v5-cot-toolargs-fmt-len'],
+    [false, 'rubric-judge-debias-off', getJudgePromptHash(false), 'v5-cot-toolargs-fmt'],
+  ] as const)('uses the frozen lengthDebias=%s instrument', async (
+    lengthDebias,
     promptId,
     promptHash,
+    promptVersion,
   ) => {
     const requests: OmkLlmJudgeInvocationRequest[] = [];
     const result = await runCore({
-      assertionType,
+      lengthDebias,
       handler: async (request) => {
         requests.push(request);
         return {
           invocationStatus: 'completed',
-          output: '{"score":4,"reason":"valid reading"}',
+          output: '{"reasoning":"checked rubric","score":4,"reason":"valid reading"}',
           usage: COMPLETE_USAGE,
         };
       },
@@ -464,136 +460,98 @@ describe('provider-neutral LLM assertion Evaluator', () => {
       promptId,
       promptHash,
     });
+    expect(requests[0].prompt).toContain(`template ${promptVersion}`);
+    expect(requests[0].prompt).toContain('The answer must be correct and concise.');
+    expect(requests[0].system).toBe(JUDGE_SYSTEM_PROMPT);
+    expect(requests[0].prompt).toBe(buildJudgePrompt(
+      'Answer the question.',
+      'The answer must be correct and concise.',
+      'Actual answer',
+      null,
+      lengthDebias,
+    ));
     expect(requests[0].signal).toBeInstanceOf(AbortSignal);
-    expect(completedObservations(result)).toHaveLength(2);
     for (const observation of completedObservations(result)) {
       expect(observation).toMatchObject({
         metricId: METRIC_ID,
         observationStatus: 'observed',
-        valueType: 'boolean',
-        value: true,
+        valueType: 'numeric',
+        value: 4,
         evidence: {
           classification: 'gold',
           contentKind: 'inline',
           value: {
-            assertionType,
+            criterionId: 'correctness',
             promptId,
             promptHash,
+            lengthDebias,
+            tracePolicy: 'none',
             score: 4,
-            rawPassed: true,
             reason: 'valid reading',
-            weight: 1,
-            negated: false,
-            layer: 'fact',
+            reasoning: 'checked rubric',
           },
         },
       });
     }
-    for (const record of result.evaluation.records) {
-      if (record.evaluationStatus !== 'completed') continue;
-      expect(record.usage).toMatchObject(COMPLETE_USAGE);
-    }
   });
 
-  it('keeps a valid below-threshold reading as observed false', async () => {
+  it('adds only canonical source-neutral trace and keeps the highest input classification', async () => {
+    const requests: OmkLlmJudgeInvocationRequest[] = [];
     const result = await runCore({
-      handler: async () => ({
-        invocationStatus: 'completed',
-        output: '{"score":2,"reason":"content differs"}',
-      }),
+      tracePolicy: 'source-neutral',
+      handler: async (request) => {
+        requests.push(request);
+        return {
+          invocationStatus: 'completed',
+          output: '{"score":5,"reason":"trace supports answer"}',
+        };
+      },
     });
+    expect(requests[0].prompt).toContain('## Agent 执行过程');
+    expect(requests[0].prompt).toContain('search(1)');
+    expect(requests[0].prompt).toContain('Used search and answered.');
+    const expectedTrace = buildJudgeTraceSummary(
+      [{ role: 'assistant', content: 'Used search and answered.' }],
+      [{
+        tool: 'search',
+        input: { query: 'Q' },
+        output: 'A',
+        success: true,
+        status: 'success',
+        statusSource: 'runtime',
+      }],
+    );
+    expect(requests[0].prompt).toBe(buildJudgePrompt(
+      'Answer the question.',
+      'The answer must be correct and concise.',
+      'Actual answer',
+      expectedTrace,
+      true,
+    ));
     expect(completedObservations(result)).toEqual([
-      expect.objectContaining({ observationStatus: 'observed', value: false }),
-      expect.objectContaining({ observationStatus: 'observed', value: false }),
-    ]);
-  });
-
-  it.each([
-    'semantic_similarity',
-    'faithfulness',
-    'answer_relevancy',
-    'context_recall',
-  ] as const)('applies negation only after a valid %s reading', async (assertionType) => {
-    const rawPass = await runCore({
-      assertionType,
-      negated: true,
-      handler: async () => ({
-        invocationStatus: 'completed',
-        output: '{"score":5,"reason":"valid pass"}',
-      }),
-    });
-    expect(completedObservations(rawPass)).toEqual([
       expect.objectContaining({
-        observationStatus: 'observed',
-        value: false,
-        evidence: expect.objectContaining({
-          value: expect.objectContaining({ negated: true, rawPassed: true }),
-        }),
+        value: 5,
+        evidence: expect.objectContaining({ classification: 'gold' }),
       }),
       expect.objectContaining({
-        observationStatus: 'observed',
-        value: false,
-        evidence: expect.objectContaining({
-          value: expect.objectContaining({ negated: true, rawPassed: true }),
-        }),
+        value: 5,
+        evidence: expect.objectContaining({ classification: 'gold' }),
       }),
     ]);
-
-    const rawFail = await runCore({
-      assertionType,
-      negated: true,
-      handler: async () => ({
-        invocationStatus: 'completed',
-        output: '{"score":2,"reason":"valid fail"}',
-      }),
-    });
-    expect(completedObservations(rawFail)).toEqual([
-      expect.objectContaining({
-        observationStatus: 'observed',
-        value: true,
-        evidence: expect.objectContaining({
-          value: expect.objectContaining({ negated: true, rawPassed: false }),
-        }),
-      }),
-      expect.objectContaining({
-        observationStatus: 'observed',
-        value: true,
-        evidence: expect.objectContaining({
-          value: expect.objectContaining({ negated: true, rawPassed: false }),
-        }),
-      }),
-    ]);
-  });
-
-  it('seals negation into the EvaluationPlan identity', async () => {
-    const provider = invocationPort(async () => ({
-      invocationStatus: 'completed',
-      output: '{"score":5,"reason":"valid"}',
-    }));
-    const identity = evaluatorIdentity('semantic_similarity', provider);
-    const positive = await prepareEvaluationPlan(
-      definition('semantic_similarity', false),
-      policy(),
-      preparationRuntime(identity),
-    );
-    const negated = await prepareEvaluationPlan(
-      definition('semantic_similarity', true),
-      policy(),
-      preparationRuntime(identity),
-    );
-    expect(positive.evaluation.evaluationPlanDigest)
-      .not.toBe(negated.evaluation.evaluationPlanDigest);
   });
 
   it.each([
     ['plain text', 'judge-response-non-json'],
     ['prefix {bad json} suffix', 'judge-response-malformed-json'],
+    ['prefix {"score":4,"reason":"embedded"} suffix', 'judge-response-malformed-json'],
     ['{"score":"4","reason":"wrong type"}', 'judge-score-malformed'],
+    ['{"score":4.5,"reason":"fractional"}', 'judge-score-malformed'],
+    ['{"score":0,"reason":"out of range"}', 'judge-score-out-of-range'],
     ['{"score":6,"reason":"out of range"}', 'judge-score-out-of-range'],
     ['{"score":4}', 'judge-reason-missing'],
-  ])('returns invalid, not false, for %s even when negated', async (output, reasonCode) => {
+    ['{"score":4,"reason":"  "}', 'judge-reason-missing'],
+  ])('returns invalid, not a zero reading, for %s', async (output, reasonCode) => {
     const result = await runCore({
-      negated: true,
       handler: async () => ({ invocationStatus: 'completed', output }),
     });
     expect(completedObservations(result)).toEqual([
@@ -605,9 +563,8 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     ))).toBe(false);
   });
 
-  it('does not invert provider failure, redacts raw errors, and retains known usage', async () => {
+  it('records provider failure separately, redacts provider details, and retains known usage', async () => {
     const result = await runCore({
-      negated: true,
       handler: async () => ({
         invocationStatus: 'failed',
         reasonCode: 'provider-overloaded',
@@ -617,7 +574,6 @@ describe('provider-neutral LLM assertion Evaluator', () => {
         },
       }),
     });
-    expect(result.evaluation.records).toHaveLength(2);
     for (const record of result.evaluation.records) {
       expect(record).toMatchObject({
         evaluationStatus: 'failed',
@@ -633,7 +589,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     }
   });
 
-  it('keeps unknown provider usage and cost absent rather than writing zero', async () => {
+  it('keeps unknown provider usage and cost absent', async () => {
     const result = await runCore({
       handler: async () => ({
         invocationStatus: 'completed',
@@ -648,17 +604,14 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     }
   });
 
-  it('delegates retry exclusively to the sealed Core retry policy', async () => {
+  it('delegates retry exclusively to sealed Core policy', async () => {
     let calls = 0;
     const result = await runCore({
       handler: async () => {
         calls += 1;
         return calls <= 2
           ? { invocationStatus: 'failed', reasonCode: 'provider-unavailable' }
-          : {
-              invocationStatus: 'completed',
-              output: '{"score":5,"reason":"recovered"}',
-            };
+          : { invocationStatus: 'completed', output: '{"score":5,"reason":"recovered"}' };
       },
       policy: policy({ retryProviderFailure: true }),
     });
@@ -666,10 +619,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     for (const record of result.evaluation.records) {
       expect(record).toMatchObject({
         evaluationStatus: 'completed',
-        observations: [expect.objectContaining({
-          observationStatus: 'observed',
-          value: true,
-        })],
+        observations: [expect.objectContaining({ value: 5 })],
       });
       if (record.evaluationStatus !== 'completed') continue;
       expect(record.attempts.map((attempt) => attempt.attemptStatus)).toEqual([
@@ -688,7 +638,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
       handler: async (): Promise<OmkLlmJudgeInvocationResult> => {
         calls += 1;
         return {
-          invocationStatus: 'completed' as const,
+          invocationStatus: 'completed',
           output: '{"score":5,"reason":"cacheable"}',
         };
       },
@@ -698,8 +648,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     const first = await runCore(request);
     expect(calls).toBe(2);
     expect(first.evaluation.records.every((record) => (
-      record.evaluationStatus === 'completed'
-      && record.cache.cacheStatus === 'miss'
+      record.evaluationStatus === 'completed' && record.cache.cacheStatus === 'miss'
     ))).toBe(true);
 
     const second = await runCore(request);
@@ -710,7 +659,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     ))).toBe(true);
   });
 
-  it('keeps negated timeout failed and waits for cooperative provider cancellation', async () => {
+  it('lets Core own timeout and cooperative provider cancellation', async () => {
     let cancellations = 0;
     const result = await runCore({
       handler: async (request) => new Promise<OmkLlmJudgeInvocationResult>((_resolve, reject) => {
@@ -719,20 +668,17 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           reject(request.signal.reason);
         }, { once: true });
       }),
-      negated: true,
       policy: policy({ timeout: true }),
       clock: new TestClock(true),
     });
     expect(cancellations).toBe(2);
-    for (const record of result.evaluation.records) {
-      expect(record).toMatchObject({
-        evaluationStatus: 'failed',
-        error: { code: 'timeout', stage: 'evaluation' },
-      });
-    }
+    expect(result.evaluation.records.every((record) => (
+      record.evaluationStatus === 'failed'
+      && record.error.code === 'timeout'
+    ))).toBe(true);
   });
 
-  it('keeps negated cancellation cancelled instead of turning it into a pass', async () => {
+  it('lets Core own cancellation without converting it into provider failure', async () => {
     const controller = new AbortController();
     let cancellations = 0;
     const result = await runCore({
@@ -750,7 +696,6 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           }
         });
       },
-      negated: true,
       signal: controller.signal,
     });
     expect(cancellations).toBeGreaterThan(0);
@@ -760,7 +705,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     ))).toBe(true);
   });
 
-  it('keeps negated budget censoring as unstarted evidence', async () => {
+  it('lets Core censor unstarted coordinates at the sealed evaluation budget', async () => {
     let calls = 0;
     const result = await runCore({
       handler: async () => {
@@ -770,55 +715,105 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           output: '{"score":5,"reason":"valid"}',
         };
       },
-      negated: true,
       policy: policy({ evaluationInvocations: 1 }),
     });
     expect(calls).toBe(1);
     expect(result.evaluation.evaluationBundleStatus).toBe('budget-exhausted');
-    expect(result.evaluation.coverage).toMatchObject({
-      planned: 2,
-      completed: 1,
-      notStarted: 1,
-    });
+    expect(result.evaluation.coverage).toMatchObject({ planned: 2, completed: 1, notStarted: 1 });
   });
 
-  it('cannot lower observed content score by adding an infrastructure failure', async () => {
-    let calls = 0;
-    const result = await runCore({
-      handler: async () => {
-        calls += 1;
-        return calls === 1
-          ? {
-              invocationStatus: 'completed',
-              output: '{"score":5,"reason":"valid"}',
-            }
-          : {
-              invocationStatus: 'failed',
-              reasonCode: 'provider-unavailable',
-            };
+  it('fingerprints prompt variant, trace policy, model, and provider Runtime identity', () => {
+    const handler: InvocationHandler = async () => ({
+      invocationStatus: 'completed',
+      output: '{"score":5,"reason":"valid"}',
+    });
+    const basePort = invocationPort(handler);
+    const base = evaluatorIdentity({ lengthDebias: true, tracePolicy: 'none' }, basePort);
+    const identities = [
+      evaluatorIdentity({ lengthDebias: false, tracePolicy: 'none' }, basePort),
+      evaluatorIdentity({ lengthDebias: true, tracePolicy: 'source-neutral' }, basePort),
+      evaluatorIdentity({ lengthDebias: true, tracePolicy: 'none', model: 'other' }, basePort),
+      evaluatorIdentity(
+        { lengthDebias: true, tracePolicy: 'none' },
+        invocationPort(handler, 'optional', providerIdentity(2)),
+      ),
+    ];
+    for (const identity of identities) expect(identity.fingerprint).not.toBe(base.fingerprint);
+  });
+
+  it('preserves opaque provider provenance through evaluator composition', () => {
+    const opaqueProvider = RuntimeIdentitySchema.parse({
+      implementationId: PROVIDER_IMPLEMENTATION_ID,
+      fingerprint: digestCanonicalJson({ provider: PROVIDER_IMPLEMENTATION_ID, opaque: true }),
+      fingerprintBasis: 'opaque',
+      assuranceLevel: 'unknown',
+      capabilities: { invocation: 'single-call' },
+      implementationManifest: {
+        coverageKind: 'fingerprint-plus-facets',
+        facets: [{
+          facetId: 'provider.deployment',
+          value: { coverage: 'remote-opaque' },
+        }],
       },
     });
-    const observed = completedObservations(result).filter((observation) => (
-      observation.observationStatus === 'observed'
-    ));
-    expect(observed).toHaveLength(1);
-    expect(observed[0]).toMatchObject({ value: true });
-    expect(result.evaluation.records.some((record) => (
-      record.evaluationStatus === 'completed'
-    ))).toBe(true);
-    expect(result.evaluation.records.some((record) => (
-      record.evaluationStatus === 'failed'
-      && record.error.code === 'judge-provider-failure'
-    ))).toBe(true);
+    const identity = evaluatorIdentity(
+      { lengthDebias: true, tracePolicy: 'none' },
+      invocationPort(async () => ({
+        invocationStatus: 'completed',
+        output: '{"score":5,"reason":"valid"}',
+      }), 'optional', opaqueProvider),
+    );
+
+    expect(identity.fingerprintBasis).toBe('opaque');
+    expect(identity.assuranceLevel).toBe('unknown');
   });
 
-  it('builds a production host factory with sealed qualification and prompt identity', async () => {
-    const definitionValue = definition('semantic_similarity');
+  it('captures the provider method and receiver identity against later mutation', async () => {
+    const initialIdentity = providerIdentity(1);
+    let originalCalls = 0;
+    const mutablePort: {
+      identity: RuntimeIdentity;
+      providerCost: { reporting: 'optional' };
+      invoke: OmkLlmJudgeInvocationPort['invoke'];
+    } = {
+      identity: initialIdentity,
+      providerCost: { reporting: 'optional' as const },
+      async invoke(this: OmkLlmJudgeInvocationPort) {
+        originalCalls += 1;
+        expect(this.identity).toEqual(initialIdentity);
+        return {
+          invocationStatus: 'completed' as const,
+          output: '{"score":5,"reason":"captured"}',
+        };
+      },
+    };
+    const captured = captureLlmJudgeInvocationPort(mutablePort);
+    mutablePort.identity = providerIdentity(2);
+    mutablePort.invoke = async () => ({
+      invocationStatus: 'failed' as const,
+      reasonCode: 'mutated-method',
+    });
+    const result = await captured.invoke({
+      executorId: PROVIDER_IMPLEMENTATION_ID,
+      model: 'judge-model',
+      system: 'system',
+      prompt: 'prompt',
+      promptId: 'rubric-judge-debias-on',
+      promptHash: getJudgePromptHash(true),
+      signal: new AbortController().signal,
+    });
+    expect(result).toMatchObject({ invocationStatus: 'completed' });
+    expect(originalCalls).toBe(1);
+    expect(captured.identity).toEqual(initialIdentity);
+  });
+
+  it('builds a host factory with sealed qualification and shared provider boundary', async () => {
+    const definitionValue = definition();
     const provider = invocationPort(async () => ({
       invocationStatus: 'completed',
       output: '{"score":5,"reason":"valid"}',
     }));
-    const factory = createLlmAssertionEvaluatorBindingFactory(async () => ({
+    const factory = createRubricJudgeEvaluatorBindingFactory(async () => ({
       port: provider,
       preflightDeclarations: [{
         preflightKind: 'connectivity',
@@ -828,12 +823,12 @@ describe('provider-neutral LLM assertion Evaluator', () => {
       }],
     }));
     const resolved = await factory({
-      sessionIsolationKey: 'llm-assertion-factory-session',
+      sessionIsolationKey: 'rubric-judge-factory-session',
       binding: {
         runtimeKind: 'evaluator',
-        bindingId: 'llm-assertion-binding',
-        evaluatorId: 'llm-assertion',
-        implementationId: LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+        bindingId: 'rubric-judge-binding',
+        evaluatorId: 'rubric-judge',
+        implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
         measurement: definitionValue.evaluators[0].measurement,
         configDigest: digestCanonicalJson(definitionValue.evaluators[0].config as JsonValue),
         resourceLeaseRequirements: [],
@@ -841,20 +836,23 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           executorId: PROVIDER_IMPLEMENTATION_ID,
           model: 'judge-model',
           effort: 'low',
-          promptVariant: 'semantic-similarity',
+          promptVariant: 'rubric-judge-debias-on',
           resourceIntegrity: 'digest-before-use',
         },
       },
       evaluator: definitionValue.evaluators[0],
       resourceLeases: {
         forRun: () => ({
-          bindingId: 'llm-assertion-binding',
+          bindingId: 'rubric-judge-binding',
           consumerKind: 'evaluator',
           resourcesByResourceId: new Map(),
         }),
       },
     });
-    expect(resolved.port.identity).toEqual(evaluatorIdentity('semantic_similarity', provider));
+    expect(resolved.port.identity).toEqual(evaluatorIdentity({
+      lengthDebias: true,
+      tracePolicy: 'none',
+    }, provider));
     expect(resolved.preflightDeclarations).toEqual([
       expect.objectContaining({ checkId: 'judge-connectivity', preflightDisposition: 'check' }),
     ]);

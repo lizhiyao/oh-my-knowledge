@@ -4,12 +4,12 @@ import {
   digestCanonicalJson,
   type JsonValue,
   type SchemaIdentity,
-} from '../../../src/eval-core/contracts/index.js';
-import { AnalysisNodeCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
+import { AnalysisNodeCapabilitiesSchema } from '../../../../src/eval-core/compiler/index.js';
 import type {
   AnalysisNodeExecutionContext,
   AnalysisNodeInput,
-} from '../../../src/eval-core/analysis/index.js';
+} from '../../../../src/eval-core/analysis/index.js';
 import {
   AGREEMENT_ANALYSIS_IDENTITY,
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
@@ -18,10 +18,10 @@ import {
   AGREEMENT_ANALYSIS_V1_IDENTITY,
   AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,
   createAgreementAnalysisNodes,
-} from '../../../src/eval-workflows/measurement/analysis/agreement-node.js';
-import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
-import { AGREEMENT_SOURCE_SCHEMAS } from '../../../src/eval-workflows/measurement/analysis/agreement-source-adapter.js';
-import { AGREEMENT_TABLE_SCHEMA } from '../../../src/eval-workflows/measurement/analysis/agreement-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/agreement-node.js';
+import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
+import { AGREEMENT_SOURCE_SCHEMAS } from '../../../../src/eval-workflows/measurement/analysis/agreement-source-adapter.js';
+import { AGREEMENT_TABLE_SCHEMA } from '../../../../src/eval-workflows/measurement/analysis/agreement-table.js';
 import {
   DIMENSION_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA_VERSION,
@@ -31,7 +31,7 @@ import {
   dimensionGroupId,
   type DimensionEntry,
   type DimensionGroup,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-table.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-table.js';
 
 const planDigest = digestCanonicalJson('agreement-plan');
 const bundleDigest = digestCanonicalJson('agreement-bundle');

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   schemaIdentityKey,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../../src/eval-core/contracts/index.js';
 import {
   DIMENSION_PARAMETERS_SCHEMA,
   createDimensionParameterSchemaValidators,
   parseDimensionParameters,
-} from '../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
+} from '../../../../src/eval-workflows/measurement/analysis/dimension-parameters.js';
 
 const security = {
   dimensionId: 'security',
