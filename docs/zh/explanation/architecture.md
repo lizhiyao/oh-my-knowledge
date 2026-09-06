@@ -98,7 +98,7 @@ provider adapter 或资源租约。单次执行和 Series 准备／执行归 Run
 
 ```text
 eval-hosts/
-├── node/                    # Node 输入解析、环境、工厂注册与交付装配
+├── node/                    # 共用 Node 解析、工厂注册与运行前检查
 └── runtime-adapter/
     ├── adapters/            # 具体 provider 协议桥接
     ├── evaluators/          # 产品 evaluator 工厂接线
@@ -109,6 +109,45 @@ eval-hosts/
 纯类型导入。产品测量实现在 `eval-workflows/measurement`，通用执行与生命周期桥接留在 Runtime。
 旧 Workflow Runtime 目录和转发包装已删除，不保留 0.x 兼容路径。Core／Runtime 的正确契约优先于
 Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，不建立产品执行旁路。
+
+### 源码职责与装配消费者
+
+源码目录按所有者划分；公开入口由 `package.json#exports` 决定，不要求每个目录都成为公开 API。
+下表同时说明保留边界与待收敛的位置，后续结构调整仍须逐项验证，而不是把所有领域排成同一条流水线。
+
+| 所有者 | 公开入口与实际消费者 | 归属与验证边界 |
+|---|---|---|
+| Core／Runtime | `eval-core`、包根及 `eval-runtime`；服务调用方与产品 Workflow | Core 约束执行和测量协议，Runtime 提供通用评分与接入；验证公开包、契约、调度和取消 |
+| Workflow | `eval-samples`、`projections`；CLI、DSH、Studio、载体改进 | 产品声明、版本化评分／分析、编排与评测产物存储；验证编译、结果投影及发布判断 |
+| Executors | 内部调用；宿主适配、评委、doctor、sample、evolve 与观测分析 | 复用调用协议与机制；不能整体当作旧评测路径删除；验证参数、环境、Trace、用量与错误 |
+| Knowledge artifacts | 内部调用；CLI、Workflow、观测与治理 | 载体生命周期；跨生命周期的来源解析应核对是否仍错置在 Workflow，迁移前验证源身份和调用者 |
+| Observability／Diagnosis | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
+| Evidence | 各产品领域与交付入口 | 跨来源证据布局与关联；不替代 Workflow 的评测产物校验，不决定评分或发布 |
+| CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
+| Shared | 内部叶子工具 | 不引入领域决策；验证文件原子性、锁与基础数据操作 |
+
+宿主装配按真实消费者归属。CLI 的 provider 选择、环境分类、凭证解析与生产装配位于
+`cli/lib/evaluation-composition.ts`；DSH 的 agent 上下文与评委调用在 `dsh-plugin/core-command.ts`。
+DSH 不通过 CLI 模块获取共用能力。当前保留 `eval-hosts` 的依据是以下跨入口复用：
+
+| 模块 | 实际消费者 | 契约、失败与资源边界 |
+|---|---|---|
+| `node/preflight.ts` | CLI 与 DSH | 显式接收编译结果、环境和项目根；延迟运行检查，失败按既有准入规则传播 |
+| `node/node-cli-evaluation-resolver.ts` | CLI 与 DSH | 共用产品请求解析；虽保留请求协议命名，并非 CLI 入口策略 |
+| `node/node-sample-content-resolver.ts`、`safe-http-content-resolver.ts` | 上述共用解析器 | 文件／网络内容解析与会话清理；验证来源限制、取消和内容身份 |
+| `node/runtime-registry.ts`、`judge-provider-identity.ts` | CLI 与 DSH | 显式注册配置与评委身份；不在共用注册中替入口选择 provider 或读取凭证 |
+| `runtime-adapter/assembly.ts`、`composition.ts`、`builtins.ts`、`preflight.ts` | CLI 与 DSH 经 Runtime provider 消费 | 绑定、注册、准入及运行资源接线；具体资源清理由宿主提供，生命周期由 Runtime 控制 |
+| `runtime-adapter/adapters`、`evaluators`、`resource-leases` | 上述装配；DSH 复用资源接口 | provider 桥接、评分工厂接线与资源实现；不得反向依赖入口装配或通过聚合入口绕行 |
+
+服务直接调用 `evaluate()` 时使用 Runtime／Core；CLI 与 DSH 使用编译、宿主装配和注入的
+Runtime；生成、修复及辅助分析可以直接使用 `ExecutorFn`；观测事实经诊断与领域投影进入
+Studio。这些路径用途不同，共用机制须按契约提取。用户 façade 的事件消费与产品运行租约也不能
+仅因都调用 Core 就认定为重复调度。
+
+结构调整优先处理入口归属与内部依赖，再按 provider 对照收敛调用机制、拆分 Runtime 大入口、
+复核来源解析。测试需跟随实际所有者迁移。当前保留共用宿主不意味着其目录名和内部布局不可改；
+也不意味着所有 I/O 都要移到宿主。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，
+应依据公开引用与证据读取需求决定保留或迁移。知识内容领域仍为设计稿，不以本轮整理补占位实现。
 
 Evidence 持久化与跨来源关联属于同一个不做决策的边界：
 

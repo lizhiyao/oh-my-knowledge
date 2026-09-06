@@ -104,7 +104,7 @@ Core alone owns their scheduling, retry, timeout, budget and measurement contrac
 
 ```text
 eval-hosts/
-├── node/                    # Node input resolution, environment, registry and delivery assembly
+├── node/                    # shared Node resolution, registry and preflight
 └── runtime-adapter/
     ├── adapters/            # concrete provider protocol bridges
     ├── evaluators/          # product evaluator factory wiring
@@ -117,6 +117,50 @@ remain in `eval-workflows/measurement`; generic execution and lifecycle bridges 
 The obsolete Workflow Runtime directory and forwarding wrappers are removed without a 0.x compatibility
 path. Correct Core/Runtime contracts take precedence over existing Workflow/CLI behavior. Legitimate
 missing capabilities belong in the responsible lower layer rather than a product execution bypass.
+
+### Source ownership and composition consumers
+
+Source directories express ownership; `package.json#exports` selects public entrypoints. A directory
+need not become a public API. This inventory distinguishes retained boundaries from consolidation
+work that still needs verification rather than forcing all domains into one pipeline.
+
+| Owner | Public entrypoints and actual consumers | Ownership and verification boundary |
+|---|---|---|
+| Core / Runtime | `eval-core`, package root and `eval-runtime`; service callers and product Workflow | Core execution and measurement contracts, Runtime adoption and generic scoring; verify published packages, contracts, scheduling and cancellation |
+| Workflow | `eval-samples`, `projections`; CLI, DSH, Studio and artifact evolution | Product declarations, versioned scoring/analysis, orchestration and evaluation stores; verify compilation, projections and release decisions |
+| Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
+| Knowledge artifacts | Internal consumers in CLI, Workflow, observation and governance | Artifact lifecycle; reassess source resolution shared across lifecycle operations that still resides in Workflow, preserving source identities and callers |
+| Observability / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
+| Evidence | Product domains and delivery entrypoints | Cross-source storage layout and association; does not replace evaluation artifact validation or decide scores/releases |
+| CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
+| Shared | Internal leaf utilities | No domain decisions; verify atomic files, locks and basic data operations |
+
+Composition follows actual consumers. CLI provider selection, environment classification, credential
+resolution and production assembly live in `cli/lib/evaluation-composition.ts`. DSH agent context and
+judge invocation live in `dsh-plugin/core-command.ts`. DSH does not obtain shared capabilities through
+CLI modules. The retained `eval-hosts` boundary currently serves these shared consumers:
+
+| Module | Actual consumers | Contract, failure and resource boundary |
+|---|---|---|
+| `node/preflight.ts` | CLI and DSH | Explicit compiled input, environment and project root; lazy checks propagate failures through existing admission rules |
+| `node/node-cli-evaluation-resolver.ts` | CLI and DSH | Shared product request resolution; the retained request protocol name does not make it CLI entry policy |
+| `node/node-sample-content-resolver.ts`, `safe-http-content-resolver.ts` | Shared resolver above | File/network content resolution and session cleanup; verify source restrictions, cancellation and content identity |
+| `node/runtime-registry.ts`, `judge-provider-identity.ts` | CLI and DSH | Explicit registration and judge identity; shared registry does not select providers or read credentials on behalf of an entrypoint |
+| `runtime-adapter/assembly.ts`, `composition.ts`, `builtins.ts`, `preflight.ts` | CLI and DSH via Runtime provider | Binding, registration, admission and run-resource wiring; hosts implement cleanup while Runtime controls lifecycle |
+| `runtime-adapter/adapters`, `evaluators`, `resource-leases` | Composition above; DSH also uses resource interfaces | Provider bridges, evaluator wiring and resources cannot depend back on entry composition or bypass boundaries through aggregate exports |
+
+Direct service `evaluate()` uses Runtime/Core. CLI and DSH use compilation, host assembly and injected
+Runtime. Generation, repair and auxiliary analysis may directly use `ExecutorFn`. Observation facts
+reach Studio through diagnosis and domain projections. Extract shared mechanics according to those
+contracts. The user facade's event consumption and product run-lease wrapper do not constitute
+duplicate scheduling merely because both invoke Core.
+
+Consolidation first clarifies entry ownership and internal dependencies, then compares provider
+invocation paths, splits the large Runtime facade, and reassesses source resolution. Tests follow the
+actual owner. Retaining shared hosts does not freeze their directory name/layout or require moving
+all I/O there. Historical Schema/instrument versions are distinct from npm 0.x compatibility; decide
+retention or migration from public references and evidence-reading needs. The knowledge-content
+domain remains a design draft, not a reason to add placeholder implementations during consolidation.
 
 Evidence persistence and cross-source association have one non-decision boundary:
 

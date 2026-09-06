@@ -17,7 +17,7 @@ import {
 } from '../../eval-workflows/artifact-store/index.js';
 import {
   createNodeCliProductionComposition,
-} from '../../eval-hosts/node/node-cli-composition.js';
+} from './evaluation-composition.js';
 import {
   createProductionEvaluationHost,
   executeProductionEvaluationSeries,
