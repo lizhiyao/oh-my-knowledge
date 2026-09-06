@@ -15,10 +15,8 @@ import {
 import {
   OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
   storyContextRefForSessionGroup,
-  storyContextsFromSessions,
   TIMELINE_PREVIEW_EVENT_LIMIT,
   timelineRefForSessionGroup,
-  traceTimelinesFromSessions,
   flattenTimelineTree,
 } from './report-structure.js';
 import {
@@ -30,8 +28,6 @@ import {
   normalizeTraceTimelines,
 } from './report-value-guards.js';
 import { validateExperienceReferences } from './report-reference-validator.js';
-
-export const LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 2;
 
 export type PersistedExperienceInvocation = Omit<
   ExperienceInvocation,
@@ -85,11 +81,7 @@ export function normalizeObservationExperienceReport(value: unknown): Observatio
   const report = value as Record<string, unknown>;
   const kind = report.kind === 'observe-experience' ? report.kind : null;
   if (!kind) return null;
-  if (
-    report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION
-    && report.schemaVersion !== LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION
-  ) return null;
-  const isLegacyReport = report.schemaVersion === LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION;
+  if (report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION) return null;
   if (report.scope !== 'evidence-only') return null;
   if (
     !isTimestamp(report.generatedAt)
@@ -100,19 +92,12 @@ export function normalizeObservationExperienceReport(value: unknown): Observatio
   if (!Array.isArray(report.goalSlices) || !Array.isArray(report.invocations) || !Array.isArray(report.sessions) || !Array.isArray(report.skills)) {
     return null;
   }
-  const invocations = normalizeExperienceInvocationShells(report.invocations, !isLegacyReport);
-  const sessions = normalizeExperienceSessionShells(report.sessions, !isLegacyReport);
+  const invocations = normalizeExperienceInvocationShells(report.invocations);
+  const sessions = normalizeExperienceSessionShells(report.sessions);
   if (!invocations || !sessions) return null;
-  if (
-    !isLegacyReport
-    && (!Array.isArray(report.traceTimelines) || !Array.isArray(report.storyContexts))
-  ) return null;
-  const traceTimelines = Array.isArray(report.traceTimelines)
-    ? normalizeTraceTimelines(report.traceTimelines)
-    : traceTimelinesFromSessions(sessions, invocations);
-  const storyContexts = Array.isArray(report.storyContexts)
-    ? normalizeStoryContexts(report.storyContexts)
-    : storyContextsFromSessions(sessions, invocations);
+  if (!Array.isArray(report.traceTimelines) || !Array.isArray(report.storyContexts)) return null;
+  const traceTimelines = normalizeTraceTimelines(report.traceTimelines);
+  const storyContexts = normalizeStoryContexts(report.storyContexts);
   if (!traceTimelines || !storyContexts) return null;
   const normalized: ObservationExperienceReport = {
     kind: 'observe-experience',
@@ -129,7 +114,7 @@ export function normalizeObservationExperienceReport(value: unknown): Observatio
   };
   const hydrated = hydrateExperienceTimelines(normalized);
   try {
-    if (!validateExperienceReferences(hydrated, !isLegacyReport)) return null;
+    if (!validateExperienceReferences(hydrated)) return null;
   } catch {
     return null;
   }

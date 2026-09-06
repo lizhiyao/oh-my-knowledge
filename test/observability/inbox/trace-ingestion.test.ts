@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -14,6 +14,29 @@ import { renderObservationInboxPage } from '../../../src/studio/presentation/obs
 import { baseItem, businessActionTag, businessChannel, resolvedReviewSessionsForFixture } from './_helpers.js';
 
 describe('observe inbox - trace ingestion', () => {
+  it('skips unsupported experience reports without changing files or hiding current inbox v2', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-experience-version-'));
+    try {
+      const trace = join(root, 'trace.jsonl');
+      writeFileSync(trace, readFileSync(new URL('../../fixtures/codex-knowledge-debugger-failure.jsonl', import.meta.url)));
+      const report = buildObservationInboxReport(trace);
+      const current = saveObservationInboxReport(report, root);
+      const old = saveObservationInboxReport(report, root);
+      const legacy = JSON.parse(readFileSync(old, 'utf8'));
+      legacy.experience.schemaVersion = 2;
+      writeFileSync(old, JSON.stringify(legacy));
+      const before = readFileSync(old, 'utf8');
+      const loaded = loadObservationInboxReports(root);
+      assert.equal(loaded.length, 1);
+      assert.equal(loaded[0].schemaVersion, 2);
+      assert.equal(loaded[0].experience?.schemaVersion, 3);
+      assert.equal(readFileSync(old, 'utf8'), before);
+      assert.equal(JSON.parse(readFileSync(current, 'utf8')).experience.schemaVersion, 3);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('builds hard_miss inbox item from Claude Code JSONL', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');

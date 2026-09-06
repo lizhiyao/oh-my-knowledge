@@ -682,18 +682,6 @@ export interface ExperienceSessionSummary {
     truncated: boolean;
     omittedBeforeCount: number;
     omittedAfterCount: number;
-    /** @deprecated v2 only. Record indexes are local to one physical trace. */
-    segmentStartRecordIndex?: number;
-    /** @deprecated v2 only. Record indexes are local to one physical trace. */
-    segmentEndRecordIndex?: number;
-    /** @deprecated v2 only. Record indexes are local to one physical trace. */
-    previewStartRecordIndex?: number;
-    /** @deprecated v2 only. Record indexes are local to one physical trace. */
-    previewEndRecordIndex?: number;
-    /** @deprecated v2 only. Record indexes are local to one physical trace. */
-    sessionStartRecordIndex?: number;
-    /** @deprecated v2 only. Record indexes are local to one physical trace. */
-    sessionEndRecordIndex?: number;
   };
   attributionSources: string[];
   pluginNames: string[];

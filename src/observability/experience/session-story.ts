@@ -423,11 +423,9 @@ export function sessionStoryEpisodeRanges(
   );
   const sessionStart = minDefined(indexes)
     ?? persistedRange?.startRecordIndex
-    ?? session.timelineScope.sessionStartRecordIndex
     ?? 0;
   const sessionEnd = maxDefined(indexes)
     ?? persistedRange?.endRecordIndex
-    ?? session.timelineScope.sessionEndRecordIndex
     ?? sessionStart;
   const goalShiftStarts = unique(timeline
     .filter((event) =>
