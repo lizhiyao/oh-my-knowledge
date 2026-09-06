@@ -76,7 +76,7 @@ export function buildReviewerReport(
     mode: 'deterministic_session_story',
     generatedAt,
     title,
-    summary: reviewerSummary(session, scopeKind, attentionCount, possibleFalsePositiveCount),
+    summary: reviewerSummary(scopeKind, attentionCount, possibleFalsePositiveCount),
     scope: {
       kind: scopeKind,
       reasonCodes: scopeReasons,
@@ -312,8 +312,7 @@ export function reviewerTitle(session: ExperienceSessionSummary, attentionCount:
   return `${session.skillName} · 常规抽样 · 未见高优先级信号${suffix}`;
 }
 
-export function reviewerSummary(
-  session: ExperienceSessionSummary,
+function reviewerSummary(
   scopeKind: ExperienceReviewerReportScope,
   attentionCount: number,
   possibleFalsePositiveCount: number,

@@ -438,7 +438,6 @@ class MemoryCache implements EvaluationCache {
 }
 
 function ports(
-  plan: Plan,
   port: EvaluationEvaluator,
   overrides: Partial<EvaluationRuntimePorts> = {},
 ): EvaluationRuntimePorts {
@@ -455,7 +454,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const run = startEvaluation(plan, source, ports(plan, fake.port), {
+    const run = startEvaluation(plan, source, ports(fake.port), {
       runId: 'evaluation-run',
       bundleId: 'evaluation-bundle',
       eventBufferCapacity: 1,
@@ -491,7 +490,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan, true);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'unavailable-run',
       bundleId: 'unavailable-bundle',
     });
@@ -524,7 +523,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const bundle = await evaluateExecutionBundle(
       plan,
       source,
-      ports(plan, fake.port, { cache }),
+      ports(fake.port, { cache }),
       { runId: 'facts-run', bundleId: 'facts-bundle' },
     );
     const sourceRecord = source.bundle.records[0];
@@ -574,7 +573,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     const source = await sourceBundle(plan, true);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'failed-facts-run',
       bundleId: 'failed-facts-bundle',
     });
@@ -604,7 +603,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const seed = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, seed.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(seed.port, { cache }), {
       runId: 'facts-cache-seed-run',
       bundleId: 'facts-cache-seed-bundle',
     });
@@ -619,7 +618,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const bundle = await evaluateExecutionBundle(
       plan,
       changedSource,
-      ports(plan, changed.port, { cache }),
+      ports(changed.port, { cache }),
       { runId: 'facts-cache-changed-run', bundleId: 'facts-cache-changed-bundle' },
     );
 
@@ -643,7 +642,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan);
     const fake = evaluator(plan, () => ({ observations: [] }));
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'missing-run',
       bundleId: 'missing-bundle',
     });
@@ -679,7 +678,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         usage: { totalTokens: 5 },
       };
     });
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'retry-run',
       bundleId: 'retry-bundle',
     });
@@ -699,7 +698,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const fake = evaluator(plan, (_state, attempt) => new Promise((_resolve, reject) => {
       attempt.signal.addEventListener('abort', () => reject(abortError()), { once: true });
     }));
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'timeout-run',
       bundleId: 'timeout-bundle',
     });
@@ -737,7 +736,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         }],
       };
     });
-    const run = startEvaluation(plan, source, ports(plan, fake.port), {
+    const run = startEvaluation(plan, source, ports(fake.port), {
       runId: 'late-cancel-run',
       bundleId: 'late-cancel-bundle',
       signal: controller.signal,
@@ -760,7 +759,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
-    const firstBundle = await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    const firstBundle = await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'cache-first',
       bundleId: 'cache-first-bundle',
     });
@@ -778,7 +777,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       .toThrowError(/sealed reuse policy/);
 
     const second = evaluator(plan);
-    const replay = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+    const replay = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
       runId: 'cache-second',
       bundleId: 'cache-second-bundle',
     });
@@ -800,7 +799,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     await expect(evaluateExecutionBundle(
       plan,
       source,
-      ports(plan, dirty.port, { cache: dirtyCache }),
+      ports(dirty.port, { cache: dirtyCache }),
       { runId: 'cache-dirty', bundleId: 'cache-dirty-bundle' },
     )).resolves.toMatchObject({ evaluationBundleStatus: 'failed' });
     expect(dirtyCache.puts).toBe(0);
@@ -813,7 +812,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'timing-cache-first',
       bundleId: 'timing-cache-first-bundle',
     });
@@ -837,7 +836,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const replay = await evaluateExecutionBundle(
       plan,
       changedSource,
-      ports(plan, second.port, { cache }),
+      ports(second.port, { cache }),
       { runId: 'timing-cache-second', bundleId: 'timing-cache-second-bundle' },
     );
 
@@ -862,7 +861,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const native = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const native = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       cache: new MemoryCache(),
     }), {
       runId: 'unverified-hit-seed',
@@ -923,7 +922,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const seed = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, seed.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(seed.port, { cache }), {
       runId: 'durable-receipt-seed-run',
       bundleId: 'durable-receipt-seed-bundle',
     });
@@ -949,7 +948,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         }],
       };
     });
-    await evaluateExecutionBundle(plan, source, ports(plan, retry.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(retry.port, { cache }), {
       runId: 'durable-receipt-replace-run',
       bundleId: 'durable-receipt-replace-bundle',
     });
@@ -957,7 +956,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const replay = await evaluateExecutionBundle(
       plan,
       source,
-      ports(plan, replayEvaluator.port, { cache }),
+      ports(replayEvaluator.port, { cache }),
       {
         runId: 'durable-receipt-replay-run',
         bundleId: 'durable-receipt-replay-bundle',
@@ -1002,7 +1001,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const controller = new AbortController();
     controller.abort();
     let resolves = 0;
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       contentResolver: {
         async resolve() {
           resolves += 1;
@@ -1040,7 +1039,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const fake = evaluator(plan);
     const cache = eventKind === 'evaluation.cache.miss' ? new MemoryCache() : undefined;
     let resolves = 0;
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       ...(cache === undefined ? {} : { cache }),
       contentResolver: {
         async resolve() {
@@ -1073,7 +1072,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const run = startEvaluation(plan, source, ports(plan, fake.port, {
+    const run = startEvaluation(plan, source, ports(fake.port, {
       eventWriter: {
         async write(event) {
           if (event.eventKind === 'evaluation.run.completed') throw new Error('writer failed');
@@ -1119,7 +1118,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const fake = evaluator(plan);
     const controller = new AbortController();
     if (stopStatus === 'cancelled') controller.abort();
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       eventWriter: {
         async write(event) {
           if (event.eventKind === rejectedEventKind) throw new Error('terminal writer failed');
@@ -1171,7 +1170,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const running = startEvaluation(
       plan,
       source,
-      ports(plan, evaluatorWithFailingRunDispose),
+      ports(evaluatorWithFailingRunDispose),
       {
         runId: 'cancel-dispose-precedence-run',
         bundleId: 'cancel-dispose-precedence-bundle',
@@ -1197,7 +1196,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const fake = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, fake.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(fake.port, { cache }), {
       runId: 'digest-run',
       bundleId: 'digest-bundle',
     });
@@ -1259,7 +1258,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       draft.terminationReasonCode = 'target-failed';
     }), plan);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'trace-only-run',
       bundleId: 'trace-only-bundle',
     });
@@ -1290,7 +1289,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         message: 'Do not retry.',
       });
     });
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'closure-run',
       bundleId: 'closure-bundle',
     });
@@ -1319,7 +1318,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       draft.terminationReasonCode = 'partial-source';
     }), plan);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'partial-run',
       bundleId: 'partial-bundle',
     });
@@ -1334,7 +1333,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const valid = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'forge-not-evaluated-seed',
       bundleId: 'forge-not-evaluated-seed-bundle',
     });
@@ -1384,7 +1383,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const valid = await evaluateExecutionBundle(
       plan,
       completedSource,
-      ports(plan, fake.port),
+      ports(fake.port),
       { runId: 'active-binding-seed', bundleId: 'active-binding-seed-bundle' },
     );
     const failedSource = parseExecutionBundle(resealExecutionBundle(completedSource.bundle, (draft) => {
@@ -1431,7 +1430,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const valid = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'forge-cache-seed',
       bundleId: 'forge-cache-seed-bundle',
     });
@@ -1464,7 +1463,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         providerCost: { amount: 1, currency: 'USD', reportedByProvider: true },
       });
     });
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'failed-cost-run',
       bundleId: 'failed-cost-bundle',
     });
@@ -1500,7 +1499,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
       },
     }));
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'strict-evaluator-cost-run',
       bundleId: 'strict-evaluator-cost-bundle',
     });
@@ -1535,7 +1534,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
       },
     }));
-    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const valid = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'forge-provider-cost-run',
       bundleId: 'forge-provider-cost-bundle',
     });
@@ -1574,7 +1573,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
       },
     }));
-    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const valid = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'shared-run-cost-run',
       bundleId: 'shared-run-cost-bundle',
     });
@@ -1634,7 +1633,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         },
       };
     };
-    await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'late-timeout-run',
       bundleId: 'late-timeout-bundle',
     });
@@ -1688,7 +1687,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       controller.abort();
       await Promise.resolve();
     };
-    const run = startEvaluation(plan, source, ports(plan, fake.port, { clock }), {
+    const run = startEvaluation(plan, source, ports(fake.port, { clock }), {
       runId: 'cancel-timeout-race-run',
       bundleId: 'cancel-timeout-race-bundle',
       signal: controller.signal,
@@ -1718,7 +1717,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       signal.addEventListener('abort', () => reject(abortError()), { once: true });
     });
     let resolves = 0;
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       clock,
       contentResolver: {
         async resolve(descriptor) {
@@ -1753,7 +1752,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       contentResolver: {
         async resolve() {
           return { value: { answer: 'A' }, classification: 'public' };
@@ -1778,7 +1777,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       contentResolver: {
         async resolve() {
           return {
@@ -1821,7 +1820,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         mediaType: 'application/json',
       },
     }));
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port, {
       contentStore: {
         async put(request) {
           return {
@@ -1849,7 +1848,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'poison-cache-seed',
       bundleId: 'poison-cache-seed-bundle',
     });
@@ -1858,7 +1857,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     entry.record.observations[0].metricId = 'wrong-metric';
     entry.cachedRecordDigest = digestCanonicalJson(entry.record);
     const second = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
       runId: 'poison-cache-run',
       bundleId: 'poison-cache-bundle',
     });
@@ -1885,7 +1884,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       }],
       usage: { totalTokens: 1 },
     }));
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'poison-usage-seed-run',
       bundleId: 'poison-usage-seed-bundle',
     });
@@ -1896,7 +1895,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     entry.record.usage = { ...entry.record.usage, totalTokens: 999 };
     entry.cachedRecordDigest = digestCanonicalJson(entry.record);
     const second = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
       runId: 'poison-usage-run',
       bundleId: 'poison-usage-bundle',
     });
@@ -1926,7 +1925,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
       },
     }));
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'poison-cost-seed-run',
       bundleId: 'poison-cost-seed-bundle',
     });
@@ -1936,7 +1935,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     delete entry.record.usage;
     entry.cachedRecordDigest = digestCanonicalJson(entry.record);
     const second = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
       runId: 'poison-cost-run',
       bundleId: 'poison-cost-bundle',
     });
@@ -1955,7 +1954,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const seeded = new MemoryCache();
     const first = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache: seeded }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache: seeded }), {
       runId: 'poison-envelope-seed',
       bundleId: 'poison-envelope-seed-bundle',
     });
@@ -1990,7 +1989,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       const bundle = await evaluateExecutionBundle(
         plan,
         source,
-        ports(plan, second.port, { cache: poisoned }),
+        ports(second.port, { cache: poisoned }),
         {
           runId: `poison-envelope-${scenario}`,
           bundleId: `poison-envelope-${scenario}-bundle`,
@@ -2017,7 +2016,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const seeded = new MemoryCache();
     const first = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache: seeded }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache: seeded }), {
       runId: `poison-evidence-seed-${classification}`,
       bundleId: `poison-evidence-seed-bundle-${classification}`,
     });
@@ -2035,7 +2034,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const bundle = await evaluateExecutionBundle(
       plan,
       source,
-      ports(plan, second.port, { cache: poisoned }),
+      ports(second.port, { cache: poisoned }),
       {
         runId: `poison-evidence-${classification}`,
         bundleId: `poison-evidence-bundle-${classification}`,
@@ -2063,12 +2062,12 @@ describe('Evaluation Core Evaluation runtime', () => {
     }), plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
-    const native = await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    const native = await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'declared-native-run',
       bundleId: 'declared-native-bundle',
     });
     const second = evaluator(plan);
-    const replay = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+    const replay = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
       runId: 'declared-replay-run',
       bundleId: 'declared-replay-bundle',
     });
@@ -2092,7 +2091,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'trust-key-verified-run',
       bundleId: 'trust-key-verified-bundle',
     });
@@ -2107,7 +2106,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const downgraded = await evaluateExecutionBundle(
       plan,
       downgradedSource,
-      ports(plan, second.port, { cache }),
+      ports(second.port, { cache }),
       {
         runId: 'trust-key-declared-run',
         bundleId: 'trust-key-declared-bundle',
@@ -2142,7 +2141,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         },
       }],
     }));
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+    const bundle = await evaluateExecutionBundle(plan, source, ports(fake.port), {
       runId: 'classified-metadata-run',
       bundleId: 'classified-metadata-bundle',
     });
@@ -2177,7 +2176,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       },
     }, { runId: 'joined-run', bundleId: 'joined-source-bundle' });
     const fake = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    await evaluateExecutionBundle(plan, source, ports(fake.port, {
       eventSequencer,
       eventWriter,
     }), { runId: 'joined-run', bundleId: 'joined-evaluation-bundle' });
@@ -2194,7 +2193,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const run = startEvaluation(plan, source, ports(plan, fake.port, {
+    const run = startEvaluation(plan, source, ports(fake.port, {
       eventSequencer: {
         next() { throw new Error('sequencer unavailable'); },
       },

@@ -142,7 +142,7 @@ export function segmentTraceBySkill(session: TraceSession): SkillSegment[] {
 
   const eventGroups = groupEventsBySourceIndex(orderedEvents);
   for (const eventGroup of eventGroups) {
-    const boundary = skillBoundaryForEventGroup(eventGroup, session, currentSegment);
+    const boundary = skillBoundaryForEventGroup(eventGroup, currentSegment);
     if (boundary && !isCurrentSkillRef(boundary.ref)) {
       startNewSegment(
         boundary.ref,
@@ -352,7 +352,6 @@ function groupEventsBySourceIndex(events: TraceEvent[]): TraceEvent[][] {
 
 function skillBoundaryForEventGroup(
   events: TraceEvent[],
-  session: TraceSession,
   currentSegment: SkillSegment,
 ): SkillBoundary | null {
   const humanMessages = events.filter(

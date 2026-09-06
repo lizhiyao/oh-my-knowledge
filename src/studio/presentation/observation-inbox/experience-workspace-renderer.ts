@@ -1513,7 +1513,6 @@ export function createObservationExperienceWorkspace({
 	  };
 	  const inboxEpisodeAttributionText = (
 	    signal: ExperienceFeedbackSignal,
-	    segment: ExperienceSkillSegment,
 	    attribution?: ExperienceFeedbackAttribution,
 	  ): string => {
 	    const signalLabel = inboxEpisodeFeedbackLabel(signal.type);
@@ -1579,7 +1578,7 @@ export function createObservationExperienceWorkspace({
 	            return `<div class="inbox-execution-feedback-item">
 	              <span>${e(inboxEpisodeFeedbackLabel(signal.type))}</span>
 	              <p>${e(signal.text)}</p>
-	              <em>${e(inboxEpisodeAttributionText(signal, segment, attribution))}</em>
+	              <em>${e(inboxEpisodeAttributionText(signal, attribution))}</em>
 	            </div>`;
 	          }).join('')}
 	        </div>` : ''}
