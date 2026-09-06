@@ -1,3 +1,4 @@
+import { buildOverallSessionTimeRange } from './session-time-range.js';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -256,15 +257,6 @@ function buildSessionTimeRanges(sessions: TraceSession[]): ObservationSessionTim
     (a.startTimestamp ?? '').localeCompare(b.startTimestamp ?? '')
     || a.sourceTrace.localeCompare(b.sourceTrace)
   );
-}
-
-function buildOverallSessionTimeRange(ranges: ObservationSessionTimeRange[]): ObservationInboxReport['meta']['sessionTimeRange'] {
-  const starts = ranges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
-  const ends = ranges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
-  if (starts.length === 0 || ends.length === 0) return { from: '', to: '' };
-  const from = starts.reduce((min, value) => value < min ? value : min, starts[0]);
-  const to = ends.reduce((max, value) => value > max ? value : max, ends[0]);
-  return { from, to, durationMs: durationMsBetween(from, to) };
 }
 
 const SEVERITY_REASON_ZH: Record<ObservationSeverityReasonCode, string> = {
