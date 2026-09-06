@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createNodeCoreRunArtifactStore, type CoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
+import { createNodeCoreBatchArtifactStore, createNodeCoreRunArtifactStore, type CoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
+import { createNodeEvaluationApplication } from '../../../src/eval-workflows/hosts/application.js';
 import * as managedEvidence from '../../../src/knowledge-artifacts/governance/evidence.js';
 import type { EvalConfig } from '../../../src/eval-workflows/inputs/contracts/config.js';
 import { prepareCliEvaluation } from '../../../src/cli/lib/prepare-evaluation.js';
@@ -31,7 +32,8 @@ async function fixture() {
   ] }));
   const outputDirectory = join(root, 'reports');
   const flags = { samples: samplesPath, 'skill-dir': skillDir, executor: resolve('test/fixtures/custom-executor/core-fixture-executor.sh'), model: 'fixture', control: 'baseline', treatment: skill, 'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': outputDirectory };
-  return { root, outputDirectory, run: async (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh'; environment?: NodeJS.ProcessEnv } = {}) => runCoreEvaluationCommand({ prepared: prepareCliEvaluation({ ...flags, ...extra }, { projectRoot: root, evalConfig: settings.evalConfig, lang: settings.lang ?? 'zh', env: settings.environment }), store }) };
+  const prepare = (extra: Record<string, unknown> = {}, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh'; environment?: NodeJS.ProcessEnv } = {}) => prepareCliEvaluation({ ...flags, ...extra }, { projectRoot: root, evalConfig: settings.evalConfig, lang: settings.lang ?? 'zh', env: settings.environment });
+  return { root, outputDirectory, prepare, run: async (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: Parameters<typeof prepare>[1] = {}) => runCoreEvaluationCommand({ prepared: prepare(extra, settings), store }) };
 }
 
 describe('CLI product application', () => {
@@ -49,13 +51,87 @@ describe('CLI product application', () => {
 
   it('runs batch children through the same product path for preview and persisted output', async () => {
     const input = await fixture();
+    await cp(join(input.root, 'skills', 'answer'), join(input.root, 'skills', 'second'), { recursive: true });
+    const runStore = createNodeCoreRunArtifactStore(input.outputDirectory);
+    const batchStore = createNodeCoreBatchArtifactStore(input.outputDirectory, runStore);
     const preview = await input.run({ batch: true, 'dry-run': true, repeat: 1 }, undefined, {
       evalConfig: { samples: 'unused.json', variants: [{ name: 'baseline', role: 'control', artifact: 'baseline' }], repeat: 2 },
     });
-    expect(preview.output).toMatchObject({ projectionKind: 'core-cli-batch-dry-run', children: [{ itemId: 'answer' }] });
+    expect(preview.output).toMatchObject({ projectionKind: 'core-cli-batch-dry-run', children: [{ itemId: 'answer' }, { itemId: 'second' }] });
+    expect(await runStore.list()).toEqual([]);
+    expect(await batchStore.list()).toEqual([]);
     const result = await input.run({ batch: true });
     expect(result.output).toMatchObject({ projectionKind: 'core-cli-batch-outcome' });
+    const batches = await batchStore.list();
+    expect(batches).toHaveLength(1);
+    const stored = await batchStore.get(batches[0]!.batchId);
+    expect(stored!.manifest.children.map(({ itemId }) => itemId)).toEqual(['answer', 'second']);
+    expect(await runStore.list()).toHaveLength(2);
+    for (const child of stored!.manifest.children) {
+      expect((await runStore.get(child.locator.runId))!.report.reportDigest).toBe(child.reportDigest);
+    }
     await expect(input.run({ batch: true, resume: 'existing' })).rejects.toThrow('Batch resume');
+  });
+
+  it('rejects an empty batch without publishing runs or a manifest', async () => {
+    const input = await fixture();
+    const empty = join(input.root, 'empty-skills');
+    await mkdir(empty);
+    await expect(input.run({ batch: true, 'skill-dir': empty })).rejects.toThrow('没有找到带 canonical 私有用例的目录 skill');
+    const store = createNodeCoreRunArtifactStore(input.outputDirectory);
+    expect(await store.list()).toEqual([]);
+    expect(await createNodeCoreBatchArtifactStore(input.outputDirectory, store).list()).toEqual([]);
+  });
+
+  it('stops at a failed child, retains earlier runs, and never publishes a partial batch', async () => {
+    const input = await fixture();
+    for (const name of ['second', 'third']) {
+      await cp(join(input.root, 'skills', 'answer'), join(input.root, 'skills', name), { recursive: true });
+    }
+    const store = createNodeCoreRunArtifactStore(input.outputDirectory);
+    let saves = 0;
+    await expect(input.run({ batch: true, 'no-evidence': true }, {
+      ...store,
+      async save(value) {
+        saves += 1;
+        if (saves === 2) throw new Error('fixture second batch publication failure');
+        return store.save(value);
+      },
+    })).rejects.toMatchObject({ code: 'PRODUCTION_EVALUATION_ARTIFACT_PERSIST_FAILED' });
+    expect(saves).toBe(2);
+    expect(await store.list()).toHaveLength(1);
+    expect(await createNodeCoreBatchArtifactStore(input.outputDirectory, store).list()).toEqual([]);
+    expect(vi.mocked(process.stderr.write).mock.calls.flat().join('')).not.toContain('Core Batch：third');
+  });
+
+  it.each(['before-first', 'between-children'] as const)('propagates batch cancellation without publishing a manifest: %s', async (boundary) => {
+    const input = await fixture();
+    await cp(join(input.root, 'skills', 'answer'), join(input.root, 'skills', 'second'), { recursive: true });
+    const prepared = input.prepare({ batch: true, 'no-evidence': true });
+    const application = createNodeEvaluationApplication(prepared.environment);
+    const controller = new AbortController();
+    const reason = new Error('cancel batch');
+    if (boundary === 'before-first') controller.abort(reason);
+    let completed = 0;
+    await expect(application.run({
+      request: prepared.request,
+      projectRoot: input.root,
+      materializationRoot: join(input.root, 'resolved-inputs'),
+      resourceLeaseRoot: join(input.root, 'resource-leases'),
+      signal: controller.signal,
+      requestForBatchItem: (entry) => input.prepare({
+        batch: undefined, treatment: entry.skillPath, samples: entry.samplesPath, 'no-evidence': true,
+      }).request,
+      async onCompleted() {
+        completed += 1;
+        controller.abort(reason);
+      },
+    })).rejects.toMatchObject({ code: 'OMK_EVALUATION_PREFLIGHT_CANCELLED' });
+    const expectedCompleted = boundary === 'before-first' ? 0 : 1;
+    expect(completed).toBe(expectedCompleted);
+    const store = createNodeCoreRunArtifactStore(input.outputDirectory);
+    expect(await store.list()).toHaveLength(expectedCompleted);
+    expect(await createNodeCoreBatchArtifactStore(input.outputDirectory, store).list()).toEqual([]);
   });
 
   it.each([
