@@ -42,7 +42,6 @@ export {
   resolveSkillStandards,
   skillDerivedStandardsDir,
   skillDerivedStandardsPath,
-  updateSkillDerivedStandardStatus,
 } from './skill-standards-store.js';
 
 export { extractSkillSoftStandards } from './llm-extractor.js';

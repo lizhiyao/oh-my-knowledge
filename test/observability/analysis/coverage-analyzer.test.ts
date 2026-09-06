@@ -10,7 +10,6 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  buildFullKnowledgeIndex,
   buildKnowledgeIndex,
   computeCoverage,
   extractReferencedPaths,
@@ -102,25 +101,15 @@ describe('source-neutral knowledge coverage', () => {
     }
   });
 
-  it('discovers local artifact references but rejects paths outside the root', () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-coverage-refs-'));
-    try {
-      mkdirSync(join(root, 'references'), { recursive: true });
-      writeFileSync(join(root, 'references', 'guide.md'), '# guide');
-      const content = [
-        '[guide](references/guide.md)',
-        '[outside](../outside.md)',
-      ].join('\n');
-
-      assert.deepEqual(
-        extractReferencedPaths(content).sort(),
-        ['../outside.md', 'references/guide.md'],
-      );
-      const paths = buildFullKnowledgeIndex(content, root).entries.map((entry) => entry.path);
-      assert.deepEqual(paths, ['references/guide.md']);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+  it('extracts relative artifact references without filesystem resolution', () => {
+    const content = [
+      '[guide](references/guide.md)',
+      '[outside](../outside.md)',
+    ].join('\n');
+    assert.deepEqual(
+      extractReferencedPaths(content).sort(),
+      ['../outside.md', 'references/guide.md'],
+    );
   });
 
   it('does not count a suffix-colliding filename as accessed', () => {

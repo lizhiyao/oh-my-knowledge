@@ -29,7 +29,6 @@ const EXECUTOR_FACTORIES = {
 export { extractClaudeTrace, createScriptExecutor };
 export {
   assertExecutorInputCapabilities,
-  assertSamplesCompatibleWithExecutor,
   executorSupportsSampleMocks,
   getExecutorCapabilities,
 } from './core/capabilities.js';

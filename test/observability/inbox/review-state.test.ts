@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, it, onTestFinished } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,7 +19,6 @@ import {
   resolveSkillStandards,
   skillDerivedStandardsDir,
   skillDerivedStandardsPath,
-  updateSkillDerivedStandardStatus,
 } from '../../../src/observability/soft-standards/index.js';
 import type { ObservationSkillChain } from '../../../src/observability/skill-health/skill-chain.js';
 
@@ -404,6 +403,7 @@ describe('observe inbox - review state', () => {
 
   it('extracts and reviews soft standard candidates with explicit model execution', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-'));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     const chain: ObservationSkillChain = {
       skillName: 'sample-review-skill',
       definition: {
@@ -596,14 +596,18 @@ describe('observe inbox - review state', () => {
     const loaded = loadSkillDerivedStandards(dir);
     assert.equal(loaded['sample-review-skill'].standards[0].status, 'pending_review');
 
-    const updated = updateSkillDerivedStandardStatus(
-      dir,
-      'sample-review-skill',
-      record.standards[0].id,
-      'author_confirmed',
-      '2026-05-01T00:01:00.000Z',
-    );
+    const rawPath = skillDerivedStandardsPath(dir, 'sample-review-skill');
+    const rawBeforeReview = readFileSync(rawPath, 'utf-8');
+    const targetId = `sample-review-skill:${record.standards[0].id}`;
+    updateObservationReviewState(dir, {
+      targetType: 'soft_standard',
+      targetId,
+      verdict: 'real_issue',
+    }, new Date(Date.parse(record.generatedAt) + 60_000).toISOString());
+    const updated = loadSkillDerivedStandards(dir)['sample-review-skill'];
     assert.equal(updated.standards[0].status, 'author_confirmed');
+    assert.equal(updated.generatedAt, record.generatedAt);
+    assert.equal(readFileSync(rawPath, 'utf-8'), rawBeforeReview);
 
     const resolved = resolveSkillStandards('sample-review-skill', {
       observationsDir: dir,
@@ -613,6 +617,13 @@ describe('observe inbox - review state', () => {
     assert.equal(resolved.active.length, 1);
     assert.equal(resolved.active[0].source, 'confirmed_soft');
     assert.equal(resolved.candidates.some((item) => item.status === 'pending_review'), true);
+    updateObservationReviewState(dir, {
+      targetType: 'soft_standard',
+      targetId,
+      verdict: 'not_issue',
+    }, new Date(Date.parse(record.generatedAt) + 120_000).toISOString());
+    assert.equal(loadSkillDerivedStandards(dir)['sample-review-skill'].standards[0].status, 'rejected');
+    assert.equal(readFileSync(rawPath, 'utf-8'), rawBeforeReview);
   });
 
   it('does not overwrite reviewed soft standards when prompt version changes', async () => {
