@@ -1,6 +1,6 @@
 import { DEFAULT_LANG, e, layout } from './layout.js';
 import type { Lang } from '../../shared/language.js';
-import type { Insight, SkillIndexEntry, SkillObserveSnapshot } from '../view-models/index.js';
+import type { Insight, SkillIndexEntry } from '../view-models/index.js';
 
 export type HealthGrade = 'excellent' | 'good' | 'fair' | 'unhealthy' | 'unscored';
 
@@ -12,26 +12,14 @@ export interface HealthAssessment {
   color: 'green' | 'yellow' | 'red' | 'gray';
 }
 
-function effectiveObserveBand(observe: SkillObserveSnapshot | null): 'green' | 'yellow' | 'red' | 'gray' {
-  if (observe === null || observe.confidence === 'underpowered') return 'gray';
-  const comparable = Math.max(
-    0,
-    (observe.toolResolvedCount ?? observe.toolCallCount ?? 0)
-      - (observe.toolCancelledCount ?? 0),
-  );
-  if (observe.healthBand === 'green' && (observe.toolCallCount ?? 0) > 0 && comparable < 5) {
-    return 'gray';
-  }
-  return observe.healthBand;
-}
-
 export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
   const doctor = entry.doctor;
   const doctorTotal = doctor === null ? 0 : doctor.passCount + doctor.warnCount + doctor.failCount;
   const doctorScore = doctor !== null && doctorTotal > 0
     ? ((doctor.passCount + doctor.warnCount * 0.5) / doctorTotal) * 100
     : null;
-  const observeTrusted = effectiveObserveBand(entry.observe) !== 'gray';
+  const observeBand = entry.observe?.effectiveBand ?? 'gray';
+  const observeTrusted = observeBand !== 'gray';
   const observeScore = observeTrusted ? (1 - entry.observe!.gapRate) * 100 : null;
   const dimensions = [doctorScore, observeScore].filter((value): value is number => value !== null);
   const score = dimensions.length === 0
@@ -39,8 +27,8 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
     : Math.round(dimensions.reduce((sum, value) => sum + value, 0) / dimensions.length);
   const high = insights.some((insight) => insight.severity === 'high');
   const medium = insights.some((insight) => insight.severity === 'medium');
-  const failed = (doctor?.failCount ?? 0) > 0 || effectiveObserveBand(entry.observe) === 'red';
-  const warned = (doctor?.warnCount ?? 0) > 0 || effectiveObserveBand(entry.observe) === 'yellow';
+  const failed = (doctor?.failCount ?? 0) > 0 || observeBand === 'red';
+  const warned = (doctor?.warnCount ?? 0) > 0 || observeBand === 'yellow';
   if (high || failed) {
     return { grade: 'unhealthy', score, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
   }

@@ -12,7 +12,7 @@ import {
   listLiveDoctorCards,
   listLiveObserveCards,
 } from '../../evidence/storage/discovery-index.js';
-import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health/analyzer.js';
+import { confidenceOf, effectiveObserveBand, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health/analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox/index.js';
 import { parseSkillHealthReport } from '../../observability/skill-health/report.js';
 import { parseArtifactGraphDocument } from '../../evidence/graph/schema.js';
@@ -143,7 +143,7 @@ function observeSnapshot(
     : gapRate >= 0.3 || (failureRateMeasured && health.toolFailureRate >= 0.2)
       ? 'yellow'
       : 'green';
-  return {
+  const snapshot: Omit<SkillObserveSnapshot, 'effectiveBand'> = {
     analysisId,
     generatedAt,
     healthBand,
@@ -159,6 +159,7 @@ function observeSnapshot(
       : toolStabilityOf(health.toolFailureRate, comparable, health.toolCallCount),
     confidence: health.confidence ?? confidenceOf(health.segmentCount),
   };
+  return { ...snapshot, effectiveBand: effectiveObserveBand(snapshot) };
 }
 
 function scanObserveReports(directory: string): Record<string, SkillObserveSnapshot[]> {
@@ -248,25 +249,12 @@ function doctorGraphForSkill(
   };
 }
 
-function effectiveObserveBand(observe: SkillObserveSnapshot | null): SkillIndexEntry['band'] {
-  if (observe === null || observe.confidence === 'underpowered') return 'gray';
-  const comparable = Math.max(
-    0,
-    (observe.toolResolvedCount ?? observe.toolCallCount ?? 0)
-      - (observe.toolCancelledCount ?? 0),
-  );
-  if (observe.healthBand === 'green' && (observe.toolCallCount ?? 0) > 0 && comparable < 5) {
-    return 'gray';
-  }
-  return observe.healthBand;
-}
-
 function combinedBand(
   doctor: SkillDoctorSnapshot | null,
   observe: SkillObserveSnapshot | null,
 ): SkillIndexEntry['band'] {
   const doctorBand = doctor === null ? 'gray' : doctor.status === 'fail' ? 'red' : doctor.status === 'warn' ? 'yellow' : 'green';
-  const observeBand = effectiveObserveBand(observe);
+  const observeBand = observe?.effectiveBand ?? 'gray';
   if (doctorBand === 'red' || observeBand === 'red') return 'red';
   if (doctorBand === 'yellow' || observeBand === 'yellow') return 'yellow';
   if (doctorBand === 'green' || observeBand === 'green') return 'green';

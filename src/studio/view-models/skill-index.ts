@@ -23,6 +23,8 @@ export interface SkillObserveSnapshot {
   analysisId: string;
   generatedAt: string;
   healthBand: 'green' | 'yellow' | 'red';
+  /** Read-time projection after applying observation confidence and tool sample guards. */
+  effectiveBand: SkillIndexEntry['band'];
   failureRate: number;
   toolCallCount?: number;
   toolResolvedCount?: number;

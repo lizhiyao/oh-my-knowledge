@@ -76,7 +76,7 @@ describe('assessHealth — observe confidence guard', () => {
     healthBand: 'green' | 'yellow' | 'red',
   ): NonNullable<SkillIndexEntry['observe']> => ({
     analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-    healthBand, failureRate: 0.5, gapRate: 0.5,
+    healthBand, effectiveBand: confidence === 'underpowered' ? 'gray' : healthBand, failureRate: 0.5, gapRate: 0.5,
     segmentCount: confidence === 'underpowered' ? 2 : 30, confidence,
   });
 
@@ -115,6 +115,7 @@ describe('assessHealth — observe confidence guard', () => {
       ...observe('high', 'green'),
       gapRate: 0,
       failureRate: 0,
+      effectiveBand: 'gray' as const,
       toolCallCount: 2,
       toolResolvedCount: 2,
       toolCancelledCount: 0,
