@@ -1,3 +1,4 @@
+import { assessHealth } from '../../../src/studio/presentation/skill-detail-renderer.js';
 /**
  * 机器级总览验收(doctor / observe-health 域):buildSkillIndex 把别项目的 doctor/observe 卡片合并进 skill 索引;
  * doctor 历史 prune 删正文时连带删卡片,杜绝「被 prune 的报告经卡片复活」。全程隔离 OMK_ARTIFACT_INDEX_DIR。
@@ -314,6 +315,11 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     const partial = idx.entries.find((entry) => entry.skillName === 'partial')!;
     assert.equal(partial.observe?.healthBand, 'green');
     assert.equal(partial.band, 'gray');
+    assert.equal(partial.observe?.effectiveBand, 'gray');
+    assert.equal(assessHealth(partial, [], 'zh').color, partial.observe?.effectiveBand);
+    const local = buildSkillIndex(proj, emptyDoctors, emptyObs).entries.find((entry) => entry.skillName === 'partial')!;
+    assert.equal(local.observe?.effectiveBand, partial.observe?.effectiveBand);
+    assert.equal(local.observeHistory[0].effectiveBand, 'gray');
   });
 
   it('少量可判定结果不足以把高失败率标成红色或黄色', () => {
@@ -371,6 +377,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     const covered = idx.entries.find((entry) => entry.skillName === 'covered')!;
     assert.equal(covered.observe?.healthBand, 'green');
     assert.equal(covered.band, 'green');
+    assert.equal(covered.observe?.effectiveBand, 'green');
+    assert.equal(assessHealth(covered, [], 'zh').color, covered.observe?.effectiveBand);
   });
 
   it('悬空卡片(真身从未存在)不进 buildSkillIndex:include=true 也不展示', () => {

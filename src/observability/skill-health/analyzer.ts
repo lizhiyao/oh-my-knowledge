@@ -151,6 +151,23 @@ function withinTimeWindow(seg: SkillSegment, from?: string, to?: string): boolea
   return true;
 }
 
+/** Apply confidence and comparable tool sample guards without changing the source health band. */
+export function effectiveObserveBand(observe: ({
+  healthBand: SkillHealthReport['overall']['healthBand'];
+  confidence: SkillHealth['confidence'];
+} & Partial<Pick<SkillHealth, 'toolResolvedCount' | 'toolCallCount' | 'toolCancelledCount'>>) | null): 'green' | 'yellow' | 'red' | 'gray' {
+  if (observe === null || observe.confidence === 'underpowered') return 'gray';
+  const comparable = Math.max(
+    0,
+    (observe.toolResolvedCount ?? observe.toolCallCount ?? 0)
+      - (observe.toolCancelledCount ?? 0),
+  );
+  if (observe.healthBand === 'green' && (observe.toolCallCount ?? 0) > 0 && comparable < 5) {
+    return 'gray';
+  }
+  return observe.healthBand;
+}
+
 /**
  * 健康度色带。阈值对齐 bench ci --max-gap-rate 经验值(spec §五)。observe 报告只在 overall 给 band;
  * #235 受管反哺时 observe CLI 用本函数逐 skill 算 band 传入 managed —— 阈值单一来源,managed 不复制。

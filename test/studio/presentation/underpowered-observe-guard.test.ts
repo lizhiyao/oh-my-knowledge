@@ -17,13 +17,13 @@ function underpoweredEntry(): SkillIndexEntry {
     doctor: null,
     observe: {
       analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-      healthBand: 'red', failureRate: 0.5, segmentCount: 2, gapRate: 0,
+      healthBand: 'red', effectiveBand: 'gray', failureRate: 0.5, segmentCount: 2, gapRate: 0,
       confidence: 'underpowered',
     },
     doctorHistory: [],
     observeHistory: [{
       analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-      healthBand: 'red', failureRate: 0.5, segmentCount: 2, gapRate: 0,
+      healthBand: 'red', effectiveBand: 'gray', failureRate: 0.5, segmentCount: 2, gapRate: 0,
       confidence: 'underpowered',
     }],
     band: 'gray',

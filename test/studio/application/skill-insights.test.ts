@@ -56,7 +56,7 @@ describe('Core-independent skill insights', () => {
       observe: {
         analysisId: 'observe-1',
         generatedAt: '2026-09-01T00:00:00.000Z',
-        healthBand: 'red',
+        healthBand: 'red', effectiveBand: 'gray',
         failureRate: 0.5,
         segmentCount: 2,
         gapRate: 0.5,
@@ -86,7 +86,7 @@ describe('Core-independent skill insights', () => {
       observe: {
         analysisId: 'observe-1',
         generatedAt: '2026-09-01T00:00:00.000Z',
-        healthBand: 'yellow',
+        healthBand: 'yellow', effectiveBand: 'yellow',
         failureRate: 0.25,
         segmentCount: 30,
         gapRate: 0.3,
