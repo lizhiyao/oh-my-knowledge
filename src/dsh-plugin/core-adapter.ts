@@ -27,10 +27,10 @@ import {
   type ClaudeCliRunState,
   type ClaudeCliTrialState,
   type ClaudeResourceProjectionProfile,
-} from '../eval-hosts/adapters/claude/resources.js';
+} from '../eval-workflows/hosts/adapters/claude/resources.js';
 import { createSameProcessExecutorAdapter } from '../eval-runtime/adapters/same-process.js';
-import type { OmkBindingResourceLeaseAccess } from '../eval-hosts/resource-leases/types.js';
-import type { RuntimeBindingOf } from '../eval-hosts/types.js';
+import type { OmkBindingResourceLeaseAccess } from '../eval-workflows/hosts/resource-leases/types.js';
+import type { RuntimeBindingOf } from '../eval-workflows/hosts/types.js';
 import {
   DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   dshHostCoreExecutorCapabilities,

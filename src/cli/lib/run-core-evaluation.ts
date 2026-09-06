@@ -25,7 +25,7 @@ import {
 } from '../../eval-workflows/orchestration/index.js';
 import {
   resolveNodeCliEvaluationRequest,
-} from '../../eval-hosts/input-resolution/node-cli-evaluation-resolver.js';
+} from '../../eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.js';
 import {
   projectCoreCliDryRun,
   projectCoreCliBatchOutcome,

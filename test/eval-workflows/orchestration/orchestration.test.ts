@@ -26,7 +26,7 @@ import {
 import {
   createOmkEvaluationSchemaValidators,
   type OmkEvaluationRuntime,
-} from '../../../src/eval-hosts/composition/runtime.js';
+} from '../../../src/eval-workflows/hosts/composition/runtime.js';
 import {
   prepareConformancePlan,
   runConformanceScenario,

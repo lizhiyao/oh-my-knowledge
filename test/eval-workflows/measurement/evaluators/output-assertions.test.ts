@@ -30,7 +30,7 @@ import {
 } from '../../../../src/eval-runtime/adapters/same-process.js';
 import {
   createBuiltinOmkScoringBindingFactories,
-} from '../../../../src/eval-hosts/composition/builtins.js';
+} from '../../../../src/eval-workflows/hosts/composition/builtins.js';
 import {
   createOutputAssertionEvaluatorImplementation,
   OUTPUT_ASSERTION_BINDINGS,

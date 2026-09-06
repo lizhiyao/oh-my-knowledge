@@ -22,7 +22,8 @@ const EVALUATION_CORE_DIR = join(SRC_DIR, 'eval-core');
 const EVALUATION_CORE_DIR_NORMALIZED = EVALUATION_CORE_DIR.replace(/\\/g, '/');
 const RUNTIME_ADAPTERS_DIR = join(
   SRC_DIR,
-  'eval-hosts',
+  'eval-workflows',
+  'hosts',
   'adapters',
 );
 
@@ -41,17 +42,17 @@ interface ForbiddenRule {
 
 const RULES: ForbiddenRule[] = [
   ...['cli/', 'dsh-plugin/', 'mcp/', 'studio/'].map((to) => ({
-    from: 'eval-hosts/', to,
+    from: 'eval-workflows/hosts/', to,
     reason: '共用宿主只接收显式输入，不得经交付入口导入入口策略。',
   })),
   ...[
-    'eval-hosts/adapters/',
-    'eval-hosts/resource-leases/',
-    'eval-hosts/evaluators/',
+    'eval-workflows/hosts/adapters/',
+    'eval-workflows/hosts/resource-leases/',
+    'eval-workflows/hosts/evaluators/',
   ].flatMap((from) => [
-    'eval-hosts/composition/',
-    'eval-hosts/input-resolution/',
-    'eval-hosts/index.ts',
+    'eval-workflows/hosts/composition/',
+    'eval-workflows/hosts/input-resolution/',
+    'eval-workflows/hosts/index.ts',
   ].map((to) => ({
     from, to,
     reason: '宿主适配与资源实现不得反向依赖产品装配或通过聚合入口绕过边界。',
@@ -76,10 +77,17 @@ const RULES: ForbiddenRule[] = [
     to: 'eval-workflows/',
     reason: '通用载体来源解析不依赖评测样本、配置或工作流策略。',
   },
-  ...['eval-core/', 'eval-runtime/', 'eval-workflows/', 'executors/'].map((from) => ({
-    from, to: 'eval-hosts/',
+  ...['eval-core/', 'eval-runtime/', 'executors/'].map((from) => ({
+    from, to: 'eval-workflows/hosts/',
     reason: '具体宿主由外层装配并注入；领域、Runtime 和 Core 不得反向导入宿主实现。',
   })),
+  ...readdirSync(join(SRC_DIR, 'eval-workflows'), { withFileTypes: true })
+    .filter((entry) => entry.name !== 'hosts')
+    .map((entry) => ({
+      from: `eval-workflows/${entry.name}${entry.isDirectory() ? '/' : ''}`,
+      to: 'eval-workflows/hosts/',
+      reason: '产品编排、输入与测量实现只消费注入能力，不得反向导入具体宿主。',
+    })),
   {
     from: 'eval-core/',
     to: 'evidence/',

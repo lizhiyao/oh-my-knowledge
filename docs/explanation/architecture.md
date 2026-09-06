@@ -37,16 +37,16 @@ Directories under `src` express domain ownership rather than one mechanical repo
 
 - **Runtime implementation edges** must remain acyclic. A domain implementation may depend on facts it consumes or lower-level capabilities, but it may not create a reverse dependency through a facade, dynamic import, or utility module. The graph retains value imports into `contracts`; an audited cycle is registered by its complete domain and intra-cycle edge topology, so any new return path invalidates the registration. Non-literal dynamic imports across TypeScript and executable JavaScript sources are likewise fail-closed unless their importer, expression, and canonical source digest are explicitly registered.
 - **Contract edges** share stable data shapes across domains. A bidirectional domain relationship is valid only when its return edge has been audited and registered; architecture tests reject new bidirectional relationships and stale registrations.
-- **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-hosts`. They may assemble domains and effects, while domain implementations may not import delivery composition.
+- **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-workflows/hosts`. They may assemble domains and effects, while domain implementations may not import delivery composition.
 
 `shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. `eval-runtime` is the lightweight service-host adoption layer: its canonical façade compiles ordinary `evaluate()` input into existing Core contracts, while its foundation assembles explicit ports and Core built-ins without owning product workflows or infrastructure. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
 
 ```text
-eval-core ← eval-runtime ← eval-workflows
-                ↑               ↑
-                └── eval-hosts ──┘
-                         ↑
-                     CLI / DSH
+eval-core ← eval-runtime ← product orchestration
+                ↑                   ↑
+                └──── hosts ────────┘
+                        ↑
+                    CLI / DSH
 ```
 
 The arrow points from consumer to dependency. `eval-runtime` may depend on Core and type-only Executor contracts; it must not import `eval-workflows`, provider implementations, or delivery surfaces. `eval-workflows` reuses Runtime foundation leaf modules instead of importing the canonical user façade or maintaining a second lifecycle implementation.
@@ -76,8 +76,9 @@ eval-workflows/
 ├── artifact-store/     # Core artifact persistence, discovery, and overlays
 ├── assertions/         # authored assertion adaptation and score layers
 ├── gold/               # human-gold datasets, calibration, and CLI support
+├── hosts/              # OMK host adapters and shared assembly, with a separate dependency boundary
 ├── input-compilation/  # host inputs → host-neutral measurement definition
-├── inputs/             # config, sample, artifact-source resolution, and schemas
+├── inputs/             # evaluation config, samples, and schemas
 ├── instruments/        # evaluator configuration and frozen prompt assets
 ├── projections/        # authenticated downstream views of Core artifacts
 ├── resume-admission/   # persisted-run integrity and resume admission
@@ -106,17 +107,17 @@ Artifact discovery, local and Git source resolution, and content-addressed copie
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
 judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,
 `executors/preflight` reports environment readiness facts, while
-`eval-hosts/composition/preflight.ts` decides workflow admission from binding declarations.
+`eval-workflows/hosts/composition/preflight.ts` decides workflow admission from binding declarations.
 These subdomains remain separate dependency-graph vertices even though they are physically grouped.
 
-`eval-workflows` consumes an explicitly injected `EvaluationRuntimeProvider`. Product compilation
-supplies Definition, Policy and run metadata through `EvaluationExecutionInput`; Workflow never
-constructs a Core engine, provider adapter or resource lease. Runtime owns single-run execution and
+Product orchestration consumes an explicitly injected `EvaluationRuntimeProvider`. Product compilation
+supplies Definition, Policy and run metadata through `EvaluationExecutionInput`; orchestration never
+constructs a Core engine, provider adapter or resource lease. Concrete assembly belongs to `hosts`. Runtime owns single-run execution and
 Series preparation/execution. Workflow may orchestrate concurrent independent Series members while
 Core alone owns their scheduling, retry, timeout, budget and measurement contracts.
 
 ```text
-eval-hosts/
+eval-workflows/hosts/
 ├── composition/       # shared registration, binding, preflight and assembly
 ├── input-resolution/  # host request and content resolution
 ├── adapters/          # provider execution protocol bridges
@@ -127,8 +128,10 @@ eval-hosts/
 Sibling directories represent responsibilities. Node-specific implementations stay within their responsibility, such as `resource-leases/node.ts`, rather than mixing environment and responsibility categories. Shared types live in `types.ts`; adapters, evaluator wiring and resources cannot import `composition`, `input-resolution` or the aggregate host entrypoint.
 
 
+`eval-workflows` owns the complete OMK product evaluation implementation, including `hosts`. Directory ownership does not permit arbitrary dependencies: other subdomains such as `orchestration`, `input-compilation` and `measurement` cannot import `hosts`. The dependency graph recognizes it as a separate composition boundary, consumed directly by CLI and DSH.
+
 Host assembly consumes product declarations and injects Runtime capabilities into Workflow. Lower
-layers cannot import `eval-hosts`, including type-only imports. Product measurement implementations
+layers cannot import `eval-workflows/hosts`, including type-only imports. Product measurement implementations
 remain in `eval-workflows/measurement`; generic execution and lifecycle bridges remain in Runtime.
 The obsolete Workflow Runtime directory and forwarding wrappers are removed without a 0.x compatibility
 path. Correct Core/Runtime contracts take precedence over existing Workflow/CLI behavior. Legitimate
@@ -153,7 +156,7 @@ need not become a public API. This inventory records domain boundaries without f
 Composition follows actual consumers. CLI provider selection, environment classification, credential
 resolution and production assembly live in `cli/lib/evaluation-composition.ts`. DSH agent context and
 judge invocation live in `dsh-plugin/core-command.ts`. DSH does not obtain shared capabilities through
-CLI modules. The retained `eval-hosts` boundary currently serves these shared consumers:
+CLI modules. The `eval-workflows/hosts` boundary serves these shared consumers:
 
 | Module | Actual consumers | Contract, failure and resource boundary |
 |---|---|---|
@@ -187,7 +190,7 @@ Ordinary `ExecutorFn` calls serve generation, judges and auxiliary analysis. Mea
 
 Codex argument extraction preserves argument order, prompt bytes and each caller's empty-value handling. Environment selection, timeout, error envelopes and cleanup remain outside the argument utility. Ordinary calls own call-level timeouts; measurement follows Core attempt cancellation without adding a second measurement timeout. Workspaces remain separate per Trial, retries retain the same Trial state, and failure usage and Trace retain their declared semantics.
 
-Any further extraction must verify arguments, environment, output, Trace, usage, cancellation, errors and cleanup together. Reuse existing shared mechanics and retain adaptation where contracts differ; fewer functions are not grounds for merging measurement identities or changing protocols. Relevant regressions live in `test/executors`, `test/eval-hosts` and `test/eval-runtime`; product scoring and statistics tests live in `test/eval-workflows/measurement`.
+Any further extraction must verify arguments, environment, output, Trace, usage, cancellation, errors and cleanup together. Reuse existing shared mechanics and retain adaptation where contracts differ; fewer functions are not grounds for merging measurement identities or changing protocols. Relevant regressions live in `test/executors`, `test/eval-workflows/hosts` and `test/eval-runtime`; product scoring and statistics tests live in `test/eval-workflows/measurement`.
 
 Evidence persistence and cross-source association have one non-decision boundary:
 

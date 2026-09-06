@@ -22,10 +22,10 @@ import {
 import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
-} from '../../../src/eval-hosts/resource-leases/types.js';
+} from '../../../src/eval-workflows/hosts/resource-leases/types.js';
 import {
   type SameProcessOperationScope,
-} from '../../../src/eval-hosts/index.js';
+} from '../../../src/eval-workflows/hosts/index.js';
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);
