@@ -82,13 +82,16 @@ eval-workflows/
 ├── projections/        # authenticated downstream views of Core artifacts
 ├── resume-admission/   # persisted-run integrity and resume admission
 ├── measurement/        # product scoring, analysis nodes, and evaluator implementations
-└── production-host/    # product orchestration, persistence, and injected Runtime consumption
+└── orchestration/      # product orchestration, persistence, and injected Runtime consumption
 
 executors/
 ├── contracts/          # executor ports, runtime identity, result, and trace facts
 ├── preflight/          # host tool, file, environment, and custom-command readiness
 └── <provider>/         # provider-specific runtime implementations
 ```
+
+Product orchestration lives in `eval-workflows/orchestration`: it consumes an injected Runtime and persists evaluation results. `createProductionEvaluationWorkflow` describes this responsibility; concrete provider selection and resource assembly belong to the delivery entry or shared host modules. This internal rename does not add a package export or a compatibility forwarding module.
+
 
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
 judge execution and Gold calibration into the instruments and analysis contracts owned by Core. Likewise,

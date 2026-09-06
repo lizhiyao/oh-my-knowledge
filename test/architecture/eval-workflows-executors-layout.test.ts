@@ -15,7 +15,7 @@ describe('eval-workflows 与 executors 领域布局', () => {
         'inputs',
         'instruments',
         'measurement',
-        'production-host',
+        'orchestration',
         'projections',
         'resume-admission',
       ]);

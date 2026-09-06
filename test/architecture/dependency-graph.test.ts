@@ -28,7 +28,7 @@ const EVAL_WORKFLOW_SUBDOMAINS = new Set([
   'inputs',
   'instruments',
   'measurement',
-  'production-host',
+  'orchestration',
   'projections',
   'resume-admission',
 ]);
@@ -380,7 +380,7 @@ describe('src 依赖图', () => {
     expect(moduleDomain('eval-workflows/artifact-store/node-run-store.ts')).toBe('eval-workflows/artifact-store');
     expect(moduleDomain('eval-workflows/assertions/layers.ts')).toBe('eval-workflows/assertions');
     expect(moduleDomain('eval-workflows/input-compilation/compile.ts')).toBe('eval-workflows/input-compilation');
-    expect(moduleDomain('eval-workflows/production-host/orchestration.ts')).toBe('eval-workflows/production-host');
+    expect(moduleDomain('eval-workflows/orchestration/orchestration.ts')).toBe('eval-workflows/orchestration');
     expect(moduleDomain('eval-workflows/projections/cli.ts')).toBe('eval-workflows/projections');
     expect(moduleDomain('eval-workflows/resume-admission/admit.ts')).toBe('eval-workflows/resume-admission');
     expect(moduleDomain('eval-workflows/measurement/analysis/composite-node.ts')).toBe('eval-workflows/measurement');

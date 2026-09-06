@@ -78,13 +78,16 @@ eval-workflows/
 ├── projections/        # 基于认证 Core 产物的下游视图
 ├── resume-admission/   # 持久化 run 完整性与 resume 准入
 ├── measurement/        # 产品评分、analysis node 与 evaluator 实现
-└── production-host/    # 产品编排、持久化与注入的 Runtime 消费
+└── orchestration/      # 产品编排、持久化与注入的 Runtime 消费
 
 executors/
 ├── contracts/          # executor 端口、Runtime 身份、结果与 trace 事实
 ├── preflight/          # 宿主工具、文件、环境变量与自定义命令就绪检查
 └── <provider>/         # provider 专属 Runtime 实现
 ```
+
+产品编排位于 `eval-workflows/orchestration`，通过注入的 Runtime 执行评测并持久化结果。`createProductionEvaluationWorkflow` 表达这一职责；具体 provider 选择和资源装配由交付入口或共用宿主模块负责。本次内部重命名不新增包导出或兼容转发模块。
+
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
 适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，

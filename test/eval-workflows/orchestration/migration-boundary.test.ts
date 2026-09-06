@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 function productionHostSource(): string {
-  const root = 'src/eval-workflows/production-host';
+  const root = 'src/eval-workflows/orchestration';
   return readdirSync(root)
     .filter((file) => file.endsWith('.ts'))
     .sort()
@@ -33,9 +33,9 @@ describe('#539 production host migration boundary', () => {
 
     expect(command).toContain('runCoreEvaluationCommand');
     expect(command).not.toContain('runEvaluation');
-    expect(runner).toContain("from '../../eval-workflows/production-host/index.js'");
+    expect(runner).toContain("from '../../eval-workflows/orchestration/index.js'");
     expect(runner).toContain('createNodeCliProductionComposition');
-    expect(runner).toContain('createProductionEvaluationHost');
+    expect(runner).toContain('createProductionEvaluationWorkflow');
     expect(server).toContain('createCoreStudioRouteHandler');
     expect(server).not.toContain('createEvaluationDisabledReportStore');
     expect(server).not.toContain('ReportStore');

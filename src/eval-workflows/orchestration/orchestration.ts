@@ -37,7 +37,7 @@ import {
   evaluationExecutionInput,
   ProductionEvaluationHostError,
   type ProductionEvaluationExecuteOptions,
-  type ProductionEvaluationHostInput,
+  type ProductionEvaluationWorkflowInput,
   type ProductionEvaluationRun,
   type ProductionPreparedEvaluation,
 } from './workflow.js';
@@ -192,9 +192,9 @@ export interface ProductionEvaluationSeriesRun {
 }
 
 function memberCompiled(
-  input: ProductionEvaluationHostInput['compiled'],
+  input: ProductionEvaluationWorkflowInput['compiled'],
   membership: EvaluationSeriesMembership,
-): ProductionEvaluationHostInput['compiled'] {
+): ProductionEvaluationWorkflowInput['compiled'] {
   const snapshot = structuredClone(input);
   const definition = { ...snapshot.definition, seriesMembership: membership };
   return deepFreezeCanonicalJson(
@@ -206,7 +206,7 @@ function memberCompiled(
         definition: digestCanonicalJson(definition),
       },
     } as unknown as JsonValue,
-  ) as unknown as ProductionEvaluationHostInput['compiled'];
+  ) as unknown as ProductionEvaluationWorkflowInput['compiled'];
 }
 
 function attestationSet(
@@ -291,7 +291,7 @@ function seriesMemberSource(input: {
 }
 
 async function prepareSeriesMember(input: {
-  host: ProductionEvaluationHostInput;
+  host: ProductionEvaluationWorkflowInput;
   membership: EvaluationSeriesMembership;
   preflight?: Readonly<OmkEvaluationPreflightOptions>;
   validators: ReadonlyMap<string, CoreSchemaValidator>;
@@ -307,7 +307,7 @@ async function prepareSeriesMember(input: {
 
 /** Runs preregistered independent repeats as run-level Series members. */
 export async function executeProductionEvaluationSeries(input: Readonly<{
-  host: ProductionEvaluationHostInput;
+  host: ProductionEvaluationWorkflowInput;
   members: readonly ProductionSeriesMemberOptions[];
   bundleId: string;
   reportId: string;

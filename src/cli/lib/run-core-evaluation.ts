@@ -19,10 +19,10 @@ import {
   createNodeCliProductionComposition,
 } from './evaluation-composition.js';
 import {
-  createProductionEvaluationHost,
+  createProductionEvaluationWorkflow,
   executeProductionEvaluationSeries,
   persistCoreArtifactSidecars,
-} from '../../eval-workflows/production-host/index.js';
+} from '../../eval-workflows/orchestration/index.js';
 import {
   resolveNodeCliEvaluationRequest,
 } from '../../eval-hosts/node/node-cli-evaluation-resolver.js';
@@ -314,7 +314,7 @@ export async function runCoreEvaluationCommand(
     artifactStore: store,
   };
   if (compiled.orchestration.dryRun) {
-    const prepared = await createProductionEvaluationHost(host).prepare();
+    const prepared = await createProductionEvaluationWorkflow(host).prepare();
     const output = projectCoreCliDryRun({ plan: prepared.plan, preflight: prepared.preflight });
     return { exitCode: 0, output, outputDirectory };
   }
@@ -370,7 +370,7 @@ export async function runCoreEvaluationCommand(
       : `Core Series completed: ${output.seriesId} (${output.members.length} independent runs)\n`);
     return { exitCode: output.gate.exitCode, output, outputDirectory };
   }
-  const prepared = await createProductionEvaluationHost(host).prepare();
+  const prepared = await createProductionEvaluationWorkflow(host).prepare();
   let stored: StoredCoreRunArtifacts;
   if (sourceRunId !== undefined) {
     const admission = await prepared.admitResume({

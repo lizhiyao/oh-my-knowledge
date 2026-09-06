@@ -40,7 +40,7 @@ type PersistableArtifacts = Pick<
   'execution' | 'evaluation' | 'analysis' | 'report'
 >;
 
-export interface ProductionEvaluationHostInput {
+export interface ProductionEvaluationWorkflowInput {
   readonly compiled: CliEvaluationCompileResult;
   readonly runtime: EvaluationRuntimeProvider;
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
@@ -88,7 +88,7 @@ export interface ProductionPreparedEvaluation {
   ): Promise<CoreResumeAdmissionResult>;
 }
 
-export interface ProductionEvaluationHost {
+export interface ProductionEvaluationWorkflow {
   prepare(
     options?: Readonly<OmkEvaluationPreflightOptions>,
   ): Promise<ProductionPreparedEvaluation>;
@@ -329,9 +329,9 @@ export function evaluationExecutionInput(compiled: CliEvaluationCompileResult): 
 }
 
 /** Adds persistence, resume admission and release policy to an injected Runtime capability. */
-export function createProductionEvaluationHost(
-  input: Readonly<ProductionEvaluationHostInput>,
-): ProductionEvaluationHost {
+export function createProductionEvaluationWorkflow(
+  input: Readonly<ProductionEvaluationWorkflowInput>,
+): ProductionEvaluationWorkflow {
   const artifactStore = captureArtifactStore(input.artifactStore);
   if (typeof input.runtime?.prepare !== 'function') fail({
     code: 'PRODUCTION_EVALUATION_HOST_INPUT_INVALID', fieldPath: 'runtime',

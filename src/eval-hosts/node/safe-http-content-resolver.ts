@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP } from 'node:net';
-import type { SampleContentResolution } from '../../eval-workflows/production-host/sample-content-resolution.js';
+import type { SampleContentResolution } from '../../eval-workflows/orchestration/sample-content-resolution.js';
 
 const HTTP_TIMEOUT_MS = 30_000;
 const MAX_HTTP_BYTES = 1024 * 1024;
