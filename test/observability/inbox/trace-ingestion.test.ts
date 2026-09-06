@@ -11,7 +11,7 @@ import {
   saveObservationInboxReport,
 } from '../../../src/observability/inbox/index.js';
 import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
-import { baseItem, businessActionTag, businessChannel, resolvedReviewSessionsForFixture } from './_helpers.js';
+import { baseItem, businessActionTag, businessChannel, reviewProjectionForFixture } from './_helpers.js';
 
 describe('observe inbox - trace ingestion', () => {
   it('skips unsupported experience reports without changing files or hiding current inbox v2', () => {
@@ -412,7 +412,7 @@ describe('observe inbox - trace ingestion', () => {
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
-      resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
+      ...reviewProjectionForFixture(experience, {
         kind: 'observe-review-state',
         schemaVersion: 2,
         updatedAt: '2026-05-01T00:00:00.000Z',

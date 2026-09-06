@@ -128,7 +128,9 @@ export async function runObserveInbox(
     items = items.slice(0, limit);
   }
   if (flags.json) {
-    console.log(JSON.stringify({ kind: 'observe-inbox-query', items }, null, 2));
+    const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
+    const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(dir, { skill: flags.skill });
+    console.log(JSON.stringify({ kind: 'observe-inbox-query', items, effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }, null, 2));
     return;
   }
   if (items.length === 0) {

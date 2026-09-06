@@ -624,15 +624,7 @@ export function canonicalFeedbackCountsForSession(session: ExperienceSessionSumm
       positiveFeedbackCount: session.indicators.positiveFeedbackCount,
     };
   }
-  const includeDownstream = shouldIncludeDownstreamFeedbackForSession(session);
-  const owned = signals.filter((signal) =>
-    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
-      attribution.skillName === session.skillName
-      && (attribution.attributionRole === 'primary_fault'
-        || includeDownstream && attribution.attributionRole === 'downstream_related')
-    )
-    && feedbackSignalIsActiveForSession(signal, session, reviewState)
-  );
+  const owned = canonicalFeedbackSignalsForSession(session, reviewState);
   return {
     userFollowUpCount: owned.filter((signal) => signal.type === 'follow_up').length,
     userCorrectionCount: owned.filter((signal) => signal.type === 'correction').length,
@@ -640,6 +632,22 @@ export function canonicalFeedbackCountsForSession(session: ExperienceSessionSumm
     negativeFeedbackCount: owned.filter((signal) => signal.type === 'frustration').length,
     positiveFeedbackCount: owned.filter((signal) => signal.type === 'positive').length,
   };
+}
+
+export function canonicalFeedbackSignalsForSession(
+  session: ExperienceSessionSummary,
+  reviewState?: ObservationReviewState,
+): ExperienceFeedbackSignal[] {
+  const signals = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
+  const includeDownstream = shouldIncludeDownstreamFeedbackForSession(session);
+  return signals.filter((signal) =>
+    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+      attribution.skillName === session.skillName
+      && (attribution.attributionRole === 'primary_fault'
+        || includeDownstream && attribution.attributionRole === 'downstream_related')
+    )
+    && feedbackSignalIsActiveForSession(signal, session, reviewState)
+  );
 }
 
 export function feedbackSignalIsActiveForSession(

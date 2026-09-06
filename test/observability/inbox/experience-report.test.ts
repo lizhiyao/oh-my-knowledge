@@ -16,7 +16,7 @@ import {
   renderFeedbackAttributionLabel,
   renderObservationInboxPage,
 } from '../../../src/studio/presentation/observation-inbox-renderer.js';
-import { resolvedReviewSessionsForFixture } from './_helpers.js';
+import { reviewProjectionForFixture } from './_helpers.js';
 
 describe('observe inbox - experience report', () => {
   it('fails closed instead of throwing when persisted aggregates overflow', () => {
@@ -490,7 +490,7 @@ describe('observe inbox - experience report', () => {
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
-      resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
+      ...reviewProjectionForFixture(experience, {
         kind: 'observe-review-state',
         schemaVersion: 2,
         updatedAt: '2026-05-01T00:00:00.000Z',

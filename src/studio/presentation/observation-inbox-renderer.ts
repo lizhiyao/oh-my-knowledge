@@ -20,7 +20,7 @@ type ExperienceSessionSummary = ObservationInboxViewModel['experienceReports'][n
 
 export function renderObservationInboxPage(model: ObservationInboxViewModel, lang: Lang = DEFAULT_LANG): string {
   const {
-    experienceReports,
+    effectiveExperienceReports: experienceReports,
     skillChains,
     skillDerivedStandards,
     reviewState,
@@ -91,7 +91,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const skillTimestampedInvocationCount = (skill: NonNullable<typeof experience>['skills'][number]): number =>
     skill.timestampedInvocationCount
       ?? (skill.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : skill.invocationCount);
-  const observationMetricRenderers = createObservationMetricRenderers({ experience, reviewState });
+  const observationMetricRenderers = createObservationMetricRenderers({ experience, reviewState, unappliedMetricAnnotations: model.unappliedMetricAnnotations });
   const observationSignalRenderers = createObservationSignalRenderers(lang);
   const observationSkillChainRenderers = createObservationSkillChainRenderers({
     experienceToolCountsBySkill,

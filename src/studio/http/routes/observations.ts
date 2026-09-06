@@ -160,6 +160,13 @@ export function createObservationRoutes({
       return true;
     }
 
+    if (path === '/api/observe-inbox/view') {
+      const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(observationsDir, { skill: url.searchParams.get('skill') || undefined });
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }));
+      return true;
+    }
+
     if (path === '/api/observe-inbox') {
       const severity = url.searchParams.get('severity');
       const skill = url.searchParams.get('skill');
