@@ -332,8 +332,8 @@ export default class Eval extends BaseCommand {
     }),
     batch: Flags.boolean({
       description: bilingual({
-        zh: 'batch 模式：baseline 作为对照组，逐个 skill 作为实验组',
-        en: 'Batch mode: baseline vs each skill',
+        zh: '批量评测：baseline 作为对照组，逐个 skill 作为实验组；不支持 repeat 大于 1',
+        en: 'Batch mode: baseline vs each skill; repeat must be 1',
       }),
     }),
     'skip-connectivity': Flags.boolean({

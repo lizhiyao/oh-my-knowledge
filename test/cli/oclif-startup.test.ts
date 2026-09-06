@@ -171,7 +171,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
       const out = e.stdout + e.stderr;
-      assert.ok(/batch 模式/.test(out) && /Batch mode/.test(out),
+      assert.ok(/批量评测/.test(out) && /Batch mode/.test(out),
         `expected bilingual flag dump (zh + en), got:\n${out.slice(0, 600)}`);
     }
   });

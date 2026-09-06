@@ -1,9 +1,10 @@
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNodeCoreRunArtifactStore, type CoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import * as managedEvidence from '../../../src/knowledge-artifacts/governance/evidence.js';
+import type { EvalConfig } from '../../../src/eval-workflows/inputs/contracts/config.js';
 import { runCoreEvaluationCommand } from '../../../src/cli/lib/run-core-evaluation.js';
 
 const roots: string[] = [];
@@ -30,7 +31,7 @@ async function fixture() {
   const outputDirectory = join(root, 'reports');
   const config = { samplesPath, skillDir, executorName: resolve('test/fixtures/custom-executor/core-fixture-executor.sh'), model: 'fixture', judgeModels: [] };
   const flags = { control: 'baseline', treatment: skill, 'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': outputDirectory };
-  return { root, outputDirectory, run: (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore) => runCoreEvaluationCommand({ projectRoot: root, config, flags: { ...flags, ...extra }, evalConfig: null, lang: 'zh', store }) };
+  return { root, outputDirectory, run: (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh' } = {}) => runCoreEvaluationCommand({ projectRoot: root, config, flags: { ...flags, ...extra }, evalConfig: settings.evalConfig ?? null, lang: settings.lang ?? 'zh', store }) };
 }
 
 describe('CLI product application', () => {
@@ -48,11 +49,32 @@ describe('CLI product application', () => {
 
   it('runs batch children through the same product path for preview and persisted output', async () => {
     const input = await fixture();
-    const preview = await input.run({ batch: true, 'dry-run': true });
+    const preview = await input.run({ batch: true, 'dry-run': true, repeat: 1 }, undefined, {
+      evalConfig: { samples: 'unused.json', variants: [{ name: 'baseline', role: 'control', artifact: 'baseline' }], repeat: 2 },
+    });
     expect(preview.output).toMatchObject({ projectionKind: 'core-cli-batch-dry-run', children: [{ itemId: 'answer' }] });
     const result = await input.run({ batch: true });
     expect(result.output).toMatchObject({ projectionKind: 'core-cli-batch-outcome' });
     await expect(input.run({ batch: true, resume: 'existing' })).rejects.toThrow('Batch resume');
+  });
+
+  it.each([
+    { dryRun: false, source: 'flag', lang: 'zh' },
+    { dryRun: true, source: 'flag', lang: 'en' },
+    { dryRun: false, source: 'config', lang: 'en' },
+    { dryRun: true, source: 'config', lang: 'zh' },
+  ] as const)('rejects batch repeats before side effects: $source, preview=$dryRun, $lang', async ({ dryRun, source, lang }) => {
+    const input = await fixture();
+    const before = await readdir(input.root);
+    const evalConfig: EvalConfig | undefined = source === 'config'
+      ? { samples: 'unused.json', variants: [{ name: 'baseline', role: 'control', artifact: 'baseline' }], repeat: 2 }
+      : undefined;
+    await expect(input.run({
+      batch: true, 'dry-run': dryRun, ...(source === 'flag' ? { repeat: 2 } : {}),
+    }, undefined, { evalConfig, lang })).rejects.toThrow(lang === 'zh'
+      ? '批量评测不支持独立重复' : 'Batch evaluation does not support independent repeats');
+    expect(await readdir(input.root)).toEqual(before);
+    expect(vi.mocked(process.stderr.write).mock.calls.flat().join('')).not.toContain('Core Batch：');
   });
 
   it('rejects publication failure without announcing saved artifacts or appending managed evidence', async () => {
