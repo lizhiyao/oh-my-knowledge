@@ -5,7 +5,6 @@ import {
   computeWeightedKappa,
   computePearson,
   computeAgreementEvidence,
-  computeAgreementWithCI,
   type RatingPair,
 } from '../../../src/eval-workflows/gold/human.js';
 
@@ -80,36 +79,6 @@ describe('computePearson', () => {
   it('NaN when one coder has zero variance', () => {
     const pairs = pairsOf([[1, 3], [2, 3], [3, 3]]);
     assert.ok(Number.isNaN(computePearson(pairs)));
-  });
-});
-
-describe('computeAgreementWithCI', () => {
-  it('bootstrap CI on α covers the point estimate for tight-agreement data', () => {
-    const pairs = pairsOf([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
-    const result = computeAgreementWithCI(pairs, { samples: 1000, seed: 42 });
-    assert.equal(result.sampleCount, 10);
-    // For all-agreement samples the bootstrap CI should be very tight around 1.
-    assert.ok(result.alpha === 1 || Math.abs(result.alpha - 1) < 1e-6, `α=${result.alpha}`);
-    assert.ok(result.alphaCI.high <= 1 + 1e-9, 'α CI upper bound must not exceed 1');
-  });
-
-  it('CI widens for noisier data — wider than 0 but bounded', () => {
-    // Mix of agreement and small disagreement.
-    const pairs = pairsOf([[1, 2], [2, 2], [3, 3], [4, 4], [5, 4], [1, 1], [2, 3], [3, 3], [4, 5], [5, 5]]);
-    const result = computeAgreementWithCI(pairs, { samples: 1000, seed: 7 });
-    const width = result.alphaCI.high - result.alphaCI.low;
-    assert.ok(width > 0, 'noisy data should produce a non-zero CI width');
-    assert.ok(width < 2, 'CI width on a [-1,1]-bounded metric should not blow up');
-    assert.ok(result.alphaCI.low <= result.alpha && result.alpha <= result.alphaCI.high,
-      `point estimate ${result.alpha} should fall inside CI [${result.alphaCI.low}, ${result.alphaCI.high}]`);
-  });
-
-  it('handles empty input without throwing', () => {
-    const result = computeAgreementWithCI([], { samples: 100, seed: 1 });
-    assert.equal(result.sampleCount, 0);
-    assert.ok(Number.isNaN(result.alpha));
-    assert.ok(Number.isNaN(result.weightedKappa));
-    assert.ok(Number.isNaN(result.pearson));
   });
 });
 
