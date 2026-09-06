@@ -176,6 +176,34 @@ The embedded Runtime API uses the following standard terms without introducing a
 
 The canonical package entry is therefore `evaluate({ dataset, variants, evaluators, comparisons, experiment, analyses, decision, policy, runId })`. Sampling Design is the only owner of paired／independent semantics; each Variant owns its execution binding, while each Comparison explicitly declares only its control, treatments, and Metrics. Avoid public aliases such as runner, suite, cases, candidate, scoring, or using `target` as a synonym for artifact. Core `Target` is a compiled binding of a variant to execution requirements and remains a lower-level contract. `eval-workflows` may depend on Runtime foundation leaf modules but must not depend on the canonical user façade or package index.
 
+### 10. Knowledge
+
+**Knowledge is a fact, case, or method that can be reused in future tasks. Each knowledge item should retain its scope of applicability, source evidence, and current validation status.**
+
+This is OMK's working product definition for knowledge mining, not a claim of a universal industry definition. It guides future design; it does not introduce a storage schema or imply that existing observations already contain these fields.
+
+| Form | What it expresses | Example |
+|---|---|---|
+| Fact | A scoped claim about the world, an environment, or a requirement | A tool's capability limit under a particular version |
+| Case | An experience with context, actions, and an observed outcome | A failed attempt and the recovery that succeeded in that environment |
+| Method | A reusable procedure or decision rule with conditions and exceptions | When parallel development must preserve the current checkout, create a separate worktree |
+
+A case can be useful without supporting a general rule. A single successful outcome does not establish that a method works universally. Explicit preferences and requirements should retain who stated them and their intended scope; they are not inferred universal facts.
+
+For each candidate, retain:
+
+- **Applicability:** the task, environment, version, or other conditions that limit reuse, including known exceptions.
+- **Source evidence:** traceable records supporting the claim, with enough context to distinguish observed facts from interpretations and preserve counterevidence.
+- **Validation status:** distinguish evidence review from effectiveness evaluation, and state what remains unverified. Reviewing the source does not establish that providing the knowledge improves an agent's performance.
+
+A work log records what happened. Knowledge mining selects reusable facts, preserves useful cases, and proposes methods from that evidence; it covers successful experience, failures, and corrections to existing knowledge. Extracted interpretations remain candidates until reviewed. Repeated appearances are not automatically independent corroboration.
+
+Knowledge content and its carrier are distinct. A skill, prompt, or project instruction file can contain multiple knowledge items; a knowledge item can appear in multiple carriers. These forms do not extend `ArtifactKind` or replace the existing artifact identity.
+
+Observation supplies evidence and candidates. Controlled evaluation tests whether a carrier change helps on the declared tasks with the model held fixed; it does not prove a claim universally true. Cases used to author a change must not be presented as independent evidence of generalization. Adoption and release continue to follow existing evaluation and governance contracts.
+
+Design references: [KCS article structure and reuse](https://library.serviceinnovation.org/KCS/Knowledge-Centered_Success_Practices_Guide/102-Output_the_KCS_Article) informs contextual capture and ongoing review; [LangChain's memory taxonomy](https://docs.langchain.com/oss/python/concepts/memory) distinguishes facts, experiences, and instructions. The definition and boundaries above are OMK's synthesis of these practices.
+
 ## 3. Term boundaries
 
 ### 1. baseline means an empty artifact

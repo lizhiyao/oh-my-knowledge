@@ -29,6 +29,7 @@
 
 ## 我想懂工作原理
 
+- [OMK 如何理解知识](./explanation/knowledge.md)
 - [omk 为谁做、解决什么](./explanation/who-omk-is-for.md) —— 为什么 doctor / eval 是发布前主干，observe 是发布后反馈
 - [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [工作原理](./explanation/architecture.md)
@@ -40,6 +41,7 @@
 - [Evaluation Core vNext RFC](./specs/eval-core-vnext.md)
 - [CLI 评测输入编译规范](./specs/cli-evaluation-input-compilation.md)
 - [用例设计科学性指南](./specs/sample-design-spec.md)
+- [知识建设领域模型（设计草案）](./specs/knowledge-domain-model.md)
 - [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)
 - [RAG metrics 规范](./specs/rag-metrics-spec.md)
 - [术语规范](./specs/terminology-spec.md)

@@ -29,6 +29,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 
 ## I want to understand how it works
 
+- [How OMK understands knowledge](./explanation/knowledge.md)
 - [Who omk is for](./explanation/who-omk-is-for.md) — why doctor / eval are the pre-ship trunk and observe is post-ship feedback
 - [The three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [Architecture](./explanation/architecture.md)
@@ -41,6 +42,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 - [Evaluation scoring equivalence RFC](./specs/evaluation-scoring-equivalence.md)
 - [CLI evaluation input compilation](./specs/cli-evaluation-input-compilation.md)
 - [Sample design spec](./specs/sample-design-spec.md)
+- [Knowledge construction domain model (draft)](./specs/knowledge-domain-model.md)
 - [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md)
 - [RAG metrics spec](./specs/rag-metrics-spec.md)
 - [Terminology spec](./specs/terminology-spec.md)

@@ -8,6 +8,10 @@ omk 围绕三个阶段组织，对应一份 LLM 知识（prompt / RAG context / 
 | **eval** | `omk eval` | 这次改动是否真的更好——能被证明？ | CI 测试套件 |
 | **observe** | `omk observe` | 它在真实生产 trace 上站得住吗？ | 生产监控 |
 
+<a id="knowledge-entities-and-carriers"></a>
+
+知识、实体与载体的概念基础见[OMK 如何理解知识](./knowledge.md)。本文聚焦三阶段如何协作。
+
 ## 主干：这次改动能不能发布？
 
 omk 的第一条有用闭环，应该像一张发布检查表：
