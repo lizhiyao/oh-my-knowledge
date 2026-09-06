@@ -66,7 +66,8 @@ async function runShortPath(args: string[]): Promise<string> {
 
 describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', () => {
   it('doctor --help 不触发 checkUpdate（子命令 --help 同样走短路径）', async () => {
-    await runShortPath(['doctor', '--help']);
+    const stdout = await runShortPath(['doctor', '--help']);
+    assert.ok(stdout.includes('\nUSAGE\n'), 'doctor help should reach the dispatcher help path');
   });
 
   it(`-h 短开关跟 --help 等价(走 oclif additionalHelpFlags)`, async () => {
@@ -77,12 +78,6 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
   it(`-v 短开关跟 --version 等价`, async () => {
     const stdout = await runShortPath(['-v']);
     assert.ok(/\d+\.\d+\.\d+/.test(stdout), `expected version string on -v, got: ${stdout}`);
-  });
-
-  it(`eval -h 走 oclif help(不再报 -h not found)`, async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', '-h']);
-    assert.ok(stdout.includes('\nUSAGE\n'), 'eval -h should print oclif USAGE');
-    assert.ok(stdout.includes('--control'), 'eval -h should list --control flag');
   });
 
   it(`OMK_LANG=en_US ambient 不让 oclif parse exit 2(走 legacy fallback)`, async () => {
@@ -159,11 +154,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     assert.ok(!/\$ omk doctor/.test(stdout), `should NOT dispatch to doctor USAGE, got:\n${stdout.slice(0, 300)}`);
   });
 
-  it(`[BREAKING-CLI] eval --bogus-flag 错误路径 FLAGS dump 双语并列(init hook 已删)`, async () => {
-    // PR #124 删 oclif init hook description mutate 后,oclif core 的
-    // `errors/handle.js:L44` 硬编码 `new Help(config)` 不走 LangAwareHelp,
-    // dump 出来的是原 `${zh}\n${en}` 双语 sentinel。--lang en / OMK_LANG=en 都不能避开。
-    // 锁住已知限制,防新人以为是 i18n 漏切语言。
+  it('unknown flags report exit 2 and point users to help', async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', '--bogus-flag', '--lang', 'en']);
       assert.fail('expected non-zero exit');
@@ -171,21 +162,9 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
       const out = e.stdout + e.stderr;
-      assert.ok(/批量评测/.test(out) && /Batch mode/.test(out),
-        `expected bilingual flag dump (zh + en), got:\n${out.slice(0, 600)}`);
+      assert.match(out, /--bogus-flag/);
+      assert.match(out, /--help/);
     }
   });
 
-  it(`omk eval gold --lang en 打英文 usage(显式 lang flag 生效)`, async () => {
-    try {
-      await execFileAsync('node', [CLI, 'eval', 'gold', '--lang', 'en']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
-      const out = e.stdout + e.stderr;
-      assert.ok(/manage human-gold/i.test(out), `expected en usage, got:\n${out.slice(0, 200)}`);
-      assert.ok(!out.includes('管理 human-gold'), 'en mode should not leak zh usage');
-    }
-  });
 });

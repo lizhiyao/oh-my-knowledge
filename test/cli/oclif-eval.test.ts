@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
+import EvalGold from '../../src/cli/commands/eval/gold/index.js';
 import EvalGoldCompare from '../../src/cli/commands/eval/gold/compare.js';
 import EvalGoldInit from '../../src/cli/commands/eval/gold/init.js';
 import EvalGoldValidate from '../../src/cli/commands/eval/gold/validate.js';
@@ -37,6 +38,14 @@ interface ExecError extends Error {
 }
 
 
+function assertHelpLanguage(output: string, description: string, language: 'zh' | 'en'): void {
+  const [zh, en] = description.split('\n');
+  assert.ok(zh && en, 'command declares both help languages');
+  const compact = (value: string) => value.replace(/\s/g, '');
+  assert.ok(compact(output).includes(compact(language === 'zh' ? zh : en)), 'selected description is rendered');
+  assert.ok(!compact(output).includes(compact(language === 'zh' ? en : zh)), 'other description is absent');
+}
+
 describe('oclif eval', () => {
   it('rejects the removed --no-cache option before execution', async () => {
     await assert.rejects(() => runCommand(EvalCommand, ['--no-cache']), (error: unknown) => {
@@ -49,7 +58,7 @@ describe('oclif eval', () => {
 
   it('eval --help 展示关键评测选项', async () => {
     const stdout = await renderCommandHelp('eval');
-    assert.ok(stdout.includes('跑评测'), `default eval --help missing zh:\n${stdout.slice(0, 200)}`);
+    assertHelpLanguage(stdout, EvalCommand.description, 'zh');
     // 抽样核心 flag
     assert.ok(stdout.includes('--control'), 'should list --control');
     assert.ok(stdout.includes('--treatment'), 'should list --treatment');
@@ -60,25 +69,25 @@ describe('oclif eval', () => {
 
   it('eval --help --lang en', async () => {
     const stdout = await renderCommandHelp('eval', 'en');
-    assert.ok(stdout.includes('Run evaluation'), 'should contain en description');
+    assertHelpLanguage(stdout, EvalCommand.description, 'en');
   });
 
   it('eval gold init --help', async () => {
     const stdout = await renderCommandHelp('eval:gold:init');
-    assert.ok(stdout.includes('初始化 gold dataset'), `gold init --help missing zh:\n${stdout}`);
+    assertHelpLanguage(stdout, EvalGoldInit.description, 'zh');
     assert.ok(stdout.includes('--out'), 'should list --out');
     assert.ok(stdout.includes('--annotator'), 'should list --annotator');
   });
 
   it('eval gold validate --help', async () => {
     const stdout = await renderCommandHelp('eval:gold:validate');
-    assert.ok(stdout.includes('校验 gold dataset'), `gold validate --help missing zh:\n${stdout}`);
+    assertHelpLanguage(stdout, EvalGoldValidate.description, 'zh');
     assert.ok(stdout.includes('DIR'), 'should list DIR positional');
   });
 
   it('eval gold compare --help', async () => {
     const stdout = await renderCommandHelp('eval:gold:compare');
-    assert.ok(stdout.includes('Core run 观测跟 gold dataset 对比'), `gold compare --help missing zh:\n${stdout}`);
+    assertHelpLanguage(stdout, EvalGoldCompare.description, 'zh');
     assert.ok(stdout.includes('RUNID'), 'should list RUNID positional');
     assert.ok(stdout.includes('--gold-dir'), 'should list --gold-dir');
     assert.ok(stdout.includes('--minimum-alpha'), 'should list --minimum-alpha');
@@ -357,16 +366,15 @@ describe('oclif eval', () => {
     }
   });
 
-  it('bare `eval gold`(无 sub-sub)→ exit 1 + 打 usage', async () => {
-    // EvalGold 薄壳保证 oclif 不把 eval gold 当 topic-only(默认 exit 0),
-    // 跟 legacy execute([]) 的 CliExit(1) 行为对齐。
+  it('bare eval gold exits 1 and renders the selected language with subcommands', async () => {
     try {
-      await execFileAsync('node', [CLI, 'eval', 'gold']);
+      await execFileAsync('node', [CLI, 'eval', 'gold', '--lang', 'en']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
       assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
       const out = e.stdout + e.stderr;
+      assertHelpLanguage(out, EvalGold.description, 'en');
       assert.ok(
         /eval gold (init|validate|compare)/i.test(out),
         `expected usage hint listing sub-sub commands, got:\n${out.slice(0, 200)}`,
