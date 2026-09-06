@@ -57,6 +57,7 @@ export async function executeProductEvaluation(input: ProductEvaluationExecution
         runId: generateRunId([membership.memberId]), createdAt, ...options(),
       })),
       bundleId: id('series-analysis'), reportId: id('series-report'),
+      seriesSignal: input.signal,
     });
     await series.result;
     const evolution = await series.evolution;
