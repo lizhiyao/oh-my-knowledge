@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 import {
   hashArtifactSource,
   distributableCopyFilter,
-} from '../../knowledge-artifacts/sources/content-hash.js';
+} from './content-hash.js';
 import { DEFAULT_TREES_DIR } from '../../evidence/storage/default-dirs.js';
 
 /**

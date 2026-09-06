@@ -1,3 +1,4 @@
+import type { RemoteGitRef } from '../../knowledge-artifacts/contracts.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, isAbsolute, join } from 'node:path';
 import { parseYaml } from './load-samples.js';
@@ -9,7 +10,7 @@ import type {
 } from './contracts/config.js';
 import type { ExperimentRole } from '../../knowledge-artifacts/contracts.js';
 import type { JudgeConfig } from '../instruments/contracts/config.js';
-import type { RemoteGitRef, VariantSpec } from './contracts/variant.js';
+import type { VariantSpec } from './contracts/variant.js';
 
 const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
 

@@ -1,12 +1,4 @@
-import type { ExperimentRole } from '../../../knowledge-artifacts/contracts.js';
-
-/** 远端 git 源的结构化引用 —— url/ref/spec 分字段,永不拼成单串再 split(避开 parseGitInput 的 `:`
- *  与 parseVariantCwd 的 `@`)。eval 经 eval.yaml 结构化携带,install 经 --git-url/--git-ref。 */
-export interface RemoteGitRef {
-  url: string;
-  ref?: string;   // 默认 HEAD
-  spec: string;   // 仓库相对 skill 路径
-}
+import type { ExperimentRole, RemoteGitRef } from '../../../knowledge-artifacts/contracts.js';
 
 export interface VariantSpec {
   name: string;           // variant 显示名,从 expr 提取

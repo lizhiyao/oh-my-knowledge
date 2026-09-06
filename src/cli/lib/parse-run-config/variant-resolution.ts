@@ -19,7 +19,7 @@
  *     悄悄废掉「control 不能等于 treatment」的测量保护。
  */
 
-import { discoverVariants, variantExprToSkillName, variantIdentity, parseVariantCwd } from '../../../eval-workflows/inputs/skill-loader.js';
+import { discoverVariants, variantExprToSkillName, variantIdentity, parseVariantCwd } from '../../../knowledge-artifacts/sources/artifact-resolution.js';
 import { configVariantsToSpecs } from '../../../eval-workflows/inputs/eval-config.js';
 import type { EvalConfig } from '../../../eval-workflows/inputs/contracts/config.js';
 import type { ExperimentRole } from '../../../knowledge-artifacts/contracts.js';

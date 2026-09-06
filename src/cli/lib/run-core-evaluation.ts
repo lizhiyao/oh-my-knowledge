@@ -33,7 +33,7 @@ import {
   projectCoreCliSeriesOutcome,
 } from '../../eval-workflows/projections/cli.js';
 import { projectCoreManagedEvidence } from '../../eval-workflows/projections/managed.js';
-import { discoverBatchSkills } from '../../eval-workflows/inputs/skill-loader.js';
+import { discoverBatchSkills } from '../../eval-workflows/inputs/batch-discovery.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { projectReportsDir, globalReportsDir } from '../../evidence/storage/directories.js';
 import { generateRunId } from '../../evidence/storage/run-id.js';

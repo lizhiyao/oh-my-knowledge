@@ -73,6 +73,12 @@ const RULES: ForbiddenRule[] = [
     }))
   )),
 
+
+  {
+    from: 'knowledge-artifacts/sources/',
+    to: 'eval-workflows/',
+    reason: '通用载体来源解析不依赖评测样本、配置或工作流策略。',
+  },
   ...['eval-core/', 'eval-runtime/', 'eval-workflows/', 'executors/'].map((from) => ({
     from, to: 'eval-hosts/',
     reason: '具体宿主由外层装配并注入；领域、Runtime 和 Core 不得反向导入宿主实现。',

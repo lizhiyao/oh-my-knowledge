@@ -12,7 +12,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runFileSuffix } from '../../evidence/storage/file-names.js';
-import { discoverVariants, resolveArtifacts } from '../../eval-workflows/inputs/skill-loader.js';
+import { discoverVariants, resolveArtifacts } from '../sources/artifact-resolution.js';
 import type { Artifact } from '../contracts.js';
 import type {
   DoctorContext,

@@ -9,7 +9,7 @@ import {
   type TargetExecutionControls,
 } from '../../eval-core/contracts/index.js';
 import { loadSamples } from '../../eval-workflows/inputs/load-samples.js';
-import { resolveArtifacts } from '../../eval-workflows/inputs/skill-loader.js';
+import { resolveArtifacts } from '../../knowledge-artifacts/sources/artifact-resolution.js';
 import type { Artifact } from '../../knowledge-artifacts/contracts.js';
 import type { Mock } from '../../executors/contracts/mock.js';
 import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
