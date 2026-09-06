@@ -22,3 +22,7 @@ node examples/eval-runtime/run.mjs
 ## 证据边界
 
 该示例证明只使用公共 `eval-runtime` 的 consumer 可以在无 provider、无文件系统配置的条件下完成内存 control／treatment 测量。三条确定性教学用例不具备代表性或充分统计功效，不能作为发布证据；模拟调用也不能验证生产模型网关的超时、重试、隐私或成本行为。
+
+## 混合召回与弃答
+
+构建后运行 `node examples/eval-runtime/retrieval-abstention.mjs`，组合内置召回、内置弃答与独立禁用 ID 评分。数据集选择和标注审核由宿主负责。独立使用时复制 `retrieval-abstention.mjs`、`retrieval-abstention-support.mjs` 两个文件并安装 OMK。

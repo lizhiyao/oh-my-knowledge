@@ -4,6 +4,8 @@ import ts from 'typescript';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import type {
+  AbstentionEvaluator,
+  AbstentionMetricIds,
   AnalysisRequest,
   AttemptBudgetScope,
   BudgetPolicy,
@@ -162,6 +164,15 @@ const publicRetrievalEvaluator: RetrievalEvaluator = {
   metricIds: publicRetrievalMetrics,
 };
 void publicRetrievalEvaluator;
+const publicAbstentionMetrics: AbstentionMetricIds = {
+  abstentionCorrect: 'abstention-correct', falseAbstention: 'false-abstention',
+};
+const publicAbstention: AbstentionEvaluator = {
+  evaluatorKind: 'abstention', evaluatorId: 'abstention',
+  ranking: { source: 'output', pointer: '/documents' },
+  shouldAbstainPointer: '/shouldAbstain', metricIds: publicAbstentionMetrics,
+};
+void publicAbstention;
 const publicTrajectoryMatch: ToolTrajectoryMatchMode = 'contains-in-order';
 const publicToolTrajectoryEvaluator: ToolTrajectoryEvaluator = {
   evaluatorKind: 'tool-trajectory',
@@ -222,8 +233,6 @@ const PUBLIC_API = {
       'checkContentStore',
       'checkExecutor',
       'checkRuntime',
-      'createRetrievalAbstentionEvaluation',
-      'RetrievalAbstentionInputError',
       'evaluate',
       'evaluateSeries',
       'loadEvaluationResult',
@@ -235,8 +244,8 @@ const PUBLIC_API = {
       'saveEvaluationResult',
     ],
     types: [
-      'RetrievalAbstentionEvaluation',
-      'RetrievalAbstentionEvaluationInput',
+      'AbstentionEvaluator',
+      'AbstentionMetricIds',
       'AllowedToolsInput',
       'AllowedToolsPlan',
       'Artifact',

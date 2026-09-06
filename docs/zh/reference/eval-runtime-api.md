@@ -43,7 +43,7 @@ Evaluation cache、Custom Evaluator 与 Judge 探针包含经 canonical Core 调
 
 Mock interception type 包括 `MockInterceptionDescriptor`、`MockInterceptionInput`、`MockInterceptionPlan`、`MockInterceptionProvider`、`MockInterceptionOpenRequest`、`MockInterceptionLease`、`MockInterceptionAccess`、`MockInterceptionRequest` 与 `MockInterceptionDecision`。
 
-公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`AllowedToolsInput`、`AllowedToolsPlan`、`McpConfigDescriptor`、`McpConfigInput`、`McpConfigPlan`、`McpConfigProvider`、`McpConfigOpenRequest`、`McpConfigLease`、`McpConfigAccess`、`WorkspaceDescriptor`、`WorkspaceInput`、`WorkspacePlan`、`WorkspaceProvider`、`WorkspaceOpenRequest`、`WorkspaceLease`、`WorkspaceAccess`、`ContentDescriptor`、`ContentValue`、`ContentStoreRequest`、`ContentStore`、`ContentResolver`、`ExecutionCache`、`ExecutionCacheEntry`、`EvaluationCache`、`EvaluationCacheEntry`、`ExecutorIdentityVerifier`、`ExecutorIdentityVerificationRequest`、`ExecutorIdentityVerification`、`EvaluationInfrastructure`、`Dataset`、`Sample`、`EvaluationExecutor`、`Executor`、`InvokeExecutor`、`SessionExecutor`、`ExecutorSessionContext`、`ExecutorSessionAttempt`、`ExecutorSession`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RetrievalEvaluator`、`RetrievalMetricIds`、`ToolTrajectoryEvaluator`、`ToolTrajectoryMatchMode`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`CompositeMetricComponent`、`CompositeAggregation`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`CachePolicy`、`EvidencePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver`、`Clock`、`AssessComparabilityInput`、`EvaluationComparabilitySubject` 与 `EvaluationComparabilityAssessment`。Series 使用 `EvaluationSeriesInput`、`EvaluationSeriesStability`、`EvaluationSeriesRunOptions`、`PreparedEvaluationSeries`、`EvaluationSeriesWorkEstimate`、`EvaluationSeriesMemberResult`、`EvaluationSeriesResult`、`EvaluationSeriesStabilityResult` 与 `RunStabilityValue`。Executor 行为检查使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
+公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`AllowedToolsInput`、`AllowedToolsPlan`、`McpConfigDescriptor`、`McpConfigInput`、`McpConfigPlan`、`McpConfigProvider`、`McpConfigOpenRequest`、`McpConfigLease`、`McpConfigAccess`、`WorkspaceDescriptor`、`WorkspaceInput`、`WorkspacePlan`、`WorkspaceProvider`、`WorkspaceOpenRequest`、`WorkspaceLease`、`WorkspaceAccess`、`ContentDescriptor`、`ContentValue`、`ContentStoreRequest`、`ContentStore`、`ContentResolver`、`ExecutionCache`、`ExecutionCacheEntry`、`EvaluationCache`、`EvaluationCacheEntry`、`ExecutorIdentityVerifier`、`ExecutorIdentityVerificationRequest`、`ExecutorIdentityVerification`、`EvaluationInfrastructure`、`Dataset`、`Sample`、`EvaluationExecutor`、`Executor`、`InvokeExecutor`、`SessionExecutor`、`ExecutorSessionContext`、`ExecutorSessionAttempt`、`ExecutorSession`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RetrievalEvaluator`、`RetrievalMetricIds`、`AbstentionEvaluator`、`AbstentionMetricIds`、`ToolTrajectoryEvaluator`、`ToolTrajectoryMatchMode`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`CompositeMetricComponent`、`CompositeAggregation`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`CachePolicy`、`EvidencePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver`、`Clock`、`AssessComparabilityInput`、`EvaluationComparabilitySubject` 与 `EvaluationComparabilityAssessment`。Series 使用 `EvaluationSeriesInput`、`EvaluationSeriesStability`、`EvaluationSeriesRunOptions`、`PreparedEvaluationSeries`、`EvaluationSeriesWorkEstimate`、`EvaluationSeriesMemberResult`、`EvaluationSeriesResult`、`EvaluationSeriesStabilityResult` 与 `RunStabilityValue`。Executor 行为检查使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
 `Policy` 使用相互独立的 execution／evaluation `StagePolicy`。每个 stage 分别封存 concurrency、timeout 与可选 `RetryPolicy`；retry error code 是宿主定义的稳定 identifier，`RetryBackoff` 是显式的 `none`／`fixed`／`exponential` 判别联合。`FailurePolicy` 同样使用判别联合，只有 `failure-threshold` 可以携带 `maxFailures`。`BudgetPolicy` 暴露 run、stage、coordinate 与 attempt scope，以及可审计的 invocation、active-duration、wall-clock 和 provider-cost limit。Provider-cost admission 固定为 bounded overshoot；`onUnreportedProviderCost` 选择失败关闭或不可验证处理。`CachePolicy` 分别控制 execution 的 `disabled`／`reuse`／`replay-only` 与 evaluation 的 `disabled`／`reuse`。`EvidencePolicy` 通过 `output`、`trace` 与 `evaluatorEvidence` 分别选择 `full`、`reference`、`digest` 或 `none`，并声明统一 classification ceiling。Façade 只负责把声明物化为 Core Measurement Policy；scheduler、timeout、retry、取消、预算计量、缓存验证、证据捕获和 failure-threshold 行为仍全部由 Core 实现。
 
@@ -102,7 +102,7 @@ const variant: Variant<string, undefined, string> = {
 
 `rescore()`、`reanalyze()` 与 `redecide()` 接收一份完整的新 `EvaluateInput`、一份原始 `EvaluationResult`，以及可选的 `EvaluationRunOptions`。Runtime 会先封存新声明，再由 Core 递归验证保留的 source capability 与全部跳过阶段一致：`rescore` 不能隐藏 Target 输入变化，`reanalyze` 不能隐藏 Gold 或 Evaluator 变化，`redecide` 不能隐藏 Analysis 变化。Clone、反序列化 report 或 Bundle JSON 不具备进程内 source authority，都会被拒绝。复用的上游 bundle 保留原始 identity 与历史 evidence；新执行的后缀阶段使用新 Run identity，只为后缀产生新进度事件，也只消耗新 Run 的后缀预算。Façade 不重建 evidence、不调用被跳过的 callback，也不复制 Core 的评分、统计、Decision、Report、预算、缓存或调度实现。
 
-`SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较，也是 paired／independent 语义的唯一持有者。solo 设计可以声明 `clusterKey`，此时 Core 将完整 cluster 作为实验单位与重采样单位。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric，不再包含重复的 sampling 判别字段。`evaluators` 可包含多个 exact-match、retrieval、tool-trajectory、Rubric 评委或 custom evaluator，但 evaluator ID 与 metric ID 必须分别唯一。
+`SamplingDesign` 支持单 Variant 的 `solo` 质量画像、complete-block `paired` 比较和 fixed-quota `independent` 比较，也是 paired／independent 语义的唯一持有者。solo 设计可以声明 `clusterKey`，此时 Core 将完整 cluster 作为实验单位与重采样单位。一项 `Comparison` 声明一个 control、一个或多个 treatment 与参与分析的 Metric，不再包含重复的 sampling 判别字段。`evaluators` 可包含多个 exact-match、retrieval、abstention、tool-trajectory、Rubric 评委或 custom evaluator，但 evaluator ID 与 metric ID 必须分别唯一。
 
 `RetrievalEvaluator` 是 source-neutral 的 binary-relevance top-k 预设。它从显式 output 或 trace JSON Pointer 读取不重复的有序文档 ID 数组，并只从 `Sample.expected` 读取非空、不重复的 relevant ID 集合。四个 `RetrievalMetricIds` 都是有界、higher-is-better 的 sample Metric：Recall@k 的分母是全部已知 relevant 文档数；Precision@k 的分母始终是 `k`，不足的返回位置按未命中处理；Reciprocal Rank@k 使用首个 relevant 文档的名次；nDCG@k 使用 binary gain 与 log2 discount。计算前先按 cutoff 截断 ranking。重复或非法 ID、空 relevant 集合会产出 invalid evidence，不会静默去重、clamp 或产生 `NaN`。对 Reciprocal Rank Metric 使用 summary `mean` 即得到 MRR。Cutoff、pointer、Metric ID 与算法身份都会封存到 Definition 和 Runtime fingerprint。
 
@@ -139,44 +139,40 @@ const analysis: AnalysisRequest = {
 
 该入口有意不暴露 Definition builder、Runtime registry、Core Target、生命周期 adapter 或 Rubric 手工 factory。`Artifact` 是被评测对象，`Variant` 将其绑定到 Executor、config 与 runtime context；control／treatment 角色只存在于显式 `Comparison` 中。
 
-## 召回与拒答混合评测
+## 内置弃答与混合召回评测
 
-`createRetrievalAbstentionEvaluation` 是显式启用的评分组合，输入类型为 `RetrievalAbstentionEvaluationInput`，返回 `RetrievalAbstentionEvaluation`。将返回的 `dataset`、`evaluators` 传给 `evaluate()`；`metricIds` 可用于声明 summary、区间和比较。它复用现有 Custom Evaluator、Core Analysis 和 Report，不增加平行的评测协议，也不改变 `retrieval` v1。
+`AbstentionEvaluator` 是内置的 `evaluators[]` 声明，可通过包根与 `/eval-runtime` 使用。它编译为既有 Core 契约，产生两个布尔型 `AbstentionMetricIds`，不引入单独的评测工厂、数据集选择器或执行生命周期。
 
 ```ts
-const evaluation = createRetrievalAbstentionEvaluation({
-  dataset,
-  cutoff: 3,
+const abstention: AbstentionEvaluator = {
+  evaluatorKind: 'abstention',
+  evaluatorId: 'abstention',
   ranking: { source: 'output', pointer: '/solutionIds' },
-  pendingPolicy: 'error',
-});
-// evaluate({ dataset: evaluation.dataset, evaluators: evaluation.evaluators, ...hostDesign })
+  shouldAbstainPointer: '/shouldAbstain',
+  metricIds: {
+    abstentionCorrect: 'correct-abstention',
+    falseAbstention: 'false-abstention',
+  },
+};
+// evaluate({ dataset, evaluators: [abstention], ...hostDesign })
 ```
 
-`ranking` 必须绑定最终经过阈值过滤的有序推荐列表，可来自 output 或 trace；不应绑定内部候选池。只有成功执行且提供合法空数组才是实际拒答。失败、超时、缺字段、非字符串 ID、空白 ID 和重复 ID 均不是正确拒答。ID 按大小写敏感的原值比较，不进行隐式 trim 或去重。
+`ranking` 必须选择 output 或 trace 中经过应用阈值过滤的**最终**有序推荐 ID 列表。执行成功且合法列表为空，才表示弃答。null、缺失输出、空白／非字符串／重复 ID、执行失败和超时均不算正确弃答。ID 按大小写精确比较，不隐式裁剪空白或去重。`shouldAbstainPointer` 选择 `Sample.expected` 中明确的布尔值；null 和其它非布尔值为非法证据，缺失 Gold 路径在执行前拒绝。评分器不从空相关集合推断标签，也不理解业务审核状态。Gold 绑定不会传给 Target。
 
-每条 `sample.expected` 默认包含 `shouldAbstain`、`acceptableSolutionIds`、`forbiddenSolutionIds` 和可选 `reviewStatus`。前三个字段必填：`false` 要求正确方案非空，`true` 要求正确方案为空，`null` 表示待标注；正确与禁用列表不能重叠。`reviewStatus === 'pending_human_annotation'` 始终覆盖 AI 初始标签为待标注。缺少 reviewStatus 时，以显式布尔标签为准；宿主必须保留原始人工状态，不能丢弃后再调用本组合。
-
-宿主负责把业务 JSON 转换为 OMK Dataset。例如将 `sample.quality.reviewStatus` 放入 `expected.reviewStatus`，不要把它塞入被测 input。可通过 `expected.shouldAbstainPointer`、`relevantDocumentIdsPointer`、`forbiddenDocumentIdsPointer`、`reviewStatusPointer` 映射其它命名；所有这些 JSON Pointer 都相对 `sample.expected`，例如 `/expectedShouldAbstain` 或 `/quality/reviewStatus`。Gold 不进入 Executor invocation。
-
-默认有待标注样本就抛出 `RetrievalAbstentionInputError`，其 `code` 与 `sampleIds` 可用于定位，不包含提示词或 Gold。只有显式 `pendingPolicy: 'exclude'` 才排除；排除后为空仍报错。重复 sampleId、非法配置和矛盾标签也在运行前报错。
-
-| Metric 后缀 | 适用范围与分母 | 方向 |
+| 指标 | 适用样本及含义 | 方向 |
 |---|---|---|
-| `recallAtK`、`precisionAtK`、`reciprocalRankAtK`、`ndcgAtK` | 有效已标注正向样本；算法复用 retrieval v1，Precision 分母固定 K | 越高越好 |
-| `abstentionCorrect` | 有效应拒答样本中最终返回空列表的比例 | 越高越好 |
-| `falseAbstention` | 有效正向样本中最终返回空列表的比例 | 越低越好 |
-| `forbiddenHitAtK` | 有效且禁用列表非空的已标注样本中，前 K 项命中任一禁用 ID 的比例 | 越低越好 |
+| `abstentionCorrect` | 合法且 `shouldAbstain: true` 的样本；空列表为 true，任何非空列表为 false | 越高越好 |
+| `falseAbstention` | 合法且 `shouldAbstain: false` 的样本；空列表为 true，非空列表为 false | 越低越好 |
 
-默认 Metric ID 为 `retrieval-abstention.<后缀>`，可用 `metricPrefix` 改前缀。前四项为 numeric，summary 使用 `statistic: 'mean'`；后三项为 boolean，使用 `statistic: 'rate'`。有效指执行成功、输出合法、标签合法。应拒答时返回任何非空推荐都是失败，即使它不在禁用列表中。禁用命中独立于正向命中，两者可同时发生。
+这些指标使用 summary `statistic: 'rate'`。另一类样本记为 `missing`，原因是 `abstention-not-applicable`，按 `exclude/v1` 排除，不伪造零或一。output 或 trace 绑定缺失时，Core 在评分器运行前记录为不可用；缺失 Gold 路径则在准备阶段拒绝。展示完整 Analysis coverage，包括 `included`（实际分母）、`missing`、`invalid`、`sourceUnavailable`、`evaluationFailed`，并同时展示 Execution coverage。零适用观测保持非完成的 Analysis 状态。条件正确弃答率不等于端到端交付率：一条正确空返回、九条超时，可以在有效输出上得到百分之百，但在全部十条应弃答请求上只有百分之十成功交付。重复 trial 仍使用 Core 已声明的实验单位及归约，不隐式以 attempt 数为分母。
 
-跨类别不适用的指标使用现有 `missing` observation，reason 为 `retrieval-abstention-not-applicable`，经 `exclude/v1` 排除；不伪装成 0 或 1，也不修改 Core missingness。报告必须同时展示 Analysis `coverage.included`（实际分析分母）、`missing`、`invalid`、`sourceUnavailable`、`evaluationFailed` 等覆盖率，以及 Execution coverage。分母为零时保留未完成 Analysis 状态、展示不适用，不能回填零分。逐项 observation 的 Gold 分类 evidence 保留预期标签、正确／禁用 ID、最终推荐列表与 K；展示和存储时按 Gold 敏感级别处理。
+版本化的 `omk.eval-runtime.abstention/v1` instrument 将指针、指标 ID 和成功空列表协议封存到 Definition 与 Runtime identity。它不改变 retrieval v1 的公式、评分、prompt 或 Core Schema。不能与历史上把空 Gold 算作召回满分的指标直接比较；应为新 instrument 建立明确基线。自然语言拒答和安全拦截不属于这个列表协议。
 
-原始 Dataset annotations 保留在 `dataset.annotations.original`。`dataset.annotations.retrievalAbstention` 保存版本 `omk.retrieval-abstention/v1`、原始 Dataset digest、待标注策略、原始／正向／拒答／待标注数量及排除 ID。宿主应一并展示待标注数，避免只展示剩余样本的高分。除这份注解封装与显式排除外，sample、cohort、input 和 Gold 保持原样。不要将返回的 evaluators 与未经过预检的另一份 Dataset 拼接。
+完整离线示例位于 `examples/eval-runtime/retrieval-abstention.mjs`，宿主辅助函数位于 `retrieval-abstention-support.mjs`。构建仓库后运行 `node examples/eval-runtime/retrieval-abstention.mjs`。独立服务可以复制这两个示例文件并安装 OMK；合成 Executor 无需凭证或业务网络。
 
-每个指标使用独立版本化 implementation identity；K、绑定路径、待标注策略等进入 fingerprint。新组合不与历史将空 Gold 当作召回满分的评分口径直接可比，迁移时应重新建立基线，不能静默覆盖旧报告。首期仅处理结构化推荐，不判断自然语言拒答，不连接业务平台，也不改变召回阈值。
+示例在执行前准备并校验标签，默认拒绝待标注样本，允许显式排除，并记录来源版本、数量和原因。业务 `quality.reviewStatus` 只由该辅助函数解释，实际纳入的 Dataset 由 Core 封存。示例组合内置 retrieval、内置 abstention，以及独立的禁用 ID 命中 Custom Evaluator。全部样本提供相关 ID 绑定；负例的空相关集保留 retrieval v1 既有的 `invalid` 观测。召回分析显式选择 `answerable` cohort，在聚合前排除负例；弃答按自身适用范围评分。独立禁用命中示例检查最终结果的前三项，只纳入输出合法且禁用列表非空的样本，不将禁用列表当成所有错误结果的全集。正确召回与禁用命中可以同时发生。
 
-完整的离线例子：在仓库构建后运行 `node examples/eval-runtime/retrieval-abstention.mjs`。只使用虚构数据和本地 Executor，无需凭证、模型或业务网络。
+数据准备与禁用 ID 辅助函数是示例代码，不是额外的 OMK 公开 API。调用方可以替换它们而不改变内置弃答 instrument。本次增加可组合评分能力，不规定固定七指标套件。
 
 ## `oh-my-knowledge/eval-runtime/advanced`
 

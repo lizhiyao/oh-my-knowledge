@@ -1,20 +1,15 @@
 import { z } from 'zod';
-import {
-  createRetrievalAbstentionEvaluation,
-  type RetrievalAbstentionEvaluation,
-  type RetrievalAbstentionEvaluationInput,
-} from 'oh-my-knowledge';
-
-const abstentionInput: RetrievalAbstentionEvaluationInput = {
-  dataset: { datasetId: 'typed-abstention', samples: [{
-    sampleId: 'one', input: 'query',
-    expected: { shouldAbstain: true, acceptableSolutionIds: [], forbiddenSolutionIds: [] },
-  }] },
-  cutoff: 3,
-  ranking: { source: 'output', pointer: '/solutionIds' },
+import type { AbstentionEvaluator, AbstentionMetricIds, Evaluator as RuntimeEvaluator } from 'oh-my-knowledge';
+const abstentionMetricIds: AbstentionMetricIds = {
+  abstentionCorrect: 'correct-abstention', falseAbstention: 'false-abstention',
 };
-const abstentionSuite: RetrievalAbstentionEvaluation = createRetrievalAbstentionEvaluation(abstentionInput);
-void abstentionSuite;
+const abstention: AbstentionEvaluator = {
+  evaluatorKind: 'abstention', evaluatorId: 'abstention',
+  ranking: { source: 'output', pointer: '/solutionIds' },
+  shouldAbstainPointer: '/shouldAbstain', metricIds: abstentionMetricIds,
+};
+const builtinAbstention: RuntimeEvaluator = abstention;
+void builtinAbstention;
 import {
   COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   createEvaluationEngine,
