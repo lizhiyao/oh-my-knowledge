@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import Eval from '../../../src/cli/commands/eval/index.js';
-import { parseRunConfig } from '../../../src/cli/lib/parse-run-config.js';
 import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../src/eval-workflows/evaluation-defaults.js';
 import { EVAL_CONFIG_SCHEMA_SOURCE_PATHS } from '../../../src/eval-workflows/inputs/eval-config.js';
 import {
   CLI_EVALUATION_INPUT_REGISTRY,
   cliEvaluationRegistrySourceKeys,
+  parseCliEvaluationRequest,
 } from '../../../src/eval-workflows/input-compilation/index.js';
 
 describe('CLI evaluation input registry', () => {
@@ -56,14 +56,23 @@ describe('CLI evaluation input registry', () => {
     const language = CLI_EVALUATION_INPUT_REGISTRY.find((entry) => (
       entry.sourceKind === 'cli-flag' && entry.sourceKey === 'lang'
     ));
-    const { config } = parseRunConfig({
-      control: 'baseline',
-      treatment: 'candidate',
-      executor: 'codex',
-      model: 'gpt-example',
+    const request = parseCliEvaluationRequest({
+      explicitCliFlags: { control: 'baseline', treatment: 'candidate' },
+      defaults: {
+        samplesLocator: 'eval-samples.json',
+        skillDirectoryLocator: 'skills',
+        targetRuntime: { executorId: 'codex', model: 'gpt-example', effort: 'low' },
+        judgeMembers: [{ executorId: 'codex', model: 'gpt-example' }],
+        presentation: {
+          projectOutputDirectoryLocator: '.omk/eval',
+          globalOutputDirectoryLocator: '/global/eval',
+          language: 'zh',
+          languageDefaultSource: 'environment-selection',
+        },
+      },
     });
 
-    expect(config.timeoutMs).toBe(DEFAULT_EVALUATION_TIMEOUT_MS);
+    expect(request.values.measurement.timeoutMs).toBe(DEFAULT_EVALUATION_TIMEOUT_MS);
     expect(timeout).toMatchObject({
       defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS,
       defaultSource: 'documented',
