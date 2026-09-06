@@ -15,6 +15,20 @@ import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 // 改用 -c approval_policy="never" config override 后,锁住别再退回去。
 
 describe('buildCodexArgs flag schema', () => {
+  it('preserves the complete auxiliary invocation without enabling Trial policy', () => {
+    const prompt = '---\nname: skill\n---\n正文';
+    assert.deepEqual(buildCodexArgs({ model: 'm', cwd: '/tmp/a b', prompt }), [
+      'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+      '--skip-git-repo-check', '--sandbox', 'read-only',
+      '-c', 'approval_policy="never"', '--model', 'm', '-C', '/tmp/a b', '--', prompt,
+    ]);
+    assert.deepEqual(buildCodexArgs({ model: '', cwd: '', prompt: '' }), [
+      'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+      '--skip-git-repo-check', '--sandbox', 'read-only',
+      '-c', 'approval_policy="never"', '--', '',
+    ]);
+  });
+
   it('does not include the removed --ask-for-approval flag', () => {
     const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt: 'hi' });
     assert.equal(args.includes('--ask-for-approval'), false);

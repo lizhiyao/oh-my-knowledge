@@ -1,3 +1,4 @@
+import { buildCodexExecArguments } from '../../../../executors/openai/codex/cli-arguments.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
@@ -295,10 +296,6 @@ async function resolveIdentity(
   };
 }
 
-function tomlString(value: string): string {
-  return JSON.stringify(value);
-}
-
 export function buildCodexCliCoreArguments(input: Readonly<{
   model: string;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -306,25 +303,12 @@ export function buildCodexCliCoreArguments(input: Readonly<{
   workingDirectory: string;
   prompt: string;
 }>): string[] {
-  return [
-    'exec',
-    '--json',
-    '--ephemeral',
-    '--ignore-user-config',
-    '--ignore-rules',
-    '--strict-config',
-    '--skip-git-repo-check',
-    '--color', 'never',
-    '--sandbox', input.sandbox,
-    '-c', 'approval_policy="never"',
-    '-c', 'shell_environment_policy.inherit="none"',
-    ...(input.effort === undefined
-      ? []
-      : ['-c', `model_reasoning_effort=${tomlString(input.effort)}`]),
-    '--model', input.model,
-    '-C', input.workingDirectory,
-    '--', input.prompt,
-  ];
+  return buildCodexExecArguments({
+    ...input,
+    strictConfig: true,
+    color: 'never',
+    shellEnvironmentInheritance: 'none',
+  });
 }
 
 function processFailure(error: unknown, signal: AbortSignal): never {
