@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This minimal Node.js ESM host injects an in-memory business invocation function through the `oh-my-knowledge` package root, compares two service deployments, applies deterministic exact-match scoring, and materializes an Evaluation Report. It does not load the CLI or read user configuration.
+This minimal Node.js ESM host injects an in-memory business invocation function through the `oh-my-knowledge` package root, compares two service deployments, checks whether actual outputs exactly match expected answers, and builds an evaluation report. It does not load the CLI or read user configuration.
 
 ## Run
 
@@ -15,9 +15,9 @@ yarn build
 node examples/eval-runtime/run.mjs
 ```
 
-The command prints one JSON line with `runStatus: "completed"`, an estimated treatment improvement of `0.6666666666666666`, a decided status, and the report ID.
+The command prints one JSON line: `runStatus: "completed"` means the run finished; `estimate: 0.3333333333333333` means the candidate exact-match rate is about 33.3 percentage points above the control; `verdict: "NOISE"` means these three samples do not establish improvement or justify release. The output also contains the report ID.
 
-To use it in a separate service, run `npm install oh-my-knowledge zod`, copy `run.mjs`, then replace the deterministic `executor` body with the service's Target invocation. Credentials, tenant authorization, queues, and storage remain owned by the host.
+To use it in a separate service, run `npm install oh-my-knowledge zod`, copy `run.mjs`, then replace `executor.execute()` with your service invocation and update its schemas, version, and actual capabilities. Follow the [integration guide](../../docs/guides/eval-runtime.md) for a first setup. Credentials, tenant authorization, queues, and storage remain owned by the host.
 
 ## Evidence boundary
 

@@ -4,7 +4,7 @@
 
 ## 用途
 
-这个最小 Node.js ESM 宿主通过 `oh-my-knowledge` 包根入口注入内存中的业务调用函数，对比两个服务部署，执行确定性 exact-match 评分，并物化 Evaluation Report。它不会加载 CLI，也不会读取用户配置。
+这个最小 Node.js ESM 宿主通过 `oh-my-knowledge` 包根入口注入内存中的业务调用函数，对比两个服务部署，检查实际输出是否与标准答案完全一致，并生成评测报告。它不会加载 CLI，也不会读取用户配置。
 
 ## 运行
 
@@ -15,9 +15,9 @@ yarn build
 node examples/eval-runtime/run.mjs
 ```
 
-命令会输出一行 JSON，其中 `runStatus` 为 `"completed"`，treatment 改进估计值为 `0.6666666666666666`，Decision 已完成，并包含 report ID。
+命令输出一行 JSON：`runStatus: "completed"` 表示运行完成；`estimate: 0.3333333333333333` 表示候选版本的完全匹配率比对照版本高约 33.3 个百分点；`verdict: "NOISE"` 表示这三条用例尚不足以确认进步，不能据此发布。输出还包含报告 ID。
 
-在独立服务中使用时，先运行 `npm install oh-my-knowledge zod`，再复制 `run.mjs`，并用服务的 Target 调用替换确定性的 `executor` 函数体。凭证、租户鉴权、队列与存储仍由宿主持有。
+在独立服务中使用时，先运行 `npm install oh-my-knowledge zod`，再复制 `run.mjs`，并用自己的服务调用替换 `executor.execute()`，同时更新 schema、版本与真实能力声明。首次接入见[使用指南](../../docs/zh/guides/eval-runtime.md)。凭证、租户鉴权、队列与存储仍由宿主持有。
 
 ## 证据边界
 
