@@ -1,11 +1,11 @@
+import { loadClaudeTraceFixture } from '../../helpers/claude-trace.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   computeSkillHealthFromSegments,
 } from '../../../src/observability/skill-health/analyzer.js';
 import {
-  segmentBySkill,
-  type CcSession,
+  segmentTraceBySkill,
   type SkillSegment,
   type TraceSession,
 } from '../../../src/observability/trace/index.js';
@@ -74,11 +74,17 @@ function makeSegment(
   };
 }
 
-function makeSession(sessionId: string, cwd?: string): CcSession {
+function makeSession(sessionId: string, cwd?: string): TraceSession {
   return {
-    sessionId,
+    runId: sessionId,
+    rootRunId: sessionId,
+    traceId: `trace-${sessionId}`,
+    groupPath: '/tmp',
+    role: 'standalone',
+    label: sessionId,
+    sourceKind: 'claude',
     sourcePath: `/tmp/${sessionId}.jsonl`,
-    records: [],
+    events: [],
     cwd,
     startTimestamp: '2026-04-19T00:00:00.000Z',
     endTimestamp: '2026-04-19T23:59:59.000Z',
@@ -593,34 +599,31 @@ describe('computeSkillHealthFromSegments', () => {
     assert.equal(report.meta.messageCount, 2);
   });
 
-  it('keeps legacy messageCount aligned with Trace IR by excluding tool-only wrappers', () => {
-    const session: CcSession = {
-      ...makeSession('legacy-1'),
-      records: [
-        {
-          type: 'user',
-          message: { role: 'user', content: 'hello' },
+  it('excludes Claude tool-only wrappers from messageCount', () => {
+    const session = loadClaudeTraceFixture([
+      {
+        type: 'user',
+        message: { role: 'user', content: 'hello' },
+      },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'call-1', name: 'Read', input: {} }],
         },
-        {
-          type: 'assistant',
-          message: {
-            role: 'assistant',
-            content: [{ type: 'tool_use', id: 'call-1', name: 'Read', input: {} }],
-          },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'call-1', content: 'done' }],
         },
-        {
-          type: 'user',
-          message: {
-            role: 'user',
-            content: [{ type: 'tool_result', tool_use_id: 'call-1', content: 'done' }],
-          },
-        },
-        {
-          type: 'assistant',
-          message: { role: 'assistant', content: [{ type: 'text', text: 'finished' }] },
-        },
-      ],
-    };
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'finished' }] },
+      },
+    ], 'legacy-1');
     const report = computeSkillHealthFromSegments(
       [makeSegment('audit', 0, { sessionId: 'legacy-1' })],
       [session],
@@ -629,35 +632,32 @@ describe('computeSkillHealthFromSegments', () => {
     assert.equal(report.meta.messageCount, 2);
   });
 
-  it('resolves canonical trace identity for legacy sessions without duplicating adapter logic', () => {
-    const session: CcSession = {
-      ...makeSession('legacy-canonical-id'),
-      records: [
-        {
-          type: 'user',
-          uuid: 'u1',
-          parentUuid: null,
-          sessionId: 'legacy-canonical-id',
-          timestamp: '2026-04-19T10:00:00.000Z',
-          message: {
-            role: 'user',
-            content: '<command-name>/audit</command-name>\nInspect this.',
-          },
+  it('resolves canonical trace identity from parsed Claude sessions', () => {
+    const session = loadClaudeTraceFixture([
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 'legacy-canonical-id',
+        timestamp: '2026-04-19T10:00:00.000Z',
+        message: {
+          role: 'user',
+          content: '<command-name>/audit</command-name>\nInspect this.',
         },
-        {
-          type: 'assistant',
-          uuid: 'a1',
-          parentUuid: 'u1',
-          sessionId: 'legacy-canonical-id',
-          timestamp: '2026-04-19T10:00:01.000Z',
-          message: {
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Done.' }],
-          },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 'legacy-canonical-id',
+        timestamp: '2026-04-19T10:00:01.000Z',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Done.' }],
         },
-      ],
-    };
-    const segments = segmentBySkill(session);
+      },
+    ], 'legacy-canonical-id');
+    const segments = segmentTraceBySkill(session);
     assert.match(segments[0].traceId ?? '', /^trace:[a-f0-9]{32}$/);
 
     const report = computeSkillHealthFromSegments(segments, [session], '/tmp');

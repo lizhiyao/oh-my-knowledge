@@ -118,39 +118,6 @@ export type CcRecord = CcAssistantRecord | CcUserRecord | { type: string; [k: st
 
 export type { TraceSourceMetadata } from '../contracts/trace.js';
 
-// ---------- Legacy session compatibility ----------
-
-/** @deprecated Compatibility shape for callers that still construct Claude-style fixtures. */
-export interface CcSession {
-  sessionId: string;
-  /**
-   * Logical root session used to aggregate a main trace and all descendants.
-   * For a directory shaped as:
-   *   A/main.jsonl
-   *   A/subagents/x1.jsonl
-   *   A/subagents/x2.jsonl
-   * all three traces share the same sessionGroupId, while sourcePath still
-   * points at the concrete evidence file.
-   */
-  sessionGroupId?: string;
-  sessionGroupPath?: string;
-  traceId?: string;
-  traceRole?: 'standalone' | 'main' | 'subagent';
-  traceLabel?: string;
-  sourcePath: string;
-  sourceKind?: TraceSourceKind;
-  // records 用 unknown[] 是有意为之: cc JSONL 里 permission-mode / file-history-snapshot /
-  // 未来可能新增的 record type 都会共存, 严格 union 会拒绝合法输入。
-  // segmentBySkill 内部按 type 字段做 structural type guard, 比静态类型约束更 robust。
-  records: unknown[];
-  cwd?: string;
-  gitBranch?: string;
-  entrypoint?: string;
-  sourceMetadata?: TraceSourceMetadata;
-  startTimestamp?: string;
-  endTimestamp?: string;
-}
-
 export type { TraceEvent, TraceSession } from './trace-ir.js';
 
 // ---------- Load ----------
@@ -620,7 +587,7 @@ function parseClaudeSessionFile(filePath: string, records: Array<CcRecord | unde
     | undefined;
   const runId = first?.sessionId ?? basename(filePath, '.jsonl');
   const events = correlateTraceToolEvents(records.flatMap((record, sourceIndex) =>
-    record ? legacyRecordToTraceEvents(record, runId, sourceIndex, 'claude') : []
+    record ? claudeRecordToTraceEvents(record, runId, sourceIndex, 'claude') : []
   ));
   const bounds = traceTimestampBounds([
     ...events.map((event) => event.timestamp),
@@ -643,42 +610,7 @@ function parseClaudeSessionFile(filePath: string, records: Array<CcRecord | unde
   };
 }
 
-export function legacyCcSessionToTraceSession(session: CcSession): TraceSession {
-  const runId = session.sessionId;
-  const rootRunId = session.sessionGroupId ?? runId;
-  const sourceKind = session.sourceKind ?? 'claude';
-  const traceId = session.traceId ?? createTraceId({
-    sourceKind,
-    runId,
-    sourcePath: session.sourcePath,
-  });
-  const events = correlateTraceToolEvents(session.records.flatMap((record, sourceIndex) =>
-    legacyRecordToTraceEvents(record, runId, sourceIndex, sourceKind),
-  ));
-  const bounds = traceTimestampBounds([
-    ...events.map((event) => event.timestamp),
-    session.startTimestamp,
-    session.endTimestamp,
-  ]);
-  return {
-    runId,
-    rootRunId,
-    traceId,
-    groupPath: session.sessionGroupPath ?? dirname(session.sourcePath),
-    role: session.traceRole ?? 'standalone',
-    label: session.traceLabel ?? basename(session.sourcePath),
-    sourcePath: session.sourcePath,
-    sourceKind,
-    events,
-    cwd: session.cwd,
-    gitBranch: session.gitBranch,
-    entrypoint: session.entrypoint,
-    sourceMetadata: session.sourceMetadata,
-    ...bounds,
-  };
-}
-
-function legacyRecordToTraceEvents(
+function claudeRecordToTraceEvents(
   raw: unknown,
   runId: string,
   sourceIndex: number,

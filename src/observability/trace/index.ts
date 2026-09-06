@@ -15,7 +15,6 @@ export type {
   CcAssistantContent,
   CcAssistantRecord,
   CcRecord,
-  CcSession,
   CcUserRecord,
   CcUserTextContent,
   CcUserToolResultContent,
@@ -51,7 +50,6 @@ export {
 } from './attribution.js';
 export type { SkillSegment } from './segmentation.js';
 export {
-  segmentBySkill,
   segmentTraceBySkill,
   segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,

@@ -10,7 +10,6 @@ import {
   truncateTurnsForPersistence,
 } from './projection.js';
 import { sumTokenCounts, tokenCount } from '../../executors/core/token-usage.js';
-import { legacyCcSessionToTraceSession, type CcSession } from './source.js';
 import type {
   TraceEvent,
   TraceMessageEvent,
@@ -457,11 +456,6 @@ function skillBoundaryForEventGroup(
     }
   }
   return null;
-}
-
-/** @deprecated Compatibility entry point for Claude-shaped fixtures. */
-export function segmentBySkill(session: TraceSession | CcSession): SkillSegment[] {
-  return segmentTraceBySkill('events' in session ? session : legacyCcSessionToTraceSession(session));
 }
 
 function updateSegmentSourceModel(

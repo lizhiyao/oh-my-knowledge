@@ -1,3 +1,4 @@
+import { loadClaudeTraceFixture } from '../../helpers/claude-trace.js';
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
@@ -6,7 +7,7 @@ import { join, relative } from 'node:path';
 import {
   loadTraceSessions,
   loadTraceCorpus,
-  segmentBySkill,
+  segmentTraceBySkill,
   segmentsToAnalysisEntries,
   tracesToAnalysisEntries,
   normalizeSkillName,
@@ -957,13 +958,13 @@ describe('loadTraceSessions', () => {
 
     const experience = buildObservationExperienceReport({
       sessions,
-      segments: sessions.flatMap((session) => segmentBySkill(session)),
+      segments: sessions.flatMap((session) => segmentTraceBySkill(session)),
       items: [],
       generatedAt: '2026-05-01T00:00:04.000Z',
     });
     const reversedExperience = buildObservationExperienceReport({
       sessions: [...sessions].reverse(),
-      segments: [...sessions].reverse().flatMap((session) => segmentBySkill(session)),
+      segments: [...sessions].reverse().flatMap((session) => segmentTraceBySkill(session)),
       items: [],
       generatedAt: '2026-05-01T00:00:04.000Z',
     });
@@ -1042,7 +1043,7 @@ describe('loadTraceSessions', () => {
     assert.equal(sessions[0].cwd, '/tmp/agent');
     assert.equal(sessions[0].startTimestamp, undefined);
     assert.ok(sessions[0].events.every((event) => event.timestamp === undefined));
-    const segs = segmentBySkill(sessions[0]);
+    const segs = segmentTraceBySkill(sessions[0]);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'design-coding-create-template');
     assert.equal(segs[0].attribution?.source, 'command-name');
@@ -1084,8 +1085,8 @@ describe('loadTraceSessions', () => {
     assert.ok(session);
     assert.equal(session.startTimestamp, undefined);
     assert.ok(session.events.every((event) => event.timestamp === undefined));
-    const first = segmentBySkill(session);
-    const second = segmentBySkill(session);
+    const first = segmentTraceBySkill(session);
+    const second = segmentTraceBySkill(session);
     assert.deepEqual(
       first.map((segment) => [segment.startTimestamp, segment.endTimestamp]),
       second.map((segment) => [segment.startTimestamp, segment.endTimestamp]),
@@ -1126,7 +1127,7 @@ describe('loadTraceSessions', () => {
 
     const [session] = loadTraceSessions(path);
     assert.equal(session.startTimestamp, '2026-07-25T00:00:00.000Z');
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     assert.equal(segments.length, 2);
     assert.equal(segments[1].skillName, 'audit');
     assert.equal(segments[1].timestampObserved, false);
@@ -1191,7 +1192,7 @@ describe('loadTraceSessions', () => {
       model: 'gpt-5.5',
       businessActions: ['prd-create'],
     });
-    const segs = segmentBySkill(sessions[0]);
+    const segs = segmentTraceBySkill(sessions[0]);
     const skill = segs.find((seg) => seg.skillName === 'prd-create');
     assert.ok(skill);
     assert.equal(skill.sourceKind, 'openclaw');
@@ -1230,7 +1231,7 @@ describe('loadTraceSessions', () => {
     assert.ok(result?.eventKind === 'tool_result');
     assert.equal(result.status, 'unknown');
     assert.equal(result.statusSource, 'unknown');
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.metrics.numToolFailures, 0);
     assert.equal(segment.metrics.numToolUnknown, 1);
   });
@@ -1260,7 +1261,7 @@ describe('loadTraceSessions', () => {
     assert.equal(call.tool.sourceName, 'mcp__github__fetch_file');
     assert.equal(call.tool.namespace, 'mcp__github');
     assert.equal(call.tool.provider, 'github');
-    const [toolCall] = segmentBySkill(session)[0].toolCalls;
+    const [toolCall] = segmentTraceBySkill(session)[0].toolCalls;
     assert.equal(toolCall.tool, 'github.fetch_file');
     assert.equal(toolCall.sourceTool, 'mcp__github__fetch_file');
     assert.equal(toolCall.toolProvider, 'github');
@@ -1395,7 +1396,7 @@ describe('loadTraceSessions', () => {
       modelApi: 'codex',
     });
 
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     const audit = segments.find((segment) => segment.skillName === 'audit');
     assert.ok(audit);
     assert.equal(audit.attribution?.source, 'read-skill-md');
@@ -1544,7 +1545,7 @@ describe('loadTraceSessions', () => {
 
     const experience = buildObservationExperienceReport({
       sessions: [session],
-      segments: segmentBySkill(session),
+      segments: segmentTraceBySkill(session),
       items: [],
       generatedAt: '2026-07-25T00:00:10.000Z',
     });
@@ -1715,7 +1716,7 @@ describe('loadTraceSessions', () => {
     assert.equal(interrupted?.reason, 'interrupted');
     assert.equal(interrupted?.durationMs, 3500);
 
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     const experience = buildObservationExperienceReport({
       sessions: [session],
       segments,
@@ -1922,7 +1923,7 @@ describe('loadTraceSessions', () => {
     const [session] = loadTraceSessions(path);
     assert.equal(session.sourceMetadata?.model, 'gpt-5.5, gpt-5.6-sol');
 
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     const alpha = segments.find((segment) => segment.skillName === 'alpha');
     const beta = segments.find((segment) => segment.skillName === 'beta');
     assert.ok(alpha);
@@ -2016,7 +2017,7 @@ describe('loadTraceSessions', () => {
 
     const [session] = loadTraceSessions(path);
     assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 1);
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.metrics.inputTokens, 100);
     assert.equal(segment.metrics.outputTokens, 10);
   });
@@ -2148,7 +2149,7 @@ describe('loadTraceSessions', () => {
     ]));
 
     const [session] = loadTraceSessions(path);
-    const audit = segmentBySkill(session).find((segment) => segment.skillName === 'audit');
+    const audit = segmentTraceBySkill(session).find((segment) => segment.skillName === 'audit');
     assert.ok(audit);
     assert.deepEqual(
       audit.toolCalls.map((tool) => tool.tool),
@@ -2198,7 +2199,7 @@ describe('loadTraceSessions', () => {
       },
     ]);
 
-    const [toolCall] = segmentBySkill(loadTraceSessions(path)[0])[0].toolCalls;
+    const [toolCall] = segmentTraceBySkill(loadTraceSessions(path)[0])[0].toolCalls;
     assert.equal(toolCall.tool, 'web.run');
     assert.equal(toolCall.status, 'success');
     assert.equal(toolCall.statusSource, 'inferred');
@@ -2414,7 +2415,7 @@ describe('loadTraceSessions', () => {
 
     const [session] = loadTraceSessions(path);
     assert.deepEqual(session.sourceMetadata?.businessActions, ['生成文档', '生成页面']);
-    const segs = segmentBySkill(session);
+    const segs = segmentTraceBySkill(session);
     assert.deepEqual(segs.filter((seg) => seg.skillName !== 'general').map((seg) => seg.skillName), ['prd-create', 'demo-create']);
     assert.equal(segs.some((seg) => seg.skillName === '生成文档' || seg.skillName === '生成页面'), false);
     assert.equal(segs.find((seg) => seg.skillName === 'prd-create')?.attribution?.source, 'read-skill-md');
@@ -2463,7 +2464,7 @@ describe('loadTraceSessions', () => {
     ]));
 
     const [session] = loadTraceSessions(path);
-    const segs = segmentBySkill(session);
+    const segs = segmentTraceBySkill(session);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'task-poller');
     assert.equal(segs[0].attribution?.source, 'skill-script');
@@ -2500,7 +2501,7 @@ describe('loadTraceSessions', () => {
     ]));
 
     const [session] = loadTraceSessions(path);
-    const segs = segmentBySkill(session);
+    const segs = segmentTraceBySkill(session);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'task-poller');
     assert.equal(segs[0].attribution?.source, 'skill-script');
@@ -2533,7 +2534,7 @@ describe('loadTraceSessions', () => {
     ]));
 
     const [wrappedSession] = loadTraceSessions(wrappedPath);
-    const wrappedSegs = segmentBySkill(wrappedSession);
+    const wrappedSegs = segmentTraceBySkill(wrappedSession);
     assert.equal(wrappedSegs.length, 2);
     assert.equal(wrappedSegs[1].skillName, 'task-poller');
     assert.equal(wrappedSegs[1].attribution?.source, 'skill-script');
@@ -2573,7 +2574,7 @@ describe('loadTraceSessions', () => {
     assert.equal(new Set(sessions.map((session) => session.traceId)).size, 2);
     assert.ok(sessions.every((session) => /^trace:[a-f0-9]{32}$/.test(session.traceId)));
 
-    const segs = sessions.flatMap(segmentBySkill).sort((a, b) => a.skillName.localeCompare(b.skillName));
+    const segs = sessions.flatMap(segmentTraceBySkill).sort((a, b) => a.skillName.localeCompare(b.skillName));
     assert.deepEqual(segs.map((seg) => [seg.skillName, seg.sessionId, seg.cwd]), [
       ['audit', 'shared-session', '/repo-a'],
       ['polish', 'shared-session', '/repo-b'],
@@ -2796,7 +2797,7 @@ describe('source-neutral Trace IR', () => {
     assert.equal(synthesized.status, 'success');
     assert.equal(synthesized.output, '2 issues');
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     const failedCall = segment.toolCalls.find((toolCall) => toolCall.toolUseId === 'mcp-call-1');
     assert.equal(failedCall?.tool, 'github.fetch_file');
     assert.equal(failedCall?.success, false);
@@ -2863,7 +2864,7 @@ describe('source-neutral Trace IR', () => {
     ]);
 
     const [session] = loadTraceSessions(path);
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     const calls = session.events.filter((event) => event.eventKind === 'tool_call');
     const results = session.events.filter((event) => event.eventKind === 'tool_result');
     assert.equal(new Set(calls.map((event) => event.callInstanceId)).size, 2);
@@ -3013,7 +3014,7 @@ describe('source-neutral Trace IR', () => {
     assert.equal(result.status, 'success');
     assert.equal(result.sourceEventId, 'mcp-end-record-1');
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.toolCalls[0].tool, 'node_repl.js');
     assert.equal(segment.toolCalls[0].status, 'success');
   });
@@ -3117,7 +3118,7 @@ describe('source-neutral Trace IR', () => {
     assert.equal(call.tool.namespace, 'mcp__node_repl');
     assert.equal(call.tool.provider, 'node_repl');
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.skillName, 'control-chrome');
     assert.equal(segment.attribution?.source, 'read-skill-md');
   });
@@ -3145,7 +3146,7 @@ describe('source-neutral Trace IR', () => {
     ]);
 
     const [session] = loadTraceSessions(path);
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.skillName, 'control-chrome');
     assert.equal(segment.attribution?.source, 'skill-script');
   });
@@ -3173,7 +3174,7 @@ describe('source-neutral Trace IR', () => {
     ]);
 
     const [session] = loadTraceSessions(path);
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.skillName, 'general');
     assert.equal(segment.attribution?.source, 'general');
   });
@@ -3214,7 +3215,7 @@ describe('source-neutral Trace IR', () => {
     assert.equal(result.status, 'unknown');
     assert.equal(result.statusSource, 'unknown');
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.toolCalls[0].status, 'unknown');
     assert.equal(segment.metrics.numToolFailures, 0);
     assert.equal(segment.metrics.numToolUnknown, 1);
@@ -3257,7 +3258,7 @@ describe('source-neutral Trace IR', () => {
     assert.equal(result.status, 'unknown');
     assert.equal(result.statusSource, 'runtime');
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.metrics.numToolFailures, 0);
     assert.equal(segment.metrics.numToolUnknown, 1);
   });
@@ -3296,7 +3297,7 @@ describe('source-neutral Trace IR', () => {
       event.eventKind === 'message' && event.role === 'user' ? [event.origin] : [],
     );
     assert.deepEqual(userOrigins, ['runtime', 'runtime', 'human']);
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.metrics.numTurns, 1);
     assert.deepEqual(segment.turns.map((turn) => turn.role), ['user', 'assistant']);
   });
@@ -3345,28 +3346,23 @@ describe('source-neutral Trace IR', () => {
     ]);
 
     const [session] = loadTraceSessions(path);
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     assert.equal(segments.length, 1);
     assert.equal(segments[0].skillName, 'skill-creator');
     assert.equal(segments[0].toolCalls.length, 2);
   });
 
   it('keeps sample ids unique across a root run and child run', () => {
-    const main = {
-      sessionId: 'root',
-      sessionGroupId: 'root',
-      sourcePath: '/trace/main.jsonl',
-      records: [asstRec('a-main', [{ type: 'text', text: 'main' }], { sessionId: 'root' })],
-    };
+    const main = loadClaudeTraceFixture([
+      asstRec('a-main', [{ type: 'text', text: 'main' }]),
+    ], 'root');
     const child = {
-      sessionId: 'child',
-      sessionGroupId: 'root',
-      sourcePath: '/trace/subagents/child.jsonl',
-      records: [asstRec('a-child', [{ type: 'text', text: 'child' }], { sessionId: 'child' })],
+      ...loadClaudeTraceFixture([asstRec('a-child', [{ type: 'text', text: 'child' }])], 'child'),
+      rootRunId: 'root',
     };
     const entries = segmentsToAnalysisEntries([
-      ...segmentBySkill(main),
-      ...segmentBySkill(child),
+      ...segmentTraceBySkill(main),
+      ...segmentTraceBySkill(child),
     ]);
     assert.equal(new Set(entries.map((entry) => entry.sampleId)).size, 2);
   });
@@ -3423,7 +3419,7 @@ describe('source-neutral Trace IR', () => {
     ]);
 
     const sessions = loadTraceSessions(tmpDir);
-    const segments = sessions.flatMap((session) => segmentBySkill(session));
+    const segments = sessions.flatMap((session) => segmentTraceBySkill(session));
     const report = buildObservationExperienceReport({
       sessions,
       segments,
@@ -3500,7 +3496,7 @@ describe('source-neutral Trace IR', () => {
     });
     const path = writeSession(tmpDir, 'codex-long.jsonl', records);
     const [session] = loadTraceSessions(path);
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     const experience = buildObservationExperienceReport({
       sessions: [session],
       segments,
@@ -3790,34 +3786,26 @@ describe('source-neutral Trace IR', () => {
 
 // ---------- Segment by skill ----------
 
-describe('segmentBySkill', () => {
+describe('segmentTraceBySkill', () => {
   it('no skill signal → single "general" segment', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'text', text: 'hello' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'text', text: 'hello' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'general');
   });
 
   it('slash-command signal cuts new segment', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'text', text: 'hi' }]),
-        userRec('u1', '<command-name>/audit</command-name>\n<command-message>audit</command-message>'),
-        asstRec('a2', [
-          { type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/x.md' } },
-        ]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'ok' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'text', text: 'hi' }]),
+      userRec('u1', '<command-name>/audit</command-name>\n<command-message>audit</command-message>'),
+      asstRec('a2', [
+        { type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/x.md' } },
+      ]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'ok' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 2);
     assert.equal(segs[0].skillName, 'general');
     assert.equal(segs[1].skillName, 'audit');
@@ -3876,7 +3864,7 @@ describe('segmentBySkill', () => {
     });
 
     const summaries = (['claude', 'codex', 'dsh', 'openclaw', 'unknown'] as const).map((sourceKind) => {
-      const segments = segmentBySkill(makeSession(sourceKind));
+      const segments = segmentTraceBySkill(makeSession(sourceKind));
       return {
         skills: segments.map((segment) => segment.skillName),
         models: segments.map((segment) => segment.sourceMetadata?.model),
@@ -3924,25 +3912,21 @@ describe('segmentBySkill', () => {
       ],
     };
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.startTimestamp, '2026-07-25T00:00:01.000Z');
     assert.equal(segment.endTimestamp, '2026-07-25T00:00:09.000Z');
     assert.equal(segment.metrics.durationMs, 8_000);
   });
 
   it('normalizes mixed timezone offsets before deriving segment bounds', () => {
-    const [segment] = segmentBySkill({
-      sessionId: 'mixed-offsets',
-      sourcePath: '/repo/mixed-offsets.jsonl',
-      records: [
-        asstRec('later', [{ type: 'text', text: 'later' }], {
-          timestamp: '2026-07-25T08:00:09.000+08:00',
-        }),
-        asstRec('earlier', [{ type: 'text', text: 'earlier' }], {
-          timestamp: '2026-07-25T00:00:01.000Z',
-        }),
-      ],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      asstRec('later', [{ type: 'text', text: 'later' }], {
+        timestamp: '2026-07-25T08:00:09.000+08:00',
+      }),
+      asstRec('earlier', [{ type: 'text', text: 'earlier' }], {
+        timestamp: '2026-07-25T00:00:01.000Z',
+      }),
+    ], 'mixed-offsets'));
 
     assert.equal(segment.startTimestamp, '2026-07-25T00:00:01.000Z');
     assert.equal(segment.endTimestamp, '2026-07-25T00:00:09.000Z');
@@ -3967,36 +3951,28 @@ describe('segmentBySkill', () => {
   });
 
   it('Skill tool_use signal cuts new segment', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu0', name: 'Skill', input: { skill: 'wiki', args: 'publish' } }]),
-        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu0', content: 'done' }]),
-        asstRec('a2', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/x.md' } }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'content' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu0', name: 'Skill', input: { skill: 'wiki', args: 'publish' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu0', content: 'done' }]),
+      asstRec('a2', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/x.md' } }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'content' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     // Skill tool_use 本身也归属 wiki 段, 因为信号触发即切段, 该条 tool_use 进入新段
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'wiki');
   });
 
   it('multiple skills in one session → multiple segments', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/audit</command-name>'),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-        userRec('u3', '<command-name>/polish</command-name>'),
-        asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Grep', input: {} }]),
-        userRec('u4', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'y' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/audit</command-name>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+      userRec('u3', '<command-name>/polish</command-name>'),
+      asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Grep', input: {} }]),
+      userRec('u4', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'y' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     const skills = segs.map((seg) => seg.skillName);
     assert.ok(skills.includes('audit'));
     assert.ok(skills.includes('polish'));
@@ -4007,15 +3983,11 @@ describe('segmentBySkill', () => {
   });
 
   it('is_error=true → ToolCallInfo.success=false + numToolFailures++', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Grep', input: { pattern: 'foo' } }]),
-        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'err', is_error: true }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Grep', input: { pattern: 'foo' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'err', is_error: true }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].toolCalls[0].success, false);
     assert.equal(segs[0].metrics.numToolFailures, 1);
@@ -4054,7 +4026,7 @@ describe('segmentBySkill', () => {
       ],
     };
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.toolCalls[0].status, 'cancelled');
     assert.equal(segment.metrics.numToolFailures, 0);
     assert.equal(segment.metrics.numToolCancelled, 1);
@@ -4067,14 +4039,10 @@ describe('segmentBySkill', () => {
   });
 
   it('orphan tool_use (no matching result) stays unknown without inflating failures', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu-orphan', name: 'Read', input: {} }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu-orphan', name: 'Read', input: {} }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs[0].toolCalls[0].success, false);
     assert.equal(segs[0].toolCalls[0].status, 'unknown');
     assert.equal(segs[0].metrics.numToolFailures, 0);
@@ -4085,23 +4053,19 @@ describe('segmentBySkill', () => {
   });
 
   it('keeps assistant text and Skill tool use from one source record in the same segment', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [
-          { type: 'text', text: 'I will inspect it.' },
-          {
-            type: 'tool_use',
-            id: 'tu-skill',
-            name: 'Skill',
-            input: { skill: 'demo' },
-          },
-        ]),
-      ],
-    };
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [
+        { type: 'text', text: 'I will inspect it.' },
+        {
+          type: 'tool_use',
+          id: 'tu-skill',
+          name: 'Skill',
+          input: { skill: 'demo' },
+        },
+      ]),
+    ], 's1');
 
-    const segs = segmentBySkill(s);
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'demo');
     assert.equal(segs[0].turns[0]?.content, 'I will inspect it.');
@@ -4140,7 +4104,7 @@ describe('segmentBySkill', () => {
       ],
     } satisfies TraceSession;
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.metrics.numTurns, 1);
     assert.equal(segment.turns[0]?.content, 'I will inspect it.');
     assert.equal(segment.turns[0]?.toolCalls?.[0]?.tool, 'Skill');
@@ -4179,7 +4143,7 @@ describe('segmentBySkill', () => {
       ],
     } satisfies TraceSession;
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.toolCalls[0].status, 'success');
     assert.equal(segment.toolCalls[0].output, 'done');
     assert.equal(segment.metrics.numToolUnknown, 0);
@@ -4237,7 +4201,7 @@ describe('segmentBySkill', () => {
       ],
     } satisfies TraceSession;
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.deepEqual(
       segment.toolCalls.map((call) => [call.input, call.output, call.status]),
       [
@@ -4323,7 +4287,7 @@ describe('segmentBySkill', () => {
       ],
     } satisfies TraceSession;
 
-    const segments = segmentBySkill(session);
+    const segments = segmentTraceBySkill(session);
     const report = buildObservationExperienceReport({
       sessions: [session],
       segments,
@@ -4354,14 +4318,10 @@ describe('segmentBySkill', () => {
   });
 
   it('preserves human messages as user turns instead of tool results', () => {
-    const [segment] = segmentBySkill({
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/audit</command-name>\nPlease inspect this.'),
-        asstRec('a1', [{ type: 'text', text: 'Done.' }]),
-      ],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/audit</command-name>\nPlease inspect this.'),
+      asstRec('a1', [{ type: 'text', text: 'Done.' }]),
+    ], 's1'));
 
     assert.deepEqual(
       segment.turns.map((turn) => [turn.role, turn.content]),
@@ -4374,19 +4334,15 @@ describe('segmentBySkill', () => {
   });
 
   it('keeps a late tool result on its originating call without overlapping skill record ranges', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u0', '<command-name>/audit</command-name>'),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu-late', name: 'Read', input: {} }]),
-        userRec('u1', '<command-name>/review</command-name>'),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu-late', content: 'done' }]),
-        asstRec('a2', [{ type: 'text', text: 'review done' }]),
-      ],
-    };
+    const s = loadClaudeTraceFixture([
+      userRec('u0', '<command-name>/audit</command-name>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu-late', name: 'Read', input: {} }]),
+      userRec('u1', '<command-name>/review</command-name>'),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu-late', content: 'done' }]),
+      asstRec('a2', [{ type: 'text', text: 'review done' }]),
+    ], 's1');
 
-    const [audit, review] = segmentBySkill(s);
+    const [audit, review] = segmentTraceBySkill(s);
     assert.equal(audit.skillName, 'audit');
     assert.equal(audit.toolCalls[0].output, 'done');
     assert.equal(audit.endRecordIndex, 1);
@@ -4396,188 +4352,154 @@ describe('segmentBySkill', () => {
   });
 
   it('Read .claude/skills/<name>/SKILL.md signal cuts new segment (signal 3 fallback)', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/home/user/project/.claude/skills/review/SKILL.md' } }]),
-        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'skill body' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/home/user/project/.claude/skills/review/SKILL.md' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'skill body' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'review');
   });
 
   it('recognizes Codex plugin-cache skills but ignores repository skill fixtures', () => {
-    const installed = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{
-          type: 'tool_use',
-          id: 'tu1',
-          name: 'Read',
-          input: {
-            file_path: '/home/user/.codex/plugins/cache/openai-bundled/browser/1.0.0/skills/control-browser/SKILL.md',
-          },
-        }]),
-      ],
-    };
-    const fixture = {
-      sessionId: 's2',
-      sourcePath: '/t',
-      records: [
-        asstRec('a2', [{
-          type: 'tool_use',
-          id: 'tu2',
-          name: 'Read',
-          input: {
-            file_path: '/repo/examples/agent-eval/skills/strict-reader/SKILL.md',
-          },
-        }], { sessionId: 's2' }),
-      ],
-    };
+    const installed = loadClaudeTraceFixture([
+      asstRec('a1', [{
+        type: 'tool_use',
+        id: 'tu1',
+        name: 'Read',
+        input: {
+          file_path: '/home/user/.codex/plugins/cache/openai-bundled/browser/1.0.0/skills/control-browser/SKILL.md',
+        },
+      }]),
+    ], 's1');
+    const fixture = loadClaudeTraceFixture([
+      asstRec('a2', [{
+        type: 'tool_use',
+        id: 'tu2',
+        name: 'Read',
+        input: {
+          file_path: '/repo/examples/agent-eval/skills/strict-reader/SKILL.md',
+        },
+      }], { sessionId: 's2' }),
+    ], 's2');
 
-    assert.equal(segmentBySkill(installed)[0].skillName, 'control-browser');
-    assert.equal(segmentBySkill(fixture)[0].skillName, 'general');
+    assert.equal(segmentTraceBySkill(installed)[0].skillName, 'control-browser');
+    assert.equal(segmentTraceBySkill(fixture)[0].skillName, 'general');
   });
 
   it('signal 1 (Skill tool_use) wins over signal 3 (Read SKILL.md) when both present', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [
-          { type: 'tool_use', id: 'tu1', name: 'Skill', input: { skill: 'audit' } },
-          { type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: '.claude/skills/other/SKILL.md' } },
-        ]),
-        userRec('u1', [
-          { type: 'tool_result', tool_use_id: 'tu1', content: 'x' },
-          { type: 'tool_result', tool_use_id: 'tu2', content: 'y' },
-        ]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [
+        { type: 'tool_use', id: 'tu1', name: 'Skill', input: { skill: 'audit' } },
+        { type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: '.claude/skills/other/SKILL.md' } },
+      ]),
+      userRec('u1', [
+        { type: 'tool_result', tool_use_id: 'tu1', content: 'x' },
+        { type: 'tool_result', tool_use_id: 'tu2', content: 'y' },
+      ]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'audit');
   });
 
   it('signal 2 (slash command) wins over signal 3 (Read SKILL.md)', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/polish</command-name>'),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/other/SKILL.md' } }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/polish</command-name>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/other/SKILL.md' } }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'polish');
   });
 
   it('repeated Read of same SKILL.md does not cut multiple segments', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/SKILL.md' } }]),
-        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-        asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: '.claude/skills/review/SKILL.md' } }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'y' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/SKILL.md' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+      asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: '.claude/skills/review/SKILL.md' } }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'y' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'review');
   });
 
   it('Read non-SKILL.md file does not trigger signal 3', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/references/cmds.md' } }]),
-        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/references/cmds.md' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'general');
   });
 
   it('CC builtin command (/clear, /model, /exit) is NOT treated as skill', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/clear</command-name>'),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/clear</command-name>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'general', '/clear 是 cc 内置命令, 不切段');
   });
 
   it('does not leak Claude builtin command names into source-neutral skill identity', () => {
     assert.equal(normalizeSkillName('doctor'), 'doctor');
-    const [codexSegment] = segmentBySkill({
-      sessionId: 'codex-doctor',
+    const codexSession: TraceSession = {
+      runId: 'codex-doctor',
+      rootRunId: 'codex-doctor',
+      traceId: 'trace-codex-doctor',
       sourcePath: '/tmp/codex-doctor.jsonl',
+      groupPath: '/tmp',
+      role: 'standalone',
+      label: 'codex-doctor',
       sourceKind: 'codex',
-      records: [
-        userRec('u1', '<command-name>/doctor</command-name>\nRun the skill.'),
-        asstRec('a1', [{ type: 'text', text: 'Done.' }]),
-      ],
-    });
+      events: [{
+        eventKind: 'message',
+        eventId: 'u1',
+        sourceIndex: 0,
+        sourceType: 'message',
+        role: 'user',
+        origin: 'human',
+        text: '<command-name>/doctor</command-name>\nRun the skill.',
+      }],
+    };
+    const [codexSegment] = segmentTraceBySkill(codexSession);
     assert.equal(codexSegment.skillName, 'doctor');
 
-    const [explicitSkillSegment] = segmentBySkill({
-      sessionId: 'claude-doctor-skill',
-      sourcePath: '/tmp/claude-doctor.jsonl',
-      sourceKind: 'claude',
-      records: [
-        asstRec('a1', [{
-          type: 'tool_use',
-          id: 'doctor-call',
-          name: 'Skill',
-          input: { skill: 'doctor' },
-        }]),
-      ],
-    });
+    const [explicitSkillSegment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      asstRec('a1', [{
+        type: 'tool_use',
+        id: 'doctor-call',
+        name: 'Skill',
+        input: { skill: 'doctor' },
+      }]),
+    ], 'claude-doctor-skill'));
     assert.equal(explicitSkillSegment.skillName, 'doctor');
   });
 
   it('rejects unsafe or non-slug skill identities at the attribution boundary', () => {
     for (const command of ['__proto__', 'constructor', '../audit', 'audit/child']) {
-      const [segment] = segmentBySkill({
-        sessionId: `unsafe-${command}`,
-        sourcePath: '/tmp/unsafe.jsonl',
-        records: [
-          userRec('u1', `<command-name>/${command}</command-name>\nInspect this.`),
-          asstRec('a1', [{ type: 'text', text: 'Done.' }]),
-        ],
-      });
+      const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+        userRec('u1', `<command-name>/${command}</command-name>\nInspect this.`),
+        asstRec('a1', [{ type: 'text', text: 'Done.' }]),
+      ], `unsafe-${command}`));
       assert.equal(segment.skillName, 'general');
     }
   });
 
   it('plugin-prefixed skill name keeps source metadata (pbakaus/impeccable:audit → audit from plugin)', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Skill', input: { skill: 'pbakaus/impeccable:audit' } }]),
-        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'ok' }]),
-        asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Skill', input: { skill: 'impeccable:audit' } }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'ok' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Skill', input: { skill: 'pbakaus/impeccable:audit' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'ok' }]),
+      asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Skill', input: { skill: 'impeccable:audit' } }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'ok' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     // skillName 仍归一化为 audit, 但 plugin 来源不同, 需要保留成两段。
     assert.equal(segs.length, 2);
     assert.equal(segs[0].skillName, 'audit');
@@ -4589,15 +4511,11 @@ describe('segmentBySkill', () => {
   });
 
   it('plugin slash command keeps source metadata and command name', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/code-security:secure-coding</command-name>\n<command-message>code-security:secure-coding</command-message>'),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/code-security:secure-coding</command-name>\n<command-message>code-security:secure-coding</command-message>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'secure-coding');
     assert.equal(segs[0].attribution?.source, 'command-name');
@@ -4607,17 +4525,13 @@ describe('segmentBySkill', () => {
   });
 
   it('repeated same-skill signal does not create spurious empty segments', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/audit</command-name>'),
-        userRec('u2', '<command-name>/audit</command-name>'),  // 重复,不应切段
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-        userRec('u3', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/audit</command-name>'),
+      userRec('u2', '<command-name>/audit</command-name>'),  // 重复,不应切段
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      userRec('u3', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'audit');
   });
@@ -4627,15 +4541,11 @@ describe('segmentBySkill', () => {
       message: { usage: { cache_read_input_tokens: number } };
     };
     first.message.usage.cache_read_input_tokens = 7;
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        first,
-        asstRec('a2', [{ type: 'text', text: 'b' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      first,
+      asstRec('a2', [{ type: 'text', text: 'b' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     // 每条 asstRec 默认 input=10 output=20 → 累加 2 次
     assert.equal(segs[0].metrics.inputTokens, 20);
     assert.equal(segs[0].metrics.outputTokens, 40);
@@ -4686,7 +4596,7 @@ describe('segmentBySkill', () => {
       ],
     };
 
-    const [segment] = segmentBySkill(session);
+    const [segment] = segmentTraceBySkill(session);
     assert.equal(segment.metrics.inputTokens, 0);
     assert.equal(segment.metrics.tokenUsageObserved, false);
     const projected = segmentsToAnalysisEntries([segment])[0].variants.general;
@@ -4699,16 +4609,12 @@ describe('segmentBySkill', () => {
 
 describe('segmentsToAnalysisEntries', () => {
   it('each segment → one AnalysisEntry with skill as variant key', () => {
-    const s = {
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/audit</command-name>'),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-      ],
-    };
-    const segs = segmentBySkill(s);
+    const s = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/audit</command-name>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const segs = segmentTraceBySkill(s);
     const entries = segmentsToAnalysisEntries(segs);
     assert.equal(entries.length, 1);
     assert.match(entries[0].sampleId, /^trace:[a-f0-9]{32}$/);
@@ -4719,38 +4625,30 @@ describe('segmentsToAnalysisEntries', () => {
   });
 
   it('projects repeated tool calls as call-count distribution', () => {
-    const [segment] = segmentBySkill({
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [
-          { type: 'tool_use', id: 'tu1', name: 'Read', input: {} },
-          { type: 'tool_use', id: 'tu2', name: 'Read', input: {} },
-        ]),
-      ],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      asstRec('a1', [
+        { type: 'tool_use', id: 'tu1', name: 'Read', input: {} },
+        { type: 'tool_use', id: 'tu2', name: 'Read', input: {} },
+      ]),
+    ], 's1'));
     const result = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.deepEqual(result.toolNames, ['Read']);
     assert.deepEqual(result.toolDistribution, { Read: 2 });
   });
 
   it('rounds projected tool success rates to the persisted report contract', () => {
-    const [segment] = segmentBySkill({
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        asstRec('a1', [
-          { type: 'tool_use', id: 'tu1', name: 'Read', input: {} },
-          { type: 'tool_use', id: 'tu2', name: 'Read', input: {} },
-          { type: 'tool_use', id: 'tu3', name: 'Read', input: {} },
-        ]),
-        userRec('u2', [
-          { type: 'tool_result', tool_use_id: 'tu1', content: 'ok' },
-          { type: 'tool_result', tool_use_id: 'tu2', content: 'ok' },
-          { type: 'tool_result', tool_use_id: 'tu3', content: 'failed', is_error: true },
-        ]),
-      ],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      asstRec('a1', [
+        { type: 'tool_use', id: 'tu1', name: 'Read', input: {} },
+        { type: 'tool_use', id: 'tu2', name: 'Read', input: {} },
+        { type: 'tool_use', id: 'tu3', name: 'Read', input: {} },
+      ]),
+      userRec('u2', [
+        { type: 'tool_result', tool_use_id: 'tu1', content: 'ok' },
+        { type: 'tool_result', tool_use_id: 'tu2', content: 'ok' },
+        { type: 'tool_result', tool_use_id: 'tu3', content: 'failed', is_error: true },
+      ]),
+    ], 's1'));
     segment.metrics.numToolFailures = 1;
     segment.metrics.numToolUnknown = 0;
     segment.metrics.numToolCancelled = 0;
@@ -4771,15 +4669,11 @@ describe('segmentsToAnalysisEntries', () => {
   it('bounds persisted trace payloads without mutating the source segment', () => {
     const longOutput = `start-${'x'.repeat(1500)}`;
     const longTurn = `question-${'y'.repeat(2500)}`;
-    const [segment] = segmentBySkill({
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', longTurn),
-        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: longOutput }]),
-      ],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      userRec('u1', longTurn),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: longOutput }]),
+    ], 's1'));
 
     const result = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.equal(result.turns?.[0].content.length, 2001);
@@ -4789,14 +4683,10 @@ describe('segmentsToAnalysisEntries', () => {
   });
 
   it('anchors sample identity to the physical segment start instead of its mutable ordinal', () => {
-    const [segment] = segmentBySkill({
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [
-        userRec('u1', '<command-name>/audit</command-name>'),
-        asstRec('a1', [{ type: 'text', text: 'done' }]),
-      ],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/audit</command-name>'),
+      asstRec('a1', [{ type: 'text', text: 'done' }]),
+    ], 's1'));
     const original = segmentsToAnalysisEntries([segment])[0].sampleId;
     const shiftedOrdinal = segmentsToAnalysisEntries([{
       ...segment,
@@ -4829,11 +4719,7 @@ describe('segmentsToAnalysisEntries', () => {
     first.message.usage.cache_read_input_tokens = 7;
     first.message.usage.cache_creation_input_tokens = 5;
 
-    const [segment] = segmentBySkill({
-      sessionId: 's1',
-      sourcePath: '/t',
-      records: [first],
-    });
+    const [segment] = segmentTraceBySkill(loadClaudeTraceFixture([first], 's1'));
     const result = segmentsToAnalysisEntries([segment])[0].variants.general;
 
     assert.equal(result.totalTokens, 42);
