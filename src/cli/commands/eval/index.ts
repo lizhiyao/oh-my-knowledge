@@ -19,7 +19,7 @@ import { executorNamesForFamily } from '../../../executors/core/registry.js';
 import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../eval-workflows/evaluation-defaults.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
-// 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
+// 参数语义与约束由 Workflow 的 parseCliEvaluationRequest 维护。
 //
 // `omk eval gold ...` 由 src/cli/commands/eval/gold/{init,validate,compare}.ts
 // 处理,oclif 文件目录路由自动接管,不进 eval.ts。

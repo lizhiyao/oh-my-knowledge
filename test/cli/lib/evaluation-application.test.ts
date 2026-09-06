@@ -95,6 +95,17 @@ describe('CLI product application', () => {
     expect(result.outputDirectory).toBe(join(environment.OMK_HOME, 'eval'));
   });
 
+  it('persists to an explicit relative output directory ahead of global output', async () => {
+    const input = await fixture();
+    const result = await input.run({ global: true, 'output-dir': 'custom-reports', 'no-evidence': true });
+    const directory = join(input.root, 'custom-reports');
+    expect(result.outputDirectory).toBe(directory);
+    expect(result.stored).toBeDefined();
+    const store = createNodeCoreRunArtifactStore(directory);
+    expect((await store.get(result.stored!.manifest.runId))?.report.reportDigest)
+      .toBe(result.stored!.report.reportDigest);
+  });
+
   it('finds global evidence from the explicit project context without weakening resume admission', async () => {
     const input = await fixture();
     const unrelated = join(input.root, 'unrelated');
