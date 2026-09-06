@@ -1,7 +1,7 @@
 import { digestCanonicalJson } from '../../../src/eval-core/contracts/index.js';
 import { describe, expect, it } from 'vitest';
 import { classifyNodeCliEnvironment } from '../../../src/cli/lib/evaluation-composition.js';
-import { captureClassifiedEnvironment } from '../../../src/eval-hosts/runtime-adapter/adapters/shared/classified-environment.js';
+import { captureClassifiedEnvironment } from '../../../src/eval-hosts/adapters/shared/classified-environment.js';
 
 describe('Node CLI production environment', () => {
   it('preserves network routing and trust locators for isolated runtime processes', () => {

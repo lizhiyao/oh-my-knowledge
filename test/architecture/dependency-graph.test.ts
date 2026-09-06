@@ -78,13 +78,13 @@ const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
     rationale: 'Loads the fixed optional Codex SDK package; the source hash seals its binding.',
   },
   {
-    importer: 'eval-hosts/runtime-adapter/adapters/claude/sdk-runtime.ts',
+    importer: 'eval-hosts/adapters/claude/sdk-runtime.ts',
     expression: 'sdkModuleUrl.href',
     sourceSha256: 'ecc6f7786371066da5853a70b1fe1fe6fd1af088f8a9e1207e626670e6830c21',
     rationale: 'Loads the resolved optional Claude SDK entrypoint with a per-runtime file URL.',
   },
   {
-    importer: 'eval-hosts/runtime-adapter/adapters/codex/sdk-runtime.ts',
+    importer: 'eval-hosts/adapters/codex/sdk-runtime.ts',
     expression: 'sdkModuleUrl.href',
     sourceSha256: '779eb62d9a6d67712ce454466e47802901637b00b6c2e99056dcd8b06fcedac1',
     rationale: 'Loads the resolved optional Codex SDK entrypoint with a per-runtime file URL.',
@@ -384,7 +384,7 @@ describe('src 依赖图', () => {
     expect(moduleDomain('eval-workflows/projections/cli.ts')).toBe('eval-workflows/projections');
     expect(moduleDomain('eval-workflows/resume-admission/admit.ts')).toBe('eval-workflows/resume-admission');
     expect(moduleDomain('eval-workflows/measurement/analysis/composite-node.ts')).toBe('eval-workflows/measurement');
-    expect(moduleDomain('eval-hosts/runtime-adapter/assembly.ts')).toBe('eval-hosts');
+    expect(moduleDomain('eval-hosts/composition/assembly.ts')).toBe('eval-hosts');
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
     expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');

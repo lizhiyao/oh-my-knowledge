@@ -23,21 +23,12 @@ describe('eval-workflows 与 executors 领域布局', () => {
       .toEqual(['AGENTS.md', 'evaluation-defaults.ts', 'messages.ts']);
   });
 
-  it('runtime-adapter 的增长进入能力子域而不是继续堆入根目录', () => {
-    const entries = readdirSync(resolve('src/eval-hosts/runtime-adapter'), {
-      withFileTypes: true,
-    });
+  it('eval-hosts 同级目录按职责划分，运行环境留在对应实现中', () => {
+    const entries = readdirSync(resolve('src/eval-hosts'), { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['adapters', 'evaluators', 'resource-leases']);
+      .toEqual(['adapters', 'composition', 'evaluators', 'input-resolution', 'resource-leases']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
-      .toEqual([
-        'assembly.ts',
-        'builtins.ts',
-        'composition.ts',
-        'index.ts',
-        'preflight.ts',
-        'types.ts',
-      ]);
+      .toEqual(['index.ts', 'types.ts']);
   });
 
   it('executors 保留独立的执行前检查边界', () => {
@@ -48,6 +39,12 @@ describe('eval-workflows 与 executors 领域布局', () => {
 
   it('不恢复迁移前的 src、test 或 dist 顶层目录', () => {
     for (const path of [
+      'src/eval-hosts/node',
+      'src/eval-hosts/runtime-adapter',
+      'test/eval-hosts/node',
+      'test/eval-hosts/runtime-adapter',
+      'dist/eval-hosts/node',
+      'dist/eval-hosts/runtime-adapter',
       'src/inputs',
       'src/grading',
       'src/preflight',

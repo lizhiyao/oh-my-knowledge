@@ -11,7 +11,7 @@ import {
   hashArtifactSource,
   isDistributablePath,
 } from '../../../src/knowledge-artifacts/sources/content-hash.js';
-import { digestNodeFileResource, digestNodeTreeResource } from '../../../src/eval-hosts/runtime-adapter/resource-leases/node.js';
+import { digestNodeFileResource, digestNodeTreeResource } from '../../../src/eval-hosts/resource-leases/node.js';
 
 describe('content-hash', () => {
   let dir: string;
