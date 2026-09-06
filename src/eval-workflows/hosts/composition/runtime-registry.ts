@@ -1,3 +1,4 @@
+import { readonlyMapSnapshot } from '../adapters/shared/readonly-map-snapshot.js';
 import { LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID } from '../../measurement/evaluators/llm-assertions.js';
 import { isAbsolute } from 'node:path';
 import type { EvaluationEngineClock } from '../../../eval-core/engine/index.js';
@@ -102,26 +103,6 @@ export class ProductionRuntimeRegistryError extends TypeError {
 
 function fail(input: ConstructorParameters<typeof ProductionRuntimeRegistryError>[0]): never {
   throw new ProductionRuntimeRegistryError(input);
-}
-
-function readonlyMapSnapshot<Key, Value>(source: ReadonlyMap<Key, Value>): ReadonlyMap<Key, Value> {
-  const snapshot = new Map(source);
-  const view: ReadonlyMap<Key, Value> = Object.freeze({
-    get size() { return snapshot.size; },
-    get(key: Key) { return snapshot.get(key); },
-    has(key: Key) { return snapshot.has(key); },
-    keys() { return snapshot.keys(); },
-    values() { return snapshot.values(); },
-    entries() { return snapshot.entries(); },
-    [Symbol.iterator]() { return snapshot[Symbol.iterator](); },
-    forEach(
-      callback: (value: Value, key: Key, map: ReadonlyMap<Key, Value>) => void,
-      thisArg?: unknown,
-    ) {
-      snapshot.forEach((value, key) => callback.call(thisArg, value, key, view));
-    },
-  });
-  return view;
 }
 
 function jsonSnapshot<Value>(value: Value): Value {
