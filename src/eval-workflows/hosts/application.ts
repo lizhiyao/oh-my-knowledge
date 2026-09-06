@@ -35,6 +35,7 @@ export type { OmkLlmJudgeInvocationBinding } from './evaluators/llm-judge-invoca
 export type { OmkLlmJudgeInvocationRequest } from './evaluators/llm-judge-invocation.js';
 export type { OmkExecutorBindingContext } from './types.js';
 export { createJudgeProviderRuntimeIdentity } from './composition/judge-provider-identity.js';
+export { createExecutorJudgeInvocationPort } from './evaluators/executor-judge-invocation.js';
 
 export type EvaluationNotice =
   | { readonly noticeKind: 'doctor-skipped' }

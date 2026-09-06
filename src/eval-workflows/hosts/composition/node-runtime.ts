@@ -4,7 +4,6 @@ import {
   schemaIdentityKey,
   type CoreSchemaValidator,
   type RuntimeIdentity,
-  type UsageRecord,
 } from '../../../eval-core/contracts/index.js';
 import { createExecutor } from '../../../executors/index.js';
 import type { ExecutorFn } from '../../../executors/contracts/ports.js';
@@ -13,9 +12,7 @@ import type { CliEvaluationCompileResult } from '../../input-compilation/index.j
 import type {
   OmkLlmJudgeInvocationBinding,
 } from '../evaluators/llm-judge-invocation.js';
-import type {
-  OmkLlmJudgeInvocationRequest,
-} from '../evaluators/llm-judge-invocation.js';
+import { createExecutorJudgeInvocationPort } from '../evaluators/executor-judge-invocation.js';
 import {
   createAnthropicApiCoreSchemaValidators,
 } from '../adapters/anthropic/protocol.js';
@@ -199,24 +196,6 @@ function judgeIdentity(
   });
 }
 
-function usage(result: Awaited<ReturnType<ExecutorFn>>): UsageRecord | undefined {
-  const value: UsageRecord = {
-    ...(result.tokenUsageReportedByExecutor === false ? {} : {
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      totalTokens: result.inputTokens + result.outputTokens,
-    }),
-    ...(result.costReportedByExecutor === false ? {} : {
-      providerCost: {
-        amount: result.costUSD,
-        currency: 'USD',
-        reportedByProvider: true,
-      },
-    }),
-  };
-  return Object.keys(value).length === 0 ? undefined : value;
-}
-
 function judgeResolver(environment: NodeJS.ProcessEnv): (
   context: Parameters<NonNullable<Parameters<typeof createProductionRuntimeFactoryRegistry>[0]['resolveJudgeInvocation']>>[0],
 ) => Promise<OmkLlmJudgeInvocationBinding> {
@@ -235,50 +214,14 @@ function judgeResolver(environment: NodeJS.ProcessEnv): (
       executor = createExecutor(executorId);
       executors.set(executorId, executor);
     }
-    const provider = executor;
     return Object.freeze({
-      port: Object.freeze({
-        identity: judgeIdentity(
-          executorId,
-          qualification.model,
-          qualification.deploymentRevision,
-          provider,
-          environment,
-        ),
-        providerCost: { reporting: 'optional' as const },
-        async invoke(request: Readonly<OmkLlmJudgeInvocationRequest>) {
-          try {
-            const result = await provider({
-              model: request.model,
-              system: request.system,
-              prompt: request.prompt,
-              effort: request.effort,
-              abortSignal: request.signal,
-            });
-            const measuredUsage = usage(result);
-            return result.ok && result.output !== null
-              ? {
-                  invocationStatus: 'completed' as const,
-                  output: result.output,
-                  ...(measuredUsage === undefined ? {} : { usage: measuredUsage }),
-                }
-              : {
-                  invocationStatus: 'failed' as const,
-                  reasonCode: request.signal.aborted
-                    ? 'provider-invocation-cancelled'
-                    : 'provider-invocation-failed',
-                  ...(measuredUsage === undefined ? {} : { usage: measuredUsage }),
-                };
-          } catch {
-            return {
-              invocationStatus: 'failed' as const,
-              reasonCode: request.signal.aborted
-                ? 'provider-invocation-cancelled'
-                : 'provider-invocation-failed',
-            };
-          }
-        },
-      }),
+      port: createExecutorJudgeInvocationPort(executor, judgeIdentity(
+        executorId,
+        qualification.model,
+        qualification.deploymentRevision,
+        executor,
+        environment,
+      )),
       preflightDeclarations: Object.freeze([Object.freeze({
         preflightKind: 'connectivity' as const,
         checkId: 'provider-connectivity',
