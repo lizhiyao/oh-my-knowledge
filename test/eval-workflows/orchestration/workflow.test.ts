@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Sha256Digest } from '../../../src/eval-core/contracts/index.js';
+import { EVALUATION_EVENT_SCHEMA_VERSION, EvaluationEventSchema, type Sha256Digest } from '../../../src/eval-core/contracts/index.js';
 import type { EvaluationRunResult } from '../../../src/eval-core/engine/index.js';
 import {
   createNodeCoreRunArtifactStore,
@@ -104,6 +104,75 @@ function recordingStore(input: {
 }
 
 describe('production evaluation host workflow', () => {
+  it.each([
+    { name: 'buffer without sink', progressBufferCapacity: 1 },
+    { name: 'zero buffer', progressSink: { render() {} }, progressBufferCapacity: 0 },
+    { name: 'fractional buffer', progressSink: { render() {} }, progressBufferCapacity: 1.5 },
+    { name: 'invalid renderer', progressSink: { render: undefined } },
+    { name: 'invalid close', progressSink: { render() {}, close: 1 } },
+  ])('rejects invalid progress options before starting Runtime: $name', async ({ name: _name, ...options }) => {
+    const fixture = await runConformanceScenario('function', { runId: 'progress-options-fixture' });
+    const onStart = vi.fn();
+    const prepared = await createProductionEvaluationWorkflow(hostInput({
+      fixture, result: Promise.resolve(completedResult(fixture)), store: recordingStore(), onStart,
+    })).prepare();
+    await expect(prepared.execute({
+      runId: 'invalid-progress', createdAt: '2026-09-01T00:00:00.000Z', ...options,
+    } as Parameters<typeof prepared.execute>[0])).rejects.toBeInstanceOf(TypeError);
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
+  it('owns concurrent progress projections and forwards only neutral Runtime options', async () => {
+    const fixture = await runConformanceScenario('function', { runId: 'workflow-progress-fixture' });
+    const result = Promise.resolve(completedResult(fixture));
+    const store = await temporaryStore();
+    const input = hostInput({ fixture, result, store });
+    const subscriptions = new Map<string, number>();
+    const start = vi.fn<NonNullable<Awaited<ReturnType<typeof input.runtime.prepare>>>['start']>(async ({ runId }) => ({
+      result,
+      events: (async function* () {
+        subscriptions.set(runId, (subscriptions.get(runId) ?? 0) + 1);
+        for (const [sequence, eventKind] of ['execution.run.started', 'execution.run.completed'].entries()) {
+          yield EvaluationEventSchema.parse({
+            schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
+            eventId: `${runId}-${sequence}`, sequence, runId, eventKind,
+            time: '2026-09-01T00:00:00.000Z', subject: { subjectKind: 'run', subjectId: runId },
+            data: { secret: 'not a progress channel' },
+          });
+        }
+      })(),
+    }));
+    input.runtime.prepare = async () => ({ plan: fixture.plan, preflight: { records: [] }, start });
+    const prepared = await createProductionEvaluationWorkflow(input).prepare();
+    const tracked = ['progress-a', 'progress-b'].map((runId) => ({
+      runId, signal: new AbortController().signal,
+      render: vi.fn(), close: vi.fn(), captures: 0,
+    }));
+    const runs = await Promise.all(tracked.map((tracker) => prepared.execute({
+      runId: tracker.runId, signal: tracker.signal, eventBufferCapacity: 4,
+      createdAt: '2026-09-01T00:00:00.000Z', progressBufferCapacity: 2,
+      progressSink: {
+        get render() { tracker.captures += 1; return tracker.render; },
+        close: tracker.close,
+      },
+    })));
+    expect(start.mock.calls).toEqual(tracked.map(({ runId, signal }) => [{ runId, signal, eventBufferCapacity: 4 }]));
+    for (const [index, run] of runs.entries()) {
+      const tracker = tracked[index]!;
+      expect(run.result).toBe(result);
+      const events = [];
+      for await (const event of run.events) events.push(event);
+      expect(events.map((event) => event.runId)).toEqual([tracker.runId, tracker.runId]);
+      expect(subscriptions.get(tracker.runId)).toBe(1);
+      await expect.poll(() => tracker.close.mock.calls.length).toBe(1);
+      expect(tracker.captures).toBe(1);
+      expect(tracker.render.mock.calls.map(([update]) => update.runId)).toEqual([tracker.runId, tracker.runId]);
+      expect(tracker.render.mock.calls.every(([update]) => !('data' in update))).toBe(true);
+      expect((await run.persistence).persistenceStatus).toBe('stored');
+      expect((await store.get(tracker.runId))!.report.reportDigest).toBe(fixture.report.reportDigest);
+    }
+  });
+
   it('requires an injected Runtime and passes only neutral measurement input to preparation', async () => {
     const fixture = await runConformanceScenario('function', { runId: 'injected-runtime-fixture' });
     const input = hostInput({ fixture, result: Promise.resolve(completedResult(fixture)), store: recordingStore() });

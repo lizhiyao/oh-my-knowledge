@@ -1,5 +1,5 @@
 import { prepareRuntimeSeries, type EvaluationRuntimeProvider } from '../../../eval-runtime/provider.js';
-import { createEvaluationExecution } from '../../../eval-runtime/execution.js';
+import { createEvaluationExecution, type EvaluationExecutionOptions } from '../../../eval-runtime/execution.js';
 import {
   EvaluationDefinitionSchema,
   IdentifierSchema,
@@ -83,12 +83,6 @@ import {
   type OmkEvaluationPreflightOptions,
   type OmkEvaluationPreflightResult,
 } from './preflight.js';
-import {
-  attachOmkEvaluationProgressProjection,
-  captureOmkEvaluationProgressProjection,
-  type CapturedOmkEvaluationProgressProjection,
-  type OmkEvaluationProgressSink,
-} from '../../projections/runtime-progress.js';
 
 export interface OmkCachePortBinding<Port> {
   readonly sourceLocator: string;
@@ -136,19 +130,11 @@ export interface CreateOmkEvaluationRuntimeInput {
   readonly resources: OmkEvaluationRuntimeResourceOptions;
 }
 
-export interface OmkEvaluationRunOptions {
-  readonly runId: string;
-  readonly signal?: AbortSignal;
-  readonly eventBufferCapacity?: number;
-  readonly progressSink?: OmkEvaluationProgressSink;
-  readonly progressBufferCapacity?: number;
-}
-
 export interface OmkPreparedEvaluation {
   readonly plan: SealedRunPlan;
   /** Host-only physical readiness evidence; it does not enter or modify the Core Plan. */
   readonly preflight: OmkEvaluationPreflightResult;
-  start(options: Readonly<OmkEvaluationRunOptions>): Promise<EvaluationRun>;
+  start(options: Readonly<EvaluationExecutionOptions>): Promise<EvaluationRun>;
 }
 
 export interface OmkEvaluationRuntime {
@@ -949,24 +935,18 @@ export async function createOmkEvaluationRuntime(
       return Object.freeze({
         plan: prepared.plan,
         preflight,
-        async start(options: Readonly<OmkEvaluationRunOptions>): Promise<EvaluationRun> {
+        async start(options: Readonly<EvaluationExecutionOptions>): Promise<EvaluationRun> {
           if (record(options) === undefined) fail({
             code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
             message: 'Evaluation run options 不合法。',
           });
-          let capturedOptions: OmkEvaluationRunOptions;
+          let capturedOptions: EvaluationExecutionOptions;
           try {
             capturedOptions = Object.freeze({
               runId: options.runId,
               ...(options.signal === undefined ? {} : { signal: options.signal }),
               ...(options.eventBufferCapacity === undefined ? {} : {
                 eventBufferCapacity: options.eventBufferCapacity,
-              }),
-              ...(options.progressSink === undefined ? {} : {
-                progressSink: options.progressSink,
-              }),
-              ...(options.progressBufferCapacity === undefined ? {} : {
-                progressBufferCapacity: options.progressBufferCapacity,
               }),
             });
           } catch {
@@ -979,8 +959,6 @@ export async function createOmkEvaluationRuntime(
             runId,
             signal,
             eventBufferCapacity,
-            progressSink,
-            progressBufferCapacity,
           } = capturedOptions;
           if (!IdentifierSchema.safeParse(runId).success) fail({
             code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
@@ -1002,35 +980,11 @@ export async function createOmkEvaluationRuntime(
             fieldPath: 'signal',
             message: 'signal 不符合 AbortSignal contract。',
           });
-          let progressProjection: CapturedOmkEvaluationProgressProjection | undefined;
-          if (progressSink !== undefined) {
-            try {
-              progressProjection = captureOmkEvaluationProgressProjection(
-                progressSink,
-                progressBufferCapacity === undefined ? {} : {
-                  progressBufferCapacity,
-                },
-              );
-            } catch {
-              fail({
-                code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
-                fieldPath: 'progressSink',
-                message: 'Evaluation progress sink 或 buffer capacity 不合法。',
-              });
-            }
-          } else if (progressBufferCapacity !== undefined) fail({
-            code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
-            fieldPath: 'progressBufferCapacity',
-            message: '未提供 progress sink 时不能配置 progress buffer。',
-          });
-          const run = await prepared.start({
+          return prepared.start({
             runId,
             ...(signal === undefined ? {} : { signal }),
             ...(eventBufferCapacity === undefined ? {} : { eventBufferCapacity }),
           });
-          return progressProjection === undefined
-            ? run
-            : attachOmkEvaluationProgressProjection(run, progressProjection, eventBufferCapacity);
         },
       });
     },
