@@ -38,6 +38,7 @@ import {
 } from '../../../../src/eval-workflows/hosts/composition/builtins.js';
 import {
   createOmkEvaluationRuntime,
+  createOmkEvaluationSchemaValidators,
   type OmkEvaluationRuntimeSupportPorts,
 } from '../../../../src/eval-workflows/hosts/composition/runtime.js';
 import {
@@ -2025,13 +2026,6 @@ describe('OMK Evaluation Runtime composition root', () => {
       code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
       fieldPath: 'eventBufferCapacity',
     });
-    await expect(prepared.start({
-      runId: 'invalid-progress-options',
-      progressBufferCapacity: 1,
-    })).rejects.toMatchObject({
-      code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
-      fieldPath: 'progressBufferCapacity',
-    });
     expect(acquireCalls).toBe(0);
   });
 
@@ -2073,7 +2067,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(disposed.sort()).toEqual(['parallel-a', 'parallel-b']);
   });
 
-  it('isolates cancellation, events, progress and teardown across concurrent runs', async () => {
+  it('isolates cancellation, events and teardown across concurrent runs', async () => {
     const compiled = compositionInput({
       executionTimeout: false,
       evaluationTimeout: false,
@@ -2084,8 +2078,6 @@ describe('OMK Evaluation Runtime composition root', () => {
     const lifecycle: string[] = [];
     const disposed: string[] = [];
     const controller = new AbortController();
-    const progress = { isolatedA: [] as string[], isolatedB: [] as string[] };
-    const closed = { isolatedA: false, isolatedB: false };
     const runtime = await createOmkEvaluationRuntime({
       compiled,
       factories: runnableFactoriesFor(compiled, lifecycle, executeGate),
@@ -2106,17 +2098,9 @@ describe('OMK Evaluation Runtime composition root', () => {
     const first = await prepared.start({
       runId: 'isolated-a',
       signal: controller.signal,
-      progressSink: {
-        render(update) { progress.isolatedA.push(update.runId); },
-        close() { closed.isolatedA = true; },
-      },
     });
     const second = await prepared.start({
       runId: 'isolated-b',
-      progressSink: {
-        render(update) { progress.isolatedB.push(update.runId); },
-        close() { closed.isolatedB = true; },
-      },
     });
     const firstEvents: Array<{ runId: string; eventKind: string }> = [];
     const secondEvents: Array<{ runId: string; eventKind: string }> = [];
@@ -2137,7 +2121,6 @@ describe('OMK Evaluation Runtime composition root', () => {
     releaseExecution?.();
     const [firstResult, secondResult] = await Promise.all([first.result, second.result]);
     await Promise.all([firstDrain, secondDrain]);
-    await expect.poll(() => closed.isolatedA && closed.isolatedB).toBe(true);
 
     expect(firstResult.status).toBe('cancelled');
     expect(secondResult.status).toBe('completed');
@@ -2155,10 +2138,6 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(secondEvents).toContainEqual(expect.objectContaining({
       eventKind: 'evaluation.run.completed',
     }));
-    expect(progress.isolatedA.length).toBeGreaterThan(0);
-    expect(progress.isolatedB.length).toBeGreaterThan(0);
-    expect(progress.isolatedA.every((runId) => runId === 'isolated-a')).toBe(true);
-    expect(progress.isolatedB.every((runId) => runId === 'isolated-b')).toBe(true);
     for (const runId of ['isolated-a', 'isolated-b']) {
       for (const runtimeKind of ['executor', 'evaluator']) {
         expect(lifecycle.filter((entry) => (
@@ -2343,7 +2322,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(writerCalls).toBe(0);
   });
 
-  it('keeps a never-settling progress renderer outside Core result and lease cleanup', async () => {
+  it('lets Workflow keep a never-settling progress renderer outside Core result and lease cleanup', async () => {
     const compiled = compositionInput();
     let disposeCalls = 0;
     let renderCalls = 0;
@@ -2363,29 +2342,41 @@ describe('OMK Evaluation Runtime composition root', () => {
         },
       },
     });
-    const run = await (await runtime.prepare()).start({
-      runId: 'detached-progress',
-      progressBufferCapacity: 1,
-      progressSink: {
-        render() {
-          renderCalls += 1;
-          return new Promise<void>(() => {});
+    const root = await mkdtemp(join(tmpdir(), 'omk-workflow-progress-'));
+    try {
+      const prepared = bindProductionPreparedEvaluation({
+        prepared: await runtime.prepare(),
+        artifactStore: createNodeCoreRunArtifactStore(root),
+        schemaValidators: createOmkEvaluationSchemaValidators(compositionSupport().schemaValidators),
+      });
+      const run = await prepared.execute({
+        createdAt: '2026-09-01T00:00:00.000Z',
+        runId: 'detached-progress',
+        progressBufferCapacity: 1,
+        progressSink: {
+          render() {
+            renderCalls += 1;
+            return new Promise<void>(() => {});
+          },
         },
-      },
-    });
-    const observedEvents: string[] = [];
-    const drainEvents = (async () => {
-      for await (const candidate of run.events) observedEvents.push(candidate.eventKind);
-    })();
+      });
+      const observedEvents: string[] = [];
+      const drainEvents = (async () => {
+        for await (const candidate of run.events) observedEvents.push(candidate.eventKind);
+      })();
 
-    await expect(run.result).resolves.toHaveProperty('status');
-    await drainEvents;
-    expect(renderCalls).toBe(1);
-    expect(observedEvents).toContain('execution.run.started');
-    expect(observedEvents.some((eventKind) => (
-      eventKind.startsWith('execution.run.') && eventKind !== 'execution.run.started'
-    ))).toBe(true);
-    expect(disposeCalls).toBe(1);
+      await expect(run.result).resolves.toHaveProperty('status');
+      await drainEvents;
+      await run.persistence;
+      expect(renderCalls).toBe(1);
+      expect(observedEvents).toContain('execution.run.started');
+      expect(observedEvents.some((eventKind) => (
+        eventKind.startsWith('execution.run.') && eventKind !== 'execution.run.started'
+      ))).toBe(true);
+      expect(disposeCalls).toBe(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('reports lease disposal failure without retrying destructive cleanup', async () => {
