@@ -6,7 +6,6 @@ import { detailedSchemaIssue } from './schemas/error.js';
 import { EvalSampleSetDocumentSchema, SampleSchema } from './schemas/sample-set.js';
 import type { DependencyRequirements } from '../../executors/preflight/contracts.js';
 import { sampleContractValidationError } from './sample-contract.js';
-import { setOwnRecordValue } from '../../shared/record-count.js';
 
 interface YamlErrorLike {
   mark?: { line: number };
@@ -38,8 +37,6 @@ export interface LoadSamplesResult {
    *  绝对路径列表(已按文件名排序)。computeTestSetHash 用它枚举,不再对目录 readFileSync 抛 EISDIR。
    *  单文件模式下是 [samplesPath]。 */
   sourceFiles: string[];
-  /** sample_id → source file。Authoring 命令需要把目录模式下的修复写回原文件。 */
-  sampleSourceById: Record<string, string>;
 }
 
 /**
@@ -66,7 +63,6 @@ export function loadSamples(
     ...inner,
     baseDir: dirname(abs),
     sourceFiles: [abs],
-    sampleSourceById: Object.fromEntries(inner.samples.map((s) => [s.sample_id, abs])),
   };
 }
 
@@ -97,7 +93,6 @@ function loadSamplesFromDir(
   const seenIds = new Map<string, string>();  // sample_id → first file that defined it
   let mergedRequires: DependencyRequirements | undefined;
   const sourceFiles: string[] = [];
-  const sampleSourceById: Record<string, string> = {};
 
   for (const f of files) {
     const path = join(dir, f);
@@ -112,12 +107,11 @@ function loadSamplesFromDir(
         );
       }
       seenIds.set(s.sample_id, f);
-      setOwnRecordValue(sampleSourceById, s.sample_id, path);
     }
     allSamples.push(...single.samples);
     mergedRequires = mergeRequires(mergedRequires, single.requires);
   }
-  return { samples: allSamples, requires: mergedRequires, baseDir: dir, sourceFiles, sampleSourceById };
+  return { samples: allSamples, requires: mergedRequires, baseDir: dir, sourceFiles };
 }
 
 /** Union of string arrays for tools/files/env/preflight; undef when both sides empty. */
