@@ -41,6 +41,13 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
+  ...['cli/lib/run-core-evaluation.ts', 'dsh-plugin/core-command.ts'].flatMap((from) => [
+    'eval-workflows/orchestration/',
+    'eval-workflows/input-compilation/',
+    'eval-workflows/artifact-store/',
+    'eval-workflows/hosts/composition/',
+    'eval-workflows/hosts/input-resolution/',
+  ].map((to) => ({ from, to, reason: '评测入口调用 Workflow 产品接口，不自行编排、装配或持久化。' }))),
   ...['cli/', 'dsh-plugin/', 'mcp/', 'studio/'].map((to) => ({
     from: 'eval-workflows/hosts/', to,
     reason: '共用宿主只接收显式输入，不得经交付入口导入入口策略。',
