@@ -90,6 +90,11 @@ import {
   type RetrievalMetricIds,
 } from './evaluators/retrieval.js';
 import {
+  ABSTENTION_EVALUATOR_IMPLEMENTATION_ID,
+  createAbstentionEvaluatorBinding,
+  type AbstentionEvaluator,
+} from './evaluators/abstention.js';
+import {
   TOOL_TRAJECTORY_EVALUATOR_IMPLEMENTATION_ID,
   createToolTrajectoryEvaluator,
   type ToolTrajectoryMatchMode,
@@ -762,6 +767,7 @@ export interface RubricJudgeEvaluator {
 export type Evaluator =
   | ExactMatchEvaluator
   | RetrievalEvaluator
+  | AbstentionEvaluator
   | ToolTrajectoryEvaluator
   | RubricJudgeEvaluator
   | CustomEvaluator;
@@ -2059,6 +2065,7 @@ function captureEvaluators(
   const measurementAggregations = new Map<string, MeasurementAggregationPlan>();
   const exactPorts = new Map<string, EvaluationEvaluator>();
   const retrievalPorts = new Map<string, EvaluationEvaluator>();
+  const abstentionPorts = new Map<string, EvaluationEvaluator>();
   const toolTrajectoryPorts = new Map<string, EvaluationEvaluator>();
   const rubricEntries: Array<Readonly<{
     kit: Readonly<RubricJudgeKit>;
@@ -2092,6 +2099,18 @@ function captureEvaluators(
         definitions.push(captured.definition);
         metrics.push(...captured.metrics);
         retrievalPorts.set(captured.definition.evaluatorId, captured.port);
+        continue;
+      }
+      if (value.evaluatorKind === 'abstention') {
+        let captured;
+        try {
+          captured = createAbstentionEvaluatorBinding(value);
+        } catch {
+          return configurationFailure('EVAL_RUNTIME_EVALUATOR_INVALID', '弃答 Evaluator 配置无效。');
+        }
+        definitions.push(captured.definition);
+        metrics.push(...captured.metrics);
+        abstentionPorts.set(captured.definition.evaluatorId, captured.port);
         continue;
       }
       if (value.evaluatorKind === 'tool-trajectory') {
@@ -2340,6 +2359,18 @@ function captureEvaluators(
             'EVAL_RUNTIME_EVALUATOR_INVALID',
             'Evaluation Runtime 收到了未知 retrieval evaluator binding。',
           );
+        }
+        return port;
+      },
+    });
+  }
+  if (abstentionPorts.size > 0) {
+    registrations.push({
+      implementationId: ABSTENTION_EVALUATOR_IMPLEMENTATION_ID,
+      createPort(requirement) {
+        const port = abstentionPorts.get(requirement.referenceId);
+        if (port === undefined) {
+          return configurationFailure('EVAL_RUNTIME_EVALUATOR_INVALID', 'Evaluation Runtime 收到了未知弃答 evaluator binding。');
         }
         return port;
       },

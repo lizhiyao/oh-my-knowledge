@@ -9,8 +9,9 @@
 - [omk 为谁做、解决什么](./explanation/who-omk-is-for.md) —— 用户、问题和第一条发布判断工作流
 - [快速上手](./quickstart-skill-eval.md) —— 5 分钟跑完第一次评测
 - [安装 omk Agent Skill](./quickstart-skill-eval.md) —— 用 `omk install omk-agent-skill` 开启 agent 驱动工作流
+- [在 Node.js 服务中使用 OMK](./guides/eval-runtime.md) —— 选择评分方法、接入自己的服务并解读结果
 - [CLI 参考](./reference/cli.md)
-- [嵌入式 Evaluation Core API](./reference/embedded-api.md)
+- [底层 Core API（高级接入）](./reference/embedded-api.md)
 - [评测用例格式](./reference/eval-sample-format.md)
 - [执行器](./reference/executors.md)
 - [指定被测对象(artifact / variant)](./reference/artifact-layout.md)

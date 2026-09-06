@@ -1,4 +1,5 @@
 /** Canonical user-facing Evaluation Runtime API. */
+export type { AbstentionEvaluator, AbstentionMetricIds } from './evaluators/abstention.js';
 export {
   EvaluationConfigurationError,
   EvaluationEventConsumptionError,

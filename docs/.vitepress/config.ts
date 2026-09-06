@@ -27,7 +27,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Quickstart', link: '/quickstart-skill-eval' },
-          { text: 'How-to', link: '/guides/agent-eval' },
+          { text: 'Guides', link: '/README' },
           { text: 'Reference', link: '/reference/cli' },
           { text: 'Explanation', link: '/explanation/knowledge' },
           { text: 'Specs', link: '/specs/terminology-spec' },
@@ -39,9 +39,9 @@ export default defineConfig({
               { text: 'Quickstart', link: '/quickstart-skill-eval' },
               { text: 'Migrate to the 1.0 preview', link: '/guides/v1-preview-migration' },
               { text: 'CLI reference', link: '/reference/cli' },
-              { text: 'Embedded API', link: '/reference/embedded-api' },
-              { text: 'eval-runtime API layers', link: '/reference/eval-runtime-api' },
-              { text: 'Embed in a service', link: '/guides/eval-runtime' },
+              { text: 'Use in a Node.js service', link: '/guides/eval-runtime' },
+              { text: 'Runtime API reference', link: '/reference/eval-runtime-api' },
+              { text: 'Core API (advanced)', link: '/reference/embedded-api' },
               { text: 'Eval sample format', link: '/reference/eval-sample-format' },
               { text: 'Executors', link: '/reference/executors' },
               { text: 'Artifact & variant layout', link: '/reference/artifact-layout' },
@@ -98,7 +98,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '快速上手', link: '/zh/quickstart-skill-eval' },
-          { text: '操作指南', link: '/zh/guides/agent-eval' },
+          { text: '使用指南', link: '/zh/README' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/knowledge' },
           { text: '规范', link: '/zh/specs/terminology-spec' },
@@ -110,9 +110,9 @@ export default defineConfig({
               { text: '快速上手', link: '/zh/quickstart-skill-eval' },
               { text: '迁移到 1.0 预览版', link: '/zh/guides/v1-preview-migration' },
               { text: 'CLI 参考', link: '/zh/reference/cli' },
-              { text: '嵌入式 API', link: '/zh/reference/embedded-api' },
-              { text: 'eval-runtime API 分层', link: '/zh/reference/eval-runtime-api' },
-              { text: '嵌入企业服务', link: '/zh/guides/eval-runtime' },
+              { text: '在 Node.js 服务中使用', link: '/zh/guides/eval-runtime' },
+              { text: 'Runtime API 参考', link: '/zh/reference/eval-runtime-api' },
+              { text: '底层 Core API（高级）', link: '/zh/reference/embedded-api' },
               { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },
               { text: '执行器', link: '/zh/reference/executors' },
               { text: '指定被测对象(artifact / variant)', link: '/zh/reference/artifact-layout' },

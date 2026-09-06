@@ -1,4 +1,15 @@
 import { z } from 'zod';
+import type { AbstentionEvaluator, AbstentionMetricIds, Evaluator as RuntimeEvaluator } from 'oh-my-knowledge';
+const abstentionMetricIds: AbstentionMetricIds = {
+  abstentionCorrect: 'correct-abstention', falseAbstention: 'false-abstention',
+};
+const abstention: AbstentionEvaluator = {
+  evaluatorKind: 'abstention', evaluatorId: 'abstention',
+  ranking: { source: 'output', pointer: '/solutionIds' },
+  shouldAbstainPointer: '/shouldAbstain', metricIds: abstentionMetricIds,
+};
+const builtinAbstention: RuntimeEvaluator = abstention;
+void builtinAbstention;
 import {
   COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   createEvaluationEngine,

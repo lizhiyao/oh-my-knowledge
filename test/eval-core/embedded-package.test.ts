@@ -168,6 +168,8 @@ describe('published embedded Evaluation API', () => {
     );
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
+    copyFileSync(join(REPO_ROOT, 'examples/eval-runtime/retrieval-abstention.mjs'), join(projectRoot, 'retrieval-abstention.mjs'));
+    copyFileSync(join(REPO_ROOT, 'test/eval-runtime/fixtures/retrieval-abstention-host.mjs'), join(projectRoot, 'retrieval-abstention-host.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
     writeFileSync(join(projectRoot, 'tsconfig.json'), JSON.stringify({
       compilerOptions: {
@@ -389,6 +391,26 @@ const assert = require('node:assert/strict');
       ...readdirSync(isolatedConfig),
       ...readdirSync(isolatedCache),
     ]).toEqual([]);
+  });
+
+  it('tarball 公开入口支持内置弃答评分与宿主排除审计', () => {
+    // A separate process proves published package imports work outside the source tree.
+    const result = spawnSync(process.execPath, [join(projectRoot, 'retrieval-abstention-host.mjs')], {
+      cwd: projectRoot, encoding: 'utf8', timeout: 30_000,
+    });
+    expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' });
+    const output = JSON.parse(result.stdout);
+    expect(output.audit).toMatchObject({
+      positiveCount: 1, abstentionCount: 1, pendingCount: 1, excluded: [{ sampleId: 'pending', reason: 'pending-human-annotation' }],
+    });
+    expect(output.metrics['correct-abstention']).toMatchObject({
+      value: 1, coverage: { planned: 1, included: 1, missing: 0, sourceUnavailable: 0 },
+    });
+    expect(output.metrics['false-abstention']).toMatchObject({ value: 0, coverage: { planned: 1, included: 1, missing: 0, sourceUnavailable: 0 } });
+    expect(output.metrics['forbidden-hit']).toMatchObject({ value: 0, coverage: { included: 2 } });
+    expect(output.metrics['precision-at-3']).toMatchObject({
+      value: 1 / 3, coverage: { included: 1 },
+    });
   });
 
   it('tarball clean-room 覆盖事件、失败、取消、telemetry 与生命周期契约', () => {

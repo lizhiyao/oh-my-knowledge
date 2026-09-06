@@ -45,6 +45,8 @@
 
 ## 快速开始
 
+已有 Node.js 服务、检索系统或 Agent，希望接入评分与版本对比？从[在服务中使用 OMK](docs/zh/guides/eval-runtime.md)开始：先运行无需模型凭证的示例，再选择评分方法、接入自己的服务并解读结果。下面是命令行上手流程。
+
 ```bash
 npm i -g oh-my-knowledge
 omk init demo && cd demo
@@ -238,7 +240,7 @@ omk-mcp
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[迁移到 1.0 预览版](docs/zh/guides/v1-preview-migration.md)** —— 从 `0.54` 升级时的安装渠道、存储重建、用例协议、CLI 自动化与嵌入式 API 变化
 - **[Evaluation Core 生产切换](docs/zh/guides/eval-core-cutover.md)** —— `BREAKING-SCHEMA` 存储、resume、Studio、Gold、受管证据与 evolve 迁移
-- **[在服务中嵌入 OMK](docs/zh/guides/eval-runtime.md)** —— 面向 Node.js 与 FaaS 宿主的 canonical `evaluate()` 与重复运行 `evaluateSeries()`
+- **[在服务中嵌入 OMK](docs/zh/guides/eval-runtime.md)** —— 选择评分方法、接入 Node.js 服务、解读分数与失败原因
 - **[存储布局 v2](docs/zh/specs/storage-layout-spec.md)** —— 项目／全局领域、迁移兼容与 Git 策略
 - **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）

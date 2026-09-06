@@ -207,7 +207,8 @@ describe('eval-runtime façade architecture guard', () => {
     for (const term of canonicalTerms) expect(terminology.toLowerCase()).toContain(`\`${term}\``);
     expect(glossary).toContain('只有被选为 control 时才承担对照角色');
     expect(glossary).toContain('| judge | 评委 |');
-    expect(guide).toContain('Executor 负责运行 artifact，Evaluator 负责评价结果。');
+    expect(guide).toContain('| `executor`（执行器） |');
+    expect(guide).toContain('| `evaluator`（评分器） |');
     expect(guide).not.toContain('判官');
     expect(quickstart).toContain('**verdict**（跨版本判定）');
     expect(cli).toContain('对照组（control）的 variant 表达式');
