@@ -169,7 +169,6 @@ describe('published embedded Evaluation API', () => {
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
     copyFileSync(join(REPO_ROOT, 'examples/eval-runtime/retrieval-abstention.mjs'), join(projectRoot, 'retrieval-abstention.mjs'));
-    copyFileSync(join(REPO_ROOT, 'examples/eval-runtime/retrieval-abstention-support.mjs'), join(projectRoot, 'retrieval-abstention-support.mjs'));
     copyFileSync(join(REPO_ROOT, 'test/eval-runtime/fixtures/retrieval-abstention-host.mjs'), join(projectRoot, 'retrieval-abstention-host.mjs'));
     copyFileSync(TYPESCRIPT_HOST_FIXTURE, join(projectRoot, 'host.ts'));
     writeFileSync(join(projectRoot, 'tsconfig.json'), JSON.stringify({

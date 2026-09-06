@@ -168,7 +168,7 @@ const abstention: AbstentionEvaluator = {
 
 版本化的 `omk.eval-runtime.abstention/v1` instrument 将指针、指标 ID 和成功空列表协议封存到 Definition 与 Runtime identity。它不改变 retrieval v1 的公式、评分、prompt 或 Core Schema。不能与历史上把空 Gold 算作召回满分的指标直接比较；应为新 instrument 建立明确基线。自然语言拒答和安全拦截不属于这个列表协议。
 
-完整离线示例位于 `examples/eval-runtime/retrieval-abstention.mjs`，宿主辅助函数位于 `retrieval-abstention-support.mjs`。构建仓库后运行 `node examples/eval-runtime/retrieval-abstention.mjs`。独立服务可以复制这两个示例文件并安装 OMK；合成 Executor 无需凭证或业务网络。
+完整离线示例及宿主辅助函数均位于单个文件 `examples/eval-runtime/retrieval-abstention.mjs`。构建仓库后运行 `node examples/eval-runtime/retrieval-abstention.mjs`。独立服务可以复制这个示例文件并安装 OMK；合成 Executor 无需凭证或业务网络。
 
 示例在执行前准备并校验标签，默认拒绝待标注样本，允许显式排除，并记录来源版本、数量和原因。业务 `quality.reviewStatus` 只由该辅助函数解释，实际纳入的 Dataset 由 Core 封存。示例组合内置 retrieval、内置 abstention，以及独立的禁用 ID 命中 Custom Evaluator。全部样本提供相关 ID 绑定；负例的空相关集保留 retrieval v1 既有的 `invalid` 观测。召回分析显式选择 `answerable` cohort，在聚合前排除负例；弃答按自身适用范围评分。独立禁用命中示例检查最终结果的前三项，只纳入输出合法且禁用列表非空的样本，不将禁用列表当成所有错误结果的全集。正确召回与禁用命中可以同时发生。
 

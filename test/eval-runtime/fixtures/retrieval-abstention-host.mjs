@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { forbiddenIdEvaluator, prepareRecommendationDataset } from './retrieval-abstention-support.mjs';
+// Import runs the single-file example through the installed public entry.
+import { forbiddenIdEvaluator, prepareRecommendationDataset } from './retrieval-abstention.mjs';
 
 const positive = {
   sampleId: 'positive', input: { query: 'known' },
@@ -47,6 +48,3 @@ assert.deepEqual(score([]), { resultKind: 'score', value: false });
 assert.equal(score([], []).resultKind, 'missing');
 assert.equal(score([], ['bad'], 'failed').resultKind, 'missing');
 assert.throws(() => forbiddenIdEvaluator(0));
-
-// Exercise the actual installed public entry with all three evaluators together.
-await import('./retrieval-abstention.mjs');

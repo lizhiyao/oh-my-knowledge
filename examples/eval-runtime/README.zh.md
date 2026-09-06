@@ -25,4 +25,4 @@ node examples/eval-runtime/run.mjs
 
 ## 混合召回与弃答
 
-构建后运行 `node examples/eval-runtime/retrieval-abstention.mjs`，组合内置召回、内置弃答与独立禁用 ID 评分。数据集选择和标注审核由宿主负责。独立使用时复制 `retrieval-abstention.mjs`、`retrieval-abstention-support.mjs` 两个文件并安装 OMK。
+构建后运行 `node examples/eval-runtime/retrieval-abstention.mjs`，组合内置召回、内置弃答与独立禁用 ID 评分。数据集选择和标注审核由宿主负责。独立使用时复制 `retrieval-abstention.mjs` 单个文件并安装 OMK。

@@ -25,4 +25,4 @@ The example proves that a public `eval-runtime` consumer can complete an in-memo
 
 ## Mixed retrieval and abstention
 
-Run `node examples/eval-runtime/retrieval-abstention.mjs` after building. It combines built-in retrieval and abstention with an independent forbidden-ID scorer. Dataset selection and annotation review are host-owned. To use it outside this repository, copy both `retrieval-abstention.mjs` and `retrieval-abstention-support.mjs` and install OMK.
+Run `node examples/eval-runtime/retrieval-abstention.mjs` after building. It combines built-in retrieval and abstention with an independent forbidden-ID scorer. Dataset selection and annotation review are host-owned. To use it outside this repository, copy `retrieval-abstention.mjs` and install OMK.
