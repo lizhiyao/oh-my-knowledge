@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import {
   loadTraceSessions,
-  segmentBySkill,
+  segmentTraceBySkill,
 } from '../../src/observability/trace/index.js';
 import {
   buildObservationExperienceReport,
@@ -370,7 +370,7 @@ describe('source-neutral orchestration contract', () => {
         const sessions = loadTraceSessions(root);
         const built = buildObservationExperienceReport({
           sessions,
-          segments: sessions.flatMap((session) => segmentBySkill(session)),
+          segments: sessions.flatMap((session) => segmentTraceBySkill(session)),
           items: [],
           generatedAt: '2026-07-28T00:00:11.000Z',
         });
@@ -417,7 +417,7 @@ describe('source-neutral orchestration contract', () => {
     const sessions = loadTraceSessions(root);
     const report = buildObservationExperienceReport({
       sessions,
-      segments: sessions.flatMap((session) => segmentBySkill(session)),
+      segments: sessions.flatMap((session) => segmentTraceBySkill(session)),
       items: [],
       generatedAt: '2026-07-28T00:00:09.000Z',
     });

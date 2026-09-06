@@ -20,11 +20,9 @@ import {
   segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,
   tracesToAnalysisEntries,
-  type CcSession,
   type TraceSession,
   type SkillSegment,
 } from '../trace/index.js';
-import { legacyCcSessionToTraceSession } from '../trace/source.js';
 import { createTraceSessionIndex } from '../trace/session-index.js';
 import { setOwnRecordValue, sumRecordCounts } from '../../shared/record-count.js';
 import { checkedSumTokenCounts } from '../../executors/core/token-usage.js';
@@ -238,9 +236,7 @@ function aggregateUsage(skillSegs: SkillSegment[]): SkillHealth['usage'] {
  * 推断 KB root: 没传 --kb 时,取第一个 assistant record 的 cwd。
  * 如果跨多个 cwd,取第一个并 warn。
  */
-type HealthSession = TraceSession | CcSession;
-
-function inferKbRoot(sessions: HealthSession[]): string | null {
+function inferKbRoot(sessions: TraceSession[]): string | null {
   const cwds = new Set<string>();
   for (const s of sessions) {
     if (s.cwd) cwds.add(s.cwd);
@@ -266,7 +262,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
  */
 export function computeSkillHealthFromSegments(
   segments: SkillSegment[],
-  sessions: HealthSession[],
+  sessions: TraceSession[],
   tracePath: string,
   opts: AnalyzeOptions = {},
   ingestion?: TraceIngestionSummary,
@@ -294,27 +290,24 @@ export function computeSkillHealthFromSegments(
 }
 
 function sessionsForSegments(
-  sessions: HealthSession[],
+  sessions: TraceSession[],
   segments: SkillSegment[],
-): HealthSession[] {
+): TraceSession[] {
   if (segments.length === 0) return [];
-  const traceSessions = sessions.map((session) =>
-    'events' in session ? session : legacyCcSessionToTraceSession(session)
-  );
-  const index = createTraceSessionIndex(traceSessions);
+  const index = createTraceSessionIndex(sessions);
   const selectedTraceIds = new Set(
     segments.flatMap((segment) => {
       const session = index.resolve(segment);
       return session ? [session.traceId] : [];
     }),
   );
-  return sessions.filter((_, position) => selectedTraceIds.has(traceSessions[position].traceId));
+  return sessions.filter((session) => selectedTraceIds.has(session.traceId));
 }
 
 function buildReport(
   segments: SkillSegment[],
   entries: AnalysisEntry[],
-  sessions: HealthSession[],
+  sessions: TraceSession[],
   tracePath: string,
   opts: AnalyzeOptions,
   ingestion?: TraceIngestionSummary,
@@ -435,13 +428,10 @@ function buildReport(
 }
 
 function scopedSessionMessageCount(
-  sessions: HealthSession[],
+  sessions: TraceSession[],
   segments: SkillSegment[],
 ): number {
-  const traceSessions = sessions.map((session) =>
-    'events' in session ? session : legacyCcSessionToTraceSession(session)
-  );
-  const index = createTraceSessionIndex(traceSessions);
+  const index = createTraceSessionIndex(sessions);
   const rangesByTraceId = new Map<string, Array<{ start: number; end: number }>>();
   const unboundedTraceIds = new Set<string>();
   for (const segment of segments) {
@@ -463,12 +453,8 @@ function scopedSessionMessageCount(
   }
 
   let total = 0;
-  for (const [position, session] of sessions.entries()) {
-    if (!('events' in session)) {
-      total = sumRecordCounts(total, sessionMessageCount(session));
-      continue;
-    }
-    const traceId = traceSessions[position].traceId;
+  for (const session of sessions) {
+    const traceId = session.traceId;
     const ranges = unboundedTraceIds.has(traceId)
       ? undefined
       : rangesByTraceId.get(traceId);
@@ -485,26 +471,6 @@ function scopedSessionMessageCount(
   return total;
 }
 
-function sessionMessageCount(session: HealthSession): number {
-  if ('events' in session) {
-    return session.events.filter((event) => event.eventKind === 'message').length;
-  }
-  return session.records.filter((record) => {
-    if (!record || typeof record !== 'object') return false;
-    const typed = record as {
-      type?: unknown;
-      message?: { content?: unknown };
-    };
-    if (typed.type !== 'user' && typed.type !== 'assistant') return false;
-    const content = typed.message?.content;
-    if (typeof content === 'string') return content.trim().length > 0;
-    if (!Array.isArray(content)) return false;
-    return content.some((part) =>
-      part
-      && typeof part === 'object'
-      && (part as { type?: unknown }).type === 'text'
-      && typeof (part as { text?: unknown }).text === 'string'
-      && Boolean((part as { text: string }).text.trim())
-    );
-  }).length;
+function sessionMessageCount(session: TraceSession): number {
+  return session.events.filter((event) => event.eventKind === 'message').length;
 }
