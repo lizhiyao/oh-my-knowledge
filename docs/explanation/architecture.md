@@ -134,15 +134,14 @@ missing capabilities belong in the responsible lower layer rather than a product
 ### Source ownership and composition consumers
 
 Source directories express ownership; `package.json#exports` selects public entrypoints. A directory
-need not become a public API. This inventory distinguishes retained boundaries from consolidation
-work that still needs verification rather than forcing all domains into one pipeline.
+need not become a public API. This inventory records domain boundaries without forcing all domains into one pipeline.
 
 | Owner | Public entrypoints and actual consumers | Ownership and verification boundary |
 |---|---|---|
 | Core / Runtime | `eval-core`, package root and `eval-runtime`; service callers and product Workflow | Core execution and measurement contracts, Runtime adoption and generic scoring; verify published packages, contracts, scheduling and cancellation |
 | Workflow | `eval-samples`, `projections`; CLI, DSH, Studio and artifact evolution | Product declarations, versioned scoring/analysis, orchestration and evaluation stores; verify compilation, projections and release decisions |
 | Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
-| Knowledge artifacts | Internal consumers in CLI, Workflow, observation and governance | Artifact lifecycle; reassess source resolution shared across lifecycle operations that still resides in Workflow, preserving source identities and callers |
+| Knowledge artifacts | Internal consumers in CLI, Workflow, observation and governance | Artifact lifecycle and shared source resolution; verify source identity, isolated copies, installation, doctor and governance |
 | Observability / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
 | Evidence | Product domains and delivery entrypoints | Cross-source storage layout and association; does not replace evaluation artifact validation or decide scores/releases |
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
@@ -168,12 +167,24 @@ reach Studio through diagnosis and domain projections. Extract shared mechanics 
 contracts. The user facade's event consumption and product run-lease wrapper do not constitute
 duplicate scheduling merely because both invoke Core.
 
-Consolidation first clarifies entry ownership and internal dependencies, then compares provider
-invocation paths, splits the large Runtime facade, and reassesses source resolution. Tests follow the
-actual owner. Retaining shared hosts does not freeze their directory name/layout or require moving
-all I/O there. Historical Schema/instrument versions are distinct from npm 0.x compatibility; decide
-retention or migration from public references and evidence-reading needs. The knowledge-content
-domain remains a design draft, not a reason to add placeholder implementations during consolidation.
+Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain remains a design proposal, without placeholder implementation.
+
+### Provider mechanics and measurement adaptation
+
+Ordinary `ExecutorFn` calls serve generation, judges and auxiliary analysis. Measurement adapters make stricter capability, provenance and failure-evidence commitments. The current implementation separates reusable mechanics from policy; the ordinary interface must not constrain Runtime capabilities.
+
+| Path | Shared mechanics | Contract differences retained |
+|---|---|---|
+| Codex CLI | Argument construction in `executors/openai/codex/cli-arguments.ts`; subprocess handling, event normalization and Trace parsing | Ordinary calls select read-only sandboxing; measured calls explicitly select sandbox, effort, strict configuration and environment inheritance, and bind executable identity |
+| Claude CLI | Subprocess handling, protocol normalization, Trace and mock infrastructure | Ordinary calls pass prompt arguments and optional system text; measured calls use their own input projection, restricted setting sources and resource files, so a complete argument template is not interchangeable |
+| Codex SDK | Provider protocol and Trace | Ordinary calls own a per-call isolated home; measured calls bind SDK identity and Trial resources, whose lifetime cannot be delegated to an ordinary-call wrapper |
+| Claude SDK | Provider protocol, Trace and mock infrastructure | Measured calls fix setting sources and verify SDK runtime capabilities; auxiliary calls retain their own configuration and result protocol |
+| OpenAI / Anthropic HTTP | Token-usage primitives; both measured HTTP adapters share an identified transport and protocol infrastructure | Ordinary calls read environment configuration and use call timeouts; measured calls inject transport/credentials, use Core cancellation and output bounds, and retain fail-closed parsing |
+| Custom command | Subprocess infrastructure | Ordinary command output differs from the versioned measurement request/response exchange; concatenating wrappers does not make these one protocol |
+
+Codex argument extraction preserves argument order, prompt bytes and each caller's empty-value handling. Environment selection, timeout, error envelopes and cleanup remain outside the argument utility. Ordinary calls own call-level timeouts; measurement follows Core attempt cancellation without adding a second measurement timeout. Workspaces remain separate per Trial, retries retain the same Trial state, and failure usage and Trace retain their declared semantics.
+
+Any further extraction must verify arguments, environment, output, Trace, usage, cancellation, errors and cleanup together. Reuse existing shared mechanics and retain adaptation where contracts differ; fewer functions are not grounds for merging measurement identities or changing protocols. Relevant regressions live in `test/executors`, `test/eval-hosts` and `test/eval-runtime`; product scoring and statistics tests live in `test/eval-workflows/measurement`.
 
 Evidence persistence and cross-source association have one non-decision boundary:
 
