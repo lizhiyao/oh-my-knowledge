@@ -514,7 +514,7 @@ describe('架构边界守门', () => {
         && (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')))
       .map((entry) => entry.name)
       .sort();
-    expect(rootSourceFiles).toEqual(['index.ts']);
+    expect(rootSourceFiles).toEqual([]);
 
     const providers = new Set(['anthropic', 'claude', 'codex', 'custom', 'openai']);
     const violations: string[] = [];

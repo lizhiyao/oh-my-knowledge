@@ -31,17 +31,21 @@ import {
 import {
   createRubricJudgeEvaluatorIdentity,
   createRubricJudgeEvaluatorImplementation,
-  captureLlmJudgeInvocationPort,
   rubricJudgeInstrument,
   rubricJudgeInstrumentId,
-  RUBRIC_JUDGE_BINDINGS,
-  RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
-  RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
+} from '../../../../src/eval-runtime/judges/rubric-judge.js';
+import {
+  captureLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationRequest,
   type OmkLlmJudgeInvocationResult,
+} from '../../../../src/eval-runtime/judges/invocation.js';
+import {
+  RUBRIC_JUDGE_BINDINGS,
+  RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+  RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
   type RubricJudgeTracePolicy,
-} from '../../../../src/eval-workflows/hosts/index.js';
+} from '../../../../src/eval-runtime/judges/rubric-contracts.js';
 import {
   createSameProcessEvaluatorAdapter,
 } from '../../../../src/eval-runtime/adapters/same-process.js';

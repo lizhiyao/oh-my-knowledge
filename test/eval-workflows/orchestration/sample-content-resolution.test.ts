@@ -8,7 +8,7 @@ import {
   isPlaceholderSampleUrl,
   resolveSampleContents,
   type SampleContentResolverSession,
-} from '../../../src/eval-workflows/orchestration/index.js';
+} from '../../../src/eval-workflows/orchestration/sample-content-resolution.js';
 import {
   createNodeSampleContentResolver,
   loadNodeSampleContentMcpServers,

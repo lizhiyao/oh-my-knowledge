@@ -26,7 +26,9 @@ import {
   createNodeCoreRunArtifactStore,
   type StoredCoreRunArtifacts,
 } from '../../src/eval-workflows/artifact-store/index.js';
-import { persistCoreArtifactSidecars } from '../../src/eval-workflows/orchestration/index.js';
+import {
+  persistCoreArtifactSidecars,
+} from '../../src/eval-workflows/orchestration/artifact-graph-persistence.js';
 import {
   prepareConformancePlan,
   runConformanceScenario,

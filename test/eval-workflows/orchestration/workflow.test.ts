@@ -13,7 +13,7 @@ import {
 import {
   createProductionEvaluationWorkflow,
   type ProductionEvaluationWorkflowInput,
-} from '../../../src/eval-workflows/orchestration/index.js';
+} from '../../../src/eval-workflows/orchestration/workflow.js';
 import type {
   OmkEvaluationRuntime,
   OmkPreparedEvaluation,
