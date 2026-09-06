@@ -183,34 +183,6 @@ export function createObservationReviewRenderers({
     </div>`;
   };
   const reviewStateKey = (targetType: string, targetId: string): string => `${targetType}:${targetId}`;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const renderReviewStateControls = (targetType: 'experience_session' | 'inbox_item' | 'skill' | 'goal_slice_correction', targetId: string): string => {
-    const key = reviewStateKey(targetType, targetId);
-    const entry = reviewState.entries[key];
-    const safeId = e(targetId);
-    const safeType = e(targetType);
-    const buttons = [
-      { verdict: 'reviewed', label: '已复盘', title: '标记为已经人工看过；再次点击可取消这个本地标记。' },
-      { verdict: 'real_issue', label: '确认问题', title: '标记为确认存在问题；可点击其他按钮直接改标记，再次点击可取消。' },
-      { verdict: 'not_issue', label: '不是问题', title: '标记为不是问题或无需处理；可点击其他按钮直接改标记，再次点击可取消。' },
-      { verdict: 'needs_more_context', label: '证据不足', title: '标记为证据不足，需要更多上下文；可点击其他按钮直接改标记，再次点击可取消。' },
-    ];
-    return `<div class="review-state-control" data-review-state-key="${e(key)}" data-review-state-current="${e(entry?.verdict ?? '')}">
-      <div class="review-state-actions">
-        ${buttons.map((button) => {
-          const active = entry?.verdict === button.verdict;
-          return `<button type="button" class="review-state-button ${active ? `is-active ${reviewVerdictClassName(button.verdict)}` : ''}" data-review-verdict="${button.verdict}" onclick="setObservationReviewState('${safeType}', '${safeId}', '${button.verdict}', this)" title="${e(button.title)}">${e(button.label)}</button>`;
-        }).join('')}
-      </div>
-    </div>`;
-  };
-  const reviewVerdictClassName = (verdict?: string): string => {
-    if (verdict === 'real_issue') return 'review-real-issue';
-    if (verdict === 'not_issue') return 'review-not-issue';
-    if (verdict === 'needs_more_context') return 'review-needs-context';
-    if (verdict === 'reviewed') return 'review-reviewed';
-    return '';
-  };
   const renderExperienceBasis = (codes: ExperienceReviewBasisCode[]): string => {
     if (codes.length === 0) return '<span style="color:var(--text-muted)">没有触发复盘优先级规则；进入常规抽样池</span>';
     return codes.map((code) => `<span style="display:inline-block;margin:0 4px 4px 0;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:var(--text-secondary);font-size:11px">${e(basisLabel(code))}</span>`).join('');
