@@ -58,6 +58,7 @@ export async function executeProductEvaluation(input: ProductEvaluationExecution
       })),
       bundleId: id('series-analysis'), reportId: id('series-report'),
       seriesSignal: input.signal,
+      preflight: { signal: input.signal },
     });
     await series.result;
     const evolution = await series.evolution;
