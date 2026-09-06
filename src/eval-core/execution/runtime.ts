@@ -673,7 +673,6 @@ function executionRecordIdentity(coordinate: PlannedExecutionCoordinate) {
 async function executeCoordinate(
   plan: SealedRunPlan,
   ports: ExecutionRuntimePorts,
-  options: ExecutionRunOptions,
   prepared: PreparedRuntime,
   sessions: RunSessions,
   events: EventEmitter,
@@ -1155,7 +1154,6 @@ async function prepareBlock(
 }
 
 function censoredRecord(
-  plan: SealedRunPlan,
   prepared: PreparedRuntime,
   coordinate: PlannedExecutionCoordinate,
   censoredAt: string,
@@ -1396,7 +1394,6 @@ async function runExecution(
           executeCoordinate(
             plan,
             ports,
-            options,
             prepared,
             sessions,
             events,
@@ -1480,7 +1477,6 @@ async function runExecution(
       for (const coordinate of plannedCoordinates) {
         if (!records.has(coordinateKey(coordinate))) {
           records.set(coordinateKey(coordinate), censoredRecord(
-            plan,
             prepared,
             coordinate,
             censoredAt,
