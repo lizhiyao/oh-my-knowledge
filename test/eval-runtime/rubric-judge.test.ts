@@ -20,7 +20,7 @@ import {
 import { isValidToolCallInfo } from '../../src/executors/result-validation.js';
 import {
   createRubricJudgeInstrument as createWorkflowInstrument,
-} from '../../src/eval-hosts/evaluators/rubric-judge.js';
+} from '../../src/eval-workflows/hosts/evaluators/rubric-judge.js';
 
 function gatewayIdentity(revision = 'one') {
   return createRuntimeIdentity({

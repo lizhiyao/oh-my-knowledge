@@ -12,9 +12,9 @@ import {
 import {
   createNodeSampleContentResolver,
   loadNodeSampleContentMcpServers,
-} from '../../../src/eval-hosts/input-resolution/node-sample-content-resolver.js';
+} from '../../../src/eval-workflows/hosts/input-resolution/node-sample-content-resolver.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
-import { isPublicNetworkAddress } from '../../../src/eval-hosts/input-resolution/safe-http-content-resolver.js';
+import { isPublicNetworkAddress } from '../../../src/eval-workflows/hosts/input-resolution/safe-http-content-resolver.js';
 
 const roots: string[] = [];
 

@@ -4,7 +4,7 @@
 
 ## Boundary
 
-Concrete host assembly lives in `eval-hosts`; it is not the Runtime layer. `createOmkRuntimeProvider()`
+Concrete host assembly lives in `eval-workflows/hosts`; it is not the Runtime layer. `createOmkRuntimeProvider()`
 accepts the product compile result at this outer boundary and returns the Runtime-owned
 `EvaluationRuntimeProvider` capability. Workflow receives that capability and verification validators
 explicitly, then supplies only `EvaluationExecutionInput` to preparation. It has no default Node factory,

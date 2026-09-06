@@ -4,7 +4,7 @@
 
 ## 一、边界
 
-具体宿主装配位于 `eval-hosts`，与 Runtime 层分离。`createOmkRuntimeProvider()` 在这个外层边界
+具体宿主装配位于 `eval-workflows/hosts`，与 Runtime 层分离。`createOmkRuntimeProvider()` 在这个外层边界
 接收产品编译产物，返回 Runtime 拥有的 `EvaluationRuntimeProvider` 能力。Workflow 显式接收该能力
 和验证器，准备评测时只传入 `EvaluationExecutionInput`。它没有默认 Node 工厂、租约目录或直接
 执行 Core engine／Series 的路径。产品 analysis 和 evaluator 实现在 `eval-workflows/measurement`，

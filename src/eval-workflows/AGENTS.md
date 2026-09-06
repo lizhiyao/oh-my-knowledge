@@ -1,6 +1,6 @@
 # Evaluation Workflows 领域规则
 
-本文件补充仓库根 `AGENTS.md`，适用于 `src/eval-workflows/`。本层负责产品输入、评分与统计声明、结果投影、持久化及评测工作流；执行能力通过注入的 Evaluation Runtime 接口接入，具体宿主装配位于 `src/eval-hosts/`。
+本文件补充仓库根 `AGENTS.md`，适用于 `src/eval-workflows/`。本层负责产品输入、评分与统计声明、结果投影、持久化及评测工作流；执行能力通过注入的 Evaluation Runtime 接口接入，具体宿主装配位于 `hosts/`，由 CLI／DSH 共用。`hosts` 是独立装配边界；其它子域不得反向导入它，不能因同属本目录而自由互相依赖。
 
 ## 领域不变量
 

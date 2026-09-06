@@ -11,6 +11,7 @@ describe('eval-workflows 与 executors 领域布局', () => {
         'artifact-store',
         'assertions',
         'gold',
+        'hosts',
         'input-compilation',
         'inputs',
         'instruments',
@@ -23,8 +24,8 @@ describe('eval-workflows 与 executors 领域布局', () => {
       .toEqual(['AGENTS.md', 'evaluation-defaults.ts', 'messages.ts']);
   });
 
-  it('eval-hosts 同级目录按职责划分，运行环境留在对应实现中', () => {
-    const entries = readdirSync(resolve('src/eval-hosts'), { withFileTypes: true });
+  it('eval-workflows/hosts 同级目录按职责划分，运行环境留在对应实现中', () => {
+    const entries = readdirSync(resolve('src/eval-workflows/hosts'), { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
       .toEqual(['adapters', 'composition', 'evaluators', 'input-resolution', 'resource-leases']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
@@ -39,12 +40,15 @@ describe('eval-workflows 与 executors 领域布局', () => {
 
   it('不恢复迁移前的 src、test 或 dist 顶层目录', () => {
     for (const path of [
-      'src/eval-hosts/node',
-      'src/eval-hosts/runtime-adapter',
-      'test/eval-hosts/node',
-      'test/eval-hosts/runtime-adapter',
-      'dist/eval-hosts/node',
-      'dist/eval-hosts/runtime-adapter',
+      'src/eval-workflows/hosts/node',
+      'src/eval-workflows/hosts/runtime-adapter',
+      'test/eval-workflows/hosts/node',
+      'test/eval-workflows/hosts/runtime-adapter',
+      'dist/eval-workflows/hosts/node',
+      'dist/eval-workflows/hosts/runtime-adapter',
+      'src/eval-hosts',
+      'test/eval-hosts',
+      'dist/eval-hosts',
       'src/inputs',
       'src/grading',
       'src/preflight',

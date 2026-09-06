@@ -37,14 +37,16 @@ flowchart TD
 
 - **运行时实现边**必须保持无环。领域实现只能依赖它所消费的事实或更低层能力，不能借 facade、动态 import 或工具函数形成反向依赖。依赖图会保留指向 `contracts` 的 value import；已审计环按完整领域集合与环内边拓扑登记，新增任何返回路径都会使登记失效。TypeScript 与可执行 JavaScript 源码中的非字面量 dynamic import 也默认拒绝，必须按 importer、表达式与 canonical source digest 显式登记；
 - **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的回边才成立，架构测试会同时拒绝新增双向关系和失效登记；
-- **composition edge**由 `cli`、`dsh-plugin` 与 `eval-hosts` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
+- **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/hosts` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
 
 `shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
 ```text
-eval-core ← eval-runtime ← eval-workflows ← CLI / DSH
-                ↑               ↑
-        executors / FaaS   OMK 产品 workflow
+eval-core ← eval-runtime ← 产品编排
+                ↑             ↑
+                └── hosts ────┘
+                      ↑
+                  CLI / DSH
 ```
 
 箭头从 consumer 指向 dependency。`eval-runtime` 可以依赖 Core 与 type-only Executor contract，但不得导入 `eval-workflows`、provider implementation 或 delivery surface。`eval-workflows` 只复用 Runtime foundation 叶子模块，不导入 canonical 用户 façade，也不维护第二份生命周期实现。
@@ -72,8 +74,9 @@ eval-workflows/
 ├── artifact-store/     # Core artifact 持久化、发现与 overlay
 ├── assertions/         # authored assertion 适配与评分层
 ├── gold/               # human-gold 数据集、校准与 CLI 支持
+├── hosts/              # OMK 专属宿主适配与共用装配，独立依赖边界
 ├── input-compilation/  # 宿主输入 → 宿主无关测量定义
-├── inputs/             # 配置、sample、知识载体来源解析与 schema
+├── inputs/             # 评测配置、sample 与 schema
 ├── instruments/        # evaluator 配置与冻结 prompt 资产
 ├── projections/        # 基于认证 Core 产物的下游视图
 ├── resume-admission/   # 持久化 run 完整性与 resume 准入
@@ -95,16 +98,16 @@ Runtime 的标准入口 `evaluate.ts` 从内部 `evaluation/` 模块导出原有
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
 适配到 Core 所拥有的 instrument 和 analysis contract。类似地，`executors/preflight` 产出环境就绪事实，
-`eval-hosts/composition/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
+`eval-workflows/hosts/composition/preflight.ts` 则依据 binding 声明决定 workflow 是否准入。
 这些子域即使在物理目录上聚合，仍作为独立节点参与依赖图检查。
 
-`eval-workflows` 消费显式注入的 `EvaluationRuntimeProvider`。产品编译通过
-`EvaluationExecutionInput` 提供 Definition、Policy 与运行元数据；Workflow 不创建 Core engine、
-provider adapter 或资源租约。单次执行和 Series 准备／执行归 Runtime。Workflow 可以并行编排
+产品编排消费显式注入的 `EvaluationRuntimeProvider`。产品编译通过
+`EvaluationExecutionInput` 提供 Definition、Policy 与运行元数据；产品编排不创建 Core engine、
+provider adapter 或资源租约；具体装配由独立的 `hosts` 子域负责。单次执行和 Series 准备／执行归 Runtime。Workflow 可以并行编排
 独立 Series member，调度、重试、超时、预算和测量契约仍由 Core 独占。
 
 ```text
-eval-hosts/
+eval-workflows/hosts/
 ├── composition/       # 共用注册、绑定、运行前检查与装配
 ├── input-resolution/  # 宿主侧请求与内容解析
 ├── adapters/          # provider 执行协议适配
@@ -115,7 +118,9 @@ eval-hosts/
 同级目录统一按职责划分。Node 专属实现保留在所属职责下，例如 `resource-leases/node.ts`，不再以运行环境与职责混合分类。共用类型位于 `types.ts`；适配器、评委接线和资源实现不得反向导入 `composition`、`input-resolution` 或宿主聚合入口。
 
 
-宿主装配消费产品声明，再向 Workflow 注入 Runtime 能力。下层不得反向导入 `eval-hosts`，包括
+`eval-workflows` 表示 OMK 产品评测整体实现，`hosts` 因此归入该领域。目录归属不等于允许任意依赖：`orchestration`、`input-compilation`、`measurement` 等其余子域不得反向导入 `hosts`；架构图将它单独识别为装配边界，CLI／DSH 直接消费它。
+
+宿主装配消费产品声明，再向 Workflow 注入 Runtime 能力。下层不得反向导入 `eval-workflows/hosts`，包括
 纯类型导入。产品测量实现在 `eval-workflows/measurement`，通用执行与生命周期桥接留在 Runtime。
 旧 Workflow Runtime 目录和转发包装已删除，不保留 0.x 兼容路径。Core／Runtime 的正确契约优先于
 Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，不建立产品执行旁路。
@@ -138,7 +143,7 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 
 宿主装配按真实消费者归属。CLI 的 provider 选择、环境分类、凭证解析与生产装配位于
 `cli/lib/evaluation-composition.ts`；DSH 的 agent 上下文与评委调用在 `dsh-plugin/core-command.ts`。
-DSH 不通过 CLI 模块获取共用能力。当前保留 `eval-hosts` 的依据是以下跨入口复用：
+DSH 不通过 CLI 模块获取共用能力。以下跨入口复用由 `eval-workflows/hosts` 统一提供：
 
 | 模块 | 实际消费者 | 契约、失败与资源边界 |
 |---|---|---|
@@ -171,7 +176,7 @@ Studio。这些路径用途不同，共用机制须按契约提取。用户 faç
 
 Codex 参数抽取保持参数顺序、prompt 字节和各调用方的空值处理。环境选择、超时、错误信封与资源清理没有下沉到参数工具：普通调用负责调用级超时，测量调用服从 Core attempt 的取消；不在适配器叠加第二套测量超时。每个 Trial 的工作区独立，同 Trial 重试沿用其状态，失败用量与 Trace 按现有声明保存。
 
-后续新增共用机制时，需要同时验证参数、环境、输出、Trace、用量、取消、错误与清理。现有共享层已能覆盖的部分直接复用；对不同契约保留适配，不为减少函数数量合并测量身份或修改协议。对应回归集中在 `test/executors`、`test/eval-hosts` 和 `test/eval-runtime`；产品评分与统计测试位于 `test/eval-workflows/measurement`。
+后续新增共用机制时，需要同时验证参数、环境、输出、Trace、用量、取消、错误与清理。现有共享层已能覆盖的部分直接复用；对不同契约保留适配，不为减少函数数量合并测量身份或修改协议。对应回归集中在 `test/executors`、`test/eval-workflows/hosts` 和 `test/eval-runtime`；产品评分与统计测试位于 `test/eval-workflows/measurement`。
 
 Evidence 持久化与跨来源关联属于同一个不做决策的边界：
 

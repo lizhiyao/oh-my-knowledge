@@ -1,4 +1,4 @@
-import { createOmkEvaluationSchemaValidators } from '../../../src/eval-hosts/composition/runtime.js';
+import { createOmkEvaluationSchemaValidators } from '../../../src/eval-workflows/hosts/composition/runtime.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,7 +17,7 @@ import {
 import type {
   OmkEvaluationRuntime,
   OmkPreparedEvaluation,
-} from '../../../src/eval-hosts/composition/runtime.js';
+} from '../../../src/eval-workflows/hosts/composition/runtime.js';
 import {
   runConformanceScenario,
   type ConformanceResult,

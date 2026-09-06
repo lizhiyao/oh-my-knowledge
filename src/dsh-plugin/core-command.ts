@@ -1,4 +1,4 @@
-import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../eval-hosts/composition/runtime.js';
+import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../eval-workflows/hosts/composition/runtime.js';
 import { join, resolve } from 'node:path';
 import {
   schemaIdentityKey,
@@ -18,10 +18,10 @@ import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createProductionRuntimeFactoryRegistry,
-} from '../eval-hosts/composition/runtime-registry.js';
+} from '../eval-workflows/hosts/composition/runtime-registry.js';
 import {
   createNodeHostPreflightDeclarations,
-} from '../eval-hosts/composition/node-preflight.js';
+} from '../eval-workflows/hosts/composition/node-preflight.js';
 import {
   createProductionEvaluationWorkflow,
   executeProductionEvaluationSeries,
@@ -29,10 +29,10 @@ import {
 } from '../eval-workflows/orchestration/index.js';
 import {
   createJudgeProviderRuntimeIdentity,
-} from '../eval-hosts/composition/judge-provider-identity.js';
+} from '../eval-workflows/hosts/composition/judge-provider-identity.js';
 import {
   resolveNodeCliEvaluationRequest,
-} from '../eval-hosts/input-resolution/node-cli-evaluation-resolver.js';
+} from '../eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.js';
 import {
   projectCoreCliRunOutcome,
   projectCoreCliSeriesOutcome,
@@ -48,13 +48,13 @@ import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type {
   OmkExecutorBindingContext,
   OmkRuntimeBindingFactories,
-} from '../eval-hosts/types.js';
+} from '../eval-workflows/hosts/types.js';
 import type {
   OmkLlmJudgeInvocationBinding,
-} from '../eval-hosts/evaluators/llm-judge-invocation.js';
+} from '../eval-workflows/hosts/evaluators/llm-judge-invocation.js';
 import type {
   OmkLlmJudgeInvocationRequest,
-} from '../eval-hosts/index.js';
+} from '../eval-workflows/hosts/index.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
 import type { JudgeConfig } from '../eval-workflows/instruments/contracts/config.js';
 import { generateRunId } from '../evidence/storage/run-id.js';
