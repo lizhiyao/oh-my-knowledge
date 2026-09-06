@@ -699,6 +699,26 @@ describe('Codex CLI Core Executor adapter', () => {
     });
   });
 
+  it.each(['read-only', 'workspace-write'] as const)(
+    'preserves the measured wire contract for %s with every effort setting',
+    (sandbox) => {
+      for (const effort of [undefined, 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+        const prompt = '---\nname: skill\n---\n正文';
+        expect(buildCodexCliCoreArguments({
+          model: 'gpt-test', workingDirectory: '/tmp/a b', prompt, sandbox,
+          ...(effort === undefined ? {} : { effort }),
+        })).toEqual([
+          'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+          '--strict-config', '--skip-git-repo-check', '--color', 'never',
+          '--sandbox', sandbox, '-c', 'approval_policy="never"',
+          '-c', 'shell_environment_policy.inherit="none"',
+          ...(effort === undefined ? [] : ['-c', `model_reasoning_effort="${effort}"`]),
+          '--model', 'gpt-test', '-C', '/tmp/a b', '--', prompt,
+        ]);
+      }
+    },
+  );
+
   it('builds the fixed argument order independently of object property order', () => {
     const first = buildCodexCliCoreArguments({
       model: 'gpt-test',

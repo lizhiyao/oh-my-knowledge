@@ -1,3 +1,4 @@
+import { buildCodexExecArguments } from './cli-arguments.js';
 import type { ExecResult } from '../../contracts/result.js';
 import type { ExecutorInput } from '../../contracts/ports.js';
 import {
@@ -100,29 +101,15 @@ export function parseCodexJsonl(stdout: string): CodexJsonlParseResult {
   return { events, malformedLineCount };
 }
 
-// exported for arg-shape regression tests
+/** Invocation policy for non-Trial callers such as generation and judge calls. */
 export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: string | null; prompt: string }): string[] {
-  // codex exec [OPTIONS] [PROMPT];prompt 走 positional(execFile 不走 shell,自动 escape)
-  // approval_policy 走 -c config override:codex CLI 0.125 起去掉了 `--ask-for-approval` flag,
-  // 但 approval_policy 这个 config key 仍在,通过 -c 透传不依赖 flag 表面 schema。
-  const args: string[] = [
-    'exec',
-    '--json',
-    '--ephemeral',                      // 不持久化 session 文件
-    '--ignore-user-config',             // 不读 $CODEX_HOME/config.toml
-    '--ignore-rules',                   // 不让用户 / 项目 execpolicy 改写工具行为
-    '--skip-git-repo-check',            // 允许 isolated cwd 不是 git 仓库
-    '--sandbox', 'read-only',           // 评测场景不需要写文件
-    '-c', 'approval_policy="never"',    // non-interactive 必须;TOML 字符串需要 quote
-  ];
-  if (model) args.push('--model', model);
-  if (cwd) args.push('-C', cwd);
-  // `--` end-of-options 分隔符:prompt 必须放在 `--` 之后。system prompt 被 prepend 时,
-  // skill 内容常以 YAML frontmatter `---` 开头,codex(clap)会把以 `-`/`--` 开头的位置参数
-  // 当未知 flag → exit 2(unexpected argument),72ms 秒退、不跑 agent。`--` 之后一律当
-  // positional,不再按 flag 解析(codex 自身的报错 tip 即建议此法)。bug:整个 skill eval 全失败。
-  args.push('--', prompt);
-  return args;
+  return buildCodexExecArguments({
+    ...(model ? { model } : {}),
+    ...(cwd ? { workingDirectory: cwd } : {}),
+    prompt,
+    sandbox: 'read-only',
+    strictConfig: false,
+  });
 }
 
 // codex 看到 stdin 是 pipe 就当作 `<stdin>` 块读,会卡到 timeout。spawn 后立刻
