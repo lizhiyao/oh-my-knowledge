@@ -1,11 +1,5 @@
-// oclif 版 eval gold topic shim — 裸 `omk eval gold` 走 oclif Help class 打 topic
-// help,然后 exit 1(跟 legacy CliExit(1) 行为对齐:CI 脚本靠 exit code 区分「漏写
-// sub-sub」)。
-//
-// 不再依赖 legacy hand-written usage() 字符串(已删):oclif 默认没内建 help command,
-// 但 helpClass 是可实例化的 Help 子类。直接 new HelpClass(config).showCommandHelp(
-// config.findCommand('eval:gold')) 让 LangAwareHelp 按 --lang 渲染当前 topic 的
-// description + sub-sub 列表(init / validate / compare)。
+// 裸 `omk eval gold` 显示帮助并退出 1，让自动化能识别缺少子命令。
+// 复用当前 HelpClass，保持语言选择和子命令列表与 CLI 一致。
 
 import { BaseCommand } from '../../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';

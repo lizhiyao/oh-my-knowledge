@@ -11,9 +11,6 @@
 //
 // 代价:flag description 里不能用真换行 — 单行写到底,需要多段时换 prose
 // 文档。
-//
-// 跟进(Phase B):改 oclif 上游让 errors/handle.js 尊重 helpClass / 接受双语 dump
-// 不再 fix(早期 init hook description mutate 方案 PR #124 已删,接受 BREAKING-CLI)。
 
 import { Flags } from '@oclif/core';
 import { getCliLang, parseLangFromArgv } from '../lib/i18n.js';

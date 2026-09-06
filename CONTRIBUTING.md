@@ -95,58 +95,35 @@ npm 发布使用 GitHub Actions OIDC Trusted Publishing，不保存长期 npm to
 # cut a release version-bump branch from main
 git checkout main
 git pull --ff-only
-git checkout -b chore/release-0.28.0
+# Replace X.Y.Z with the intended version, including any prerelease suffix.
+release_version=X.Y.Z
+git checkout -b "chore/release-${release_version}"
 
 # bump version in package.json, final polish commits, then verify
-yarn lint
-yarn build
-yarn test
+yarn ci
 
 # commit and open a PR against main
-git commit -m "chore(release): 发布 0.28.0"
-git push -u origin chore/release-0.28.0
+git commit -m "chore(release): 发布 ${release_version}"
+git push -u origin "chore/release-${release_version}"
 
 # after the PR is merged, tag the merge commit on main
 git checkout main
 git pull --ff-only
-git tag -a v0.28.0 -m "Release v0.28.0"
+git tag -a "v${release_version}" -m "Release ${release_version}"
 
-# Push the tag as its own command.
-# `git push origin main --tags` is an atomic push — GitHub treats it as one
-# event and only triggers workflows watching `branches: [main]`, so the
-# `tags: ['v*']` trigger in publish.yml never fires and npm publish is
-# skipped. Pushing the tag in its own command produces a distinct push
-# event that fires the tag workflow.
-git push origin v0.28.0
+# Push the release tag separately to trigger publish.yml.
+git push origin "v${release_version}"
 ```
 
-迁移 Trusted Publishing 时，先发布一个 prerelease（例如 `0.52.3-oidc.0`）验证 OIDC 和
-provenance；workflow 会自动把 prerelease 发布到 `next` dist-tag，不影响 `latest`。验证成功后，
-先执行 `npm access set mfa=publish oh-my-knowledge`，再在 npm package settings 的 Publishing
-access 选择「Require two-factor authentication and disallow tokens」，最后删除 GitHub 仓库中的
-`NPM_TOKEN` secret。不要在验证前删除 token，以便失败时仍可回滚 workflow。
+Prerelease versions publish to the `next` dist-tag; stable versions publish to
+`latest`. The workflow derives this from the package version. Trusted Publishing
+is the current release path; do not restore token-based fallback publishing.
 
 ### Hotfix against a released version
 
-```bash
-# cut from main
-git checkout main
-git pull --ff-only
-git checkout -b fix/critical-bug
-
-# make the fix, bump patch version, verify, then open a PR against main
-yarn lint
-yarn build
-yarn test
-git commit -m "fix(cli): 中文 subject"
-git push -u origin fix/critical-bug
-
-# after the PR is merged, tag the merge commit on main and push the tag
-git checkout main
-git pull --ff-only
-git tag -a v0.28.1 -m "Release v0.28.1"
-git push origin v0.28.1
-```
+Create a short `fix/` branch from `main`, make the fix and version bump, and use
+the same validation and PR flow. After merge, follow the annotated-tag release
+steps above for the intended patch version.
 
 ## Release notes
 
@@ -189,87 +166,61 @@ docs(readme): 补充评测用例说明
 - command 业务测试优先使用 `test/helpers/run-command.ts` 运行源码 Command 的完整 Oclif 生命周期，不要为每个 case 重复启动 Node。只有被测行为依赖 dispatcher、模块加载时环境或独立 `process` 时才使用 `execFile`，并在测试注释里说明该边界。
 - Oclif 的公共行为（例如 unknown flag 的统一 exit code）用代表命令锁一次；各命令只增加自身特有的 flag 校验、文案或历史回归，避免重复框架契约。
 
-## CLI 走 oclif 框架(issue #109 / #121)
+## CLI 维护
 
-omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**:oclif Command 一次 typed parse(`await this.parse(X)`)拿 `{args, flags}` 直接喂业务。无 legacy 二次解析、无 `execute(this.argv)` 透传。
+CLI 使用 [@oclif/core](https://oclif.io/docs/)。命令继承 `BaseCommand`，通过 `await this.parse(Command)` 解析一次参数；不要再次解析或透传原始 argv。
 
-`src/cli/` 三段式布局:
+| 目录 | 职责 |
+|---|---|
+| `src/cli/commands/` | 命令、参数和帮助声明，以及产品入口接线 |
+| `src/cli/lib/` | CLI 配置、交互、展示和跨命令辅助逻辑 |
+| `src/cli/oclif/` | `BaseCommand`、帮助、语言选择、参数解析器和 dispatcher |
 
-| 目录 | 职责 | 内容 |
-|---|---|---|
-| `commands/` | 产品 CLI 命令树 | 每个 file = 一个 oclif Command 类 + 业务 inline (top-level + observe / eval/gold sub) |
-| `lib/` | 跨命令共享 utility | `cli-exit.ts` / `cmd-flags.ts`(typed args/flags interface) / `i18n.ts` + `i18n-dict.ts`(tCli + 业务消息字典) / `parse-run-config.ts` / `progress.ts` / `run-tally.ts` / `shared.ts`(report helpers) / `update-check.ts` |
-| `oclif/` | 框架 plumbing | `help.ts`(LangAwareHelp) / `projection.ts` / `i18n.ts`(bilingual / pickLang / resolveLang) / `run.ts`(dispatcher entry) |
+评测入口调用 Workflow 的产品接口；其他命令调用各自所属领域。CLI 不自行定义评分、编排或存储语义。简单交互可以留在 `run()`，跨领域业务应放回领域模块。
 
-文件目录约定:
+### 增加或修改命令
 
-- `src/cli/commands/doctor.ts` → `omk doctor`(扁平命令直接放 file)
-- `src/cli/commands/eval/index.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`(有 sub 的进同名 directory,`index.ts` 是 default command,oclif file routing 约定)
-- `src/cli/commands/observe/index.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
+1. 按文件路由放入 `src/cli/commands/`。例如 `eval/index.ts` 对应 `omk eval`，`eval/gold/compare.ts` 对应 `omk eval gold compare`。
+2. 继承 `BaseCommand`，声明 `static args / flags / examples / description`。帮助文案使用 `bilingual({zh, en})`。
+3. 在 `run()` 中调用 `await this.parse(Command)`，用 `this.lang` 获取语言。可能抛出 `CliExit` 的业务通过 `this.runWithCliExit(async () => { ... })` 执行，共享错误边界负责转换退出码。
+4. 用 `test/helpers/run-command.ts` 验证参数到业务的接线。只有 dispatcher、启动或独立进程行为需要真实 `node dist/cli/index.js` 测试。
+5. 修改命令声明后运行 `yarn build && yarn build:docs`。提交前按仓库门禁验证最终改动。
 
-业务住哪儿:
+`eval/gold/index.ts` 是显式的 topic 命令：裸 `omk eval gold` 显示帮助后退出 `1`，让脚本识别缺少子命令。需要同样行为的新 topic 应明确实现该契约。
 
-- 简单业务 inline 到 `Command.run()` body
-- 测试需要 in-process import 验证的业务,作为 module-level helper(如 `runStudio` / `runEvolve` / `runObserveInbox` / 3 个 sample-fix helper)export from 同一个 Command file
-- 跨命令共享的 utility 进 `src/cli/lib/`;跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/knowledge-artifacts/doctor/index.ts:runDoctor`)
+### 语言与帮助边界
 
-双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `lib/i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。lang 解析 source-of-truth 是 `resolveLang(process.argv)`(scan raw argv + env fallback);**不要**读 `flags.lang`(oclif `default: 'zh'` 会盖掉 `OMK_LANG=en`)。
+`BaseCommand.lang` 使用 `resolveLang(process.argv)`，按 `--lang`／`OMK_LANG` 选择语言。不要用 `flags.lang` 代替共享语言解析。
 
-注意:`oclif/i18n.ts` 跟 `lib/i18n.ts` 职责不同 — 前者是 oclif Command static 字段需要的双语 sentinel + LangAwareHelp 渲染入口,后者是 runtime tCli / getCliLang / parseLangFromArgv 基础设施。两者不要合并(reviewer 已确认强行扁平反而混)。
+`oclif/i18n.ts` 提供静态帮助所需的 `bilingual` 与语言选择；`lib/i18n.ts` 提供运行期消息字典。两者服务不同边界，避免重复维护文案来源。
 
-加新命令的步骤:
+oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag／arg 帮助。`<%...%>` 模板只用于受控的 `examples[].command`；`bilingual` 会拒绝帮助文案中的模板标记。
 
-1. 在 `src/cli/commands/<name>.ts` 写 `export default class extends Command`,声明 `static args / flags / examples / description`(flag description 用 `bilingual({zh, en})` 包装)
-2. `run()` 体里:`const { args, flags } = await this.parse(<Class>); const lang = resolveLang(process.argv);`,然后业务 inline 或调 module-level helper
-3. CliExit 边界:业务 `throw new CliExit(code)` 通过每个 Command 共用模板捕获 → `this.exit(code)`(模板见现有 commands 任一 `run()` 末尾的 try/catch)
-4. 在 `test/cli/oclif-<name>.test.ts` 加命令特有的 help 文案 / flag 校验和关键 happy/error case；公共 Oclif 契约不要逐命令重复，业务 case 优先走进程内 command harness
-5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.agents/skills/omk/references/commands.md`（见下一节）
+### 生成文档
 
-### CLI 文档 codegen（#109）
+命令的 description／flags／args／examples 和 `CLI_EVALUATION_INPUT_REGISTRY` 是对应生成内容的单一来源。`scripts/build-docs.ts` 维护五个目标：
 
-oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是 CLI 文档的**单一来源**。`scripts/build-docs.ts` 把它渲染到三个目标文件的 marker 区段:
+| 目标 | 生成内容 |
+|---|---|
+| `.agents/skills/omk/references/commands.md` | 完整中文命令参考 |
+| `docs/reference/cli.md` | 英文 CLI flag 区段 |
+| `docs/zh/reference/cli.md` | 中文 CLI flag 区段 |
+| `docs/specs/cli-evaluation-input-compilation.md` | 英文输入 registry 表 |
+| `docs/zh/specs/cli-evaluation-input-compilation.md` | 中文输入 registry 表 |
 
-| 目标 | marker | 输出 | 语言 |
-|---|---|---|---|
-| `.agents/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
-| `docs/reference/cli.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->` | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
-| `docs/zh/reference/cli.md` | 同上 | 同上 | zh |
+运行 `yarn build && yarn build:docs` 同步生成区段，`build:docs:check` 和测试会拦截漂移。marker 外的解释文字仍由人工维护。
 
-`SKILL.md` 不走 codegen（agent prompt 指令塞结构化命令清单跟 commands.md 重复,还撑大 agent context）。改用 `test/scripts/build-docs.test.ts` 的 vitest case 锁 frontmatter `argument-hint` 跟 oclif 顶层命令 id set（`TOP_LEVEL_IDS`）严格一致——历史上漂过 2 次（`bench run` → `eval`、`improve` → `evolve`),这条 test 把同类 drift 拦在 CI。
+新增顶层命令时，为中英文 CLI 参考增加对应的 `<!-- omk:cli:<id>:flags:start -->`／`<!-- omk:cli:<id>:flags:end -->` marker，并更新官方 `SKILL.md` 的 `argument-hint`。顶层命令集合由 oclif 配置派生，不另建手写清单；子命令会自动进入完整命令参考。Skill 正文不复制生成参考。
 
-工作流:
+### 退出码
 
-- 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
-- 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
-- CLI reference 的 prose 段（doctor 采样/共识与 eval 门禁说明 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
-- 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 `docs/reference/cli.md` / `docs/zh/reference/cli.md` 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
-- 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
-
-### 加新 sub-sub topic 命令
-
-目录下有 sub-sub 但目录本身没 default Command 时(如 `eval/gold/` 下有 `init` / `validate` / `compare`,目录本身 `eval gold` 不直接执行),**必须** 加 `<dir>.ts` 表达 topic semantics:
-
-- 当前实例:`src/cli/commands/eval/gold/index.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
-- 不加的代价:oclif 默认把 `eval gold` 当 topic-only,裸调用落到 default topic help(exit 0),CI 脚本如果靠 exit 1 区分「用户漏写 sub-sub」会失效
-- 当前 omk 只有 eval gold 一处需要,加新 sub-sub 目录时遵循
-
-### oclif description ejs footgun
-
-oclif Help 用 `ejs.render(body, context)` 渲染所有 section,模板标记 `<%...%>` 会被执行成代码。**flag / arg / description 字段不要拼用户输入(skill 名、文件路径、env 值)**;模板只在 `examples[].command` 字段使用(by-design,如 `'<%= config.bin %>' init`)。
-
-`src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` 已经在入口加 assertion 拦 `<%` / `%>`,description 里写模板会在 runtime 启动时抛错。
-
-### CLI exit code 约定
-
-oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分支按此判断）:
-
-| code | 触发场景 |
+| code | 场景 |
 |---|---|
 | `0` | 正常完成 |
-| `1` | 业务失败（doctor 门禁拒绝、verdict REGRESSION、未知命令、缺 required positional —— 走生产逻辑或 oclif `default` exit code）|
-| `2` | flag / arg 校验失败（未知 flag、missing required arg、type mismatch —— 由 oclif `failedFlagParsing` / `requiredArgs` / `nonExistentFlag` 等捕获,见 `package.json:oclif.exitCodes`）|
+| `1` | 业务失败、门禁拒绝、未知命令，或显式要求子命令的 topic 被单独调用 |
+| `2` | 参数校验失败，包括未知 flag、缺少 required arg 和类型错误 |
 
-迁 oclif 前 `omk evolve`（missing skillPath）跟 `omk observe ingest`（missing traceDir）走生产 `throw new CliExit(1)`,迁后 oclif `Args.required: true` 走 `requiredArgs: 2`。脚本如果靠 `1` 区分 user error vs parse error,要按上表更新。
+框架错误映射由 `package.json` 的 `oclif.exitCodes` 声明。命令不要自行复制参数错误处理或改变公共退出码。
 
 ## Style
 

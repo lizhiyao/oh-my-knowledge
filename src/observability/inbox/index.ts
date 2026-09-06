@@ -296,24 +296,6 @@ export function severityReasonFor(item: Pick<ObservationInboxItem, 'signalType' 
   return dictionary[code].replace('{tool}', tool);
 }
 
-export function legacySeverityReasonFor(item: Pick<ObservationInboxItem, 'signalType' | 'signalSubtype' | 'severity' | 'confidence' | 'evidence'>): string {
-  const tool = item.evidence.tool ? `${item.evidence.tool} ` : '';
-  if (item.signalType === 'repeated_failure') return '同类搜索连续失败 3 次以上，是强缺口信号，高于单次 hard_miss。';
-  if (item.signalType === 'explicit_marker') return 'agent 主动输出了知识缺口/未知标记，需要优先人工确认。';
-  if (item.signalSubtype === 'hard_miss') return `${tool}失败后，session 内未找到同主题成功证据，疑似知识缺口。`;
-  if (item.signalSubtype === 'bash_probe') return 'skill 运行过程中，agent 调用了一条 Bash 命令；命令里用了 2>/dev/null 或 || true/echo 这类“失败也继续”的写法，更像是在试路径，不直接判为要改 skill。';
-  if (item.signalSubtype === 'exploratory_miss') return '前序搜索失败，但后续出现成功搜索证据，更像探索性试错。';
-  if (item.signalSubtype === 'tool_limit') return `${tool}触发 token/超时等工具限制，与知识库覆盖无直接关系。`;
-  if (item.signalSubtype === 'transient_file_missing') return `${tool}访问的是 /tmp 或临时生成文件，默认按临时文件丢失处理，不作为 skill 内容缺失。`;
-  if (item.signalSubtype === 'skill_asset_read_failed') return `${tool}读取该 skill 自身资源失败，可能是路径错位、资源未提交或 ignore 配置问题。`;
-  if (item.signalSubtype === 'not_found') return `${tool}访问的文件或路径不存在，先按路径/环境噪声处理。`;
-  if (item.signalSubtype === 'permission_denied') return `${tool}访问被权限拒绝，先按权限/环境噪声处理。`;
-  if (item.signalSubtype === 'tool_failure') return `${tool}调用失败，先按运行时工具问题处理。`;
-  if (item.signalSubtype === 'regex_only') return '仅命中 hedging 正则，假阳风险较高，默认作为低优先级噪声。';
-  if (item.signalSubtype === 'llm_classified') return 'hedging 经过分类器确认，confidence 来自分类器输出。';
-  return '低置信信号，需要结合 evidence 和上下文人工判断。';
-}
-
 export function severityReasonCodeFor(item: Pick<ObservationInboxItem, 'signalType' | 'signalSubtype' | 'severity' | 'confidence'>): ObservationSeverityReasonCode {
   if (item.signalType === 'user_feedback') return 'user_reported_knowledge_issue';
   if (item.signalSubtype === 'repeated_failure') return 'repeated_failure_suspected';
