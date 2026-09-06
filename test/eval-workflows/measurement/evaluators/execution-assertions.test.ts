@@ -44,7 +44,7 @@ import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceSchema,
   type SourceNeutralTrace,
-} from '../../../../src/eval-workflows/hosts/index.js';
+} from '../../../../src/eval-runtime/traces/source-neutral.js';
 import {
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,
   OUTPUT_ONLY_SYNC_ASSERTION_TYPE_NAMES,

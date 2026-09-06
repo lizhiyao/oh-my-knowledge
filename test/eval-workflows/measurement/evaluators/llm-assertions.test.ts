@@ -44,7 +44,7 @@ import {
   type OmkLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationRequest,
   type OmkLlmJudgeInvocationResult,
-} from '../../../../src/eval-workflows/hosts/index.js';
+} from '../../../../src/eval-runtime/judges/invocation.js';
 import {
   getRagJudgePromptHash,
   getSemanticPromptHash,

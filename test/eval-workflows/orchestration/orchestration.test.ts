@@ -21,10 +21,12 @@ import {
 } from '../../../src/eval-workflows/artifact-store/index.js';
 import {
   bindProductionPreparedEvaluation,
+  type ProductionEvaluationWorkflowInput,
+} from '../../../src/eval-workflows/orchestration/workflow.js';
+import {
   executeProductionEvaluationBatch,
   executeProductionEvaluationSeries,
-  type ProductionEvaluationWorkflowInput,
-} from '../../../src/eval-workflows/orchestration/index.js';
+} from '../../../src/eval-workflows/orchestration/orchestration.js';
 import {
   createOmkEvaluationSchemaValidators,
   type OmkEvaluationRuntime,

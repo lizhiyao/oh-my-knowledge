@@ -23,7 +23,7 @@ import {
 } from '../../../../src/eval-workflows/input-compilation/index.js';
 import {
   OMK_TREE_DIGEST_ALGORITHM,
-} from '../../../../src/eval-workflows/hosts/resource-leases/index.js';
+} from '../../../../src/knowledge-artifacts/sources/content-hash.js';
 import {
   digestNodeFileResource,
   digestNodePinnedGitTreeResource,

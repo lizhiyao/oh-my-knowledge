@@ -25,7 +25,7 @@ import {
 } from '../../../src/eval-workflows/hosts/resource-leases/types.js';
 import {
   type SameProcessOperationScope,
-} from '../../../src/eval-workflows/hosts/index.js';
+} from '../../../src/eval-runtime/adapters/same-process.js';
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);
