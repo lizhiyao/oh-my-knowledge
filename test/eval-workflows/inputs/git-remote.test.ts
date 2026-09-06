@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { isPlausibleGitUrl, fetchRemoteGitRef, SourceResolveError, resolveArtifacts } from '../../../src/knowledge-artifacts/sources/artifact-resolution.js';
 import { resolveRemoteGitSource } from '../../../src/knowledge-artifacts/sources/install-source.js';
-import { resolveVariantSpecs } from '../../../src/cli/lib/parse-run-config/variant-resolution.js';
 import { hashArtifactSource } from '../../../src/knowledge-artifacts/sources/content-hash.js';
 
 const git = (repo: string, args: string[]): string =>
@@ -116,26 +115,4 @@ describe('git-remote', () => {
     assert.equal(a.contentHash, hashArtifactSource(join(repo, 'skills', 'review'), true), '整树指纹与真源同值(可绑)');
   });
 
-  it('resolveVariantSpecs(config) 保留 spec.git 到下游(config→spec 不丢远端字段)', () => {
-    const cfg = {
-      samples: 's.json',
-      variants: [
-        { name: 'remote', role: 'treatment', git: { url: repo, spec: 'skills/review' } },
-        { name: 'base', role: 'control', artifact: 'baseline' },
-      ],
-    } as unknown as Parameters<typeof resolveVariantSpecs>[1];
-    const specs = resolveVariantSpecs({}, cfg, repo);
-    const remote = specs.find((s) => s.name === 'remote')!;
-    assert.deepEqual(remote.git, { url: repo, spec: 'skills/review' });
-  });
-
-  it('CLI --control 传远端 URL(协议 / scp 形式)fail-closed,指向 eval.yaml', () => {
-    for (const url of ['https://github.com/o/r.git', 'git@github.com:o/r.git']) {
-      assert.throws(
-        () => resolveVariantSpecs({ control: url }, null, repo),
-        /eval\.yaml/,
-        `远端 URL ${url} 应被 CLI 拒并指向 eval.yaml`,
-      );
-    }
-  });
 });

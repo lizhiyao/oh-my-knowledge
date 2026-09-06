@@ -1,30 +1,17 @@
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import type { EvalConfig } from '../../eval-workflows/inputs/contracts/config.js';
 import {
   createNodeEvaluationApplication,
   parseCliEvaluationRequest,
-  type CliEvaluationRequest,
   type CoreRunArtifactStore,
   type StoredCoreRunArtifacts,
   type EvaluationNotice,
 } from '../../eval-workflows/hosts/application.js';
-import { captureNodeCliEvaluationEnvironment } from './evaluation-composition.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
-import { projectReportsDir } from '../../evidence/storage/directories.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
-import type { RunConfig } from './parse-run-config.js';
+import type { PreparedCliEvaluation } from './prepare-evaluation.js';
 import type { CliLang } from './i18n.js';
 
 export interface RunCoreEvaluationCommandInput {
-  readonly flags: Readonly<Record<string, unknown>>;
-  readonly config: Readonly<Pick<RunConfig,
-    'samplesPath' | 'skillDir' | 'executorName' | 'model' | 'effort' | 'judgeModels'
-  >>;
-  readonly evalConfig: Readonly<EvalConfig> | null;
-  readonly lang: CliLang;
-  readonly environment?: NodeJS.ProcessEnv;
-  readonly projectRoot?: string;
+  readonly prepared: PreparedCliEvaluation;
   readonly store?: CoreRunArtifactStore;
 }
 
@@ -33,37 +20,6 @@ export interface RunCoreEvaluationCommandResult {
   readonly output: unknown;
   readonly stored?: StoredCoreRunArtifacts;
   readonly outputDirectory: string;
-}
-
-function requestFor(input: RunCoreEvaluationCommandInput, projectRoot: string, globalOutputDirectory: string): CliEvaluationRequest {
-  const projectMcpConfig = join(projectRoot, '.mcp.json');
-  return parseCliEvaluationRequest({
-    explicitCliFlags: input.flags,
-    ...(input.evalConfig === null ? {} : { evalConfig: input.evalConfig }),
-    defaults: {
-      samplesLocator: input.config.samplesPath,
-      skillDirectoryLocator: input.config.skillDir,
-      ...(existsSync(projectMcpConfig) ? { mcpConfigLocator: projectMcpConfig } : {}),
-      targetRuntime: {
-        executorId: input.config.executorName,
-        model: input.config.model,
-        effort: input.config.effort ?? 'low',
-      },
-      judgeMembers: input.config.judgeModels.map((judge) => ({
-        executorId: judge.executor,
-        model: judge.model,
-        ...(judge.deploymentRevision === undefined
-          ? {}
-          : { deploymentRevision: judge.deploymentRevision }),
-      })),
-      presentation: {
-        projectOutputDirectoryLocator: projectReportsDir(projectRoot),
-        globalOutputDirectoryLocator: globalOutputDirectory,
-        language: input.lang,
-        languageDefaultSource: 'environment-selection',
-      },
-    },
-  });
 }
 
 function emitProgress(lang: CliLang) {
@@ -142,21 +98,24 @@ function renderNotice(notice: EvaluationNotice, lang: CliLang): void {
 }
 
 export async function runCoreEvaluationCommand(input: Readonly<RunCoreEvaluationCommandInput>): Promise<RunCoreEvaluationCommandResult> {
-  const projectRoot = resolve(input.projectRoot ?? process.cwd());
-  const environment = captureNodeCliEvaluationEnvironment(input.environment);
+  const { request, parseInput, projectRoot, environment } = input.prepared;
+  const lang = request.values.presentation.language;
   const machineLayout = globalLayout(environment.environment.OMK_HOME);
   const application = createNodeEvaluationApplication(environment);
   try {
     const result = await application.run({
-      request: requestFor(input, projectRoot, machineLayout.evalDir), projectRoot,
+      request, projectRoot,
       materializationRoot: machineLayout.resolvedInputsDir, resourceLeaseRoot: machineLayout.resourceLeasesDir,
       store: input.store,
-      createProgressSink: () => emitProgress(input.lang),
-      onNotice: (notice) => renderNotice(notice, input.lang),
-      requestForBatchItem: (entry) => requestFor({ ...input, flags: { ...input.flags, batch: undefined, control: 'baseline', treatment: entry.skillPath, samples: entry.samplesPath, 'no-serve': true } }, projectRoot, machineLayout.evalDir),
+      createProgressSink: () => emitProgress(lang),
+      onNotice: (notice) => renderNotice(notice, lang),
+      requestForBatchItem: (entry) => parseCliEvaluationRequest({
+        ...parseInput,
+        explicitCliFlags: { ...parseInput.explicitCliFlags, batch: undefined, control: 'baseline', treatment: entry.skillPath, samples: entry.samplesPath, 'no-serve': true },
+      }),
       async onCompleted(completed, request) {
-        if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve, input.lang);
-        if (completed.outcomeKind === 'series') process.stderr.write(input.lang === 'zh'
+        if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve, lang);
+        if (completed.outcomeKind === 'series') process.stderr.write(lang === 'zh'
           ? `Core Series 已完成：${completed.outcome.seriesId}（${completed.outcome.members.length} 个独立 run）\n`
           : `Core Series completed: ${completed.outcome.seriesId} (${completed.outcome.members.length} independent runs)\n`);
       },
@@ -167,6 +126,6 @@ export async function runCoreEvaluationCommand(input: Readonly<RunCoreEvaluation
       ...(result.outcomeKind === 'run' ? { stored: result.artifacts } : {}),
     };
   } catch (error) {
-    return withLocalizedSampleDiscovery(() => { throw error; }, input.lang);
+    return withLocalizedSampleDiscovery(() => { throw error; }, lang);
   }
 }

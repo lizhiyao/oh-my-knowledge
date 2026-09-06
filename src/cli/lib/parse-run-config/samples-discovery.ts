@@ -16,16 +16,16 @@ import { findProjectSamplesFile, findSingleTreatmentSamplesPath } from '../../..
 import { withLocalizedSampleDiscovery } from '../localized-sample-discovery.js';
 import type { CliLang } from '../i18n.js';
 
-export function discoverSamplesPath(values: Record<string, unknown>, skillDir: string, lang: CliLang = 'zh'): string {
+export function discoverSamplesPath(values: Record<string, unknown>, skillDir: string, lang: CliLang = 'zh', projectRoot: string = process.cwd()): string {
   return withLocalizedSampleDiscovery(() => {
     const treatmentRaw = values.treatment as string | undefined;
     const treatments = treatmentRaw
       ? treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean)
       : [];
     if (treatments.length === 1) {
-      const samplesPath = findSingleTreatmentSamplesPath(treatments[0], skillDir, process.cwd());
+      const samplesPath = findSingleTreatmentSamplesPath(treatments[0], skillDir, projectRoot);
       if (samplesPath) return samplesPath;
     }
-    return findProjectSamplesFile(process.cwd()) ?? 'eval-samples.json';
+    return findProjectSamplesFile(projectRoot) ?? 'eval-samples.json';
   }, lang);
 }

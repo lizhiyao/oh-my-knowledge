@@ -102,6 +102,41 @@ function resolveWithDeterministicTestResources(
 }
 
 describe('parseCliEvaluationRequest', () => {
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'])('accepts effort %s in the authoritative request', (effort) => {
+    const request = parseCliEvaluationRequest({ explicitCliFlags: { control: 'control', treatment: 'treatment', effort }, defaults });
+    expect(request.values.targetRuntime.effort).toBe(effort);
+  });
+
+  it('rejects invalid effort with a stable input error', () => {
+    expect(() => parseCliEvaluationRequest({ explicitCliFlags: { control: 'control', treatment: 'treatment', effort: 'turbo' }, defaults }))
+      .toThrowError(expect.objectContaining({ code: 'CLI_INPUT_INVALID', fieldPath: 'effort' }));
+  });
+
+  it('parses only the winning judge source and bypasses all judges when disabled', () => {
+    const environmentDefaults = { ...defaults, judgeModels: 'invalid-environment-preference' };
+    const yaml = { ...equivalentConfig, judgeModels: [{ executor: 'openai-api', model: 'yaml-judge' }] };
+    const cli = parseCliEvaluationRequest({ explicitCliFlags: { 'judge-models': 'anthropic-api:cli-judge' }, evalConfig: yaml, defaults: environmentDefaults });
+    expect(cli.values.judges.members).toEqual([{ executorId: 'anthropic-api', model: 'cli-judge' }]);
+    const config = parseCliEvaluationRequest({ explicitCliFlags: {}, evalConfig: yaml, defaults: environmentDefaults });
+    expect(config.values.judges.members).toEqual([{ executorId: 'openai-api', model: 'yaml-judge' }]);
+    const disabled = parseCliEvaluationRequest({ explicitCliFlags: { 'no-judge': true, 'judge-models': 'invalid-cli' }, evalConfig: yaml, defaults: environmentDefaults });
+    expect(disabled.values.judges).toMatchObject({ enabled: false, members: [] });
+    expect(() => parseCliEvaluationRequest({ explicitCliFlags: { control: 'control', treatment: 'treatment' }, defaults: environmentDefaults }))
+      .toThrowError(expect.objectContaining({ code: 'CLI_INPUT_INVALID', fieldPath: 'judge-models' }));
+  });
+
+  it('preserves structured remote sources without interpreting URL punctuation', () => {
+    const request = parseCliEvaluationRequest({ explicitCliFlags: {}, evalConfig: { ...equivalentConfig, variants: [
+      { name: 'base', role: 'control', artifact: 'baseline' },
+      { name: 'remote', role: 'treatment', git: { url: 'git@host:repo.git', spec: 'skills/review' } },
+    ] }, defaults });
+    expect(request.values.variants[1].artifactSource).toEqual({ artifactSourceKind: 'remote-git', url: 'git@host:repo.git', spec: 'skills/review' });
+  });
+
+  it('disambiguates derived names without assuming equal basenames are equal artifacts', () => {
+    const request = parseCliEvaluationRequest({ explicitCliFlags: { control: 'v1/review.md', treatment: 'v2/review.md,v3/review#2.md' }, defaults });
+    expect(request.values.variants.map((variant) => variant.targetId)).toEqual(['review', 'review#3', 'review#2']);
+  });
   it('records a host-discovered project MCP config as a derived locator', () => {
     const parsed = parseCliEvaluationRequest({
       explicitCliFlags: { control: 'control', treatment: 'treatment' },

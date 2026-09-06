@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNodeCoreRunArtifactStore, type CoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import * as managedEvidence from '../../../src/knowledge-artifacts/governance/evidence.js';
 import type { EvalConfig } from '../../../src/eval-workflows/inputs/contracts/config.js';
+import { prepareCliEvaluation } from '../../../src/cli/lib/prepare-evaluation.js';
 import { runCoreEvaluationCommand } from '../../../src/cli/lib/run-core-evaluation.js';
 
 const roots: string[] = [];
@@ -29,9 +30,8 @@ async function fixture() {
     { sample_id: 'answer', prompt: 'Answer.', assertions: [{ type: 'contains', value: 'fixture' }] },
   ] }));
   const outputDirectory = join(root, 'reports');
-  const config = { samplesPath, skillDir, executorName: resolve('test/fixtures/custom-executor/core-fixture-executor.sh'), model: 'fixture', judgeModels: [] };
-  const flags = { control: 'baseline', treatment: skill, 'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': outputDirectory };
-  return { root, outputDirectory, run: (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh'; environment?: NodeJS.ProcessEnv } = {}) => runCoreEvaluationCommand({ projectRoot: root, config, flags: { ...flags, ...extra }, evalConfig: settings.evalConfig ?? null, lang: settings.lang ?? 'zh', environment: settings.environment, store }) };
+  const flags = { samples: samplesPath, 'skill-dir': skillDir, executor: resolve('test/fixtures/custom-executor/core-fixture-executor.sh'), model: 'fixture', control: 'baseline', treatment: skill, 'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': outputDirectory };
+  return { root, outputDirectory, run: async (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh'; environment?: NodeJS.ProcessEnv } = {}) => runCoreEvaluationCommand({ prepared: prepareCliEvaluation({ ...flags, ...extra }, { projectRoot: root, evalConfig: settings.evalConfig, lang: settings.lang ?? 'zh', env: settings.environment }), store }) };
 }
 
 describe('CLI product application', () => {

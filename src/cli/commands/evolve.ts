@@ -133,7 +133,7 @@ export async function runEvolve(
   }
 
   // 参数校验必须早于任何昂贵副作用(自动生成用例 / LLM 调用)。
-  const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config.js');
+  const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config/judge-models.js');
   const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'omk evolve' }));
@@ -212,13 +212,15 @@ export async function runEvolve(
 
   const { evolveSkillCore } = await import('../../knowledge-artifacts/authoring/core-evolver.js');
   const { runCoreEvaluationCommand } = await import('../lib/run-core-evaluation.js');
+  const { prepareCliEvaluation } = await import('../lib/prepare-evaluation.js');
   const evolveEffort = flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined;
   const evaluatePair = async (control: string, treatment: string) => {
     const evaluation = await runCoreEvaluationCommand({
-      flags: {
+      prepared: prepareCliEvaluation({
         control,
         treatment,
         samples: resolve(samplesFile),
+        'skill-dir': dirname(resolve(skillPath)),
         executor: flags.executor,
         model: flags.model,
         'judge-models': evolveJudges.map((judge) => `${judge.executor}:${judge.model}`).join(','),
@@ -229,17 +231,7 @@ export async function runEvolve(
         'no-evidence': true,
         'no-serve': true,
         'report-only': true,
-      },
-      config: {
-        samplesPath: resolve(samplesFile),
-        skillDir: dirname(resolve(skillPath)),
-        executorName: flags.executor,
-        model: flags.model,
-        effort: evolveEffort,
-        judgeModels: evolveJudges,
-      },
-      evalConfig: null,
-      lang: 'zh',
+      }, { lang: 'zh' }),
     });
     if (evaluation.stored === undefined) {
       throw new Error('Core evolve evaluation 未持久化 artifact chain。');

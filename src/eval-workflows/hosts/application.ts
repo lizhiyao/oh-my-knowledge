@@ -27,7 +27,7 @@ import { discoverBatchSkills } from '../inputs/batch-discovery.js';
 import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
 import { generateRunId } from '../../evidence/storage/run-id.js';
 
-export { parseCliEvaluationRequest, type CliEvaluationRequest } from '../input-compilation/index.js';
+export { parseCliEvaluationRequest, CliEvaluationInputError, type CliEvaluationRequest, type CliEvaluationParseInput } from '../input-compilation/index.js';
 export { NodeCliProductionCompositionError, type NodeEvaluationEnvironment } from './composition/node-runtime.js';
 export type { ClassifiedEnvironmentEntry } from './adapters/shared/classified-environment.js';
 export type { CoreRunArtifactStore, StoredCoreRunArtifacts } from '../artifact-store/index.js';
