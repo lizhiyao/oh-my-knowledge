@@ -19,7 +19,7 @@ import { evaluate, prepareEvaluation } from 'oh-my-knowledge';
 | comparison | 显式声明一个 control Variant、一个或多个 treatment Variant，以及要比较的 Metric。 |
 | dataset／sample | 评测输入，以及 expected 或 evaluation context。 |
 | executor | 针对一个 sample 运行 artifact 的宿主代码。 |
-| evaluator | 测量方法，例如 exact match 或 Rubric 评委。 |
+| evaluator | 测量方法，例如判断输出是否与标准答案完全一致，或由 Rubric 评委按评分标准评价。 |
 | experiment／analysis／decision／policy | 采样设计、估计方法、可选的单一 Decision 与运行限制。 |
 | result | Core 产出的运行 artifact、evidence、Decision 与 Report。 |
 
@@ -27,7 +27,26 @@ Core 编译后的 `Target` 仍是内部执行概念，不是 artifact 或 varian
 
 一句话：Executor 负责运行 artifact，Evaluator 负责评价结果。
 
-## Exact-match 评测
+<a id="exact-match-评测"></a>
+
+## 判断输出是否与标准答案完全一致（Exact match）
+
+当任务要求返回固定答案、分类标签或结构化数据时，可以使用「完全匹配」评分器（`exact-match`）。你为每条样本提供标准答案 `expected`，OMK 将执行器返回的 `output` 与它比较：一致记为 `true`，不一致记为 `false`，默认指标名为 `correct`。这项比较不需要调用 LLM 评委。
+
+例如，标准答案是字符串 `"巴黎"` 时：
+
+| 实际输出 | 是否匹配 | 原因 |
+|---|---|---|
+| `"巴黎"` | 是 | 与标准答案完全一致。 |
+| `"法国的首都是巴黎"` | 否 | 意思正确，但输出内容不同。 |
+| `"巴黎。"` | 否 | 多了句号。 |
+| `" 巴黎 "` | 否 | 多了前后空格，评分器不会自动去除。 |
+
+它适合要求精确输出的任务，例如返回 `"退款"` 或 `"咨询"` 的分类任务。允许多种正确表述的开放问答，应考虑 [Rubric 评委](#rubric-评委评测)，按明确的评分标准判断答案；需要自行去除空格、忽略大小写或提取字段后再比较时，可使用 [自定义评分器](#custom-evaluator)。
+
+对于 JSON 输出，OMK 比较规范化后的 JSON 值：对象字段顺序不影响结果，数组元素顺序、值的类型和字符串内容仍须一致。例如，`{"a":1,"b":2}` 与 `{"b":2,"a":1}` 匹配，数字 `4` 与字符串 `"4"` 不匹配。字符串形式的 JSON 不会自动解析成对象。
+
+下面演示如何接入模型服务、提供标准答案，并比较两个 prompt 版本的完全匹配率。`modelGateway` 和 `reportStore` 代表你自己的模型调用与报告存储代码，需要替换为实际实现。
 
 安装 OMK 和一个运行时 schema 库。Schema 只需提供 `parse(unknown)` 方法；下面使用 Zod：
 
@@ -620,8 +639,6 @@ analyses: [{
 ```
 
 每个 component 必须是 boolean Metric，或具有单调 direction 的有界 numeric Metric。OMK 会依据 sealed source Metric 将其转换到 `[0, 1]`，在实验单位内合成完整读数，最后才对 derived Metric 执行 Bootstrap。权重必须为正、按 `metricId` 唯一且严格求和为一；系统不会提供默认权重、覆盖 scale、clamp 越界值，也不会在证据缺失后重新归一化。单 Variant 质量使用带 `variantId` 的 `composite-quality-interval`；treatment-minus-control 变化使用 `composite-comparison-interval`，并由 paired 或 independent Sampling Design 决定重采样语义。Decision 通过 `analysisId` 选择其中任一结果。
-
-`exact-match` 比较 actual output 与 sample `expected` 的 canonical JSON 值，不是字符串字节逐一比较。
 
 `runId`、`signal`、`onEvent`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
 

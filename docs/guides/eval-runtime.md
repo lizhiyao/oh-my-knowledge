@@ -19,7 +19,7 @@ The package is ESM-only and requires Node.js 22 or newer. It does not discover c
 | comparison | An explicit control Variant, one or more treatment Variants, and the Metrics to compare. |
 | dataset／sample | The evaluation inputs and expected or evaluation context. |
 | executor | Host code that runs an artifact for one sample. |
-| evaluator | The measurement method, such as exact match or a Rubric Judge. |
+| evaluator | The measurement method, such as checking whether output exactly equals the expected answer, or using a Rubric Judge to apply scoring criteria. |
 | experiment／analysis／decision／policy | Sampling design, estimators, an optional selected Decision, and operational limits. |
 | result | The Core run artifacts, evidence, Decision, and Report. |
 
@@ -28,6 +28,23 @@ Core's compiled `Target` remains an internal execution concept. It is not a seco
 In one sentence: the Executor runs the artifact; the Evaluator evaluates the result.
 
 ## Exact-match evaluation
+
+Use the `exact-match` evaluator when a task must return a fixed answer, a classification label, or structured data. Provide an expected answer in each sample's `expected` field. OMK compares the executor's `output` with it: a match produces `true`, and a mismatch produces `false`. The default metric ID is `correct`. This comparison does not call an LLM judge.
+
+For example, when the expected answer is the string `"Paris"`:
+
+| Actual output | Match? | Reason |
+|---|---|---|
+| `"Paris"` | Yes | Exactly equals the expected answer. |
+| `"The capital of France is Paris"` | No | The meaning is correct, but the content differs. |
+| `"Paris."` | No | Contains an extra period. |
+| `" Paris "` | No | Contains extra spaces; the evaluator does not trim them. |
+
+This suits tasks that require precise output, such as classification into `"refund"` or `"inquiry"`. For open-ended answers with multiple valid phrasings, consider a [Rubric Judge](#rubric-judge-evaluation) with explicit scoring criteria. Use a [custom evaluator](#custom-evaluator) when you need your own trimming, case folding, or field extraction before comparison.
+
+For JSON output, OMK compares canonical JSON values: object key order does not matter, but array order, value types, and string contents must match. For example, `{"a":1,"b":2}` matches `{"b":2,"a":1}`, while the number `4` does not match the string `"4"`. A string containing JSON is not automatically parsed into an object.
+
+The example below connects a model service, supplies expected answers, and compares the exact-match rates of two prompt versions. `modelGateway` and `reportStore` stand for your own model invocation and report storage code; replace them with your implementations.
 
 Install OMK and a runtime schema library. A schema only needs a `parse(unknown)` method; this example uses Zod:
 
@@ -623,8 +640,6 @@ analyses: [{
 ```
 
 Every component must be a boolean Metric or a bounded numeric Metric with a monotonic direction. OMK converts each sealed source Metric to `[0, 1]`, composes complete readings within the experimental unit, and only then bootstraps the derived Metric. Weights are positive, unique by `metricId`, and sum exactly to one; there is no default weighting, scale override, clamp, or renormalization after missing evidence. Use `composite-quality-interval` with `variantId` for one-Variant quality. Use `composite-comparison-interval` with a paired or independent Sampling Design for treatment-minus-control change. A Decision selects either result by its `analysisId`.
-
-`exact-match` compares the canonical JSON value of the actual output with the sample's `expected` value. It is not byte-for-byte string comparison.
 
 `runId`, `signal`, `onEvent`, `clock`, report annotations／summaries, and `eventBufferCapacity` belong to the optional second `EvaluationRunOptions` argument; they are not measurement declarations. `onEvent` is a best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
 
