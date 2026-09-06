@@ -1,12 +1,13 @@
 import { existsSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { enumStringParser, integerStringParser, numberStringParser } from '../../oclif/parsers.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
-import { parseRunConfig, type RunConfig } from '../../lib/parse-run-config.js';
+import { prepareCliEvaluation, type PreparedCliEvaluation } from '../../lib/prepare-evaluation.js';
+import { CliEvaluationInputError } from '../../../eval-workflows/hosts/application.js';
 import { codexModelFlagValue, codexModelHint } from '../../lib/codex-model-hint.js';
 import { looksLikeModelUnavailableFailure } from '../../lib/llm-failure-classifier.js';
 import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
@@ -28,6 +29,13 @@ const CLAUDE_EXECUTORS = executorNamesForFamily('claude');
 const CODEX_EXECUTORS = executorNamesForFamily('codex');
 const OPENAI_API_EXECUTORS = executorNamesForFamily('openai-api');
 const ANTHROPIC_API_EXECUTORS = executorNamesForFamily('anthropic-api');
+
+interface ConnectivityFailureContext {
+  executorName: string;
+  model: string;
+  judgeModels: readonly { executor: string; model: string }[];
+  noJudge: boolean;
+}
 
 type PreflightRuntimeMatch = {
   executor: string;
@@ -69,7 +77,7 @@ function matchesPreflightTarget(target: string, executor: string, model: string)
 }
 
 function matchingPreflightRuntimes(
-  config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
+  config: Pick<ConnectivityFailureContext, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
   failedTarget: string,
 ): PreflightRuntimeMatch[] {
   const matches: PreflightRuntimeMatch[] = [];
@@ -89,7 +97,7 @@ function hasExecutor(matches: PreflightRuntimeMatch[], executors: ReadonlySet<st
 }
 
 function configHasExecutor(
-  config: Pick<RunConfig, 'executorName' | 'judgeModels' | 'noJudge'>,
+  config: Pick<ConnectivityFailureContext, 'executorName' | 'judgeModels' | 'noJudge'>,
   executors: ReadonlySet<string>,
 ): boolean {
   if (config.executorName && executors.has(config.executorName)) return true;
@@ -97,7 +105,7 @@ function configHasExecutor(
 }
 
 function shouldSwitchJudgeWithTask(
-  config: Pick<RunConfig, 'judgeModels' | 'noJudge'>,
+  config: Pick<ConnectivityFailureContext, 'judgeModels' | 'noJudge'>,
   executors: ReadonlySet<string>,
 ): boolean {
   return !config.noJudge && config.judgeModels.length === 1 && executors.has(config.judgeModels[0].executor);
@@ -120,7 +128,7 @@ function fallbackFlags(
 
 export function formatConnectivityFailureHint(
   message: string,
-  config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
+  config: Pick<ConnectivityFailureContext, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
   lang: CliLang,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
@@ -171,19 +179,28 @@ async function runEval(
   flags: EvalFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { values, config, evalConfig } = parseRunConfig(
-    { ...flags } as Record<string, unknown>,
-    { lang },
-  );
+  let prepared: PreparedCliEvaluation;
+  try {
+    prepared = prepareCliEvaluation({ ...flags }, { lang });
+  } catch (error) {
+    if (!(error instanceof CliEvaluationInputError)) throw error;
+    console.error(`error: ${error.message}`);
+    throw new CliExit(2);
+  }
+  const { request } = prepared;
+  const values = flags;
+  const evalConfig = prepared.parseInput.evalConfig;
+  const samplesPath = resolve(prepared.projectRoot, request.values.locators.samples);
+  const skillDir = resolve(prepared.projectRoot, request.values.locators.skillDirectory);
 
-  if (!values.batch && !hasUsableSamplesPath(config.samplesPath)) {
+  if (!values.batch && !hasUsableSamplesPath(samplesPath)) {
     const treatmentRaw = typeof values.treatment === 'string' ? values.treatment : '';
     const treatments = treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean);
     const sampleCommand = !values.samples && !evalConfig?.samples && treatments.length === 1
-      ? sampleCommandForSingleTreatment(treatments[0], config.skillDir)
+      ? sampleCommandForSingleTreatment(treatments[0], skillDir)
       : null;
     const missingSamplesMessage = [
-      tCli('cli.common.samples_not_found', lang, { path: config.samplesPath }),
+      tCli('cli.common.samples_not_found', lang, { path: samplesPath }),
       sampleCommand ? tCli('cli.common.samples_not_found_hint', lang, { command: sampleCommand }) : '',
     ].filter(Boolean).join('\n');
     console.error(tCli('cli.common.error_prefix', lang, {
@@ -194,12 +211,7 @@ async function runEval(
 
   try {
     const { runCoreEvaluationCommand } = await import('../../lib/run-core-evaluation.js');
-    const result = await runCoreEvaluationCommand({
-      flags: { ...flags },
-      config,
-      evalConfig,
-      lang,
-    });
+    const result = await runCoreEvaluationCommand({ prepared });
     if (!process.stdout.isTTY || result.output && typeof result.output === 'object'
         && (result.output as { projectionKind?: string }).projectionKind === 'core-cli-dry-run') {
       console.log(JSON.stringify(result.output, null, 2));
@@ -222,7 +234,12 @@ async function runEval(
     if (err instanceof CliExit) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error(tCli('cli.common.error_prefix', lang, {
-      message: `${message}${formatConnectivityFailureHint(message, config, lang)}`,
+      message: `${message}${formatConnectivityFailureHint(message, {
+        executorName: request.values.targetRuntime.executorId,
+        model: request.values.targetRuntime.model,
+        noJudge: !request.values.judges.enabled,
+        judgeModels: request.values.judges.members.map((member) => ({ executor: member.executorId, model: member.model })),
+      }, lang, prepared.environment.environment)}`,
     }));
     throw new CliExit(1);
   }

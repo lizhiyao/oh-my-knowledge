@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { CliExit } from '../../src/cli/lib/cli-exit.js';
 import { runEvolve } from '../../src/cli/commands/evolve.js';
-import { parseJudgeModelsArgOrExit } from '../../src/cli/lib/parse-run-config.js';
+import { parseJudgeModelsArgOrExit } from '../../src/cli/lib/parse-run-config/judge-models.js';
 
 /**
  * CliExit 收口让业务 runX() 在单测里可以被 try/catch 捕获,不再 kill 整个

@@ -20,7 +20,7 @@ interface ExecError extends Error {
  *
  * 不应漏给未捕获 Error 的 stack trace;不应 exit 1。
  */
-// eval 通过 parseRunConfig 解析 judgeModels,需要 control/treatment 才能跑到参数解析。
+// eval 通过 Workflow parser 解析评委配置，入口负责呈现参数错误。
 // evolve 直接调 parseJudgeModelsArgOrExit,无前置依赖。
 type CommandClass = { new (argv: string[], config: Config): Command; id: string; name: string };
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

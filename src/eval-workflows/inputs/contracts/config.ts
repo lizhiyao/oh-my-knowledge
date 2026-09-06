@@ -35,7 +35,7 @@ export interface EvalConfig {
   executor?: string;
   model?: string;
   /** Reasoning effort for the executor LLM. low/medium/high/xhigh/max。
-   *  Default 'low'(parseRunConfig 兜底)。跨 effort 报告不可严格比较。 */
+   *  Default 'low'（Workflow parser 默认值）。跨 effort 报告不可严格比较。 */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** 关闭 diagnostic LLM call。Default false。跟 noJudge 独立 — judge 答打分,
    *  diagnostic 答怎么改 skill。 */

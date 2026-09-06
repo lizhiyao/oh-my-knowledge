@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { parseJudgeModelsArg } from '../../src/cli/lib/parse-run-config.js';
+import { parseJudgeModelsArg } from '../../../src/eval-workflows/inputs/judge-models.js';
 
 /**
  * `parseJudgeModelsArg` 是 `--judge-models executor:model[,executor:model,...]`

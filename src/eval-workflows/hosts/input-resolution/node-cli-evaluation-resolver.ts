@@ -9,7 +9,7 @@ import {
   type TargetExecutionControls,
 } from '../../../eval-core/contracts/index.js';
 import { loadSamples } from '../../inputs/load-samples.js';
-import { resolveArtifacts } from '../../../knowledge-artifacts/sources/artifact-resolution.js';
+import { resolveArtifacts, variantIdentity, parseVariantCwd } from '../../../knowledge-artifacts/sources/artifact-resolution.js';
 import type { Artifact } from '../../../knowledge-artifacts/contracts.js';
 import type { Mock } from '../../../executors/contracts/mock.js';
 import type { Sample } from '../../inputs/contracts/sample.js';
@@ -786,6 +786,55 @@ export async function resolveNodeCliEvaluationRequest(
     fieldPath: 'orchestration.batch',
     message: 'Batch request 必须由 production host workflow 展开为独立 child evaluation。',
   });
+  const skillDirectory = absolute(options.projectRoot, request.values.locators.skillDirectory);
+  const cliVariants = request.fieldSources.some((source) => source.normalizedField === 'values.variants' && source.sourceKind === 'cli-flag');
+  if (cliVariants) {
+    for (const variant of request.values.variants) {
+      if (variant.artifactSource.artifactSourceKind !== 'expression') continue;
+      const expression = variant.artifactSource.expression;
+      if (/^(https?|ssh|git):\/\//i.test(expression) || /^[\w.-]+@[\w.-]+:/.test(expression)) {
+        fail({ code: 'CLI_INPUT_INVALID', fieldPath: 'variants', message: '远端 git 源请在 eval.yaml 中使用结构化 git 字段。' });
+      }
+      if (parseVariantCwd(expression).cwd !== undefined) {
+        fail({ code: 'CLI_INPUT_INVALID', fieldPath: 'variants', message: '「name@cwd」语法已移除，请使用 --control-cwd／--treatment-cwd 或 eval.yaml 的 cwd 字段。' });
+      }
+    }
+  }
+  const inputs = request.values.variants.map((variant) => (
+    variant.artifactSource.artifactSourceKind === 'remote-git'
+      ? {
+          git: {
+            url: variant.artifactSource.url,
+            ...(variant.artifactSource.ref === undefined
+              ? {}
+              : { ref: variant.artifactSource.ref }),
+            spec: variant.artifactSource.spec,
+          },
+          ...(variant.workspaceLocator === undefined
+            ? {}
+            : { cwd: absolute(options.projectRoot, variant.workspaceLocator) }),
+          name: variant.targetId,
+        }
+      : {
+          expr: (variant.artifactSource.expression.includes('/') || /\.md$/i.test(variant.artifactSource.expression))
+            && !variant.artifactSource.expression.startsWith('git:')
+            ? absolute(options.projectRoot, variant.artifactSource.expression)
+            : variant.artifactSource.expression,
+          ...(variant.workspaceLocator === undefined
+            ? {}
+            : { cwd: absolute(options.projectRoot, variant.workspaceLocator) }),
+        }
+  ));
+  const identities = new Set<string>();
+  for (const input of inputs) {
+    const expression = 'expr' in input ? input.expr : `git+${JSON.stringify(input.git)}`;
+    const identity = variantIdentity(expression, skillDirectory, input.cwd);
+    if (identities.has(identity)) fail({
+      code: 'CLI_INPUT_DUPLICATE_ID', fieldPath: 'variants',
+      message: `variant "${expression}" 重复出现，同一物理 variant 不能同时属于 control 与 treatment，也不能在 treatment 中重复。`,
+    });
+    identities.add(identity);
+  }
   let loaded: ReturnType<typeof loadSamples>;
   try {
     loaded = loadSamples(
@@ -803,32 +852,7 @@ export async function resolveNodeCliEvaluationRequest(
 
   let artifacts: Artifact[];
   try {
-    const skillDirectory = absolute(options.projectRoot, request.values.locators.skillDirectory);
-    artifacts = resolveArtifacts(skillDirectory, request.values.variants.map((variant) => (
-      variant.artifactSource.artifactSourceKind === 'remote-git'
-        ? {
-            git: {
-              url: variant.artifactSource.url,
-              ...(variant.artifactSource.ref === undefined
-                ? {}
-                : { ref: variant.artifactSource.ref }),
-              spec: variant.artifactSource.spec,
-            },
-            ...(variant.workspaceLocator === undefined
-              ? {}
-              : { cwd: absolute(options.projectRoot, variant.workspaceLocator) }),
-            name: variant.targetId,
-          }
-        : {
-            expr: variant.artifactSource.expression.includes('/')
-              && !variant.artifactSource.expression.startsWith('git:')
-              ? absolute(options.projectRoot, variant.artifactSource.expression)
-              : variant.artifactSource.expression,
-            ...(variant.workspaceLocator === undefined
-              ? {}
-              : { cwd: absolute(options.projectRoot, variant.workspaceLocator) }),
-          }
-    )), {
+    artifacts = resolveArtifacts(skillDirectory, inputs, {
       strictBaseline: request.values.measurement.baselineIsolation,
       materialize: true,
     });

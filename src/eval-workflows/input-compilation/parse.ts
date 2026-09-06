@@ -1,4 +1,5 @@
 import type { EvalConfig, EvalConfigVariant } from '../inputs/contracts/config.js';
+import { parseJudgeModelsArg } from '../inputs/judge-models.js';
 import type { JudgeConfig } from '../instruments/contracts/config.js';
 import { deepFreezeCanonicalJson } from '../../eval-core/contracts/index.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../analysis/bootstrap.js';
@@ -24,6 +25,8 @@ export interface CliEvaluationParseDefaults {
   readonly mcpConfigLocator?: string;
   readonly targetRuntime: CliEvaluationRequestValues['targetRuntime'];
   readonly judgeMembers: readonly CliEvaluationJudgeRequest[];
+  /** Captured environment preference; parsed only if no higher-priority source wins. */
+  readonly judgeModels?: string;
   readonly presentation: {
     readonly projectOutputDirectoryLocator: string;
     readonly globalOutputDirectoryLocator: string;
@@ -90,19 +93,11 @@ function numericValue(
 }
 
 function parseJudgeModels(value: string): CliEvaluationJudgeRequest[] {
-  const members = value.split(',').map((entry) => entry.trim()).filter(Boolean).map((entry) => {
-    const separator = entry.indexOf(':');
-    if (separator <= 0 || separator === entry.length - 1) {
-      return invalid('judge-models', '评委配置必须使用 executor:model 格式。');
-    }
-    return { executorId: entry.slice(0, separator), model: entry.slice(separator + 1) };
-  });
-  if (members.length === 0) invalid('judge-models', '评委配置不得为空。');
-  const identities = members.map((member) => `${member.executorId}:${member.model}`);
-  if (new Set(identities).size !== identities.length) {
-    invalid('judge-models', '评委配置不得包含重复的 executor:model。');
+  try {
+    return configJudgeModels(parseJudgeModelsArg(value));
+  } catch (error) {
+    return invalid('judge-models', error instanceof Error ? error.message : String(error));
   }
-  return members;
 }
 
 function configJudgeModels(value: readonly JudgeConfig[]): CliEvaluationJudgeRequest[] {
@@ -174,11 +169,20 @@ function cliVariants(flags: Readonly<Record<string, unknown>>): CliEvaluationVar
     artifactSource: { artifactSourceKind: 'expression', expression },
     ...(treatmentCwds[index] ? { workspaceLocator: treatmentCwds[index] } : {}),
   }))];
-  const targetIds = variants.map((variant) => variant.targetId);
-  if (new Set(targetIds).size !== targetIds.length) {
-    invalid('variants', 'CLI variant 派生出重复 targetId，请改用 eval.yaml 显式命名。');
-  }
-  return variants;
+  // CLI names are derived labels. Physical equality belongs to Resolve.
+  const reserved = new Set(variants.map((variant) => variant.targetId));
+  const used = new Set<string>();
+  return variants.map((variant) => {
+    let targetId = variant.targetId;
+    if (used.has(targetId)) {
+      let suffix = 2;
+      do {
+        targetId = `${variant.targetId}#${suffix++}`;
+      } while (reserved.has(targetId) || used.has(targetId));
+    }
+    used.add(targetId);
+    return { ...variant, targetId };
+  });
 }
 
 export function parseCliEvaluationRequest(
@@ -264,7 +268,7 @@ export function parseCliEvaluationRequest(
     defaultValue: 'low', defaultSource: 'documented',
   });
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort as string)) {
-    invalid('effort', 'effort 不受支持。');
+    invalid('effort', `--effort must be one of low/medium/high/xhigh/max (got "${effort}")`);
   }
 
   const noJudge = pick({
@@ -275,7 +279,10 @@ export function parseCliEvaluationRequest(
   }) as boolean;
   let judgeMembers: readonly CliEvaluationJudgeRequest[] = [];
   if (!noJudge) {
-    const cliJudgeModels = nonEmptyString(flags['judge-models'], 'judge-models');
+    const cliJudgeModels = flags['judge-models'];
+    if (cliJudgeModels !== undefined && typeof cliJudgeModels !== 'string') {
+      invalid('judge-models', '评委配置必须是字符串。');
+    }
     judgeMembers = pick({
       normalizedField: 'values.judges.members',
       cliKey: 'judge-models', cliValue: cliJudgeModels === undefined
@@ -284,7 +291,10 @@ export function parseCliEvaluationRequest(
       configKey: 'judgeModels', configValue: config?.judgeModels === undefined
         ? undefined
         : configJudgeModels(config.judgeModels),
-      defaultValue: input.defaults.judgeMembers,
+      defaultValue: cliJudgeModels === undefined && config?.judgeModels === undefined
+        && input.defaults.judgeModels !== undefined
+        ? parseJudgeModels(input.defaults.judgeModels)
+        : input.defaults.judgeMembers,
       defaultSource: 'environment-selection',
     }) as readonly CliEvaluationJudgeRequest[];
     if (judgeMembers.length === 0) invalid('judges.members', '启用评委时必须解析出至少一个评委。');

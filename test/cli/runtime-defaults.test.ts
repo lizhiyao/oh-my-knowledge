@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { parseRunConfig } from '../../src/cli/lib/parse-run-config.js';
+import { prepareCliEvaluation } from '../../src/cli/lib/prepare-evaluation.js';
 import {
   defaultJudgeModel,
   resolveCliExecutor,
@@ -101,7 +101,7 @@ describe('Codex-first CLI runtime defaults', () => {
 
   it('applies the Codex runtime to eval task and judge defaults together', () => {
     const env = codexEnv('gpt-eval');
-    const { config } = parseRunConfig({
+    const { request } = prepareCliEvaluation({
       control: 'baseline',
       treatment: 'demo',
       samples: 'eval-samples.json',
@@ -109,9 +109,9 @@ describe('Codex-first CLI runtime defaults', () => {
       env,
       commandExists: (command) => command === 'codex',
     });
-    assert.equal(config.executorName, 'codex');
-    assert.equal(config.model, 'gpt-eval');
-    assert.deepEqual(config.judgeModels, [{ executor: 'codex', model: 'gpt-eval' }]);
+    assert.equal(request.values.targetRuntime.executorId, 'codex');
+    assert.equal(request.values.targetRuntime.model, 'gpt-eval');
+    assert.deepEqual(request.values.judges.members, [{ executorId: 'codex', model: 'gpt-eval' }]);
   });
 
   it('allows OMK_JUDGE_MODELS to override the inferred judge only', () => {
@@ -119,13 +119,13 @@ describe('Codex-first CLI runtime defaults', () => {
       ...codexEnv('gpt-task'),
       OMK_JUDGE_MODELS: 'openai-api:gpt-judge',
     };
-    const { config } = parseRunConfig({
+    const { request } = prepareCliEvaluation({
       control: 'baseline',
       treatment: 'demo',
       samples: 'eval-samples.json',
     }, { env });
-    assert.equal(config.executorName, 'codex');
-    assert.equal(config.model, 'gpt-task');
-    assert.deepEqual(config.judgeModels, [{ executor: 'openai-api', model: 'gpt-judge' }]);
+    assert.equal(request.values.targetRuntime.executorId, 'codex');
+    assert.equal(request.values.targetRuntime.model, 'gpt-task');
+    assert.deepEqual(request.values.judges.members, [{ executorId: 'openai-api', model: 'gpt-judge' }]);
   });
 });

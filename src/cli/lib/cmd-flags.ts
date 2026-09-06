@@ -36,7 +36,7 @@
  *   优先级 `--lang CLI flag > OMK_LANG env > zh`。
  *
  * 三态 boolean 注意:oclif 对 `Flags.boolean({})`(没 `default`)运行时不会塞 `false`,
- * 而是字段缺失,字段读出来是 `undefined`。这点对 `eval` 跟 `parseRunConfig()` fallback
+ * 而是字段缺失,字段读出来是 `undefined`。这点对 `eval` 跟 `parseCliEvaluationRequest()` fallback
  * 关键 — `undefined`(CLI 没传)走 `eval.yaml` config / 内置 default;`false`(显式
  * `--no-xxx`)真的关。如果在 interface 里把它标成 `boolean`,后续维护者按类型读
  * `flags.bootstrap` 会静默把「没传」当成「关」,绕开 config fallback。所以未设
@@ -90,7 +90,7 @@ export interface EvalFlags {
   /** 报告写全局而非项目 .omk/eval(写入侧 escape;读取侧 studio / 复用走 overlay 兜底)。 */
   global?: boolean;
   // 下面 17 个 boolean 都没在 Eval Command 上设 `default: false`,oclif 运行时
-  // absent → undefined,业务在 parseRunConfig() / runEval() 里靠 undefined vs
+  // absent → undefined,业务在 parseCliEvaluationRequest() / runEval() 里靠 undefined vs
   // boolean 的三态区分 CLI 没传 vs 显式开关 vs 走 eval.yaml fallback;不能简化
   // 成 `boolean`,会让维护者直接读 flags.X 时悄悄覆盖 config fallback。
   'no-judge'?: boolean;

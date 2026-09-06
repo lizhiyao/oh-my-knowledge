@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -96,6 +96,65 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
 }
 
 describe('resolveNodeCliEvaluationRequest', () => {
+  it.each([
+    ['short-name', 'control', 'skills/control.md'],
+    ['relative-path', './skills/control.md', 'skills/../skills/control.md'],
+    ['directory-anchor', 'skills/dir', 'skills/dir/SKILL.md'],
+    ['symbolic-link', 'skills/control.md', 'skills/alias.md'],
+  ])('rejects duplicate physical variants before materialization: %s', async (_name, control, treatment) => {
+    const root = await fixture('physical-identity');
+    await mkdir(join(root, 'skills', 'dir'));
+    await writeFile(join(root, 'skills', 'dir', 'SKILL.md'), '# Directory skill');
+    await symlink(join(root, 'skills', 'control.md'), join(root, 'skills', 'alias.md'));
+    const materializationRoot = join(root, 'resolved');
+    await expect(resolveNodeCliEvaluationRequest(request(root, { control, treatment }), { projectRoot: root, materializationRoot }))
+      .rejects.toMatchObject({ code: 'CLI_INPUT_DUPLICATE_ID', fieldPath: 'variants' });
+    await expect(stat(materializationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['https://github.com/o/r.git', 'git@github.com:o/r.git', 'review@/workspace'])('rejects ambiguous CLI source syntax before materialization: %s', async (control) => {
+    const root = await fixture('source-syntax');
+    await expect(resolveNodeCliEvaluationRequest(request(root, { control }), { projectRoot: root, materializationRoot: join(root, 'resolved') }))
+      .rejects.toMatchObject({ code: 'CLI_INPUT_INVALID', fieldPath: 'variants' });
+  });
+
+  it('keeps the same artifact in distinct runtime workspaces as separate targets', async () => {
+    const root = await fixture('distinct-workspaces');
+    vi.stubEnv('OMK_TREES_DIR', join(root, 'trees'));
+    await mkdir(join(root, 'workspace-a'));
+    await mkdir(join(root, 'workspace-b'));
+    await writeFile(join(root, 'workspace-a', 'context.txt'), 'a');
+    await writeFile(join(root, 'workspace-b', 'context.txt'), 'b');
+    const resolved = await resolveNodeCliEvaluationRequest(request(root, {
+      control: 'control', treatment: 'control',
+      'control-cwd': 'workspace-a', 'treatment-cwd': 'workspace-b',
+    }), { projectRoot: root, materializationRoot: join(root, 'resolved') });
+    expect(resolved.targets.map((target) => target.targetId)).toEqual(['control', 'control#2']);
+  });
+
+  it('rejects repeated structured remote sources before fetching or materialization', async () => {
+    const root = await fixture('remote-identity');
+    const original = request(root);
+    const remote = { artifactSourceKind: 'remote-git' as const, url: 'https://invalid.example/repo.git', ref: 'main', spec: 'skill' };
+    const repeated = { ...original, values: { ...original.values, variants: [
+      { targetId: 'a', experimentRole: 'control' as const, artifactSource: remote },
+      { targetId: 'b', experimentRole: 'treatment' as const, artifactSource: remote },
+    ] } };
+    await expect(resolveNodeCliEvaluationRequest(repeated, { projectRoot: root, materializationRoot: join(root, 'resolved') }))
+      .rejects.toMatchObject({ code: 'CLI_INPUT_DUPLICATE_ID', fieldPath: 'variants' });
+    await expect(stat(join(root, 'resolved'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('keeps distinct physical artifacts with the same basename independently resolvable', async () => {
+    const root = await fixture('same-name');
+    vi.stubEnv('OMK_TREES_DIR', join(root, 'trees'));
+    await mkdir(join(root, 'a'));
+    await mkdir(join(root, 'b'));
+    await writeFile(join(root, 'a', 'review.md'), '# A');
+    await writeFile(join(root, 'b', 'review.md'), '# B');
+    const resolved = await resolveNodeCliEvaluationRequest(request(root, { control: 'a/review.md', treatment: 'b/review.md' }), { projectRoot: root, materializationRoot: join(root, 'resolved') });
+    expect(resolved.targets.map((target) => target.targetId)).toEqual(['review', 'review#2']);
+  });
   it('classifies MCP config as secret because it may contain credentials', async () => {
     const root = await fixture('mcp-config-classification');
     const nativeConfig = {
