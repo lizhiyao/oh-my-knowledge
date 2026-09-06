@@ -41,6 +41,24 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
+  ...['cli/', 'dsh-plugin/', 'mcp/', 'studio/'].map((to) => ({
+    from: 'eval-hosts/', to,
+    reason: '共用宿主只接收显式输入，不得经交付入口导入入口策略。',
+  })),
+  ...[
+    'eval-hosts/runtime-adapter/adapters/',
+    'eval-hosts/runtime-adapter/resource-leases/',
+    'eval-hosts/runtime-adapter/evaluators/',
+  ].flatMap((from) => [
+    'eval-hosts/node/',
+    'eval-hosts/runtime-adapter/assembly.ts',
+    'eval-hosts/runtime-adapter/builtins.ts',
+    'eval-hosts/runtime-adapter/composition.ts',
+    'eval-hosts/runtime-adapter/index.ts',
+  ].map((to) => ({
+    from, to,
+    reason: '宿主适配与资源实现不得反向依赖产品装配或通过聚合入口绕过边界。',
+  }))),
   ...['eval-core/', 'eval-runtime/', 'eval-workflows/', 'executors/'].map((from) => ({
     from, to: 'eval-hosts/',
     reason: '具体宿主由外层装配并注入；领域、Runtime 和 Core 不得反向导入宿主实现。',

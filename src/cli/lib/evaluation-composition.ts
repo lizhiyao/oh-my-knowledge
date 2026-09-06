@@ -1,6 +1,7 @@
-import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../runtime-adapter/composition.js';
+import { createNodeHostPreflightDeclarations } from '../../eval-hosts/node/preflight.js';
+import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../../eval-hosts/runtime-adapter/composition.js';
 import type { EvaluationRuntimeProvider } from '../../eval-runtime/provider.js';
-import { access, readFile, realpath } from 'node:fs/promises';
+import { access, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, isAbsolute, join } from 'node:path';
 import {
@@ -9,51 +10,45 @@ import {
   type RuntimeIdentity,
   type UsageRecord,
 } from '../../eval-core/contracts/index.js';
-import { checkDependencies } from '../../executors/preflight/dependencies.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import { resolveExecutorRuntimeFingerprint } from '../../executors/core/runtime-fingerprint.js';
-import type { Artifact } from '../../knowledge-artifacts/contracts.js';
 import type { CliEvaluationCompileResult } from '../../eval-workflows/input-compilation/index.js';
 import type {
   OmkLlmJudgeInvocationBinding,
-} from '../runtime-adapter/evaluators/llm-judge-invocation.js';
+} from '../../eval-hosts/runtime-adapter/evaluators/llm-judge-invocation.js';
 import type {
   OmkLlmJudgeInvocationRequest,
-} from '../runtime-adapter/index.js';
-import type {
-  OmkRuntimePreflightDeclaration,
-} from '../runtime-adapter/types.js';
-import { OmkUserFacingPreflightFailure } from '../runtime-adapter/preflight.js';
+} from '../../eval-hosts/runtime-adapter/index.js';
 import {
   createAnthropicApiCoreSchemaValidators,
-} from '../runtime-adapter/adapters/anthropic/protocol.js';
+} from '../../eval-hosts/runtime-adapter/adapters/anthropic/protocol.js';
 import {
   createClaudeCliCoreSchemaValidators,
-} from '../runtime-adapter/adapters/claude/cli-protocol.js';
+} from '../../eval-hosts/runtime-adapter/adapters/claude/cli-protocol.js';
 import {
   createClaudeSdkCoreSchemaValidators,
-} from '../runtime-adapter/adapters/claude/sdk-protocol.js';
+} from '../../eval-hosts/runtime-adapter/adapters/claude/sdk-protocol.js';
 import {
   createCodexCliCoreSchemaValidators,
-} from '../runtime-adapter/adapters/codex/cli-protocol.js';
+} from '../../eval-hosts/runtime-adapter/adapters/codex/cli-protocol.js';
 import {
   createCodexSdkCoreSchemaValidators,
-} from '../runtime-adapter/adapters/codex/sdk-protocol.js';
+} from '../../eval-hosts/runtime-adapter/adapters/codex/sdk-protocol.js';
 import {
   createCustomCommandCoreSchemaValidators,
   customCommandExecutorCapabilities,
-} from '../runtime-adapter/adapters/custom/command.js';
+} from '../../eval-hosts/runtime-adapter/adapters/custom/command.js';
 import {
   createOpenAIApiCoreSchemaValidators,
-} from '../runtime-adapter/adapters/openai/protocol.js';
-import type { ClassifiedEnvironmentEntry } from '../runtime-adapter/adapters/shared/classified-environment.js';
-import { createJudgeProviderRuntimeIdentity } from './judge-provider-identity.js';
+} from '../../eval-hosts/runtime-adapter/adapters/openai/protocol.js';
+import type { ClassifiedEnvironmentEntry } from '../../eval-hosts/runtime-adapter/adapters/shared/classified-environment.js';
+import { createJudgeProviderRuntimeIdentity } from '../../eval-hosts/node/judge-provider-identity.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createProductionRuntimeFactoryRegistry,
   type ProductionExecutorAdapterConfiguration,
-} from './runtime-registry.js';
+} from '../../eval-hosts/node/runtime-registry.js';
 
 const CREDENTIAL_ENVIRONMENT = new Set([
   'ANTHROPIC_API_KEY',
@@ -174,180 +169,6 @@ async function resolveExecutable(
     'NODE_CLI_EXECUTABLE_UNAVAILABLE',
     `执行器「${command}」在当前 PATH 中不可用。`,
   );
-}
-
-function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Readonly<Record<string, unknown>>
-    : undefined;
-}
-
-async function doctorArtifacts(compiled: CliEvaluationCompileResult): Promise<Artifact[]> {
-  const targetsById = new Map(compiled.definition.targets.map((target) => [target.targetId, target]));
-  return Promise.all(compiled.hostResources.resources.flatMap((resource) => {
-    if (resource.resourceKind !== 'artifact') return [];
-    const lineage = record(resource.lineage);
-    const targetId = typeof lineage?.targetId === 'string' ? lineage.targetId : undefined;
-    const target = targetId === undefined ? undefined : targetsById.get(targetId);
-    const artifactKind = lineage?.artifactKind;
-    if (target === undefined || artifactKind === 'baseline'
-        || !['skill', 'prompt', 'agent', 'workflow'].includes(String(artifactKind))) return [];
-    return [(async (): Promise<Artifact> => {
-      const sourceLocator = typeof lineage?.sourceLocator === 'string'
-        ? lineage.sourceLocator
-        : resource.locator;
-      const isDirectorySkill = typeof lineage?.skillRootLocator === 'string';
-      const skillRoot = isDirectorySkill ? resource.locator : undefined;
-      const contentPath = skillRoot === undefined
-        ? resource.locator
-        : join(resource.locator, 'SKILL.md');
-      const content = await readFile(contentPath, 'utf8');
-      const sourceKind = lineage?.sourceKind;
-      return {
-        name: target.targetId,
-        kind: artifactKind as Artifact['kind'],
-        source: ['variant-name', 'file-path', 'git', 'inline', 'custom'].includes(String(sourceKind))
-          ? sourceKind as Artifact['source']
-          : 'custom',
-        content,
-        locator: sourceLocator,
-        ...(skillRoot === undefined ? {} : { skillRoot }),
-        ...(typeof lineage?.workingDirectoryLocator === 'string'
-          ? { cwd: lineage.workingDirectoryLocator }
-          : {}),
-      };
-    })()];
-  }));
-}
-
-function dependencyDoctor(
-  compiled: CliEvaluationCompileResult,
-  environment: NodeJS.ProcessEnv,
-  projectRoot: string,
-): OmkRuntimePreflightDeclaration {
-  let result: Promise<void> | undefined;
-  return Object.freeze({
-    preflightKind: 'doctor' as const,
-    checkId: 'host-dependencies',
-    preflightDisposition: 'check' as const,
-    async run(): Promise<void> {
-      result ??= (async () => {
-        const requirements = compiled.orchestration.dependencyRequirements;
-        if (requirements !== undefined) {
-          const { baseDirectoryLocator, ...dependencies } = requirements;
-          const checked = await checkDependencies({
-            ...(dependencies.tools === undefined ? {} : { tools: [...dependencies.tools] }),
-            ...(dependencies.files === undefined ? {} : { files: [...dependencies.files] }),
-            ...(dependencies.env === undefined ? {} : { env: [...dependencies.env] }),
-            ...(dependencies.preflight === undefined ? {} : {
-              preflight: [...dependencies.preflight],
-            }),
-          }, baseDirectoryLocator, environment);
-          if (!checked.ok) throw new Error('Evaluation dependency doctor failed.');
-        }
-        const artifacts = await doctorArtifacts(compiled);
-        if (artifacts.length === 0) return;
-        const { runDoctor } = await import('../../knowledge-artifacts/doctor/index.js');
-        const { renderDoctorReportText } = await import('../../knowledge-artifacts/doctor/renderer.js');
-        const { tEvalWorkflowMessage } = await import('../../eval-workflows/messages.js');
-        const language = compiled.presentation.language;
-        const report = await runDoctor({
-          artifacts,
-          cwd: projectRoot,
-          dependencyCwd: requirements?.baseDirectoryLocator ?? projectRoot,
-          executorName: compiled.definition.targets[0]?.executorId ?? 'unknown',
-          model: 'core-runtime',
-          timeoutMs: compiled.policy.execution.timeoutMs ?? 8_000,
-          lang: language,
-        });
-        if (report.outcome === 'failed') {
-          renderDoctorReportText(report, language);
-          throw new OmkUserFacingPreflightFailure(
-            `doctor failed:\n${tEvalWorkflowMessage('doctor_gate_blocked', language)}`,
-          );
-        }
-      })();
-      return result;
-    },
-  });
-}
-
-export function createNodeHostPreflightDeclarations(
-  compiled: CliEvaluationCompileResult,
-  environment: NodeJS.ProcessEnv,
-  projectRoot: string,
-): readonly OmkRuntimePreflightDeclaration[] {
-  const hasMcpResource = compiled.hostResources.resources.some(
-    (resource) => resource.resourceKind === 'mcp-config',
-  );
-  const hasMockResource = compiled.hostResources.resources.some(
-    (resource) => resource.resourceKind === 'mock-plan'
-      || resource.resourceKind === 'mock-rule'
-      || resource.resourceKind === 'mock-payload',
-  );
-  const mcpPreflight: OmkRuntimePreflightDeclaration = hasMcpResource
-    ? {
-        preflightKind: 'mcp-readiness',
-        checkId: 'sealed-mcp-resource',
-        preflightDisposition: 'check',
-        async run(): Promise<void> {
-          await Promise.all(compiled.hostResources.resources
-            .filter((resource) => resource.resourceKind === 'mcp-config')
-            .map((resource) => access(resource.locator, constants.R_OK)));
-        },
-      }
-    : {
-        preflightKind: 'mcp-readiness',
-        checkId: 'sealed-mcp-resource',
-        preflightDisposition: 'not-required',
-        reasonCode: 'no-mcp-resource',
-      };
-  const mockPreflight: OmkRuntimePreflightDeclaration = hasMockResource
-    ? {
-        preflightKind: 'mock-readiness',
-        checkId: 'sealed-mock-resources',
-        preflightDisposition: 'check',
-        async run(): Promise<void> {
-          await Promise.all(compiled.hostResources.resources
-            .filter((resource) => resource.resourceKind === 'mock-plan'
-              || resource.resourceKind === 'mock-rule'
-              || resource.resourceKind === 'mock-payload')
-            .map((resource) => access(resource.locator, constants.R_OK)));
-        },
-      }
-    : {
-        preflightKind: 'mock-readiness',
-        checkId: 'sealed-mock-resources',
-        preflightDisposition: 'not-required',
-        reasonCode: 'no-mock-resource',
-      };
-  return Object.freeze([
-    dependencyDoctor(compiled, environment, projectRoot),
-    Object.freeze({
-      preflightKind: 'filesystem' as const,
-      checkId: 'sealed-resource-locators',
-      preflightDisposition: 'check' as const,
-      async run(): Promise<void> {
-        await Promise.all(compiled.hostResources.resources.map((resource) => (
-          access(resource.locator, constants.R_OK)
-        )));
-      },
-    }),
-    Object.freeze(mcpPreflight),
-    Object.freeze(mockPreflight),
-    Object.freeze({
-      preflightKind: 'credential' as const,
-      checkId: 'host-credential',
-      preflightDisposition: 'not-required' as const,
-      reasonCode: 'adapter-validates-credential',
-    }),
-    Object.freeze({
-      preflightKind: 'connectivity' as const,
-      checkId: 'provider-connectivity',
-      preflightDisposition: 'not-required' as const,
-      reasonCode: 'core-execution-is-authoritative',
-    }),
-  ]);
 }
 
 function requiredCredential(

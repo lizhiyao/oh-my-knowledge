@@ -21,7 +21,7 @@ import {
 } from '../eval-hosts/node/runtime-registry.js';
 import {
   createNodeHostPreflightDeclarations,
-} from '../eval-hosts/node/node-cli-composition.js';
+} from '../eval-hosts/node/preflight.js';
 import {
   createProductionEvaluationHost,
   executeProductionEvaluationSeries,
