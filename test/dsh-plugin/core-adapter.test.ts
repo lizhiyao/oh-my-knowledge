@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { runDshCoreEvaluation } from '../../src/dsh-plugin/core-command.js';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -860,5 +861,39 @@ describe('DSH host-only Core Executor adapter', () => {
       executionStatus: 'completed',
       output: { value: 'host core answer', classification: 'secret' },
     });
+  });
+});
+
+
+describe('DSH product evaluation application', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([1, 2])('persists %i run(s) through the shared workflow and releases host sessions', async (repeat) => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-dsh-application-'));
+    roots.add(root);
+    vi.stubEnv('OMK_HOME', join(root, 'home'));
+    vi.stubEnv('OMK_TREES_DIR', join(root, 'trees'));
+    await mkdir(join(root, 'skills', 'answer'), { recursive: true });
+    await writeFile(join(root, 'skills', 'answer', 'SKILL.md'), '# Answer\nAnswer the question directly.\n');
+    const samples = join(root, 'samples.json');
+    await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [
+      { sample_id: 'answer', prompt: 'Answer directly.', assertions: [{ type: 'contains', value: 'host' }] },
+    ] }));
+    const host = new FakeCoreDshHost();
+    const result = await runDshCoreEvaluation({
+      host, parentAgent, signal: new AbortController().signal, projectRoot: root,
+      config: { samples, variants: [
+        { name: 'control', role: 'control', artifact: 'baseline' },
+        { name: 'treatment', role: 'treatment', artifact: join(root, 'skills', 'answer') },
+      ], noJudge: true, skipDoctor: true, repeat, bootstrapSamples: 100 },
+    });
+    expect(result.outcomeKind).toBe(repeat === 1 ? 'run' : 'series');
+    const artifacts = result.outcomeKind === 'run' ? [result.artifacts] : result.artifacts;
+    expect(artifacts).toHaveLength(repeat);
+    expect(new Set(artifacts.map((item) => item.manifest.runId)).size).toBe(repeat);
+    expect(host.created.length).toBeGreaterThanOrEqual(2 * repeat);
+    expect(host.disposed).toBe(host.created.length);
+    expect(host.activeListenerCount()).toBe(0);
+    expect(result.outputDirectory).toBe(join(root, '.omk', 'eval'));
   });
 });

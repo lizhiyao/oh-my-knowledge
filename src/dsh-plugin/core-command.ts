@@ -1,72 +1,23 @@
-import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../eval-workflows/hosts/composition/runtime.js';
 import { join, resolve } from 'node:path';
+import type { RuntimeIdentity, UsageRecord } from '../eval-core/contracts/index.js';
 import {
-  schemaIdentityKey,
-  type RuntimeIdentity,
-  type UsageRecord,
-} from '../eval-core/contracts/index.js';
-import {
-  compileCliEvaluationInput,
-  parseCliEvaluationRequest,
-} from '../eval-workflows/input-compilation/index.js';
-import {
-  createNodeCoreContentStore,
-  createNodeCoreRunArtifactStore,
-  type StoredCoreRunArtifacts,
-} from '../eval-workflows/artifact-store/index.js';
-import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
-import {
-  createNodeEvaluationRuntimeSupportPorts,
-  createProductionRuntimeFactoryRegistry,
-} from '../eval-workflows/hosts/composition/runtime-registry.js';
-import {
-  createNodeHostPreflightDeclarations,
-} from '../eval-workflows/hosts/composition/node-preflight.js';
-import {
-  createProductionEvaluationWorkflow,
-  executeProductionEvaluationSeries,
-  persistCoreArtifactSidecars,
-} from '../eval-workflows/orchestration/index.js';
-import {
+  createHostedEvaluationApplication,
   createJudgeProviderRuntimeIdentity,
-} from '../eval-workflows/hosts/composition/judge-provider-identity.js';
-import {
-  resolveNodeCliEvaluationRequest,
-} from '../eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.js';
-import {
-  projectCoreCliRunOutcome,
-  projectCoreCliSeriesOutcome,
-} from '../eval-workflows/projections/cli.js';
-import type {
-  CoreCliRunOutcome,
-  CoreCliSeriesOutcome,
-} from '../eval-workflows/projections/contracts.js';
-import { projectCoreManagedEvidence } from '../eval-workflows/projections/managed.js';
-import { managedDir, recordCoreEvalEvidence } from '../knowledge-artifacts/governance/index.js';
+  parseCliEvaluationRequest,
+  type HostedEvaluationCapabilities,
+  type StoredCoreRunArtifacts,
+  type OmkLlmJudgeInvocationBinding,
+  type OmkLlmJudgeInvocationRequest,
+} from '../eval-workflows/hosts/application.js';
+import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
+import type { CoreCliRunOutcome, CoreCliSeriesOutcome } from '../eval-workflows/projections/contracts.js';
+import { managedDir } from '../knowledge-artifacts/governance/index.js';
 import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
-import type {
-  OmkExecutorBindingContext,
-  OmkRuntimeBindingFactories,
-} from '../eval-workflows/hosts/types.js';
-import type {
-  OmkLlmJudgeInvocationBinding,
-} from '../eval-workflows/hosts/evaluators/llm-judge-invocation.js';
-import type {
-  OmkLlmJudgeInvocationRequest,
-} from '../eval-workflows/hosts/index.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
 import type { JudgeConfig } from '../eval-workflows/instruments/contracts/config.js';
-import { generateRunId } from '../evidence/storage/run-id.js';
-import {
-  createDshHostCoreExecutorAdapter,
-  createDshHostCoreSchemaValidators,
-} from './core-adapter.js';
-import {
-  createDshHostExecutor,
-  type DshAgentLike,
-  type DshHostContextLike,
-} from './host-executor.js';
+import { createDshHostCoreExecutorAdapter, createDshHostCoreSchemaValidators } from './core-adapter.js';
+import { createDshHostExecutor, type DshAgentLike, type DshHostContextLike } from './host-executor.js';
 
 const DSH_HOST_IMPLEMENTATION_ID = 'dsh-host';
 
@@ -126,7 +77,7 @@ function runtimeIdentity(
 function judgeResolver(
   host: DshHostContextLike,
   parentAgent: DshAgentLike,
-): Parameters<typeof createProductionRuntimeFactoryRegistry>[0]['resolveJudgeInvocation'] {
+): HostedEvaluationCapabilities['resolveJudgeInvocation'] {
   const executor = createDshHostExecutor(host, { parentAgent });
   const identities = new Map<string, RuntimeIdentity>();
   return async (context): Promise<OmkLlmJudgeInvocationBinding> => {
@@ -201,40 +152,6 @@ function judgeResolver(
   };
 }
 
-function factories(input: Readonly<{
-  compiled: ReturnType<typeof compileCliEvaluationInput>;
-  host: DshHostContextLike;
-  parentAgent: DshAgentLike;
-  projectRoot: string;
-}>): OmkRuntimeBindingFactories {
-  const base = createProductionRuntimeFactoryRegistry({
-    executorsByImplementationId: new Map(),
-    resolveJudgeInvocation: judgeResolver(input.host, input.parentAgent),
-  });
-  const preflightDeclarations = createNodeHostPreflightDeclarations(
-    input.compiled,
-    process.env,
-    input.projectRoot,
-  );
-  return Object.freeze({
-    ...base,
-    executorsByImplementationId: new Map([
-      [DSH_HOST_IMPLEMENTATION_ID, async (context: Readonly<OmkExecutorBindingContext>) => ({
-        port: await createDshHostCoreExecutorAdapter({
-          target: context.target,
-          binding: context.binding,
-          host: input.host,
-          dsh: { parentAgent: input.parentAgent },
-          sessionIsolationKey: context.sessionIsolationKey,
-          resourceLeases: context.resourceLeases,
-        }),
-        satisfiesVersionConstraint: context.binding.versionConstraint === undefined,
-        preflightDeclarations,
-      })],
-    ]),
-  });
-}
-
 function normalizedJudges(configured: readonly JudgeConfig[] | undefined, model: string): JudgeConfig[] {
   if (configured === undefined || configured.length === 0) {
     return [{ executor: DSH_HOST_IMPLEMENTATION_ID, model }];
@@ -243,24 +160,6 @@ function normalizedJudges(configured: readonly JudgeConfig[] | undefined, model:
     ...judge,
     executor: judge.executor === 'dsh' ? DSH_HOST_IMPLEMENTATION_ID : judge.executor,
   }));
-}
-
-async function persistDshCoreConsumers(
-  artifacts: Readonly<StoredCoreRunArtifacts>,
-  outputDirectory: string,
-  projectRoot: string,
-  appendEvidence: boolean,
-): Promise<void> {
-  await persistCoreArtifactSidecars({ source: artifacts, outputDirectory, cwd: projectRoot });
-  if (!appendEvidence) return;
-  try {
-    recordCoreEvalEvidence(projectCoreManagedEvidence(artifacts), {
-      dir: managedDir(projectRoot),
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`警告：DSH Core 受管证据写入失败：${message}\n`);
-  }
 }
 
 export async function runDshCoreEvaluation(input: Readonly<{
@@ -310,107 +209,30 @@ export async function runDshCoreEvaluation(input: Readonly<{
       },
     },
   });
-  const resolved = await resolveNodeCliEvaluationRequest(request, {
-    projectRoot,
-    materializationRoot: machineLayout.resolvedInputsDir,
-    ...(request.values.orchestration.repeatCount > 1
-      ? { seriesInstanceId: generateRunId(['dsh-series']) }
-      : {}),
-    hostExecutorImplementationIds: [DSH_HOST_IMPLEMENTATION_ID],
-    hostOwnedEffortImplementationIds: [DSH_HOST_IMPLEMENTATION_ID],
+  const application = createHostedEvaluationApplication({
+    implementationId: DSH_HOST_IMPLEMENTATION_ID,
+    environment: process.env,
+    schemaValidators: createDshHostCoreSchemaValidators(),
+    resolveJudgeInvocation: judgeResolver(input.host, input.parentAgent),
+    idPrefix: 'dsh-',
+    async executorFactory(context) {
+      return {
+        port: await createDshHostCoreExecutorAdapter({ target: context.target, binding: context.binding, host: input.host, dsh: { parentAgent: input.parentAgent }, sessionIsolationKey: context.sessionIsolationKey, resourceLeases: context.resourceLeases }),
+        satisfiesVersionConstraint: context.binding.versionConstraint === undefined,
+        preflightDeclarations: [],
+      };
+    },
   });
-  const compiled = compileCliEvaluationInput(resolved);
-  const contentStore = createNodeCoreContentStore(join(outputDirectory, 'content'));
-  const support = {
-    ...createNodeEvaluationRuntimeSupportPorts({
-      contentStoreRoot: join(outputDirectory, 'content'),
-    }),
-    schemaValidators: new Map(createDshHostCoreSchemaValidators().map((validator) => [
-      schemaIdentityKey(validator.schema),
-      validator,
-    ])),
-  };
-  const artifactStore = createNodeCoreRunArtifactStore(outputDirectory, {
-    contentResolver: contentStore,
-  });
-  const host = {
-    compiled,
-    runtime: createOmkRuntimeProvider({
-      compiled, factories: factories({ compiled, host: input.host, parentAgent: input.parentAgent, projectRoot }),
-      support, resources: { leaseRoot: machineLayout.resourceLeasesDir },
-    }),
-    schemaValidators: createOmkEvaluationSchemaValidators(support.schemaValidators),
-    artifactStore,
-  };
-  const independentSeries = compiled.orchestration.independentSeries;
-  if (independentSeries !== undefined) {
-    const createdAt = new Date().toISOString();
-    const series = await executeProductionEvaluationSeries({
-      host,
-      members: independentSeries.memberships.map((membership) => ({
-        runId: generateRunId([membership.memberId]),
-        createdAt,
-        signal: input.signal,
-      })),
-      bundleId: generateRunId(['dsh-series-analysis']),
-      reportId: generateRunId(['dsh-series-report']),
-    });
-    await series.result;
-    const evolution = await series.evolution;
-    if (evolution === undefined) throw new Error('DSH Core Series 未完成，无法生成 evolution evidence。');
-    const artifacts = await Promise.all(series.members.map(async (member) => {
-      if (member.executionStatus !== 'started') throw member.error;
-      const persisted = await member.run.persistence;
-      await member.run.result;
-      if (persisted.persistenceStatus !== 'stored') {
-        throw persisted.persistenceStatus === 'failed'
-          ? persisted.error
-          : new Error(`DSH Core member 未持久化：${persisted.reasonCode}`);
+  const result = await application.run({
+    request, projectRoot, materializationRoot: machineLayout.resolvedInputsDir, resourceLeaseRoot: machineLayout.resourceLeasesDir,
+    signal: input.signal, managedEvidenceDirectory: managedDir(projectRoot),
+    onNotice(notice) {
+      if (notice.noticeKind === 'managed-evidence-failed') {
+        const message = notice.error instanceof Error ? notice.error.message : String(notice.error);
+        process.stderr.write(`警告：DSH Core 受管证据写入失败：${message}\n`);
       }
-      return persisted.artifacts;
-    }));
-    for (const memberArtifacts of artifacts) {
-      // Series 的 member 只写可追溯图，不冒充预注册的 Series 总体证据。
-      await persistDshCoreConsumers(memberArtifacts, outputDirectory, projectRoot, false);
-    }
-    return {
-      outcomeKind: 'series',
-      outcome: projectCoreCliSeriesOutcome({
-        evolution,
-        members: artifacts,
-        exitMode: 'gate',
-        diagnosticMode: config.noDiagnostic === true ? 'disabled' : 'enabled',
-      }),
-      artifacts,
-      outputDirectory,
-    };
-  }
-  const prepared = await createProductionEvaluationWorkflow(host).prepare({ signal: input.signal });
-  const run = await prepared.execute({
-    runId: generateRunId(compiled.definition.targets.map((target) => target.targetId)),
-    createdAt: new Date().toISOString(),
-    signal: input.signal,
+    },
   });
-  const persisted = await run.persistence;
-  await run.result;
-  if (persisted.persistenceStatus !== 'stored') {
-    throw persisted.persistenceStatus === 'failed'
-      ? persisted.error
-      : new Error(`DSH Core 产物未持久化：${persisted.reasonCode}`);
-  }
-  await persistDshCoreConsumers(
-    persisted.artifacts,
-    outputDirectory,
-    projectRoot,
-    compiled.orchestration.managedEvidence === 'append',
-  );
-  return {
-    outcomeKind: 'run',
-    outcome: projectCoreCliRunOutcome(persisted.artifacts, {
-      exitMode: 'gate',
-      diagnosticMode: config.noDiagnostic === true ? 'disabled' : 'enabled',
-    }),
-    artifacts: persisted.artifacts,
-    outputDirectory,
-  };
+  if (result.outcomeKind !== 'run' && result.outcomeKind !== 'series') throw new Error('DSH Core 需要执行评测。');
+  return result;
 }

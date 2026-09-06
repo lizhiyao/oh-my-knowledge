@@ -153,21 +153,28 @@ need not become a public API. This inventory records domain boundaries without f
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
 | Shared | Internal leaf utilities | No domain decisions; verify atomic files, locks and basic data operations |
 
-Composition follows actual consumers. CLI provider selection, environment classification, credential
-resolution and production assembly live in `cli/lib/evaluation-composition.ts`. DSH agent context and
-judge invocation live in `dsh-plugin/core-command.ts`. DSH does not obtain shared capabilities through
-CLI modules. The `eval-workflows/hosts` boundary serves these shared consumers:
+CLI and DSH evaluation entrypoints call `eval-workflows/hosts/application.ts`. The application
+resolves and compiles requests, assembles the Runtime, and saves sidecars and managed evidence.
+`orchestration/evaluation-service.ts` owns preparation, single runs, resume and independent Series
+through injected capabilities. Other Workflow subdomains cannot import `hosts`.
+
+CLI retains argument conversion, environment classification, executable/credential resolution,
+progress and Studio launch. Node provider registration lives in `hosts/composition/node-runtime.ts`.
+DSH supplies its agent context, executor factory and judge invocation; it does not import CLI modules.
+Batch uses the same application for each child; the CLI supplies its per-item request conversion.
+The shared host boundary has these internal consumers:
 
 | Module | Actual consumers | Contract, failure and resource boundary |
 |---|---|---|
-| `composition/node-preflight.ts` | CLI and DSH | Explicit compiled input, environment and project root; lazy checks propagate failures through existing admission rules |
-| `input-resolution/node-cli-evaluation-resolver.ts` | CLI and DSH | Shared product request resolution; the retained request protocol name does not make it CLI entry policy |
+| `application.ts` | CLI and DSH evaluation entrypoints | Product use case with explicit host capabilities and presentation callbacks |
+| `composition/node-preflight.ts` | Application composition | Explicit compiled input, environment and project root; lazy checks propagate failures through existing admission rules |
+| `input-resolution/node-cli-evaluation-resolver.ts` | Application | Shared product request resolution; the retained request protocol name does not make it CLI entry policy |
 | `input-resolution/node-sample-content-resolver.ts`, `input-resolution/safe-http-content-resolver.ts` | Shared resolver above | File/network content resolution and session cleanup; verify source restrictions, cancellation and content identity |
 | `composition/runtime-registry.ts`, `composition/judge-provider-identity.ts` | CLI and DSH | Explicit registration and judge identity; shared registry does not select providers or read credentials on behalf of an entrypoint |
 | `composition/assembly.ts`, `composition/runtime.ts`, `composition/builtins.ts`, `composition/preflight.ts` | CLI and DSH via Runtime provider | Binding, registration, admission and run-resource wiring; hosts implement cleanup while Runtime controls lifecycle |
 | `adapters`, `evaluators`, `resource-leases` | Composition above; DSH also uses resource interfaces | Provider bridges, evaluator wiring and resources cannot depend back on entry composition or bypass boundaries through aggregate exports |
 
-Direct service `evaluate()` uses Runtime/Core. CLI and DSH use compilation, host assembly and injected
+Direct service `evaluate()` uses Runtime/Core. CLI and DSH call the Workflow application, which owns compilation, host assembly and injected
 Runtime. Generation, repair and auxiliary analysis may directly use `ExecutorFn`. Observation facts
 reach Studio through diagnosis and domain projections. Extract shared mechanics according to those
 contracts. The user facade's event consumption and product run-lease wrapper do not constitute

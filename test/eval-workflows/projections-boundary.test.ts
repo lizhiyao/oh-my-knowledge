@@ -26,6 +26,8 @@ describe('#531/#547 Core downstream projection boundary', () => {
     const cutoverConsumers = [
       'src/cli/commands/eval/index.ts',
       'src/cli/lib/run-core-evaluation.ts',
+      'src/eval-workflows/hosts/application.ts',
+      'src/eval-workflows/orchestration/evaluation-service.ts',
       'src/knowledge-artifacts/governance/evidence.ts',
       'src/cli/commands/eval/gold/compare.ts',
       'src/knowledge-artifacts/authoring/core-evolver.ts',

@@ -141,20 +141,21 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 | CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
 | Shared | 内部叶子工具 | 不引入领域决策；验证文件原子性、锁与基础数据操作 |
 
-宿主装配按真实消费者归属。CLI 的 provider 选择、环境分类、凭证解析与生产装配位于
-`cli/lib/evaluation-composition.ts`；DSH 的 agent 上下文与评委调用在 `dsh-plugin/core-command.ts`。
-DSH 不通过 CLI 模块获取共用能力。以下跨入口复用由 `eval-workflows/hosts` 统一提供：
+CLI 与 DSH 的评测入口统一调用 `eval-workflows/hosts/application.ts`。该接口负责解析与编译请求、装配 Runtime、保存附属产物和受管证据；`orchestration/evaluation-service.ts` 通过注入能力统一预检、单次运行、恢复执行和独立 Series。其它 Workflow 子域仍不得反向导入 `hosts`。
+
+CLI 保留参数转换、环境分类、可执行文件与凭证解析、进度展示和 Studio 启动。Node provider 注册位于 `hosts/composition/node-runtime.ts`。DSH 提供 agent 上下文、执行器工厂和评委调用，不依赖 CLI 模块。Batch 的每个子项复用同一产品接口，CLI 只提供子项请求转换。共用宿主内部的分工如下：
 
 | 模块 | 实际消费者 | 契约、失败与资源边界 |
 |---|---|---|
-| `composition/node-preflight.ts` | CLI 与 DSH | 显式接收编译结果、环境和项目根；延迟运行检查，失败按既有准入规则传播 |
-| `input-resolution/node-cli-evaluation-resolver.ts` | CLI 与 DSH | 共用产品请求解析；虽保留请求协议命名，并非 CLI 入口策略 |
+| `application.ts` | CLI 与 DSH 评测入口 | 显式接收宿主能力与展示回调，提供完整产品用例 |
+| `composition/node-preflight.ts` | 产品装配 | 显式接收编译结果、环境和项目根；延迟运行检查，失败按既有准入规则传播 |
+| `input-resolution/node-cli-evaluation-resolver.ts` | 产品接口 | 共用产品请求解析；虽保留请求协议命名，并非 CLI 入口策略 |
 | `input-resolution/node-sample-content-resolver.ts`、`input-resolution/safe-http-content-resolver.ts` | 上述共用解析器 | 文件／网络内容解析与会话清理；验证来源限制、取消和内容身份 |
 | `composition/runtime-registry.ts`、`composition/judge-provider-identity.ts` | CLI 与 DSH | 显式注册配置与评委身份；不在共用注册中替入口选择 provider 或读取凭证 |
 | `composition/assembly.ts`、`composition/runtime.ts`、`composition/builtins.ts`、`composition/preflight.ts` | CLI 与 DSH 经 Runtime provider 消费 | 绑定、注册、准入及运行资源接线；具体资源清理由宿主提供，生命周期由 Runtime 控制 |
 | `adapters`、`evaluators`、`resource-leases` | 上述装配；DSH 复用资源接口 | provider 桥接、评分工厂接线与资源实现；不得反向依赖入口装配或通过聚合入口绕行 |
 
-服务直接调用 `evaluate()` 时使用 Runtime／Core；CLI 与 DSH 使用编译、宿主装配和注入的
+服务直接调用 `evaluate()` 时使用 Runtime／Core；CLI 与 DSH 调用 Workflow 产品接口，由其负责编译、宿主装配和注入的
 Runtime；生成、修复及辅助分析可以直接使用 `ExecutorFn`；观测事实经诊断与领域投影进入
 Studio。这些路径用途不同，共用机制须按契约提取。用户 façade 的事件消费与产品运行租约也不能
 仅因都调用 Core 就认定为重复调度。
