@@ -15,24 +15,24 @@ import {
   BOOTSTRAP_FAMILY_ANALYSIS_IDENTITY,
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   createBootstrapFamilyAnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-node.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node.js';
 import {
   BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
 import {
   BOOTSTRAP_FAMILY_SOURCE_SCHEMAS,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-source-adapter.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-source-adapter.js';
 import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
 import {
   BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table-v2.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY,
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
   createBootstrapFamilyV2AnalysisNodes,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-node-v2.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
 import {
   COMPOSITE_TABLE_SCHEMA,
   COMPOSITE_TABLE_SCHEMA_VERSION,
@@ -41,7 +41,7 @@ import {
   compositeGroupId,
   type CompositeGroup,
   type CompositeLayerEntry,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
 
 const planDigest = digestCanonicalJson('bootstrap-plan');
 const bundleDigest = digestCanonicalJson('bootstrap-bundle');

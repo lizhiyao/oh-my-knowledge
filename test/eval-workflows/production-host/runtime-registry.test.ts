@@ -1,13 +1,15 @@
+import { createNodeEvaluationClock } from '../../../src/eval-runtime/clock.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  createNodeEvaluationClock,
+} from '../../../src/eval-workflows/production-host/index.js';
+import {
   createNodeEvaluationRuntimeSupportPorts,
   createProductionRuntimeFactoryRegistry,
   type ProductionExecutorAdapterConfiguration,
-} from '../../../src/eval-workflows/production-host/index.js';
+} from '../../../src/eval-hosts/node/runtime-registry.js';
 
 const roots: string[] = [];
 

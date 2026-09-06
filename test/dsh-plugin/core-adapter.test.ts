@@ -31,8 +31,10 @@ import type {
   OmkBindingResourceLease,
   OmkBindingResourceLeaseAccess,
   OmkLeasedHostResource,
+} from '../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import type {
   RuntimeBindingOf,
-} from '../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,

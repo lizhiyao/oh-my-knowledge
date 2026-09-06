@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readFile,
   realpath,
+  rm,
   unlink,
   writeFile,
 } from 'node:fs/promises';
@@ -30,16 +31,22 @@ import {
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {
   CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
-  buildCodexCliCoreArguments,
   createCodexCliCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/cli-protocol.js';
+import {
+  buildCodexCliCoreArguments,
   createCodexCliExecutorAdapter,
   type CodexCliCoreConfiguration,
   type CodexCliEnvironmentEntry,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/cli.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,
@@ -194,7 +201,7 @@ async function adapterFixture(options: Readonly<{
           snapshotKind: 'directory' as const,
           leaseMode: 'copy-on-write-overlay' as const,
           baseSnapshotPath: workspacePath,
-          overlayPath: workspacePath,
+
         },
       ] as const] : []),
     ]),
@@ -456,7 +463,49 @@ describe('Codex CLI Core Executor adapter', () => {
     expect(unknown.usage).toBeUndefined();
   });
 
-  it('uses the exact workspace overlay and elevates output classification', async () => {
+  it.each([false, true])('isolates sequential trials while retaining same-trial attempts（workspace=%s）', async (workspace) => {
+    const fixture = await adapterFixture({
+      workspace,
+      ...(workspace ? { sandboxId: CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID } : {}),
+    });
+    const adapter = await createAdapter(fixture, { OMK_TEST_MODE: 'workspace-state' });
+    const run = await adapter.openRun({ runId: 'run-a', executionPlanDigest: digest('plan') });
+    try {
+      const outputs: unknown[] = [];
+      for (let index = 0; index < 2; index += 1) {
+        const trial = await run.openTrial({
+          signal: new AbortController().signal,
+          sampleId: 'sample-a', targetId: 'target-a',
+          executionCoordinateDigest: digest({ coordinate: index }),
+          executionControl: fixture.target.executionControls.defaults,
+          protocolId: 'omk.invoke/v1', input: 'Inspect the workspace.',
+          targetConfig: fixture.target.config,
+          trialIndex: index, trialId: digest({ trial: index }),
+          schedulingBlockId: digest({ block: index }), samplingUnitIds: {},
+        });
+        try {
+          for (let attempt = 1; attempt <= 2; attempt += 1) {
+            outputs.push((await trial.execute({
+              attemptId: digest({ index, attempt }), attemptNumber: attempt,
+              signal: new AbortController().signal,
+            })).output?.value);
+          }
+        } finally {
+          await trial.dispose();
+        }
+      }
+      expect(outputs).toEqual(['clean', 'contaminated', 'clean', 'contaminated']);
+      if (workspace) {
+        await expect(readFile(join(fixture.root, 'workspace', '.trial-marker')))
+          .rejects.toMatchObject({ code: 'ENOENT' });
+      }
+    } finally {
+      await run.dispose();
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses a trial-private workspace copy and elevates output classification', async () => {
     const fixture = await adapterFixture({
       workspace: true,
       sandboxId: CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
@@ -472,9 +521,10 @@ describe('Codex CLI Core Executor adapter', () => {
       args: string[];
       cwd: string;
     };
-    expect(captured.cwd).toBe(await realpath(join(fixture.root, 'workspace')));
+    expect(captured.cwd).not.toBe(await realpath(join(fixture.root, 'workspace')));
+    expect(captured.cwd).toMatch(/omk-codex-run-[^/]+\/trial-/);
     expect(captured.args).toEqual(expect.arrayContaining([
-      '--sandbox', 'workspace-write', '-C', join(fixture.root, 'workspace'),
+      '--sandbox', 'workspace-write', '-C', expect.stringMatching(/trial-/),
     ]));
     expect(result.output?.classification).toBe('sensitive');
   });

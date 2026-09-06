@@ -4,6 +4,13 @@
 
 ## 一、边界
 
+具体宿主装配位于 `eval-hosts`，与 Runtime 层分离。`createOmkRuntimeProvider()` 在这个外层边界
+接收产品编译产物，返回 Runtime 拥有的 `EvaluationRuntimeProvider` 能力。Workflow 显式接收该能力
+和验证器，准备评测时只传入 `EvaluationExecutionInput`。它没有默认 Node 工厂、租约目录或直接
+执行 Core engine／Series 的路径。产品 analysis 和 evaluator 实现在 `eval-workflows/measurement`，
+通用生命周期与 Series 执行归 Runtime。
+
+
 OMK 宿主完整消费 `compileCliEvaluationInput()` 的输出，并在 Evaluation Core 外执行 effect。Binding assembly 不创建第二套 plan、不重新解释 CLI 输入，也不把 registry 声明当成 Runtime 实际身份。
 
 ```text
@@ -17,13 +24,16 @@ OMK 宿主完整消费 `compileCliEvaluationInput()` 的输出，并在 Evaluati
  binding entries  support ports  run lease registry
         └───────────┼────────────────┘
                     ▼
+       createEvaluationExecution().prepare()
+                    │ Runtime 执行接口
+                    ▼
        createEvaluationEngine().prepare()
                     │ actual identity／capabilities
                     ▼
               SealedRunPlan
 ```
 
-独立 Series 分析装配为 `EvaluationSeriesRuntimePorts`，绝不进入 `EvaluationEngineRuntimeBindings`。
+独立 Series 分析装配为 `EvaluationSeriesRuntimePorts`，绝不进入 `EvaluationEngineRuntimeBindings`。装配保留 Core Series analysis 和 decision port 的 `openRun` 生命周期及每次运行的清理接口，不再转换为旧的顶层 `analyze／decide` 回调。
 
 ## 二、Binding 完整覆盖
 
@@ -102,7 +112,7 @@ Composition root conformance 使用 `test.*` 命名空间下、根据输入和 b
 
 ## 七、Custom-command Runtime adapter
 
-`createCustomCommandExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它接受 sealed Target 与 RuntimeBinding、绝对 executable path、显式 argument vector，以及完整且逐项分类的 child environment。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory。它从准确的 sample-scoped Trial control 选择工作目录：需要 workspace 时使用已验证的 copy-on-write overlay，否则创建并最终删除 run 私有目录，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
+`createCustomCommandExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它接受 sealed Target 与 RuntimeBinding、绝对 executable path、显式 argument vector，以及完整且逐项分类的 child environment。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory。它从准确的 sample-scoped Trial control 选择工作目录：需要 workspace 时从已验证快照创建新的 Trial 私有副本，否则创建空的 Trial 私有目录；两者均在 Trial 结束时删除，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
 
 每次 attempt 只启动一个进程，并通过 stdin 发送一份 canonical `omk.custom-command-exchange/v1` JSON 文档。文档只包含 Core run／trial／attempt context、准确的 effective execution control、内容寻址的 isolation key，以及当前 Trial 已验证的 resource lease 投影。Resource entry 按 resource ID canonical 排序。自定义 Runtime 实现本身是每个 executor binding 中一项 sensitive、内容寻址的资源；adapter 只启动其 Run 级 immutable snapshot，绝不启动原始 locator。adapter 会拒绝与 sealed Target 不一致的 Trial control，要求 binding lease 精确覆盖，并从 child request 中排除 Runtime 实现及其它 Sample 的全部 workspace。Gold classification 和 analysis-only resource kind 会在创建进程前 fail closed。响应是严格、source-neutral、带版本的文档：成功响应可包含 output／trace 和已报告 usage；结构化失败只暴露稳定 code 与 execution／infrastructure stage。未报告 usage 继续保持缺失；多余字段和非法 JSON fail closed；child stderr 不进入 Core error。
 
@@ -114,13 +124,13 @@ Custom-command identity 采用保守模型。每个 assembly 周期都重新解�
 
 ## 八、Codex CLI Runtime adapter
 
-`createCodexCliExecutorAdapter()` 是首个 provider-family Core adapter。它绑定一份已编译 Target 及其准确的 Executor binding；解析 identity 前，target ID、implementation ID、protocol、execution requirement、execution-control digest、behavior digest、model 与 effort 必须一致。它只支持 `omk.invoke/v1`。每次 Core attempt 都以 sealed model／effort、准确的 Trial workspace overlay 或 run 私有目录启动全新的 `codex exec --json` 进程，并发送 canonical `omk.codex-cli-prompt/v1` JSON envelope。Sample control 不一致时会在创建进程前失败；Codex 只能声明 runtime-default tool surface，因此任何 allow-list 都会在 adapter prepare 阶段失败。Envelope 只包含 knowledge artifact、sample input，以及 `ExecutorTrialContext` 暴露的 execution context；expected output、evaluation context、analysis membership 与 Gold 绝不进入 adapter。文件 artifact 成为一个显式 instruction 字段。目录 artifact 必须在根部提供 `SKILL.md`：只有该入口具有 instruction 语义，其余按 canonical path 排序的 UTF-8 文件会投影为 supporting resource，不会提升为 instruction。缺失入口、非 UTF-8 文件、symlink 与特殊文件均 fail closed。这保留了 Codex CLI 单 prompt 边界中 normative instruction 与 supporting asset 的语义差异，不宣称原生 filesystem-backed skill loading。
+`createCodexCliExecutorAdapter()` 是首个 provider-family Core adapter。它绑定一份已编译 Target 及其准确的 Executor binding；解析 identity 前，target ID、implementation ID、protocol、execution requirement、execution-control digest、behavior digest、model 与 effort 必须一致。它只支持 `omk.invoke/v1`。每次 Core attempt 都以 sealed model／effort、Trial 私有 workspace 副本或空的 Trial 私有目录启动全新的 `codex exec --json` 进程，并发送 canonical `omk.codex-cli-prompt/v1` JSON envelope。Sample control 不一致时会在创建进程前失败；Codex 只能声明 runtime-default tool surface，因此任何 allow-list 都会在 adapter prepare 阶段失败。Envelope 只包含 knowledge artifact、sample input，以及 `ExecutorTrialContext` 暴露的 execution context；expected output、evaluation context、analysis membership 与 Gold 绝不进入 adapter。文件 artifact 成为一个显式 instruction 字段。目录 artifact 必须在根部提供 `SKILL.md`：只有该入口具有 instruction 语义，其余按 canonical path 排序的 UTF-8 文件会投影为 supporting resource，不会提升为 instruction。缺失入口、非 UTF-8 文件、symlink 与特殊文件均 fail closed。这保留了 Codex CLI 单 prompt 边界中 normative instruction 与 supporting asset 的语义差异，不宣称原生 filesystem-backed skill loading。
 
 进程控制遵循当前 [Codex CLI reference](https://developers.openai.com/codex/cli/reference) 与 [non-interactive execution guidance](https://developers.openai.com/codex/noninteractive)：临时 session、忽略用户配置、忽略项目／用户 execpolicy 规则、严格配置解析、非交互 approval、显式 sandbox、显式 working directory、JSONL 输出与关闭 stdin。Child 接收完整的分类环境，不继承 `process.env`；Codex 创建的 shell command 也不继承宿主环境。Adapter 不拥有 timeout、retry、budget 或 cache；它把 Core 的准确 `AbortSignal` 交给子进程协调器，并等待 SIGTERM／SIGKILL 真正 settle。
 
 每次 adapter assembly 都重新解析 Codex identity。Adapter 对实际 executable 与显式列出的 implementation file 计算 hash，使用捕获的准确 launcher 执行 `--version`，确认探测期间字节未变化，并在每次 attempt 前再次验证。Version probe 使用独立、有界、记录在 implementation facet 中的 assembly-safety timeout；它不是 measurement attempt timeout，不能取消或重试 provider 工作。证据来自内容，但 assurance 仍为 `declared`：wrapper 或调用方提供的文件列表无法证明覆盖全部 native helper、dynamic library、remote deployment 或服务端模型 revision。Model、effort、behavior digest、adapter composition、prompt projection、固定 control、limit、分类环境 identity 与 launcher identity 都保留为 implementation facet，即使它们没有进入 binary-content fingerprint。
 
-Capability manifest 有意比旧 CLI executor 更窄。它声明 prepend system instruction、可选 source-neutral trace／usage、copy-on-write workspace、runtime-default tool／skill discovery、best-effort cancellation，以及两个明确的 read-only／workspace-write sandbox ID。同一 binding 内的 trial 共享 run-scoped workspace overlay，因此执行被串行化；误报 parallel safety 会允许跨 trial 文件系统干扰。它不声明 deterministic seed control、MCP config、mock interception、tool allow-list、skill disable／allow-list、provider cost 或 session protocol。Target 要求任一不支持能力时，Core 会在 provider call 前拒绝。特别是 Codex 具有随机性，当前 CLI／[configuration surface](https://developers.openai.com/codex/config-reference) 不暴露准确 sampling seed；不能仅把 trial seed 写入 prompt，就声称实现了 controlled seed coupling。
+Capability manifest 有意比旧 CLI executor 更窄。它声明 prepend system instruction、可选 source-neutral trace／usage、copy-on-write workspace、runtime-default tool／skill discovery、best-effort cancellation，以及两个明确的 read-only／workspace-write sandbox ID。执行仍保持串行；Trial 私有目录本身不足以证明 provider 的全部状态都支持安全并行。它不声明 deterministic seed control、MCP config、mock interception、tool allow-list、skill disable／allow-list、provider cost 或 session protocol。Target 要求任一不支持能力时，Core 会在 provider call 前拒绝。特别是 Codex 具有随机性，当前 CLI／[configuration surface](https://developers.openai.com/codex/config-reference) 不暴露准确 sampling seed；不能仅把 trial seed 写入 prompt，就声称实现了 controlled seed coupling。
 
 JSONL 边界严格验证 event／item family、lifecycle closure、terminal status、最终 assistant output 与安全 token count。Provider event 投影为既有 source-neutral turn／tool-call trace；raw event 与 stderr 不返回 Core。未上报 usage 与 provider cost 继续保持缺失。已报告 input／output token 原样保存，cached／reasoning token 保留为具名 detail；可信 terminal usage record 可以伴随被脱敏的 failure，但不能把 failure 变成 success。`createCodexCliCoreSchemaValidators()` 从计算 advertised schema identity 的同一组 input／output／trace contract 派生 validator，composition root 无需维护宽松或独立的 provider-schema registry。
 
@@ -153,17 +163,25 @@ RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 loca
 
 这些只是 acquisition requirement。后续 Verified HostResource lease 层仍须在 port 打开 run 前验证 kind、classification、size、digest、实际字节／目录树、隔离和 exactly-once release。Gold resource 不得出现在 executor 或 evaluator binding requirement 中。
 
-Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。每个 workspace binding 在当前 run 内获得共享只读 base 上的独立可写 overlay；不同 run 绝不共享可写状态。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
+Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。Workspace binding lease 只暴露已验证的只读 base。Codex CLI／SDK、Claude CLI／SDK、DSH 和 custom-command adapter 在每个 Trial 开始时创建私有可写副本，在 Trial 结束时释放；没有绑定 workspace 的 Trial 从空的私有目录开始。同一 Trial 的 attempt 保留目录状态，不同 Trial 和 run 绝不共享可写工作目录。Run 不再分配可写 overlay。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
 
 文件身份是实际消费字节的 SHA-256。目录树身份使用 `omk.tree-sha256/v1`：条目按相对路径排序，并将条目类型、UTF-8 路径、文件大小、executable／non-executable mode 和文件字节纳入 framing。空目录参与身份；symlink 和特殊文件 fail closed。Pinned Git 还会验证精确的 `HEAD` commit 和干净的常规文件 checkout；dirty、untracked、ignored 或 submodule 内容不能冒充 commit 内容。根 `.git` metadata 在 resolve 与 lease 两个阶段的目录树身份中都会被排除。只有 snapshot 的实际 size 和 digest 都与 v2 descriptor 一致才会被接受。Acquisition 失败会清理部分创建的 run root；成功的 lease 暴露同一个幂等 `dispose()` promise，底层只尝试一次清理。
 
-单资源和整个 run 的字节／条目上限都包含可写 overlay。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
+单资源和整个 run 的字节／条目上限约束取得的 snapshot。Trial 副本受已验证 base 的大小限制；这不是 provider 后续新建文件的磁盘配额。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
 
-Composition root 在 Core 能调用任何 `openRun()` 前取得完整的 active-binding run lease。它验证 binding／resource 精确覆盖，捕获不可变 map 与 descriptor 快照，然后才注册 binding-scoped access。所有 Core port teardown settle 后先撤销注册，再执行一次 lease disposal。Acquisition、Core start 前取消、EventWriter 创建、Core start、正常完成与失败路径共享同一个幂等 cleanup promise。重复 active `runId` 会在第二次 acquisition 前被拒绝。用于 exploratory post-hoc comparison 的 Gold 不会被 single-run Core composition 提前物化；独立 analysis-host workflow 在存在真实消费者时再请求对应 lease。
+**BREAKING-COMPARABILITY：** Trial 工作区隔离修正了原先共享 run 目录的行为。Codex CLI／SDK、Claude CLI／SDK 和 DSH adapter implementation version 更新为 `2.0.0`；custom-command 在工作目录 facet 中封存 `trial-private-sealed-snapshot-v2`。新身份将修正后的执行条件与旧报告区分开。要建立可比基线，需要重新评测；不提供恢复旧目录共享行为的兼容模式。本次修正不改变 prompt 字节、评分和统计、Core Schema 或报告存储格式。
+
+Runtime 通过 `createEvaluationExecution()` 持有运行生命周期。接口只接收 Core Definition、MeasurementPolicy、可选运行元数据、显式 engine port，以及可选的宿主 `acquireRun` 回调，不依赖 Workflow／CLI 类型。Prepare 在物理 preflight 前封存 Core Plan；start 获取宿主资源、激活 binding-scoped access，只有获取成功且未取消时才启动 Core。调度、超时、重试和预算仍由 Core 独占。
+
+宿主验证 binding／resource 精确覆盖并快照化租约描述符。返回的租约提供 `activate()`、可选 EventWriter 和 `close()`。Runtime 在 Core teardown 后、activation 失败或 start 失败时准确调用一次 close。资源清理完成前，active run ID 不允许重用。仅用于探索性事后比较的 Gold 由其独立消费者获取。
+
+取消信号传递给资源获取和 EventWriter 构造。Node 在复制、哈希文件时检查取消，并向 Git 验证传递信号。即使自定义宿主忽略信号，Runtime 也会立即拒绝已取消的 start。取消错误通过 `cleanup` promise 暴露迟到获取操作和租约清理的最终结果，迟到租约绝不激活。不配合取消的宿主可能延迟资源释放，但不能在取消后启动测量；迟到的获取或清理失败仍可被观察。
+
+已有 Core 结果后发生清理失败时，Runtime 抛出 `EvaluationRuntimeLifecycleError`，并在 `runResult` 中保留原始结果。产品持久化路径仍保存完整证据链。CLI 和 DSH 等待持久化后再返回运行错误；Series 的任一 member 发生运行拒绝时，即使报告成功保存，也会拒绝本次发布与自动迭代。保存测量证据不等于批准失败的宿主生命周期通过发布门禁。
 
 ## 十二、Core Composition 与 Support Ports
 
-`createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，并调用真实的 `createEvaluationEngine(...).prepare(...)`。独立 Series assembly 单独暴露，不进入 single-run engine。
+`createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，再把测量声明和注入端口传给 Runtime 拥有的 `createEvaluationExecution()` 接口。独立 Series assembly 单独暴露，不进入 single-run engine。
 
 Support port 被捕获为绑定原实例方法的不可变 view。是否必需完全由 sealed Policy 推导，且不会改写 Policy：
 
@@ -180,7 +198,8 @@ EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required deli
 ## 十三、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；
-- compiled input、support port、cache source、schema conflict、writer construction、active run 与 host cleanup failure 使用稳定 `OmkEvaluationRuntimeError` code；
+- compiled input、support port、cache source、schema conflict 与 writer construction 使用稳定 `OmkEvaluationRuntimeError` code；
+- active run、启动前取消、非法 run lease 和 cleanup failure 归属 Runtime 的 `EvaluationRuntimeLifecycleError`，不保留旧错误码别名；
 - capability、schema、protocol support、identity assurance 和 version satisfaction 仍由 Core preparation 报错；
 - credential、connectivity 与 physical readiness 仍属于独立 adapter preflight；verified resource materialization 是 Core start 前的 run-scoped host failure；
 - provider、session、attempt、cancellation 和 dispose failure 在 Run 开始后属于 Runtime port。
@@ -191,6 +210,6 @@ EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required deli
 
 Composition root 把每个 `runId` 视为独立 failure domain。并发 run 拥有彼此独立的 lease registration、adapter session、raw-event mirror、progress queue、cancellation signal 与 teardown promise。取消一个进行中的 run，不能取消另一个 run、向对方的 event／progress channel 发布内容，或释放对方资源。Runtime port lifecycle 与宿主 lease 都只在各自 run settle 后准确释放一次。
 
-Fault-injection 覆盖 acquisition 前失败、acquisition 过程失败、EventWriter 构造失败、Core start／execution 失败、非权威 progress rendering 失败，以及 Runtime／lease disposal 失败。每条路径要么不产生 effect，要么汇入同一个幂等 cleanup promise；被拒绝的 callback、cancellation race 或 renderer promise 都不能让权威工作遗留在后台。
+Fault-injection 覆盖 acquisition 前失败、acquisition 过程失败、EventWriter 构造失败、Core start／execution 失败、非权威 progress rendering 失败，以及 Runtime／lease disposal 失败。每个已获取租约汇入单次清理。获取期间取消绝不启动 Core；迟到的宿主获取结果通过取消错误的 cleanup promise 观察。
 
 源码依赖守卫同样保护 Evaluation Core。Core TypeScript 只能导入 `src/eval-core` 内其它文件、`zod` 或 `node:crypto`；不能导入 CLI、宿主 orchestration、filesystem API、provider SDK，也不能读取环境态 `process.env`／`process.cwd()`。这让架构边界成为 CI 可执行规则，而不只是一项约定。

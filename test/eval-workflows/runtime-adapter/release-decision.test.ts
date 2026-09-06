@@ -13,14 +13,45 @@ import {
 import { DecisionPolicyCapabilitiesSchema } from '../../../src/eval-core/compiler/index.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-contract.js';
+import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
+import {
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  buildBootstrapFamilyTable,
+  type BootstrapObservation,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table.js';
+import {
   BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA,
+  buildBootstrapFamilyTableV2,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.js';
+import {
   COMPOSITE_TABLE_SCHEMA,
+  compareCompositeGroups,
+  compositeAggregate,
+  compositeCoverage,
+  compositeGroupId,
+  parseCompositeTableEnvelope,
+  type CompositeGroup,
+  type CompositeLayerEntry,
+} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
+import {
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
+  parseJudgeEnsembleTableEnvelope,
+} from '../../../src/eval-workflows/measurement/analysis/judge-aggregation.js';
+import {
   RELEASE_DECISION_PARAMETERS_SCHEMA,
   RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
+  parseReleaseDecisionParameters,
+  parseReleaseDecisionParametersV1,
+  parseReleaseDecisionParametersV3,
+  type ReleaseDecisionParameters,
+  type ReleaseDecisionParametersV1,
+  type ReleaseDecisionParametersV3,
+} from '../../../src/eval-workflows/measurement/analysis/release-decision-parameters.js';
+import {
   RELEASE_DECISION_POLICY_V4,
   RELEASE_DECISION_POLICY_V4_IDENTITY,
   RELEASE_DECISION_POLICY_V1,
@@ -40,26 +71,11 @@ import {
   RELEASE_DECISION_POLICY_V7_IMPLEMENTATION_ID,
   RELEASE_DECISION_POLICY_V7,
   RELEASE_DECISION_POLICY_V7_IDENTITY,
-  buildBootstrapFamilyTable,
-  buildBootstrapFamilyTableV2,
-  compareCompositeGroups,
-  compositeAggregate,
-  compositeCoverage,
-  compositeGroupId,
   createReleaseDecisionPolicies,
-  parseCompositeTableEnvelope,
-  parseJudgeEnsembleTableEnvelope,
-  parseReleaseDecisionParameters,
-  parseReleaseDecisionParametersV1,
-  parseReleaseDecisionParametersV3,
+} from '../../../src/eval-workflows/measurement/analysis/release-decision.js';
+import {
   type BootstrapFamilyParameters,
-  type BootstrapObservation,
-  type CompositeGroup,
-  type CompositeLayerEntry,
-  type ReleaseDecisionParameters,
-  type ReleaseDecisionParametersV1,
-  type ReleaseDecisionParametersV3,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-parameters.js';
 
 const CONTROL = 'control';
 const TREATMENT = 'treatment';

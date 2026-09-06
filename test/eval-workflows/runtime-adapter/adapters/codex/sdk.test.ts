@@ -26,17 +26,25 @@ import {
 import {
   CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexSdkCoreSchemaValidators,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/sdk-protocol.js';
+import {
   createCodexSdkExecutorAdapter,
-  type CodexSdkClientOptions,
   type CodexSdkCoreConfiguration,
   type CodexSdkEnvironmentEntry,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/sdk.js';
+import {
+  type CodexSdkClientOptions,
   type CodexSdkThreadOptions,
+  type ResolvedCodexSdkRuntime,
+} from '../../../../../src/eval-hosts/runtime-adapter/adapters/codex/sdk-runtime.js';
+import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
-  type ResolvedCodexSdkRuntime,
+} from '../../../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
+import {
   type RuntimeBindingOf,
-} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-hosts/runtime-adapter/types.js';
 import {
   testRuntime,
   validDefinition,
@@ -198,7 +206,7 @@ async function adapterFixture(options: Readonly<{
           snapshotKind: 'directory' as const,
           leaseMode: 'copy-on-write-overlay' as const,
           baseSnapshotPath: workspacePath,
-          overlayPath: workspacePath,
+
         },
       ] as const] : []),
     ]),
@@ -512,7 +520,7 @@ describe('Codex SDK Core Executor adapter', () => {
     expect(unknown.usage).toBeUndefined();
   });
 
-  it('uses the exact workspace overlay and elevates output classification', async () => {
+  it('uses a trial-private workspace copy and elevates output classification', async () => {
     const fixture = await adapterFixture({ workspace: true });
     const result = await execute(
       await createAdapter(fixture),
@@ -522,7 +530,7 @@ describe('Codex SDK Core Executor adapter', () => {
     );
     expect(fixture.observations.threadOptions[0]).toMatchObject({
       sandboxMode: 'workspace-write',
-      workingDirectory: join(fixture.root, 'workspace'),
+      workingDirectory: expect.stringMatching(/omk-codex-run-[^/]+\/trial-/),
     });
     expect(result.output?.classification).toBe('sensitive');
   });

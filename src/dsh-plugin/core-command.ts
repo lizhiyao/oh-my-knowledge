@@ -1,3 +1,4 @@
+import { createOmkRuntimeProvider, createOmkEvaluationSchemaValidators } from '../eval-hosts/runtime-adapter/composition.js';
 import { join, resolve } from 'node:path';
 import {
   schemaIdentityKey,
@@ -16,14 +17,22 @@ import {
 import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
-  createNodeHostPreflightDeclarations,
-  createProductionEvaluationHost,
   createProductionRuntimeFactoryRegistry,
-  createJudgeProviderRuntimeIdentity,
+} from '../eval-hosts/node/runtime-registry.js';
+import {
+  createNodeHostPreflightDeclarations,
+} from '../eval-hosts/node/node-cli-composition.js';
+import {
+  createProductionEvaluationHost,
   executeProductionEvaluationSeries,
   persistCoreArtifactSidecars,
-  resolveNodeCliEvaluationRequest,
 } from '../eval-workflows/production-host/index.js';
+import {
+  createJudgeProviderRuntimeIdentity,
+} from '../eval-hosts/node/judge-provider-identity.js';
+import {
+  resolveNodeCliEvaluationRequest,
+} from '../eval-hosts/node/node-cli-evaluation-resolver.js';
 import {
   projectCoreCliRunOutcome,
   projectCoreCliSeriesOutcome,
@@ -38,10 +47,14 @@ import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type {
   OmkExecutorBindingContext,
-  OmkLlmJudgeInvocationBinding,
-  OmkLlmJudgeInvocationRequest,
   OmkRuntimeBindingFactories,
-} from '../eval-workflows/runtime-adapter/index.js';
+} from '../eval-hosts/runtime-adapter/types.js';
+import type {
+  OmkLlmJudgeInvocationBinding,
+} from '../eval-hosts/runtime-adapter/evaluators/llm-judge-invocation.js';
+import type {
+  OmkLlmJudgeInvocationRequest,
+} from '../eval-hosts/runtime-adapter/index.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
 import type { JudgeConfig } from '../eval-workflows/instruments/contracts/config.js';
 import { generateRunId } from '../evidence/storage/run-id.js';
@@ -322,9 +335,11 @@ export async function runDshCoreEvaluation(input: Readonly<{
   });
   const host = {
     compiled,
-    factories: factories({ compiled, host: input.host, parentAgent: input.parentAgent, projectRoot }),
-    support,
-    resources: { leaseRoot: machineLayout.resourceLeasesDir },
+    runtime: createOmkRuntimeProvider({
+      compiled, factories: factories({ compiled, host: input.host, parentAgent: input.parentAgent, projectRoot }),
+      support, resources: { leaseRoot: machineLayout.resourceLeasesDir },
+    }),
+    schemaValidators: createOmkEvaluationSchemaValidators(support.schemaValidators),
     artifactStore,
   };
   const independentSeries = compiled.orchestration.independentSeries;
@@ -345,8 +360,8 @@ export async function runDshCoreEvaluation(input: Readonly<{
     if (evolution === undefined) throw new Error('DSH Core Series 未完成，无法生成 evolution evidence。');
     const artifacts = await Promise.all(series.members.map(async (member) => {
       if (member.executionStatus !== 'started') throw member.error;
-      await member.run.result;
       const persisted = await member.run.persistence;
+      await member.run.result;
       if (persisted.persistenceStatus !== 'stored') {
         throw persisted.persistenceStatus === 'failed'
           ? persisted.error
@@ -376,8 +391,8 @@ export async function runDshCoreEvaluation(input: Readonly<{
     createdAt: new Date().toISOString(),
     signal: input.signal,
   });
-  await run.result;
   const persisted = await run.persistence;
+  await run.result;
   if (persisted.persistenceStatus !== 'stored') {
     throw persisted.persistenceStatus === 'failed'
       ? persisted.error

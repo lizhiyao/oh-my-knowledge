@@ -35,7 +35,7 @@ layerScore = 1 + passedObservedWeight / observedWeight × 4
 
 结果在 1–5 量尺上保留两位小数。结构性不适用不进入 assertion 计分的 planned coverage；Analysis Bundle v2 仍保留矩形输入坐标，将其单列到 `notApplicable`，并通过 `notApplicableRows` 认证行身份与原因，因此不会把它误判为不完整证据。missing、invalid、failed、unavailable 与 not-started observation 会保持为显式 coverage 状态，绝不变成 `false`。没有任何权重被观测到时，该层为 missing，不是零分。
 
-实现：`src/eval-workflows/runtime-adapter/analysis/assertion-layer.ts` 中的 `omk.assertion-layer-table/v1`。
+实现：`src/eval-workflows/measurement/analysis/assertion-layer.ts` 中的 `omk.assertion-layer-table/v1`。
 
 ## Judge 与 dimension 推导
 
@@ -57,7 +57,7 @@ composite = mean(observed present layers)
 
 聚合值保留两位小数。不存在的 layer 属于结构性不适用；存在但缺失的 layer 仍是显式 missing evidence。所有计划 layer 都未观测到时，composite 为 missing，而不是数值零。每个 source group 与 binding 都会保留在 lineage 中，传输后的 table 也会在校验时重新计算。
 
-实现：`src/eval-workflows/runtime-adapter/analysis/composite-table.ts` 中的 `omk.composite-table/v2`。
+实现：`src/eval-workflows/measurement/analysis/composite-table.ts` 中的 `omk.composite-table/v2`。
 
 ## Composite 能回答什么
 

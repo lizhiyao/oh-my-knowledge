@@ -51,7 +51,7 @@ describe('published eval-runtime dependency boundary', () => {
 
       expect(modules).toContain(entry);
       expect(modules.some((file) => file.startsWith('eval-core/'))).toBe(true);
-      expect(modules.filter((file) => /^(?:cli|studio|mcp|dsh-plugin|eval-workflows)\//.test(file)))
+      expect(modules.filter((file) => /^(?:cli|studio|mcp|dsh-plugin|eval-workflows|eval-hosts)\//.test(file)))
         .toEqual([]);
       expect(modules.filter((file) => /^executors\/(?!contracts\/)/.test(file))).toEqual([]);
       expect(externalImports.filter((specifier) => (

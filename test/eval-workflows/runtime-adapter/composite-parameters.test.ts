@@ -4,7 +4,7 @@ import {
   COMPOSITE_PARAMETERS_SCHEMA,
   createCompositeParameterSchemaValidators,
   parseCompositeParameters,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-parameters.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-parameters.js';
 
 const fact = {
   layerId: 'fact',

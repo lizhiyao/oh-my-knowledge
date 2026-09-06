@@ -1,0 +1,145 @@
+import {
+  createExecutionAssertionEvaluatorImplementation,
+  EXECUTION_ASSERTION_EVALUATOR_IDENTITY,
+  EXECUTION_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from '../../eval-workflows/measurement/evaluators/execution-assertions.js';
+import {
+  createBuiltinAnalysisNodes,
+  createBuiltinDecisionPolicies,
+  createBuiltinMissingPolicies,
+} from '../../eval-core/analysis/index.js';
+import { createSameProcessEvaluatorAdapter } from '../../eval-runtime/adapters/same-process.js';
+import {
+  createOutputAssertionEvaluatorImplementation,
+  OUTPUT_ASSERTION_EVALUATOR_IDENTITY,
+  OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from '../../eval-workflows/measurement/evaluators/output-assertions.js';
+import type { OmkRuntimeBindingFactories } from './types.js';
+import { createJudgeAggregationAnalysisNodes } from '../../eval-workflows/measurement/analysis/judge-aggregation.js';
+import { createAssertionLayerAnalysisNodes } from '../../eval-workflows/measurement/analysis/assertion-layer-node.js';
+import { createDimensionAnalysisNodes } from '../../eval-workflows/measurement/analysis/dimension-node.js';
+import { createCompositeAnalysisNodes } from '../../eval-workflows/measurement/analysis/composite-node.js';
+import { createBootstrapFamilyAnalysisNodes } from '../../eval-workflows/measurement/analysis/bootstrap-family-node.js';
+import { createBootstrapFamilyV2AnalysisNodes } from '../../eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
+import { createAgreementAnalysisNodes } from '../../eval-workflows/measurement/analysis/agreement-node.js';
+import { createReleaseDecisionPolicies } from '../../eval-workflows/measurement/analysis/release-decision.js';
+import {
+  createOmkSeriesVarianceRuntime,
+  OMK_SERIES_VARIANCE_IMPLEMENTATION_ID,
+} from '../../eval-workflows/measurement/analysis/series-variance.js';
+
+export type OmkBuiltinAnalysisBindingFactories = Pick<
+  OmkRuntimeBindingFactories,
+  | 'analysisNodesByImplementationId'
+  | 'missingPoliciesByImplementationId'
+  | 'decisionPoliciesByImplementationId'
+  | 'seriesAnalysisNodesByImplementationId'
+>;
+
+export type OmkBuiltinScoringBindingFactories = Pick<
+  OmkRuntimeBindingFactories,
+  'evaluatorsByImplementationId'
+>;
+
+/** OMK-owned production Evaluators; provider-backed families land in later #480 slices. */
+export function createBuiltinOmkScoringBindingFactories(): OmkBuiltinScoringBindingFactories {
+  return {
+    evaluatorsByImplementationId: new Map([
+      [OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID, (context) => ({
+        port: createSameProcessEvaluatorAdapter({
+          identity: OUTPUT_ASSERTION_EVALUATOR_IDENTITY,
+          sessionIsolationKey: context.sessionIsolationKey,
+          resourceLeases: context.resourceLeases,
+          implementation: createOutputAssertionEvaluatorImplementation(),
+        }),
+        satisfiesVersionConstraint: true,
+        preflightDeclarations: [
+          {
+            preflightKind: 'credential',
+            preflightDisposition: 'not-required',
+            checkId: 'omk-output-assertion-credential',
+            reasonCode: 'local-deterministic-evaluator',
+          },
+          {
+            preflightKind: 'connectivity',
+            preflightDisposition: 'not-required',
+            checkId: 'omk-output-assertion-connectivity',
+            reasonCode: 'local-deterministic-evaluator',
+          },
+        ],
+      })],
+      [EXECUTION_ASSERTION_EVALUATOR_IMPLEMENTATION_ID, (context) => ({
+        port: createSameProcessEvaluatorAdapter({
+          identity: EXECUTION_ASSERTION_EVALUATOR_IDENTITY,
+          sessionIsolationKey: context.sessionIsolationKey,
+          resourceLeases: context.resourceLeases,
+          implementation: createExecutionAssertionEvaluatorImplementation(),
+        }),
+        satisfiesVersionConstraint: true,
+        preflightDeclarations: [
+          {
+            preflightKind: 'credential',
+            preflightDisposition: 'not-required',
+            checkId: 'omk-execution-assertion-credential',
+            reasonCode: 'local-deterministic-evaluator',
+          },
+          {
+            preflightKind: 'connectivity',
+            preflightDisposition: 'not-required',
+            checkId: 'omk-execution-assertion-connectivity',
+            reasonCode: 'local-deterministic-evaluator',
+          },
+        ],
+      })],
+    ]),
+  };
+}
+
+/** Binds Core built-ins together with versioned OMK host-owned Analysis implementations. */
+export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBindingFactories {
+  const analysisNodes = new Map([
+    ...createBuiltinAnalysisNodes(),
+    ...createAssertionLayerAnalysisNodes(),
+    ...createJudgeAggregationAnalysisNodes(),
+    ...createDimensionAnalysisNodes(),
+    ...createCompositeAnalysisNodes(),
+    ...createBootstrapFamilyAnalysisNodes(),
+    ...createBootstrapFamilyV2AnalysisNodes(),
+    ...createAgreementAnalysisNodes(),
+  ]);
+  const missingPolicies = createBuiltinMissingPolicies();
+  const decisionPolicies = new Map([
+    ...createBuiltinDecisionPolicies(),
+    ...createReleaseDecisionPolicies(),
+  ]);
+  return {
+    analysisNodesByImplementationId: new Map([...analysisNodes].map(([implementationId, port]) => [
+      implementationId,
+      () => ({ port, satisfiesVersionConstraint: true, preflightDeclarations: [] }),
+    ])),
+    missingPoliciesByImplementationId: new Map([...missingPolicies].map(([
+      implementationId,
+      port,
+    ]) => [implementationId, () => ({
+      port,
+      satisfiesVersionConstraint: true,
+      preflightDeclarations: [],
+    })])),
+    decisionPoliciesByImplementationId: new Map([...decisionPolicies].map(([
+      implementationId,
+      port,
+    ]) => [implementationId, () => ({
+      port,
+      satisfiesVersionConstraint: true,
+      preflightDeclarations: [],
+    })])),
+    seriesAnalysisNodesByImplementationId: new Map([[
+      OMK_SERIES_VARIANCE_IMPLEMENTATION_ID,
+      () => ({
+        port: createOmkSeriesVarianceRuntime(),
+        satisfiesVersionConstraint: true,
+        preflightDeclarations: [],
+      }),
+    ]]),
+  };
+}

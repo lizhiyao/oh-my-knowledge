@@ -6,14 +6,18 @@ import {
   compileCliEvaluationInput,
   parseCliEvaluationRequest,
 } from '../../../src/eval-workflows/input-compilation/index.js';
-import { resolveNodeCliEvaluationRequest } from '../../../src/eval-workflows/production-host/index.js';
+import {
+  resolveNodeCliEvaluationRequest,
+} from '../../../src/eval-hosts/node/node-cli-evaluation-resolver.js';
 import {
   createEvalSampleSetDocument,
 } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
+} from '../../../src/eval-workflows/measurement/analysis/bootstrap-family-node-v2.js';
+import {
   CURRENT_RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
+} from '../../../src/eval-workflows/measurement/analysis/release-decision.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 import {
   canonicalizeJson,

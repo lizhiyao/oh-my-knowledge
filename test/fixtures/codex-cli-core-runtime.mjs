@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { appendFile, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 
 const args = process.argv.slice(2);
 
@@ -55,12 +55,18 @@ if (mode === 'wait') {
   await new Promise(() => setInterval(() => {}, 1_000));
 }
 
+let answer = 'fixture answer';
+if (mode === 'workspace-state') {
+  answer = await readFile('.trial-marker', 'utf8').catch(() => 'clean');
+  await writeFile('.trial-marker', 'contaminated');
+}
+
 const event = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 if (mode !== 'missing-thread') event({ type: 'thread.started', thread_id: 'thread-test' });
 event({ type: 'turn.started' });
 event({
   type: 'item.completed',
-  item: { id: 'message-1', type: 'agent_message', text: 'fixture answer' },
+  item: { id: 'message-1', type: 'agent_message', text: answer },
 });
 if (mode === 'duplicate-item') {
   event({

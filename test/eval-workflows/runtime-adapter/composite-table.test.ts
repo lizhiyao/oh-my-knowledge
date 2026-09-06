@@ -10,7 +10,7 @@ import {
   type CompositeGroup,
   type CompositeLayerEntry,
   type CompositeTableValue,
-} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-table.js';
+} from '../../../src/eval-workflows/measurement/analysis/composite-table.js';
 
 const assertionSource = digestCanonicalJson('assertion-source');
 const judgeSource = digestCanonicalJson('judge-source');

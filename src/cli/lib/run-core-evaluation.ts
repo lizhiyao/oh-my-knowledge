@@ -17,11 +17,15 @@ import {
 } from '../../eval-workflows/artifact-store/index.js';
 import {
   createNodeCliProductionComposition,
+} from '../../eval-hosts/node/node-cli-composition.js';
+import {
   createProductionEvaluationHost,
   executeProductionEvaluationSeries,
   persistCoreArtifactSidecars,
-  resolveNodeCliEvaluationRequest,
 } from '../../eval-workflows/production-host/index.js';
+import {
+  resolveNodeCliEvaluationRequest,
+} from '../../eval-hosts/node/node-cli-evaluation-resolver.js';
 import {
   projectCoreCliDryRun,
   projectCoreCliBatchOutcome,
@@ -301,11 +305,12 @@ export async function runCoreEvaluationCommand(
   });
   const store = input.store ?? runStoreForOutput(
     outputDirectory,
-    composition.support.contentResolver,
+    composition.contentResolver,
   );
   const host = {
     compiled,
-    ...composition,
+    runtime: composition.runtime,
+    schemaValidators: composition.schemaValidators,
     artifactStore: store,
   };
   if (compiled.orchestration.dryRun) {
@@ -336,8 +341,8 @@ export async function runCoreEvaluationCommand(
     if (evolution === undefined) throw new Error('Core Series 未完成，无法生成 evolution evidence。');
     const memberArtifacts = await Promise.all(series.members.map(async (member) => {
       if (member.executionStatus !== 'started') throw member.error;
-      await member.run.result;
       const persistence = await member.run.persistence;
+      await member.run.result;
       if (persistence.persistenceStatus !== 'stored') {
         if (persistence.persistenceStatus === 'failed') throw persistence.error;
         throw new Error(`Core Series member 产物未保存：${persistence.reasonCode}`);
@@ -389,8 +394,8 @@ export async function runCoreEvaluationCommand(
       createdAt: new Date().toISOString(),
       progressSink: emitProgress(input.lang),
     });
-    await run.result;
     const persistence = await run.persistence;
+    await run.result;
     if (persistence.persistenceStatus !== 'stored') {
       if (persistence.persistenceStatus === 'failed') throw persistence.error;
       throw new Error(`Core 产物未保存：${persistence.reasonCode}`);

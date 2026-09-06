@@ -23,12 +23,16 @@ import {
 } from '../../../src/eval-workflows/input-compilation/index.js';
 import {
   OMK_TREE_DIGEST_ALGORITHM,
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/index.js';
+import {
   digestNodeFileResource,
   digestNodePinnedGitTreeResource,
   digestNodeTreeResource,
   materializeNodeRunResourceLeases,
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/node.js';
+import {
   type OmkPinnedGitVerifier,
-} from '../../../src/eval-workflows/runtime-adapter/resource-leases/index.js';
+} from '../../../src/eval-hosts/runtime-adapter/resource-leases/types.js';
 
 let sourceRoot: string;
 let leaseRoot: string;
@@ -155,7 +159,7 @@ async function completeFixture() {
 }
 
 describe('Verified HostResource leases', () => {
-  it('materializes immutable snapshots, isolated workspace overlays and analysis-only Gold', async () => {
+  it('materializes immutable workspace bases shared by bindings and analysis-only Gold', async () => {
     const fixture = await completeFixture();
     const leases = await materializeNodeRunResourceLeases({
       runId: 'run-resource-isolation',
@@ -207,10 +211,8 @@ describe('Verified HostResource leases', () => {
     expect(readFileSync(artifact.snapshotPath, 'utf8')).toBe('# Skill\nverified\n');
     expect(statSync(artifact.snapshotPath).mode & 0o222).toBe(0);
     expect(workspaceA.baseSnapshotPath).toBe(workspaceB.baseSnapshotPath);
-    expect(workspaceA.overlayPath).not.toBe(workspaceB.overlayPath);
-    writeFileSync(join(workspaceA.overlayPath, 'src', 'index.ts'), 'changed in A\n');
-    expect(readFileSync(join(workspaceB.overlayPath, 'src', 'index.ts'), 'utf8'))
-      .toBe('export const value = 1;\n');
+    expect(workspaceA).not.toHaveProperty('overlayPath');
+    expect(statSync(workspaceA.baseSnapshotPath).mode & 0o222).toBe(0);
     expect(readFileSync(join(workspaceA.baseSnapshotPath, 'src', 'index.ts'), 'utf8'))
       .toBe('export const value = 1;\n');
     expect(readFileSync(join(fixture.workspacePath, 'src', 'index.ts'), 'utf8'))
@@ -263,7 +265,7 @@ describe('Verified HostResource leases', () => {
     await leases.dispose();
   });
 
-  it('isolates writable workspaces across concurrent runs and independent teardown', async () => {
+  it('isolates snapshot ownership across concurrent runs and independent teardown', async () => {
     const workspacePath = join(sourceRoot, 'workspace');
     mkdirSync(workspacePath);
     writeFileSync(join(workspacePath, 'state.txt'), 'base');
@@ -289,9 +291,8 @@ describe('Verified HostResource leases', () => {
         || secondLease?.leaseMode !== 'copy-on-write-overlay') {
       throw new Error('missing workspace lease');
     }
-    expect(firstLease.overlayPath).not.toBe(secondLease.overlayPath);
-    writeFileSync(join(firstLease.overlayPath, 'state.txt'), 'run-a');
-    expect(readFileSync(join(secondLease.overlayPath, 'state.txt'), 'utf8')).toBe('base');
+    expect(firstLease.baseSnapshotPath).not.toBe(secondLease.baseSnapshotPath);
+    expect(readFileSync(join(secondLease.baseSnapshotPath, 'state.txt'), 'utf8')).toBe('base');
     const secondRunRoot = dirname(dirname(secondLease.baseSnapshotPath));
     await first.dispose();
     expect(existsSync(secondRunRoot)).toBe(true);
@@ -745,11 +746,10 @@ describe('Verified HostResource leases', () => {
         consumerKind: 'executor', bindingId: 'executor',
         requirements: [requirement('workspace', 'workspace')],
       }],
-      limits: { maxRunMaterializedBytes: 9 },
+      limits: { maxRunMaterializedBytes: 4 },
     })).rejects.toMatchObject({
       code: 'OMK_RESOURCE_LEASE_LIMIT_EXCEEDED',
       resourceId: 'workspace',
-      bindingId: 'executor',
     });
     expect(readdirSync(leaseRoot)).toEqual([]);
 
@@ -761,11 +761,10 @@ describe('Verified HostResource leases', () => {
         consumerKind: 'executor', bindingId: 'executor',
         requirements: [requirement('workspace', 'workspace')],
       }],
-      limits: { maxRunMaterializedEntries: 2 },
+      limits: { maxRunMaterializedEntries: 1 },
     })).rejects.toMatchObject({
       code: 'OMK_RESOURCE_LEASE_LIMIT_EXCEEDED',
       resourceId: 'workspace',
-      bindingId: 'executor',
     });
     expect(readdirSync(leaseRoot)).toEqual([]);
 
@@ -777,4 +776,37 @@ describe('Verified HostResource leases', () => {
       } as unknown as ResolvedHostResources,
     })).rejects.toMatchObject({ code: 'OMK_RESOURCE_LEASE_INPUT_INVALID' });
   });
+});
+
+
+it('forwards cancellation to Git verification and removes partially acquired resources', async () => {
+  const path = join(sourceRoot, 'pinned');
+  mkdirSync(path);
+  writeFileSync(join(path, 'README.md'), '# input');
+  const actual = await digestNodePinnedGitTreeResource(path);
+  const commitId = 'a'.repeat(40);
+  const controller = new AbortController();
+  const reason = new Error('cancel acquisition');
+  const resource: ResolvedHostResource = {
+    resourceKind: 'artifact',
+    descriptor: { resourceId: 'artifact', ...actual, mediaType: 'application/vnd.omk.tree', classification: 'public' },
+    locator: path,
+    verification: { verificationKind: 'pinned-git', verifiedDigest: actual.digest, commitId },
+  };
+  await expect(materializeNodeRunResourceLeases({
+    runId: 'cancel-pinned', leaseRoot, signal: controller.signal,
+    hostResources: inventory([resource]),
+    bindings: [{ consumerKind: 'executor', bindingId: 'executor', requirements: [requirement('artifact', 'artifact')] }],
+    pinnedGitVerifier: {
+      async verifyPinnedCommit(request) {
+        expect(request.signal).toBe(controller.signal);
+        expect(readdirSync(leaseRoot)).toHaveLength(1);
+        controller.abort(reason);
+        request.signal?.throwIfAborted();
+        throw new Error('unreachable');
+      },
+    },
+  })).rejects.toBe(reason);
+  expect(readdirSync(leaseRoot)).toEqual([]);
+  expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('# input');
 });

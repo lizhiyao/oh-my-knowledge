@@ -23,7 +23,7 @@ Five safeguards cover different failure modes.
 
 This separates population uncertainty from Monte Carlo approximation error, following the distinction emphasized by [Koehler, Brown, and Haneuse](https://pmc.ncbi.nlm.nih.gov/articles/PMC3337209/). The exact binomial interval follows [Clopper and Pearson](https://doi.org/10.1093/biomet/26.4.404).
 
-Implementation: `src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table-v2.ts` and `bootstrap-family-parameters.ts`.
+Implementation: `src/eval-workflows/measurement/analysis/bootstrap-family-table-v2.ts` and `bootstrap-family-parameters.ts`.
 
 ## 2. Gold agreement is explicit calibration
 
@@ -42,7 +42,7 @@ The current `omk.agreement-table/v3` contract follows [Krippendorff's recommende
 
 Post-hoc Gold comparison is exploratory calibration. It does not retroactively rewrite the preregistered release Decision.
 
-Implementation: the explicit projection is `src/eval-workflows/projections/gold.ts`; the preregistered Core Analysis node is `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`.
+Implementation: the explicit projection is `src/eval-workflows/projections/gold.ts`; the preregistered Core Analysis node is `src/eval-workflows/measurement/analysis/agreement-table.ts`.
 
 ## 3. Judge debiasing and prompt identity
 
@@ -116,7 +116,7 @@ For a configured Judge Ensemble, v6 estimates cross-judge agreement independentl
 
 Planning references: [NIST's two-sided sample-size formulation](https://www.itl.nist.gov/div898/handbook/prc/section2/prc222.htm), [CONSORT 2025 on prespecifying target difference, assumptions, alpha, and power](https://www.bmj.com/content/389/bmj-2024-081124), and [Hoenig and Heisey on the abuse of retrospective power](https://doi.org/10.1198/000313001300339897).
 
-Implementation: `src/eval-workflows/runtime-adapter/analysis/release-decision.ts`.
+Implementation: `src/eval-workflows/measurement/analysis/release-decision.ts`.
 
 ## Construct validity and audit trail
 

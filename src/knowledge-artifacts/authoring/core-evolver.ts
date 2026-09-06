@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store/index.js';
-import { parseCompositeTableValue } from '../../eval-workflows/runtime-adapter/analysis/composite-table.js';
+import { parseCompositeTableValue } from '../../eval-workflows/measurement/analysis/composite-table.js';
 import { createExecutor } from '../../executors/index.js';
 import { buildImprovementPrompt, computeEditDelta } from './improvement.js';
 import { distributableCopyFilter } from '../sources/content-hash.js';
