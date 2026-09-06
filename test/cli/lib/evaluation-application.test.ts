@@ -31,7 +31,7 @@ async function fixture() {
   const outputDirectory = join(root, 'reports');
   const config = { samplesPath, skillDir, executorName: resolve('test/fixtures/custom-executor/core-fixture-executor.sh'), model: 'fixture', judgeModels: [] };
   const flags = { control: 'baseline', treatment: skill, 'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': outputDirectory };
-  return { root, outputDirectory, run: (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh' } = {}) => runCoreEvaluationCommand({ projectRoot: root, config, flags: { ...flags, ...extra }, evalConfig: settings.evalConfig ?? null, lang: settings.lang ?? 'zh', store }) };
+  return { root, outputDirectory, run: (extra: Record<string, unknown> = {}, store?: CoreRunArtifactStore, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh'; environment?: NodeJS.ProcessEnv } = {}) => runCoreEvaluationCommand({ projectRoot: root, config, flags: { ...flags, ...extra }, evalConfig: settings.evalConfig ?? null, lang: settings.lang ?? 'zh', environment: settings.environment, store }) };
 }
 
 describe('CLI product application', () => {
@@ -75,6 +75,45 @@ describe('CLI product application', () => {
       ? '批量评测不支持独立重复' : 'Batch evaluation does not support independent repeats');
     expect(await readdir(input.root)).toEqual(before);
     expect(vi.mocked(process.stderr.write).mock.calls.flat().join('')).not.toContain('Core Batch：');
+  });
+
+  it('uses the explicit project root for default output even when process cwd differs', async () => {
+    const input = await fixture();
+    const unrelated = join(input.root, 'unrelated');
+    await mkdir(unrelated);
+    vi.spyOn(process, 'cwd').mockReturnValue(unrelated);
+    const result = await input.run({ 'output-dir': undefined, 'no-evidence': true });
+    expect(result.outputDirectory).toBe(join(input.root, '.omk', 'eval'));
+    expect(result.stored).toBeDefined();
+    expect(await readdir(unrelated)).toEqual([]);
+  });
+
+  it('uses the captured environment for explicit global output', async () => {
+    const input = await fixture();
+    const environment = { ...process.env, OMK_HOME: join(input.root, 'captured-home') };
+    const result = await input.run({ 'output-dir': undefined, global: true, 'dry-run': true }, undefined, { environment });
+    expect(result.outputDirectory).toBe(join(environment.OMK_HOME, 'eval'));
+  });
+
+  it('finds global evidence from the explicit project context without weakening resume admission', async () => {
+    const input = await fixture();
+    const unrelated = join(input.root, 'unrelated');
+    await mkdir(unrelated);
+    vi.spyOn(process, 'cwd').mockReturnValue(unrelated);
+    const environment = { ...process.env, OMK_HOME: join(input.root, 'captured-home') };
+    const globalDirectory = join(environment.OMK_HOME, 'eval');
+    const global = await input.run({ 'output-dir': globalDirectory, 'no-evidence': true }, undefined, { environment });
+    const runId = global.stored!.manifest.runId;
+    // Finding the global run must still pass through the existing evidence trust gate.
+    await expect(input.run({ 'output-dir': undefined, resume: runId }, undefined, { environment }))
+      .rejects.toMatchObject({ code: 'CORE_RESUME_VERIFICATION_INDETERMINATE' });
+    const isolatedDirectory = join(unrelated, '.omk', 'eval');
+    await expect(input.run({ 'output-dir': isolatedDirectory, resume: runId }, undefined, { environment }))
+      .rejects.toMatchObject({ code: 'CORE_RESUME_SOURCE_NOT_FOUND' });
+    const injected = createNodeCoreRunArtifactStore(globalDirectory);
+    await expect(input.run({ 'output-dir': isolatedDirectory, resume: runId }, injected, { environment }))
+      .rejects.toMatchObject({ code: 'CORE_RESUME_VERIFICATION_INDETERMINATE' });
+    expect((await injected.get(runId))?.report.reportDigest).toBe(global.stored!.report.reportDigest);
   });
 
   it('rejects publication failure without announcing saved artifacts or appending managed evidence', async () => {
