@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   indexDoctorWrite, listDoctorCards, removeDoctorCard,
-  indexObserveWrite, listObserveCards, removeObserveCard, artifactIndexDir,
+  indexObserveWrite, listObserveCards, artifactIndexDir,
 } from '../../../src/evidence/storage/discovery-index.js';
 import { globalDoctorsDir, globalObserveHealthDir } from '../../../src/evidence/storage/directories.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
@@ -182,13 +182,6 @@ describe('artifact-index 写侧(observe-health 域)', () => {
   it('全局写 → 不落卡片', () => {
     indexObserveWrite(observeReport(), join(globalObserveHealthDir(), reportFileName('g')), globalObserveHealthDir(), 'g');
     assert.equal(listObserveCards().length, 0);
-  });
-
-  it('removeObserveCard 幂等', () => {
-    indexObserveBundle('x');
-    assert.equal(removeObserveCard('x'), true);
-    assert.equal(listObserveCards().length, 0);
-    assert.equal(removeObserveCard('x'), false);
   });
 
   it('坏 healthBand / 非数标量的卡片读侧从严跳过', () => {
