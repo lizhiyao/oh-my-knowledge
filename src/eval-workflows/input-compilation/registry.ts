@@ -1,9 +1,5 @@
+import { EVAL_CONFIG_DEFAULTS } from '../inputs/contracts/config-schema.js';
 import type { JsonValue } from '../../eval-core/contracts/index.js';
-import {
-  DEFAULT_EVALUATION_TIMEOUT_MS,
-  DEFAULT_MINIMUM_COMPARISON_UNITS,
-  DEFAULT_TARGET_POWER,
-} from '../evaluation-defaults.js';
 
 export type CliInputRegistryOwner =
   | 'Definition'
@@ -122,16 +118,16 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     defaultValue: 'project', defaultSource: 'documented',
   }),
   cli('no-judge', 'definition.judges.enabled', 'Definition', 'evaluation', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: !EVAL_CONFIG_DEFAULTS.noJudge, defaultSource: 'documented',
   }),
   cli('dry-run', 'orchestration.dryRun', 'Orchestration', 'none', {
     defaultValue: false, defaultSource: 'documented',
   }),
   cli('concurrency', 'policy.executionConcurrency', 'MeasurementPolicy', 'execution', {
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.concurrency, defaultSource: 'documented',
   }),
   cli('timeout', 'policy.executionTimeoutMs', 'MeasurementPolicy', 'execution', {
-    defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.timeoutMs, defaultSource: 'documented',
   }),
   cli('batch', 'orchestration.batch', 'Orchestration', 'none', {
     defaultValue: false, defaultSource: 'documented',
@@ -159,42 +155,42 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     defaultValue: false, defaultSource: 'documented',
   }),
   cli('strict-baseline', 'definition.baselineIsolation', 'Definition', 'execution', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.strictBaseline, defaultSource: 'documented',
     invalidCombinations: [{
       sourceKeys: ['--strict-baseline', '--no-strict-baseline'],
       errorCode: 'CLI_INPUT_BASELINE_ISOLATION_CONFLICT',
     }],
   }),
   cli('no-strict-baseline', 'definition.baselineIsolation', 'Definition', 'execution', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.strictBaseline, defaultSource: 'documented',
     invalidCombinations: [{
       sourceKeys: ['--strict-baseline', '--no-strict-baseline'],
       errorCode: 'CLI_INPUT_BASELINE_ISOLATION_CONFLICT',
     }],
   }),
   cli('effort', 'definition.targetRuntime.effort', 'Definition', 'execution', {
-    defaultValue: 'low', defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.effort, defaultSource: 'documented',
     runtimeQualificationRequirements: ['model-effort'],
   }),
   cli('no-diagnostic', 'orchestration.diagnostic', 'Orchestration', 'none', {
     defaultValue: 'enabled-outside-core', defaultSource: 'documented',
   }),
   cli('repeat', 'orchestration.independentSeries.repeatCount', 'Orchestration', 'run', {
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.repeat, defaultSource: 'documented',
   }),
   cli('holdout-ratio', 'definition.dataset.analysisCohorts', 'Definition', 'analysis'),
   cli('judge-repeat', 'definition.judges.replicateCount', 'Definition', 'evaluation', {
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.judgeRepeat, defaultSource: 'documented',
   }),
   cli('bootstrap', 'definition.analysisGraph.bootstrap', 'Definition', 'analysis', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.bootstrap, defaultSource: 'documented',
   }),
   cli('bootstrap-samples', 'definition.analysisGraph.bootstrap.resamples', 'Definition', 'analysis', {
-    defaultValue: 1000, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.bootstrapSamples, defaultSource: 'documented',
   }),
   cli('gold-dir', 'orchestration.gold.resourceLocator', 'Orchestration', 'none'),
   cli('no-debias-length', 'definition.judges.lengthDebias', 'Definition', 'evaluation', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.lengthDebias, defaultSource: 'documented',
   }),
   cli('budget-usd', 'policy.budget.totalProviderCostUSD', 'MeasurementPolicy', 'run'),
   cli('budget-per-sample-usd', 'policy.budget.perCoordinateProviderCostUSD', 'MeasurementPolicy', 'run'),
@@ -225,7 +221,7 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     defaultSource: 'environment-selection', runtimeQualificationRequirements: ['model-effort'],
   }),
   config('effort', 'definition.targetRuntime.effort', 'Definition', 'execution', {
-    defaultValue: 'low', defaultSource: 'documented', runtimeQualificationRequirements: ['model-effort'],
+    defaultValue: EVAL_CONFIG_DEFAULTS.effort, defaultSource: 'documented', runtimeQualificationRequirements: ['model-effort'],
   }),
   config('noDiagnostic', 'orchestration.diagnostic', 'Orchestration', 'none', {
     defaultValue: 'enabled-outside-core', defaultSource: 'documented',
@@ -250,13 +246,13 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     { runtimeQualificationRequirements: ['model-effort'] },
   ),
   config('concurrency', 'policy.executionConcurrency', 'MeasurementPolicy', 'execution', {
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.concurrency, defaultSource: 'documented',
   }),
   config('timeoutMs', 'policy.executionTimeoutMs', 'MeasurementPolicy', 'execution', {
-    defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.timeoutMs, defaultSource: 'documented',
   }),
   config('noJudge', 'definition.judges.enabled', 'Definition', 'evaluation', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: !EVAL_CONFIG_DEFAULTS.noJudge, defaultSource: 'documented',
   }),
   config('mcpConfig', 'resources.mcpConfigLocator', 'Orchestration', 'none', {
     runtimeQualificationRequirements: ['tool-mock-sandbox'],
@@ -276,24 +272,24 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
   config('budget.perSampleUSD', 'policy.budget.perCoordinateProviderCostUSD', 'MeasurementPolicy', 'run'),
   config('budget.perSampleMs', 'policy.budget.perCoordinateActiveDurationMs', 'MeasurementPolicy', 'run'),
   config('repeat', 'orchestration.independentSeries.repeatCount', 'Orchestration', 'run', {
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.repeat, defaultSource: 'documented',
   }),
   config('holdoutRatio', 'definition.dataset.analysisCohorts', 'Definition', 'analysis'),
   config('judgeRepeat', 'definition.judges.replicateCount', 'Definition', 'evaluation', {
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.judgeRepeat, defaultSource: 'documented',
   }),
   config('bootstrap', 'definition.analysisGraph.bootstrap', 'Definition', 'analysis', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.bootstrap, defaultSource: 'documented',
   }),
   config('bootstrapSamples', 'definition.analysisGraph.bootstrap.resamples', 'Definition', 'analysis', {
-    defaultValue: 1000, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.bootstrapSamples, defaultSource: 'documented',
   }),
   config('goldDir', 'orchestration.gold.resourceLocator', 'Orchestration', 'none'),
   config('lengthDebias', 'definition.judges.lengthDebias', 'Definition', 'evaluation', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.lengthDebias, defaultSource: 'documented',
   }),
   config('strictBaseline', 'definition.baselineIsolation', 'Definition', 'execution', {
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.strictBaseline, defaultSource: 'documented',
   }),
   config('decision', 'definition.decisionPolicy', 'Definition', 'decision'),
   config('decision.threshold', 'definition.decisionPolicy.threshold', 'Definition', 'decision', {
@@ -311,7 +307,7 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     'definition.decisionPolicy.sampleSize.minimumComparisonUnits',
     'Definition',
     'decision',
-    { defaultValue: DEFAULT_MINIMUM_COMPARISON_UNITS, defaultSource: 'documented' },
+    { defaultValue: EVAL_CONFIG_DEFAULTS.minimumComparisonUnits, defaultSource: 'documented' },
   ),
   config('decision.power', 'definition.decisionPolicy.sampleSize', 'Definition', 'decision'),
   config(
@@ -331,7 +327,7 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     'definition.decisionPolicy.sampleSize.targetPower',
     'Definition',
     'decision',
-    { defaultValue: DEFAULT_TARGET_POWER, defaultSource: 'documented' },
+    { defaultValue: EVAL_CONFIG_DEFAULTS.targetPower, defaultSource: 'documented' },
   ),
   config(
     'decision.power.assumptionSource',
