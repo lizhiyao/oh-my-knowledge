@@ -54,9 +54,15 @@ const EXPERIENCE_EVIDENCE_ENUM_IMPORTS = [
   'ExperienceChecklistContributionSchema',
   'ExperienceChecklistItemStatusSchema',
   'ExperienceEvidenceKindSchema',
+  'ExperienceGoalSliceReasonCodeSchema',
+  'ExperienceParentReasonSchema',
   'ExperienceReviewerReportFindingSourceSchema',
+  'ExperienceReviewerReportStepStatusSchema',
   'ExperienceRuleFindingCodeSchema',
   'ExperienceRuleFindingLevelSchema',
+  'ExperienceSessionStoryAnswerKeySchema',
+  'ExperienceSessionStoryNodeKindSchema',
+  'ExperienceSessionStorySkillRoleSchema',
 ];
 
 function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {

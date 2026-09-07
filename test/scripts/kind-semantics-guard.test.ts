@@ -43,10 +43,10 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   "src/observability/skill-health/analyzer.ts::SkillHealthReport::'observe-health'",
   // —— 持久化 observe / experience JSON ——
   'src/observability/contracts/experience-evidence-schema.ts::ExperienceEvidenceRefSchema::ExperienceEvidenceKindSchema',
-  'src/observability/contracts/experience.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',
+  'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryNodeSchema::ExperienceSessionStoryNodeKindSchema',
   "src/observability/contracts/experience.ts::ExperienceGoalEvidenceRef::'user_message' | 'goal_slice' | 'llm_goal'",
   'src/observability/contracts/experience.ts::ExperienceEpisodeArtifact::ExperienceEpisodeArtifactKind',
-  'src/observability/contracts/experience.ts::ExperienceSessionStoryGraphNode::ExperienceSessionStoryNodeKind',
+  'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryGraphNodeSchema::ExperienceSessionStoryNodeKindSchema',
   'src/observability/contracts/experience.ts::ExperienceReviewerReport::ExperienceReviewerReportScope',
   'src/observability/contracts/problem-patterns.ts::ExperienceProblemEvidenceRef::string',
   'src/observability/contracts/problem-patterns.ts::ProblemTimelineEvent::string',
