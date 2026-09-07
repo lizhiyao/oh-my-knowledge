@@ -1,13 +1,8 @@
+import { EVAL_CLI_NUMBER_SCHEMAS, EVAL_CONFIG_DEFAULTS, EVAL_CONFIG_EFFORTS, EVAL_CONFIG_NUMBER_SCHEMAS } from '../inputs/contracts/config-schema.js';
 import type { EvalConfig, EvalConfigVariant } from '../inputs/contracts/config.js';
 import { parseJudgeModelsArg } from '../inputs/judge-models.js';
 import type { JudgeConfig } from '../instruments/contracts/config.js';
 import { deepFreezeCanonicalJson } from '../../eval-core/contracts/index.js';
-import { DEFAULT_BOOTSTRAP_SAMPLES } from '../analysis/bootstrap.js';
-import {
-  DEFAULT_EVALUATION_TIMEOUT_MS,
-  DEFAULT_MINIMUM_COMPARISON_UNITS,
-  DEFAULT_TARGET_POWER,
-} from '../evaluation-defaults.js';
 import { CliEvaluationInputError } from './error.js';
 import {
   CLI_EVALUATION_REQUEST_SCHEMA_VERSION,
@@ -77,16 +72,11 @@ function booleanValue(value: unknown, fieldPath: string): boolean | undefined {
 function numericValue(
   value: unknown,
   fieldPath: string,
-  options: { integer?: boolean; min?: number; max?: number; exclusive?: boolean } = {},
+  constraint: { safeParse(value: unknown): { success: boolean } },
 ): number | undefined {
   if (value === undefined) return undefined;
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  const belowMin = options.min !== undefined
-    && (options.exclusive ? parsed <= options.min : parsed < options.min);
-  const aboveMax = options.max !== undefined
-    && (options.exclusive ? parsed >= options.max : parsed > options.max);
-  if (!Number.isFinite(parsed) || (options.integer === true && !Number.isInteger(parsed))
-      || belowMin || aboveMax) {
+  if (!constraint.safeParse(parsed).success) {
     return invalid(fieldPath, `输入字段「${fieldPath}」的数值不合法。`);
   }
   return parsed;
@@ -265,9 +255,9 @@ export function parseCliEvaluationRequest(
     normalizedField: 'values.targetRuntime.effort',
     cliKey: 'effort', cliValue: nonEmptyString(flags.effort, 'effort'),
     configKey: 'effort', configValue: config?.effort,
-    defaultValue: 'low', defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.effort, defaultSource: 'documented',
   });
-  if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort as string)) {
+  if (!EVAL_CONFIG_EFFORTS.some((candidate) => candidate === effort)) {
     invalid('effort', `--effort must be one of low/medium/high/xhigh/max (got "${effort}")`);
   }
 
@@ -275,7 +265,7 @@ export function parseCliEvaluationRequest(
     normalizedField: 'values.judges.enabled',
     cliKey: 'no-judge', cliValue: booleanValue(flags['no-judge'], 'no-judge'),
     configKey: 'noJudge', configValue: config?.noJudge,
-    defaultValue: false, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.noJudge, defaultSource: 'documented',
   }) as boolean;
   let judgeMembers: readonly CliEvaluationJudgeRequest[] = [];
   if (!noJudge) {
@@ -314,51 +304,45 @@ export function parseCliEvaluationRequest(
     cliKey: noStrictFlag === true ? 'no-strict-baseline' : 'strict-baseline',
     cliValue: noStrictFlag === true ? false : strictFlag,
     configKey: 'strictBaseline', configValue: config?.strictBaseline,
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.strictBaseline, defaultSource: 'documented',
   }) as boolean;
 
-  const timeoutSeconds = numericValue(flags.timeout, 'timeout', { min: 0, exclusive: true });
+  const timeoutSeconds = numericValue(flags.timeout, 'timeout', EVAL_CLI_NUMBER_SCHEMAS.timeoutSeconds);
   const executionTimeoutMs = pick({
     normalizedField: 'values.measurement.timeoutMs',
     cliKey: 'timeout', cliValue: timeoutSeconds === undefined ? undefined : timeoutSeconds * 1000,
     configKey: 'timeoutMs', configValue: numericValue(
-      config?.timeoutMs, 'timeoutMs', { integer: true, min: 1 },
+      config?.timeoutMs, 'timeoutMs', EVAL_CONFIG_NUMBER_SCHEMAS.timeoutMs,
     ),
-    defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.timeoutMs, defaultSource: 'documented',
   }) as number;
-  if (!Number.isInteger(executionTimeoutMs) || executionTimeoutMs < 1) {
+  if (!EVAL_CONFIG_NUMBER_SCHEMAS.timeoutMs.safeParse(executionTimeoutMs).success) {
     invalid('timeoutMs', 'timeoutMs 必须是正整数。');
   }
 
   const budgetTotal = pick({
     normalizedField: 'values.measurement.budget.totalProviderCostUSD',
     cliKey: 'budget-usd', cliValue: numericValue(
-      flags['budget-usd'], 'budget-usd', { min: 0, exclusive: true },
+      flags['budget-usd'], 'budget-usd', EVAL_CONFIG_NUMBER_SCHEMAS.budgetTotalUSD,
     ),
     configKey: 'budget.totalUSD', configValue: numericValue(
-      config?.budget?.totalUSD, 'budget.totalUSD', { min: 0, exclusive: true },
+      config?.budget?.totalUSD, 'budget.totalUSD', EVAL_CONFIG_NUMBER_SCHEMAS.budgetTotalUSD,
     ),
   });
   const budgetCoordinateCost = pick({
     normalizedField: 'values.measurement.budget.perCoordinateProviderCostUSD',
     cliKey: 'budget-per-sample-usd',
-    cliValue: numericValue(flags['budget-per-sample-usd'], 'budget-per-sample-usd', {
-      min: 0, exclusive: true,
-    }),
+    cliValue: numericValue(flags['budget-per-sample-usd'], 'budget-per-sample-usd', EVAL_CONFIG_NUMBER_SCHEMAS.budgetPerSampleUSD),
     configKey: 'budget.perSampleUSD', configValue: numericValue(
-      config?.budget?.perSampleUSD, 'budget.perSampleUSD', { min: 0, exclusive: true },
+      config?.budget?.perSampleUSD, 'budget.perSampleUSD', EVAL_CONFIG_NUMBER_SCHEMAS.budgetPerSampleUSD,
     ),
   });
   const budgetCoordinateDuration = pick({
     normalizedField: 'values.measurement.budget.perCoordinateActiveDurationMs',
     cliKey: 'budget-per-sample-ms',
-    cliValue: numericValue(flags['budget-per-sample-ms'], 'budget-per-sample-ms', {
-      integer: true, min: 0, exclusive: true,
-    }),
+    cliValue: numericValue(flags['budget-per-sample-ms'], 'budget-per-sample-ms', EVAL_CONFIG_NUMBER_SCHEMAS.budgetPerSampleMs),
     configKey: 'budget.perSampleMs', configValue: numericValue(
-      config?.budget?.perSampleMs, 'budget.perSampleMs', {
-        integer: true, min: 0, exclusive: true,
-      },
+      config?.budget?.perSampleMs, 'budget.perSampleMs', EVAL_CONFIG_NUMBER_SCHEMAS.budgetPerSampleMs,
     ),
   });
   const hasBudget = budgetTotal !== undefined
@@ -367,45 +351,43 @@ export function parseCliEvaluationRequest(
 
   const repeatCount = pick({
     normalizedField: 'values.orchestration.repeatCount',
-    cliKey: 'repeat', cliValue: numericValue(flags.repeat, 'repeat', { integer: true, min: 1 }),
+    cliKey: 'repeat', cliValue: numericValue(flags.repeat, 'repeat', EVAL_CONFIG_NUMBER_SCHEMAS.repeat),
     configKey: 'repeat', configValue: numericValue(
-      config?.repeat, 'repeat', { integer: true, min: 1 },
+      config?.repeat, 'repeat', EVAL_CONFIG_NUMBER_SCHEMAS.repeat,
     ),
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.repeat, defaultSource: 'documented',
   }) as number;
   const judgeReplicateCount = pick({
     normalizedField: 'values.judges.replicateCount',
     cliKey: 'judge-repeat',
-    cliValue: numericValue(flags['judge-repeat'], 'judge-repeat', { integer: true, min: 1 }),
+    cliValue: numericValue(flags['judge-repeat'], 'judge-repeat', EVAL_CONFIG_NUMBER_SCHEMAS.judgeRepeat),
     configKey: 'judgeRepeat', configValue: numericValue(
-      config?.judgeRepeat, 'judgeRepeat', { integer: true, min: 1 },
+      config?.judgeRepeat, 'judgeRepeat', EVAL_CONFIG_NUMBER_SCHEMAS.judgeRepeat,
     ),
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.judgeRepeat, defaultSource: 'documented',
   }) as number;
   const holdoutRatio = pick({
     normalizedField: 'values.measurement.holdoutRatio',
     cliKey: 'holdout-ratio',
-    cliValue: numericValue(flags['holdout-ratio'], 'holdout-ratio', {
-      min: 0, max: 1, exclusive: true,
-    }),
+    cliValue: numericValue(flags['holdout-ratio'], 'holdout-ratio', EVAL_CONFIG_NUMBER_SCHEMAS.holdoutRatio),
     configKey: 'holdoutRatio', configValue: numericValue(
-      config?.holdoutRatio, 'holdoutRatio', { min: 0, max: 1, exclusive: true },
+      config?.holdoutRatio, 'holdoutRatio', EVAL_CONFIG_NUMBER_SCHEMAS.holdoutRatio,
     ),
   });
   const bootstrapEnabled = pick({
     normalizedField: 'values.measurement.bootstrap.enabled',
     cliKey: 'bootstrap', cliValue: booleanValue(flags.bootstrap, 'bootstrap'),
     configKey: 'bootstrap', configValue: config?.bootstrap,
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.bootstrap, defaultSource: 'documented',
   }) as boolean;
   const bootstrapResamples = pick({
     normalizedField: 'values.measurement.bootstrap.resamples',
     cliKey: 'bootstrap-samples',
-    cliValue: numericValue(flags['bootstrap-samples'], 'bootstrap-samples', { integer: true, min: 100 }),
+    cliValue: numericValue(flags['bootstrap-samples'], 'bootstrap-samples', EVAL_CONFIG_NUMBER_SCHEMAS.bootstrapSamples),
     configKey: 'bootstrapSamples', configValue: numericValue(
-      config?.bootstrapSamples, 'bootstrapSamples', { integer: true, min: 100 },
+      config?.bootstrapSamples, 'bootstrapSamples', EVAL_CONFIG_NUMBER_SCHEMAS.bootstrapSamples,
     ),
-    defaultValue: DEFAULT_BOOTSTRAP_SAMPLES, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.bootstrapSamples, defaultSource: 'documented',
   }) as number;
 
   const noDebiasLength = booleanValue(flags['no-debias-length'], 'no-debias-length');
@@ -413,7 +395,7 @@ export function parseCliEvaluationRequest(
     normalizedField: 'values.judges.lengthDebias',
     cliKey: 'no-debias-length', cliValue: noDebiasLength === undefined ? undefined : !noDebiasLength,
     configKey: 'lengthDebias', configValue: config?.lengthDebias,
-    defaultValue: true, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.lengthDebias, defaultSource: 'documented',
   }) as boolean;
 
   const globalOutput = pick({
@@ -501,15 +483,15 @@ export function parseCliEvaluationRequest(
   const executionConcurrency = pick({
     normalizedField: 'values.measurement.executionConcurrency',
     cliKey: 'concurrency',
-    cliValue: numericValue(flags.concurrency, 'concurrency', { integer: true, min: 1 }),
+    cliValue: numericValue(flags.concurrency, 'concurrency', EVAL_CONFIG_NUMBER_SCHEMAS.concurrency),
     configKey: 'concurrency', configValue: numericValue(
-      config?.concurrency, 'concurrency', { integer: true, min: 1 },
+      config?.concurrency, 'concurrency', EVAL_CONFIG_NUMBER_SCHEMAS.concurrency,
     ),
-    defaultValue: 1, defaultSource: 'documented',
+    defaultValue: EVAL_CONFIG_DEFAULTS.concurrency, defaultSource: 'documented',
   }) as number;
   const retryCount = pick({
     normalizedField: 'values.measurement.retryCount',
-    cliKey: 'retry', cliValue: numericValue(flags.retry, 'retry', { integer: true, min: 0 }),
+    cliKey: 'retry', cliValue: numericValue(flags.retry, 'retry', EVAL_CLI_NUMBER_SCHEMAS.retry),
     defaultValue: 0, defaultSource: 'documented',
   }) as number;
   const executionCacheMode = pick({
@@ -524,20 +506,20 @@ export function parseCliEvaluationRequest(
   }) as 'disabled';
   const threshold = pick({
     normalizedField: 'values.measurement.decision.threshold',
-    cliKey: 'threshold', cliValue: numericValue(flags.threshold, 'threshold'),
+    cliKey: 'threshold', cliValue: numericValue(flags.threshold, 'threshold', EVAL_CLI_NUMBER_SCHEMAS.threshold),
     configKey: 'decision.threshold',
-    configValue: numericValue(config?.decision?.threshold, 'decision.threshold', { min: 1, max: 5 }),
+    configValue: numericValue(config?.decision?.threshold, 'decision.threshold', EVAL_CONFIG_NUMBER_SCHEMAS.threshold),
     defaultSource: 'derived',
   });
   const trivialDifference = pick({
     normalizedField: 'values.measurement.decision.trivialDifference',
     cliKey: 'trivial-diff',
-    cliValue: numericValue(flags['trivial-diff'], 'trivial-diff', { min: 0 }),
+    cliValue: numericValue(flags['trivial-diff'], 'trivial-diff', EVAL_CLI_NUMBER_SCHEMAS.trivialDifference),
     configKey: 'decision.trivialDifference',
     configValue: numericValue(
       config?.decision?.trivialDifference,
       'decision.trivialDifference',
-      { min: 0, max: 4 },
+      EVAL_CONFIG_NUMBER_SCHEMAS.trivialDifference,
     ),
     defaultSource: 'derived',
   });
@@ -561,9 +543,9 @@ export function parseCliEvaluationRequest(
         configValue: numericValue(
           config?.decision?.minimumComparisonUnits,
           'decision.minimumComparisonUnits',
-          { integer: true, min: 1 },
+          EVAL_CONFIG_NUMBER_SCHEMAS.minimumComparisonUnits,
         ),
-        defaultValue: DEFAULT_MINIMUM_COMPARISON_UNITS,
+        defaultValue: EVAL_CONFIG_DEFAULTS.minimumComparisonUnits,
         defaultSource: 'documented',
       }) as number,
     };
@@ -574,9 +556,9 @@ export function parseCliEvaluationRequest(
       configValue: numericValue(
         power.targetPower,
         'decision.power.targetPower',
-        { min: 0.5, max: 1, exclusive: true },
+        EVAL_CONFIG_NUMBER_SCHEMAS.targetPower,
       ),
-      defaultValue: DEFAULT_TARGET_POWER,
+      defaultValue: EVAL_CONFIG_DEFAULTS.targetPower,
       defaultSource: 'documented',
     }) as number;
     for (const [normalizedField, sourceKey] of [
@@ -598,12 +580,12 @@ export function parseCliEvaluationRequest(
     const minimumDetectableDifference = numericValue(
       power.minimumDetectableDifference,
       'decision.power.minimumDetectableDifference',
-      { min: 0, max: 4 },
+      EVAL_CONFIG_NUMBER_SCHEMAS.minimumDetectableDifference,
     );
     const expectedDifferenceStandardDeviation = numericValue(
       power.expectedDifferenceStandardDeviation,
       'decision.power.expectedDifferenceStandardDeviation',
-      { min: 0, max: 4 },
+      EVAL_CONFIG_NUMBER_SCHEMAS.expectedDifferenceStandardDeviation,
     );
     if (minimumDetectableDifference === undefined || minimumDetectableDifference === 0) {
       invalid('decision.power.minimumDetectableDifference', '最小可检测差异必须大于 0。');
