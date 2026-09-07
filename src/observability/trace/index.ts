@@ -34,15 +34,11 @@ export type {
 export type { TraceIngestionSummary } from '../contracts/trace.js';
 export { loadTraceCorpus, loadTraceSessions } from './source.js';
 export {
-  extractAttributionSkill,
   extractAttributionSkillRef,
-  extractCommandSkill,
   extractCommandSkillRef,
   extractCommandEnvelopeText,
   extractMarkdownLogSkill,
   extractSkillReadFileRef,
-  extractSkillReadFile,
-  extractSkillToolUse,
   extractSkillToolUseRef,
   normalizeSkillName,
   parseSkillRef,
