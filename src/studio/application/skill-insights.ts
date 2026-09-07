@@ -265,17 +265,3 @@ export function detectInsights(entry: SkillIndexEntry, options: DetectInsightsOp
   ].filter((candidate): candidate is Insight => candidate !== null)
     .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.affectedCount - a.affectedCount);
 }
-
-export function flattenRecommendations(insights: Insight[]): InsightRecommendation[] {
-  const seen = new Map<string, InsightRecommendation>();
-  for (const insight of insights) {
-    for (const recommendation of insight.recommendations) {
-      const previous = seen.get(recommendation.action);
-      if (previous === undefined
-          || SEVERITY_RANK[recommendation.priority] > SEVERITY_RANK[previous.priority]) {
-        seen.set(recommendation.action, recommendation);
-      }
-    }
-  }
-  return [...seen.values()].sort((a, b) => SEVERITY_RANK[b.priority] - SEVERITY_RANK[a.priority]);
-}

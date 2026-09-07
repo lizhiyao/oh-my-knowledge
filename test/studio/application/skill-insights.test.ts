@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectInsights, flattenRecommendations } from '../../../src/studio/application/index.js';
+import { detectInsights } from '../../../src/studio/application/index.js';
 import type { Diagnosis } from '../../../src/diagnosis/contracts.js';
 import type { SkillIndexEntry } from '../../../src/studio/view-models/skill-index.js';
 
@@ -113,22 +113,4 @@ describe('Core-independent skill insights', () => {
     }]);
   });
 
-  it('deduplicates recommendations and keeps highest priority first', () => {
-    expect(flattenRecommendations([
-      {
-        id: 'one', category: 'other', audience: 'skill-author', title: 'one', severity: 'low',
-        affectedCount: 1, evidence: [], recommendations: [{ action: 'same', priority: 'low' }],
-      },
-      {
-        id: 'two', category: 'other', audience: 'skill-author', title: 'two', severity: 'low',
-        affectedCount: 1, evidence: [], recommendations: [
-          { action: 'same', priority: 'high' },
-          { action: 'later', priority: 'medium' },
-        ],
-      },
-    ])).toEqual([
-      { action: 'same', priority: 'high' },
-      { action: 'later', priority: 'medium' },
-    ]);
-  });
 });
