@@ -684,9 +684,6 @@ function readMockHookTemplate(): string {
   return _hookTemplate;
 }
 
-// 测试用 export:供 packaging smoke test 验证 hook 能被解析
-export const _readMockHookTemplateForTest = readMockHookTemplate;
-
 // ─── 工具:在不影响主目录的前提下创建临时 dir(测试也要)─────────────
 
 export function _testMakeTempConfigDir(): string {
