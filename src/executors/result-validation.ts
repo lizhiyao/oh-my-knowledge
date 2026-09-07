@@ -97,12 +97,6 @@ export function executorResultValidationError(value: unknown): string | undefine
   return undefined;
 }
 
-export function parseExecResult(value: unknown): ExecResult | null {
-  return executorResultValidationError(value)
-    ? null
-    : normalizeExecResultToolIdentities(value as ExecResult);
-}
-
 /**
  * Canonicalize every execution trace after structural validation. This keeps
  * programmatic/custom executors and restored caches in the same comparison

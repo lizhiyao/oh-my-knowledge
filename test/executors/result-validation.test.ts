@@ -2,10 +2,12 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   executorResultValidationError,
-  parseExecResult,
+  normalizeExecResultToolIdentities,
 } from '../../src/executors/result-validation.js';
+import type { ExecResult } from '../../src/executors/contracts/result.js';
+import type { ToolCallInfo } from '../../src/executors/contracts/trace.js';
 
-function validResult(): Record<string, unknown> {
+function validResult(): ExecResult {
   return {
     ok: true,
     output: 'done',
@@ -23,7 +25,7 @@ function validResult(): Record<string, unknown> {
 
 describe('executor result contract', () => {
   it('accepts a valid source-neutral result and trace', () => {
-    const result = {
+    const result: ExecResult = {
       ...validResult(),
       toolCalls: [{
         tool: 'github.fetch_file',
@@ -40,11 +42,11 @@ describe('executor result contract', () => {
       mockStats: { hits: 1, misses: 0, perMock: { 'Read:0': 1 } },
     };
     assert.equal(executorResultValidationError(result), undefined);
-    assert.equal(parseExecResult(result)?.output, 'done');
+    assert.equal(normalizeExecResultToolIdentities(result).output, 'done');
   });
 
   it('normalizes provider-native tools at the shared result boundary', () => {
-    const rawCall = {
+    const rawCall: ToolCallInfo = {
       tool: 'command_execution',
       input: 'pwd',
       output: '/repo',
@@ -52,7 +54,7 @@ describe('executor result contract', () => {
       status: 'success',
       statusSource: 'runtime',
     };
-    const parsed = parseExecResult({
+    const result: ExecResult = {
       ...validResult(),
       toolCalls: [rawCall],
       turns: [{
@@ -60,7 +62,9 @@ describe('executor result contract', () => {
         content: '',
         toolCalls: [rawCall],
       }],
-    });
+    };
+    assert.equal(executorResultValidationError(result), undefined);
+    const parsed = normalizeExecResultToolIdentities(result);
     assert.ok(parsed);
     assert.equal(parsed.toolCalls?.[0].tool, 'Bash');
     assert.equal(parsed.toolCalls?.[0].sourceTool, 'command_execution');
@@ -69,7 +73,7 @@ describe('executor result contract', () => {
   });
 
   it('normalizes an already-qualified custom tool idempotently', () => {
-    const once = parseExecResult({
+    const result: ExecResult = {
       ...validResult(),
       toolCalls: [{
         tool: 'github.fetch_file',
@@ -78,9 +82,12 @@ describe('executor result contract', () => {
         output: 'done',
         success: true,
       }],
-    });
+    };
+    assert.equal(executorResultValidationError(result), undefined);
+    const once = normalizeExecResultToolIdentities(result);
     assert.ok(once);
-    const twice = parseExecResult(once);
+    assert.equal(executorResultValidationError(once), undefined);
+    const twice = normalizeExecResultToolIdentities(once);
     assert.equal(twice?.toolCalls?.[0].tool, 'github.fetch_file');
     assert.equal(twice?.toolCalls?.[0].sourceTool, undefined);
   });

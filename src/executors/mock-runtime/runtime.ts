@@ -14,7 +14,7 @@
  * 共用核心:`matchMock(mocks, toolName, toolInput, callCounter)` 命中规则评估。
  */
 
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -682,12 +682,4 @@ function readMockHookTemplate(): string {
   }
   _hookTemplate = readFileSync(hookPath, 'utf8');
   return _hookTemplate;
-}
-
-// ─── 工具:在不影响主目录的前提下创建临时 dir(测试也要)─────────────
-
-export function _testMakeTempConfigDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'omk-mocks-test-'));
-  mkdirSync(dir, { recursive: true });
-  return dir;
 }
