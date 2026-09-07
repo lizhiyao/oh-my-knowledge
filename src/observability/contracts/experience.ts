@@ -171,33 +171,13 @@ export type ExperienceRuleFinding = z.infer<typeof ExperienceRuleFindingSchema>;
 
 export type ExperienceAssistiveInference = z.infer<typeof ExperienceAssistiveInferenceSchema>;
 
-export interface ExperienceReviewerReportStep {
-  order: number;
-  label: string;
-  status: ExperienceReviewerReportStepStatus;
-  text: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceReviewerReportStep = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceReviewerReportStepSchema
+>;
 
-export interface ExperienceReviewerReportFinding {
-  id: string;
-  judgmentId: string;
-  source: ExperienceReviewerReportFindingSource;
-  level: ExperienceReviewerReportFindingLevel;
-  title: string;
-  body: string;
-  ruleSource: string;
-  ruleVersion: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-  reviewStateRef: {
-    targetType: 'reviewer_judgment';
-    targetId: string;
-    verdict?: string;
-    reason?: string;
-    note?: string;
-    reviewedAt?: string;
-  };
-}
+export type ExperienceReviewerReportFinding = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceReviewerReportFindingSchema
+>;
 
 export type ExperienceSessionStoryNode = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceSessionStoryNodeSchema
@@ -265,77 +245,17 @@ export type ExperienceSessionStoryGraphEdge = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceSessionStoryGraphEdgeSchema
 >;
 
-export interface ExperienceSessionStory {
-  schemaVersion: 1;
-  contextRef?: string;
-  summary: string;
-  invocationCount: number;
-  goalSliceCount: number;
-  branchCount: number;
-  progressUpdateCount: number;
-  finalDeliverySignalCount: number;
-  mainlineNodeIds: string[];
-  goalSlices: ExperienceSessionStoryGoalSlice[];
-  subagentDispatches: ExperienceSessionStorySubagentDispatch[];
-  skillLinks: ExperienceSessionStorySkillLink[];
-  episodes?: ExperienceEpisode[];
-  graph: {
-    nodes: ExperienceSessionStoryGraphNode[];
-    edges: ExperienceSessionStoryGraphEdge[];
-  };
-  nodes: ExperienceSessionStoryNode[];
-  answers: ExperienceSessionStoryAnswer[];
-}
+export type ExperienceSessionStory = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceSessionStorySchema
+>;
 
 export type ExperienceStoryContext = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceStoryContextSchema
 >;
 
-export interface ExperienceReviewerReport {
-  schemaVersion: 1;
-  mode: 'deterministic_milestone_1' | 'deterministic_session_story';
-  generatedAt: string;
-  title: string;
-  summary: string;
-  scope: {
-    kind: ExperienceReviewerReportScope;
-    reasonCodes: string[];
-  };
-  chainSteps: ExperienceReviewerReportStep[];
-  findings: ExperienceReviewerReportFinding[];
-  oneLookMetrics: {
-    toolCallCount: number;
-    toolFailureCount: number;
-    toolCancelledCount?: number;
-    toolUnknownCount?: number;
-    userMessageCount: number;
-    userFollowUpCount: number;
-    assistantDeliverySignalCount: number;
-    deliverableArtifactSignalCount: number;
-    routerDownstreamCompleted: number;
-    routerDownstreamFailed: number;
-    assistantProgressUpdateCount: number;
-    selfCorrectionCount: number;
-    repeatedExecutionCount: number;
-    finalDeliverySignalCount: number;
-    traceEventCount: number;
-    tokenUsage: {
-      inputTokens: number;
-      outputTokens: number;
-      cacheReadTokens: number;
-      cacheCreationTokens: number;
-      /** Missing on legacy reviewer reports; readers must treat that as unknown coverage. */
-      observedInvocationCount?: number;
-      invocationCount?: number;
-      coverage?: number;
-      attribution: 'skill_segment';
-    };
-  };
-  sessionStory: ExperienceSessionStory;
-  sessionStoryRef?: 'session';
-  authorSuggestions: string[];
-  traceLinks: ExperienceEvidenceRef[];
-}
+export type ExperienceReviewerReport = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceReviewerReportSchema
+>;
 
 export interface ExperienceGoalSlice {
   id: string;

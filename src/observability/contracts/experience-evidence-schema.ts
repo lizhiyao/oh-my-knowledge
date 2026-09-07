@@ -18,7 +18,9 @@ import {
   ExperienceOutcomeClosureSchema,
   ExperienceParentReasonSchema,
   ExperienceReviewPrioritySchema,
+  ExperienceReviewerReportFindingLevelSchema,
   ExperienceReviewerReportFindingSourceSchema,
+  ExperienceReviewerReportScopeSchema,
   ExperienceReviewerReportStepStatusSchema,
   ExperienceRuleFindingCodeSchema,
   ExperienceRuleFindingLevelSchema,
@@ -317,4 +319,124 @@ export const ExperienceStoryContextSchema = z.object({
   goalSlices: z.array(ExperienceSessionStoryGoalSliceSchema),
   subagentDispatches: z.array(ExperienceSessionStorySubagentDispatchSchema),
   episodes: z.array(ExperienceEpisodeSchema),
+});
+
+export const ExperienceReviewerReportStepSchema = z.object({
+  order: NonNegativeIntegerSchema,
+  label: z.string(),
+  status: ExperienceReviewerReportStepStatusSchema,
+  text: z.string(),
+  evidenceRefs: z.array(ExperienceEvidenceRefSchema),
+});
+
+export const ExperienceReviewerReportFindingSchema = z.object({
+  id: z.string(),
+  judgmentId: z.string(),
+  source: ExperienceReviewerReportFindingSourceSchema,
+  level: ExperienceReviewerReportFindingLevelSchema,
+  title: z.string(),
+  body: z.string(),
+  ruleSource: z.string(),
+  ruleVersion: z.string(),
+  evidenceRefs: z.array(ExperienceEvidenceRefSchema),
+  reviewStateRef: z.object({
+    targetType: z.literal('reviewer_judgment'),
+    targetId: z.string(),
+    verdict: z.string().optional(),
+    reason: z.string().optional(),
+    note: z.string().optional(),
+    reviewedAt: z.string().optional(),
+  }),
+});
+
+// Hydrated legacy reports may lack coverage; wire metrics require all coverage fields.
+
+const ExperienceReviewerTokenUsageSchema = z.object({
+  inputTokens: NonNegativeIntegerSchema,
+  outputTokens: NonNegativeIntegerSchema,
+  cacheReadTokens: NonNegativeIntegerSchema,
+  cacheCreationTokens: NonNegativeIntegerSchema,
+  observedInvocationCount: NonNegativeIntegerSchema.optional(),
+  invocationCount: NonNegativeIntegerSchema.optional(),
+  coverage: z.number().optional(),
+  attribution: z.literal('skill_segment'),
+});
+
+export const ExperienceReviewerMetricsSchema = z.object({
+  toolCallCount: NonNegativeIntegerSchema,
+  toolFailureCount: NonNegativeIntegerSchema,
+  toolCancelledCount: NonNegativeIntegerSchema.optional(),
+  toolUnknownCount: NonNegativeIntegerSchema.optional(),
+  userMessageCount: NonNegativeIntegerSchema,
+  userFollowUpCount: NonNegativeIntegerSchema,
+  assistantDeliverySignalCount: NonNegativeIntegerSchema,
+  deliverableArtifactSignalCount: NonNegativeIntegerSchema,
+  routerDownstreamCompleted: NonNegativeIntegerSchema,
+  routerDownstreamFailed: NonNegativeIntegerSchema,
+  assistantProgressUpdateCount: NonNegativeIntegerSchema,
+  selfCorrectionCount: NonNegativeIntegerSchema,
+  repeatedExecutionCount: NonNegativeIntegerSchema,
+  finalDeliverySignalCount: NonNegativeIntegerSchema,
+  traceEventCount: NonNegativeIntegerSchema,
+  tokenUsage: ExperienceReviewerTokenUsageSchema,
+});
+
+export const ExperienceReviewerMetricsWireSchema = ExperienceReviewerMetricsSchema.required().extend({
+  tokenUsage: ExperienceReviewerTokenUsageSchema.required(),
+});
+
+const ExperienceSessionStoryBaseSchema = z.object({
+  schemaVersion: z.literal(1),
+  summary: z.string(),
+  invocationCount: NonNegativeIntegerSchema,
+  goalSliceCount: NonNegativeIntegerSchema,
+  branchCount: NonNegativeIntegerSchema,
+  progressUpdateCount: NonNegativeIntegerSchema,
+  finalDeliverySignalCount: NonNegativeIntegerSchema,
+  mainlineNodeIds: z.array(z.string()),
+  skillLinks: z.array(ExperienceSessionStorySkillLinkSchema),
+  graph: z.object({
+    nodes: z.array(ExperienceSessionStoryGraphNodeSchema),
+    edges: z.array(ExperienceSessionStoryGraphEdgeSchema),
+  }),
+  nodes: z.array(ExperienceSessionStoryNodeSchema),
+  answers: z.array(ExperienceSessionStoryAnswerSchema),
+});
+
+export const ExperienceSessionStorySchema = ExperienceSessionStoryBaseSchema.extend({
+  contextRef: z.string().optional(),
+  goalSlices: z.array(ExperienceSessionStoryGoalSliceSchema),
+  subagentDispatches: z.array(ExperienceSessionStorySubagentDispatchSchema),
+  episodes: z.array(ExperienceEpisodeSchema).optional(),
+});
+
+export const ExperienceSessionStoryWireSchema = ExperienceSessionStoryBaseSchema.extend({
+  contextRef: z.string(),
+});
+
+const ExperienceReviewerReportBaseSchema = z.object({
+  schemaVersion: z.literal(1),
+  mode: z.enum(['deterministic_milestone_1', 'deterministic_session_story']),
+  generatedAt: z.string(),
+  title: z.string(),
+  summary: z.string(),
+  scope: z.object({
+    kind: ExperienceReviewerReportScopeSchema,
+    reasonCodes: z.array(z.string()),
+  }),
+  chainSteps: z.array(ExperienceReviewerReportStepSchema),
+  findings: z.array(ExperienceReviewerReportFindingSchema),
+  oneLookMetrics: ExperienceReviewerMetricsSchema,
+  authorSuggestions: z.array(z.string()),
+  traceLinks: z.array(ExperienceEvidenceRefSchema),
+});
+
+export const ExperienceReviewerReportSchema = ExperienceReviewerReportBaseSchema.extend({
+  sessionStory: ExperienceSessionStorySchema,
+  sessionStoryRef: z.literal('session').optional(),
+});
+
+export const ExperienceReviewerReportWireSchema = ExperienceReviewerReportBaseSchema.extend({
+  oneLookMetrics: ExperienceReviewerMetricsWireSchema,
+  sessionStoryRef: z.literal('session'),
 });
