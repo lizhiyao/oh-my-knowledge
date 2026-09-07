@@ -1,15 +1,10 @@
 import {
-  CODEX_READ_ONLY_SANDBOX_ID,
-  CODEX_WORKSPACE_WRITE_SANDBOX_ID,
   codexCoreExecutorCapabilities,
   createCodexCoreSchemaValidators,
   parseCodexCoreEvents,
   type CodexCoreProtocolProfile,
   type ParsedCodexCoreStream,
 } from './protocol-core.js';
-
-export const CODEX_SDK_READ_ONLY_SANDBOX_ID = CODEX_READ_ONLY_SANDBOX_ID;
-export const CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID = CODEX_WORKSPACE_WRITE_SANDBOX_ID;
 export type ParsedCodexSdkStream = ParsedCodexCoreStream;
 
 const CODEX_SDK_PROTOCOL_PROFILE = Object.freeze({

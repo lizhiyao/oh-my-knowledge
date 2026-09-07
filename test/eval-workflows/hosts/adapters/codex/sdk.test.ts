@@ -1,3 +1,4 @@
+import { CODEX_WORKSPACE_WRITE_SANDBOX_ID } from '../../../../../src/eval-workflows/hosts/adapters/codex/protocol-core.js';
 import {
   executeRunPlan,
 } from '../../../../helpers/core-runs.js';
@@ -26,7 +27,6 @@ import {
   type ExecutorTrialContext,
 } from '../../../../../src/eval-core/execution/index.js';
 import {
-  CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexSdkCoreSchemaValidators,
 } from '../../../../../src/eval-workflows/hosts/adapters/codex/sdk-protocol.js';
 import {
@@ -129,7 +129,7 @@ async function adapterFixture(options: Readonly<{
     behavior: {
       artifact: artifactDescriptor,
       ...(options.workspace ? {
-        sandbox: { sandboxId: CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID },
+        sandbox: { sandboxId: CODEX_WORKSPACE_WRITE_SANDBOX_ID },
       } : {}),
     },
     runtime: { model: 'gpt-test', effort: 'high' as const },
@@ -141,7 +141,7 @@ async function adapterFixture(options: Readonly<{
     mockInterception: 'not-required' as const,
     toolPolicy: options.allowedTools === undefined ? 'runtime-default' as const : 'allow-list' as const,
     skillDiscovery: 'runtime-default' as const,
-    ...(options.workspace ? { sandboxId: CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID } : {}),
+    ...(options.workspace ? { sandboxId: CODEX_WORKSPACE_WRITE_SANDBOX_ID } : {}),
   };
   const target: EvaluationDefinition['targets'][number] = {
     targetId: 'target-a',
