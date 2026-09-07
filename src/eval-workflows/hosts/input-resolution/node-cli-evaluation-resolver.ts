@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import {
   canonicalizeJson,
@@ -336,7 +336,15 @@ async function materializeBytes(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       try {
-        await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+        const stagingRoot = await mkdtemp(join(directory, '.materialize-'));
+        try {
+          const stagedPath = join(stagingRoot, 'content');
+          await writeFile(stagedPath, bytes, { flag: 'wx', mode: 0o600 });
+          // Publish complete bytes without replacing a concurrent winner.
+          await link(stagedPath, path);
+        } finally {
+          await rm(stagingRoot, { recursive: true, force: true });
+        }
       } catch (writeError) {
         if ((writeError as NodeJS.ErrnoException).code !== 'EEXIST') throw writeError;
         const existingStat = await lstat(path);
