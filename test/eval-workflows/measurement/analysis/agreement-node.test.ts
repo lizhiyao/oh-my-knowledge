@@ -21,6 +21,9 @@ import {
 } from '../../../../src/eval-workflows/measurement/analysis/agreement-node.js';
 import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../../src/eval-workflows/measurement/analysis/agreement-parameters.js';
 import { AGREEMENT_SOURCE_SCHEMAS } from '../../../../src/eval-workflows/measurement/analysis/agreement-source-adapter.js';
+import { extractAgreementPairs } from '../../../../src/eval-workflows/measurement/analysis/agreement-source-adapter.js';
+import { extractAgreementPairs as extractAgreementPairsV1 } from '../../../../src/eval-workflows/measurement/analysis/agreement-source-adapter-v1.js';
+import * as legacyDimension from '../../../../src/eval-workflows/measurement/analysis/dimension-table-v1.js';
 import { AGREEMENT_TABLE_SCHEMA } from '../../../../src/eval-workflows/measurement/analysis/agreement-table.js';
 import {
   DIMENSION_TABLE_SCHEMA,
@@ -173,6 +176,68 @@ async function execute(value: AnalysisNodeExecutionContext) {
 }
 
 describe('Agreement Analysis node', () => {
+  it('preserves legacy mean versus weighted mean and rejects cross-version envelopes', () => {
+    const base = dimensionGroup('sample-0', 0, 1);
+    const dimensions = [1, 5].map((consensus, index) => ({
+      dimensionId: `quality-${index}`,
+      metricId: `rubric-quality-${index}`,
+      sourceAnalysisResultId: `judge-quality-${index}`,
+      sourceGroupId: digestCanonicalJson({ source: 'judge', index }),
+      weight: index === 0 ? 0.25 : 0.75,
+      dimensionStatus: 'observed' as const,
+      consensus,
+    }));
+    const current = {
+      ...base, dimensions,
+      coverage: dimensionCoverage(dimensions),
+      aggregate: dimensionAggregate(dimensions),
+    };
+    current.groupId = dimensionGroupId(current);
+    const oldDimensions = dimensions.map((entry) => ({
+      dimensionId: entry.dimensionId,
+      metricId: entry.metricId,
+      sourceAnalysisResultId: entry.sourceAnalysisResultId,
+      sourceGroupId: entry.sourceGroupId,
+      dimensionStatus: entry.dimensionStatus,
+      consensus: entry.consensus,
+    }));
+    const legacy = {
+      ...base, dimensions: oldDimensions,
+      coverage: legacyDimension.dimensionCoverage(oldDimensions),
+      aggregate: legacyDimension.dimensionAggregate(oldDimensions),
+    };
+    legacy.groupId = legacyDimension.dimensionGroupId(legacy);
+    const modernEnvelope = { resultType: 'table', value: { schemaVersion: DIMENSION_TABLE_SCHEMA_VERSION, groups: [current] } };
+    const legacyEnvelope = { resultType: 'table', value: { schemaVersion: legacyDimension.DIMENSION_TABLE_SCHEMA_VERSION, groups: [legacy] } };
+
+    expect(extractAgreementPairs(parameters(), modernEnvelope, samples())[0].judge)
+      .toMatchObject({ ratingStatus: 'observed', score: 4 });
+    expect(extractAgreementPairsV1(parameters(), legacyEnvelope, samples())[0].judge)
+      .toMatchObject({ ratingStatus: 'observed', score: 3 });
+    expect(() => extractAgreementPairs(parameters(), legacyEnvelope, samples())).toThrow();
+    expect(() => extractAgreementPairsV1(parameters(), modernEnvelope, samples())).toThrow();
+  });
+
+  it.each([
+    ['/scores/0/a~1b/~0', 4],
+    ['/scores/01/a~1b/~0', undefined],
+    ['/scores/-/a~1b/~0', undefined],
+    ['/toString', undefined],
+    ['/missing', undefined],
+  ] as const)('resolves gold pointers without inherited fields: %s', (contextPointer, score) => {
+    const configuration = parameters();
+    configuration.gold.contextPointer = contextPointer;
+    const sampleData = samples();
+    const updatedSamples = sampleData.map((sample) => ({
+      ...sample,
+      analysis: { memberships: [], context: { classification: 'gold' as const, value: { scores: [{ 'a/b': { '~': 4 } }] } } },
+    }));
+    const pairs = extractAgreementPairs(configuration, { resultType: 'table', value: dimensionValue() }, updatedSamples);
+    expect(pairs[0].gold).toEqual(score === undefined
+      ? { ratingStatus: 'unavailable', reasonCode: 'gold-rating-unavailable' }
+      : { ratingStatus: 'observed', score });
+  });
+
   it('declares canonical capabilities and aggregates Dimension trials by sealed sample', async () => {
     const capabilities = AnalysisNodeCapabilitiesSchema.parse(AGREEMENT_ANALYSIS_IDENTITY.capabilities);
     expect(capabilities.inputDomains).toEqual([{
