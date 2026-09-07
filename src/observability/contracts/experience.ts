@@ -1,3 +1,9 @@
+import type {
+  ExperienceEvidenceChainSchema,
+  ExperienceRuleFindingSchema,
+  ExperienceAssistiveInferenceSchema,
+  ExperienceChecklistItemSchema,
+} from './experience-evidence-schema.js';
 import type { ExperienceEvidenceRefSchema } from './experience-evidence-schema.js';
 import type { z } from 'zod';
 import type {
@@ -163,38 +169,11 @@ export interface ExperienceTraceRecordRange {
   eventCount: number;
 }
 
-export interface ExperienceEvidenceChain {
-  userMessageCount: number;
-  runtimeContextCount: number;
-  skillContextCount: number;
-  assistantMessageCount: number;
-  toolUseCount: number;
-  toolResultCount: number;
-  toolFailureResultCount: number;
-  observationCount: number;
-  firstUserMessage?: ExperienceEvidenceRef;
-  firstRuntimeContext?: ExperienceEvidenceRef;
-  firstSkillContext?: ExperienceEvidenceRef;
-  firstToolUse?: ExperienceEvidenceRef;
-  firstToolFailure?: ExperienceEvidenceRef;
-  lastAssistantMessage?: ExperienceEvidenceRef;
-}
+export type ExperienceEvidenceChain = z.infer<typeof ExperienceEvidenceChainSchema>;
 
-export interface ExperienceRuleFinding {
-  code: ExperienceRuleFindingCode;
-  level: ExperienceRuleFindingLevel;
-  count: number;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceRuleFinding = z.infer<typeof ExperienceRuleFindingSchema>;
 
-export interface ExperienceAssistiveInference {
-  mode: 'deterministic_rules_only';
-  code: ExperienceAssistiveInferenceCode;
-  confidence: ExperienceAssistiveInferenceConfidence;
-  basisRuleCodes: ExperienceRuleFindingCode[];
-  cautionCodes: ExperienceAssistiveInferenceCautionCode[];
-  evidenceRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceAssistiveInference = z.infer<typeof ExperienceAssistiveInferenceSchema>;
 
 export interface ExperienceReviewerReportStep {
   order: number;
@@ -245,16 +224,7 @@ export interface ExperienceSessionStoryAnswer {
   checklistItems: ExperienceChecklistItem[];
 }
 
-export interface ExperienceChecklistItem {
-  key: string;
-  label: string;
-  status: ExperienceChecklistItemStatus;
-  contribution: ExperienceChecklistContribution;
-  reason: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-  source: ExperienceReviewerReportFindingSource;
-  suggestionKey?: string;
-}
+export type ExperienceChecklistItem = z.infer<typeof ExperienceChecklistItemSchema>;
 
 export interface ExperienceSessionStoryGoalSlice {
   id: string;

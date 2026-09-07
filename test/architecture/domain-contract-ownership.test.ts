@@ -47,13 +47,25 @@ const EXPERIENCE_ENUM_TYPE_IMPORTS = new Set([
   'zod', './experience-enums.js', './experience-evidence-schema.js',
 ]);
 
+const EXPERIENCE_EVIDENCE_ENUM_IMPORTS = [
+  'ExperienceAssistiveInferenceCautionCodeSchema',
+  'ExperienceAssistiveInferenceCodeSchema',
+  'ExperienceAssistiveInferenceConfidenceSchema',
+  'ExperienceChecklistContributionSchema',
+  'ExperienceChecklistItemStatusSchema',
+  'ExperienceEvidenceKindSchema',
+  'ExperienceReviewerReportFindingSourceSchema',
+  'ExperienceRuleFindingCodeSchema',
+  'ExperienceRuleFindingLevelSchema',
+];
+
 function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
   const imports = new Map([
     ['zod', 'z'],
-    ['./experience-enums.js', 'ExperienceEvidenceKindSchema'],
+    ['./experience-enums.js', [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS].sort().join(',')],
   ]);
   const seenImports = new Set<string>();
-  const schemas = new Set(['ExperienceEvidenceKindSchema']);
+  const schemas = new Set(EXPERIENCE_EVIDENCE_ENUM_IMPORTS);
   function expression(node: ts.Expression): boolean {
     if (ts.isIdentifier(node)) return schemas.has(node.text);
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return false;
@@ -63,6 +75,8 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
       if (method === 'string' || method === 'number') return node.arguments.length === 0;
       if (node.arguments.length !== 1) return false;
       const argument = node.arguments[0];
+      if (method === 'array') return expression(argument);
+      if (method === 'literal') return ts.isStringLiteral(argument);
       if (method === 'enum') {
         return ts.isArrayLiteralExpression(argument) && argument.elements.length > 0
           && argument.elements.every(ts.isStringLiteral);
@@ -80,8 +94,9 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
       const bindings = statement.importClause?.namedBindings;
       if (!ts.isStringLiteral(statement.moduleSpecifier)
           || statement.importClause?.name || !bindings || !ts.isNamedImports(bindings)
-          || bindings.elements.length !== 1 || bindings.elements[0].propertyName
-          || imports.get(statement.moduleSpecifier.text) !== bindings.elements[0].name.text
+          || bindings.elements.some((element) => element.propertyName !== undefined)
+          || imports.get(statement.moduleSpecifier.text)
+            !== bindings.elements.map((element) => element.name.text).sort().join(',')
           || seenImports.has(statement.moduleSpecifier.text)) return false;
       seenImports.add(statement.moduleSpecifier.text);
       continue;
@@ -250,7 +265,7 @@ describe('领域契约所有权', () => {
     "z.object({ id: z.string() }); sideEffect()",
   ])('证据结构声明拒绝动态实现：%s', (initializer) => {
     const text = "import { z } from 'zod';\n"
-      + "import { ExperienceEvidenceKindSchema } from './experience-enums.js';\n"
+      + `import { ${EXPERIENCE_EVIDENCE_ENUM_IMPORTS.join(', ')} } from './experience-enums.js';\n`
       + `export const ExperienceEvidenceRefSchema = ${initializer};`;
     expect(isDeclarativeEvidenceSchemaModule(ts.createSourceFile(
       'invalid.ts', text, ts.ScriptTarget.Latest, true,
