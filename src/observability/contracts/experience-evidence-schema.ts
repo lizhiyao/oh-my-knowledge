@@ -506,3 +506,76 @@ export const ExperienceTurnSummarySchema = z.object({
   toolCallCount: NonNegativeIntegerSchema,
   toolFailureCount: NonNegativeIntegerSchema,
 });
+
+export const ExperienceGoalSliceSchema = z.object({
+  id: z.string(),
+  skillName: z.string(),
+  sessionId: z.string(),
+  traceId: z.string().optional(),
+  sourceTrace: z.string(),
+  cwd: z.string().optional(),
+  startTimestamp: z.string(),
+  endTimestamp: z.string(),
+  timestampObserved: z.boolean().optional(),
+  sliceReasonCode: ExperienceGoalSliceReasonCodeSchema,
+  sliceConfidence: z.enum(['low', 'medium', 'high']),
+  inferredUserGoal: z.string().optional(),
+  userMessageRefs: z.array(ExperienceEvidenceRefSchema),
+});
+
+export const ExperienceReviewIndicatorsSchema = z.object({
+  userMessageCount: NonNegativeIntegerSchema,
+  userFollowUpCount: NonNegativeIntegerSchema,
+  userCorrectionCount: NonNegativeIntegerSchema,
+  userInterruptionCount: NonNegativeIntegerSchema,
+  sessionInterruptedCount: NonNegativeIntegerSchema,
+  negativeFeedbackCount: NonNegativeIntegerSchema,
+  positiveFeedbackCount: NonNegativeIntegerSchema,
+  userGoalShiftCount: NonNegativeIntegerSchema,
+  hardRuleTextHitCount: NonNegativeIntegerSchema,
+  assistantDeliverySignalCount: NonNegativeIntegerSchema,
+  deliverableArtifactSignalCount: NonNegativeIntegerSchema,
+  routerDownstreamCompleted: NonNegativeIntegerSchema,
+  routerDownstreamFailed: NonNegativeIntegerSchema,
+  selfCorrectionCount: NonNegativeIntegerSchema,
+  repeatedExecutionCount: NonNegativeIntegerSchema,
+  toolCallCount: NonNegativeIntegerSchema,
+  toolFailureCount: NonNegativeIntegerSchema,
+  toolCancelledCount: NonNegativeIntegerSchema.optional(),
+  toolUnknownCount: NonNegativeIntegerSchema.optional(),
+  highObservationCount: NonNegativeIntegerSchema,
+  mediumObservationCount: NonNegativeIntegerSchema,
+  hedgingCount: NonNegativeIntegerSchema,
+  explicitMarkerCount: NonNegativeIntegerSchema,
+});
+
+export const ExperienceReviewIndicatorsWireSchema = ExperienceReviewIndicatorsSchema.required();
+
+export const ExperienceMetaSchema = z.object({
+  sessionCount: NonNegativeIntegerSchema,
+  skillCount: NonNegativeIntegerSchema,
+  invocationCount: NonNegativeIntegerSchema,
+  goalSliceCount: NonNegativeIntegerSchema,
+  noteCodes: z.array(z.enum(['no_llm_judge', 'no_auto_verdict', 'default_goal_slice_is_allowed', 'deterministic_assistive_inference'])),
+});
+
+export const ExperienceAttributionSchema = z.object({
+  source: z.string(),
+  confidence: z.number(),
+  rawSkillRef: z.string().optional(),
+  pluginName: z.string().optional(),
+  commandName: z.string().optional(),
+});
+
+export const ExperienceTimelineScopeSchema = z.object({
+  mode: z.literal('skill_segment_window'),
+  segmentEventCount: NonNegativeIntegerSchema,
+  previewEventCount: NonNegativeIntegerSchema,
+  fullSessionEventCount: NonNegativeIntegerSchema,
+  segmentRecordRanges: z.array(ExperienceTraceRecordRangeSchema),
+  previewRecordRanges: z.array(ExperienceTraceRecordRangeSchema),
+  sessionRecordRanges: z.array(ExperienceTraceRecordRangeSchema),
+  truncated: z.boolean(),
+  omittedBeforeCount: NonNegativeIntegerSchema,
+  omittedAfterCount: NonNegativeIntegerSchema,
+});

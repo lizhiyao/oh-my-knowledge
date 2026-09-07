@@ -1,4 +1,11 @@
 import {
+  ExperienceMetaSchema,
+  ExperienceAttributionSchema,
+  ExperienceReviewIndicatorsSchema,
+  ExperienceReviewIndicatorsWireSchema,
+  ExperienceTimelineScopeSchema,
+} from '../contracts/experience-evidence-schema.js';
+import {
   ExperienceTimelineEventSchema,
   ExperienceTimelineBranchSchema,
   ExperienceTimelineTreeSchema,
@@ -291,19 +298,7 @@ export function isEnumArray(value: unknown, values: readonly string[]): boolean 
 }
 
 export function isExperienceMeta(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || !isNonNegativeInteger(value.sessionCount)
-    || !isNonNegativeInteger(value.skillCount)
-    || !isNonNegativeInteger(value.invocationCount)
-    || !isNonNegativeInteger(value.goalSliceCount)
-  ) return false;
-  return isEnumArray(value.noteCodes, [
-    'no_llm_judge',
-    'no_auto_verdict',
-    'default_goal_slice_is_allowed',
-    'deterministic_assistive_inference',
-  ]);
+  return ExperienceMetaSchema.safeParse(value).success;
 }
 
 export function isOptionalTraceSourceMetadata(value: unknown): boolean {
@@ -427,12 +422,8 @@ export function isExperienceProblemPatternArray(value: unknown): boolean {
 }
 
 export function isExperienceAttribution(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.source === 'string'
-    && isRate(value.confidence)
-    && isOptionalString(value.rawSkillRef)
-    && isOptionalString(value.pluginName)
-    && isOptionalString(value.commandName);
+  const parsed = ExperienceAttributionSchema.safeParse(value);
+  return parsed.success && isRate(parsed.data.confidence);
 }
 
 export function isExperienceInvocationMetrics(value: unknown): boolean {
@@ -443,43 +434,16 @@ export function isExperienceInvocationMetrics(value: unknown): boolean {
     <= metrics.numToolCalls;
 }
 
-export const EXPERIENCE_INDICATOR_KEYS = [
-  'userMessageCount',
-  'userFollowUpCount',
-  'userCorrectionCount',
-  'userInterruptionCount',
-  'sessionInterruptedCount',
-  'negativeFeedbackCount',
-  'positiveFeedbackCount',
-  'userGoalShiftCount',
-  'hardRuleTextHitCount',
-  'assistantDeliverySignalCount',
-  'deliverableArtifactSignalCount',
-  'routerDownstreamCompleted',
-  'routerDownstreamFailed',
-  'selfCorrectionCount',
-  'repeatedExecutionCount',
-  'toolCallCount',
-  'toolFailureCount',
-  'highObservationCount',
-  'mediumObservationCount',
-  'hedgingCount',
-  'explicitMarkerCount',
-] as const;
+export const EXPERIENCE_INDICATOR_KEYS = ExperienceReviewIndicatorsSchema.omit({
+  toolCancelledCount: true,
+  toolUnknownCount: true,
+}).keyof().options;
 
 export function isExperienceIndicators(value: unknown): boolean {
-  return isObjectRecord(value)
-    && EXPERIENCE_INDICATOR_KEYS.every((key) => isNonNegativeInteger(value[key]))
-    && (
-      isNonNegativeInteger(value.toolCancelledCount)
-      && isNonNegativeInteger(value.toolUnknownCount)
-    )
-    && (value.toolCancelledCount === undefined || isNonNegativeInteger(value.toolCancelledCount))
-    && (value.toolUnknownCount === undefined || isNonNegativeInteger(value.toolUnknownCount))
-    && (value.toolFailureCount as number)
-      + (typeof value.toolCancelledCount === 'number' ? value.toolCancelledCount : 0)
-      + (typeof value.toolUnknownCount === 'number' ? value.toolUnknownCount : 0)
-      <= (value.toolCallCount as number);
+  const parsed = ExperienceReviewIndicatorsWireSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const data = parsed.data;
+  return data.toolFailureCount + data.toolCancelledCount + data.toolUnknownCount <= data.toolCallCount;
 }
 
 export function isCountRecord(value: unknown): boolean {
@@ -488,22 +452,15 @@ export function isCountRecord(value: unknown): boolean {
 }
 
 export function isExperienceTimelineScope(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || value.mode !== 'skill_segment_window'
-    || !isNonNegativeInteger(value.segmentEventCount)
-    || !isNonNegativeInteger(value.previewEventCount)
-    || !isNonNegativeInteger(value.fullSessionEventCount)
-    || !isExperienceTraceRecordRangeArray(value.segmentRecordRanges)
-    || !isExperienceTraceRecordRangeArray(value.previewRecordRanges)
-    || !isExperienceTraceRecordRangeArray(value.sessionRecordRanges)
-    || typeof value.truncated !== 'boolean'
-    || !isNonNegativeInteger(value.omittedBeforeCount)
-    || !isNonNegativeInteger(value.omittedAfterCount)
-  ) return false;
-  return value.previewEventCount <= value.segmentEventCount
-    && value.segmentEventCount <= value.fullSessionEventCount
-    && value.omittedBeforeCount + value.omittedAfterCount <= value.fullSessionEventCount;
+  const parsed = ExperienceTimelineScopeSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const data = parsed.data;
+  return isExperienceTraceRecordRangeArray(data.segmentRecordRanges)
+    && isExperienceTraceRecordRangeArray(data.previewRecordRanges)
+    && isExperienceTraceRecordRangeArray(data.sessionRecordRanges)
+    && data.previewEventCount <= data.segmentEventCount
+    && data.segmentEventCount <= data.fullSessionEventCount
+    && data.omittedBeforeCount + data.omittedAfterCount <= data.fullSessionEventCount;
 }
 
 export function isExperienceTraceRecordRangeArray(value: unknown): value is ExperienceTraceRecordRange[] {
