@@ -1,10 +1,11 @@
+import {
+  ExperienceEvidenceChainSchema,
+  ExperienceRuleFindingSchema,
+  ExperienceAssistiveInferenceSchema,
+  ExperienceChecklistItemSchema,
+} from '../contracts/experience-evidence-schema.js';
 import { ExperienceEvidenceRefSchema } from '../contracts/experience-evidence-schema.js';
 import {
-  ExperienceAssistiveInferenceCautionCodeSchema,
-  ExperienceAssistiveInferenceCodeSchema,
-  ExperienceAssistiveInferenceConfidenceSchema,
-  ExperienceChecklistContributionSchema,
-  ExperienceChecklistItemStatusSchema,
   ExperienceEpisodeArtifactKindSchema,
   ExperienceEpisodeBoundaryReasonSchema,
   ExperienceEpisodeRoleSchema,
@@ -23,8 +24,6 @@ import {
   ExperienceReviewerReportFindingSourceSchema,
   ExperienceReviewerReportScopeSchema,
   ExperienceReviewerReportStepStatusSchema,
-  ExperienceRuleFindingCodeSchema,
-  ExperienceRuleFindingLevelSchema,
   ExperienceRuntimeSkillTypeSchema,
   ExperienceRuntimeSkillTypeSourceSchema,
   ExperienceSessionStoryAnswerKeySchema,
@@ -327,35 +326,21 @@ export function isExperienceEvidenceRefArray(value: unknown): value is Experienc
 }
 
 export function isExperienceEvidenceChain(value: unknown): boolean {
-  if (!isObjectRecord(value)) return false;
-  const countKeys = [
-    'userMessageCount',
-    'runtimeContextCount',
-    'skillContextCount',
-    'assistantMessageCount',
-    'toolUseCount',
-    'toolResultCount',
-    'toolFailureResultCount',
-    'observationCount',
-  ];
-  if (!countKeys.every((key) => isNonNegativeInteger(value[key]))) return false;
-  const optionalRefs = [
-    value.firstUserMessage,
-    value.firstRuntimeContext,
-    value.firstSkillContext,
-    value.firstToolUse,
-    value.firstToolFailure,
-    value.lastAssistantMessage,
-  ];
-  return optionalRefs.every((ref) => ref === undefined || isExperienceEvidenceRef(ref));
+  const parsed = ExperienceEvidenceChainSchema.safeParse(value);
+  if (!parsed.success) return false;
+  return [
+    parsed.data.firstUserMessage,
+    parsed.data.firstRuntimeContext,
+    parsed.data.firstSkillContext,
+    parsed.data.firstToolUse,
+    parsed.data.firstToolFailure,
+    parsed.data.lastAssistantMessage,
+  ].every((ref) => ref === undefined || isExperienceEvidenceRef(ref));
 }
 
 export function isExperienceRuleFinding(value: unknown): boolean {
-  return isObjectRecord(value)
-    && isEnumValue(value.code, ExperienceRuleFindingCodeSchema.options)
-    && isEnumValue(value.level, ExperienceRuleFindingLevelSchema.options)
-    && isNonNegativeInteger(value.count)
-    && isExperienceEvidenceRefArray(value.evidenceRefs);
+  const parsed = ExperienceRuleFindingSchema.safeParse(value);
+  return parsed.success && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceRuleFindingArray(value: unknown): boolean {
@@ -363,13 +348,8 @@ export function isExperienceRuleFindingArray(value: unknown): boolean {
 }
 
 export function isExperienceAssistiveInference(value: unknown): boolean {
-  return isObjectRecord(value)
-    && value.mode === 'deterministic_rules_only'
-    && isEnumValue(value.code, ExperienceAssistiveInferenceCodeSchema.options)
-    && isEnumValue(value.confidence, ExperienceAssistiveInferenceConfidenceSchema.options)
-    && isEnumArray(value.basisRuleCodes, ExperienceRuleFindingCodeSchema.options)
-    && isEnumArray(value.cautionCodes, ExperienceAssistiveInferenceCautionCodeSchema.options)
-    && isExperienceEvidenceRefArray(value.evidenceRefs);
+  const parsed = ExperienceAssistiveInferenceSchema.safeParse(value);
+  return parsed.success && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceProblemEvidenceRef(value: unknown): boolean {
@@ -722,15 +702,8 @@ export function isTimelineTree(value: unknown): value is ExperienceTimelineTree 
 }
 
 export function isExperienceChecklistItem(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.key === 'string'
-    && typeof value.label === 'string'
-    && isEnumValue(value.status, ExperienceChecklistItemStatusSchema.options)
-    && isEnumValue(value.contribution, ExperienceChecklistContributionSchema.options)
-    && typeof value.reason === 'string'
-    && isExperienceEvidenceRefArray(value.evidenceRefs)
-    && isEnumValue(value.source, ExperienceReviewerReportFindingSourceSchema.options)
-    && isOptionalString(value.suggestionKey);
+  const parsed = ExperienceChecklistItemSchema.safeParse(value);
+  return parsed.success && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceSessionStoryGoalSlice(value: unknown): boolean {
