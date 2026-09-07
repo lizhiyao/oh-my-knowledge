@@ -214,48 +214,13 @@ export type ExperienceReviewerReport = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceReviewerReportSchema
 >;
 
-export interface ExperienceGoalSlice {
-  id: string;
-  skillName: string;
-  sessionId: string;
-  traceId?: string;
-  sourceTrace: string;
-  cwd?: string;
-  startTimestamp: string;
-  endTimestamp: string;
-  timestampObserved?: boolean;
-  sliceReasonCode: ExperienceGoalSliceReasonCode;
-  sliceConfidence: 'low' | 'medium' | 'high';
-  inferredUserGoal?: string;
-  userMessageRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceGoalSlice = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceGoalSliceSchema
+>;
 
-export interface ExperienceReviewIndicators {
-  userMessageCount: number;
-  userFollowUpCount: number;
-  userCorrectionCount: number;
-  userInterruptionCount: number;
-  sessionInterruptedCount: number;
-  negativeFeedbackCount: number;
-  positiveFeedbackCount: number;
-  userGoalShiftCount: number;
-  hardRuleTextHitCount: number;
-  assistantDeliverySignalCount: number;
-  deliverableArtifactSignalCount: number;
-  routerDownstreamCompleted: number;
-  routerDownstreamFailed: number;
-  selfCorrectionCount: number;
-  repeatedExecutionCount: number;
-  toolCallCount: number;
-  toolFailureCount: number;
-  toolCancelledCount?: number;
-  /** Runtime did not expose a trustworthy terminal outcome. */
-  toolUnknownCount?: number;
-  highObservationCount: number;
-  mediumObservationCount: number;
-  hedgingCount: number;
-  explicitMarkerCount: number;
-}
+export type ExperienceReviewIndicators = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceReviewIndicatorsSchema
+>;
 
 export type ExperienceInvocationMetrics = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceInvocationMetricsSchema
@@ -277,13 +242,7 @@ export interface ExperienceInvocation {
   startTimestamp: string;
   endTimestamp: string;
   timestampObserved?: boolean;
-  attribution: {
-    source: string;
-    confidence: number;
-    rawSkillRef?: string;
-    pluginName?: string;
-    commandName?: string;
-  };
+  attribution: z.infer<typeof import('./experience-evidence-schema.js').ExperienceAttributionSchema>;
   metrics: ExperienceInvocationMetrics;
   toolCounts: Record<string, number>;
   indicators: ExperienceReviewIndicators;
@@ -338,18 +297,7 @@ export interface ExperienceSessionSummary {
   timelinePreview: ExperienceTimelineEvent[];
   fullSessionTimeline: ExperienceTimelineEvent[];
   timelineTree?: ExperienceTimelineTree;
-  timelineScope: {
-    mode: 'skill_segment_window';
-    segmentEventCount: number;
-    previewEventCount: number;
-    fullSessionEventCount: number;
-    segmentRecordRanges: ExperienceTraceRecordRange[];
-    previewRecordRanges: ExperienceTraceRecordRange[];
-    sessionRecordRanges: ExperienceTraceRecordRange[];
-    truncated: boolean;
-    omittedBeforeCount: number;
-    omittedAfterCount: number;
-  };
+  timelineScope: z.infer<typeof import('./experience-evidence-schema.js').ExperienceTimelineScopeSchema>;
   attributionSources: string[];
   pluginNames: string[];
   rawSkillRefs: string[];
@@ -396,13 +344,7 @@ export interface ObservationExperienceReport {
   schemaVersion: 3;
   scope: 'evidence-only';
   generatedAt: string;
-  meta: {
-    sessionCount: number;
-    skillCount: number;
-    invocationCount: number;
-    goalSliceCount: number;
-    noteCodes: Array<'no_llm_judge' | 'no_auto_verdict' | 'default_goal_slice_is_allowed' | 'deterministic_assistive_inference'>;
-  };
+  meta: z.infer<typeof import('./experience-evidence-schema.js').ExperienceMetaSchema>;
   goalSlices: ExperienceGoalSlice[];
   traceTimelines: ExperienceTraceTimeline[];
   storyContexts: ExperienceStoryContext[];

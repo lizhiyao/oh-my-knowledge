@@ -1,3 +1,4 @@
+import { ExperienceGoalSliceSchema } from '../contracts/experience-evidence-schema.js';
 import {
   isTraceSourceKind,
 } from '../../executors/core/trace-source-kind.js';
@@ -47,7 +48,6 @@ import {
 import {
   EXPERIENCE_INDICATOR_KEYS,
   isCountRecord,
-  isEnumValue,
   isExperienceAssistiveInference,
   isExperienceEvidenceChain,
   isExperienceEvidenceRefArray,
@@ -55,7 +55,6 @@ import {
   isExperienceProblemPatternArray,
   isExperienceRuleFindingArray,
   isNonNegativeInteger,
-  isOptionalString,
   isOptionalTimestampCoverage,
   isRate,
   isStringArray,
@@ -63,23 +62,10 @@ import {
 } from './report-value-guards.js';
 
 export function isExperienceGoalSlice(value: unknown): value is ExperienceGoalSlice {
-  return isObjectRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.skillName === 'string'
-    && typeof value.sessionId === 'string'
-    && isOptionalString(value.traceId)
-    && typeof value.sourceTrace === 'string'
-    && isOptionalString(value.cwd)
-    && isTimestampRange(value.startTimestamp, value.endTimestamp)
-    && (value.timestampObserved === undefined || typeof value.timestampObserved === 'boolean')
-    && isEnumValue(value.sliceReasonCode, [
-      'skill_segment_boundary',
-      'explicit_user_goal_shift',
-      'default_session_slice',
-    ])
-    && isEnumValue(value.sliceConfidence, ['low', 'medium', 'high'])
-    && isOptionalString(value.inferredUserGoal)
-    && isExperienceEvidenceRefArray(value.userMessageRefs);
+  const parsed = ExperienceGoalSliceSchema.safeParse(value);
+  return parsed.success
+    && isTimestampRange(parsed.data.startTimestamp, parsed.data.endTimestamp)
+    && isExperienceEvidenceRefArray(parsed.data.userMessageRefs);
 }
 
 export function isExperienceSkillSummary(value: unknown): boolean {
