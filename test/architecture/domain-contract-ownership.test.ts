@@ -77,6 +77,8 @@ const EXPERIENCE_EVIDENCE_ENUM_IMPORTS = [
   'ExperienceSessionStoryAnswerKeySchema',
   'ExperienceSessionStoryNodeKindSchema',
   'ExperienceSessionStorySkillRoleSchema',
+  'ExperienceTurnStatusSchema',
+  'TaskWindowBasisSchema',
 ];
 
 function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
@@ -87,6 +89,17 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
   const seenImports = new Set<string>();
   const schemas = new Set(EXPERIENCE_EVIDENCE_ENUM_IMPORTS);
   function expression(node: ts.Expression): boolean {
+    if (ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'exclude') {
+      const values = node.arguments[0];
+      return node.arguments.length === 1
+        && expression(node.expression.expression)
+        && ts.isArrayLiteralExpression(values)
+        && values.elements.length > 0
+        && values.elements.every(ts.isStringLiteral);
+    }
+
     if (ts.isCallExpression(node)
       && ts.isPropertyAccessExpression(node.expression)
       && node.expression.name.text === 'extend') {
