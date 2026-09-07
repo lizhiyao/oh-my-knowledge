@@ -7,7 +7,8 @@
  *
  * 本测试用 TypeScript AST 扫 `src/**\/*.ts` 里**每个名为 `kind` 的字段声明**
  * (interface / type-literal 的 PropertySignature、class 的 PropertyDeclaration —— 不含
- * 函数 param、`.kind` 读取、对象字面量构造点、注释 / 字符串):
+ * 函数 param、`.kind` 读取、普通对象字面量构造点、注释 / 字符串)。
+ * 同时检查 observability/contracts 下 z.object／strictObject／looseObject 的 Schema 字段：
  *   - 字段类型是 `ArtifactKind`(或以它为基的类型)→ 放行;
  *   - 否则必须登记在 FROZEN_KIND_EXCEPTIONS —— 这些都是已经序列化进
  *     report / observe / doctor / diagnosis JSON 的判别字段,改名会破坏读取已有落盘文件,
@@ -41,7 +42,7 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   "src/observability/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
   "src/observability/skill-health/analyzer.ts::SkillHealthReport::'observe-health'",
   // —— 持久化 observe / experience JSON ——
-  'src/observability/contracts/experience.ts::ExperienceEvidenceRef::ExperienceEvidenceKind',
+  'src/observability/contracts/experience-evidence-schema.ts::ExperienceEvidenceRefSchema::ExperienceEvidenceKindSchema',
   'src/observability/contracts/experience.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',
   "src/observability/contracts/experience.ts::ExperienceGoalEvidenceRef::'user_message' | 'goal_slice' | 'llm_goal'",
   'src/observability/contracts/experience.ts::ExperienceEpisodeArtifact::ExperienceEpisodeArtifactKind',
@@ -86,8 +87,7 @@ function enclosingTypeName(node: ts.Node): string {
   return '(anonymous)';
 }
 
-function findKindFields(absFile: string): KindSite[] {
-  const text = readFileSync(absFile, 'utf8');
+function findKindFields(absFile: string, text = readFileSync(absFile, 'utf8')): KindSite[] {
   const sf = ts.createSourceFile(absFile, text, ts.ScriptTarget.Latest, true);
   const rel = relative(PROJECT_ROOT, absFile).split('\\').join('/');
   const out: KindSite[] = [];
@@ -103,6 +103,28 @@ function findKindFields(absFile: string): KindSite[] {
       const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
       out.push({ key: `${rel}::${enclosing}::${typeText}`, file: rel, line, enclosing, typeText });
     }
+    if (rel.startsWith('src/observability/contracts/')
+        && ts.isPropertyAssignment(node)
+        && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+        && node.name.text === 'kind'
+        && ts.isObjectLiteralExpression(node.parent)) {
+      const call = node.parent.parent;
+      if (ts.isCallExpression(call)
+          && call.arguments[0] === node.parent
+          && ts.isPropertyAccessExpression(call.expression)
+          && ts.isIdentifier(call.expression.expression)
+          && call.expression.expression.text === 'z'
+          && ['object', 'strictObject', 'looseObject'].includes(call.expression.name.text)) {
+        let parent: ts.Node | undefined = call.parent;
+        while (parent && !ts.isVariableDeclaration(parent)) parent = parent.parent;
+        const enclosing = parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)
+          ? parent.name.text
+          : '(anonymous-schema)';
+        const typeText = node.initializer.getText(sf).replace(/\s+/g, ' ').trim();
+        const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+        out.push({ key: `${rel}::${enclosing}::${typeText}`, file: rel, line, enclosing, typeText });
+      }
+    }
     ts.forEachChild(node, visit);
   }
   visit(sf);
@@ -115,8 +137,21 @@ function isArtifactKindType(typeText: string): boolean {
 }
 
 describe('issue #206: 裸 kind 护栏', () => {
+  it.each(['kind', "'kind'"])('对象 Schema 的 %s 字段仍须登记', (field) => {
+    const file = join(SRC_DIR, 'observability/contracts/unregistered-schema.ts');
+    const sites = findKindFields(file, `const NewSchema = z.object({ ${field}: z.literal('new') });`);
+    assert.equal(sites.length, 1);
+    assert.equal(sites[0].enclosing, 'NewSchema');
+    assert.equal(FROZEN_KIND_EXCEPTIONS.has(sites[0].key), false);
+  });
+
+  it('Schema 字段识别不把普通对象构造误当声明', () => {
+    const file = join(SRC_DIR, 'observability/contracts/example.ts');
+    assert.deepEqual(findKindFields(file, "const value = { kind: 'tool_use' };"), []);
+  });
+
   it('每个 kind 字段声明要么是 ArtifactKind,要么是已登记的持久化例外', () => {
-    const sites = collectTsFiles(SRC_DIR).flatMap(findKindFields);
+    const sites = collectTsFiles(SRC_DIR).flatMap((file) => findKindFields(file));
 
     const offenders = sites
       .filter((s) => !isArtifactKindType(s.typeText) && !FROZEN_KIND_EXCEPTIONS.has(s.key))

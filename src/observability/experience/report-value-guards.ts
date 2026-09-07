@@ -1,3 +1,4 @@
+import { ExperienceEvidenceRefSchema } from '../contracts/experience-evidence-schema.js';
 import {
   ExperienceAssistiveInferenceCautionCodeSchema,
   ExperienceAssistiveInferenceCodeSchema,
@@ -317,49 +318,8 @@ export function isExperienceEvidenceKind(value: unknown): boolean {
 }
 
 export function isExperienceEvidenceRef(value: unknown): value is ExperienceEvidenceRef {
-  if (
-    !isObjectRecord(value)
-    || typeof value.id !== 'string'
-    || !isExperienceEvidenceKind(value.kind)
-    || typeof value.sourceTrace !== 'string'
-    || typeof value.sessionId !== 'string'
-    || !isOptionalNonNegativeInteger(value.messageIndex)
-    || !isOptionalNonNegativeInteger(value.logicalMessageIndex)
-    || !isOptionalNonNegativeInteger(value.sourceLineIndex)
-  ) return false;
-  if (
-    value.traceRole !== undefined
-    && !isEnumValue(value.traceRole, ['standalone', 'main', 'subagent'])
-  ) return false;
-  if (value.modelActivityKind !== undefined && value.modelActivityKind !== 'reasoning') return false;
-  if (
-    value.contentVisibility !== undefined
-    && !isEnumValue(value.contentVisibility, ['plaintext', 'opaque'])
-  ) return false;
-  if (
-    value.contentSource !== undefined
-    && !isEnumValue(value.contentSource, ['summary', 'content', 'text'])
-  ) return false;
-  if (
-    value.runtimeKind !== undefined
-    && !isEnumValue(value.runtimeKind, ['session_context', 'execution_context', 'settings', 'goal', 'context_compaction', 'usage'])
-  ) return false;
-  if (
-    value.role !== undefined
-    && !isEnumValue(value.role, ['user', 'assistant', 'tool', 'other'])
-  ) return false;
-  return [
-    value.traceLabel,
-    value.traceId,
-    value.turnId,
-    value.messageUuid,
-    value.sourceType,
-    value.callInstanceId,
-    value.toolUseId,
-    value.label,
-    value.snippet,
-  ].every(isOptionalString)
-    && isOptionalTimestamp(value.timestamp);
+  const parsed = ExperienceEvidenceRefSchema.safeParse(value);
+  return parsed.success && isOptionalTimestamp(parsed.data.timestamp);
 }
 
 export function isExperienceEvidenceRefArray(value: unknown): value is ExperienceEvidenceRef[] {
