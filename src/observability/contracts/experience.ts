@@ -161,13 +161,9 @@ export interface ExperienceTraceTimeline {
   tree: ExperienceTimelineTree;
 }
 
-export interface ExperienceTraceRecordRange {
-  traceId: string;
-  sourceTrace: string;
-  startRecordIndex: number;
-  endRecordIndex: number;
-  eventCount: number;
-}
+export type ExperienceTraceRecordRange = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceTraceRecordRangeSchema
+>;
 
 export type ExperienceEvidenceChain = z.infer<typeof ExperienceEvidenceChainSchema>;
 
