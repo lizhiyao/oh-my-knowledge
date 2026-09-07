@@ -1,3 +1,4 @@
+import type { ExperienceEvidenceRefSchema } from './experience-evidence-schema.js';
 import type { z } from 'zod';
 import type {
   ExperienceReviewPrioritySchema,
@@ -76,34 +77,7 @@ export type ExperienceRuleFindingCode =
 
 // ---------- experience: interfaces ----------
 
-export interface ExperienceEvidenceRef {
-  id: string;
-  kind: ExperienceEvidenceKind;
-  traceId?: string;
-  sourceTrace: string;
-  sessionId: string;
-  traceRole?: 'standalone' | 'main' | 'subagent';
-  traceLabel?: string;
-  messageIndex?: number;
-  logicalMessageIndex?: number;
-  sourceLineIndex?: number;
-  messageUuid?: string;
-  /** Source-native record classification retained after normalization. */
-  sourceType?: string;
-  /** Source-neutral identity for one agent turn, when the trace exposes it. */
-  turnId?: string;
-  /** Source-neutral identity for one concrete tool-call occurrence. */
-  callInstanceId?: string;
-  toolUseId?: string;
-  timestamp?: string;
-  role?: 'user' | 'assistant' | 'tool' | 'other';
-  modelActivityKind?: 'reasoning';
-  contentVisibility?: 'plaintext' | 'opaque';
-  contentSource?: 'summary' | 'content' | 'text';
-  runtimeKind?: 'session_context' | 'execution_context' | 'settings' | 'goal' | 'context_compaction' | 'usage';
-  label?: string;
-  snippet?: string;
-}
+export type ExperienceEvidenceRef = z.infer<typeof ExperienceEvidenceRefSchema>;
 
 export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
   order: number;

@@ -43,7 +43,59 @@ const PURE_DOMAIN_TYPE_FILES = [
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 
 const EXPERIENCE_ENUM_SCHEMA_FILE = 'src/observability/contracts/experience-enums.ts';
-const EXPERIENCE_ENUM_TYPE_IMPORTS = new Set(['zod', './experience-enums.js']);
+const EXPERIENCE_ENUM_TYPE_IMPORTS = new Set([
+  'zod', './experience-enums.js', './experience-evidence-schema.js',
+]);
+
+function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
+  const imports = new Map([
+    ['zod', 'z'],
+    ['./experience-enums.js', 'ExperienceEvidenceKindSchema'],
+  ]);
+  const seenImports = new Set<string>();
+  const schemas = new Set(['ExperienceEvidenceKindSchema']);
+  function expression(node: ts.Expression): boolean {
+    if (ts.isIdentifier(node)) return schemas.has(node.text);
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return false;
+    const receiver = node.expression.expression;
+    const method = node.expression.name.text;
+    if (ts.isIdentifier(receiver) && receiver.text === 'z') {
+      if (method === 'string' || method === 'number') return node.arguments.length === 0;
+      if (node.arguments.length !== 1) return false;
+      const argument = node.arguments[0];
+      if (method === 'enum') {
+        return ts.isArrayLiteralExpression(argument) && argument.elements.length > 0
+          && argument.elements.every(ts.isStringLiteral);
+      }
+      return method === 'object' && ts.isObjectLiteralExpression(argument)
+        && argument.properties.every((property) => ts.isPropertyAssignment(property)
+          && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+          && expression(property.initializer));
+    }
+    return ['optional', 'int', 'nonnegative'].includes(method)
+      && node.arguments.length === 0 && expression(receiver);
+  }
+  for (const statement of source.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      const bindings = statement.importClause?.namedBindings;
+      if (!ts.isStringLiteral(statement.moduleSpecifier)
+          || statement.importClause?.name || !bindings || !ts.isNamedImports(bindings)
+          || bindings.elements.length !== 1 || bindings.elements[0].propertyName
+          || imports.get(statement.moduleSpecifier.text) !== bindings.elements[0].name.text
+          || seenImports.has(statement.moduleSpecifier.text)) return false;
+      seenImports.add(statement.moduleSpecifier.text);
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)
+        || !(statement.declarationList.flags & ts.NodeFlags.Const)) return false;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.name.text.endsWith('Schema')
+          || !declaration.initializer || !expression(declaration.initializer)) return false;
+      schemas.add(declaration.name.text);
+    }
+  }
+  return seenImports.size === imports.size && schemas.has('ExperienceEvidenceRefSchema');
+}
 
 function isDeclarativeEnumSchemaModule(source: ts.SourceFile): boolean {
   let imports = 0;
@@ -182,6 +234,27 @@ describe('领域契约所有权', () => {
       true,
     );
     expect(isDeclarativeEnumSchemaModule(source)).toBe(true);
+  });
+
+  it('Experience 证据结构 Schema 不引入宿主依赖或变换副作用', () => {
+    const file = 'src/observability/contracts/experience-evidence-schema.ts';
+    expect(isDeclarativeEvidenceSchemaModule(ts.createSourceFile(
+      file, readFileSync(resolve(file), 'utf8'), ts.ScriptTarget.Latest, true,
+    ))).toBe(true);
+  });
+
+  it.each([
+    "z.object({ id: readFileSync('/secret') })",
+    "z.object({ [computeKey()]: z.string() })",
+    "z.object({ id: z.string() }).transform(() => sideEffect())",
+    "z.object({ id: z.string() }); sideEffect()",
+  ])('证据结构声明拒绝动态实现：%s', (initializer) => {
+    const text = "import { z } from 'zod';\n"
+      + "import { ExperienceEvidenceKindSchema } from './experience-enums.js';\n"
+      + `export const ExperienceEvidenceRefSchema = ${initializer};`;
+    expect(isDeclarativeEvidenceSchemaModule(ts.createSourceFile(
+      'invalid.ts', text, ts.ScriptTarget.Latest, true,
+    ))).toBe(false);
   });
 
   it.each([
