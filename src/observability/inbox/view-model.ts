@@ -1,3 +1,4 @@
+import { buildOverallSessionTimeRange } from './session-time-range.js';
 import {
   loadLatestObservationInboxReports,
   queryObservationInbox,
@@ -14,7 +15,6 @@ import {
   type ResolvedSkillStandards,
   type SkillDerivedStandards,
 } from '../soft-standards/index.js';
-import { durationMsBetween } from '../../shared/time.js';
 import {
   incrementRecordCount,
   ownRecordValue,
@@ -180,7 +180,7 @@ function filterReportBySkill(report: ObservationInboxReport, skillName?: string)
       itemCount: items.length,
       sessionCount: sessionTimeRanges.length,
       sessionTimeRanges,
-      sessionTimeRange: buildReportSessionTimeRange(sessionTimeRanges),
+      sessionTimeRange: buildOverallSessionTimeRange(sessionTimeRanges),
       skillInvocationCounts: pickRecordValue(report.meta.skillInvocationCounts, skillName),
       skillSessionCounts: pickRecordValue(report.meta.skillSessionCounts, skillName),
       skillInvocationLastSeen: pickRecordValue(report.meta.skillInvocationLastSeen, skillName),
@@ -189,15 +189,6 @@ function filterReportBySkill(report: ObservationInboxReport, skillName?: string)
     items,
     experience,
   };
-}
-
-function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['sessionTimeRanges'] = []): NonNullable<ObservationInboxReport['meta']['sessionTimeRange']> {
-  const starts = ranges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
-  const ends = ranges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
-  if (starts.length === 0 || ends.length === 0) return { from: '', to: '' };
-  const from = starts.reduce((min, value) => value < min ? value : min, starts[0]);
-  const to = ends.reduce((max, value) => value > max ? value : max, ends[0]);
-  return { from, to, durationMs: durationMsBetween(from, to) };
 }
 
 // ============================================================================

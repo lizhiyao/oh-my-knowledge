@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { resolveActor } from '../lib/actor.js';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -18,16 +18,6 @@ import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
 import type { ManagedDecision } from '../../knowledge-artifacts/governance/contracts.js';
 
 const SUPPORTED_KINDS: ArtifactKind[] = ['skill'];
-
-/** 决定的 actor:--actor > git config user.name > $USER / $LOGNAME > unknown。git 参数无用户输入,安全。 */
-function resolveActor(flagActor: string | undefined): string {
-  if (flagActor && flagActor.trim()) return flagActor.trim();
-  try {
-    const name = execFileSync('git', ['config', 'user.name'], { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    if (name) return name;
-  } catch { /* git 缺失 / 无配置 → 回退环境 */ }
-  return process.env.USER || process.env.LOGNAME || 'unknown';
-}
 
 export default class Rollback extends BaseCommand {
   static description = bilingual({
