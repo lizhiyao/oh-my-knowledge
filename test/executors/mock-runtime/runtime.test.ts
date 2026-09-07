@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
@@ -8,7 +9,6 @@ import {
   resolveMockReturn,
   buildSdkHookCallback,
   materializeForCliConfigDir,
-  _testMakeTempConfigDir,
 } from '../../../src/executors/mock-runtime/runtime.js';
 import type { Mock } from '../../../src/executors/contracts/mock.js';
 
@@ -211,10 +211,10 @@ describe('resolveMockReturn', () => {
   });
 
   it('return_file reads from baseDir', () => {
-    const dir = _testMakeTempConfigDir();
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mock-return-test-'));
     const fpath = join(dir, 'fixture.json');
-    writeFileSync(fpath, '{"x":1}');
     try {
+      writeFileSync(fpath, '{"x":1}');
       const m: Mock = { tool: 'Read', return_file: 'fixture.json' };
       assert.equal(resolveMockReturn(m, 0, dir), '{"x":1}');
     } finally {
