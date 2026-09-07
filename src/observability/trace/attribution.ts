@@ -80,14 +80,6 @@ export function extractCommandEnvelopeText(text: string): string | null {
   return matches?.join('\n') ?? null;
 }
 
-/**
- * 从 user message 里提取 slash-command skill 名字(信号 2)。
- * 返回 null 表示没命中。
- */
-export function extractCommandSkill(record: CcUserRecord): string | null {
-  return extractCommandSkillRef(record)?.skillName ?? null;
-}
-
 export function extractCommandSkillRef(record: CcUserRecord): SkillRef | null {
   const content = record.message.content;
   let raw: string | null = null;
@@ -110,41 +102,9 @@ export function isClaudeBuiltinCommand(raw: string): boolean {
   return !trimmed.includes(':') && CLAUDE_BUILTIN_COMMANDS.has(trimmed.toLowerCase());
 }
 
-/**
- * 从 OpenClaw user message 的业务动作标签里提取 skill 名字(信号 4)。
- *
- * 注意: 真实 OpenClaw 数据里 name 可能是业务动作展示名, 不是稳定 skill id。
- * 只有 name 本身像 "prd-create" 这种 slug 时才用于 skill 归因;
- * 展示名继续保留在 sourceMetadata.businessActions 里, 不切 skill。
- */
-export function extractBusinessActionSkillRef(record: CcUserRecord): SkillRef | null {
-  const content = record.message.content;
-  let raw: string | null = null;
-  if (typeof content === 'string') {
-    const m = BUSINESS_ACTION_CMD_RE.exec(content);
-    raw = m ? m[1] : null;
-  } else {
-    for (const part of content) {
-      if (part.type === 'text') {
-        const m = BUSINESS_ACTION_CMD_RE.exec(part.text);
-        if (m) { raw = m[1]; break; }
-      }
-    }
-  }
-  return raw && isStableSkillSlug(raw) ? parseSkillRef(raw) : null;
-}
-
 function isStableSkillSlug(raw: string): boolean {
   const trimmed = raw.trim();
   return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(trimmed) && /[-_.]/.test(trimmed);
-}
-
-/**
- * 从 assistant message 的 tool_use 里提取 Skill tool 调用的 skill 名字(信号 1)。
- * 返回 null 表示没命中。
- */
-export function extractSkillToolUse(record: CcAssistantRecord): string | null {
-  return extractSkillToolUseRef(record)?.skillName ?? null;
 }
 
 export function extractSkillToolUseRef(record: CcAssistantRecord): SkillRef | null {
@@ -156,10 +116,6 @@ export function extractSkillToolUseRef(record: CcAssistantRecord): SkillRef | nu
     }
   }
   return null;
-}
-
-export function extractAttributionSkill(record: CcAssistantRecord): string | null {
-  return extractAttributionSkillRef(record)?.skillName ?? null;
 }
 
 export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef | null {
@@ -261,16 +217,6 @@ function extractShellSkillReadRef(command: string): SkillRef | null {
   return null;
 }
 
-/**
- * 从 assistant message 的 Read / Bash tool_use 里提取 skill 名字(信号 3, fallback)。
- * Codex 通常用 shell 读取 `.agents/skills/<name>/SKILL.md`，Claude Code 与
- * OpenClaw 则更常用结构化 Read tool；两种形式统一识别。
- * 返回 null 表示没命中。
- */
-export function extractSkillReadFile(record: CcAssistantRecord): string | null {
-  return extractSkillReadFileRef(record)?.skillName ?? null;
-}
-
 export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | null {
   const content = Array.isArray(record.message.content) ? record.message.content : [];
   for (const part of content) {
@@ -301,43 +247,6 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
         const skillRef = extractShellSkillReadRef(command);
         if (skillRef) return skillRef;
       }
-    }
-  }
-  return null;
-}
-
-/**
- * 从 OpenClaw cron/user 文本或 Bash/exec tool command 里提取 skill 脚本路径。
- *
- * cron 型 OpenClaw session 通常没有业务动作标签或 Skill tool_use,
- * 只会直接执行 ~/.openclaw/workspace-main/skills/<skill>/scripts/*.sh。
- */
-export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantRecord): SkillRef | null {
-  const texts: string[] = [];
-  const content = record.message.content;
-  if (typeof content === 'string') {
-    texts.push(content);
-  } else {
-    for (const part of content) {
-      if (part.type === 'text' && typeof part.text === 'string') {
-        texts.push(part.text);
-      } else if (part.type === 'tool_use') {
-        const rawCommand = part.name?.toLowerCase() === 'exec'
-          ? part.input?.input ?? part.input?.code ?? part.input?.command
-          : part.input?.code ?? part.input?.command;
-        if (typeof rawCommand === 'string') {
-          texts.push(...(part.name?.toLowerCase() === 'exec'
-            ? extractCodexExecCommands(rawCommand)
-            : [rawCommand]));
-        }
-      }
-    }
-  }
-  for (const text of texts) {
-    const match = SKILL_SCRIPT_PATH_RE.exec(text);
-    if (match?.[1]) {
-      const ref = parseSkillRef(match[1]);
-      if (ref && isInstalledSkillAssetPath(match[0], ref.skillName)) return ref;
     }
   }
   return null;
