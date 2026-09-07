@@ -366,8 +366,3 @@ export function listObserveCards(): ObserveIndexCard[] {
 export function listLiveObserveCards(): ObserveIndexCard[] {
   return liveCards(listObserveCards());
 }
-
-/** 删 observe 域某 id 的卡片。 */
-export function removeObserveCard(id: string): boolean {
-  return removeArtifactCard('observe-health', id);
-}

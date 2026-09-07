@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   defaultSkillLocalSamplesFile,
-  findDoctorSamplesPath,
   findNamedSkillSamplesPath,
   findProjectSamplesFile,
   findSkillSamplesPath,
@@ -101,19 +100,6 @@ describe('sample-locator canonical discovery', () => {
     writeFileSync(join(skillDir, 'flat.md'), '# flat\n');
     writeFileSync(join(skillDir, 'flat.eval-samples.json'), '{}\n');
     assert.equal(findSingleTreatmentSamplesPath('flat', skillDir, root), null);
-  });
-
-  it('doctor 的 skill target 优先私有文件，skills 目录 target 回到项目级', () => {
-    const skillRoot = join(root, 'skills', 'review');
-    mkdirSync(join(skillRoot, '.omk'), { recursive: true });
-    writeFileSync(join(skillRoot, 'SKILL.md'), '# review\n');
-    const local = join(skillRoot, '.omk', 'eval-samples.json');
-    const project = join(root, 'eval-samples.yaml');
-    writeFileSync(local, '{}\n');
-    writeFileSync(project, '{}\n');
-
-    assert.equal(findDoctorSamplesPath(skillRoot, root), local);
-    assert.equal(findDoctorSamplesPath(join(root, 'skills'), root), project);
   });
 
   it('默认私有写入路径使用 canonical JSON 名', () => {
