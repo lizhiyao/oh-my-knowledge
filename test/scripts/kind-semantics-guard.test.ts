@@ -44,8 +44,8 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // —— 持久化 observe / experience JSON ——
   'src/observability/contracts/experience-evidence-schema.ts::ExperienceEvidenceRefSchema::ExperienceEvidenceKindSchema',
   'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryNodeSchema::ExperienceSessionStoryNodeKindSchema',
-  "src/observability/contracts/experience.ts::ExperienceGoalEvidenceRef::'user_message' | 'goal_slice' | 'llm_goal'",
-  'src/observability/contracts/experience.ts::ExperienceEpisodeArtifact::ExperienceEpisodeArtifactKind',
+  "src/observability/contracts/experience-evidence-schema.ts::ExperienceGoalEvidenceRefSchema::ExperienceGoalEvidenceKindSchema",
+  "src/observability/contracts/experience-evidence-schema.ts::ExperienceEpisodeArtifactSchema::ExperienceEpisodeArtifactKindSchema",
   'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryGraphNodeSchema::ExperienceSessionStoryNodeKindSchema',
   'src/observability/contracts/experience.ts::ExperienceReviewerReport::ExperienceReviewerReportScope',
   'src/observability/contracts/problem-patterns.ts::ExperienceProblemEvidenceRef::string',

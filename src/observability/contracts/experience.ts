@@ -221,111 +221,41 @@ export type ExperienceSessionStorySkillLink = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceSessionStorySkillLinkSchema
 >;
 
-export interface ExperienceGoalEvidenceRef {
-  kind: 'user_message' | 'goal_slice' | 'llm_goal';
-  goalSliceId?: string;
-  evidenceRef?: ExperienceEvidenceRef;
-  label?: string;
-}
+export type ExperienceGoalEvidenceRef = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceGoalEvidenceRefSchema
+>;
 
-export interface ExperienceMessageRange {
-  startMessageIndex: number;
-  endMessageIndex: number;
-  traceId?: string;
-  sourceTrace?: string;
-  sessionId?: string;
-}
+export type ExperienceMessageRange = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceMessageRangeSchema
+>;
 
-export interface ExperienceSkillSegment {
-  id: string;
-  order: number;
-  skillName: string;
-  skillType: ExperienceRuntimeSkillType;
-  skillTypeSource?: ExperienceRuntimeSkillTypeSource;
-  declaredSkillType?: ExperienceRuntimeSkillType;
-  traceInferredSkillType?: ExperienceRuntimeSkillType;
-  episodeRole: ExperienceEpisodeRole;
-  skillInvocationIds: string[];
-  startMessageIndex?: number;
-  endMessageIndex?: number;
-  messageRanges?: ExperienceMessageRange[];
-  startTimestamp: string;
-  endTimestamp: string;
-  typeSpecificChecklist: ExperienceChecklistItem[];
-  runtimeAssessment?: {
-    goalSatisfaction?: string;
-    declaredBehaviorFit?: string;
-    artifactGoalMatch?: string;
-    userFeeling?: string;
-  };
-  evidenceRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceSkillSegment = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceSkillSegmentSchema
+>;
 
-export interface ExperienceOrchestrationEdge {
-  id: string;
-  episodeId: string;
-  edgeKind: ExperienceOrchestrationEdgeKind;
-  parentSkillSegmentId?: string;
-  executorSkillSegmentId?: string;
-  childSessionId?: string;
-  runnerStartedRef?: ExperienceEvidenceRef;
-  runnerCompletedRef?: ExperienceEvidenceRef;
-  notificationRef?: ExperienceEvidenceRef;
-  status: ExperienceOrchestrationEdgeStatus;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceOrchestrationEdge = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceOrchestrationEdgeSchema
+>;
 
-export interface ExperienceFeedbackAttribution {
-  skillName?: string;
-  skillSegmentId?: string;
-  attributionRole: ExperienceFeedbackAttributionRole;
-  reasonCode: ExperienceFeedbackAttributionReason;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
+export type ExperienceFeedbackAttribution = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceFeedbackAttributionSchema
+>;
 
-export interface ExperienceFeedbackSignal {
-  id: string;
-  order: number;
-  type: ExperienceFeedbackSignalType;
-  text: string;
-  targetObject?: string;
-  sourceWindow: 'session' | 'episode' | 'skill_invocation' | 'downstream_child';
-  evidenceRef: ExperienceEvidenceRef;
-  canonicalAttributions?: ExperienceFeedbackAttribution[];
-  attributions: ExperienceFeedbackAttribution[];
-}
+export type ExperienceFeedbackSignal = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceFeedbackSignalSchema
+>;
 
-export interface ExperienceEpisodeArtifact {
-  kind: ExperienceEpisodeArtifactKind;
-  label: string;
-  pathOrUrl?: string;
-  artifactGoalMatch: 'passed' | 'failed' | 'unknown';
-  evidenceRef: ExperienceEvidenceRef;
-}
+export type ExperienceEpisodeArtifact = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceEpisodeArtifactSchema
+>;
 
-export interface ExperienceEpisodeOutcome {
-  closure: ExperienceOutcomeClosure;
-  artifacts: ExperienceEpisodeArtifact[];
-  verdict: ExperienceReviewPriority;
-  acceptanceCriteria?: string;
-}
+export type ExperienceEpisodeOutcome = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceEpisodeOutcomeSchema
+>;
 
-export interface ExperienceEpisode {
-  id: string;
-  order: number;
-  sessionId: string;
-  primaryGoal?: string;
-  goalEvidenceRefs: ExperienceGoalEvidenceRef[];
-  startTimestamp: string;
-  endTimestamp: string;
-  startRef?: ExperienceEvidenceRef;
-  endRef?: ExperienceEvidenceRef;
-  boundaryReason: ExperienceEpisodeBoundaryReason;
-  skillSegments: ExperienceSkillSegment[];
-  orchestrationEdges: ExperienceOrchestrationEdge[];
-  feedbackSignals: ExperienceFeedbackSignal[];
-  outcome: ExperienceEpisodeOutcome;
-}
+export type ExperienceEpisode = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceEpisodeSchema
+>;
 
 export type ExperienceSessionStoryGraphNode = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceSessionStoryGraphNodeSchema
@@ -357,13 +287,9 @@ export interface ExperienceSessionStory {
   answers: ExperienceSessionStoryAnswer[];
 }
 
-export interface ExperienceStoryContext {
-  id: string;
-  sessionGroupKey: string;
-  goalSlices: ExperienceSessionStoryGoalSlice[];
-  subagentDispatches: ExperienceSessionStorySubagentDispatch[];
-  episodes: ExperienceEpisode[];
-}
+export type ExperienceStoryContext = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceStoryContextSchema
+>;
 
 export interface ExperienceReviewerReport {
   schemaVersion: 1;

@@ -5,13 +5,25 @@ import {
   ExperienceAssistiveInferenceConfidenceSchema,
   ExperienceChecklistContributionSchema,
   ExperienceChecklistItemStatusSchema,
+  ExperienceEpisodeArtifactKindSchema,
+  ExperienceEpisodeBoundaryReasonSchema,
+  ExperienceEpisodeRoleSchema,
   ExperienceEvidenceKindSchema,
+  ExperienceFeedbackAttributionReasonSchema,
+  ExperienceFeedbackAttributionRoleSchema,
+  ExperienceFeedbackSignalTypeSchema,
   ExperienceGoalSliceReasonCodeSchema,
+  ExperienceOrchestrationEdgeKindSchema,
+  ExperienceOrchestrationEdgeStatusSchema,
+  ExperienceOutcomeClosureSchema,
   ExperienceParentReasonSchema,
+  ExperienceReviewPrioritySchema,
   ExperienceReviewerReportFindingSourceSchema,
   ExperienceReviewerReportStepStatusSchema,
   ExperienceRuleFindingCodeSchema,
   ExperienceRuleFindingLevelSchema,
+  ExperienceRuntimeSkillTypeSchema,
+  ExperienceRuntimeSkillTypeSourceSchema,
   ExperienceSessionStoryAnswerKeySchema,
   ExperienceSessionStoryNodeKindSchema,
   ExperienceSessionStorySkillRoleSchema,
@@ -189,4 +201,120 @@ export const ExperienceSessionStoryAnswerSchema = z.object({
   text: z.string(),
   evidenceRefs: z.array(ExperienceEvidenceRefSchema),
   checklistItems: z.array(ExperienceChecklistItemSchema),
+});
+
+const ExperienceGoalEvidenceKindSchema = z.enum(['user_message', 'goal_slice', 'llm_goal']);
+
+export const ExperienceMessageRangeSchema = z.object({
+  startMessageIndex: NonNegativeIntegerSchema,
+  endMessageIndex: NonNegativeIntegerSchema,
+  traceId: z.string().optional(),
+  sourceTrace: z.string().optional(),
+  sessionId: z.string().optional(),
+});
+
+export const ExperienceGoalEvidenceRefSchema = z.object({
+  kind: ExperienceGoalEvidenceKindSchema,
+  goalSliceId: z.string().optional(),
+  evidenceRef: ExperienceEvidenceRefSchema.optional(),
+  label: z.string().optional(),
+});
+
+export const ExperienceSkillSegmentSchema = z.object({
+  id: z.string(),
+  order: NonNegativeIntegerSchema,
+  skillName: z.string(),
+  skillType: ExperienceRuntimeSkillTypeSchema,
+  skillTypeSource: ExperienceRuntimeSkillTypeSourceSchema.optional(),
+  declaredSkillType: ExperienceRuntimeSkillTypeSchema.optional(),
+  traceInferredSkillType: ExperienceRuntimeSkillTypeSchema.optional(),
+  episodeRole: ExperienceEpisodeRoleSchema,
+  skillInvocationIds: z.array(z.string()),
+  startMessageIndex: NonNegativeIntegerSchema.optional(),
+  endMessageIndex: NonNegativeIntegerSchema.optional(),
+  messageRanges: z.array(ExperienceMessageRangeSchema).optional(),
+  startTimestamp: z.string(),
+  endTimestamp: z.string(),
+  typeSpecificChecklist: z.array(ExperienceChecklistItemSchema),
+  runtimeAssessment: z.object({
+    goalSatisfaction: z.string().optional(),
+    declaredBehaviorFit: z.string().optional(),
+    artifactGoalMatch: z.string().optional(),
+    userFeeling: z.string().optional(),
+  }).optional(),
+  evidenceRefs: z.array(ExperienceEvidenceRefSchema),
+});
+
+export const ExperienceOrchestrationEdgeSchema = z.object({
+  id: z.string(),
+  episodeId: z.string(),
+  edgeKind: ExperienceOrchestrationEdgeKindSchema,
+  parentSkillSegmentId: z.string().optional(),
+  executorSkillSegmentId: z.string().optional(),
+  childSessionId: z.string().optional(),
+  runnerStartedRef: ExperienceEvidenceRefSchema.optional(),
+  runnerCompletedRef: ExperienceEvidenceRefSchema.optional(),
+  notificationRef: ExperienceEvidenceRefSchema.optional(),
+  status: ExperienceOrchestrationEdgeStatusSchema,
+  evidenceRefs: z.array(ExperienceEvidenceRefSchema),
+});
+
+export const ExperienceFeedbackAttributionSchema = z.object({
+  skillName: z.string().optional(),
+  skillSegmentId: z.string().optional(),
+  attributionRole: ExperienceFeedbackAttributionRoleSchema,
+  reasonCode: ExperienceFeedbackAttributionReasonSchema,
+  evidenceRefs: z.array(ExperienceEvidenceRefSchema),
+});
+
+export const ExperienceFeedbackSignalSchema = z.object({
+  id: z.string(),
+  order: NonNegativeIntegerSchema,
+  type: ExperienceFeedbackSignalTypeSchema,
+  text: z.string(),
+  targetObject: z.string().optional(),
+  sourceWindow: z.enum(['session', 'episode', 'skill_invocation', 'downstream_child']),
+  evidenceRef: ExperienceEvidenceRefSchema,
+  canonicalAttributions: z.array(ExperienceFeedbackAttributionSchema).optional(),
+  attributions: z.array(ExperienceFeedbackAttributionSchema),
+});
+
+export const ExperienceEpisodeArtifactSchema = z.object({
+  kind: ExperienceEpisodeArtifactKindSchema,
+  label: z.string(),
+  pathOrUrl: z.string().optional(),
+  artifactGoalMatch: z.enum(['passed', 'failed', 'unknown']),
+  evidenceRef: ExperienceEvidenceRefSchema,
+});
+
+export const ExperienceEpisodeOutcomeSchema = z.object({
+  closure: ExperienceOutcomeClosureSchema,
+  artifacts: z.array(ExperienceEpisodeArtifactSchema),
+  verdict: ExperienceReviewPrioritySchema,
+  acceptanceCriteria: z.string().optional(),
+});
+
+export const ExperienceEpisodeSchema = z.object({
+  id: z.string(),
+  order: NonNegativeIntegerSchema,
+  sessionId: z.string(),
+  primaryGoal: z.string().optional(),
+  goalEvidenceRefs: z.array(ExperienceGoalEvidenceRefSchema),
+  startTimestamp: z.string(),
+  endTimestamp: z.string(),
+  startRef: ExperienceEvidenceRefSchema.optional(),
+  endRef: ExperienceEvidenceRefSchema.optional(),
+  boundaryReason: ExperienceEpisodeBoundaryReasonSchema,
+  skillSegments: z.array(ExperienceSkillSegmentSchema),
+  orchestrationEdges: z.array(ExperienceOrchestrationEdgeSchema),
+  feedbackSignals: z.array(ExperienceFeedbackSignalSchema),
+  outcome: ExperienceEpisodeOutcomeSchema,
+});
+
+export const ExperienceStoryContextSchema = z.object({
+  id: z.string(),
+  sessionGroupKey: z.string(),
+  goalSlices: z.array(ExperienceSessionStoryGoalSliceSchema),
+  subagentDispatches: z.array(ExperienceSessionStorySubagentDispatchSchema),
+  episodes: z.array(ExperienceEpisodeSchema),
 });
