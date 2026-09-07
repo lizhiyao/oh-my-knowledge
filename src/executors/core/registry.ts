@@ -144,27 +144,27 @@ const EXECUTOR_DESCRIPTORS = [
   },
 ] as const satisfies readonly ExecutorDescriptorShape[];
 
-export type RegisteredExecutorDescriptor = (typeof EXECUTOR_DESCRIPTORS)[number];
+type UniqueExecutorDescriptors<Entries extends readonly { readonly name: string }[]> =
+  Entries extends readonly [
+    infer Head extends { readonly name: string },
+    ...infer Tail extends readonly { readonly name: string }[],
+  ]
+    ? Head['name'] extends Tail[number]['name']
+      ? never
+      : readonly [Head, ...UniqueExecutorDescriptors<Tail>]
+    : readonly [];
+
+export type RegisteredExecutorDescriptor = UniqueExecutorDescriptors<
+  typeof EXECUTOR_DESCRIPTORS
+>[number];
 export type RegisteredExecutorName = RegisteredExecutorDescriptor['name'];
 export type ExecutableExecutorName = Extract<
   RegisteredExecutorDescriptor,
   { execution: 'builtin' }
 >['name'];
 
-export function executorDescriptors(): readonly RegisteredExecutorDescriptor[] {
-  return EXECUTOR_DESCRIPTORS;
-}
-
 export function getExecutorDescriptor(name: string): RegisteredExecutorDescriptor | undefined {
   return EXECUTOR_DESCRIPTORS.find((descriptor) => descriptor.name === name);
-}
-
-export function isRegisteredExecutorName(name: string): name is RegisteredExecutorName {
-  return getExecutorDescriptor(name) !== undefined;
-}
-
-export function executorVendor(executor: string): ExecutorVendor {
-  return getExecutorDescriptor(executor)?.vendor ?? 'unknown';
 }
 
 export function executorFamily(executor: string): ExecutorFamily | 'custom' {

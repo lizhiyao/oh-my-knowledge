@@ -4,17 +4,35 @@ import { getExecutorCapabilities } from '../../src/executors/core/capabilities.j
 import { getOptionalExecutorDependency } from '../../src/executors/core/optional-dependencies.js';
 import { createExecutor } from '../../src/executors/index.js';
 import {
-  executorDescriptors,
   executorFamily,
   executorNamesForFamily,
-  executorVendor,
   getExecutorDescriptor,
-  isRegisteredExecutorName,
+  type ExecutorFamily,
+  type RegisteredExecutorDescriptor,
 } from '../../src/executors/core/registry.js';
+
+function registeredDescriptors(): RegisteredExecutorDescriptor[] {
+  const families = {
+    claude: 'claude',
+    codex: 'codex',
+    dsh: 'dsh',
+    'anthropic-api': 'anthropic-api',
+    'openai-api': 'openai-api',
+  } as const satisfies {
+    [Family in ExecutorFamily | RegisteredExecutorDescriptor['family']]: Family;
+  };
+  return Object.values(families)
+    .flatMap((family) => [...executorNamesForFamily(family)])
+    .map((name) => {
+      const descriptor = getExecutorDescriptor(name);
+      assert.ok(descriptor);
+      return descriptor;
+    });
+}
 
 describe('executor registry', () => {
   it('freezes the complete registered executor identity set', () => {
-    const descriptors = executorDescriptors();
+    const descriptors = registeredDescriptors();
     assert.deepEqual(descriptors.map(({ name }) => name), [
       'claude',
       'claude-sdk',
@@ -37,9 +55,9 @@ describe('executor registry', () => {
   });
 
   it('binds core descriptors and reserves host-only entries', () => {
-    for (const descriptor of executorDescriptors()) {
+    for (const descriptor of registeredDescriptors()) {
       assert.equal(getExecutorDescriptor(descriptor.name), descriptor);
-      assert.equal(isRegisteredExecutorName(descriptor.name), true);
+      assert.ok(getExecutorDescriptor(descriptor.name));
       assert.equal(
         getExecutorCapabilities(descriptor.name).sampleMocks,
         descriptor.sampleMocks,
@@ -58,10 +76,10 @@ describe('executor registry', () => {
     assert.deepEqual([...executorNamesForFamily('claude')], ['claude', 'claude-sdk']);
     assert.deepEqual([...executorNamesForFamily('codex')], ['codex', 'codex-sdk']);
     assert.equal(executorFamily('openai-api'), 'openai-api');
-    assert.equal(executorVendor('anthropic-api'), 'anthropic');
-    assert.equal(executorVendor('codex-sdk'), 'openai');
-    assert.equal(executorVendor('dsh-host'), 'unknown');
+    assert.equal(getExecutorDescriptor('anthropic-api')?.vendor, 'anthropic');
+    assert.equal(getExecutorDescriptor('codex-sdk')?.vendor, 'openai');
+    assert.equal(getExecutorDescriptor('dsh-host')?.vendor, 'unknown');
     assert.equal(executorFamily('./custom-executor.sh'), 'custom');
-    assert.equal(isRegisteredExecutorName('./custom-executor.sh'), false);
+    assert.equal(getExecutorDescriptor('./custom-executor.sh'), undefined);
   });
 });
