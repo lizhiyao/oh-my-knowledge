@@ -252,13 +252,6 @@ export async function digestNodeTreeResource(
   return digestTree(path);
 }
 
-/** Resolve-stage digest for a pinned Git worktree; repository metadata is not Runtime input. */
-export async function digestNodePinnedGitTreeResource(
-  path: string,
-): Promise<{ readonly digest: `sha256:${string}`; readonly size: number }> {
-  return digestTree(path, true);
-}
-
 async function makeTreeWritable(path: string): Promise<void> {
   const stat = await lstat(path);
   if (stat.isDirectory()) {
