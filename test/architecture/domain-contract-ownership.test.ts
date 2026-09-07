@@ -66,7 +66,9 @@ const EXPERIENCE_EVIDENCE_ENUM_IMPORTS = [
   'ExperienceOutcomeClosureSchema',
   'ExperienceParentReasonSchema',
   'ExperienceReviewPrioritySchema',
+  'ExperienceReviewerReportFindingLevelSchema',
   'ExperienceReviewerReportFindingSourceSchema',
+  'ExperienceReviewerReportScopeSchema',
   'ExperienceReviewerReportStepStatusSchema',
   'ExperienceRuleFindingCodeSchema',
   'ExperienceRuleFindingLevelSchema',
@@ -85,6 +87,18 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
   const seenImports = new Set<string>();
   const schemas = new Set(EXPERIENCE_EVIDENCE_ENUM_IMPORTS);
   function expression(node: ts.Expression): boolean {
+    if (ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'extend') {
+      const shape = node.arguments[0];
+      return node.arguments.length === 1
+        && expression(node.expression.expression)
+        && ts.isObjectLiteralExpression(shape)
+        && shape.properties.every((property) => ts.isPropertyAssignment(property)
+          && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+          && expression(property.initializer));
+    }
+
     if (ts.isIdentifier(node)) return schemas.has(node.text);
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return false;
     const receiver = node.expression.expression;
@@ -94,7 +108,7 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
       if (node.arguments.length !== 1) return false;
       const argument = node.arguments[0];
       if (method === 'array') return expression(argument);
-      if (method === 'literal') return ts.isStringLiteral(argument);
+      if (method === 'literal') return (ts.isStringLiteral(argument) || ts.isNumericLiteral(argument));
       if (method === 'enum') {
         return ts.isArrayLiteralExpression(argument) && argument.elements.length > 0
           && argument.elements.every(ts.isStringLiteral);
