@@ -501,21 +501,9 @@ export interface ExperienceReviewIndicators {
   explicitMarkerCount: number;
 }
 
-export interface ExperienceInvocationMetrics {
-  durationMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  /** False means counters are placeholders because the trace exposed no valid usage event. */
-  tokenUsageObserved: boolean;
-  numTurns: number;
-  numToolCalls: number;
-  numToolFailures: number;
-  numToolCancelled?: number;
-  /** Unresolved or source-unknown outcomes; excluded from failure-rate denominators. */
-  numToolUnknown?: number;
-}
+export type ExperienceInvocationMetrics = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceInvocationMetricsSchema
+>;
 
 export interface ExperienceInvocation {
   id: string;
