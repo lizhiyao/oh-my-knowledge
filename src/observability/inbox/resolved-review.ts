@@ -115,14 +115,6 @@ function normalizeResolvedSkillType(value?: ExperienceRuntimeSkillType | LlmEnha
   return undefined;
 }
 
-export function resolveObservationReviewPriority(
-  priority: ExperienceReviewPriority,
-  enhancedReview: SkillLlmEnhancedReviewSections | undefined,
-  hasManualReview: boolean,
-): ExperienceReviewPriority {
-  return resolvePriority(priority, enhancedReview, hasManualReview);
-}
-
 function resolvePriority(
   priority: ExperienceReviewPriority,
   enhancedReview: SkillLlmEnhancedReviewSections | undefined,

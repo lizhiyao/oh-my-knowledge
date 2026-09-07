@@ -22,7 +22,6 @@ import type { AnalysisEntry, AnalysisVariantResult, GapReport, GapSignalRef } fr
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 import { isFailedSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
 import { toolCallStatus } from '../../executors/tool-call-status.js';
-import { setOwnRecordValue } from '../../shared/record-count.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -487,23 +486,4 @@ export async function applyHedgingClassifier(
 
   const next = recomputeAggregates({ ...report, signals: newSignals });
   return { report: next, costUSD, truncated };
-}
-
-/**
- * 批量为一组 variant 的 gap reports 跑 classifier。
- * 串行(不并行)避免 rate limit + 让 cache hit 在第一批后被后续 batch 复用。
- */
-export async function applyHedgingClassifierToReports(
-  reports: Record<string, GapReport>,
-  executor: ExecutorFn,
-  opts: ClassifyOptions,
-): Promise<{ reports: Record<string, GapReport>; costUSD: number }> {
-  const out: Record<string, GapReport> = {};
-  let totalCost = 0;
-  for (const [variant, report] of Object.entries(reports)) {
-    const result = await applyHedgingClassifier(report, executor, opts);
-    setOwnRecordValue(out, variant, result.report);
-    totalCost += result.costUSD;
-  }
-  return { reports: out, costUSD: totalCost };
 }
