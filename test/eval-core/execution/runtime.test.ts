@@ -1,3 +1,6 @@
+import {
+  executeRunPlan,
+} from '../../helpers/core-runs.js';
 import { describe, expect, it } from 'vitest';
 import {
   deriveAttemptId,
@@ -14,7 +17,6 @@ import {
   ExecutionRuntimeConfigurationError,
   InMemoryRuntimeEventSequencer,
   deriveExecutionSchedule,
-  executeRunPlan,
   startExecution,
   type ExecutionCache,
   type ExecutionCacheEntry,

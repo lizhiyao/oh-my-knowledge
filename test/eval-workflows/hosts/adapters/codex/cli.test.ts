@@ -1,4 +1,7 @@
 import {
+  executeRunPlan,
+} from '../../../../helpers/core-runs.js';
+import {
   chmod,
   copyFile,
   mkdir,
@@ -26,7 +29,6 @@ import {
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
-  executeRunPlan,
 } from '../../../../../src/eval-core/execution/index.js';
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {

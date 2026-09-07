@@ -1,3 +1,7 @@
+import {
+  executeRunPlanSource,
+  evaluateExecutionBundle,
+} from '../../../helpers/core-runs.js';
 import { describe, expect, it } from 'vitest';
 import type {
   EvaluationDefinition,
@@ -15,13 +19,11 @@ import {
   type PreparationRuntime,
 } from '../../../../src/eval-core/compiler/index.js';
 import {
-  executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
 } from '../../../../src/eval-core/execution/index.js';
 import {
-  evaluateExecutionBundle,
   type EvaluationCache,
   type EvaluationCacheEntry,
 } from '../../../../src/eval-core/evaluation/index.js';

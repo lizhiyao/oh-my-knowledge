@@ -1,4 +1,7 @@
 import {
+  executeRunPlan,
+} from '../../../../helpers/core-runs.js';
+import {
   chmod,
   copyFile,
   mkdir,
@@ -25,7 +28,6 @@ import {
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,
-  executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,

@@ -1553,18 +1553,3 @@ export function startExecution(
   };
 }
 
-export async function executeRunPlan(
-  plan: SealedRunPlan,
-  ports: ExecutionRuntimePorts,
-  options: ExecutionRunOptions,
-): Promise<ExecutionBundle> {
-  return startExecution(plan, ports, options).result;
-}
-
-export async function executeRunPlanSource(
-  plan: SealedRunPlan,
-  ports: ExecutionRuntimePorts,
-  options: ExecutionRunOptions,
-): Promise<ExecutionBundleSource> {
-  return startExecution(plan, ports, options).source;
-}

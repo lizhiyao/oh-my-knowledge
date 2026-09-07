@@ -1,3 +1,7 @@
+import {
+  evaluateExecutionBundle,
+  executeRunPlanSource,
+} from '../../../helpers/core-runs.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -11,7 +15,6 @@ import {
   type RuntimeIdentity,
 } from '../../../../src/eval-core/contracts/index.js';
 import {
-  evaluateExecutionBundle,
   type EvaluationCache,
   type EvaluationCacheEntry,
   type EvaluationClock,
@@ -23,7 +26,6 @@ import {
   type PreparationRuntime,
 } from '../../../../src/eval-core/compiler/index.js';
 import {
-  executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionExecutor,
 } from '../../../../src/eval-core/execution/index.js';

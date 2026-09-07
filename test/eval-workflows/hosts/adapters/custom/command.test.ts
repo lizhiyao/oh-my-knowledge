@@ -1,3 +1,6 @@
+import {
+  executeRunPlan,
+} from '../../../../helpers/core-runs.js';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import {
@@ -26,7 +29,6 @@ import {
 import {
   ExecutionPortFailure,
   InMemoryRuntimeEventSequencer,
-  executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
