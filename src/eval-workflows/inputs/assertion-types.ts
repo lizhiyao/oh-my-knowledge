@@ -51,7 +51,6 @@ export const ASYNC_ASSERTION_TYPE_NAMES = [
   'context_recall',
 ] as const satisfies readonly AsyncAssertionType[];
 
-export const SYNC_ASSERTION_TYPES: ReadonlySet<string> = new Set(SYNC_ASSERTION_TYPE_NAMES);
 export const ASYNC_ASSERTION_TYPES: ReadonlySet<string> = new Set(ASYNC_ASSERTION_TYPE_NAMES);
 export const SUPPORTED_ASSERTION_TYPES: ReadonlySet<string> = new Set([
   ...SYNC_ASSERTION_TYPE_NAMES,

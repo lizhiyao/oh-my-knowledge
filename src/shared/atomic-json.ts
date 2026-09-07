@@ -6,12 +6,6 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import {
-  mkdir,
-  rename,
-  rm,
-  writeFile,
-} from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 /**
@@ -25,19 +19,5 @@ export function writeJsonFileAtomic(path: string, value: unknown): void {
     renameSync(tempPath, path);
   } finally {
     if (existsSync(tempPath)) rmSync(tempPath, { force: true });
-  }
-}
-
-/**
- * Async counterpart of {@link writeJsonFileAtomic}.
- */
-export async function writeJsonFileAtomicAsync(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(tempPath, JSON.stringify(value, null, 2));
-    await rename(tempPath, path);
-  } finally {
-    await rm(tempPath, { force: true });
   }
 }

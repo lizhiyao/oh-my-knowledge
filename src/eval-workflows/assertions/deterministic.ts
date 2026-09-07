@@ -106,10 +106,6 @@ export function deterministicAssertionInputSourceKinds(
   ]);
 }
 
-export function ratioToScore(ratio: number): number {
-  return Number((1 + ratio * 4).toFixed(2));
-}
-
 function tokenize(value: string): string[] {
   return value.toLowerCase().match(/[a-z0-9]+|[一-龥]/g) ?? [];
 }

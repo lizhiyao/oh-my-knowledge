@@ -27,14 +27,6 @@ export function isReportFileName(fileName: string): boolean {
   return reportFileStem(fileName) !== null;
 }
 
-export function graphFileName(stem: string): string {
-  return `${safeArtifactFileStem(stem)}${GRAPH_FILE_SUFFIX}`;
-}
-
-export function cardFileName(stem: string): string {
-  return `${safeArtifactFileStem(stem)}${CARD_FILE_SUFFIX}`;
-}
-
 export function runTimestamp(date = new Date()): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
