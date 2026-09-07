@@ -1,3 +1,4 @@
+import { TraceSourceMetadataSchema } from '../contracts/trace-metadata-schema.js';
 import {
   ExperienceProblemEvidenceRefSchema,
   ExperienceProblemPatternSchema,
@@ -306,15 +307,7 @@ export function isExperienceMeta(value: unknown): boolean {
 }
 
 export function isOptionalTraceSourceMetadata(value: unknown): boolean {
-  if (value === undefined) return true;
-  return isObjectRecord(value)
-    && isOptionalString(value.channel)
-    && isOptionalString(value.sender)
-    && isOptionalString(value.senderId)
-    && isOptionalString(value.provider)
-    && isOptionalString(value.model)
-    && isOptionalString(value.modelApi)
-    && (value.businessActions === undefined || isStringArray(value.businessActions));
+  return value === undefined || TraceSourceMetadataSchema.safeParse(value).success;
 }
 
 export function isExperienceReviewPriority(value: unknown): boolean {

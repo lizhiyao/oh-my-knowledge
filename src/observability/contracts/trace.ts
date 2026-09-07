@@ -1,3 +1,5 @@
+import type { z } from 'zod';
+import type { TraceSourceMetadataSchema } from './trace-metadata-schema.js';
 export type { TraceSourceKind } from '../../executors/contracts/trace-source.js';
 
 export interface TraceIngestionSummary {
@@ -10,12 +12,4 @@ export interface TraceIngestionSummary {
   filteredSessionCount: number;
 }
 
-export interface TraceSourceMetadata {
-  channel?: string;
-  sender?: string;
-  senderId?: string;
-  provider?: string;
-  model?: string;
-  modelApi?: string;
-  businessActions?: string[];
-}
+export type TraceSourceMetadata = z.infer<typeof TraceSourceMetadataSchema>;

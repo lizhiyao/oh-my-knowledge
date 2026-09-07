@@ -1,3 +1,4 @@
+import { readFileSync as readTraceSchemaSource } from 'node:fs';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
@@ -81,13 +82,21 @@ const EXPERIENCE_EVIDENCE_ENUM_IMPORTS = [
   'TaskWindowBasisSchema',
 ];
 
-function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
-  const imports = new Map([
+function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile, profile: {
+  imports: ReadonlyArray<readonly [string, string]>;
+  schemas: readonly string[];
+  requiredSchema: string;
+} = {
+  imports: [
     ['zod', 'z'],
     ['./experience-enums.js', [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS].sort().join(',')],
-  ]);
+  ],
+  schemas: EXPERIENCE_EVIDENCE_ENUM_IMPORTS,
+  requiredSchema: 'ExperienceEvidenceRefSchema',
+}): boolean {
+  const imports = new Map(profile.imports);
   const seenImports = new Set<string>();
-  const schemas = new Set(EXPERIENCE_EVIDENCE_ENUM_IMPORTS);
+  const schemas = new Set(profile.schemas);
   function expression(node: ts.Expression): boolean {
     if (ts.isCallExpression(node)
       && ts.isPropertyAccessExpression(node.expression)
@@ -154,7 +163,7 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
       schemas.add(declaration.name.text);
     }
   }
-  return seenImports.size === imports.size && schemas.has('ExperienceEvidenceRefSchema');
+  return seenImports.size === imports.size && schemas.has(profile.requiredSchema);
 }
 
 function isDeclarativeEnumSchemaModule(source: ts.SourceFile): boolean {
@@ -350,8 +359,10 @@ describe('领域契约所有权', () => {
               process.cwd(),
               resolve(dirname(resolve(file)), specifier.replace(/\.js$/, '.ts')),
             );
-            const declarativeEnumTypeImport = (file === 'src/observability/contracts/experience.ts' || file === 'src/observability/contracts/problem-patterns.ts')
-              && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier);
+            const declarativeEnumTypeImport = ((file === 'src/observability/contracts/experience.ts' || file === 'src/observability/contracts/problem-patterns.ts')
+              && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier)
+            || (file === 'src/executors/contracts/trace-source.ts' && ['zod', './trace-source-schema.js'].includes(specifier))
+            || (file === 'src/observability/contracts/trace.ts' && ['zod', './trace-metadata-schema.js'].includes(specifier)));
             if (!PURE_DOMAIN_TYPE_FILE_SET.has(target) && !declarativeEnumTypeImport) {
               violations.push(`${file}：依赖了非契约模块 ${specifier}`);
             }
@@ -370,5 +381,20 @@ describe('领域契约所有权', () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+});
+
+
+describe('trace leaf schema ownership', () => {
+  it.each([
+    ['src/executors/contracts/trace-source-schema.ts', 'TraceSourceKindSchema'],
+    ['src/observability/contracts/trace-metadata-schema.ts', 'TraceSourceMetadataSchema'],
+  ])('%s remains a declarative leaf schema', (file, requiredSchema) => {
+    const source = ts.createSourceFile(file, readTraceSchemaSource(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    expect(isDeclarativeEvidenceSchemaModule(source, {
+      imports: [['zod', 'z']],
+      schemas: [],
+      requiredSchema,
+    })).toBe(true);
   });
 });
