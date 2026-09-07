@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import * as enums from '../../src/observability/contracts/experience-enums.js';
-import {
-  isExperienceEvidenceKind,
-  isExperienceReviewPriority,
-} from '../../src/observability/experience/report-value-guards.js';
 
 const cases = [
   ['ExperienceReviewPriority', enums.ExperienceReviewPrioritySchema, [
@@ -241,13 +237,5 @@ describe('Experience enum wire identities', () => {
     expect(schema.options).toEqual(values);
     for (const value of values) expect(schema.safeParse(value).success).toBe(true);
     for (const value of invalidValues) expect(schema.safeParse(value).success).toBe(false);
-  });
-
-  it.each([
-    ['evidence kind', enums.ExperienceEvidenceKindSchema, isExperienceEvidenceKind],
-    ['review priority', enums.ExperienceReviewPrioritySchema, isExperienceReviewPriority],
-  ] as const)('%s guard uses the schema value set', (_name, schema, guard) => {
-    for (const value of schema.options) expect(guard(value)).toBe(true);
-    for (const value of invalidValues) expect(guard(value)).toBe(false);
   });
 });

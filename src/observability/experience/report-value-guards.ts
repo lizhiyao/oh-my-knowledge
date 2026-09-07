@@ -1,11 +1,9 @@
 import { ExperienceInvocationWireSchema, ExperienceSessionSummaryWireSchema } from '../contracts/experience-evidence-schema.js';
-import { TraceSourceMetadataSchema } from '../contracts/trace-metadata-schema.js';
 import {
   ExperienceProblemEvidenceRefSchema,
   ExperienceProblemPatternSchema,
 } from '../contracts/experience-evidence-schema.js';
 import {
-  ExperienceMetaSchema,
   ExperienceAttributionSchema,
   ExperienceReviewIndicatorsSchema,
   ExperienceReviewIndicatorsWireSchema,
@@ -41,8 +39,6 @@ import {
   ExperienceSessionStoryGoalSliceSchema,
   ExperienceSessionStorySubagentDispatchSchema,
   ExperienceSessionStorySkillLinkSchema,
-  ExperienceSessionStoryGraphNodeSchema,
-  ExperienceSessionStoryGraphEdgeSchema,
   ExperienceSessionStoryNodeSchema,
   ExperienceSessionStoryAnswerSchema,
 } from '../contracts/experience-evidence-schema.js';
@@ -55,10 +51,6 @@ import {
   ExperienceChecklistItemSchema,
 } from '../contracts/experience-evidence-schema.js';
 import { ExperienceEvidenceRefSchema } from '../contracts/experience-evidence-schema.js';
-import {
-  ExperienceEvidenceKindSchema,
-  ExperienceReviewPrioritySchema,
-} from '../contracts/experience-enums.js';
 
 import type {
   ExperienceEvidenceRef,
@@ -203,14 +195,6 @@ export function isOptionalTimestampCoverage(
   return coverage === (total > 0 ? count / total : 0);
 }
 
-export function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-export function isOptionalString(value: unknown): boolean {
-  return value === undefined || typeof value === 'string';
-}
-
 export function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && normalizeTraceTimestamp(value) !== undefined;
 }
@@ -235,34 +219,6 @@ export function isConsistentSourceSessionTime(value: Record<string, unknown>): b
     && typeof end === 'string'
     && isTimestampRange(start, end)
     && duration === durationMsBetween(start, end);
-}
-
-export function isOptionalNonNegativeInteger(value: unknown): boolean {
-  return value === undefined || isNonNegativeInteger(value);
-}
-
-export function isEnumValue(value: unknown, values: readonly string[]): boolean {
-  return typeof value === 'string' && values.includes(value);
-}
-
-export function isEnumArray(value: unknown, values: readonly string[]): boolean {
-  return Array.isArray(value) && value.every((item) => isEnumValue(item, values));
-}
-
-export function isExperienceMeta(value: unknown): boolean {
-  return ExperienceMetaSchema.safeParse(value).success;
-}
-
-export function isOptionalTraceSourceMetadata(value: unknown): boolean {
-  return value === undefined || TraceSourceMetadataSchema.safeParse(value).success;
-}
-
-export function isExperienceReviewPriority(value: unknown): boolean {
-  return isEnumValue(value, ExperienceReviewPrioritySchema.options);
-}
-
-export function isExperienceEvidenceKind(value: unknown): boolean {
-  return isEnumValue(value, ExperienceEvidenceKindSchema.options);
 }
 
 export function isExperienceEvidenceRef(value: unknown): value is ExperienceEvidenceRef {
@@ -340,11 +296,6 @@ export function isExperienceIndicators(value: unknown): boolean {
   if (!parsed.success) return false;
   const data = parsed.data;
   return data.toolFailureCount + data.toolCancelledCount + data.toolUnknownCount <= data.toolCallCount;
-}
-
-export function isCountRecord(value: unknown): boolean {
-  return isObjectRecord(value)
-    && Object.values(value).every(isNonNegativeInteger);
 }
 
 export function isExperienceTimelineScope(value: unknown): boolean {
@@ -439,14 +390,6 @@ export function isExperienceSessionStorySkillLink(value: unknown): boolean {
   const parsed = ExperienceSessionStorySkillLinkSchema.safeParse(value);
   return parsed.success
     && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
-}
-
-export function isExperienceSessionStoryGraphNode(value: unknown): boolean {
-  return ExperienceSessionStoryGraphNodeSchema.safeParse(value).success;
-}
-
-export function isExperienceSessionStoryGraphEdge(value: unknown): boolean {
-  return ExperienceSessionStoryGraphEdgeSchema.safeParse(value).success;
 }
 
 export function isExperienceSessionStoryNode(value: unknown): boolean {
