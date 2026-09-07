@@ -1,87 +1,78 @@
+import type { z } from 'zod';
+import type {
+  ExperienceReviewPrioritySchema,
+  ExperienceGoalSliceReasonCodeSchema,
+  ExperienceEvidenceKindSchema,
+  ExperienceAssistiveInferenceCodeSchema,
+  ExperienceAssistiveInferenceConfidenceSchema,
+  ExperienceAssistiveInferenceCautionCodeSchema,
+  ExperienceReviewBasisCodeSchema,
+  ExperienceRuleFindingLevelSchema,
+  ExperienceReviewerReportScopeSchema,
+  ExperienceReviewerReportStepStatusSchema,
+  ExperienceReviewerReportFindingLevelSchema,
+  ExperienceReviewerReportFindingSourceSchema,
+  ExperienceChecklistItemStatusSchema,
+  ExperienceChecklistContributionSchema,
+  ExperienceParentReasonSchema,
+  ExperienceSessionStoryNodeKindSchema,
+  ExperienceSessionStoryAnswerKeySchema,
+  ExperienceSessionStorySkillRoleSchema,
+  ExperienceEpisodeBoundaryReasonSchema,
+  ExperienceEpisodeRoleSchema,
+  ExperienceFeedbackSignalTypeSchema,
+  ExperienceFeedbackAttributionRoleSchema,
+  ExperienceFeedbackAttributionReasonSchema,
+  ExperienceOutcomeClosureSchema,
+  ExperienceRuntimeSkillTypeSchema,
+  ExperienceRuntimeSkillTypeSourceSchema,
+  ExperienceEpisodeArtifactKindSchema,
+  ExperienceOrchestrationEdgeStatusSchema,
+  ExperienceOrchestrationEdgeKindSchema,
+  ExperienceRuleFindingCodeSchema,
+  TaskWindowBasisSchema,
+  ExperienceTurnStatusSchema,
+} from './experience-enums.js';
 import type { ToolCallStatus } from '../../executors/contracts/trace.js';
 import type { ExperienceProblemPattern } from './problem-patterns.js';
 import type { TraceSourceKind, TraceSourceMetadata } from './trace.js';
 
-export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
-export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
-export type ExperienceEvidenceKind = 'user_message' | 'synthetic_user_event' | 'assistant_message' | 'model_activity' | 'agent_activity' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'lifecycle' | 'observation';
+export type ExperienceReviewPriority = z.infer<typeof ExperienceReviewPrioritySchema>;
+export type ExperienceGoalSliceReasonCode = z.infer<typeof ExperienceGoalSliceReasonCodeSchema>;
+export type ExperienceEvidenceKind = z.infer<typeof ExperienceEvidenceKindSchema>;
 export type ExperienceAssistiveInferenceCode =
-  | 'review_recommended'
-  | 'sample_recommended'
-  | 'positive_signal_observed'
-  | 'user_switched_topic_neutral'
-  | 'no_obvious_issue_from_rules'
-  | 'insufficient_human_context';
-export type ExperienceAssistiveInferenceConfidence = 'low' | 'medium' | 'high';
+  z.infer<typeof ExperienceAssistiveInferenceCodeSchema>;
+export type ExperienceAssistiveInferenceConfidence = z.infer<typeof ExperienceAssistiveInferenceConfidenceSchema>;
 export type ExperienceAssistiveInferenceCautionCode =
-  | 'no_llm_judge'
-  | 'rule_only'
-  | 'runtime_context_excluded'
-  | 'skill_context_excluded'
-  | 'no_human_user_message'
-  | 'limited_timeline_window';
+  z.infer<typeof ExperienceAssistiveInferenceCautionCodeSchema>;
 export type ExperienceReviewBasisCode =
-  | 'has_high_observation'
-  | 'has_medium_observation'
-  | 'user_correction'
-  | 'user_interruption'
-  | 'session_interrupted'
-  | 'negative_feedback'
-  | 'hard_rule_text_hit'
-  | 'tool_failure'
-  | 'hedging_signal'
-  | 'explicit_marker';
-export type ExperienceRuleFindingLevel = 'attention' | 'sample' | 'normal';
-export type ExperienceReviewerReportScope = 'single_skill_single_goal' | 'degraded_complex';
-export type ExperienceReviewerReportStepStatus = 'ok' | 'attention' | 'unknown' | 'degraded' | 'not_applicable';
-export type ExperienceReviewerReportFindingLevel = 'attention' | 'possible_false_positive' | 'note';
-export type ExperienceReviewerReportFindingSource = 'deterministic_rule' | 'llm_soft' | 'manual';
-export type ExperienceChecklistItemStatus = 'passed' | 'failed' | 'unknown' | 'not_declared' | 'not_applicable' | 'degraded';
-export type ExperienceChecklistContribution = 'blocking' | 'attention' | 'informational' | 'positive' | 'neutral';
+  z.infer<typeof ExperienceReviewBasisCodeSchema>;
+export type ExperienceRuleFindingLevel = z.infer<typeof ExperienceRuleFindingLevelSchema>;
+export type ExperienceReviewerReportScope = z.infer<typeof ExperienceReviewerReportScopeSchema>;
+export type ExperienceReviewerReportStepStatus = z.infer<typeof ExperienceReviewerReportStepStatusSchema>;
+export type ExperienceReviewerReportFindingLevel = z.infer<typeof ExperienceReviewerReportFindingLevelSchema>;
+export type ExperienceReviewerReportFindingSource = z.infer<typeof ExperienceReviewerReportFindingSourceSchema>;
+export type ExperienceChecklistItemStatus = z.infer<typeof ExperienceChecklistItemStatusSchema>;
+export type ExperienceChecklistContribution = z.infer<typeof ExperienceChecklistContributionSchema>;
 export type ExperienceParentReason =
-  | 'data_degraded'
-  | 'blocking_failed'
-  | 'attention_accumulated'
-  | 'unknown_dominant'
-  | 'all_passed'
-  | 'not_applicable';
+  z.infer<typeof ExperienceParentReasonSchema>;
 export type ExperienceSessionStoryNodeKind =
-  | 'user_goal'
-  | 'skill_invocation'
-  | 'subagent_branch'
-  | 'tool_execution'
-  | 'delivery'
-  | 'user_feedback'
-  | 'goal_shift';
-export type ExperienceSessionStoryAnswerKey = 'goal_satisfaction' | 'declared_behavior_fit' | 'user_feeling';
-export type ExperienceSessionStorySkillRole = 'router' | 'executor' | 'mixed' | 'unknown';
-export type ExperienceEpisodeBoundaryReason = 'goal_shift' | 'checkpoint_or_subagent' | 'downstream_closed' | 'session_end';
-export type ExperienceEpisodeRole = 'main_executor' | 'router' | 'delegator' | 'supporting' | 'observer';
-export type ExperienceFeedbackSignalType = 'correction' | 'follow_up' | 'frustration' | 'interruption' | 'positive' | 'unknown';
-export type ExperienceFeedbackAttributionRole = 'primary_fault' | 'downstream_related' | 'context_only';
-export type ExperienceFeedbackAttributionReason = 'object_match' | 'promise_match' | 'action_match' | 'orchestration_edge' | 'episode_context';
-export type ExperienceOutcomeClosure = 'closed' | 'unresolved' | 'abandoned' | 'unknown';
-export type ExperienceRuntimeSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'workflow_owner' | 'unknown';
-export type ExperienceRuntimeSkillTypeSource = 'frontmatter' | 'trace' | 'unknown';
-export type ExperienceEpisodeArtifactKind = 'path' | 'url' | 'document' | 'code' | 'execution_window' | 'unknown';
-export type ExperienceOrchestrationEdgeStatus = 'started' | 'completed' | 'failed' | 'unknown';
-export type ExperienceOrchestrationEdgeKind = 'internal_skill' | 'external_child_session';
+  z.infer<typeof ExperienceSessionStoryNodeKindSchema>;
+export type ExperienceSessionStoryAnswerKey = z.infer<typeof ExperienceSessionStoryAnswerKeySchema>;
+export type ExperienceSessionStorySkillRole = z.infer<typeof ExperienceSessionStorySkillRoleSchema>;
+export type ExperienceEpisodeBoundaryReason = z.infer<typeof ExperienceEpisodeBoundaryReasonSchema>;
+export type ExperienceEpisodeRole = z.infer<typeof ExperienceEpisodeRoleSchema>;
+export type ExperienceFeedbackSignalType = z.infer<typeof ExperienceFeedbackSignalTypeSchema>;
+export type ExperienceFeedbackAttributionRole = z.infer<typeof ExperienceFeedbackAttributionRoleSchema>;
+export type ExperienceFeedbackAttributionReason = z.infer<typeof ExperienceFeedbackAttributionReasonSchema>;
+export type ExperienceOutcomeClosure = z.infer<typeof ExperienceOutcomeClosureSchema>;
+export type ExperienceRuntimeSkillType = z.infer<typeof ExperienceRuntimeSkillTypeSchema>;
+export type ExperienceRuntimeSkillTypeSource = z.infer<typeof ExperienceRuntimeSkillTypeSourceSchema>;
+export type ExperienceEpisodeArtifactKind = z.infer<typeof ExperienceEpisodeArtifactKindSchema>;
+export type ExperienceOrchestrationEdgeStatus = z.infer<typeof ExperienceOrchestrationEdgeStatusSchema>;
+export type ExperienceOrchestrationEdgeKind = z.infer<typeof ExperienceOrchestrationEdgeKindSchema>;
 export type ExperienceRuleFindingCode =
-  | 'high_observation_seen'
-  | 'medium_observation_seen'
-  | 'user_correction_seen'
-  | 'user_interruption_seen'
-  | 'session_interrupted_seen'
-  | 'negative_feedback_seen'
-  | 'positive_feedback_seen'
-  | 'user_goal_shift_seen'
-  | 'hard_rule_seen'
-  | 'tool_failure_seen'
-  | 'hedging_seen'
-  | 'explicit_marker_seen'
-  | 'runtime_context_excluded'
-  | 'skill_context_excluded'
-  | 'no_priority_signal';
+  z.infer<typeof ExperienceRuleFindingCodeSchema>;
 
 // ---------- experience: interfaces ----------
 
@@ -131,18 +122,10 @@ export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
 // ---------- Knowledge Debugger task trajectory ----------
 
 export type TaskWindowBasis =
-  | 'turn_id'
-  | 'turn_lifecycle'
-  | 'user_message'
-  | 'unresolved';
+  z.infer<typeof TaskWindowBasisSchema>;
 
 export type ExperienceTurnStatus =
-  | 'completed'
-  | 'failed'
-  | 'aborted'
-  | 'interrupted'
-  | 'open'
-  | 'unknown';
+  z.infer<typeof ExperienceTurnStatusSchema>;
 
 /**
  * One user-visible task inside a source thread. `turnId` is the stable,
