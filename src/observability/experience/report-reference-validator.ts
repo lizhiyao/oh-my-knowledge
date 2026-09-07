@@ -1,7 +1,6 @@
+import { ExperienceSkillSummaryWireSchema } from '../contracts/experience-evidence-schema.js';
 import { ExperienceGoalSliceSchema } from '../contracts/experience-evidence-schema.js';
-import {
-  isTraceSourceKind,
-} from '../../executors/core/trace-source-kind.js';
+
 import type {
   ExperienceGoalSlice,
   ExperienceInvocation,
@@ -47,17 +46,14 @@ import {
 } from '../../shared/record-count.js';
 import {
   EXPERIENCE_INDICATOR_KEYS,
-  isCountRecord,
   isExperienceAssistiveInference,
   isExperienceEvidenceChain,
   isExperienceEvidenceRefArray,
   isExperienceIndicators,
   isExperienceProblemPatternArray,
   isExperienceRuleFindingArray,
-  isNonNegativeInteger,
   isOptionalTimestampCoverage,
   isRate,
-  isStringArray,
   isTimestampRange,
 } from './report-value-guards.js';
 
@@ -69,43 +65,17 @@ export function isExperienceGoalSlice(value: unknown): value is ExperienceGoalSl
 }
 
 export function isExperienceSkillSummary(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || typeof value.skillName !== 'string'
-    || !isNonNegativeInteger(value.invocationCount)
-    || !isNonNegativeInteger(value.sessionCount)
-    || !Array.isArray(value.sourceKinds)
-    || !value.sourceKinds.every(isTraceSourceKind)
-    || !isStringArray(value.entrypoints)
-    || !isCountRecord(value.entrypointCounts)
-    || !isCountRecord(value.attributionCounts)
-    || !isStringArray(value.pluginNames)
-    || !isStringArray(value.rawSkillRefs)
-    || !isStringArray(value.commandNames)
-    || !isCountRecord(value.toolCounts)
-    || !isTimestampRange(value.firstSeen, value.lastSeen)
-    || !isOptionalTimestampCoverage(
-      value.timestampedInvocationCount,
-      value.timestampCoverage,
-      value.invocationCount,
-    )
-    || (
-      !isNonNegativeInteger(value.timestampedInvocationCount)
-      || !isRate(value.timestampCoverage)
-    )
-    || !isNonNegativeInteger(value.reviewFirstSessionCount)
-    || !isNonNegativeInteger(value.sampleReviewSessionCount)
-    || !isExperienceIndicators(value.indicators)
-    || !isExperienceEvidenceChain(value.evidenceChain)
-    || !isExperienceRuleFindingArray(value.ruleFindings)
-    || !isExperienceAssistiveInference(value.assistiveInference)
-    || !isExperienceProblemPatternArray(value.problemPatterns)
-    || !isStringArray(value.relatedObservationIds)
-    || !isObjectRecord(value.sourceMetadataCounts)
-  ) return false;
-  const metadataCounts = value.sourceMetadataCounts;
-  return ['channels', 'senders', 'businessActions', 'providers', 'models']
-    .every((key) => isCountRecord(metadataCounts[key]));
+  const parsed = ExperienceSkillSummaryWireSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const data = parsed.data;
+  return isTimestampRange(data.firstSeen, data.lastSeen)
+    && isOptionalTimestampCoverage(data.timestampedInvocationCount, data.timestampCoverage, data.invocationCount)
+    && isRate(data.timestampCoverage)
+    && isExperienceIndicators(data.indicators)
+    && isExperienceEvidenceChain(data.evidenceChain)
+    && isExperienceRuleFindingArray(data.ruleFindings)
+    && isExperienceAssistiveInference(data.assistiveInference)
+    && isExperienceProblemPatternArray(data.problemPatterns);
 }
 
 export function validateExperienceReferences(

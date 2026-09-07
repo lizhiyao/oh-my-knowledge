@@ -41,8 +41,8 @@ import type {
   ExperienceTurnStatusSchema,
 } from './experience-enums.js';
 
-import type { ExperienceProblemPattern } from './problem-patterns.js';
-import type { TraceSourceKind, TraceSourceMetadata } from './trace.js';
+
+
 
 export type ExperienceReviewPriority = z.infer<typeof ExperienceReviewPrioritySchema>;
 export type ExperienceGoalSliceReasonCode = z.infer<typeof ExperienceGoalSliceReasonCodeSchema>;
@@ -226,118 +226,17 @@ export type ExperienceInvocationMetrics = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceInvocationMetricsSchema
 >;
 
-export interface ExperienceInvocation {
-  id: string;
-  skillName: string;
-  sessionId: string;
-  sessionGroupKey: string;
-  traceId?: string;
-  sourceTrace: string;
-  sourceKind: TraceSourceKind;
-  entrypoint?: string;
-  sourceMetadata?: TraceSourceMetadata;
-  cwd?: string;
-  segmentIndex: number;
-  goalSliceId: string;
-  startTimestamp: string;
-  endTimestamp: string;
-  timestampObserved?: boolean;
-  attribution: z.infer<typeof import('./experience-evidence-schema.js').ExperienceAttributionSchema>;
-  metrics: ExperienceInvocationMetrics;
-  toolCounts: Record<string, number>;
-  indicators: ExperienceReviewIndicators;
-  evidenceChain: ExperienceEvidenceChain;
-  ruleFindings: ExperienceRuleFinding[];
-  assistiveInference: ExperienceAssistiveInference;
-  problemPatterns: ExperienceProblemPattern[];
-  relatedObservationIds: string[];
-  evidenceRefs: ExperienceEvidenceRef[];
-  timelineRef?: string;
-  timelineEventIds?: string[];
-  timeline: ExperienceTimelineEvent[];
-}
+export type ExperienceInvocation = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceInvocationSchema
+>;
 
-export interface ExperienceSessionSummary {
-  id: string;
-  skillName: string;
-  /** Stable source-neutral identity for the root conversation/thread. */
-  threadId: string;
-  /** Runtime-native thread/run identity retained for inspection. */
-  sourceThreadId: string;
-  sessionId: string;
-  sourceTrace: string;
-  sourceKind: TraceSourceKind;
-  entrypoint?: string;
-  sourceMetadata?: TraceSourceMetadata;
-  cwd?: string;
-  sourceSessionStartTimestamp?: string;
-  sourceSessionEndTimestamp?: string;
-  sourceSessionDurationMs?: number;
-  startTimestamp: string;
-  endTimestamp: string;
-  timestampedInvocationCount?: number;
-  timestampCoverage?: number;
-  invocationIds: string[];
-  goalSliceIds: string[];
-  reviewPriority: ExperienceReviewPriority;
-  reviewPriorityScore: number;
-  reviewBasisCodes: ExperienceReviewBasisCode[];
-  indicators: ExperienceReviewIndicators;
-  evidenceChain: ExperienceEvidenceChain;
-  ruleFindings: ExperienceRuleFinding[];
-  assistiveInference: ExperienceAssistiveInference;
-  problemPatterns: ExperienceProblemPattern[];
-  relatedObservationIds: string[];
-  timelineRef?: string;
-  timelinePreviewEventIds?: string[];
-  /** Hydrated exact event relation derived from invocation timelineEventIds. */
-  attributedEventIds: string[];
-  /** All observable tasks in this thread, independent of Skill attribution. */
-  turns: ExperienceTurnSummary[];
-  timelinePreview: ExperienceTimelineEvent[];
-  fullSessionTimeline: ExperienceTimelineEvent[];
-  timelineTree?: ExperienceTimelineTree;
-  timelineScope: z.infer<typeof import('./experience-evidence-schema.js').ExperienceTimelineScopeSchema>;
-  attributionSources: string[];
-  pluginNames: string[];
-  rawSkillRefs: string[];
-  commandNames: string[];
-  sessionStory?: ExperienceSessionStory;
-  reviewerReport?: ExperienceReviewerReport;
-}
+export type ExperienceSessionSummary = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceSessionSummarySchema
+>;
 
-export interface ExperienceSkillSummary {
-  skillName: string;
-  invocationCount: number;
-  sessionCount: number;
-  sourceKinds: TraceSourceKind[];
-  entrypoints: string[];
-  entrypointCounts: Record<string, number>;
-  sourceMetadataCounts: {
-    channels: Record<string, number>;
-    senders: Record<string, number>;
-    businessActions: Record<string, number>;
-    providers: Record<string, number>;
-    models: Record<string, number>;
-  };
-  attributionCounts: Record<string, number>;
-  pluginNames: string[];
-  rawSkillRefs: string[];
-  commandNames: string[];
-  toolCounts: Record<string, number>;
-  firstSeen: string;
-  lastSeen: string;
-  timestampedInvocationCount?: number;
-  timestampCoverage?: number;
-  reviewFirstSessionCount: number;
-  sampleReviewSessionCount: number;
-  indicators: ExperienceReviewIndicators;
-  evidenceChain: ExperienceEvidenceChain;
-  ruleFindings: ExperienceRuleFinding[];
-  assistiveInference: ExperienceAssistiveInference;
-  problemPatterns: ExperienceProblemPattern[];
-  relatedObservationIds: string[];
-}
+export type ExperienceSkillSummary = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceSkillSummarySchema
+>;
 
 export interface ObservationExperienceReport {
   kind: 'observe-experience';
