@@ -13,6 +13,14 @@ import {
 
 const NonNegativeIntegerSchema = z.number().int().nonnegative();
 
+export const ExperienceTraceRecordRangeSchema = z.object({
+  traceId: z.string(),
+  sourceTrace: z.string(),
+  startRecordIndex: NonNegativeIntegerSchema,
+  endRecordIndex: NonNegativeIntegerSchema,
+  eventCount: NonNegativeIntegerSchema,
+});
+
 export const ExperienceEvidenceRefSchema = z.object({
   id: z.string(),
   kind: ExperienceEvidenceKindSchema,

@@ -1,3 +1,4 @@
+import { ExperienceTraceRecordRangeSchema } from '../contracts/experience-evidence-schema.js';
 import {
   ExperienceEvidenceChainSchema,
   ExperienceRuleFindingSchema,
@@ -525,13 +526,8 @@ export function isExperienceTraceRecordRangeArray(value: unknown): value is Expe
   const identities = new Set<string>();
   for (const range of value) {
     if (
-      !isObjectRecord(range)
-      || typeof range.traceId !== 'string'
-      || typeof range.sourceTrace !== 'string'
-      || !isNonNegativeInteger(range.startRecordIndex)
-      || !isNonNegativeInteger(range.endRecordIndex)
+      !ExperienceTraceRecordRangeSchema.safeParse(range).success
       || range.startRecordIndex > range.endRecordIndex
-      || !isNonNegativeInteger(range.eventCount)
       || range.eventCount === 0
       || identities.has(range.traceId)
     ) return false;
