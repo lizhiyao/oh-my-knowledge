@@ -1,3 +1,12 @@
+import {
+  ExperienceSessionStoryGoalSliceSchema,
+  ExperienceSessionStorySubagentDispatchSchema,
+  ExperienceSessionStorySkillLinkSchema,
+  ExperienceSessionStoryGraphNodeSchema,
+  ExperienceSessionStoryGraphEdgeSchema,
+  ExperienceSessionStoryNodeSchema,
+  ExperienceSessionStoryAnswerSchema,
+} from '../contracts/experience-evidence-schema.js';
 import { ExperienceInvocationMetricsWireSchema } from '../contracts/experience-evidence-schema.js';
 import { ExperienceTraceRecordRangeSchema } from '../contracts/experience-evidence-schema.js';
 import {
@@ -15,11 +24,9 @@ import {
   ExperienceFeedbackAttributionReasonSchema,
   ExperienceFeedbackAttributionRoleSchema,
   ExperienceFeedbackSignalTypeSchema,
-  ExperienceGoalSliceReasonCodeSchema,
   ExperienceOrchestrationEdgeKindSchema,
   ExperienceOrchestrationEdgeStatusSchema,
   ExperienceOutcomeClosureSchema,
-  ExperienceParentReasonSchema,
   ExperienceReviewBasisCodeSchema,
   ExperienceReviewPrioritySchema,
   ExperienceReviewerReportFindingLevelSchema,
@@ -28,9 +35,6 @@ import {
   ExperienceReviewerReportStepStatusSchema,
   ExperienceRuntimeSkillTypeSchema,
   ExperienceRuntimeSkillTypeSourceSchema,
-  ExperienceSessionStoryAnswerKeySchema,
-  ExperienceSessionStoryNodeKindSchema,
-  ExperienceSessionStorySkillRoleSchema,
 } from '../contracts/experience-enums.js';
 import {
   isTraceSourceKind,
@@ -680,87 +684,43 @@ export function isExperienceChecklistItem(value: unknown): boolean {
 }
 
 export function isExperienceSessionStoryGoalSlice(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.id === 'string'
-    && isNonNegativeInteger(value.order)
-    && isStringArray(value.skillNames)
-    && isTimestampRange(value.startTimestamp, value.endTimestamp)
-    && isEnumValue(value.reasonCode, ExperienceGoalSliceReasonCodeSchema.options)
-    && isOptionalString(value.inferredUserGoal)
-    && isExperienceEvidenceRefArray(value.evidenceRefs);
+  const parsed = ExperienceSessionStoryGoalSliceSchema.safeParse(value);
+  return parsed.success
+    && isTimestampRange(parsed.data.startTimestamp, parsed.data.endTimestamp)
+    && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceSessionStorySubagentDispatch(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || typeof value.id !== 'string'
-    || !isNonNegativeInteger(value.order)
-    || typeof value.branchId !== 'string'
-    || typeof value.childSessionId !== 'string'
-    || typeof value.traceId !== 'string'
-    || typeof value.label !== 'string'
-    || typeof value.sourceTrace !== 'string'
-    || !isNonNegativeInteger(value.eventCount)
-    || !isExperienceEvidenceRefArray(value.evidenceRefs)
-  ) return false;
-  if (value.attachTo === undefined) return true;
-  return isObjectRecord(value.attachTo)
-    && isOptionalNonNegativeInteger(value.attachTo.messageIndex)
-    && isOptionalString(value.attachTo.callInstanceId)
-    && isOptionalString(value.attachTo.toolUseId)
-    && isOptionalString(value.attachTo.label);
+  const parsed = ExperienceSessionStorySubagentDispatchSchema.safeParse(value);
+  return parsed.success
+    && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceSessionStorySkillLink(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.id === 'string'
-    && isNonNegativeInteger(value.order)
-    && typeof value.skillName === 'string'
-    && isEnumValue(value.role, ExperienceSessionStorySkillRoleSchema.options)
-    && isStringArray(value.invocationIds)
-    && isStringArray(value.goalSliceIds)
-    && isExperienceEvidenceRefArray(value.evidenceRefs);
+  const parsed = ExperienceSessionStorySkillLinkSchema.safeParse(value);
+  return parsed.success
+    && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceSessionStoryGraphNode(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.label === 'string'
-    && isEnumValue(value.kind, ExperienceSessionStoryNodeKindSchema.options)
-    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
-    && (value.role === undefined || isEnumValue(value.role, ExperienceSessionStorySkillRoleSchema.options))
-    && isOptionalString(value.detailNodeId);
+  return ExperienceSessionStoryGraphNodeSchema.safeParse(value).success;
 }
 
 export function isExperienceSessionStoryGraphEdge(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.fromId === 'string'
-    && typeof value.toId === 'string'
-    && typeof value.label === 'string';
+  return ExperienceSessionStoryGraphEdgeSchema.safeParse(value).success;
 }
 
 export function isExperienceSessionStoryNode(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.id === 'string'
-    && isNonNegativeInteger(value.order)
-    && isEnumValue(value.kind, ExperienceSessionStoryNodeKindSchema.options)
-    && typeof value.label === 'string'
-    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
-    && typeof value.text === 'string'
-    && isExperienceEvidenceRefArray(value.evidenceRefs);
+  const parsed = ExperienceSessionStoryNodeSchema.safeParse(value);
+  return parsed.success
+    && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceSessionStoryAnswer(value: unknown): boolean {
-  return isObjectRecord(value)
-    && isEnumValue(value.key, ExperienceSessionStoryAnswerKeySchema.options)
-    && typeof value.label === 'string'
-    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
-    && isEnumValue(value.reason, ExperienceParentReasonSchema.options)
-    && isStringArray(value.sourceItemKeys)
-    && typeof value.text === 'string'
-    && isExperienceEvidenceRefArray(value.evidenceRefs)
-    && Array.isArray(value.checklistItems)
-    && value.checklistItems.every(isExperienceChecklistItem);
+  const parsed = ExperienceSessionStoryAnswerSchema.safeParse(value);
+  return parsed.success
+    && isExperienceEvidenceRefArray(parsed.data.evidenceRefs)
+    && parsed.data.checklistItems.every(isExperienceChecklistItem);
 }
 
 export function isExperienceGoalEvidenceRef(value: unknown): boolean {
