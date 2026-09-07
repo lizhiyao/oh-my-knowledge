@@ -1,3 +1,4 @@
+import { CODEX_WORKSPACE_WRITE_SANDBOX_ID } from '../../../../../src/eval-workflows/hosts/adapters/codex/protocol-core.js';
 import {
   executeRunPlan,
 } from '../../../../helpers/core-runs.js';
@@ -32,7 +33,6 @@ import {
 } from '../../../../../src/eval-core/execution/index.js';
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {
-  CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexCliCoreSchemaValidators,
 } from '../../../../../src/eval-workflows/hosts/adapters/codex/cli-protocol.js';
 import {
@@ -468,7 +468,7 @@ describe('Codex CLI Core Executor adapter', () => {
   it.each([false, true])('isolates sequential trials while retaining same-trial attempts（workspace=%s）', async (workspace) => {
     const fixture = await adapterFixture({
       workspace,
-      ...(workspace ? { sandboxId: CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID } : {}),
+      ...(workspace ? { sandboxId: CODEX_WORKSPACE_WRITE_SANDBOX_ID } : {}),
     });
     const adapter = await createAdapter(fixture, { OMK_TEST_MODE: 'workspace-state' });
     const run = await adapter.openRun({ runId: 'run-a', executionPlanDigest: digest('plan') });
@@ -510,7 +510,7 @@ describe('Codex CLI Core Executor adapter', () => {
   it('uses a trial-private workspace copy and elevates output classification', async () => {
     const fixture = await adapterFixture({
       workspace: true,
-      sandboxId: CODEX_CLI_WORKSPACE_WRITE_SANDBOX_ID,
+      sandboxId: CODEX_WORKSPACE_WRITE_SANDBOX_ID,
     });
     const capture = join(fixture.root, 'workspace-capture.json');
     const result = await execute(

@@ -53,8 +53,6 @@ import {
 import { createSameProcessExecutorAdapter } from '../../../../eval-runtime/adapters/same-process.js';
 
 export {
-  CODEX_SDK_READ_ONLY_SANDBOX_ID,
-  CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,
   createCodexSdkCoreSchemaValidators,
 } from './sdk-protocol.js';
 export {
