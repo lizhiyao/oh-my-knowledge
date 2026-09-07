@@ -29,6 +29,8 @@ import {
   ExperienceSessionStoryAnswerKeySchema,
   ExperienceSessionStoryNodeKindSchema,
   ExperienceSessionStorySkillRoleSchema,
+  ExperienceTurnStatusSchema,
+  TaskWindowBasisSchema,
 } from './experience-enums.js';
 
 const NonNegativeIntegerSchema = z.number().int().nonnegative();
@@ -439,4 +441,68 @@ export const ExperienceReviewerReportSchema = ExperienceReviewerReportBaseSchema
 export const ExperienceReviewerReportWireSchema = ExperienceReviewerReportBaseSchema.extend({
   oneLookMetrics: ExperienceReviewerMetricsWireSchema,
   sessionStoryRef: z.literal('session'),
+});
+
+export const ExperienceTimelineAttachmentSchema = z.object({
+  attachmentKind: z.enum(['image', 'file']),
+  name: z.string(),
+});
+
+export const ExperienceTimelineEventSchema = ExperienceEvidenceRefSchema.extend({
+  order: NonNegativeIntegerSchema,
+  model: z.string().optional(),
+  toolName: z.string().optional(),
+  toolStatus: z.enum(['success', 'failure', 'cancelled', 'unknown']).optional(),
+  isError: z.boolean().optional(),
+  fullText: z.string().optional(),
+  attachments: z.array(ExperienceTimelineAttachmentSchema).optional(),
+});
+
+export const ExperienceTimelineBranchSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  sessionId: z.string(),
+  traceId: z.string().optional(),
+  sourceTrace: z.string(),
+  traceRole: z.enum(['main', 'subagent', 'standalone']),
+  attachTo: z.object({
+    traceId: z.string().optional(),
+    sourceTrace: z.string(),
+    messageIndex: NonNegativeIntegerSchema.optional(),
+    callInstanceId: z.string().optional(),
+    toolUseId: z.string().optional(),
+    label: z.string().optional(),
+  }).optional(),
+  events: z.array(ExperienceTimelineEventSchema),
+});
+
+export const ExperienceTimelineTreeSchema = z.object({
+  sessionId: z.string(),
+  main: z.array(ExperienceTimelineEventSchema),
+  branches: z.array(ExperienceTimelineBranchSchema),
+});
+
+export const ExperienceTraceTimelineSchema = z.object({
+  id: z.string(),
+  sessionGroupKey: z.string(),
+  sessionId: z.string(),
+  eventCount: NonNegativeIntegerSchema,
+  tree: ExperienceTimelineTreeSchema,
+});
+
+export const ExperienceTurnSummarySchema = z.object({
+  turnId: z.string(),
+  sourceTurnId: z.string().optional(),
+  boundaryBasis: TaskWindowBasisSchema.exclude(['unresolved']),
+  traceId: z.string().optional(),
+  sourceTrace: z.string(),
+  startTimestamp: z.string().optional(),
+  endTimestamp: z.string().optional(),
+  status: ExperienceTurnStatusSchema,
+  title: z.string(),
+  eventIds: z.array(z.string()),
+  userMessageCount: NonNegativeIntegerSchema,
+  assistantMessageCount: NonNegativeIntegerSchema,
+  toolCallCount: NonNegativeIntegerSchema,
+  toolFailureCount: NonNegativeIntegerSchema,
 });

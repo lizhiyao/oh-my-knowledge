@@ -40,7 +40,7 @@ import type {
   TaskWindowBasisSchema,
   ExperienceTurnStatusSchema,
 } from './experience-enums.js';
-import type { ToolCallStatus } from '../../executors/contracts/trace.js';
+
 import type { ExperienceProblemPattern } from './problem-patterns.js';
 import type { TraceSourceKind, TraceSourceMetadata } from './trace.js';
 
@@ -85,19 +85,9 @@ export type ExperienceRuleFindingCode =
 
 export type ExperienceEvidenceRef = z.infer<typeof ExperienceEvidenceRefSchema>;
 
-export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
-  order: number;
-  /** Model explicitly associated with this normalized event by the source adapter. */
-  model?: string;
-  toolName?: string;
-  toolStatus?: ToolCallStatus;
-  isError?: boolean;
-  fullText?: string;
-  attachments?: Array<{
-    attachmentKind: 'image' | 'file';
-    name: string;
-  }>;
-}
+export type ExperienceTimelineEvent = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceTimelineEventSchema
+>;
 
 // ---------- Knowledge Debugger task trajectory ----------
 
@@ -112,54 +102,21 @@ export type ExperienceTurnStatus =
  * source-neutral identity used by Studio routes. `sourceTurnId` preserves the
  * runtime-native identity when the source exposes one.
  */
-export interface ExperienceTurnSummary {
-  turnId: string;
-  sourceTurnId?: string;
-  boundaryBasis: Exclude<TaskWindowBasis, 'unresolved'>;
-  traceId?: string;
-  sourceTrace: string;
-  startTimestamp?: string;
-  endTimestamp?: string;
-  status: ExperienceTurnStatus;
-  title: string;
-  eventIds: string[];
-  userMessageCount: number;
-  assistantMessageCount: number;
-  toolCallCount: number;
-  toolFailureCount: number;
-}
+export type ExperienceTurnSummary = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceTurnSummarySchema
+>;
 
-export interface ExperienceTimelineBranch {
-  id: string;
-  label: string;
-  sessionId: string;
-  traceId?: string;
-  sourceTrace: string;
-  traceRole: 'main' | 'subagent' | 'standalone';
-  attachTo?: {
-    traceId?: string;
-    sourceTrace: string;
-    messageIndex?: number;
-    callInstanceId?: string;
-    toolUseId?: string;
-    label?: string;
-  };
-  events: ExperienceTimelineEvent[];
-}
+export type ExperienceTimelineBranch = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceTimelineBranchSchema
+>;
 
-export interface ExperienceTimelineTree {
-  sessionId: string;
-  main: ExperienceTimelineEvent[];
-  branches: ExperienceTimelineBranch[];
-}
+export type ExperienceTimelineTree = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceTimelineTreeSchema
+>;
 
-export interface ExperienceTraceTimeline {
-  id: string;
-  sessionGroupKey: string;
-  sessionId: string;
-  eventCount: number;
-  tree: ExperienceTimelineTree;
-}
+export type ExperienceTraceTimeline = z.infer<
+  typeof import('./experience-evidence-schema.js').ExperienceTraceTimelineSchema
+>;
 
 export type ExperienceTraceRecordRange = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceTraceRecordRangeSchema

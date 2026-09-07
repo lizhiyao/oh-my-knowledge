@@ -1,4 +1,12 @@
 import {
+  ExperienceTimelineEventSchema,
+  ExperienceTimelineBranchSchema,
+  ExperienceTimelineTreeSchema,
+  ExperienceTraceTimelineSchema,
+  ExperienceTurnSummarySchema,
+  ExperienceTimelineAttachmentSchema,
+} from '../contracts/experience-evidence-schema.js';
+import {
   ExperienceReviewerReportStepSchema,
   ExperienceReviewerReportFindingSchema,
   ExperienceReviewerMetricsWireSchema,
@@ -202,16 +210,9 @@ export function normalizeExperienceSessionShells(
 }
 
 export function normalizeTraceTimelines(values: unknown[]): ExperienceTraceTimeline[] | null {
-  if (values.some((value) => {
-    if (
-      !isObjectRecord(value)
-      || typeof value.id !== 'string'
-      || typeof value.sessionGroupKey !== 'string'
-      || typeof value.sessionId !== 'string'
-      || !isNonNegativeInteger(value.eventCount)
-    ) return true;
-    return !isTimelineTree(value.tree);
-  })) return null;
+  if (values.some((value) => !isObjectRecord(value)
+    || !TraceTimelineShellSchema.safeParse(value).success
+    || !isTimelineTree(value.tree))) return null;
   return values as ExperienceTraceTimeline[];
 }
 
@@ -521,81 +522,12 @@ export function isExperienceTraceRecordRangeArray(value: unknown): value is Expe
 }
 
 export function isTimelineEvent(value: unknown): value is ExperienceTimelineEvent {
-  if (
-    !isObjectRecord(value)
-    || typeof value.id !== 'string'
-    || !isEnumValue(String(value.kind), ExperienceEvidenceKindSchema.options)
-    || typeof value.sourceTrace !== 'string'
-    || typeof value.sessionId !== 'string'
-    || !isNonNegativeInteger(value.order)
-  ) return false;
-  const optionalIndexes = [
-    value.messageIndex,
-    value.logicalMessageIndex,
-    value.sourceLineIndex,
-  ];
-  if (!optionalIndexes.every((index) => index === undefined || isNonNegativeInteger(index))) return false;
-  if (
-    value.traceRole !== undefined
-    && value.traceRole !== 'standalone'
-    && value.traceRole !== 'main'
-    && value.traceRole !== 'subagent'
-  ) return false;
-  if (
-    value.role !== undefined
-    && value.role !== 'user'
-    && value.role !== 'assistant'
-    && value.role !== 'tool'
-    && value.role !== 'other'
-  ) return false;
-  if (
-    value.toolStatus !== undefined
-    && value.toolStatus !== 'success'
-    && value.toolStatus !== 'failure'
-    && value.toolStatus !== 'cancelled'
-    && value.toolStatus !== 'unknown'
-  ) return false;
-  if (value.modelActivityKind !== undefined && value.modelActivityKind !== 'reasoning') return false;
-  if (
-    value.contentVisibility !== undefined
-    && value.contentVisibility !== 'plaintext'
-    && value.contentVisibility !== 'opaque'
-  ) return false;
-  if (
-    value.contentSource !== undefined
-    && value.contentSource !== 'summary'
-    && value.contentSource !== 'content'
-    && value.contentSource !== 'text'
-  ) return false;
-  if (
-    value.runtimeKind !== undefined
-    && value.runtimeKind !== 'session_context'
-    && value.runtimeKind !== 'execution_context'
-    && value.runtimeKind !== 'settings'
-    && value.runtimeKind !== 'goal'
-    && value.runtimeKind !== 'context_compaction'
-    && value.runtimeKind !== 'usage'
-  ) return false;
-  const optionalStrings = [
-    value.traceId,
-    value.traceLabel,
-    value.turnId,
-    value.messageUuid,
-    value.sourceType,
-    value.model,
-    value.callInstanceId,
-    value.toolUseId,
-    value.label,
-    value.snippet,
-    value.toolName,
-    value.fullText,
-  ];
-  if (
-    !optionalStrings.every((field) => field === undefined || typeof field === 'string')
-    || !isOptionalTimestamp(value.timestamp)
-    || (value.isError !== undefined && typeof value.isError !== 'boolean')
-    || (value.attachments !== undefined && !isTimelineAttachmentArray(value.attachments))
-  ) return false;
+  if (!isObjectRecord(value)) return false;
+  // Preserve the historical kind coercion only for validation, never for persisted output.
+  const parsed = ExperienceTimelineEventSchema.safeParse({ ...value, kind: String(value.kind) });
+  if (!parsed.success
+    || !isOptionalTimestamp(parsed.data.timestamp)
+    || (value.attachments !== undefined && !isTimelineAttachmentArray(value.attachments))) return false;
   return value.kind !== 'tool_result'
     || value.toolStatus === undefined
     || value.isError === undefined
@@ -603,12 +535,10 @@ export function isTimelineEvent(value: unknown): value is ExperienceTimelineEven
 }
 
 export function isTimelineAttachmentArray(value: unknown): value is NonNullable<ExperienceTimelineEvent['attachments']> {
-  return Array.isArray(value) && value.every((attachment) => (
-    isObjectRecord(attachment)
-    && (attachment.attachmentKind === 'image' || attachment.attachmentKind === 'file')
-    && typeof attachment.name === 'string'
-    && attachment.name.length > 0
-  ));
+  return Array.isArray(value) && value.every((attachment) => {
+    const parsed = ExperienceTimelineAttachmentSchema.safeParse(attachment);
+    return parsed.success && parsed.data.name.length > 0;
+  });
 }
 
 export function isTimelineEventArray(value: unknown): value is ExperienceTimelineEvent[] {
@@ -616,69 +546,22 @@ export function isTimelineEventArray(value: unknown): value is ExperienceTimelin
 }
 
 export function isExperienceTurnSummaryArray(value: unknown): value is ExperienceTurnSummary[] {
-  return Array.isArray(value) && value.every((turn) => (
-    isObjectRecord(turn)
-    && typeof turn.turnId === 'string'
-    && isOptionalString(turn.sourceTurnId)
-    && (
-      turn.boundaryBasis === 'turn_id'
-      || turn.boundaryBasis === 'turn_lifecycle'
-      || turn.boundaryBasis === 'user_message'
-    )
-    && isOptionalString(turn.traceId)
-    && typeof turn.sourceTrace === 'string'
-    && isOptionalTimestamp(turn.startTimestamp)
-    && isOptionalTimestamp(turn.endTimestamp)
-    && (
-      turn.status === 'completed'
-      || turn.status === 'failed'
-      || turn.status === 'aborted'
-      || turn.status === 'interrupted'
-      || turn.status === 'open'
-      || turn.status === 'unknown'
-    )
-    && typeof turn.title === 'string'
-    && isStringArray(turn.eventIds)
-    && isNonNegativeInteger(turn.userMessageCount)
-    && isNonNegativeInteger(turn.assistantMessageCount)
-    && isNonNegativeInteger(turn.toolCallCount)
-    && isNonNegativeInteger(turn.toolFailureCount)
-  ));
+  return Array.isArray(value) && value.every((turn) => {
+    const parsed = ExperienceTurnSummarySchema.safeParse(turn);
+    return parsed.success
+      && isOptionalTimestamp(parsed.data.startTimestamp)
+      && isOptionalTimestamp(parsed.data.endTimestamp);
+  });
 }
 
 export function isTimelineTree(value: unknown): value is ExperienceTimelineTree {
-  if (
-    !isObjectRecord(value)
-    || typeof value.sessionId !== 'string'
+  if (!isObjectRecord(value)
+    || !TimelineTreeShellSchema.safeParse(value).success
     || !isTimelineEventArray(value.main)
-    || !Array.isArray(value.branches)
-  ) return false;
-  return value.branches.every((branch) => {
-    if (
-      !isObjectRecord(branch)
-      || typeof branch.id !== 'string'
-      || typeof branch.label !== 'string'
-      || typeof branch.sessionId !== 'string'
-      || !isOptionalString(branch.traceId)
-      || typeof branch.sourceTrace !== 'string'
-      || (
-        branch.traceRole !== 'main'
-        && branch.traceRole !== 'subagent'
-        && branch.traceRole !== 'standalone'
-      )
-      || !isTimelineEventArray(branch.events)
-    ) return false;
-    if (branch.attachTo === undefined) return true;
-    if (
-      !isObjectRecord(branch.attachTo)
-      || !isOptionalString(branch.attachTo.traceId)
-      || typeof branch.attachTo.sourceTrace !== 'string'
-    ) return false;
-    return (branch.attachTo.messageIndex === undefined || isNonNegativeInteger(branch.attachTo.messageIndex))
-      && (branch.attachTo.callInstanceId === undefined || typeof branch.attachTo.callInstanceId === 'string')
-      && (branch.attachTo.toolUseId === undefined || typeof branch.attachTo.toolUseId === 'string')
-      && (branch.attachTo.label === undefined || typeof branch.attachTo.label === 'string');
-  });
+    || !Array.isArray(value.branches)) return false;
+  return value.branches.every((branch) => isObjectRecord(branch)
+    && TimelineBranchShellSchema.safeParse(branch).success
+    && isTimelineEventArray(branch.events));
 }
 
 export function isExperienceChecklistItem(value: unknown): boolean {
@@ -856,3 +739,8 @@ export function isExperienceReviewerReport(value: unknown): boolean {
     && isExperienceReviewerMetrics(data.oneLookMetrics)
     && isExperienceEvidenceRefArray(data.traceLinks);
 }
+
+// Event validation retains legacy kind coercion and tool-result semantics.
+const TimelineTreeShellSchema = ExperienceTimelineTreeSchema.omit({ main: true, branches: true });
+const TimelineBranchShellSchema = ExperienceTimelineBranchSchema.omit({ events: true });
+const TraceTimelineShellSchema = ExperienceTraceTimelineSchema.omit({ tree: true });
