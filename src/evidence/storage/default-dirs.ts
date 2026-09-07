@@ -27,9 +27,7 @@ export const DEFAULT_DOCTORS_DIR: string = GLOBAL_LAYOUT.doctorDir;
  * 可重生的执行 scratch(删了能重建)统一收在 `state/` 子树下,跟上面的耐久数据物理分开 ——
  * 想清磁盘时「这一坨能整删」一眼可见。各 scratch 目录都派生自这个 state 根,避免散落硬编码。
  */
-export const DEFAULT_STATE_DIR: string = GLOBAL_LAYOUT.stateDir;
 export const DEFAULT_CACHE_DIR: string = GLOBAL_LAYOUT.cacheDir;
-export const DEFAULT_ISOLATED_CWD_DIR: string = GLOBAL_LAYOUT.isolatedCwdDir;
 export const DEFAULT_TREES_DIR: string = GLOBAL_LAYOUT.treesDir;
 
 /**
