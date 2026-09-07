@@ -238,16 +238,6 @@ export type ExperienceSkillSummary = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceSkillSummarySchema
 >;
 
-export interface ObservationExperienceReport {
-  kind: 'observe-experience';
-  schemaVersion: 3;
-  scope: 'evidence-only';
-  generatedAt: string;
-  meta: z.infer<typeof import('./experience-evidence-schema.js').ExperienceMetaSchema>;
-  goalSlices: ExperienceGoalSlice[];
-  traceTimelines: ExperienceTraceTimeline[];
-  storyContexts: ExperienceStoryContext[];
-  invocations: ExperienceInvocation[];
-  sessions: ExperienceSessionSummary[];
-  skills: ExperienceSkillSummary[];
-}
+export type ObservationExperienceReport = z.infer<
+  typeof import('./experience-evidence-schema.js').ObservationExperienceReportSchema
+>;

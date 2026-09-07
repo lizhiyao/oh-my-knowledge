@@ -758,3 +758,46 @@ export const ExperienceSkillSummaryWireSchema = ExperienceSkillSummarySchema.ext
   timestampCoverage: z.number(),
   indicators: ExperienceReviewIndicatorsWireSchema,
 });
+
+export const ObservationExperienceReportSchema = z.object({
+  kind: z.literal('observe-experience'),
+  schemaVersion: z.literal(3),
+  scope: z.literal('evidence-only'),
+  generatedAt: z.string(),
+  meta: ExperienceMetaSchema,
+  goalSlices: z.array(ExperienceGoalSliceSchema),
+  traceTimelines: z.array(ExperienceTraceTimelineSchema),
+  storyContexts: z.array(ExperienceStoryContextSchema),
+  invocations: z.array(ExperienceInvocationSchema),
+  sessions: z.array(ExperienceSessionSummarySchema),
+  skills: z.array(ExperienceSkillSummarySchema),
+});
+
+// Compact output preserves hydrated optionality; wire readers validate stricter requirements separately.
+export const PersistedExperienceInvocationSchema = ExperienceInvocationSchema.omit({ timeline: true }).extend({
+  timelineRef: z.string(),
+  timelineEventIds: z.array(z.string()),
+});
+
+export const PersistedExperienceReviewerReportSchema = ExperienceReviewerReportSchema.omit({
+  sessionStory: true,
+}).extend({ sessionStoryRef: z.literal('session') });
+
+export const PersistedExperienceSessionSchema = ExperienceSessionSummarySchema.omit({
+  attributedEventIds: true,
+  timelinePreview: true,
+  fullSessionTimeline: true,
+  timelineTree: true,
+  sessionStory: true,
+  reviewerReport: true,
+}).extend({
+  timelineRef: z.string(),
+  timelinePreviewEventIds: z.array(z.string()),
+  sessionStory: ExperienceSessionStoryWireSchema.optional(),
+  reviewerReport: PersistedExperienceReviewerReportSchema.optional(),
+});
+
+export const PersistedObservationExperienceReportSchema = ObservationExperienceReportSchema.extend({
+  invocations: z.array(PersistedExperienceInvocationSchema),
+  sessions: z.array(PersistedExperienceSessionSchema),
+});

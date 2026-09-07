@@ -38,7 +38,7 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   "src/knowledge-artifacts/doctor/contracts.ts::DoctorReport::'doctor'",
   "src/observability/contracts/review.ts::ObservationReviewState::'observe-review-state'",
   "src/observability/contracts/inbox.ts::ObservationInboxReport::'observe-inbox'",
-  "src/observability/contracts/experience.ts::ObservationExperienceReport::'observe-experience'",
+  "src/observability/contracts/experience-evidence-schema.ts::ObservationExperienceReportSchema::z.literal('observe-experience')",
   "src/observability/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
   "src/observability/skill-health/analyzer.ts::SkillHealthReport::'observe-health'",
   // —— 持久化 observe / experience JSON ——

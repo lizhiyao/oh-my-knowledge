@@ -1,3 +1,12 @@
+import type { z } from 'zod';
+import { ObservationExperienceReportSchema } from '../contracts/experience-evidence-schema.js';
+import type {
+  PersistedExperienceInvocationSchema,
+  ExperienceSessionStoryWireSchema,
+  PersistedExperienceReviewerReportSchema,
+  PersistedExperienceSessionSchema,
+  PersistedObservationExperienceReportSchema,
+} from '../contracts/experience-evidence-schema.js';
 import type {
   ExperienceInvocation,
   ExperienceReviewerReport,
@@ -20,7 +29,6 @@ import {
   flattenTimelineTree,
 } from './report-structure.js';
 import {
-  isExperienceMeta,
   isTimestamp,
   normalizeExperienceInvocationShells,
   normalizeExperienceSessionShells,
@@ -29,80 +37,32 @@ import {
 } from './report-value-guards.js';
 import { validateExperienceReferences } from './report-reference-validator.js';
 
-export type PersistedExperienceInvocation = Omit<
-  ExperienceInvocation,
-  'timeline' | 'timelineRef' | 'timelineEventIds'
-> & {
-  timelineRef: string;
-  timelineEventIds: string[];
-};
+export type PersistedExperienceInvocation = z.infer<typeof PersistedExperienceInvocationSchema>;
 
-export type PersistedExperienceSessionStory = Omit<
-  ExperienceSessionStory,
-  'contextRef' | 'goalSlices' | 'subagentDispatches' | 'episodes'
-> & {
-  contextRef: string;
-};
+export type PersistedExperienceSessionStory = z.infer<typeof ExperienceSessionStoryWireSchema>;
 
-export type PersistedExperienceReviewerReport = Omit<
-  ExperienceReviewerReport,
-  'sessionStory' | 'sessionStoryRef'
-> & {
-  sessionStoryRef: 'session';
-};
+export type PersistedExperienceReviewerReport = z.infer<typeof PersistedExperienceReviewerReportSchema>;
 
-export type PersistedExperienceSession = Omit<
-  ExperienceSessionSummary,
-  | 'timelineRef'
-  | 'timelinePreviewEventIds'
-  | 'attributedEventIds'
-  | 'timelinePreview'
-  | 'fullSessionTimeline'
-  | 'timelineTree'
-  | 'sessionStory'
-  | 'reviewerReport'
-> & {
-  timelineRef: string;
-  timelinePreviewEventIds: string[];
-  sessionStory?: PersistedExperienceSessionStory;
-  reviewerReport?: PersistedExperienceReviewerReport;
-};
+export type PersistedExperienceSession = z.infer<typeof PersistedExperienceSessionSchema>;
 
-export type PersistedObservationExperienceReport = Omit<
-  ObservationExperienceReport,
-  'invocations' | 'sessions'
-> & {
-  invocations: PersistedExperienceInvocation[];
-  sessions: PersistedExperienceSession[];
-};
+export type PersistedObservationExperienceReport = z.infer<typeof PersistedObservationExperienceReportSchema>;
 
 export function normalizeObservationExperienceReport(value: unknown): ObservationExperienceReport | null {
   if (!value || typeof value !== 'object') return null;
   const report = value as Record<string, unknown>;
-  const kind = report.kind === 'observe-experience' ? report.kind : null;
-  if (!kind) return null;
-  if (report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION) return null;
-  if (report.scope !== 'evidence-only') return null;
-  if (
-    !isTimestamp(report.generatedAt)
-    || !report.meta
-    || typeof report.meta !== 'object'
-    || !isExperienceMeta(report.meta)
-  ) return null;
-  if (!Array.isArray(report.goalSlices) || !Array.isArray(report.invocations) || !Array.isArray(report.sessions) || !Array.isArray(report.skills)) {
-    return null;
-  }
-  const invocations = normalizeExperienceInvocationShells(report.invocations);
-  const sessions = normalizeExperienceSessionShells(report.sessions);
+  if (!ReportHeaderSchema.safeParse(report).success
+    || !isTimestamp(report.generatedAt)
+    || !reportArrayKeys.every((key) => Array.isArray(report[key]))) return null;
+  const invocations = normalizeExperienceInvocationShells(report.invocations as unknown[]);
+  const sessions = normalizeExperienceSessionShells(report.sessions as unknown[]);
   if (!invocations || !sessions) return null;
-  if (!Array.isArray(report.traceTimelines) || !Array.isArray(report.storyContexts)) return null;
-  const traceTimelines = normalizeTraceTimelines(report.traceTimelines);
-  const storyContexts = normalizeStoryContexts(report.storyContexts);
+  const traceTimelines = normalizeTraceTimelines(report.traceTimelines as unknown[]);
+  const storyContexts = normalizeStoryContexts(report.storyContexts as unknown[]);
   if (!traceTimelines || !storyContexts) return null;
   const normalized: ObservationExperienceReport = {
-    kind: 'observe-experience',
+    kind: ObservationExperienceReportSchema.shape.kind.value,
     schemaVersion: OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
-    scope: 'evidence-only',
+    scope: ObservationExperienceReportSchema.shape.scope.value,
     generatedAt: report.generatedAt,
     meta: report.meta as ObservationExperienceReport['meta'],
     goalSlices: report.goalSlices as ObservationExperienceReport['goalSlices'],
@@ -308,3 +268,13 @@ export function omitProperties<T extends object, K extends keyof T>(
   for (const key of keys) delete copy[key];
   return copy;
 }
+
+const ReportHeaderSchema = ObservationExperienceReportSchema.pick({
+  kind: true,
+  schemaVersion: true,
+  scope: true,
+  generatedAt: true,
+  meta: true,
+});
+const reportArrayKeys = ObservationExperienceReportSchema.keyof().options
+  .filter((key) => !Object.hasOwn(ReportHeaderSchema.shape, key));
