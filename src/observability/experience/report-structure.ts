@@ -1,3 +1,4 @@
+import { ObservationExperienceReportSchema } from '../contracts/experience-evidence-schema.js';
 import type {
   ExperienceInvocation,
   ExperienceSessionSummary,
@@ -13,7 +14,7 @@ import {
   uniqueTimelineEvents,
 } from './primitives.js';
 
-export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 3;
+export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION = ObservationExperienceReportSchema.shape.schemaVersion.value;
 
 export const TIMELINE_PREVIEW_EVENT_LIMIT = 240;
 
