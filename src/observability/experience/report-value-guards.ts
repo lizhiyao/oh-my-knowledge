@@ -1,4 +1,36 @@
 import {
+  ExperienceAssistiveInferenceCautionCodeSchema,
+  ExperienceAssistiveInferenceCodeSchema,
+  ExperienceAssistiveInferenceConfidenceSchema,
+  ExperienceChecklistContributionSchema,
+  ExperienceChecklistItemStatusSchema,
+  ExperienceEpisodeArtifactKindSchema,
+  ExperienceEpisodeBoundaryReasonSchema,
+  ExperienceEpisodeRoleSchema,
+  ExperienceEvidenceKindSchema,
+  ExperienceFeedbackAttributionReasonSchema,
+  ExperienceFeedbackAttributionRoleSchema,
+  ExperienceFeedbackSignalTypeSchema,
+  ExperienceGoalSliceReasonCodeSchema,
+  ExperienceOrchestrationEdgeKindSchema,
+  ExperienceOrchestrationEdgeStatusSchema,
+  ExperienceOutcomeClosureSchema,
+  ExperienceParentReasonSchema,
+  ExperienceReviewBasisCodeSchema,
+  ExperienceReviewPrioritySchema,
+  ExperienceReviewerReportFindingLevelSchema,
+  ExperienceReviewerReportFindingSourceSchema,
+  ExperienceReviewerReportScopeSchema,
+  ExperienceReviewerReportStepStatusSchema,
+  ExperienceRuleFindingCodeSchema,
+  ExperienceRuleFindingLevelSchema,
+  ExperienceRuntimeSkillTypeSchema,
+  ExperienceRuntimeSkillTypeSourceSchema,
+  ExperienceSessionStoryAnswerKeySchema,
+  ExperienceSessionStoryNodeKindSchema,
+  ExperienceSessionStorySkillRoleSchema,
+} from '../contracts/experience-enums.js';
+import {
   isTraceSourceKind,
 } from '../../executors/core/trace-source-kind.js';
 import type {
@@ -101,18 +133,7 @@ export function normalizeExperienceSessionShells(
     || typeof value.reviewPriorityScore !== 'number'
     || !Number.isFinite(value.reviewPriorityScore)
     || value.reviewPriorityScore < 0
-    || !isEnumArray(value.reviewBasisCodes, [
-      'has_high_observation',
-      'has_medium_observation',
-      'user_correction',
-      'user_interruption',
-      'session_interrupted',
-      'negative_feedback',
-      'hard_rule_text_hit',
-      'tool_failure',
-      'hedging_signal',
-      'explicit_marker',
-    ])
+    || !isEnumArray(value.reviewBasisCodes, ExperienceReviewBasisCodeSchema.options)
     || !isExperienceIndicators(value.indicators)
     || !isExperienceEvidenceChain(value.evidenceChain)
     || !isExperienceRuleFindingArray(value.ruleFindings)
@@ -288,23 +309,11 @@ export function isOptionalTraceSourceMetadata(value: unknown): boolean {
 }
 
 export function isExperienceReviewPriority(value: unknown): boolean {
-  return value === 'review_first' || value === 'sample_review' || value === 'routine_sample';
+  return isEnumValue(value, ExperienceReviewPrioritySchema.options);
 }
 
 export function isExperienceEvidenceKind(value: unknown): boolean {
-  return isEnumValue(value, [
-    'user_message',
-    'synthetic_user_event',
-    'assistant_message',
-    'model_activity',
-    'agent_activity',
-    'tool_use',
-    'tool_result',
-    'skill_context',
-    'runtime_context',
-    'lifecycle',
-    'observation',
-  ]);
+  return isEnumValue(value, ExperienceEvidenceKindSchema.options);
 }
 
 export function isExperienceEvidenceRef(value: unknown): value is ExperienceEvidenceRef {
@@ -383,24 +392,8 @@ export function isExperienceEvidenceChain(value: unknown): boolean {
 
 export function isExperienceRuleFinding(value: unknown): boolean {
   return isObjectRecord(value)
-    && isEnumValue(value.code, [
-      'high_observation_seen',
-      'medium_observation_seen',
-      'user_correction_seen',
-      'user_interruption_seen',
-      'session_interrupted_seen',
-      'negative_feedback_seen',
-      'positive_feedback_seen',
-      'user_goal_shift_seen',
-      'hard_rule_seen',
-      'tool_failure_seen',
-      'hedging_seen',
-      'explicit_marker_seen',
-      'runtime_context_excluded',
-      'skill_context_excluded',
-      'no_priority_signal',
-    ])
-    && isEnumValue(value.level, ['attention', 'sample', 'normal'])
+    && isEnumValue(value.code, ExperienceRuleFindingCodeSchema.options)
+    && isEnumValue(value.level, ExperienceRuleFindingLevelSchema.options)
     && isNonNegativeInteger(value.count)
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
@@ -412,40 +405,10 @@ export function isExperienceRuleFindingArray(value: unknown): boolean {
 export function isExperienceAssistiveInference(value: unknown): boolean {
   return isObjectRecord(value)
     && value.mode === 'deterministic_rules_only'
-    && isEnumValue(value.code, [
-      'review_recommended',
-      'sample_recommended',
-      'positive_signal_observed',
-      'user_switched_topic_neutral',
-      'no_obvious_issue_from_rules',
-      'insufficient_human_context',
-    ])
-    && isEnumValue(value.confidence, ['low', 'medium', 'high'])
-    && isEnumArray(value.basisRuleCodes, [
-      'high_observation_seen',
-      'medium_observation_seen',
-      'user_correction_seen',
-      'user_interruption_seen',
-      'session_interrupted_seen',
-      'negative_feedback_seen',
-      'positive_feedback_seen',
-      'user_goal_shift_seen',
-      'hard_rule_seen',
-      'tool_failure_seen',
-      'hedging_seen',
-      'explicit_marker_seen',
-      'runtime_context_excluded',
-      'skill_context_excluded',
-      'no_priority_signal',
-    ])
-    && isEnumArray(value.cautionCodes, [
-      'no_llm_judge',
-      'rule_only',
-      'runtime_context_excluded',
-      'skill_context_excluded',
-      'no_human_user_message',
-      'limited_timeline_window',
-    ])
+    && isEnumValue(value.code, ExperienceAssistiveInferenceCodeSchema.options)
+    && isEnumValue(value.confidence, ExperienceAssistiveInferenceConfidenceSchema.options)
+    && isEnumArray(value.basisRuleCodes, ExperienceRuleFindingCodeSchema.options)
+    && isEnumArray(value.cautionCodes, ExperienceAssistiveInferenceCautionCodeSchema.options)
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
 
@@ -641,19 +604,7 @@ export function isTimelineEvent(value: unknown): value is ExperienceTimelineEven
   if (
     !isObjectRecord(value)
     || typeof value.id !== 'string'
-    || ![
-      'user_message',
-      'synthetic_user_event',
-      'assistant_message',
-      'model_activity',
-      'agent_activity',
-      'tool_use',
-      'tool_result',
-      'skill_context',
-      'runtime_context',
-      'lifecycle',
-      'observation',
-    ].includes(String(value.kind))
+    || !isEnumValue(String(value.kind), ExperienceEvidenceKindSchema.options)
     || typeof value.sourceTrace !== 'string'
     || typeof value.sessionId !== 'string'
     || !isNonNegativeInteger(value.order)
@@ -814,24 +765,11 @@ export function isExperienceChecklistItem(value: unknown): boolean {
   return isObjectRecord(value)
     && typeof value.key === 'string'
     && typeof value.label === 'string'
-    && isEnumValue(value.status, [
-      'passed',
-      'failed',
-      'unknown',
-      'not_declared',
-      'not_applicable',
-      'degraded',
-    ])
-    && isEnumValue(value.contribution, [
-      'blocking',
-      'attention',
-      'informational',
-      'positive',
-      'neutral',
-    ])
+    && isEnumValue(value.status, ExperienceChecklistItemStatusSchema.options)
+    && isEnumValue(value.contribution, ExperienceChecklistContributionSchema.options)
     && typeof value.reason === 'string'
     && isExperienceEvidenceRefArray(value.evidenceRefs)
-    && isEnumValue(value.source, ['deterministic_rule', 'llm_soft', 'manual'])
+    && isEnumValue(value.source, ExperienceReviewerReportFindingSourceSchema.options)
     && isOptionalString(value.suggestionKey);
 }
 
@@ -841,11 +779,7 @@ export function isExperienceSessionStoryGoalSlice(value: unknown): boolean {
     && isNonNegativeInteger(value.order)
     && isStringArray(value.skillNames)
     && isTimestampRange(value.startTimestamp, value.endTimestamp)
-    && isEnumValue(value.reasonCode, [
-      'skill_segment_boundary',
-      'explicit_user_goal_shift',
-      'default_session_slice',
-    ])
+    && isEnumValue(value.reasonCode, ExperienceGoalSliceReasonCodeSchema.options)
     && isOptionalString(value.inferredUserGoal)
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
@@ -876,7 +810,7 @@ export function isExperienceSessionStorySkillLink(value: unknown): boolean {
     && typeof value.id === 'string'
     && isNonNegativeInteger(value.order)
     && typeof value.skillName === 'string'
-    && isEnumValue(value.role, ['router', 'executor', 'mixed', 'unknown'])
+    && isEnumValue(value.role, ExperienceSessionStorySkillRoleSchema.options)
     && isStringArray(value.invocationIds)
     && isStringArray(value.goalSliceIds)
     && isExperienceEvidenceRefArray(value.evidenceRefs);
@@ -886,17 +820,9 @@ export function isExperienceSessionStoryGraphNode(value: unknown): boolean {
   return isObjectRecord(value)
     && typeof value.id === 'string'
     && typeof value.label === 'string'
-    && isEnumValue(value.kind, [
-      'user_goal',
-      'skill_invocation',
-      'subagent_branch',
-      'tool_execution',
-      'delivery',
-      'user_feedback',
-      'goal_shift',
-    ])
-    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
-    && (value.role === undefined || isEnumValue(value.role, ['router', 'executor', 'mixed', 'unknown']))
+    && isEnumValue(value.kind, ExperienceSessionStoryNodeKindSchema.options)
+    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
+    && (value.role === undefined || isEnumValue(value.role, ExperienceSessionStorySkillRoleSchema.options))
     && isOptionalString(value.detailNodeId);
 }
 
@@ -911,34 +837,19 @@ export function isExperienceSessionStoryNode(value: unknown): boolean {
   return isObjectRecord(value)
     && typeof value.id === 'string'
     && isNonNegativeInteger(value.order)
-    && isEnumValue(value.kind, [
-      'user_goal',
-      'skill_invocation',
-      'subagent_branch',
-      'tool_execution',
-      'delivery',
-      'user_feedback',
-      'goal_shift',
-    ])
+    && isEnumValue(value.kind, ExperienceSessionStoryNodeKindSchema.options)
     && typeof value.label === 'string'
-    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
+    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
     && typeof value.text === 'string'
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
 
 export function isExperienceSessionStoryAnswer(value: unknown): boolean {
   return isObjectRecord(value)
-    && isEnumValue(value.key, ['goal_satisfaction', 'declared_behavior_fit', 'user_feeling'])
+    && isEnumValue(value.key, ExperienceSessionStoryAnswerKeySchema.options)
     && typeof value.label === 'string'
-    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
-    && isEnumValue(value.reason, [
-      'data_degraded',
-      'blocking_failed',
-      'attention_accumulated',
-      'unknown_dominant',
-      'all_passed',
-      'not_applicable',
-    ])
+    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
+    && isEnumValue(value.reason, ExperienceParentReasonSchema.options)
     && isStringArray(value.sourceItemKeys)
     && typeof value.text === 'string'
     && isExperienceEvidenceRefArray(value.evidenceRefs)
@@ -960,47 +871,20 @@ export function isExperienceSkillSegment(value: unknown): boolean {
     || typeof value.id !== 'string'
     || !isNonNegativeInteger(value.order)
     || typeof value.skillName !== 'string'
-    || !isEnumValue(value.skillType, [
-      'router',
-      'delegation',
-      'executor',
-      'advisory',
-      'workflow_owner',
-      'unknown',
-    ])
+    || !isEnumValue(value.skillType, ExperienceRuntimeSkillTypeSchema.options)
     || (
       value.skillTypeSource !== undefined
-      && !isEnumValue(value.skillTypeSource, ['frontmatter', 'trace', 'unknown'])
+      && !isEnumValue(value.skillTypeSource, ExperienceRuntimeSkillTypeSourceSchema.options)
     )
     || (
       value.declaredSkillType !== undefined
-      && !isEnumValue(value.declaredSkillType, [
-        'router',
-        'delegation',
-        'executor',
-        'advisory',
-        'workflow_owner',
-        'unknown',
-      ])
+      && !isEnumValue(value.declaredSkillType, ExperienceRuntimeSkillTypeSchema.options)
     )
     || (
       value.traceInferredSkillType !== undefined
-      && !isEnumValue(value.traceInferredSkillType, [
-        'router',
-        'delegation',
-        'executor',
-        'advisory',
-        'workflow_owner',
-        'unknown',
-      ])
+      && !isEnumValue(value.traceInferredSkillType, ExperienceRuntimeSkillTypeSchema.options)
     )
-    || !isEnumValue(value.episodeRole, [
-      'main_executor',
-      'router',
-      'delegator',
-      'supporting',
-      'observer',
-    ])
+    || !isEnumValue(value.episodeRole, ExperienceEpisodeRoleSchema.options)
     || !isStringArray(value.skillInvocationIds)
     || !isOptionalNonNegativeInteger(value.startMessageIndex)
     || !isOptionalNonNegativeInteger(value.endMessageIndex)
@@ -1041,14 +925,14 @@ export function isExperienceOrchestrationEdge(value: unknown): boolean {
   return isObjectRecord(value)
     && typeof value.id === 'string'
     && typeof value.episodeId === 'string'
-    && isEnumValue(value.edgeKind, ['internal_skill', 'external_child_session'])
+    && isEnumValue(value.edgeKind, ExperienceOrchestrationEdgeKindSchema.options)
     && isOptionalString(value.parentSkillSegmentId)
     && isOptionalString(value.executorSkillSegmentId)
     && isOptionalString(value.childSessionId)
     && (value.runnerStartedRef === undefined || isExperienceEvidenceRef(value.runnerStartedRef))
     && (value.runnerCompletedRef === undefined || isExperienceEvidenceRef(value.runnerCompletedRef))
     && (value.notificationRef === undefined || isExperienceEvidenceRef(value.notificationRef))
-    && isEnumValue(value.status, ['started', 'completed', 'failed', 'unknown'])
+    && isEnumValue(value.status, ExperienceOrchestrationEdgeStatusSchema.options)
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
 
@@ -1056,14 +940,8 @@ export function isExperienceFeedbackAttribution(value: unknown): boolean {
   return isObjectRecord(value)
     && isOptionalString(value.skillName)
     && isOptionalString(value.skillSegmentId)
-    && isEnumValue(value.attributionRole, ['primary_fault', 'downstream_related', 'context_only'])
-    && isEnumValue(value.reasonCode, [
-      'object_match',
-      'promise_match',
-      'action_match',
-      'orchestration_edge',
-      'episode_context',
-    ])
+    && isEnumValue(value.attributionRole, ExperienceFeedbackAttributionRoleSchema.options)
+    && isEnumValue(value.reasonCode, ExperienceFeedbackAttributionReasonSchema.options)
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
 
@@ -1071,14 +949,7 @@ export function isExperienceFeedbackSignal(value: unknown): boolean {
   return isObjectRecord(value)
     && typeof value.id === 'string'
     && isNonNegativeInteger(value.order)
-    && isEnumValue(value.type, [
-      'correction',
-      'follow_up',
-      'frustration',
-      'interruption',
-      'positive',
-      'unknown',
-    ])
+    && isEnumValue(value.type, ExperienceFeedbackSignalTypeSchema.options)
     && typeof value.text === 'string'
     && isOptionalString(value.targetObject)
     && isEnumValue(value.sourceWindow, [
@@ -1101,14 +972,7 @@ export function isExperienceFeedbackSignal(value: unknown): boolean {
 
 export function isExperienceEpisodeArtifact(value: unknown): boolean {
   return isObjectRecord(value)
-    && isEnumValue(value.kind, [
-      'path',
-      'url',
-      'document',
-      'code',
-      'execution_window',
-      'unknown',
-    ])
+    && isEnumValue(value.kind, ExperienceEpisodeArtifactKindSchema.options)
     && typeof value.label === 'string'
     && isOptionalString(value.pathOrUrl)
     && isEnumValue(value.artifactGoalMatch, ['passed', 'failed', 'unknown'])
@@ -1117,7 +981,7 @@ export function isExperienceEpisodeArtifact(value: unknown): boolean {
 
 export function isExperienceEpisodeOutcome(value: unknown): boolean {
   return isObjectRecord(value)
-    && isEnumValue(value.closure, ['closed', 'unresolved', 'abandoned', 'unknown'])
+    && isEnumValue(value.closure, ExperienceOutcomeClosureSchema.options)
     && Array.isArray(value.artifacts)
     && value.artifacts.every(isExperienceEpisodeArtifact)
     && isExperienceReviewPriority(value.verdict)
@@ -1135,12 +999,7 @@ export function isExperienceEpisode(value: unknown): boolean {
     && isTimestampRange(value.startTimestamp, value.endTimestamp)
     && (value.startRef === undefined || isExperienceEvidenceRef(value.startRef))
     && (value.endRef === undefined || isExperienceEvidenceRef(value.endRef))
-    && isEnumValue(value.boundaryReason, [
-      'goal_shift',
-      'checkpoint_or_subagent',
-      'downstream_closed',
-      'session_end',
-    ])
+    && isEnumValue(value.boundaryReason, ExperienceEpisodeBoundaryReasonSchema.options)
     && Array.isArray(value.skillSegments)
     && value.skillSegments.every(isExperienceSkillSegment)
     && Array.isArray(value.orchestrationEdges)
@@ -1195,7 +1054,7 @@ export function isExperienceReviewerReportStep(value: unknown): boolean {
   return isObjectRecord(value)
     && isNonNegativeInteger(value.order)
     && typeof value.label === 'string'
-    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
+    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
     && typeof value.text === 'string'
     && isExperienceEvidenceRefArray(value.evidenceRefs);
 }
@@ -1205,8 +1064,8 @@ export function isExperienceReviewerReportFinding(value: unknown): boolean {
     !isObjectRecord(value)
     || typeof value.id !== 'string'
     || typeof value.judgmentId !== 'string'
-    || !isEnumValue(value.source, ['deterministic_rule', 'llm_soft', 'manual'])
-    || !isEnumValue(value.level, ['attention', 'possible_false_positive', 'note'])
+    || !isEnumValue(value.source, ExperienceReviewerReportFindingSourceSchema.options)
+    || !isEnumValue(value.level, ExperienceReviewerReportFindingLevelSchema.options)
     || typeof value.title !== 'string'
     || typeof value.body !== 'string'
     || typeof value.ruleSource !== 'string'
@@ -1305,7 +1164,7 @@ export function isExperienceReviewerReport(value: unknown): boolean {
     || typeof value.title !== 'string'
     || typeof value.summary !== 'string'
     || !isObjectRecord(value.scope)
-    || !isEnumValue(value.scope.kind, ['single_skill_single_goal', 'degraded_complex'])
+    || !isEnumValue(value.scope.kind, ExperienceReviewerReportScopeSchema.options)
     || !isStringArray(value.scope.reasonCodes)
     || !Array.isArray(value.chainSteps)
     || !value.chainSteps.every(isExperienceReviewerReportStep)

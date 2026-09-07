@@ -42,6 +42,48 @@ const PURE_DOMAIN_TYPE_FILES = [
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 
+const EXPERIENCE_ENUM_SCHEMA_FILE = 'src/observability/contracts/experience-enums.ts';
+const EXPERIENCE_ENUM_TYPE_IMPORTS = new Set(['zod', './experience-enums.js']);
+
+function isDeclarativeEnumSchemaModule(source: ts.SourceFile): boolean {
+  let imports = 0;
+  let schemas = 0;
+  for (const statement of source.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      const bindings = statement.importClause?.namedBindings;
+      if (!ts.isStringLiteral(statement.moduleSpecifier)
+          || statement.moduleSpecifier.text !== 'zod'
+          || statement.importClause?.name
+          || !bindings || !ts.isNamedImports(bindings)
+          || bindings.elements.length !== 1
+          || bindings.elements[0].name.text !== 'z'
+          || bindings.elements[0].propertyName) return false;
+      imports += 1;
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)
+        || !(statement.declarationList.flags & ts.NodeFlags.Const)
+        || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+      return false;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      const initializer = declaration.initializer;
+      if (!ts.isIdentifier(declaration.name) || !declaration.name.text.endsWith('Schema')
+          || !initializer || !ts.isCallExpression(initializer)
+          || !ts.isPropertyAccessExpression(initializer.expression)
+          || !ts.isIdentifier(initializer.expression.expression)
+          || initializer.expression.expression.text !== 'z'
+          || initializer.expression.name.text !== 'enum'
+          || initializer.arguments.length !== 1) return false;
+      const values = initializer.arguments[0];
+      if (!ts.isArrayLiteralExpression(values) || values.elements.length === 0
+          || !values.elements.every(ts.isStringLiteral)) return false;
+      schemas += 1;
+    }
+  }
+  return imports === 1 && schemas > 0;
+}
+
 describe('领域契约所有权', () => {
   it('保持遗留 src/types 目录已删除', () => {
     expect(existsSync(resolve('src/types'))).toBe(false);
@@ -132,6 +174,29 @@ describe('领域契约所有权', () => {
     expect(rootModules).toEqual(['experience.ts']);
   });
 
+  it('Experience 枚举 Schema 只声明字符串取值，不引入实现或副作用', () => {
+    const source = ts.createSourceFile(
+      EXPERIENCE_ENUM_SCHEMA_FILE,
+      readFileSync(resolve(EXPERIENCE_ENUM_SCHEMA_FILE), 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    expect(isDeclarativeEnumSchemaModule(source)).toBe(true);
+  });
+
+  it.each([
+    "import { readFileSync } from 'node:fs'; export const ValueSchema = z.enum(['a']);",
+    "import { z } from 'zod'; export function run() { return 'a'; }",
+    "import { z } from 'zod'; export const ValueSchema = z.enum(loadValues());",
+    "import { z } from 'zod'; export const ValueSchema = z.enum([...values]);",
+    "import { z } from 'zod'; export const ValueSchema = z.enum(['a']); sideEffect();",
+    "import { z } from 'zod'; export let ValueSchema = z.enum(['a']);",
+  ])('枚举声明边界拒绝实现代码：%s', (text) => {
+    expect(isDeclarativeEnumSchemaModule(ts.createSourceFile(
+      'invalid.ts', text, ts.ScriptTarget.Latest, true,
+    ))).toBe(false);
+  });
+
   it('领域 contracts 与 view-models 保持为无运行时实现的纯类型模块', () => {
     const violations: string[] = [];
     for (const file of PURE_DOMAIN_TYPE_FILES) {
@@ -152,7 +217,9 @@ describe('领域契约所有权', () => {
               process.cwd(),
               resolve(dirname(resolve(file)), specifier.replace(/\.js$/, '.ts')),
             );
-            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target)) {
+            const declarativeEnumTypeImport = file === 'src/observability/contracts/experience.ts'
+              && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier);
+            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target) && !declarativeEnumTypeImport) {
               violations.push(`${file}：依赖了非契约模块 ${specifier}`);
             }
           }
