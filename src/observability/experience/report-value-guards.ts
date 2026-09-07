@@ -1,4 +1,8 @@
 import {
+  ExperienceProblemEvidenceRefSchema,
+  ExperienceProblemPatternSchema,
+} from '../contracts/experience-evidence-schema.js';
+import {
   ExperienceMetaSchema,
   ExperienceAttributionSchema,
   ExperienceReviewIndicatorsSchema,
@@ -358,63 +362,15 @@ export function isExperienceAssistiveInference(value: unknown): boolean {
 }
 
 export function isExperienceProblemEvidenceRef(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || typeof value.id !== 'string'
-    || typeof value.kind !== 'string'
-    || typeof value.sourceTrace !== 'string'
-    || typeof value.sessionId !== 'string'
-    || !isOptionalNonNegativeInteger(value.messageIndex)
-    || !isOptionalNonNegativeInteger(value.logicalMessageIndex)
-    || !isOptionalNonNegativeInteger(value.sourceLineIndex)
-  ) return false;
-  if (
-    value.role !== undefined
-    && !isEnumValue(value.role, ['user', 'assistant', 'tool', 'other'])
-  ) return false;
-  return [
-    value.messageUuid,
-    value.traceId,
-    value.callInstanceId,
-    value.toolUseId,
-    value.label,
-    value.snippet,
-  ].every(isOptionalString)
-    && isOptionalTimestamp(value.timestamp);
+  const parsed = ExperienceProblemEvidenceRefSchema.safeParse(value);
+  return parsed.success && isOptionalTimestamp(parsed.data.timestamp);
 }
 
 export function isExperienceProblemPattern(value: unknown): boolean {
-  return isObjectRecord(value)
-    && typeof value.id === 'string'
-    && isEnumValue(value.bucket, [
-      'output_format',
-      'content_accuracy',
-      'missing_context',
-      'rule_violation',
-      'workflow_mismatch',
-      'tool_runtime',
-      'goal_shift',
-      'unclear',
-    ])
-    && typeof value.patternKey === 'string'
-    && isNonNegativeInteger(value.count)
-    && isNonNegativeInteger(value.sessionCount)
-    && isStringArray(value.recentSessionIds)
-    && isEnumArray(value.signalTypes, [
-      'user_correction',
-      'negative_feedback',
-      'user_interruption',
-      'hard_rule',
-      'user_goal_shift',
-      'tool_failure',
-      'workflow_mismatch',
-      'artifact_missing',
-      'observer_lifecycle_failed',
-      'orchestration_boundary_violation',
-    ])
-    && Array.isArray(value.evidenceRefs)
-    && value.evidenceRefs.every(isExperienceProblemEvidenceRef)
-    && isOptionalTimestamp(value.lastSeen);
+  const parsed = ExperienceProblemPatternSchema.safeParse(value);
+  return parsed.success
+    && parsed.data.evidenceRefs.every(isExperienceProblemEvidenceRef)
+    && isOptionalTimestamp(parsed.data.lastSeen);
 }
 
 export function isExperienceProblemPatternArray(value: unknown): boolean {

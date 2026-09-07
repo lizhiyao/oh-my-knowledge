@@ -350,7 +350,7 @@ describe('领域契约所有权', () => {
               process.cwd(),
               resolve(dirname(resolve(file)), specifier.replace(/\.js$/, '.ts')),
             );
-            const declarativeEnumTypeImport = file === 'src/observability/contracts/experience.ts'
+            const declarativeEnumTypeImport = (file === 'src/observability/contracts/experience.ts' || file === 'src/observability/contracts/problem-patterns.ts')
               && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier);
             if (!PURE_DOMAIN_TYPE_FILE_SET.has(target) && !declarativeEnumTypeImport) {
               violations.push(`${file}：依赖了非契约模块 ${specifier}`);

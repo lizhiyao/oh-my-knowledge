@@ -579,3 +579,37 @@ export const ExperienceTimelineScopeSchema = z.object({
   omittedBeforeCount: NonNegativeIntegerSchema,
   omittedAfterCount: NonNegativeIntegerSchema,
 });
+
+export const ExperienceProblemBucketSchema = z.enum(['output_format', 'content_accuracy', 'missing_context', 'rule_violation', 'workflow_mismatch', 'tool_runtime', 'goal_shift', 'unclear']);
+
+export const ExperienceProblemSignalSchema = z.enum(['user_correction', 'negative_feedback', 'user_interruption', 'hard_rule', 'user_goal_shift', 'tool_failure', 'workflow_mismatch', 'artifact_missing', 'observer_lifecycle_failed', 'orchestration_boundary_violation']);
+
+export const ExperienceProblemEvidenceRefSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  traceId: z.string().optional(),
+  sourceTrace: z.string(),
+  sessionId: z.string(),
+  messageIndex: NonNegativeIntegerSchema.optional(),
+  logicalMessageIndex: NonNegativeIntegerSchema.optional(),
+  sourceLineIndex: NonNegativeIntegerSchema.optional(),
+  messageUuid: z.string().optional(),
+  callInstanceId: z.string().optional(),
+  toolUseId: z.string().optional(),
+  timestamp: z.string().optional(),
+  role: z.enum(['user', 'assistant', 'tool', 'other']).optional(),
+  label: z.string().optional(),
+  snippet: z.string().optional(),
+});
+
+export const ExperienceProblemPatternSchema = z.object({
+  id: z.string(),
+  bucket: ExperienceProblemBucketSchema,
+  patternKey: z.string(),
+  count: NonNegativeIntegerSchema,
+  sessionCount: NonNegativeIntegerSchema,
+  recentSessionIds: z.array(z.string()),
+  signalTypes: z.array(ExperienceProblemSignalSchema),
+  evidenceRefs: z.array(ExperienceProblemEvidenceRefSchema),
+  lastSeen: z.string().optional(),
+});

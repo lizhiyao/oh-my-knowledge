@@ -48,7 +48,7 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   "src/observability/contracts/experience-evidence-schema.ts::ExperienceEpisodeArtifactSchema::ExperienceEpisodeArtifactKindSchema",
   'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryGraphNodeSchema::ExperienceSessionStoryNodeKindSchema',
   "src/observability/contracts/experience-evidence-schema.ts::ExperienceReviewerReportBaseSchema::ExperienceReviewerReportScopeSchema",
-  'src/observability/contracts/problem-patterns.ts::ExperienceProblemEvidenceRef::string',
+  "src/observability/contracts/experience-evidence-schema.ts::ExperienceProblemEvidenceRefSchema::z.string()",
   'src/observability/contracts/problem-patterns.ts::ProblemTimelineEvent::string',
   // —— 持久化 soft-standards JSON（含 enhancedReview 内嵌结构）——
   // ResolvedSkillStandard 非持久（view-model），但与持久 standard 同源、且被 renderer 多处 .kind 消费，
