@@ -621,20 +621,6 @@ export interface ComparabilityAssessmentSource {
   readonly planVerification: ComparabilityAssessmentPlanVerification;
 }
 
-const comparabilityAssessmentSources = new WeakSet<object>();
-
-export function assertComparabilityAssessmentSource(
-  value: unknown,
-): asserts value is ComparabilityAssessmentSource {
-  if (value === null
-      || typeof value !== 'object'
-      || !comparabilityAssessmentSources.has(value)) {
-    throw new TypeError(
-      'Automated comparison requires a source returned by assessComparability() or parseComparabilityAssessment().',
-    );
-  }
-}
-
 function equalJson(left: unknown, right: unknown): boolean {
   return canonicalizeJson(left) === canonicalizeJson(right);
 }
@@ -1591,7 +1577,6 @@ function makeAssessmentSource(assessment: ComparabilityAssessment): Comparabilit
       rightRunIdentityDigest: assessment.right.runIdentityDigest as Sha256Digest,
     },
   });
-  comparabilityAssessmentSources.add(source);
   return source;
 }
 
