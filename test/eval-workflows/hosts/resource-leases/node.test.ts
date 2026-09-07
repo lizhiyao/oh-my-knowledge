@@ -26,7 +26,6 @@ import {
 } from '../../../../src/knowledge-artifacts/sources/content-hash.js';
 import {
   digestNodeFileResource,
-  digestNodePinnedGitTreeResource,
   digestNodeTreeResource,
   materializeNodeRunResourceLeases,
 } from '../../../../src/eval-workflows/hosts/resource-leases/node.js';
@@ -570,10 +569,11 @@ describe('Verified HostResource leases', () => {
 
   it('verifies pinned Git identity and excludes repository metadata from snapshots', async () => {
     const repository = join(sourceRoot, 'repository');
-    mkdirSync(join(repository, '.git'), { recursive: true });
-    writeFileSync(join(repository, '.git', 'config'), 'secret metadata');
+    mkdirSync(repository);
     writeFileSync(join(repository, 'README.md'), '# pinned\n');
-    const actual = await digestNodePinnedGitTreeResource(repository);
+    const actual = await digestNodeTreeResource(repository);
+    mkdirSync(join(repository, '.git'));
+    writeFileSync(join(repository, '.git', 'config'), 'secret metadata');
     const commitId = 'a'.repeat(40);
     const resource: ResolvedHostResource = {
       resourceKind: 'artifact',
@@ -628,8 +628,9 @@ describe('Verified HostResource leases', () => {
   it('verifies pinned Git against the repository HEAD with the default verifier', async () => {
     const repository = join(sourceRoot, 'real-repository');
     mkdirSync(repository);
-    execFileSync('git', ['-C', repository, 'init', '-q']);
     writeFileSync(join(repository, 'README.md'), '# real pinned repository\n');
+    const actual = await digestNodeTreeResource(repository);
+    execFileSync('git', ['-C', repository, 'init', '-q']);
     execFileSync('git', ['-C', repository, 'add', 'README.md']);
     execFileSync('git', [
       '-C', repository,
@@ -642,7 +643,6 @@ describe('Verified HostResource leases', () => {
     const commitId = execFileSync(
       'git', ['-C', repository, 'rev-parse', 'HEAD'], { encoding: 'utf8' },
     ).trim();
-    const actual = await digestNodePinnedGitTreeResource(repository);
     const resource: ResolvedHostResource = {
       resourceKind: 'artifact',
       descriptor: {
@@ -783,7 +783,7 @@ it('forwards cancellation to Git verification and removes partially acquired res
   const path = join(sourceRoot, 'pinned');
   mkdirSync(path);
   writeFileSync(join(path, 'README.md'), '# input');
-  const actual = await digestNodePinnedGitTreeResource(path);
+  const actual = await digestNodeTreeResource(path);
   const commitId = 'a'.repeat(40);
   const controller = new AbortController();
   const reason = new Error('cancel acquisition');
