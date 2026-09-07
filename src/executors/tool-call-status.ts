@@ -30,10 +30,6 @@ export function isToolCallCancelled(call: ToolCallOutcomeInput): boolean {
   return toolCallStatus(call) === 'cancelled';
 }
 
-export function isToolCallUnknown(call: ToolCallOutcomeInput): boolean {
-  return toolCallStatus(call) === 'unknown';
-}
-
 export function isToolResultFailureText(value: unknown): boolean {
   if (toolResultFailureJson(value)) return true;
   const text = typeof value === 'string'

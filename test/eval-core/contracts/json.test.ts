@@ -5,7 +5,6 @@ import {
   canonicalizeJsonBytes,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
-  isCanonicalJson,
 } from '../../../src/eval-core/contracts/json.js';
 
 describe('Evaluation Core RFC 8785 JSON', () => {
@@ -82,7 +81,6 @@ describe('Evaluation Core RFC 8785 JSON', () => {
     new Date(),
   ])('rejects non-I-JSON value %s', (value) => {
     expect(() => canonicalizeJson(value)).toThrow(InvalidCanonicalJsonError);
-    expect(isCanonicalJson(value)).toBe(false);
   });
 
   it('rejects cycles, sparse arrays, extra properties, accessors, and symbols', () => {

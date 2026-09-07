@@ -128,15 +128,6 @@ export function assertCanonicalJson(value: unknown): asserts value is JsonValue 
   assertCanonicalJsonValue(value, '$', new Set());
 }
 
-export function isCanonicalJson(value: unknown): value is JsonValue {
-  try {
-    assertCanonicalJson(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function parseWireDocument<T>(schema: z.ZodType<T>, value: unknown): T {
   assertCanonicalJson(value);
   return schema.parse(value);

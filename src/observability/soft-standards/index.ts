@@ -45,25 +45,3 @@ export {
 } from './skill-standards-store.js';
 
 export { extractSkillSoftStandards } from './llm-extractor.js';
-
-import {
-  normalizeRuntimeSignals,
-  normalizeRuntimeTriggers,
-  normalizeSignalOpForType,
-} from './llm-extractor.js';
-import {
-  evaluateRuntimeStandardNodes,
-  normalizeFuzzyText,
-  normalizeToolNameValue,
-  refsInScope,
-} from './runtime-evaluator.js';
-
-export const __softStandardsTestInternals = {
-  normalizeRuntimeSignals,
-  normalizeRuntimeTriggers,
-  evaluateRuntimeStandardNodes,
-  normalizeFuzzyText,
-  normalizeSignalOpForType,
-  refsInScope,
-  normalizeToolNameValue,
-};
