@@ -389,7 +389,3 @@ export function buildSkillIndex(
   indexCache = { fingerprint, result };
   return result;
 }
-
-export function getSkillEntry(index: SkillIndex, skillName: string): SkillIndexEntry | null {
-  return index.entries.find((entry) => entry.skillName === skillName) ?? null;
-}
