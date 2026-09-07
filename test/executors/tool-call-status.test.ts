@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import {
   isToolCallFailure,
-  isToolCallUnknown,
   isToolResultFailureText,
   toolCallStatus,
 } from '../../src/executors/tool-call-status.js';
@@ -11,7 +10,6 @@ describe('toolCallStatus', () => {
   it('keeps a missing legacy outcome unknown instead of fabricating a failure', () => {
     const call = {};
     assert.equal(toolCallStatus(call), 'unknown');
-    assert.equal(isToolCallUnknown(call), true);
     assert.equal(isToolCallFailure(call), false);
   });
 
@@ -28,7 +26,6 @@ describe('toolCallStatus', () => {
   it('fails closed on an invalid runtime status instead of trusting a legacy flag', () => {
     const malformed = { status: 'completed', success: true } as never;
     assert.equal(toolCallStatus(malformed), 'unknown');
-    assert.equal(isToolCallUnknown(malformed), true);
   });
 });
 

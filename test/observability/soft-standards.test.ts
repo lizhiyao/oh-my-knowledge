@@ -1,14 +1,14 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  __softStandardsTestInternals,
   type RuntimeSignal,
   type RuntimeSignalType,
   type RuntimeStandardNode,
 } from '../../src/observability/soft-standards/index.js';
 import type { SkillRuntimeEvidencePack, SkillRuntimeEvidencePackRef, SkillRuntimeEvidencePackSourceType } from '../../src/observability/skill-health/skill-chain.js';
 
-const { evaluateRuntimeStandardNodes, normalizeRuntimeSignals, normalizeRuntimeTriggers, normalizeFuzzyText, normalizeToolNameValue } = __softStandardsTestInternals;
+import { normalizeRuntimeSignals, normalizeRuntimeTriggers } from '../../src/observability/soft-standards/llm-extractor.js';
+import { evaluateRuntimeStandardNodes, normalizeFuzzyText, normalizeToolNameValue } from '../../src/observability/soft-standards/runtime-evaluator.js';
 
 function ref(input: {
   id: string;
