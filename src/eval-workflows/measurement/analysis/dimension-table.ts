@@ -16,6 +16,7 @@ import {
   createAnalysisSchemaValidator,
   round,
 } from './analysis-support.js';
+import { assertStableBinding } from './dimension-binding.js';
 
 export const DIMENSION_TABLE_SCHEMA_VERSION = 'omk.dimension-table/v2' as const;
 export const DIMENSION_SCORE_DECIMALS = 2;
@@ -163,27 +164,6 @@ export function dimensionGroupId(group: Omit<DimensionGroup, 'groupId'>): string
       weight: entry.weight,
     })),
   });
-}
-
-function assertStableBinding(
-  entries: readonly DimensionEntry[],
-  keyField: 'dimensionId' | 'metricId' | 'sourceAnalysisResultId',
-  issue: Issue,
-): void {
-  const bindings = new Map<string, string>();
-  for (const entry of entries) {
-    const binding = canonicalizeJson({
-      dimensionId: entry.dimensionId,
-      metricId: entry.metricId,
-      sourceAnalysisResultId: entry.sourceAnalysisResultId,
-    });
-    const previous = bindings.get(entry[keyField]);
-    if (previous !== undefined && previous !== binding) {
-      issue(['groups'], `Dimension ${keyField} binding must remain stable across groups.`);
-      return;
-    }
-    bindings.set(entry[keyField], binding);
-  }
 }
 
 function assertStableSampleWeights(groups: readonly DimensionGroup[], issue: Issue): void {
