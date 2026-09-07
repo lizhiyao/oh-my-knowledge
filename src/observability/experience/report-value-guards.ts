@@ -1,4 +1,11 @@
 import {
+  ExperienceReviewerReportStepSchema,
+  ExperienceReviewerReportFindingSchema,
+  ExperienceReviewerMetricsWireSchema,
+  ExperienceSessionStoryWireSchema,
+  ExperienceReviewerReportWireSchema,
+} from '../contracts/experience-evidence-schema.js';
+import {
   ExperienceGoalEvidenceRefSchema,
   ExperienceSkillSegmentSchema,
   ExperienceOrchestrationEdgeSchema,
@@ -31,10 +38,6 @@ import {
   ExperienceEvidenceKindSchema,
   ExperienceReviewBasisCodeSchema,
   ExperienceReviewPrioritySchema,
-  ExperienceReviewerReportFindingLevelSchema,
-  ExperienceReviewerReportFindingSourceSchema,
-  ExperienceReviewerReportScopeSchema,
-  ExperienceReviewerReportStepStatusSchema,
 } from '../contracts/experience-enums.js';
 import {
   isTraceSourceKind,
@@ -807,157 +810,49 @@ export function isExperienceStoryContext(value: unknown): value is ExperienceSto
 }
 
 export function isExperienceSessionStory(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || value.schemaVersion !== 1
-    || typeof value.contextRef !== 'string'
-    || typeof value.summary !== 'string'
-    || !isNonNegativeInteger(value.invocationCount)
-    || !isNonNegativeInteger(value.goalSliceCount)
-    || !isNonNegativeInteger(value.branchCount)
-    || !isNonNegativeInteger(value.progressUpdateCount)
-    || !isNonNegativeInteger(value.finalDeliverySignalCount)
-    || !isStringArray(value.mainlineNodeIds)
-    || !Array.isArray(value.skillLinks)
-    || !value.skillLinks.every(isExperienceSessionStorySkillLink)
-    || !isObjectRecord(value.graph)
-    || !Array.isArray(value.graph.nodes)
-    || !value.graph.nodes.every(isExperienceSessionStoryGraphNode)
-    || !Array.isArray(value.graph.edges)
-    || !value.graph.edges.every(isExperienceSessionStoryGraphEdge)
-    || !Array.isArray(value.nodes)
-    || !value.nodes.every(isExperienceSessionStoryNode)
-    || !Array.isArray(value.answers)
-    || !value.answers.every(isExperienceSessionStoryAnswer)
-  ) return false;
-  return value.goalSlices === undefined
-    && value.subagentDispatches === undefined
-    && value.episodes === undefined;
+  if (!isObjectRecord(value)
+    || value.goalSlices !== undefined
+    || value.subagentDispatches !== undefined
+    || value.episodes !== undefined) return false;
+  const parsed = ExperienceSessionStoryWireSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const data = parsed.data;
+  return data.skillLinks.every(isExperienceSessionStorySkillLink)
+    && data.nodes.every(isExperienceSessionStoryNode)
+    && data.answers.every(isExperienceSessionStoryAnswer);
 }
 
 export function isExperienceReviewerReportStep(value: unknown): boolean {
-  return isObjectRecord(value)
-    && isNonNegativeInteger(value.order)
-    && typeof value.label === 'string'
-    && isEnumValue(value.status, ExperienceReviewerReportStepStatusSchema.options)
-    && typeof value.text === 'string'
-    && isExperienceEvidenceRefArray(value.evidenceRefs);
+  const parsed = ExperienceReviewerReportStepSchema.safeParse(value);
+  return parsed.success && isExperienceEvidenceRefArray(parsed.data.evidenceRefs);
 }
 
 export function isExperienceReviewerReportFinding(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || typeof value.id !== 'string'
-    || typeof value.judgmentId !== 'string'
-    || !isEnumValue(value.source, ExperienceReviewerReportFindingSourceSchema.options)
-    || !isEnumValue(value.level, ExperienceReviewerReportFindingLevelSchema.options)
-    || typeof value.title !== 'string'
-    || typeof value.body !== 'string'
-    || typeof value.ruleSource !== 'string'
-    || typeof value.ruleVersion !== 'string'
-    || !isExperienceEvidenceRefArray(value.evidenceRefs)
-    || !isObjectRecord(value.reviewStateRef)
-    || value.reviewStateRef.targetType !== 'reviewer_judgment'
-    || typeof value.reviewStateRef.targetId !== 'string'
-  ) return false;
-  return [
-    value.reviewStateRef.verdict,
-    value.reviewStateRef.reason,
-    value.reviewStateRef.note,
-  ].every(isOptionalString)
-    && isOptionalTimestamp(value.reviewStateRef.reviewedAt);
+  const parsed = ExperienceReviewerReportFindingSchema.safeParse(value);
+  return parsed.success
+    && isExperienceEvidenceRefArray(parsed.data.evidenceRefs)
+    && isOptionalTimestamp(parsed.data.reviewStateRef.reviewedAt);
 }
 
 export function isExperienceReviewerMetrics(value: unknown): boolean {
-  if (!isObjectRecord(value)) return false;
-  const countKeys = [
-    'toolCallCount',
-    'toolFailureCount',
-    'userMessageCount',
-    'userFollowUpCount',
-    'assistantDeliverySignalCount',
-    'deliverableArtifactSignalCount',
-    'routerDownstreamCompleted',
-    'routerDownstreamFailed',
-    'assistantProgressUpdateCount',
-    'selfCorrectionCount',
-    'repeatedExecutionCount',
-    'finalDeliverySignalCount',
-    'traceEventCount',
-  ];
-  if (
-    !countKeys.every((key) => isNonNegativeInteger(value[key]))
-    || (
-      !isNonNegativeInteger(value.toolCancelledCount)
-      || !isNonNegativeInteger(value.toolUnknownCount)
-    )
-    || (
-      value.toolCancelledCount !== undefined
-      && !isNonNegativeInteger(value.toolCancelledCount)
-    )
-    || (
-      value.toolUnknownCount !== undefined
-      && !isNonNegativeInteger(value.toolUnknownCount)
-    )
-    || !isObjectRecord(value.tokenUsage)
-  ) return false;
-  const tokenKeys = [
-    'inputTokens',
-    'outputTokens',
-    'cacheReadTokens',
-    'cacheCreationTokens',
-  ];
-  const tokenUsage = value.tokenUsage as Record<string, unknown>;
-  const observedInvocationCount = tokenUsage.observedInvocationCount;
-  const invocationCount = tokenUsage.invocationCount;
-  const coverage = tokenUsage.coverage;
-  const hasCoverage = observedInvocationCount !== undefined
-    || invocationCount !== undefined
-    || coverage !== undefined;
-  return tokenKeys.every((key) => isNonNegativeInteger(tokenUsage[key]))
-    && tokenUsage.attribution === 'skill_segment'
-    && (
-      !hasCoverage
-      || (
-        isNonNegativeInteger(observedInvocationCount)
-        && isNonNegativeInteger(invocationCount)
-        && isRate(coverage)
-        && (observedInvocationCount as number) <= (invocationCount as number)
-        && Math.abs(
-          (coverage as number)
-          - (
-            (invocationCount as number) > 0
-              ? (observedInvocationCount as number) / (invocationCount as number)
-              : 1
-          ),
-        ) <= 0.0001
-      )
-    )
-    && hasCoverage
-    && (value.toolFailureCount as number)
-      + (typeof value.toolCancelledCount === 'number' ? value.toolCancelledCount : 0)
-      + (typeof value.toolUnknownCount === 'number' ? value.toolUnknownCount : 0)
-      <= (value.toolCallCount as number);
+  const parsed = ExperienceReviewerMetricsWireSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const data = parsed.data;
+  const { observedInvocationCount, invocationCount, coverage } = data.tokenUsage;
+  return isRate(coverage)
+    && observedInvocationCount <= invocationCount
+    && Math.abs(coverage - (invocationCount > 0 ? observedInvocationCount / invocationCount : 1)) <= 0.0001
+    && data.toolFailureCount + data.toolCancelledCount + data.toolUnknownCount <= data.toolCallCount;
 }
 
 export function isExperienceReviewerReport(value: unknown): boolean {
-  if (
-    !isObjectRecord(value)
-    || value.schemaVersion !== 1
-    || !isEnumValue(value.mode, ['deterministic_milestone_1', 'deterministic_session_story'])
-    || !isTimestamp(value.generatedAt)
-    || typeof value.title !== 'string'
-    || typeof value.summary !== 'string'
-    || !isObjectRecord(value.scope)
-    || !isEnumValue(value.scope.kind, ExperienceReviewerReportScopeSchema.options)
-    || !isStringArray(value.scope.reasonCodes)
-    || !Array.isArray(value.chainSteps)
-    || !value.chainSteps.every(isExperienceReviewerReportStep)
-    || !Array.isArray(value.findings)
-    || !value.findings.every(isExperienceReviewerReportFinding)
-    || !isExperienceReviewerMetrics(value.oneLookMetrics)
-    || !isStringArray(value.authorSuggestions)
-    || !isExperienceEvidenceRefArray(value.traceLinks)
-  ) return false;
-  return value.sessionStory === undefined && value.sessionStoryRef === 'session';
+  if (!isObjectRecord(value) || value.sessionStory !== undefined) return false;
+  const parsed = ExperienceReviewerReportWireSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const data = parsed.data;
+  return isTimestamp(data.generatedAt)
+    && data.chainSteps.every(isExperienceReviewerReportStep)
+    && data.findings.every(isExperienceReviewerReportFinding)
+    && isExperienceReviewerMetrics(data.oneLookMetrics)
+    && isExperienceEvidenceRefArray(data.traceLinks);
 }
