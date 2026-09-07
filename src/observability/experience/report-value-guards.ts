@@ -1,3 +1,4 @@
+import { ExperienceInvocationMetricsWireSchema } from '../contracts/experience-evidence-schema.js';
 import { ExperienceTraceRecordRangeSchema } from '../contracts/experience-evidence-schema.js';
 import {
   ExperienceEvidenceChainSchema,
@@ -427,35 +428,11 @@ export function isExperienceAttribution(value: unknown): boolean {
 }
 
 export function isExperienceInvocationMetrics(value: unknown): boolean {
-  if (!isObjectRecord(value)) return false;
-  const fields = [
-    value.durationMs,
-    value.inputTokens,
-    value.outputTokens,
-    value.cacheReadTokens,
-    value.cacheCreationTokens,
-    value.numTurns,
-    value.numToolCalls,
-    value.numToolFailures,
-  ];
-  if (!fields.every(isNonNegativeInteger)) return false;
-  if (
-    (
-      typeof value.tokenUsageObserved !== 'boolean'
-      ||
-      !isNonNegativeInteger(value.numToolCancelled)
-      || !isNonNegativeInteger(value.numToolUnknown)
-    )
-  ) return false;
-  if (
-    value.tokenUsageObserved !== undefined
-    && typeof value.tokenUsageObserved !== 'boolean'
-  ) return false;
-  if (value.numToolCancelled !== undefined && !isNonNegativeInteger(value.numToolCancelled)) return false;
-  if (value.numToolUnknown !== undefined && !isNonNegativeInteger(value.numToolUnknown)) return false;
-  const cancelled = typeof value.numToolCancelled === 'number' ? value.numToolCancelled : 0;
-  const unknown = typeof value.numToolUnknown === 'number' ? value.numToolUnknown : 0;
-  return (value.numToolFailures as number) + cancelled + unknown <= (value.numToolCalls as number);
+  const parsed = ExperienceInvocationMetricsWireSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const metrics = parsed.data;
+  return metrics.numToolFailures + metrics.numToolCancelled + metrics.numToolUnknown
+    <= metrics.numToolCalls;
 }
 
 export const EXPERIENCE_INDICATOR_KEYS = [

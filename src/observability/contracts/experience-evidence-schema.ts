@@ -90,3 +90,22 @@ export const ExperienceChecklistItemSchema = z.object({
   source: ExperienceReviewerReportFindingSourceSchema,
   suggestionKey: z.string().optional(),
 });
+
+export const ExperienceInvocationMetricsSchema = z.object({
+  durationMs: NonNegativeIntegerSchema,
+  inputTokens: NonNegativeIntegerSchema,
+  outputTokens: NonNegativeIntegerSchema,
+  cacheReadTokens: NonNegativeIntegerSchema,
+  cacheCreationTokens: NonNegativeIntegerSchema,
+  /** False means counters are placeholders because the trace exposed no valid usage event. */
+  tokenUsageObserved: z.boolean(),
+  numTurns: NonNegativeIntegerSchema,
+  numToolCalls: NonNegativeIntegerSchema,
+  numToolFailures: NonNegativeIntegerSchema,
+  numToolCancelled: NonNegativeIntegerSchema.optional(),
+  /** Unresolved or source-unknown outcomes; excluded from failure-rate denominators. */
+  numToolUnknown: NonNegativeIntegerSchema.optional(),
+});
+
+// Persisted metrics require outcome counters even when hydrated callers may omit them.
+export const ExperienceInvocationMetricsWireSchema = ExperienceInvocationMetricsSchema.required();

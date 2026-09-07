@@ -72,7 +72,7 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
     const receiver = node.expression.expression;
     const method = node.expression.name.text;
     if (ts.isIdentifier(receiver) && receiver.text === 'z') {
-      if (method === 'string' || method === 'number') return node.arguments.length === 0;
+      if (method === 'string' || (method === 'number' || method === 'boolean')) return node.arguments.length === 0;
       if (node.arguments.length !== 1) return false;
       const argument = node.arguments[0];
       if (method === 'array') return expression(argument);
@@ -86,7 +86,7 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile): boolean {
           && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
           && expression(property.initializer));
     }
-    return ['optional', 'int', 'nonnegative'].includes(method)
+    return ['optional', 'required', 'int', 'nonnegative'].includes(method)
       && node.arguments.length === 0 && expression(receiver);
   }
   for (const statement of source.statements) {
