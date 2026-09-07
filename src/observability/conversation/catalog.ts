@@ -7,7 +7,7 @@ import {
   statSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import type { ExperienceTurnStatus } from '../contracts/experience.js';
@@ -711,8 +711,4 @@ function findRolloutPath(root: string, threadId: string): string | undefined {
     }
   }
   return undefined;
-}
-
-export function conversationSourceLabel(path: string): string {
-  return basename(path).replace(/\.jsonl$/u, '');
 }

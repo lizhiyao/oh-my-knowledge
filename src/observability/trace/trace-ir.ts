@@ -231,10 +231,6 @@ function canonicalTraceSourcePath(sourcePath: string): string {
   }
 }
 
-export function traceEventTimestamp(event: TraceEvent): string | undefined {
-  return event.timestamp;
-}
-
 export function normalizeTraceTimestamp(value: unknown): string | undefined {
   return normalizeRfc3339Timestamp(value);
 }
@@ -252,10 +248,6 @@ export function traceTimestampBounds(values: Iterable<unknown>): {
     if (!endTimestamp || timestamp > endTimestamp) endTimestamp = timestamp;
   }
   return { startTimestamp, endTimestamp };
-}
-
-export function traceToolDisplayName(tool: TraceToolRef): string {
-  return tool.displayName ?? tool.name;
 }
 
 /**

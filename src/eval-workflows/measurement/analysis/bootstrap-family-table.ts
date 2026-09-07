@@ -513,10 +513,6 @@ export const BOOTSTRAP_FAMILY_TABLE_SCHEMA = analysisSchemaIdentity(
   ]),
 );
 
-export function parseBootstrapFamilyTableValue(value: unknown): BootstrapFamilyTableValue {
-  return BootstrapFamilyTableValueSchema.superRefine(validateBootstrapFamilyTable).parse(value);
-}
-
 export function parseBootstrapFamilyTableEnvelope(value: unknown): Readonly<{
   resultType: 'table';
   value: BootstrapFamilyTableValue;

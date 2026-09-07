@@ -1,21 +1,6 @@
 import { z } from 'zod';
-import {
-  IdentifierSchema,
-  SamplingUnitIdsSchema,
-  Sha256DigestSchema,
-  canonicalizeJson,
-  digestCanonicalJson,
-  schemaIdentityKey,
-  type CoreSchemaValidator,
-  type JsonValue,
-} from '../../../eval-core/contracts/index.js';
-import {
-  analysisJsonSchema,
-  analysisSchemaIdentity,
-  compareStrings,
-  createAnalysisSchemaValidator,
-  round,
-} from './analysis-support.js';
+import { IdentifierSchema, SamplingUnitIdsSchema, Sha256DigestSchema, canonicalizeJson, digestCanonicalJson, type JsonValue } from '../../../eval-core/contracts/index.js';
+import { analysisJsonSchema, analysisSchemaIdentity, compareStrings, round } from './analysis-support.js';
 
 export const DIMENSION_TABLE_SCHEMA_VERSION = 'omk.dimension-table/v1' as const;
 export const DIMENSION_SCORE_DECIMALS = 2;
@@ -245,25 +230,6 @@ export const DIMENSION_TABLE_SCHEMA = analysisSchemaIdentity(
     'raw judge evidence, usage, cost, and direct Metric row membership are not copied',
   ]),
 );
-
-export function parseDimensionTableValue(value: unknown): DimensionTableValue {
-  return DimensionTableValueSchema.parse(value);
-}
-
-export function compareDimensionGroups(left: DimensionGroup, right: DimensionGroup): number {
-  return compareStrings(unitKey(left), unitKey(right));
-}
-
-export function createDimensionTableSchemaValidators(): ReadonlyMap<
-  string,
-  CoreSchemaValidator
-> {
-  const validator = createAnalysisSchemaValidator(
-    DIMENSION_TABLE_SCHEMA,
-    (value) => parseDimensionTableEnvelope(value) as JsonValue,
-  );
-  return new Map([[schemaIdentityKey(validator.schema), validator]]);
-}
 
 export function parseDimensionTableEnvelope(value: unknown): Readonly<{
   resultType: 'table';
