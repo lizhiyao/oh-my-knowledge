@@ -1,3 +1,4 @@
+import { ExperienceInvocationWireSchema, ExperienceSessionSummaryWireSchema } from '../contracts/experience-evidence-schema.js';
 import { TraceSourceMetadataSchema } from '../contracts/trace-metadata-schema.js';
 import {
   ExperienceProblemEvidenceRefSchema,
@@ -56,12 +57,9 @@ import {
 import { ExperienceEvidenceRefSchema } from '../contracts/experience-evidence-schema.js';
 import {
   ExperienceEvidenceKindSchema,
-  ExperienceReviewBasisCodeSchema,
   ExperienceReviewPrioritySchema,
 } from '../contracts/experience-enums.js';
-import {
-  isTraceSourceKind,
-} from '../../executors/core/trace-source-kind.js';
+
 import type {
   ExperienceEvidenceRef,
   ExperienceInvocation,
@@ -90,33 +88,17 @@ export function normalizeExperienceInvocationShells(
   const records = values.filter(isObjectRecord);
   if (records.length !== values.length) return null;
   if (records.some((value) =>
-    typeof value.id !== 'string'
-    || typeof value.skillName !== 'string'
-    || typeof value.sessionId !== 'string'
-    || typeof value.sessionGroupKey !== 'string'
-    || typeof value.traceId !== 'string'
-    || typeof value.sourceTrace !== 'string'
-    || !isTraceSourceKind(value.sourceKind)
-    || !isOptionalString(value.entrypoint)
-    || !isOptionalTraceSourceMetadata(value.sourceMetadata)
-    || !isOptionalString(value.cwd)
-    || !isNonNegativeInteger(value.segmentIndex)
-    || typeof value.goalSliceId !== 'string'
+    !InvocationWireShellSchema.safeParse(value).success
     || !isTimestampRange(value.startTimestamp, value.endTimestamp)
-    || typeof value.timestampObserved !== 'boolean'
     || !isExperienceAttribution(value.attribution)
     || !isExperienceInvocationMetrics(value.metrics)
-    || !isCountRecord(value.toolCounts)
     || !isExperienceIndicators(value.indicators)
     || !isExperienceEvidenceChain(value.evidenceChain)
     || !isExperienceRuleFindingArray(value.ruleFindings)
     || !isExperienceAssistiveInference(value.assistiveInference)
     || !isExperienceProblemPatternArray(value.problemPatterns)
-    || !isStringArray(value.relatedObservationIds)
     || !isExperienceEvidenceRefArray(value.evidenceRefs)
-    || (typeof value.timelineRef !== 'string'
-      || !isStringArray(value.timelineEventIds)
-      || (value.timeline !== undefined && !isTimelineEventArray(value.timeline)))
+    || (value.timeline !== undefined && !isTimelineEventArray(value.timeline))
   )) return null;
   return records.map((value) => ({
     ...value,
@@ -135,59 +117,24 @@ export function normalizeExperienceSessionShells(
   const records = values.filter(isObjectRecord);
   if (records.length !== values.length) return null;
   if (records.some((value) =>
-    typeof value.id !== 'string'
-    || typeof value.skillName !== 'string'
-    || !isOptionalString(value.threadId)
-    || !isOptionalString(value.sourceThreadId)
-    || typeof value.sessionId !== 'string'
-    || typeof value.sourceTrace !== 'string'
-    || !isTraceSourceKind(value.sourceKind)
-    || !isOptionalString(value.entrypoint)
-    || !isOptionalTraceSourceMetadata(value.sourceMetadata)
-    || !isOptionalString(value.cwd)
+    !SessionWireShellSchema.safeParse(value).success
     || !isConsistentSourceSessionTime(value)
     || !isTimestampRange(value.startTimestamp, value.endTimestamp)
-    || !isStringArray(value.invocationIds)
-    || !isOptionalTimestampCoverage(
-      value.timestampedInvocationCount,
-      value.timestampCoverage,
-      Array.isArray(value.invocationIds) ? value.invocationIds.length : -1,
-    )
-    || (
-      !isNonNegativeInteger(value.timestampedInvocationCount)
-      || !isRate(value.timestampCoverage)
-    )
-    || !isStringArray(value.goalSliceIds)
-    || !isExperienceReviewPriority(value.reviewPriority)
-    || typeof value.reviewPriorityScore !== 'number'
-    || !Number.isFinite(value.reviewPriorityScore)
-    || value.reviewPriorityScore < 0
-    || !isEnumArray(value.reviewBasisCodes, ExperienceReviewBasisCodeSchema.options)
+    || !isOptionalTimestampCoverage(value.timestampedInvocationCount, value.timestampCoverage,
+      Array.isArray(value.invocationIds) ? value.invocationIds.length : -1)
+    || !isRate(value.timestampCoverage)
     || !isExperienceIndicators(value.indicators)
     || !isExperienceEvidenceChain(value.evidenceChain)
     || !isExperienceRuleFindingArray(value.ruleFindings)
     || !isExperienceAssistiveInference(value.assistiveInference)
     || !isExperienceProblemPatternArray(value.problemPatterns)
-    || !isStringArray(value.relatedObservationIds)
     || (value.turns !== undefined && !isExperienceTurnSummaryArray(value.turns))
     || !isExperienceTimelineScope(value.timelineScope)
-    || !isStringArray(value.attributionSources)
-    || !isStringArray(value.pluginNames)
-    || !isStringArray(value.rawSkillRefs)
-    || !isStringArray(value.commandNames)
-    || (typeof value.timelineRef !== 'string'
-      || !isStringArray(value.timelinePreviewEventIds)
-      || (value.timelinePreview !== undefined && !isTimelineEventArray(value.timelinePreview))
-      || (value.fullSessionTimeline !== undefined && !isTimelineEventArray(value.fullSessionTimeline)))
+    || (value.timelinePreview !== undefined && !isTimelineEventArray(value.timelinePreview))
+    || (value.fullSessionTimeline !== undefined && !isTimelineEventArray(value.fullSessionTimeline))
     || (value.timelineTree !== undefined && !isTimelineTree(value.timelineTree))
-    || (
-      value.sessionStory !== undefined
-      && !isExperienceSessionStory(value.sessionStory)
-    )
-    || (
-      value.reviewerReport !== undefined
-      && !isExperienceReviewerReport(value.reviewerReport)
-    )
+    || (value.sessionStory !== undefined && !isExperienceSessionStory(value.sessionStory))
+    || (value.reviewerReport !== undefined && !isExperienceReviewerReport(value.reviewerReport))
   )) return null;
   return records.map((value) => {
     const sourceThreadId = typeof value.sourceThreadId === 'string'
@@ -650,3 +597,10 @@ export function isExperienceReviewerReport(value: unknown): boolean {
 const TimelineTreeShellSchema = ExperienceTimelineTreeSchema.omit({ main: true, branches: true });
 const TimelineBranchShellSchema = ExperienceTimelineBranchSchema.omit({ events: true });
 const TraceTimelineShellSchema = ExperienceTraceTimelineSchema.omit({ tree: true });
+
+const InvocationWireShellSchema = ExperienceInvocationWireSchema.omit({ timeline: true });
+const SessionWireShellSchema = ExperienceSessionSummaryWireSchema.omit({
+  timelinePreview: true,
+  fullSessionTimeline: true,
+  timelineTree: true,
+});

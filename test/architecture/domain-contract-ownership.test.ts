@@ -66,6 +66,7 @@ const EXPERIENCE_EVIDENCE_ENUM_IMPORTS = [
   'ExperienceOrchestrationEdgeStatusSchema',
   'ExperienceOutcomeClosureSchema',
   'ExperienceParentReasonSchema',
+  'ExperienceReviewBasisCodeSchema',
   'ExperienceReviewPrioritySchema',
   'ExperienceReviewerReportFindingLevelSchema',
   'ExperienceReviewerReportFindingSourceSchema',
@@ -90,14 +91,26 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile, profile: {
   imports: [
     ['zod', 'z'],
     ['./experience-enums.js', [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS].sort().join(',')],
+    ['../../executors/contracts/trace-source-schema.js', 'TraceSourceKindSchema'],
+    ['./trace-metadata-schema.js', 'TraceSourceMetadataSchema'],
   ],
-  schemas: EXPERIENCE_EVIDENCE_ENUM_IMPORTS,
+  schemas: [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS, 'TraceSourceKindSchema', 'TraceSourceMetadataSchema'],
   requiredSchema: 'ExperienceEvidenceRefSchema',
 }): boolean {
   const imports = new Map(profile.imports);
   const seenImports = new Set<string>();
   const schemas = new Set(profile.schemas);
   function expression(node: ts.Expression): boolean {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'omit') {
+      const mask = node.arguments[0];
+      return node.arguments.length === 1 && expression(node.expression.expression)
+        && ts.isObjectLiteralExpression(mask)
+        && mask.properties.every((property) => ts.isPropertyAssignment(property)
+          && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+          && property.initializer.kind === ts.SyntaxKind.TrueKeyword);
+    }
+
     if (ts.isCallExpression(node)
       && ts.isPropertyAccessExpression(node.expression)
       && node.expression.name.text === 'exclude') {
@@ -127,6 +140,8 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile, profile: {
     const method = node.expression.name.text;
     if (ts.isIdentifier(receiver) && receiver.text === 'z') {
       if (method === 'string' || (method === 'number' || method === 'boolean')) return node.arguments.length === 0;
+      if (method === 'record') return node.arguments.length === 2
+        && expression(node.arguments[0]) && expression(node.arguments[1]);
       if (node.arguments.length !== 1) return false;
       const argument = node.arguments[0];
       if (method === 'array') return expression(argument);
@@ -318,7 +333,7 @@ describe('领域契约所有权', () => {
     "z.object({ id: z.string() }).transform(() => sideEffect())",
     "z.object({ id: z.string() }); sideEffect()",
   ])('证据结构声明拒绝动态实现：%s', (initializer) => {
-    const text = "import { z } from 'zod';\n"
+    const text = "import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';\nimport { TraceSourceMetadataSchema } from './trace-metadata-schema.js';\n" + "import { z } from 'zod';\n"
       + `import { ${EXPERIENCE_EVIDENCE_ENUM_IMPORTS.join(', ')} } from './experience-enums.js';\n`
       + `export const ExperienceEvidenceRefSchema = ${initializer};`;
     expect(isDeclarativeEvidenceSchemaModule(ts.createSourceFile(
