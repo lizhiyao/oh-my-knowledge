@@ -1,3 +1,6 @@
+import {
+  executeRunPlan,
+} from '../../../../helpers/core-runs.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +16,6 @@ import {
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,
-  executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
 } from '../../../../../src/eval-core/execution/index.js';

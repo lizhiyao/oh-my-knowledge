@@ -1,4 +1,7 @@
 import {
+  executeRunPlan,
+} from '../../../../helpers/core-runs.js';
+import {
   mkdir,
   mkdtemp,
   stat,
@@ -21,7 +24,6 @@ import {
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
-  executeRunPlan,
 } from '../../../../../src/eval-core/execution/index.js';
 import {
   CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID,

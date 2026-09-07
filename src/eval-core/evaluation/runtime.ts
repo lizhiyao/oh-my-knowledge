@@ -1605,20 +1605,3 @@ export function startEvaluation(
   };
 }
 
-export async function evaluateExecutionBundle(
-  plan: SealedRunPlan,
-  source: ExecutionBundleSource,
-  ports: EvaluationRuntimePorts,
-  options: EvaluationRunOptions,
-): Promise<EvaluationBundle> {
-  return startEvaluation(plan, source, ports, options).result;
-}
-
-export async function evaluateExecutionBundleSource(
-  plan: SealedRunPlan,
-  source: ExecutionBundleSource,
-  ports: EvaluationRuntimePorts,
-  options: EvaluationRunOptions,
-): Promise<EvaluationBundleSource> {
-  return startEvaluation(plan, source, ports, options).source;
-}

@@ -1,3 +1,7 @@
+import {
+  executeRunPlanSource,
+  evaluateExecutionBundle,
+} from '../../helpers/core-runs.js';
 import { describe, expect, it } from 'vitest';
 import {
   aggregateEvaluationAttemptUsage,
@@ -20,7 +24,6 @@ import {
 } from '../../../src/eval-core/contracts/index.js';
 import { prepareEvaluationPlan } from '../../../src/eval-core/compiler/index.js';
 import {
-  executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
@@ -28,7 +31,6 @@ import {
 import {
   EvaluationPortFailure,
   EvaluationRuntimeConfigurationError,
-  evaluateExecutionBundle,
   startEvaluation,
   type EvaluationCache,
   type EvaluationCacheEntry,

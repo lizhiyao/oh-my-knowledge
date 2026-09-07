@@ -578,42 +578,6 @@ export function startDecision(
   };
 }
 
-export async function decideAnalysis(
-  plan: SealedRunPlan,
-  executionValue: ExecutionBundleSource,
-  evaluationValue: EvaluationBundleSource,
-  analysisValue: AnalysisBundleSource,
-  ports: AnalysisRuntimePorts,
-  options: DecisionOptions,
-): Promise<DecisionResult | undefined> {
-  return startDecision(
-    plan,
-    executionValue,
-    evaluationValue,
-    analysisValue,
-    ports,
-    options,
-  ).result;
-}
-
-export async function decideAnalysisSource(
-  plan: SealedRunPlan,
-  executionValue: ExecutionBundleSource,
-  evaluationValue: EvaluationBundleSource,
-  analysisValue: AnalysisBundleSource,
-  ports: AnalysisRuntimePorts,
-  options: DecisionOptions,
-): Promise<DecisionResultSource | undefined> {
-  return startDecision(
-    plan,
-    executionValue,
-    evaluationValue,
-    analysisValue,
-    ports,
-    options,
-  ).source;
-}
-
 export function materializeEvaluationReport(
   plan: SealedRunPlan,
   executionSource: ExecutionBundleSource,

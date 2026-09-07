@@ -1243,22 +1243,3 @@ export function startAnalysis(
   };
 }
 
-export async function analyzeEvaluationBundle(
-  plan: SealedRunPlan,
-  executionBundle: ExecutionBundleSource,
-  evaluationBundle: EvaluationBundleSource,
-  ports: AnalysisRuntimePorts,
-  options: AnalysisRunOptions,
-): Promise<AnalysisBundle> {
-  return startAnalysis(plan, executionBundle, evaluationBundle, ports, options).result;
-}
-
-export async function analyzeEvaluationBundleSource(
-  plan: SealedRunPlan,
-  executionBundle: ExecutionBundleSource,
-  evaluationBundle: EvaluationBundleSource,
-  ports: AnalysisRuntimePorts,
-  options: AnalysisRunOptions,
-): Promise<AnalysisBundleSource> {
-  return startAnalysis(plan, executionBundle, evaluationBundle, ports, options).source;
-}

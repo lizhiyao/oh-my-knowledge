@@ -1,3 +1,6 @@
+import {
+  executeRunPlan,
+} from '../helpers/core-runs.js';
 import type { EvalConfig } from '../../src/eval-workflows/inputs/contracts/config.js';
 import { runDshCoreEvaluation } from '../../src/dsh-plugin/core-command.js';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -15,7 +18,6 @@ import {
 import { prepareEvaluationPlan } from '../../src/eval-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,
-  executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
