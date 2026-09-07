@@ -1,6 +1,8 @@
+import type { z } from 'zod';
+import type { ToolCallStatusSchema } from './tool-call-status-schema.js';
 import type { TraceSourceKind } from './trace-source.js';
 
-export type ToolCallStatus = 'success' | 'failure' | 'cancelled' | 'unknown';
+export type ToolCallStatus = z.infer<typeof ToolCallStatusSchema>;
 export type ToolCallStatusSource = 'runtime' | 'tool-output' | 'inferred' | 'unknown';
 
 export interface ToolCallInfo {
