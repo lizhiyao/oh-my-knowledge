@@ -93,8 +93,9 @@ function isDeclarativeEvidenceSchemaModule(source: ts.SourceFile, profile: {
     ['./experience-enums.js', [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS].sort().join(',')],
     ['../../executors/contracts/trace-source-schema.js', 'TraceSourceKindSchema'],
     ['./trace-metadata-schema.js', 'TraceSourceMetadataSchema'],
+    ['../../executors/contracts/tool-call-status-schema.js', 'ToolCallStatusSchema'],
   ],
-  schemas: [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS, 'TraceSourceKindSchema', 'TraceSourceMetadataSchema'],
+  schemas: [...EXPERIENCE_EVIDENCE_ENUM_IMPORTS, 'TraceSourceKindSchema', 'TraceSourceMetadataSchema', 'ToolCallStatusSchema'],
   requiredSchema: 'ExperienceEvidenceRefSchema',
 }): boolean {
   const imports = new Map(profile.imports);
@@ -333,7 +334,7 @@ describe('领域契约所有权', () => {
     "z.object({ id: z.string() }).transform(() => sideEffect())",
     "z.object({ id: z.string() }); sideEffect()",
   ])('证据结构声明拒绝动态实现：%s', (initializer) => {
-    const text = "import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';\nimport { TraceSourceMetadataSchema } from './trace-metadata-schema.js';\n" + "import { z } from 'zod';\n"
+    const text = "import { ToolCallStatusSchema } from '../../executors/contracts/tool-call-status-schema.js';\n" + "import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';\nimport { TraceSourceMetadataSchema } from './trace-metadata-schema.js';\n" + "import { z } from 'zod';\n"
       + `import { ${EXPERIENCE_EVIDENCE_ENUM_IMPORTS.join(', ')} } from './experience-enums.js';\n`
       + `export const ExperienceEvidenceRefSchema = ${initializer};`;
     expect(isDeclarativeEvidenceSchemaModule(ts.createSourceFile(
@@ -376,7 +377,7 @@ describe('领域契约所有权', () => {
             );
             const declarativeEnumTypeImport = ((file === 'src/observability/contracts/experience.ts' || file === 'src/observability/contracts/problem-patterns.ts')
               && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier)
-            || (file === 'src/executors/contracts/trace-source.ts' && ['zod', './trace-source-schema.js'].includes(specifier))
+            || ((file === 'src/executors/contracts/trace-source.ts' && ['zod', './trace-source-schema.js'].includes(specifier) || (file === 'src/executors/contracts/trace.ts' && ['zod', './tool-call-status-schema.js'].includes(specifier))))
             || (file === 'src/observability/contracts/trace.ts' && ['zod', './trace-metadata-schema.js'].includes(specifier)));
             if (!PURE_DOMAIN_TYPE_FILE_SET.has(target) && !declarativeEnumTypeImport) {
               violations.push(`${file}：依赖了非契约模块 ${specifier}`);
@@ -404,6 +405,7 @@ describe('trace leaf schema ownership', () => {
   it.each([
     ['src/executors/contracts/trace-source-schema.ts', 'TraceSourceKindSchema'],
     ['src/observability/contracts/trace-metadata-schema.ts', 'TraceSourceMetadataSchema'],
+    ['src/executors/contracts/tool-call-status-schema.ts', 'ToolCallStatusSchema'],
   ])('%s remains a declarative leaf schema', (file, requiredSchema) => {
     const source = ts.createSourceFile(file, readTraceSchemaSource(file, 'utf8'), ts.ScriptTarget.Latest, true);
     expect(isDeclarativeEvidenceSchemaModule(source, {

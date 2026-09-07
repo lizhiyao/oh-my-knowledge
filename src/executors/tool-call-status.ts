@@ -1,17 +1,11 @@
+import { ToolCallStatusSchema } from './contracts/tool-call-status-schema.js';
 import type { ToolCallInfo, ToolCallStatus } from './contracts/trace.js';
 
 type ToolCallOutcomeInput = Partial<Pick<ToolCallInfo, 'status' | 'success'>>;
 
-const TOOL_CALL_STATUSES = new Set<ToolCallStatus>([
-  'success',
-  'failure',
-  'cancelled',
-  'unknown',
-]);
-
 export function toolCallStatus(call: ToolCallOutcomeInput): ToolCallStatus {
   if (call.status !== undefined) {
-    return TOOL_CALL_STATUSES.has(call.status) ? call.status : 'unknown';
+    return ToolCallStatusSchema.safeParse(call.status).success ? call.status : 'unknown';
   }
   if (call.success === true) return 'success';
   if (call.success === false) return 'failure';

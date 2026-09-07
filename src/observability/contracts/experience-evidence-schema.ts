@@ -1,3 +1,4 @@
+import { ToolCallStatusSchema } from '../../executors/contracts/tool-call-status-schema.js';
 import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
 import { TraceSourceMetadataSchema } from './trace-metadata-schema.js';
 import { z } from 'zod';
@@ -455,7 +456,7 @@ export const ExperienceTimelineEventSchema = ExperienceEvidenceRefSchema.extend(
   order: NonNegativeIntegerSchema,
   model: z.string().optional(),
   toolName: z.string().optional(),
-  toolStatus: z.enum(['success', 'failure', 'cancelled', 'unknown']).optional(),
+  toolStatus: ToolCallStatusSchema.optional(),
   isError: z.boolean().optional(),
   fullText: z.string().optional(),
   attachments: z.array(ExperienceTimelineAttachmentSchema).optional(),
