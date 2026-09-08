@@ -908,9 +908,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@oclif/core@npm:^4":
-  version: 4.14.0
-  resolution: "@oclif/core@npm:4.14.0"
+"@oclif/core@npm:^5":
+  version: 5.0.0
+  resolution: "@oclif/core@npm:5.0.0"
   dependencies:
     ansi-escapes: "npm:^4.3.2"
     ansis: "npm:^3.17.0"
@@ -930,7 +930,7 @@ __metadata:
     wordwrap: "npm:^1.0.0"
     wrap-ansi: "npm:^7.0.0"
     wsl-utils: "npm:^0.4.0"
-  checksum: 10c0/369407d870740926aa3f26f7dc63eb9c7d55f1fa18da86d57317edd8efaa0e1c97b65ff25bb9468160975e086a775aef72c19f5fbdf10a90366c0fd3d3650a29
+  checksum: 10c0/b9f46a866da6dbf7502b7a5b4d5f455189fcf3c809966c8046b8531431c8e08e83975e3b1113e2e4373afde9db9dc312cfad263df105ba8f5368224af14b2193
   languageName: node
   linkType: hard
 
@@ -3698,7 +3698,7 @@ __metadata:
   dependencies:
     "@inquirer/prompts": "npm:^8.4.3"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
-    "@oclif/core": "npm:^4"
+    "@oclif/core": "npm:^5"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/node": "npm:^25.5.0"
     ajv: "npm:^8.18.0"
