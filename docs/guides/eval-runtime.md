@@ -10,6 +10,49 @@ import { evaluate, prepareEvaluation } from 'oh-my-knowledge';
 
 The package is ESM-only and requires Node.js 22 or newer. It does not discover credentials, providers, files, environment variables, CLI configuration, or Studio state.
 
+## Runtime integration flow
+
+`eval-runtime` assembles application inputs and implementations into Core contracts, then drives Core execution. It does not maintain a second scoring, scheduling or decision pipeline.
+
+```mermaid
+flowchart TD
+    INPUT["Application provides EvaluateInput<br/>Cases, variants and execution implementations, evaluator configuration<br/>Comparisons, analyses, optional decision and policy"]
+    DIRECT["evaluate(input, options)<br/>Prepare and run directly"]
+    PREVIEW["prepareEvaluation(input)<br/>Prepare before deciding to run"]
+    CAPTURE["Capture inputs and implementation bindings<br/>Compile EvaluationDefinition and MeasurementPolicy<br/>Assemble runtime capabilities"]
+    PREPARE["Call Core prepare<br/>Validate and seal SealedRunPlan"]
+    PREPARED["PreparedEvaluation<br/>Expose definition, policy, plan and run()"]
+    INSPECT["Application inspects the plan"]
+    RUN["prepared.run(options)"]
+    CORE["Evaluation Core<br/>Execution → evaluation → analysis → optional decision → report"]
+    RESULT["EvaluationResult<br/>Run status, evidence artifacts and report"]
+    HOST["Application reads the result<br/>Own persistence, presentation and business decisions"]
+
+    INPUT --> DIRECT --> CAPTURE
+    INPUT --> PREVIEW --> CAPTURE
+    CAPTURE --> PREPARE --> PREPARED
+    PREPARED -->|evaluate continues automatically| RUN
+    PREPARED -->|explicit prepare returns to application| INSPECT
+    INSPECT -->|decide to execute| RUN
+    RUN --> CORE --> RESULT --> HOST
+```
+
+`evaluate(input, options)` prepares the evaluation and calls `prepared.run(options)`. `runId`, `signal` and `onEvent` are run options; `prepareEvaluation()` fixes the measurement contract without executing target tasks. For the stages inside Core, see the [single-run evaluation flow](../explanation/architecture.md#single-run-evaluation-flow).
+
+### Reuse existing evidence
+
+These entrypoints prepare a plan from the new input, validate the identities, digests and links of reusable stages in the existing result, then invoke the remaining Core stages:
+
+| Entrypoint | Reused evidence | Stages run again |
+|---|---|---|
+| `rescore(input, source, options)` | Execution | Evaluation, analysis, optional decision and report. |
+| `reanalyze(input, source, options)` | Execution and evaluation | Analysis, optional decision and report. |
+| `redecide(input, source, options)` | Execution, evaluation and analysis | Decision and report; the new input must declare a decision. |
+
+Reuse does not execute target tasks again, but rescoring can still call an LLM judge. `source` must be a result Runtime can authenticate; arbitrary deserialized JSON is not reusable evidence. Incompatible plans or evidence are rejected rather than silently changing the measurement semantics of completed stages.
+
+The diagram shows the normal return path. Configuration or reuse validation errors can throw; failed runs may retain only partial artifacts and may have no report. Applications must handle both exceptions and result states instead of treating a resolved Promise as success or release readiness. See the [Runtime API reference](../reference/eval-runtime-api.md) for fields and error boundaries.
+
 ## Where to start
 
 For a first integration, follow “run the example → choose a scoring method → connect your service → read the results.” Use the later cache, workspace, MCP, and session sections as needed.

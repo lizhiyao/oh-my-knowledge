@@ -10,6 +10,49 @@ import { evaluate, prepareEvaluation } from 'oh-my-knowledge';
 
 该包仅支持 ESM，要求 Node.js 22 或更高版本。它不会自行发现凭证、provider、文件、环境变量、CLI 配置或 Studio 状态。
 
+## Runtime 接入流程
+
+`eval-runtime` 把应用提供的输入与实现装配为 Core 契约，再驱动 Core 运行。它不维护第二套评分、调度或判定流程。
+
+```mermaid
+flowchart TD
+    INPUT["应用提供 EvaluateInput<br/>用例、版本与执行实现、评分配置<br/>比较与分析、可选判定、运行策略"]
+    DIRECT["evaluate(input, options)<br/>准备后直接运行"]
+    PREVIEW["prepareEvaluation(input)<br/>先准备，再决定是否运行"]
+    CAPTURE["捕获输入与实现绑定<br/>编译 EvaluationDefinition 和 MeasurementPolicy<br/>装配运行能力"]
+    PREPARE["调用 Core prepare<br/>校验并封存 SealedRunPlan"]
+    PREPARED["PreparedEvaluation<br/>提供 definition、policy、plan 与 run()"]
+    INSPECT["应用检查计划"]
+    RUN["prepared.run(options)"]
+    CORE["Evaluation Core<br/>执行 → 评分 → 分析 → 可选判定 → 报告"]
+    RESULT["EvaluationResult<br/>运行状态、证据产物与报告"]
+    HOST["应用读取结果<br/>自行保存、展示或作业务决定"]
+
+    INPUT --> DIRECT --> CAPTURE
+    INPUT --> PREVIEW --> CAPTURE
+    CAPTURE --> PREPARE --> PREPARED
+    PREPARED -->|evaluate 自动继续| RUN
+    PREPARED -->|显式 prepare 返回应用| INSPECT
+    INSPECT -->|决定执行| RUN
+    RUN --> CORE --> RESULT --> HOST
+```
+
+`evaluate(input, options)` 等价于准备后调用 `prepared.run(options)`。`runId`、`signal`、`onEvent` 等属于运行选项；`prepareEvaluation()` 固定评测契约，不执行被测任务。Core 内部各阶段见[单次评测流程](../explanation/architecture.md#单次评测流程)。
+
+### 复用已有证据
+
+这三个入口先根据新输入准备计划，再校验已有结果中可复用阶段的身份、摘要和关联关系，最后调用 Core 的后续阶段：
+
+| 入口 | 复用什么 | 重新运行什么 |
+|---|---|---|
+| `rescore(input, source, options)` | 执行证据 | 评分、分析、可选判定和报告。 |
+| `reanalyze(input, source, options)` | 执行与评分证据 | 分析、可选判定和报告。 |
+| `redecide(input, source, options)` | 执行、评分与分析证据 | 判定和报告；新输入必须声明判定规则。 |
+
+复用不重新执行被测任务，但重新评分仍可能调用 LLM 评委。传入的 `source` 必须是 Runtime 能认证的结果；不能把任意反序列化 JSON 当作可复用证据。不兼容的计划或证据会被拒绝，不能通过复用静默改变已完成阶段的测量口径。
+
+图展示正常返回路径。配置或复用校验错误可能抛出异常；运行失败可能只保留部分产物，报告也可能不存在。应用应同时处理异常和结果状态，不把 Promise 返回等同于成功或可发布。字段与错误边界见 [Runtime API 参考](../reference/eval-runtime-api.md)。
+
 ## 从哪里开始
 
 第一次接入，按「跑通示例 → 选择评分方法 → 接入自己的服务 → 解读结果」阅读。本文后半部分的缓存、文件工作区、MCP 和会话配置按需使用。
