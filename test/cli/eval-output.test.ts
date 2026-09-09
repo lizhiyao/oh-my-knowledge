@@ -28,6 +28,71 @@ describe('eval terminal output', () => {
     expect(formatEvaluationSummary(failed, 'en')).toContain('upgrade the CLI');
   });
 
+  it.each([
+    ['OMK_CODEX_CLI_SPAWN_FAILED', 'codex --version', 'claude --version'],
+    ['OMK_CODEX_CLI_STDIN_UNAVAILABLE', 'codex --version', 'claude --version'],
+    ['OMK_CLAUDE_CLI_SPAWN_FAILED', 'claude --version', 'codex --version'],
+    ['OMK_CLAUDE_CLI_STDIN_UNAVAILABLE', 'claude --version', 'codex --version'],
+  ])('shows the correct executable check for %s in both languages', (reasonCode, command, otherCommand) => {
+    for (const lang of ['zh', 'en'] as const) {
+      const text = formatEvaluationSummary({ ...outcome,
+        diagnostic: { findings: [{ severity: 'error', reasonCode }] },
+      }, lang);
+      expect(text).toContain(command);
+      expect(text).not.toContain(otherCommand);
+      expect(text).not.toMatch(/升级|upgrade|cli\.run\./);
+    }
+  });
+
+  it.each([
+    ['OMK_CODEX_CLI_EXIT_NONZERO', 'Codex CLI', 'Claude Code'],
+    ['OMK_CODEX_CLI_TURN_FAILED', 'Codex CLI', 'Claude Code'],
+    ['OMK_CLAUDE_CLI_EXIT_NONZERO', 'Claude Code CLI', 'Codex'],
+    ['OMK_CLAUDE_CLI_TURN_FAILED', 'Claude Code CLI', 'Codex'],
+    ['OMK_CLAUDE_CLI_EXECUTION_FAILED', 'Claude Code CLI', 'Codex'],
+  ])('does not diagnose generic failure %s as requiring an upgrade', (reasonCode, tool, otherTool) => {
+    const failed = { ...outcome, diagnostic: { findings: [{ severity: 'error', reasonCode }] } };
+    const zh = formatEvaluationSummary(failed, 'zh');
+    const en = formatEvaluationSummary(failed, 'en');
+    expect(zh).toContain(`${tool} 调用失败`);
+    expect(zh).toContain('当前错误不能确定是否需要升级');
+    expect(en).toContain(`${tool} failed`);
+    expect(en).toContain('does not establish that an upgrade is needed');
+    expect(en).toContain('Keep the same model and cases');
+    expect(zh + en).not.toContain(otherTool);
+    expect(zh + en).not.toContain('cli.run.');
+  });
+
+  it('deduplicates remedies across codes and stages while preserving both tools and the source', () => {
+    const failed = { ...outcome,
+      diagnostic: { findings: [
+        { severity: 'error', reasonCode: 'OMK_CLAUDE_CLI_EXIT_NONZERO', stage: 'execution' },
+        { severity: 'error', reasonCode: 'OMK_CLAUDE_CLI_TURN_FAILED', stage: 'evaluation' },
+        { severity: 'error', reasonCode: 'OMK_CODEX_CLI_UPGRADE_REQUIRED', stage: 'evaluation' },
+      ] },
+      gate: { ...outcome.gate, reasonCodes: ['OMK_CLAUDE_CLI_EXIT_NONZERO'] },
+    };
+    const before = structuredClone(failed);
+    const text = formatEvaluationSummary(failed, 'zh');
+    expect(text.match(/Claude Code CLI 调用失败/g)).toHaveLength(1);
+    expect(text.match(/codex --version/g)).toHaveLength(1);
+    expect(text).toContain('OMK_CLAUDE_CLI_TURN_FAILED');
+    expect(failed).toEqual(before);
+  });
+
+  it('does not infer CLI remedies from SDK/API failures, unknown codes, or non-error findings', () => {
+    const text = formatEvaluationSummary({ ...outcome, diagnostic: { findings: [
+      ...['OMK_CODEX_SDK_TURN_FAILED', 'OMK_CLAUDE_SDK_EXECUTION_FAILED',
+        'OMK_OPENAI_API_FAILED', 'OMK_CLAUDE_CLI_UPGRADE_REQUIRED', 'OMK_CODEX_CLI_CANCELLED',
+        'OMK_CODEX_CLI_UPGRADE_REQUIRED_EXTRA', 'constructor', '__proto__',
+      ].map((reasonCode) => ({ severity: 'error', reasonCode })),
+      { severity: 'info', reasonCode: 'OMK_CODEX_CLI_UPGRADE_REQUIRED' },
+      { severity: 'warning', reasonCode: 'OMK_CLAUDE_CLI_SPAWN_FAILED' },
+    ] } }, 'en');
+    expect(text).not.toMatch(/--version|upgrade|Codex CLI|Claude Code CLI|cli\.run\./);
+    expect(text).toContain('OMK_CLAUDE_SDK_EXECUTION_FAILED');
+  });
+
   it('shows the verdict and sample-size action even when report-only exits successfully', () => {
     const before = structuredClone(outcome);
     const text = formatEvaluationSummary(outcome, 'zh');

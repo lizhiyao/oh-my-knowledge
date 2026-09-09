@@ -12,6 +12,20 @@ const VERDICT_HINTS: Readonly<Record<string, CliMessageKey>> = {
   SOLO: 'cli.run.next.solo',
 };
 
+// Match adapter reason codes exactly; raw errors and tool names cannot establish a cause.
+const DIAGNOSTIC_HINTS = new Map<string, CliMessageKey>([
+  ['OMK_CODEX_CLI_UPGRADE_REQUIRED', 'cli.run.codex_cli_upgrade_hint'],
+  ['OMK_CODEX_CLI_SPAWN_FAILED', 'cli.run.codex_cli_start_hint'],
+  ['OMK_CODEX_CLI_STDIN_UNAVAILABLE', 'cli.run.codex_cli_start_hint'],
+  ['OMK_CODEX_CLI_EXIT_NONZERO', 'cli.run.codex_cli_failure_hint'],
+  ['OMK_CODEX_CLI_TURN_FAILED', 'cli.run.codex_cli_failure_hint'],
+  ['OMK_CLAUDE_CLI_SPAWN_FAILED', 'cli.run.claude_cli_start_hint'],
+  ['OMK_CLAUDE_CLI_STDIN_UNAVAILABLE', 'cli.run.claude_cli_start_hint'],
+  ['OMK_CLAUDE_CLI_EXIT_NONZERO', 'cli.run.claude_cli_failure_hint'],
+  ['OMK_CLAUDE_CLI_TURN_FAILED', 'cli.run.claude_cli_failure_hint'],
+  ['OMK_CLAUDE_CLI_EXECUTION_FAILED', 'cli.run.claude_cli_failure_hint'],
+]);
+
 export function formatEvaluationInputFailure(error: unknown, lang: CliLang): string {
   if (error instanceof CliEvaluationInputError
       && error.code === 'CLI_INPUT_RESOLUTION_FAILED'
@@ -45,11 +59,15 @@ export function formatEvaluationSummary(output: unknown, lang: CliLang): string 
       : decision?.decisionStatus === 'failed' ? [decision.errorCode] : []),
     ...result.gate.reasonCodes,
   ])];
+  const hints = new Set<CliMessageKey>();
+  for (const reason of reasons) {
+    const hint = DIAGNOSTIC_HINTS.get(reason);
+    if (hint) hints.add(hint);
+  }
   return [
     tCli('cli.run.summary.verdict', lang, { verdict }),
     tCli(next, lang),
-    ...(reasons.includes('OMK_CODEX_CLI_UPGRADE_REQUIRED')
-      ? [tCli('cli.run.codex_upgrade_hint', lang)] : []),
+    ...[...hints].map((hint) => tCli(hint, lang)),
     tCli('cli.run.summary.execution', lang, { ...execution }),
     tCli('cli.run.summary.evaluation', lang, { ...evaluation }),
     tCli('cli.run.summary.state', lang, {
