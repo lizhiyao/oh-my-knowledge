@@ -56,7 +56,7 @@ export {
   createCodexCliCoreSchemaValidators,
 } from './cli-protocol.js';
 
-export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.0' as const;
+export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.1' as const;
 export const DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_MAX_PROMPT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_IDENTITY_PROBE_TIMEOUT_MS = 5_000;
@@ -309,6 +309,27 @@ export function buildCodexCliCoreArguments(input: Readonly<{
   });
 }
 
+function requiresCodexUpgrade(stdout: string): boolean {
+  for (const line of stdout.split('\n')) {
+    try {
+      const event = JSON.parse(line) as { type?: string; message?: unknown; error?: { message?: unknown } };
+      if (!event || typeof event !== 'object') continue;
+      let message = event.type === 'error' ? event.message
+        : event.type === 'turn.failed' ? event.error?.message : undefined;
+      if (typeof message !== 'string') continue;
+      if (message.startsWith('{')) {
+        const detail = JSON.parse(message) as { error?: { message?: unknown } };
+        message = detail?.error?.message;
+      }
+      if (typeof message === 'string'
+          && /^The '[^'\r\n]+' model requires a newer version of Codex\./.test(message)) return true;
+    } catch {
+      // Only recognized provider error events produce an actionable, redacted code.
+    }
+  }
+  return false;
+}
+
 function processFailure(error: unknown, signal: AbortSignal): never {
   const spawnError = error as SpawnHelperError;
   if (signal.aborted || spawnError.failureKind === 'abort') {
@@ -330,6 +351,9 @@ function processFailure(error: unknown, signal: AbortSignal): never {
     }
   }
   if (spawnError.failureKind === 'nonzero-exit') {
+    if (requiresCodexUpgrade(spawnError.stdout ?? '')) {
+      fail('OMK_CODEX_CLI_UPGRADE_REQUIRED', 'execution', 'Codex CLI must be upgraded for this model.', usage);
+    }
     fail('OMK_CODEX_CLI_EXIT_NONZERO', 'execution', 'Codex CLI exited unsuccessfully.', usage);
   }
   fail('OMK_CODEX_CLI_SPAWN_FAILED', 'infrastructure', 'Codex CLI process could not run.', usage);
@@ -381,7 +405,12 @@ async function executeCodex(
     child.stdin.end();
   }
   try {
-    return parseCodexCliStream((await done).stdout);
+    const stdout = (await done).stdout;
+    const parsed = parseCodexCliStream(stdout);
+    if (parsed.terminalStatus === 'failed' && requiresCodexUpgrade(stdout)) {
+      fail('OMK_CODEX_CLI_UPGRADE_REQUIRED', 'execution', 'Codex CLI must be upgraded for this model.', parsed.usage);
+    }
+    return parsed;
   } catch (error) {
     if (error instanceof ExecutionPortFailure) throw error;
     if (stdinFailed && !attempt.signal.aborted) {

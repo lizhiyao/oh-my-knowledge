@@ -28,6 +28,7 @@ const COPY = {
     evaluation: '评价',
     classification: '最高数据分级',
     identities: '产物身份',
+    technicalDetails: '查看测量计划、逐条记录与产物身份',
     reportId: '报告 ID',
     contractDigest: '运行契约摘要',
     reportDigest: '报告摘要',
@@ -97,6 +98,7 @@ const COPY = {
     sourceUnavailable: 'Core 产物当前不可读取。',
   },
   en: {
+    technicalDetails: 'View measurement plan, individual records, and artifact identities',
     title: 'Evaluation Core Runs',
     subtitle: 'A read-only measurement view backed by versioned Core artifacts. The three status axes remain independent and are never collapsed into one success verdict.',
     empty: 'No Evaluation Core runs yet.',
@@ -448,6 +450,8 @@ export function renderCoreRunDetail(
     <nav class="nav"><a href="${e(withLang(routes.listPath, lang))}">${e(copy.back)}</a></nav>
     <h1>${e(card.runId)}</h1><p class="subtitle"><time datetime="${e(card.createdAt)}">${e(card.createdAt)}</time></p>
     ${statusAxes(card, copy)}
+    ${renderDecision(detail, copy)}
+    <details><summary>${e(copy.technicalDetails)}</summary>
     <section><h2>${e(copy.identities)}</h2>${keyValues([
       [copy.reportId, `<span class="core-table-code">${e(card.reportId)}</span>`],
       [copy.contractDigest, `<span class="core-digest">${e(card.runContractDigest)}</span>`],
@@ -457,7 +461,8 @@ export function renderCoreRunDetail(
       [copy.classification, chip(card.maximumCapturedClassification)],
       [copy.provenance, formatProvenance(detail.reportProvenance, copy)],
     ])}</section>
-    ${renderPlan(detail, copy)}${renderStages(detail, copy)}${renderExecutionRecords(detail, copy)}${renderEvaluationRecords(detail, copy)}${renderAnalysis(detail, copy)}${renderDecision(detail, copy)}${renderLineage(detail, copy)}
+    ${renderPlan(detail, copy)}${renderStages(detail, copy)}${renderExecutionRecords(detail, copy)}${renderEvaluationRecords(detail, copy)}${renderAnalysis(detail, copy)}${renderLineage(detail, copy)}
+    </details>
   </main>`, lang, { homeHref: withLang(routes.listPath, lang) });
 }
 

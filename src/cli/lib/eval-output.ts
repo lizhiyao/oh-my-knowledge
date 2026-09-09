@@ -39,6 +39,8 @@ export function formatEvaluationSummary(output: unknown, lang: CliLang): string 
     : result.gate.gateStatus === 'blocked' && verdict === 'PROGRESS' ? 'cli.run.next.inspect'
       : Object.hasOwn(VERDICT_HINTS, verdict) ? VERDICT_HINTS[verdict]! : 'cli.run.next.inspect';
   const reasons = [...new Set([
+    ...(result.diagnostic?.findings.filter((finding) => finding.severity === 'error')
+      .map((finding) => finding.reasonCode) ?? []),
     ...(decision && 'reasonCodes' in decision ? decision.reasonCodes
       : decision?.decisionStatus === 'failed' ? [decision.errorCode] : []),
     ...result.gate.reasonCodes,
@@ -46,6 +48,8 @@ export function formatEvaluationSummary(output: unknown, lang: CliLang): string 
   return [
     tCli('cli.run.summary.verdict', lang, { verdict }),
     tCli(next, lang),
+    ...(reasons.includes('OMK_CODEX_CLI_UPGRADE_REQUIRED')
+      ? [tCli('cli.run.codex_upgrade_hint', lang)] : []),
     tCli('cli.run.summary.execution', lang, { ...execution }),
     tCli('cli.run.summary.evaluation', lang, { ...evaluation }),
     tCli('cli.run.summary.state', lang, {

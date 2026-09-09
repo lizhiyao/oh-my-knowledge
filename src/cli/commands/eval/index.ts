@@ -210,9 +210,15 @@ async function runEval(
     throw new CliExit(1);
   }
 
+  const cancellation = new AbortController();
+  // Keep listening until persistence and resource cleanup finish. The subprocess
+  // coordinator may re-raise SIGINT after terminating its children.
+  const cancel = () => cancellation.abort();
+  process.on('SIGINT', cancel);
+  process.on('SIGTERM', cancel);
   try {
     const { runCoreEvaluationCommand } = await import('../../lib/run-core-evaluation.js');
-    const result = await runCoreEvaluationCommand({ prepared });
+    const result = await runCoreEvaluationCommand({ prepared, signal: cancellation.signal });
     if (!process.stdout.isTTY || result.output && typeof result.output === 'object'
         && (result.output as { projectionKind?: string }).projectionKind === 'core-cli-dry-run') {
       console.log(JSON.stringify(result.output, null, 2));
@@ -236,6 +242,9 @@ async function runEval(
       }, lang, prepared.environment.environment)}`,
     }));
     throw new CliExit(1);
+  } finally {
+    process.off('SIGINT', cancel);
+    process.off('SIGTERM', cancel);
   }
 }
 

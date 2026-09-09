@@ -19,6 +19,7 @@ export type RunMessageKey =
   | 'cli.run.batch_verdict_header'
   | 'cli.run.codex_fallback_hint'
   | 'cli.run.codex_auth_hint'
+  | 'cli.run.codex_upgrade_hint'
   | 'cli.run.codex_model_hint'
   | 'cli.run.openai_api_auth_hint'
   | 'cli.run.openai_api_model_hint'
@@ -26,6 +27,10 @@ export type RunMessageKey =
   | 'cli.run.anthropic_api_model_hint';
 
 export const runDict: Record<RunMessageKey, CliMessage> = {
+  'cli.run.codex_upgrade_hint': {
+    zh: 'Codex CLI 版本不支持当前模型。先用 codex --version 检查并升级 CLI，再保持相同模型与用例重跑；切换模型会改变测量条件。',
+    en: 'This Codex CLI version does not support the selected model. Check codex --version and upgrade the CLI, then rerun with the same model and cases; switching models changes measurement conditions.',
+  },
   "cli.run.custom_executor_path": { zh: "无法读取自定义执行器。请将 --executor 指向存在且可执行的单个文件；不接受 \"node script.mjs\" 这类带参数的命令。脚本请添加 shebang 并设置执行权限，或用可执行包装脚本调用服务。路径相对于项目目录解析。", en: "Cannot read the custom executor. Point --executor to one existing executable file, not a command with arguments such as \"node script.mjs\". Add a shebang and execution permission, or use an executable wrapper. Relative paths resolve from the project directory." },
   "cli.run.summary.verdict": { zh: "评测结论：{verdict}", en: "Evaluation verdict: {verdict}" },
   "cli.run.summary.execution": { zh: "执行：{succeeded}/{planned} 成功，失败 {failed}，取消 {cancelled}，预算中止 {budgetCensored}，未开始 {notStarted}。", en: "Execution: {succeeded}/{planned} succeeded, {failed} failed, {cancelled} cancelled, {budgetCensored} budget-censored, {notStarted} not started." },

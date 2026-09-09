@@ -308,6 +308,8 @@ describe('Core run renderer', () => {
     assert.ok(html.includes('<nav class="nav">'));
     assert.ok(html.includes('<th scope=') || html.includes('<th>'));
     assert.ok(html.includes('href="/measurements?lang=en"'));
+    assert.ok(html.indexOf('PROGRESS') < html.indexOf('<details>'));
+    assert.ok(html.includes('<details><summary>View measurement plan, individual records, and artifact identities</summary>'));
   });
 
   it('escapes projected values and ignores fields outside the privacy allow-list', () => {

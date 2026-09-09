@@ -13,6 +13,7 @@ import type { CliLang } from './i18n.js';
 export interface RunCoreEvaluationCommandInput {
   readonly prepared: PreparedCliEvaluation;
   readonly store?: CoreRunArtifactStore;
+  readonly signal?: AbortSignal;
 }
 
 export interface RunCoreEvaluationCommandResult {
@@ -106,7 +107,7 @@ export async function runCoreEvaluationCommand(input: Readonly<RunCoreEvaluation
     const result = await application.run({
       request, projectRoot,
       materializationRoot: machineLayout.resolvedInputsDir, resourceLeaseRoot: machineLayout.resourceLeasesDir,
-      store: input.store,
+      store: input.store, signal: input.signal,
       createProgressSink: () => emitProgress(lang),
       onNotice: (notice) => renderNotice(notice, lang),
       requestForBatchItem: (entry) => parseCliEvaluationRequest({
@@ -114,7 +115,7 @@ export async function runCoreEvaluationCommand(input: Readonly<RunCoreEvaluation
         explicitCliFlags: { ...parseInput.explicitCliFlags, batch: undefined, control: 'baseline', treatment: entry.skillPath, samples: entry.samplesPath, 'no-serve': true },
       }),
       async onCompleted(completed, request) {
-        if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve, lang);
+        if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve && !input.signal?.aborted, lang);
         if (completed.outcomeKind === 'series') process.stderr.write(lang === 'zh'
           ? `Core Series 已完成：${completed.outcome.seriesId}（${completed.outcome.members.length} 个独立 run）\n`
           : `Core Series completed: ${completed.outcome.seriesId} (${completed.outcome.members.length} independent runs)\n`);
