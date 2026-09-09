@@ -179,7 +179,7 @@ export function reportShell(opts: ReportShellOpts, lang: Lang = DEFAULT_LANG): s
       ${opts.body}
     </main>
     <style>${REPORT_SHELL_CSS}${opts.extraCss ?? ''}</style>
-  `, lang);
+  `, lang, { navigation: opts.dim === 'doctor' ? 'knowledge' : opts.dim === 'eval' ? 'measure' : 'observe' });
 }
 
 export const REPORT_SHELL_CSS = `

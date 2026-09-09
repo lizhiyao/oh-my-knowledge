@@ -1749,7 +1749,7 @@ export function createObservationExperienceWorkspace({
 	        <span>入口 ${e(inboxEntrypointShort(session))}</span>
 	        <span>调用段 ${session.invocationIds.length}</span>
 	        <span>工具调用 ${indicators.toolCallCount}</span>
-	        <a href="/conversations/${encodeURIComponent(session.threadId)}${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}" onclick="event.stopPropagation()">${lang === 'zh' ? '查看对话任务' : 'Conversation tasks'}</a>
+	        <a href="/observe/conversations/${encodeURIComponent(session.threadId)}${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}" onclick="event.stopPropagation()">${lang === 'zh' ? '查看对话任务' : 'Conversation tasks'}</a>
 	      </div>
 	      ${navHtml}
 	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>

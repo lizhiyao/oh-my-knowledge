@@ -611,7 +611,7 @@ function taskItems(
   return tasks.map((task) => ({
     turnId: task.turnId,
     sourceTurnId: task.turnId,
-    trajectoryHref: `/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(task.turnId)}`,
+    trajectoryHref: `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(task.turnId)}`,
     title: task.title,
     startTimestamp: task.startTimestamp,
     endTimestamp: task.endTimestamp,

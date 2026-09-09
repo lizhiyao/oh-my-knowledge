@@ -110,29 +110,39 @@ describe('Knowledge Debugger task trajectory server', () => {
   });
 
   it('links an observed session to a fact-only task trajectory', async () => {
-    const inbox = await fetch(`${baseUrl}/observe-inbox`);
+    const inbox = await fetch(`${baseUrl}/observe/inbox`);
     assert.equal(inbox.status, 200);
-    assert.match(inbox.body, new RegExp(`/conversations/${encodeURIComponent(threadId)}`));
+    assert.match(inbox.body, new RegExp(`/observe/conversations/${encodeURIComponent(threadId)}`));
     assert.match(inbox.body, /查看对话任务/);
 
-    const conversations = await fetch(`${baseUrl}/conversations`);
+    const conversations = await fetch(`${baseUrl}/observe`);
     assert.equal(conversations.status, 200);
-    assert.match(conversations.body, /conversation-app-nav/);
-    assert.match(conversations.body, /<h1>对话<\/h1>/);
+    assert.match(conversations.body, /<nav class="studio-nav" aria-label="Studio 一级导航">/);
+    assert.match(conversations.body, /href="\/measure">评测<\/a>/);
+    assert.match(conversations.body, /<h1 class="studio-page-title">对话<\/h1>/);
     assert.match(conversations.body, /class="conversation-page conversation-index-app"/);
     assert.match(conversations.body, /data-page-next/);
-    assert.match(conversations.body, new RegExp(`/conversations/${encodeURIComponent(threadId)}`));
+    assert.match(conversations.body, new RegExp(`/observe/conversations/${encodeURIComponent(threadId)}`));
 
-    const conversation = await fetch(`${baseUrl}/conversations/${encodeURIComponent(threadId)}`);
+    const conversation = await fetch(`${baseUrl}/observe/conversations/${encodeURIComponent(threadId)}`);
     assert.equal(conversation.status, 200);
     assert.match(conversation.body, /检查并发布当前版本/);
     assert.match(conversation.body, new RegExp(`turnId=${encodeURIComponent(turnId)}`));
 
-    const missingTurn = await fetch(`${baseUrl}/observe-debugger/${encodeURIComponent(experienceSessionId)}`);
+    const missingTurn = await fetch(`${baseUrl}/observe/sessions/${encodeURIComponent(experienceSessionId)}`);
     assert.equal(missingTurn.status, 302);
 
-    const replay = await fetch(`${baseUrl}/observe-debugger/${encodeURIComponent(experienceSessionId)}?turnId=${encodeURIComponent(turnId)}`);
+    const replay = await fetch(`${baseUrl}/observe/sessions/${encodeURIComponent(experienceSessionId)}?turnId=${encodeURIComponent(turnId)}`);
     assert.equal(replay.status, 200);
+    const navigation = (html: string) => html.match(/<header class="app-bar">[\s\S]*?<\/header>/g);
+    const appBarStyles = (html: string) => html.match(/\.app-bar\s*\{[^}]*\}/g);
+    for (const page of [inbox, conversation, replay]) {
+      assert.deepEqual(navigation(page.body), navigation(conversations.body));
+      assert.deepEqual(appBarStyles(page.body), appBarStyles(conversations.body));
+      assert.match(page.body, /href="\/observe" aria-current="page">观测<\/a>/);
+    }
+    assert.match(replay.body, /<body class="studio-workspace">/);
+    assert.doesNotMatch(replay.body, /grid-template-rows:44px/);
     assert.match(replay.body, /任务轨迹/);
     assert.match(replay.body, /任务轨迹/);
     assert.match(replay.body, /class="trajectory-meta-source">Codex<\/span>/);
@@ -331,7 +341,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.doesNotMatch(replay.body, /has-grow-field|trajectory-field is-grow/);
     assert.match(replay.body, /class="trajectory-scroll" tabindex="0" aria-label="完整任务时间轴"/);
     assert.doesNotMatch(replay.body, /data-trajectory-scale|data-scale=/);
-    assert.match(replay.body, /body\{height:100dvh;min-height:0;overflow:hidden/);
+    assert.match(replay.body, /\.studio-workspace\{[^}]*height:100dvh;[^}]*overflow:hidden/);
     assert.match(replay.body, /class="trajectory-links"/);
     assert.match(replay.body, /data-link-kind/);
     assert.doesNotMatch(replay.body, /trajectory-operation-band/);
@@ -595,7 +605,7 @@ describe('Knowledge Debugger task trajectory server', () => {
   });
 
   it('renders English without hidden-reasoning claims and rejects unknown sessions', async () => {
-    const replay = await fetch(`${baseUrl}/observe-debugger/${encodeURIComponent(experienceSessionId)}?turnId=${encodeURIComponent(turnId)}&lang=en`);
+    const replay = await fetch(`${baseUrl}/observe/sessions/${encodeURIComponent(experienceSessionId)}?turnId=${encodeURIComponent(turnId)}&lang=en`);
     assert.equal(replay.status, 200);
     assert.match(replay.body, /Task Trajectory/);
     assert.match(replay.body, /Task trajectory/);
@@ -612,8 +622,8 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(replay.body, /User correction/);
     assert.doesNotMatch(replay.body, /Back to observation inbox/);
     assert.doesNotMatch(replay.body, /hidden (thought|reasoning)|chain of thought/i);
-    assert.equal((await fetch(`${baseUrl}/observe-debugger/missing`)).status, 404);
-    assert.equal((await fetch(`${baseUrl}/observe-debugger/%E0%A4%A`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/observe/sessions/missing`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/observe/sessions/%E0%A4%A`)).status, 404);
     assert.equal((await fetch(`${baseUrl}/api/observe-debugger/missing/source-records`)).status, 404);
   });
 

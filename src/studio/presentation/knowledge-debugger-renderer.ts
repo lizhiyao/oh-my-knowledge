@@ -214,12 +214,7 @@ export function renderKnowledgeDebuggerPage(
 
   return layout(zh ? '任务轨迹' : 'Task Trajectory', `
     <style>
-      html{height:100%;overflow:hidden;scrollbar-gutter:auto}
-      body{height:100dvh;min-height:0;overflow:hidden;display:grid;grid-template-rows:44px minmax(0,1fr)}
-      .app-bar{position:relative;height:44px;padding:0 18px}
-      .app-main{width:100%;height:100%;min-height:0;max-width:none;margin:0;padding:10px 18px 14px;overflow:hidden}
-      .footer{display:none!important}
-      .trajectory-shell{height:100%;min-height:0;display:flex;flex-direction:column;margin:0;padding:0;letter-spacing:0}
+      .trajectory-shell{height:100%;min-height:0;display:flex;flex-direction:column;margin:0;padding:14px 22px;letter-spacing:0}
       .trajectory-mode{display:inline-flex;flex:none;padding:2px;border:1px solid var(--border);border-radius:7px;background:var(--bg-elevated)}
       .trajectory-mode button{height:28px;padding:3px 11px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font:500 12px/1.4 inherit;letter-spacing:0;white-space:nowrap;cursor:pointer}
       .trajectory-mode button[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-surface);box-shadow:0 1px 2px rgba(24,32,51,.14)}
@@ -429,8 +424,8 @@ export function renderKnowledgeDebuggerPage(
       @media(prefers-reduced-motion:reduce){.trajectory-event{transition:none}.trajectory-event.is-live-entering{animation:none}}
       @media(max-width:1100px){.trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:minmax(0,1fr) 320px}.trajectory-canvas{--lane-label-width:96px;--event-width:148px}.trajectory-lane-name{padding-inline:10px}.trajectory-lane-name span{font-size:9px}}
       @media(max-width:1080px){.trajectory-meta-time{display:none!important}}
-      @media(max-width:860px){.app-main{padding-inline:10px}.trajectory-heading{grid-template-columns:1fr;gap:0}.trajectory-meta{display:none}.trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:1fr;grid-template-rows:minmax(0,3fr) minmax(160px,2fr)}.trajectory-inspector{border-top:1px solid var(--border);border-left:0}.trajectory-operation-head{padding-block:9px}}
-      @media(max-width:600px){.app-bar{padding-inline:10px}.app-brand-tag{display:none}.trajectory-heading h1{font-size:17px}.trajectory-frame-head{gap:2px;padding-inline:8px}.trajectory-frame-space{min-width:0}.trajectory-range{display:none}.trajectory-live-controls{margin-left:3px}.trajectory-live-state{gap:0;font-size:0}.trajectory-live-follow{width:22px;padding:0;justify-content:center}.trajectory-live-follow span{display:none}.trajectory-boundary-info{margin-left:1px}.trajectory-focus{margin-left:2px}.trajectory-frame-head .trajectory-mode{margin-left:2px}.trajectory-mode button{min-width:37px;padding-inline:6px;font-size:0}.trajectory-mode button:after{content:attr(data-short-label);font-size:10px}.trajectory-canvas{--lane-label-width:76px;--event-width:126px}.trajectory-lane-name{padding-inline:8px}.trajectory-lane-name span{display:none}.trajectory-event-time{display:none}.trajectory-raw-head,.trajectory-raw-row summary{grid-template-columns:66px 94px minmax(160px,1fr)}.trajectory-raw-id{display:none}.trajectory-raw-row pre{padding-left:14px}}
+      @media(max-width:860px){.trajectory-shell{padding-inline:14px}.trajectory-heading{grid-template-columns:1fr;gap:0}.trajectory-meta{display:none}.trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:1fr;grid-template-rows:minmax(0,3fr) minmax(160px,2fr)}.trajectory-inspector{border-top:1px solid var(--border);border-left:0}.trajectory-operation-head{padding-block:9px}}
+      @media(max-width:600px){.trajectory-heading h1{font-size:17px}.trajectory-frame-head{gap:2px;padding-inline:8px}.trajectory-frame-space{min-width:0}.trajectory-range{display:none}.trajectory-live-controls{margin-left:3px}.trajectory-live-state{gap:0;font-size:0}.trajectory-live-follow{width:22px;padding:0;justify-content:center}.trajectory-live-follow span{display:none}.trajectory-boundary-info{margin-left:1px}.trajectory-focus{margin-left:2px}.trajectory-frame-head .trajectory-mode{margin-left:2px}.trajectory-mode button{min-width:37px;padding-inline:6px;font-size:0}.trajectory-mode button:after{content:attr(data-short-label);font-size:10px}.trajectory-canvas{--lane-label-width:76px;--event-width:126px}.trajectory-lane-name{padding-inline:8px}.trajectory-lane-name span{display:none}.trajectory-event-time{display:none}.trajectory-raw-head,.trajectory-raw-row summary{grid-template-columns:66px 94px minmax(160px,1fr)}.trajectory-raw-id{display:none}.trajectory-raw-row pre{padding-left:14px}}
       @media(prefers-reduced-motion:reduce){.trajectory-body{transition:none}}
     </style>
     <main class="trajectory-shell" data-mode="semantic"${options.live ? ` data-live-endpoint="${e(options.live.endpoint)}" data-live-revision="${e(options.live.revision)}"` : ''}>
@@ -1285,7 +1280,7 @@ export function renderKnowledgeDebuggerPage(
         initializeTrajectoryPage();
       })();
     </script>
-  `, lang);
+  `, lang, { navigation: 'observe', workspace: true });
 }
 
 function projectReplay(

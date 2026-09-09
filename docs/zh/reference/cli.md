@@ -465,4 +465,4 @@ omk studio --no-open
 
 启动本地知识工作台。首页直接索引本机 Codex 对话，进行中的对话优先展示；选择对话和任务后，可在四条泳道中查看任务轨迹，并在语义轨迹、规范化事件与原始日志之间相互核对。进行中的任务支持实时跟随，旧的未闭合任务会显示为「未记录结束状态」。这条浏览路径不要求先运行 `omk observe ingest`。
 
-顶部「知识载体」入口提供 doctor、Core eval 与 observe 视图。Core run 页面从已校验产物投影运行状态、evidence coverage、数值观测、Analysis result、Decision reason code 与 lineage。访问 `/observe-inbox` 可查看 observation reviewer 队列。CI gate 使用 `omk eval` 的 exit route，自动化应读取 Core report 产物。
+一级导航为「观测 → 评测 → 知识」，页面路径对应 `/observe`、`/measure`、`/knowledge`。观测展示对话与任务轨迹，评测展示 Core 测量结果，知识展示知识健康度与管理记录。访问 `/observe/inbox` 可查看观测审阅队列。旧页面地址不再提供服务。CI gate 使用 `omk eval` 的退出码，自动化应读取 Core report 产物。

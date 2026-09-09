@@ -25,6 +25,8 @@ export interface CoreStudioRouteHandlerOptions {
   readonly htmlBasePath: string;
   readonly apiBasePath: string;
   readonly defaultLang?: Lang;
+  /** Enable the full Studio navigation only when its sibling routes are mounted. */
+  readonly studioNavigation?: boolean;
 }
 
 export type CoreStudioRouteHandler = (
@@ -116,6 +118,7 @@ export function createCoreStudioRouteHandler(
   const routes: CoreStudioRenderRoutes = Object.freeze({
     listPath: htmlBasePath,
     detailPath: (runId: string) => `${htmlBasePath}/${encodeURIComponent(runId)}`,
+    studioNavigation: options.studioNavigation,
   });
   const defaultLang = options.defaultLang ?? 'zh';
 

@@ -259,7 +259,7 @@ async function executeObserveCommand(
   const inboxPath = saveObservationInboxReport(report, observationsDir);
   const target = state.catalog.upsert(group);
   const baseUrl = await studioUrl(invocation, state);
-  const trajectoryUrl = `${baseUrl}/conversations/${encodeURIComponent(target.threadId)}/tasks/${encodeURIComponent(target.turnId)}`;
+  const trajectoryUrl = `${baseUrl}/observe/conversations/${encodeURIComponent(target.threadId)}/tasks/${encodeURIComponent(target.turnId)}`;
   return {
     kind: 'success',
     text: [

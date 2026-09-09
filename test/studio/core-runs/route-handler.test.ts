@@ -357,6 +357,13 @@ describe('Core Studio route handler', () => {
     try {
       server = createReportServer({
         port: 0, coreStudioCatalog: catalog(),
+        conversationCatalog: {
+          async listConversations() {
+            return { conversations: [], totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 };
+          },
+          async getConversation() { return undefined; },
+          async loadTaskTrajectory() { return undefined; },
+        },
         observationsDir: join(root, 'observations'), doctorsDir: join(root, 'doctors'),
         analysesDir: join(root, 'analyses'), managedDir: join(root, 'managed'),
       });
@@ -364,9 +371,63 @@ describe('Core Studio route handler', () => {
       const list = await fetch(`${url}/api/reports`);
       assert.equal(list.status, 200);
       assert.deepEqual(await list.json(), [card()]);
-      const page = await fetch(`${url}/reports/core-run-1`);
+      const page = await fetch(`${url}/measure/core-run-1`);
       assert.equal(page.status, 200);
       assert.ok((await page.text()).includes('progress-policy'));
+      for (const path of [
+        '/conversations', '/conversations/thread/tasks/turn', '/reports', '/reports/core-run-1',
+        '/observe-inbox', '/observe-debugger/session', '/observations', '/observations/inbox',
+        '/observe-health', '/observe-health/report', '/analyses', '/analyses/report',
+        '/skills/audit', '/doctors/report', '/managed', '/managed/audit',
+        '/skill-trend/audit', '/analyses-diff?from=a&to=b',
+      ]) {
+        const obsolete = await fetch(`${url}${path}`, { redirect: 'manual' });
+        assert.equal(obsolete.status, 404, `${path} is no longer a page route`);
+        assert.equal(obsolete.headers.get('location'), null);
+      }
+
+      for (const lang of ['zh', 'en']) {
+        const query = lang === 'en' ? '?lang=en' : '';
+        const home = await fetch(`${url}/${query}`, { redirect: 'manual' });
+        assert.equal(home.status, 302);
+        assert.equal(home.headers.get('location'), `/observe${query}`);
+        let homeAppBar: string | undefined;
+        for (const [path, active, status] of [
+          ['/observe', 'observe', 200],
+          ['/knowledge', 'knowledge', 200],
+          ['/measure', 'measure', 200],
+          ['/measure/core-run-1', 'measure', 200],
+          ['/measure/missing', 'measure', 404],
+        ] as const) {
+          const response = await fetch(`${url}${path}${query}`, { redirect: 'manual' });
+          assert.equal(response.status, status, `${path} must render without a redirect`);
+          const html = await response.text();
+          const appBars = html.match(/<header class="app-bar">[\s\S]*?<\/header>/g) ?? [];
+          assert.equal(appBars.length, 1, `${path} uses one shared application bar`);
+          const appBar = appBars[0]!.replaceAll(' aria-current="page"', '');
+          assert.ok(appBar.indexOf('href="/observe') < appBar.indexOf('href="/measure'));
+          assert.ok(appBar.indexOf('href="/measure') < appBar.indexOf('href="/knowledge'));
+          if (path === '/observe') homeAppBar = appBar;
+          else assert.equal(appBar, homeAppBar, `${path} preserves the same branding and navigation`);
+          if (['/', '/observe', '/knowledge', '/measure'].includes(path)) {
+            assert.ok(html.includes('<body class="studio-workspace">'), `${path} uses the workspace shell`);
+            assert.match(html, /<h1 class="studio-page-title">[^<]+<\/h1>/, `${path} keeps an accessible page heading`);
+            assert.ok(!html.includes('class="studio-page-header'), `${path} has no redundant title row`);
+            assert.ok(!html.includes('<footer class="footer"'), `${path} has no extra document footer`);
+          }
+          assert.ok(html.includes(`href="/${active}${query}" aria-current="page"`), path);
+          assert.ok(html.includes(`href="/${query}"`), 'brand returns to the Studio home');
+          for (const [section, label] of [
+            ['observe', lang === 'en' ? 'Observe' : '观测'],
+            ['measure', lang === 'en' ? 'Measure' : '评测'],
+            ['knowledge', lang === 'en' ? 'Knowledge' : '知识'],
+          ]) {
+            assert.ok(html.replaceAll(' aria-current="page"', '').includes(`href="/${section}${query}">${label}</a>`));
+          }
+          if (path === '/observe') assert.ok(html.includes('conversation-index-app'));
+          if (path === '/measure/core-run-1') assert.ok(html.includes('progress-policy'));
+        }
+      }
     } finally {
       try { await server?.stop(); }
       finally { await rm(root, { recursive: true, force: true }); }
@@ -386,10 +447,14 @@ describe('Core Studio route handler', () => {
     assert.ok(Object.isFrozen(list?.headers));
     assert.equal(list?.headers['Content-Type'], 'text/html; charset=utf-8');
     assert.ok(list?.body.includes('Evaluation Core Runs'));
+    assert.ok(!list?.body.includes('class="studio-nav"'), 'standalone mounts do not link to unmounted Studio routes');
+    assert.ok(!list?.body.includes('<body class="studio-workspace">'), 'standalone reports retain document scrolling');
+    assert.ok(list?.body.includes('href="/core-runs?lang=en"'));
 
     const detailResponse = await handler({ method: 'GET', url: '/core-runs/core-run-1' });
     assert.equal(detailResponse?.status, 200);
     assert.ok(detailResponse?.body.includes('progress-policy'));
+    assert.ok(!detailResponse?.body.includes('class="studio-nav"'));
 
     const apiList = await handler({ method: 'GET', url: '/api/core-runs' });
     assert.deepEqual(JSON.parse(apiList?.body ?? ''), [card()]);

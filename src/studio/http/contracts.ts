@@ -15,7 +15,7 @@ export interface ReportServerOptions {
   managedDir?: string | (() => string);
   /** Source-neutral conversation inventory. Defaults to the local Codex catalog. */
   conversationCatalog?: ConversationCatalog;
-  /** Evaluation 页面唯一事实源。提供后，/reports 与 /api/reports 只读 Core artifacts。 */
+  /** Evaluation 页面唯一事实源。提供后，/measure 与 /api/reports 只读 Core artifacts。 */
   coreStudioCatalog?: CoreStudioCatalog;
   /** 是否把别项目的 observe-health 索引卡片合进机器级总览。 */
   includeObserveCards?: boolean;

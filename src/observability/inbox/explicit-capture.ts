@@ -291,7 +291,7 @@ export function explicitObservationCaptureResult(
     observationId: aggregateObservationInboxItemId(item),
     capturedAt: record.capturedAt,
     captureCoverage: record.captureCoverage,
-    reviewPath: `/observe-inbox?skill=${encodeURIComponent(record.skillName)}`,
+    reviewPath: `/observe/inbox?skill=${encodeURIComponent(record.skillName)}`,
     created,
   };
 }

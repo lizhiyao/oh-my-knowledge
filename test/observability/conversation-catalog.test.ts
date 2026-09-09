@@ -463,7 +463,7 @@ describe('Codex conversation catalog', () => {
     const conversation = await catalog.getConversation('main-thread');
     assert.equal(conversation?.turnCount, 2);
     assert.deepEqual(conversation?.tasks.map((task) => task.turnId), ['turn-a', 'turn-b']);
-    assert.match(conversation?.tasks[0]?.trajectoryHref ?? '', /\/conversations\/main-thread\/tasks\/turn-a$/u);
+    assert.match(conversation?.tasks[0]?.trajectoryHref ?? '', /^\/observe\/conversations\/main-thread\/tasks\/turn-a$/u);
 
     appendFileSync(mainRollout, `${JSON.stringify({
       timestamp: '2026-08-06T00:02:00.000Z',

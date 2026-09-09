@@ -9,13 +9,14 @@ import { e, fmtDuration, layout } from '../presentation/layout.js';
 
 export interface CoreStudioRenderRoutes {
   readonly listPath: string;
+  readonly studioNavigation?: boolean;
   detailPath(runId: string): string;
 }
 
 const COPY = {
   zh: {
     title: 'Evaluation Core 运行记录',
-    subtitle: '基于版本化 Core 产物的只读测量视图。三个状态轴相互独立，不合成为单一“成功”结论。',
+    subtitle: '查看评测结果与依据，判断知识改动是否有效。',
     empty: '暂无 Evaluation Core 运行记录。',
     back: '← 返回运行记录',
     run: '运行',
@@ -100,7 +101,7 @@ const COPY = {
   en: {
     technicalDetails: 'View measurement plan, individual records, and artifact identities',
     title: 'Evaluation Core Runs',
-    subtitle: 'A read-only measurement view backed by versioned Core artifacts. The three status axes remain independent and are never collapsed into one success verdict.',
+    subtitle: 'Review evaluation results and evidence to assess whether knowledge changes are effective.',
     empty: 'No Evaluation Core runs yet.',
     back: '← Back to runs',
     run: 'Run',
@@ -310,10 +311,15 @@ export function renderCoreRunList(
 ): string {
   const copy = c(lang);
   const content = cards.length === 0
-    ? `<p class="core-muted">${e(copy.empty)}</p>`
+    ? `<p class="${routes.studioNavigation ? 'studio-empty' : 'core-muted'}">${e(copy.empty)}</p>`
     : `<div class="core-grid">${cards.map((card) => runCard(card, lang, routes, copy)).join('')}</div>`;
-  return layout(copy.title, `${CORE_STUDIO_STYLE}<main><h1>${e(copy.title)}</h1><p class="subtitle core-lead">${e(copy.subtitle)}</p>${content}</main>`, lang, {
-    homeHref: withLang(routes.listPath, lang),
+  const body = routes.studioNavigation
+    ? `<main class="studio-page"><h1 class="studio-page-title">${lang === 'zh' ? '评测' : 'Evaluations'}</h1><div class="studio-page-body"><p class="studio-page-description">${e(copy.subtitle)}</p>${content}</div></main>`
+    : `<main><h1>${e(copy.title)}</h1><p class="subtitle core-lead">${e(copy.subtitle)}</p>${content}</main>`;
+  return layout(copy.title, `${CORE_STUDIO_STYLE}${body}`, lang, {
+    homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
+    navigation: routes.studioNavigation ? 'measure' : false,
+    workspace: routes.studioNavigation,
   });
 }
 
@@ -463,7 +469,10 @@ export function renderCoreRunDetail(
     ])}</section>
     ${renderPlan(detail, copy)}${renderStages(detail, copy)}${renderExecutionRecords(detail, copy)}${renderEvaluationRecords(detail, copy)}${renderAnalysis(detail, copy)}${renderLineage(detail, copy)}
     </details>
-  </main>`, lang, { homeHref: withLang(routes.listPath, lang) });
+  </main>`, lang, {
+    homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
+    navigation: routes.studioNavigation ? 'measure' : false,
+  });
 }
 
 export function renderCoreStudioError(
@@ -473,7 +482,8 @@ export function renderCoreStudioError(
 ): string {
   const copy = c(lang);
   return layout(copy.title, `${CORE_STUDIO_STYLE}<main><nav class="nav"><a href="${e(withLang(routes.listPath, lang))}">${e(copy.back)}</a></nav><h1>${e(copy.title)}</h1><p role="alert">${e(message)}</p></main>`, lang, {
-    homeHref: withLang(routes.listPath, lang),
+    homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
+    navigation: routes.studioNavigation ? 'measure' : false,
   });
 }
 

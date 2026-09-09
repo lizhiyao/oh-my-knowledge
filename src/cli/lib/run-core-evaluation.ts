@@ -65,7 +65,7 @@ async function announceCoreReport(
     coreStudioCatalog: createCoreStudioCatalog(store),
   });
   const serverUrl = await server.start();
-  const reportUrl = `${serverUrl}/reports/${encodeURIComponent(artifacts.manifest.runId)}`;
+  const reportUrl = `${serverUrl}/measure/${encodeURIComponent(artifacts.manifest.runId)}`;
   process.stderr.write(lang === 'zh'
     ? `报告服务：${serverUrl}\n查看本次评测：${reportUrl}\n按 Ctrl+C 停止。\n`
     : `Report server: ${serverUrl}\nView this run: ${reportUrl}\nPress Ctrl+C to stop.\n`);

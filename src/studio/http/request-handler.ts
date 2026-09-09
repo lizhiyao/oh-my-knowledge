@@ -63,9 +63,10 @@ export function createStudioRequestHandler({
     ? undefined
     : createCoreStudioRouteHandler({
         catalog: coreStudioCatalog,
-        htmlBasePath: '/reports',
+        htmlBasePath: '/measure',
         apiBasePath: '/api/reports',
         defaultLang: DEFAULT_LANG,
+        studioNavigation: true,
       });
 
   // observe-health 与 doctors 都按请求解析，确保长会话中项目第一次产生产物后，
@@ -105,11 +106,6 @@ export function createStudioRequestHandler({
       const lang: Lang = langParam === 'en' ? 'en' : langParam === 'zh' ? 'zh' : DEFAULT_LANG;
 
       if (coreStudioRoute !== undefined) {
-        if (path === '/') {
-          response.writeHead(302, { Location: `/reports${url.search}` });
-          response.end();
-          return;
-        }
         const coreResponse = await coreStudioRoute({
           method: request.method,
           url: request.url,

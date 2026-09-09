@@ -64,8 +64,8 @@ describe('Studio observation routes', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('serves the canonical inbox routes and preserves legacy redirect semantics', async () => {
-    const page = await request(`${baseUrl}/observe-inbox?skill=audit`);
+  it('serves the canonical inbox page without old page aliases and preserves the API contract', async () => {
+    const page = await request(`${baseUrl}/observe/inbox?skill=audit`);
     assert.equal(page.status, 200);
 
     const items = await request(`${baseUrl}/api/observe-inbox?severity=high&limit=1`);
@@ -73,8 +73,8 @@ describe('Studio observation routes', () => {
     assert.deepEqual(JSON.parse(items.body), []);
 
     const pageRedirect = await request(`${baseUrl}/observations/inbox?skill=audit`);
-    assert.equal(pageRedirect.status, 302);
-    assert.equal(pageRedirect.headers.location, '/observe-inbox?skill=audit');
+    assert.equal(pageRedirect.status, 404);
+    assert.equal(pageRedirect.headers.location, undefined);
 
     const apiRedirect = await request(
       `${baseUrl}/api/observations/review-state?targetType=skill&targetId=audit`,

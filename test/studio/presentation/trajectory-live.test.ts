@@ -60,7 +60,7 @@ describe('trajectory live client', () => {
     const followLabel = { textContent: '' } as HTMLElement;
     const liveState = { dataset: {}, textContent: '' } as unknown as HTMLElement;
     const browserWindow = {
-      location: { pathname: '/conversations/thread/tasks/turn', reload: () => { reloadCount += 1; } },
+      location: { pathname: '/observe/conversations/thread/tasks/turn', reload: () => { reloadCount += 1; } },
       sessionStorage: {
         getItem: (key: string) => stored.get(key) ?? null,
         setItem: (key: string, value: string) => stored.set(key, value),
@@ -132,7 +132,7 @@ describe('trajectory live client', () => {
     }
     const liveState = { dataset: {}, textContent: '' } as unknown as HTMLElement;
     const browserWindow = {
-      location: { pathname: '/conversations/thread/tasks/turn' },
+      location: { pathname: '/observe/conversations/thread/tasks/turn' },
       sessionStorage: { getItem: () => null, removeItem: () => undefined, setItem: () => undefined },
       requestAnimationFrame: () => 1,
       setTimeout: () => 1,
@@ -184,7 +184,7 @@ describe('trajectory live client', () => {
     } as unknown as HTMLButtonElement;
     const followLabel = { textContent: '' } as HTMLElement;
     const browserWindow = {
-      location: { pathname: '/conversations/thread/tasks/turn' },
+      location: { pathname: '/observe/conversations/thread/tasks/turn' },
       sessionStorage: { getItem: () => null, removeItem: () => undefined, setItem: () => undefined },
       requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; },
       setTimeout: () => 1,
@@ -232,7 +232,7 @@ describe('trajectory live client', () => {
     }
     const liveState = { dataset: {}, textContent: '' } as unknown as HTMLElement;
     const browserWindow = {
-      location: { pathname: '/conversations/thread/tasks/turn' },
+      location: { pathname: '/observe/conversations/thread/tasks/turn' },
       sessionStorage: { getItem: () => null, removeItem: () => undefined, setItem: () => undefined },
       requestAnimationFrame: () => 1,
       setTimeout: () => 1,

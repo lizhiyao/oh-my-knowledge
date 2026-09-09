@@ -68,10 +68,7 @@ export function createObservationRoutes({
     analysesDir,
     doctorsDir,
   }): Promise<boolean> => {
-    const legacyRedirect = ((): { to: string; status: 302 | 307 } | undefined => {
-      if (path === '/observations' || path === '/observations/inbox') {
-        return { to: '/observe-inbox', status: 302 };
-      }
+    const legacyRedirect = ((): { to: string; status: 307 } | undefined => {
       if (path === '/api/observations/inbox') return { to: '/api/observe-inbox', status: 307 };
       if (path === '/api/observations/show') return { to: '/api/observe-inbox/show', status: 307 };
       if (path === '/api/observations/diagnostics') return { to: '/api/observe-inbox/diagnostics', status: 307 };
@@ -84,7 +81,7 @@ export function createObservationRoutes({
       return true;
     }
 
-    if (path === '/observe-inbox') {
+    if (path === '/observe/inbox') {
       const skill = url.searchParams.get('skill') || undefined;
       const html = renderObservationInboxPage(
         buildObservationInboxViewModel(observationsDir, { skill }),
@@ -95,7 +92,7 @@ export function createObservationRoutes({
       return true;
     }
 
-    const knowledgeDebuggerMatch = path.match(/^\/observe-debugger\/(.+)$/);
+    const knowledgeDebuggerMatch = path.match(/^\/observe\/sessions\/(.+)$/);
     if (knowledgeDebuggerMatch) {
       let experienceSessionId = '';
       try { experienceSessionId = decodeURIComponent(knowledgeDebuggerMatch[1]); } catch { /* invalid path */ }
@@ -111,7 +108,7 @@ export function createObservationRoutes({
       if (!targetTurnId) {
         const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
         response.writeHead(302, {
-          Location: `/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
+          Location: `/observe/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
         });
         response.end();
         return true;

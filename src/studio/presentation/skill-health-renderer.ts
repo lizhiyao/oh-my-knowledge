@@ -192,7 +192,7 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
       <span class="ki-card-title">${e(skill.skillName)}</span>
       <div class="ki-card-meta">
         ${skill.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · <span style="color:${stabilityColor}">${failureLabel}</span>
-        · <a href="/skill-trend/${encodeURIComponent(skill.skillName)}${lang === 'zh' ? '' : `?lang=${lang}`}" data-i18n="viewTrendLink" style="color:var(--accent);text-decoration:none;font-size:11px">${t('viewTrendLink', lang)}</a>
+        · <a href="/observe/skill-trend/${encodeURIComponent(skill.skillName)}${lang === 'zh' ? '' : `?lang=${lang}`}" data-i18n="viewTrendLink" style="color:var(--accent);text-decoration:none;font-size:11px">${t('viewTrendLink', lang)}</a>
       </div>
     </div>
     <div style="font-size:11px;color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px">
@@ -328,7 +328,7 @@ export function renderSkillHealthReport(report: SkillHealthReport, lang: Lang = 
     ],
     score,
     scoreLabel,
-    backHref: `/${lang === 'zh' ? '' : '?lang=en'}`,
+    backHref: `/observe/health${lang === 'zh' ? '' : '?lang=en'}`,
     backLabel: zh ? '返回工作台' : 'Back to dashboard',
     body,
   }, lang);
