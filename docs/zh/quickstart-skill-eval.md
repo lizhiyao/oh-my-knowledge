@@ -1,192 +1,103 @@
 # omk 快速上手：跑出第一份 verdict
 
-5 分钟跑出第一份报告，然后把 demo 换成你自己的 skill。目标读者：手里有一版（或几版）skill，想用数据看看「这版 skill 到底好不好」「v2 有没有变好」「能不能带证据发布」。
+先用演示项目跑通“预览 → 评测 → 查看证据”，再换成自己的 skill。运行耗时与费用取决于模型、用例和重试次数。
 
-## 前置（1 分钟）
+## 安装与模型准备
 
-```bash
-npm i oh-my-knowledge -g
-omk --version    # 能输出版本号即装好
-```
-
-准备一个已认证的 runtime：Codex CLI、Claude Code 或 OpenAI 兼容 API。在 ChatGPT desktop 的 Codex 任务里，omk 会自动选择 `codex`，读取 `~/.codex/config.toml` 的模型，并默认让同一个 Codex 模型担任评委；不需要 Claude 账号。
-
-如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk Agent Skill 装到你的 agent 工具里：
+需要 Node.js >=22，以及一个已认证的 runtime：Codex CLI、Claude Code 或 API 执行器。配置方法见[执行器](./reference/executors.md)。
 
 ```bash
-omk install omk-agent-skill
+npm i -g oh-my-knowledge@next
+omk --version
 ```
 
-默认只会安装到本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
+这里安装的是持续迭代的 1.0 Beta；从 0.54 升级请先看[迁移指南](./guides/v1-preview-migration.md)。
 
-## 最快首跑：先用 demo 脚手架
+在 Codex 任务中，OMK 默认选择 Codex，读取本机配置的模型，并沿用该模型作为评委。普通终端可显式选择：
 
-如果你第一次用 omk，先不要急着接自己的文件，从这里开始：
+```bash
+export OMK_EXECUTOR=codex
+```
+
+模型选择、API 凭证与可选 SDK 的前置要求统一见[执行器文档](./reference/executors.md)。
+
+## 1. 跑通演示项目
 
 ```bash
 omk init demo
 cd demo
 omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
+```
+
+`init` 创建两版 skill 和三条评测用例。`--dry-run` 预览执行计划和预估调用次数；检查后再执行真实评测：
+
+```bash
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-`omk init` 会创建两版 skill 和三条评测用例。`--dry-run` 先预览 sealed task plan 和预估调用次数；真跑后会在 Studio 打开 Core run。demo 只有三条用例，verdict 经常是 `UNDERPOWERED`，这是正常教学结果，不是运行失败。
+真实评测会调用模型，并默认先执行 doctor 检查。模型费用与耗时以所选 runtime 为准，预览不是账单保证。完成后按 CLI 返回的实际地址查看 Studio；也可以用 `omk studio` 打开历史结果。
 
-希望第一次运行就达到 omk 默认的启发式证据下限，可以改用官方 20 条完整起步集：
+三条用例用于验证流程，出现 `UNDERPOWERED` 符合预期。若要使用完整起步集，在新目录运行 `omk init demo-full --samples 20`。该集合覆盖四个维度、不同难度与无缺陷对照，会产生 40 次 control／treatment 执行，另有评分与检查调用。
 
-```bash
-omk init demo --samples 20
-```
+**起步用例标记为 `provenance: llm-generated`。** 20 条仅达到默认启发式证据下限，不代表完成先验功效规划，也不等于正式发布证据。使用前应人工复核并替换为真实领域用例。
 
-完整用例集在安全、健壮性、可维护性、性能四个维度各有 5 条，覆盖 easy／medium／hard 难度，并包含无缺陷对照，避免把「报告更多问题」误当成更好的审查。它会产生 40 次 control／treatment 执行，因此默认 3 条仍然是验证环境最省成本的入口。固定起步用例明确标记为 `provenance: llm-generated`：20 条只达到默认启发式证据下限，不等于完成先验功效规划，也仍是教学数据而非生产发布证据。信任 ship／no-ship 判断前，应人工复核并替换为真实领域用例。
+## 2. 换成自己的 skill
 
-在 Codex 任务里，上面的最短命令无需添加 runtime 参数。普通终端想固定使用 Codex，可以把偏好加入 shell 配置，例如 `~/.zshrc`：
+在自己的项目中准备两版文件：
 
-```bash
-export OMK_EXECUTOR=codex
-# 可选：export OMK_MODEL="你的 Codex 模型"
-```
-
-不设置 `OMK_MODEL` 时，omk 会读取 `~/.codex/config.toml` 的模型。也可以逐次显式指定；Codex 被选中后，默认评委自动沿用被测模型，不用重复写 `--judge-models`：
-
-```bash
-omk eval --control code-review-v1 --treatment code-review-v2 \
-  --executor codex --model <codex-model>
-
-# OpenAI 兼容 API 路径
-export OPENAI_API_KEY="..."
-export OPENAI_BASE_URL="https://api.example.com/v1"
-omk eval --control code-review-v1 --treatment code-review-v2 \
-  --executor openai-api --model <model> \
-  --judge-models openai-api:<model>
-```
-
-Codex 的 `<codex-model>` 要换成本机 Codex 可用模型；omk 默认读取 `~/.codex/config.toml` 或 `$CODEX_HOME/config.toml` 里的顶层 `model`。OpenAI 兼容 API 则要确认模型名和 `OPENAI_BASE_URL` 指向的端点匹配。
-
-## 准备 skill（1 分钟）
-
-按 omk 默认布局把 skill 放到 `skills/` 目录下。**推荐用单 `.md` 文件**，最简单：
-
-```
+```text
 skills/
 ├── my-skill-v1.md
 └── my-skill-v2.md
 ```
 
-只有当 skill 内容超长、想把示例 / 参考资料拆到独立文件时，再用目录式（每版一个目录）：
-
-```
-skills/
-├── my-skill-v1/
-│   └── SKILL.md
-└── my-skill-v2/
-    ├── SKILL.md
-    └── references/      长示例 / 参考资料
-        └── examples.md
-```
-
-两种形式 omk 都能识别，混用也行。要跑 v1 vs v2 对比就按上面放两版；只想看「有 skill vs 没 skill」的差距，放一份就够，用 baseline 对照。
-
-## 把 demo 换成你自己的 skill
-
-### 路径 A：自然语言（推荐）
-
-打开你的 coding agent，进入项目目录，直接说一句话：
-
-> 用 omk 对比 skills/my-skill-v1 跟 skills/my-skill-v2
-
-omk skill 会自动判断：没有 `eval-samples.json` 就先帮你生成用例，然后跑评测，最后把报告浏览器弹出来。Claude Code 可以直接使用已安装的 omk skill；在 Codex 里则让 agent 执行 `omk` CLI。常见说法：
-
-- 「用 omk 对比 skills/my-skill-v1 跟 skills/my-skill-v2」
-- 「用 omk 给 skills/audit 跑 baseline 对照（有 skill vs 没 skill）」
-- 「用 omk 跑 skills/ 下面所有 skill 的批量评测」
-- 「用 omk evolve 自动改进 skills/my-skill-v2，跑 5 轮」
-
-### 路径 B：直接命令行
-
-如果你只有一版 skill，最短有用对比是「有这个 skill」vs `baseline`：
+需要附带参考资料时，可使用 `skills/my-skill-v2/SKILL.md` 目录布局，详见[知识载体布局](./reference/artifact-layout.md)。variant 名取文件名或目录名，例如 `my-skill-v2`。
 
 ```bash
-omk sample skills/my-skill.md                         # 第一次：让 AI 给你的 skill 生成评测用例
-omk eval --control baseline --treatment my-skill --dry-run
-omk eval --control baseline --treatment my-skill
+omk sample skills/my-skill-v2.md
 ```
 
-如果你已经有 v1 / v2 两版，再做版本对比：
+生成后先人工检查用例的准则、权重、反例与边界覆盖。比较两版时使用同一份固定用例；从演示项目继续操作时，应替换演示用例，不要把它们当成自己的领域用例。
 
 ```bash
-omk sample skills/my-skill-v2.md                                  # 第一次:让 AI 给你的 skill 生成评测用例
-omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run  # 预览要跑什么
-omk eval --control my-skill-v1 --treatment my-skill-v2            # 真跑
-omk studio                                                        # 启动报告浏览器
+omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run
+omk eval --control my-skill-v1 --treatment my-skill-v2
 ```
 
-variant 名来自 `skills/` 下的 skill 文件名或目录名；`skills/my-skill.md` 对应 `my-skill`，上面的 v1 / v2 布局对应 `my-skill-v1` 和 `my-skill-v2`。
+只有一版 skill 时，用 `baseline` 作为 control，比较“无 skill”和“有 skill”。用例的格式和自动发现规则见[评测用例格式](./reference/eval-sample-format.md)。
 
-`--dry-run` 预览时会告诉你预估调用次数和成本，确认 OK 再去掉 flag 真跑。`omk eval` 默认会先跑一次 doctor 健康度检查当门禁，发现 skill 写法有大问题就直接拦下来；如果你确认知道自己在干嘛，加 `--skip-doctor` 绕过。
+## 3. 查看结果并决定下一步
 
-### 模型或执行器失败时
-
-CLI 会尽量把首跑失败变成可执行的下一步：
-
-- Claude 失败：先登录 Claude Code，或按上面的参数切到 Codex / OpenAI API。
-- Codex 模型失败：换成 `~/.codex/config.toml` 或 `$CODEX_HOME/config.toml` 里配置的模型，再用 `codex exec -m <codex-model> "hi"` 验证。
-- OpenAI / Anthropic API 模型失败：检查 `--model`、`--judge-models`、base URL，以及账号是否有该模型权限。
-- 如果只是想先验证断言和报告链路，加 `--no-judge`；它会跳过 LLM 评委，只使用断言分数。
-
-## 看结果（1 分钟）
-
-报告浏览器自动弹出（默认 `http://127.0.0.1:7799/`），重点看三个地方：
-
-**verdict**（跨版本判定）：`PROGRESS`（变好）/ `NOISE`（差距在置信区间内不可区分）/ `REGRESSION`（变差）/ `CAUTIOUS`（趋势好但置信不足）；外加两档边界情况 `UNDERPOWERED`（用例太少，不足以判定）与 `SOLO`（单变体，无可对比）。这是你能直接拿出去对焦的一句话判定。
-
-**综合分**：每版 0-5 分平均，跟基线比 `+Δ` 多少。Δ 旁边的置信区间决定 verdict 落点 —— 默认 95%，多个实验组共用一个对照时按 Bonferroni 提到更高置信水平。
-
-**低分用例**：点开看 LLM 在哪条用例上崩了。对照「rubric 期望」跟「LLM 实际输出」找差距 —— 通常能直接看出 skill 文档哪段写得不够清楚。
-
-## 按 verdict 行动
+先看 **verdict**（跨版本判定）及其 reason code，再看差异 Δ、报告给出的置信区间、证据覆盖与失败用例。默认单一比较使用 95% 置信区间，比较家族会调整置信水平；发布判定还受证据与策略门禁约束。
 
 | Verdict | 下一步 |
 |---|---|
-| `PROGRESS` | 可以走正常发布流程。留存报告作为发布证据；如果这是已用 `omk install` 纳管的 skill，再运行 `omk promote <name>` 记录接受决定。 |
-| `CAUTIOUS` | 不要盲发。先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑；只有明确人工复核后才放宽门禁。 |
-| `REGRESSION` | 不要发布。从最差层和失败用例开始定位，修好 artifact 后重跑评测。 |
-| `NOISE` | 暂不做发布判断。增加用例，或提高用例集区分度，让差异能从噪声里分离出来，再重跑。 |
-| `UNDERPOWERED` | 补齐预注册的样本量要求后重跑。没有先验规划时，20 个可比较单元只是 omk 默认的启发式下限；正式研究应根据外部先导假设配置 `decision.power`，或用 `decision.minimumComparisonUnits` 登记 simulation 得出的要求。 |
-| `SOLO` | 先补对照组，通常用 `omk eval --control baseline --treatment <name>`，再做发布 / 不发布判断。 |
+| `PROGRESS` | 证据支持改进。复核用例代表性与告警后进入自己的发布流程；已纳管的 skill 可用 `omk promote <name>` 记录接受决定。 |
+| `CAUTIOUS` | 阅读报告的具体原因和告警，处理后重新评测，暂不自动接受。 |
+| `REGRESSION` | 从失败用例与变差的指标定位问题，修改后重新评测。 |
+| `NOISE` | 当前证据无法区分差异。检查用例区分度与样本设计，再决定是否补充测量。 |
+| `UNDERPOWERED` | 补齐预先声明的样本量要求。20 个可比较单元只是默认启发式下限；正式测量应根据外部先导假设配置 `decision.power`，或登记 `decision.minimumComparisonUnits`。 |
+| `SOLO` | 添加对照组后再做跨版本判断。 |
 
-## 关键提示
+结论只适用于本次用例、准则和运行条件。AI 生成用例可能偏向已有的成功路径，应补充真实失败、反例与误用场景。保留报告、用例来源和人工复核结论；在迭代中使用过的用例不能直接充当独立发布验证集。方法见[统计严谨性](./explanation/statistical-rigor.md)和[用例设计](./specs/sample-design-spec.md)。
 
-**用例生成会花时间**。omk 默认让 AI 给你的 skill 生成 10-20 条用例，但 AI 生成的用例**有偏**：容易扎堆在 skill 文档已经写清楚的「happy path」上，对边界 / 反例 / 误用场景覆盖不足。**强烈建议**第一次跑完之后花 30 分钟人工筛一遍：删掉不合理的、补缺关键边界、补几条「故意写错的用户指令」看 skill 会不会被带偏。这是评测结果可信度的最大变量。
+## 在 Agent 中使用
 
-**评测会产生 LLM 费用**。粗算单条用例 × 单 variant 约 $0.01-0.05 美元，10 条用例 × 2 variants 约 $0.2-1 美元。跑前 `--dry-run` 预览。
+```bash
+omk install omk-agent-skill
+```
 
-**结论只对你给定的用例集负责**。「我这版 skill 更好」这句话的天花板是「在你设计的 N 条用例上更好」。换用例集结论可能翻盘。所以**用例设计本身就是结论可信度的源头** —— 不要把它当成「跑评测前的麻烦事」，它就是评测本身。
+默认安装到检测到的受支持目标：`~/.codex` 或 `~/.agents` 对应 Codex/AGENTS，`~/.claude` 对应 Claude Code。`--to all` 强制安装到当前已知的全部目标，`--dest` 指定自定义 skill 根目录。
 
-## 常见场景速查
+在 Agent 中显式使用 OMK Skill，并描述目标，例如：“用 omk 比较 skills/my-skill-v1 与 skills/my-skill-v2，先预览计划。”Claude Code 可使用已安装的 `/omk` 入口；其他宿主可让 Agent 执行 `omk` CLI。生成用例后仍需复核，再执行真实评测。
 
-| 想做什么 | 自然语言说法 | 等价命令 |
-|---|---|---|
-| 第一次给 skill 跑分 | 给 skills/X 跑 baseline 对照 | `omk eval --control baseline --treatment X` |
-| 改完前后对比 | 对比 git 历史里的 skills/X 跟当前版本 | `omk eval --control git:X --treatment X` |
-| 让 omk 帮我自动改 skill | 用 omk evolve skills/X 跑 5 轮 | `omk evolve skills/X.md --rounds 5` |
-| 批量评测一批 skill | 给 skills/ 下所有 skill 跑评测 | `omk eval --batch` |
-| 只生成用例不跑评测 | 给 skills/X 生成测试用例 | `omk sample skills/X.md` |
-| 单独跑健康度检查 | 给 skills/X 做 doctor 体检 | `omk doctor skills/X.md` |
-| 看历史报告 | 打开 omk studio | `omk studio` |
+## 首跑遇到问题
 
-## 跑完第一份报告，对焦时拿这些信息走
+- **模型或认证失败：** 检查 runtime 登录状态、模型名与 API 地址，见[执行器](./reference/executors.md)。
+- **doctor 拦截：** 按诊断修复知识载体后重跑；需要理解跳过检查的影响时查 [CLI 参考](./reference/cli.md)。
+- **只想检查断言与报告：** `--no-judge` 跳过 LLM 评委，但目标执行仍可能调用模型，不能视为离线或免费运行。
+- **预览失败：** 先修复用例、路径或 URL 解析问题，不要通过直接执行绕过失败。
 
-- verdict + 综合分 + Δ + 95% CI 区间
-- 哪几条用例分数最低，rubric 期望 vs LLM 实际差在哪
-- 你对哪些用例的设计有疑问（避免「数据说话也要怀疑数据」的盲信）
-- doctor 健康度结论（eval 默认会跑，报告里有；如果想单独审一次跑 `omk doctor`）
+## 继续使用
 
-## 更深的玩法
-
-- 心智模型 —— [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
-- 一次运行到底怎么跑：[工作原理](./explanation/architecture.md)
-- 详细 CLI / executor / judge / observe 参考：[README.zh.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.zh.md)
-- 评分管道（assertion / llm / judge / dimension / composite 五层）：[scoring.md](./specs/scoring.md)
-- 测量学严谨性（Bootstrap CI / Krippendorff α / length-debias 等）：[statistical-rigor.md](./explanation/statistical-rigor.md)
-- 用例设计规范（mocks / environment / tripwire / mocksStrict）：[sample-design-spec.md](./specs/sample-design-spec.md)
+[自动改进 skill](./guides/auto-improve-skills.md) · [观测真实任务](./guides/observe-production.md) · [Node.js 服务接入](./guides/eval-runtime.md) · [完整文档索引](./README.md)

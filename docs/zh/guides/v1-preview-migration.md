@@ -1,6 +1,6 @@
 # 从 0.54 迁移到 1.0 预览版
 
-`1.0.0-beta.0` 是 OMK 新 Evaluation Core 架构的首个公开预览版。它发布到 npm 的 `next` 标签；预览期间，`latest` 继续保持在 `0.54.0`。
+本文面向从 `0.54` 迁移到 1.0 Beta 的用户。Beta 使用 npm 的 `next` 标签，仍会继续迭代；本文说明当前迁移边界，不代表接口冻结或 RC 发布计划。
 
 ```bash
 npm install --global oh-my-knowledge@next
@@ -9,7 +9,7 @@ omk --version
 
 请先在一次性项目中试用，或备份项目 `.omk/` 与 `~/.oh-my-knowledge/` 后再安装预览版。需要回到稳定渠道时，运行 `npm install --global oh-my-knowledge@latest`。
 
-这是 beta，不代表 1.0 契约已经冻结。当前仍有一项重要限制：`omk eval gold init` 只创建通用标注脚手架，还不能从真实 Core run 自动带入 sample ID，因此 Gold authoring 仍需人工对齐。显式 Gold compare 会报告 Krippendorff alpha，但这份事后结果不会自动门控该 run 的 release verdict。[Issue #283](https://github.com/lizhiyao/oh-my-knowledge/issues/283)继续跟踪 RC 前需要补齐的 Gold 引导入口与校准决策闭环。
+**Gold 限制：** `omk eval gold init` 仍生成通用脚手架，真实 sample ID 需要人工对齐。Gold compare 提供人工标注与评委的一致性及事后可靠性评估，不改变已有 run 的发布判定。具体选择器见下方 CLI 迁移说明。
 
 ## 一、重新建立证据历史
 
@@ -67,7 +67,7 @@ omk eval --dry-run --samples eval-samples.yaml \
 公开 API 仅支持 ESM，要求 Node.js 22 或更高版本。import 必须经过 package export map，`oh-my-knowledge/dist/*` 属于私有路径。
 
 - 普通 `evaluate()` 与 `checkExecutor()` façade 从 `oh-my-knowledge` 导入；显式子路径 `oh-my-knowledge/eval-runtime` 与其等价。
-- 将固定的 `{ executor, control, treatment, evaluator }` 调用改为 `{ variants, evaluators, comparisons }`。每个 Executor、config 与 runtime context 都绑定在 `variant.execution` 下；显式声明 `experiment.sampling`；Bootstrap 参数移到 `analysis`；只有一个分析结果需要产出 verdict 时才添加 `decision`。预览版不会读取已移除的结构。
+- 将固定的 `{ executor, control, treatment, evaluator }` 调用改为 `{ dataset, variants, evaluators, comparisons, analyses, experiment, policy }`。执行器与配置绑定在 `variant.execution` 下，抽样设计位于 `experiment.sampling`；每项统计请求放在 `analyses[]`，可选 `decision` 通过 `analysisId` 选择分析结果。运行选项如 `runId`、`signal`、`onEvent` 放在第二个参数；旧结构不再读取。
 - 原包根 Core import 迁移到 `oh-my-knowledge/eval-core`；Engine 构造、分阶段执行、admission、verification、comparability、Series 与 Core JSON Schema 均从该子路径导入。
 - `createEvaluationEngine` 只从 `oh-my-knowledge/eval-core` 导入；`eval-runtime/advanced` 已移除含义模糊的窄化重导出。已装配输入只需一次标准完整运行时，在 advanced 使用 `runEvaluation`。
 - eval-samples、projection、Studio、MCP 与 DSH 集成分别使用 `oh-my-knowledge/eval-samples`、`oh-my-knowledge/projections`、`oh-my-knowledge/studio`、`oh-my-knowledge/mcp` 与 `oh-my-knowledge/dsh-plugin`。
@@ -75,7 +75,7 @@ omk eval --dry-run --samples eval-samples.yaml \
 - Engine Runtime 装配改用 binding resolver，一次返回 resolution 与配置好的 port。
 - Series Analysis 与 Decision Runtime 通过 `openRun()` 打开 run-scoped session，并用 `dispose()` 释放；Series run 必须提供 `runId`，结果是带 terminal status 的 union。
 
-[嵌入式 API 参考](../reference/embedded-api.md)是 canonical contract，并提供完整的独立宿主 fixture。
+普通服务接入以 [Runtime API 参考](../reference/eval-runtime-api.md)为准；高级分阶段接入查[底层 Core API](../reference/embedded-api.md)。
 
 ## 测量边界
 
