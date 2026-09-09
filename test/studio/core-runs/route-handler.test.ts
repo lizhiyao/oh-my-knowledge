@@ -377,6 +377,7 @@ describe('Core Studio route handler', () => {
 
       for (const lang of ['zh', 'en']) {
         const query = lang === 'en' ? '?lang=en' : '';
+        let homeAppBar: string | undefined;
         for (const [path, active, status] of [
           ['/', 'conversations', 200],
           ['/conversations', 'conversations', 200],
@@ -388,12 +389,24 @@ describe('Core Studio route handler', () => {
           const response = await fetch(`${url}${path}${query}`, { redirect: 'manual' });
           assert.equal(response.status, status, `${path} must render without a redirect`);
           const html = await response.text();
+          const appBars = html.match(/<header class="app-bar">[\s\S]*?<\/header>/g) ?? [];
+          assert.equal(appBars.length, 1, `${path} uses one shared application bar`);
+          const appBar = appBars[0]!.replaceAll(' aria-current="page"', '');
+          assert.ok(appBar.indexOf('href="/conversations') < appBar.indexOf('href="/reports'));
+          assert.ok(appBar.indexOf('href="/reports') < appBar.indexOf('href="/knowledge'));
+          if (path === '/') homeAppBar = appBar;
+          else assert.equal(appBar, homeAppBar, `${path} preserves the same branding and navigation`);
+          if (['/', '/conversations', '/knowledge', '/reports'].includes(path)) {
+            assert.ok(html.includes('<body class="studio-workspace">'), `${path} uses the workspace shell`);
+            assert.ok(html.includes('class="studio-page-header'), `${path} uses the shared title row`);
+            assert.ok(!html.includes('<footer class="footer"'), `${path} has no extra document footer`);
+          }
           assert.ok(html.includes(`href="/${active}${query}" aria-current="page"`), path);
           assert.ok(html.includes(`href="/${query}"`), 'brand returns to the Studio home');
           for (const [section, label] of [
-            ['conversations', lang === 'en' ? 'Conversations' : '对话'],
+            ['conversations', lang === 'en' ? 'Observe' : '观测'],
+            ['reports', lang === 'en' ? 'Measure' : '评测'],
             ['knowledge', lang === 'en' ? 'Knowledge' : '知识'],
-            ['reports', lang === 'en' ? 'Evaluations' : '评测'],
           ]) {
             assert.ok(html.replaceAll(' aria-current="page"', '').includes(`href="/${section}${query}">${label}</a>`));
           }
@@ -421,6 +434,7 @@ describe('Core Studio route handler', () => {
     assert.equal(list?.headers['Content-Type'], 'text/html; charset=utf-8');
     assert.ok(list?.body.includes('Evaluation Core Runs'));
     assert.ok(!list?.body.includes('class="studio-nav"'), 'standalone mounts do not link to unmounted Studio routes');
+    assert.ok(!list?.body.includes('<body class="studio-workspace">'), 'standalone reports retain document scrolling');
     assert.ok(list?.body.includes('href="/core-runs?lang=en"'));
 
     const detailResponse = await handler({ method: 'GET', url: '/core-runs/core-run-1' });

@@ -134,6 +134,15 @@ describe('Knowledge Debugger task trajectory server', () => {
 
     const replay = await fetch(`${baseUrl}/observe-debugger/${encodeURIComponent(experienceSessionId)}?turnId=${encodeURIComponent(turnId)}`);
     assert.equal(replay.status, 200);
+    const navigation = (html: string) => html.match(/<header class="app-bar">[\s\S]*?<\/header>/g);
+    const appBarStyles = (html: string) => html.match(/\.app-bar\s*\{[^}]*\}/g);
+    for (const page of [inbox, conversation, replay]) {
+      assert.deepEqual(navigation(page.body), navigation(conversations.body));
+      assert.deepEqual(appBarStyles(page.body), appBarStyles(conversations.body));
+      assert.match(page.body, /href="\/conversations" aria-current="page">观测<\/a>/);
+    }
+    assert.match(replay.body, /<body class="studio-workspace">/);
+    assert.doesNotMatch(replay.body, /grid-template-rows:44px/);
     assert.match(replay.body, /任务轨迹/);
     assert.match(replay.body, /任务轨迹/);
     assert.match(replay.body, /class="trajectory-meta-source">Codex<\/span>/);
@@ -332,7 +341,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.doesNotMatch(replay.body, /has-grow-field|trajectory-field is-grow/);
     assert.match(replay.body, /class="trajectory-scroll" tabindex="0" aria-label="完整任务时间轴"/);
     assert.doesNotMatch(replay.body, /data-trajectory-scale|data-scale=/);
-    assert.match(replay.body, /body\{height:100dvh;min-height:0;overflow:hidden/);
+    assert.match(replay.body, /\.studio-workspace\{[^}]*height:100dvh;[^}]*overflow:hidden/);
     assert.match(replay.body, /class="trajectory-links"/);
     assert.match(replay.body, /data-link-kind/);
     assert.doesNotMatch(replay.body, /trajectory-operation-band/);

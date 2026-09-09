@@ -378,9 +378,9 @@ type StudioSection = 'conversations' | 'knowledge' | 'reports';
 export function renderStudioNavigation(lang: Lang, active?: StudioSection): string {
   const query = lang === 'en' ? '?lang=en' : '';
   const items = [
-    ['conversations', '对话', 'Conversations'],
+    ['conversations', '观测', 'Observe'],
+    ['reports', '评测', 'Measure'],
     ['knowledge', '知识', 'Knowledge'],
-    ['reports', '评测', 'Evaluations'],
   ] as const;
   return `<nav class="studio-nav" aria-label="${lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}">${items.map(([section, zh, en]) =>
     `<a href="/${section}${query}"${section === active ? ' aria-current="page"' : ''}>${lang === 'zh' ? zh : en}</a>`
@@ -390,6 +390,7 @@ export function renderStudioNavigation(lang: Lang, active?: StudioSection): stri
 export interface LayoutOptions {
   homeHref?: string;
   navigation?: StudioSection | false;
+  workspace?: boolean;
 }
 
 export function layout(
@@ -404,7 +405,7 @@ export function layout(
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
   const navigation = options.navigation === false ? '' : renderStudioNavigation(lang, options.navigation);
-  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? (lang === 'en' ? '/?lang=en' : '/'))}"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a>${navigation}<span class="app-bar-spacer"></span></header>`;
+  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? (lang === 'en' ? '/?lang=en' : '/'))}"><span class="app-brand-logo">${brandLogo(30)}</span><strong class="app-brand-name">OMK</strong><span class="app-brand-tag">Studio</span></a>${navigation}<span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${e(title)}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
@@ -455,23 +456,33 @@ html{scrollbar-gutter:stable}
 *{box-sizing:border-box;margin:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:0;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;margin:0;font-size:var(--fs-body);letter-spacing:-.005em}
 
-/* ── 常驻品牌栏(白玻璃,无菜单)— 让品牌身份贯穿首页与所有详情页 ── */
-.app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
+/* Shared application shell for every Studio section. */
+.app-bar{position:sticky;top:0;z-index:30;height:54px;background:var(--bg-surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px;flex-shrink:0}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
 .app-brand:hover{color:var(--text-primary);text-decoration:none}
 .app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
 .app-brand-logo svg{display:block;border-radius:50%}
+.app-brand-name{font-size:14px;font-weight:650;letter-spacing:.01em}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
 .studio-nav{height:100%;display:flex;align-items:center;gap:2px;padding-left:16px}
 .studio-nav a{height:100%;display:flex;align-items:center;padding:0 14px;border-bottom:2px solid transparent;color:var(--text-secondary);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
 .studio-nav a:hover{color:var(--text-primary);text-decoration:none}
 .studio-nav a[aria-current="page"]{border-bottom-color:var(--accent);color:var(--text-primary)}
-@media(max-width:720px){.studio-nav{padding-left:2px}.studio-nav a{padding:0 9px}}
+@media(max-width:720px){.app-brand-name{display:none}.studio-nav{padding-left:2px}.studio-nav a{padding:0 9px}}
 @media(max-width:480px){.app-brand-tag{display:none}.studio-nav{padding-left:0}.studio-nav a{padding:0 7px;font-size:12px}}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
 .app-main{max-width:1280px;margin:0 auto;padding:18px 20px 24px}
 @media(max-width:768px){.app-main{padding:14px 14px 20px}.app-bar{padding:0 14px}}
+.studio-workspace{height:100dvh;min-height:0;overflow:hidden;background:var(--bg-surface);display:flex;flex-direction:column}
+.studio-workspace .app-main{flex:1;min-height:0;width:100%;max-width:none;margin:0;padding:0;display:flex;flex-direction:column}
+.studio-page{flex:1;min-height:0;display:flex;flex-direction:column}
+.studio-page-header{min-height:62px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:14px 22px;border-bottom:1px solid var(--border)}
+.studio-page-header h1{margin:0;font-size:18px;font-weight:650;line-height:1.3;letter-spacing:0}
+.studio-page-body{flex:1;min-height:0;overflow:auto;padding:22px}
+.studio-page-description{max-width:820px;color:var(--text-secondary);font-size:13px;margin:0 0 20px}
+.studio-empty{padding:36px;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);text-align:center}
+@media(max-width:720px){.studio-page-header{padding:14px;gap:12px}.studio-page-body{padding:14px}}
 h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
 h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
 .subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
@@ -806,6 +817,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .lang-toggle,.btn-danger,.nav{display:none}
   .hint-tip{display:none}
   .footer{color:#475569}
+  .studio-workspace,.studio-workspace .app-main,.studio-page,.studio-page-body{height:auto;overflow:visible;display:block}
 }
-</style></head><body>${appBar}<div class="app-main">${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer></div>${langToggleScript()}</body></html>`;
+</style></head><body${options.workspace ? ' class="studio-workspace"' : ''}>${appBar}<div class="app-main">${body}${options.workspace ? '' : '<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>'}</div>${langToggleScript()}</body></html>`;
 }

@@ -311,11 +311,15 @@ export function renderCoreRunList(
 ): string {
   const copy = c(lang);
   const content = cards.length === 0
-    ? `<p class="core-muted">${e(copy.empty)}</p>`
+    ? `<p class="${routes.studioNavigation ? 'studio-empty' : 'core-muted'}">${e(copy.empty)}</p>`
     : `<div class="core-grid">${cards.map((card) => runCard(card, lang, routes, copy)).join('')}</div>`;
-  return layout(copy.title, `${CORE_STUDIO_STYLE}<main><h1>${e(copy.title)}</h1><p class="subtitle core-lead">${e(copy.subtitle)}</p>${content}</main>`, lang, {
+  const body = routes.studioNavigation
+    ? `<main class="studio-page"><header class="studio-page-header"><h1>${lang === 'zh' ? '评测' : 'Evaluations'}</h1></header><div class="studio-page-body"><p class="studio-page-description">${e(copy.subtitle)}</p>${content}</div></main>`
+    : `<main><h1>${e(copy.title)}</h1><p class="subtitle core-lead">${e(copy.subtitle)}</p>${content}</main>`;
+  return layout(copy.title, `${CORE_STUDIO_STYLE}${body}`, lang, {
     homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
     navigation: routes.studioNavigation ? 'reports' : false,
+    workspace: routes.studioNavigation,
   });
 }
 

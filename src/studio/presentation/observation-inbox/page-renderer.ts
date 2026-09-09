@@ -314,5 +314,5 @@ export function renderObservationInboxDocument({
       </div>
       <script>${observationInboxClientScript(lang)}      </script>
     </main>
-  `, lang);
+  `, lang, { navigation: 'conversations' });
 }

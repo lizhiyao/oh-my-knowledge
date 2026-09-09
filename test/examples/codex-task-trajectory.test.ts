@@ -43,7 +43,8 @@ describe('redacted real Codex task trajectory example', () => {
     assert.match(html, /openai-docs/);
     assert.match(html, /首次命令|Process exited with code 1|失败/);
     assert.match(html, /aria-label="完整任务时间轴"/);
-    assert.match(html, /body\{height:100dvh;min-height:0;overflow:hidden/);
+    assert.match(html, /<body class="studio-workspace">/);
+    assert.match(html, /\.studio-workspace\{[^}]*height:100dvh;[^}]*overflow:hidden/);
     assert.equal((html.match(/<section class="trajectory-lane(?: has-two-rows)?" data-lane=/g) ?? []).length, 4);
     assert.match(html, /aria-label="类型筛选"/);
     assert.match(html, /data-trajectory-facet="knowledge:skill"/);
