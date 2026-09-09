@@ -101,3 +101,5 @@ omk install omk-agent-skill
 ## 继续使用
 
 [自动改进 skill](./guides/auto-improve-skills.md) · [观测真实任务](./guides/observe-production.md) · [Node.js 服务接入](./guides/eval-runtime.md) · [完整文档索引](./README.md)
+
+[评测流程图：从执行到判定](./explanation/architecture.md#单次评测流程)。

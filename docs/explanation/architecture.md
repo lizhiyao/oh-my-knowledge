@@ -2,24 +2,53 @@
 
 OMK keeps one source of truth for evaluation: a host compiles local inputs into a host-neutral measurement contract, Evaluation Core seals and executes that contract, and every CLI or Studio view is projected from validated Core artifacts.
 
+## Single-run evaluation flow
+
+After the host resolves inputs and assembles runtime capabilities, Core processes a single evaluation through these stages. Artifacts show the flow of evidence; the host owns file persistence and presentation.
+
 ```mermaid
 flowchart TD
-    I["CLI flags · eval.yaml · samples · artifacts"]
-    C["Parse → Resolve → Compile"]
-    D["EvaluationDefinition + MeasurementPolicy"]
-    H["Runtime assembly + adapter preflight"]
-    P["Core prepare → SealedRunPlan"]
-    E["ExecutionBundle"]
-    V["EvaluationBundle"]
-    A["AnalysisBundle"]
-    R["EvaluationReport"]
-    S["Atomic artifact store"]
-    X["CLI gate · Studio · Gold · resume · evolve · managed evidence"]
+    I["Evaluation definition<br/>Cases, targets, evaluator declarations and configuration<br/>Comparisons, analysis and decision rules"]
+    P["Runtime policy<br/>Concurrency, retries, budgets, caching and evidence requirements"]
+    R["Host-provided capabilities<br/>Executor implementations and evaluator runtime implementations<br/>Analysis algorithms and storage ports"]
 
-    I --> C --> D
-    D --> H --> P
-    P --> E --> V --> A --> R --> S --> X
+    subgraph CORE["eval-core"]
+        PRE["1. Prepare<br/>Validate definitions and capabilities; bind declarations to implementations"]
+        PLAN["SealedRunPlan<br/>Seal the plan, identities and digests"]
+        EX["2. Execution<br/>Run targets and cases"]
+        EB["ExecutionBundle<br/>Actual outputs, usage and execution evidence"]
+        EV["3. Evaluation<br/>Invoke bound evaluator implementations"]
+        VB["EvaluationBundle<br/>Metrics, scoring evidence and missing states"]
+        AN["4. Analysis<br/>Follow the analysis graph for differences, uncertainty and coverage"]
+        AB["AnalysisBundle<br/>Analysis results"]
+        Q{"Decision policy configured?"}
+        DE["5. Decision<br/>Apply analysis and evidence conditions to produce a conclusion and reasons"]
+        DR["DecisionResult"]
+        REP["6. EvaluationReport<br/>Link stage evidence<br/>Separate run, evidence and conclusion states"]
+
+        PRE --> PLAN --> EX --> EB --> EV --> VB --> AN --> AB --> Q
+        Q -->|Yes| DE --> DR --> REP
+        Q -->|No| REP
+        EB -.-> AN
+        EB -.-> REP
+        VB -.-> REP
+        AB -.-> REP
+    end
+
+    I --> PRE
+    P --> PRE
+    R -. Capability binding .-> PRE
+    REP --> OUT["Host persistence and presentation<br/>CLI, Studio or your application"]
 ```
+
+- **Declaration and implementation:** The definition declares the evaluator, configuration and output metrics. The host supplies the scoring code; preparation binds and validates the two. This does not score an output twice.
+- **Execution and evaluation:** Executors perform the target task. Evaluators inspect actual outputs using, for example, deterministic assertions or an LLM judge.
+- **Analysis and decision:** Analysis produces results such as differences and intervals. An optional decision policy then applies evidence conditions to reach a conclusion. Without a decision policy, execution, evaluation, analysis and reporting remain available.
+
+The diagram shows the normal stage order and omits failure and interruption branches. Failure, cancellation or budget exhaustion can stop work early; later stages follow the available evidence and policy. A run need not complete every stage or produce a verdict. Its result can include artifacts from completed stages, and a failed run may have no report. Run completion, evidence completeness and conclusion sufficiency are separate states.
+
+Each stage retains its own artifacts. Reusing existing artifacts through staged interfaces requires validation of identities, digests and upstream links before rescoring, reanalysis or redecision; reuse does not make arbitrary artifacts comparable.
+
 
 ## The important boundaries
 

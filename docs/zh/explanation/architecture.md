@@ -2,24 +2,53 @@
 
 OMK 的评测只有一份事实源：宿主把本机输入编译成宿主无关的测量契约，Evaluation Core 封存并执行契约，CLI 与 Studio 的所有视图都从经过校验的 Core 产物投影得到。
 
+## 单次评测流程
+
+宿主解析输入并装配运行能力后，Core 按以下阶段处理一次评测。图中的产物表示证据如何流转，文件保存与页面展示由宿主负责。
+
 ```mermaid
 flowchart TD
-    I["CLI flag · eval.yaml · sample · artifact"]
-    C["Parse → Resolve → Compile"]
-    D["EvaluationDefinition + MeasurementPolicy"]
-    H["Runtime 装配 + adapter preflight"]
-    P["Core prepare → SealedRunPlan"]
-    E["ExecutionBundle"]
-    V["EvaluationBundle"]
-    A["AnalysisBundle"]
-    R["EvaluationReport"]
-    S["原子 artifact store"]
-    X["CLI gate · Studio · Gold · resume · evolve · managed evidence"]
+    I["评测定义<br/>用例、被测版本、评分器声明与配置<br/>比较关系、分析与判定规则"]
+    P["运行策略<br/>并发、重试、预算、缓存与证据要求"]
+    R["宿主提供能力<br/>执行器实现、评分器运行实现<br/>分析算法与存储接口"]
 
-    I --> C --> D
-    D --> H --> P
-    P --> E --> V --> A --> R --> S --> X
+    subgraph CORE["eval-core"]
+        PRE["① 准备计划 prepare<br/>校验定义与能力，将声明绑定到实现"]
+        PLAN["SealedRunPlan<br/>封存运行计划与身份摘要"]
+        EX["② 执行 Execution<br/>运行各版本、各用例"]
+        EB["ExecutionBundle<br/>实际输出、用量与执行证据"]
+        EV["③ 评分 Evaluation<br/>调用已绑定的评分器实现"]
+        VB["EvaluationBundle<br/>指标、评分依据与缺失状态"]
+        AN["④ 分析 Analysis<br/>按分析图比较差异、不确定性与证据覆盖"]
+        AB["AnalysisBundle<br/>分析结果"]
+        Q{"配置了判定策略？"}
+        DE["⑤ 判定 Decision<br/>结合分析与证据条件生成结论及原因"]
+        DR["DecisionResult"]
+        REP["⑥ 汇总 EvaluationReport<br/>关联各阶段证据<br/>区分运行、证据与结论状态"]
+
+        PRE --> PLAN --> EX --> EB --> EV --> VB --> AN --> AB --> Q
+        Q -->|是| DE --> DR --> REP
+        Q -->|否| REP
+        EB -.-> AN
+        EB -.-> REP
+        VB -.-> REP
+        AB -.-> REP
+    end
+
+    I --> PRE
+    P --> PRE
+    R -. 能力绑定 .-> PRE
+    REP --> OUT["宿主保存与展示<br/>CLI、Studio 或自己的应用"]
 ```
+
+- **声明与实现：** 评测定义声明使用哪个评分器、配置和输出指标；宿主提供实际评分代码，准备阶段将二者绑定并校验。这里不是评分两次。
+- **执行与评分：** 执行器完成被测任务；评分器检查实际输出，可以采用确定性断言或 LLM 评委。
+- **分析与判定：** 分析产生差异、区间等结果；可选的判定策略再结合证据条件生成结论。未配置判定策略时，仍可获得执行、评分、分析和报告。
+
+图展示正常阶段顺序，省略了失败与中断分支。失败、取消或预算耗尽可能使任务提前停止；后续阶段按实际证据和策略处理，不能假定每次运行都会走完或产生 verdict。返回结果可包含已完成阶段的产物，失败时报告也可能不存在。运行完成、证据完整和结论充分是不同状态。
+
+每个阶段保留独立产物。通过分阶段接口复用已有产物时，必须先校验身份、摘要及上游关联，再进入重新评分、分析或判定；复用不意味着任意产物都可以混合比较。
+
 
 ## 关键边界
 

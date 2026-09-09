@@ -11,6 +11,19 @@ export default defineConfig({
   title: 'OMK',
   description: 'OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.',
   cleanUrls: true,
+  markdown: {
+    config(md) {
+      const fence = md.renderer.rules.fence!
+      md.renderer.rules.fence = (tokens, index, options, env, self) => {
+        const token = tokens[index]
+        if (token.info.trim() === 'mermaid') {
+          const source = md.utils.escapeHtml(JSON.stringify(token.content))
+          return `<MermaidDiagram :source="${source}" />`
+        }
+        return fence(tokens, index, options, env, self)
+      }
+    },
+  },
   lastUpdated: true,
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
 

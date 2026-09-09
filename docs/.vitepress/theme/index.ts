@@ -2,11 +2,16 @@ import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'
 import { useData } from 'vitepress'
 import Landing from './Landing.vue'
+import MermaidDiagram from './MermaidDiagram.vue'
+import type { Theme } from 'vitepress'
 
 // frontmatter `landing: true` 的页面:沿用 VitePress 默认主题(顶栏 + 页脚),
 // 落地内容经 `layout-top` 槽位全宽插在导航与页脚之间。其它页面照常走默认主题。
 export default {
   extends: DefaultTheme,
+  enhanceApp({ app }) {
+    app.component('MermaidDiagram', MermaidDiagram)
+  },
   Layout() {
     const { frontmatter, lang } = useData()
     // key 绑定 lang:中英首页都是 landing 页、共用同一 layout-top 槽位,SPA 切换语言时
@@ -18,4 +23,4 @@ export default {
       frontmatter.value.landing ? { 'layout-top': () => h(Landing, { key: lang.value }) } : {},
     )
   },
-}
+} satisfies Theme
