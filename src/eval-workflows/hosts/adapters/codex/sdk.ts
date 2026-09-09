@@ -65,7 +65,7 @@ export {
   type ResolvedCodexSdkRuntime,
 } from './sdk-runtime.js';
 
-export const CODEX_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.0' as const;
+export const CODEX_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.1' as const;
 export const DEFAULT_CODEX_SDK_MAX_EVENT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CODEX_SDK_MAX_PROMPT_BYTES = 2 * 1024 * 1024;
 

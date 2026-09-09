@@ -16,6 +16,8 @@ function executorRuntimeEvidence(
     runtimeKind: runtime.runtimeKind,
     fingerprint: runtime.fingerprint,
     capabilities: runtime.capabilities as unknown as JsonValue,
+    ...(['codex', 'codex-sdk'].includes(runtime.executor)
+      ? { protocolAdapterVersion: 'codex-reconnect/v2' } : {}),
     ...(runtime.binary === undefined ? {} : {
       binary: {
         name: runtime.binary.name,

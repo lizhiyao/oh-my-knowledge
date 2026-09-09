@@ -155,6 +155,14 @@ omk eval --control code-review-v1 --treatment code-review-v2 \
 
 上述协议用于 `omk eval` 的目标执行。`doctor`／`sample`／`evolve` 的模型调用接口及自定义 LLM 评委仍使用旧的 `{ model, system, prompt }` 适配接口；不要把仅实现本节协议的脚本直接用作那些模型调用。需要评委时通过 `--judge-models` 单独配置受支持的执行器。
 
+## 运行失败时如何排查
+
+先看执行／评分覆盖和具体原因代码，再检查模型输出。`OMK_CODEX_CLI_UPGRADE_REQUIRED` 表示当前 CLI 不支持所选模型：检查 `codex --version` 并升级，再用同一模型和用例重跑。不要通过换模型来证明原来的知识对比已恢复。
+
+Codex 的 `Reconnecting...` 是传输重连通知；只有后续出现合法的完成事件和答案才算成功，最终失败、缺少完成事件或未知错误仍会阻断评测。此修复升级了 Codex 执行与评委的适配身份：旧版本可能将已恢复的调用记为失败，前后结果不要当成相同测量条件直接合并，应重新运行完整比较。
+
+`--retry` 只重试密封策略允许的错误代码，默认是 `timeout` 和 `transport-error`。自定义服务应按实际失败原因返回代码，不能为获得重试把所有业务失败都标成传输错误。
+
 ## 前置要求
 
 OMK 基础安装不再携带可选 Agent SDK 及其大型平台二进制。默认的 `claude`／`codex` CLI 执行器、API 执行器、自定义执行器和 DSH 宿主插件都不需要它们。只有明确选择 `*-sdk` 执行器时，才在 OMK 所在的同一作用域安装对应 SDK。

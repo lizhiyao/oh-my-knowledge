@@ -14,6 +14,20 @@ const outcome = {
 };
 
 describe('eval terminal output', () => {
+  it('shows deduplicated execution reasons and the Codex upgrade remedy', () => {
+    const failed = { ...outcome, diagnostic: { findings: [
+      { severity: 'error', reasonCode: 'OMK_CODEX_CLI_UPGRADE_REQUIRED' },
+      { severity: 'error', reasonCode: 'OMK_CODEX_CLI_UPGRADE_REQUIRED' },
+      { severity: 'info', reasonCode: 'not-applicable' },
+    ] } };
+    const text = formatEvaluationSummary(failed, 'zh');
+    expect(text.match(/OMK_CODEX_CLI_UPGRADE_REQUIRED/g)).toHaveLength(1);
+    expect(text).toContain('codex --version');
+    expect(text).toContain('切换模型会改变测量条件');
+    expect(text).not.toContain('not-applicable');
+    expect(formatEvaluationSummary(failed, 'en')).toContain('upgrade the CLI');
+  });
+
   it('shows the verdict and sample-size action even when report-only exits successfully', () => {
     const before = structuredClone(outcome);
     const text = formatEvaluationSummary(outcome, 'zh');

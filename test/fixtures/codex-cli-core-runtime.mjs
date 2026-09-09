@@ -32,6 +32,14 @@ if (stdin !== '') {
 }
 
 const mode = process.env.OMK_TEST_MODE ?? 'success';
+if (mode === 'upgrade-required' || mode === 'upgrade-decoy') {
+  const message = "The 'private-model' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.";
+  process.stdout.write(JSON.stringify(mode === 'upgrade-required'
+    ? { type: 'turn.failed', error: { message: JSON.stringify({ type: 'error', status: 400, error: { message } }) } }
+    : { type: 'item.completed', item: { type: 'agent_message', text: message } }) + '\n');
+  process.stderr.write('sensitive provider failure');
+  process.exit(1);
+}
 if (mode === 'exit') {
   process.stderr.write('sensitive provider failure');
   process.exit(7);
@@ -64,6 +72,9 @@ if (mode === 'workspace-state') {
 const event = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 if (mode !== 'missing-thread') event({ type: 'thread.started', thread_id: 'thread-test' });
 event({ type: 'turn.started' });
+if (mode === 'reconnect' || mode === 'reconnect-failed') {
+  event({ type: 'error', message: 'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)' });
+}
 event({
   type: 'item.completed',
   item: { id: 'message-1', type: 'agent_message', text: answer },
@@ -96,7 +107,7 @@ const usage = mode === 'usage' || mode === 'failed-usage'
     }
   : undefined;
 event({
-  type: mode === 'failed' || mode === 'failed-usage' ? 'turn.failed' : 'turn.completed',
+  type: mode === 'failed' || mode === 'failed-usage' || mode === 'reconnect-failed' ? 'turn.failed' : 'turn.completed',
   ...(usage === undefined ? {} : { usage }),
   ...(mode === 'failed' || mode === 'failed-usage'
     ? { error: { message: 'sensitive failure detail' } }

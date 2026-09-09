@@ -15,6 +15,7 @@ import {
 import { ExecutionPortFailure } from '../../../../eval-core/execution/index.js';
 import {
   normalizeCodexProtocolEvent,
+  isCodexReconnectNotice,
   type CodexEvent,
 } from '../../../../executors/openai/codex/protocol.js';
 import { extractCodexTrace } from '../../../../executors/openai/codex/trace.js';
@@ -248,7 +249,7 @@ export function parseCodexCoreEvents(
         completed.add(itemId);
       }
     }
-    if (event.type === 'error') protocolError = true;
+    if (event.type === 'error' && !isCodexReconnectNotice(event)) protocolError = true;
     if (event.type === 'turn.completed' || event.type === 'turn.failed') {
       if (started !== 1) protocolError = true;
       terminal = event;

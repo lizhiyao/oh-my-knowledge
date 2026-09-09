@@ -8,6 +8,25 @@ import {
 import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 
 describe('Codex protocol normalization', () => {
+  it('accepts a recovered reconnect without erasing the event, but still rejects failed or incomplete turns', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'error', message: 'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)' },
+      { type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: 'ALLOW' } },
+      { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } },
+    ];
+    const build = (events: CodexEvent[], forcedError?: string) => buildCodexResult({
+      events, forcedError, wallClockDurationMs: 100, source: 'codex --json',
+    });
+    assert.equal(build(events).ok, true);
+    assert.equal(events[1].type, 'error');
+    assert.equal(build(events.slice(0, -1)).ok, false);
+    assert.equal(build([...events.slice(0, -1), { type: 'turn.failed' }]).ok, false);
+    assert.equal(build(events, 'process failed').ok, false);
+    assert.equal(build([events[0], { type: 'error', message: 'provider failed' }, ...events.slice(2)]).ok, false);
+    assert.equal(build([events[0], { type: 'error', message: 'Reconnecting... 6/5 (stream disconnected before completion: eof)' }, ...events.slice(2)]).ok, false);
+  });
+
   it('keeps an item-level error non-fatal when the turn still completes with an answer', () => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },

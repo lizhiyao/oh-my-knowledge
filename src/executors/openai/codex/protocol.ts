@@ -138,10 +138,18 @@ export function extractCodexFinalOutput(events: CodexEvent[]): string {
   return '';
 }
 
+/** Codex reports recoverable transport reconnects as error events before its final turn result. */
+export function isCodexReconnectNotice(event: CodexEvent): boolean {
+  if (event.type !== 'error' || typeof event.message !== 'string') return false;
+  const match = /^Reconnecting\.\.\. ([1-9]\d*)\/([1-9]\d*) \(stream disconnected before completion: .+\)$/.exec(event.message);
+  return match !== null && Number.isSafeInteger(Number(match[1]))
+    && Number.isSafeInteger(Number(match[2])) && Number(match[1]) <= Number(match[2]);
+}
+
 export function extractCodexProtocolError(events: CodexEvent[]): string | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event.type === 'error') {
+    if (event.type === 'error' && !isCodexReconnectNotice(event)) {
       return event.message || event.error?.message || 'codex stream error';
     }
   }

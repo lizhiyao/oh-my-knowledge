@@ -26,6 +26,18 @@ const EXECUTOR_RUNTIME: ExecutorRuntimeFingerprint = {
 };
 
 describe('Node judge provider identity', () => {
+  it('seals the Codex reconnect interpretation in judge identity', () => {
+    const identity = createJudgeProviderRuntimeIdentity({
+      executorId: 'codex', model: 'gpt-test',
+      executorRuntime: { ...EXECUTOR_RUNTIME, executor: 'codex' },
+    });
+    expect(JSON.stringify(identity)).toContain('codex-reconnect/v2');
+    const manifest = identity.implementationManifest;
+    const evidence = manifest?.coverageKind === 'fingerprint-plus-facets'
+      ? manifest.facets.find((facet) => facet.facetId === 'executor.runtime') : undefined;
+    expect(evidence?.value).toMatchObject({ protocolAdapterVersion: 'codex-reconnect/v2' });
+  });
+
   it('treats undeclared remote judge deployments as opaque', () => {
     const identity = createJudgeProviderRuntimeIdentity({
       executorId: 'openai-api',

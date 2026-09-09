@@ -155,6 +155,14 @@ Report invocation failure with a stable error code:
 
 This protocol applies to targets executed by `omk eval`. Model calls from `doctor`, `sample`, and `evolve`, and custom LLM judges still use the old `{ model, system, prompt }` adapter interface. Do not use a script implementing only this section's protocol for those model calls. Configure a supported judge separately through `--judge-models` when needed.
 
+## Diagnose a failed run
+
+Start with execution/scoring coverage and specific reason codes before interpreting model output. `OMK_CODEX_CLI_UPGRADE_REQUIRED` means the CLI cannot run the selected model: check `codex --version`, upgrade, and rerun the same model and cases. Changing the model does not verify that the original knowledge comparison recovered.
+
+Codex `Reconnecting...` events are transport notices. A call succeeds only after a valid completion event and answer; terminal failures, missing completion, and unknown errors still block evaluation. This fix versions the Codex executor and judge adapter identities: older versions may have counted recovered calls as failures. Do not pool results across that boundary as identical measurement conditions; rerun the complete comparison.
+
+`--retry` retries only error codes allowed by the sealed policy, which defaults to `timeout` and `transport-error`. Custom services should classify the actual cause instead of relabeling every business failure as a transport error to obtain retries.
+
 ## Prerequisites
 
 The base OMK install omits the optional Agent SDK packages and their large platform binaries. The default `claude` / `codex` CLI executors, API executors, custom executors, and the DSH host plugin do not need them. Install an SDK in the same scope as OMK only when you explicitly select its `*-sdk` executor.
