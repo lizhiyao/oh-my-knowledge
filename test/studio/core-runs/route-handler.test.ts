@@ -357,6 +357,13 @@ describe('Core Studio route handler', () => {
     try {
       server = createReportServer({
         port: 0, coreStudioCatalog: catalog(),
+        conversationCatalog: {
+          async listConversations() {
+            return { conversations: [], totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 };
+          },
+          async getConversation() { return undefined; },
+          async loadTaskTrajectory() { return undefined; },
+        },
         observationsDir: join(root, 'observations'), doctorsDir: join(root, 'doctors'),
         analysesDir: join(root, 'analyses'), managedDir: join(root, 'managed'),
       });
@@ -367,6 +374,33 @@ describe('Core Studio route handler', () => {
       const page = await fetch(`${url}/reports/core-run-1`);
       assert.equal(page.status, 200);
       assert.ok((await page.text()).includes('progress-policy'));
+
+      for (const lang of ['zh', 'en']) {
+        const query = lang === 'en' ? '?lang=en' : '';
+        for (const [path, active, status] of [
+          ['/', 'conversations', 200],
+          ['/conversations', 'conversations', 200],
+          ['/knowledge', 'knowledge', 200],
+          ['/reports', 'reports', 200],
+          ['/reports/core-run-1', 'reports', 200],
+          ['/reports/missing', 'reports', 404],
+        ] as const) {
+          const response = await fetch(`${url}${path}${query}`, { redirect: 'manual' });
+          assert.equal(response.status, status, `${path} must render without a redirect`);
+          const html = await response.text();
+          assert.ok(html.includes(`href="/${active}${query}" aria-current="page"`), path);
+          assert.ok(html.includes(`href="/${query}"`), 'brand returns to the Studio home');
+          for (const [section, label] of [
+            ['conversations', lang === 'en' ? 'Conversations' : '对话'],
+            ['knowledge', lang === 'en' ? 'Knowledge' : '知识'],
+            ['reports', lang === 'en' ? 'Evaluations' : '评测'],
+          ]) {
+            assert.ok(html.replaceAll(' aria-current="page"', '').includes(`href="/${section}${query}">${label}</a>`));
+          }
+          if (path === '/') assert.ok(html.includes('conversation-index-app'));
+          if (path === '/reports/core-run-1') assert.ok(html.includes('progress-policy'));
+        }
+      }
     } finally {
       try { await server?.stop(); }
       finally { await rm(root, { recursive: true, force: true }); }
@@ -386,10 +420,13 @@ describe('Core Studio route handler', () => {
     assert.ok(Object.isFrozen(list?.headers));
     assert.equal(list?.headers['Content-Type'], 'text/html; charset=utf-8');
     assert.ok(list?.body.includes('Evaluation Core Runs'));
+    assert.ok(!list?.body.includes('class="studio-nav"'), 'standalone mounts do not link to unmounted Studio routes');
+    assert.ok(list?.body.includes('href="/core-runs?lang=en"'));
 
     const detailResponse = await handler({ method: 'GET', url: '/core-runs/core-run-1' });
     assert.equal(detailResponse?.status, 200);
     assert.ok(detailResponse?.body.includes('progress-policy'));
+    assert.ok(!detailResponse?.body.includes('class="studio-nav"'));
 
     const apiList = await handler({ method: 'GET', url: '/api/core-runs' });
     assert.deepEqual(JSON.parse(apiList?.body ?? ''), [card()]);

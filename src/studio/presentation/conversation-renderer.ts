@@ -6,7 +6,7 @@ import type {
   ConversationTaskItem,
   ExperienceTurnStatus,
 } from '../../observability/view-models/index.js';
-import { DEFAULT_LANG, e, layout } from './layout.js';
+import { DEFAULT_LANG, e, layout, renderStudioNavigation } from './layout.js';
 import { brandLogo, icon } from './icons.js';
 import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';
 
@@ -95,10 +95,7 @@ export function renderConversationIndexPage(
         <a class="conversation-app-brand" href="/${langQuery}">
           <span>${brandLogo(28)}</span><strong>OMK</strong><em>Studio</em>
         </a>
-        <nav class="conversation-app-nav" aria-label="${zh ? 'Studio 一级导航' : 'Studio primary navigation'}">
-          <a class="is-active" href="/conversations${langQuery}">${zh ? '对话' : 'Conversations'}</a>
-          <a href="/knowledge${langQuery}">${zh ? '知识载体' : 'Knowledge'}</a>
-        </nav>
+        ${renderStudioNavigation(lang, 'conversations')}
       </header>
       <div class="conversation-app-body">
         <section class="conversation-browser" aria-label="${zh ? '对话' : 'Conversations'}">
@@ -137,7 +134,7 @@ export function renderConversationIndexPage(
     </main>
     <style>${CSS}</style>
     <script>${paginationScript(lang)}</script>
-  `, lang);
+  `, lang, { navigation: false });
 }
 
 export function renderConversationDetailPage(
@@ -173,7 +170,7 @@ export function renderConversationDetailPage(
     </main>
     <style>${CSS}</style>
     <script>${conversationDetailScript(lang)}</script>
-  `, lang);
+  `, lang, { navigation: 'conversations' });
 }
 
 function renderConversationRow(conversation: ConversationListItem, lang: Lang): string {
@@ -555,14 +552,14 @@ html:has(.conversation-index-app),body:has(.conversation-index-app){height:100%;
 body:has(.conversation-index-app) .app-bar{display:none}
 body:has(.conversation-index-app) .app-main{width:100%;max-width:none;height:100dvh;margin:0;padding:0}
 body:has(.conversation-index-app) .footer{display:none}
+@media(max-width:480px){.conversation-app-brand em{display:none}}
 .conversation-index-app{width:100%;height:100%;margin:0;padding:0;display:grid;grid-template-rows:54px minmax(0,1fr);background:var(--bg-surface);overflow:hidden}
 .conversation-app-head{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;min-width:0;border-bottom:1px solid var(--border);background:rgba(255,255,255,.94)}
 .conversation-app-brand{height:100%;display:flex;align-items:center;gap:8px;padding:0 22px;color:var(--text-primary);text-decoration:none}.conversation-app-brand:hover{color:var(--text-primary);text-decoration:none}.conversation-app-brand>span{display:flex}.conversation-app-brand strong{font-size:14px;letter-spacing:.01em}.conversation-app-brand em{padding:1px 7px;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:10px;font-style:normal;font-weight:650;letter-spacing:.03em}
-.conversation-app-nav{height:100%;display:flex;align-items:center;gap:2px;padding-left:16px}.conversation-app-nav a{height:100%;display:flex;align-items:center;padding:0 14px;border-bottom:2px solid transparent;color:var(--text-secondary);font-size:13px;font-weight:600;text-decoration:none}.conversation-app-nav a:hover{color:var(--text-primary);text-decoration:none}.conversation-app-nav a.is-active{border-bottom-color:var(--accent);color:var(--text-primary)}
 .conversation-app-body{display:block;min-width:0;min-height:0}
 .conversation-browser{height:100%;display:grid;grid-template-rows:62px 32px minmax(0,1fr) 42px;min-width:0;min-height:0;background:var(--bg-surface)}.conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 22px;margin:0}.conversation-browser-title h1{font-size:18px;line-height:1.2;margin:0;font-weight:650;letter-spacing:0}.conversation-toolbar-actions{display:flex;align-items:center;gap:12px;min-width:0}.conversation-filters{display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated)}.conversation-filters button{height:28px;padding:0 9px;border:0;border-radius:4px;background:transparent;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}.conversation-filters button:hover{color:var(--text-primary)}.conversation-filters button.is-active{background:var(--bg-surface);color:var(--text-primary);box-shadow:0 1px 3px rgba(31,41,55,.08)}.conversation-filters b{color:var(--text-muted);font-size:10px;font-variant-numeric:tabular-nums}.conversation-filters button:disabled{cursor:default;opacity:.46}.conversation-search{position:relative;width:min(340px,34vw);color:var(--text-muted)}.conversation-search>svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);pointer-events:none}.conversation-search input{display:block;width:100%;height:34px;padding:0 11px 0 34px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-primary);font:inherit;outline:none}.conversation-search input:focus{border-color:rgba(79,70,229,.48);box-shadow:0 0 0 3px rgba(79,70,229,.07);background:var(--bg-surface)}
 .conversation-columns{display:grid;grid-template-columns:132px minmax(320px,1.35fr) minmax(210px,.8fr) 136px 24px;gap:20px;align-items:center;padding:0 22px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:#fafbfe;color:var(--text-muted);font-size:10px;font-weight:650;letter-spacing:.03em}.conversation-list-viewport{min-height:0;overflow:hidden}.conversation-list{height:100%;display:grid;grid-template-rows:repeat(var(--page-size,8),minmax(0,1fr));background:var(--bg-surface);overflow:hidden}.conversation-list-viewport>.empty-state{height:100%;justify-content:center;border:0;border-radius:0;text-align:center}.conversation-pager{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 22px;border-top:1px solid var(--border);background:#fafbfe;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}.pager-controls{display:flex;align-items:center;gap:8px}.pager-controls>span{min-width:54px;text-align:center;color:var(--text-secondary)}.pager-controls button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid var(--border);border-radius:5px;background:var(--bg-surface);color:var(--text-secondary);font-size:15px;line-height:1}.pager-controls button:hover:not(:disabled){border-color:var(--border-hover);color:var(--accent)}.pager-controls button:disabled{cursor:default;opacity:.3}
 @media(max-width:1100px){.conversation-row,.conversation-columns{grid-template-columns:118px minmax(260px,1fr) 124px 24px}.conversation-workspace,.conversation-columns span:nth-child(3){display:none}.conversation-app-brand{padding-left:16px}.conversation-search{width:min(300px,32vw)}}
 @media(max-width:820px){.conversation-row,.conversation-columns{grid-template-columns:102px minmax(0,1fr) 112px 20px;gap:12px}.conversation-toolbar-actions{gap:8px}.conversation-filters b{display:none}.conversation-search{width:min(260px,34vw)}}
-@media(max-width:720px){.conversation-page:not(.conversation-index-app){width:calc(100% - 24px);padding-top:24px}.conversation-index-app{grid-template-rows:50px minmax(0,1fr)}.conversation-app-brand{padding:0 12px}.conversation-app-brand strong{display:none}.conversation-app-nav{padding-left:2px}.conversation-app-nav a{padding:0 9px}.conversation-browser{grid-template-rows:82px 28px minmax(0,1fr) 40px}.conversation-toolbar{align-items:flex-start;gap:8px;padding:12px}.conversation-browser-title h1{font-size:16px}.conversation-toolbar-actions{align-items:flex-end;flex-direction:column-reverse;gap:6px}.conversation-filters button{height:24px;padding:0 7px}.conversation-search{width:min(250px,66vw)}.conversation-search input{height:30px}.conversation-columns,.conversation-row{grid-template-columns:86px minmax(0,1fr) 20px;gap:10px;padding-left:12px;padding-right:12px}.conversation-activity span{display:none}.conversation-title{font-size:13px}.conversation-context span:nth-child(n+2){display:none}.task-list-head{display:none}.task-row{grid-template-columns:minmax(0,1fr) auto;padding-left:52px}.task-time,.task-execution{display:none}}
+@media(max-width:720px){.conversation-page:not(.conversation-index-app){width:calc(100% - 24px);padding-top:24px}.conversation-index-app{grid-template-rows:50px minmax(0,1fr)}.conversation-app-brand{padding:0 12px}.conversation-app-brand strong{display:none}.conversation-browser{grid-template-rows:82px 28px minmax(0,1fr) 40px}.conversation-toolbar{align-items:flex-start;gap:8px;padding:12px}.conversation-browser-title h1{font-size:16px}.conversation-toolbar-actions{align-items:flex-end;flex-direction:column-reverse;gap:6px}.conversation-filters button{height:24px;padding:0 7px}.conversation-search{width:min(250px,66vw)}.conversation-search input{height:30px}.conversation-columns,.conversation-row{grid-template-columns:86px minmax(0,1fr) 20px;gap:10px;padding-left:12px;padding-right:12px}.conversation-activity span{display:none}.conversation-title{font-size:13px}.conversation-context span:nth-child(n+2){display:none}.task-list-head{display:none}.task-row{grid-template-columns:minmax(0,1fr) auto;padding-left:52px}.task-time,.task-execution{display:none}}
 `;

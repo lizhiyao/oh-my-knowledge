@@ -373,8 +373,23 @@ function langToggleButton(lang: Lang): string {
   return `<button id="lang-toggle" onclick="switchLang()" class="lang-toggle">${t('switchLang', lang)}</button>`;
 }
 
+type StudioSection = 'conversations' | 'knowledge' | 'reports';
+
+export function renderStudioNavigation(lang: Lang, active?: StudioSection): string {
+  const query = lang === 'en' ? '?lang=en' : '';
+  const items = [
+    ['conversations', '对话', 'Conversations'],
+    ['knowledge', '知识', 'Knowledge'],
+    ['reports', '评测', 'Evaluations'],
+  ] as const;
+  return `<nav class="studio-nav" aria-label="${lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}">${items.map(([section, zh, en]) =>
+    `<a href="/${section}${query}"${section === active ? ' aria-current="page"' : ''}>${lang === 'zh' ? zh : en}</a>`
+  ).join('')}</nav>`;
+}
+
 export interface LayoutOptions {
   homeHref?: string;
+  navigation?: StudioSection | false;
 }
 
 export function layout(
@@ -388,7 +403,8 @@ export function layout(
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
-  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? '/')}"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
+  const navigation = options.navigation === false ? '' : renderStudioNavigation(lang, options.navigation);
+  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? (lang === 'en' ? '/?lang=en' : '/'))}"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a>${navigation}<span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${e(title)}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
@@ -447,6 +463,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
+.studio-nav{height:100%;display:flex;align-items:center;gap:2px;padding-left:16px}
+.studio-nav a{height:100%;display:flex;align-items:center;padding:0 14px;border-bottom:2px solid transparent;color:var(--text-secondary);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
+.studio-nav a:hover{color:var(--text-primary);text-decoration:none}
+.studio-nav a[aria-current="page"]{border-bottom-color:var(--accent);color:var(--text-primary)}
+@media(max-width:720px){.studio-nav{padding-left:2px}.studio-nav a{padding:0 9px}}
+@media(max-width:480px){.app-brand-tag{display:none}.studio-nav{padding-left:0}.studio-nav a{padding:0 7px;font-size:12px}}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
 .app-main{max-width:1280px;margin:0 auto;padding:18px 20px 24px}
 @media(max-width:768px){.app-main{padding:14px 14px 20px}.app-bar{padding:0 14px}}

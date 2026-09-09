@@ -117,7 +117,8 @@ describe('Knowledge Debugger task trajectory server', () => {
 
     const conversations = await fetch(`${baseUrl}/conversations`);
     assert.equal(conversations.status, 200);
-    assert.match(conversations.body, /conversation-app-nav/);
+    assert.match(conversations.body, /<nav class="studio-nav" aria-label="Studio 一级导航">/);
+    assert.match(conversations.body, /href="\/reports">评测<\/a>/);
     assert.match(conversations.body, /<h1>对话<\/h1>/);
     assert.match(conversations.body, /class="conversation-page conversation-index-app"/);
     assert.match(conversations.body, /data-page-next/);

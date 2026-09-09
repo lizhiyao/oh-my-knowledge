@@ -9,6 +9,7 @@ import { e, fmtDuration, layout } from '../presentation/layout.js';
 
 export interface CoreStudioRenderRoutes {
   readonly listPath: string;
+  readonly studioNavigation?: boolean;
   detailPath(runId: string): string;
 }
 
@@ -313,7 +314,8 @@ export function renderCoreRunList(
     ? `<p class="core-muted">${e(copy.empty)}</p>`
     : `<div class="core-grid">${cards.map((card) => runCard(card, lang, routes, copy)).join('')}</div>`;
   return layout(copy.title, `${CORE_STUDIO_STYLE}<main><h1>${e(copy.title)}</h1><p class="subtitle core-lead">${e(copy.subtitle)}</p>${content}</main>`, lang, {
-    homeHref: withLang(routes.listPath, lang),
+    homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
+    navigation: routes.studioNavigation ? 'reports' : false,
   });
 }
 
@@ -463,7 +465,10 @@ export function renderCoreRunDetail(
     ])}</section>
     ${renderPlan(detail, copy)}${renderStages(detail, copy)}${renderExecutionRecords(detail, copy)}${renderEvaluationRecords(detail, copy)}${renderAnalysis(detail, copy)}${renderLineage(detail, copy)}
     </details>
-  </main>`, lang, { homeHref: withLang(routes.listPath, lang) });
+  </main>`, lang, {
+    homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
+    navigation: routes.studioNavigation ? 'reports' : false,
+  });
 }
 
 export function renderCoreStudioError(
@@ -473,7 +478,8 @@ export function renderCoreStudioError(
 ): string {
   const copy = c(lang);
   return layout(copy.title, `${CORE_STUDIO_STYLE}<main><nav class="nav"><a href="${e(withLang(routes.listPath, lang))}">${e(copy.back)}</a></nav><h1>${e(copy.title)}</h1><p role="alert">${e(message)}</p></main>`, lang, {
-    homeHref: withLang(routes.listPath, lang),
+    homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
+    navigation: routes.studioNavigation ? 'reports' : false,
   });
 }
 
