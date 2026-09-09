@@ -212,6 +212,16 @@ async function resolveTargetRuntime(
       lineageKind: 'custom-command-runtime',
       exchangeSchemaVersion: 'omk.custom-command-exchange/v1',
     },
+  }).catch((cause: unknown) => {
+    if (!(cause instanceof CliEvaluationInputError)
+        || cause.code !== 'CLI_INPUT_RESOLUTION_FAILED') throw cause;
+    return fail({
+      code: cause.code,
+      sourcePath: cause.sourcePath,
+      fieldPath: 'targetRuntime.executorId',
+      message: '自定义执行器必须是存在且可读取的可执行文件路径，不接受带参数的命令字符串。',
+      cause,
+    });
   });
   return {
     implementationId: `custom-command-${descriptor.digest.slice('sha256:'.length)}`,

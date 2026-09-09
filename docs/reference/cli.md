@@ -240,7 +240,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --control-cwd <value>           Runtime context dir for control
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
-  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
+  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom executable file path (not a command string with arguments). Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --global                        Write report to global ~/.oh-my-knowledge/eval instead of project .omk/eval
   --gold-dir <value>              Gold dataset dir
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting

@@ -540,6 +540,19 @@ describe('resolveNodeCliEvaluationRequest', () => {
     )))).toBe(true);
   });
 
+  it('identifies an unreadable custom executor as a runtime input failure', async () => {
+    const root = await fixture('custom-runtime-command-string');
+    await expect(resolveNodeCliEvaluationRequest(request(root, {
+      executor: 'node provider.mjs',
+    }), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    })).rejects.toMatchObject({
+      code: 'CLI_INPUT_RESOLUTION_FAILED',
+      fieldPath: 'targetRuntime.executorId',
+    });
+  });
+
   it('keeps behavior digests invariant when identical bytes move to another root', async () => {
     const first = await fixture('move-a');
     const second = await fixture('move-b');

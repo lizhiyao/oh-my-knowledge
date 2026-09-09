@@ -95,24 +95,65 @@ dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
 
 ## 自定义执行器
 
-任何 shell 命令都可以作为执行器，通过 stdin/stdout JSON 协议通信：
+`omk eval --executor` 接受**一个可执行文件路径**。路径相对于评测项目目录解析；`node my-provider.mjs`、`python my-provider.py` 这样的带参数命令不会被当作 shell 命令执行。脚本须有 shebang 和执行权限；需要参数时，用一个可执行包装脚本调用你的服务。
 
-```bash
-omk eval --executor "python my_provider.py"
-omk eval --executor "./my-executor.sh"
+### 先跑通 stdin/stdout
+
+把下面保存为 `my-executor.mjs`。它只返回固定文字，用于验证接入，不调用模型，也不证明 skill 的效果：
+
+```js
+#!/usr/bin/env node
+let text = '';
+for await (const chunk of process.stdin) text += chunk;
+const request = JSON.parse(text);
+if (request.schemaVersion !== 'omk.custom-command-exchange/v1') {
+  throw new Error('Unsupported OMK request');
+}
+// 接入服务时，读取 request.trial.input，返回服务的实际输出。
+console.log(JSON.stringify({
+  schemaVersion: 'omk.custom-command-exchange/v1',
+  resultStatus: 'completed',
+  output: { value: '接入成功', classification: 'public' },
+}));
 ```
 
-**协议约定：**
+在 `omk init` 创建的项目内运行：
 
-- **输入**（stdin）：JSON `{"model":"...","system":"...","prompt":"..."}`
-- **输出**（stdout）：JSON `{"ok":true,"output":"模型回复","inputTokens":0,"outputTokens":0,"costUSD":0}`；为兼容旧脚本，可以省略 `ok`
-- 返回 `{"ok":false,"error":"失败原因"}` 可显式报告执行失败
-- stdout 中只需返回有值的字段，其余默认为 0；也可以直接输出纯文本（不解析 token/成本）
-- 要暴露 source-neutral agent 证据，可增加 `turns`、`toolCalls`、`fullNumTurns`、`numSubAgents`。每条 tool call 包含 `tool`、JSON `input` / `output`、`success`，并可带 `status`（`success` / `failure` / `cancelled` / `unknown`）及来源身份字段。trace 字段格式错误时整次执行失败，不会静默丢弃。
-- 只有四个 token 计数 `inputTokens`、`outputTokens`、`cacheReadTokens`、`cacheCreationTokens` 全部存在时，token 使用量才视为 runtime 实测；否则报告标记为未报告。
-- 命令引用的本地脚本或可执行文件字节会进入 runtime 指纹；即使命令字符串不变，文件内容变化也会让 cache 与 strict comparability 失效。
-- JSON 中的 `output` 为空，或纯文本只含空白，均视为失败
-- 非零退出码视为执行失败
+```bash
+chmod +x my-executor.mjs
+omk eval --control code-review-v1 --treatment code-review-v2 \
+  --executor ./my-executor.mjs --skip-connectivity --no-judge \
+  --no-serve --report-only
+```
+
+这条命令只验证目标执行与断言评分，`--no-judge` 显式关闭 LLM 评委，`--report-only` 不以发布门禁决定退出码。固定回答不能满足演示题目的断言是预期现象；检查执行覆盖是否成功，再替换为真实服务。
+
+### 接入自己的服务
+
+每次尝试启动一个进程，stdin 接收一个 JSON 请求，stdout 必须返回一个 JSON 响应。日志写到 stderr。当前协议是 `omk.custom-command-exchange/v1`，不接受旧的 `{ ok, output: "..." }` 或纯文本响应。
+
+| 请求字段 | 用途 |
+|---|---|
+| `trial.input` | 解析后的题目输入；CLI 文本用例通常是字符串。 |
+| `trial.targetConfig.runtime` | 模型、effort 等运行配置。 |
+| `trial.targetConfig.behavior.artifact` | 被测知识载体的资源描述符。 |
+| `resources` | 本次执行可读取的资源快照，用 `resourceId` 与描述符关联；`snapshotPath` 是临时路径。 |
+| `trial.trialSeed` | 测量种子；仅在你的服务实际支持时使用。 |
+| `attempt` | 本次尝试的身份与重试序号。 |
+
+要测量 prompt／skill 改动，需要按 artifact 描述符在 `resources` 中找到知识快照，并让服务实际使用其中内容；只读取题目会忽略被测知识。不要在快照之外读取原始 skill，也不要把标准答案交给被测服务。资源仅在本次生命周期内有效，不持久化这些临时路径。
+
+成功返回 `resultStatus: 'completed'` 和 `output: { value, classification }`，其中 `value` 可为 JSON 值。数据分类按真实内容选择 `public`、`sensitive` 或 `secret`；可选 `trace` 使用同样结构。可选 `usage` 使用 Core 的 `UsageRecord` 契约，不提供用量就保持缺失，不能填零冒充实测。
+
+调用失败可以返回稳定的错误代码：
+
+```json
+{"schemaVersion":"omk.custom-command-exchange/v1","resultStatus":"failed","error":{"code":"SERVICE_UNAVAILABLE","stage":"execution"}}
+```
+
+`stage` 为 `execution` 或 `infrastructure`。非零退出、超时和非法响应同样会记录为执行失败；例如旧协议输出会产生 `OMK_CUSTOM_COMMAND_OUTPUT_INVALID`。从报告的执行覆盖和失败证据排查，不能把失败当成低分答案。
+
+上述协议用于 `omk eval` 的目标执行。`doctor`／`sample`／`evolve` 的模型调用接口及自定义 LLM 评委仍使用旧的 `{ model, system, prompt }` 适配接口；不要把仅实现本节协议的脚本直接用作那些模型调用。需要评委时通过 `--judge-models` 单独配置受支持的执行器。
 
 ## 前置要求
 

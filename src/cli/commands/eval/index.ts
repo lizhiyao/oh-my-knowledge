@@ -4,6 +4,7 @@ import { Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { enumStringParser, integerStringParser, numberStringParser } from '../../oclif/parsers.js';
+import { formatEvaluationInputFailure, formatEvaluationSummary } from '../../lib/eval-output.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
 import { prepareCliEvaluation, type PreparedCliEvaluation } from '../../lib/prepare-evaluation.js';
@@ -216,14 +217,7 @@ async function runEval(
         && (result.output as { projectionKind?: string }).projectionKind === 'core-cli-dry-run') {
       console.log(JSON.stringify(result.output, null, 2));
     } else {
-      const outcome = result.output as {
-        status?: { runStatus?: string; evidenceStatus?: string; conclusionStatus?: string };
-        gate?: { gateStatus?: string; reasonCodes?: readonly string[] };
-      };
-      process.stdout.write(
-        `Core: ${outcome.status?.runStatus ?? 'prepared'}／${outcome.status?.evidenceStatus ?? 'n/a'}／${outcome.status?.conclusionStatus ?? 'n/a'}\n`
-        + `Gate: ${outcome.gate?.gateStatus ?? 'not-applicable'}${outcome.gate?.reasonCodes?.length ? `（${outcome.gate.reasonCodes.join(', ')}）` : ''}\n`,
-      );
+      process.stdout.write(formatEvaluationSummary(result.output, lang));
     }
     // A blocked gate exits immediately through oclif; flush a piped JSON report first.
     await new Promise<void>((resolve, reject) => {
@@ -232,7 +226,7 @@ async function runEval(
     throw new CliExit(result.exitCode);
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatEvaluationInputFailure(err, lang);
     console.error(tCli('cli.common.error_prefix', lang, {
       message: `${message}${formatConnectivityFailureHint(message, {
         executorName: request.values.targetRuntime.executorId,
@@ -310,8 +304,8 @@ export default class Eval extends BaseCommand {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
-        en: 'Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
+        zh: '执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom executable file path (not a command string with arguments). Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'judge-models': Flags.string({
