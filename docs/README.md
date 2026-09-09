@@ -17,6 +17,8 @@ Choose an entry for your task. Version 1.0 is still in Beta iteration; existing 
 - [Evaluate agents and project context](./guides/agent-eval.md) · [Use non-Claude models](./guides/non-claude-models.md)
 - [Compose an MCP integration](./guides/mcp-integration.md) · [DeepSeek Harness integration](./reference/executors.md#deepseek-harness-prefer-the-host-plugin)
 
+- Runtime topics: [scoring](./guides/eval-runtime-scoring.md) · [experiments and reuse](./guides/eval-runtime-experiments.md) · [execution and storage](./guides/eval-runtime-infrastructure.md) · [Agent integration](./guides/eval-runtime-agents.md)
+
 ## Understand results and limits
 
 - [Who OMK is for](./explanation/who-omk-is-for.md) · [How OMK understands knowledge](./explanation/knowledge.md)

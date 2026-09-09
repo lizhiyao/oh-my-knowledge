@@ -141,7 +141,7 @@ The entry deliberately exposes no Definition builder, Runtime registry, Core Tar
 
 ## Built-in abstention and mixed retrieval evaluation
 
-Start with the [four-step guide](../guides/eval-runtime.md#retrieval-abstention) for runnable commands, data rules, service integration points, and expected output.
+Start with the [four-step guide](../guides/eval-runtime-scoring.md#retrieval-abstention) for runnable commands, data rules, service integration points, and expected output.
 
 `AbstentionEvaluator` is a built-in `evaluators[]` declaration, available through the package root and `/eval-runtime`. It compiles to the existing Core contracts and produces two boolean `AbstentionMetricIds`. There is no separate evaluation factory, dataset selector, or execution lifecycle.
 

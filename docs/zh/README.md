@@ -17,6 +17,8 @@
 - [评测 agent 与项目上下文](./guides/agent-eval.md) · [使用非 Claude 模型](./guides/non-claude-models.md)
 - [组合 MCP 集成](./guides/mcp-integration.md) · [DeepSeek Harness 接入](./reference/executors.md#deepseek-harness优先使用宿主插件)
 
+- Runtime 专题：[评分方法](./guides/eval-runtime-scoring.md) · [实验与复用](./guides/eval-runtime-experiments.md) · [运行与存储](./guides/eval-runtime-infrastructure.md) · [Agent 接入](./guides/eval-runtime-agents.md)
+
 ## 理解结果与边界
 
 - [为谁做、解决什么](./explanation/who-omk-is-for.md) · [OMK 如何理解知识](./explanation/knowledge.md)
