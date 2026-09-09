@@ -1,3 +1,4 @@
+import { jsString } from '../layout.js';
 import { e } from '../layout.js';
 import {
   ASSISTANT_DELIVERABLE_ARTIFACT_RE,
@@ -620,7 +621,7 @@ export function createObservationTimelineRenderers({
         ${groups.map((group, index) => {
           const boundary = group.boundary;
           const label = boundary ? `目标片段 ${index + 1} · #${boundary.messageIndex ?? '—'}` : `目标片段 ${index + 1}`;
-          return `<button type="button" class="timeline-tab-button ${index === 0 ? 'is-active' : ''}" role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" data-timeline-tab="${e(tabBaseId)}-${index}" onclick="switchTimelineGoalTab('${e(tabBaseId)}', ${index})">${e(label)}</button>`;
+          return `<button type="button" class="timeline-tab-button ${index === 0 ? 'is-active' : ''}" role="tab" aria-selected="${index === 0 ? 'true' : 'false'}" data-timeline-tab="${e(tabBaseId)}-${index}" onclick="switchTimelineGoalTab(${jsString(tabBaseId)}, ${index})">${e(label)}</button>`;
         }).join('')}
       </div>
       <div class="timeline-tab-panels">

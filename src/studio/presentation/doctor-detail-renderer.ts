@@ -1,10 +1,11 @@
+import type { SkillReportContext } from '../view-models/report-context.js';
 /**
  * Doctor 报告详情页 — 逐条规则的健康检查结果。
  *
  * 主次：Hero 综合健康分 → 统计条（通过/警告/失败）→ 规则列表（失败/警告高亮在前，
  * 通过项折叠）。每条规则展开显示 finding 描述 + 修复建议。
  */
-import { reportShell, healthColor, type SkillReportContext } from './report-shell.js';
+import { reportShell, healthColor } from './report-shell.js';
 import { icon as svgIcon } from './icons.js';
 import { e, DEFAULT_LANG } from './layout.js';
 import type { Lang } from '../../shared/language.js';

@@ -14,6 +14,7 @@ import {
 } from '../../evidence/storage/discovery-index.js';
 import { confidenceOf, effectiveObserveBand, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health/analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox/index.js';
+import { observationReportsDir, resolveObservationsDir } from '../../observability/inbox/paths.js';
 import { parseSkillHealthReport } from '../../observability/skill-health/report.js';
 import { parseArtifactGraphDocument } from '../../evidence/graph/schema.js';
 import { parseDoctorReport } from '../../knowledge-artifacts/doctor/report-parser.js';
@@ -30,6 +31,7 @@ import type {
 import type { Diagnosis } from '../../diagnosis/contracts.js';
 import type { DoctorReport } from '../../knowledge-artifacts/doctor/contracts.js';
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../evidence/graph/contracts.js';
+import { assessHealth } from './skill-health.js';
 import { detectInsights } from './skill-insights.js';
 
 export type {
@@ -249,18 +251,6 @@ function doctorGraphForSkill(
   };
 }
 
-function combinedBand(
-  doctor: SkillDoctorSnapshot | null,
-  observe: SkillObserveSnapshot | null,
-): SkillIndexEntry['band'] {
-  const doctorBand = doctor === null ? 'gray' : doctor.status === 'fail' ? 'red' : doctor.status === 'warn' ? 'yellow' : 'green';
-  const observeBand = observe?.effectiveBand ?? 'gray';
-  if (doctorBand === 'red' || observeBand === 'red') return 'red';
-  if (doctorBand === 'yellow' || observeBand === 'yellow') return 'yellow';
-  if (doctorBand === 'green' || observeBand === 'green') return 'green';
-  return 'gray';
-}
-
 function latestTimestamp(entry: SkillIndexEntry): string {
   return [entry.doctor?.timestamp, entry.observe?.generatedAt].filter(Boolean).sort().at(-1) ?? '';
 }
@@ -288,7 +278,7 @@ export function buildSkillIndex(
   const fingerprint = [
     pathsFingerprint(observeReportPaths),
     pathsFingerprint(doctorReportPaths),
-    directoryFingerprint(observationsDir, '.report.json'),
+    directoryFingerprint(observationReportsDir(resolveObservationsDir(observationsDir)), '.report.json'),
     pathsFingerprint(graphPaths),
     cardFingerprint(includeObserveCards, includeDoctorCards),
   ].join('|');
@@ -350,7 +340,7 @@ export function buildSkillIndex(
       observe,
       doctorHistory,
       observeHistory,
-      band: combinedBand(doctor, observe),
+      band: 'gray',
     };
   });
   entries.sort((a, b) => latestTimestamp(b).localeCompare(latestTimestamp(a)));
@@ -361,10 +351,7 @@ export function buildSkillIndex(
       diagnostics: ownRecordValue(diagnosisBundle.bySkill, entry.skillName) ?? [],
     });
     insightsBySkill.set(entry.skillName, insights);
-    if (entry.band === 'gray') {
-      if (insights.some((insight) => insight.severity === 'high')) entry.band = 'red';
-      else if (insights.some((insight) => insight.severity === 'medium')) entry.band = 'yellow';
-    }
+    entry.band = assessHealth(entry, insights, 'zh').color;
     const graph = doctorGraphForSkill(entry.skillName, entry.doctor?.reportId, graphPaths);
     if (graph !== undefined) entry.graph = graph;
   }

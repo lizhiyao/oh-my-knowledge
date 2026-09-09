@@ -1,3 +1,4 @@
+import { jsString } from '../layout.js';
 import { e } from '../layout.js';
 import type { Lang } from '../../../shared/language.js';
 import {
@@ -292,7 +293,7 @@ export function createObservationReviewRenderers({
       <td class="num" style="padding:8px 10px;text-align:right">${item.confidence.toFixed(2)} / ${item.attributionConfidence.toFixed(2)}</td>
       <td style="padding:8px 10px;color:var(--text-muted);font-size:12px">${e(observedItemTimestamp(item, item.lastSeen))}</td>
       <td style="padding:8px 10px">${renderEvidenceCell(item)}</td>
-      <td class="num" style="padding:8px 10px;text-align:right"><button type="button" onclick="toggleObservationDetail('${detailsId}', this)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">${lang === 'zh' ? '展开' : 'Details'}</button></td>
+      <td class="num" style="padding:8px 10px;text-align:right"><button type="button" onclick="toggleObservationDetail(${jsString(detailsId)}, this)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">${lang === 'zh' ? '展开' : 'Details'}</button></td>
     </tr>
     <tr id="${detailsId}" data-observe-detail-for="${detailsId}" style="display:none;background:var(--bg-muted)">
       <td colspan="7" style="padding:14px 18px;border-bottom:1px solid var(--border);text-align:left">
@@ -313,7 +314,7 @@ export function createObservationReviewRenderers({
             ${renderField('lastSeen', timestampedOccurrences(item) > 0 ? item.lastSeen : '未记录')}
             ${renderField('timestampCoverage', `${timestampedOccurrences(item)}/${item.occurrences}`)}
             ${renderField('recentSessionIds', item.recentSessionIds.join(', '))}
-            <button type="button" onclick="openObservationTrace('${e(item.id)}', this)" style="margin-top:8px;font-size:12px;padding:5px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">Open in trace</button>
+            <button type="button" onclick="openObservationTrace(${jsString(item.id)}, this)" style="margin-top:8px;font-size:12px;padding:5px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">Open in trace</button>
             <pre id="trace-${e(item.id)}" style="display:none;margin:8px 0 0;padding:9px;background:var(--bg-muted);border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.45;max-height:360px;overflow:auto;text-align:left"></pre>
           </section>
           <section style="text-align:left;min-width:0">

@@ -64,6 +64,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   let scrollReleaseTimer: number | undefined;
   let suppressScrollTracking = false;
   let liveSource: EventSource | undefined;
+  let refreshInFlight = false;
 
   const setConnectionState = (state: string, label: string): void => {
     if (!liveState) return;
@@ -168,7 +169,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     });
   };
   const reloadNow = async (): Promise<void> => {
-    if (!pendingRevision) return;
+    if (!pendingRevision || refreshInFlight || lifecycle.signal.aborted) return;
     if (refreshTimer !== undefined) browserWindow.clearTimeout(refreshTimer);
     if (scrollReleaseTimer !== undefined) browserWindow.clearTimeout(scrollReleaseTimer);
     refreshTimer = undefined;
@@ -180,14 +181,20 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     saveViewState(viewState);
     if (options.refreshSnapshot) {
       const revision = pendingRevision;
+      refreshInFlight = true;
       pendingRevision = '';
       updateFollowControl();
       try {
         await options.refreshSnapshot(viewState);
       } catch {
-        pendingRevision = revision;
-        setConnectionState('reconnecting', labels.reconnecting);
-        updateFollowControl();
+        if (!lifecycle.signal.aborted) {
+          pendingRevision ||= revision;
+          setConnectionState('reconnecting', labels.reconnecting);
+          updateFollowControl();
+        }
+      } finally {
+        refreshInFlight = false;
+        if (!lifecycle.signal.aborted && pendingRevision && pendingRevision !== revision) applyPendingUpdate();
       }
       return;
     }
@@ -195,7 +202,9 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   };
   const applyPendingUpdate = (): void => {
     updateFollowControl();
-    if (!pendingRevision
+    if (lifecycle.signal.aborted
+      || refreshInFlight
+      || !pendingRevision
       || !followLatest
       || options.getMode() !== 'semantic'
       || browserDocument.hidden
@@ -209,6 +218,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   };
   const dispose = (): void => {
     lifecycle.abort();
+    pendingRevision = '';
     liveSource?.close();
     if (refreshTimer !== undefined) browserWindow.clearTimeout(refreshTimer);
     if (scrollReleaseTimer !== undefined) browserWindow.clearTimeout(scrollReleaseTimer);

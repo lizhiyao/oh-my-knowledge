@@ -2,6 +2,14 @@ import type { Lang } from '../../../shared/language.js';
 
 export function observationInboxClientScript(lang: Lang): string {
   return `
+        function inboxElementsByAttribute(name, value, root) {
+          return Array.from((root || document).querySelectorAll('[' + name + ']')).filter(function(el) {
+            return el.getAttribute(name) === value;
+          });
+        }
+        function inboxElementByAttribute(name, value) {
+          return inboxElementsByAttribute(name, value)[0] || null;
+        }
         var observeSeverityFilter = 'all';
         var inboxCurrentFilter = 'all';
         function selectInboxCard(id, el) {
@@ -25,7 +33,7 @@ export function observationInboxClientScript(lang: Lang): string {
           if (right) right.scrollTop = 0;
         }
         function selectInboxCardById(id, sessionId) {
-          var card = document.querySelector('[data-inbox-card="' + id + '"]');
+          var card = inboxElementByAttribute('data-inbox-card', id);
           if (card) {
             selectInboxCard(id, card);
             if (sessionId) selectInboxSessionTab(id, sessionId);
@@ -148,7 +156,7 @@ export function observationInboxClientScript(lang: Lang): string {
         window.inboxJumpToEvidence = inboxJumpToEvidence;
         function selectInboxSessionTab(skillName, sessionId, btn) {
           if (window.closeInboxSessionFlowPopover) window.closeInboxSessionFlowPopover();
-          var pane = document.querySelector('[data-inbox-detail="' + skillName + '"]');
+          var pane = inboxElementByAttribute('data-inbox-detail', skillName);
           if (!pane) return;
           var tabs = pane.querySelectorAll('[data-session-tab]');
           for (var i = 0; i < tabs.length; i++) {
@@ -180,10 +188,12 @@ export function observationInboxClientScript(lang: Lang): string {
             html += '<ul class="inbox-metric-popover-list"></ul>';
           }
           if (anomaly && jumpId) {
-            html += '<button type="button" class="inbox-metric-popover-jump" data-jump-target="' + jumpId + '">跳转原文回溯</button>';
+            html += '<button type="button" class="inbox-metric-popover-jump" data-jump-target>跳转原文回溯</button>';
           }
           html += '</div>';
           popover.innerHTML = html;
+          var jumpButton = popover.querySelector('[data-jump-target]');
+          if (jumpButton) jumpButton.setAttribute('data-jump-target', jumpId);
           popover.querySelector('.inbox-metric-popover-head strong').textContent = label;
           popover.querySelector('.inbox-metric-popover-value').textContent = value;
           popover.querySelector('.inbox-metric-popover-note').textContent = note;
@@ -342,10 +352,10 @@ export function observationInboxClientScript(lang: Lang): string {
         window.applyInboxFilters = applyInboxFilters;
         window.clearInboxSearch = clearInboxSearch;
         async function setInboxSessionReview(sessionId, verdict, btn) {
-          var actionBlock = document.querySelector('[data-inbox-detail-actions][data-inbox-session-id="' + sessionId + '"]');
+          var actionBlock = inboxElementsByAttribute('data-inbox-session-id', sessionId).find(function(el) { return el.hasAttribute('data-inbox-detail-actions'); });
           var note = '';
           if (verdict === 'needs_more_context') {
-            var input = document.querySelector('[data-inbox-note-input="' + sessionId + '"]');
+            var input = inboxElementByAttribute('data-inbox-note-input', sessionId);
             note = input ? input.value : '';
           }
           try {
@@ -368,7 +378,7 @@ export function observationInboxClientScript(lang: Lang): string {
             }
             var currentPane = actionBlock && actionBlock.closest ? actionBlock.closest('[data-inbox-detail]') : null;
             var cardId = currentPane ? currentPane.getAttribute('data-inbox-detail') : sessionId;
-            var card = document.querySelector('[data-inbox-card="' + cardId + '"]');
+            var card = inboxElementByAttribute('data-inbox-card', cardId);
             if (card) {
               var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
               if (filters.indexOf('reviewed') < 0) filters.push('reviewed');
@@ -390,14 +400,14 @@ export function observationInboxClientScript(lang: Lang): string {
           }
         }
         function toggleInboxNoteEditor(sessionId, btn) {
-          var editor = document.querySelector('[data-inbox-note-editor="' + sessionId + '"]');
+          var editor = inboxElementByAttribute('data-inbox-note-editor', sessionId);
           if (!editor) return;
           editor.style.display = 'block';
           var input = editor.querySelector('textarea');
           if (input) input.focus();
         }
         function closeInboxNoteEditor(sessionId) {
-          var editor = document.querySelector('[data-inbox-note-editor="' + sessionId + '"]');
+          var editor = inboxElementByAttribute('data-inbox-note-editor', sessionId);
           if (editor) editor.style.display = 'none';
         }
         function saveInboxSessionNote(sessionId, btn) {
@@ -800,7 +810,7 @@ export function observationInboxClientScript(lang: Lang): string {
             await res.json();
             var key = targetType + ':' + targetId;
             var nextVerdict = shouldDelete ? '' : verdict;
-            var controls = document.querySelectorAll('[data-review-state-key="' + key.replace(/"/g, '\\"') + '"]');
+            var controls = inboxElementsByAttribute('data-review-state-key', key);
             for (var i = 0; i < controls.length; i++) {
               controls[i].setAttribute('data-review-state-current', nextVerdict);
               var buttons = controls[i].querySelectorAll('[data-review-verdict]');
@@ -824,7 +834,7 @@ export function observationInboxClientScript(lang: Lang): string {
           return '未标注';
         }
         function updateReviewerJudgmentUi(targetId, verdict, reason) {
-          var cards = document.querySelectorAll('[data-reviewer-judgment-id="' + targetId.replace(/"/g, '\\"') + '"]');
+          var cards = inboxElementsByAttribute('data-reviewer-judgment-id', targetId);
           for (var i = 0; i < cards.length; i++) {
             var review = cards[i].querySelector('[data-reviewer-judgment-current]');
             if (!review) continue;
@@ -956,7 +966,7 @@ export function observationInboxClientScript(lang: Lang): string {
             });
             if (!res.ok) throw new Error('标准候选人工判断写入失败: ' + res.status);
             await res.json();
-            var cards = document.querySelectorAll('[data-soft-standard-id="' + standardId.replace(/"/g, '\\"') + '"][data-soft-standard-skill="' + skillName.replace(/"/g, '\\"') + '"]');
+            var cards = inboxElementsByAttribute('data-soft-standard-id', standardId).filter(function(el) { return el.getAttribute('data-soft-standard-skill') === skillName; });
             for (var i = 0; i < cards.length; i++) {
               var label = cards[i].querySelector('[data-soft-standard-status]');
               if (label) {
@@ -988,7 +998,7 @@ export function observationInboxClientScript(lang: Lang): string {
         }
         function updateManualCorrectionButtons(targetType, targetId, label) {
           var key = targetType + ':' + targetId;
-          var buttons = document.querySelectorAll('[data-manual-correction-key="' + key.replace(/"/g, '\\"') + '"]');
+          var buttons = inboxElementsByAttribute('data-manual-correction-key', key);
           for (var i = 0; i < buttons.length; i++) {
             var baseLabel = buttons[i].getAttribute('data-manual-correction-label') || '人工纠正';
             buttons[i].setAttribute('data-manual-correction-current', label || '');
@@ -1136,7 +1146,7 @@ export function observationInboxClientScript(lang: Lang): string {
         }
         function updateGoalSliceCorrectionButtons(targetId, action) {
           var key = 'goal_slice_correction:' + targetId;
-          var buttons = document.querySelectorAll('[data-goal-slice-correction-key="' + key.replace(/"/g, '\\"') + '"]');
+          var buttons = inboxElementsByAttribute('data-goal-slice-correction-key', key);
           var label = action === 'split_goal_slice'
             ? '已标记：拆分'
             : action === 'add_to_current_skill_window'
@@ -1147,7 +1157,7 @@ export function observationInboxClientScript(lang: Lang): string {
             buttons[i].setAttribute('data-goal-slice-correction-action', action || '');
             buttons[i].classList.toggle('is-marked', Boolean(action));
           }
-          var manualButtons = document.querySelectorAll('[data-manual-mark-goal-target="' + targetId.replace(/"/g, '\\"') + '"]');
+          var manualButtons = inboxElementsByAttribute('data-manual-mark-goal-target', targetId);
           for (var j = 0; j < manualButtons.length; j++) {
             manualButtons[j].setAttribute('data-manual-mark-goal-action', action || '');
             var metrics = [];
@@ -1616,7 +1626,7 @@ export function observationInboxClientScript(lang: Lang): string {
             var severity = row.getAttribute('data-severity') || '';
             var search = row.getAttribute('data-search') || '';
             var detailId = row.getAttribute('data-detail-id');
-            var detail = detailId ? document.querySelector('[data-observe-detail-for="' + detailId + '"]') : null;
+            var detail = detailId ? inboxElementByAttribute('data-observe-detail-for', detailId) : null;
             var visible = (observeSeverityFilter === 'all' || severity === observeSeverityFilter) && (!query || search.indexOf(query) >= 0);
             row.style.display = visible ? '' : 'none';
             if (!visible && detail) detail.style.display = 'none';

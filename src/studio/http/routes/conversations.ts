@@ -7,7 +7,7 @@ import {
   renderConversationIndexPage,
 } from '../../presentation/conversation-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
-import { getErrorMessage } from '../errors.js';
+import { STUDIO_SOURCE_UNAVAILABLE } from '../errors.js';
 import type {
   LiveStreamRegistry,
   StudioRouteHandler,
@@ -129,10 +129,10 @@ export function createConversationRoutes({
               })}\n\n`);
             },
             complete: close,
-            error: (cause) => {
+            error: () => {
               if (!closed && !response.destroyed && !response.writableEnded) {
                 response.write('event: trajectory-error\n');
-                response.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
+                response.write(`data: ${JSON.stringify({ error: STUDIO_SOURCE_UNAVAILABLE })}\n\n`);
               }
               close();
             },
@@ -140,10 +140,10 @@ export function createConversationRoutes({
           { signal: lifecycle.signal },
         );
         if (closed) unsubscribe();
-      } catch (cause) {
+      } catch {
         if (!closed && !response.destroyed && !response.writableEnded) {
           response.write('event: trajectory-error\n');
-          response.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
+          response.write(`data: ${JSON.stringify({ error: STUDIO_SOURCE_UNAVAILABLE })}\n\n`);
         }
         close();
       }

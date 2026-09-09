@@ -1,5 +1,5 @@
 import { DEFAULT_LANG, e, layout } from './layout.js';
-import { assessHealth } from './skill-detail-renderer.js';
+import { assessHealth } from '../application/skill-health.js';
 import type { Lang } from '../../shared/language.js';
 import type { SkillIndex } from '../view-models/skill-index.js';
 

@@ -1,3 +1,5 @@
+import { ownRecordValue } from '../../../shared/record-count.js';
+import { jsString } from '../layout.js';
 import { e } from '../layout.js';
 import type { Lang } from '../../../shared/language.js';
 import type {
@@ -85,9 +87,9 @@ export function createObservationProcessWorkspace({
     const latestObservation = groupItems
       .filter((item) => timestampedOccurrences(item) > 0)
       .reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
-    const latest = latestObservation || skillInvocationLastSeen[skillName] || '';
-    const invocationCount = skillInvocationCounts[skillName] ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
-    const sessionCount = skillSessionCounts[skillName] ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
+    const latest = latestObservation || ownRecordValue(skillInvocationLastSeen, skillName) || '';
+    const invocationCount = ownRecordValue(skillInvocationCounts, skillName) ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
+    const sessionCount = ownRecordValue(skillSessionCounts, skillName) ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
     const sourceKinds = Array.from(new Set(groupItems.map((item) => item.sourceKind))).sort();
     const searchText = groupItems.map((item) => [item.sourceKind, item.skillName, item.signalType, item.signalSubtype, semanticEvidence(item), item.cwd, item.sourceTrace].join(' ')).join(' ').toLowerCase();
     const buckets = severityOrder.map((severity) => {
@@ -157,15 +159,15 @@ export function createObservationProcessWorkspace({
       low: groupItems.filter((item) => item.severity === 'low').length,
       noise: groupItems.filter((item) => item.severity === 'noise').length,
     };
-    const invocationCount = skillInvocationCounts[skillName] ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
-    const sessionCount = skillSessionCounts[skillName] ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
+    const invocationCount = ownRecordValue(skillInvocationCounts, skillName) ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
+    const sessionCount = ownRecordValue(skillSessionCounts, skillName) ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
     const lastProblemSeen = groupItems
       .filter((item) => timestampedOccurrences(item) > 0)
       .reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
-    const lastUsed = skillInvocationLastSeen[skillName] || lastProblemSeen || '';
+    const lastUsed = ownRecordValue(skillInvocationLastSeen, skillName) || lastProblemSeen || '';
     const sources = Array.from(new Set(groupItems.map((item) => item.sourceKind))).sort();
     const observationCount = groupItems.length;
-    const toolCounts = skillToolCallCounts[skillName] ?? {};
+    const toolCounts = ownRecordValue(skillToolCallCounts, skillName) ?? {};
     const metricCounts = {
       bash: toolCounts.Bash ?? 0,
       read: toolCounts.Read ?? 0,
@@ -369,7 +371,7 @@ export function createObservationProcessWorkspace({
       <td style="padding:8px 10px">${renderSourceBadge(item)}</td>
       <td class="num" style="padding:8px 10px;text-align:right">${item.confidence.toFixed(2)} / ${item.attributionConfidence.toFixed(2)}</td>
       <td style="padding:8px 10px">${renderEvidenceCell(item, 180)}</td>
-      <td class="num" style="padding:8px 10px;text-align:right"><button type="button" onclick="toggleObservationDetail('${rawId}', this)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">${lang === 'zh' ? '原始 JSON' : 'Raw JSON'}</button></td>
+      <td class="num" style="padding:8px 10px;text-align:right"><button type="button" onclick="toggleObservationDetail(${jsString(rawId)}, this)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">${lang === 'zh' ? '原始 JSON' : 'Raw JSON'}</button></td>
     </tr>
     <tr id="${rawId}" style="display:none;background:var(--bg-muted)">
       <td colspan="7" style="padding:14px 18px;border-bottom:1px solid var(--border);text-align:left">
@@ -397,7 +399,7 @@ export function createObservationProcessWorkspace({
     <section class="metric-guide-section">
       <h3>${e(section.title)}</h3>
       ${section.keys.map((key) => `
-        <button type="button" class="metric-guide-item" data-metric-guide-key="${key}" onclick="openMetricGuide('${key}')">
+        <button type="button" class="metric-guide-item" data-metric-guide-key="${key}" onclick="openMetricGuide(${jsString(key)})">
           <strong>${e(indicatorLabels[key])}</strong>
           <span>${e(indicatorHelps[key])}</span>
         </button>

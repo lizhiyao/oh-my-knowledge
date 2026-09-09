@@ -26,6 +26,12 @@ describe('Studio knowledge route boundary', () => {
   it('keeps the capability route independent from listener and global composition', () => {
     const routes = readFileSync('src/studio/http/routes/knowledge.ts', 'utf8');
 
+    expect(routes).not.toMatch(/from ['"]node:fs['"]/);
+    expect(routes).not.toContain('readFileSync');
+    expect(routes).not.toContain('function querySkillTrend');
+    expect(routes).not.toContain('function renderSkill');
+    expect(routes).not.toContain('Math.round');
+    expect(routes).not.toContain('<main');
     expect(routes).not.toContain('report-server');
     expect(routes).not.toContain('request-handler');
     expect(routes).not.toContain("from '../contracts.js'");

@@ -10,6 +10,11 @@ export function e(text: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
+/** A JavaScript string literal embedded in a double-quoted HTML event attribute. */
+export function jsString(value: string): string {
+  return e(JSON.stringify(value));
+}
+
 export function fmtDuration(ms: number | undefined | null): string {
   const v = Number(ms || 0);
   if (v < 1000) return `${v}ms`;
@@ -331,27 +336,13 @@ function globalKeyboardScript(): string {
 function langToggleScript(): string {
   return `
   <script>
-  var I18N = ${JSON.stringify(I18N)};
   function switchLang() {
     var cur = document.documentElement.dataset.lang || '${DEFAULT_LANG}';
     var next = cur === 'zh' ? 'en' : 'zh';
-    document.documentElement.dataset.lang = next;
-    document.documentElement.lang = next === 'zh' ? 'zh-CN' : 'en';
-    document.querySelectorAll('[data-i18n]').forEach(function(el) {
-      var key = el.dataset.i18n;
-      if (I18N[next][key]) {
-        if (el.tagName === 'INPUT') { el.placeholder = I18N[next][key]; }
-        else { el.innerHTML = I18N[next][key]; }
-      }
-    });
-    document.getElementById('lang-toggle').textContent = I18N[next].switchLang;
-    // 同步写入 URL ?lang= 和 localStorage,让刷新/跳转保持语言选择
-    try {
-      var url = new URL(window.location.href);
-      url.searchParams.set('lang', next);
-      window.history.replaceState(null, '', url.toString());
-      localStorage.setItem('omk-lang', next);
-    } catch (e) { /* ignore */ }
+    var url = new URL(window.location.href);
+    url.searchParams.set('lang', next);
+    try { localStorage.setItem('omk-lang', next); } catch (e) { /* storage is optional */ }
+    window.location.assign(url.toString());
   }
   // 页面加载时,若 URL 无 lang 但 localStorage 有,跳转到带 lang 的 URL (仅一次)
   (function() {

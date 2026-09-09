@@ -1,3 +1,4 @@
+import { jsString } from '../layout.js';
 import { e } from '../layout.js';
 import { incrementRecordCount } from '../../../shared/record-count.js';
 import {
@@ -111,7 +112,7 @@ export function createObservationMetricRenderers({
     llmSkillTypeUnknown: 'LLM 没能从 SKILL.md 和 trace 中得到足够证据判定 skill 类型。可能是 SKILL.md 描述不清，或 trace 样本不足。建议 skill owner 补充 SKILL.md 顶部声明，或多观察几个 session。',
   };
   const metric = (label: string, value: number, helpKey: IndicatorHelpKey, title?: string): string =>
-    `<button type="button" class="metric-item" data-metric-key="${helpKey}" onclick="openMetricGuide('${helpKey}')" title="${e(title ?? `点击查看“${label}”指标说明`)}"><span>${e(label)}</span> <strong>${value}</strong></button>`;
+    `<button type="button" class="metric-item" data-metric-key="${helpKey}" onclick="openMetricGuide(${jsString(helpKey)})" title="${e(title ?? `点击查看“${label}”指标说明`)}"><span>${e(label)}</span> <strong>${value}</strong></button>`;
   const formatEntrypoint = (value?: string): string => {
     const labels: Record<string, string> = {
       'claude-desktop': 'Claude Code App',

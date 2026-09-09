@@ -1,4 +1,4 @@
-import { assessHealth } from '../../../src/studio/presentation/skill-detail-renderer.js';
+import { assessHealth } from '../../../src/studio/application/skill-health.js';
 /**
  * 机器级总览验收(doctor / observe-health 域):buildSkillIndex 把别项目的 doctor/observe 卡片合并进 skill 索引;
  * doctor 历史 prune 删正文时连带删卡片,杜绝「被 prune 的报告经卡片复活」。全程隔离 OMK_ARTIFACT_INDEX_DIR。
@@ -320,6 +320,23 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     const local = buildSkillIndex(proj, emptyDoctors, emptyObs).entries.find((entry) => entry.skillName === 'partial')!;
     assert.equal(local.observe?.effectiveBand, partial.observe?.effectiveBand);
     assert.equal(local.observeHistory[0].effectiveBand, 'gray');
+  });
+
+  it('汇总与行状态同时采用活跃知识缺口信号', () => {
+    const path = join(proj, reportFileName('o-gap-summary'));
+    indexObserveWrite({
+      meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 20, segmentCount: 20 },
+      overall: { healthBand: 'red', confidence: 'high' },
+      bySkill: { gap: { toolFailureRate: 0, toolCallCount: 20, segmentCount: 20, confidence: 'high', gap: { weightedGapRate: 0.4 } } },
+    }, path, proj, 'o-gap-summary');
+    const idx = buildSkillIndex(proj, emptyDoctors, emptyObs);
+    const entry = idx.entries.find((item) => item.skillName === 'gap')!;
+    const health = assessHealth(entry, idx.insightsBySkill.get('gap') ?? [], 'zh');
+    assert.equal(health.color, 'red');
+    assert.equal(entry.band, health.color);
+    assert.equal(idx.summary.red, 1);
+    assert.equal(idx.summary.yellow, 0);
+    assert.equal(health.score, 60);
   });
 
   it('少量可判定结果不足以把高失败率标成红色或黄色', () => {
