@@ -26,7 +26,7 @@ argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|s
 除 `$omk feedback` 快捷入口外，运行 `which omk` 检查是否已安装。如果未安装，告诉用户：
 
 ```
-npm i oh-my-knowledge -g
+npm i -g oh-my-knowledge@next
 ```
 
 omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。

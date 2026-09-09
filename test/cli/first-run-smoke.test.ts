@@ -55,16 +55,13 @@ describe('first-run smoke path', () => {
       assert.match(init.stdout, /直接跑通/);
       assert.match(init.stdout, /看报告里的 verdict/);
 
-      const executor = join(project, 'offline-executor.sh');
-      await writeFile(executor, [
-        '#!/bin/sh',
-        'IFS= read -r request',
-        'case "$request" in',
-        '  *code-review-v2*) output="SQL injection: use parameterized queries. Handle error status. XSS via innerHTML: use textContent." ;;',
-        '  *) output="Looks okay." ;;',
-        'esac',
-        'printf \'{"schemaVersion":"omk.custom-command-exchange/v1","resultStatus":"completed","output":{"value":"%s","classification":"public"}}\\n\' "$output"',
-      ].join('\n'));
+      // Exercise the published snippet so its protocol cannot drift from the CLI again.
+      const executor = join(project, 'offline-executor.mjs');
+      const executorGuide = readFileSync(join(PROJECT_ROOT, 'docs/zh/reference/executors.md'), 'utf8');
+      const customSection = executorGuide.split('## 自定义执行器')[1];
+      const source = customSection?.match(/```js\n([\s\S]*?)```/)?.[1];
+      assert.ok(source, 'custom executor guide contains a runnable JavaScript example');
+      await writeFile(executor, source);
       await chmod(executor, 0o755);
 
       const baseArgs = [

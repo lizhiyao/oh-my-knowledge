@@ -95,24 +95,65 @@ dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
 
 ## Custom executor
 
-Any shell command can serve as an executor, communicating via stdin/stdout JSON:
+`omk eval --executor` accepts **one executable file path**, resolved relative to the evaluation project. Commands with arguments such as `node my-provider.mjs` or `python my-provider.py` are not executed as shell commands. Add a shebang and execution permission to scripts; use an executable wrapper when your service needs arguments.
 
-```bash
-omk eval --executor "python my_provider.py"
-omk eval --executor "./my-executor.sh"
+### Verify stdin/stdout first
+
+Save this as `my-executor.mjs`. It returns fixed text to verify integration, calls no model, and does not measure skill effectiveness:
+
+```js
+#!/usr/bin/env node
+let text = '';
+for await (const chunk of process.stdin) text += chunk;
+const request = JSON.parse(text);
+if (request.schemaVersion !== 'omk.custom-command-exchange/v1') {
+  throw new Error('Unsupported OMK request');
+}
+// To connect your service, read request.trial.input and return its actual output.
+console.log(JSON.stringify({
+  schemaVersion: 'omk.custom-command-exchange/v1',
+  resultStatus: 'completed',
+  output: { value: 'Integration works', classification: 'public' },
+}));
 ```
 
-**Protocol:**
+In a project created by `omk init`, run:
 
-- **input** (stdin): JSON `{"model":"...","system":"...","prompt":"..."}`
-- **output** (stdout): JSON `{"ok":true,"output":"model reply","inputTokens":0,"outputTokens":0,"costUSD":0}`; `ok` may be omitted for compatibility
-- return `{"ok":false,"error":"reason"}` to report a structured execution failure
-- stdout only needs to return the fields you care about; others default to 0. Plain-text output (no tokens/cost parsing) is also fine.
-- to expose source-neutral agent evidence, add `turns`, `toolCalls`, `fullNumTurns`, and `numSubAgents`. Each tool call includes `tool`, JSON `input` / `output`, `success`, and optionally `status` (`success` / `failure` / `cancelled` / `unknown`) plus source identity fields. Malformed trace fields fail the execution instead of being dropped.
-- token usage is authoritative only when all four counters are present: `inputTokens`, `outputTokens`, `cacheReadTokens`, and `cacheCreationTokens`. Otherwise the report marks token usage as unreported.
-- local script or executable bytes referenced by the command are part of the runtime fingerprint; changing the file invalidates cache and strict comparability even when the command string stays unchanged.
-- an empty JSON `output` or whitespace-only plain-text output counts as failure
-- non-zero exit code counts as failure
+```bash
+chmod +x my-executor.mjs
+omk eval --control code-review-v1 --treatment code-review-v2 \
+  --executor ./my-executor.mjs --skip-connectivity --no-judge \
+  --no-serve --report-only
+```
+
+This checks target execution and assertion scoring. `--no-judge` explicitly disables LLM judging; `--report-only` does not use the release gate to choose the exit code. The fixed answer is expected to fail the demo assertions. Check successful execution coverage, then connect your service.
+
+### Connect your service
+
+Each attempt starts a process that receives one JSON request on stdin and must return one JSON response on stdout. Send logs to stderr. The current protocol is `omk.custom-command-exchange/v1`; it rejects the old `{ ok, output: "..." }` response and plain text.
+
+| Request field | Purpose |
+|---|---|
+| `trial.input` | Resolved task input, usually a string for CLI text samples. |
+| `trial.targetConfig.runtime` | Runtime configuration, including model and effort. |
+| `trial.targetConfig.behavior.artifact` | Resource descriptor for the knowledge artifact under test. |
+| `resources` | Readable resource snapshots for this execution, matched to descriptors by `resourceId`; `snapshotPath` is temporary. |
+| `trial.trialSeed` | Measurement seed; use it only if your service actually supports it. |
+| `attempt` | Attempt identity and retry number. |
+
+To measure a prompt or skill change, find the artifact snapshot in `resources` using its descriptor and make the service consume that content. Reading only the task input ignores the knowledge under test. Do not read the original skill outside the snapshot or send expected answers to the target service. Resources last only for this lifecycle; do not persist their temporary paths.
+
+On success, return `resultStatus: 'completed'` and `output: { value, classification }`, where `value` can be a JSON value. Choose `public`, `sensitive`, or `secret` to match the actual content; optional `trace` uses the same structure. Optional `usage` follows Core's `UsageRecord` contract. Omit unreported usage instead of presenting zero as a measurement.
+
+Report invocation failure with a stable error code:
+
+```json
+{"schemaVersion":"omk.custom-command-exchange/v1","resultStatus":"failed","error":{"code":"SERVICE_UNAVAILABLE","stage":"execution"}}
+```
+
+`stage` is `execution` or `infrastructure`. Nonzero exits, timeouts, and invalid responses are also execution failures; for example, an old-protocol response produces `OMK_CUSTOM_COMMAND_OUTPUT_INVALID`. Inspect execution coverage and failure evidence in the report rather than interpreting failure as a low-scoring answer.
+
+This protocol applies to targets executed by `omk eval`. Model calls from `doctor`, `sample`, and `evolve`, and custom LLM judges still use the old `{ model, system, prompt }` adapter interface. Do not use a script implementing only this section's protocol for those model calls. Configure a supported judge separately through `--judge-models` when needed.
 
 ## Prerequisites
 
