@@ -63,7 +63,7 @@ export function createStudioRequestHandler({
     ? undefined
     : createCoreStudioRouteHandler({
         catalog: coreStudioCatalog,
-        htmlBasePath: '/reports',
+        htmlBasePath: '/measure',
         apiBasePath: '/api/reports',
         defaultLang: DEFAULT_LANG,
         studioNavigation: true,

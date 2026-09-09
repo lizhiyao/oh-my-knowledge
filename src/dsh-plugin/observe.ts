@@ -331,7 +331,7 @@ function taskItem(threadId: string, turn: ExperienceTurnSummary): ConversationTa
   return {
     turnId: turn.turnId,
     sourceTurnId: turn.sourceTurnId,
-    trajectoryHref: `/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turn.turnId)}`,
+    trajectoryHref: `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turn.turnId)}`,
     title: turn.title,
     startTimestamp: turn.startTimestamp,
     endTimestamp: turn.endTimestamp,

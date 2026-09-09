@@ -373,13 +373,13 @@ function langToggleButton(lang: Lang): string {
   return `<button id="lang-toggle" onclick="switchLang()" class="lang-toggle">${t('switchLang', lang)}</button>`;
 }
 
-type StudioSection = 'conversations' | 'knowledge' | 'reports';
+type StudioSection = 'observe' | 'measure' | 'knowledge';
 
 export function renderStudioNavigation(lang: Lang, active?: StudioSection): string {
   const query = lang === 'en' ? '?lang=en' : '';
   const items = [
-    ['conversations', '观测', 'Observe'],
-    ['reports', '评测', 'Measure'],
+    ['observe', '观测', 'Observe'],
+    ['measure', '评测', 'Measure'],
     ['knowledge', '知识', 'Knowledge'],
   ] as const;
   return `<nav class="studio-nav" aria-label="${lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}">${items.map(([section, zh, en]) =>
@@ -477,12 +477,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .studio-workspace{height:100dvh;min-height:0;overflow:hidden;background:var(--bg-surface);display:flex;flex-direction:column}
 .studio-workspace .app-main{flex:1;min-height:0;width:100%;max-width:none;margin:0;padding:0;display:flex;flex-direction:column}
 .studio-page{flex:1;min-height:0;display:flex;flex-direction:column}
-.studio-page-header{min-height:62px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:14px 22px;border-bottom:1px solid var(--border)}
-.studio-page-header h1{margin:0;font-size:18px;font-weight:650;line-height:1.3;letter-spacing:0}
+.studio-page-title{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .studio-page-body{flex:1;min-height:0;overflow:auto;padding:22px}
 .studio-page-description{max-width:820px;color:var(--text-secondary);font-size:13px;margin:0 0 20px}
 .studio-empty{padding:36px;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);text-align:center}
-@media(max-width:720px){.studio-page-header{padding:14px;gap:12px}.studio-page-body{padding:14px}}
+@media(max-width:720px){.studio-page-body{padding:14px}}
 h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
 h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
 .subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}

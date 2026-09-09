@@ -22,7 +22,7 @@ export function createConversationRoutes({
   catalog,
   liveStreams,
 }: ConversationRoutesOptions): StudioRouteHandler {
-  return async ({ request, response, path, lang }): Promise<boolean> => {
+  return async ({ request, response, url, path, lang }): Promise<boolean> => {
     if (path === '/api/conversations/activity') {
       const snapshot = buildConversationActivitySnapshot(
         await catalog.listConversations(),
@@ -53,7 +53,7 @@ export function createConversationRoutes({
       return true;
     }
 
-    if (path === '/conversations') {
+    if (path === '/observe') {
       const html = renderConversationIndexPage(await catalog.listConversations(), lang);
       response.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
@@ -150,7 +150,7 @@ export function createConversationRoutes({
       return true;
     }
 
-    const conversationTaskMatch = path.match(/^\/conversations\/([^/]+)\/tasks\/([^/]+)$/);
+    const conversationTaskMatch = path.match(/^\/observe\/conversations\/([^/]+)\/tasks\/([^/]+)$/);
     if (conversationTaskMatch) {
       let threadId = '';
       let turnId = '';
@@ -220,7 +220,7 @@ export function createConversationRoutes({
       return true;
     }
 
-    const conversationDetailMatch = path.match(/^\/conversations\/([^/]+)$/);
+    const conversationDetailMatch = path.match(/^\/observe\/conversations\/([^/]+)$/);
     if (conversationDetailMatch) {
       let threadId = '';
       try { threadId = decodeURIComponent(conversationDetailMatch[1]); } catch { /* invalid path */ }
@@ -238,11 +238,10 @@ export function createConversationRoutes({
       return true;
     }
 
-    // Studio 默认呈现机器上的主对话；/conversations 保留为同义入口。
+    // Studio 根入口进入观测工作台，保留语言等查询参数。
     if (path === '/') {
-      const html = renderConversationIndexPage(await catalog.listConversations(), lang);
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end(html);
+      response.writeHead(302, { Location: `/observe${url.search}` });
+      response.end();
       return true;
     }
 

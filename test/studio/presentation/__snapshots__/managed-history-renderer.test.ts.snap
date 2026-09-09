@@ -2,7 +2,7 @@
 
 exports[`managed-history-renderer snapshots > renderManagedHistory en 1`] = `
 "<main class="mh-main">
-    <nav class="mh-back"><a href="/managed?lang=en">← Managed</a></nav>
+    <nav class="mh-back"><a href="/knowledge/managed?lang=en">← Managed</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">Managed history</div>
       <h1 class="mh-name">review</h1>
@@ -27,28 +27,28 @@ exports[`managed-history-renderer snapshots > renderManagedHistory en 1`] = `
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Promote</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a><span class="mh-reason">「已人工复核」</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/measure/evolve-review-002?lang=en">report →</a><span class="mh-reason">「已人工复核」</span></div>
     </div>
   </li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="mh-badge-raw">PROGRESS</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/measure/evolve-review-002?lang=en">report →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="mh-badge-raw">NOISE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/reports/evolve-review-001?lang=en">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/measure/evolve-review-001?lang=en">report →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV0conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="mh-badge-raw">INCONCLUSIVE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">1 samples</span><a class="mh-link" href="/reports/evolve-review-000?lang=en">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">1 samples</span><a class="mh-link" href="/measure/evolve-review-000?lang=en">report →</a></div>
     </div>
   </li><li class="mh-event mh-event--install">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -63,7 +63,7 @@ exports[`managed-history-renderer snapshots > renderManagedHistory en 1`] = `
 
 exports[`managed-history-renderer snapshots > renderManagedHistory zh 1`] = `
 "<main class="mh-main">
-    <nav class="mh-back"><a href="/managed">← 受管列表</a></nav>
+    <nav class="mh-back"><a href="/knowledge/managed">← 受管列表</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">受管决策史</div>
       <h1 class="mh-name">review</h1>
@@ -88,28 +88,28 @@ exports[`managed-history-renderer snapshots > renderManagedHistory zh 1`] = `
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">采用</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">决定人 alice</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a><span class="mh-reason">「已人工复核」</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">决定人 alice</span><a class="mh-link" href="/measure/evolve-review-002">查看报告 →</a><span class="mh-reason">「已人工复核」</span></div>
     </div>
   </li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">评测</span> <span class="mh-badge-raw">PROGRESS</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/measure/evolve-review-002">查看报告 →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">评测</span> <span class="mh-badge-raw">NOISE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/reports/evolve-review-001">查看报告 →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/measure/evolve-review-001">查看报告 →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV0conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">评测</span> <span class="mh-badge-raw">INCONCLUSIVE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">1 用例</span><a class="mh-link" href="/reports/evolve-review-000">查看报告 →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">1 用例</span><a class="mh-link" href="/measure/evolve-review-000">查看报告 →</a></div>
     </div>
   </li><li class="mh-event mh-event--install">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -124,7 +124,7 @@ exports[`managed-history-renderer snapshots > renderManagedHistory zh 1`] = `
 
 exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe 观测 en 1`] = `
 "<main class="mh-main">
-    <nav class="mh-back"><a href="/managed?lang=en">← Managed</a></nav>
+    <nav class="mh-back"><a href="/knowledge/managed?lang=en">← Managed</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">Managed history</div>
       <h1 class="mh-name">review</h1>
@@ -163,14 +163,14 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Promote</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a><span class="mh-reason">「已人工复核」</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/measure/evolve-review-002?lang=en">report →</a><span class="mh-reason">「已人工复核」</span></div>
     </div>
   </li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="mh-badge-raw">PROGRESS</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/measure/evolve-review-002?lang=en">report →</a></div>
     </div>
   </li><li class="mh-event mh-event--observe">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -191,14 +191,14 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="mh-badge-raw">NOISE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/reports/evolve-review-001?lang=en">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><a class="mh-link" href="/measure/evolve-review-001?lang=en">report →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV0conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="mh-badge-raw">INCONCLUSIVE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">1 samples</span><a class="mh-link" href="/reports/evolve-review-000?lang=en">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">1 samples</span><a class="mh-link" href="/measure/evolve-review-000?lang=en">report →</a></div>
     </div>
   </li><li class="mh-event mh-event--install">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -213,7 +213,7 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
 
 exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe 观测(生产盲区 / 数据不足 / 健康)zh 1`] = `
 "<main class="mh-main">
-    <nav class="mh-back"><a href="/managed">← 受管列表</a></nav>
+    <nav class="mh-back"><a href="/knowledge/managed">← 受管列表</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">受管决策史</div>
       <h1 class="mh-name">review</h1>
@@ -252,14 +252,14 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">采用</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">决定人 alice</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a><span class="mh-reason">「已人工复核」</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">决定人 alice</span><a class="mh-link" href="/measure/evolve-review-002">查看报告 →</a><span class="mh-reason">「已人工复核」</span></div>
     </div>
   </li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">评测</span> <span class="mh-badge-raw">PROGRESS</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/measure/evolve-review-002">查看报告 →</a></div>
     </div>
   </li><li class="mh-event mh-event--observe">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -280,14 +280,14 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">评测</span> <span class="mh-badge-raw">NOISE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/reports/evolve-review-001">查看报告 →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><a class="mh-link" href="/measure/evolve-review-001">查看报告 →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV0conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">评测</span> <span class="mh-badge-raw">INCONCLUSIVE</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">1 用例</span><a class="mh-link" href="/reports/evolve-review-000">查看报告 →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">1 用例</span><a class="mh-link" href="/measure/evolve-review-000">查看报告 →</a></div>
     </div>
   </li><li class="mh-event mh-event--install">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -321,7 +321,7 @@ exports[`managed-history-renderer snapshots > renderManagedList en 1`] = `
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>state</span><span>name</span><span>kind</span>
     <span>verdict</span><span>evidence</span><span>source</span>
-  </div><a class="mh-row" href="/managed/skill-review-fixture?lang=en">
+  </div><a class="mh-row" href="/knowledge/managed/skill-review-fixture?lang=en">
     <span class="mh-row-state" title="Current content has valid evidence; ready for the promote gate"><span class="mh-dot mh-dot--accent"></span>Measurable</span>
     <span class="mh-row-name">review</span>
     <span class="mh-row-kind">skill</span>
@@ -352,7 +352,7 @@ exports[`managed-history-renderer snapshots > renderManagedList zh 1`] = `
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>状态</span><span>名称</span><span>类型</span>
     <span>verdict</span><span>证据</span><span>源</span>
-  </div><a class="mh-row" href="/managed/skill-review-fixture">
+  </div><a class="mh-row" href="/knowledge/managed/skill-review-fixture">
     <span class="mh-row-state" title="当前内容已有有效证据，可进入采用门禁"><span class="mh-dot mh-dot--accent"></span>证据就绪</span>
     <span class="mh-row-name">review</span>
     <span class="mh-row-kind">skill</span>
@@ -383,42 +383,42 @@ exports[`managed-history-renderer snapshots > renderManagedList 各状态 + 标�
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>state</span><span>name</span><span>kind</span>
     <span>verdict</span><span>evidence</span><span>source</span>
-  </div><a class="mh-row" href="/managed/i-prom?lang=en">
+  </div><a class="mh-row" href="/knowledge/managed/i-prom?lang=en">
     <span class="mh-row-state" title="Manually reviewed and accepted on evidence"><span class="mh-dot mh-dot--green"></span>Promoted</span>
     <span class="mh-row-name">promoted-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict"><span class="mh-badge-raw">PROGRESS</span></span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-meas?lang=en">
+  </a><a class="mh-row" href="/knowledge/managed/i-meas?lang=en">
     <span class="mh-row-state" title="Current content has valid evidence; ready for the promote gate"><span class="mh-dot mh-dot--accent"></span>Measurable</span>
     <span class="mh-row-name">measurable-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict"><span class="mh-badge-raw">CAUTIOUS</span></span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-inst?lang=en">
+  </a><a class="mh-row" href="/knowledge/managed/i-inst?lang=en">
     <span class="mh-row-state" title="Under management; no valid evidence for current content yet"><span class="mh-dot mh-dot--muted"></span>Installed</span>
     <span class="mh-row-name">installed-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">0/0</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-stale?lang=en">
+  </a><a class="mh-row" href="/knowledge/managed/i-stale?lang=en">
     <span class="mh-row-state" title="Source changed off its evidence — re-run omk eval"><span class="mh-dot mh-dot--red"></span>Drifted <span class="mh-mark mh-mark--warn" title="drifted, re-measure">⚠️</span></span>
     <span class="mh-row-name">stale-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-unre?lang=en">
+  </a><a class="mh-row" href="/knowledge/managed/i-unre?lang=en">
     <span class="mh-row-state" title="Current content has valid evidence; ready for the promote gate"><span class="mh-dot mh-dot--accent"></span>Measurable <span class="mh-mark mh-mark--q" title="source unreachable / refused, drift unchecked">?</span></span>
     <span class="mh-row-name">unreachable-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-over?lang=en">
+  </a><a class="mh-row" href="/knowledge/managed/i-over?lang=en">
     <span class="mh-row-state" title="Manually reviewed and accepted on evidence"><span class="mh-dot mh-dot--green"></span>Promoted</span>
     <span class="mh-row-name">override-skill</span>
     <span class="mh-row-kind">skill</span>
@@ -449,42 +449,42 @@ exports[`managed-history-renderer snapshots > renderManagedList 各状态 + 标�
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>状态</span><span>名称</span><span>类型</span>
     <span>verdict</span><span>证据</span><span>源</span>
-  </div><a class="mh-row" href="/managed/i-prom">
+  </div><a class="mh-row" href="/knowledge/managed/i-prom">
     <span class="mh-row-state" title="已按证据人工复核并接受当前内容"><span class="mh-dot mh-dot--green"></span>已采用</span>
     <span class="mh-row-name">promoted-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict"><span class="mh-badge-raw">PROGRESS</span></span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-meas">
+  </a><a class="mh-row" href="/knowledge/managed/i-meas">
     <span class="mh-row-state" title="当前内容已有有效证据，可进入采用门禁"><span class="mh-dot mh-dot--accent"></span>证据就绪</span>
     <span class="mh-row-name">measurable-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict"><span class="mh-badge-raw">CAUTIOUS</span></span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-inst">
+  </a><a class="mh-row" href="/knowledge/managed/i-inst">
     <span class="mh-row-state" title="已纳入管理，当前内容尚无有效证据"><span class="mh-dot mh-dot--muted"></span>已纳管</span>
     <span class="mh-row-name">installed-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">0/0</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-stale">
+  </a><a class="mh-row" href="/knowledge/managed/i-stale">
     <span class="mh-row-state" title="源内容已变更、脱离证据，需重跑 omk eval 取证"><span class="mh-dot mh-dot--red"></span>已漂移 <span class="mh-mark mh-mark--warn" title="已漂移，需重测">⚠️</span></span>
     <span class="mh-row-name">stale-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-unre">
+  </a><a class="mh-row" href="/knowledge/managed/i-unre">
     <span class="mh-row-state" title="当前内容已有有效证据，可进入采用门禁"><span class="mh-dot mh-dot--accent"></span>证据就绪 <span class="mh-mark mh-mark--q" title="源不可达 / 拒读，漂移未核">?</span></span>
     <span class="mh-row-name">unreachable-skill</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
-  </a><a class="mh-row" href="/managed/i-over">
+  </a><a class="mh-row" href="/knowledge/managed/i-over">
     <span class="mh-row-state" title="已按证据人工复核并接受当前内容"><span class="mh-dot mh-dot--green"></span>已采用</span>
     <span class="mh-row-name">override-skill</span>
     <span class="mh-row-kind">skill</span>
@@ -515,7 +515,7 @@ exports[`managed-history-renderer snapshots > renderManagedList 生产盲区徽�
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>状态</span><span>名称</span><span>类型</span>
     <span>verdict</span><span>证据</span><span>源</span>
-  </div><a class="mh-row" href="/managed/i-gap">
+  </div><a class="mh-row" href="/knowledge/managed/i-gap">
     <span class="mh-row-state" title="当前内容已有有效证据，可进入采用门禁"><span class="mh-dot mh-dot--accent"></span>证据就绪 <span class="mh-gap" title="线上生产盲区，集中在：检索失败、显式缺口">🔬</span></span>
     <span class="mh-row-name">gap-skill</span>
     <span class="mh-row-kind">skill</span>
@@ -546,7 +546,7 @@ exports[`managed-history-renderer snapshots > renderManagedList 生产盲区徽�
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>state</span><span>name</span><span>kind</span>
     <span>verdict</span><span>evidence</span><span>source</span>
-  </div><a class="mh-row" href="/managed/i-gap?lang=en">
+  </div><a class="mh-row" href="/knowledge/managed/i-gap?lang=en">
     <span class="mh-row-state" title="Current content has valid evidence; ready for the promote gate"><span class="mh-dot mh-dot--accent"></span>Measurable <span class="mh-gap" title="production gap in real traffic, in: failed search, explicit gap">🔬</span></span>
     <span class="mh-row-name">gap-skill</span>
     <span class="mh-row-kind">skill</span>

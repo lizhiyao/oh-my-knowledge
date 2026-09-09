@@ -30,7 +30,7 @@ function conversation(
     relatedSkillNames: [],
     tasks: [{
       turnId: `${threadId}-turn`,
-      trajectoryHref: `/conversations/${threadId}/tasks/${threadId}-turn`,
+      trajectoryHref: `/observe/conversations/${threadId}/tasks/${threadId}-turn`,
       title,
       status,
       eventCount: 2,
@@ -61,7 +61,7 @@ describe('conversation overview renderer', () => {
     assert.ok(html.includes("fetch('/api/conversations/activity'"));
     assert.ok(html.includes('data-running="true"'));
     assert.ok(html.includes('查看实时轨迹'));
-    assert.ok(html.includes('href="/conversations/running-thread/tasks/running-thread-turn"'));
+    assert.ok(html.includes('href="/observe/conversations/running-thread/tasks/running-thread-turn"'));
     assert.ok(html.indexOf('进行中对话') < html.indexOf('已完成对话'));
     assert.ok(!html.includes('<a class="conversation-row"'));
   });

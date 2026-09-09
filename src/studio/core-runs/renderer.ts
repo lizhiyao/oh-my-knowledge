@@ -314,11 +314,11 @@ export function renderCoreRunList(
     ? `<p class="${routes.studioNavigation ? 'studio-empty' : 'core-muted'}">${e(copy.empty)}</p>`
     : `<div class="core-grid">${cards.map((card) => runCard(card, lang, routes, copy)).join('')}</div>`;
   const body = routes.studioNavigation
-    ? `<main class="studio-page"><header class="studio-page-header"><h1>${lang === 'zh' ? '评测' : 'Evaluations'}</h1></header><div class="studio-page-body"><p class="studio-page-description">${e(copy.subtitle)}</p>${content}</div></main>`
+    ? `<main class="studio-page"><h1 class="studio-page-title">${lang === 'zh' ? '评测' : 'Evaluations'}</h1><div class="studio-page-body"><p class="studio-page-description">${e(copy.subtitle)}</p>${content}</div></main>`
     : `<main><h1>${e(copy.title)}</h1><p class="subtitle core-lead">${e(copy.subtitle)}</p>${content}</main>`;
   return layout(copy.title, `${CORE_STUDIO_STYLE}${body}`, lang, {
     homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
-    navigation: routes.studioNavigation ? 'reports' : false,
+    navigation: routes.studioNavigation ? 'measure' : false,
     workspace: routes.studioNavigation,
   });
 }
@@ -471,7 +471,7 @@ export function renderCoreRunDetail(
     </details>
   </main>`, lang, {
     homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
-    navigation: routes.studioNavigation ? 'reports' : false,
+    navigation: routes.studioNavigation ? 'measure' : false,
   });
 }
 
@@ -483,7 +483,7 @@ export function renderCoreStudioError(
   const copy = c(lang);
   return layout(copy.title, `${CORE_STUDIO_STYLE}<main><nav class="nav"><a href="${e(withLang(routes.listPath, lang))}">${e(copy.back)}</a></nav><h1>${e(copy.title)}</h1><p role="alert">${e(message)}</p></main>`, lang, {
     homeHref: withLang(routes.studioNavigation ? '/' : routes.listPath, lang),
-    navigation: routes.studioNavigation ? 'reports' : false,
+    navigation: routes.studioNavigation ? 'measure' : false,
   });
 }
 

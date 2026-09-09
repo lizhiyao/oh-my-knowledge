@@ -119,8 +119,8 @@ describe('managed-history-renderer snapshots', () => {
       }],
     };
     const html = renderManagedHistory(record, 'zh' as Lang);
-    expect(html).toContain('/reports/core-run-route');
-    expect(html).not.toContain('/reports/core-run-route.report');
+    expect(html).toContain('/measure/core-run-route');
+    expect(html).not.toContain('/measure/core-run-route.report');
   });
   // ── observe 生产健康观测时间线 + 列表徽标(#235)──
   it('renderManagedHistory 带 observe 观测(生产盲区 / 数据不足 / 健康)zh', () => {

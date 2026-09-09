@@ -104,7 +104,7 @@ describe('Live task trajectory server', () => {
   it('marks an open task as live and exposes a lightweight SSE revision stream', async () => {
     const threadId = trajectory.session.threadId;
     const turnId = trajectory.session.turns.at(-1)!.turnId;
-    const page = await fetch(`${baseUrl}/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}`);
+    const page = await fetch(`${baseUrl}/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}`);
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /data-live-revision="revision-1"/);

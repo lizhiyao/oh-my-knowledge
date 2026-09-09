@@ -40,17 +40,18 @@ describe('Studio knowledge routes', () => {
     assert.deepEqual(await api.json(), { schemaVersion: 1, rows: [] });
     assert.equal(managedResolutions, 1);
 
-    assert.equal((await fetch(`${baseUrl}/managed`)).status, 200);
+    assert.equal((await fetch(`${baseUrl}/knowledge/managed`)).status, 200);
     assert.equal(managedResolutions, 2);
 
     assert.equal((await fetch(`${baseUrl}/not-found`)).status, 404);
     assert.equal(managedResolutions, 2);
   });
 
-  it('preserves observe-health redirects and the knowledge-owned chart asset', async () => {
+  it('serves the health page without old page aliases and preserves the API and chart asset', async () => {
+    assert.equal((await fetch(`${baseUrl}/observe/health?lang=en`)).status, 200);
     const pageRedirect = await fetch(`${baseUrl}/analyses?lang=en`, { redirect: 'manual' });
-    assert.equal(pageRedirect.status, 302);
-    assert.equal(pageRedirect.headers.get('location'), '/observe-health?lang=en');
+    assert.equal(pageRedirect.status, 404);
+    assert.equal(pageRedirect.headers.get('location'), null);
 
     const apiRedirect = await fetch(`${baseUrl}/api/analyses/report-a?lang=en`, {
       redirect: 'manual',

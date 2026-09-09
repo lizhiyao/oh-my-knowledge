@@ -73,7 +73,7 @@ export function renderSkillDetail(
 ): string {
   const health = assessHealth(entry, insights, lang);
   const langQ = lang === DEFAULT_LANG ? '' : '?lang=en';
-  return layout(`${entry.skillName} · OMK`, `<main class="sd-main"><nav><a href="/knowledge${langQ}">← ${lang === 'zh' ? '知识工作台' : 'Knowledge'}</a></nav><header class="sd-hero sd-hero--${health.color}"><div><p>${lang === 'zh' ? '知识健康' : 'Knowledge health'}</p><h1>${e(entry.skillName)}</h1></div><div class="sd-score"><strong>${health.score ?? '—'}</strong><span>${e(health.label)}</span></div></header><div class="sd-grid">${doctorSection(entry, lang)}${observeSection(entry, lang)}</div>${insightSection(insights, lang)}</main><style>${CSS}</style>`, lang);
+  return layout(`${entry.skillName} · OMK`, `<main class="sd-main"><nav><a href="/knowledge${langQ}">← ${lang === 'zh' ? '知识工作台' : 'Knowledge'}</a></nav><header class="sd-hero sd-hero--${health.color}"><div><p>${lang === 'zh' ? '知识健康' : 'Knowledge health'}</p><h1>${e(entry.skillName)}</h1></div><div class="sd-score"><strong>${health.score ?? '—'}</strong><span>${e(health.label)}</span></div></header><div class="sd-grid">${doctorSection(entry, lang)}${observeSection(entry, lang)}</div>${insightSection(insights, lang)}</main><style>${CSS}</style>`, lang, { navigation: 'knowledge' });
 }
 
 const CSS = `

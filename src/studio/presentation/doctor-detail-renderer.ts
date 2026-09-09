@@ -149,7 +149,7 @@ export function renderDoctorDetail(report: DoctorReport, skillName: string, lang
     scoreText: skillContext && skillContext.overall.score != null ? String(skillContext.overall.score) : undefined,
     ringColor: skillContext ? healthColor(skillContext.overall.score) : undefined,
     scoreLabel: skillContext ? (zh ? '综合健康' : 'Health') : scoreLabel,
-    backHref: `/${langQ}`,
+    backHref: `/knowledge${langQ}`,
     backLabel: zh ? '返回列表' : 'Back to list',
     body,
     skillContext,

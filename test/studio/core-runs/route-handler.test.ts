@@ -371,20 +371,33 @@ describe('Core Studio route handler', () => {
       const list = await fetch(`${url}/api/reports`);
       assert.equal(list.status, 200);
       assert.deepEqual(await list.json(), [card()]);
-      const page = await fetch(`${url}/reports/core-run-1`);
+      const page = await fetch(`${url}/measure/core-run-1`);
       assert.equal(page.status, 200);
       assert.ok((await page.text()).includes('progress-policy'));
+      for (const path of [
+        '/conversations', '/conversations/thread/tasks/turn', '/reports', '/reports/core-run-1',
+        '/observe-inbox', '/observe-debugger/session', '/observations', '/observations/inbox',
+        '/observe-health', '/observe-health/report', '/analyses', '/analyses/report',
+        '/skills/audit', '/doctors/report', '/managed', '/managed/audit',
+        '/skill-trend/audit', '/analyses-diff?from=a&to=b',
+      ]) {
+        const obsolete = await fetch(`${url}${path}`, { redirect: 'manual' });
+        assert.equal(obsolete.status, 404, `${path} is no longer a page route`);
+        assert.equal(obsolete.headers.get('location'), null);
+      }
 
       for (const lang of ['zh', 'en']) {
         const query = lang === 'en' ? '?lang=en' : '';
+        const home = await fetch(`${url}/${query}`, { redirect: 'manual' });
+        assert.equal(home.status, 302);
+        assert.equal(home.headers.get('location'), `/observe${query}`);
         let homeAppBar: string | undefined;
         for (const [path, active, status] of [
-          ['/', 'conversations', 200],
-          ['/conversations', 'conversations', 200],
+          ['/observe', 'observe', 200],
           ['/knowledge', 'knowledge', 200],
-          ['/reports', 'reports', 200],
-          ['/reports/core-run-1', 'reports', 200],
-          ['/reports/missing', 'reports', 404],
+          ['/measure', 'measure', 200],
+          ['/measure/core-run-1', 'measure', 200],
+          ['/measure/missing', 'measure', 404],
         ] as const) {
           const response = await fetch(`${url}${path}${query}`, { redirect: 'manual' });
           assert.equal(response.status, status, `${path} must render without a redirect`);
@@ -392,26 +405,27 @@ describe('Core Studio route handler', () => {
           const appBars = html.match(/<header class="app-bar">[\s\S]*?<\/header>/g) ?? [];
           assert.equal(appBars.length, 1, `${path} uses one shared application bar`);
           const appBar = appBars[0]!.replaceAll(' aria-current="page"', '');
-          assert.ok(appBar.indexOf('href="/conversations') < appBar.indexOf('href="/reports'));
-          assert.ok(appBar.indexOf('href="/reports') < appBar.indexOf('href="/knowledge'));
-          if (path === '/') homeAppBar = appBar;
+          assert.ok(appBar.indexOf('href="/observe') < appBar.indexOf('href="/measure'));
+          assert.ok(appBar.indexOf('href="/measure') < appBar.indexOf('href="/knowledge'));
+          if (path === '/observe') homeAppBar = appBar;
           else assert.equal(appBar, homeAppBar, `${path} preserves the same branding and navigation`);
-          if (['/', '/conversations', '/knowledge', '/reports'].includes(path)) {
+          if (['/', '/observe', '/knowledge', '/measure'].includes(path)) {
             assert.ok(html.includes('<body class="studio-workspace">'), `${path} uses the workspace shell`);
-            assert.ok(html.includes('class="studio-page-header'), `${path} uses the shared title row`);
+            assert.match(html, /<h1 class="studio-page-title">[^<]+<\/h1>/, `${path} keeps an accessible page heading`);
+            assert.ok(!html.includes('class="studio-page-header'), `${path} has no redundant title row`);
             assert.ok(!html.includes('<footer class="footer"'), `${path} has no extra document footer`);
           }
           assert.ok(html.includes(`href="/${active}${query}" aria-current="page"`), path);
           assert.ok(html.includes(`href="/${query}"`), 'brand returns to the Studio home');
           for (const [section, label] of [
-            ['conversations', lang === 'en' ? 'Observe' : '观测'],
-            ['reports', lang === 'en' ? 'Measure' : '评测'],
+            ['observe', lang === 'en' ? 'Observe' : '观测'],
+            ['measure', lang === 'en' ? 'Measure' : '评测'],
             ['knowledge', lang === 'en' ? 'Knowledge' : '知识'],
           ]) {
             assert.ok(html.replaceAll(' aria-current="page"', '').includes(`href="/${section}${query}">${label}</a>`));
           }
-          if (path === '/') assert.ok(html.includes('conversation-index-app'));
-          if (path === '/reports/core-run-1') assert.ok(html.includes('progress-policy'));
+          if (path === '/observe') assert.ok(html.includes('conversation-index-app'));
+          if (path === '/measure/core-run-1') assert.ok(html.includes('progress-policy'));
         }
       }
     } finally {

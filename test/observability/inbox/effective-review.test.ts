@@ -123,7 +123,7 @@ describe('effective observation review', () => {
       assert.equal(api.status, 200);
       const apiView = await api.json() as { effectiveExperienceReports: ObservationExperienceReport[] };
       assert.deepEqual(apiView.effectiveExperienceReports, json.effectiveExperienceReports);
-      const html = await fetch(`${url}/observe-inbox?skill=audit&lang=zh`);
+      const html = await fetch(`${url}/observe/inbox?skill=audit&lang=zh`);
       assert.equal(await html.text(), renderObservationInboxPage(expected, 'zh'));
     } finally {
       await server.stop();

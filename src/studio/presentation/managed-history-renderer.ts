@@ -1,5 +1,5 @@
 /**
- * 受管 skill 的「决策史」渲染（Studio /managed 列表 + /managed/<name> 详情时间线）。
+ * 受管 skill 的「决策史」渲染（Studio /knowledge/managed 列表 + /knowledge/managed/<name> 详情时间线）。
  *
  * 纯函数、无 IO：吃已构造好的数据（list 吃 ManagedListRow[]、history 吃 ManagedArtifactRecord），
  * 便于 snapshot 测试。把 install / 每次 eval 证据 / 每次 promote·reject·rollback 决定合并成一条按时间
@@ -103,7 +103,7 @@ function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
 
 function reportLink(runId: string | undefined, lang: Lang): string {
   if (!runId) return '';
-  return `<a class="mh-link" href="/reports/${encodeURIComponent(runId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
+  return `<a class="mh-link" href="/measure/${encodeURIComponent(runId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
 }
 
 function eventRow(ev: TimelineEvent, lang: Lang): string {
@@ -197,7 +197,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang):
   ].map((m) => `<span>${e(m)}</span>`).join('');
 
   const body = `<main class="mh-main">
-    <nav class="mh-back"><a href="/managed${langQuery(lang)}">← ${t('受管列表', 'Managed')}</a></nav>
+    <nav class="mh-back"><a href="/knowledge/managed${langQuery(lang)}">← ${t('受管列表', 'Managed')}</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">${t('受管决策史', 'Managed history')}</div>
       <h1 class="mh-name">${e(record.name)}</h1>
@@ -207,7 +207,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang):
   </main>
   <style>${MANAGED_CSS}</style>`;
 
-  return layout(`${t('受管决策史', 'Managed history')} · ${record.name}`, body, lang);
+  return layout(`${t('受管决策史', 'Managed history')} · ${record.name}`, body, lang, { navigation: 'knowledge' });
 }
 
 function stateBand(state: string): string {
@@ -260,7 +260,7 @@ function listRow(row: ManagedListRow, lang: Lang): string {
   const st = stateMeta(row.state, lang);
   const mark = !row.reachable ? ' <span class="mh-mark mh-mark--q" title="' + e(t('源不可达 / 拒读，漂移未核', 'source unreachable / refused, drift unchecked')) + '">?</span>'
     : row.state === 'stale' ? ' <span class="mh-mark mh-mark--warn" title="' + e(t('已漂移，需重测', 'drifted, re-measure')) + '">⚠️</span>' : '';
-  return `<a class="mh-row" href="/managed/${encodeURIComponent(row.id)}${langQuery(lang)}">
+  return `<a class="mh-row" href="/knowledge/managed/${encodeURIComponent(row.id)}${langQuery(lang)}">
     <span class="mh-row-state" title="${e(st.tip)}"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(st.label)}${mark}${productionGapBadge(row, lang)}</span>
     <span class="mh-row-name">${e(row.name)}</span>
     <span class="mh-row-kind">${e(row.kind)}</span>
@@ -303,7 +303,7 @@ export function renderManagedList(rows: ManagedListRow[], lang: Lang): string {
   </main>
   <style>${MANAGED_CSS}</style>`;
 
-  return layout(t('受管 skill', 'Managed skills'), body, lang);
+  return layout(t('受管 skill', 'Managed skills'), body, lang, { navigation: 'knowledge' });
 }
 
 const MANAGED_CSS = `

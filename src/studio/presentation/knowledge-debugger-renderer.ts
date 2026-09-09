@@ -1280,7 +1280,7 @@ export function renderKnowledgeDebuggerPage(
         initializeTrajectoryPage();
       })();
     </script>
-  `, lang, { navigation: 'conversations', workspace: true });
+  `, lang, { navigation: 'observe', workspace: true });
 }
 
 function projectReplay(

@@ -99,7 +99,7 @@ describe('Conversation activity server', () => {
   });
 
   it('prevents the conversation detail page from being restored from stale cache', async () => {
-    const response = await fetch(`${baseUrl}/conversations/${encodeURIComponent(threadId)}`);
+    const response = await fetch(`${baseUrl}/observe/conversations/${encodeURIComponent(threadId)}`);
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
