@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { evaluate } from 'oh-my-knowledge';
 
 const answers = {
-  baseline: { one: 'A', two: 'B', three: 'incorrect' },
-  candidate: { one: 'A', two: 'B', three: 'C' },
+  baseline: { '法国的首都是哪里？': '巴黎', '英国的首都是哪里？': '伦敦', '日本的首都是哪里？': '京都' },
+  candidate: { '法国的首都是哪里？': '巴黎', '英国的首都是哪里？': '伦敦', '日本的首都是哪里？': '东京' },
 };
 
 const executor = {
@@ -36,9 +36,9 @@ const result = await evaluate({
   dataset: {
     datasetId: 'embedded-service-example',
     samples: [
-      { sampleId: 'one', input: { prompt: 'one' }, expected: 'A' },
-      { sampleId: 'two', input: { prompt: 'two' }, expected: 'B' },
-      { sampleId: 'three', input: { prompt: 'three' }, expected: 'C' },
+      { sampleId: 'one', input: { prompt: '法国的首都是哪里？' }, expected: '巴黎' },
+      { sampleId: 'two', input: { prompt: '英国的首都是哪里？' }, expected: '伦敦' },
+      { sampleId: 'three', input: { prompt: '日本的首都是哪里？' }, expected: '东京' },
     ],
   },
   variants: [{
