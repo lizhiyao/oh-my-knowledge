@@ -1,6 +1,6 @@
 # Migrate from 0.54 to the 1.0 preview
 
-`1.0.0-beta.0` is the first public preview of OMK's new Evaluation Core architecture. It is published under npm's `next` tag, while `latest` remains on `0.54.0` during the preview.
+This guide covers migration from `0.54` to the 1.0 Beta on npm’s `next` tag. Beta iteration continues; these are the current migration boundaries, not an API freeze or an RC release plan.
 
 ```bash
 npm install --global oh-my-knowledge@next
@@ -9,7 +9,7 @@ omk --version
 
 Use a disposable project or back up both the project `.omk/` directory and `~/.oh-my-knowledge/` before trying the preview. To return to the stable channel, run `npm install --global oh-my-knowledge@latest`.
 
-This is a beta, not a frozen 1.0 contract. One important limitation remains: `omk eval gold init` creates a generic annotation scaffold but cannot yet seed it from a real Core run, so Gold authoring still requires manual sample-ID alignment. An explicit Gold comparison reports Krippendorff alpha, but that post-hoc result does not automatically gate the run's release verdict. [Issue #283](https://github.com/lizhiyao/oh-my-knowledge/issues/283) tracks the guided Gold on-ramp and calibration-decision closure required before an RC.
+**Gold limitation:** `omk eval gold init` still creates a generic scaffold; align real sample IDs manually. Gold comparison reports human/judge agreement and post-hoc reliability without changing an existing run’s release decision. See the CLI migration selectors below.
 
 ## 1. Start a new evidence history
 
@@ -67,7 +67,7 @@ Check the current [CLI reference](../reference/cli.md) rather than copying 0.54 
 The published API is ESM-only on Node.js 22 or newer. Imports are restricted to the package export map; `oh-my-knowledge/dist/*` is private.
 
 - Use `oh-my-knowledge` for the ordinary `evaluate()` and `checkExecutor()` façade. The explicit `oh-my-knowledge/eval-runtime` subpath is equivalent.
-- Replace the fixed `{ executor, control, treatment, evaluator }` call with `{ variants, evaluators, comparisons }`. Bind each Executor, config, and runtime context under `variant.execution`; declare `experiment.sampling`; move Bootstrap settings to `analysis`; add `decision` only when one analysis result should produce a verdict. The preview does not read the removed shape.
+- Replace the fixed `{ executor, control, treatment, evaluator }` call with `{ dataset, variants, evaluators, comparisons, analyses, experiment, policy }`. Bind execution and config under `variant.execution`, sampling under `experiment.sampling`, and statistical requests in `analyses[]`. An optional `decision` selects an analysis by `analysisId`. Pass run options such as `runId`, `signal`, and `onEvent` as the second argument; old shapes are not read.
 - Move former package-root Core imports to `oh-my-knowledge/eval-core`; use that subpath for Engine construction, staged execution, admission, verification, comparability, Series, and Core JSON Schemas.
 - Import `createEvaluationEngine` only from `oh-my-knowledge/eval-core`; the ambiguous narrowed re-export has been removed from `eval-runtime/advanced`. Use `runEvaluation` there for a standard complete run over preassembled inputs.
 - Use `oh-my-knowledge/eval-samples`, `oh-my-knowledge/projections`, `oh-my-knowledge/studio`, `oh-my-knowledge/mcp`, or `oh-my-knowledge/dsh-plugin` for those explicit surfaces.
@@ -75,7 +75,7 @@ The published API is ESM-only on Node.js 22 or newer. Imports are restricted to 
 - Engine Runtime assembly now uses binding resolvers that return the resolution and configured port together.
 - Series Analysis and Decision Runtimes open run-scoped sessions with `openRun()` and `dispose()`; Series runs require a `runId` and return a terminal status union.
 
-The [embedded API reference](../reference/embedded-api.md) is the canonical contract and includes a complete independent-host fixture.
+Use the [Runtime API reference](../reference/eval-runtime-api.md) for service integration and the [Core API reference](../reference/embedded-api.md) for advanced staged integration.
 
 ## Measurement boundary
 

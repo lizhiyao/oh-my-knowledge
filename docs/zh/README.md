@@ -1,48 +1,32 @@
 # OMK 文档
 
-**Observe. Measure. Know.** 让 AI 应用的知识改动有据可依。
+从当前任务选择入口。1.0 仍在 Beta 迭代；旧版本用户先看[迁移指南](./guides/v1-preview-migration.md)。[English index](../README.md)。
 
-按受众或分类浏览。英文文档请看 [English index](../README.md)。
+## 开始使用
 
-## 我想用 omk
+| 目标 | 先读 | 按需查阅 |
+|---|---|---|
+| 命令行比较两版 skill | [快速上手](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [执行器](./reference/executors.md) · [用例格式](./reference/eval-sample-format.md) · [载体布局](./reference/artifact-layout.md) |
+| 在 Node.js 服务中接入 | [服务接入指南](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [底层 Core API](./reference/embedded-api.md) |
+| 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./explanation/effective-observation-review.md) |
 
-- [omk 为谁做、解决什么](./explanation/who-omk-is-for.md) —— 用户、问题和第一条发布判断工作流
-- [快速上手](./quickstart-skill-eval.md) —— 5 分钟跑完第一次评测
-- [安装 omk Agent Skill](./quickstart-skill-eval.md) —— 用 `omk install omk-agent-skill` 开启 agent 驱动工作流
-- [在 Node.js 服务中使用 OMK](./guides/eval-runtime.md) —— 选择评分方法、接入自己的服务并解读结果
-- [CLI 参考](./reference/cli.md)
-- [底层 Core API（高级接入）](./reference/embedded-api.md)
-- [评测用例格式](./reference/eval-sample-format.md)
-- [执行器](./reference/executors.md)
-- [指定被测对象(artifact / variant)](./reference/artifact-layout.md)
-- [7 工具对比](./reference/comparison.md)
-- [术语表](./reference/glossary.md)
+## 完成具体任务
 
-## 操作指南
+- [在 Agent 中使用 OMK Skill](./quickstart-skill-eval.md#在-agent-中使用)
+- [doctor 体检](./guides/run-doctor-checks.md) · [自动改进 skill](./guides/auto-improve-skills.md)
+- [评测 agent 与项目上下文](./guides/agent-eval.md) · [使用非 Claude 模型](./guides/non-claude-models.md)
+- [组合 MCP 集成](./guides/mcp-integration.md) · [DeepSeek Harness 接入](./reference/executors.md#deepseek-harness优先使用宿主插件)
 
-- [doctor 体检](./guides/run-doctor-checks.md)
-- [评测 agent（项目级 runtime context）](./guides/agent-eval.md)
-- [自动迭代 skill](./guides/auto-improve-skills.md)
-- [观测生产 trace](./guides/observe-production.md)
-- [组合 OMK MCP 集成](./guides/mcp-integration.md)
-- [复现 Codex 父子任务观测](./guides/codex-observe-case.md)
-- [使用非 Claude 模型（GLM / 通义 / DeepSeek / Moonshot / Ollama）](./guides/non-claude-models.md)
+## 理解结果与边界
 
-## 我想懂工作原理
+- [为谁做、解决什么](./explanation/who-omk-is-for.md) · [OMK 如何理解知识](./explanation/knowledge.md)
+- [三阶段工作流](./explanation/three-stage-workflow.md) · [架构](./explanation/architecture.md)
+- [统计严谨性](./explanation/statistical-rigor.md) · [评分公式](./specs/scoring.md) · [用例设计](./specs/sample-design-spec.md)
+- [术语表](./reference/glossary.md) · [工具对比](./reference/comparison.md)
 
-- [OMK 如何理解知识](./explanation/knowledge.md)
-- [omk 为谁做、解决什么](./explanation/who-omk-is-for.md) —— 为什么 doctor / eval 是发布前主干，observe 是发布后反馈
-- [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
-- [工作原理](./explanation/architecture.md)
-- [统计严谨性](./explanation/statistical-rigor.md)
-- [评分公式](./specs/scoring.md)
+## 迁移与设计规范
 
-## 我想贡献 / 看设计 spec
-
-- [Evaluation Core vNext RFC](./specs/eval-core-vnext.md)
-- [CLI 评测输入编译规范](./specs/cli-evaluation-input-compilation.md)
-- [用例设计科学性指南](./specs/sample-design-spec.md)
-- [知识建设领域模型（设计草案）](./specs/knowledge-domain-model.md)
-- [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)
-- [RAG metrics 规范](./specs/rag-metrics-spec.md)
-- [术语规范](./specs/terminology-spec.md)
+- [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/storage-layout-spec.md)
+- [Core 设计](./specs/eval-core-vnext.md) · [评分等价性](./specs/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/cli-evaluation-input-compilation.md)
+- [知识领域模型（草案）](./specs/knowledge-domain-model.md) · [知识缺口信号](./specs/knowledge-gap-signal-spec.md) · [证据门控管理](./specs/evidence-gated-management.md)
+- [RAG metrics](./specs/rag-metrics-spec.md) · [术语规范](./specs/terminology-spec.md)

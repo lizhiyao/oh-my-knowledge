@@ -1,49 +1,32 @@
 # OMK Documentation
 
-**Observe. Measure. Know.** Make every knowledge change in your AI application evidence-backed.
+Choose an entry for your task. Version 1.0 is still in Beta iteration; existing users should read the [migration guide](./guides/v1-preview-migration.md) first. [简体中文 index](./zh/README.md).
 
-Browse by audience or category. For Chinese docs see [简体中文 index](./zh/README.md).
+## Get started
 
-## I want to use omk
+| Goal | Start here | Reference when needed |
+|---|---|---|
+| Compare two skills from the CLI | [Quickstart](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [Executors](./reference/executors.md) · [Sample format](./reference/eval-sample-format.md) · [Artifact layout](./reference/artifact-layout.md) |
+| Integrate a Node.js service | [Service guide](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [Core API](./reference/embedded-api.md) |
+| Inspect real tasks and knowledge gaps | [Observation and task trajectories](./guides/observe-production.md) | [Codex case](./guides/codex-observe-case.md) · [Effective review semantics](./explanation/effective-observation-review.md) |
 
-- [Who omk is for](./explanation/who-omk-is-for.md) — the user, problem, and first ship/no-ship workflow
-- [Quickstart](./quickstart-skill-eval.md) — first eval in 5 minutes
-- [Install the omk Agent Skill](./quickstart-skill-eval.md) — agent-driven onboarding with `omk install omk-agent-skill`
-- [Use OMK in a Node.js service](./guides/eval-runtime.md) — choose a scorer, connect your service, and read the results
-- [CLI reference](./reference/cli.md)
-- [Core API (advanced integration)](./reference/embedded-api.md)
-- [Eval sample format](./reference/eval-sample-format.md)
-- [Executors](./reference/executors.md)
-- [Artifact & variant layout](./reference/artifact-layout.md)
-- [Comparison with 7 tools](./reference/comparison.md)
-- [Glossary](./reference/glossary.md)
+## Complete a task
 
-## How-to guides
+- [Use the OMK Skill in an agent](./quickstart-skill-eval.md#use-inside-an-agent)
+- [Run doctor checks](./guides/run-doctor-checks.md) · [Auto-improve a skill](./guides/auto-improve-skills.md)
+- [Evaluate agents and project context](./guides/agent-eval.md) · [Use non-Claude models](./guides/non-claude-models.md)
+- [Compose an MCP integration](./guides/mcp-integration.md) · [DeepSeek Harness integration](./reference/executors.md#deepseek-harness-prefer-the-host-plugin)
 
-- [Run doctor checks](./guides/run-doctor-checks.md)
-- [Evaluate an agent (project-level runtime context)](./guides/agent-eval.md)
-- [Auto-improve a skill](./guides/auto-improve-skills.md)
-- [Observe production traces](./guides/observe-production.md)
-- [Compose the OMK MCP integration](./guides/mcp-integration.md)
-- [Reproduce Codex parent/subagent observation](./guides/codex-observe-case.md)
-- [Use non-Claude models (GLM / Qwen / DeepSeek / Moonshot / Ollama)](./guides/non-claude-models.md)
+## Understand results and limits
 
-## I want to understand how it works
+- [Who OMK is for](./explanation/who-omk-is-for.md) · [How OMK understands knowledge](./explanation/knowledge.md)
+- [Three-stage workflow](./explanation/three-stage-workflow.md) · [Architecture](./explanation/architecture.md)
+- [Statistical rigor](./explanation/statistical-rigor.md) · [Scoring formulas](./specs/scoring.md) · [Sample design](./specs/sample-design-spec.md)
+- [Glossary](./reference/glossary.md) · [Tool comparison](./reference/comparison.md)
 
-- [How OMK understands knowledge](./explanation/knowledge.md)
-- [Who omk is for](./explanation/who-omk-is-for.md) — why doctor / eval are the pre-ship trunk and observe is post-ship feedback
-- [The three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
-- [Architecture](./explanation/architecture.md)
-- [Statistical rigor](./explanation/statistical-rigor.md)
-- [Scoring pipeline](./specs/scoring.md)
+## Migration and design specs
 
-## I want to contribute / read design specs
-
-- [Evaluation Core vNext RFC](./specs/eval-core-vnext.md)
-- [Evaluation scoring equivalence RFC](./specs/evaluation-scoring-equivalence.md)
-- [CLI evaluation input compilation](./specs/cli-evaluation-input-compilation.md)
-- [Sample design spec](./specs/sample-design-spec.md)
-- [Knowledge construction domain model (draft)](./specs/knowledge-domain-model.md)
-- [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md)
-- [RAG metrics spec](./specs/rag-metrics-spec.md)
-- [Terminology spec](./specs/terminology-spec.md)
+- [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/storage-layout-spec.md)
+- [Core design](./specs/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/cli-evaluation-input-compilation.md)
+- [Knowledge domain model (draft)](./specs/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/knowledge-gap-signal-spec.md) · [Evidence-gated management](./specs/evidence-gated-management.md)
+- [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
