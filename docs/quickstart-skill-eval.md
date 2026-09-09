@@ -101,3 +101,5 @@ Explicitly use the OMK Skill in your agent and describe your goal, for example: 
 ## Continue
 
 [Auto-improve a skill](./guides/auto-improve-skills.md) · [Observe real tasks](./guides/observe-production.md) · [Node.js integration](./guides/eval-runtime.md) · [Documentation index](./README.md)
+
+[Evaluation flow: from execution to decision](./explanation/architecture.md#single-run-evaluation-flow).
