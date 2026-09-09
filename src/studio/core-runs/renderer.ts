@@ -16,7 +16,7 @@ export interface CoreStudioRenderRoutes {
 const COPY = {
   zh: {
     title: 'Evaluation Core 运行记录',
-    subtitle: '基于版本化 Core 产物的只读测量视图。三个状态轴相互独立，不合成为单一“成功”结论。',
+    subtitle: '查看评测结果与依据，判断知识改动是否有效。',
     empty: '暂无 Evaluation Core 运行记录。',
     back: '← 返回运行记录',
     run: '运行',
@@ -101,7 +101,7 @@ const COPY = {
   en: {
     technicalDetails: 'View measurement plan, individual records, and artifact identities',
     title: 'Evaluation Core Runs',
-    subtitle: 'A read-only measurement view backed by versioned Core artifacts. The three status axes remain independent and are never collapsed into one success verdict.',
+    subtitle: 'Review evaluation results and evidence to assess whether knowledge changes are effective.',
     empty: 'No Evaluation Core runs yet.',
     back: '← Back to runs',
     run: 'Run',
