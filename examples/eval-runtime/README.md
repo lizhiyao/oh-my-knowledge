@@ -34,4 +34,4 @@ node examples/eval-runtime/retrieval-abstention.mjs
 
 The unmodified example excludes one pending sample and executes two reviewed samples. Correct abstention is `1`; false abstention and forbidden hits are `0`. In a separate project, copy `retrieval-abstention.mjs` and install an OMK version containing this capability plus Zod. Use the corresponding source checkout for features that have not yet shipped.
 
-To connect your system, replace `source`, adapt `executor.execute()`, then inspect each metric's `coverage`. Follow the [four-step guide](../../docs/guides/eval-runtime.md#retrieval-abstention) for data rules, return forms, capability declarations, and result interpretation.
+To connect your system, replace `source`, adapt `executor.execute()`, then inspect each metric's `coverage`. Follow the [four-step guide](../../docs/guides/eval-runtime-scoring.md#retrieval-abstention) for data rules, return forms, capability declarations, and result interpretation.
