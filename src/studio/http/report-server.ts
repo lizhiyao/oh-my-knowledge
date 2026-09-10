@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { ReportServer, ReportServerOptions } from './contracts.js';
+import type { StudioPresentation } from './presentation.js';
 import { getErrorMessage } from './errors.js';
 import { createStudioRequestHandler } from './request-handler.js';
 
@@ -40,7 +41,7 @@ export function formatListenError(port: number, error: unknown): Error | null {
   return null;
 }
 
-export function createReportServer(options: ReportServerOptions = {}): ReportServer {
+export function createReportServer(options: ReportServerOptions = {}, presentation?: StudioPresentation): ReportServer {
   const {
     port,
     host: hostOption,
@@ -64,13 +65,22 @@ export function createReportServer(options: ReportServerOptions = {}): ReportSer
   async function startListener(): Promise<string> {
     if (server) return serverUrl!;
     requestHandler.prepare();
+    await presentation?.prepare();
 
     const listenPort = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
     // host 默认 127.0.0.1（本机回环，默认安全）。容器／远程场景需显式对外暴露。
     const host = (hostOption || process.env.OMK_REPORT_HOST || '127.0.0.1').replace(/^\[|\]$/g, '');
     const urlHost = (value: string): string => value.includes(':') ? `[${value}]` : value;
     const boot = (candidatePort: number): Promise<Server> => new Promise((resolve, reject) => {
-      const candidate = createServer(requestHandler.handle);
+      const candidate = createServer(async (request, response) => {
+        try {
+          if (await presentation?.handle(request, response)) return;
+          await requestHandler.handle(request, response);
+        } catch {
+          if (!response.headersSent) response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+          response.end('studio_source_unavailable');
+        }
+      });
       candidate.once('error', reject);
       candidate.listen(candidatePort, host, () => resolve(candidate));
     });
@@ -123,10 +133,14 @@ export function createReportServer(options: ReportServerOptions = {}): ReportSer
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = null;
     serverUrl = null;
+    await presentation?.close();
   }
 
   function start(): Promise<string> {
-    return serialize(startListener);
+    return serialize(async () => {
+      try { return await startListener(); }
+      catch (error) { await presentation?.close(); throw error; }
+    });
   }
 
   function stop(): Promise<void> {

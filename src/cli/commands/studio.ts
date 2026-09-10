@@ -75,7 +75,7 @@ export async function runStudio(
     return;
   }
 
-  const { createReportServer } = await import('../../studio/http/report-server.js');
+  const { createNextStudioServer } = await import('../../studio/http/next-server.js');
   const {
     createNodeCoreContentStore,
     createNodeCoreRunArtifactStore,
@@ -93,7 +93,7 @@ export async function runStudio(
         coreStoreFor(projectReportsDir()),
         [coreStoreFor(globalReportsDir())],
       );
-  const server: ReportServer = createReportServer({
+  const server: ReportServer = createNextStudioServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
     coreStudioCatalog: createCoreStudioCatalog(coreStore),

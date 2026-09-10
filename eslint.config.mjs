@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
@@ -12,6 +12,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['node_modules/', 'dist/', 'test/fixtures/'],
+    ignores: ['node_modules/', 'dist/', 'test/fixtures/', 'src/studio/web/.next/', 'src/studio/web/next-env.d.ts'],
   },
 );

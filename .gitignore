@@ -66,3 +66,8 @@ secrets.yaml
 secrets.yml
 scripts/pre-commit-review.sh
 .husky/pre-push
+
+# Next.js build-time output; production output is copied under dist/.
+src/studio/web/.next/
+src/studio/web/next-env.d.ts
+src/studio/web/tsconfig.tsbuildinfo

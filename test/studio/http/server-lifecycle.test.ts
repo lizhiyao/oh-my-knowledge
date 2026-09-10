@@ -29,6 +29,26 @@ async function waitUntilUnavailable(url: string): Promise<void> {
 }
 
 describe('Studio server lifecycle', () => {
+  it('cleans up a failed presentation preparation before retrying', async () => {
+    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-presentation-'));
+    temporaryDirectories.push(observationsDir);
+    let preparations = 0;
+    let closes = 0;
+    const server = createReportServer({ port: 0, observationsDir }, {
+      async prepare() { preparations += 1; if (preparations === 1) throw new Error('prepare failed'); },
+      async handle() { return false; },
+      async close() { closes += 1; },
+    });
+    runningServers.push(server);
+    await assert.rejects(server.start(), /prepare failed/);
+    assert.equal(closes, 1);
+    const url = await server.start();
+    assert.equal((await fetch(`${url}/health`)).status, 200);
+    await server.stop();
+    assert.equal(closes, 2);
+    assert.equal(server.getUrl(), null);
+  });
+
   it('serializes concurrent starts and a stop submitted while starting', async () => {
     const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-concurrent-'));
     temporaryDirectories.push(observationsDir);
