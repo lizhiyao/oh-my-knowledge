@@ -14,11 +14,10 @@ const labels = {
   knowledge: {zh:['知识','何时、从何处出现'],en:['Knowledge','When and where it appeared']},
 };
 const labelWidth = 108;
-const laneHeight = 160;
 const axisHeight = 32;
-function rect(card: Card) {
-  const centerY = axisHeight + lanes.indexOf(card.lane)*laneHeight + (card.lane==='conversation' ? (card.row===0?40:120) : 80);
-  const height=card.compact?14:64;
+function rect(card: Card, laneHeight: number) {
+  const centerY = axisHeight + lanes.indexOf(card.lane)*laneHeight + (card.lane==='conversation' ? (card.row===0?laneHeight/4:laneHeight*3/4) : laneHeight/2);
+  const height=card.compact?14:Math.min(64,Math.max(20,card.lane==='conversation'?laneHeight/2-8:laneHeight-16));
   const left=labelWidth+card.position-(card.compact?7:0);
   return {left,right:left+card.width,top:centerY-height/2,bottom:centerY+height/2,owner:card.id};
 }
@@ -30,8 +29,8 @@ function relative(timestamp: string | undefined, start: string | undefined) {
   return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toFixed(1).padStart(4,'0')}`;
 }
 /** Reuse the existing semantic projection and obstacle-aware routing, not a new event interpretation. */
-function connections(projection: ReplayProjection) {
-  const obstacles=createHorizontalObstacleIndex(projection.cards.map(rect));
+function connections(projection: ReplayProjection, laneHeight: number) {
+  const obstacles=createHorizontalObstacleIndex(projection.cards.map(card=>rect(card,laneHeight)));
   const result:{id:string;d:string;linkKind:string;operations:string[]}[]=[];
   const entries=projection.operations.map(operation=>{
     const cards=projection.cards.filter(card=>card.operationId===operation.id);
@@ -42,7 +41,7 @@ function connections(projection: ReplayProjection) {
   });
   function connect(from:Card|undefined,to:Card|undefined,linkKind:string,operations:string[]) {
     if(!from||!to)return;
-    const route=planFlowRoute({fromRect:rect(from),toRect:rect(to),fromLane:from.lane,toLane:to.lane,obstacleIndex:obstacles,fromOwner:from.id,toOwner:to.id});
+    const route=planFlowRoute({fromRect:rect(from,laneHeight),toRect:rect(to,laneHeight),fromLane:from.lane,toLane:to.lane,obstacleIndex:obstacles,fromOwner:from.id,toOwner:to.id});
     if(route)result.push({id:`${from.id}:${to.id}`,d:route.d,linkKind,operations});
   }
   let previous:typeof entries[number]|undefined;
@@ -60,10 +59,19 @@ export function Swimlane({projection,lang,revision,follow,onPause}: {projection:
   const zh=lang==='zh'; const scroll=useRef<HTMLDivElement>(null);
   const [selected,setSelected]=useState<string>(); const [facet,setFacet]=useState<string>();
   const arrowId=useId().replaceAll(':','');
-  const links=useMemo(()=>connections(projection),[projection]);
+  const [height,setHeight]=useState(672);
+  const laneHeight=Math.max(1,(height-axisHeight)/lanes.length);
+  const links=useMemo(()=>connections(projection,laneHeight),[projection,laneHeight]);
   const operation=projection.operations.find(item=>item.id===selected);
   const width=projection.detailWidth;
-  const height=axisHeight+laneHeight*lanes.length;
+  useEffect(()=>{
+    const element=scroll.current;
+    if(!element)return;
+    const resize=()=>setHeight(element.clientHeight);
+    const observer=new ResizeObserver(resize);
+    observer.observe(element); resize();
+    return()=>observer.disconnect();
+  },[projection.cards.length===0]);
   useEffect(()=>{if(follow&&scroll.current)scroll.current.scrollLeft=scroll.current.scrollWidth;},[revision,follow]);
   const highlighted=(card:Card)=>selected?card.operationId===selected:facet?card.facetIds.includes(facet):true;
   return <>
@@ -76,7 +84,7 @@ export function Swimlane({projection,lang,revision,follow,onPause}: {projection:
         {projection.milestones.map((milestone,index)=><div className={`swimlane-milestone is-${milestone.tone}`} key={`milestone-${index}`} style={{left:labelWidth+milestone.position,height}}><span>{milestone.label}</span></div>)}
         {lanes.map((lane,index)=><section key={lane} data-lane={lane} className="swimlane-lane" aria-label={labels[lane][lang][0]} style={{top:axisHeight+index*laneHeight,height:laneHeight}}><div className="swimlane-label"><strong>{labels[lane][lang][0]}</strong><span>{labels[lane][lang][1]}</span></div>{!projection.cards.some(card=>card.lane===lane)&&<span className="swimlane-empty">{zh?'未观测到记录':'No records observed'}</span>}</section>)}
         <svg className="swimlane-links" width="100%" height={height} aria-hidden="true"><defs><marker id={arrowId} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#8a96a8"/></marker></defs>{links.map(link=><path key={link.id} d={link.d} data-connection={link.linkKind} className={`swimlane-link is-${link.linkKind}${selected&&link.operations.includes(selected)?' is-active':''}`} markerEnd={link.linkKind==='knowledge'?undefined:`url(#${arrowId})`}/>)}</svg>
-        {projection.cards.map(card=>{const box=rect(card);return <button key={card.id} type="button" data-operation={card.operationId} className={`swimlane-card is-${card.tone}${card.compact?' is-compact':''}${highlighted(card)?'':' is-dimmed'}${selected===card.operationId?' is-selected':''}`} style={{left:box.left,top:box.top,width:card.width,height:box.bottom-box.top}} aria-label={[relative(card.timestamp,projection.startTimestamp),card.kindLabel,card.title].join(' · ')} aria-pressed={selected===card.operationId} title={card.title} onClick={()=>{onPause();setSelected(card.operationId);}}>{!card.compact&&<><span className="swimlane-card-meta"><time>{relative(card.timestamp,projection.startTimestamp)}</time> {card.kindLabel} {card.model}</span><strong>{card.title}</strong><span className="swimlane-card-detail">{card.detail}</span></>}</button>;})}
+        {projection.cards.map(card=>{const box=rect(card,laneHeight);return <button key={card.id} type="button" data-operation={card.operationId} data-density={box.bottom-box.top<42?'tiny':box.bottom-box.top<56?'short':'normal'} className={`swimlane-card is-${card.tone}${card.compact?' is-compact':''}${highlighted(card)?'':' is-dimmed'}${selected===card.operationId?' is-selected':''}`} style={{left:box.left,top:box.top,width:card.width,height:box.bottom-box.top}} aria-label={[relative(card.timestamp,projection.startTimestamp),card.kindLabel,card.title].join(' · ')} aria-pressed={selected===card.operationId} title={card.title} onClick={()=>{onPause();setSelected(card.operationId);}}>{!card.compact&&<><span className="swimlane-card-meta"><time>{relative(card.timestamp,projection.startTimestamp)}</time> {card.kindLabel} {card.model}</span><strong>{card.title}</strong><span className="swimlane-card-detail">{card.detail}</span></>}</button>;})}
       </div>
     </div>}
     <Drawer open={Boolean(operation)} onClose={()=>setSelected(undefined)} title={operation?.title} size={460} mask={false}>

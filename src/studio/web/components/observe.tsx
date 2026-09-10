@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, Empty, Input, Segmented, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Empty, Input, Popover, Segmented, Space, Table, Tabs, Tag, Typography } from 'antd';
 import type { ObservePage } from '../../http/observe-page';
 import type { ConversationListItem } from '../../../observability/view-models/conversation';
 import { Swimlane } from './swimlane';
@@ -64,12 +64,12 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
       <Segmented value={filter} onChange={setFilter} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
       <Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>setQuery(event.target.value)}/>
     </div>
-    <Table className="measure-table" rowKey="threadId" dataSource={rows} scroll={{x:850}} pagination={{pageSize:20,showSizeChanger:false}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
-      {title:zh?'最近活动':'Recent activity',render:(_,item)=><Space orientation="vertical">{running(item)&&<Status status="open" lang={lang}/>}<span>{item.endTimestamp ?? item.startTimestamp ?? '—'}</span><Typography.Text type="secondary">{item.model ?? item.sourceKind}</Typography.Text></Space>},
-      {title:zh?'会话':'Conversation',render:(_,item)=><><Link href={conversationHref(item.threadId,lang)}>{item.title}</Link>{item.archived&&<Tag>{zh?'已归档':'Archived'}</Tag>}</>},
-      {title:zh?'工作目录':'Workspace',dataIndex:'cwd',render:(value:string|undefined)=>value??'—'},
-      {title:zh?'任务':'Tasks',dataIndex:'turnCount',render:(value:number|undefined)=>value??'—'},
-      {title:zh?'实时轨迹':'Live trajectory',render:(_,item)=>{const task=[...item.tasks].reverse().find(task=>task.status==='open');return task?<Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{zh?'查看实时轨迹':'View live'}</Link>:'—';}},
+    <Table className="measure-table conversation-table" tableLayout="fixed" size="middle" rowKey="threadId" dataSource={rows} scroll={{x:900}} pagination={{pageSize:20,showSizeChanger:false}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
+      {title:zh?'最近活动':'Recent activity',width:200,render:(_,item)=><Space orientation="vertical">{running(item)&&<Status status="open" lang={lang}/>}<time className="conversation-time" title={item.endTimestamp??item.startTimestamp}>{(item.endTimestamp??item.startTimestamp)?.replace('T',' ').replace(/\.\d{3}Z$/,' UTC')??'—'}</time><Typography.Text type="secondary">{item.model ?? item.sourceKind}</Typography.Text></Space>},
+      {title:zh?'会话':'Conversation',ellipsis:true,render:(_,item)=><><Link title={item.title} href={conversationHref(item.threadId,lang)}>{item.title}</Link>{item.archived&&<Tag>{zh?'已归档':'Archived'}</Tag>}</>},
+      {title:zh?'工作目录':'Workspace',width:'28%',ellipsis:true,dataIndex:'cwd',render:(value:string|undefined)=><span title={value}>{value??'—'}</span>},
+      {title:zh?'任务':'Tasks',width:72,align:'right',dataIndex:'turnCount',render:(value:number|undefined)=>value??'—'},
+      {title:zh?'实时轨迹':'Live trajectory',width:132,className:'conversation-action',render:(_,item)=>{const task=[...item.tasks].reverse().find(task=>task.status==='open');return task?<Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{zh?'查看实时轨迹':'View live'}</Link>:'—';}},
     ]}/>
   </>;
 }
@@ -82,13 +82,13 @@ function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'c
     <div className="measure-heading"><div><Link href={`/observe${suffix(lang)}`}>{zh?'返回会话':'Back to conversations'}</Link><h1>{item.title}</h1><p>{[item.model,item.cwd].filter(Boolean).join(' · ')}</p><p>{item.turnCount??item.tasks.length} {zh?'次任务':'tasks'} · {item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'} · {item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</p></div></div>
     {failed&&<Alert type="warning" title={zh?'暂时无法更新任务列表，请刷新重试。':'Task updates are unavailable. Reload to retry.'}/>}
     <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/></div>
-    <Table className="measure-table" rowKey="turnId" dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
-      {title:zh?'任务':'Task',render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
-      {title:zh?'状态':'Status',dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
-      {title:zh?'开始时间':'Started',dataIndex:'startTimestamp'},
-      {title:zh?'耗时（毫秒）':'Duration (ms)',dataIndex:'durationMs',render:(value:number|undefined)=>value??'—'},
-      {title:zh?'工具调用':'Tool calls',dataIndex:'toolCallCount'},
-      {title:zh?'工具失败':'Tool failures',dataIndex:'toolFailureCount'},
+    <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
+      {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
+      {title:zh?'状态':'Status',width:100,dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
+      {title:zh?'开始时间':'Started',width:210,ellipsis:true,dataIndex:'startTimestamp'},
+      {title:zh?'耗时（毫秒）':'Duration (ms)',width:120,dataIndex:'durationMs',render:(value:number|undefined)=>value??'—'},
+      {title:zh?'工具调用':'Tool calls',width:100,dataIndex:'toolCallCount'},
+      {title:zh?'工具失败':'Tool failures',width:100,dataIndex:'toolFailureCount'},
     ]}/>
   </>;
 }
@@ -123,12 +123,17 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
   },[api,page.live,page.revision,router,retry]);
   const model=page.model;
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
-  return <div onWheel={()=>setFollow(false)} data-live-revision={page.revision}>
-    <Link href={conversationHref(page.threadId,lang)}>{zh?'返回任务列表':'Back to tasks'}</Link>
-    <div className="measure-heading"><div><h1>{zh?'任务轨迹':'Task trajectory'}</h1><p>{model.summary.observedStartTimestamp??'—'} · {model.summary.observedModels.join(', ')}</p></div><Space wrap><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button onClick={()=>{setFollow(!follow);}}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space></div>
-    {model.integrity.status==='partial'&&<Alert type="warning" showIcon title={zh?'轨迹证据不完整':'Trajectory evidence is incomplete'} description={model.integrity.notices.map(notice=>`${notice.code}: ${notice.count}`).join('；')}/>}
-    <div className="observe-summary"><Typography.Paragraph ellipsis={{rows:4,expandable:true,symbol:zh?'展开':'More'}}>{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</Typography.Paragraph><Typography.Text type="secondary">{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'} · {model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</Typography.Text></div>
-    <Tabs defaultActiveKey="replay" destroyOnHidden items={[
+  return <div className="observe-trajectory" data-live-revision={page.revision}>
+    <div className="trajectory-heading">
+      <Link className="trajectory-back" href={conversationHref(page.threadId,lang)}>{zh?'返回任务列表':'Back to tasks'}</Link>
+      <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
+        <button type="button" className="trajectory-goal" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button>
+      </Popover>
+      <Space className="trajectory-controls" size="small"><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
+    </div>
+    <div className="trajectory-metadata"><span>{model.summary.observedStartTimestamp??'—'}</span><span>{model.summary.observedModels.join(', ')}</span><span>{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'}</span><span>{model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</span></div>
+    {model.integrity.status==='partial'&&<Alert className="trajectory-notice" type="warning" showIcon title={`${zh?'轨迹证据不完整':'Trajectory evidence is incomplete'} · ${model.integrity.notices.map(notice=>`${notice.code}: ${notice.count}`).join('；')}`}/>}
+    <Tabs className="trajectory-tabs" defaultActiveKey="replay" destroyOnHidden items={[
       {key:'replay',label:zh?'语义轨迹':'Semantic trajectory',children:<Swimlane projection={page.replay} lang={lang} revision={page.revision} follow={follow} onPause={()=>setFollow(false)}/>},
       {key:'knowledge',label:zh?'知识访问':'Knowledge access',children:<><Alert type="info" title={zh?'访问记录说明知识曾被读取或注入，不代表它导致了结果。':'Access records show reads or injections; they do not establish causation.'}/><Table rowKey="id" dataSource={model.knowledgeEvidence} scroll={{x:700}} columns={[{title:zh?'知识':'Knowledge',dataIndex:'label'},{title:zh?'方式':'Access',dataIndex:'accessKind'},{title:zh?'次数':'Count',dataIndex:'accessCount'},{title:zh?'来源':'Source',dataIndex:'sourceLocator'}]} expandable={{expandedRowRender:item=><Evidence value={item}/>}}/></>},
       {key:'events',label:zh?'标准化事件':'Normalized events',children:<Evidence value={model.normalizedEvents}/>},
