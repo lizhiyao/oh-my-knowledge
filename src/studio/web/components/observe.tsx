@@ -124,6 +124,8 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
   const api=`/api/conversations/${encodeURIComponent(page.threadId)}/tasks/${encodeURIComponent(page.turnId)}`;
   const [connection,setConnection]=useState('connecting'); const [retry,setRetry]=useState(0);
   const [follow,setFollow]=useState(true);
+  const [activeTab,setActiveTab]=useState('replay');
+  const [integrityOpen,setIntegrityOpen]=useState(false);
   useEffect(()=>{
     if(!page.live)return;
     const source=new EventSource(`${api}/live`); let timer:ReturnType<typeof setTimeout>|undefined;
@@ -140,6 +142,13 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
     return()=>{source.close();if(timer!==undefined)clearTimeout(timer);};
   },[api,page.live,page.revision,router,retry]);
   const model=page.model;
+  const onlyUnknown = model.integrity.notices.length > 0 && model.integrity.notices.every(notice => notice.code === 'unknown_events');
+  const unknownCount = model.integrity.notices.filter(notice => notice.code === 'unknown_events').reduce((sum, notice) => sum + notice.count, 0);
+  const noticeLabels: Record<string, string> = zh ? {
+    task_boundary_unavailable: '任务边界无法确定', timeline_truncated: '时间轴已截断', malformed_records: '格式异常的记录', ignored_values: '未处理的数据项', unknown_events: '未解析的事件', unmatched_tool_calls: '缺少对应结果的工具调用', unmatched_tool_results: '缺少对应调用的工具结果', missing_timestamps: '缺少时间戳的事件',
+  } : {
+    task_boundary_unavailable: 'Task boundary unavailable', timeline_truncated: 'Timeline truncated', malformed_records: 'Malformed records', ignored_values: 'Ignored values', unknown_events: 'Unparsed events', unmatched_tool_calls: 'Unmatched tool calls', unmatched_tool_results: 'Unmatched tool results', missing_timestamps: 'Missing timestamps',
+  };
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
     <header className="observe-detail-header">
@@ -151,10 +160,13 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
       <Space className="trajectory-controls" size="small"><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
     </div>
     <div className="observe-detail-meta"><span>{displayTime(model.summary.observedStartTimestamp)}</span><span>{model.summary.observedModels.join(', ')}</span><span>{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'}</span><span className={model.summary.toolFailureCount>0?'observe-failure':undefined}>{model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</span>
-      {model.integrity.status==='partial'&&<Popover trigger="click" title={zh?'轨迹证据不完整':'Incomplete trajectory evidence'} content={<div className="observe-integrity-detail"><p>{zh?'部分记录无法完整解释，当前轨迹可能遗漏信息。可切换到标准化事件或原始记录核对。':'Some records could not be fully interpreted. Check normalized events or source records for the available evidence.'}</p>{model.integrity.notices.map(notice=><p key={notice.code}>{notice.code==='unknown_events'?(zh?'无法识别的事件':'Unrecognized events'):notice.code}：{notice.count}</p>)}</div>}><button type="button" className="observe-evidence-status">{zh?'证据不完整 · 查看原因':'Incomplete evidence · Details'}</button></Popover>}
+      {model.integrity.status==='partial'&&<Popover trigger="click" placement="bottomRight" open={integrityOpen} onOpenChange={setIntegrityOpen} styles={{container:{padding:16},title:{marginBottom:8,fontSize:14,lineHeight:'20px'},content:{fontSize:13,lineHeight:'20px'}}} title={onlyUnknown?(zh?'部分事件未解析':'Some events are unparsed'):(zh?'轨迹展示受限':'Trajectory limitations')} content={<div className="observe-integrity-detail">
+        {onlyUnknown?<p>{zh?`${unknownCount} 条原始事件未能归入当前轨迹视图，可能影响展示完整性。这不等于原始记录丢失。`:`${unknownCount} raw events could not be mapped into this view, which may affect its completeness. This does not mean the raw records are missing.`}</p>:<><p>{zh?'以下问题可能影响轨迹展示，请核对原始记录。':'These issues may affect the trajectory view. Check the source records.'}</p><ul>{model.integrity.notices.map(notice=><li key={notice.code}>{noticeLabels[notice.code]??notice.code}：{notice.count}</li>)}</ul></>}
+        <Button type="link" size="small" onClick={()=>{setActiveTab('source');setIntegrityOpen(false);}}>{zh?'查看原始记录':'View source records'}</Button>
+      </div>}><button type="button" className="observe-evidence-status" aria-expanded={integrityOpen}>{onlyUnknown?(zh?`部分事件未解析 · ${unknownCount}`:`Unparsed events · ${unknownCount}`):(zh?'轨迹展示受限 · 查看原因':'Trajectory limitations · Details')}</button></Popover>}
     </div>
     </header>
-    <Tabs className="trajectory-tabs" defaultActiveKey="replay" destroyOnHidden items={[
+    <Tabs className="trajectory-tabs" activeKey={activeTab} onChange={setActiveTab} destroyOnHidden items={[
       {key:'replay',label:zh?'语义轨迹':'Semantic trajectory',children:<Swimlane projection={page.replay} lang={lang} revision={page.revision} follow={follow} onPause={()=>setFollow(false)}/>},
       {key:'knowledge',label:zh?'知识访问':'Knowledge access',children:<><Alert type="info" title={zh?'访问记录说明知识曾被读取或注入，不代表它导致了结果。':'Access records show reads or injections; they do not establish causation.'}/><Table rowKey="id" dataSource={model.knowledgeEvidence} scroll={{x:700}} columns={[{title:zh?'知识':'Knowledge',dataIndex:'label'},{title:zh?'方式':'Access',dataIndex:'accessKind'},{title:zh?'次数':'Count',dataIndex:'accessCount'},{title:zh?'来源':'Source',dataIndex:'sourceLocator'}]} expandable={{expandedRowRender:item=><Evidence value={item}/>}}/></>},
       {key:'events',label:zh?'标准化事件':'Normalized events',children:<Evidence value={model.normalizedEvents}/>},
