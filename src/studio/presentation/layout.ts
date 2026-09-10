@@ -726,6 +726,7 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 table{border-collapse:collapse;width:100%;font-size:13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;line-height:1.5}
 th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-align:middle;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);font-size:12px;letter-spacing:0.02em;white-space:nowrap}
 td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+body.studio-workspace th,body.studio-workspace td{white-space:nowrap;overflow-wrap:normal;word-break:normal}
 td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(99,112,131,.04)}
