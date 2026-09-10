@@ -21,12 +21,15 @@ function Evidence({value}: {value: unknown}) { return <pre className="observe-ev
 function useActivity(endpoint: string, revision: string) {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     let pending = false;
-    const timer = setInterval(async () => {
+    const check = async () => {
       if (pending || document.hidden) return;
       pending = true;
+      setChecking(true);
       try {
         const response = await fetch(endpoint, { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) throw new Error('activity unavailable');
@@ -36,11 +39,18 @@ function useActivity(endpoint: string, revision: string) {
           if (activity.revision !== revision) router.refresh();
         }
       } catch { if (!controller.signal.aborted) setFailed(true); }
-      finally { pending = false; }
-    }, 5000);
+      finally { pending = false; if (!controller.signal.aborted) setChecking(false); }
+    };
+    if (attempt > 0) void check();
+    const timer = setInterval(check, 5000);
     return () => { clearInterval(timer); controller.abort(); };
-  }, [endpoint, revision, router]);
-  return failed;
+  }, [endpoint, revision, router, attempt]);
+  return { failed, checking, retry: () => setAttempt(value => value + 1) };
+}
+
+function ActivityNotice({activity, lang}: {activity: ReturnType<typeof useActivity>; lang: Language}) {
+  if (!activity.failed) return null;
+  return <div className="observe-update-notice"><span role="status" title={lang === 'zh' ? '暂时无法获取新内容，当前列表仍可查看；系统会自动重试。' : 'Updates are unavailable. Existing records remain available; automatic retries continue.'}><span aria-hidden="true">⚠</span> {lang === 'zh' ? '更新暂不可用' : 'Updates unavailable'}</span><Button type="link" size="small" loading={activity.checking} onClick={activity.retry}>{lang === 'zh' ? '重试' : 'Retry'}</Button></div>;
 }
 
 export function ObserveView({page, lang}: {page: ObservePage; lang: Language}) {
@@ -52,17 +62,16 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
   const zh = lang === 'zh';
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const failed = useActivity('/api/conversations/activity', page.revision);
+  const activity = useActivity('/api/conversations/activity', page.revision);
   const running = (item: ConversationListItem) => item.tasks.some(task => task.status === 'open');
   const rows = page.model.conversations.filter(item => {
     const selected = filter === 'all' || (filter === 'running' ? running(item) : filter === 'archived' ? item.archived : !item.archived);
     return selected && `${item.title} ${item.preview ?? ''} ${item.cwd ?? ''}`.toLowerCase().includes(query.toLowerCase());
   }).sort((a,b) => Number(running(b)) - Number(running(a)));
   return <>
-    {failed && <Alert type="warning" title={zh ? '暂时无法更新会话，请刷新重试。' : 'Conversation updates are unavailable. Reload to retry.'}/>}
     <div className="observe-toolbar">
       <Segmented value={filter} onChange={setFilter} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
-      <Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>setQuery(event.target.value)}/>
+      <div className="observe-toolbar-actions"><ActivityNotice activity={activity} lang={lang}/><Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>setQuery(event.target.value)}/></div>
     </div>
     <Table className="measure-table conversation-table" tableLayout="fixed" size="small" rowKey="threadId" rowClassName={item => running(item) ? 'studio-running-row' : ''} dataSource={rows} scroll={{x:900}} pagination={{pageSize:20,showSizeChanger:false}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
       {title:zh?'最近活动':'Recent activity',width:200,render:(_,item)=><div className="conversation-activity"><div className="conversation-activity-time"><time className="conversation-time" title={item.endTimestamp??item.startTimestamp}>{(item.endTimestamp??item.startTimestamp)?.replace('T',' ').replace(/\.\d{3}Z$/,' UTC')??'—'}</time></div><div className="conversation-activity-meta"><Typography.Text type="secondary" title={item.model ?? item.sourceKind}>{item.model ?? item.sourceKind}</Typography.Text>{running(item)&&<span className="conversation-running"><span className="studio-running-dot" aria-hidden="true"/>{zh?'进行中':'Running'}</span>}</div></div>},
@@ -81,12 +90,11 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
 function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'conversation'}>;lang:Language}) {
   const zh=lang==='zh'; const item=page.model;
   const [newest,setNewest]=useState(true);
-  const failed=useActivity(`/api/conversations/${encodeURIComponent(item.threadId)}/activity`,page.revision);
+  const activity=useActivity(`/api/conversations/${encodeURIComponent(item.threadId)}/activity`,page.revision);
   const tasks=newest?[...item.tasks].reverse():item.tasks;
   return <>
     <div className="measure-heading"><div><Link href={`/observe${suffix(lang)}`}>{zh?'返回会话':'Back to conversations'}</Link><h1 title={item.title}>{item.title}</h1><p title={item.cwd}>{[item.model,item.cwd].filter(Boolean).join(' · ')}</p><p>{item.turnCount??item.tasks.length} {zh?'次任务':'tasks'} · {item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'} · {item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</p></div></div>
-    {failed&&<Alert type="warning" title={zh?'暂时无法更新任务列表，请刷新重试。':'Task updates are unavailable. Reload to retry.'}/>}
-    <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/></div>
+    <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/><ActivityNotice activity={activity} lang={lang}/></div>
     <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" rowClassName={task => task.status === 'open' ? 'studio-running-row' : ''} dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
       {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
       {title:zh?'状态':'Status',width:100,dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
