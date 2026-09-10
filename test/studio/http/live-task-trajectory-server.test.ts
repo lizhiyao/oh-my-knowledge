@@ -69,7 +69,7 @@ describe('Live task trajectory server', () => {
       },
       async observeTaskTrajectory(_threadId, turnId, observer, options) {
         if (turnId === 'error') {
-          observer.error?.(new Error('实时轨迹读取失败'));
+          observer.error?.(new Error('token=secret /private/user/trajectory.jsonl'));
           return () => { unsubscribed = true; };
         }
         if (turnId === 'pending') {
@@ -136,7 +136,8 @@ describe('Live task trajectory server', () => {
       `${baseUrl}/api/conversations/thread/tasks/error/live`,
     );
     assert.match(event, /event: trajectory-error/);
-    assert.match(event, /"error":"实时轨迹读取失败"/);
+    assert.match(event, /"error":"studio_source_unavailable"/);
+    assert.doesNotMatch(event, /secret|private/);
   });
 
   it('cancels live initialization when the client disconnects before the first snapshot', async () => {

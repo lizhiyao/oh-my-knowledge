@@ -1,3 +1,5 @@
+import { ownRecordValue } from '../../../shared/record-count.js';
+import { jsString } from '../layout.js';
 import { e } from '../layout.js';
 import {
   getSkillChainAdvisory,
@@ -77,14 +79,14 @@ export function createObservationSkillChainRenderers({
     </div>`;
   };
   const renderSkillChainSummary = (skillName: string): string => {
-    const chain = skillChains[skillName];
+    const chain = ownRecordValue(skillChains, skillName);
     if (!chain?.definition.found) {
       return `<span class="summary-muted">未找到 SKILL.md：当前日志能识别调用，但本机目录里没有对应 skill 定义，无法做 doctor 检查。</span>`;
     }
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
     const runtime = chain.runtime.summary;
-    const record = skillDerivedStandards[skillName];
+    const record = ownRecordValue(skillDerivedStandards, skillName);
     const detectedHardCount = (record?.standards ?? []).filter((standard) =>
       standard.standardKind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
     ).length;
@@ -117,7 +119,7 @@ export function createObservationSkillChainRenderers({
     </div>`;
   };
   const collectSkillChainAdvisoryCodes = (skillName: string): SkillChainAdvisoryCode[] => {
-    const chain = skillChains[skillName];
+    const chain = ownRecordValue(skillChains, skillName);
     if (!chain) return [];
     if (!chain.definition.found) return ['skill_md_not_found'];
     const codes: SkillChainAdvisoryCode[] = [];
@@ -126,7 +128,7 @@ export function createObservationSkillChainRenderers({
     return codes;
   };
   const renderSkillChainButton = (skillName: string, templateId: string): string => {
-    const chain = skillChains[skillName];
+    const chain = ownRecordValue(skillChains, skillName);
     const advisoryCodes = collectSkillChainAdvisoryCodes(skillName);
     const advisoryCount = advisoryCodes.length;
     const hasAdvisory = advisoryCount > 0;
@@ -136,7 +138,7 @@ export function createObservationSkillChainRenderers({
         ? `点开查看 skill 定义、标准规则和运行时证据；当前缺：${advisoryLabels.join('、')}。`
         : '点开查看 skill 定义、标准规则和运行时证据。')
       : '本机目录里没有这个 skill 的 SKILL.md。点开看建议怎么补，或试试 omk doctor。';
-    return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔗</span><span class="context-chain-button-main">定义链路</span>${hasAdvisory ? `<span class="context-chain-button-advisory-list">${advisoryLabels.map((label) => `<span class="context-chain-button-advisory">${e(label)}</span>`).join('')}</span>` : '<span class="context-chain-button-ok">标准已声明</span>'}</button>`;
+    return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal(${jsString(templateId)}, this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔗</span><span class="context-chain-button-main">定义链路</span>${hasAdvisory ? `<span class="context-chain-button-advisory-list">${advisoryLabels.map((label) => `<span class="context-chain-button-advisory">${e(label)}</span>`).join('')}</span>` : '<span class="context-chain-button-ok">标准已声明</span>'}</button>`;
   };
   const runtimeLiteStatusIcon = (status: string): string =>
     status === 'passed' ? '✅' : status === 'attention' ? '❌' : '?';
@@ -184,8 +186,8 @@ export function createObservationSkillChainRenderers({
       </li>`).join('')}</ol>`
     : emptyText ? `<p class="context-muted">${e(emptyText)}</p>` : '';
   const renderRuntimeRuleFlow = (skillName: string): string => {
-    const chain = skillChains[skillName];
-    const enhancedReview = skillDerivedStandards[skillName]?.enhancedReview;
+    const chain = ownRecordValue(skillChains, skillName);
+    const enhancedReview = ownRecordValue(skillDerivedStandards, skillName)?.enhancedReview;
     const extractedStandards = enhancedReview?.extractedStandards;
     if (!chain && !extractedStandards) return '<p class="context-muted">没有找到这个 skill 的流程规则检测结果。</p>';
     const workflows = chain?.healthCheck.workflows.workflows ?? [];
@@ -424,7 +426,7 @@ export function createObservationSkillChainRenderers({
     </div>`;
   };
   const renderSkillChainTemplate = (skillName: string): string => {
-    const chain = skillChains[skillName];
+    const chain = ownRecordValue(skillChains, skillName);
     const renderAdvisoryBlock = (advisoryCode?: SkillChainAdvisoryCode, skillNameForCmd?: string): string => {
       if (!advisoryCode) return '';
       const advisory = getSkillChainAdvisory(advisoryCode);
@@ -475,7 +477,7 @@ export function createObservationSkillChainRenderers({
     }
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
-    const record = skillDerivedStandards[skillName];
+    const record = ownRecordValue(skillDerivedStandards, skillName);
     const softStandards = record?.standards ?? [];
     const statusPriority: Record<SkillDerivedStandard['status'], number> = {
       pending_review: 0,
@@ -517,8 +519,8 @@ export function createObservationSkillChainRenderers({
     const renderCandidateActions = (standard: SkillDerivedStandard): string => `
       <span class="skill-md-annotation-actions">
         <span data-soft-standard-status="${e(standard.status)}">${e(softStandardStatusLabel(standard.status))}</span>
-        <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'author_confirmed', this)">确认</button>
-        <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'rejected', this)">否决</button>
+        <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus(${jsString(skillName)}, ${jsString(standard.id)}, 'author_confirmed', this)">确认</button>
+        <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus(${jsString(skillName)}, ${jsString(standard.id)}, 'rejected', this)">否决</button>
       </span>`;
     const renderAnnotatedSkillMd = (content: string): string => {
       if (sortedSoftStandards.length === 0) return e(content);
@@ -558,8 +560,8 @@ export function createObservationSkillChainRenderers({
             <div class="soft-standard-modal-body">${e(standard.body)}</div>
             ${standard.evidence.length > 0 ? `<div class="soft-standard-modal-evidence">依据：${standard.evidence.map((entry) => e(entry)).join('；')}</div>` : ''}
             <div class="soft-standard-actions">
-              <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'author_confirmed', this)">确认</button>
-              <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'rejected', this)">否决</button>
+              <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus(${jsString(skillName)}, ${jsString(standard.id)}, 'author_confirmed', this)">确认</button>
+              <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus(${jsString(skillName)}, ${jsString(standard.id)}, 'rejected', this)">否决</button>
             </div>
           </div>`).join('')}</div>
         </details>`

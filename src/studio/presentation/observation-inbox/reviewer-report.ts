@@ -1,3 +1,5 @@
+import { ownRecordValue } from '../../../shared/record-count.js';
+import { jsString } from '../layout.js';
 import { e } from '../layout.js';
 import type { ObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
 import type {
@@ -210,7 +212,7 @@ export function createReviewerReportRenderers(
       .filter((node): node is NonNullable<ReturnType<typeof storyNodeById.get>> => Boolean(node));
     const storyLlmGoalText = (skillName?: string): string => {
       if (!skillName) return '';
-      const goal = skillDerivedStandards[skillName]?.enhancedReview?.userGoal;
+      const goal = ownRecordValue(skillDerivedStandards, skillName)?.enhancedReview?.userGoal;
       const parts = [
         ...(goal?.slots ?? []),
         goal?.summary,
@@ -230,7 +232,7 @@ export function createReviewerReportRenderers(
     const renderStoryGraph = (): string => {
       return `<div class="session-story-graph">
         <div class="session-story-graph-main">
-          ${mainlineNodes.map((node, index) => `<button type="button" class="session-story-graph-node ${storyStatusClass(node.status)}" onclick="document.getElementById('${e(node.id)}')?.scrollIntoView({block:'nearest'})">
+          ${mainlineNodes.map((node, index) => `<button type="button" class="session-story-graph-node ${storyStatusClass(node.status)}" onclick="document.getElementById(${jsString(node.id)})?.scrollIntoView({block:'nearest'})">
             <span>${e(storyKindLabel(node.kind))}</span>
             <strong>${e(node.label)}</strong>
           </button>${index < mainlineNodes.length - 1 ? '<i>→</i>' : ''}`).join('')}
@@ -388,9 +390,9 @@ export function createReviewerReportRenderers(
               <div style="margin-top:5px;font-family:ui-monospace,monospace;font-size:10px;color:var(--text-muted);word-break:break-all">ruleSource: ${e(finding.ruleSource)} / ruleVersion: ${e(finding.ruleVersion)}${finding.evidenceRefs[0]?.messageIndex !== undefined ? ` / evidence #${finding.evidenceRefs[0].messageIndex}` : ''}</div>
               <div class="reviewer-judgment-review" data-reviewer-judgment-current="${e(finding.reviewStateRef.verdict ?? '')}">
                 <span data-reviewer-judgment-label>${e(judgmentReviewLabel(finding.reviewStateRef.verdict))}</span>
-                <button type="button" data-reviewer-judgment-verdict="real_issue" onclick="setReviewerJudgmentReview('${e(finding.judgmentId)}', 'real_issue', this)">同意</button>
-                <button type="button" data-reviewer-judgment-verdict="not_issue" onclick="setReviewerJudgmentReview('${e(finding.judgmentId)}', 'not_issue', this)">否决</button>
-                <button type="button" data-reviewer-judgment-verdict="needs_more_context" onclick="openReviewerJudgmentNote('${e(finding.judgmentId)}', this)">留意见</button>
+                <button type="button" data-reviewer-judgment-verdict="real_issue" onclick="setReviewerJudgmentReview(${jsString(finding.judgmentId)}, 'real_issue', this)">同意</button>
+                <button type="button" data-reviewer-judgment-verdict="not_issue" onclick="setReviewerJudgmentReview(${jsString(finding.judgmentId)}, 'not_issue', this)">否决</button>
+                <button type="button" data-reviewer-judgment-verdict="needs_more_context" onclick="openReviewerJudgmentNote(${jsString(finding.judgmentId)}, this)">留意见</button>
                 ${finding.reviewStateRef.reason || finding.reviewStateRef.note ? `<small>${e(finding.reviewStateRef.reason ?? finding.reviewStateRef.note ?? '')}</small>` : ''}
               </div>
             </div>`).join('')}

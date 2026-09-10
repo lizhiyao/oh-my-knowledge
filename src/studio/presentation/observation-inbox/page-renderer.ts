@@ -116,13 +116,13 @@ export function renderObservationInboxDocument({
     : '';
 	  return layout(pageTitle, `
 	    <main class="observe-report-root">
-	      <nav style="margin-bottom:12px"><a href="/observe/health" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
+	      <nav style="margin-bottom:12px"><a href="/observe/health${lang === 'en' ? '?lang=en' : ''}" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
 	      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0">
 	        <div>
 	          <h1 style="font-size:22px;margin:0">${activeSkill ? `观测收件箱 · ${e(activeSkill)}` : '观测收件箱'}</h1>
 	          ${activeSkill ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px">当前只展示能力 ${e(activeSkill)} 的复盘记录。</div>` : ''}
 	        </div>
-	        ${activeSkill ? `<a href="/observe/inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
+	        ${activeSkill ? `<a href="/observe/inbox${lang === 'en' ? '?lang=en' : ''}" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
 	      </div>
       ${ingestionNotice}
       <style>${OBSERVATION_INBOX_STYLES}</style>

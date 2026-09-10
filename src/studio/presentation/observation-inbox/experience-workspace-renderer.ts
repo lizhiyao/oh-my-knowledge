@@ -1,3 +1,5 @@
+import { ownRecordValue } from '../../../shared/record-count.js';
+import { jsString } from '../layout.js';
 import { DEFAULT_LANG, e } from '../layout.js';
 import type { Lang } from '../../../shared/language.js';
 import { durationMsBetween } from '../../../shared/time.js';
@@ -159,7 +161,7 @@ export function createObservationExperienceWorkspace({
         ${story.subagentDispatches.length > 0 ? `<span>关键分叉：${story.subagentDispatches.map((dispatch) => dispatch.label).slice(0, 3).map(e).join('、')}</span>` : ''}
         ${answerText ? `<span title="${e(answerText)}">${e(answerText)}</span>` : ''}
       </div>
-      ${report ? `<button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'reviewer')">查看报告详情</button>` : ''}
+      ${report ? `<button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal(${jsString(detailId)}, this, 'reviewer')">查看报告详情</button>` : ''}
     </div>`;
   };
   const sanitizeReviewerReportForDisplay = (report?: ExperienceReviewerReport): ExperienceReviewerReport | undefined => {
@@ -269,7 +271,7 @@ export function createObservationExperienceWorkspace({
         )}</div>
         <div style="margin-top:3px;color:var(--text-muted);font-size:11px">${e(invocationWindowLabel)}: ${e(observedSessionRange(session))}</div>
       </td>
-      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'evidence')" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">证据片段</button></td>
+      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal(${jsString(detailId)}, this, 'evidence')" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">证据片段</button></td>
     </tr>
     <tr id="${detailId}" data-experience-detail-template style="display:none;background:var(--bg-muted)">
       <td colspan="9" style="padding:0;border-bottom:1px solid var(--border);text-align:left">
@@ -638,7 +640,7 @@ export function createObservationExperienceWorkspace({
 	    const mainline = inboxSkillMainline(card);
 	    const skillSearchText = [card.skillName, goalLine, mainline, inboxCardStatus(card)].join(' ');
 	    const sessionSearchText = card.sessions.map(inboxSessionSearchText).join(' ');
-	    return `<li class="inbox-card ${inboxPriorityClass(card)} ${index === 0 ? 'is-active' : ''}" data-inbox-card="${e(card.skillName)}" data-inbox-filters="${e(filters.join(' '))}" data-inbox-skill-search="${e(skillSearchText)}" data-inbox-session-search="${e(sessionSearchText)}" onclick="selectInboxCard('${e(card.skillName)}', this)">
+	    return `<li class="inbox-card ${inboxPriorityClass(card)} ${index === 0 ? 'is-active' : ''}" data-inbox-card="${e(card.skillName)}" data-inbox-filters="${e(filters.join(' '))}" data-inbox-skill-search="${e(skillSearchText)}" data-inbox-session-search="${e(sessionSearchText)}" onclick="selectInboxCard(${jsString(card.skillName)}, this)">
 	      <div class="inbox-card-row inbox-card-row-title">
 	        <span class="inbox-card-priority"></span>
 	        <span class="inbox-card-title" title="${e(card.skillName)}">${e(card.skillName)}</span>
@@ -696,7 +698,7 @@ export function createObservationExperienceWorkspace({
 	    return 'llmSkillTypeUnknown';
 	  };
 	  const inboxSkillTypeBadge = (label: string, helpKey: IndicatorHelpKey, sourceText?: string): string =>
-	    `<button type="button" class="inbox-skill-type-badge" data-metric-key="${helpKey}" onclick="event.stopPropagation();openMetricGuide('${helpKey}')" title="点击查看 skill 类型说明">skill 类型：${e(label)}${sourceText ? ` · ${e(sourceText)}` : ''}</button>`;
+	    `<button type="button" class="inbox-skill-type-badge" data-metric-key="${helpKey}" onclick="event.stopPropagation();openMetricGuide(${jsString(helpKey)})" title="点击查看 skill 类型说明">skill 类型：${e(label)}${sourceText ? ` · ${e(sourceText)}` : ''}</button>`;
 	  const inboxFlowItem = (cardSkillName: string, skill: ExperienceSessionSummary, index: number, isCurrent: boolean): string => {
 	    const link = skill.sessionStory?.skillLinks?.find((l) => l.skillName === skill.skillName);
 	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
@@ -713,8 +715,8 @@ export function createObservationExperienceWorkspace({
 	    const tag = isCurrent ? '<span class="inbox-flow-current-tag">当前查看</span>' : '';
 	    const sameSkill = skill.skillName === cardSkillName;
 	    const jumpAction = sameSkill
-	      ? `selectInboxSessionTab('${e(cardSkillName)}', '${e(skill.id)}')`
-	      : `selectInboxCardById('${e(skill.skillName)}', '${e(skill.id)}')`;
+	      ? `selectInboxSessionTab(${jsString(cardSkillName)}, ${jsString(skill.id)})`
+	      : `selectInboxCardById(${jsString(skill.skillName)}, ${jsString(skill.id)})`;
 	    const jumpAttrs = isCurrent ? '' : ` data-inbox-jump-card="${e(sameSkill ? skill.id : skill.skillName)}"`;
 	    return `<li class="inbox-flow-item ${priorityCls} ${currentCls}">
 	      <div class="inbox-flow-time">${e(startTime)}</div>
@@ -831,7 +833,7 @@ export function createObservationExperienceWorkspace({
 	    return candidates.slice(0, 2).join(' / ');
 	  };
 	  const inboxLlmEnhancedGoalKeywords = (skillName: string): string => {
-	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.userGoal;
+	    const goal = ownRecordValue(skillDerivedStandards, skillName)?.enhancedReview?.userGoal;
 	    const slots = (goal?.slots ?? [])
 	      .map((slot) => inboxExtractKeyword(slot, 18))
 	      .filter((slot): slot is string => Boolean(slot));
@@ -1049,7 +1051,7 @@ export function createObservationExperienceWorkspace({
 	      return inboxAnswerChecklistFromItems(answer.checklistItems);
 	    }
 	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || inboxLlmEnhancedGoalKeywords(skill.skillName);
-	    const chain = skillChains[skill.skillName];
+	    const chain = ownRecordValue(skillChains, skill.skillName);
 	    const displayIndicators = skill.indicators;
 	    const hasGoalKeyword = goalKeywords.length > 0;
 	    const hasCompletionResult = displayIndicators.assistantDeliverySignalCount > 0;
@@ -1283,7 +1285,7 @@ export function createObservationExperienceWorkspace({
 	    if (suggestions.length === 0 && reportSuggestions.length > 0) {
 	      suggestions.push(...reportSuggestions.map((suggestion) => inboxTextSuggestion(suggestion)));
 	    }
-	    const chain = skillChains[skill.skillName];
+	    const chain = ownRecordValue(skillChains, skill.skillName);
 	    const findings = skill.reviewerReport?.findings ?? [];
       const displayIndicators = skill.indicators;
 	    const hasFinding = (source: string): boolean => findings.some((finding) => finding.ruleSource === source);
@@ -1393,15 +1395,15 @@ export function createObservationExperienceWorkspace({
 	      <div class="inbox-section-review-panel">
 	        <div class="inbox-detail-actions-row"><strong class="inbox-detail-actions-title">这次跑得怎么样</strong><span class="inbox-detail-actions-meta">针对 ${e(session.skillName)}</span></div>
 	        <div class="inbox-detail-actions-buttons">
-	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'real_issue' ? 'is-active' : ''}" data-inbox-verdict="real_issue" onclick="setInboxSessionReview('${safeId}', 'real_issue', this)">同意</button>
-	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'not_issue' ? 'is-active' : ''}" data-inbox-verdict="not_issue" onclick="setInboxSessionReview('${safeId}', 'not_issue', this)">否决</button>
-	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'needs_more_context' ? 'is-active' : ''}" data-inbox-verdict="needs_more_context" onclick="toggleInboxNoteEditor('${safeId}', this)">留意见</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'real_issue' ? 'is-active' : ''}" data-inbox-verdict="real_issue" onclick="setInboxSessionReview(${jsString(session.id)}, 'real_issue', this)">同意</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'not_issue' ? 'is-active' : ''}" data-inbox-verdict="not_issue" onclick="setInboxSessionReview(${jsString(session.id)}, 'not_issue', this)">否决</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'needs_more_context' ? 'is-active' : ''}" data-inbox-verdict="needs_more_context" onclick="toggleInboxNoteEditor(${jsString(session.id)}, this)">留意见</button>
 	        </div>
 	        <div class="inbox-note-editor" data-inbox-note-editor="${safeId}" style="display:${reviewEntry?.verdict === 'needs_more_context' || existingNote ? 'block' : 'none'}">
 	          <textarea class="inbox-note-textarea" data-inbox-note-input="${safeId}" placeholder="留下你的意见或补充上下文（保存后会写入 review-state）" rows="3">${e(existingNote)}</textarea>
 	          <div class="inbox-note-editor-buttons">
-	            <button type="button" class="inbox-note-save" onclick="saveInboxSessionNote('${safeId}', this)">保存意见</button>
-	            <button type="button" class="inbox-note-cancel" onclick="closeInboxNoteEditor('${safeId}')">收起</button>
+	            <button type="button" class="inbox-note-save" onclick="saveInboxSessionNote(${jsString(session.id)}, this)">保存意见</button>
+	            <button type="button" class="inbox-note-cancel" onclick="closeInboxNoteEditor(${jsString(session.id)})">收起</button>
 	          </div>
 	        </div>
 	        <div class="inbox-manual-review-groups">
@@ -1710,7 +1712,7 @@ export function createObservationExperienceWorkspace({
 	      ? `${completionAttentionCount} 项要看一眼`
 	      : '未见高优复盘点';
 	    const completionSummaryClass = completionAttentionCount > 0 ? 'is-attention' : 'is-ok';
-	    const chainForSkill = skillChains[session.skillName];
+	    const chainForSkill = ownRecordValue(skillChains, session.skillName);
 	    const runtimeIssues: string[] = [];
 	    if (chainForSkill) {
 	      if (!chainForSkill.healthCheck.hardRules.declared) runtimeIssues.push('未标准化规则声明');
@@ -1734,14 +1736,14 @@ export function createObservationExperienceWorkspace({
 	    const flowTemplateId = `inbox-flow-template-${safeId}`;
 	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount}${cancelledToolOutcomes > 0 ? ` · 取消 ${cancelledToolOutcomes}` : ''}${unknownToolOutcomes > 0 ? ` · 状态未知 ${unknownToolOutcomes}` : ''} · 用户消息 ${indicators.userMessageCount}`;
 	    const navItems = [
-	      { id: `inbox-sec-completion-${safeId}`, label: '① 这次跑得怎么样' },
-	      { id: `inbox-sec-log-chain-${safeId}`, label: '② 日志上下游链路' },
-	      { id: `inbox-sec-runtime-${safeId}`, label: '③ 流程规则执行细节' },
-	      { id: `inbox-sec-runtime-metrics-${safeId}`, label: '3.1 指标汇总', sub: true },
-	      { id: `inbox-sec-runtime-rules-${safeId}`, label: '3.2 流程规则命中', sub: true },
-	      { id: `inbox-sec-evidence-${safeId}`, label: '④ 原文回溯' },
+	      { id: `inbox-sec-completion-${session.id}`, label: '① 这次跑得怎么样' },
+	      { id: `inbox-sec-log-chain-${session.id}`, label: '② 日志上下游链路' },
+	      { id: `inbox-sec-runtime-${session.id}`, label: '③ 流程规则执行细节' },
+	      { id: `inbox-sec-runtime-metrics-${session.id}`, label: '3.1 指标汇总', sub: true },
+	      { id: `inbox-sec-runtime-rules-${session.id}`, label: '3.2 流程规则命中', sub: true },
+	      { id: `inbox-sec-evidence-${session.id}`, label: '④ 原文回溯' },
 	    ];
-	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${item.id}" class="${item.sub ? 'is-sub' : ''}" data-inbox-nav onclick="scrollInboxSectionIntoView('${item.id}', event)">${item.label}</a>`).join('')}</nav>`;
+	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${e(item.id)}" class="${item.sub ? 'is-sub' : ''}" data-inbox-nav onclick="scrollInboxSectionIntoView(${jsString(item.id)}, event)">${item.label}</a>`).join('')}</nav>`;
 	    return `<article class="inbox-session-pane ${isActive ? 'is-active' : ''}" data-session-pane="${safeId}" data-session-search="${e(inboxSessionSearchText(session))}">
 	      <div class="inbox-session-meta">
 	        <span>Session <code>${e(session.sessionId)}</code></span>
@@ -1794,12 +1796,12 @@ export function createObservationExperienceWorkspace({
 	    const sessionTabs = card.sessions.length > 0
 	      ? `<div class="inbox-session-tabs" role="tablist" aria-label="切换 ${e(card.skillName)} 的调用记录">${card.sessions.map((s, i) => {
 	          const label = inboxFormatSessionLabel(s);
-	          const flowTemplateId = `inbox-flow-template-${e(s.id)}`;
+	          const flowTemplateId = `inbox-flow-template-${s.id}`;
 	          const resolvedPriority = inboxResolvedPriority(s);
 	          const priorityCls = resolvedPriority === 'review_first' ? 'is-priority-high' : resolvedPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
 	          return `<span class="inbox-session-tab-item" data-session-tab-item="${e(s.id)}" data-session-search="${e(inboxSessionSearchText(s))}">
-	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab('${safeSkill}', '${e(s.id)}', this)" title="${e(s.sessionId)}">${e(label)}</button>
-	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover('${flowTemplateId}', this, event)" title="查看这条 session 的执行过程">查看过程</button>
+	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab(${jsString(card.skillName)}, ${jsString(s.id)}, this)" title="${e(s.sessionId)}">${e(label)}</button>
+	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover(${jsString(flowTemplateId)}, this, event)" title="查看这条 session 的执行过程">查看过程</button>
 	            ${inboxSessionTabBadges(s)}
 	          </span>`;
 	        }).join('')}</div>`

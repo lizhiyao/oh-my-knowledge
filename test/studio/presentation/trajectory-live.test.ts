@@ -17,6 +17,49 @@ const labels: TrajectoryLiveLabels = {
 };
 
 describe('trajectory live client', () => {
+  it('serializes refreshes, keeps a newer revision after failure, and stops callbacks after dispose', async () => {
+    const scheduled: Array<() => void> = [];
+    const listeners = new Map<string, EventListener>();
+    const failures: Array<(cause: Error) => void> = [];
+    let calls = 0;
+    const liveState = { dataset: {}, textContent: '' } as unknown as HTMLElement;
+    const controller = createTrajectoryLiveController({
+      shell: { dataset: { liveRevision: 'initial' } } as unknown as HTMLElement,
+      timeline: null, liveState, followButton: null, followLabel: null,
+      liveEndpoint: '/live', labels, getMode: () => 'semantic', setMode: () => undefined,
+      browserDocument: { hidden: false, addEventListener: () => undefined } as unknown as Document,
+      browserWindow: {
+        location: { pathname: '/observe/test' },
+        sessionStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
+        requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
+        setTimeout: (callback: () => void) => { scheduled.push(callback); return scheduled.length; },
+        clearTimeout: () => undefined, addEventListener: () => undefined,
+        EventSource: class {
+          addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); }
+          close() { /* no transport in this deterministic controller test */ }
+        },
+      } as unknown as Window,
+      refreshSnapshot: () => { calls++; return new Promise<void>((_resolve, reject) => { failures.push(reject); }); },
+    });
+    const revision = (value: string) => listeners.get('trajectory')!({ data: JSON.stringify({ revision: value, status: 'open' }) } as MessageEvent);
+    revision('first');
+    scheduled.shift()!();
+    revision('second');
+    assert.equal(calls, 1);
+    assert.equal(scheduled.length, 0);
+    failures.shift()!(new Error('first failed'));
+    await Promise.resolve();
+    assert.equal(scheduled.length, 1, 'the newer revision must not be replaced by the failed one');
+    scheduled.shift()!();
+    assert.equal(calls, 2);
+    controller.dispose();
+    const state = liveState.textContent;
+    failures.shift()!(new Error('aborted'));
+    await Promise.resolve();
+    assert.equal(scheduled.length, 0);
+    assert.equal(liveState.textContent, state);
+  });
+
   it('keeps the browser controller executable from the typed source of truth', () => {
     const source = renderTrajectoryLiveClientSource();
     const controller = Function(`${source}; return createTrajectoryLiveController;`)() as unknown;

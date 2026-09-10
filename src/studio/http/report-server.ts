@@ -48,20 +48,27 @@ export function createReportServer(options: ReportServerOptions = {}): ReportSer
   } = options;
   let server: Server | null = null;
   let serverUrl: string | null = null;
+  let transition: Promise<unknown> = Promise.resolve();
+  function serialize<T>(action: () => Promise<T>): Promise<T> {
+    const result = transition.then(action);
+    transition = result.catch(() => undefined);
+    return result;
+  }
   const requestHandler = createStudioRequestHandler({
     ...requestOptions,
     requestShutdown: () => {
-      if (server) server.close();
+      void stop();
     },
   });
 
-  async function start(): Promise<string> {
+  async function startListener(): Promise<string> {
     if (server) return serverUrl!;
     requestHandler.prepare();
 
     const listenPort = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
     // host 默认 127.0.0.1（本机回环，默认安全）。容器／远程场景需显式对外暴露。
-    const host = hostOption || process.env.OMK_REPORT_HOST || '127.0.0.1';
+    const host = (hostOption || process.env.OMK_REPORT_HOST || '127.0.0.1').replace(/^\[|\]$/g, '');
+    const urlHost = (value: string): string => value.includes(':') ? `[${value}]` : value;
     const boot = (candidatePort: number): Promise<Server> => new Promise((resolve, reject) => {
       const candidate = createServer(requestHandler.handle);
       candidate.once('error', reject);
@@ -75,8 +82,8 @@ export function createReportServer(options: ReportServerOptions = {}): ReportSer
       if (formatted) throw formatted;
 
       // EADDRINUSE：仅接管能够由 /health 认证为 OMK 的旧进程。
-      const probeHost = host === '0.0.0.0' ? '127.0.0.1' : host;
-      const url = `http://${probeHost}:${listenPort}`;
+      const probeHost = host === '0.0.0.0' ? '127.0.0.1' : host === '::' ? '::1' : host;
+      const url = `http://${urlHost(probeHost)}:${listenPort}`;
       let isOmk = false;
       try {
         const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
@@ -105,17 +112,25 @@ export function createReportServer(options: ReportServerOptions = {}): ReportSer
     }
 
     const address = server.address() as AddressInfo;
-    const displayHost = host === '0.0.0.0' ? '127.0.0.1' : host;
-    serverUrl = `http://${displayHost}:${address.port}`;
+    const displayHost = host === '0.0.0.0' ? '127.0.0.1' : host === '::' ? '::1' : host;
+    serverUrl = `http://${urlHost(displayHost)}:${address.port}`;
     return serverUrl;
   }
 
-  async function stop(): Promise<void> {
+  async function stopListener(): Promise<void> {
     if (!server) return;
     requestHandler.close();
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = null;
     serverUrl = null;
+  }
+
+  function start(): Promise<string> {
+    return serialize(startListener);
+  }
+
+  function stop(): Promise<void> {
+    return serialize(stopListener);
   }
 
   return {

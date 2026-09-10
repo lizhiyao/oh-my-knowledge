@@ -491,3 +491,22 @@ function scopedSessionMessageCount(
 function sessionMessageCount(session: TraceSession): number {
   return session.events.filter((event) => event.eventKind === 'message').length;
 }
+
+export function measuredToolFailureRate(
+  health: Pick<
+    SkillHealth,
+    'stability' | 'toolCallCount' | 'toolResolvedCount' | 'toolCancelledCount' | 'toolFailureRate'
+  >,
+): number | null {
+  if (health.stability === 'unknown') return null;
+  if (health.toolResolvedCount !== undefined || health.toolCancelledCount !== undefined) {
+    const comparable = Math.max(
+      0,
+      (health.toolResolvedCount ?? health.toolCallCount) - (health.toolCancelledCount ?? 0),
+    );
+    return comparable > 0 ? health.toolFailureRate : null;
+  }
+  // Legacy reports predate toolResolvedCount but treated every recorded call as
+  // resolved. Preserve those measured rates when a non-zero denominator exists.
+  return health.toolCallCount > 0 ? health.toolFailureRate : null;
+}

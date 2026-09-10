@@ -13,7 +13,7 @@ import type { Lang } from '../../shared/language.js';
 import { createCoreStudioRouteHandler } from '../core-runs/index.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
-import { getErrorMessage } from './errors.js';
+import { getErrorMessage, STUDIO_SOURCE_UNAVAILABLE } from './errors.js';
 import {
   assertTrustedMutationRequest,
   RequestBodyError,
@@ -44,6 +44,7 @@ export function createStudioRequestHandler({
   includeDoctorCards = false,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
+  let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
     catalog: conversationCatalog ?? createCodexConversationCatalog(),
     liveStreams: liveStreamClosers,
@@ -137,8 +138,8 @@ export function createStudioRequestHandler({
         assertTrustedMutationRequest(request);
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ ok: true }));
-        setTimeout(() => {
-          for (const close of [...liveStreamClosers]) close();
+        shutdownTimer ??= setTimeout(() => {
+          shutdownTimer = undefined;
           requestShutdown();
         }, 100);
         return;
@@ -161,11 +162,13 @@ export function createStudioRequestHandler({
           ? 400
           : 500;
       response.writeHead(statusCode, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ error: getErrorMessage(error) }));
+      response.end(JSON.stringify({ error: statusCode === 500 ? STUDIO_SOURCE_UNAVAILABLE : getErrorMessage(error) }));
     }
   }
 
   function close(): void {
+    if (shutdownTimer !== undefined) clearTimeout(shutdownTimer);
+    shutdownTimer = undefined;
     for (const closeStream of [...liveStreamClosers]) closeStream();
   }
 
