@@ -1,75 +1,15 @@
-import { createHash } from 'node:crypto';
-import type { Lang } from '../../shared/language.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
   ExperienceTurnStatus,
 } from '../../observability/view-models/index.js';
-import { DEFAULT_LANG, e, layout } from './layout.js';
+import type { Lang } from '../../shared/language.js';
+import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot, latestOpenConversationTask } from '../view-models/conversation-activity.js';
+import { inlineMarkdownText } from '../view-models/inline-markdown.js';
 import { icon } from './icons.js';
-import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';
-
-export interface ConversationActivitySnapshot {
-  schemaVersion: 1;
-  revision: string;
-  runningCount: number;
-}
-
-export interface ConversationDetailActivitySnapshot {
-  schemaVersion: 1;
-  revision: string;
-  taskCount: number;
-  runningCount: number;
-}
-
-export function buildConversationActivitySnapshot(
-  model: ConversationIndexViewModel,
-): ConversationActivitySnapshot {
-  let runningCount = 0;
-  const state = model.conversations.map((conversation) => {
-    const openTask = latestOpenConversationTask(conversation);
-    if (openTask) runningCount += 1;
-    return [
-      conversation.threadId,
-      conversation.archived ? 1 : 0,
-      conversation.turnCount ?? null,
-      openTask?.turnId ?? null,
-    ];
-  });
-  return {
-    schemaVersion: 1,
-    revision: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 24),
-    runningCount,
-  };
-}
-
-export function buildConversationDetailActivitySnapshot(
-  conversation: ConversationListItem,
-): ConversationDetailActivitySnapshot {
-  const state = conversation.tasks.map((task) => [
-    task.turnId,
-    task.status,
-    task.startTimestamp ?? null,
-    task.endTimestamp ?? null,
-  ]);
-  return {
-    schemaVersion: 1,
-    revision: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 24),
-    taskCount: conversation.tasks.length,
-    runningCount: conversation.tasks.filter((task) => task.status === 'open').length,
-  };
-}
-
-function latestOpenConversationTask(
-  conversation: ConversationListItem,
-): ConversationTaskItem | undefined {
-  for (let index = conversation.tasks.length - 1; index >= 0; index -= 1) {
-    const task = conversation.tasks[index];
-    if (task?.status === 'open') return task;
-  }
-  return undefined;
-}
+import { renderSafeInlineMarkdown } from './inline-markdown.js';
+import { DEFAULT_LANG, e, layout } from './layout.js';
 
 export function renderConversationIndexPage(
   model: ConversationIndexViewModel,

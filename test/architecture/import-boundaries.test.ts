@@ -201,6 +201,16 @@ const RULES: ForbiddenRule[] = [
     reason: 'Studio application 不依赖 HTML 呈现；presentation 只能消费应用结果与 view-model。',
   },
   {
+    from: 'studio/view-models/',
+    to: 'studio/presentation/',
+    reason: '共享视图投影不得依赖 HTML 渲染器。',
+  },
+  {
+    from: 'studio/view-models/',
+    to: 'studio/web/',
+    reason: '共享视图投影不得依赖 React 页面。',
+  },
+  {
     from: 'studio/presentation/',
     to: 'studio/http/',
     reason: 'Studio presentation 是无 HTTP 状态的纯呈现层，不依赖请求、响应或 server 生命周期。',
@@ -247,7 +257,6 @@ const RULES: ForbiddenRule[] = [
     whitelist: [
       'studio/presentation/conversation-renderer.ts::observability/view-models/index.ts',
       'studio/presentation/knowledge-debugger-renderer.ts::observability/view-models/index.ts',
-      'studio/presentation/trajectory-evidence.ts::observability/view-models/index.ts',
       // 允许的 facade 访问点(以及它们的 .ts 解析后路径)。
       'studio/presentation/observation-inbox-renderer.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/experience-workspace-renderer.ts::observability/inbox/view-model.ts',

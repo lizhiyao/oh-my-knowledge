@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildSkillIndex, _resetSkillIndexCache } from '../../../src/studio/application/index.js';
+import { buildSkillIndex } from '../../../src/studio/application/index.js';
 import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,
@@ -224,13 +224,11 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     emptyAnalyses = mkdtempSync(join(tmpdir(), 'omk-xp-an-'));
     emptyDoctors = mkdtempSync(join(tmpdir(), 'omk-xp-dr-'));
     emptyObs = mkdtempSync(join(tmpdir(), 'omk-xp-obs-'));
-    _resetSkillIndexCache();
   });
   afterEach(() => {
     if (origEnv === undefined) delete process.env.OMK_ARTIFACT_INDEX_DIR;
     else process.env.OMK_ARTIFACT_INDEX_DIR = origEnv;
     for (const d of [indexRoot, proj, emptyAnalyses, emptyDoctors, emptyObs]) rmSync(d, { recursive: true, force: true });
-    _resetSkillIndexCache();
   });
 
   it('别项目 doctor 卡片 + observe 卡片 → buildSkillIndex 看到对应 skill', () => {
@@ -417,10 +415,10 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       overall: { healthBand: 'green', confidence: 'high' },
       bySkill: { co: { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
     }, join(proj, reportFileName('fo')), proj, 'fo');
-    const opts = { includeObserveCards: true, includeDoctorCards: true };
+    const opts = { includeObserveCards: true, includeDoctorCards: true, cache: {} };
     let idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, opts);
-    assert.deepEqual(idx.entries.map((e) => e.skillName).sort(), ['cf', 'co'], 'build1 可见(进模块缓存)');
-    rmSync(join(proj, reportFileName('fd')), { force: true }); // 仅删真身,不动卡片目录、不 _resetSkillIndexCache
+    assert.deepEqual(idx.entries.map((e) => e.skillName).sort(), ['cf', 'co'], 'build1 可见(进入显式缓存)');
+    rmSync(join(proj, reportFileName('fd')), { force: true }); // 仅删真身,不动卡片目录
     rmSync(join(proj, reportFileName('fo')), { force: true });
     idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, opts);
     assert.deepEqual(idx.entries.map((e) => e.skillName), [], '真身没了 → 真身 sentinel 进 fingerprint、缓存失效,悬空不展示');

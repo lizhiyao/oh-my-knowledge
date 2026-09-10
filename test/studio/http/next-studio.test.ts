@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
+import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
 import { createCoreStudioCatalog } from '../../../src/studio/core-runs/catalog.js';
 import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
@@ -23,8 +24,14 @@ describe('Next Studio production boundary', () => {
     const store = createNodeCoreRunArtifactStore(join(root,'reports'));
     await store.save({runId:'next-real-run',createdAt:'2026-09-10T00:00:00Z',plan:scenario.plan,execution:scenario.execution,evaluation:scenario.evaluation,analysis:scenario.analysis,report:scenario.report});
     const catalog = createCoreStudioCatalog(store);
-    const a = createNextStudioServer({port:0,observationsDir:join(root,'a'),coreStudioCatalog:catalog});
-    const b = createNextStudioServer({port:0,observationsDir:join(root,'b'),coreStudioCatalog:{...catalog,list:async()=>[]}});
+    const doctorsDir = join(root, 'doctors');
+    const analysesDir = join(root, 'analyses');
+    const skillName = 'audit/<script>alert(1)</script>';
+    writeMeasurementReportBundle({ rootDir: doctorsDir, measurementDomain: 'doctor', recordId: 'knowledge-test', reportId: 'doctor-test', createdAt: '2026-09-10T00:00:00Z', report: {
+      kind: 'doctor', schemaVersion: '3.0.0', id: 'doctor-test', timestamp: '2026-09-10T00:00:00Z', cliVersion: 'test', cwd: root, executorName: 'script', model: 'test', outcome: 'passed', totals: {pass:1,warn:0,fail:0}, ruleStats: {pass:1,warn:0,fail:0,skipped:0,total:1}, skills: [{skillName,skillPath:root,status:'pass',results:[{ruleId:'fixture',severity:'info',labelKey:'fixture',status:'pass',message:'<script>unsafe()</script>',durationMs:0}]}],
+    }});
+    const a = createNextStudioServer({port:0,doctorsDir,analysesDir,observationsDir:join(root,'a'),coreStudioCatalog:catalog});
+    const b = createNextStudioServer({port:0,doctorsDir:join(root,'empty-doctors'),analysesDir,observationsDir:join(root,'b'),coreStudioCatalog:{...catalog,list:async()=>[]}});
     servers.push(a,b);
     const [urlA,urlB] = await Promise.all([a.start(),b.start()]);
     const [pageA,pageB] = await Promise.all([fetch(`${urlA}/measure?lang=en`),fetch(`${urlB}/measure?lang=en`)]);
@@ -36,7 +43,8 @@ describe('Next Studio production boundary', () => {
     for (const label of ['Run status','Evidence status','Conclusion status']) assert.ok(htmlA.includes(label));
     const detail = await fetch(`${urlA}/measure/next-real-run`);
     assert.equal(detail.status,200);
-    assert.match(await detail.text(),/评测范围/);
+    const detailHtml=await detail.text();
+    for(const label of ['评测范围','分析结果','证据与定义']) assert.ok(detailHtml.includes(label));
     const asset = htmlA.match(/src="([^\"]*\/_next\/[^\"]+\.js[^\"]*)"/)?.[1];
     assert.ok(asset);
     assert.equal((await fetch(new URL(asset.replaceAll('&amp;','&'),urlA))).status,200);
@@ -44,6 +52,21 @@ describe('Next Studio production boundary', () => {
     assert.equal((await fetch(`${urlA}/measure/missing`)).status,404);
     assert.equal((await fetch(`${urlA}/measure/%ZZ`)).status,404);
     assert.equal((await fetch(`${urlA}/measure`,{method:'POST'})).status,405);
+    const knowledge = await fetch(`${urlA}/knowledge`);
+    const knowledgeHtml = await knowledge.text();
+    assert.equal(knowledge.status, 200);
+    assert.match(knowledgeHtml, /href="\/knowledge" aria-current="page"/);
+    assert.match(knowledgeHtml, /knowledge-table/);
+    assert.match(knowledgeHtml, /audit\/&lt;script&gt;/);
+    assert.doesNotMatch(knowledgeHtml, /<script>alert\(1\)<\/script>/);
+    const skill = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}`);
+    assert.equal(skill.status, 200);
+    const skillHtml = await skill.text();
+    assert.match(skillHtml, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
+    for (const label of ['健康体检','生产观测','待优化项']) assert.ok(skillHtml.includes(label));
+    assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
+    for (const path of ['/knowledge/skills/missing','/knowledge/skills/%ZZ']) assert.equal((await fetch(urlA+path)).status,404);
+    assert.equal((await fetch(`${urlA}/knowledge`,{method:'POST'})).status,405);
     await a.stop();
     assert.equal(a.getUrl(),null);
     assert.equal((await fetch(`${await a.start()}/measure`)).status,200);

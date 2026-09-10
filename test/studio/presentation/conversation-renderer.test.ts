@@ -1,7 +1,7 @@
+import { buildConversationDetailActivitySnapshot } from '../../../src/studio/view-models/conversation-activity.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  buildConversationDetailActivitySnapshot,
   renderConversationDetailPage,
   renderConversationIndexPage,
 } from '../../../src/studio/presentation/conversation-renderer.js';

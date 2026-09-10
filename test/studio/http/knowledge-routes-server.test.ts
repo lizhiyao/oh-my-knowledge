@@ -40,7 +40,9 @@ describe('Studio knowledge routes', () => {
     assert.deepEqual(await api.json(), { schemaVersion: 1, rows: [] });
     assert.equal(managedResolutions, 1);
 
-    assert.equal((await fetch(`${baseUrl}/knowledge/managed`)).status, 200);
+    const managed = await fetch(`${baseUrl}/knowledge/managed`);
+    assert.equal(managed.status, 200);
+    assert.match(await managed.text(), /<body class="studio-workspace">/);
     assert.equal(managedResolutions, 2);
 
     assert.equal((await fetch(`${baseUrl}/not-found`)).status, 404);

@@ -43,12 +43,9 @@ export type {
   SkillObserveSnapshot,
 } from '../view-models/index.js';
 
-interface SkillIndexCache {
-  fingerprint: string;
-  result: SkillIndex;
+export interface SkillIndexCache {
+  entry?: { fingerprint: string; result: SkillIndex };
 }
-
-let indexCache: SkillIndexCache | null = null;
 
 function directoryFingerprint(directory: string, suffix: string): string {
   try {
@@ -258,10 +255,8 @@ function latestTimestamp(entry: SkillIndexEntry): string {
 export interface BuildSkillIndexOptions {
   includeObserveCards?: boolean;
   includeDoctorCards?: boolean;
-}
-
-export function _resetSkillIndexCache(): void {
-  indexCache = null;
+  /** Owned by the querying server; omitted for uncached standalone builds. */
+  cache?: SkillIndexCache;
 }
 
 export function buildSkillIndex(
@@ -275,14 +270,17 @@ export function buildSkillIndex(
   const graphPaths = listMeasurementDerivedPaths(doctorsDir, 'doctor', 'graph.json');
   const doctorReportPaths = listMeasurementReportPaths(doctorsDir, 'doctor');
   const observeReportPaths = listMeasurementReportPaths(analysesDir, 'observe-health');
-  const fingerprint = [
+  // Scan file metadata on each cached query so edits and deletions remain visible.
+  // A directory mtime alone does not detect edits to existing files.
+  const fingerprint = options.cache ? [
+    analysesDir, doctorsDir, observationsDir,
     pathsFingerprint(observeReportPaths),
     pathsFingerprint(doctorReportPaths),
     directoryFingerprint(observationReportsDir(resolveObservationsDir(observationsDir)), '.report.json'),
     pathsFingerprint(graphPaths),
     cardFingerprint(includeObserveCards, includeDoctorCards),
-  ].join('|');
-  if (indexCache?.fingerprint === fingerprint) return indexCache.result;
+  ].join('|') : '';
+  if (options.cache?.entry?.fingerprint === fingerprint) return structuredClone(options.cache.entry.result);
 
   const observeBy = scanObserveReports(analysesDir);
   if (includeObserveCards) {
@@ -373,6 +371,6 @@ export function buildSkillIndex(
     diagnosticsBySkill,
     diagnosisSummary: buildStudioDiagnosisSummary(diagnosisBundle),
   };
-  indexCache = { fingerprint, result };
+  if (options.cache) options.cache.entry = { fingerprint, result: structuredClone(result) };
   return result;
 }
