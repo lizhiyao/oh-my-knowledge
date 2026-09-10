@@ -36,7 +36,8 @@ describe('Next Studio production boundary', () => {
     for (const label of ['Run status','Evidence status','Conclusion status']) assert.ok(htmlA.includes(label));
     const detail = await fetch(`${urlA}/measure/next-real-run`);
     assert.equal(detail.status,200);
-    assert.match(await detail.text(),/评测范围/);
+    const detailHtml=await detail.text();
+    for(const label of ['评测范围','分析结果','证据与定义']) assert.ok(detailHtml.includes(label));
     const asset = htmlA.match(/src="([^\"]*\/_next\/[^\"]+\.js[^\"]*)"/)?.[1];
     assert.ok(asset);
     assert.equal((await fetch(new URL(asset.replaceAll('&amp;','&'),urlA))).status,200);

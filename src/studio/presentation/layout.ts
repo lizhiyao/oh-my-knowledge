@@ -390,13 +390,15 @@ export function layout(
   lang: Lang = DEFAULT_LANG,
   options: LayoutOptions = {},
 ): string {
+  const workspace = options.workspace ?? options.navigation !== false;
+  const content = workspace && !options.workspace ? `<section class="studio-document" role="region" tabindex="0" aria-label="${lang === 'zh' ? '报告内容' : 'Report content'}">${body}</section>` : body;
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
   const favicon = encodeURIComponent(BRAND_LOGO_RAW);
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
   const navigation = options.navigation === false ? '' : renderStudioNavigation(lang, options.navigation);
-  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? (lang === 'en' ? '/?lang=en' : '/'))}"><span class="app-brand-logo">${brandLogo(30)}</span><strong class="app-brand-name">OMK</strong><span class="app-brand-tag">Studio</span></a>${navigation}<span class="app-bar-spacer"></span></header>`;
+  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? (lang === 'en' ? '/?lang=en' : '/'))}"><span class="app-brand-logo">${brandLogo(30)}</span><strong class="app-brand-name">OMK Studio</strong></a>${navigation}<span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${e(title)}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
@@ -450,7 +452,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 /* Shared application shell for every Studio section. */
 .app-bar{position:sticky;top:0;z-index:30;height:54px;background:var(--bg-surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px;flex-shrink:0}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
-.app-brand:hover{color:var(--text-primary);text-decoration:none}
+.app-brand:hover,.app-brand:focus,.app-brand:active{color:var(--text-primary);text-decoration:none}
 .app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
 .app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-name{font-size:14px;font-weight:650;letter-spacing:.01em}
@@ -469,10 +471,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .studio-workspace .app-main{flex:1;min-height:0;width:100%;max-width:none;margin:0;padding:0;display:flex;flex-direction:column}
 .studio-page{flex:1;min-height:0;display:flex;flex-direction:column}
 .studio-page-title{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.studio-page-body{flex:1;min-height:0;overflow:auto;padding:22px}
+.studio-page-body{flex:1;min-height:0;overflow:hidden;padding:12px 20px;display:flex;flex-direction:column}.studio-document{flex:1;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;padding:12px 20px}.studio-workspace .app-main{overflow:hidden}.studio-workspace .studio-document main{max-width:none;margin:0}.studio-workspace .studio-document h1{font-size:22px}.studio-document:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .studio-page-description{max-width:820px;color:var(--text-secondary);font-size:13px;margin:0 0 20px}
 .studio-empty{padding:36px;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);text-align:center}
-@media(max-width:720px){.studio-page-body{padding:14px}}
+@media(max-width:720px){.studio-page-body,.studio-document{padding:8px 12px}}
 h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
 h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
 .subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
@@ -807,7 +809,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .lang-toggle,.btn-danger,.nav{display:none}
   .hint-tip{display:none}
   .footer{color:#475569}
-  .studio-workspace,.studio-workspace .app-main,.studio-page,.studio-page-body{height:auto;overflow:visible;display:block}
+  .studio-workspace,.studio-workspace .app-main,.studio-page,.studio-page-body,.studio-document{height:auto;overflow:visible;display:block}
 }
-</style></head><body${options.workspace ? ' class="studio-workspace"' : ''}>${appBar}<div class="app-main">${body}${options.workspace ? '' : '<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>'}</div>${langToggleScript()}</body></html>`;
+</style></head><body${workspace ? ' class="studio-workspace"' : ''}>${appBar}<div class="app-main">${content}${workspace ? '' : '<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>'}</div>${langToggleScript()}</body></html>`;
 }

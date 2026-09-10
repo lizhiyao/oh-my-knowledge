@@ -141,17 +141,19 @@ export function reportShell(opts: ReportShellOpts, lang: Lang = DEFAULT_LANG): s
   </nav>`;
 
   return layout(`${opts.kindTitle} · ${opts.skillName}`, `
-    <main>
+    <main class="studio-report">
       ${crumb}
       ${hero}
-      ${opts.skillContext ? renderSkillContext(opts.skillContext, lang) : ''}
-      ${opts.body}
+      <section class="studio-report-body" tabindex="0" role="region" aria-label="${zh ? '报告详情' : 'Report details'}">${opts.skillContext ? renderSkillContext(opts.skillContext, lang) : ''}
+      ${opts.body}</section>
     </main>
     <style>${REPORT_SHELL_CSS}${opts.extraCss ?? ''}</style>
-  `, lang, { navigation: opts.dim === 'doctor' ? 'knowledge' : opts.dim === 'eval' ? 'measure' : 'observe' });
+  `, lang, { navigation: opts.dim === 'doctor' ? 'knowledge' : opts.dim === 'eval' ? 'measure' : 'observe', workspace: true });
 }
 
 export const REPORT_SHELL_CSS = `
+.studio-report{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;padding:12px 20px;overflow:hidden}.studio-report>.rs-crumb,.studio-report>.rs-hero{flex-shrink:0;margin-bottom:10px}.studio-report-body{flex:1;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain}.studio-report .rs-hero{padding:12px 16px}.studio-report .rs-hero-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.studio-report .rs-hero-left{min-width:0}.studio-report .rs-hero-meta{max-height:42px;overflow:auto}.studio-report .rs-hero-num{font-size:28px}
+
 /* ── 面包屑(替掉裸返回链接) ── */
 .rs-crumb{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:13px;color:#637083}
 .rs-crumb-link{display:inline-flex;align-items:center;gap:6px;color:#637083;text-decoration:none}
