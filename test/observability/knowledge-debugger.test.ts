@@ -329,7 +329,7 @@ describe('Knowledge evidence projection', () => {
       event('e1', 'tool_use', {
         callInstanceId: 'call-read',
         toolName: 'Read',
-        fullText: JSON.stringify({ file_path: '/repo/src/auth.ts' }),
+        fullText: JSON.stringify({ file_path: `/repo/${'segment/'.repeat(80)}auth.ts` }),
       }),
       event('e2', 'tool_result', {
         callInstanceId: 'call-read',
@@ -358,6 +358,6 @@ describe('Knowledge evidence projection', () => {
 
     assert.equal(projected.length, 1);
     assert.equal(projected[0].knowledgeKind, 'runtime_evidence');
-    assert.equal(projected[0].sourceLocator, '/repo/src/auth.ts');
+    assert.equal(projected[0].sourceLocator, `/repo/${'segment/'.repeat(80)}auth.ts`);
   });
 });

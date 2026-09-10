@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Space, Table, Tabs, Tag, Typography } from 'antd';
 import type { ObservePage } from '../../http/observe-page';
 import type { ConversationListItem } from '../../../observability/view-models/conversation';
+import { EventRecords, RawRecords } from './records';
+import type { ObservationSourceRecordArchiveView } from '../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
 import type { Language } from './shell';
 
@@ -111,13 +113,13 @@ function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'c
   </>;
 }
 function SourceRecords({endpoint,lang}: {endpoint:string;lang:Language}) {
-  const [value,setValue]=useState<unknown>(); const [failed,setFailed]=useState(false);
+  const [value,setValue]=useState<ObservationSourceRecordArchiveView>(); const [failed,setFailed]=useState(false);
   useEffect(()=>{const controller=new AbortController();
     fetch(endpoint,{signal:controller.signal,cache:'no-store'}).then(response=>{if(!response.ok)throw new Error('unavailable');return response.json();}).then(value=>{if(!controller.signal.aborted)setValue(value);}).catch(()=>{if(!controller.signal.aborted)setFailed(true);});
     return()=>controller.abort();
   },[endpoint]);
   if(failed)return <Alert type="error" title={lang==='zh'?'原始记录暂时无法读取，请重新打开此标签。':'Source records are unavailable. Reopen this tab to retry.'}/>;
-  return value===undefined?<p role="status">{lang==='zh'?'正在读取原始记录…':'Loading source records…'}</p>:<Evidence value={value}/>;
+  return value===undefined?<p role="status">{lang==='zh'?'正在读取原始记录…':'Loading source records…'}</p>:<RawRecords archive={value} lang={lang}/>;
 }
 function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory'}>;lang:Language}) {
   const zh=lang==='zh'; const router=useRouter();
@@ -168,8 +170,8 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
     </header>
     <Tabs className="trajectory-tabs" activeKey={activeTab} onChange={setActiveTab} destroyOnHidden items={[
       {key:'replay',label:zh?'语义轨迹':'Semantic trajectory',children:<Swimlane projection={page.replay} lang={lang} revision={page.revision} follow={follow} onPause={()=>setFollow(false)}/>},
-      {key:'knowledge',label:zh?'知识访问':'Knowledge access',children:<><Alert type="info" title={zh?'访问记录说明知识曾被读取或注入，不代表它导致了结果。':'Access records show reads or injections; they do not establish causation.'}/><Table rowKey="id" size="small" tableLayout="fixed" dataSource={model.knowledgeEvidence} scroll={{x:760}} columns={[{title:zh?'知识':'Knowledge',dataIndex:'label',width:220,ellipsis:true},{title:zh?'方式':'Access',dataIndex:'accessKind',width:140,ellipsis:true},{title:zh?'次数':'Count',dataIndex:'accessCount',width:80,align:'right'},{title:zh?'来源':'Source',dataIndex:'sourceLocator',ellipsis:true}]} expandable={{expandedRowRender:item=><Evidence value={item}/>}}/></>},
-      {key:'events',label:zh?'标准化事件':'Normalized events',children:<Evidence value={model.normalizedEvents}/>},
+      {key:'knowledge',label:zh?'知识访问':'Knowledge access',children:<><Alert type="info" title={zh?'访问记录说明知识曾被读取或注入，不代表它导致了结果。':'Access records show reads or injections; they do not establish causation.'}/><Table rowKey="id" size="small" tableLayout="auto" dataSource={model.knowledgeEvidence} scroll={{x:'max-content'}} columns={[{title:zh?'知识':'Knowledge',dataIndex:'label',width:220},{title:zh?'方式':'Access',dataIndex:'accessKind',width:140},{title:zh?'次数':'Count',dataIndex:'accessCount',width:80,align:'right'},{title:zh?'来源':'Source',dataIndex:'sourceLocator'}]} expandable={{expandedRowRender:item=><Evidence value={item}/>}}/></>},
+      {key:'events',label:zh?'标准化事件':'Normalized events',children:<EventRecords events={model.normalizedEvents} lang={lang}/>},
       {key:'source',label:zh?'原始记录':'Source records',children:<SourceRecords key={page.revision} endpoint={`${api}/source-records`} lang={lang}/>},
     ]}/>
   </div>;

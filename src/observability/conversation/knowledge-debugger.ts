@@ -404,7 +404,7 @@ function sourceLocator(inputText: string): string | undefined {
   const input = parsed as Record<string, unknown>;
   for (const key of ['file_path', 'path', 'url', 'query', 'command', 'cmd']) {
     const value = input[key];
-    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 500);
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return undefined;
 }
