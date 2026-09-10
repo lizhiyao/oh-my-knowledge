@@ -5,7 +5,7 @@ import {
   renderConversationIndexPage,
 } from '../../presentation/conversation-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
-import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../view-models/conversation-activity.js';
+import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversation-activity.js';
 import { STUDIO_SOURCE_UNAVAILABLE } from '../errors.js';
 import type {
   LiveStreamRegistry,

@@ -5,7 +5,7 @@
 ## 渲染与查询边界
 
 - Studio 应用页面统一向 Next.js 收敛；新页面不再增加手写 HTML 实现。API、SSE 与独立报告入口按各自职责维护，不为迁移页面而复制领域查询。
-- 泳道布局、证据引用与活动快照放在共享 view-model 投影中，HTTP、React 和 HTML renderer 消费同一实现；共享投影不得依赖 presentation 或 web。
+- view-models 仅存放类型契约；泳道布局、证据引用与活动快照的运行时计算放在 application 中，HTTP、React 和 HTML renderer 消费同一实现；application 不得依赖 presentation、http 或 web，view-models 不得反向依赖这些层或 application。
 - Knowledge 页面与 API 共用 application 查询入口。缓存由服务实例持有，目录按请求解析，返回值不得暴露缓存内部的可变引用。
 - 清理旧渲染器前检查实际调用者；仍服务于独立报告或调试入口的实现不算死代码。具体迁移路由与剩余工作记录在 PR，不在本规则中维护易过期的路由清单。
 

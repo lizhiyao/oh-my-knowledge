@@ -16,8 +16,6 @@ import {
 } from '../../eval-workflows/artifact-store/index.js';
 import { assertCoreProjectionSource } from '../../eval-workflows/projections/source.js';
 import {
-  CORE_STUDIO_RUN_CARD_SCHEMA_VERSION,
-  CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION,
   type CoreStudioAnalysisRecord,
   type CoreStudioBudget,
   type CoreStudioDecision,
@@ -29,7 +27,7 @@ import {
   type CoreStudioRunDetail,
   type CoreStudioRuntimeIdentity,
   type CoreStudioUsage,
-} from './contracts.js';
+} from '../view-models/core-runs.js';
 
 function freezeView<T>(value: T): T {
   return deepFreezeCanonicalJson(value as unknown as JsonValue) as unknown as T;
@@ -355,3 +353,6 @@ export function projectCoreStudioRunDetail(
     })),
   });
 }
+
+export const CORE_STUDIO_RUN_CARD_SCHEMA_VERSION: CoreStudioRunCard['schemaVersion'] = 'omk.studio-core-run-card/v1';
+export const CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION: CoreStudioRunDetail['schemaVersion'] = 'omk.studio-core-run-detail/v1';

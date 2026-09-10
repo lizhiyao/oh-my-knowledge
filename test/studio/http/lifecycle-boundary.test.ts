@@ -9,12 +9,12 @@ describe('Studio HTTP lifecycle boundary', () => {
 
     expect(relativeImports).toEqual([
       './contracts.js',
-      './presentation.js',
+      './app-host.js',
       './errors.js',
       './request-handler.js',
       './contracts.js',
     ]);
-    expect(listener).not.toMatch(/studio\/(?:application|core-runs|presentation)/);
+    expect(listener).not.toMatch(/studio\/(?:application|view-models|presentation|web)/);
     expect(listener).not.toMatch(/\.\.\/(?:\.\.\/)?(?:diagnosis|doctor|managed|evidence|observability|shared)\//);
   });
 

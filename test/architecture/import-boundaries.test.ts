@@ -201,14 +201,29 @@ const RULES: ForbiddenRule[] = [
     reason: 'Studio application 不依赖 HTML 呈现；presentation 只能消费应用结果与 view-model。',
   },
   {
+    from: 'studio/application/',
+    to: 'studio/web/',
+    reason: '共享投影与应用查询不得依赖 React 页面。',
+  },
+  {
+    from: 'studio/view-models/',
+    to: 'studio/application/',
+    reason: '视图类型契约不得反向依赖投影计算。',
+  },
+  {
+    from: 'studio/view-models/',
+    to: 'studio/http/',
+    reason: '视图类型契约不得反向依赖 HTTP 装配。',
+  },
+  {
     from: 'studio/view-models/',
     to: 'studio/presentation/',
-    reason: '共享视图投影不得依赖 HTML 渲染器。',
+    reason: '视图类型契约不得依赖 HTML 渲染器。',
   },
   {
     from: 'studio/view-models/',
     to: 'studio/web/',
-    reason: '共享视图投影不得依赖 React 页面。',
+    reason: '视图类型契约不得依赖 React 页面。',
   },
   {
     from: 'studio/presentation/',
@@ -563,6 +578,15 @@ describe('架构边界守门', () => {
       throw new Error(msg);
     }
     expect(violations).toEqual([]);
+    for (const file of listTsFiles(join(SRC_DIR, 'studio', 'view-models'))) {
+      const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+      const runtime = source.statements.filter(node => !(
+        ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)
+        || (ts.isImportDeclaration(node) && node.importClause?.isTypeOnly)
+        || (ts.isExportDeclaration(node) && node.isTypeOnly)
+      ));
+      expect(runtime.map(node => node.getText(source)), toSrcRelative(file)).toEqual([]);
+    }
   });
 
   it('shared 只依赖自身纯工具与契约', () => {

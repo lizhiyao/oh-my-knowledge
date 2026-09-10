@@ -176,7 +176,7 @@ describe('eval-runtime façade architecture guard', () => {
     const guide = readFileSync(resolve('docs/zh/guides/eval-runtime.md'), 'utf8');
     const quickstart = readFileSync(resolve('docs/zh/quickstart-skill-eval.md'), 'utf8');
     const cli = readFileSync(resolve('src/cli/commands/eval/index.ts'), 'utf8');
-    const studio = readFileSync(resolve('src/studio/core-runs/renderer.ts'), 'utf8');
+    const studio = readFileSync(resolve('src/studio/presentation/core-run-renderer.ts'), 'utf8');
     const runtimeJudge = readFileSync(
       resolve('src/eval-runtime/judges/rubric-judge.ts'),
       'utf8',

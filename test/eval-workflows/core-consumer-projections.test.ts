@@ -21,7 +21,7 @@ import {
   type CoreEvolutionEvidence,
 } from '../../src/eval-workflows/projections/index.js';
 import { projectCompletedCoreCliGate } from '../../src/eval-workflows/projections/cli-gate.js';
-import { projectCoreStudioRunDetail } from '../../src/studio/core-runs/index.js';
+import { projectCoreStudioRunDetail } from '../../src/studio/index.js';
 import { digestCanonicalJson } from '../../src/eval-core/contracts/index.js';
 import {
   prepareConformancePlan,

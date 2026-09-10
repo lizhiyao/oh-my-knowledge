@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
 import { nextCatalogContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
-import type { CoreStudioCatalog } from '../core-runs/contracts.js';
+import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { loadObservePage, type ObservePage } from './observe-page.js';
 

@@ -1,4 +1,5 @@
-import { InlineNode, parseInline, plainText } from '../view-models/inline-markdown.js';
+import { InlineNode } from '../view-models/inline-markdown.js';
+import { parseInline, plainText } from '../application/inline-markdown.js';
 import { e } from './layout.js';
 
 export interface InlineMarkdownOptions {

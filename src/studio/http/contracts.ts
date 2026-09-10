@@ -1,6 +1,6 @@
 import type { KnowledgeQuery } from '../application/knowledge-query.js';
 import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
-import type { CoreStudioCatalog } from '../core-runs/index.js';
+import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 
 export interface ReportServerOptions {
   /** Shared knowledge query for page and API adapters, scoped to this server. */

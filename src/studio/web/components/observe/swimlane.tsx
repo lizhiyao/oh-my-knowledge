@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Drawer, Empty, Select, Typography } from 'antd';
-import type { ReplayProjection } from '../../view-models/replay';
-import { createHorizontalObstacleIndex, planFlowRoute } from '../../presentation/trajectory-routing';
-import type { Language } from './shell';
+import type { ReplayProjection } from '../../../view-models/replay.js';
+import { createHorizontalObstacleIndex, planFlowRoute } from '../../../application/replay/routing';
+import type { Language } from '../layout/shell';
 
 type Card = ReplayProjection['cards'][number];
 const lanes = ['conversation', 'action', 'result', 'knowledge'] as const;

@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
-import type { ObservePage } from '../../http/observe-page';
-import type { ConversationListItem } from '../../../observability/view-models/conversation';
+import type { ObservePage } from '../../../http/observe-page';
+import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import { EventRecords, RawRecords } from './records';
-import type { ObservationSourceRecordArchiveView } from '../../../observability/contracts/inbox';
+import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
-import type { Language } from './shell';
+import type { Language } from '../layout/shell';
 
 const displayTime = (value: string | undefined) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
 const suffix = (lang: Language) => lang === 'en' ? '?lang=en' : '';

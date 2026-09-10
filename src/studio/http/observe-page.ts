@@ -1,11 +1,13 @@
-import { projectReplay, visibleAxisTicks, type ReplayProjection } from '../view-models/replay.js';
+import { projectReplay } from '../application/replay/projection.js';
+import { visibleAxisTicks } from '../application/replay/layout.js';
+import { type ReplayProjection } from '../view-models/replay.js';
 import type { Lang } from '../../shared/language.js';
 import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
 import type { ConversationIndexViewModel, ConversationListItem } from '../../observability/view-models/conversation.js';
 import type { KnowledgeDebuggerViewModel } from '../../observability/view-models/knowledge-debugger.js';
 import type { ExperienceTurnStatus } from '../../observability/contracts/experience.js';
 import { buildKnowledgeDebuggerViewModel } from '../../observability/conversation/knowledge-debugger.js';
-import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../view-models/conversation-activity.js';
+import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../application/conversation-activity.js';
 
 export type ObservePage =
   | { pageKind: 'index'; model: ConversationIndexViewModel; revision: string }

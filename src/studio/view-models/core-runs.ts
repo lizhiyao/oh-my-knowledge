@@ -7,14 +7,10 @@ import type {
   EvaluationCoverage,
 } from '../../eval-core/contracts/index.js';
 
-export const CORE_STUDIO_RUN_CARD_SCHEMA_VERSION =
-  'omk.studio-core-run-card/v1' as const;
-export const CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION =
-  'omk.studio-core-run-detail/v1' as const;
 
 export interface CoreStudioRunCard {
   readonly cardKind: 'studio-core-run-card';
-  readonly schemaVersion: typeof CORE_STUDIO_RUN_CARD_SCHEMA_VERSION;
+  readonly schemaVersion: 'omk.studio-core-run-card/v1';
   readonly runId: string;
   readonly reportId: string;
   readonly runContractDigest: string;
@@ -163,7 +159,7 @@ export interface CoreStudioDecision {
 
 export interface CoreStudioRunDetail {
   readonly detailKind: 'studio-core-run-detail';
-  readonly schemaVersion: typeof CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION;
+  readonly schemaVersion: 'omk.studio-core-run-detail/v1';
   readonly run: CoreStudioRunCard;
   readonly dataset: {
     readonly datasetId: string;

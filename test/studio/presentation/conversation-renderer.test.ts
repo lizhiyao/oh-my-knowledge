@@ -1,4 +1,4 @@
-import { buildConversationDetailActivitySnapshot } from '../../../src/studio/view-models/conversation-activity.js';
+import { buildConversationDetailActivitySnapshot } from '../../../src/studio/application/conversation-activity.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {

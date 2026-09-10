@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { Descriptions, Empty, Input, Space, Table, Tabs, Tag, Typography } from 'antd';
-import type { KnowledgePage, KnowledgeRow } from '../../http/knowledge-page';
-import type { Language } from './shell';
+import type { KnowledgePage, KnowledgeRow } from '../../../http/knowledge-page';
+import type { Language } from '../layout/shell';
 
 const { Text } = Typography;
 function Health({ row }: { row: KnowledgeRow }) {

@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { ReportServer, ReportServerOptions } from './contracts.js';
-import type { StudioPresentation } from './presentation.js';
+import type { StudioAppHost } from './app-host.js';
 import { getErrorMessage } from './errors.js';
 import { createStudioRequestHandler } from './request-handler.js';
 
@@ -41,7 +41,7 @@ export function formatListenError(port: number, error: unknown): Error | null {
   return null;
 }
 
-export function createReportServer(options: ReportServerOptions = {}, presentation?: StudioPresentation): ReportServer {
+export function createReportServer(options: ReportServerOptions = {}, presentation?: StudioAppHost): ReportServer {
   const {
     port,
     host: hostOption,
