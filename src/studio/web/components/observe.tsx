@@ -13,7 +13,7 @@ const conversationHref = (id: string, lang: Language) => `/observe/conversations
 const taskPath = (threadId: string, turnId: string) => `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}`;
 const statuses: Record<string, string> = { open: '进行中', completed: '已完成', failed: '失败', aborted: '已中止', interrupted: '已中断', unknown: '未知', success: '成功', failure: '失败', cancelled: '已取消' };
 function Status({status, lang}: {status: string; lang: Language}) {
-  return <Tag color={status === 'open' ? 'processing' : status === 'failed' ? 'error' : undefined}>{lang === 'zh' ? statuses[status] ?? status : status}</Tag>;
+  return <Tag className={status === 'open' ? 'studio-running-status' : undefined} color={status === 'open' ? 'processing' : status === 'failed' ? 'error' : undefined}>{status === 'open' && <span className="studio-running-dot" aria-hidden="true"/>}{lang === 'zh' ? statuses[status] ?? status : status}</Tag>;
 }
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
@@ -64,7 +64,7 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
       <Segmented value={filter} onChange={setFilter} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
       <Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>setQuery(event.target.value)}/>
     </div>
-    <Table className="measure-table conversation-table" tableLayout="fixed" size="small" rowKey="threadId" dataSource={rows} scroll={{x:900}} pagination={{pageSize:20,showSizeChanger:false}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
+    <Table className="measure-table conversation-table" tableLayout="fixed" size="small" rowKey="threadId" rowClassName={item => running(item) ? 'studio-running-row' : ''} dataSource={rows} scroll={{x:900}} pagination={{pageSize:20,showSizeChanger:false}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
       {title:zh?'最近活动':'Recent activity',width:200,render:(_,item)=><div className="conversation-activity"><div className="conversation-activity-time">{running(item)&&<Status status="open" lang={lang}/>}<time className="conversation-time" title={item.endTimestamp??item.startTimestamp}>{(item.endTimestamp??item.startTimestamp)?.replace('T',' ').replace(/\.\d{3}Z$/,' UTC')??'—'}</time></div><Typography.Text type="secondary">{item.model ?? item.sourceKind}</Typography.Text></div>},
       {title:zh?'会话':'Conversation',ellipsis:true,render:(_,item)=><><Link title={item.title} href={conversationHref(item.threadId,lang)}>{item.title}</Link>{item.archived&&<Tag>{zh?'已归档':'Archived'}</Tag>}</>},
       {title:zh?'工作目录':'Workspace',width:'28%',ellipsis:true,dataIndex:'cwd',render:(value:string|undefined)=><span title={value}>{value??'—'}</span>},
@@ -87,7 +87,7 @@ function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'c
     <div className="measure-heading"><div><Link href={`/observe${suffix(lang)}`}>{zh?'返回会话':'Back to conversations'}</Link><h1 title={item.title}>{item.title}</h1><p title={item.cwd}>{[item.model,item.cwd].filter(Boolean).join(' · ')}</p><p>{item.turnCount??item.tasks.length} {zh?'次任务':'tasks'} · {item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'} · {item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</p></div></div>
     {failed&&<Alert type="warning" title={zh?'暂时无法更新任务列表，请刷新重试。':'Task updates are unavailable. Reload to retry.'}/>}
     <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/></div>
-    <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
+    <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" rowClassName={task => task.status === 'open' ? 'studio-running-row' : ''} dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
       {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
       {title:zh?'状态':'Status',width:100,dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
       {title:zh?'开始时间':'Started',width:210,ellipsis:true,dataIndex:'startTimestamp'},

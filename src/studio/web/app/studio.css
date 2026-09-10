@@ -19,3 +19,11 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .knowledge-table .ant-table-tbody>tr>td{height:56px}.knowledge-table th{white-space:nowrap}.knowledge-summary{margin-bottom:12px}.knowledge-table td a{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 
 .knowledge-toolbar>.ant-input-search{flex:0 1 360px;max-width:360px;min-width:180px}.knowledge-toolbar>.ant-space{flex-shrink:0}
+
+/* Active work stays distinct from hover and completed records. */
+.studio-content .ant-table-tbody>tr.studio-running-row>td{background:#eef4ff}
+.studio-content .ant-table-tbody>tr.studio-running-row:hover>td{background:#e2edff}
+.studio-content .ant-table-tbody>tr.studio-running-row>td:first-child{box-shadow:inset 3px 0 #2563eb}
+.studio-running-row td a{font-weight:600}
+.studio-running-status.ant-tag{display:inline-flex;align-items:center;gap:5px;color:#1d4ed8;background:#dbeafe;border:1px solid #93b4f5;font-weight:600;white-space:nowrap}
+.studio-running-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
