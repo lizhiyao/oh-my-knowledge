@@ -154,7 +154,7 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
     <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'本会话':'This conversation'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
+      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
     <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
         <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button></h1>
