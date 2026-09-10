@@ -95,7 +95,9 @@
     "ci": "run-s ci:quality test",
     "prepublishOnly": "run-s clean build",
     "prepare": "husky",
-    "build:studio": "node scripts/build-studio.mjs"
+    "build:studio": "run-s build:studio:app package:studio",
+    "build:studio:app": "NEXT_TELEMETRY_DISABLED=1 next build src/studio/web --webpack",
+    "package:studio": "node scripts/package-studio.mjs"
   },
   "lint-staged": {
     "{src,test}/**/*.{ts,tsx}": [
