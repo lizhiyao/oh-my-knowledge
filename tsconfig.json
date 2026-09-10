@@ -21,6 +21,7 @@
     "scripts/**/*.ts"
   ],
   "exclude": [
+    "src/studio/web",
     "node_modules",
     "dist",
     "dist-scripts",

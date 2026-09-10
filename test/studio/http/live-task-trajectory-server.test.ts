@@ -9,9 +9,10 @@ import type {
   ConversationCatalog,
   ConversationTaskTrajectory,
 } from '../../../src/observability/conversation/catalog.js';
+import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 
-describe('Live task trajectory server', () => {
+describe.each([['native', createReportServer], ['next', createNextStudioServer]] as const)('Live task trajectory server (%s)', (_name, createServer) => {
   const root = mkdtempSync(join(tmpdir(), 'omk-live-trajectory-server-'));
   const tracePath = join(root, 'rollout.jsonl');
   let server: ReturnType<typeof createReportServer> | undefined;
@@ -88,7 +89,7 @@ describe('Live task trajectory server', () => {
         return () => { unsubscribed = true; };
       },
     };
-    server = createReportServer({
+    server = createServer({
       port: 0,
       observationsDir: join(root, 'observations'),
       conversationCatalog: catalog,

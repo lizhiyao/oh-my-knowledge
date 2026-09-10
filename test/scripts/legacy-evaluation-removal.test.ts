@@ -45,7 +45,7 @@ const FORBIDDEN_SPECIFIER_FRAGMENTS = [
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = resolve(directory, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
+    if (entry.isDirectory()) return entry.name === '.next' ? [] : sourceFiles(path);
     return entry.isFile() && ['.ts', '.tsx', '.mts', '.cts'].includes(extname(entry.name)) ? [path] : [];
   });
 }

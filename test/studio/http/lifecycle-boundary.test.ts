@@ -9,6 +9,7 @@ describe('Studio HTTP lifecycle boundary', () => {
 
     expect(relativeImports).toEqual([
       './contracts.js',
+      './presentation.js',
       './errors.js',
       './request-handler.js',
       './contracts.js',

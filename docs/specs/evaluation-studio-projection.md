@@ -52,3 +52,13 @@ The renderer escapes every projected value. All navigation paths come from a cal
 The Core Studio modules do not import the deleted legacy `ReportStore`, legacy `EvaluationReport`, `VariantResult`, or result rows. The production server mounts the Core handler directly; the skill index consumes Core cards, and the legacy evaluation routes and renderer no longer exist. There is no legacy reader, adapter, shadow read, or dual view.
 
 This one-way removal is `BREAKING-SCHEMA`: old report files are not migrated or read. It changes no evaluator, analysis formula, prompt, missing-data policy, or verdict semantics and is not `BREAKING-COMPARABILITY`.
+
+## Studio application framework
+
+Studio uses Next.js App Router, TypeScript, and Ant Design as its target application stack. The first migration slice replaces the CLI-hosted `/measure` list and detail pages with React components. Observe and Knowledge keep their existing routes until their own migration slices; a migrated page has one active implementation, without a fallback to its old HTML renderer.
+
+The Node listener owns Next's preparation and shutdown. Server components receive the existing `CoreStudioCatalog` through request-scoped context, so simultaneous Studio instances cannot read each other's catalogs. The catalog is resolved before HTML streaming to preserve 404/503 responses. The existing JSON API and standalone Core rendering exports retain their contracts; this migration changes neither Core artifacts nor measurement semantics.
+
+`yarn build` builds the application and copies its production assets into `dist/studio/web`. The published package includes the prebuilt UI and its runtime dependencies. `omk studio` uses the same port and directory flags and never builds a UI during user startup. Framework telemetry is disabled during the build. Framework migration must be verified through an isolated package installation, deep-link refresh, real artifact rendering, and listener/SSE cleanup.
+
+The three status axes remain separate. Ant Design provides interaction and visual primitives; domain code continues to own status, evidence availability, and conclusions. Subsequent slices migrate Observe and Knowledge, including their specialized interactions; this first slice does not claim that those pages have already been converted to React.
