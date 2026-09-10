@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import type { StudioApiErrorCode } from './errors.js';
 
 export class RequestBodyError extends Error {
   override readonly name = 'RequestBodyError';
@@ -6,6 +7,7 @@ export class RequestBodyError extends Error {
   constructor(
     message: string,
     readonly statusCode: 400 | 403 | 413 | 415,
+    readonly code: StudioApiErrorCode,
   ) {
     super(message);
   }
@@ -14,21 +16,21 @@ export class RequestBodyError extends Error {
 export function assertTrustedMutationRequest(request: IncomingMessage): void {
   const fetchSite = request.headers['sec-fetch-site'];
   if (fetchSite === 'cross-site') {
-    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+    throw new RequestBodyError('cross-origin mutation is not allowed', 403, 'mutation_not_trusted');
   }
 
   const origin = request.headers.origin;
   if (!origin) return;
   if (Array.isArray(origin) || !request.headers.host) {
-    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+    throw new RequestBodyError('cross-origin mutation is not allowed', 403, 'mutation_not_trusted');
   }
   try {
     if (new URL(origin).host !== request.headers.host) {
-      throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+      throw new RequestBodyError('cross-origin mutation is not allowed', 403, 'mutation_not_trusted');
     }
   } catch (error) {
     if (error instanceof RequestBodyError) throw error;
-    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+    throw new RequestBodyError('cross-origin mutation is not allowed', 403, 'mutation_not_trusted');
   }
 }
 
@@ -39,7 +41,7 @@ function assertJsonContentType(request: IncomingMessage): void {
     : '';
   if (mediaType === 'application/json' || mediaType.endsWith('+json')) return;
   request.resume();
-  throw new RequestBodyError('content-type must be application/json', 415);
+  throw new RequestBodyError('content-type must be application/json', 415, 'unsupported_media_type');
 }
 
 export function readJsonObjectBody(
@@ -62,19 +64,19 @@ export function readJsonObjectBody(
     });
     request.on('end', () => {
       if (tooLarge) {
-        reject(new RequestBodyError('request body too large', 413));
+        reject(new RequestBodyError('request body too large', 413, 'request_body_too_large'));
         return;
       }
       try {
         const raw = Buffer.concat(chunks).toString('utf-8').trim();
         const parsed = raw ? JSON.parse(raw) as unknown : {};
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          reject(new RequestBodyError('json body must be an object', 400));
+          reject(new RequestBodyError('json body must be an object', 400, 'json_body_not_object'));
           return;
         }
         resolve(parsed as Record<string, unknown>);
       } catch {
-        reject(new RequestBodyError('invalid json body', 400));
+        reject(new RequestBodyError('invalid json body', 400, 'invalid_json_body'));
       }
     });
     request.on('error', reject);

@@ -6,7 +6,7 @@ import {
 } from '../../presentation/conversation-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversation-activity.js';
-import { STUDIO_SOURCE_UNAVAILABLE } from '../errors.js';
+import { STUDIO_SOURCE_UNAVAILABLE, HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type {
   LiveStreamRegistry,
   StudioRouteHandler,
@@ -26,10 +26,7 @@ export function createConversationRoutes({
       const snapshot = buildConversationActivitySnapshot(
         await catalog.listConversations(),
       );
-      response.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify(snapshot));
       return true;
     }
@@ -40,24 +37,17 @@ export function createConversationRoutes({
       try { threadId = decodeURIComponent(conversationActivityMatch[1]); } catch { /* invalid path */ }
       const conversation = threadId ? await catalog.getConversation(threadId) : undefined;
       if (!conversation) {
-        response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify({ error: 'conversation_not_found' }));
+        writeJsonError(response, 404, 'conversation_not_found');
         return true;
       }
-      response.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify(buildConversationDetailActivitySnapshot(conversation)));
       return true;
     }
 
     if (path === '/observe') {
       const html = renderConversationIndexPage(await catalog.listConversations(), lang);
-      response.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, HTML_HEADERS);
       response.end(html);
       return true;
     }
@@ -74,13 +64,11 @@ export function createConversationRoutes({
         ? await catalog.loadTaskTrajectory(threadId, turnId)
         : undefined;
       if (!initial) {
-        response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify({ error: 'task_trajectory_not_found' }));
+        writeJsonError(response, 404, 'task_trajectory_not_found');
         return true;
       }
       if (!catalog.observeTaskTrajectory) {
-        response.writeHead(501, { 'Content-Type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify({ error: 'live_task_trajectory_unavailable' }));
+        writeJsonError(response, 501, 'live_task_trajectory_unavailable');
         return true;
       }
 
@@ -161,7 +149,7 @@ export function createConversationRoutes({
         ? await catalog.loadTaskTrajectory(threadId, turnId)
         : undefined;
       if (!trajectory) {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(404, TEXT_HEADERS);
         response.end(lang === 'en' ? 'task trajectory not found' : '任务轨迹不存在');
         return true;
       }
@@ -187,10 +175,7 @@ export function createConversationRoutes({
           } : {}),
         },
       );
-      response.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, HTML_HEADERS);
       response.end(html);
       return true;
     }
@@ -207,14 +192,10 @@ export function createConversationRoutes({
         ? await catalog.loadTaskTrajectory(threadId, turnId)
         : undefined;
       if (!trajectory) {
-        response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify({ error: 'task_trajectory_not_found' }));
+        writeJsonError(response, 404, 'task_trajectory_not_found');
         return true;
       }
-      response.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify(trajectory.sourceRecords));
       return true;
     }
@@ -225,14 +206,11 @@ export function createConversationRoutes({
       try { threadId = decodeURIComponent(conversationDetailMatch[1]); } catch { /* invalid path */ }
       const conversation = threadId ? await catalog.getConversation(threadId) : undefined;
       if (!conversation) {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(404, TEXT_HEADERS);
         response.end(lang === 'en' ? 'conversation not found' : '对话不存在');
         return true;
       }
-      response.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, HTML_HEADERS);
       response.end(renderConversationDetailPage(conversation, lang));
       return true;
     }

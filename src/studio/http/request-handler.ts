@@ -8,7 +8,7 @@ import { createKnowledgeQuery } from '../application/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
-import { getErrorMessage, STUDIO_SOURCE_UNAVAILABLE } from './errors.js';
+import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS, writeJsonError } from './errors.js';
 import {
   assertTrustedMutationRequest,
   RequestBodyError,
@@ -81,7 +81,7 @@ export function createStudioRequestHandler({
       try {
         decodeURIComponent(path);
       } catch {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(404, TEXT_HEADERS);
         response.end('Not Found');
         return;
       }
@@ -110,14 +110,14 @@ export function createStudioRequestHandler({
       };
 
       if (path === '/health') {
-        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify({ ok: true, service: 'omk' }));
         return;
       }
 
       if (path === '/api/shutdown' && request.method === 'POST') {
         assertTrustedMutationRequest(request);
-        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify({ ok: true }));
         shutdownTimer ??= setTimeout(() => {
           shutdownTimer = undefined;
@@ -130,7 +130,7 @@ export function createStudioRequestHandler({
       if (await conversationRoutes(routeContext)) return;
       if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
 
-      response.writeHead(404, { 'Content-Type': 'text/plain' });
+      response.writeHead(404, TEXT_HEADERS);
       response.end('Not Found');
     } catch (error: unknown) {
       if (response.headersSent) {
@@ -141,9 +141,13 @@ export function createStudioRequestHandler({
         ? error.statusCode
         : error instanceof ObservationReviewStateValidationError
           ? 400
-          : 500;
-      response.writeHead(statusCode, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ error: statusCode === 500 ? STUDIO_SOURCE_UNAVAILABLE : getErrorMessage(error) }));
+          : 503;
+      const code = error instanceof RequestBodyError
+        ? error.code
+        : error instanceof ObservationReviewStateValidationError
+          ? 'invalid_review_state'
+          : STUDIO_SOURCE_UNAVAILABLE;
+      writeJsonError(response, statusCode, code);
     }
   }
 

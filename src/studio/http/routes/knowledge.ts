@@ -11,6 +11,7 @@ import { renderSkillHealthReport } from '../../presentation/skill-health-rendere
 import { renderSkillList } from '../../presentation/skill-list-renderer.js';
 import type { SkillReportContext } from '../../view-models/report-context.js';
 import { loadChartJsBundle } from '../chart-asset.js';
+import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
 
 interface KnowledgeRoutesOptions {
@@ -61,8 +62,8 @@ export function createKnowledgeRoutes({
       if (path === '/static/chart.js') {
         const bytes = loadChartJsBundle();
         if (!bytes) {
-          res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end('chart.js asset unavailable');
+          res.writeHead(500, TEXT_HEADERS);
+          res.end('chart_asset_unavailable');
           return true;
         }
         res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
@@ -84,26 +85,26 @@ export function createKnowledgeRoutes({
       }
 
       if (path === '/api/observe-health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify(listAnalyses(analysesDir, includeObserveCards)));
         return true;
       }
 
       if (path === '/observe/health') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderAnalysisList(listAnalyses(analysesDir, includeObserveCards), lang));
         return true;
       }
 
       // 受管 skill 决策史（#203 管理支柱可视化出口）。只读受管记录,口径同 omk list。
       if (path === '/api/managed') {
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({ schemaVersion: 1, rows: listManagedRows(resolveManagedRoot()) }));
         return true;
       }
 
       if (path === '/knowledge/managed') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderManagedList(listManagedRows(resolveManagedRoot()), lang));
         return true;
       }
@@ -116,11 +117,11 @@ export function createKnowledgeRoutes({
         // 不会串到同一页;且只在已加载、已校验的记录里查,不拼文件路径、无路径穿越。
         const record = id ? loadAllManagedRecords(resolveManagedRoot()).find((r) => r.id === id) : undefined;
         if (!record) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.writeHead(404, TEXT_HEADERS);
           res.end(lang === 'en' ? 'managed record not found' : '受管记录不存在');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderManagedHistory(record, lang));
         return true;
       }
@@ -131,7 +132,7 @@ export function createKnowledgeRoutes({
         const skillName = parsed.searchParams.get('skill') ?? '';
         const report = loadDoctorReport(doctorsDir, id, skillName || undefined, includeDoctorCards);
         if (!report) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.writeHead(404, TEXT_HEADERS);
           res.end(lang === 'en' ? 'doctor report not found' : '体检报告不存在');
           return true;
         }
@@ -141,7 +142,7 @@ export function createKnowledgeRoutes({
           const entry = idx.entries.find((en) => en.skillName === skillName);
           if (entry) ctx = buildSkillContext(entry, id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
         res.end(renderDoctorDetail(report, skillName, langQ, lang, ctx));
         return true;
@@ -152,11 +153,11 @@ export function createKnowledgeRoutes({
         const id = decodeURIComponent(analysisDetailMatch[1]);
         const report = loadAnalysis(analysesDir, id, includeObserveCards);
         if (!report) {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.writeHead(404, TEXT_HEADERS);
           res.end('analysis not found');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderSkillHealthReport(report, lang));
         return true;
       }
@@ -166,11 +167,10 @@ export function createKnowledgeRoutes({
         const id = decodeURIComponent(analysisApiMatch[1]);
         const report = loadAnalysis(analysesDir, id, includeObserveCards);
         if (!report) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'analysis not found' }));
+          writeJsonError(res, 404, 'analysis_not_found');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify(report));
         return true;
       }
@@ -178,7 +178,7 @@ export function createKnowledgeRoutes({
       const skillTrendApiMatch = path.match(/^\/api\/skill-trend\/(.+)$/);
       if (skillTrendApiMatch) {
         const skillName = decodeURIComponent(skillTrendApiMatch[1]);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify(querySkillTrend(analysesDir, skillName, includeObserveCards)));
         return true;
       }
@@ -186,7 +186,7 @@ export function createKnowledgeRoutes({
       const skillTrendPageMatch = path.match(/^\/observe\/skill-trend\/(.+)$/);
       if (skillTrendPageMatch) {
         const skillName = decodeURIComponent(skillTrendPageMatch[1]);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderSkillTrendPage(querySkillTrend(analysesDir, skillName, includeObserveCards), lang));
         return true;
       }
@@ -195,17 +195,17 @@ export function createKnowledgeRoutes({
         const fromId = parsed.searchParams.get('from');
         const toId = parsed.searchParams.get('to');
         if (!fromId || !toId) {
-          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.writeHead(400, TEXT_HEADERS);
           res.end('missing from/to query params');
           return true;
         }
         const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
         if (!diff) {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.writeHead(404, TEXT_HEADERS);
           res.end('analysis not found');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderSkillDiffPage(diff, lang));
         return true;
       }
@@ -214,17 +214,15 @@ export function createKnowledgeRoutes({
         const fromId = parsed.searchParams.get('from');
         const toId = parsed.searchParams.get('to');
         if (!fromId || !toId) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'missing from/to query params' }));
+          writeJsonError(res, 400, 'missing_query_params');
           return true;
         }
         const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
         if (!diff) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'analysis not found' }));
+          writeJsonError(res, 404, 'analysis_not_found');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify(diff));
         return true;
       }
@@ -233,14 +231,14 @@ export function createKnowledgeRoutes({
       // 跟 SkillIndex 一起算好并享受同一份缓存，renderer 只负责呈现。
       if (path === '/knowledge') {
         const idx = query.read({ analysesDir, doctorsDir });
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderSkillList(idx, lang));
         return true;
       }
 
       if (path === '/api/skills') {
         const idx = query.read({ analysesDir, doctorsDir });
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({
           entries: idx.entries.map((entry) => ({
             ...entry,
@@ -259,18 +257,18 @@ export function createKnowledgeRoutes({
         try {
           skillName = decodeURIComponent(skillHubMatch[1]);
         } catch {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.writeHead(404, TEXT_HEADERS);
           res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
           return true;
         }
         const idx = query.read({ analysesDir, doctorsDir });
         const entry = idx.entries.find((en) => en.skillName === skillName);
         if (!entry) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.writeHead(404, TEXT_HEADERS);
           res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, HTML_HEADERS);
         res.end(renderSkillDetail(entry, lang, idx.insightsBySkill.get(entry.skillName) ?? []));
         return true;
       }
@@ -281,11 +279,10 @@ export function createKnowledgeRoutes({
         const idx = query.read({ analysesDir, doctorsDir });
         const diagnostics = idx.diagnosticsBySkill.get(skillName);
         if (!diagnostics) {
-          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'skill diagnostics not found' }));
+          writeJsonError(res, 404, 'skill_diagnostics_not_found');
           return true;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({
           skillName,
           sourceCoverage: idx.diagnosisSummary.sourceCoverage,

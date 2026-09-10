@@ -8,6 +8,7 @@ import {
   type CoreStudioRenderRoutes,
 } from '../../presentation/core-run-renderer.js';
 import type { Lang } from '../../../shared/language.js';
+import { HTML_HEADERS, JSON_HEADERS } from '../errors.js';
 
 export interface CoreStudioRouteRequest {
   readonly method?: string;
@@ -32,16 +33,6 @@ export interface CoreStudioRouteHandlerOptions {
 export type CoreStudioRouteHandler = (
   request: CoreStudioRouteRequest,
 ) => Promise<CoreStudioRouteResponse | undefined>;
-
-const HTML_HEADERS = Object.freeze({
-  'Content-Type': 'text/html; charset=utf-8',
-  'Cache-Control': 'no-store',
-});
-
-const JSON_HEADERS = Object.freeze({
-  'Content-Type': 'application/json; charset=utf-8',
-  'Cache-Control': 'no-store',
-});
 
 function normalizeBasePath(value: string, name: string): string {
   if (

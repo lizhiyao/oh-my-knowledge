@@ -24,6 +24,7 @@ import {
   assertTrustedMutationRequest,
   readJsonObjectBody,
 } from '../request-errors.js';
+import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
 
 interface ObservationRoutesOptions {
@@ -87,7 +88,7 @@ export function createObservationRoutes({
         buildObservationInboxViewModel(observationsDir, { skill }),
         lang,
       );
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.writeHead(200, HTML_HEADERS);
       response.end(html);
       return true;
     }
@@ -100,7 +101,7 @@ export function createObservationRoutes({
         ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
         : undefined;
       if (!context) {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(404, TEXT_HEADERS);
         response.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
         return true;
       }
@@ -114,7 +115,7 @@ export function createObservationRoutes({
         return true;
       }
       if (!context.session.turns.some((turn) => turn.turnId === targetTurnId)) {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(404, TEXT_HEADERS);
         response.end(lang === 'en' ? 'task turn not found' : '任务不存在');
         return true;
       }
@@ -130,7 +131,7 @@ export function createObservationRoutes({
           sourceRecordsEndpoint: `/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records`,
         },
       );
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.writeHead(200, HTML_HEADERS);
       response.end(html);
       return true;
     }
@@ -143,14 +144,10 @@ export function createObservationRoutes({
         ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
         : undefined;
       if (!context) {
-        response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify({ error: 'experience_session_not_found' }));
+        writeJsonError(response, 404, 'experience_session_not_found');
         return true;
       }
-      response.writeHead(200, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify(
         loadObservationSourceRecordArchive(context.sourceRecordRef, observationsDir),
       ));
@@ -159,7 +156,7 @@ export function createObservationRoutes({
 
     if (path === '/api/observe-inbox/view') {
       const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(observationsDir, { skill: url.searchParams.get('skill') || undefined });
-      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify({ effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }));
       return true;
     }
@@ -175,7 +172,7 @@ export function createObservationRoutes({
         items = items.filter((item) => item.severity === severity);
       }
       if (limit > 0) items = items.slice(0, limit);
-      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify(items));
       return true;
     }
@@ -187,7 +184,7 @@ export function createObservationRoutes({
         observationsDir,
         { includeObserveCards, includeDoctorCards },
       );
-      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.writeHead(200, JSON_HEADERS);
       response.end(JSON.stringify({
         sourceCoverage: index.diagnosisSummary.sourceCoverage,
         summary: index.diagnosisSummary,
@@ -205,16 +202,18 @@ export function createObservationRoutes({
     if (path === '/api/observe-inbox/show') {
       const id = url.searchParams.get('id') || '';
       const item = id ? findObservationInboxItem(id, observationsDir) : null;
-      response.writeHead(item ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify(
-        item ? { id, text: formatObservationShow(item) } : { error: 'observation not found' },
-      ));
+      if (!item) {
+        writeJsonError(response, 404, 'observation_not_found');
+        return true;
+      }
+      response.writeHead(200, JSON_HEADERS);
+      response.end(JSON.stringify({ id, text: formatObservationShow(item) }));
       return true;
     }
 
     if (path === '/api/observe-inbox/review-state') {
       if (request.method === 'GET') {
-        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(loadObservationReviewState(observationsDir)));
         return true;
       }
@@ -239,7 +238,7 @@ export function createObservationRoutes({
           toolUseId: body.toolUseId,
           snippet: body.snippet,
         }, new Date().toISOString());
-        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(state));
         return true;
       }
@@ -248,12 +247,11 @@ export function createObservationRoutes({
         const targetType = url.searchParams.get('targetType') as ObservationReviewStateUpdate['targetType'];
         const targetId = url.searchParams.get('targetId') ?? '';
         const state = deleteObservationReviewState(observationsDir, targetType, targetId);
-        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(state));
         return true;
       }
-      response.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ error: 'method not allowed' }));
+      writeJsonError(response, 405, 'method_not_allowed', { Allow: 'GET, POST, DELETE' });
       return true;
     }
 
