@@ -2,12 +2,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, Empty, Input, Popover, Segmented, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Space, Table, Tabs, Tag, Typography } from 'antd';
 import type { ObservePage } from '../../http/observe-page';
 import type { ConversationListItem } from '../../../observability/view-models/conversation';
 import { Swimlane } from './swimlane';
 import type { Language } from './shell';
 
+const displayTime = (value: string | undefined) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
 const suffix = (lang: Language) => lang === 'en' ? '?lang=en' : '';
 const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${suffix(lang)}`;
 const taskPath = (threadId: string, turnId: string) => `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}`;
@@ -93,7 +94,11 @@ function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'c
   const activity=useActivity(`/api/conversations/${encodeURIComponent(item.threadId)}/activity`,page.revision);
   const tasks=newest?[...item.tasks].reverse():item.tasks;
   return <>
-    <div className="measure-heading"><div><Link href={`/observe${suffix(lang)}`}>{zh?'返回会话':'Back to conversations'}</Link><h1 title={item.title}>{item.title}</h1><p title={item.cwd}>{[item.model,item.cwd].filter(Boolean).join(' · ')}</p><p>{item.turnCount??item.tasks.length} {zh?'次任务':'tasks'} · {item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'} · {item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</p></div></div>
+    <header className="observe-detail-header">
+      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:zh?'会话详情':'Conversation details'}]}/>
+      <div className="observe-detail-title"><h1 title={item.title}>{item.title}</h1><span className="observe-detail-count">{item.turnCount??item.tasks.length} {zh?'个任务':'tasks'}</span></div>
+      <div className="observe-detail-meta"><span>{item.model??item.sourceKind}</span><span className="observe-workspace" title={item.cwd}>{item.cwd??'—'}</span><span>{item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'}</span><span className={(item.toolFailureCount??0)>0?'observe-failure':undefined}>{item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</span></div>
+    </header>
     <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/><ActivityNotice activity={activity} lang={lang}/></div>
     <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" rowClassName={task => task.status === 'open' ? 'studio-running-row' : ''} dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
       {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
@@ -137,15 +142,18 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
   const model=page.model;
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
-    <div className="trajectory-heading">
-      <Link className="trajectory-back" href={conversationHref(page.threadId,lang)}>{zh?'返回任务列表':'Back to tasks'}</Link>
+    <header className="observe-detail-header">
+      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'本会话':'This conversation'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
+    <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
-        <button type="button" className="trajectory-goal" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button>
+        <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button></h1>
       </Popover>
       <Space className="trajectory-controls" size="small"><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
     </div>
-    <div className="trajectory-metadata"><span>{model.summary.observedStartTimestamp??'—'}</span><span>{model.summary.observedModels.join(', ')}</span><span>{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'}</span><span>{model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</span></div>
-    {model.integrity.status==='partial'&&<Alert className="trajectory-notice" type="warning" showIcon title={`${zh?'轨迹证据不完整':'Trajectory evidence is incomplete'} · ${model.integrity.notices.map(notice=>`${notice.code}: ${notice.count}`).join('；')}`}/>}
+    <div className="observe-detail-meta"><span>{displayTime(model.summary.observedStartTimestamp)}</span><span>{model.summary.observedModels.join(', ')}</span><span>{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'}</span><span className={model.summary.toolFailureCount>0?'observe-failure':undefined}>{model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</span>
+      {model.integrity.status==='partial'&&<Popover trigger="click" title={zh?'轨迹证据不完整':'Incomplete trajectory evidence'} content={<div className="observe-integrity-detail"><p>{zh?'部分记录无法完整解释，当前轨迹可能遗漏信息。可切换到标准化事件或原始记录核对。':'Some records could not be fully interpreted. Check normalized events or source records for the available evidence.'}</p>{model.integrity.notices.map(notice=><p key={notice.code}>{notice.code==='unknown_events'?(zh?'无法识别的事件':'Unrecognized events'):notice.code}：{notice.count}</p>)}</div>}><button type="button" className="observe-evidence-status">{zh?'证据不完整 · 查看原因':'Incomplete evidence · Details'}</button></Popover>}
+    </div>
+    </header>
     <Tabs className="trajectory-tabs" defaultActiveKey="replay" destroyOnHidden items={[
       {key:'replay',label:zh?'语义轨迹':'Semantic trajectory',children:<Swimlane projection={page.replay} lang={lang} revision={page.revision} follow={follow} onPause={()=>setFollow(false)}/>},
       {key:'knowledge',label:zh?'知识访问':'Knowledge access',children:<><Alert type="info" title={zh?'访问记录说明知识曾被读取或注入，不代表它导致了结果。':'Access records show reads or injections; they do not establish causation.'}/><Table rowKey="id" dataSource={model.knowledgeEvidence} scroll={{x:700}} columns={[{title:zh?'知识':'Knowledge',dataIndex:'label'},{title:zh?'方式':'Access',dataIndex:'accessKind'},{title:zh?'次数':'Count',dataIndex:'accessCount'},{title:zh?'来源':'Source',dataIndex:'sourceLocator'}]} expandable={{expandedRowRender:item=><Evidence value={item}/>}}/></>},
