@@ -83,7 +83,11 @@ export default class Rollback extends BaseCommand {
         contentHash: record.contentHash,
         ...(reason ? { reason } : {}),
       };
-      appendManagedDecision(dir, record.id, decision);
+      if (!appendManagedDecision(dir, record.id, decision, { expectedRecord: record })) {
+        throw new Error(lang === 'zh'
+          ? '受管记录已被其他操作修改或删除。请重新执行命令，以最新证据重新判定。'
+          : 'The managed record changed or was removed. Retry the command to evaluate the latest evidence.');
+      }
 
       if (flags.json) {
         this.log(JSON.stringify({

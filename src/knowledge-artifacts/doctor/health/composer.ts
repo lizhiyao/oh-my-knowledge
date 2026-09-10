@@ -256,12 +256,14 @@ async function composerCheckAll(
   const runSample = async (): Promise<SampleResult> => {
     let res: ExecResult;
     try {
+      ctx.signal?.throwIfAborted();
       res = await executor({
         model: ctx.model,
         prompt,
         cwd: skillRoot ?? ctx.cwd,
         skillDir: skillRoot ?? null,
         timeoutMs: ctx.timeoutMs,
+        abortSignal: ctx.signal,
         effort: ctx.effort ?? 'low',
         lean: true,
       });
@@ -309,12 +311,14 @@ async function composerCheckAll(
     if (mergeable) {
       let mres: ExecResult | null = null;
       try {
+        ctx.signal?.throwIfAborted();
         mres = await executor({
           model: ctx.model,
           prompt: buildHealthMergePrompt(dims, tagged),
           cwd: skillRoot ?? ctx.cwd,
           skillDir: skillRoot ?? null,
           timeoutMs: ctx.timeoutMs,
+        abortSignal: ctx.signal,
           effort: ctx.effort ?? 'low',
           lean: true,
         });

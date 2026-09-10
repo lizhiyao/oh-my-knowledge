@@ -15,7 +15,7 @@
 
 ```bash
 omk eval --control baseline --treatment echo-assistant \
-  --executor ./echo-executor.sh --no-judge --report-only
+  --executor ./echo-executor.sh --model echo --no-judge --report-only
 ```
 
 `--no-judge` 只保留确定性断言。`--report-only` 仍会生成并输出报告，但不会让这组刻意保持很小的样本控制进程退出码。

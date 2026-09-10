@@ -1,16 +1,29 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, resolve, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Args, Flags } from '@oclif/core';
+import { Args, Flags, Errors } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
-import { resolveInstallSource, resolveRemoteGitSource, SourceResolveError } from '../../knowledge-artifacts/sources/install-source.js';
-import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../knowledge-artifacts/governance/index.js';
+import { resolveInstallSource, resolveRemoteGitSource, usingInstallSource, SourceResolveError } from '../../knowledge-artifacts/sources/install-source.js';
+import { managedDir } from '../../knowledge-artifacts/governance/index.js';
 import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
-import type { ManagedDistributionTarget } from '../../knowledge-artifacts/governance/contracts.js';
+import { installManagedArtifact, InstallRegistrationError } from '../../knowledge-artifacts/governance/install.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
+
+import { replaceDeployedArtifact } from '../../knowledge-artifacts/sources/deploy-artifact.js';
+
+function localizeInstallationError(error: unknown, lang: 'zh' | 'en'): unknown {
+  if (error instanceof InstallRegistrationError && lang === 'zh') {
+    return new Error(`分发已完成，但治理登记失败：${error.paths.join('、')}。请修复受管目录 ${error.store} 后，以相同参数加 --force 重试登记。`, { cause: error });
+  }
+  if (error instanceof AggregateError) {
+    const errors = error.errors.map((item: unknown) => localizeInstallationError(item, lang));
+    return new AggregateError(errors, errors.map(String).join('; '));
+  }
+  return error;
+}
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
 const INSTALLABLE_KINDS: ArtifactKind[] = ['skill', 'prompt', 'agent', 'workflow'];
@@ -69,17 +82,17 @@ function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
   const parts = [...new Set(raw.split(',').map((part) => part.trim()).filter(Boolean))];
   if (parts.length === 0) return autoTargets();
   if (parts.includes('auto')) {
-    if (parts.length > 1) throw new Error(tCli('cli.install.invalid_target_combo', lang, { target: raw }));
+    if (parts.length > 1) throw new Errors.CLIError(tCli('cli.install.invalid_target_combo', lang, { target: raw }), { exit: 2 });
     return autoTargets();
   }
   if (parts.includes('all')) {
-    if (parts.length > 1) throw new Error(tCli('cli.install.invalid_target_combo', lang, { target: raw }));
+    if (parts.length > 1) throw new Errors.CLIError(tCli('cli.install.invalid_target_combo', lang, { target: raw }), { exit: 2 });
     return TARGET_ORDER;
   }
   const out: AgentTarget[] = [];
   for (const part of parts) {
     if (part !== 'codex' && part !== 'claude') {
-      throw new Error(tCli('cli.install.unknown_target', lang, { target: part }));
+      throw new Errors.CLIError(tCli('cli.install.unknown_target', lang, { target: part }), { exit: 2 });
     }
     out.push(part);
   }
@@ -169,7 +182,7 @@ function classifyPaths(source: string, targetPath: string): PathRelation {
 
 /**
  * 通用拷贝:目录递归 cp(过滤 .omk / .git / evolve 等非分发产物 + 软链)、单文件 copyFile。
- * 不打印——由调用方决定文案。dry-run 不写。源即目标 → 就地接管(inPlace);源与目标互为祖先 → 拒绝(防自毁)。
+ * 清理失败单独提示，正常结果由调用方呈现。dry-run 不写。源即目标 → 就地接管(inPlace);重叠路径拒绝。
  */
 function copyArtifactToTarget(params: {
   source: string;
@@ -198,18 +211,11 @@ function copyArtifactToTarget(params: {
   if (existsSync(params.targetPath) && !params.force) {
     throw new Error(tCli('cli.install.target_exists', params.lang, { path: params.targetPath }));
   }
-  mkdirSync(params.skillsDir, { recursive: true });
-  rmSync(params.targetPath, { recursive: true, force: true });
-  if (params.isDirectorySkill) {
-    cpSync(params.source, params.targetPath, {
-      recursive: true,
-      // 与 hashArtifactSource / eval 隔离副本共用同一处过滤(distributableCopyFilter),保证
-      // "分发出去的 == 算进 hash 的 == 测量的副本":源根永远拷;软链跳过;evolve 仅源根第一层排除、
-      // .omk/.git/node_modules 任意层级排除。
-      filter: distributableCopyFilter(params.source),
-    });
-  } else {
-    copyFileSync(params.source, params.targetPath);
+  const deployment = replaceDeployedArtifact(params.source, params.targetPath, params.isDirectorySkill, params.force);
+  if (deployment.cleanupWarning) {
+    process.stderr.write(params.lang === 'zh'
+      ? `安装已完成，临时目录清理失败，请手动清理：${deployment.cleanupWarning}\n`
+      : `Installation completed; remove the leftover staging directory: ${deployment.cleanupWarning}\n`);
   }
   return { targetPath: params.targetPath, planned: false, inPlace: false };
 }
@@ -369,7 +375,7 @@ export default class Install extends BaseCommand {
     await this.runWithCliExit(async () => {
       // --git-ref 必须配 --git-url(否则静默丢弃、误把 spec 当本地路径解析,报错令人困惑)。
       if (flags['git-ref'] && !flags['git-url']) {
-        throw new Error(tCli('cli.install.git_ref_needs_url', lang));
+        throw new Errors.CLIError(tCli('cli.install.git_ref_needs_url', lang), { exit: 2 });
       }
       // 远端 git:--git-url 在场时,位置参数是仓库内 spec(repo 相对路径),先于其它分支判定。
       if (flags['git-url']) {
@@ -432,10 +438,8 @@ export default class Install extends BaseCommand {
       throw err;
     }
 
-    try {
-      const { localRoot, name, isDirectorySkill, sourceKind, locator, ref, url } = src;
-      // 目录-skill 哈整棵可分发树(排除 .omk/.git/evolve);git 源哈的是物化后的临时树。
-      const contentHash = hashArtifactSource(localRoot, isDirectorySkill);
+    usingInstallSource(src, () => {
+      const { localRoot, name, isDirectorySkill } = src;
 
       const targets = resolveInstallTargets({ to: flags.to, dest: flags.dest, lang });
       validateInstallTargets({
@@ -446,57 +450,38 @@ export default class Install extends BaseCommand {
         source: localRoot,
       });
 
-      const now = new Date().toISOString();
-      const distribution: ManagedDistributionTarget[] = [];
-      const dir = managedDir();
-      // 即便多目标中途失败,也把已成功分发的落点登记进记录,保持"磁盘 == 记录"一致;
-      // 重跑 --force 时 upsert 会按 path 去重并补齐其余目标。
-      const writeRecordIfAny = (): void => {
-        if (flags['dry-run'] || distribution.length === 0) return;
-        const record = buildManagedArtifactRecord({
-          name,
-          kind,
-          source: { sourceKind, locator, ...(ref ? { ref } : {}), ...(url ? { url } : {}), isDirectorySkill },
-          contentHash,
-          installedAt: now,
-          distribution,
-        });
-        recordManagedArtifact(record, { dir });
-        console.log(tCli('cli.install.registered', lang, { id: record.id, store: dir }));
-      };
-
+      const store = managedDir();
       try {
-        for (const target of targets) {
-          const targetPath = targetArtifactPath(target, name, isDirectorySkill);
-          const { planned, inPlace } = copyArtifactToTarget({
-            source: localRoot,
-            isDirectorySkill,
-            targetPath,
-            skillsDir: target.skillsDir,
-            force: flags.force,
-            dryRun: flags['dry-run'],
-            lang,
-          });
-          if (planned) {
-            console.log(tCli('cli.install.plan_skill', lang, { name, path: targetPath }));
-          } else {
-            console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name, path: targetPath }));
-            distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });
-          }
-        }
-      } finally {
-        writeRecordIfAny();
+        installManagedArtifact({
+          source: src,
+          artifactKind: kind,
+          targets: targets.map((target) => ({ label: target.label, path: targetArtifactPath(target, name, isDirectorySkill) })),
+          store,
+          installedAt: new Date().toISOString(),
+          deploy: (target) => {
+            const { planned, inPlace } = copyArtifactToTarget({
+              source: localRoot,
+              isDirectorySkill,
+              targetPath: target.path,
+              skillsDir: dirname(target.path),
+              force: flags.force,
+              dryRun: flags['dry-run'],
+              lang,
+            });
+            return planned ? 'planned' : inPlace ? 'adopted' : 'copied';
+          },
+          onDeployment: (target, result) => {
+            const key = result === 'planned' ? 'cli.install.plan_skill' : result === 'adopted' ? 'cli.install.adopted' : 'cli.install.copied';
+            console.log(tCli(key, lang, { name, path: target.path }));
+          },
+          onRegistered: (record) => console.log(tCli('cli.install.registered', lang, { id: record.id, store })),
+        });
+      } catch (error) {
+        throw localizeInstallationError(error, lang);
       }
-    } finally {
-      src.cleanup(); // git 删临时物化目录;file noop
-    }
+    });
   }
 }
 
 // --kind 单独传入 installManagedSkill,故此处不含 kind 字段(裸 kind 留给 ArtifactKind)。
-type InstallFlags = {
-  to: string;
-  dest?: string;
-  force: boolean;
-  'dry-run': boolean;
-};
+type InstallFlags = Pick<import('@oclif/core').Interfaces.InferredFlags<typeof Install.flags>, 'to' | 'dest' | 'force' | 'dry-run'>;

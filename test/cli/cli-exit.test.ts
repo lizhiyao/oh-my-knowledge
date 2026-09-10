@@ -8,7 +8,7 @@ import { parseJudgeModelsArgOrExit } from '../../src/cli/lib/parse-run-config/ju
  * 测试进程。这层验证「不该跑业务逻辑直接退出」的几条核心 path。
  */
 describe('CliExit dispatch', () => {
-  it('evolve 命令缺 skill 路径时 throw CliExit(1)', async () => {
+  it('evolve 命令缺 skill 路径时 throw CliExit(2)', async () => {
     const err = await runEvolve(
       { skillPath: '' },
       {
@@ -31,7 +31,7 @@ describe('CliExit dispatch', () => {
       'zh',
     ).then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(CliExit);
-    expect((err as CliExit).code).toBe(1);
+    expect((err as CliExit).code).toBe(2);
   });
 
   // parseJudgeModelsArgOrExit 也要走 CliExit，否则 eval / evolve 子命令单测里

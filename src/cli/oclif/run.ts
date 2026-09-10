@@ -1,12 +1,32 @@
-import { execute } from '@oclif/core';
+import { Config, Errors, run } from '@oclif/core';
+import { CliExit } from '../lib/cli-exit.js';
+import LangAwareHelp from './help.js';
 
-// oclif dispatcher 入口。从 dist/cli/oclif/ 这个文件位置出发,oclif 用 package.json
-// oclif.commands(./dist/cli/commands)找到所有 Command 类。helpClass 也走
-// package.json 字段。
-//
-// 注意 dir: import.meta.url 必须传 — oclif 用它确定 package.json 跟 commands
-// dir 的相对位置。
-
+// Keep oclif parsing and dispatch, but own the final output/exit boundary.
+// execute() calls an error handler that process.exit()s before stderr drains.
 export async function runOclifPath(): Promise<void> {
-  await execute({ dir: import.meta.url });
+  const config = await Config.load(import.meta.url);
+  try {
+    await run(process.argv.slice(2), config);
+  } catch (error) {
+    if (error instanceof Errors.ExitError) throw new CliExit(error.oclif.exit ?? 1);
+    // Flag parse callbacks may throw plain Error objects decorated by oclif.
+    if (!(error instanceof Error) || !('oclif' in error) || !error.oclif
+      || typeof error.oclif !== 'object' || !('exit' in error.oclif)
+      || typeof error.oclif.exit !== 'number') throw error;
+    if (!('skipOclifErrorHandling' in error && error.skipOclifErrorHandling)) {
+      console.error(`${error.name}: ${error.message}`);
+      if ('ref' in error && typeof error.ref === 'string') console.error(error.ref);
+      if ('code' in error && typeof error.code === 'string') console.error(`Code: ${error.code}`);
+      if ('suggestions' in error && Array.isArray(error.suggestions)) {
+        for (const suggestion of error.suggestions) console.error(suggestion);
+      }
+      if (error.cause) console.error(error.cause);
+      if ('showHelp' in error && error.showHelp) {
+        const help = new LangAwareHelp(config, { sendToStderr: true, sections: ['flags', 'usage', 'arguments'] });
+        await help.showHelp(process.argv.slice(2));
+      }
+    }
+    throw new CliExit(error.oclif.exit ?? 1);
+  }
 }

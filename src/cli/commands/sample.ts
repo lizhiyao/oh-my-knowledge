@@ -1,29 +1,29 @@
 import { resolve, join, dirname, extname, relative, sep } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { Args, Flags } from '@oclif/core';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { Args, Flags, type Interfaces } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
-import { integerStringParser } from '../oclif/parsers.js';
+import { nonEmptyStringParser, integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
+import { appendSamplesToFile, preflightSampleAppend } from '../../eval-workflows/inputs/append-samples.js';
 import { listSampleFilesInDir } from '../../eval-workflows/inputs/load-samples.js';
 import {
   getSamplesArray,
   parseSampleDocument,
-  stringifySampleDocument,
 } from '../../eval-workflows/inputs/sample-document.js';
 import {
   defaultSkillLocalSamplesFile,
   findCanonicalSamplesFile,
   findSkillSamplesPath,
 } from '../../eval-workflows/inputs/sample-locator.js';
+import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { withLocalizedSampleDiscovery } from '../lib/localized-sample-discovery.js';
-import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
+import type { CommandFlags } from '../lib/cmd-flags.js';
 import type {
-  EvalSampleSetDocument,
   Sample as SampleType,
 } from '../../eval-workflows/inputs/contracts/sample.js';
 import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
@@ -45,31 +45,6 @@ export function sampleNextEvalCommand(
 ): string {
   const treatmentPath = resolved.isDirectorySkill ? resolved.skillDir : resolved.skillPath;
   return `omk eval --control baseline --treatment ${shellQuoteArg(userFacingPath(treatmentPath))}`;
-}
-
-/** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
- *  自动加 `-2`/`-3` 后缀去重。模型每次从 s001 重编号,撞 id 不代表内容重复,所以是改名保留
- *  而非丢弃(不做内容级去重)。`reserved` 为额外要避开的 id 集(目录模式跨同目录其它 sample
- *  文件去重用,见 collectDirSampleIds)。 */
-export function mergeAppendSamples(
-  existing: SampleType[],
-  fresh: SampleType[],
-  reserved?: ReadonlySet<string>,
-): SampleType[] {
-  const used = new Set(existing.map((s) => s.sample_id));
-  if (reserved) for (const id of reserved) used.add(id);
-  const merged: SampleType[] = [...existing];
-  for (const sample of fresh) {
-    let id = sample.sample_id;
-    if (used.has(id)) {
-      let n = 2;
-      while (used.has(`${id}-${n}`)) n += 1;
-      id = `${id}-${n}`;
-    }
-    used.add(id);
-    merged.push(id === sample.sample_id ? sample : { ...sample, sample_id: id });
-  }
-  return merged;
 }
 
 /** 目录模式 append:收集目录内所有 sample 文件的 sample_id,跨文件去重用 —— eval 走目录模式
@@ -95,26 +70,10 @@ export function pickAppendTargetFile(dir: string): string | null {
   return findCanonicalSamplesFile(dir);
 }
 
-/** 把新用例追加进已有 sample 文件:读 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与
- *  versioned wrapper 写回。返回合并后总条数。 */
-export function appendSamplesToFile(
-  existingFile: string,
-  fresh: SampleType[],
-  reserved?: ReadonlySet<string>,
-): number {
-  const doc = parseSampleDocument(existingFile);
-  const merged = mergeAppendSamples(getSamplesArray(doc, existingFile), fresh, reserved);
-  const nextDoc: EvalSampleSetDocument = {
-    ...(doc as EvalSampleSetDocument),
-    samples: merged,
-  };
-  writeFileSync(existingFile, stringifySampleDocument(existingFile, nextDoc));
-  return merged.length;
-}
-
 export async function runSampleFromTraces(
   flags: SampleFlags,
   lang: CliLang,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/index.js');
   const { generateSamplesFromTraces } = await import('../../knowledge-artifacts/authoring/generator.js');
@@ -160,7 +119,7 @@ export async function runSampleFromTraces(
     : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
-    const { samples, costUSD } = await generateSamplesFromTraces({
+    const { samples, costUSD } = await generateSamplesFromTraces({ signal,
       items,
       count,
       model,
@@ -177,7 +136,7 @@ export async function runSampleFromTraces(
       return;
     }
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, JSON.stringify(createEvalSampleSetDocument(samples), null, 2));
+    createJsonFileAtomic(outPath, createEvalSampleSetDocument(samples));
     process.stderr.write(lang === 'zh'
       ? `\n✅ 生成 ${samples.length} 条草稿用例 → ${outPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
       : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
@@ -194,19 +153,10 @@ async function runSample(
   args: SampleArgs,
   flags: SampleFlags,
   lang: CliLang,
+  signal?: AbortSignal,
 ): Promise<void> {
-  if (flags.skill && !flags['from-traces']) {
-    console.error(lang === 'zh' ? '--skill 仅支持 --from-traces 模式。' : '--skill is only supported with --from-traces.');
-    throw new CliExit(2);
-  }
-  // --append 目前只在单 skill 生成路径实现；batch / from-traces 不处理它，
-  // 静默忽略会误导(用户以为在追加,实际没有)。提前互斥校验,明确报错。
-  if (flags.append && (flags.batch || flags['from-traces'])) {
-    console.error(tCli('cli.gen.append_single_only', lang));
-    throw new CliExit(2);
-  }
   if (flags['from-traces']) {
-    await runSampleFromTraces(flags, lang);
+    await runSampleFromTraces(flags, lang, signal);
     return;
   }
   const { generateSamples } = await import('../../knowledge-artifacts/authoring/generator.js');
@@ -271,12 +221,9 @@ async function runSample(
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
-          await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
+          await generateSamples({ signal, skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
         mkdirSync(dirname(samplesPath), { recursive: true });
-        writeFileSync(
-          samplesPath,
-          JSON.stringify(createEvalSampleSetDocument(samples), null, 2),
-        );
+        createJsonFileAtomic(samplesPath, createEvalSampleSetDocument(samples));
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
         process.stderr.write(tCli('cli.gen.skill_done', lang, {
           name, n: samples.length, path: samplesPath, cost,
@@ -335,6 +282,8 @@ async function runSample(
       throw new CliExit(1);
     }
 
+    const appendSnapshot = existingFile && flags.append ? preflightSampleAppend(existingFile) : undefined;
+
     if (count !== undefined) {
       process.stderr.write(tCli('cli.gen.single_generating', lang, { count }));
     } else {
@@ -342,23 +291,20 @@ async function runSample(
     }
     try {
       const { samples, costUSD }: GenerateSamplesResult =
-        await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
+        await generateSamples({ signal, skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       if (existingFile && flags.append) {
         // 追加:读已有 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与 wrapper 写回。
         // 目录模式额外跨同目录其它 sample 文件去重,避免 eval 合并加载时撞 id 报错;
         // 显式单文件路径无同目录合并语义,不需要。
         const reserved = extname(resolved.samplesPath) ? undefined : collectDirSampleIds(dirname(existingFile));
-        const total = appendSamplesToFile(existingFile, samples as SampleType[], reserved);
+        const total = appendSamplesToFile(existingFile, samples as SampleType[], reserved, appendSnapshot);
         process.stderr.write(tCli('cli.gen.append_done', lang, {
           added: samples.length, total, path: existingFile, cost,
         }));
       } else {
         mkdirSync(dirname(outputPath), { recursive: true });
-        writeFileSync(
-          outputPath,
-          JSON.stringify(createEvalSampleSetDocument(samples), null, 2),
-        );
+        createJsonFileAtomic(outputPath, createEvalSampleSetDocument(samples));
         process.stderr.write(tCli('cli.gen.single_done', lang, {
           n: samples.length, path: outputPath, cost,
         }));
@@ -407,6 +353,7 @@ export default class Sample extends BaseCommand {
 
   static args = {
     skillPath: Args.string({
+      parse: nonEmptyStringParser('skillPath'),
       description: bilingual({
         zh: 'skill 文件路径或 SKILL.md 路径。batch 模式不需要；single 模式必填。',
         en: 'Skill file or SKILL.md path. Not required in batch mode; required for single mode.',
@@ -418,6 +365,7 @@ export default class Sample extends BaseCommand {
   static flags = {
     lang: LANG_FLAG,
     batch: Flags.boolean({
+      exclusive: ['from-traces'],
       description: bilingual({
         zh: '批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。',
         en: 'Batch mode: scan --skill-dir, generate samples for any skill missing them.',
@@ -432,18 +380,21 @@ export default class Sample extends BaseCommand {
       parse: integerStringParser('--count', { min: 1 }),
     }),
     model: Flags.string({
+      parse: nonEmptyStringParser('--model'),
       description: bilingual({
         zh: '生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。',
         en: 'Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.',
       }),
     }),
     executor: Flags.string({
+      parse: nonEmptyStringParser('--executor'),
       description: bilingual({
         zh: '执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
         en: 'Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'skill-dir': Flags.string({
+      parse: nonEmptyStringParser('--skill-dir'),
       description: bilingual({
         zh: 'skill 根目录，默认 skills。batch 模式扫此目录。',
         en: 'Skill root dir, default skills. Used by batch mode.',
@@ -478,12 +429,15 @@ export default class Sample extends BaseCommand {
       default: false,
     }),
     'observations-dir': Flags.string({
+      dependsOn: ['from-traces'],
+      parse: nonEmptyStringParser('--observations-dir'),
       description: bilingual({
         zh: 'observe inbox 目录（from-traces 模式用），默认项目 .omk/observe/inbox。',
         en: 'Observe inbox dir (from-traces mode), default project .omk/observe/inbox.',
       }),
     }),
     skill: Flags.string({
+      parse: nonEmptyStringParser('--skill'),
       description: bilingual({
         zh: '仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。',
         en: 'Only draft from observe-inbox signals for the specified skill (from-traces mode only).',
@@ -494,7 +448,25 @@ export default class Sample extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Sample);
     const lang = this.lang;
-    await this.runWithCliExit(async () => {
+    if (flags.skill && !flags['from-traces']) {
+      console.error(lang === 'zh' ? '--skill 仅支持 --from-traces 模式。' : '--skill is only supported with --from-traces.');
+      this.exit(2);
+    }
+    // --append 目前只在单 skill 生成路径实现；batch / from-traces 不处理它，
+    // 静默忽略会误导(用户以为在追加,实际没有)。提前互斥校验,明确报错。
+    if (flags.append && (flags.batch || flags['from-traces'])) {
+      console.error(tCli('cli.gen.append_single_only', lang));
+      this.exit(2);
+    }
+    if (args.skillPath && (flags.batch || flags['from-traces'])) {
+      console.error(lang === 'zh' ? 'skillPath 不能与 --batch 或 --from-traces 同时使用。' : 'skillPath cannot be combined with --batch or --from-traces.');
+      this.exit(2);
+    }
+    if (!args.skillPath && !flags.batch && !flags['from-traces']) {
+      console.error(tCli('cli.gen.specify_skill_path', lang));
+      this.exit(2);
+    }
+    await this.runWithCancellation(async (signal) => {
       const runtime = resolveRuntimeSelection(
         { executor: flags.executor, model: flags.model },
         { lang },
@@ -504,7 +476,10 @@ export default class Sample extends BaseCommand {
         executor: runtime.executor,
         model: runtime.model,
         lang,
-      }, lang);
+      }, lang, signal);
     });
   }
 }
+
+export type SampleArgs = Interfaces.InferredArgs<typeof Sample.args>;
+export type SampleFlags = CommandFlags<typeof Sample.flags> & { model: string; executor: string };

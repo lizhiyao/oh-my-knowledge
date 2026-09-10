@@ -25,10 +25,12 @@ async function main(): Promise<void> {
   await runOclifPath();
 }
 
-main().catch((err: unknown) => {
-  if (err instanceof CliExit) {
-    process.exit(err.code);
-  }
-  console.error(err);
-  process.exit(1);
+main().catch(async (err: unknown) => {
+  const code = err instanceof CliExit ? err.code : 1;
+  if (!(err instanceof CliExit)) console.error(err);
+  // Await both channels after the dispatcher has emitted its final diagnostics.
+  await Promise.all([process.stdout, process.stderr].map((stream) => new Promise<void>((resolve, reject) => {
+    stream.write('', (error) => error ? reject(error) : resolve());
+  }))).catch(() => { process.exit(1); });
+  process.exit(code);
 });

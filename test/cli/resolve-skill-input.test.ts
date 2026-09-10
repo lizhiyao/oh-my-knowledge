@@ -5,16 +5,17 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { prepareCliEvaluation } from '../../src/cli/lib/prepare-evaluation.js';
 import { resolveSkillInput } from '../../src/cli/lib/resolve-skill-input.js';
 
 describe('resolveSkillInput isDirectorySkill', () => {
   let proj: string;
   let skillRoot: string;
   beforeEach(() => {
-    proj = mkdtempSync(join(tmpdir(), 'omk-rsi-'));
+    proj = realpathSync(mkdtempSync(join(tmpdir(), 'omk-rsi-')));
     skillRoot = join(proj, 'mydir');
     mkdirSync(skillRoot, { recursive: true });
     writeFileSync(join(skillRoot, 'SKILL.md'), '# dir skill\n');
@@ -61,4 +62,37 @@ describe('resolveSkillInput isDirectorySkill', () => {
     assert.equal(r.isDirectorySkill, false);
     assert.equal(r.samplesPath, 'eval-samples.json');
   });
+  it.each(['json', 'yaml'])('eval/evolve share discovery and explicit-source precedence for %s', (extension) => {
+    const previousCwd = process.cwd();
+    process.chdir(proj);
+    try {
+      const projectSamples = join(proj, `eval-samples.${extension}`);
+      const local = join(skillRoot, '.omk', `eval-samples.${extension}`);
+      mkdirSync(join(skillRoot, '.omk'));
+      // Deliberately malformed: discovery must select the source, not skip it
+      // and silently fall back to another evaluation dataset.
+      writeFileSync(projectSamples, '{broken');
+      writeFileSync(local, '{broken');
+      const evalSource = (samples?: string) => prepareCliEvaluation({
+        control: 'baseline', treatment: skillRoot, executor: 'claude', model: 'fixture',
+        ...(samples === undefined ? {} : { samples }),
+      }, { projectRoot: proj, env: {}, lang: 'en' }).request.values.locators.samples;
+      const evolveSource = (samples?: string) => resolveSkillInput(skillRoot, 'en', { projectFallback: true, samples }).samplesPath;
+      assert.equal(evalSource(), local);
+      assert.equal(evolveSource(), local);
+      for (const explicit of [projectSamples, join(proj, 'explicit-missing.json')]) {
+        assert.equal(evalSource(explicit), explicit);
+        assert.equal(evolveSource(explicit), explicit);
+      }
+      rmSync(local);
+      assert.equal(evalSource(), projectSamples);
+      assert.equal(evolveSource(), projectSamples);
+      rmSync(projectSamples);
+      // Missing-source behavior is intentionally different: eval requires an
+      // existing dataset; evolve generates new skill-local cases first.
+      assert.equal(evalSource(), join(proj, 'eval-samples.json'));
+      assert.equal(evolveSource(), join(skillRoot, '.omk', 'eval-samples.json'));
+    } finally { process.chdir(previousCwd); }
+  });
+
 });

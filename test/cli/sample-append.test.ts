@@ -4,7 +4,8 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { mergeAppendSamples, appendSamplesToFile, pickAppendTargetFile } from '../../src/cli/commands/sample.js';
+import { pickAppendTargetFile } from '../../src/cli/commands/sample.js';
+import { mergeAppendSamples, appendSamplesToFile, preflightSampleAppend } from '../../src/eval-workflows/inputs/append-samples.js';
 import type { Sample } from '../../src/eval-workflows/inputs/contracts/sample.js';
 import { createEvalSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 import { SampleFileAmbiguityError } from '../../src/eval-workflows/inputs/sample-locator.js';
@@ -56,6 +57,23 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
   let dir: string;
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-append-')); });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each(['{broken', '{}', '{"schemaVersion":"omk.eval-sample-set/v2","samples":[{}]}'])('预检拒绝损坏或非法文档：%s', (raw) => {
+    const file = join(dir, 'eval-samples.json');
+    writeFileSync(file, raw);
+    assert.throws(() => preflightSampleAppend(file));
+    assert.equal(readFileSync(file, 'utf8'), raw);
+  });
+
+  it('生成期间文件被修改时保留外部改动', () => {
+    const file = join(dir, 'eval-samples.json');
+    writeFileSync(file, JSON.stringify(createEvalSampleSetDocument([s('original')])));
+    const snapshot = preflightSampleAppend(file);
+    const edited = JSON.stringify(createEvalSampleSetDocument([s('external')]));
+    writeFileSync(file, edited);
+    assert.throws(() => appendSamplesToFile(file, [s('generated')], undefined, snapshot), /changed during generation/);
+    assert.equal(readFileSync(file, 'utf8'), edited);
+  });
 
   it('版本化 JSON：追加并撞 id 去重，保留协议包装', () => {
     const f = join(dir, 'eval-samples.json');

@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, chmodSync, statSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { resolveInstallSource, SourceResolveError } from '../../../src/knowledge-artifacts/sources/install-source.js';
+import { resolveInstallSource, usingInstallSource, SourceResolveError } from '../../../src/knowledge-artifacts/sources/install-source.js';
 
 function git(repo: string, args: string[]): void {
   execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
@@ -326,5 +326,30 @@ describe('source-resolver git outside repo', () => {
       process.chdir(prev);
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+
+describe('materialized source lifecycle', () => {
+  it('preserves the installation failure when cleanup also fails', () => {
+    const installFailure = new Error('copy failed');
+    const cleanupFailure = new Error('remove /temporary/source failed');
+    assert.throws(() => usingInstallSource({ cleanup() { throw cleanupFailure; } }, () => {
+      throw installFailure;
+    }), (error: unknown) => {
+      assert.ok(error instanceof AggregateError);
+      assert.deepEqual(error.errors, [installFailure, cleanupFailure]);
+      assert.match(error.message, /copy failed.*remove \/temporary\/source failed/);
+      return true;
+    });
+  });
+
+  it('attempts both remote resources even if materialized-tree cleanup fails', () => {
+    const calls: string[] = [];
+    assert.throws(() => usingInstallSource({ cleanup() { calls.push('checkout'); } }, () => {
+      calls.push('materialized');
+      throw new Error('materialized cleanup failed');
+    }), /materialized cleanup failed/);
+    assert.deepEqual(calls, ['materialized', 'checkout']);
   });
 });

@@ -19,6 +19,7 @@ const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请依据
 const IMPROVE_AGENT_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请使用 Edit 工具对指定 skill 文件做最小、可审查的修改，只处理真实评测暴露的问题，不重写无关内容。`;
 
 export interface CoreEvolverOptions {
+  signal?: AbortSignal;
   skillPath: string;
   isDirectorySkill: boolean;
   rounds: number;
@@ -184,6 +185,7 @@ function coreAccepted(stored: StoredCoreRunArtifacts): boolean {
 
 /** Core-native authoring loop: every acceptance is an explicit Core A/B decision. */
 export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Promise<CoreEvolverResult> {
+  options.signal?.throwIfAborted();
   const sourcePath = resolve(options.skillPath);
   if (!existsSync(sourcePath)) throw new Error(`skill file not found: ${sourcePath}`);
   const skillDirectory = dirname(sourcePath);
@@ -232,6 +234,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
   });
 
   for (let round = 1; round <= options.rounds; round += 1) {
+    options.signal?.throwIfAborted();
     let candidatePath: string;
     const prompt = buildImprovementPrompt(
       currentContent,
@@ -251,6 +254,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
             prompt: `${prompt}\n\n请使用 Edit 工具修改文件 ${candidate.contentPath}。`,
             cwd: skillDirectory,
             timeoutMs: options.timeoutMs,
+          abortSignal: options.signal,
           });
           candidateContent = readFileSync(candidate.contentPath, 'utf8');
           return result;
@@ -260,8 +264,10 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
           system: IMPROVE_SYSTEM_PROMPT,
           prompt,
           timeoutMs: options.timeoutMs,
+          abortSignal: options.signal,
           lean: true,
         });
+    options.signal?.throwIfAborted();
     totalCostUSD += improvement.costUSD;
     if (improvement.costReportedByExecutor === false) costReported = false;
     if (!improvement.ok) {
@@ -351,6 +357,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     finalScore = finalMeasurement.score;
     totalCostUSD += finalMeasurement.costUSD;
     if (!finalMeasurement.costReported) costReported = false;
+    options.signal?.throwIfAborted();
     writeFileSync(sourcePath, currentContent);
   }
   return {

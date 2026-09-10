@@ -57,6 +57,21 @@ export interface RecordedObservation {
   gapByType: ManagedObservation['gapByType'];
 }
 
+export type ObservationFeedbackResult =
+  | { status: 'recorded'; records: RecordedObservation[] }
+  | { status: 'not-applicable' }
+  | { status: 'failed'; error: unknown };
+
+/** Optional feedback must remain observable without invalidating the source report. */
+export function recordObserveHealthSafely(report: ObserveReportView, opts: { dir?: string } = {}): ObservationFeedbackResult {
+  try {
+    const records = recordObserveHealth(report, opts);
+    return records.length ? { status: 'recorded', records } : { status: 'not-applicable' };
+  } catch (error) {
+    return { status: 'failed', error };
+  }
+}
+
 /**
  * 驱动:对每个能按 name(限 kind==='skill')匹配到的**已纳管**记录追加一条生产健康观测。返回实际写入清单
  * (供 CLI 提示)。无任何记录匹配 → 返回空(常见的非管理用户场景,静默无副作用)。

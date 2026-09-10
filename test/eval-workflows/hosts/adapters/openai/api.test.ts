@@ -335,7 +335,7 @@ describe('OpenAI API Core Executor adapter', () => {
     expect(JSON.stringify(relocated.identity)).not.toMatch(/proxy\.example|org-sensitive|proj-sensitive/);
     expect(first.identity).toMatchObject({
       implementationId: 'test.omk.openai-api/v1',
-      version: '1.1.0',
+      version: '1.2.0',
       fingerprintBasis: 'opaque',
       assuranceLevel: 'unknown',
       capabilities: {
@@ -667,6 +667,11 @@ describe('OpenAI API Core Executor adapter', () => {
       requirementPatch: { toolPolicy: 'allow-list' },
     });
     await expect(createAdapter(tools)).rejects.toThrow(/supports no workspace, MCP, mocks/);
+    const skills = await fixture({
+      behaviorPatch: { allowedSkills: ['local-skill'] },
+      requirementPatch: { skillDiscovery: 'allow-list' },
+    });
+    await expect(createAdapter(skills)).rejects.toThrow(/supports no workspace, MCP, mocks/);
     expect(value.observations.requests).toHaveLength(0);
     expect(temperature.observations.requests).toHaveLength(0);
     expect(tools.observations.requests).toHaveLength(0);

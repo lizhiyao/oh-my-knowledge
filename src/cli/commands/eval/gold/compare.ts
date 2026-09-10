@@ -22,18 +22,22 @@ export default class EvalGoldCompare extends BaseCommand {
   static flags = {
     lang: LANG_FLAG,
     'gold-dir': Flags.string({
+      required: true,
       description: bilingual({ zh: 'gold dataset 目录，必填', en: 'Gold dataset dir (required)' }),
     }),
     target: Flags.string({
+      required: true,
       description: bilingual({
         zh: '显式选择 Core target ID。',
         en: 'Explicit Core target ID.',
       }),
     }),
     evaluator: Flags.string({
+      required: true,
       description: bilingual({ zh: '显式选择 Core evaluator ID。', en: 'Explicit Core evaluator ID.' }),
     }),
     metric: Flags.string({
+      required: true,
       description: bilingual({ zh: '显式选择 Core metric ID。', en: 'Explicit Core metric ID.' }),
     }),
     'minimum-alpha': Flags.string({
@@ -78,10 +82,6 @@ export default class EvalGoldCompare extends BaseCommand {
         throw new CliExit(1);
       }
       const goldDir = flags['gold-dir'];
-      if (!goldDir) {
-        console.error(lang === 'zh' ? '必须提供 --gold-dir。' : '--gold-dir is required.');
-        throw new CliExit(1);
-      }
       const { loadGoldDataset, validationIssueMessage } = await import(
         '../../../../eval-workflows/gold/dataset.js'
       );
@@ -117,12 +117,6 @@ export default class EvalGoldCompare extends BaseCommand {
         console.error(lang === 'zh'
           ? `找不到 Core run「${runId}」。`
           : `Core run "${runId}" was not found.`);
-        throw new CliExit(1);
-      }
-      if (!flags.target || !flags.evaluator || !flags.metric) {
-        console.error(lang === 'zh'
-          ? '--target、--evaluator、--metric 均为必填；Core 不会隐式合并多个观测。'
-          : '--target, --evaluator, and --metric are required; Core never pools observations implicitly.');
         throw new CliExit(1);
       }
       const samples = Math.max(100, Number(flags['bootstrap-samples'] ?? 1000) || 1000);

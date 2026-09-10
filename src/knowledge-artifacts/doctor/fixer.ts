@@ -1,6 +1,7 @@
 import { confirm, select, input } from '@inquirer/prompts';
+import { createInterface, type Interface } from 'node:readline';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createExecutor } from '../../executors/index.js';
 import type { DoctorReport, DoctorRuleResult } from './contracts.js';
@@ -109,6 +110,7 @@ function spinner(msg: string): void {
 }
 
 async function callJsonLLM(opts: {
+  signal?: AbortSignal;
   executorName: string;
   model: string;
   timeoutMs: number;
@@ -117,28 +119,32 @@ async function callJsonLLM(opts: {
   loading?: string;
   effort?: string;
 }): Promise<unknown> {
+  opts.signal?.throwIfAborted();
   if (opts.loading) spinner(opts.loading);
   const executor = createExecutor(opts.executorName);
-  const result = await executor({ model: opts.model, system: opts.system, prompt: opts.prompt, timeoutMs: opts.timeoutMs, effort: opts.effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined });
+  const result = await executor({ abortSignal: opts.signal, model: opts.model, system: opts.system, prompt: opts.prompt, timeoutMs: opts.timeoutMs, effort: opts.effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined });
+  opts.signal?.throwIfAborted();
   if (!result.ok) throw new Error(result.error || 'doctor fix LLM call failed');
   const raw = result.output || '';
   return extractJsonObject(raw);
 }
 
-async function buildFixPlan(issues: FixIssue[], executorName: string, model: string, timeoutMs: number, _effort?: string): Promise<FixPlan> {
+async function buildFixPlan(issues: FixIssue[], executorName: string, model: string, timeoutMs: number, _effort?: string, signal?: AbortSignal): Promise<FixPlan> {
   const system = '你是 omk doctor 修复向导。根据 doctor 结果生成用户可选择的修复方案。只输出合法 JSON，不要 markdown，不要注释，不要尾逗号。';
   const prompt = `根据以下 doctor 问题与建议，生成交互式修复选项。要求：\n- 每个 issue 生成 2-3 个 option。\n- 标出 recommended。\n- risk 只能是 low/medium/high。\n- 不要生成具体补丁，只生成方案选项。\n- 输出必须是合法 JSON，第一个字符是 {，最后一个字符是 }。\n\n输出 JSON schema：\n{"issues":[{"issueId":"i1","title":"...","summary":"...","options":[{"id":"a","label":"...","description":"...","recommended":true,"risk":"medium"}]}]}\n\nDoctor issues:\n${JSON.stringify(issues, null, 2)}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return asFixPlan(await callJsonLLM({ executorName, model, timeoutMs, system, prompt, loading: attempt === 0 ? '正在根据 doctor 建议生成修复方案...' : `方案生成格式异常，重试中（${attempt + 1}/3）...` }));
+      return asFixPlan(await callJsonLLM({ signal, executorName, model, timeoutMs, system, prompt, loading: attempt === 0 ? '正在根据 doctor 建议生成修复方案...' : `方案生成格式异常，重试中（${attempt + 1}/3）...` }));
     } catch (err) {
+      signal?.throwIfAborted();
       if (attempt === 2) throw err;
     }
   }
   throw new Error('unreachable');
 }
 
-async function applyFixWithAgent(issues: FixIssue[], choices: Record<string, string>, plan: FixPlan, executorName: string, model: string, timeoutMs: number, effort?: string): Promise<boolean> {
+async function applyFixWithAgent(issues: FixIssue[], choices: Record<string, string>, plan: FixPlan, executorName: string, model: string, timeoutMs: number, effort?: string, signal?: AbortSignal): Promise<boolean> {
+  signal?.throwIfAborted();
   const chosenIssues = issues.filter((i) => choices[i.id] && choices[i.id] !== 'skip');
   if (chosenIssues.length === 0) return false;
 
@@ -180,9 +186,11 @@ ${instructions}`;
     cwd,
     skillDir: cwd,
     timeoutMs,
+    abortSignal: signal,
     effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined,
   });
 
+  signal?.throwIfAborted();
   if (!result.ok) {
     process.stderr.write(`修复失败: ${result.error ?? 'unknown'}\n`);
     return false;
@@ -192,31 +200,6 @@ ${instructions}`;
     process.stderr.write(`\n修复完成:\n${result.output}\n`);
   }
   return true;
-}
-
-function createStdinReader(): () => Promise<string> {
-  let lines: string[] | null = null;
-  return () => {
-    if (!process.stdin.isTTY) {
-      if (lines === null) {
-        const raw = readFileSync(0, 'utf8');
-        lines = raw.split(/\r?\n/);
-      }
-      return Promise.resolve((lines.shift() ?? '').trim());
-    }
-    return new Promise((resolveAnswer) => {
-      process.stdin.resume();
-      process.stdin.setEncoding('utf8');
-      process.stdin.once('data', (data) => resolveAnswer(String(data).trim()));
-    });
-  };
-}
-
-const readLineFromStdin = createStdinReader();
-
-async function ask(question: string): Promise<string> {
-  process.stderr.write(question);
-  return readLineFromStdin();
 }
 
 function renderPlan(plan: FixPlan): void {
@@ -232,7 +215,7 @@ function renderPlan(plan: FixPlan): void {
   }
 }
 
-async function collectChoices(plan: FixPlan): Promise<Record<string, string>> {
+async function collectChoices(plan: FixPlan, ask: (question: string) => Promise<string>, signal?: AbortSignal): Promise<Record<string, string>> {
   const choices: Record<string, string> = {};
   for (const issue of plan.issues) {
     const recommended = issue.options.find((o) => o.recommended) ?? issue.options[0];
@@ -249,9 +232,9 @@ async function collectChoices(plan: FixPlan): Promise<Record<string, string>> {
           { name: '自定义修复方向', value: '__custom__', description: '输入你自己的修复想法' },
           { name: '跳过此问题', value: 'skip', description: '不修复该问题' },
         ],
-      });
+      }, { signal });
       if (selected === '__custom__') {
-        const customInput = await input({ message: '请输入修复方向：' });
+        const customInput = await input({ message: '请输入修复方向：' }, { signal });
         if (customInput.trim()) {
           issue.options.push({ id: '__custom__', label: '自定义', description: customInput.trim() });
           choices[issue.issueId] = '__custom__';
@@ -310,6 +293,7 @@ function backupSkillFiles(issues: FixIssue[], projectRoot: string): void {
 }
 
 export interface FixOptions {
+  signal?: AbortSignal;
   report: DoctorReport;
   executorName: string;
   model: string;
@@ -320,6 +304,27 @@ export interface FixOptions {
 }
 
 export async function runDoctorFix(opts: FixOptions): Promise<boolean> {
+  let reader: Interface | undefined;
+  let answers: AsyncIterator<string> | undefined;
+  const ask = async (question: string): Promise<string> => {
+    opts.signal?.throwIfAborted();
+    process.stderr.write(question);
+    reader ??= createInterface({ input: process.stdin, terminal: false, signal: opts.signal });
+    answers ??= reader[Symbol.asyncIterator]();
+    const answer = await answers.next();
+    opts.signal?.throwIfAborted();
+    return (answer.value ?? '').trim();
+  };
+  try {
+    return await runDoctorFixWithAnswers(opts, ask);
+  } finally {
+    reader?.close();
+    if (reader) process.stdin.pause();
+  }
+}
+
+async function runDoctorFixWithAnswers(opts: FixOptions, ask: (question: string) => Promise<string>): Promise<boolean> {
+  opts.signal?.throwIfAborted();
   const issues = collectFixIssues(opts.report);
   if (opts.resolveSkillPath) {
     for (const issue of issues) {
@@ -330,9 +335,9 @@ export async function runDoctorFix(opts: FixOptions): Promise<boolean> {
     process.stderr.write('\n没有可自动修复的 doctor 建议。\n');
     return false;
   }
-  const plan = await buildFixPlan(issues, opts.executorName, opts.model, opts.timeoutMs, opts.effort);
+  const plan = await buildFixPlan(issues, opts.executorName, opts.model, opts.timeoutMs, opts.effort, opts.signal);
   renderPlan(plan);
-  const choices = await collectChoices(plan);
+  const choices = await collectChoices(plan, ask, opts.signal);
   if (Object.values(choices).every((v) => v === 'skip')) {
     process.stderr.write('\n所有问题已跳过，未修改文件。\n');
     return false;
@@ -342,7 +347,7 @@ export async function runDoctorFix(opts: FixOptions): Promise<boolean> {
 
   let shouldApply: boolean;
   if (process.stdin.isTTY) {
-    shouldApply = await confirm({ message: `确认修复 ${chosenIssues.length} 个问题？`, default: true });
+    shouldApply = await confirm({ message: `确认修复 ${chosenIssues.length} 个问题？`, default: true }, { signal: opts.signal });
   } else {
     const answer = await ask(`\n确认修复 ${chosenIssues.length} 个问题？[Y/n] `);
     shouldApply = !/^n(o)?$/i.test(answer);
@@ -352,12 +357,13 @@ export async function runDoctorFix(opts: FixOptions): Promise<boolean> {
     return false;
   }
 
+  opts.signal?.throwIfAborted();
   backupSkillFiles(chosenIssues, opts.report.cwd);
-  const changed = await applyFixWithAgent(issues, choices, plan, opts.executorName, opts.model, opts.timeoutMs, opts.effort);
+  const changed = await applyFixWithAgent(issues, choices, plan, opts.executorName, opts.model, opts.timeoutMs, opts.effort, opts.signal);
 
   if (changed && opts.verify) {
     const shouldVerify = process.stdin.isTTY
-      ? await confirm({ message: '是否重新运行 doctor 验证修复结果？', default: true })
+      ? await confirm({ message: '是否重新运行 doctor 验证修复结果？', default: true }, { signal: opts.signal })
       : false;
     if (shouldVerify) {
       spinner('重新运行 doctor 验证中...');

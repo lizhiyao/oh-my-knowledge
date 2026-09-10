@@ -84,7 +84,7 @@ describe('removed CLI options', () => {
       '--skill-dir', SKILLS,
       '--control', 'v1',
       '--treatment', 'v2',
-      '--executor', CUSTOM_EXECUTOR,
+      '--executor', CUSTOM_EXECUTOR, '--model', 'fixture-model',
       '--no-judge',
       '--dry-run',
       '--skip-connectivity',

@@ -15,7 +15,7 @@ Run the deterministic path without an LLM judge:
 
 ```bash
 omk eval --control baseline --treatment echo-assistant \
-  --executor ./echo-executor.sh --no-judge --report-only
+  --executor ./echo-executor.sh --model echo --no-judge --report-only
 ```
 
 `--no-judge` leaves only deterministic assertions. `--report-only` still writes and prints the report but does not let this deliberately tiny sample set control the process exit code.

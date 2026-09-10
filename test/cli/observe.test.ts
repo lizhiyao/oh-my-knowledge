@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runObserveInbox } from '../../src/cli/commands/observe/inbox.js';
@@ -79,6 +79,7 @@ describe('observe CLI', () => {
 
   it('prints the observe → sample draft command for recyclable signals', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
+    const hostile = 'audit\x1b[2J\x1b]0;fake\x07\r\u202e';
     writeInboxReport(dir, {
       kind: 'observe-inbox',
       schemaVersion: 2,
@@ -90,8 +91,8 @@ describe('observe CLI', () => {
       },
       items: [{
         id: 'obs-audit',
-        skillName: 'audit',
-        artifactVersion: 'unknown',
+        skillName: hostile,
+        artifactVersion: hostile,
         cwd: '/repo',
         sessionId: 's1',
         sourceTrace: '/tmp/trace/session.jsonl',
@@ -102,15 +103,17 @@ describe('observe CLI', () => {
         attributionConfidence: 0.85,
         severity: 'high',
         severityReasonCode: 'knowledge_gap_suspected',
-        evidence: { tool: 'Grep', query: 'schema' },
+        evidence: { tool: 'Grep', query: hostile },
         firstSeen: '2026-05-07T00:00:00.000Z',
         lastSeen: '2026-05-07T00:00:00.000Z',
         occurrences: 2,
         recentSessionIds: ['s1'],
-        representativeEvidence: [{ tool: 'Grep', query: 'schema' }],
+        representativeEvidence: [{ tool: 'Grep', query: hostile }],
       }],
     });
 
+    const reportPath = join(dir, 'reports', reportFileName('20260507T000000-a111'));
+    const originalBytes = readFileSync(reportPath);
     const logs: string[] = [];
     const originalLog = console.log;
     console.log = (value?: unknown) => { logs.push(String(value)); };
@@ -129,6 +132,20 @@ describe('observe CLI', () => {
         },
         'zh',
       );
+      assert.ok(logs.some((line) => line.includes('audit�[2J')));
+      for (const line of logs) assert.doesNotMatch(line, /[\p{Cc}\p{Cf}]/u);
+      const textLogs = [...logs];
+      logs.length = 0;
+      await runObserveInbox({}, {
+        lang: 'zh', 'input-dir': dir, global: false, 'include-noise': false,
+        'by-skill': false, 'llm-enhanced-review': false, refresh: false, json: true,
+      }, 'zh');
+      const raw = JSON.parse(logs.join('\n')) as { items: Array<{ skillName: string; artifactVersion: string; evidence: { query: string } }> };
+      assert.equal(raw.items[0].skillName, hostile);
+      assert.equal(raw.items[0].artifactVersion, hostile);
+      assert.equal(raw.items[0].evidence.query, hostile);
+      assert.deepEqual(readFileSync(reportPath), originalBytes);
+      logs.splice(0, logs.length, ...textLogs);
     } finally {
       console.log = originalLog;
     }

@@ -123,7 +123,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
   const cmd = resolved.command;
   const args = resolved.args;
 
-  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict }: ExecutorInput): Promise<ExecResult> {
+  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, abortSignal }: ExecutorInput): Promise<ExecResult> {
     if (allowedSkills !== undefined && !scriptIsolationWarned) {
       scriptIsolationWarned = true;
       process.stderr.write(
@@ -161,6 +161,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
     const { child, done } = spawnWithSigintPropagation(cmd, args, {
       env,
       timeoutMs,
+      abortSignal,
       ...(cwd && { cwd }),
     });
     child.stdin?.on('error', () => undefined);

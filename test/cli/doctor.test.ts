@@ -46,7 +46,7 @@ describe('omk doctor command', () => {
     const { stdout } = await runDoctorCommand([
       EXAMPLE_SKILL,
       '--json',
-      '--executor', DOCTOR_FIXTURE,
+      '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model',
     ]);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.kind, 'doctor');
@@ -80,7 +80,7 @@ describe('omk doctor command', () => {
     const { stdout } = await runDoctorCommand([
       EXAMPLE_SKILLS_DIR,
       '--json',
-      '--executor', DOCTOR_FIXTURE,
+      '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model',
     ]);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.kind, 'doctor');
@@ -102,7 +102,7 @@ describe('omk doctor command', () => {
     const { stderr } = await runDoctorCommand([
       EXAMPLE_SKILL,
       '--gate',
-      '--executor', DOCTOR_FIXTURE,
+      '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model',
     ]);
     // Pass case: stdout silent, stderr should not contain "doctor failed:"
     assert.ok(!stderr.includes('doctor failed:'));
@@ -116,7 +116,7 @@ describe('omk doctor command', () => {
       const skillPath = join(tmp, 'broken.md');
       writeFileSync(skillPath, '一个内容足够长但被 fixture 标记为不健康的 skill 文件。');
       await assert.rejects(
-        () => runDoctorCommand([skillPath, '--gate', '--executor', DOCTOR_FIXTURE], {
+        () => runDoctorCommand([skillPath, '--gate', '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model'], {
           env: { ...process.env, OMK_DOCTOR_FIXTURE_OUTCOME: 'fail' },
         }),
         (err: unknown) => {
@@ -137,7 +137,7 @@ describe('omk doctor command', () => {
   it('default (no flags) renders human-readable text to stderr', async () => {
     const { stderr } = await runDoctorCommand([
       EXAMPLE_SKILL,
-      '--executor', DOCTOR_FIXTURE,
+      '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model',
     ]);
     assert.ok(stderr.includes('健康检查'));
     assert.ok(stderr.includes('总览:'));
@@ -168,7 +168,7 @@ describe('omk doctor command', () => {
       await runDoctorCommand([
         skillRoot,
         '--repeat', '1',
-        '--executor', DOCTOR_FIXTURE,
+        '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model',
         '--output-dir', outputDir,
       ], { cwd: tmp });
 

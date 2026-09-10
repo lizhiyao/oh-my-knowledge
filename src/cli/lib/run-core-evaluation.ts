@@ -9,6 +9,7 @@ import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import type { PreparedCliEvaluation } from './prepare-evaluation.js';
 import type { CliLang } from './i18n.js';
+import { shellQuoteArg } from '../../shared/shell-quote.js';
 
 export interface RunCoreEvaluationCommandInput {
   readonly prepared: PreparedCliEvaluation;
@@ -48,15 +49,24 @@ async function announceCoreReport(
   outputDirectory: string,
   serve: boolean,
   lang: CliLang,
+  gateExitCode: 0 | 1,
+  signal?: AbortSignal,
 ): Promise<void> {
   process.stderr.write(lang === 'zh'
     ? `Core 评测产物已保存：${artifacts.manifest.runId}\n`
     : `Core evaluation artifacts saved: ${artifacts.manifest.runId}\n`);
   if (!serve) return;
+  if (gateExitCode !== 0) {
+    const command = `omk studio --reports-dir ${shellQuoteArg(outputDirectory)}`;
+    process.stderr.write(lang === 'zh'
+      ? `评测门禁未通过，将以退出码 ${gateExitCode} 结束。查看已保存的报告：${command}\n`
+      : `The evaluation gate did not pass; exiting with code ${gateExitCode}. View the saved report: ${command}\n`);
+    return;
+  }
   if (!process.stdout.isTTY) {
     process.stderr.write(lang === 'zh'
-      ? `非交互终端不自动启动 Studio。运行 omk studio --reports-dir ${outputDirectory} 查看。\n`
-      : `Studio was not started in a non-interactive terminal. Run omk studio --reports-dir ${outputDirectory}.\n`);
+      ? `非交互终端不自动启动 Studio。运行 omk studio --reports-dir ${shellQuoteArg(outputDirectory)} 查看。\n`
+      : `Studio was not started in a non-interactive terminal. Run omk studio --reports-dir ${shellQuoteArg(outputDirectory)}.\n`);
     return;
   }
   const { createCoreStudioCatalog } = await import('../../studio/application/core-run-catalog.js');
@@ -65,6 +75,21 @@ async function announceCoreReport(
     coreStudioCatalog: createCoreStudioCatalog(store),
   });
   const serverUrl = await server.start();
+  let closing = false;
+  const stop = () => {
+    if (closing) return;
+    closing = true;
+    process.off('SIGINT', stop);
+    process.off('SIGTERM', stop);
+    signal?.removeEventListener('abort', stop);
+    void server.stop().catch((error: unknown) => {
+      process.stderr.write(`${lang === 'zh' ? '报告服务关闭失败' : 'Report server shutdown failed'}: ${String(error)}\n`);
+    });
+  };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  signal?.addEventListener('abort', stop, { once: true });
+  if (signal?.aborted) { stop(); return; }
   const reportUrl = `${serverUrl}/measure/${encodeURIComponent(artifacts.manifest.runId)}`;
   process.stderr.write(lang === 'zh'
     ? `报告服务：${serverUrl}\n查看本次评测：${reportUrl}\n按 Ctrl+C 停止。\n`
@@ -115,7 +140,7 @@ export async function runCoreEvaluationCommand(input: Readonly<RunCoreEvaluation
         explicitCliFlags: { ...parseInput.explicitCliFlags, batch: undefined, control: 'baseline', treatment: entry.skillPath, samples: entry.samplesPath, 'no-serve': true },
       }),
       async onCompleted(completed, request) {
-        if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve && !input.signal?.aborted, lang);
+        if (completed.outcomeKind === 'run') await announceCoreReport(completed.artifacts, completed.store, completed.outputDirectory, request.values.presentation.serve && !input.signal?.aborted, lang, completed.outcome.gate.exitCode, input.signal);
         if (completed.outcomeKind === 'series') process.stderr.write(lang === 'zh'
           ? `Core Series 已完成：${completed.outcome.seriesId}（${completed.outcome.members.length} 个独立 run）\n`
           : `Core Series completed: ${completed.outcome.seriesId} (${completed.outcome.members.length} independent runs)\n`);

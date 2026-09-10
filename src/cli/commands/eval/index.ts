@@ -11,7 +11,7 @@ import { prepareCliEvaluation, type PreparedCliEvaluation } from '../../lib/prep
 import { CliEvaluationInputError } from '../../../eval-workflows/hosts/application.js';
 import { codexModelFlagValue, codexModelHint } from '../../lib/codex-model-hint.js';
 import { looksLikeModelUnavailableFailure } from '../../lib/llm-failure-classifier.js';
-import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
+import type { CommandFlags } from '../../lib/cmd-flags.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../../eval-workflows/evaluation-defaults.js';
 import {
   hasUsableSamplesPath,
@@ -179,6 +179,7 @@ async function runEval(
   _args: EvalArgs,
   flags: EvalFlags,
   lang: CliLang,
+  signal: AbortSignal,
 ): Promise<void> {
   let prepared: PreparedCliEvaluation;
   try {
@@ -210,25 +211,15 @@ async function runEval(
     throw new CliExit(1);
   }
 
-  const cancellation = new AbortController();
-  // Keep listening until persistence and resource cleanup finish. The subprocess
-  // coordinator may re-raise SIGINT after terminating its children.
-  const cancel = () => cancellation.abort();
-  process.on('SIGINT', cancel);
-  process.on('SIGTERM', cancel);
   try {
     const { runCoreEvaluationCommand } = await import('../../lib/run-core-evaluation.js');
-    const result = await runCoreEvaluationCommand({ prepared, signal: cancellation.signal });
+    const result = await runCoreEvaluationCommand({ prepared, signal });
     if (!process.stdout.isTTY || result.output && typeof result.output === 'object'
         && (result.output as { projectionKind?: string }).projectionKind === 'core-cli-dry-run') {
       console.log(JSON.stringify(result.output, null, 2));
     } else {
       process.stdout.write(formatEvaluationSummary(result.output, lang));
     }
-    // A blocked gate exits immediately through oclif; flush a piped JSON report first.
-    await new Promise<void>((resolve, reject) => {
-      process.stdout.write('', (error) => error ? reject(error) : resolve());
-    });
     throw new CliExit(result.exitCode);
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
@@ -242,9 +233,6 @@ async function runEval(
       }, lang, prepared.environment.environment)}`,
     }));
     throw new CliExit(1);
-  } finally {
-    process.off('SIGINT', cancel);
-    process.off('SIGTERM', cancel);
   }
 }
 
@@ -319,8 +307,8 @@ export default class Eval extends BaseCommand {
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。',
-        en: 'Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.',
+        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Claude 使用 haiku，其他执行器沿用被测模型。',
+        en: 'Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Claude uses haiku, other executors reuse the evaluated model.',
       }),
     }),
     'output-dir': Flags.string({
@@ -481,8 +469,11 @@ export default class Eval extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Eval);
     const lang = this.lang;
-    await this.runWithCliExit(async () => {
-      await runEval(args as Record<string, never>, { ...flags, lang }, lang);
+    await this.runWithCancellation(async (signal) => {
+      await runEval(args as Record<string, never>, { ...flags, lang }, lang, signal);
     });
   }
 }
+
+export type EvalArgs = Record<string, never>;
+export type EvalFlags = CommandFlags<typeof Eval.flags>;

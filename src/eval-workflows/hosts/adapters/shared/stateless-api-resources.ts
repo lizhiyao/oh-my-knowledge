@@ -115,13 +115,13 @@ export function captureStatelessApiTarget(
   if (
     config.behavior.mcpConfig !== undefined
     || config.behavior.mocks !== undefined
-    || config.behavior.allowedSkills !== undefined
+    || (config.behavior.allowedSkills?.length ?? 0) > 0
     || config.behavior.sandbox !== undefined
     || target.executionRequirements.workspace !== 'not-required'
     || target.executionRequirements.mcp !== 'not-required'
     || target.executionRequirements.mockInterception !== 'not-required'
     || target.executionRequirements.toolPolicy !== 'runtime-default'
-    || target.executionRequirements.skillDiscovery !== 'runtime-default'
+    || !['runtime-default', 'disabled'].includes(target.executionRequirements.skillDiscovery)
     || target.executionRequirements.sandboxId !== undefined
   ) {
     throw new TypeError(

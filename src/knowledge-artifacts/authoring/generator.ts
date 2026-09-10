@@ -415,6 +415,7 @@ export function sampleGenerationUsesMocks(
 }
 
 export interface GenerateSamplesOptions {
+  signal?: AbortSignal;
   skillContent: string;
   count?: number;
   model: string;
@@ -462,6 +463,7 @@ export async function generateSamples({
   focus,
   noMock,
   executor: injectedExecutor,
+  signal,
 }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   const executor = injectedExecutor ?? createExecutor(executorName);
   const mockless = !sampleGenerationUsesMocks(executorName, noMock);
@@ -482,7 +484,9 @@ export async function generateSamples({
     const attemptPrompt = attempt === 1
       ? prompt
       : `${prompt}\n\n上一次输出解析失败:${lastErr}\n请严格按 JSON 规范输出(字符串内部用「」全角引号),只输出数组,不要包含其他文字。`;
-    const result = await executor({ model, system, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
+    signal?.throwIfAborted();
+    const result = await executor({ model, system, prompt: attemptPrompt, timeoutMs: 300_000, lean: true, abortSignal: signal });
+    signal?.throwIfAborted();
     totalCost += result.costUSD || 0;
     if (!result.ok) {
       lastErr = result.error || 'unknown error';
@@ -658,6 +662,7 @@ function traceSanitizeContext(items: TraceSignalItem[]): string {
 }
 
 export interface GenerateSamplesFromTracesOptions {
+  signal?: AbortSignal;
   items: TraceSignalItem[];
   count?: number;
   model: string;
@@ -681,6 +686,7 @@ export async function generateSamplesFromTraces({
   executorName,
   noMock,
   executor: injectedExecutor,
+  signal,
 }: GenerateSamplesFromTracesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   if (items.length === 0) return { samples: [], costUSD: 0 };
   if (!injectedExecutor && !executorName) {
@@ -701,7 +707,9 @@ export async function generateSamplesFromTraces({
     const attemptPrompt = attempt === 1
       ? prompt
       : `${prompt}\n\n上一次输出解析失败:${lastErr}\n请严格按 JSON 规范输出(字符串内部用「」全角引号),只输出数组,不要包含其他文字。`;
-    const result = await executor({ model, system, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
+    signal?.throwIfAborted();
+    const result = await executor({ model, system, prompt: attemptPrompt, timeoutMs: 300_000, lean: true, abortSignal: signal });
+    signal?.throwIfAborted();
     totalCost += result.costUSD || 0;
     if (!result.ok) {
       lastErr = result.error || 'unknown error';

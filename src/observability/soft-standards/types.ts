@@ -229,6 +229,7 @@ export interface ResolvedSkillStandards {
 }
 
 export interface ExtractSkillSoftStandardsOptions {
+  signal?: AbortSignal;
   observationsDir: string;
   skillChain: ObservationSkillChain;
   runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence;

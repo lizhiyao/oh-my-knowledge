@@ -6,8 +6,10 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderCommandHelp } from '../helpers/run-command.js';
@@ -54,4 +56,42 @@ describe('oclif doctor', () => {
       assert.match(e.stderr, /--repeat[\s\S]*integer[\s\S]*1[\s\S]*10/, `stderr missing parser range:\n${e.stderr}`);
     }
   });
+  it('flushes a large failed JSON report to a slow pipe before exiting through oclif', async () => {
+    // Real process boundary: in-process console capture cannot detect truncated pipe writes.
+    const root = await mkdtemp(join(tmpdir(), 'omk-doctor-pipe-'));
+    try {
+      for (let i = 0; i < 80; i++) {
+        const skill = join(root, 'skills', `broken-${i}`);
+        await mkdir(skill, { recursive: true });
+        await writeFile(join(skill, 'SKILL.md'), '---\nname: [\n---\n# Broken\n');
+      }
+      const child = spawn(process.execPath, [CLI, 'doctor', '--static-only', '--json'], {
+        cwd: root, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, HOME: root, OMK_HOME: join(root, 'home'), OMK_SKIP_UPDATE_CHECK: '1' },
+      });
+      let stdout = '';
+      let stderr = '';
+      // Pause between chunks to force backpressure instead of eagerly draining the pipe.
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        stdout += chunk;
+        child.stdout.pause();
+        setTimeout(() => child.stdout.resume(), 25);
+      });
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject);
+        child.once('close', resolve);
+      });
+      const result = { stdout, stderr, code };
+      assert.equal(result.code, 1);
+      assert.ok(result.stdout.length > 65_536);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.outcome, 'failed');
+      assert.equal(report.skills.length, 80);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
 });

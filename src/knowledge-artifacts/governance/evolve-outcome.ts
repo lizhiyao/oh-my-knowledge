@@ -3,16 +3,15 @@ import {
   resolveManagedDir,
   managedDir,
   loadAllManagedRecords,
-  rebaselineManagedContentHash,
   probeSourceState,
-} from '../../knowledge-artifacts/governance/index.js';
-import type { ManagedArtifactRecord } from '../../knowledge-artifacts/governance/contracts.js';
+} from './index.js';
+import type { ManagedArtifactRecord } from './contracts.js';
 import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store/index.js';
 import { projectCoreManagedEvidence } from '../../eval-workflows/projections/managed.js';
 import {
   coreEvidenceTargetForContentHash,
   recordCoreEvalEvidenceForRecord,
-} from '../../knowledge-artifacts/governance/evidence.js';
+} from './evidence.js';
 
 export interface EvolveOutcomeResult {
   name: string;
@@ -62,17 +61,18 @@ export function recordCoreEvolveOutcome(
   );
   if (record === undefined) return null;
   const probe = probeSourceState(record);
-  if (!probe.reachable || probe.hash === undefined) return null;
+  if (!probe.reachable || probe.hash === undefined) throw new Error('Evolved source is unavailable; managed evidence was not recorded.');
   const projection = projectCoreManagedEvidence(input.source);
-  if (coreEvidenceTargetForContentHash(projection, probe.hash) === undefined) return null;
-  if (!rebaselineManagedContentHash(directory, record.id, probe.hash)) return null;
+  if (coreEvidenceTargetForContentHash(projection, probe.hash) === undefined) {
+    throw new Error('Evolved source does not match one authenticated evidence target; managed baseline was not changed.');
+  }
   const written = recordCoreEvalEvidenceForRecord(
     projection,
     record.id,
     probe.hash,
-    { dir: directory },
+    { dir: directory, rebaselineFromHash: record.contentHash },
   );
-  if (written === undefined) return null;
+  if (written === undefined) throw new Error('Managed record disappeared before evidence commit.');
   const verdict = projection.decision?.decisionStatus === 'decided'
     ? projection.decision.verdict
     : 'UNKNOWN';

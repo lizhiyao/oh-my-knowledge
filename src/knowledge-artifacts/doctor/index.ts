@@ -108,6 +108,7 @@ async function runRulesOnArtifact(
   const results: DoctorRuleResult[] = [];
   const ctx = { ...ctxBase, artifact };
   for (const rule of rules) {
+    ctx.signal?.throwIfAborted();
     const start = Date.now();
     if (isComposerRule(rule)) {
       // ComposerRule: 一次 checkAll() 产出多条 outcome,展开成 N+1 条 result,
@@ -171,6 +172,7 @@ async function runRulesOnArtifact(
       });
     }
   }
+  ctx.signal?.throwIfAborted();
   return results;
 }
 
@@ -231,6 +233,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     ?? opts.cwd;
 
   const ctxBase: Omit<DoctorContext, 'artifact'> = {
+    signal: opts.signal,
     samples: opts.samples,
     requires: opts.requires,
     executorName: opts.executorName,

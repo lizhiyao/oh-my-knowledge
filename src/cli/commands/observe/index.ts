@@ -4,31 +4,11 @@ import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
-import { parseLastWindow } from '../../lib/shared.js';
+import { sanitizeCell } from '../../lib/cell-format.js';
+import { resolveObservationWindow } from '../../lib/observation-window.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../evidence/storage/directories.js';
-import { indexObserveWrite } from '../../../evidence/storage/discovery-index.js';
-import { runFileSuffix } from '../../../evidence/storage/file-names.js';
-import { writeMeasurementReportBundle } from '../../../evidence/storage/report-bundle.js';
+import { persistObserveHealthReport, buildObserveReportView } from '../../../observability/skill-health/persistence.js';
 import type { SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
-
-/**
- * observe health 报告落盘：id 加 4 位随机段，根治「同秒两次 omk observe 覆盖」的数据丢失。
- * 每份报告使用自包含 bundle，权威正文固定为 report.json。
- * 落盘后 best-effort 追加全局轻卡片,让 studio 跨项目聚合。
- */
-export function persistObserveHealthReport(report: SkillHealthReport, outDir: string): { id: string; jsonPath: string } {
-  const id = runFileSuffix();
-  const { reportPath: jsonPath } = writeMeasurementReportBundle({
-    rootDir: outDir,
-    measurementDomain: 'observe-health',
-    recordId: id,
-    reportId: id,
-    createdAt: report.meta.generatedAt,
-    report,
-  });
-  indexObserveWrite(report, jsonPath, outDir, id);
-  return { id, jsonPath };
-}
 
 // 盲区信号类型 → 人话标签(建议补样本提示用)。技术枚举键的展示名,zh/en 分列。
 const GAP_AREA_LABELS: Record<string, { zh: string; en: string }> = {
@@ -53,49 +33,27 @@ function topGapAreas(gapByType: Record<string, number>, lang: CliLang): string {
 }
 
 /**
- * SkillHealthReport → managed 反哺的结构化最小入参(#235)。纯映射、可单测 —— 把「observe 报告 →
- * ObserveReportView」这段层间胶水从 CLI 副作用里拆出来,免得 healthBand 取错字段 / observedAt 取错时刻
- * 这类映射 bug 无人验。`observedAt` 取**流量窗口结束时刻**(timeRange.to,空则退 generatedAt),不是「此刻」
- * 的 generatedAt —— 否则 latest-wins 会把所有观测当成一样新(见 ManagedObservation.observedAt)。
- * `healthBand` 由 observability 的 `healthBandOf` 逐 skill 算(阈值单一来源,注入以保可测)。
- */
-export function buildObserveReportView(
-  report: SkillHealthReport,
-  reportId: string,
-  healthBandOf: (weightedGapRate: number) => 'green' | 'yellow' | 'red',
-): import('../../../knowledge-artifacts/governance/index.js').ObserveReportView {
-  return {
-    reportId,
-    observedAt: report.meta.timeRange?.to || report.meta.generatedAt,
-    skills: Object.values(report.bySkill).map((s) => ({
-      skillName: s.skillName,
-      segmentCount: s.segmentCount,
-      gapRate: s.gap.gapRate,
-      weightedGapRate: s.gap.weightedGapRate,
-      confidence: s.confidence,
-      healthBand: healthBandOf(s.gap.weightedGapRate),
-      gapByType: s.gap.byType,
-    })),
-  };
-}
-
-/**
  * observe → 管理支柱反哺(#235):把每个 skill 的生产健康落成观测追加进同名受管记录,并打印「已记录 / 生产
- * 盲区警示」。**非致命**:管理是 observe 旁路,任何异常都不该让 observe 失败(try/catch 吞掉)。observability /
+ * 盲区警示」。**非致命**:管理是 observe 旁路,写入失败给出诊断，但不改变已生成报告的结果。observability /
  * managed 运行时函数动态 import,与 observe 主体一致、不拖累 CLI 启动。
  */
 async function recordObserveFeedback(report: SkillHealthReport, reportId: string, lang: CliLang): Promise<void> {
   try {
     const { healthBandOf } = await import('../../../observability/skill-health/analyzer.js');
-    const { recordObserveHealth } = await import('../../../knowledge-artifacts/governance/index.js');
-    const written = recordObserveHealth(buildObserveReportView(report, reportId, healthBandOf));
-    for (const w of written) {
+    const { recordObserveHealthSafely } = await import('../../../knowledge-artifacts/governance/observe-feedback.js');
+    const result = recordObserveHealthSafely(buildObserveReportView(report, reportId, healthBandOf));
+    if (result.status === 'failed') throw result.error;
+    if (result.status === 'not-applicable') return;
+    for (const w of result.records) {
       process.stdout.write(w.isProductionGap
         ? tCli('cli.observe.production_gap', lang, { name: w.name, areas: topGapAreas(w.gapByType, lang) })
         : tCli('cli.observe.observation_recorded', lang, { name: w.name }));
     }
-  } catch {
-    // 反哺是 observe 旁路,任何异常都不该让 observe 失败。
+  } catch (error) {
+    const message = sanitizeCell(error instanceof Error ? error.message : String(error));
+    process.stderr.write(lang === 'zh'
+      ? `治理观测写入失败（报告 ${reportId}）：${message}。报告已保留，请检查受管目录。\n`
+      : `Managed observation write failed (report ${reportId}): ${message}. The report is preserved; check the managed directory.\n`);
   }
 }
 
@@ -179,28 +137,18 @@ export default class Observe extends BaseCommand {
         console.error(tCli('cli.help.observe', lang).trim());
         throw new CliExit(1);
       }
+      const { from, to } = resolveObservationWindow(flags, lang);
       const tracePath = resolve(dir);
 
       const { existsSync } = await import('node:fs');
       if (!existsSync(tracePath)) {
-        console.error(`Trace path does not exist: ${tracePath}`);
+        console.error(lang === 'zh' ? `轨迹路径不存在：${sanitizeCell(tracePath)}` : `Trace path does not exist: ${sanitizeCell(tracePath)}`);
         throw new CliExit(1);
       }
 
-      // 时间窗: --from/--to 优先, --last fallback
-      let from: string | undefined = flags.from;
-      if (!from && flags.last) {
-        const inferred = parseLastWindow(flags.last);
-        if (!inferred) {
-          console.error(`Invalid --last format: "${flags.last}". Expected e.g. "7d" / "24h" / "30m".`);
-          throw new CliExit(1);
-        }
-        from = inferred;
-      }
-      const to: string | undefined = flags.to;
       const skills = flags.skills ? flags.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
-      console.log(`[omk] analyzing ${tracePath}...`);
+      console.log(lang === 'zh' ? `[omk] 正在分析 ${sanitizeCell(tracePath)}…` : `[omk] analyzing ${sanitizeCell(tracePath)}...`);
       const { computeSkillHealthReport } = await import('../../../observability/skill-health/analyzer.js');
       const report = computeSkillHealthReport(tracePath, {
         kbRoot: flags.kb ? resolve(flags.kb) : undefined,
@@ -229,25 +177,34 @@ export default class Observe extends BaseCommand {
         toolUnknownCount = 0,
       } = report.meta;
       const toolComparableCount = Math.max(0, toolResolvedCount - toolCancelledCount);
+      const labels = lang === 'zh'
+        ? { failure: '失败率', unavailable: '不可用', cancelled: '已取消', unknown: '结果未知', comparable: '可比较', sessions: '会话', segments: '片段', calls: '工具调用', overall: '总体', gap: '缺口率', weighted: '加权缺口率', health: '健康状态', confidence: '置信度', skills: '主要知识项', coverage: '覆盖率', report: '报告已写入' }
+        : { failure: 'fail rate', unavailable: 'unavailable', cancelled: 'cancelled', unknown: 'unknown outcomes', comparable: 'comparable', sessions: 'sessions', segments: 'segments', calls: 'tool calls', overall: 'overall', gap: 'gapRate', weighted: 'weightedGapRate', health: 'health', confidence: 'confidence', skills: 'top skills', coverage: 'coverage', report: 'report written to' };
+      const confidenceLabel = (confidence: string): string => lang === 'zh'
+        ? ({ high: '高', medium: '中', low: '低', underpowered: '样本不足' }[confidence] ?? confidence)
+        : confidence;
+      const bandLabel = lang === 'zh'
+        ? ({ green: '绿', yellow: '黄', red: '红' }[report.overall.healthBand] ?? report.overall.healthBand)
+        : report.overall.healthBand;
       const failureSummary = toolCallCount > 0 && toolComparableCount === 0
-        ? `fail rate: unavailable${toolCancelledCount > 0 ? ` · cancelled: ${toolCancelledCount}` : ''}${toolUnknownCount > 0 ? ` · unknown outcomes: ${toolUnknownCount}` : ''}`
-        : `fail rate: ${(toolFailureRate * 100).toFixed(1)}% (${toolComparableCount} comparable${toolCancelledCount > 0 ? ` · ${toolCancelledCount} cancelled` : ''})`;
+        ? `${labels.failure}: ${labels.unavailable}${toolCancelledCount > 0 ? ` · ${labels.cancelled}: ${toolCancelledCount}` : ''}${toolUnknownCount > 0 ? ` · ${labels.unknown}: ${toolUnknownCount}` : ''}`
+        : `${labels.failure}: ${(toolFailureRate * 100).toFixed(1)}% (${toolComparableCount} ${labels.comparable}${toolCancelledCount > 0 ? ` · ${toolCancelledCount} ${labels.cancelled}` : ''})`;
       console.log('');
-      console.log(`sessions: ${sessionCount} · segments: ${segmentCount} · tool calls: ${toolCallCount} · ${failureSummary}`);
+      console.log(`${labels.sessions}: ${sessionCount} · ${labels.segments}: ${segmentCount} · ${labels.calls}: ${toolCallCount} · ${failureSummary}`);
       const overallConf = report.overall.confidence;
-      const confSuffix = overallConf === 'high'
-        ? ''
+      const confSuffix = overallConf === 'high' ? '' : lang === 'zh'
+        ? ` · ⚠ ${labels.confidence}: ${confidenceLabel(overallConf)}（N=${segmentCount}，样本不足，分档仅供参考）`
         : ` · ⚠ confidence: ${overallConf} (N=${segmentCount} too small; band is indicative)`;
-      console.log(`overall: gapRate ${(report.overall.gapRate * 100).toFixed(1)}% · weightedGapRate ${(report.overall.weightedGapRate * 100).toFixed(1)}% · health: ${report.overall.healthBand}${confSuffix}`);
+      console.log(`${labels.overall}: ${labels.gap} ${(report.overall.gapRate * 100).toFixed(1)}% · ${labels.weighted} ${(report.overall.weightedGapRate * 100).toFixed(1)}% · ${labels.health}: ${bandLabel}${confSuffix}`);
       console.log('');
       const skillRows = Object.values(report.bySkill)
         .sort((a, b) => b.segmentCount - a.segmentCount)
         .slice(0, 10)
-        .map((s) => `  ${s.skillName.padEnd(24)} segs=${String(s.segmentCount).padStart(4)}  gapRate=${String(Math.round(s.gap.gapRate * 100) + '%').padStart(4)}  weighted=${String(Math.round(s.gap.weightedGapRate * 100) + '%').padStart(4)}${s.coverage ? `  cov=${Math.round(s.coverage.fileCoverageRate * 100)}%` : ''}${s.confidence !== 'high' ? `  ⚠${s.confidence}` : ''}`);
-      console.log('top skills:');
+        .map((s) => `  ${sanitizeCell(s.skillName).padEnd(24)} ${labels.segments}=${String(s.segmentCount).padStart(4)}  ${labels.gap}=${String(Math.round(s.gap.gapRate * 100) + '%').padStart(4)}  ${labels.weighted}=${String(Math.round(s.gap.weightedGapRate * 100) + '%').padStart(4)}${s.coverage ? `  ${labels.coverage}=${Math.round(s.coverage.fileCoverageRate * 100)}%` : ''}${s.confidence !== 'high' ? `  ⚠${confidenceLabel(s.confidence)}` : ''}`);
+      console.log(`${labels.skills}:`);
       console.log(skillRows.join('\n'));
       console.log('');
-      console.log(`report written to: ${jsonPath}`);
+      console.log(`${labels.report}: ${sanitizeCell(jsonPath)}`);
       console.log(tCli('cli.observe.view_hint', lang));
 
       // #235 受管反哺:把生产健康观测落进同名受管 skill(--no-feedback 关)。非致命旁路。

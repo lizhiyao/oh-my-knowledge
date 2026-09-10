@@ -24,4 +24,17 @@ export abstract class BaseCommand extends Command {
       throw err;
     }
   }
+
+  protected async runWithCancellation(fn: (signal: AbortSignal) => Promise<void>): Promise<void> {
+    const cancellation = new AbortController();
+    const cancel = () => cancellation.abort();
+    process.on('SIGINT', cancel);
+    process.on('SIGTERM', cancel);
+    try {
+      await this.runWithCliExit(() => fn(cancellation.signal));
+    } finally {
+      process.off('SIGINT', cancel);
+      process.off('SIGTERM', cancel);
+    }
+  }
 }

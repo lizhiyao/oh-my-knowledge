@@ -63,8 +63,8 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     en: 'Next: run {command} to generate samples, review them, then re-run omk eval.',
   },
   'cli.update.new_version_available': {
-    zh: '\n💡 新版本可用：{old} → {new}，运行 npm i -g oh-my-knowledge@latest 升级\n\n',
-    en: '\n💡 New version available: {old} → {new}, run npm i -g oh-my-knowledge@latest to upgrade\n\n',
+    zh: '\n💡 新版本可用：{old} → {new}，运行 {command} 升级\n\n',
+    en: '\n💡 New version available: {old} → {new}, run {command} to upgrade\n\n',
   },
   'cli.update.box_title': {
     zh: '↑ omk 有新版本',

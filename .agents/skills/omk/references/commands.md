@@ -89,7 +89,7 @@ omk eval [flags]
 - `--global` `boolean`:报告写全局 ~/.oh-my-knowledge/eval，而非项目 .omk/eval
 - `--gold-dir` `option`:gold dataset 目录
 - `--holdout-ratio` `option`:留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
-- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。
+- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Claude 使用 haiku，其他执行器沿用被测模型。
 - `--judge-repeat` `option`:每个维度由评委评价 N 次
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--layered-stats` `boolean`:输出分层统计
@@ -236,7 +236,7 @@ omk evolve <skillPath> [flags]
 - `--no-edit-budget` `boolean`:关掉 edit budget 约束（允许任意大小的单轮改动）
 - `--no-reject-memory` `boolean`:关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
 - `--rounds` `option` (默认 `5`):最大迭代轮数，默认 5
-- `--samples` `option` (默认 `eval-samples.json`):用例文件路径，默认 eval-samples.json
+- `--samples` `option`:指定已有样本源；省略时先找 skill 私有样本，再找项目样本，都不存在时自动生成
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
 - `--snapshot-only` `boolean`:只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds

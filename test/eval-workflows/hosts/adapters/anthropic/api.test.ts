@@ -300,7 +300,7 @@ describe('Anthropic API Core Executor adapter', () => {
     expect(JSON.stringify(relocated.identity)).not.toContain('proxy.example.test');
     expect(first.identity).toMatchObject({
       implementationId: 'test.omk.anthropic-api/v1',
-      version: '1.1.0',
+      version: '1.2.0',
       fingerprintBasis: 'opaque',
       assuranceLevel: 'unknown',
       capabilities: {
@@ -569,6 +569,11 @@ describe('Anthropic API Core Executor adapter', () => {
       requirementPatch: { toolPolicy: 'allow-list' },
     });
     await expect(createAdapter(tools)).rejects.toThrow(/supports no workspace, MCP, mocks/);
+    const skills = await fixture({
+      behaviorPatch: { allowedSkills: ['local-skill'] },
+      requirementPatch: { skillDiscovery: 'allow-list' },
+    });
+    await expect(createAdapter(skills)).rejects.toThrow(/supports no workspace, MCP, mocks/);
 
     const temperature = await fixture({ behaviorConfig: { temperature: 0 } });
     await expect(createAdapter(temperature)).rejects.toThrow();

@@ -15,7 +15,7 @@ import {
   listDoctorCards,
 } from '../../../src/evidence/storage/discovery-index.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
-import { pruneDoctorHistory } from '../../../src/cli/commands/doctor.js';
+import { pruneDoctorHistory } from '../../../src/knowledge-artifacts/doctor/persistence.js';
 import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
 
 type DoctorCardInput = Parameters<typeof writeDoctorIndex>[0];
@@ -471,7 +471,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     }
     assert.equal(listDoctorCards().length, 2, '两张卡片');
 
-    pruneDoctorHistory(emptyDoctors, 'p', 1); // 只留最新 1 份 → 删 p-r1 正文 + 卡片
+    pruneDoctorHistory(emptyDoctors, ['p'], 1); // 只留最新 1 份 → 删 p-r1 正文 + 卡片
 
     assert.deepEqual(listDoctorCards().map((c) => c.id), ['p-r2'], '老卡片随正文一起删');
     const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });

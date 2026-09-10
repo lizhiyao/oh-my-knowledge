@@ -1,5 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -8,18 +7,9 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
 import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { DEFAULT_DOCTORS_DIR } from '../../evidence/storage/default-dirs.js';
-import { indexDoctorWrite, removeDoctorCard } from '../../evidence/storage/discovery-index.js';
-import { doctorReportFileStem } from '../../evidence/storage/file-names.js';
-import {
-  listMeasurementReportPaths,
-  measurementRecordIdFromReportPath,
-  writeMeasurementReportBundle,
-} from '../../evidence/storage/report-bundle.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../evidence/storage/directories.js';
-import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../evidence/graph/doctor.js';
-import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../knowledge-artifacts/doctor/contracts.js';
-import { parseDoctorReport } from '../../knowledge-artifacts/doctor/report-parser.js';
+import type { DoctorRule, DoctorRuleLike } from '../../knowledge-artifacts/doctor/contracts.js';
+import { persistDoctorReport } from '../../knowledge-artifacts/doctor/persistence.js';
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
@@ -122,6 +112,7 @@ export default class Doctor extends BaseCommand {
       }),
     }),
     fix: Flags.boolean({
+      exclusive: ['static-only'],
       description: bilingual({
         zh: '交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。',
         en: 'Interactive fix: use LLM agent to fix skill issues reported by doctor.',
@@ -161,7 +152,7 @@ export default class Doctor extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Doctor);
     const lang = this.lang;
-    await this.runWithCliExit(async () => {
+    await this.runWithCancellation(async (signal) => {
       const target: string | null = args.target ?? null;
       const staticOnly = flags['static-only'];
       const runtime = staticOnly
@@ -232,6 +223,7 @@ export default class Doctor extends BaseCommand {
       let report;
       try {
         report = await runDoctor({
+          signal,
           target,
           cwd,
           executorName,
@@ -249,8 +241,7 @@ export default class Doctor extends BaseCommand {
       } catch (err) {
         if (err instanceof CliExit) throw err;
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
-        console.error(`(${msg})`);
+        console.error(lang === 'zh' ? `健康检查未完成：${msg}` : `Doctor could not complete: ${msg}`);
         throw new CliExit(1);
       }
 
@@ -273,9 +264,12 @@ export default class Doctor extends BaseCommand {
         renderDoctorReportText(report, lang);
       }
 
-      persistDoctorReport(report, flags['output-dir']
+      const persistenceWarnings = persistDoctorReport(report, flags['output-dir']
         ? resolve(flags['output-dir'])
         : (flags.global ? globalDoctorsDir() : projectDoctorsDir()), lang);
+      for (const message of persistenceWarnings) {
+        process.stderr.write(lang === 'zh' ? `doctor 附属产物维护失败：${message}\n` : `Doctor derived artifact maintenance failed: ${message}\n`);
+      }
 
       if (flags.fix) {
         const existing = report;
@@ -284,117 +278,11 @@ export default class Doctor extends BaseCommand {
           throw new CliExit(0);
         }
         const { runDoctorFix } = await import('../../knowledge-artifacts/doctor/fixer.js');
-        const changed = await runDoctorFix({ report: existing, executorName, model, timeoutMs, effort });
+        const changed = await runDoctorFix({ signal, report: existing, executorName, model, timeoutMs, effort });
         throw new CliExit(changed ? 0 : (existing.outcome === 'failed' ? 1 : 0));
       }
 
       throw new CliExit(report.outcome === 'failed' ? 1 : 0);
     });
-  }
-}
-
-// 每个 skill 最多保留多少份历史 doctor 报告(避免无界增长拖慢 studio 启动 +
-// scanDoctorReports 扫盘成本)。50 = ~每天 1 跑撑 1.5 个月 sparkline,够用。
-const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
-
-function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh' | 'en' = 'zh'): void {
-  const dir = outputDir ?? DEFAULT_DOCTORS_DIR;
-  for (const skill of report.skills) {
-    const counts: Pick<DoctorReport['ruleStats'], 'pass' | 'warn' | 'fail' | 'skipped'> = {
-      pass: 0,
-      warn: 0,
-      fail: 0,
-      skipped: 0,
-    };
-    for (const r of skill.results) {
-      const s = r.status;
-      if (s in counts) counts[s]++;
-    }
-    const outcome: DoctorOutcome = skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed';
-    const perSkill: DoctorReport = {
-      ...report,
-      skills: [skill],
-      ruleStats: {
-        pass: counts.pass,
-        warn: counts.warn,
-        fail: counts.fail,
-        skipped: counts.skipped,
-        total: skill.results.length,
-      },
-      totals: {
-        pass: skill.status === 'pass' ? 1 : 0,
-        warn: skill.status === 'warn' ? 1 : 0,
-        fail: skill.status === 'fail' ? 1 : 0,
-      },
-      outcome,
-    };
-    const cardId = doctorReportFileStem(skill.skillName, report.id);
-    const parsed = parseDoctorReport(perSkill);
-    if (!parsed) throw new Error('invalid doctor report');
-    const { reportPath: filePath } = writeMeasurementReportBundle({
-      rootDir: dir,
-      measurementDomain: 'doctor',
-      recordId: cardId,
-      reportId: report.id,
-      createdAt: report.timestamp,
-      report: parsed,
-    });
-    // 产物发现索引:per-skill 报告落项目本地后,best-effort 追加全局轻卡片,让 studio 跨项目聚合。
-    indexDoctorWrite({
-      id: cardId, path: filePath, skillName: skill.skillName, reportId: report.id, timestamp: report.timestamp,
-      status: skill.status, passCount: counts.pass, warnCount: counts.warn, failCount: counts.fail,
-    }, dir);
-    try {
-      persistDoctorGraphSidecars({
-        report: perSkill,
-        skill,
-        sourcePath: filePath,
-        outputDir: dir,
-        fileStem: cardId,
-        lang,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const warning = lang === 'zh'
-        ? `⚠️  doctor graph sidecar 写入失败：${message}\n`
-        : `⚠️  failed to write doctor graph sidecar: ${message}\n`;
-      process.stderr.write(warning);
-    }
-    pruneDoctorHistory(dir, skill.skillName, DOCTOR_HISTORY_MAX_PER_SKILL);
-  }
-}
-
-// 写入新报告后调用:扫 dir 里属于该 skill 的所有 single-skill doctor report,
-// 按 timestamp 倒排,保留 maxKeep 份最近的,其余删。按 content 匹配 skillName 不
-// 看文件名,所以清理逻辑不依赖 readdir 顺序或 stem 推断 skill 名。
-export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: number): void {
-  if (!Number.isSafeInteger(maxKeep) || maxKeep < 0) {
-    throw new TypeError('maxKeep must be a non-negative safe integer');
-  }
-  const candidates: { path: string; graphStem: string; timestamp: string }[] = [];
-  for (const path of listMeasurementReportPaths(dir, 'doctor')) {
-    try {
-      const data = parseDoctorReport(JSON.parse(readFileSync(path, 'utf-8')));
-      if (!data || data.skills.length !== 1) continue;
-      if (data.skills[0].skillName !== skillName) continue;
-      const expectedStem = doctorReportFileStem(skillName, data.id);
-      if (measurementRecordIdFromReportPath(path) !== expectedStem) continue;
-      candidates.push({
-        path,
-        graphStem: expectedStem,
-        timestamp: data.timestamp,
-      });
-    } catch { /* skip corrupt / unrelated json */ }
-  }
-  if (candidates.length <= maxKeep) return;
-  candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  for (const { path, graphStem } of candidates.slice(maxKeep)) {
-    try {
-      rmSync(dirname(path), { recursive: true, force: true });
-    } catch { /* ignore */ }
-    // 连带删卡片:否则被 prune 掉的报告会经 listDoctorCards 合并在本项目 studio「复活」(正文已删、卡片还在)。
-    // 卡片 id = 文件 stem(`{name}-{id}`),与 indexDoctorWrite 写入口径一致。
-    removeDoctorCard(graphStem);
-    removeDoctorGraphSidecars(dir, graphStem);
   }
 }

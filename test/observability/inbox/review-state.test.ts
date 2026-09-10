@@ -21,8 +21,30 @@ import {
   skillDerivedStandardsPath,
 } from '../../../src/observability/soft-standards/index.js';
 import type { ObservationSkillChain } from '../../../src/observability/skill-health/skill-chain.js';
+import { buildObservationSkillChain } from '../../../src/observability/skill-health/skill-chain.js';
+import { interruptedExecResult } from '../../../src/executors/core/runtime.js';
 
 describe('observe inbox - review state', () => {
+  it('增强复盘取消后不写入派生记录', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-review-abort-'));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const cancellation = new AbortController();
+    const chain = buildObservationSkillChain('missing-fixture', dir);
+    await assert.rejects(() => extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'fixture',
+      executorName: 'fixture',
+      signal: cancellation.signal,
+      executor: async (request) => {
+        assert.equal(request.abortSignal, cancellation.signal);
+        cancellation.abort();
+        return interruptedExecResult(0);
+      },
+    }), { name: 'AbortError' });
+    assert.deepEqual(loadSkillDerivedStandards(dir), {});
+  });
+
   it('persists local reviewer state for D1 workflow', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
     const state = updateObservationReviewState(dir, {

@@ -8,10 +8,7 @@
  *
  * projectCommand 返回 clone,不 mutate 入参(LangAwareHelp 渲染前先 clone)。
  *
- * 已知盲区:oclif `errors/handle.js:L44` 硬编码 `new Help(config)` 不走 helpClass,
- * parse error 时 dump 出来的 FLAGS / USAGE 拿到的是原 `${zh}\n${en}` 双语 sentinel,
- * 不经 projectCommand 切单语 — 错误路径双语并列是已知 UX 限制(Phase B 评估能否
- * fork @oclif/core 修)。
+ * 正常帮助与错误帮助共用此投影。
  */
 import type { Command } from '@oclif/core';
 import { pickLang, type Lang } from './i18n.js';

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import {
   existsSync,
   readFileSync,
@@ -377,11 +378,16 @@ export function appendManagedEvidence(
   dir: string,
   recordId: string,
   evidence: ManagedEvidenceRef,
+  options: { rebaselineFromHash?: string } = {},
 ): ManagedArtifactRecord | null {
   if (!isManagedRecordId(recordId)) return null;
   return withManagedRecordLock(dir, recordId, () => {
     const prev = loadManagedRecord(dir, recordId);
     if (!prev) return null;
+    const rebaseline = options.rebaselineFromHash !== undefined;
+    if (rebaseline && prev.contentHash !== options.rebaselineFromHash && prev.contentHash !== evidence.contentHash) {
+      throw new Error('Managed baseline changed before evidence commit; retry against the current record.');
+    }
     const duplicateIndex = prev.evidence.findIndex(
       (entry) => entry.reportId === evidence.reportId && entry.contentHash === evidence.contentHash,
     );
@@ -391,8 +397,12 @@ export function appendManagedEvidence(
     if (!isManagedArtifactRecord({ ...prev, evidence: candidateEvidence }, recordId)) {
       throw new TypeError('invalid managed evidence');
     }
-    if (duplicateIndex >= 0) return prev;
-    const merged: ManagedArtifactRecord = { ...prev, evidence: candidateEvidence };
+    if (duplicateIndex >= 0 && (!rebaseline || prev.contentHash === evidence.contentHash)) return prev;
+    const merged: ManagedArtifactRecord = {
+      ...prev,
+      evidence: duplicateIndex >= 0 ? prev.evidence : candidateEvidence,
+      ...(rebaseline ? { contentHash: evidence.contentHash } : {}),
+    };
     persistManagedRecord(dir, merged);
     return merged;
   });
@@ -510,11 +520,14 @@ export function appendManagedDecision(
   dir: string,
   recordId: string,
   decision: ManagedDecision,
+  options: { expectedRecord?: Readonly<ManagedArtifactRecord> } = {},
 ): ManagedArtifactRecord | null {
   if (!isManagedRecordId(recordId)) return null;
   return withManagedRecordLock(dir, recordId, () => {
     const prev = loadManagedRecord(dir, recordId);
     if (!prev) return null;
+    // The gate was evaluated against this snapshot; do not commit a stale decision.
+    if (options.expectedRecord && !isDeepStrictEqual(prev, options.expectedRecord)) return null;
     if (!isManagedArtifactRecord({ ...prev, decisions: [...prev.decisions, decision] }, recordId)) {
       throw new TypeError('invalid managed decision');
     }

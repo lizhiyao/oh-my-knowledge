@@ -30,6 +30,33 @@ function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 describe('oclif install', () => {
+  it('登记失败明确提示已分发位置，修复目录后可以幂等重试', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-install-register-'));
+    try {
+      const source = join(root, 'review');
+      const dest = join(root, 'destination');
+      await mkdir(source);
+      await writeFile(join(source, 'SKILL.md'), '# Review\n');
+      await mkdir(join(root, '.omk'));
+      const obstruction = join(root, '.omk', 'governance');
+      await writeFile(obstruction, 'blocked');
+      const args = [source, '--dest', dest];
+      await assert.rejects(() => runInstallCommand(args, { cwd: root }), (error: ExecError) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, /治理登记失败/);
+        assert.match(error.stderr, /--force/);
+        return true;
+      });
+      assert.equal(await readFile(join(dest, 'review', 'SKILL.md'), 'utf8'), '# Review\n');
+      await rm(obstruction);
+      await runInstallCommand([...args, '--force'], { cwd: root });
+      const records = await readdir(join(root, '.omk', 'governance', 'managed'));
+      assert.equal(records.filter((name) => name.endsWith('.json')).length, 1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('--help 默认 zh', async () => {
     const stdout = await renderCommandHelp('install');
     assert.ok(stdout.includes('安装 omk 官方 Agent Skill'), `stdout missing zh description:\n${stdout}`);

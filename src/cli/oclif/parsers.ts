@@ -1,3 +1,4 @@
+import { Errors } from '@oclif/core';
 import { resolveLang, type BiText } from './i18n.js';
 
 interface NumericStringParserOptions {
@@ -115,5 +116,16 @@ export function enumStringParser(flag: string, values: readonly string[]) {
       zh: `${flag} 必须是 ${joined} 之一，实际为 ${JSON.stringify(input)}。`,
       en: `${flag} must be one of ${joined} (got ${JSON.stringify(input)}).`,
     }, lang));
+  };
+}
+
+/** Validate without trimming: whitespace can be meaningful within a path or model ID. */
+export function nonEmptyStringParser(name: string) {
+  const lang = resolveLang(process.argv);
+  return async (input: string): Promise<string> => {
+    if (!input.trim()) {
+      throw new Errors.CLIError(localize({ zh: `${name} 不能为空。`, en: `${name} must not be empty.` }, lang), { exit: 2 });
+    }
+    return input;
   };
 }
