@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import type { ObservePage } from '../../http/observe-page';
 import type { ConversationListItem } from '../../../observability/view-models/conversation';
 import { EventRecords, RawRecords } from './records';
@@ -65,18 +65,30 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
   const zh = lang === 'zh';
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [workspace, setWorkspace] = useState<string>();
+  const [model, setModel] = useState<string>();
+  const [current, setCurrent] = useState(1);
+  const conversations = page.model.conversations;
+  const options = (values: (string | undefined)[]) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort().map(value => ({value, label:value}));
+  const filtered = filter !== 'all' || Boolean(query || workspace || model);
   const activity = useActivity('/api/conversations/activity', page.revision);
   const running = (item: ConversationListItem) => item.tasks.some(task => task.status === 'open');
-  const rows = page.model.conversations.filter(item => {
+  const rows = conversations.filter(item => {
     const selected = filter === 'all' || (filter === 'running' ? running(item) : filter === 'archived' ? item.archived : !item.archived);
-    return selected && `${item.title} ${item.preview ?? ''} ${item.cwd ?? ''}`.toLowerCase().includes(query.toLowerCase());
+    return selected && (!workspace || item.cwd === workspace) && (!model || item.model === model) && `${item.title} ${item.preview ?? ''} ${item.cwd ?? ''}`.toLowerCase().includes(query.toLowerCase());
   }).sort((a,b) => Number(running(b)) - Number(running(a)));
   return <>
     <div className="observe-toolbar">
-      <Segmented value={filter} onChange={setFilter} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
-      <div className="observe-toolbar-actions"><ActivityNotice activity={activity} lang={lang}/><Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>setQuery(event.target.value)}/></div>
+      <Segmented value={filter} onChange={value=>{setFilter(value);setCurrent(1);}} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
+      <div className="observe-toolbar-actions conversation-filters">
+        <Select className="conversation-workspace-filter" allowClear showSearch aria-label={zh?'筛选工作目录':'Filter workspace'} placeholder={zh?'全部工作目录':'All workspaces'} value={workspace} options={options(conversations.map(item=>item.cwd))} onChange={value=>{setWorkspace(value);setCurrent(1);}}/>
+        <Select className="conversation-model-filter" allowClear showSearch aria-label={zh?'筛选模型':'Filter model'} placeholder={zh?'全部模型':'All models'} value={model} options={options(conversations.map(item=>item.model))} onChange={value=>{setModel(value);setCurrent(1);}}/>
+        <Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>{setQuery(event.target.value);setCurrent(1);}}/>
+        {filtered&&<Button onClick={()=>{setFilter('all');setWorkspace(undefined);setModel(undefined);setQuery('');setCurrent(1);}}>{zh?'重置筛选':'Reset filters'}</Button>}
+        <ActivityNotice activity={activity} lang={lang}/>
+      </div>
     </div>
-    <Table className="measure-table conversation-table" tableLayout="fixed" size="small" rowKey="threadId" rowClassName={item => running(item) ? 'studio-running-row' : ''} dataSource={rows} scroll={{x:900}} pagination={{pageSize:20,showSizeChanger:false}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
+    <Table className="measure-table conversation-table" tableLayout="fixed" size="small" rowKey="threadId" rowClassName={item => running(item) ? 'studio-running-row' : ''} dataSource={rows} scroll={{x:900}} pagination={{current:Math.min(current,Math.max(1,Math.ceil(rows.length/20))),onChange:setCurrent,pageSize:20,showSizeChanger:false,showTotal:()=>filtered?(zh?`匹配 ${rows.length} / 共 ${conversations.length} 个会话`:`${rows.length} matched / ${conversations.length} conversations`):(zh?`共 ${conversations.length} 个会话`:`${conversations.length} conversations`)}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
       {title:zh?'最近活动':'Recent activity',width:200,render:(_,item)=><div className="conversation-activity"><div className="conversation-activity-time"><time className="conversation-time" title={item.endTimestamp??item.startTimestamp}>{(item.endTimestamp??item.startTimestamp)?.replace('T',' ').replace(/\.\d{3}Z$/,' UTC')??'—'}</time></div><div className="conversation-activity-meta"><Typography.Text type="secondary" title={item.model ?? item.sourceKind}>{item.model ?? item.sourceKind}</Typography.Text>{running(item)&&<span className="conversation-running"><span className="studio-running-dot" aria-hidden="true"/>{zh?'进行中':'Running'}</span>}</div></div>},
       {title:zh?'会话':'Conversation',ellipsis:true,render:(_,item)=><><Link title={item.title} href={conversationHref(item.threadId,lang)}>{item.title}</Link>{item.archived&&<Tag>{zh?'已归档':'Archived'}</Tag>}</>},
       {title:zh?'工作目录':'Workspace',width:'28%',ellipsis:true,dataIndex:'cwd',render:(value:string|undefined)=><span title={value}>{value??'—'}</span>},
