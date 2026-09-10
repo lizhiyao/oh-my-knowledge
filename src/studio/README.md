@@ -23,17 +23,27 @@ DSH 插件和 CLI 评测预览使用 `createReportServer`，无需启动 Next。
 
 当前 presentation 的模块均能从生产入口沿调用链到达，没有可整文件删除的无调用者实现。以下按入口说明保留用途；新增应用页面使用 Next，不向 HTML 路径复制页面。
 
+### 生产入口与宿主
+
+| 入口 | 宿主 | 直达页面 |
+| --- | --- | --- |
+| CLI `omk studio`（`cli/commands/studio.ts`） | Next（`createNextStudioServer`） | 会话列表/详情/轨迹、Measure、Knowledge 列表/详情为 React；其余路径回落到下方 HTML 路由。 |
+| CLI 评测预览（`cli/lib/run-core-evaluation.ts`，TTY 下 eval 完成后自动启动） | 独立（`createReportServer`） | `/measure/:runId`（HTML）。 |
+| DSH 插件 `/omk observe`（`dsh-plugin/index.ts`） | 独立（`createReportServer`） | 任务轨迹 `/observe/conversations/:thread/tasks/:turn`（HTML）。 |
+
+### 模块组用途与保留理由
+
 | 模块组 | 现有用途与调用方 |
 | --- | --- |
-| `core-run-renderer` | `http/routes/core-runs` 输出独立评测运行列表、详情和错误页；公开渲染 API 也从这里导出。 |
-| `conversation-renderer` | 独立报告宿主的会话列表和详情，由 `http/routes/conversations` 调用。 |
-| `knowledge-debugger-renderer` | 独立宿主任务轨迹、`/observe/sessions/:id` 调试入口。 |
+| `core-run-renderer` | `http/routes/core-runs` 输出独立评测运行列表、详情和错误页；CLI 评测预览直达 `/measure/:runId`；公开渲染 API 也从这里导出。 |
+| `conversation-renderer` | 独立宿主的会话列表和详情，由 `http/routes/conversations` 调用。 |
+| `knowledge-debugger-renderer` | 独立宿主任务轨迹、`/observe/sessions/:id` 调试入口；DSH `/omk observe` 直达页面。 |
 | `skill-list-renderer`、`skill-detail-renderer` | 独立宿主的知识列表和详情，由 `http/routes/knowledge` 调用。 |
-| `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页。 |
-| `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告。 |
-| `managed-history-renderer` | `/knowledge/managed` 及受管对象历史。 |
-| `observation-inbox-renderer`、`observation-inbox/` | `/observe/inbox` 的信号、指标、体验、流程、复核、时间轴及配套样式和脚本。 |
+| `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页（只读报告）。 |
+| `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告（只读报告）。 |
+| `managed-history-renderer` | `/knowledge/managed` 及受管对象历史（只读报告）。 |
+| `observation-inbox-renderer`、`observation-inbox/` | `/observe/inbox` 的信号、指标、体验、流程、复核、时间轴及配套样式和脚本。**剩余唯一带用户交互（复核 mutation）的 HTML 页面**；因独立宿主仍以其为唯一渲染层，React 迁移只会新增第二份渲染而无法删除 HTML，故保留，迁移安排见 #839。 |
 | `layout`、`report-shell`、`icons`、`inline-markdown` | 上述 HTML 页面的外壳、图标和安全内容渲染。Markdown 解析与纯文本计算位于 application。 |
 | `trajectory-live`、`trajectory-routing` | HTML 轨迹页的客户端脚本生成。纯连线计算位于 `application/replay/routing`，React 直接消费计算模块。 |
 
-删除这些模块需要先迁移对应真实入口；目录名本身不是废弃标记。
+只读报告页（skill-health、体检、受管历史）与收件箱一样被两个宿主共用：默认宿主回落到 HTML、独立宿主只有 HTML。迁移其中任何一页到 React 都不会减少渲染层数量，除非独立宿主退役。删除这些模块需要先迁移对应真实入口；目录名本身不是废弃标记。
