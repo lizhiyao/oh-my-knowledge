@@ -128,7 +128,7 @@ interface ReplayOperation {
   events: ExperienceTimelineEvent[];
 }
 
-interface ReplayProjection {
+export interface ReplayProjection {
   cards: ReplayCard[];
   operations: ReplayOperation[];
   facets: ReplayFacet[];
@@ -1283,7 +1283,7 @@ export function renderKnowledgeDebuggerPage(
   `, lang, { navigation: 'observe', workspace: true });
 }
 
-function projectReplay(
+export function projectReplay(
   model: KnowledgeDebuggerViewModel,
   lang: Lang,
   options: ReplayProjectionOptions,
@@ -2094,7 +2094,7 @@ function renderGuides(projection: ReplayProjection): string {
   return `${ticks}${gaps}${milestones}`;
 }
 
-function visibleAxisTicks(projection: ReplayProjection): ReplayAxisTick[] {
+export function visibleAxisTicks(projection: ReplayProjection): ReplayAxisTick[] {
   const candidates = projection.axisTicks
     .filter((tick) => !projection.milestones.some((milestone) => Math.abs(milestone.position - tick.position) < 110))
     .sort((left, right) => left.position - right.position);

@@ -4,13 +4,16 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextCatalogContext } from './next-context.js';
+import { nextCatalogContext, nextObserveContext } from './next-context.js';
 import type { CoreStudioCatalog } from '../core-runs/contracts.js';
+import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
+import { loadObservePage, type ObservePage } from './observe-page.js';
 
 /** Next owns migrated pages; existing API/SSE capabilities keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
   let app: { prepare(): Promise<void>; close(): Promise<void>; getRequestHandler(): (request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse) => Promise<void> } | undefined;
-  return createReportServer(options, {
+  const conversationCatalog = options.conversationCatalog ?? createCodexConversationCatalog();
+  return createReportServer({ ...options, conversationCatalog }, {
     async prepare() {
       const dir = fileURLToPath(new URL('../web/', import.meta.url));
       if (!existsSync(join(dir, '.next', 'BUILD_ID'))) throw new Error('Studio UI build is missing. Run yarn build before starting Studio.');
@@ -23,10 +26,23 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
     async handle(request, response) {
       const path = (request.url ?? '/').split('?')[0];
       const measure = path === '/measure' || path.startsWith('/measure/');
-      if (!measure && !path.startsWith('/_next/')) return false;
-      if (measure && (request.method ?? 'GET') !== 'GET') {
+      const observe = path === '/observe' || path.startsWith('/observe/conversations/');
+      if (!measure && !observe && !path.startsWith('/_next/')) return false;
+      if ((measure || observe) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' });
         response.end('method_not_allowed'); return true;
+      }
+      let observePage: ObservePage | undefined;
+      if (observe) {
+        try { observePage = await loadObservePage(conversationCatalog, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
+        catch {
+          response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.end('studio_source_unavailable'); return true;
+        }
+        if (!observePage) {
+          response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.end('conversation_or_task_not_found'); return true;
+        }
       }
       let catalog = options.coreStudioCatalog;
       // Resolve before Next starts streaming, retaining the HTTP status contract.
@@ -53,7 +69,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       if (!app) throw new Error('Studio UI is not started');
       request.headers['x-omk-studio-lang'] = new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh';
       const handler = app.getRequestHandler();
-      if (catalog) await nextCatalogContext.run(catalog as CoreStudioCatalog, () => handler(request, response));
+      if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
+      else if (catalog) await nextCatalogContext.run(catalog as CoreStudioCatalog, () => handler(request, response));
       else await handler(request, response);
       return true;
     },

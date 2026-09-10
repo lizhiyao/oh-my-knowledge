@@ -55,10 +55,10 @@ Core Studio 模块不导入已删除的旧 `ReportStore`、旧 `EvaluationReport
 
 ## Studio 应用框架
 
-Studio 的目标技术栈为 Next.js App Router、TypeScript 和 Ant Design。首轮迁移把 CLI 服务中的 `/measure` 列表与详情页替换为 React 组件。Observe 和 Knowledge 在各自迁移阶段前保留现有路由；已迁移页面只有一个生效实现，不回退到旧 HTML renderer。
+Studio 的目标技术栈为 Next.js App Router、TypeScript 和 Ant Design。首轮迁移把 CLI 服务中的 `/measure` 列表与详情页替换为 React 组件。Observe 的会话列表、详情和实时任务轨迹也由 React 呈现，Knowledge 及报告专属页面保留现有路由；已迁移页面只有一个生效实现，不回退到旧 HTML renderer。
 
 Node 监听器负责 Next 的准备与关闭。服务端组件通过请求级上下文获得现有 `CoreStudioCatalog`，不同 Studio 实例不能串读彼此的数据源。在 HTML 流式响应开始前解析 catalog，以保持 404／503 状态。现有 JSON API 和独立 Core 渲染导出的契约保留；迁移不修改 Core 产物或测量语义。
 
 `yarn build` 构建应用，并把生产资源复制到 `dist/studio/web`。发布包包含预构建 UI 和运行依赖；`omk studio` 沿用端口与目录参数，不在用户启动时构建前端。构建时关闭框架遥测。框架迁移需要通过隔离包安装、深层路由刷新、真实产物渲染以及监听器／SSE 清理验证。
 
-三个状态轴继续独立呈现。Ant Design 提供交互与视觉基础组件，状态、证据可用性和结论仍由领域代码定义。后续阶段迁移 Observe、Knowledge 及其专用交互；首轮不宣称这两个页面已完成 React 改造。
+三个状态轴继续独立呈现。Ant Design 提供交互与视觉基础组件，状态、证据可用性和结论仍由领域代码定义。Observe 默认保留对话、执行、结果、知识四条泳道及时间轴、关联连线、卡片详情与实时跟随，复用现有泳道投影和避障路由，不用列表替代泳道。Observe 复用会话与任务轨迹投影，页面只接收选定任务的数据，不序列化整个源会话。列表通过轻量活动版本检查更新，任务通过现有 SSE 通知刷新，组件卸载时释放订阅和请求。原始记录按需加载，知识访问证据不表示因果关系。后续阶段迁移 Knowledge 及报告专属页面。

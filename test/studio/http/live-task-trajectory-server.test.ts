@@ -10,12 +10,11 @@ import type {
   ConversationTaskTrajectory,
 } from '../../../src/observability/conversation/catalog.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
-import { createReportServer } from '../../../src/studio/http/report-server.js';
 
-describe.each([['native', createReportServer], ['next', createNextStudioServer]] as const)('Live task trajectory server (%s)', (_name, createServer) => {
+describe('Live task trajectory server', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-live-trajectory-server-'));
   const tracePath = join(root, 'rollout.jsonl');
-  let server: ReturnType<typeof createReportServer> | undefined;
+  let server: ReturnType<typeof createNextStudioServer> | undefined;
   let baseUrl = '';
   let trajectory: ConversationTaskTrajectory;
   let unsubscribed = false;
@@ -89,7 +88,7 @@ describe.each([['native', createReportServer], ['next', createNextStudioServer]]
         return () => { unsubscribed = true; };
       },
     };
-    server = createServer({
+    server = createNextStudioServer({
       port: 0,
       observationsDir: join(root, 'observations'),
       conversationCatalog: catalog,
@@ -109,16 +108,11 @@ describe.each([['native', createReportServer], ['next', createNextStudioServer]]
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /data-live-revision="revision-1"/);
-    assert.match(html, /class="trajectory-live-state"/);
-    assert.match(html, /data-live-follow/);
-    assert.match(html, />跟随中</);
-    assert.match(html, /createTrajectoryLiveController/);
-    assert.match(html, /refreshTrajectorySnapshot/);
-    assert.match(html, /new DOMParser\(\)/);
-    assert.match(html, /shell\.replaceWith\(replacement\)/);
-    assert.match(html, /is-live-entering/);
+    assert.match(html, /暂停跟随/);
+    assert.match(html, /语义轨迹/);
+    for (const lane of ['conversation', 'action', 'result', 'knowledge']) assert.ok(html.includes(`data-lane="${lane}"`));
+    assert.match(html, /data-connection="call-result"/);
     assert.match(html, /结果获取中/);
-    assert.match(html, /trajectory-event is-pending/);
     assert.doesNotMatch(html, /结果缺失/);
 
     const event = await readFirstEvent(
@@ -148,6 +142,17 @@ describe.each([['native', createReportServer], ['next', createNextStudioServer]]
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(cancelledBeforeReady, true);
   });
+  it('closes an active SSE connection when the server stops', async () => {
+    unsubscribed = false;
+    const response = await fetch(`${baseUrl}/api/conversations/thread/tasks/live/live`);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await server!.stop();
+    assert.equal(unsubscribed, true);
+    assert.equal((await reader.read()).done, true);
+    reader.releaseLock();
+  });
+
 });
 
 function connectThenClose(url: string): Promise<void> {
