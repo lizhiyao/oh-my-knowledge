@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Drawer, Empty, Select, Typography } from 'antd';
-import type { ReplayProjection } from '../../presentation/knowledge-debugger-renderer';
+import type { ReplayProjection } from '../../view-models/replay';
 import { createHorizontalObstacleIndex, planFlowRoute } from '../../presentation/trajectory-routing';
 import type { Language } from './shell';
 

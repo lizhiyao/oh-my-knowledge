@@ -1,6 +1,7 @@
+import { inlineMarkdownText } from '../../../src/studio/view-models/inline-markdown.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { inlineMarkdownText, renderSafeInlineMarkdown } from '../../../src/studio/presentation/inline-markdown.js';
+import { renderSafeInlineMarkdown } from '../../../src/studio/presentation/inline-markdown.js';
 
 describe('safe inline Markdown renderer', () => {
   it('renders supported inline semantics and can suppress nested links', () => {

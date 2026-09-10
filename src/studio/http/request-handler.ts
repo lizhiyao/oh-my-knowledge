@@ -1,15 +1,10 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import {
-  projectDoctorsDir,
-  projectObserveHealthDir,
-  resolveDoctorsDir,
-  resolveObserveHealthDir,
-} from '../../evidence/storage/directories.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
 import type { Lang } from '../../shared/language.js';
+import { createKnowledgeQuery } from '../application/knowledge-query.js';
 import { createCoreStudioRouteHandler } from '../core-runs/index.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
@@ -34,6 +29,7 @@ export interface StudioRequestHandler {
 
 export function createStudioRequestHandler({
   requestShutdown,
+  knowledgeQuery,
   analysesDir,
   doctorsDir,
   observationsDir = DEFAULT_OBSERVATIONS_DIR,
@@ -49,8 +45,9 @@ export function createStudioRequestHandler({
     catalog: conversationCatalog ?? createCodexConversationCatalog(),
     liveStreams: liveStreamClosers,
   });
+  const query = knowledgeQuery ?? createKnowledgeQuery({ analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards });
   const knowledgeRoutes = createKnowledgeRoutes({
-    observationsDir,
+    query,
     managedDir,
     includeObserveCards,
     includeDoctorCards,
@@ -69,21 +66,6 @@ export function createStudioRequestHandler({
         defaultLang: DEFAULT_LANG,
         studioNavigation: true,
       });
-
-  // observe-health 与 doctors 都按请求解析，确保长会话中项目第一次产生产物后，
-  // Studio 下一次请求就能从全局回退目录切换到项目目录。
-  const resolveAnalysesDir: () => string =
-    typeof analysesDir === 'function'
-      ? analysesDir
-      : analysesDir !== undefined
-        ? (): string => analysesDir
-        : (): string => resolveObserveHealthDir(projectObserveHealthDir());
-  const resolveDoctorsRoot: () => string =
-    typeof doctorsDir === 'function'
-      ? doctorsDir
-      : doctorsDir !== undefined
-        ? (): string => doctorsDir
-        : (): string => resolveDoctorsDir(projectDoctorsDir());
 
   function prepare(): void {
     if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
@@ -118,8 +100,7 @@ export function createStudioRequestHandler({
         }
       }
 
-      const analysesDir = resolveAnalysesDir();
-      const doctorsDir = resolveDoctorsRoot();
+      const { analysesDir, doctorsDir } = query.directories();
       const routeContext = {
         request,
         response,

@@ -1,7 +1,10 @@
+import type { KnowledgeQuery } from '../application/knowledge-query.js';
 import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
 import type { CoreStudioCatalog } from '../core-runs/index.js';
 
 export interface ReportServerOptions {
+  /** Shared knowledge query for page and API adapters, scoped to this server. */
+  knowledgeQuery?: KnowledgeQuery;
   port?: number;
   /** 监听 host。默认 '127.0.0.1'（只允许本机访问，容器／远程场景看不到）。
    * 暴露到容器外／局域网用 '0.0.0.0'。也可走 OMK_REPORT_HOST 环境变量。 */

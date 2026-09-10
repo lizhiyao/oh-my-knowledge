@@ -3,7 +3,7 @@ import { describe, it } from 'vitest';
 import {
   primaryTrajectoryEvidenceRef,
   trajectoryEvidenceRef,
-} from '../../../src/studio/presentation/trajectory-evidence.js';
+} from '../../../src/studio/view-models/trajectory-evidence.js';
 import type { ExperienceTimelineEvent } from '../../../src/observability/contracts/experience.js';
 
 function event(

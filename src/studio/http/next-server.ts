@@ -1,3 +1,4 @@
+import { createKnowledgeQuery } from '../application/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -14,8 +15,9 @@ import { loadKnowledgePage, type KnowledgePage } from './knowledge-page.js';
 /** Next owns migrated pages; existing API/SSE capabilities keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
   let app: { prepare(): Promise<void>; close(): Promise<void>; getRequestHandler(): (request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse) => Promise<void> } | undefined;
+  const knowledgeQuery = options.knowledgeQuery ?? createKnowledgeQuery(options);
   const conversationCatalog = options.conversationCatalog ?? createCodexConversationCatalog();
-  return createReportServer({ ...options, conversationCatalog }, {
+  return createReportServer({ ...options, conversationCatalog, knowledgeQuery }, {
     async prepare() {
       const dir = fileURLToPath(new URL('../web/', import.meta.url));
       if (!existsSync(join(dir, '.next', 'BUILD_ID'))) throw new Error('Studio UI build is missing. Run yarn build before starting Studio.');
@@ -37,7 +39,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       }
       let knowledgePage: KnowledgePage | undefined;
       if (knowledge) {
-        try { knowledgePage = loadKnowledgePage(options, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
+        try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
         catch {
           response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
           response.end('studio_source_unavailable'); return true;

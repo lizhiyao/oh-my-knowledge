@@ -1,12 +1,11 @@
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
 import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
 import {
-  buildConversationActivitySnapshot,
-  buildConversationDetailActivitySnapshot,
   renderConversationDetailPage,
   renderConversationIndexPage,
 } from '../../presentation/conversation-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
+import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../view-models/conversation-activity.js';
 import { STUDIO_SOURCE_UNAVAILABLE } from '../errors.js';
 import type {
   LiveStreamRegistry,

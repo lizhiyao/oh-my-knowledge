@@ -1,12 +1,9 @@
-import { projectDoctorsDir, projectObserveHealthDir, resolveDoctorsDir, resolveObserveHealthDir } from '../../evidence/storage/directories.js';
-import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
-import { buildSkillIndex } from '../application/index.js';
-import { assessHealth, observedToolFailureRate } from '../application/skill-health.js';
-import type { SkillIndexEntry, SkillIndexSummary } from '../view-models/skill-index.js';
-import type { Insight } from '../view-models/insight.js';
-import type { HealthAssessment } from '../view-models/health-assessment.js';
-import type { ReportServerOptions } from './contracts.js';
 import type { Lang } from '../../shared/language.js';
+import type { KnowledgeQuery } from '../application/knowledge-query.js';
+import { assessHealth, observedToolFailureRate } from '../application/skill-health.js';
+import type { HealthAssessment } from '../view-models/health-assessment.js';
+import type { Insight } from '../view-models/insight.js';
+import type { SkillIndexEntry, SkillIndexSummary } from '../view-models/skill-index.js';
 
 export interface KnowledgeRow {
   skillName: string;
@@ -19,15 +16,8 @@ export type KnowledgePage =
   | { pageKind: 'index'; rows: KnowledgeRow[]; summary: SkillIndexSummary }
   | { pageKind: 'detail'; row: KnowledgeRow; insights: Insight[]; toolFailureRate: number | null };
 
-export function loadKnowledgePage(options: ReportServerOptions, path: string, lang: Lang): KnowledgePage | undefined {
-  const resolve = (value: string | (() => string) | undefined, fallback: () => string): string =>
-    typeof value === 'function' ? value() : value ?? fallback();
-  const index = buildSkillIndex(
-    resolve(options.analysesDir, () => resolveObserveHealthDir(projectObserveHealthDir())),
-    resolve(options.doctorsDir, () => resolveDoctorsDir(projectDoctorsDir())),
-    options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR,
-    { includeObserveCards: options.includeObserveCards ?? false, includeDoctorCards: options.includeDoctorCards ?? false },
-  );
+export function loadKnowledgePage(query: KnowledgeQuery, path: string, lang: Lang): KnowledgePage | undefined {
+  const index = query.read();
   const row = (entry: SkillIndexEntry): KnowledgeRow => ({
     skillName: entry.skillName,
     health: assessHealth(entry, index.insightsBySkill.get(entry.skillName) ?? [], lang),

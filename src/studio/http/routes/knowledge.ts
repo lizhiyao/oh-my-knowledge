@@ -1,23 +1,23 @@
 import { listManagedRows, loadAllManagedRecords, managedDir as projectManagedDir, resolveManagedDir } from '../../../knowledge-artifacts/governance/index.js';
-import { buildSkillIndex } from '../../application/index.js';
-import { listAnalyses, loadAnalysis, loadDoctorReport, querySkillTrend, querySkillDiff } from '../../application/knowledge-reports.js';
+import type { KnowledgeQuery } from '../../application/knowledge-query.js';
+import { listAnalyses, loadAnalysis, loadDoctorReport, querySkillDiff, querySkillTrend } from '../../application/knowledge-reports.js';
 import { buildSkillContext } from '../../application/skill-health.js';
-import { renderAnalysisList, renderSkillTrendPage, renderSkillDiffPage } from '../../presentation/knowledge-reports-renderer.js';
 import { renderDoctorDetail } from '../../presentation/doctor-detail-renderer.js';
+import { renderAnalysisList, renderSkillDiffPage, renderSkillTrendPage } from '../../presentation/knowledge-reports-renderer.js';
 import { DEFAULT_LANG } from '../../presentation/layout.js';
 import { renderManagedHistory, renderManagedList } from '../../presentation/managed-history-renderer.js';
-import type { SkillReportContext } from '../../view-models/report-context.js';
-import { renderSkillHealthReport } from '../../presentation/skill-health-renderer.js';
 import { renderSkillDetail } from '../../presentation/skill-detail-renderer.js';
+import { renderSkillHealthReport } from '../../presentation/skill-health-renderer.js';
 import { renderSkillList } from '../../presentation/skill-list-renderer.js';
+import type { SkillReportContext } from '../../view-models/report-context.js';
 import { loadChartJsBundle } from '../chart-asset.js';
 import type { StudioRouteContext } from './contracts.js';
 
 interface KnowledgeRoutesOptions {
-  readonly observationsDir: string;
-  readonly managedDir: string | (() => string) | undefined;
+  readonly query: KnowledgeQuery;
   readonly includeObserveCards: boolean;
   readonly includeDoctorCards: boolean;
+  readonly managedDir: string | (() => string) | undefined;
 }
 
 export interface KnowledgeRouteContext extends StudioRouteContext {
@@ -30,7 +30,7 @@ export type KnowledgeRouteHandler = (
 ) => boolean;
 
 export function createKnowledgeRoutes({
-  observationsDir,
+  query,
   managedDir,
   includeObserveCards,
   includeDoctorCards,
@@ -48,10 +48,6 @@ export function createKnowledgeRoutes({
         ? (): string => managedDir
         : (): string => resolveManagedDir(projectManagedDir());
 
-  const skillIndexOptions = (): Parameters<typeof buildSkillIndex>[3] => ({
-    includeObserveCards,
-    includeDoctorCards,
-  });
   return ({
     response: res,
     url: parsed,
@@ -141,7 +137,7 @@ export function createKnowledgeRoutes({
         }
         let ctx: SkillReportContext | undefined;
         if (skillName) {
-          const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+          const idx = query.read({ analysesDir, doctorsDir });
           const entry = idx.entries.find((en) => en.skillName === skillName);
           if (entry) ctx = buildSkillContext(entry, id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
         }
@@ -236,14 +232,14 @@ export function createKnowledgeRoutes({
       // 原 skill-centric 工作台迁到 /knowledge。insightsBySkill 在 buildSkillIndex 里
       // 跟 SkillIndex 一起算好并享受同一份缓存，renderer 只负责呈现。
       if (path === '/knowledge') {
-        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = query.read({ analysesDir, doctorsDir });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderSkillList(idx, lang));
         return true;
       }
 
       if (path === '/api/skills') {
-        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = query.read({ analysesDir, doctorsDir });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           entries: idx.entries.map((entry) => ({
@@ -267,7 +263,7 @@ export function createKnowledgeRoutes({
           res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
           return true;
         }
-        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = query.read({ analysesDir, doctorsDir });
         const entry = idx.entries.find((en) => en.skillName === skillName);
         if (!entry) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -282,7 +278,7 @@ export function createKnowledgeRoutes({
       const skillDiagnosticsApiMatch = path.match(/^\/api\/skills\/(.+)\/diagnostics$/);
       if (skillDiagnosticsApiMatch) {
         const skillName = decodeURIComponent(skillDiagnosticsApiMatch[1]);
-        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = query.read({ analysesDir, doctorsDir });
         const diagnostics = idx.diagnosticsBySkill.get(skillName);
         if (!diagnostics) {
           res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
