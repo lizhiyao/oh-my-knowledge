@@ -3,9 +3,9 @@ import type {
   CoreStudioBudget,
   CoreStudioRunCard,
   CoreStudioRunDetail,
-} from './contracts.js';
+} from '../view-models/core-runs.js';
 import type { Lang } from '../../shared/language.js';
-import { e, fmtDuration, layout } from '../presentation/layout.js';
+import { e, fmtDuration, layout } from './layout.js';
 
 export interface CoreStudioRenderRoutes {
   readonly listPath: string;

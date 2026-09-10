@@ -1,4 +1,4 @@
-import { inlineMarkdownText } from '../../../src/studio/view-models/inline-markdown.js';
+import { inlineMarkdownText } from '../../../src/studio/application/inline-markdown.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderSafeInlineMarkdown } from '../../../src/studio/presentation/inline-markdown.js';

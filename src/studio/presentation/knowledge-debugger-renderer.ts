@@ -4,12 +4,13 @@ import type {
   TaskReplayIntegrityCode
 } from '../../observability/view-models/index.js';
 import type { Lang } from '../../shared/language.js';
-import { inlineMarkdownText } from '../view-models/inline-markdown.js';
-import { compactText, formatDisplayTimestamp, formatElapsed, formatRelativeTime, formatRelativeTimestamp, projectReplay, ReplayCard, ReplayFacet, ReplayFacetGroup, ReplayField, ReplayLaneKind, ReplayOperation, ReplayProjection, shortHash, TRACK_START_PADDING, visibleAxisTicks } from '../view-models/replay.js';
-import {
-  primaryTrajectoryEvidenceRef,
-  type TrajectoryEvidenceRef
-} from '../view-models/trajectory-evidence.js';
+import { inlineMarkdownText } from '../application/inline-markdown.js';
+import { compactText, formatDisplayTimestamp, formatElapsed, formatRelativeTime, formatRelativeTimestamp, shortHash } from '../application/replay/format.js';
+import { projectReplay } from '../application/replay/projection.js';
+import { ReplayCard, ReplayFacet, ReplayFacetGroup, ReplayField, ReplayLaneKind, ReplayOperation, ReplayProjection } from '../view-models/replay.js';
+import { TRACK_START_PADDING, visibleAxisTicks } from '../application/replay/layout.js';
+import { primaryTrajectoryEvidenceRef } from '../application/trajectory-evidence.js';
+import { type TrajectoryEvidenceRef } from '../view-models/trajectory-evidence.js';
 import { icon } from './icons.js';
 import { renderSafeInlineMarkdown } from './inline-markdown.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';

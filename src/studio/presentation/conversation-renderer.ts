@@ -5,8 +5,8 @@ import type {
   ExperienceTurnStatus,
 } from '../../observability/view-models/index.js';
 import type { Lang } from '../../shared/language.js';
-import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot, latestOpenConversationTask } from '../view-models/conversation-activity.js';
-import { inlineMarkdownText } from '../view-models/inline-markdown.js';
+import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot, latestOpenConversationTask } from '../application/conversation-activity.js';
+import { inlineMarkdownText } from '../application/inline-markdown.js';
 import { icon } from './icons.js';
 import { renderSafeInlineMarkdown } from './inline-markdown.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';

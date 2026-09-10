@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { CoreStudioCatalog } from '../core-runs/contracts.js';
+import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import type { ObservePage } from './observe-page.js';
 
 const key = Symbol.for('omk.studio.next.catalog');

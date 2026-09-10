@@ -2,8 +2,8 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Collapse, Descriptions, Empty, Input, Table, Tabs, Tag, Typography } from 'antd';
-import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../core-runs/contracts';
-import type { Language } from './shell';
+import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../view-models/core-runs';
+import type { Language } from '../layout/shell';
 
 const labels: Record<string, string> = { completed:'已完成', cancelled:'已取消', 'budget-exhausted':'预算耗尽', failed:'失败', complete:'完整', partial:'部分缺失', unresolvable:'无法解析', conclusive:'可形成结论', inconclusive:'证据不足', 'not-evaluated':'未评估' };
 function Status({ value, lang }: {value:string; lang:Language}) {

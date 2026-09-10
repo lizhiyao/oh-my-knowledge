@@ -1,5 +1,5 @@
 import 'server-only';
-import type { CoreStudioCatalog } from '../core-runs/contracts';
+import type { CoreStudioCatalog } from '../view-models/core-runs';
 import type { ObservePage } from '../http/observe-page';
 
 // The host supplies an AsyncLocalStorage store for each request. The symbol bridges

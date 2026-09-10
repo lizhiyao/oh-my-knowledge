@@ -1,4 +1,4 @@
-import type { CoreStudioCatalog } from './contracts.js';
+import type { CoreStudioCatalog } from '../../view-models/core-runs.js';
 import {
   coreStudioMethodNotAllowedMessage,
   coreStudioSourceUnavailableMessage,
@@ -6,8 +6,8 @@ import {
   renderCoreRunList,
   renderCoreStudioError,
   type CoreStudioRenderRoutes,
-} from './renderer.js';
-import type { Lang } from '../../shared/language.js';
+} from '../../presentation/core-run-renderer.js';
+import type { Lang } from '../../../shared/language.js';
 
 export interface CoreStudioRouteRequest {
   readonly method?: string;

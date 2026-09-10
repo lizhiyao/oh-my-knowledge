@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
-import { StudioTheme } from '../components/theme';
+import { StudioTheme } from '../components/layout/theme';
 import './studio.css';
 
 export const metadata = { title: 'OMK Studio', description: 'Observe. Measure. Know.' };

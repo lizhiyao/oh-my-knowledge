@@ -1,14 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import {
-  createHorizontalObstacleIndex,
-  planFlowMarkerProgresses,
-  planFlowRoute,
-  queryHorizontalObstacleIndex,
-  renderTrajectoryRoutingClientSource,
-  routingQuadraticHitsRect,
-  type RoutingRect,
-} from '../../../src/studio/presentation/trajectory-routing.js';
+import { createHorizontalObstacleIndex, planFlowMarkerProgresses, planFlowRoute, queryHorizontalObstacleIndex, routingQuadraticHitsRect } from '../../../src/studio/application/replay/routing.js';
+import { renderTrajectoryRoutingClientSource } from '../../../src/studio/presentation/trajectory-routing.js';
+import { type RoutingRect } from '../../../src/studio/view-models/trajectory-routing.js';
 
 function rect(
   left: number,

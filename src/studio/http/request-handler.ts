@@ -5,7 +5,7 @@ import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
 import type { Lang } from '../../shared/language.js';
 import { createKnowledgeQuery } from '../application/knowledge-query.js';
-import { createCoreStudioRouteHandler } from '../core-runs/index.js';
+import { createCoreStudioRouteHandler } from './routes/core-runs.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage, STUDIO_SOURCE_UNAVAILABLE } from './errors.js';

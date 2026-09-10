@@ -1,6 +1,6 @@
 import { requestCatalog } from '../../../catalog';
-import { RunDetail, SourceError } from '../../../components/measure';
-import { StudioShell } from '../../../components/shell';
+import { RunDetail, SourceError } from '../../../components/measure/measure';
+import { StudioShell } from '../../../components/layout/shell';
 import { notFound } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 export default async function DetailPage({ params, searchParams }: { params: Promise<{runId: string}>; searchParams: Promise<{lang?: string}> }) {

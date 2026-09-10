@@ -175,7 +175,7 @@ async function studioUrl(
     createNodeCoreContentStore,
     createNodeCoreRunArtifactStore,
   } = await import('../eval-workflows/artifact-store/index.js');
-  const { createCoreStudioCatalog } = await import('../studio/core-runs/index.js');
+  const { createCoreStudioCatalog } = await import('../studio/application/core-run-catalog.js');
   const reportsDir = layout.evalDir;
   const contentStore = createNodeCoreContentStore(join(reportsDir, 'content'));
   state.server = createReportServer({

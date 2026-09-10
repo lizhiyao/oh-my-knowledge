@@ -1,9 +1,9 @@
 import type { CoreRunArtifactStore } from '../../eval-workflows/artifact-store/index.js';
-import type { CoreStudioCatalog } from './contracts.js';
+import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import {
   projectCoreStudioRunCard,
   projectCoreStudioRunDetail,
-} from './projection.js';
+} from './core-run-projection.js';
 
 export function createCoreStudioCatalog(
   store: CoreRunArtifactStore,

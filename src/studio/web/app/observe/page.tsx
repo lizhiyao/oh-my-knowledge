@@ -1,6 +1,6 @@
 import { requestObservePage } from '../../catalog';
-import { ObserveView } from '../../components/observe';
-import { StudioShell } from '../../components/shell';
+import { ObserveView } from '../../components/observe/observe';
+import { StudioShell } from '../../components/layout/shell';
 export const dynamic = 'force-dynamic';
 export default async function Page({ searchParams }: { searchParams: Promise<{lang?: string}> }) {
   const lang = (await searchParams).lang === 'en' ? 'en' : 'zh';

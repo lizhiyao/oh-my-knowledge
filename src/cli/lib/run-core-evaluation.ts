@@ -59,7 +59,7 @@ async function announceCoreReport(
       : `Studio was not started in a non-interactive terminal. Run omk studio --reports-dir ${outputDirectory}.\n`);
     return;
   }
-  const { createCoreStudioCatalog } = await import('../../studio/core-runs/index.js');
+  const { createCoreStudioCatalog } = await import('../../studio/application/core-run-catalog.js');
   const { createReportServer } = await import('../../studio/http/report-server.js');
   const server = createReportServer({
     coreStudioCatalog: createCoreStudioCatalog(store),
