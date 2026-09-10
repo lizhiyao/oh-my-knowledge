@@ -100,6 +100,7 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
         return <Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{liveTask?(zh?'查看实时轨迹':'View live'):(zh?'查看最近轨迹':'View latest')}</Link>;
       }},
     ]}/>
+    {rows.length===0&&<div className="conversation-empty-count" role="status">{zh?`匹配 0 / 共 ${conversations.length} 个会话`:`0 matched / ${conversations.length} conversations`}</div>}
   </>;
 }
 function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'conversation'}>;lang:Language}) {
