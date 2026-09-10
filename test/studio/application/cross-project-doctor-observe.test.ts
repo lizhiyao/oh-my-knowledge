@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildSkillIndex } from '../../../src/studio/application/index.js';
+import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/index.js';
 import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,
@@ -415,7 +415,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       overall: { healthBand: 'green', confidence: 'high' },
       bySkill: { co: { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
     }, join(proj, reportFileName('fo')), proj, 'fo');
-    const opts = { includeObserveCards: true, includeDoctorCards: true, cache: {} };
+    const opts = { includeObserveCards: true, includeDoctorCards: true, cache: createSkillIndexCache() };
     let idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, opts);
     assert.deepEqual(idx.entries.map((e) => e.skillName).sort(), ['cf', 'co'], 'build1 可见(进入显式缓存)');
     rmSync(join(proj, reportFileName('fd')), { force: true }); // 仅删真身,不动卡片目录
