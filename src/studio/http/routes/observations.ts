@@ -20,12 +20,10 @@ import { buildSkillIndex } from '../../application/index.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
 import { DEFAULT_LANG } from '../../presentation/layout.js';
 import { renderObservationInboxPage } from '../../presentation/observation-inbox-renderer.js';
-import {
-  assertTrustedMutationRequest,
-  readJsonObjectBody,
-} from '../request-errors.js';
+import { readJsonObjectBody } from '../request-errors.js';
 import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
+import { createStudioRouter, type StudioRouteDefinition } from './router.js';
 
 interface ObservationRoutesOptions {
   readonly observationsDir: string;
@@ -40,7 +38,7 @@ export interface ObservationRouteContext extends StudioRouteContext {
 
 export type ObservationRouteHandler = (
   context: ObservationRouteContext,
-) => boolean | Promise<boolean>;
+) => Promise<boolean>;
 
 function findKnowledgeDebuggerContext(observationsDir: string, experienceSessionId: string) {
   const inbox = buildObservationInboxViewModel(observationsDir);
@@ -60,165 +58,167 @@ export function createObservationRoutes({
   includeObserveCards,
   includeDoctorCards,
 }: ObservationRoutesOptions): ObservationRouteHandler {
-  return async ({
-    request,
-    response,
-    url,
-    path,
-    lang,
-    analysesDir,
-    doctorsDir,
-  }): Promise<boolean> => {
-    const legacyRedirect = ((): { to: string; status: 307 } | undefined => {
-      if (path === '/api/observations/inbox') return { to: '/api/observe-inbox', status: 307 };
-      if (path === '/api/observations/show') return { to: '/api/observe-inbox/show', status: 307 };
-      if (path === '/api/observations/diagnostics') return { to: '/api/observe-inbox/diagnostics', status: 307 };
-      if (path === '/api/observations/review-state') return { to: '/api/observe-inbox/review-state', status: 307 };
-      return undefined;
-    })();
-    if (legacyRedirect) {
-      response.writeHead(legacyRedirect.status, { Location: legacyRedirect.to + url.search });
-      response.end();
-      return true;
-    }
+  const legacyRedirects: readonly (readonly [string, string])[] = [
+    ['/api/observations/inbox', '/api/observe-inbox'],
+    ['/api/observations/show', '/api/observe-inbox/show'],
+    ['/api/observations/diagnostics', '/api/observe-inbox/diagnostics'],
+    ['/api/observations/review-state', '/api/observe-inbox/review-state'],
+  ];
 
-    if (path === '/observe/inbox') {
-      const skill = url.searchParams.get('skill') || undefined;
-      const html = renderObservationInboxPage(
-        buildObservationInboxViewModel(observationsDir, { skill }),
-        lang,
-      );
-      response.writeHead(200, HTML_HEADERS);
-      response.end(html);
-      return true;
-    }
-
-    const knowledgeDebuggerMatch = path.match(/^\/observe\/sessions\/(.+)$/);
-    if (knowledgeDebuggerMatch) {
-      let experienceSessionId = '';
-      try { experienceSessionId = decodeURIComponent(knowledgeDebuggerMatch[1]); } catch { /* invalid path */ }
-      const context = experienceSessionId
-        ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
-        : undefined;
-      if (!context) {
-        response.writeHead(404, TEXT_HEADERS);
-        response.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
-        return true;
-      }
-      const targetTurnId = url.searchParams.get('turnId')?.trim();
-      if (!targetTurnId) {
-        const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
-        response.writeHead(302, {
-          Location: `/observe/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
-        });
+  const routes: StudioRouteDefinition<ObservationRouteContext>[] = [
+    // 旧观测 API 永久迁移；307 保留原方法与查询串。
+    ...legacyRedirects.map(([from, to]): StudioRouteDefinition<ObservationRouteContext> => ({
+      pattern: from,
+      method: 'ANY',
+      handler({ response, url }) {
+        response.writeHead(307, { Location: `${to}${url.search}` });
         response.end();
-        return true;
-      }
-      if (!context.session.turns.some((turn) => turn.turnId === targetTurnId)) {
-        response.writeHead(404, TEXT_HEADERS);
-        response.end(lang === 'en' ? 'task turn not found' : '任务不存在');
-        return true;
-      }
-      const html = renderKnowledgeDebuggerPage(
-        buildKnowledgeDebuggerViewModel(
-          context.session,
-          targetTurnId,
-          context.report.meta.ingestion,
-          summarizeObservationSourceRecordArchive(context.sourceRecordRef),
-        ),
-        lang,
-        {
-          sourceRecordsEndpoint: `/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records`,
-        },
-      );
-      response.writeHead(200, HTML_HEADERS);
-      response.end(html);
-      return true;
-    }
-
-    const knowledgeDebuggerSourceMatch = path.match(/^\/api\/observe-debugger\/(.+)\/source-records$/);
-    if (knowledgeDebuggerSourceMatch) {
-      let experienceSessionId = '';
-      try { experienceSessionId = decodeURIComponent(knowledgeDebuggerSourceMatch[1]); } catch { /* invalid path */ }
-      const context = experienceSessionId
-        ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
-        : undefined;
-      if (!context) {
-        writeJsonError(response, 404, 'experience_session_not_found');
-        return true;
-      }
-      response.writeHead(200, JSON_HEADERS);
-      response.end(JSON.stringify(
-        loadObservationSourceRecordArchive(context.sourceRecordRef, observationsDir),
-      ));
-      return true;
-    }
-
-    if (path === '/api/observe-inbox/view') {
-      const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(observationsDir, { skill: url.searchParams.get('skill') || undefined });
-      response.writeHead(200, JSON_HEADERS);
-      response.end(JSON.stringify({ effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }));
-      return true;
-    }
-
-    if (path === '/api/observe-inbox') {
-      const severity = url.searchParams.get('severity');
-      const skill = url.searchParams.get('skill');
-      const limitRaw = url.searchParams.get('limit');
-      const limit = limitRaw ? Math.max(1, Number(limitRaw) || 0) : 0;
-      let items = queryObservationInbox(observationsDir);
-      if (skill) items = items.filter((item) => item.skillName === skill);
-      if (severity === 'high' || severity === 'medium' || severity === 'low' || severity === 'noise') {
-        items = items.filter((item) => item.severity === severity);
-      }
-      if (limit > 0) items = items.slice(0, limit);
-      response.writeHead(200, JSON_HEADERS);
-      response.end(JSON.stringify(items));
-      return true;
-    }
-
-    if (path === '/api/observe-inbox/diagnostics') {
-      const index = buildSkillIndex(
-        analysesDir,
-        doctorsDir,
-        observationsDir,
-        { includeObserveCards, includeDoctorCards },
-      );
-      response.writeHead(200, JSON_HEADERS);
-      response.end(JSON.stringify({
-        sourceCoverage: index.diagnosisSummary.sourceCoverage,
-        summary: index.diagnosisSummary,
-        bySkill: Object.fromEntries(index.diagnosticsBySkill),
-        active: activeStudioDiagnostics({
-          schemaVersion: 1,
-          generatedAt: new Date().toISOString(),
+      },
+    })),
+    {
+      pattern: '/observe/inbox',
+      handler({ response, url, lang }) {
+        const skill = url.searchParams.get('skill') || undefined;
+        const html = renderObservationInboxPage(
+          buildObservationInboxViewModel(observationsDir, { skill }),
+          lang,
+        );
+        response.writeHead(200, HTML_HEADERS);
+        response.end(html);
+      },
+    },
+    {
+      pattern: '/observe/sessions/*id',
+      handler({ response, url, params, lang }) {
+        const experienceSessionId = params.id;
+        const context = experienceSessionId
+          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
+          : undefined;
+        if (!context) {
+          response.writeHead(404, TEXT_HEADERS);
+          response.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
+          return;
+        }
+        const targetTurnId = url.searchParams.get('turnId')?.trim();
+        if (!targetTurnId) {
+          const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
+          response.writeHead(302, {
+            Location: `/observe/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
+          });
+          response.end();
+          return;
+        }
+        if (!context.session.turns.some((turn) => turn.turnId === targetTurnId)) {
+          response.writeHead(404, TEXT_HEADERS);
+          response.end(lang === 'en' ? 'task turn not found' : '任务不存在');
+          return;
+        }
+        const html = renderKnowledgeDebuggerPage(
+          buildKnowledgeDebuggerViewModel(
+            context.session,
+            targetTurnId,
+            context.report.meta.ingestion,
+            summarizeObservationSourceRecordArchive(context.sourceRecordRef),
+          ),
+          lang,
+          {
+            sourceRecordsEndpoint: `/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records`,
+          },
+        );
+        response.writeHead(200, HTML_HEADERS);
+        response.end(html);
+      },
+    },
+    {
+      pattern: '/api/observe-debugger/*id/source-records',
+      handler({ response, params }) {
+        const experienceSessionId = params.id;
+        const context = experienceSessionId
+          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
+          : undefined;
+        if (!context) {
+          writeJsonError(response, 404, 'experience_session_not_found');
+          return;
+        }
+        response.writeHead(200, JSON_HEADERS);
+        response.end(JSON.stringify(
+          loadObservationSourceRecordArchive(context.sourceRecordRef, observationsDir),
+        ));
+      },
+    },
+    {
+      pattern: '/api/observe-inbox/view',
+      handler({ response, url }) {
+        const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(observationsDir, { skill: url.searchParams.get('skill') || undefined });
+        response.writeHead(200, JSON_HEADERS);
+        response.end(JSON.stringify({ effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }));
+      },
+    },
+    {
+      pattern: '/api/observe-inbox',
+      handler({ response, url }) {
+        const severity = url.searchParams.get('severity');
+        const skill = url.searchParams.get('skill');
+        const limitRaw = url.searchParams.get('limit');
+        const limit = limitRaw ? Math.max(1, Number(limitRaw) || 0) : 0;
+        let items = queryObservationInbox(observationsDir);
+        if (skill) items = items.filter((item) => item.skillName === skill);
+        if (severity === 'high' || severity === 'medium' || severity === 'low' || severity === 'noise') {
+          items = items.filter((item) => item.severity === severity);
+        }
+        if (limit > 0) items = items.slice(0, limit);
+        response.writeHead(200, JSON_HEADERS);
+        response.end(JSON.stringify(items));
+      },
+    },
+    {
+      pattern: '/api/observe-inbox/diagnostics',
+      handler({ response, analysesDir, doctorsDir }) {
+        const index = buildSkillIndex(
+          analysesDir,
+          doctorsDir,
+          observationsDir,
+          { includeObserveCards, includeDoctorCards },
+        );
+        response.writeHead(200, JSON_HEADERS);
+        response.end(JSON.stringify({
           sourceCoverage: index.diagnosisSummary.sourceCoverage,
+          summary: index.diagnosisSummary,
           bySkill: Object.fromEntries(index.diagnosticsBySkill),
-        }),
-      }));
-      return true;
-    }
-
-    if (path === '/api/observe-inbox/show') {
-      const id = url.searchParams.get('id') || '';
-      const item = id ? findObservationInboxItem(id, observationsDir) : null;
-      if (!item) {
-        writeJsonError(response, 404, 'observation_not_found');
-        return true;
-      }
-      response.writeHead(200, JSON_HEADERS);
-      response.end(JSON.stringify({ id, text: formatObservationShow(item) }));
-      return true;
-    }
-
-    if (path === '/api/observe-inbox/review-state') {
-      if (request.method === 'GET') {
+          active: activeStudioDiagnostics({
+            schemaVersion: 1,
+            generatedAt: new Date().toISOString(),
+            sourceCoverage: index.diagnosisSummary.sourceCoverage,
+            bySkill: Object.fromEntries(index.diagnosticsBySkill),
+          }),
+        }));
+      },
+    },
+    {
+      pattern: '/api/observe-inbox/show',
+      handler({ response, url }) {
+        const id = url.searchParams.get('id') || '';
+        const item = id ? findObservationInboxItem(id, observationsDir) : null;
+        if (!item) {
+          writeJsonError(response, 404, 'observation_not_found');
+          return;
+        }
+        response.writeHead(200, JSON_HEADERS);
+        response.end(JSON.stringify({ id, text: formatObservationShow(item) }));
+      },
+    },
+    {
+      pattern: '/api/observe-inbox/review-state',
+      handler({ response }) {
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(loadObservationReviewState(observationsDir)));
-        return true;
-      }
-      if (request.method === 'POST') {
-        assertTrustedMutationRequest(request);
+      },
+    },
+    {
+      pattern: '/api/observe-inbox/review-state',
+      method: 'POST',
+      mutation: true,
+      async handler({ request, response }) {
         const body = await readJsonObjectBody(request) as Partial<ObservationReviewStateUpdate>;
         const state = updateObservationReviewState(observationsDir, {
           targetType: body.targetType as ObservationReviewStateUpdate['targetType'],
@@ -240,21 +240,21 @@ export function createObservationRoutes({
         }, new Date().toISOString());
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(state));
-        return true;
-      }
-      if (request.method === 'DELETE') {
-        assertTrustedMutationRequest(request);
+      },
+    },
+    {
+      pattern: '/api/observe-inbox/review-state',
+      method: 'DELETE',
+      mutation: true,
+      handler({ response, url }) {
         const targetType = url.searchParams.get('targetType') as ObservationReviewStateUpdate['targetType'];
         const targetId = url.searchParams.get('targetId') ?? '';
         const state = deleteObservationReviewState(observationsDir, targetType, targetId);
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(state));
-        return true;
-      }
-      writeJsonError(response, 405, 'method_not_allowed', { Allow: 'GET, POST, DELETE' });
-      return true;
-    }
+      },
+    },
+  ];
 
-    return false;
-  };
+  return createStudioRouter(routes);
 }

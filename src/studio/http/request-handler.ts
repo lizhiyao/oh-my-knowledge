@@ -9,13 +9,11 @@ import { createCoreStudioRouteHandler } from './routes/core-runs.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS, writeJsonError } from './errors.js';
-import {
-  assertTrustedMutationRequest,
-  RequestBodyError,
-} from './request-errors.js';
+import { RequestBodyError } from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { createObservationRoutes } from './routes/observations.js';
+import { createStudioRouter } from './routes/router.js';
 
 type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host'> & {
   requestShutdown(): void;
@@ -66,6 +64,30 @@ export function createStudioRequestHandler({
         defaultLang: DEFAULT_LANG,
         studioNavigation: true,
       });
+  const hostRoutes = createStudioRouter([
+    {
+      // 存活探针：任意方法都回答（含端口接管前对旧进程的 /health 认证）。
+      pattern: '/health',
+      method: 'ANY',
+      handler({ response: res }) {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: true, service: 'omk' }));
+      },
+    },
+    {
+      pattern: '/api/shutdown',
+      method: 'POST',
+      mutation: true,
+      handler({ response: res }) {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: true }));
+        shutdownTimer ??= setTimeout(() => {
+          shutdownTimer = undefined;
+          requestShutdown();
+        }, 100);
+      },
+    },
+  ]);
 
   function prepare(): void {
     if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
@@ -109,24 +131,8 @@ export function createStudioRequestHandler({
         lang,
       };
 
-      if (path === '/health') {
-        response.writeHead(200, JSON_HEADERS);
-        response.end(JSON.stringify({ ok: true, service: 'omk' }));
-        return;
-      }
-
-      if (path === '/api/shutdown' && request.method === 'POST') {
-        assertTrustedMutationRequest(request);
-        response.writeHead(200, JSON_HEADERS);
-        response.end(JSON.stringify({ ok: true }));
-        shutdownTimer ??= setTimeout(() => {
-          shutdownTimer = undefined;
-          requestShutdown();
-        }, 100);
-        return;
-      }
-
-      if (knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
+      if (await hostRoutes(routeContext)) return;
+      if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
       if (await conversationRoutes(routeContext)) return;
       if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
 
