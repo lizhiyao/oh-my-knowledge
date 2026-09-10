@@ -26,7 +26,15 @@ describe('Observe Next production routes', () => {
     const item={threadId:'thread',sourceThreadId:'thread',sourceKind:session.sourceKind,title:'<script>alert("x")</script> safe conversation',relatedSkillNames:[],tasks:[{turnId,title:'发布任务',status:'completed' as const,eventCount:1,toolCallCount:1,toolFailureCount:0,relatedSkillNames:[]}]};
     const archive={status:'available' as const,recordCount:1,records:[],omittedRecordCount:0,byteCount:0,truncated:false};
     const catalog:ConversationCatalog={
-      async listConversations(){return {conversations:[item],totalTurnCount:1,totalToolCallCount:1,totalToolFailureCount:0};},
+      async listConversations(){return {conversations:[
+        {...item,tasks:[{...item.tasks[0],turnId:'older'},...item.tasks]},
+        {...item,threadId:'live-thread',tasks:[
+          {...item.tasks[0],turnId:'old-live',status:'open'},
+          {...item.tasks[0],turnId:'new-live',sourceTurnId:'source/live',status:'open'},
+          {...item.tasks[0],turnId:'later-completed'},
+        ]},
+        {...item,threadId:'empty-thread',tasks:[]},
+      ],totalTurnCount:5,totalToolCallCount:1,totalToolFailureCount:0};},
       async getConversation(id){return id==='thread'?item:undefined;},
       async loadTaskTrajectory(id,turn){return id==='thread'&&turn===turnId?{revision:'revision',status:'completed',liveObservable:false,session,ingestion:report.meta.ingestion!,sourceRecords:archive}:undefined;},
     };
@@ -36,6 +44,13 @@ describe('Observe Next production routes', () => {
       const response=await fetch(url+path);assert.equal(response.status,200);
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       assert.match(html,/href="\/observe" aria-current="page"/);
+      if(path==='/observe') {
+        assert.match(html,/任务轨迹/);
+        assert.ok(html.includes(`href="/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}">查看最近轨迹</a>`));
+        assert.ok(html.includes('href="/observe/conversations/live-thread/tasks/source%2Flive">查看实时轨迹</a>'));
+        assert.match(html,/暂无轨迹/);
+        assert.doesNotMatch(html,/href="\/observe\/conversations\/empty-thread\/tasks\//);
+      }
     }
     const task=`/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}`;
     const response=await fetch(url+task);assert.equal(response.status,200);

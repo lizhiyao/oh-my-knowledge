@@ -69,7 +69,12 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
       {title:zh?'会话':'Conversation',ellipsis:true,render:(_,item)=><><Link title={item.title} href={conversationHref(item.threadId,lang)}>{item.title}</Link>{item.archived&&<Tag>{zh?'已归档':'Archived'}</Tag>}</>},
       {title:zh?'工作目录':'Workspace',width:'28%',ellipsis:true,dataIndex:'cwd',render:(value:string|undefined)=><span title={value}>{value??'—'}</span>},
       {title:zh?'任务':'Tasks',width:72,align:'right',dataIndex:'turnCount',render:(value:number|undefined)=>value??'—'},
-      {title:zh?'实时轨迹':'Live trajectory',width:132,className:'conversation-action',render:(_,item)=>{const task=[...item.tasks].reverse().find(task=>task.status==='open');return task?<Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{zh?'查看实时轨迹':'View live'}</Link>:'—';}},
+      {title:zh?'任务轨迹':'Task trajectory',width:132,className:'conversation-action',render:(_,item)=>{
+        const liveTask=[...item.tasks].reverse().find(task=>task.status==='open');
+        const task=liveTask??item.tasks.at(-1);
+        if(!task)return <Typography.Text type="secondary">{zh?'暂无轨迹':'No trajectory'}</Typography.Text>;
+        return <Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{liveTask?(zh?'查看实时轨迹':'View live'):(zh?'查看最近轨迹':'View latest')}</Link>;
+      }},
     ]}/>
   </>;
 }
