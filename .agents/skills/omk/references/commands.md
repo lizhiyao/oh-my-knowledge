@@ -447,7 +447,7 @@ omk observe inbox [flags]
 - `--global` `boolean`:直接读取全局 ~/.oh-my-knowledge/observe/inbox（跳过项目级与兜底）。
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
 - `--input-dir` `option`:inbox 数据目录，默认 .omk/observe/inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe/inbox。
-- `--json` `boolean`:JSON 格式输出
+- `--json` `boolean`:JSON 格式输出（schemaVersion: 1，kind 标识查询、聚合或增强复盘）
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--limit` `option`:限制条数，默认 20
 - `--llm-enhanced-review` `boolean`:显式调用模型进行链路增强复盘，包含标准抽取、目标判断、类型判断、产物匹配和 owner 建议

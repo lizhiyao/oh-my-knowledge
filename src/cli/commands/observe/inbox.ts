@@ -53,7 +53,7 @@ export async function runObserveInbox(
       .filter(({ runtimeEvidence }) => hasLlmEnhancedRuntimeEvidence(runtimeEvidence));
     if (candidates.length === 0) {
       if (flags.json) {
-        console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records: [] }, null, 2));
+        console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-llm-enhanced-review', records: [] }, null, 2));
       } else {
         printText(lang === 'zh' ? '没有可用于 LLM 增强复盘的运行证据' : 'No runtime evidence is available for LLM enhanced review');
       }
@@ -76,7 +76,7 @@ export async function runObserveInbox(
       }));
     }
     if (flags.json) {
-      console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records }, null, 2));
+      console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-llm-enhanced-review', records }, null, 2));
       return;
     }
     printText(lang === 'zh' ? 'LLM 增强复盘已生成:' : 'LLM enhanced review generated:');
@@ -109,7 +109,7 @@ export async function runObserveInbox(
       : loadLatestObservationInboxReports(dir);
     const rows = summarizeObservationInboxBySkill(items, reports);
     if (flags.json) {
-      console.log(JSON.stringify({ kind: 'observe-inbox-by-skill', rows }, null, 2));
+      console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-inbox-by-skill', rows }, null, 2));
       return;
     }
     if (rows.length === 0) {
@@ -137,7 +137,7 @@ export async function runObserveInbox(
   if (flags.json) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
     const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(dir, { skill: flags.skill });
-    console.log(JSON.stringify({ kind: 'observe-inbox-query', items, effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }, null, 2));
+    console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-inbox-query', items, effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }, null, 2));
     return;
   }
   if (items.length === 0) {
@@ -309,7 +309,7 @@ export default class ObserveInbox extends BaseCommand {
       }),
     }),
     json: Flags.boolean({
-      description: bilingual({ zh: 'JSON 格式输出', en: 'JSON output' }),
+      description: bilingual({ zh: 'JSON 格式输出（schemaVersion: 1，kind 标识查询、聚合或增强复盘）', en: 'JSON output (schemaVersion: 1; kind identifies query, aggregation, or enhanced review)' }),
       default: false,
     }),
   };

@@ -73,7 +73,8 @@ describe('observe CLI', () => {
       console.log = originalLog;
     }
 
-    const output = JSON.parse(logs.join('\n')) as { rows: Array<{ skillName: string }> };
+    const output = JSON.parse(logs.join('\n')) as { schemaVersion: number; rows: Array<{ skillName: string }> };
+    assert.equal(output.schemaVersion, 1);
     assert.deepEqual(output.rows.map((row) => row.skillName), ['audit']);
   });
 
@@ -140,7 +141,8 @@ describe('observe CLI', () => {
         lang: 'zh', 'input-dir': dir, global: false, 'include-noise': false,
         'by-skill': false, 'llm-enhanced-review': false, refresh: false, json: true,
       }, 'zh');
-      const raw = JSON.parse(logs.join('\n')) as { items: Array<{ skillName: string; artifactVersion: string; evidence: { query: string } }> };
+      const raw = JSON.parse(logs.join('\n')) as { schemaVersion: number; items: Array<{ skillName: string; artifactVersion: string; evidence: { query: string } }> };
+      assert.equal(raw.schemaVersion, 1);
       assert.equal(raw.items[0].skillName, hostile);
       assert.equal(raw.items[0].artifactVersion, hostile);
       assert.equal(raw.items[0].evidence.query, hostile);

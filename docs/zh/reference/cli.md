@@ -347,6 +347,8 @@ omk observe inbox --json                           # JSON 输出，便于自动�
 omk observe show <inbox_id>
 ```
 
+`observe inbox --json` 返回带有 `schemaVersion: 1` 的对象。既有 `kind` 区分视图：`observe-inbox-query`（`items`）、`observe-inbox-by-skill`（`rows`）或 `observe-llm-enhanced-review`（`records`）。空结果使用相同信封。严格拒绝未知字段的消费者需允许 `schemaVersion`；既有结果字段和落盘观测文件不变。
+
 每条 observation 自带：
 
 + `confidence` 与 `attributionConfidence`：信号可信度 + skill 归因可信度，并列展示

@@ -347,6 +347,8 @@ omk observe inbox --json                           # JSON output for automation
 omk observe show <inbox_id>
 ```
 
+`observe inbox --json` returns an object with `schemaVersion: 1`. The existing `kind` identifies the view: `observe-inbox-query` (`items`), `observe-inbox-by-skill` (`rows`), or `observe-llm-enhanced-review` (`records`). Empty results use the same envelope. Consumers that reject unknown fields must allow `schemaVersion`; existing result fields and persisted observation files are unchanged.
+
 Every observation carries:
 
 - `confidence` and `attributionConfidence` — signal credibility plus skill-attribution credibility, displayed side by side
