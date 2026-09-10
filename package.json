@@ -91,6 +91,7 @@
     "lint-staged": "lint-staged",
     "test": "node scripts/run-tests-hermetic.mjs",
     "test:profile": "yarn build && node dist-scripts/test-profile.js",
+    "studio:baseline": "yarn build:src && yarn build:scripts && node dist-scripts/studio-baseline.js",
     "ci:quality": "run-s lint typecheck build build:docs:check docs:build",
     "ci": "run-s ci:quality test",
     "prepublishOnly": "run-s clean build",
