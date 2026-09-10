@@ -4,10 +4,12 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextCatalogContext, nextObserveContext } from './next-context.js';
+import { nextCatalogContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import type { CoreStudioCatalog } from '../core-runs/contracts.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { loadObservePage, type ObservePage } from './observe-page.js';
+
+import { loadKnowledgePage, type KnowledgePage } from './knowledge-page.js';
 
 /** Next owns migrated pages; existing API/SSE capabilities keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
@@ -27,10 +29,23 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const path = (request.url ?? '/').split('?')[0];
       const measure = path === '/measure' || path.startsWith('/measure/');
       const observe = path === '/observe' || path.startsWith('/observe/conversations/');
-      if (!measure && !observe && !path.startsWith('/_next/')) return false;
-      if ((measure || observe) && (request.method ?? 'GET') !== 'GET') {
+      const knowledge = path === '/knowledge' || path.startsWith('/knowledge/skills/');
+      if (!measure && !observe && !knowledge && !path.startsWith('/_next/')) return false;
+      if ((measure || observe || knowledge) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' });
         response.end('method_not_allowed'); return true;
+      }
+      let knowledgePage: KnowledgePage | undefined;
+      if (knowledge) {
+        try { knowledgePage = loadKnowledgePage(options, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
+        catch {
+          response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.end('studio_source_unavailable'); return true;
+        }
+        if (!knowledgePage) {
+          response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          response.end('skill_not_found'); return true;
+        }
       }
       let observePage: ObservePage | undefined;
       if (observe) {
@@ -69,7 +84,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       if (!app) throw new Error('Studio UI is not started');
       request.headers['x-omk-studio-lang'] = new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh';
       const handler = app.getRequestHandler();
-      if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
+      if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
+      else if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
       else if (catalog) await nextCatalogContext.run(catalog as CoreStudioCatalog, () => handler(request, response));
       else await handler(request, response);
       return true;

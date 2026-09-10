@@ -11,7 +11,7 @@ export function StudioShell({ lang, children, active = 'measure' }: { lang: Lang
       <nav aria-label={lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}>
         <a href={`/observe${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</a>
         <a href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</a>
-        <a href={`/knowledge${suffix}`}>{lang === 'zh' ? '知识' : 'Knowledge'}</a>
+        <a href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</a>
       </nav>
     </header><main className="studio-content">{children}</main></div>
   </ConfigProvider>;

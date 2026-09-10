@@ -19,3 +19,11 @@ export function requestObservePage(): ObservePage {
   if (!page) throw new Error('studio_source_unavailable');
   return page;
 }
+
+export function requestKnowledgePage(): import('../http/knowledge-page').KnowledgePage {
+  const context = Reflect.get(globalThis, Symbol.for('omk.studio.next.knowledge')) as
+    { getStore(): import('../http/knowledge-page').KnowledgePage | undefined } | undefined;
+  const page = context?.getStore();
+  if (!page) throw new Error('studio_source_unavailable');
+  return page;
+}
