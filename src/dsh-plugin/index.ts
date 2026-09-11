@@ -188,6 +188,8 @@ async function studioUrl(
     observationsDir: layout.observeInboxDir,
     managedDir: layout.managedDir,
     conversationCatalog: state.catalog,
+    // DSH 宿主无收件箱页面入口（输出落盘路径），裁剪收件箱路由（#839 批次 0）。
+    observationInbox: false,
   });
   state.serverUrl = await state.server.start();
   return state.serverUrl;
