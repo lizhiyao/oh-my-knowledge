@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import type { generateSamples } from './generator.js';
-import { loadSamples, listSampleFilesInDir } from '../../eval-workflows/inputs/load-samples.js';
-import { findCanonicalSamplesFile } from '../../eval-workflows/inputs/sample-locator.js';
-import { getSamplesArray, parseSampleDocument } from '../../eval-workflows/inputs/sample-document.js';
-import { appendSamplesToFile, preflightSampleAppend } from '../../eval-workflows/inputs/append-samples.js';
-import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
+import { loadSamples, listSampleFilesInDir } from '../inputs/load-samples.js';
+import { findCanonicalSamplesFile } from '../inputs/sample-locator.js';
+import { getSamplesArray, parseSampleDocument } from '../inputs/sample-document.js';
+import { appendSamplesToFile, preflightSampleAppend } from '../inputs/append-samples.js';
+import { createEvalSampleSetDocument } from '../inputs/schemas/sample-set.js';
 import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 
 type Generator = typeof generateSamples;

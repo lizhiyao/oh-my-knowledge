@@ -6,7 +6,7 @@ import { enumStringParser, integerStringParser, nonEmptyStringParser, numberStri
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
-import { ensureSkillSamples, SamplePreparationError } from '../../knowledge-artifacts/authoring/sample-generation.js';
+import { ensureSkillSamples, SamplePreparationError } from '../../eval-workflows/sample-generation/skill-samples.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
 import type {
   CoreEvolveOutcomeInput,

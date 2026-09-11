@@ -8,7 +8,7 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { generateSkillSamples, SamplePreparationError } from '../../knowledge-artifacts/authoring/sample-generation.js';
+import { generateSkillSamples, SamplePreparationError } from '../../eval-workflows/sample-generation/skill-samples.js';
 import {
   defaultSkillLocalSamplesFile,
   findSkillSamplesPath,
@@ -40,7 +40,7 @@ export async function runSampleFromTraces(
   signal?: AbortSignal,
 ): Promise<void> {
   const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/index.js');
-  const { generateSamplesFromTraces } = await import('../../knowledge-artifacts/authoring/generator.js');
+  const { generateSamplesFromTraces } = await import('../../eval-workflows/sample-generation/generator.js');
   const model = flags.model;
   const executorName = flags.executor;
   if (!model || !executorName) {

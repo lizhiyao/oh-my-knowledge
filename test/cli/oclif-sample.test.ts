@@ -16,7 +16,7 @@ import SampleCommand from '../../src/cli/commands/sample.js';
 import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 const generateSamples = vi.hoisted(() => vi.fn());
-vi.mock('../../src/knowledge-artifacts/authoring/generator.js', () => ({ generateSamples }));
+vi.mock('../../src/eval-workflows/sample-generation/generator.js', () => ({ generateSamples }));
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));

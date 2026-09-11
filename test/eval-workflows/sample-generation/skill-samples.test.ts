@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureSkillSamples, generateSkillSamples } from '../../src/knowledge-artifacts/authoring/sample-generation.js';
-import { createEvalSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
+import { ensureSkillSamples, generateSkillSamples } from '../../../src/eval-workflows/sample-generation/skill-samples.js';
+import { createEvalSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 const sample = { sample_id: 'new', prompt: 'Check the input' };
 const serialized = (id: string) => JSON.stringify(createEvalSampleSetDocument([{ ...sample, sample_id: id }]));

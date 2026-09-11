@@ -32,6 +32,7 @@ const EVAL_WORKFLOW_SUBDOMAINS = new Set([
   'orchestration',
   'projections',
   'resume-admission',
+  'sample-generation',
 ]);
 
 interface ModuleEdge {
