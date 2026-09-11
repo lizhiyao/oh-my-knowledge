@@ -67,23 +67,6 @@ export function createKnowledgeRoutes({
       },
     },
     {
-      // 旧观测 API 永久迁移；307 保留原方法与查询串。
-      pattern: '/api/analyses',
-      method: 'ANY',
-      handler({ response: res, url }) {
-        res.writeHead(307, { Location: `/api/observe-health${url.search}` });
-        res.end();
-      },
-    },
-    {
-      pattern: '/api/analyses/*rest',
-      method: 'ANY',
-      handler({ response: res, url, params }) {
-        res.writeHead(307, { Location: `/api/observe-health/${params.rest}${url.search}` });
-        res.end();
-      },
-    },
-    {
       pattern: '/api/observe-health',
       handler({ response: res, analysesDir }) {
         res.writeHead(200, JSON_HEADERS);

@@ -58,23 +58,7 @@ export function createObservationRoutes({
   includeObserveCards,
   includeDoctorCards,
 }: ObservationRoutesOptions): ObservationRouteHandler {
-  const legacyRedirects: readonly (readonly [string, string])[] = [
-    ['/api/observations/inbox', '/api/observe-inbox'],
-    ['/api/observations/show', '/api/observe-inbox/show'],
-    ['/api/observations/diagnostics', '/api/observe-inbox/diagnostics'],
-    ['/api/observations/review-state', '/api/observe-inbox/review-state'],
-  ];
-
   const routes: StudioRouteDefinition<ObservationRouteContext>[] = [
-    // 旧观测 API 永久迁移；307 保留原方法与查询串。
-    ...legacyRedirects.map(([from, to]): StudioRouteDefinition<ObservationRouteContext> => ({
-      pattern: from,
-      method: 'ANY',
-      handler({ response, url }) {
-        response.writeHead(307, { Location: `${to}${url.search}` });
-        response.end();
-      },
-    })),
     {
       pattern: '/observe/inbox',
       handler({ response, url, lang }) {

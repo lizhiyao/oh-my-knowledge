@@ -55,14 +55,11 @@ describe('Studio knowledge routes', () => {
     assert.equal(pageRedirect.status, 404);
     assert.equal(pageRedirect.headers.get('location'), null);
 
-    const apiRedirect = await fetch(`${baseUrl}/api/analyses/report-a?lang=en`, {
+    const apiLegacy = await fetch(`${baseUrl}/api/analyses/report-a?lang=en`, {
       redirect: 'manual',
     });
-    assert.equal(apiRedirect.status, 307);
-    assert.equal(
-      apiRedirect.headers.get('location'),
-      '/api/observe-health/report-a?lang=en',
-    );
+    assert.equal(apiLegacy.status, 404);
+    assert.equal(apiLegacy.headers.get('location'), null);
 
     const chart = await fetch(`${baseUrl}/static/chart.js`);
     assert.equal(chart.status, 200);
