@@ -11,7 +11,7 @@ interface CapturedResponse {
   body: string;
 }
 
-function fakeContext(path: string, method = 'GET', headers: Record<string, string> = {}) {
+function fakeContext(path: string, method = 'GET', headers: Record<string, string | string[]> = {}) {
   const captured: CapturedResponse = { status: 0, headers: {}, body: '' };
   const request = { method, headers } as unknown as IncomingMessage;
   const response = {
@@ -110,6 +110,35 @@ describe('Studio declarative router', () => {
     );
     assert.deepEqual(calls, []);
     assert.equal(await router(fakeContext('/api/thing', 'POST').context), true);
+    assert.deepEqual(calls, ['hit']);
+  });
+
+  it('rejects mutations with ambiguous or malformed origins', async () => {
+    const calls: string[] = [];
+    const router = createStudioRouter([
+      { pattern: '/api/thing', method: 'POST', mutation: true, handler: recording(calls, 'hit') },
+    ]);
+
+    const rejected: Record<string, string | string[]>[] = [
+      { origin: ['https://a.example', 'https://b.example'], host: 'a.example' },
+      { origin: 'https://a.example' },
+      { origin: 'not a url', host: 'a.example' },
+      { origin: 'https://evil.example', host: 'a.example' },
+    ];
+    for (const headers of rejected) {
+      await assert.rejects(
+        router(fakeContext('/api/thing', 'POST', headers).context),
+        (error: unknown) => error instanceof RequestBodyError
+          && error.statusCode === 403
+          && error.code === 'mutation_not_trusted',
+      );
+    }
+    assert.deepEqual(calls, []);
+
+    assert.equal(await router(fakeContext('/api/thing', 'POST', {
+      origin: 'https://a.example',
+      host: 'a.example',
+    }).context), true);
     assert.deepEqual(calls, ['hit']);
   });
 });

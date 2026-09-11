@@ -115,4 +115,20 @@ describe('Studio server lifecycle', () => {
     const restarted = await server.start();
     assert.equal((await fetch(`${restarted}/health`)).status, 200);
   });
+
+  it('answers 500 with a stable marker when the host pipeline itself crashes', async () => {
+    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-internal-'));
+    temporaryDirectories.push(observationsDir);
+    const server = createReportServer({ port: 0, observationsDir }, {
+      async prepare() {},
+      async handle() { throw new Error('render pipeline crashed'); },
+      async close() {},
+    });
+    runningServers.push(server);
+
+    const response = await fetch(`${await server.start()}/observe`);
+    assert.equal(response.status, 500);
+    assert.equal(await response.text(), 'studio_internal_error');
+    assert.match(response.headers.get('content-type') ?? '', /text\/plain/);
+  });
 });
