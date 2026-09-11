@@ -1,5 +1,5 @@
-import { resolve, join, dirname, relative, sep } from 'node:path';
-import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { resolve, relative, sep } from 'node:path';
+import { existsSync } from 'node:fs';
 import { Args, Flags, type Interfaces } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -8,17 +8,13 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { generateSkillSamples, SamplePreparationError } from '../../eval-workflows/sample-generation/skill-samples.js';
+import { generateSkillSamples, discoverSkillSampleTasks, SamplePreparationError } from '../../eval-workflows/sample-generation/skill-samples.js';
 import {
-  defaultSkillLocalSamplesFile,
-  findSkillSamplesPath,
   SampleFileAmbiguityError,
 } from '../../eval-workflows/inputs/sample-locator.js';
-import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { withLocalizedSampleDiscovery } from '../lib/localized-sample-discovery.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
-import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 function userFacingPath(filePath: string): string {
@@ -39,8 +35,8 @@ export async function runSampleFromTraces(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/index.js');
-  const { generateSamplesFromTraces } = await import('../../eval-workflows/sample-generation/generator.js');
+  const { DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/paths.js');
+  const { generateTraceDrafts, TraceDraftPreparationError } = await import('../../eval-workflows/sample-generation/trace-drafts.js');
   const model = flags.model;
   const executorName = flags.executor;
   if (!model || !executorName) {
@@ -48,50 +44,24 @@ export async function runSampleFromTraces(
   }
 
   const obsDir = resolve(flags['observations-dir'] ?? DEFAULT_OBSERVATIONS_DIR);
-  if (!existsSync(obsDir)) {
-    console.error(lang === 'zh'
-      ? `observe-inbox 目录不存在: ${obsDir}（先运行 omk observe ingest 生成）`
-      : `Observe-inbox dir not found: ${obsDir} (run omk observe ingest first)`);
-    throw new CliExit(1);
-  }
-
-  // Drop noise-tier signals up front: they're exactly what the generator is told to
-  // skip, so filtering here avoids feeding junk to the LLM and keeps the no-op path clean.
-  let items = queryObservationInbox(obsDir).filter((it) => it.severity !== 'noise');
-  if (flags.skill) {
-    items = items.filter((it) => it.skillName === flags.skill);
-  }
-  if (items.length === 0) {
-    process.stderr.write(lang === 'zh'
-      ? `✅ ${obsDir}${flags.skill ? ` 中 ${flags.skill}` : ''} 没有可回流的失败信号（噪声级已跳过）\n`
-      : `✅ No recyclable failure signals${flags.skill ? ` for ${flags.skill}` : ''} in ${obsDir} (noise-level skipped)\n`);
-    return;
-  }
-
-  const { observationDraftsDir } = await import('../../observability/inbox/index.js');
-  const outPath = join(observationDraftsDir(obsDir), 'sample-drafts.json');
-  if (existsSync(outPath)) {
-    console.error(lang === 'zh'
-      ? `草稿已存在: ${outPath}，请先 review 并合入正式集（或删除）后再生成`
-      : `Draft already exists: ${outPath}; review/merge (or remove) it before regenerating`);
-    throw new CliExit(1);
-  }
-
-  const count: number | undefined = flags.count !== undefined ? Math.max(1, Number(flags.count) || 5) : undefined;
-  process.stderr.write(lang === 'zh'
-    ? `🔭 发现 ${items.length} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成评测用例草稿...\n`
-    : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
-
+  const count = flags.count !== undefined ? Math.max(1, Number(flags.count) || 5) : undefined;
   try {
-    const { samples, costUSD } = await generateSamplesFromTraces({ signal,
-      items,
-      count,
-      model,
-      executorName,
-      noMock: flags['no-mock'],
+    const result = await generateTraceDrafts({
+      observationsDir: obsDir, skill: flags.skill,
+      options: { signal, count, model, executorName, noMock: flags['no-mock'] },
+      onGenerating: (signalCount) => process.stderr.write(lang === 'zh'
+        ? `🔭 发现 ${signalCount} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成评测用例草稿...\n`
+        : `🔭 Found ${signalCount}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`),
     });
+    if (result.draftStatus === 'no-signals') {
+      process.stderr.write(lang === 'zh'
+        ? `✅ ${obsDir}${flags.skill ? ` 中 ${flags.skill}` : ''} 没有可回流的失败信号（噪声级已跳过）\n`
+        : `✅ No recyclable failure signals${flags.skill ? ` for ${flags.skill}` : ''} in ${obsDir} (noise-level skipped)\n`);
+      return;
+    }
+    const { costUSD } = result;
     const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-    if (samples.length === 0) {
+    if (result.draftStatus === 'empty') {
       // The model conservatively skipped every signal (noise / unreproducible). That's a
       // valid outcome, not a failure — don't write an empty draft file.
       process.stderr.write(lang === 'zh'
@@ -99,13 +69,17 @@ export async function runSampleFromTraces(
         : `\n✅ No reproducible draft samples (signals were noise / insufficient evidence; conservatively skipped); nothing written${cost}\n`);
       return;
     }
-    mkdirSync(dirname(outPath), { recursive: true });
-    createJsonFileAtomic(outPath, createEvalSampleSetDocument(samples));
     process.stderr.write(lang === 'zh'
-      ? `\n✅ 生成 ${samples.length} 条草稿用例 → ${outPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
-      : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
+      ? `\n✅ 生成 ${result.count} 条草稿用例 → ${result.outputPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
+      : `\n✅ Generated ${result.count} draft sample(s) → ${result.outputPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
+    if (err instanceof TraceDraftPreparationError) {
+      console.error(err.reason === 'missing-inbox'
+        ? (lang === 'zh' ? `observe-inbox 目录不存在: ${err.path}（先运行 omk observe ingest 生成）` : `Observe-inbox dir not found: ${err.path} (run omk observe ingest first)`)
+        : (lang === 'zh' ? `草稿已存在: ${err.path}，请先 review 并合入正式集（或删除）后再生成` : `Draft already exists: ${err.path}; review/merge (or remove) it before regenerating`));
+      throw new CliExit(1);
+    }
     const message = (err as Error).message;
     console.error((lang === 'zh' ? `生成失败: ${message}` : `Generation failed: ${message}`)
       + formatSampleGenerationFailureHint(message, flags.executor, lang));
@@ -144,38 +118,21 @@ async function runSample(
       throw new CliExit(1);
     }
 
-    const entries: string[] = readdirSync(skillDir);
+    const tasks = withLocalizedSampleDiscovery(() => discoverSkillSampleTasks(skillDir), lang);
     let generated: number = 0;
     let failed: number = 0;
 
-    for (const entry of entries) {
-      let name: string;
-      let skillPath: string;
-      let samplesPath: string;
-      let existingSamplesPath: string | null;
-      const fullPath: string = join(skillDir, entry);
-
-      if (entry.endsWith('.md')) {
-        const flatName = entry.slice(0, -3);
-        process.stderr.write(`⚠️  skipping ${flatName}: flat skills have no private sample namespace; migrate to ${flatName}/SKILL.md\n`);
-        continue;
-      } else if (statSync(fullPath).isDirectory()) {
-        const skillMd: string = join(fullPath, 'SKILL.md');
-        if (!existsSync(skillMd)) continue;
-        if (existsSync(join(skillDir, `${entry}.md`))) continue;
-        name = entry;
-        skillPath = skillMd;
-        samplesPath = defaultSkillLocalSamplesFile(fullPath);
-        existingSamplesPath = withLocalizedSampleDiscovery(() => findSkillSamplesPath(fullPath), lang);
-      } else {
+    for (const task of tasks) {
+      const { name } = task;
+      if (task.selectionKind === 'flat') {
+        process.stderr.write(`⚠️  skipping ${name}: flat skills have no private sample namespace; migrate to ${name}/SKILL.md\n`);
         continue;
       }
-
-      if (existingSamplesPath) {
+      if (task.selectionKind === 'existing') {
         process.stderr.write(tCli('cli.gen.skill_skipped_existing', lang, { name }));
         continue;
       }
-
+      const { skillPath, samplesPath } = task;
       if (count !== undefined) {
         process.stderr.write(tCli('cli.gen.skill_generating', lang, { name, count }));
       } else {

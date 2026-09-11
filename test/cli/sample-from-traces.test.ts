@@ -1,16 +1,21 @@
-import { describe, it } from 'vitest';
+import { afterEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { queryObservationInbox } from '../../src/observability/inbox/index.js';
+import { observationReportsDir } from '../../src/observability/inbox/paths.js';
 import { runSampleFromTraces } from '../../src/cli/commands/sample.js';
 import { reportFileName } from '../../src/evidence/storage/file-names.js';
 import { withCapturedStderr } from '../helpers/stderr.js';
 
 describe('sample --from-traces', () => {
+  let dir: string;
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
   it('filters observe inbox signals by --skill before drafting samples', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-sample-from-traces-'));
-    writeFileSync(join(dir, reportFileName('20260507T000000-a111')), JSON.stringify({
+    dir = mkdtempSync(join(tmpdir(), 'omk-sample-from-traces-'));
+    mkdirSync(observationReportsDir(dir), { recursive: true });
+    writeFileSync(join(observationReportsDir(dir), reportFileName('20260507T000000-a111')), JSON.stringify({
       kind: 'observe-inbox',
       schemaVersion: 2,
       meta: {
@@ -42,6 +47,7 @@ describe('sample --from-traces', () => {
       }],
     }, null, 2));
 
+    assert.equal(queryObservationInbox(dir).length, 1);
     const { stderr } = await withCapturedStderr(async () => {
       await runSampleFromTraces({
         lang: 'zh',
@@ -58,6 +64,6 @@ describe('sample --from-traces', () => {
     });
 
     assert.match(stderr, /audit 没有可回流的失败信号/);
-    assert.equal(existsSync(join(dir, 'sample-drafts.json')), false);
+    assert.equal(existsSync(join(dir, 'drafts', 'sample-drafts.json')), false);
   });
 });

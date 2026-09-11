@@ -2,7 +2,7 @@ import { existsSync, readFileSync, mkdirSync, readdirSync, statSync } from 'node
 import { dirname, extname, join } from 'node:path';
 import type { generateSamples } from './generator.js';
 import { loadSamples, listSampleFilesInDir } from '../inputs/load-samples.js';
-import { findCanonicalSamplesFile } from '../inputs/sample-locator.js';
+import { defaultSkillLocalSamplesFile, findSkillSamplesPath, findCanonicalSamplesFile } from '../inputs/sample-locator.js';
 import { getSamplesArray, parseSampleDocument } from '../inputs/sample-document.js';
 import { appendSamplesToFile, preflightSampleAppend } from '../inputs/append-samples.js';
 import { createEvalSampleSetDocument } from '../inputs/schemas/sample-set.js';
@@ -120,4 +120,26 @@ export async function ensureSkillSamples(
   if (explicit) throw new SamplePreparationError('empty', samplesPath);
   const result = await generateSkillSamples({ ...input, samplesPath: resolveSampleOutFile(samplesPath), append: false, requireSamples: true }, generate);
   return { status: 'generated' as const, ...result };
+}
+
+/** Select batch candidates using the same private sample namespace as single-skill generation. */
+export function discoverSkillSampleTasks(skillDir: string) {
+  const tasks: Array<
+    | { selectionKind: 'flat'; name: string }
+    | { selectionKind: 'existing'; name: string }
+    | { selectionKind: 'generate'; name: string; skillPath: string; samplesPath: string }
+  > = [];
+  for (const entry of readdirSync(skillDir)) {
+    const fullPath = join(skillDir, entry);
+    if (entry.endsWith('.md')) {
+      tasks.push({ selectionKind: 'flat', name: entry.slice(0, -3) });
+    } else if (statSync(fullPath).isDirectory()) {
+      const skillPath = join(fullPath, 'SKILL.md');
+      if (!existsSync(skillPath) || existsSync(join(skillDir, `${entry}.md`))) continue;
+      tasks.push(findSkillSamplesPath(fullPath)
+        ? { selectionKind: 'existing', name: entry }
+        : { selectionKind: 'generate', name: entry, skillPath, samplesPath: defaultSkillLocalSamplesFile(fullPath) });
+    }
+  }
+  return tasks;
 }

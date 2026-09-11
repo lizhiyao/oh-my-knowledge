@@ -677,7 +677,7 @@ export interface GenerateSamplesFromTracesOptions {
  * Generate draft eval samples from production-trace observation signals. Mirrors
  * generateSamples' executor / retry / finalize path but feeds the trace prompt and
  * stamps `provenance: 'production-trace'`. Output is meant to land in a review draft,
- * not the live dataset (the CLI enforces that).
+ * not the live dataset (the trace-drafts use case enforces that).
  */
 export async function generateSamplesFromTraces({
   items,
@@ -735,7 +735,7 @@ export async function generateSamplesFromTraces({
     }
     // Empty array = the model conservatively skipped every signal (the trace prompt
     // explicitly permits this when signals are noise / unreproducible). That's a valid
-    // 0-result, not a failure — return it so the CLI can no-op instead of erroring.
+    // 0-result, not a failure — the caller can skip persistence instead of erroring.
     if (samples.length === 0) return { samples: [], costUSD: totalCost };
     // Stamp provenance before sanitize so it survives (it's a valid enum value).
     for (const s of samples) s.provenance = PROVENANCE;

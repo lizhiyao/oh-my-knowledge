@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureSkillSamples, generateSkillSamples } from '../../../src/eval-workflows/sample-generation/skill-samples.js';
+import { ensureSkillSamples, generateSkillSamples, discoverSkillSampleTasks } from '../../../src/eval-workflows/sample-generation/skill-samples.js';
 import { createEvalSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 const sample = { sample_id: 'new', prompt: 'Check the input' };
@@ -20,6 +20,22 @@ describe('宿主无关的样本生成与保存用例', () => {
     writeFileSync(skillPath, '# Skill\nPreserve these bytes.\n');
   });
   afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it('批量选择遵守私有样本与 flat 优先规则', () => {
+    for (const name of ['new', 'ready', 'flat']) {
+      mkdirSync(join(root, name));
+      writeFileSync(join(root, name, 'SKILL.md'), '# Skill');
+    }
+    mkdirSync(join(root, 'ready', '.omk'));
+    writeFileSync(join(root, 'ready', '.omk', 'eval-samples.json'), serialized('old'));
+    writeFileSync(join(root, 'flat.md'), '# Flat');
+    const tasks = discoverSkillSampleTasks(root);
+    expect(tasks.filter((task) => task.selectionKind === 'generate')).toEqual([
+      { selectionKind: 'generate', name: 'new', skillPath: join(root, 'new', 'SKILL.md'), samplesPath: join(root, 'new', '.omk', 'eval-samples.json') },
+    ]);
+    expect(tasks).toContainEqual({ selectionKind: 'existing', name: 'ready' });
+    expect(tasks).toContainEqual({ selectionKind: 'flat', name: 'flat' });
+  });
 
   it('保留生成输入，创建版本化样本并返回结构化结果', async () => {
     const generate = vi.fn(async () => ({ samples: [sample], costUSD: 0.25 }));

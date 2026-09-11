@@ -31,29 +31,6 @@ async function recordEvolveOutcomeSafely(input: CoreEvolveOutcomeInput): Promise
   }
 }
 
-interface RoundProgressInfo {
-  round: number;
-  totalRounds: number;
-  phase: string;
-  score?: number;
-  delta?: number;
-  accepted?: boolean;
-  costUSD?: number;
-  costReported?: boolean;
-  error?: string;
-  decisionAccepted?: boolean;
-}
-
-interface TrajectoryEntry {
-  round: number;
-  score: number;
-  delta: number;
-  accepted: boolean;
-  costUSD: number;
-  editRatio?: number;
-  rejectedPreEval?: boolean;
-}
-
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 function validateEvolveEffort(raw: string, lang: 'zh' | 'en'): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
@@ -65,20 +42,6 @@ function validateEvolveEffort(raw: string, lang: 'zh' | 'en'): 'low' | 'medium' 
     throw new CliExit(2);
   }
   return raw as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-}
-
-interface EvolveResult {
-  startScore: number;
-  finalScore: number;
-  bestRound: number;
-  totalRounds: number;
-  totalCostUSD: number;
-  costReported?: boolean;
-  trajectory: TrajectoryEntry[];
-  bestSkillPath: string;
-  allVersions: string[];
-  runId?: string;
-  evidence?: import('../../eval-workflows/artifact-store/index.js').StoredCoreRunArtifacts;
 }
 
 export async function runEvolve(
@@ -187,7 +150,7 @@ export async function runEvolve(
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
   try {
-    const result: EvolveResult = await evolveSkillCore({
+    const result = await evolveSkillCore({
       signal,
       skillPath: resolve(skillPath),
       isDirectorySkill: skillIsDir,
@@ -204,7 +167,7 @@ export async function runEvolve(
       // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。
       writeBackToSource: !flags['snapshot-only'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, decisionAccepted }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, decisionAccepted }): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
@@ -274,8 +237,8 @@ export async function runEvolve(
       }
     }
 
-    const publicResult: Omit<EvolveResult, 'evidence'> = { ...result };
-    delete (publicResult as Partial<EvolveResult>).evidence;
+    const publicResult = { ...result };
+    delete publicResult.evidence;
     console.log(JSON.stringify(publicResult, null, 2));
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
