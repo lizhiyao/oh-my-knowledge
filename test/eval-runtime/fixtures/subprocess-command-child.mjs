@@ -1,10 +1,16 @@
 // Test child for the façade-level subprocess exchange. The mode arrives through the environment
 // because the request document only carries measurement coordinates, never test instructions.
+import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const SCHEMA_VERSION = 'omk.subprocess-command-exchange/v1';
 const CONFORMANCE_ANSWERS = { one: 'A' };
 const mode = process.env.OMK_FIXTURE_MODE ?? 'echo';
+
+/** Leaves a grandchild holding this child's stdout/stderr, so `'close'` outlives `'exit'`. */
+function holdPipesOpen() {
+  spawn(process.execPath, ['-e', 'setTimeout(() => {}, 3000);'], { stdio: 'inherit' }).unref();
+}
 
 let raw = '';
 process.stdin.setEncoding('utf8');
@@ -91,6 +97,28 @@ switch (mode) {
     }
     break;
   }
+  case 'descendant-holds-pipes': {
+    // The grandchild inherits stdout/stderr, so the parent's 'close' never fires after exit.
+    holdPipesOpen();
+    completed();
+    break;
+  }
+  case 'descendant-and-hang':
+    holdPipesOpen();
+    await sleep(10_000);
+    break;
+  case 'ignore-sigterm':
+    // Registering a handler overrides the default termination, so only SIGKILL ends this child.
+    process.on('SIGTERM', () => {});
+    await sleep(10_000);
+    break;
+  case 'stderr-noisy':
+    for (let index = 0; index < 512; index += 1) process.stderr.write('x'.repeat(1024));
+    break;
+  case 'stdout-noise':
+    process.stdout.write('debug: loading model\n');
+    completed();
+    break;
   case 'nonzero-exit':
     process.stderr.write('provider-private crash detail\n');
     process.exitCode = 3;

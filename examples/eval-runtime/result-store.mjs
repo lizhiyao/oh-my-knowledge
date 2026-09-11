@@ -28,6 +28,11 @@ export function createFileContentStore(contentDir) {
         if (digestCanonicalJson(value) !== digest) {
           throw new Error('Content digest mismatch at store boundary.');
         }
+        // A stored result carries Dataset Gold, so Runtime always declares this pair; anything
+        // else means this store is being handed content that is not an evaluation result.
+        if (classification !== 'gold' || mediaType !== EVALUATION_RESULT_MEDIA_TYPE) {
+          throw new Error('Evaluation results must be stored as gold under the result media type.');
+        }
         await writeFile(
           pathOf(digest),
           canonicalizeJson({ value, classification, mediaType }),

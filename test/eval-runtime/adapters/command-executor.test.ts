@@ -177,6 +177,60 @@ describe('subprocess command Executor', () => {
     expect(DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES).toBe(10 * 1024 * 1024);
   });
 
+  it('settles when a descendant keeps the stdio pipes open after the child exits', async () => {
+    const startedAt = Date.now();
+
+    const result = await echoExecutor('descendant-holds-pipes').execute(invocation());
+
+    expect(result).toMatchObject({ output: { echoed: 'hello' } });
+    // The grandchild holds the pipes for 3000ms, so waiting for 'close' would outlast this bound.
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+  });
+
+  it('enforces the deadline even when the child never releases the pipes', async () => {
+    const startedAt = Date.now();
+
+    expect(await echoExecutor('descendant-and-hang', { timeoutMs: 300 }).execute(invocation()))
+      .toEqual({ errorCode: 'OMK_SUBPROCESS_COMMAND_TIMEOUT' });
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+  });
+
+  it('escalates to SIGKILL when the child ignores SIGTERM', async () => {
+    const startedAt = Date.now();
+
+    expect(await echoExecutor('ignore-sigterm', { timeoutMs: 200 }).execute(invocation()))
+      .toEqual({ errorCode: 'OMK_SUBPROCESS_COMMAND_TIMEOUT' });
+    // The child ignores SIGTERM and would otherwise sleep for 10s.
+    expect(Date.now() - startedAt).toBeLessThan(3000);
+  });
+
+  it('counts stderr against the byte cap without surfacing it', async () => {
+    expect(await echoExecutor('stderr-noisy', { maxOutputBytes: 4096 }).execute(invocation()))
+      .toEqual({ errorCode: 'OMK_SUBPROCESS_COMMAND_OUTPUT_LIMIT' });
+  });
+
+  it('reports a spawn failure instead of hanging when the executable does not exist', async () => {
+    const executor = createSubprocessCommandExecutor<EchoInput, undefined, EchoOutput>({
+      executorId: 'test.subprocess-command/v1',
+      version: '1.0.0',
+      command: { executablePath: '/nonexistent/omk-subprocess-fixture' },
+      schemas: {
+        input: z.object({ query: z.string() }).strict(),
+        output: outputSchema,
+      },
+    });
+
+    expect(await executor.execute(invocation())).toEqual({
+      errorCode: 'OMK_SUBPROCESS_COMMAND_SPAWN_FAILED',
+    });
+  });
+
+  it('rejects a child that writes anything besides the exchange document to stdout', async () => {
+    expect(await echoExecutor('stdout-noise').execute(invocation())).toEqual({
+      errorCode: 'OMK_SUBPROCESS_COMMAND_RESPONSE_INVALID',
+    });
+  });
+
   it('propagates cancellation instead of admitting partial output', async () => {
     const controller = new AbortController();
     const reason = new Error('host cancelled the attempt');

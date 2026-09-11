@@ -29,6 +29,13 @@ export const DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 
 const SIGTERM_GRACE_MS = 500;
 
+/**
+ * `'close'` needs every stdio pipe write end to close, so a child that leaves a descendant holding
+ * stdout/stderr would never settle. After a clean exit, wait this long for the pipe buffer to drain,
+ * then settle from what was read.
+ */
+const EXIT_DRAIN_MS = 500;
+
 const EnvironmentSchema = z.record(
   z.string().min(1).refine((value) => !value.includes('\0')),
   z.string().refine((value) => !value.includes('\0')),
@@ -174,6 +181,7 @@ function exchangeOnce(
     let stopReason: 'timeout' | 'abort' | 'output-limit' | undefined;
     let graceTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
+    let drainTimer: NodeJS.Timeout | undefined;
     let settled = false;
 
     function onAbort(): void {
@@ -185,6 +193,7 @@ function exchangeOnce(
       settled = true;
       if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
       if (graceTimer !== undefined) clearTimeout(graceTimer);
+      if (drainTimer !== undefined) clearTimeout(drainTimer);
       signal.removeEventListener('abort', onAbort);
       resolve(outcome);
     };
@@ -210,6 +219,9 @@ function exchangeOnce(
     }
 
     child.stdout?.on('data', (chunk: Buffer) => {
+      // Keep draining after settlement so a lingering descendant cannot block on a full pipe,
+      // but stop retaining: post-settlement bytes are never evidence and must not grow memory.
+      if (settled) return;
       stdoutBytes += chunk.byteLength;
       if (stdoutBytes > command.maxOutputBytes) {
         stop('output-limit');
@@ -219,13 +231,15 @@ function exchangeOnce(
     });
     child.stderr?.on('data', (chunk: Buffer) => {
       // Child diagnostics stay private: counted against the limit, never surfaced as evidence.
+      if (settled) return;
       stderrBytes += chunk.byteLength;
       if (stderrBytes > command.maxOutputBytes) stop('output-limit');
     });
     child.on('error', () => {
       finish({ outcomeKind: 'failure', errorCode: 'OMK_SUBPROCESS_COMMAND_SPAWN_FAILED' });
     });
-    child.on('close', (code: number | null) => {
+
+    const settle = (code: number | null): void => {
       if (stopReason === 'abort' || signal.aborted) {
         finish({ outcomeKind: 'cancelled' });
         return;
@@ -256,7 +270,22 @@ function exchangeOnce(
         return;
       }
       finish({ outcomeKind: 'response', response: parsed.data });
+    };
+
+    child.on('exit', (code: number | null) => {
+      // Paths that admit no evidence settle now: a descendant still holding the stdio pipes would
+      // otherwise keep 'close' from ever firing and hang the attempt past its deadline and abort.
+      if (stopReason !== undefined || signal.aborted || code !== 0) {
+        settle(code);
+        return;
+      }
+      // Clean exit: give the pipe buffer a bounded window to deliver the document, then settle
+      // from what was read. The response schema still gates admission, so a child that left the
+      // document incomplete fails closed instead of being waited for indefinitely.
+      drainTimer = setTimeout(() => settle(code), EXIT_DRAIN_MS);
+      drainTimer.unref();
     });
+    child.on('close', (code: number | null) => settle(code));
 
     child.stdin?.on('error', () => {
       // A child that exits before reading stdin is reported through its close status.

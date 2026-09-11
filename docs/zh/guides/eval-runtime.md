@@ -1073,7 +1073,7 @@ const result = await running;
 
 进度事件用于观察，可能丢失；最终结论以返回的 `result` 为准。它不适合作为必须逐条保留的审计日志。
 
-`runId`、`signal`、`onEvent`、`eventWriter`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。持久、无损的事件投递同样留在 canonical façade 上：在测量声明里写明 `policy.eventDelivery`，再传入 `eventWriter`，写入器就会按顺序逐条收到每一个事件。`writerMode: 'required'` 时写入失败即整次运行失败；delivery 为 `disabled` 却传入写入器，会在调用任何 Target 之前失败关闭。取消只由调用方传入的 `AbortSignal` 控制。
+`runId`、`signal`、`onEvent`、`eventWriter`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。持久事件投递同样留在 canonical façade 上：在测量声明里写明 `policy.eventDelivery`，再传入 `eventWriter`，写入器就会按顺序逐条收到事件。**完整性只由 `writerMode: 'required'` 保证**：写入失败即整次运行失败。`optional`＋`ignore` 下，该阶段首次写入失败会静默停止持久投递，run 仍然完成，结果里也没有任何字段报告这次截断，因此不是审计级配置。两种错配都会在调用任何 Target 之前失败关闭：delivery 为 `disabled` 却传入写入器，以及声明 `required` 却未注入写入器。取消只由调用方传入的 `AbortSignal` 控制。
 
 </details>
 

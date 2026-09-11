@@ -674,7 +674,7 @@ export interface EvaluationRunOptions {
   readonly summaries?: JsonValue;
   readonly eventBufferCapacity?: number;
   readonly onEvent?: EventObserver;
-  /** Lossless delivery; requires `policy.eventDelivery.writerMode` of `optional` or `required`. */
+  /** Durable ordered delivery; complete only under `policy.eventDelivery.writerMode: 'required'`. */
   readonly eventWriter?: EvaluationEventWriter;
   readonly clock?: Clock;
 }
