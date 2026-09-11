@@ -8,7 +8,7 @@ import { CliExit } from '../../src/cli/lib/cli-exit.js';
 import type { EvolveFlags } from '../../src/cli/commands/evolve.js';
 
 const generateSamples = vi.hoisted(() => vi.fn());
-vi.mock('../../src/knowledge-artifacts/authoring/generator.js', () => ({ generateSamples }));
+vi.mock('../../src/eval-workflows/sample-generation/generator.js', () => ({ generateSamples }));
 
 /**
  * evolve 一键化最关键的安全行为:用例源「存在但解析失败」= 损坏文件,绝不用 LLM

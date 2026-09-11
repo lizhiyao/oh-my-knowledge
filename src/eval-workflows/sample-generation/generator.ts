@@ -1,13 +1,13 @@
 import { createExecutor } from '../../executors/index.js';
 import { executorSupportsSampleMocks } from '../../executors/core/capabilities.js';
-import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../eval-workflows/evaluation-defaults.js';
-import { sampleMockReferenceKeys } from '../../eval-workflows/inputs/sample-contract.js';
-import type { Sample, SampleProvenance } from '../../eval-workflows/inputs/contracts/sample.js';
-import { SampleSchema } from '../../eval-workflows/inputs/schemas/sample-set.js';
-import { detailedSchemaIssue } from '../../eval-workflows/inputs/schemas/error.js';
-import { MockSchema } from '../../eval-workflows/inputs/schemas/mock.js';
+import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../evaluation-defaults.js';
+import { sampleMockReferenceKeys } from '../inputs/sample-contract.js';
+import type { Sample, SampleProvenance } from '../inputs/contracts/sample.js';
+import { SampleSchema } from '../inputs/schemas/sample-set.js';
+import { detailedSchemaIssue } from '../inputs/schemas/error.js';
+import { MockSchema } from '../inputs/schemas/mock.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
-import type { Assertion } from '../../eval-workflows/inputs/contracts/assertion.js';
+import type { Assertion } from '../inputs/contracts/assertion.js';
 import type { ObservationInboxItem } from '../../observability/contracts/inbox.js';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
@@ -677,7 +677,7 @@ export interface GenerateSamplesFromTracesOptions {
  * Generate draft eval samples from production-trace observation signals. Mirrors
  * generateSamples' executor / retry / finalize path but feeds the trace prompt and
  * stamps `provenance: 'production-trace'`. Output is meant to land in a review draft,
- * not the live dataset (the CLI enforces that).
+ * not the live dataset (the trace-drafts use case enforces that).
  */
 export async function generateSamplesFromTraces({
   items,
@@ -735,7 +735,7 @@ export async function generateSamplesFromTraces({
     }
     // Empty array = the model conservatively skipped every signal (the trace prompt
     // explicitly permits this when signals are noise / unreproducible). That's a valid
-    // 0-result, not a failure — return it so the CLI can no-op instead of erroring.
+    // 0-result, not a failure — the caller can skip persistence instead of erroring.
     if (samples.length === 0) return { samples: [], costUSD: totalCost };
     // Stamp provenance before sanitize so it survives (it's a valid enum value).
     for (const s of samples) s.provenance = PROVENANCE;

@@ -19,6 +19,7 @@ describe('eval-workflows 与 executors 领域布局', () => {
         'orchestration',
         'projections',
         'resume-admission',
+        'sample-generation',
       ]);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual(['AGENTS.md', 'evaluation-defaults.ts', 'messages.ts']);

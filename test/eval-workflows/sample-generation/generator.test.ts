@@ -9,7 +9,7 @@ import {
   sampleGenerationUsesMocks,
   sanitizeGeneratedSamples,
   stratifyTraceSignals,
-} from '../../../src/knowledge-artifacts/authoring/generator.js';
+} from '../../../src/eval-workflows/sample-generation/generator.js';
 import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 

@@ -4,11 +4,9 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, symlinkSync, lstatSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { pickAppendTargetFile } from '../../src/cli/commands/sample.js';
-import { mergeAppendSamples, appendSamplesToFile, preflightSampleAppend } from '../../src/eval-workflows/inputs/append-samples.js';
-import type { Sample } from '../../src/eval-workflows/inputs/contracts/sample.js';
-import { createEvalSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
-import { SampleFileAmbiguityError } from '../../src/eval-workflows/inputs/sample-locator.js';
+import { mergeAppendSamples, appendSamplesToFile, preflightSampleAppend } from '../../../src/eval-workflows/inputs/append-samples.js';
+import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
+import { createEvalSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 const s = (id: string, prompt = 'p'): Sample => ({ sample_id: id, prompt }) as Sample;
 const ids = (arr: Sample[]): string[] => arr.map((x) => x.sample_id);
@@ -159,33 +157,3 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
   });
 });
 
-describe('pickAppendTargetFile (目录模式选写回目标,确定性)', () => {
-  let dir: string;
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-pick-')); });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
-
-  it('空目录 → null', () => {
-    assert.equal(pickAppendTargetFile(dir), null);
-  });
-
-  it('非 canonical 自定义文件不参与自动选取', () => {
-    writeFileSync(join(dir, 'cases.json'), '[]');
-    assert.equal(pickAppendTargetFile(dir), null);
-  });
-
-  it('canonical JSON → 选中该文件', () => {
-    writeFileSync(join(dir, 'eval-samples.json'), '[]');
-    assert.equal(pickAppendTargetFile(dir), join(dir, 'eval-samples.json'));
-  });
-
-  it('canonical YAML → 选中该文件', () => {
-    writeFileSync(join(dir, 'eval-samples.yaml'), '[]');
-    assert.equal(pickAppendTargetFile(dir), join(dir, 'eval-samples.yaml'));
-  });
-
-  it('canonical JSON 与 YAML 并存 → 拒绝静默选择', () => {
-    writeFileSync(join(dir, 'eval-samples.json'), '[]');
-    writeFileSync(join(dir, 'eval-samples.yaml'), '[]');
-    assert.throws(() => pickAppendTargetFile(dir), SampleFileAmbiguityError);
-  });
-});

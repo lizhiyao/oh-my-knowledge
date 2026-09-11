@@ -1,5 +1,4 @@
-import { resolve, join, dirname, extname } from 'node:path';
-import { existsSync, readFileSync, readdirSync, mkdirSync, statSync } from 'node:fs';
+import { resolve, join, dirname } from 'node:path';
 import { Args, Flags, type Interfaces } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -7,8 +6,7 @@ import { enumStringParser, integerStringParser, nonEmptyStringParser, numberStri
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
-import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
-import { createJsonFileAtomic } from '../../shared/atomic-json.js';
+import { ensureSkillSamples, SamplePreparationError } from '../../eval-workflows/sample-generation/skill-samples.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
 import type {
   CoreEvolveOutcomeInput,
@@ -33,29 +31,6 @@ async function recordEvolveOutcomeSafely(input: CoreEvolveOutcomeInput): Promise
   }
 }
 
-interface RoundProgressInfo {
-  round: number;
-  totalRounds: number;
-  phase: string;
-  score?: number;
-  delta?: number;
-  accepted?: boolean;
-  costUSD?: number;
-  costReported?: boolean;
-  error?: string;
-  decisionAccepted?: boolean;
-}
-
-interface TrajectoryEntry {
-  round: number;
-  score: number;
-  delta: number;
-  accepted: boolean;
-  costUSD: number;
-  editRatio?: number;
-  rejectedPreEval?: boolean;
-}
-
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 function validateEvolveEffort(raw: string, lang: 'zh' | 'en'): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
@@ -67,46 +42,6 @@ function validateEvolveEffort(raw: string, lang: 'zh' | 'en'): 'low' | 'medium' 
     throw new CliExit(2);
   }
   return raw as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-}
-
-interface EvolveResult {
-  startScore: number;
-  finalScore: number;
-  bestRound: number;
-  totalRounds: number;
-  totalCostUSD: number;
-  costReported?: boolean;
-  trajectory: TrajectoryEntry[];
-  bestSkillPath: string;
-  allVersions: string[];
-  runId?: string;
-  evidence?: import('../../eval-workflows/artifact-store/index.js').StoredCoreRunArtifacts;
-}
-
-/** 路径处是否已存在「用例源」:按 statSync 判型 —— 文件(含无扩展名)直接算存在;
- *  目录看是否含候选用例文件(排除 report/health/_ 前缀,对齐 sample.ts 的发现约定)。
- *  用于区分「损坏文件(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。
- *  不能用 extname 猜文件/目录:无扩展名的损坏样本文件会绕过守卫被覆盖,
- *  带点的目录名(如 samples.v2/)会被误当文件。 */
-export function sampleSourceExists(p: string): boolean {
-  let st;
-  try { st = statSync(p); } catch { return false; }
-  if (!st.isDirectory()) return true;
-  try {
-    return readdirSync(p).some((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
-  } catch { return false; }
-}
-
-/** 自动生成时的落盘目标:已存在的目录(含带点目录名,如 samples.v2/)→ 写进目录内的
- *  eval-samples.json;已存在的文件 → 返回该路径(加载校验会拒绝空或损坏文档);不存在 → 按扩展名(有扩展名当文件,无扩展名
- *  当目录,落 eval-samples.json)。与 sampleSourceExists 同用 statSync 判型,不被带点目录名
- *  误当成文件(否则 writeFileSync 撞 EISDIR)。 */
-export function resolveSampleOutFile(samplesAbs: string): string {
-  try {
-    return statSync(samplesAbs).isDirectory() ? join(samplesAbs, 'eval-samples.json') : samplesAbs;
-  } catch {
-    return extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'eval-samples.json');
-  }
 }
 
 export async function runEvolve(
@@ -142,79 +77,48 @@ export async function runEvolve(
     throw new CliExit(2);
   }
 
-  // 无用例时自动生成 —— 让 omk evolve 成为「检测(doctor) → 生成用例 → 自迭代」一键命令。
-  // 已有用例(且非空)则原样使用;生成失败按普通错误退出。
   const samplesAbs = resolve(samplesFile);
-  if (flags.samples !== undefined && !existsSync(samplesAbs)) {
-    console.error(lang === 'zh'
-      ? `指定的样本源不存在：${samplesAbs}。请先准备样本；省略 --samples 才会自动发现或生成。`
-      : `Explicit sample source does not exist: ${samplesAbs}. Prepare it first; omit --samples for discovery or generation.`);
-    throw new CliExit(1);
-  }
   process.stderr.write(lang === 'zh' ? `样本源：${samplesAbs}\n` : `Sample source: ${samplesAbs}\n`);
-  let hasSamples = false;
-  let loadErr: Error | null = null;
   try {
-    const { loadSamples } = await import('../../eval-workflows/inputs/load-samples.js');
-    hasSamples = loadSamples(samplesAbs).samples.length > 0;
-  } catch (err) { loadErr = err as Error; }
-
-  const sourceExists = sampleSourceExists(samplesAbs);
-
-  // 用例源已存在却解析失败(JSON/YAML 语法错、duplicate id 等)= 损坏文件,
-  // 绝不用 LLM 生成内容覆盖它 —— 报错退出,让用户先修。只有真的没有用例源(文件
-  // 不存在 / 目录无候选用例文件)才进入自动生成。
-  if (loadErr && sourceExists) {
-    console.error(lang === 'zh'
-      ? `评测用例文件解析失败，evolve 不会覆盖它，请先修复：${samplesAbs}\n  原因：${loadErr.message}`
-      : `Failed to parse the samples source; evolve will not overwrite it. Fix it first: ${samplesAbs}\n  reason: ${loadErr.message}`);
-    throw new CliExit(1);
-  }
-
-  if (!hasSamples && flags.samples !== undefined) {
-    console.error(lang === 'zh'
-      ? `指定的样本源为空：${samplesAbs}。请先准备样本；evolve 不会替换显式指定的样本。`
-      : `Explicit sample source is empty: ${samplesAbs}. Prepare samples first; evolve will not replace an explicit source.`);
-    throw new CliExit(1);
-  }
-
-  if (!hasSamples) {
-    try {
-      const { generateSamples } = await import('../../knowledge-artifacts/authoring/generator.js');
-      const skillContent = readFileSync(resolve(skillPath), 'utf-8');
-      // Publish exclusively so a destination created during generation cannot be overwritten.
-      const outFile = resolveSampleOutFile(samplesAbs);
-      process.stderr.write(lang === 'zh'
+    const result = await ensureSkillSamples({
+      skillPath: resolve(skillPath), samplesPath: samplesAbs, explicit: flags.samples !== undefined,
+      options: { signal, model: flags.model, executorName: flags.executor },
+      onGenerating: (outFile) => process.stderr.write(lang === 'zh'
         ? `未发现评测用例，正在自动生成到 ${outFile} …\n`
-        : `No samples found; auto-generating to ${outFile} …\n`);
-      const { samples, costUSD } = await generateSamples({
-        signal,
-        skillContent,
-        model: flags.model,
-        executorName: flags.executor,
-      });
-      // 模型可能保守返回 0 条 —— 不写空文件再空跑迭代,直接报错让用户改用
-      // `omk sample --focus` 引导生成或手写用例。
-      if (samples.length === 0) {
-        console.error(lang === 'zh'
-          ? '自动生成返回 0 条用例，已中止。请用 `omk sample <skill> --focus "…"` 引导生成，或手写后重试。'
-          : 'Auto-generation produced 0 samples; aborting. Use `omk sample <skill> --focus "…"` to guide generation, or write samples manually.');
-        throw new CliExit(1);
-      }
-      mkdirSync(dirname(outFile), { recursive: true });
-      createJsonFileAtomic(outFile, createEvalSampleSetDocument(samples));
-      const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+        : `No samples found; auto-generating to ${outFile} …\n`),
+    });
+    if (result.status === 'generated') {
+      const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
       process.stderr.write(lang === 'zh'
-        ? `已生成 ${samples.length} 条用例${cost}，开始自迭代。\n`
-        : `Generated ${samples.length} samples${cost}; starting evolution.\n`);
-    } catch (err: unknown) {
-      if (err instanceof CliExit) throw err;
+        ? `已生成 ${result.added} 条用例${cost}，开始自迭代。\n`
+        : `Generated ${result.added} samples${cost}; starting evolution.\n`);
+    }
+  } catch (err) {
+    if (err instanceof SamplePreparationError) {
+      const reason = err.cause instanceof Error ? err.cause.message : String(err.cause ?? '');
+      const messages = {
+        missing: lang === 'zh'
+          ? `指定的样本源不存在：${samplesAbs}。请先准备样本；省略 --samples 才会自动发现或生成。`
+          : `Explicit sample source does not exist: ${samplesAbs}. Prepare it first; omit --samples for discovery or generation.`,
+        invalid: lang === 'zh'
+          ? `评测用例文件解析失败，evolve 不会覆盖它，请先修复：${samplesAbs}\n  原因：${reason}`
+          : `Failed to parse the samples source; evolve will not overwrite it. Fix it first: ${samplesAbs}\n  reason: ${reason}`,
+        empty: lang === 'zh'
+          ? `指定的样本源为空：${samplesAbs}。请先准备样本；evolve 不会替换显式指定的样本。`
+          : `Explicit sample source is empty: ${samplesAbs}. Prepare samples first; evolve will not replace an explicit source.`,
+        'generated-empty': lang === 'zh'
+          ? '自动生成返回 0 条用例，已中止。请用 `omk sample <skill> --focus "…"` 引导生成，或手写后重试。'
+          : 'Auto-generation produced 0 samples; aborting. Use `omk sample <skill> --focus "…"` to guide generation, or write samples manually.',
+        exists: err.message,
+      };
+      console.error(messages[err.reason]);
+    } else {
       const message = err instanceof Error ? err.message : String(err);
       console.error(tCli('cli.common.error_prefix', lang, {
         message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
       }));
-      throw new CliExit(1);
     }
+    throw new CliExit(1);
   }
 
   const { evolveSkillCore } = await import('../../knowledge-artifacts/authoring/core-evolver.js');
@@ -246,7 +150,7 @@ export async function runEvolve(
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
   try {
-    const result: EvolveResult = await evolveSkillCore({
+    const result = await evolveSkillCore({
       signal,
       skillPath: resolve(skillPath),
       isDirectorySkill: skillIsDir,
@@ -263,7 +167,7 @@ export async function runEvolve(
       // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。
       writeBackToSource: !flags['snapshot-only'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, decisionAccepted }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, decisionAccepted }): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
@@ -333,8 +237,8 @@ export async function runEvolve(
       }
     }
 
-    const publicResult: Omit<EvolveResult, 'evidence'> = { ...result };
-    delete (publicResult as Partial<EvolveResult>).evidence;
+    const publicResult = { ...result };
+    delete publicResult.evidence;
     console.log(JSON.stringify(publicResult, null, 2));
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
