@@ -66,4 +66,11 @@ describe('Studio knowledge routes', () => {
     assert.match(chart.headers.get('content-type') ?? '', /application\/javascript/);
     assert.ok((await chart.text()).length > 1000);
   });
+
+  it('answers analyses-diff without from/to as a stable 400 contract', async () => {
+    const response = await fetch(`${baseUrl}/api/analyses-diff`);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'missing_query_params' });
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  });
 });
