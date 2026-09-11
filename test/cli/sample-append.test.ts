@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, symlinkSync, lstatSync, readlinkSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
@@ -73,6 +73,55 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
     writeFileSync(file, edited);
     assert.throws(() => appendSamplesToFile(file, [s('generated')], undefined, snapshot), /changed during generation/);
     assert.equal(readFileSync(file, 'utf8'), edited);
+  });
+
+  it.each(['json', 'yaml'])('通过 %s 软链追加共享样本，保留链接和格式', (extension) => {
+    const target = join(dir, 'shared.data');
+    const file = join(dir, `eval-samples.${extension}`);
+    const document = createEvalSampleSetDocument([s('original')]);
+    writeFileSync(target, extension === 'json' ? JSON.stringify(document) : yaml.dump(document));
+    symlinkSync('shared.data', file);
+    const snapshot = preflightSampleAppend(file);
+    assert.equal(appendSamplesToFile(file, [s('generated')], undefined, snapshot), 2);
+    assert.ok(lstatSync(file).isSymbolicLink());
+    assert.equal(readlinkSync(file), 'shared.data');
+    const raw = readFileSync(target, 'utf8');
+    const parsed = (extension === 'json' ? JSON.parse(raw) : yaml.load(raw)) as { samples: Sample[] };
+    assert.deepEqual(ids(parsed.samples), ['original', 'generated']);
+    assert.deepEqual(readdirSync(dir).sort(), [`eval-samples.${extension}`, 'shared.data']);
+  });
+
+  it('不同软链共享目标时，拒绝覆盖另一个入口已追加的内容', () => {
+    const target = join(dir, 'shared.json');
+    const first = join(dir, 'eval-samples.json');
+    const second = join(dir, 'alias.json');
+    writeFileSync(target, JSON.stringify(createEvalSampleSetDocument([s('original')])));
+    symlinkSync(target, first);
+    symlinkSync(target, second);
+    const snapshot = preflightSampleAppend(first);
+    appendSamplesToFile(second, [s('external')]);
+    assert.throws(() => appendSamplesToFile(first, [s('generated')], undefined, snapshot), /changed during generation/);
+    assert.deepEqual(ids(JSON.parse(readFileSync(target, 'utf8')).samples), ['original', 'external']);
+    assert.ok(lstatSync(first).isSymbolicLink());
+    assert.ok(lstatSync(second).isSymbolicLink());
+  });
+
+  it('生成期间软链重定向到相同内容的新目标也拒绝追加', () => {
+    const original = join(dir, 'original.json');
+    const replacement = join(dir, 'replacement.json');
+    const file = join(dir, 'eval-samples.json');
+    const content = JSON.stringify(createEvalSampleSetDocument([s('original')]));
+    writeFileSync(original, content);
+    writeFileSync(replacement, content);
+    symlinkSync(original, file);
+    const snapshot = preflightSampleAppend(file);
+    rmSync(file);
+    symlinkSync(replacement, file);
+    assert.throws(() => appendSamplesToFile(file, [s('generated')], undefined, snapshot), /target changed during generation/);
+    assert.equal(readFileSync(original, 'utf8'), content);
+    assert.equal(readFileSync(replacement, 'utf8'), content);
+    assert.equal(readlinkSync(file), replacement);
+    assert.deepEqual(readdirSync(dir).sort(), ['eval-samples.json', 'original.json', 'replacement.json']);
   });
 
   it('版本化 JSON：追加并撞 id 去重，保留协议包装', () => {

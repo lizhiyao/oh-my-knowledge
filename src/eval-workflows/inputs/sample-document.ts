@@ -9,8 +9,7 @@ function isYamlPath(filePath: string): boolean {
   return /\.(ya?ml)$/i.test(filePath);
 }
 
-export function parseSampleDocument(filePath: string): unknown {
-  const raw = readFileSync(filePath, 'utf-8');
+export function parseSampleDocument(filePath: string, raw = readFileSync(filePath, 'utf-8')): unknown {
   return isYamlPath(filePath) ? parseYaml(raw) : JSON.parse(raw);
 }
 

@@ -1,17 +1,30 @@
-import { accessSync, constants, readFileSync, writeFileSync, renameSync, rmSync, statSync } from 'node:fs';
+import { accessSync, constants, readFileSync, writeFileSync, renameSync, rmSync, statSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { withFileLock } from '../../shared/file-lock.js';
 import { getSamplesArray, parseSampleDocument, stringifySampleDocument } from './sample-document.js';
 import type { Sample as SampleType, EvalSampleSetDocument } from './contracts/sample.js';
 
-/** Reject known invalid or unwritable targets before any model invocation. */
-export function preflightSampleAppend(file: string): string {
-  const snapshot = readFileSync(file, 'utf8');
-  getSamplesArray(parseSampleDocument(file), file);
-  accessSync(file, constants.W_OK);
-  accessSync(dirname(file), constants.W_OK);
-  return snapshot;
+interface SampleAppendSnapshot {
+  readonly target: string;
+  readonly content: string;
+}
+
+/** Resolve aliases before generation so every writer locks and replaces the same target. */
+export function preflightSampleAppend(file: string): SampleAppendSnapshot {
+  const target = realpathSync(file);
+  const content = readFileSync(target, 'utf8');
+  getSamplesArray(parseSampleDocument(file, content), file);
+  accessSync(target, constants.W_OK);
+  accessSync(dirname(target), constants.W_OK);
+  assertAppendTarget(file, target);
+  return { target, content };
+}
+
+function assertAppendTarget(file: string, target: string): void {
+  if (realpathSync(file) !== target) {
+    throw new Error(`Samples target changed during generation; retry append: ${file}`);
+  }
 }
 
 /** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
@@ -45,24 +58,27 @@ export function appendSamplesToFile(
   file: string,
   fresh: SampleType[],
   reserved?: ReadonlySet<string>,
-  expected?: string,
+  expected = preflightSampleAppend(file),
 ): number {
-  return withFileLock(`${file}.lock`, () => {
-    const snapshot = preflightSampleAppend(file);
-    if (expected !== undefined && snapshot !== expected) {
+  const { target } = expected;
+  return withFileLock(`${target}.lock`, () => {
+    assertAppendTarget(file, target);
+    const snapshot = readFileSync(target, 'utf8');
+    if (snapshot !== expected.content) {
       throw new Error(`Samples changed during generation; retry append: ${file}`);
     }
-    const doc = parseSampleDocument(file) as EvalSampleSetDocument;
+    const doc = parseSampleDocument(file, snapshot) as EvalSampleSetDocument;
     const merged = mergeAppendSamples(getSamplesArray(doc, file), fresh, reserved);
     const next = { ...doc, samples: merged };
     getSamplesArray(next, file);
-    const temporary = join(dirname(file), `.omk-samples-${randomUUID()}`);
+    const temporary = join(dirname(target), `.omk-samples-${randomUUID()}`);
     try {
-      writeFileSync(temporary, stringifySampleDocument(file, next), { flag: 'wx', mode: statSync(file).mode & 0o777 });
-      if (readFileSync(file, 'utf8') !== snapshot) {
+      writeFileSync(temporary, stringifySampleDocument(file, next), { flag: 'wx', mode: statSync(target).mode & 0o777 });
+      assertAppendTarget(file, target);
+      if (readFileSync(target, 'utf8') !== snapshot) {
         throw new Error(`Samples changed during append; retry: ${file}`);
       }
-      renameSync(temporary, file);
+      renameSync(temporary, target);
     } finally {
       rmSync(temporary, { force: true });
     }
