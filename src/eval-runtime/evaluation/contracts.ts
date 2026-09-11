@@ -72,6 +72,7 @@ import {
 import {
   type EvaluationRunResult,
   type EvaluationEngineClock,
+  type EvaluationEngineEventWriter,
 } from '../../eval-core/engine/index.js';
 import {
   type EvaluationEventObserver,
@@ -594,7 +595,7 @@ export type CachePolicy = MeasurementCachePolicyInput;
 
 export type EvidencePolicy = MeasurementEvidencePolicyInput;
 
-export type Policy = Omit<MeasurementPolicyBuilderInput, 'eventDelivery'>;
+export type Policy = MeasurementPolicyBuilderInput;
 
 export type Sample = EvaluationSample;
 
@@ -648,6 +649,9 @@ export type EvaluationComparabilityAssessment = ComparabilityAssessment;
 
 export type EventObserver = EvaluationEventObserver;
 
+/** Durable, lossless measurement event sink; must be paired with `policy.eventDelivery`. */
+export type EvaluationEventWriter = EvaluationEngineEventWriter;
+
 export type Clock = EvaluationEngineClock;
 
 export interface EvaluateInput {
@@ -670,6 +674,8 @@ export interface EvaluationRunOptions {
   readonly summaries?: JsonValue;
   readonly eventBufferCapacity?: number;
   readonly onEvent?: EventObserver;
+  /** Lossless delivery; requires `policy.eventDelivery.writerMode` of `optional` or `required`. */
+  readonly eventWriter?: EvaluationEventWriter;
   readonly clock?: Clock;
 }
 

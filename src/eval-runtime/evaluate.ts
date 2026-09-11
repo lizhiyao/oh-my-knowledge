@@ -55,6 +55,7 @@ export {
   type EvaluationComparabilitySubject,
   type AssessComparabilityInput,
   type EvaluationComparabilityAssessment,
+  type EvaluationEventWriter,
   type EventObserver,
   type Clock,
   type EvaluateInput,

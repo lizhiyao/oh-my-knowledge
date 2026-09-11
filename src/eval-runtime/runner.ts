@@ -45,6 +45,7 @@ export interface RunPreparedEvaluationInput {
   readonly signal?: AbortSignal;
   readonly annotations?: JsonValue;
   readonly summaries?: JsonValue;
+  readonly eventWriter?: EvaluationEngineEventWriter;
   readonly eventBufferCapacity?: number;
   readonly onEvent?: EvaluationEventObserver;
 }
@@ -177,6 +178,7 @@ export async function runPreparedEvaluation(
     signal,
     ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
     ...(input.summaries === undefined ? {} : { summaries: input.summaries }),
+    ...(input.eventWriter === undefined ? {} : { eventWriter: input.eventWriter }),
     ...(input.eventBufferCapacity === undefined
       ? {}
       : { eventBufferCapacity: input.eventBufferCapacity }),

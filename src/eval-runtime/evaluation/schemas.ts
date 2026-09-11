@@ -282,7 +282,7 @@ export const DecisionInputSchema = z.union([
   }).strict(),
 ]);
 
-export const PolicyInputSchema = MeasurementPolicyBuilderInputSchema.omit({ eventDelivery: true });
+export const PolicyInputSchema = MeasurementPolicyBuilderInputSchema;
 
 export const VariantConfigEnvelopeSchema = z.object({
   schemaVersion: z.literal(VARIANT_CONFIG_SCHEMA_VERSION),

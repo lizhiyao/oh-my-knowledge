@@ -50,6 +50,7 @@ export type {
   EvaluationExecutor,
   EvaluationComparabilityAssessment,
   EvaluationComparabilitySubject,
+  EvaluationEventWriter,
   EvaluationRunOptions,
   EvaluationResult,
   EvaluationWorkEstimate,

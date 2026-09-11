@@ -3877,6 +3877,94 @@ describe('canonical eval-runtime API', () => {
     expect(JSON.stringify(caught)).not.toContain(privateValue);
   });
 
+  it('delivers the complete journal to a declared writer while the bounded observer stays lossy', async () => {
+    const written: number[] = [];
+    const observed: number[] = [];
+    let releaseObserver!: () => void;
+    const observerGate = new Promise<void>((resolve) => { releaseObserver = resolve; });
+    let firstEvent!: () => void;
+    const firstEventSeen = new Promise<void>((resolve) => { firstEvent = resolve; });
+    const input = pairedInput();
+    const run = evaluate({
+      ...input,
+      policy: { ...input.policy, eventDelivery: { writerMode: 'optional' as const } },
+    }, {
+      runId: 'writer-lossless',
+      eventBufferCapacity: 1,
+      eventWriter: {
+        write: async (event) => { written.push(event.sequence); },
+      },
+      async onEvent(event) {
+        observed.push(event.sequence);
+        if (observed.length === 1) {
+          firstEvent();
+          await observerGate;
+        }
+      },
+    });
+
+    await firstEventSeen;
+    await vi.waitFor(() => expect(written.length).toBeGreaterThan(observed.length));
+    releaseObserver();
+    const result = await run;
+
+    expect(result.status).toBe('completed');
+    expect(written).toEqual([...written].sort((left, right) => left - right));
+    expect(new Set(written).size).toBe(written.length);
+    expect(observed.every((sequence) => written.includes(sequence))).toBe(true);
+    expect(observed.length).toBeLessThan(written.length);
+  });
+
+  it('fails closed when a writer is supplied without a durable delivery policy', async () => {
+    const invocations = vi.fn();
+    const declaration = executor(async ({ input: invocationInput, config }) => {
+      invocations();
+      return { output: config.answers[invocationInput.prompt] };
+    });
+
+    await expect(evaluate(pairedInput(declaration), {
+      runId: 'writer-without-delivery-policy',
+      eventWriter: { write: async () => {} },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+
+    expect(invocations).not.toHaveBeenCalled();
+  });
+
+  it('delivers suffix events to a required writer and rejects one under a disabled policy', async () => {
+    const input = pairedInput();
+    const durable = {
+      ...input,
+      policy: { ...input.policy, eventDelivery: { writerMode: 'required' as const } },
+    };
+    const written: number[] = [];
+    const source = await evaluate(durable, {
+      runId: 'writer-reuse-source',
+      eventWriter: {
+        write: async (event) => { written.push(event.sequence); },
+      },
+    });
+    expect(source.status).toBe('completed');
+    const sourceEvents = written.length;
+    written.length = 0;
+
+    const rescored = await rescore(durable, source, {
+      runId: 'writer-reuse-suffix',
+      eventWriter: {
+        write: async (event) => { written.push(event.sequence); },
+      },
+    });
+
+    expect(rescored.status).toBe('completed');
+    expect(written.length).toBeGreaterThan(0);
+    expect(written).toEqual([...written].sort((left, right) => left - right));
+    expect(sourceEvents).toBeGreaterThan(0);
+
+    await expect(rescore(input, source, {
+      runId: 'writer-reuse-disabled',
+      eventWriter: { write: async () => {} },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+  });
+
   it('rejects implicit designs, duplicate identities, transformed config, and the removed API', async () => {
     const declaration = executor();
     await expect(evaluate({
