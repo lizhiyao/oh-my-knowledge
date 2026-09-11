@@ -119,7 +119,7 @@ const result = await prepared.run({
 边界：
 
 - **事件不改变测量终态。** 回写成功与否，结果的分数与证据都不受影响，声明了 Decision 时的 verdict 同样不受影响；`required`＋`fail-run` 改变的是 run 的成败判定，不是测量语义。
-- **声明 `required` 却未注入写入器，会在调用任何 Target 之前失败关闭。** 每个 Core 阶段都会检查这组配对：`evaluate()` 与 `prepared.run()` 会 resolve 出 `status: 'failed'`、`error.code` 为 `EXECUTION_RUNTIME_EVENT_WRITER_REQUIRED`、`stage` 为 `configuration` 的结果；`rescore`／`reanalyze`／`redecide` 则以 `EVAL_RUNTIME_REUSE_INVALID` reject，因为复用边界用自身的 code 报告同一个 Core 配置失败。镜像情形同样失败关闭：delivery 为 `disabled` 却传入写入器，会在准备阶段以 `EVAL_RUNTIME_INPUT_INVALID` 被拒。
+- **声明 `required` 却未注入写入器，会在调用任何 Target 之前失败关闭。** 每个 Core 阶段都会检查这组配对：`evaluate()` 与 `prepared.run()` 会 resolve 出 `status: 'failed'`、`error.code` 为 `EXECUTION_RUNTIME_EVENT_WRITER_REQUIRED`、`stage` 为 `configuration` 的结果；`rescore`／`reanalyze`／`redecide` 则以 `EVAL_RUNTIME_REUSE_INVALID` reject，因为复用边界用自身的 code 报告同一个 Core 配置失败。镜像情形在标准入口与复用入口共用同一道守卫并失败关闭：delivery 为 `disabled` 却传入写入器，会以 `EVAL_RUNTIME_INPUT_INVALID` 被拒。
 - 消费侧失败收敛为 `EvaluationEventConsumptionError`（code 为 `EVAL_RUNTIME_EVENT_OBSERVER_FAILED` 或 `EVAL_RUNTIME_EVENT_STREAM_FAILED`），错误对象带 `runResult` 承载 Core 终态，宿主可以先落盘再决定告警。
 
 ## 跨进程回读与重评
