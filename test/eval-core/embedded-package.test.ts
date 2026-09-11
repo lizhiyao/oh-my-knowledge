@@ -233,6 +233,12 @@ const assert = require('node:assert/strict');
   assert.equal(typeof evalRuntimeAdvanced.runEvaluation, 'function');
   assert.equal(typeof evalRuntimeAdvanced.createExecutorFnAdapter, 'function');
   assert.equal(typeof evalRuntimeAdvanced.createSameProcessExecutorAdapter, 'function');
+  assert.equal(typeof evalRuntimeAdvanced.createSubprocessCommandExecutor, 'function');
+  assert.equal(
+    evalRuntimeAdvanced.SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION,
+    'omk.subprocess-command-exchange/v1',
+  );
+  assert.equal(typeof evalRuntimeAdvanced.DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES, 'number');
   assert.equal(typeof evalRuntimeContracts.SourceNeutralTraceSchema.safeParse, 'function');
   assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v2');
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
