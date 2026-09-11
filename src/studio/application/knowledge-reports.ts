@@ -119,50 +119,77 @@ export function loadDoctorReport(dir: string, id: string, skillName?: string, in
   return fallback;
 }
 
+function trendPointOf(analysisId: string, generatedAt: string, h: SkillHealth): SkillTrendPoint {
+  // 旧格式 (加 usage 字段前的 analysis) 用 safe access,缺字段降级为 0/undefined
+  const u = h.usage;
+  const billable = (u?.inputTokens ?? 0) + (u?.outputTokens ?? 0);
+  const cached = (u?.cacheReadTokens ?? 0) + (u?.cacheCreationTokens ?? 0);
+  const toolCallCount = h.toolCallCount ?? 0;
+  const toolResolvedCount = h.toolResolvedCount ?? toolCallCount;
+  const toolCancelledCount = h.toolCancelledCount ?? 0;
+  const toolComparableCount = Math.max(0, toolResolvedCount - toolCancelledCount);
+  return {
+    analysisId,
+    generatedAt,
+    gapRate: h.gap?.gapRate ?? 0,
+    weightedGapRate: h.gap?.weightedGapRate ?? 0,
+    failureRate: measuredToolFailureRate(h),
+    toolCallCount,
+    toolResolvedCount,
+    toolComparableCount,
+    toolCancelledCount,
+    toolOutcomeCoverage: toolCallCount > 0
+      ? Number((toolResolvedCount / toolCallCount).toFixed(4))
+      : null,
+    coverageRate: h.coverage?.fileCoverageRate ?? null,
+    billableTokens: billable,
+    cachedTokens: cached,
+    totalTokens: u?.totalTokens ?? 0,
+    avgTokensPerSegment: u?.avgTokensPerSegment ?? 0,
+    tokenCoverage: u?.tokenCoverage ?? 0,
+    durationMs: u?.durationMs ?? 0,
+    segmentCount: h.segmentCount ?? 0,
+    stability: observedToolStability(h),
+  };
+}
+
 /**
- * 扫 analyses/ 所有 JSON,按 skillName 过滤,按时间排序成 trend points。
+ * 单遍扫描 analyses/ 提取指定 skill 的 trend points,按时间排序（最旧在前）。
+ * 历史实现先 listAnalyses 全量解析、再逐条 loadAnalysis 重新扫目录，
+ * 成本为 O(N²) 目录扫描 + 2N 次解析（issue #836 1.2 基线 large 档实测 2.3s）；
+ * 现在 1 次目录扫描 + N 次解析。口径与 listAnalyses 一致：live 优先、
+ * 卡片仅机器级模式合并且按 id 去重。
  */
 export function querySkillTrend(dir: string, skillName: string, includeCards = false): SkillTrendResult {
-  const items = listAnalyses(dir, includeCards);
   const points: SkillTrendPoint[] = [];
-  for (const it of items) {
-    const report = loadAnalysis(dir, it.id, includeCards);
-    if (!report) continue;
-    const h = ownRecordValue(report.bySkill, skillName);
-    if (!h) continue;
-    // 旧格式 (加 usage 字段前的 analysis) 用 safe access,缺字段降级为 0/undefined
-    const u = h.usage;
-    const billable = (u?.inputTokens ?? 0) + (u?.outputTokens ?? 0);
-    const cached = (u?.cacheReadTokens ?? 0) + (u?.cacheCreationTokens ?? 0);
-    const toolCallCount = h.toolCallCount ?? 0;
-    const toolResolvedCount = h.toolResolvedCount ?? toolCallCount;
-    const toolCancelledCount = h.toolCancelledCount ?? 0;
-    const toolComparableCount = Math.max(0, toolResolvedCount - toolCancelledCount);
-    points.push({
-      analysisId: it.id,
-      generatedAt: report.meta.generatedAt,
-      gapRate: h.gap?.gapRate ?? 0,
-      weightedGapRate: h.gap?.weightedGapRate ?? 0,
-      failureRate: measuredToolFailureRate(h),
-      toolCallCount,
-      toolResolvedCount,
-      toolComparableCount,
-      toolCancelledCount,
-      toolOutcomeCoverage: toolCallCount > 0
-        ? Number((toolResolvedCount / toolCallCount).toFixed(4))
-        : null,
-      coverageRate: h.coverage?.fileCoverageRate ?? null,
-      billableTokens: billable,
-      cachedTokens: cached,
-      totalTokens: u?.totalTokens ?? 0,
-      avgTokensPerSegment: u?.avgTokensPerSegment ?? 0,
-      tokenCoverage: u?.tokenCoverage ?? 0,
-      durationMs: u?.durationMs ?? 0,
-      segmentCount: h.segmentCount ?? 0,
-      stability: observedToolStability(h),
-    });
+  const seenLiveIds = new Set<string>();
+  const collect = (id: string, report: SkillHealthReport) => {
+    const health = ownRecordValue(report.bySkill, skillName);
+    if (health) points.push(trendPointOf(id, report.meta.generatedAt, health));
+  };
+  for (const path of listMeasurementReportPaths(dir, 'observe-health')) {
+    const id = measurementRecordIdFromReportPath(path);
+    if (!id || seenLiveIds.has(id)) continue;
+    try {
+      const report = parseSkillHealthReport(JSON.parse(readFileSync(path, 'utf-8')));
+      if (!report) continue;
+      seenLiveIds.add(id);
+      collect(id, report);
+    } catch { /* skip corrupt */ }
   }
-  // 最旧在前,便于折线图从左到右展示时间序列
+  // 仅机器级模式合并别项目卡片;固定目录 / --global 只看该目录(逃生舱语义)。
+  if (includeCards) {
+    for (const card of listLiveObserveCards()) {
+      if (seenLiveIds.has(card.id)) continue;
+      let report: SkillHealthReport | null = null;
+      try {
+        report = parseSkillHealthReport(JSON.parse(readFileSync(card.path, 'utf-8')));
+      } catch { /* corrupt 真身保持不可见 */ }
+      if (!report) continue;
+      seenLiveIds.add(card.id);
+      collect(card.id, report);
+    }
+  }
   points.sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
   return { skillName, points };
 }

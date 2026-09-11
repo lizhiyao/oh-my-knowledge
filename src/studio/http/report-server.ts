@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { ReportServer, ReportServerOptions } from './contracts.js';
 import type { StudioAppHost } from './app-host.js';
-import { getErrorMessage } from './errors.js';
+import { getErrorMessage, STUDIO_INTERNAL_ERROR, TEXT_HEADERS } from './errors.js';
 import { createStudioRequestHandler } from './request-handler.js';
 
 const DEFAULT_PORT = 7799;
@@ -77,8 +77,9 @@ export function createReportServer(options: ReportServerOptions = {}, presentati
           if (await presentation?.handle(request, response)) return;
           await requestHandler.handle(request, response);
         } catch {
-          if (!response.headersSent) response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-          response.end('studio_source_unavailable');
+          // 走到这里说明宿主自身故障（requestHandler 内部已兜住数据源错误），不得伪装成数据源不可用。
+          if (!response.headersSent) response.writeHead(500, TEXT_HEADERS);
+          response.end(STUDIO_INTERNAL_ERROR);
         }
       });
       candidate.once('error', reject);

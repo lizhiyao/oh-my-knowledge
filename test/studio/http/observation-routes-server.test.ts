@@ -76,15 +76,12 @@ describe('Studio observation routes', () => {
     assert.equal(pageRedirect.status, 404);
     assert.equal(pageRedirect.headers.location, undefined);
 
-    const apiRedirect = await request(
+    const apiLegacy = await request(
       `${baseUrl}/api/observations/review-state?targetType=skill&targetId=audit`,
       { method: 'DELETE' },
     );
-    assert.equal(apiRedirect.status, 307);
-    assert.equal(
-      apiRedirect.headers.location,
-      '/api/observe-inbox/review-state?targetType=skill&targetId=audit',
-    );
+    assert.equal(apiLegacy.status, 404);
+    assert.equal(apiLegacy.headers.location, undefined);
   });
 
   it('validates and persists review-state mutations through the shared request boundary', async () => {

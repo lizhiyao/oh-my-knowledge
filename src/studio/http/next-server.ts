@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
 import { nextCatalogContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { TEXT_HEADERS } from './errors.js';
 import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { loadObservePage, type ObservePage } from './observe-page.js';
@@ -34,18 +35,18 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const knowledge = path === '/knowledge' || path.startsWith('/knowledge/skills/');
       if (!measure && !observe && !knowledge && !path.startsWith('/_next/')) return false;
       if ((measure || observe || knowledge) && (request.method ?? 'GET') !== 'GET') {
-        response.writeHead(405, { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }
       let knowledgePage: KnowledgePage | undefined;
       if (knowledge) {
         try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
         catch {
-          response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.writeHead(503, TEXT_HEADERS);
           response.end('studio_source_unavailable'); return true;
         }
         if (!knowledgePage) {
-          response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          response.writeHead(404, TEXT_HEADERS);
           response.end('skill_not_found'); return true;
         }
       }
@@ -53,11 +54,11 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       if (observe) {
         try { observePage = await loadObservePage(conversationCatalog, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
         catch {
-          response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.writeHead(503, TEXT_HEADERS);
           response.end('studio_source_unavailable'); return true;
         }
         if (!observePage) {
-          response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.writeHead(404, TEXT_HEADERS);
           response.end('conversation_or_task_not_found'); return true;
         }
       }
@@ -74,12 +75,12 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
             let runId: string | undefined;
             try { runId = encoded && !encoded.includes('/') ? decodeURIComponent(encoded) : undefined; } catch { /* malformed identity is a missing route */ }
             const detail = runId === undefined ? undefined : await catalog.get(runId);
-            if (!detail) { response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); response.end('core_run_not_found'); return true; }
+            if (!detail) { response.writeHead(404, TEXT_HEADERS); response.end('core_run_not_found'); return true; }
             const source = catalog;
             catalog = { ...catalog, get: async (id) => id === runId ? detail : source.get(id) };
           }
         } catch {
-          response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+          response.writeHead(503, TEXT_HEADERS);
           response.end('core_studio_source_unavailable'); return true;
         }
       }

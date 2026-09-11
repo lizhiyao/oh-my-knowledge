@@ -1,29 +1,20 @@
 import 'server-only';
+import { nextCatalogContext, nextKnowledgeContext, nextObserveContext } from '../http/next-context';
 import type { CoreStudioCatalog } from '../view-models/core-runs';
+import type { KnowledgePage } from '../http/knowledge-page';
 import type { ObservePage } from '../http/observe-page';
 
-// The host supplies an AsyncLocalStorage store for each request. The symbol bridges
-// Next's server bundle and the CLI module graph without sharing a mutable catalog.
+// 宿主按请求注入 AsyncLocalStorage store；两侧模块经 globalThis 上的 Symbol.for 键
+// 解析到同一个 ALS 实例。store 缺失是装配错误（StudioContextMissingError），
+// 不是数据源失败，页面不得把它当作 SourceError 呈现。
 export function requestCatalog(): CoreStudioCatalog {
-  const context = Reflect.get(globalThis, Symbol.for('omk.studio.next.catalog')) as
-    { getStore(): CoreStudioCatalog | undefined } | undefined;
-  const catalog = context?.getStore();
-  if (!catalog) throw new Error('core_studio_source_unavailable');
-  return catalog;
+  return nextCatalogContext.get();
 }
 
 export function requestObservePage(): ObservePage {
-  const context = Reflect.get(globalThis, Symbol.for('omk.studio.next.observe')) as
-    { getStore(): ObservePage | undefined } | undefined;
-  const page = context?.getStore();
-  if (!page) throw new Error('studio_source_unavailable');
-  return page;
+  return nextObserveContext.get();
 }
 
-export function requestKnowledgePage(): import('../http/knowledge-page').KnowledgePage {
-  const context = Reflect.get(globalThis, Symbol.for('omk.studio.next.knowledge')) as
-    { getStore(): import('../http/knowledge-page').KnowledgePage | undefined } | undefined;
-  const page = context?.getStore();
-  if (!page) throw new Error('studio_source_unavailable');
-  return page;
+export function requestKnowledgePage(): KnowledgePage {
+  return nextKnowledgeContext.get();
 }

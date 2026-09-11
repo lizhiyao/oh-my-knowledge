@@ -106,6 +106,20 @@ describe('Conversation activity server', () => {
     assert.match(await response.text(), /data-activity-endpoint="\/api\/conversations\/thread%2Factivity\/activity"/u);
   });
 
+  it('bumps both list and detail revisions when a conversation is renamed', async () => {
+    const listEndpoint = `${baseUrl}/api/conversations/activity`;
+    const detailEndpoint = `${baseUrl}/api/conversations/${encodeURIComponent(threadId)}/activity`;
+    const listBefore = await (await fetch(listEndpoint)).json() as Record<string, unknown>;
+    const detailBefore = await (await fetch(detailEndpoint)).json() as Record<string, unknown>;
+
+    conversation = { ...conversation, title: '重命名后的对话' };
+
+    const listAfter = await (await fetch(listEndpoint)).json() as Record<string, unknown>;
+    const detailAfter = await (await fetch(detailEndpoint)).json() as Record<string, unknown>;
+    assert.notEqual(listAfter.revision, listBefore.revision);
+    assert.notEqual(detailAfter.revision, detailBefore.revision);
+  });
+
   it('returns 404 for an unknown conversation', async () => {
     const response = await fetch(`${baseUrl}/api/conversations/missing/activity`);
     assert.equal(response.status, 404);

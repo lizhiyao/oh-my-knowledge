@@ -77,7 +77,7 @@ describe('Studio server lifecycle', () => {
     runningServers.push(server);
     for (const path of ['/observe', '/api/conversations/activity']) {
       const response = await fetch(`${await server.start()}${path}`);
-      assert.equal(response.status, 500);
+      assert.equal(response.status, 503);
       assert.deepEqual(await response.json(), { error: 'studio_source_unavailable' });
     }
   });

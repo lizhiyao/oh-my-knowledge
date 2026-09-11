@@ -8,14 +8,12 @@ import { createKnowledgeQuery } from '../application/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
-import { getErrorMessage, STUDIO_SOURCE_UNAVAILABLE } from './errors.js';
-import {
-  assertTrustedMutationRequest,
-  RequestBodyError,
-} from './request-errors.js';
+import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS, writeJsonError } from './errors.js';
+import { RequestBodyError } from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { createObservationRoutes } from './routes/observations.js';
+import { createStudioRouter } from './routes/router.js';
 
 type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host'> & {
   requestShutdown(): void;
@@ -66,6 +64,30 @@ export function createStudioRequestHandler({
         defaultLang: DEFAULT_LANG,
         studioNavigation: true,
       });
+  const hostRoutes = createStudioRouter([
+    {
+      // 存活探针：任意方法都回答（含端口接管前对旧进程的 /health 认证）。
+      pattern: '/health',
+      method: 'ANY',
+      handler({ response: res }) {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: true, service: 'omk' }));
+      },
+    },
+    {
+      pattern: '/api/shutdown',
+      method: 'POST',
+      mutation: true,
+      handler({ response: res }) {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: true }));
+        shutdownTimer ??= setTimeout(() => {
+          shutdownTimer = undefined;
+          requestShutdown();
+        }, 100);
+      },
+    },
+  ]);
 
   function prepare(): void {
     if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
@@ -81,7 +103,7 @@ export function createStudioRequestHandler({
       try {
         decodeURIComponent(path);
       } catch {
-        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.writeHead(404, TEXT_HEADERS);
         response.end('Not Found');
         return;
       }
@@ -109,28 +131,12 @@ export function createStudioRequestHandler({
         lang,
       };
 
-      if (path === '/health') {
-        response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ ok: true, service: 'omk' }));
-        return;
-      }
-
-      if (path === '/api/shutdown' && request.method === 'POST') {
-        assertTrustedMutationRequest(request);
-        response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ ok: true }));
-        shutdownTimer ??= setTimeout(() => {
-          shutdownTimer = undefined;
-          requestShutdown();
-        }, 100);
-        return;
-      }
-
-      if (knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
+      if (await hostRoutes(routeContext)) return;
+      if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
       if (await conversationRoutes(routeContext)) return;
       if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
 
-      response.writeHead(404, { 'Content-Type': 'text/plain' });
+      response.writeHead(404, TEXT_HEADERS);
       response.end('Not Found');
     } catch (error: unknown) {
       if (response.headersSent) {
@@ -141,9 +147,13 @@ export function createStudioRequestHandler({
         ? error.statusCode
         : error instanceof ObservationReviewStateValidationError
           ? 400
-          : 500;
-      response.writeHead(statusCode, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ error: statusCode === 500 ? STUDIO_SOURCE_UNAVAILABLE : getErrorMessage(error) }));
+          : 503;
+      const code = error instanceof RequestBodyError
+        ? error.code
+        : error instanceof ObservationReviewStateValidationError
+          ? 'invalid_review_state'
+          : STUDIO_SOURCE_UNAVAILABLE;
+      writeJsonError(response, statusCode, code);
     }
   }
 

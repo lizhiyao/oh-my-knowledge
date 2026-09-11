@@ -43,8 +43,52 @@ export type {
   SkillObserveSnapshot,
 } from '../view-models/index.js';
 
+export interface SkillIndexCacheEntry {
+  readonly fingerprint: string;
+  readonly result: SkillIndex;
+}
+
+/**
+ * 有界 keyed 缓存契约。key 是目录组合身份（指纹仍逐次请求重算），
+ * 实现必须保证容量上限与淘汰策略，禁止无界 Map<fingerprint, entry>。
+ */
 export interface SkillIndexCache {
-  entry?: { fingerprint: string; result: SkillIndex };
+  get(key: string): SkillIndexCacheEntry | undefined;
+  set(key: string, entry: SkillIndexCacheEntry): void;
+  clear(): void;
+}
+
+// 目录组合域实际很小：project↔global 回退翻转 × 固定的 card flags，
+// 8 个槽位足以容纳真实翻转与测试注入，超出部分 LRU 淘汰。
+const SKILL_INDEX_CACHE_DEFAULT_CAPACITY = 8;
+
+/** LRU 实现：Map 插入序即新旧顺序，命中即提升为最新，写满淘汰最旧。 */
+export function createSkillIndexCache(maxEntries = SKILL_INDEX_CACHE_DEFAULT_CAPACITY): SkillIndexCache {
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new RangeError('skill index cache capacity must be a positive integer');
+  }
+  const entries = new Map<string, SkillIndexCacheEntry>();
+  return {
+    get(key) {
+      const entry = entries.get(key);
+      if (entry === undefined) return undefined;
+      entries.delete(key);
+      entries.set(key, entry);
+      return entry;
+    },
+    set(key, entry) {
+      entries.delete(key);
+      entries.set(key, entry);
+      while (entries.size > maxEntries) {
+        const oldest = entries.keys().next();
+        if (oldest.done) break;
+        entries.delete(oldest.value);
+      }
+    },
+    clear() {
+      entries.clear();
+    },
+  };
 }
 
 function directoryFingerprint(directory: string, suffix: string): string {
@@ -270,8 +314,13 @@ export function buildSkillIndex(
   const graphPaths = listMeasurementDerivedPaths(doctorsDir, 'doctor', 'graph.json');
   const doctorReportPaths = listMeasurementReportPaths(doctorsDir, 'doctor');
   const observeReportPaths = listMeasurementReportPaths(analysesDir, 'observe-health');
-  // Scan file metadata on each cached query so edits and deletions remain visible.
-  // A directory mtime alone does not detect edits to existing files.
+  // key 限定目录组合身份，fingerprint 每次请求按文件元数据重算，
+  // 保证编辑与删除对缓存可见（目录 mtime 单独不足以检测既有文件的内容变化）。
+  const cacheKey = [
+    analysesDir, doctorsDir, observationsDir,
+    includeObserveCards ? 'observe-cards' : '',
+    includeDoctorCards ? 'doctor-cards' : '',
+  ].join('\n');
   const fingerprint = options.cache ? [
     analysesDir, doctorsDir, observationsDir,
     pathsFingerprint(observeReportPaths),
@@ -280,7 +329,8 @@ export function buildSkillIndex(
     pathsFingerprint(graphPaths),
     cardFingerprint(includeObserveCards, includeDoctorCards),
   ].join('|') : '';
-  if (options.cache?.entry?.fingerprint === fingerprint) return structuredClone(options.cache.entry.result);
+  const cached = options.cache?.get(cacheKey);
+  if (cached?.fingerprint === fingerprint) return structuredClone(cached.result);
 
   const observeBy = scanObserveReports(analysesDir);
   if (includeObserveCards) {
@@ -371,6 +421,6 @@ export function buildSkillIndex(
     diagnosticsBySkill,
     diagnosisSummary: buildStudioDiagnosisSummary(diagnosisBundle),
   };
-  if (options.cache) options.cache.entry = { fingerprint, result: structuredClone(result) };
+  if (options.cache) options.cache.set(cacheKey, { fingerprint, result: structuredClone(result) });
   return result;
 }
