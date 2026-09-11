@@ -31,6 +31,24 @@ interface ExecError extends Error {
 
 
 describe('oclif sample', () => {
+  it('命令参数接入共享生成用例并保存到 skill 私有样本路径', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-sample-command-'));
+    try {
+      writeFileSync(join(root, 'SKILL.md'), '# Example');
+      const samples = [{ sample_id: 'one', prompt: 'Review' }];
+      generateSamples.mockReset();
+      generateSamples.mockResolvedValue({ samples, costUSD: 0 });
+      await runCommand(SampleCommand, [root, '--executor', 'claude', '--model', 'fixture', '--count', '1', '--focus', 'errors', '--no-mock'], { cwd: root });
+      expect(generateSamples).toHaveBeenCalledWith(expect.objectContaining({
+        skillContent: '# Example', model: 'fixture', executorName: 'claude', count: 1, focus: 'errors', noMock: true,
+      }));
+      expect(JSON.parse(readFileSync(join(root, '.omk', 'eval-samples.json'), 'utf8')).samples).toEqual(samples);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      generateSamples.mockReset();
+    }
+  });
+
   it('追加前拒绝损坏样本，不调用生成器', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-sample-preflight-'));
     try {

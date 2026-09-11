@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sampleSourceExists, resolveSampleOutFile } from '../../src/cli/commands/evolve.js';
+import { sampleSourceExists, resolveSampleOutFile } from '../../src/knowledge-artifacts/authoring/sample-generation.js';
 
 // sampleSourceExists 是 evolve 自动生成的「损坏文件不覆盖」守卫核心:
 // 区分「用例源已存在(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。

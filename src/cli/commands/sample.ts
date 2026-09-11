@@ -1,5 +1,5 @@
-import { resolve, join, dirname, extname, relative, sep } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { resolve, join, dirname, relative, sep } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { Args, Flags, type Interfaces } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -8,31 +8,18 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { appendSamplesToFile, preflightSampleAppend } from '../../eval-workflows/inputs/append-samples.js';
-import { listSampleFilesInDir } from '../../eval-workflows/inputs/load-samples.js';
-import {
-  getSamplesArray,
-  parseSampleDocument,
-} from '../../eval-workflows/inputs/sample-document.js';
+import { generateSkillSamples, SamplePreparationError } from '../../knowledge-artifacts/authoring/sample-generation.js';
 import {
   defaultSkillLocalSamplesFile,
-  findCanonicalSamplesFile,
   findSkillSamplesPath,
+  SampleFileAmbiguityError,
 } from '../../eval-workflows/inputs/sample-locator.js';
 import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { withLocalizedSampleDiscovery } from '../lib/localized-sample-discovery.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
-import type {
-  Sample as SampleType,
-} from '../../eval-workflows/inputs/contracts/sample.js';
 import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
-
-interface GenerateSamplesResult {
-  samples: SampleType[];
-  costUSD: number;
-}
 
 function userFacingPath(filePath: string): string {
   const rel = relative(process.cwd(), filePath);
@@ -45,29 +32,6 @@ export function sampleNextEvalCommand(
 ): string {
   const treatmentPath = resolved.isDirectorySkill ? resolved.skillDir : resolved.skillPath;
   return `omk eval --control baseline --treatment ${shellQuoteArg(userFacingPath(treatmentPath))}`;
-}
-
-/** 目录模式 append:收集目录内所有 sample 文件的 sample_id,跨文件去重用 —— eval 走目录模式
- *  会把目录下所有文件合并加载,跨文件撞 id 直接报错(load-samples 的 duplicate sample_id)。
- *  复用 listSampleFilesInDir 的排序/过滤口径;best-effort:解析失败的文件跳过。 */
-function collectDirSampleIds(dir: string): Set<string> {
-  const ids = new Set<string>();
-  let files: string[];
-  try { files = listSampleFilesInDir(dir); } catch { return ids; }
-  for (const f of files) {
-    const full = join(dir, f);
-    try {
-      for (const s of getSamplesArray(parseSampleDocument(full), full)) {
-        if (typeof s.sample_id === 'string') ids.add(s.sample_id);
-      }
-    } catch { /* skip unparseable / 非 sample 文件 */ }
-  }
-  return ids;
-}
-
-/** 目录模式 append 选写回目标：canonical JSON / YAML 二选一；并存时 fail closed。 */
-export function pickAppendTargetFile(dir: string): string | null {
-  return findCanonicalSamplesFile(dir);
 }
 
 export async function runSampleFromTraces(
@@ -159,7 +123,6 @@ async function runSample(
     await runSampleFromTraces(flags, lang, signal);
     return;
   }
-  const { generateSamples } = await import('../../knowledge-artifacts/authoring/generator.js');
   const count: number | undefined = flags.count !== undefined
     ? Math.max(1, Number(flags.count) || 5)
     : undefined;
@@ -219,14 +182,13 @@ async function runSample(
         process.stderr.write(tCli('cli.gen.skill_generating_auto', lang, { name }));
       }
       try {
-        const skillContent: string = readFileSync(skillPath, 'utf-8');
-        const { samples, costUSD }: GenerateSamplesResult =
-          await generateSamples({ signal, skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
-        mkdirSync(dirname(samplesPath), { recursive: true });
-        createJsonFileAtomic(samplesPath, createEvalSampleSetDocument(samples));
+        const { added, costUSD } = await generateSkillSamples({
+          skillPath, samplesPath,
+          options: { signal, count, model, focus, noMock: flags['no-mock'], executorName },
+        });
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
         process.stderr.write(tCli('cli.gen.skill_done', lang, {
-          name, n: samples.length, path: samplesPath, cost,
+          name, n: added, path: samplesPath, cost,
         }));
         generated++;
       } catch (err: unknown) {
@@ -261,58 +223,34 @@ async function runSample(
       throw new CliExit(1);
     }
 
-    const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
-
-    let outputPath: string;
-    let existingFile: string | null = null;
-    if (!extname(resolved.samplesPath)) {
-      const dir = resolved.samplesPath;
-      if (existsSync(dir) && statSync(dir).isDirectory()) {
-        existingFile = withLocalizedSampleDiscovery(() => pickAppendTargetFile(dir), lang);
-      }
-      outputPath = existingFile ?? join(dir, 'eval-samples.json');
-    } else {
-      outputPath = resolved.samplesPath;
-      if (existsSync(outputPath)) existingFile = outputPath;
-    }
-
-    // 已有用例文件:默认报错保护;--append 时追加(下面合并),不报错。
-    if (existingFile && !flags.append) {
-      console.error(tCli('cli.gen.samples_already_exists', lang, { command: sampleNextEvalCommand(resolved) }));
-      throw new CliExit(1);
-    }
-
-    const appendSnapshot = existingFile && flags.append ? preflightSampleAppend(existingFile) : undefined;
-
-    if (count !== undefined) {
-      process.stderr.write(tCli('cli.gen.single_generating', lang, { count }));
-    } else {
-      process.stderr.write(tCli('cli.gen.single_generating_auto', lang));
-    }
     try {
-      const { samples, costUSD }: GenerateSamplesResult =
-        await generateSamples({ signal, skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
-      const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-      if (existingFile && flags.append) {
-        // 追加:读已有 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与 wrapper 写回。
-        // 目录模式额外跨同目录其它 sample 文件去重,避免 eval 合并加载时撞 id 报错;
-        // 显式单文件路径无同目录合并语义,不需要。
-        const reserved = extname(resolved.samplesPath) ? undefined : collectDirSampleIds(dirname(existingFile));
-        const total = appendSamplesToFile(existingFile, samples as SampleType[], reserved, appendSnapshot);
+      const result = await generateSkillSamples({
+        skillPath: resolved.skillPath, samplesPath: resolved.samplesPath, append: flags.append,
+        options: { signal, count, model, focus, noMock: flags['no-mock'], executorName },
+        onGenerating: () => process.stderr.write(count !== undefined
+          ? tCli('cli.gen.single_generating', lang, { count })
+          : tCli('cli.gen.single_generating_auto', lang)),
+      });
+      const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
+      if (result.appended) {
         process.stderr.write(tCli('cli.gen.append_done', lang, {
-          added: samples.length, total, path: existingFile, cost,
+          added: result.added, total: result.total, path: result.outputPath, cost,
         }));
       } else {
-        mkdirSync(dirname(outputPath), { recursive: true });
-        createJsonFileAtomic(outputPath, createEvalSampleSetDocument(samples));
         process.stderr.write(tCli('cli.gen.single_done', lang, {
-          n: samples.length, path: outputPath, cost,
+          n: result.added, path: result.outputPath, cost,
         }));
       }
       console.log(tCli('cli.gen.review_hint', lang, { command: sampleNextEvalCommand(resolved) }));
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
-      const message = (err as Error).message;
+      if (err instanceof SamplePreparationError && err.reason === 'exists') {
+        console.error(tCli('cli.gen.samples_already_exists', lang, { command: sampleNextEvalCommand(resolved) }));
+        throw new CliExit(1);
+      }
+      const message = err instanceof SampleFileAmbiguityError
+        ? tCli('cli.common.ambiguous_sample_files', lang, { paths: err.paths.join(lang === 'zh' ? '、' : ', ') })
+        : (err as Error).message;
       console.error(tCli('cli.gen.failed', lang, {
         message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
       }));
