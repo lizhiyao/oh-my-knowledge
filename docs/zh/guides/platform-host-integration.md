@@ -130,7 +130,7 @@ const result = await prepared.run({
 3. **加载。** `loadEvaluationResult({ prepared, reference, resolver, verifier })`。除了解析内容与校验 digest，还必须注入独立的 `EvaluationResultVerifier`：verifier 要认证 envelope digest（`verifiedResultDigest` 必须等于 reference 的 digest），并独立认证 provenance bundle、cache record、policy execution 三组 digest 集合。**只做 checksum 不够**——存储完整性不等于来源可信。验证失败以 `EvaluationResultStoreError` 关闭；无法 `structuredClone` 的 JSON 同样关闭，不做部分恢复。
 4. **重评。** 按需 `rescore`（复用 Execution，重新打分）、`reanalyze`（复用打分，重新分析）、`redecide`（复用分析，重新决策），或用 `assessComparability` 比较两份 canonical 结果。
 
-可运行的参考样板见 [`examples/eval-runtime/result-store.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/result-store.mjs)（含内存 ContentStore／ContentResolver 与一个独立 verifier）；单进程视角的同一流程见[在新进程里读回历史结果再复用](./eval-runtime#restore-stored-results)。
+可运行的参考样板见 [`examples/eval-runtime/result-store.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/result-store.mjs)（临时目录上的文件后端 ContentStore／ContentResolver，在存储边界校验 digest，另配一个独立的审计回执 verifier）；单进程视角的同一流程见[在新进程里读回历史结果再复用](./eval-runtime#restore-stored-results)。
 
 ## 可比性治理工作流
 
