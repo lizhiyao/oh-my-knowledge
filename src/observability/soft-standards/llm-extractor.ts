@@ -42,6 +42,7 @@ import type {
 } from './types.js';
 
 export async function extractSkillSoftStandards(options: ExtractSkillSoftStandardsOptions): Promise<SkillDerivedStandards> {
+  options.signal?.throwIfAborted();
   const { observationsDir, skillChain } = options;
   const model = options.model;
   const executorName = options.executorName;
@@ -74,8 +75,10 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     system: promptDocument.body,
     prompt,
     timeoutMs: 300_000,
+    abortSignal: options.signal,
     lean: true,
   });
+  options.signal?.throwIfAborted();
   const parsedReview = parseLlmEnhancedReviewOutput(result.output || '');
   const runtimeEvidencePack = options.runtimeEvidence?.skillRuntimeEvidencePack ?? skillChain.runtime.evidencePack;
   const enhancedReview = withRequiredStandardOwnerSuggestions(

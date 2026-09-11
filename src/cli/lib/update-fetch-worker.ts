@@ -4,20 +4,20 @@
  * ~/.oh-my-knowledge/state/cache/update-check.json,
  * 供下次运行展示用。父进程不等它,所以这里阻塞式 await fetch 没关系。全程 fail-silent。
  *
- * argv: [node, update-fetch-worker.js, cachePath, registry, pkgName]
+ * argv: [node, update-fetch-worker.js, cachePath, registry, pkgName, channel]
  */
 import { readCache, writeCache } from './update-check.js';
 
 async function main(): Promise<void> {
-  const [cachePath, registry, name] = process.argv.slice(2);
-  if (!cachePath || !registry || !name) return;
+  const [cachePath, registry, name, channel] = process.argv.slice(2);
+  if (!cachePath || !registry || !name || (channel !== 'latest' && channel !== 'next')) return;
   try {
-    const res = await fetch(`${registry.replace(/\/$/, '')}/${name}/latest`, {
+    const res = await fetch(`${registry.replace(/\/$/, '')}/${name}/${channel}`, {
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return;
     const data = (await res.json()) as { version?: string };
-    if (!data.version) return;
+    if (typeof data.version !== 'string' || !data.version) return;
     const prev = readCache(cachePath); // 重读以保留展示侧写的 notify 节流字段,别覆盖
     writeCache(cachePath, {
       latestVersion: data.version,

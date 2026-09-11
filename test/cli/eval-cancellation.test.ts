@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 
 // A real process is required: the subprocess coordinator re-raises SIGINT,
 // which must reach the CLI's cancellation handler instead of terminating it.
-it.each(['SIGINT', 'SIGTERM'] as const)('saves cancelled evidence and releases children and resources after %s', async (signal) => {
+it.each(['eval', 'sample', 'evolve', 'doctor'].flatMap((command) => (['SIGINT', 'SIGTERM'] as const).map((signal) => ({ command, signal }))))('cancels $command after $signal without leaving children or overwriting inputs', async ({ command, signal }) => {
   const root = await mkdtemp(join(tmpdir(), 'omk-eval-signal-'));
   const home = join(root, 'home');
   const skill = join(root, 'answer');
@@ -29,12 +29,17 @@ for await (const line of createInterface({ input: process.stdin })) {
   break;
 }
 `, { mode: 0o755 });
-  const child = spawn(process.execPath, [resolve('dist/cli/index.js'), 'eval',
-    '--control', 'baseline', '--treatment', skill, '--samples', samples,
-    '--executor', executor, '--model', 'fixture', '--no-judge', '--no-serve',
-    '--skip-connectivity', '--concurrency', '1', '--retry', '0', '--timeout', '60',
-    '--output-dir', join(root, 'reports'),
-  ], { cwd: root, env: { ...process.env, OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const common = ['--executor', executor, '--model', 'fixture'];
+  const args = command === 'eval'
+    ? ['--control', 'baseline', '--treatment', skill, '--samples', samples, ...common,
+      '--no-judge', '--no-serve', '--skip-connectivity', '--concurrency', '1', '--retry', '0', '--timeout', '60',
+      '--output-dir', join(root, 'reports')]
+    : command === 'doctor' ? [skill, ...common, '--repeat', '1']
+      : command === 'sample' ? [skill, ...common]
+      : [skill, ...common, '--samples', samples, '--skip-doctor', '--rounds', '1'];
+  const child = spawn(process.execPath, [resolve('dist/cli/index.js'), command, ...args], {
+    cwd: root, env: { ...process.env, OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
@@ -52,15 +57,19 @@ for await (const line of createInterface({ input: process.stdin })) {
     expect(child.kill(signal)).toBe(true);
     const ended = await Promise.race([closed, delay(10_000).then(() => { throw new Error(`Cancellation timed out: ${stderr}`); })]);
     expect(ended, stderr).toEqual({ code: 1, signal: null });
-    const output = JSON.parse(stdout);
-    expect(output).toMatchObject({
-      status: { runStatus: 'cancelled', evidenceStatus: 'unresolvable', conclusionStatus: 'inconclusive' },
-      gate: { gateStatus: 'blocked', exitCode: 1, reasonCodes: ['core-run-cancelled'] },
-    });
-    const { createNodeCoreRunArtifactStore } = await import('../../src/eval-workflows/artifact-store/index.js');
-    const stored = await createNodeCoreRunArtifactStore(join(root, 'reports')).get(output.runId);
-    expect(stored?.report.status.runStatus).toBe('cancelled');
-    expect(await readdir(join(home, 'state', 'tmp', 'resource-leases'))).toEqual([]);
+    if (command === 'eval') {
+      const output = JSON.parse(stdout);
+      expect(output).toMatchObject({
+        status: { runStatus: 'cancelled', evidenceStatus: 'unresolvable', conclusionStatus: 'inconclusive' },
+        gate: { gateStatus: 'blocked', exitCode: 1, reasonCodes: ['core-run-cancelled'] },
+      });
+      const { createNodeCoreRunArtifactStore } = await import('../../src/eval-workflows/artifact-store/index.js');
+      const stored = await createNodeCoreRunArtifactStore(join(root, 'reports')).get(output.runId);
+      expect(stored?.report.status.runStatus).toBe('cancelled');
+      expect(await readdir(join(home, 'state', 'tmp', 'resource-leases'))).toEqual([]);
+    }
+    expect(await readFile(join(skill, 'SKILL.md'), 'utf8')).toBe('# Answer\nAnswer the question.\n');
+    expect(await readFile(join(skill, '.omk', 'eval-samples.json'), 'utf8').catch(() => undefined)).toBeUndefined();
     expect(() => process.kill(executorPid!, 0)).toThrow();
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');

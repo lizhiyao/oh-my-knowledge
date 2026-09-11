@@ -61,6 +61,7 @@ export interface ComposerRule {
 export type DoctorRuleLike = DoctorRule | ComposerRule;
 
 export interface DoctorContext {
+  signal?: AbortSignal;
   artifact: Artifact;
   /** 仅 samples_contract_aligned rule 用。其他 rule 可忽略。 */
   samples?: Sample[];
@@ -162,6 +163,7 @@ export interface DoctorProgressInfo {
 export type DoctorProgressCallback = (info: DoctorProgressInfo) => void;
 
 export interface DoctorRunOptions {
+  signal?: AbortSignal;
   /** 单 skill 文件 / 目录 / null(=cwd 当前目录批量)。当 artifacts 显式提供时, target 被忽略。 */
   target?: string | null;
   /** 直接提供 artifacts，跳过 target 解析。CLI 嵌入 eval 时用，

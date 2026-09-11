@@ -5,7 +5,7 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
@@ -112,8 +112,8 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     } catch (err) {
       const e = err as ExecError;
       const out = e.stdout + e.stderr;
-      assert.ok(/No skills found/.test(out), `OMK_LANG=en should yield English error, got:\n${out.slice(0, 300)}`);
-      assert.ok(!/未在.*下发现 skill 文件/.test(out), `OMK_LANG=en should not leak zh error:\n${out.slice(0, 300)}`);
+      assert.ok(/Doctor could not complete:/.test(out), `OMK_LANG=en should yield English error, got:\n${out.slice(0, 300)}`);
+      assert.ok(!/健康检查未完成：/.test(out), `OMK_LANG=en should not leak zh error:\n${out.slice(0, 300)}`);
     }
   });
 
@@ -125,7 +125,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     } catch (err) {
       const e = err as ExecError;
       const out = e.stdout + e.stderr;
-      assert.ok(/未在.*下发现 skill 文件/.test(out), `--lang zh should override OMK_LANG=en, got:\n${out.slice(0, 300)}`);
+      assert.ok(/健康检查未完成：/.test(out), `--lang zh should override OMK_LANG=en, got:\n${out.slice(0, 300)}`);
     }
   });
 
@@ -154,17 +154,35 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     assert.ok(!/\$ omk doctor/.test(stdout), `should NOT dispatch to doctor USAGE, got:\n${stdout.slice(0, 300)}`);
   });
 
-  it('unknown flags report exit 2 and point users to help', async () => {
+  it('unknown flags preserve exit 2 and the complete diagnostic through a slow pipe', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'omk-startup-diagnostic-'));
+    const flag = `--${'x'.repeat(90_000)}DIAGNOSTIC_END`;
     try {
-      await execFileAsync('node', [CLI, 'eval', '--bogus-flag', '--lang', 'en']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
-      const out = e.stdout + e.stderr;
-      assert.match(out, /--bogus-flag/);
-      assert.match(out, /--help/);
+      const child = spawn(process.execPath, [CLI, 'eval', flag, '--lang', 'en'], {
+        cwd: home,
+        env: { ...hostileEnv(home), OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1', NO_COLOR: '1' },
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      const chunks: Buffer[] = [];
+      child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
+      child.stderr.pause();
+      const resume = setTimeout(() => child.stderr.resume(), 25);
+      try {
+        const code = await new Promise<number | null>((resolve, reject) => {
+          child.once('error', reject);
+          child.once('close', resolve);
+        });
+        const stderr = Buffer.concat(chunks).toString();
+        assert.equal(code, 2);
+        assert.ok(stderr.includes(flag));
+        assert.match(stderr, /--help/);
+        assert.equal(existsSync(join(home, 'eval-results')), false);
+      } finally {
+        clearTimeout(resume);
+        if (child.exitCode === null) child.kill('SIGKILL');
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   });
-
 });

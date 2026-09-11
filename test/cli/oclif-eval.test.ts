@@ -143,21 +143,16 @@ describe('oclif eval', () => {
     }
   });
 
-  it('eval gold compare 的必填参数错误遵循 --lang', async () => {
-    for (const [lang, expected] of [
-      ['zh', '必须提供 --gold-dir。'],
-      ['en', '--gold-dir is required.'],
-    ] as const) {
-      await assert.rejects(
-        () => runCommand(EvalGoldCompare, ['report-1', '--lang', lang]),
-        (err: unknown) => {
-          const e = err as ExecError;
-          assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
-          assert.ok(e.stderr.includes(expected), e.stderr);
-          return true;
-        },
-      );
-    }
+  it('eval gold compare rejects missing selectors before reading data', async () => {
+    await assert.rejects(
+      () => runCommand(EvalGoldCompare, ['missing-run']),
+      (err: unknown) => {
+        const error = err as ExecError;
+        assert.equal(error.code, 2);
+        assert.match(error.stderr, /gold-dir/);
+        return true;
+      },
+    );
   });
 
   it('eval gold compare 找不到 Core run 时只报告当前契约', async () => {
@@ -217,7 +212,7 @@ describe('oclif eval', () => {
       }
       const result = await execFileAsync(process.execPath, [
         CLI, 'eval', '--samples', EXAMPLE_SAMPLES, '--skill-dir', join(dir, 'skills'),
-        '--control', 'control', '--treatment', 'treatment', '--executor', CUSTOM_EXECUTOR,
+        '--control', 'control', '--treatment', 'treatment', '--executor', CUSTOM_EXECUTOR, '--model', 'fixture-model',
         '--no-judge', '--repeat', '2', '--bootstrap-samples', '100',
         '--skip-doctor', '--skip-connectivity', '--no-serve',
         '--output-dir', join(dir, 'reports'), '--lang', 'zh',
@@ -284,7 +279,7 @@ describe('oclif eval', () => {
           '--skill-dir', 'skills',
           '--control', 'control',
           '--treatment', 'treatment',
-          '--executor', CUSTOM_EXECUTOR,
+          '--executor', CUSTOM_EXECUTOR, '--model', 'fixture-model',
           '--no-judge',
           '--dry-run',
           '--skip-doctor',

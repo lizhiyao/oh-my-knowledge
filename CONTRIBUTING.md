@@ -118,6 +118,8 @@ git push origin "v${release_version}"
 Prerelease versions publish to the `next` dist-tag; stable versions publish to
 `latest`. The workflow derives this from the package version. Trusted Publishing
 is the current release path; do not restore token-based fallback publishing.
+The CLI update notifier follows the installed version’s channel: prereleases
+check `next`, stable releases check `latest`, with separate rebuildable caches.
 
 ### Hotfix against a released version
 

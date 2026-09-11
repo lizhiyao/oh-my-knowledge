@@ -85,7 +85,7 @@ describe('public examples catalog', () => {
       for (const example of cases) {
         const { stdout } = await runCommand(EvalCommand, [
           ...example.args,
-          '--executor', offlineExecutor,
+          '--executor', offlineExecutor, '--model', 'echo',
           '--output-dir', outputDirectory,
         ], {
           cwd: resolve(examplesRoot, example.directory),
@@ -103,7 +103,7 @@ describe('public examples catalog', () => {
       const { stdout } = await runCommand(EvalCommand, [
         '--control', 'baseline',
         '--treatment', 'echo-assistant',
-        '--executor', './echo-executor.sh',
+        '--executor', './echo-executor.sh', '--model', 'echo',
         '--no-judge',
         '--no-diagnostic',
         '--no-serve',

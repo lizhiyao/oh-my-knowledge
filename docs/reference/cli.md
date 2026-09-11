@@ -244,7 +244,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --global                        Write report to global ~/.oh-my-knowledge/eval instead of project .omk/eval
   --gold-dir <value>              Gold dataset dir
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting
-  --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.
+  --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Claude uses haiku, other executors reuse the evaluated model.
   --judge-repeat <value>          Judge each dim N times
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --layered-stats                 Emit layered stats
@@ -347,6 +347,8 @@ omk observe inbox --json                           # JSON output for automation
 omk observe show <inbox_id>
 ```
 
+`observe inbox --json` returns an object with `schemaVersion: 1`. The existing `kind` identifies the view: `observe-inbox-query` (`items`), `observe-inbox-by-skill` (`rows`), or `observe-llm-enhanced-review` (`records`). Empty results use the same envelope. Consumers that reject unknown fields must allow `schemaVersion`; existing result fields and persisted observation files are unchanged.
+
 Every observation carries:
 
 - `confidence` and `attributionConfidence` — signal credibility plus skill-attribution credibility, displayed side by side
@@ -380,7 +382,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
   --rounds <value>                Max iteration rounds, default 5
-  --samples <value>               Samples file, default eval-samples.json
+  --samples <value>               Existing sample source; otherwise discover skill-local then project samples, generating only when neither exists
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
   --snapshot-only                 Produce candidates under evolve/ without writing the source. Managed skills normally write back only after a final Core gate and record Core evidence.
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.

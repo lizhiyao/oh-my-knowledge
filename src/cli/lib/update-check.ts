@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tCli, type CliLang } from './i18n.js';
@@ -79,6 +80,13 @@ export interface UpdateCache {
   lastNotifiedAt?: string;
 }
 
+export type UpdateChannel = 'latest' | 'next';
+
+/** Match the release workflow: prereleases are published to next. */
+export function updateChannel(version: string): UpdateChannel {
+  return version.split('+', 1)[0].includes('-') ? 'next' : 'latest';
+}
+
 interface LocalPkg {
   name: string;
   version: string;
@@ -93,8 +101,8 @@ interface BoxParts {
 }
 
 /** 更新检查属于可重建机器缓存，统一落在全局 `state/cache/`。root 可注入供测试隔离。 */
-export function defaultCachePath(root: string = OMK_HOME): string {
-  return join(globalLayout(root).cacheDir, 'update-check.json');
+export function defaultCachePath(root: string = OMK_HOME, channel: UpdateChannel = 'latest'): string {
+  return join(globalLayout(root).cacheDir, channel === 'latest' ? 'update-check.json' : 'update-check-next.json');
 }
 
 /** 读缓存。缺失 / 损坏 / 非对象 / 缺时间锚点一律返回 null,调用方按「无缓存」处理。
@@ -121,10 +129,7 @@ export function readCache(path: string): UpdateCache | null {
  *  整体静默失败 — 退化为「每次后台重抓」,不崩。 */
 export function writeCache(path: string, data: UpdateCache): void {
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    const tmp = `${path}.tmp.${process.pid}`;
-    writeFileSync(tmp, JSON.stringify(data, null, 2));
-    renameSync(tmp, path);
+    writeJsonFileAtomic(path, data);
   } catch {
     /* 静默:缓存是装饰性状态,写不进去不影响功能 */
   }
@@ -228,12 +233,12 @@ export function renderUpdateBox(parts: BoxParts, lang: CliLang): string {
 
 /** 选染提示文案:TTY 下多行高亮框,管道 / 非 TTY 退回单行(不污染输出)。纯函数,
  *  isTty 注入便于测试两条分支。 */
-export function renderNotice(parts: BoxParts, pkgName: string, lang: CliLang, isTty: boolean): string {
+export function renderNotice(parts: BoxParts, lang: CliLang, isTty: boolean): string {
   if (isTty) return renderUpdateBox(parts, lang);
   return tCli('cli.update.new_version_available', lang, {
     old: parts.current,
     new: parts.latest,
-    pkg: pkgName,
+    command: parts.upgradeCmd,
   });
 }
 
@@ -268,11 +273,11 @@ function readLocalPkg(): LocalPkg | null {
  *  生命周期解耦 —— native fetch 的网络 handle 会让进程存活到请求完成 / 3s abort,留在父进程里
  *  会拖住快命令的退出;丢给独立子进程后,父进程发完 spawn 立即返回、可正常退出,热路径零网络。
  *  worker 只在编译产物(dist/cli/lib/)里有 `.js`;dev 直接跑源码时不存在,existsSync 兜底跳过。 */
-function fetchAndStore(path: string, pkg: LocalPkg): void {
+function fetchAndStore(path: string, pkg: LocalPkg, channel: UpdateChannel): void {
   try {
     const worker = join(dirname(fileURLToPath(import.meta.url)), 'update-fetch-worker.js');
     if (!existsSync(worker)) return;
-    spawnDetached(worker, [path, pkg.registry, pkg.name]);
+    spawnDetached(worker, [path, pkg.registry, pkg.name, channel]);
   } catch {
     /* 静默:spawn 同步抛错(罕见)不影响正常使用 */
   }
@@ -297,7 +302,8 @@ export async function checkUpdate(lang: CliLang): Promise<void> {
   try {
     const pkg = readLocalPkg();
     if (!pkg) return;
-    const path = defaultCachePath();
+    const channel = updateChannel(pkg.version);
+    const path = defaultCachePath(OMK_HOME, channel);
     const cache = readCache(path);
     const plan = planUpdateActions(cache, pkg.version, new Date());
 
@@ -306,15 +312,15 @@ export async function checkUpdate(lang: CliLang): Promise<void> {
       const parts: BoxParts = {
         current: pkg.version,
         latest: cache.latestVersion,
-        upgradeCmd: 'npm i -g oh-my-knowledge@latest',
+        upgradeCmd: `npm i -g oh-my-knowledge@${channel}`,
         silenceHint: 'OMK_SKIP_UPDATE_CHECK=1',
       };
-      process.stderr.write(renderNotice(parts, pkg.name, lang, process.stderr.isTTY === true));
+      process.stderr.write(renderNotice(parts, lang, process.stderr.isTTY === true));
     }
 
     // 先把「发起检查」落盘(节流锚点),再 spawn 后台刷新 —— 失败/离线也不会每条命令重来
     if (plan.nextCache) writeCache(path, plan.nextCache);
-    if (plan.refresh) fetchAndStore(path, pkg);
+    if (plan.refresh) fetchAndStore(path, pkg, channel);
   } catch {
     /* 静默失败,不影响正常使用 */
   }

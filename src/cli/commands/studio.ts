@@ -11,8 +11,9 @@ import {
   projectReportsDir, globalReportsDir,
 } from '../../evidence/storage/directories.js';
 import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
-import type { ReportServer } from '../lib/shared.js';
-import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
+import type { ReportServer } from '../../studio/http/contracts.js';
+import { CliExit } from '../lib/cli-exit.js';
+import type { CommandFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';
 
 // dev / browser-open 测试需要 mock `node:child_process` + `node:os`,通过 in-process
@@ -22,6 +23,7 @@ export async function runStudio(
   _args: StudioArgs,
   flags: StudioFlags,
   lang: CliLang,
+  signal?: AbortSignal,
 ): Promise<void> {
   // reports 读取目录：显式 --reports-dir 固定该目录；--global 钉全局；默认聚合
   // 当前项目与全局 Core run。
@@ -44,6 +46,7 @@ export async function runStudio(
       cliPath,
       'studio',
       '--port', flags.port,
+      '--lang', lang,
       ...(flags.host ? ['--host', flags.host] : []),
     ];
     if (flags['reports-dir']) {
@@ -68,10 +71,23 @@ export async function runStudio(
       stdio: 'inherit',
       env: { ...process.env, __OMK_DEV_CHILD: '1' },
     });
-    // child 被 signal kill 时 code=null,用 ?? 退 1 让父进程感知异常退出,
-    // 不要 `code || 0` 把 null 当 0 假装成功(把 signal kill / unknown exit 也
-    // 当成功上报会让 omk studio --dev 的 crash 静默)。
-    child.on('exit', (code: number | null) => process.exit(code ?? 1));
+    const code = await new Promise<number>((resolveExit, reject) => {
+      let timer: NodeJS.Timeout | undefined;
+      const cancel = () => {
+        child.kill('SIGTERM');
+        timer ??= setTimeout(() => child.kill('SIGKILL'), 1_000);
+        timer.unref();
+      };
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        signal?.removeEventListener('abort', cancel);
+      };
+      child.once('error', (error) => { cleanup(); reject(error); });
+      child.once('close', (exitCode) => { cleanup(); resolveExit(exitCode ?? 1); });
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) cancel();
+    });
+    if (code !== 0) throw new CliExit(code);
     return;
   }
 
@@ -122,11 +138,21 @@ export async function runStudio(
     managedDir: (): string => resolveManagedDir(managedDir()),
   });
 
-  const url = await server.start();
-  console.log(tCli('cli.studio.started', lang, { url }));
-  console.log(tCli('cli.studio.stop_hint', lang));
-  if (!flags['no-open'] && process.stdout.isTTY) {
-    await openWorkbench(url, lang);
+  try {
+    const url = await server.start();
+    console.log(tCli('cli.studio.started', lang, { url }));
+    console.log(tCli('cli.studio.stop_hint', lang));
+    if (!flags['no-open'] && process.stdout.isTTY) {
+      await openWorkbench(url, lang);
+    }
+    if (signal) {
+      await new Promise<void>((resolveStopped) => {
+        if (signal.aborted) resolveStopped();
+        else signal.addEventListener('abort', () => resolveStopped(), { once: true });
+      });
+    }
+  } finally {
+    if (signal) await server.stop();
   }
 }
 
@@ -215,8 +241,11 @@ export default class Studio extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(Studio);
     const lang = this.lang;
-    await this.runWithCliExit(async () => {
-      await runStudio({}, { ...flags, lang }, lang);
+    await this.runWithCancellation(async (signal) => {
+      await runStudio({}, { ...flags, lang }, lang, signal);
     });
   }
 }
+
+export type StudioArgs = Record<string, never>;
+export type StudioFlags = CommandFlags<typeof Studio.flags>;

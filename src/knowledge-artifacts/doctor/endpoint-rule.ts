@@ -315,7 +315,7 @@ export function makeEndpointRule(
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...spec.headers },
             body: JSON.stringify(body),
-            signal: controller.signal,
+            signal: ctx.signal ? AbortSignal.any([ctx.signal, controller.signal]) : controller.signal,
             // redirect:'manual' —— 不跟随重定向。否则一个可信公网 endpoint 返回
             // 302 Location: http://169.254.169.254/… 即可让 fetch 透明跳到私网,
             // 绕过上面的 host 校验(请求前只校验一次原始 URL)。3xx 一律拒绝。

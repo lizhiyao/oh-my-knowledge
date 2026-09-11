@@ -1,3 +1,4 @@
+import { sanitizeCell } from '../../lib/cell-format.js';
 import { resolve } from 'node:path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
@@ -5,12 +6,16 @@ import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
 import { resolveRuntimeSelection } from '../../lib/runtime-defaults.js';
-import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
+import type { CommandFlags } from '../../lib/cmd-flags.js';
 import type { ObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
 import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
 import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/index.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import { ownRecordValue } from '../../../shared/record-count.js';
+
+function printText(value: string): void {
+  console.log(sanitizeCell(value));
+}
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
   const selected = value ? ownRecordValue(value, skillName) : undefined;
@@ -32,6 +37,7 @@ export async function runObserveInbox(
   _args: ObserveInboxArgs,
   flags: ObserveInboxFlags,
   lang: CliLang,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox/index.js');
   // 显式 --input-dir 最高;否则 --global 直读全局、默认读项目(空则 loadObservationInboxReports 兜底全局)。
@@ -47,9 +53,9 @@ export async function runObserveInbox(
       .filter(({ runtimeEvidence }) => hasLlmEnhancedRuntimeEvidence(runtimeEvidence));
     if (candidates.length === 0) {
       if (flags.json) {
-        console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records: [] }, null, 2));
+        console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-llm-enhanced-review', records: [] }, null, 2));
       } else {
-        console.log(lang === 'zh' ? '没有可用于 LLM 增强复盘的运行证据' : 'No runtime evidence is available for LLM enhanced review');
+        printText(lang === 'zh' ? '没有可用于 LLM 增强复盘的运行证据' : 'No runtime evidence is available for LLM enhanced review');
       }
       return;
     }
@@ -60,6 +66,7 @@ export async function runObserveInbox(
     const records = [];
     for (const { chain, runtimeEvidence } of candidates) {
       records.push(await extractSkillSoftStandards({
+        signal,
         observationsDir: dir,
         skillChain: chain,
         runtimeEvidence,
@@ -69,12 +76,12 @@ export async function runObserveInbox(
       }));
     }
     if (flags.json) {
-      console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records }, null, 2));
+      console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-llm-enhanced-review', records }, null, 2));
       return;
     }
-    console.log(lang === 'zh' ? 'LLM 增强复盘已生成:' : 'LLM enhanced review generated:');
+    printText(lang === 'zh' ? 'LLM 增强复盘已生成:' : 'LLM enhanced review generated:');
     for (const record of records) {
-      console.log(`- ${record.skillName} standards=${record.standards.length} model=${record.model} prompt=${record.promptId}/${record.promptVersion}`);
+      printText(`- ${record.skillName} standards=${record.standards.length} model=${record.model} prompt=${record.promptId}/${record.promptVersion}`);
     }
     return;
   }
@@ -102,19 +109,19 @@ export async function runObserveInbox(
       : loadLatestObservationInboxReports(dir);
     const rows = summarizeObservationInboxBySkill(items, reports);
     if (flags.json) {
-      console.log(JSON.stringify({ kind: 'observe-inbox-by-skill', rows }, null, 2));
+      console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-inbox-by-skill', rows }, null, 2));
       return;
     }
     if (rows.length === 0) {
-      console.log(lang === 'zh' ? 'observe inbox 为空' : 'observe inbox is empty');
+      printText(lang === 'zh' ? 'observe inbox 为空' : 'observe inbox is empty');
       return;
     }
-    console.log(lang === 'zh' ? 'observe inbox by skill:' : 'observe inbox by skill:');
+    printText(lang === 'zh' ? 'observe inbox by skill:' : 'observe inbox by skill:');
     for (const row of rows) {
-      console.log(`- ${row.skillName} invocations=${row.invocationCount} sessions=${row.sessionCount} processFindings=${row.observationCount} high=${row.highCount} medium=${row.mediumCount} low=${row.lowCount} noise=${row.noiseCount}${row.latestSeen ? ` latest=${row.latestSeen}` : ''}`);
+      printText(`- ${row.skillName} invocations=${row.invocationCount} sessions=${row.sessionCount} processFindings=${row.observationCount} high=${row.highCount} medium=${row.mediumCount} low=${row.lowCount} noise=${row.noiseCount}${row.latestSeen ? ` latest=${row.latestSeen}` : ''}`);
     }
     if (recyclableCount > 0) {
-      console.log(lang === 'zh'
+      printText(lang === 'zh'
         ? `提示：确认信号后生成评测用例草稿：${sampleCommand}`
         : `Tip: after confirming signals, draft regression samples: ${sampleCommand}`);
     }
@@ -130,33 +137,33 @@ export async function runObserveInbox(
   if (flags.json) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
     const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(dir, { skill: flags.skill });
-    console.log(JSON.stringify({ kind: 'observe-inbox-query', items, effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }, null, 2));
+    console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-inbox-query', items, effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }, null, 2));
     return;
   }
   if (items.length === 0) {
-    console.log(lang === 'zh' ? 'observe inbox 为空' : 'observe inbox is empty');
+    printText(lang === 'zh' ? 'observe inbox 为空' : 'observe inbox is empty');
     return;
   }
-  console.log(lang === 'zh' ? 'observe inbox:' : 'observe inbox:');
+  printText(lang === 'zh' ? 'observe inbox:' : 'observe inbox:');
   for (const item of items) {
     const evidence = item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || item.evidence.outputSnippet || '';
     const artifactVersion = item.artifactVersion === 'unknown' ? '⚠ unknown' : item.artifactVersion;
     const timestampedOccurrences = item.timestampedOccurrences
       ?? (item.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : item.occurrences);
-    console.log(`- [${item.severity}] (${item.sourceKind}) ${item.skillName} ${item.signalType}/${item.signalSubtype} x${item.occurrences} confidence=${item.confidence.toFixed(2)} attribution=${item.attributionConfidence.toFixed(2)}`);
-    console.log(`  lastSeen=${timestampedOccurrences > 0 ? item.lastSeen : 'unknown'} version=${artifactVersion}`);
-    console.log(`  reason=${item.severityReasonCode ?? 'unknown'}`);
-    if (evidence) console.log(`  evidence=${evidence.slice(0, 180)}`);
+    printText(`- [${item.severity}] (${item.sourceKind}) ${item.skillName} ${item.signalType}/${item.signalSubtype} x${item.occurrences} confidence=${item.confidence.toFixed(2)} attribution=${item.attributionConfidence.toFixed(2)}`);
+    printText(`  lastSeen=${timestampedOccurrences > 0 ? item.lastSeen : 'unknown'} version=${artifactVersion}`);
+    printText(`  reason=${item.severityReasonCode ?? 'unknown'}`);
+    if (evidence) printText(`  evidence=${evidence.slice(0, 180)}`);
   }
-  console.log('');
-  console.log(lang === 'zh'
+  printText('');
+  printText(lang === 'zh'
     ? 'Tip: omk observe inbox --explore 10  # 抽样查看 medium/low 长尾'
     : 'Tip: omk observe inbox --explore 10  # sample medium/low long-tail items');
-  console.log(lang === 'zh'
+  printText(lang === 'zh'
     ? 'Tip: omk observe inbox --explore 10 --include-noise  # 显式包含 noise 桶'
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
   if (recyclableCount > 0) {
-    console.log(lang === 'zh'
+    printText(lang === 'zh'
       ? `提示：确认高风险或抽样信号后生成评测用例草稿：${sampleCommand}`
       : `Tip: after confirming high-risk / sampled signals, draft regression samples: ${sampleCommand}`);
   }
@@ -302,7 +309,7 @@ export default class ObserveInbox extends BaseCommand {
       }),
     }),
     json: Flags.boolean({
-      description: bilingual({ zh: 'JSON 格式输出', en: 'JSON output' }),
+      description: bilingual({ zh: 'JSON 格式输出（schemaVersion: 1，kind 标识查询、聚合或增强复盘）', en: 'JSON output (schemaVersion: 1; kind identifies query, aggregation, or enhanced review)' }),
       default: false,
     }),
   };
@@ -310,8 +317,11 @@ export default class ObserveInbox extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveInbox);
     const lang = this.lang;
-    await this.runWithCliExit(async () => {
-      await runObserveInbox(args as Record<string, never>, { ...flags, lang }, lang);
+    await this.runWithCancellation(async (signal) => {
+      await runObserveInbox(args as Record<string, never>, { ...flags, lang }, lang, signal);
     });
   }
 }
+
+export type ObserveInboxArgs = Record<string, never>;
+export type ObserveInboxFlags = CommandFlags<typeof ObserveInbox.flags>;

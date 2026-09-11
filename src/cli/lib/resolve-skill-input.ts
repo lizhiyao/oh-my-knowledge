@@ -26,7 +26,7 @@ export interface ResolvedSkillInput {
 // `eval-samples.json`。
 //
 // 错误用 tCli 走 i18n,调用方直接 console.error err.message 给用户看,zh/en 都要正确。
-export function resolveSkillInput(input: string, lang: CliLang): ResolvedSkillInput {
+export function resolveSkillInput(input: string, lang: CliLang, options: { samples?: string; projectFallback?: boolean } = {}): ResolvedSkillInput {
   const resolved = resolve(input);
   if (!existsSync(resolved)) {
     throw new Error(tCli('cli.common.skill_file_not_found', lang, { path: resolved }));
@@ -49,8 +49,8 @@ export function resolveSkillInput(input: string, lang: CliLang): ResolvedSkillIn
 
   // 形态以解析后的 skillPath 命名为准:目录-skill 的 skillPath 总是 `.../SKILL.md`。
   const isDirectorySkill = basename(skillPath) === 'SKILL.md';
-  const samplesPath = withLocalizedSampleDiscovery(() => (isDirectorySkill
-    ? findSkillSamplesPath(skillDir) ?? defaultSkillLocalSamplesFile(skillDir)
+  const samplesPath = options.samples ?? withLocalizedSampleDiscovery(() => (isDirectorySkill
+    ? findSkillSamplesPath(skillDir) ?? (options.projectFallback ? findProjectSamplesFile(process.cwd()) : undefined) ?? defaultSkillLocalSamplesFile(skillDir)
     : findProjectSamplesFile(process.cwd())
       ?? 'eval-samples.json'), lang);
 

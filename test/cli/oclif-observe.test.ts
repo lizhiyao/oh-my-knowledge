@@ -125,13 +125,31 @@ describe('oclif observe', () => {
     assert.ok(stdout.includes('--global'), 'should list --global flag');
   });
 
-  it('observe inbox --json 实跑(空 inbox 返回空数组)', async () => {
-    // 不传 --input-dir,走 default 目录;若该目录不存在或空,应返回 empty items 但 exit 0
-    const { stdout } = await execFileAsync('node', [CLI, 'observe', 'inbox', '--json']);
-    const parsed = JSON.parse(stdout);
-    assert.equal(parsed.kind, 'observe-inbox-query');
-    assert.ok(Array.isArray(parsed.items), 'items should be array');
-  });
+  for (const [mode, kind, field] of [
+    [[], 'observe-inbox-query', 'items'],
+    [['--by-skill'], 'observe-inbox-by-skill', 'rows'],
+    [['--llm-enhanced-review'], 'observe-llm-enhanced-review', 'records'],
+  ] as const) {
+    it(`observe inbox ${kind} preserves empty results in a v1 JSON envelope`, async () => {
+      const root = mkdtempSync(join(tmpdir(), 'omk-inbox-envelope-'));
+      try {
+        const { stdout, stderr } = await execFileAsync(process.execPath, [
+          CLI, 'observe', 'inbox', '--input-dir', root, '--json', ...mode,
+        ], {
+          cwd: root,
+          env: { ...process.env, HOME: root, OMK_HOME: root, OMK_SKIP_UPDATE_CHECK: '1' },
+        });
+        const parsed = JSON.parse(stdout);
+        assert.equal(parsed.schemaVersion, 1);
+        assert.equal(parsed.kind, kind);
+        assert.deepEqual(parsed[field], []);
+        assert.equal(stderr, '');
+        assert.deepEqual(readdirSync(root), [], 'reading an empty inbox must not persist files');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
 
   it('observe show 缺 inbox id → exit 2(oclif required-args)', async () => {
     try {

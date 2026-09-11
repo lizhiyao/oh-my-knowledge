@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildManagedArtifactRecord, upsertManagedRecord, loadManagedRecord, managedRecordId } from '../../../src/knowledge-artifacts/governance/store.js';
 import { recordObserveHealth, type ObservedSkillHealthView } from '../../../src/knowledge-artifacts/governance/observe-feedback.js';
-import { buildObserveReportView } from '../../../src/cli/commands/observe/index.js';
+import { buildObserveReportView } from '../../../src/observability/skill-health/persistence.js';
 import { healthBandOf } from '../../../src/observability/skill-health/analyzer.js';
 import type { SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
 import type { ArtifactKind } from '../../../src/knowledge-artifacts/contracts.js';

@@ -1,5 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { interruptedExecResult } from '../../../src/executors/core/runtime.js';
 import {
   buildSamplesFromTracesPrompt,
   buildSamplesPrompt,
@@ -13,8 +14,19 @@ import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 
 describe('generateSamples', () => {
-  it('is a function', () => {
-    assert.equal(typeof generateSamples, 'function');
+  it('取消会传入执行器并停止重试，不把中断当作生成失败继续调用', async () => {
+    const cancellation = new AbortController();
+    let calls = 0;
+    await assert.rejects(() => generateSamples({
+      skillContent: '# Example', model: 'fixture', executorName: 'custom', signal: cancellation.signal,
+      executor: async (input) => {
+        calls += 1;
+        assert.equal(input.abortSignal, cancellation.signal);
+        cancellation.abort();
+        return interruptedExecResult(0);
+      },
+    }), { name: 'AbortError' });
+    assert.equal(calls, 1);
   });
 
   it('throws on invalid executor (script not found)', async () => {

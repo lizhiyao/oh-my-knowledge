@@ -231,7 +231,7 @@ describe('oclif init', () => {
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
-      assert.notEqual(e.code, 0, `expected non-zero exit, got ${e.code}`);
+      assert.equal(e.code, 2, `expected non-zero exit, got ${e.code}`);
       const out = e.stdout + e.stderr;
       assert.ok(/不能以 -- 开头/.test(out), `expected zh footgun msg, got:\n${out.slice(0, 200)}`);
       assert.ok(!existsSync('--weird'), '--weird directory must not be created');
@@ -244,9 +244,16 @@ describe('oclif init', () => {
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
-      assert.notEqual(e.code, 0);
+      assert.equal(e.code, 2);
       const out = e.stdout + e.stderr;
       assert.ok(/cannot start with --/.test(out), `expected en footgun msg, got:\n${out.slice(0, 200)}`);
     }
   });
+  it.each(['', '   '])('rejects empty directory %j with argument exit code 2', async (directory) => {
+    await assert.rejects(() => runCommand(InitCommand, [directory]), (error: ExecError) => {
+      assert.equal(error.code, 2);
+      return true;
+    });
+  });
+
 });

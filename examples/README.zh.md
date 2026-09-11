@@ -20,7 +20,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 | 检查目录式 skill | [skill-map-showcase](./skill-map-showcase/README.zh.md) | Frontmatter、references、scripts、workflows、私有用例、Doctor 与 Skill Map | `cd examples/skill-map-showcase && omk doctor skills/release-readiness --static-only` | 否 |
 | 评测基于上下文的回答 | [rag-eval](./rag-eval/README.zh.md) | `faithfulness`、`answer_relevancy` 与 `context_recall` 断言 | `cd examples/rag-eval && omk eval --control context-answerer --treatment rag-answerer --dry-run` | dry-run 否；真实评测是 |
 | 评测理解仓库的 agent | [agent-runtime](./agent-runtime/README.zh.md) | 用例级工作目录与基于文件的任务证据 | `cd examples/agent-runtime && omk eval --control repo-answerer --treatment repo-navigator --dry-run` | dry-run 否；真实评测是 |
-| 接入执行器 | [custom-executor](./custom-executor/README.zh.md) | 当前封存的 JSON stdin／stdout 契约、确定性本地烟测与 Ollama adapter | `cd examples/custom-executor && omk eval --control baseline --treatment echo-assistant --executor ./echo-executor.sh --no-judge --report-only` | echo executor 否 |
+| 接入执行器 | [custom-executor](./custom-executor/README.zh.md) | 当前封存的 JSON stdin／stdout 契约、确定性本地烟测与 Ollama adapter | `cd examples/custom-executor && omk eval --control baseline --treatment echo-assistant --executor ./echo-executor.sh --model echo --no-judge --report-only` | echo executor 否 |
 | 验证 Codex trace 摄取 | [codex-observe-router](./codex-observe-router/README.zh.md) | 父子任务路由、Trace IR、知识缺口信号与紧凑报告持久化 | `yarn build && OMK_BIN="$PWD/dist/cli/index.js" OMK_PACKAGE_ROOT="$PWD" node examples/codex-observe-router/verify.mjs` | 否 |
 | 查看真实任务轨迹 | [codex-task-trajectory](./codex-task-trajectory/README.zh.md) | 将脱敏 Codex 任务展示为 Knowledge、执行、结果、规范化事件和源记录证据 | 先运行 `yarn build`，再执行示例 README 中的命令 | 否 |
 

@@ -26,15 +26,21 @@ const EXIT_BUDGET_MS = 2500; // 远低于 worker 的 3000ms abort;命令本身�
 let server: Server;
 let port: number;
 const sockets = new Set<Socket>();
+let acceptedConnections = 0;
 
 beforeAll(async () => {
   // 只 accept、不回应:HTTP 请求会一直挂着,直到客户端 abort
   server = createServer((sock) => {
+    acceptedConnections += 1;
     sockets.add(sock);
+    sock.resume(); // Drain request bytes so remote EOF can be observed; never send a response.
     sock.on('close', () => sockets.delete(sock));
     sock.on('error', () => sockets.delete(sock));
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
   port = (server.address() as AddressInfo).port;
 });
 
@@ -54,11 +60,12 @@ describe('update check background refresh must not delay CLI exit', () => {
       JSON.stringify({ latestVersion: '0.0.1', lastCheckedAt: '2020-01-01T00:00:00.000Z' }),
     );
 
-    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home, npm_config_registry: `http://127.0.0.1:${port}/` };
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home, OMK_HOME: join(home, '.oh-my-knowledge'), npm_config_registry: `http://127.0.0.1:${port}/` };
     delete env.NODE_ENV; // 否则 shouldSkipUpdateCheck 直接跳过,测不到刷新路径
     delete env.CI;
     delete env.OMK_SKIP_UPDATE_CHECK;
 
+    const previousConnections = acceptedConnections;
     const t0 = Date.now();
     try {
       // doctor 指向不存在的 skill,快速失败(exit 1);execFileAsync 因非零退出 reject,计时照常
@@ -67,7 +74,22 @@ describe('update check background refresh must not delay CLI exit', () => {
       /* 预期非零退出,忽略 */
     }
     const ms = Date.now() - t0;
-    rmSync(home, { recursive: true, force: true });
+    // Prove the worker actually attempted the request; a skipped update check is
+    // not evidence that detaching avoids holding the parent alive.
+    const deadline = Date.now() + 7000;
+    try {
+      while (acceptedConnections === previousConnections && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(acceptedConnections > previousConnections, 'background worker never contacted the registry');
+      while (sockets.size > 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.equal(sockets.size, 0, 'worker did not close its timed-out request');
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      rmSync(home, { recursive: true, force: true });
+    }
 
     assert.ok(
       ms < EXIT_BUDGET_MS,

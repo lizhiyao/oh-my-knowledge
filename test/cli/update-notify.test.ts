@@ -261,21 +261,23 @@ describe('renderNotice (TTY vs pipe branch)', () => {
   };
 
   it('renders the multi-line box on a TTY', () => {
-    const out = renderNotice(parts, 'oh-my-knowledge', 'zh', true);
+    const out = renderNotice(parts, 'zh', true);
     expect(out).toContain('┌');
     expect(out.split('\n').filter((l) => l.startsWith('│')).length).toBe(4);
   });
 
   it('falls back to a single line off a TTY (no box chars)', () => {
-    const out = renderNotice(parts, 'oh-my-knowledge', 'zh', false);
+    const out = renderNotice(parts, 'zh', false);
     expect(out).not.toContain('┌');
     expect(out).not.toContain('│');
     expect(out.trim().split('\n').length).toBe(1);
   });
 
-  it('the fallback line carries the new upgrade command (guards the rename)', () => {
-    expect(renderNotice(parts, 'oh-my-knowledge', 'zh', false)).toContain('npm i -g oh-my-knowledge@latest');
-    expect(renderNotice(parts, 'oh-my-knowledge', 'en', false)).toContain('npm i -g oh-my-knowledge@latest');
+  it.each(['latest', 'next'])('both languages preserve the %s upgrade channel off a TTY', (channel) => {
+    const command = `npm i -g oh-my-knowledge@${channel}`;
+    for (const lang of ['zh', 'en'] as const) {
+      expect(renderNotice({ ...parts, upgradeCmd: command }, lang, false)).toContain(command);
+    }
   });
 });
 

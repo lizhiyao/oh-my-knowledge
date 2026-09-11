@@ -1,7 +1,7 @@
 /**
  * 受管记录 per-record 文件存储的单测。
  */
-import { describe, it, beforeEach, afterEach } from 'vitest';
+import { describe, it, beforeEach, afterEach, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +16,7 @@ import {
   mergeManagedRecord,
   upsertManagedRecord,
   appendManagedDecision,
+  appendManagedEvidence,
   appendManagedObservation,
   rebaselineManagedContentHash,
   deriveManagedState,
@@ -25,6 +26,15 @@ import {
 } from '../../../src/knowledge-artifacts/governance/store.js';
 import type { ManagedArtifactRecord, ManagedDecision, ManagedObservation } from '../../../src/knowledge-artifacts/governance/contracts.js';
 import { coreManagedEvidence } from '../../helpers/core-managed-evidence.js';
+
+const fault = vi.hoisted(() => ({ write: false }));
+vi.mock('../../../src/shared/atomic-json.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/shared/atomic-json.js')>();
+  return { ...actual, writeJsonFileAtomic: (...args: Parameters<typeof actual.writeJsonFileAtomic>) => {
+    if (fault.write) throw new Error('injected EIO');
+    return actual.writeJsonFileAtomic(...args);
+  } };
+});
 
 const GAP0 = { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 };
 const TEST_AT = '2026-06-10T00:00:00.000Z';
@@ -55,10 +65,50 @@ function makeRecord(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactR
 describe('managed store', () => {
   let dir: string;
   beforeEach(() => {
+    fault.write = false;
     dir = mkdtempSync(join(tmpdir(), 'omk-managed-'));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('提交 evolve 基线与证据时原子更新，重复提交不追加证据', () => {
+    const record = makeRecord();
+    upsertManagedRecord(dir, record);
+    const evidence = coreManagedEvidence('b'.repeat(64));
+    const options = { rebaselineFromHash: record.contentHash };
+    appendManagedEvidence(dir, record.id, evidence, options);
+    appendManagedEvidence(dir, record.id, evidence, options);
+    const saved = loadManagedRecord(dir, record.id)!;
+    assert.equal(saved.contentHash, evidence.contentHash);
+    assert.deepEqual(saved.evidence, [evidence]);
+    assert.deepEqual(saved.distribution, record.distribution);
+  });
+
+  it('过期基线或非法证据均不改变现有记录', () => {
+    const record = makeRecord();
+    upsertManagedRecord(dir, record);
+    assert.throws(() => appendManagedEvidence(dir, record.id, coreManagedEvidence('b'.repeat(64)), {
+      rebaselineFromHash: 'stale',
+    }), /baseline changed/);
+    assert.throws(() => appendManagedEvidence(dir, record.id, coreManagedEvidence('b'.repeat(64), { reportDigest: 'invalid' }), {
+      rebaselineFromHash: record.contentHash,
+    }), /invalid managed evidence/);
+    assert.deepEqual(loadManagedRecord(dir, record.id), record);
+  });
+
+  it('治理提交写入失败保留旧基线和证据，恢复后可安全重试', () => {
+    const record = makeRecord();
+    upsertManagedRecord(dir, record);
+    const evidence = coreManagedEvidence('b'.repeat(64));
+    const options = { rebaselineFromHash: record.contentHash };
+    fault.write = true;
+    assert.throws(() => appendManagedEvidence(dir, record.id, evidence, options), /injected EIO/);
+    assert.deepEqual(loadManagedRecord(dir, record.id), record);
+    fault.write = false;
+    appendManagedEvidence(dir, record.id, evidence, options);
+    assert.equal(loadManagedRecord(dir, record.id)?.contentHash, evidence.contentHash);
+    assert.deepEqual(loadManagedRecord(dir, record.id)?.evidence, [evidence]);
   });
 
   it('managedRecordId 仅取决于 (kind, name),与源路径无关', () => {
@@ -313,6 +363,18 @@ describe('managed store', () => {
     assert.equal(merged?.decisions.length, 1);
     assert.equal(merged?.decisions[0].decisionKind, 'promote');
     assert.deepEqual(loadManagedRecord(store, written.id)?.decisions[0].runId, 'r1', '落盘可读回');
+  });
+
+  it('决定提交拒绝过期判定快照，保留并发写入并允许重新判定', () => {
+    const store = managedDir(dir);
+    const snapshot = upsertManagedRecord(store, makeRecord());
+    appendManagedEvidence(store, snapshot.id, coreManagedEvidence(snapshot.contentHash));
+    const changed = loadManagedRecord(store, snapshot.id)!;
+    assert.equal(appendManagedDecision(store, snapshot.id, promoteDecision(), { expectedRecord: snapshot }), null);
+    assert.deepEqual(loadManagedRecord(store, snapshot.id), changed);
+    const committed = appendManagedDecision(store, snapshot.id, promoteDecision(), { expectedRecord: changed });
+    assert.equal(committed?.decisions.length, 1);
+    assert.equal(committed?.evidence.length, 1);
   });
 
   it('appendManagedDecision:当前内容已 promote 同 kind → 幂等不重复追加', () => {

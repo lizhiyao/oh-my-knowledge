@@ -1,29 +1,35 @@
 import { resolve, join, dirname, extname } from 'node:path';
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
-import { Args, Flags } from '@oclif/core';
+import { existsSync, readFileSync, readdirSync, mkdirSync, statSync } from 'node:fs';
+import { Args, Flags, type Interfaces } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
-import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
+import { enumStringParser, integerStringParser, nonEmptyStringParser, numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { createEvalSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
-import { stringifySampleDocument } from '../../eval-workflows/inputs/sample-document.js';
-import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
+import { createJsonFileAtomic } from '../../shared/atomic-json.js';
+import type { CommandFlags } from '../lib/cmd-flags.js';
 import type {
   CoreEvolveOutcomeInput,
   EvolveOutcomeResult,
-} from '../lib/record-evolve-outcome.js';
+} from '../../knowledge-artifacts/governance/evolve-outcome.js';
+import { sanitizeCell } from '../lib/cell-format.js';
 import { envJudgeModels, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 
-/** 受管联动旁路:evolve 写回 source 后记证据 + re-baseline。任何异常都不该让 evolve 失败,
- *  故 try/catch 吞掉、返回 null(同 eval 的 recordEvidenceSafely 口径)。 */
-async function recordEvolveOutcomeSafely(input: CoreEvolveOutcomeInput): Promise<EvolveOutcomeResult | null> {
+/** Feedback failures remain non-fatal, but are distinct from an unmanaged/no-change result. */
+type EvolveFeedback =
+  | { status: 'recorded'; value: EvolveOutcomeResult }
+  | { status: 'not-applicable' }
+  | { status: 'failed'; error: unknown };
+
+async function recordEvolveOutcomeSafely(input: CoreEvolveOutcomeInput): Promise<EvolveFeedback> {
   try {
-    const { recordCoreEvolveOutcome } = await import('../lib/record-evolve-outcome.js');
-    return recordCoreEvolveOutcome(input);
-  } catch {
-    return null;
+    const { recordCoreEvolveOutcome } = await import('../../knowledge-artifacts/governance/evolve-outcome.js');
+    const value = recordCoreEvolveOutcome(input);
+    return value ? { status: 'recorded', value } : { status: 'not-applicable' };
+  } catch (error) {
+    return { status: 'failed', error };
   }
 }
 
@@ -92,7 +98,7 @@ export function sampleSourceExists(p: string): boolean {
 }
 
 /** 自动生成时的落盘目标:已存在的目录(含带点目录名,如 samples.v2/)→ 写进目录内的
- *  eval-samples.json;已存在的文件 → 覆盖该文件;不存在 → 按扩展名(有扩展名当文件,无扩展名
+ *  eval-samples.json;已存在的文件 → 返回该路径(加载校验会拒绝空或损坏文档);不存在 → 按扩展名(有扩展名当文件,无扩展名
  *  当目录,落 eval-samples.json)。与 sampleSourceExists 同用 statSync 判型,不被带点目录名
  *  误当成文件(否则 writeFileSync 撞 EISDIR)。 */
 export function resolveSampleOutFile(samplesAbs: string): string {
@@ -103,22 +109,21 @@ export function resolveSampleOutFile(samplesAbs: string): string {
   }
 }
 
-// runEvolve module-level helper:cli-exit.test 测「skillPath 空 throw CliExit(1)」走
-// in-process import 验证业务,Command.run() body 直接调它。
 export async function runEvolve(
   args: EvolveArgs,
   flags: EvolveFlags,
   lang: CliLang,
+  signal?: AbortSignal,
 ): Promise<void> {
   const skillPathArg: string = args.skillPath;
-  if (!skillPathArg) {
+  if (!skillPathArg.trim()) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
-    throw new CliExit(1);
+    throw new CliExit(2);
   }
 
   const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
   let resolvedInput;
-  try { resolvedInput = resolveSkillInput(skillPathArg, lang); } catch (err) {
+  try { resolvedInput = resolveSkillInput(skillPathArg, lang, { samples: flags.samples, projectFallback: true }); } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     throw new CliExit(1);
   }
@@ -127,10 +132,7 @@ export async function runEvolve(
   // 目录」:帮助文档鼓励传 `skills/foo/SKILL.md`,若按入参判会得 false、匹配不到 install 落的目录记录(漂移永不消)。
   const skillIsDir = resolvedInput.isDirectorySkill;
 
-  let samplesFile: string = flags.samples;
-  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
-    samplesFile = resolvedInput.samplesPath;
-  }
+  const samplesFile = resolvedInput.samplesPath;
 
   // 参数校验必须早于任何昂贵副作用(自动生成用例 / LLM 调用)。
   const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config/judge-models.js');
@@ -143,6 +145,13 @@ export async function runEvolve(
   // 无用例时自动生成 —— 让 omk evolve 成为「检测(doctor) → 生成用例 → 自迭代」一键命令。
   // 已有用例(且非空)则原样使用;生成失败按普通错误退出。
   const samplesAbs = resolve(samplesFile);
+  if (flags.samples !== undefined && !existsSync(samplesAbs)) {
+    console.error(lang === 'zh'
+      ? `指定的样本源不存在：${samplesAbs}。请先准备样本；省略 --samples 才会自动发现或生成。`
+      : `Explicit sample source does not exist: ${samplesAbs}. Prepare it first; omit --samples for discovery or generation.`);
+    throw new CliExit(1);
+  }
+  process.stderr.write(lang === 'zh' ? `样本源：${samplesAbs}\n` : `Sample source: ${samplesAbs}\n`);
   let hasSamples = false;
   let loadErr: Error | null = null;
   try {
@@ -162,23 +171,24 @@ export async function runEvolve(
     throw new CliExit(1);
   }
 
+  if (!hasSamples && flags.samples !== undefined) {
+    console.error(lang === 'zh'
+      ? `指定的样本源为空：${samplesAbs}。请先准备样本；evolve 不会替换显式指定的样本。`
+      : `Explicit sample source is empty: ${samplesAbs}. Prepare samples first; evolve will not replace an explicit source.`);
+    throw new CliExit(1);
+  }
+
   if (!hasSamples) {
     try {
       const { generateSamples } = await import('../../knowledge-artifacts/authoring/generator.js');
       const skillContent = readFileSync(resolve(skillPath), 'utf-8');
-      // outFile:已存在目录写进内部 eval-samples.json,已存在文件覆盖,不存在按扩展名 —— statSync
-      // 判型,不被带点目录名(samples.v2/)骗。loadSamples 目录模式会自动发现生成的文件。
+      // Publish exclusively so a destination created during generation cannot be overwritten.
       const outFile = resolveSampleOutFile(samplesAbs);
-      // sourceExists 为真 = 用例源存在但解析出 0 条(合法空 [])→ 明示"重新生成覆盖空文件",
-      // 不静默盖用户文件;为假 = 真没有用例源 → "未发现，生成"。
       process.stderr.write(lang === 'zh'
-        ? (sourceExists
-            ? `评测用例为空，正在重新生成并覆盖 ${outFile} …\n`
-            : `未发现评测用例，正在自动生成到 ${outFile} …\n`)
-        : (sourceExists
-            ? `Samples are empty; regenerating (overwriting) ${outFile} …\n`
-            : `No samples found; auto-generating to ${outFile} …\n`));
+        ? `未发现评测用例，正在自动生成到 ${outFile} …\n`
+        : `No samples found; auto-generating to ${outFile} …\n`);
       const { samples, costUSD } = await generateSamples({
+        signal,
         skillContent,
         model: flags.model,
         executorName: flags.executor,
@@ -192,10 +202,7 @@ export async function runEvolve(
         throw new CliExit(1);
       }
       mkdirSync(dirname(outFile), { recursive: true });
-      writeFileSync(
-        outFile,
-        stringifySampleDocument(outFile, createEvalSampleSetDocument(samples)),
-      );
+      createJsonFileAtomic(outFile, createEvalSampleSetDocument(samples));
       const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       process.stderr.write(lang === 'zh'
         ? `已生成 ${samples.length} 条用例${cost}，开始自迭代。\n`
@@ -214,35 +221,33 @@ export async function runEvolve(
   const { runCoreEvaluationCommand } = await import('../lib/run-core-evaluation.js');
   const { prepareCliEvaluation } = await import('../lib/prepare-evaluation.js');
   const evolveEffort = flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined;
-  const evaluatePair = async (control: string, treatment: string) => {
-    const evaluation = await runCoreEvaluationCommand({
-      prepared: prepareCliEvaluation({
-        control,
-        treatment,
-        samples: resolve(samplesFile),
-        'skill-dir': dirname(resolve(skillPath)),
-        executor: flags.executor,
-        model: flags.model,
-        'judge-models': evolveJudges.map((judge) => `${judge.executor}:${judge.model}`).join(','),
-        concurrency: Math.max(1, Number(flags.concurrency) || 1),
-        timeout: Math.max(1, Math.ceil(Number(flags.timeout) || 600)),
-        effort: evolveEffort,
-        'skip-doctor': flags['skip-doctor'],
-        'no-evidence': true,
-        'no-serve': true,
-        'report-only': true,
-      }, { lang: 'zh' }),
-    });
-    if (evaluation.stored === undefined) {
-      throw new Error('Core evolve evaluation 未持久化 artifact chain。');
-    }
+  const { createEvolutionEvaluator } = await import('../../eval-workflows/hosts/composition/evolution-evaluation.js');
+  const prepared = prepareCliEvaluation({
+    control: 'baseline',
+    treatment: skillPath,
+    samples: resolve(samplesFile),
+    'skill-dir': dirname(resolve(skillPath)),
+    executor: flags.executor,
+    model: flags.model,
+    'judge-models': evolveJudges.map((judge) => `${judge.executor}:${judge.model}`).join(','),
+    concurrency: Math.max(1, Number(flags.concurrency) || 1),
+    timeout: Math.max(1, Math.ceil(Number(flags.timeout) || 600)),
+    effort: evolveEffort,
+    'skip-doctor': flags['skip-doctor'],
+    'no-evidence': true,
+    'no-serve': true,
+    'report-only': true,
+  }, { lang });
+  const evaluatePair = createEvolutionEvaluator(prepared.parseInput, async (request) => {
+    const evaluation = await runCoreEvaluationCommand({ signal, prepared: { ...prepared, request } });
     return evaluation.stored;
-  };
+  });
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
   try {
     const result: EvolveResult = await evolveSkillCore({
+      signal,
       skillPath: resolve(skillPath),
       isDirectorySkill: skillIsDir,
       rounds: Math.max(1, Number(flags.rounds) || 5),
@@ -315,9 +320,15 @@ export async function runEvolve(
         skillDir: resolvedInput.skillDir,
         isDirectorySkill: skillIsDir,
       });
-      if (recorded) {
+      if (recorded.status === 'failed') {
+        const message = sanitizeCell(recorded.error instanceof Error ? recorded.error.message : String(recorded.error));
+        process.stderr.write(lang === 'zh'
+          ? `治理证据写入失败：${message}。评测产物已保留，请检查受管目录后补记证据。\n`
+          : `Managed evidence write failed: ${message}. Evaluation artifacts are preserved; check the managed directory and record the evidence again.\n`);
+      }
+      if (recorded.status === 'recorded') {
         process.stderr.write(tCli('cli.evolve.evidence_recorded_managed', lang, {
-          name: recorded.name, verdict: recorded.verdict,
+          name: recorded.value.name, verdict: recorded.value.verdict,
         }));
       }
     }
@@ -359,6 +370,7 @@ export default class Evolve extends BaseCommand {
 
   static args = {
     skillPath: Args.string({
+      parse: nonEmptyStringParser('skillPath'),
       description: bilingual({
         zh: 'skill 文件或 SKILL.md 路径。',
         en: 'Skill file or SKILL.md path.',
@@ -382,13 +394,14 @@ export default class Evolve extends BaseCommand {
       parse: numberStringParser('--target', { min: 0, max: 5 }),
     }),
     samples: Flags.string({
+      parse: nonEmptyStringParser('--samples'),
       description: bilingual({
-        zh: '用例文件路径，默认 eval-samples.json',
-        en: 'Samples file, default eval-samples.json',
+        zh: '指定已有样本源；省略时先找 skill 私有样本，再找项目样本，都不存在时自动生成',
+        en: 'Existing sample source; otherwise discover skill-local then project samples, generating only when neither exists',
       }),
-      default: 'eval-samples.json',
     }),
     model: Flags.string({
+      parse: nonEmptyStringParser('--model'),
       description: bilingual({
         zh: '被评测的 LLM。Codex 自动读取本机配置；无用例时也用作自动生成用例的出题模型。',
         en: 'Evaluated LLM. Codex reads the local configured model. Also used to generate samples when none exist.',
@@ -401,6 +414,7 @@ export default class Evolve extends BaseCommand {
       }),
     }),
     'improve-model': Flags.string({
+      parse: nonEmptyStringParser('--improve-model'),
       description: bilingual({
         zh: '负责重写 skill 的 LLM，默认沿用被测模型',
         en: 'LLM that rewrites the skill; defaults to the evaluated model',
@@ -417,6 +431,7 @@ export default class Evolve extends BaseCommand {
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     executor: Flags.string({
+      parse: nonEmptyStringParser('--executor'),
       description: bilingual({
         zh: '执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
         en: 'Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
@@ -478,7 +493,7 @@ export default class Evolve extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Evolve);
     const lang = this.lang;
-    await this.runWithCliExit(async () => {
+    await this.runWithCancellation(async (signal) => {
       const runtime = resolveRuntimeSelection(
         { executor: flags.executor, model: flags.model },
         { lang },
@@ -492,7 +507,10 @@ export default class Evolve extends BaseCommand {
           ?? `${runtime.executor}:${runtime.judgeModel}`,
         'improve-model': flags['improve-model'] ?? runtime.model,
         lang,
-      }, lang);
+      }, lang, signal);
     });
   }
 }
+
+export type EvolveArgs = Interfaces.InferredArgs<typeof Evolve.args>;
+export type EvolveFlags = CommandFlags<typeof Evolve.flags> & { model: string; executor: string; 'judge-models': string; 'improve-model': string };

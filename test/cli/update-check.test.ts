@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSemverGt } from '../../src/cli/lib/update-check.js';
+import { isSemverGt, updateChannel, defaultCachePath } from '../../src/cli/lib/update-check.js';
 
 describe('isSemverGt', () => {
   it('正确比较 major / minor / patch', () => {
@@ -43,5 +43,15 @@ describe('isSemverGt', () => {
     expect(isSemverGt('1.0.0', '')).toBe(false);
     expect(isSemverGt('not-a-version', '1.0.0')).toBe(false);
     expect(isSemverGt('1.0.0', 'not-a-version')).toBe(false);
+  });
+});
+
+
+describe('update channel matches publishing', () => {
+  it('uses next for prereleases and isolates its cache from stable releases', () => {
+    expect(updateChannel('1.0.0-beta.7')).toBe('next');
+    expect(updateChannel('1.0.0-rc.1+build')).toBe('next');
+    expect(updateChannel('1.0.0+build-7')).toBe('latest');
+    expect(defaultCachePath('/isolated', 'next')).not.toBe(defaultCachePath('/isolated', 'latest'));
   });
 });

@@ -1,9 +1,11 @@
 import { resolve, join, relative, sep } from 'node:path';
-import { Args, Flags } from '@oclif/core';
+import { Args, Flags, Errors } from '@oclif/core';
 import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
+import { nonEmptyStringParser } from '../oclif/parsers.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
+import { writeProjectScaffold } from '../../knowledge-artifacts/authoring/scaffold.js';
 import { projectLayout } from '../../evidence/storage/layout.js';
 import {
   DEFAULT_INIT_SAMPLE_COUNT,
@@ -104,12 +106,13 @@ export default class Init extends BaseCommand {
       required: false,
       parse: async (input: string): Promise<string> => {
         // 在参数解析阶段拒绝疑似遗漏的 flag，避免误建名为 `--weird` 的目录。
+        await nonEmptyStringParser('directory')(input);
         if (input.startsWith('--')) {
           const lang = resolveLang();
           const msg = lang === 'zh'
             ? `初始化目录不能以 -- 开头：${input}（看起来是误写的 flag）`
             : `init target dir cannot start with --: ${input} (looks like a malformed flag)`;
-          throw new Error(msg);
+          throw new Errors.CLIError(msg, { exit: 2 });
         }
         return input;
       },
@@ -144,7 +147,7 @@ export default class Init extends BaseCommand {
       const sampleCount = flags.samples === String(FULL_INIT_SAMPLE_COUNT)
         ? FULL_INIT_SAMPLE_COUNT
         : DEFAULT_INIT_SAMPLE_COUNT;
-      const { existsSync, writeFileSync, mkdirSync } = await import('node:fs');
+      const { existsSync } = await import('node:fs');
       const scaffoldFiles = [
         join(targetDir, 'eval-samples.json'),
         join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'),
@@ -158,16 +161,12 @@ export default class Init extends BaseCommand {
         throw new Error(tCli('cli.init.existing_files', lang, { paths: existingFiles.join(', ') }));
       }
 
-      // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
-      // cwd 默认锚到 skill 根目录,后续可在同目录下放 assets / 子文档。
-      mkdirSync(join(targetDir, 'skills', 'code-review-v1'), { recursive: true });
-      mkdirSync(join(targetDir, 'skills', 'code-review-v2'), { recursive: true });
-      writeFileSync(join(targetDir, 'eval-samples.json'), serializeInitSamples(sampleCount));
-      writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
-      writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
-      // 像 dvc init 那样预置忽略规则,开发者不会误把测量 bulk 提交进库。
-      mkdirSync(layout.root, { recursive: true });
-      writeFileSync(join(layout.root, '.gitignore'), INIT_OMK_GITIGNORE);
+      writeProjectScaffold(targetDir, [
+        { relativePath: 'eval-samples.json', content: serializeInitSamples(sampleCount) },
+        { relativePath: 'skills/code-review-v1/SKILL.md', content: INIT_SKILL_V1 },
+        { relativePath: 'skills/code-review-v2/SKILL.md', content: INIT_SKILL_V2 },
+        { relativePath: relative(targetDir, join(layout.root, '.gitignore')), content: INIT_OMK_GITIGNORE },
+      ], flags.force);
 
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
       console.log(tCli('cli.init.sample_pack', lang, { count: sampleCount }));

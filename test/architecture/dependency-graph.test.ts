@@ -347,6 +347,17 @@ function stronglyConnectedComponents(edges: ModuleEdge[]): string[][] {
 }
 
 const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> = {
+  [domainPair('evidence/graph', 'knowledge-artifacts/doctor')]: (edge) => {
+    // Doctor owns report persistence; the graph producer consumes only its wire types.
+    // This is not a runtime back-edge, and no other doctor/graph imports are admitted.
+    if (edge.importerDomain === 'knowledge-artifacts/doctor') {
+      return edge.importer === 'knowledge-artifacts/doctor/persistence.ts'
+        && edge.target === 'evidence/graph/doctor.ts';
+    }
+    return edge.importer === 'evidence/graph/doctor.ts'
+      && edge.typeOnly
+      && edge.target === 'knowledge-artifacts/doctor/contracts.ts';
+  },
   [domainPair('evidence/storage', 'knowledge-artifacts/doctor')]: (edge) => {
     if (edge.importerDomain === 'knowledge-artifacts/doctor') {
       return edge.targetDomain === 'evidence/storage';

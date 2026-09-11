@@ -122,7 +122,11 @@ export default class Promote extends BaseCommand {
         ...(reason ? { reason } : {}),
         ...(overridden ? { override: { verdict: evidence.verdict ?? 'UNKNOWN', overriddenBlocks: gate.blocked.map((b) => b.blockKind) } } : {}),
       };
-      appendManagedDecision(dir, record.id, decision);
+      if (!appendManagedDecision(dir, record.id, decision, { expectedRecord: record })) {
+        throw new Error(lang === 'zh'
+          ? '受管记录已被其他操作修改或删除。请重新执行命令，以最新证据重新判定。'
+          : 'The managed record changed or was removed. Retry the command to evaluate the latest evidence.');
+      }
 
       this.emitPromoted(name, record, evidence.verdict, evidence.runId, overridden, lang, flags.json);
     });

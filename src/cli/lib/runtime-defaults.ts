@@ -1,3 +1,4 @@
+import { Errors } from '@oclif/core';
 import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { getCodexModelSuggestion } from './codex-model-hint.js';
@@ -81,19 +82,24 @@ export function resolveCliModel(
   const envModel = nonEmpty(env.OMK_MODEL);
   if (envModel) return envModel;
 
-  if (!isCodexExecutor(executor)) return DEFAULT_CLAUDE_MODEL;
+  if (executorFamily(executor) === 'claude') return DEFAULT_CLAUDE_MODEL;
+  if (!isCodexExecutor(executor)) {
+    throw new Errors.CLIError(options.lang === 'en'
+      ? `Executor ${executor} needs an explicit model. Pass --model <model> or set OMK_MODEL.`
+      : `执行器 ${executor} 需要明确模型。请用 --model <model> 或设置 OMK_MODEL。`, { exit: 2 });
+  }
 
   const suggestion = getCodexModelSuggestion(env);
   if (suggestion.fromConfig) return suggestion.model;
 
   const lang = options.lang ?? 'zh';
-  throw new Error(lang === 'zh'
+  throw new Errors.CLIError(lang === 'zh'
     ? `Codex 执行器需要明确模型。请用 --model <model>、设置 OMK_MODEL，或在 ${suggestion.configPath} 配置顶层 model。`
-    : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure a top-level model in ${suggestion.configPath}.`);
+    : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure a top-level model in ${suggestion.configPath}.`, { exit: 2 });
 }
 
 export function defaultJudgeModel(executor: string, taskModel: string): string {
-  return isCodexExecutor(executor) ? taskModel : DEFAULT_CLAUDE_JUDGE_MODEL;
+  return executorFamily(executor) === 'claude' ? DEFAULT_CLAUDE_JUDGE_MODEL : taskModel;
 }
 
 export function resolveRuntimeSelection(

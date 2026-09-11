@@ -114,7 +114,8 @@ export function statelessApiExecutorCapabilities(
           mcp: [],
           mockInterception: [],
           toolPolicies: ['runtime-default'],
-          skillDiscovery: ['runtime-default'],
+          // Stateless API requests never discover local skills.
+          skillDiscovery: ['disabled', 'runtime-default'],
           sandboxIds: [],
         },
         telemetry: {

@@ -34,6 +34,17 @@ export interface ResolvedSource {
   cleanup: () => void;
 }
 
+/** Scope a materialized source; cleanup failure must not replace the original failure. */
+export function usingInstallSource<T>(source: Pick<ResolvedSource, 'cleanup'>, operation: () => T): T {
+  const errors: unknown[] = [];
+  let result: T | undefined;
+  try { result = operation(); } catch (error) { errors.push(error); }
+  try { source.cleanup(); } catch (error) { errors.push(error); }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, errors.map(String).join('; '));
+  return result as T;
+}
+
 const noop = (): void => {};
 
 export function resolveInstallSource(input: string): ResolvedSource {
@@ -63,13 +74,11 @@ export function resolveRemoteGitSource(url: string, ref: string, spec: string): 
       ref: checkout.ref,
       url,
       cleanup: () => {
-        mat.cleanup();
-        checkout.cleanup();
+        usingInstallSource(checkout, () => mat.cleanup());
       },
     };
   } catch (err) {
-    checkout.cleanup();
-    throw err;
+    return usingInstallSource(checkout, () => { throw err; });
   }
 }
 

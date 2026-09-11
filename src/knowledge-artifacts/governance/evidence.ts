@@ -57,12 +57,14 @@ function appendTargetEvidence(
   record: Readonly<ReturnType<typeof loadAllManagedRecords>[number]>,
   projection: Readonly<CoreManagedEvidenceProjection>,
   target: Readonly<ProjectionTarget>,
+  rebaselineFromHash?: string,
 ): RecordedEvidence | undefined {
   const contentHash = contentHashOfDigest(target.artifact.digest);
   const merged = appendManagedEvidence(
     directory,
     record.id,
     evidenceRefForTarget(projection, target),
+    { rebaselineFromHash },
   );
   return merged === null ? undefined : {
     recordId: record.id,
@@ -144,7 +146,7 @@ export function recordCoreEvalEvidenceForRecord(
   projection: Readonly<CoreManagedEvidenceProjection>,
   recordId: string,
   contentHash: string,
-  options: { dir?: string } = {},
+  options: { dir?: string; rebaselineFromHash?: string } = {},
 ): RecordedEvidence | undefined {
   if (projection.projectionKind !== 'core-managed-evidence') {
     throw new TypeError('Managed evidence requires an Evaluation Core projection.');
@@ -153,9 +155,10 @@ export function recordCoreEvalEvidenceForRecord(
   if (target === undefined) return undefined;
   const directory = resolveManagedDir(options.dir ?? managedDir());
   const record = loadAllManagedRecords(directory).find((candidate) => (
-    candidate.id === recordId && candidate.contentHash === contentHash
+    candidate.id === recordId
   ));
+  if (record && options.rebaselineFromHash === undefined && record.contentHash !== contentHash) return undefined;
   return record === undefined
     ? undefined
-    : appendTargetEvidence(directory, record, projection, target);
+    : appendTargetEvidence(directory, record, projection, target, options.rebaselineFromHash);
 }
