@@ -32,6 +32,8 @@ export async function announceCoreReport(
   const { createReportServer } = await import('../../studio/http/report-server.js');
   const server = createReportServer({
     coreStudioCatalog: createCoreStudioCatalog(store),
+    // 评测预览宿主只服务 /measure 报告页，裁剪收件箱路由（#839 批次 0）。
+    observationInbox: false,
   });
   const serverUrl = await server.start();
   let closing = false;

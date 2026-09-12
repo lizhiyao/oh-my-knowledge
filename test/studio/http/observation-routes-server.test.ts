@@ -191,4 +191,41 @@ describe('Studio observation routes', () => {
       await snapshotServer.stop();
     }
   });
+
+  it('omits inbox routes when the host opts out, keeping the debugger group', async () => {
+    const scoped = createReportServer({
+      port: 0,
+      observationsDir,
+      analysesDir: join(root, 'analyses'),
+      doctorsDir: join(root, 'doctors'),
+      observationInbox: false,
+    });
+    const scopedUrl = await scoped.start();
+    try {
+      for (const path of [
+        '/observe/inbox',
+        '/api/observe-inbox',
+        '/api/observe-inbox/view',
+        '/api/observe-inbox/show?id=x',
+        '/api/observe-inbox/diagnostics',
+        '/api/observe-inbox/review-state',
+      ]) {
+        const res = await request(`${scopedUrl}${path}`);
+        assert.equal(res.status, 404, `${path} should be unregistered`);
+        assert.equal(res.body, 'Not Found');
+      }
+      const posted = await request(`${scopedUrl}/api/observe-inbox/review-state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      assert.equal(posted.status, 404);
+
+      const session = await request(`${scopedUrl}/observe/sessions/missing`);
+      assert.equal(session.status, 404);
+      assert.match(session.body, /观测会话不存在/);
+    } finally {
+      await scoped.stop();
+    }
+  });
 });

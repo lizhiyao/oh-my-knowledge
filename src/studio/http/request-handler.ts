@@ -36,6 +36,7 @@ export function createStudioRequestHandler({
   coreStudioCatalog,
   includeObserveCards = false,
   includeDoctorCards = false,
+  observationInbox = true,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -54,6 +55,7 @@ export function createStudioRequestHandler({
     observationsDir,
     includeObserveCards,
     includeDoctorCards,
+    includeInbox: observationInbox,
   });
   const coreStudioRoute = coreStudioCatalog === undefined
     ? undefined

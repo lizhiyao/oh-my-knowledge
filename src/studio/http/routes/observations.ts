@@ -29,6 +29,8 @@ interface ObservationRoutesOptions {
   readonly observationsDir: string;
   readonly includeObserveCards: boolean;
   readonly includeDoctorCards: boolean;
+  /** 是否注册观测收件箱路由组；独立宿主无收件箱入口，传 false 裁剪（#839 批次 0）。 */
+  readonly includeInbox: boolean;
 }
 
 export interface ObservationRouteContext extends StudioRouteContext {
@@ -57,11 +59,12 @@ export function createObservationRoutes({
   observationsDir,
   includeObserveCards,
   includeDoctorCards,
+  includeInbox,
 }: ObservationRoutesOptions): ObservationRouteHandler {
   const routes: StudioRouteDefinition<ObservationRouteContext>[] = [
-    {
+    ...(includeInbox ? [{
       pattern: '/observe/inbox',
-      handler({ response, url, lang }) {
+      handler({ response, url, lang }: ObservationRouteContext) {
         const skill = url.searchParams.get('skill') || undefined;
         const html = renderObservationInboxPage(
           buildObservationInboxViewModel(observationsDir, { skill }),
@@ -70,7 +73,7 @@ export function createObservationRoutes({
         response.writeHead(200, HTML_HEADERS);
         response.end(html);
       },
-    },
+    }] as const : []),
     {
       pattern: '/observe/sessions/*id',
       handler({ response, url, params, lang }) {
@@ -130,9 +133,9 @@ export function createObservationRoutes({
         ));
       },
     },
-    {
+    ...(includeInbox ? [{
       pattern: '/api/observe-inbox/view',
-      handler({ response, url }) {
+      handler({ response, url }: ObservationRouteContext) {
         const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(observationsDir, { skill: url.searchParams.get('skill') || undefined });
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify({ effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }));
@@ -140,7 +143,7 @@ export function createObservationRoutes({
     },
     {
       pattern: '/api/observe-inbox',
-      handler({ response, url }) {
+      handler({ response, url }: ObservationRouteContext) {
         const severity = url.searchParams.get('severity');
         const skill = url.searchParams.get('skill');
         const limitRaw = url.searchParams.get('limit');
@@ -157,7 +160,7 @@ export function createObservationRoutes({
     },
     {
       pattern: '/api/observe-inbox/diagnostics',
-      handler({ response, analysesDir, doctorsDir }) {
+      handler({ response, analysesDir, doctorsDir }: ObservationRouteContext) {
         const index = buildSkillIndex(
           analysesDir,
           doctorsDir,
@@ -180,7 +183,7 @@ export function createObservationRoutes({
     },
     {
       pattern: '/api/observe-inbox/show',
-      handler({ response, url }) {
+      handler({ response, url }: ObservationRouteContext) {
         const id = url.searchParams.get('id') || '';
         const item = id ? findObservationInboxItem(id, observationsDir) : null;
         if (!item) {
@@ -193,7 +196,7 @@ export function createObservationRoutes({
     },
     {
       pattern: '/api/observe-inbox/review-state',
-      handler({ response }) {
+      handler({ response }: ObservationRouteContext) {
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(loadObservationReviewState(observationsDir)));
       },
@@ -202,7 +205,7 @@ export function createObservationRoutes({
       pattern: '/api/observe-inbox/review-state',
       method: 'POST',
       mutation: true,
-      async handler({ request, response }) {
+      async handler({ request, response }: ObservationRouteContext) {
         const body = await readJsonObjectBody(request) as Partial<ObservationReviewStateUpdate>;
         const state = updateObservationReviewState(observationsDir, {
           targetType: body.targetType as ObservationReviewStateUpdate['targetType'],
@@ -230,14 +233,14 @@ export function createObservationRoutes({
       pattern: '/api/observe-inbox/review-state',
       method: 'DELETE',
       mutation: true,
-      handler({ response, url }) {
+      handler({ response, url }: ObservationRouteContext) {
         const targetType = url.searchParams.get('targetType') as ObservationReviewStateUpdate['targetType'];
         const targetId = url.searchParams.get('targetId') ?? '';
         const state = deleteObservationReviewState(observationsDir, targetType, targetId);
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(state));
       },
-    },
+    }] as const : []),
   ];
 
   return createStudioRouter(routes);
