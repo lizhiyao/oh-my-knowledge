@@ -51,3 +51,16 @@ export function detailedSchemaIssue(error: { readonly issues: readonly unknown[]
   })[0];
   return selected ?? { path: [], message: 'invalid shape' };
 }
+
+/** Safe public diagnostic: contains no authored content or filesystem details. */
+export class UnsupportedSampleSchemaError extends Error {
+  constructor() {
+    super('Unsupported sample schema omk.eval-sample-set/v2. Rewrite as omk.eval-sample-set/v3; the original file has not been changed.');
+    this.name = 'UnsupportedSampleSchemaError';
+  }
+}
+
+export function rejectLegacySampleVersion(value: unknown): void {
+  if (typeof value === 'object' && value !== null && 'schemaVersion' in value
+    && value.schemaVersion === 'omk.eval-sample-set/v2') throw new UnsupportedSampleSchemaError();
+}

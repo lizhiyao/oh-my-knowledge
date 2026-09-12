@@ -8,7 +8,8 @@ export type {
 } from '../../executors/contracts/mock.js';
 export type {
   EvalSampleSetDocument,
-  Sample,
+  AuthoredSample as Sample,
+  SampleCheck,
   SampleCoverageTarget,
   SampleCoverageTargetKind,
   SampleDifficulty,
@@ -20,6 +21,8 @@ export type {
 export {
   EVAL_SAMPLE_SET_SCHEMA_VERSION,
   createEvalSampleSetDocument,
+  EvalSampleSetDocumentSchema,
+  AuthoredSampleSchema,
 } from './schemas/sample-set.js';
 
 export const EVAL_SAMPLE_JSON_SCHEMA_FILES = [
@@ -35,5 +38,7 @@ export function resolveEvalSampleJsonSchema(fileName: EvalSampleJsonSchemaFile):
   if (!schemaFiles.has(fileName)) {
     throw new TypeError(`Unknown Eval Sample JSON Schema: ${String(fileName)}`);
   }
-  return new URL(`./contracts/schemas/v2/${fileName}`, import.meta.url);
+  return new URL(`./contracts/schemas/v3/${fileName}`, import.meta.url);
 }
+
+export { SampleInputSchema, SampleMessageSchema, type SampleInput, type SampleMessage } from './schemas/sample-input.js';

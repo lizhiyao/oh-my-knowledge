@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This example demonstrates OMK's custom-command JSON stdin/stdout contract without requiring a hosted model. It includes:
+This example demonstrates OMK's custom-executor JSON stdin/stdout contract without requiring a hosted model. It includes:
 
 - `echo-executor.sh`: deterministic, zero-cost protocol smoke test;
 - `ollama-executor.py`: local Ollama adapter.
@@ -23,8 +23,9 @@ omk eval --control baseline --treatment echo-assistant \
 To try a local Ollama model:
 
 ```bash
+chmod +x ollama-executor.py
 omk eval --control baseline --treatment echo-assistant \
-  --executor "python ollama-executor.py" --model llama3 --no-judge --report-only
+  --executor ./ollama-executor.py --model llama3 --no-judge --report-only
 ```
 
 ## Evidence boundary

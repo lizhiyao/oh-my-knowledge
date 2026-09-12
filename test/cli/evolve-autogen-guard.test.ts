@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runEvolve } from '../../src/cli/commands/evolve.js';
-import { createEvalSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 import { CliExit } from '../../src/cli/lib/cli-exit.js';
 import type { EvolveFlags } from '../../src/cli/commands/evolve.js';
 
@@ -55,7 +55,7 @@ describe('runEvolve 损坏用例文件守卫', () => {
     expect(readFileSync(badSamples, 'utf-8')).toBe(BROKEN);
   });
   it('显式空样本不调用生成器，也不替换文档', async () => {
-    const empty = JSON.stringify(createEvalSampleSetDocument([]));
+    const empty = JSON.stringify(createWorkflowSampleSetDocument([]));
     writeFileSync(badSamples, empty);
     await expect(runEvolve({ skillPath: skill }, mkFlags({ samples: badSamples }), 'en'))
       .rejects.toMatchObject({ code: 1 });
@@ -68,8 +68,8 @@ describe('runEvolve 损坏用例文件守卫', () => {
     mkdirSync(join(skillDir, '.omk'), { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '# Review');
     const target = join(skillDir, '.omk', 'eval-samples.json');
-    const sample = { sample_id: 'external', prompt: 'Review' };
-    const external = JSON.stringify(createEvalSampleSetDocument([sample]));
+    const sample = { sample_id: 'external', input: { inputKind: 'text' as const, text: 'Review' } };
+    const external = JSON.stringify(createWorkflowSampleSetDocument([sample]));
     generateSamples.mockImplementation(async () => {
       writeFileSync(target, external);
       return { samples: [sample], costUSD: 0 };

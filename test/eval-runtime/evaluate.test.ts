@@ -6,12 +6,15 @@ import {
   assessComparability,
   checkExecutor,
   evaluate,
+  executeEvaluation,
   prepareEvaluation,
   reanalyze,
   redecide,
   rescore,
+  scoreExecutedEvaluation,
   type Clock,
   type CustomEvaluator,
+  type EventObserver,
   type Executor,
   type Evaluator,
   type RubricJudgeEvaluator,
@@ -29,7 +32,7 @@ type Config = { answers: Record<string, string>; };
 
 function executor(
   execute?: Executor<Input, Config, string>['execute'],
-  input: Readonly<{ executorId?: string; revision?: string; }> = {},
+  input: Readonly<{ executorId?: string; revision?: string; stochastic?: boolean; }> = {},
 ): Executor<Input, Config, string> {
   return {
     executorId: input.executorId ?? 'test.answer-executor/v1',
@@ -41,7 +44,7 @@ function executor(
     },
     outputClassification: 'public',
     capabilities: {
-      determinism: 'deterministic',
+      determinism: input.stochastic === true ? 'stochastic' : 'deterministic',
       cancellation: 'cooperative',
       concurrency: { safety: 'parallel-safe' },
       seedControl: 'unsupported',
@@ -167,6 +170,32 @@ function comparisonAnalysis(metricId: string, analysisId = `${metricId}-differen
       resamples: 100,
     },
   }];
+}
+
+function countedScoreInput(
+  declaration: Executor<Input, Config, string>,
+  scoreCalls: () => void,
+) {
+  const custom = numericCustomEvaluator('staged-score', () => {
+    scoreCalls();
+    return { resultKind: 'score', value: 1 };
+  });
+  const base = pairedInput(declaration);
+  return {
+    ...base,
+    evaluators: [custom],
+    comparisons: [{
+      comparisonId: 'baseline-vs-candidate',
+      controlVariantId: controlSpec.variantId,
+      treatmentVariantIds: [treatmentSpec.variantId],
+      metricIds: ['staged-score-score'],
+    }],
+    analyses: comparisonAnalysis('staged-score-score'),
+    decision: {
+      decisionKind: 'analysis' as const,
+      analysisId: 'staged-score-score-difference',
+    },
+  };
 }
 
 function numericCustomEvaluator(
@@ -427,6 +456,210 @@ describe('canonical eval-runtime API', () => {
     expect(result.artifacts?.analysis).toBe(source.artifacts?.analysis);
     expect(result.artifacts?.decision?.decisionDigest)
       .not.toBe(source.artifacts?.decision?.decisionDigest);
+  });
+
+  it('executes a declaration without scoring it and scores the handle without a new Target call', async () => {
+    let targetInvocations = 0;
+    const scoreCalls = vi.fn();
+    const declaration = executor(async ({ input, config, signal }) => {
+      targetInvocations += 1;
+      signal.throwIfAborted();
+      return { output: config.answers[input.prompt] };
+    });
+    const input = countedScoreInput(declaration, scoreCalls);
+
+    const executed = await executeEvaluation(input, {
+      runId: 'staged-execute',
+      clock: fixedClock,
+    });
+
+    expect(targetInvocations).toBe(4);
+    expect(scoreCalls).not.toHaveBeenCalled();
+    expect(executed.bundleOrigin).toBe('runtime');
+    expect(executed.runId).toBe('staged-execute');
+    expect(executed.bundle.executionBundleStatus).toBe('completed');
+    expect(executed.executionPlanDigest).toBe(executed.bundle.executionPlanDigest);
+    expect(executed.executionInputDigest).toBe(executed.bundle.executionInputDigest);
+    expect(executed.bundle.records).toHaveLength(4);
+    scoreCalls.mockClear();
+
+    const result = await scoreExecutedEvaluation(input, executed, { clock: fixedClock });
+
+    expect(targetInvocations).toBe(4);
+    expect(scoreCalls).toHaveBeenCalledTimes(4);
+    expect(result.status).toBe('completed');
+    expect(result.runId).not.toBe(executed.runId);
+    expect(result.artifacts?.execution).toBe(executed.bundle);
+  });
+
+  it('keeps the chained execute and score end state identical to one evaluate call', async () => {
+    const scoreCalls = vi.fn();
+    const input = countedScoreInput(executor(), scoreCalls);
+    const direct = await evaluate(input, { runId: 'staged-equivalence', clock: fixedClock });
+    const executed = await executeEvaluation(input, {
+      runId: 'staged-equivalence',
+      clock: fixedClock,
+    });
+    const chained = await scoreExecutedEvaluation(input, executed, {
+      runId: 'staged-equivalence',
+      clock: fixedClock,
+    });
+
+    expect(chained.status).toBe('completed');
+    expect(chained).toEqual(direct);
+  });
+
+  it('re-scores one execution handle against changed Gold without invoking the Target again', async () => {
+    let targetInvocations = 0;
+    const declaration = executor(async ({ input, config, signal }) => {
+      targetInvocations += 1;
+      signal.throwIfAborted();
+      return { output: config.answers[input.prompt] };
+    });
+    const input = pairedInput(declaration);
+    const executed = await executeEvaluation(input, {
+      runId: 'staged-gold-source',
+      clock: fixedClock,
+    });
+    expect(targetInvocations).toBe(4);
+
+    const original = await scoreExecutedEvaluation(input, executed, {
+      clock: fixedClock,
+    });
+    const changed = pairedInput(declaration);
+    changed.dataset.samples[0].expected = 'wrong';
+    const rescored = await scoreExecutedEvaluation(changed, executed, {
+      clock: fixedClock,
+    });
+
+    expect(targetInvocations).toBe(4);
+    expect(original.status).toBe('completed');
+    expect(rescored.status).toBe('completed');
+    expect(rescored.artifacts?.execution).toBe(executed.bundle);
+    expect(rescored.artifacts?.evaluation?.bundleDigest)
+      .not.toBe(original.artifacts?.evaluation?.bundleDigest);
+    // Hosts index Runs by an immutable runId, so two scoring versions must not collide on it.
+    expect(rescored.runId).not.toBe(original.runId);
+  });
+
+  it('rejects a scoring declaration whose execution stage changed before any Target call', async () => {
+    let targetInvocations = 0;
+    const declaration = executor(async ({ input, config, signal }) => {
+      targetInvocations += 1;
+      signal.throwIfAborted();
+      return { output: config.answers[input.prompt] };
+    });
+    const executed = await executeEvaluation(pairedInput(declaration), {
+      runId: 'staged-mismatch-source',
+      clock: fixedClock,
+    });
+    expect(targetInvocations).toBe(4);
+
+    const incompatible = pairedInput(declaration);
+    incompatible.variants = [
+      variant(declaration, controlSpec),
+      variant(declaration, { ...treatmentSpec, config: { answers: { one: 'A', two: 'A' } } }),
+    ];
+    let mismatchError: unknown;
+    try {
+      await scoreExecutedEvaluation(incompatible, executed, {
+        runId: 'staged-mismatch-scored',
+        clock: fixedClock,
+      });
+    } catch (caught) {
+      mismatchError = caught;
+    }
+
+    expect(mismatchError).toMatchObject({
+      code: 'EVAL_RUNTIME_REUSE_INVALID',
+      message: 'ExecutedEvaluation 与新声明的可复用阶段不一致。',
+    });
+    expect((mismatchError as EvaluationConfigurationError).cause).toBeUndefined();
+    expect(targetInvocations).toBe(4);
+  });
+
+  it('rejects forged or cloned execution handles', async () => {
+    const input = pairedInput();
+    const executed = await executeEvaluation(input, { runId: 'staged-forged-source' });
+
+    await expect(scoreExecutedEvaluation(input, structuredClone(executed), {
+      runId: 'staged-forged-cloned',
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_REUSE_INVALID' });
+    await expect(scoreExecutedEvaluation(input, {
+      ...structuredClone(executed),
+      bundleOrigin: 'runtime',
+    } as never, { runId: 'staged-forged-object' })).rejects.toMatchObject({
+      code: 'EVAL_RUNTIME_REUSE_INVALID',
+    });
+  });
+
+  it('keeps a cancelled execution as a value that later scoring resolves without a Target call', async () => {
+    let targetInvocations = 0;
+    const declaration = executor(async ({ input, config, signal }) => {
+      targetInvocations += 1;
+      signal.throwIfAborted();
+      return { output: config.answers[input.prompt] };
+    });
+    const input = pairedInput(declaration);
+    const controller = new AbortController();
+    controller.abort(new Error('caller cancellation'));
+
+    const executed = await executeEvaluation(input, {
+      runId: 'staged-cancel-source',
+      clock: fixedClock,
+      signal: controller.signal,
+    });
+
+    expect(targetInvocations).toBe(0);
+    expect(executed.bundle.executionBundleStatus).toBe('cancelled');
+
+    const result = await scoreExecutedEvaluation(input, executed, {
+      clock: fixedClock,
+      signal: controller.signal,
+    });
+
+    expect(targetInvocations).toBe(0);
+    expect(result.status).toBe('cancelled');
+    expect(result.report?.status.runStatus).toBe('cancelled');
+  });
+
+  it('keeps the executed handle when the best-effort observer fails', async () => {
+    const input = pairedInput();
+    let error: unknown;
+    try {
+      await executeEvaluation(input, {
+        runId: 'staged-observer-failure',
+        onEvent: () => { throw new Error('private observer failure'); },
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(EvaluationEventConsumptionError);
+    const failure = error as EvaluationEventConsumptionError;
+    expect(failure.code).toBe('EVAL_RUNTIME_EVENT_OBSERVER_FAILED');
+    expect(failure.message).not.toContain('private observer failure');
+    expect(failure.executed?.bundle.executionBundleStatus).toBe('completed');
+
+    const result = await scoreExecutedEvaluation(input, failure.executed!, {
+      runId: 'staged-observer-scored',
+    });
+    expect(result.status).toBe('completed');
+  });
+
+  it('fails closed before any Target call when a writer has no durable delivery policy', async () => {
+    const invocations = vi.fn();
+    const declaration = executor(async ({ input, config }) => {
+      invocations();
+      return { output: config.answers[input.prompt] };
+    });
+
+    await expect(executeEvaluation(pairedInput(declaration), {
+      runId: 'staged-writer-disabled',
+      eventWriter: { write: async () => {} },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+
+    expect(invocations).not.toHaveBeenCalled();
   });
 
   it('reports the underlying Core configuration code when a reuse suffix fails closed', async () => {
@@ -733,6 +966,35 @@ describe('canonical eval-runtime API', () => {
 
     const result = await pending;
     expect(result.runId).toBe('captured-run-options');
+
+    // The staged score entry also prepares before it runs, so run identity and event sinks must
+    // bind at entry: a host that recycles one options object across scored versions cannot
+    // misroute this Run's identity, cancellation or event delivery.
+    const declaration = pairedInput();
+    const executed = await executeEvaluation(declaration, {
+      runId: 'staged-capture-source',
+      clock: fixedClock,
+    });
+    const capturedEvents: number[] = [];
+    const lateEvents: number[] = [];
+    const scoreOptions: { runId: string; clock: Clock; onEvent: EventObserver } = {
+      runId: 'captured-score-run-options',
+      clock: fixedClock,
+      onEvent: (event) => {
+        capturedEvents.push(event.sequence);
+      },
+    };
+    const pendingScore = scoreExecutedEvaluation(declaration, executed, scoreOptions);
+    scoreOptions.runId = 'mutated-score-run-options';
+    scoreOptions.onEvent = (event) => {
+      lateEvents.push(event.sequence);
+    };
+
+    const scored = await pendingScore;
+    expect(scored.status).toBe('completed');
+    expect(scored.runId).toBe('captured-score-run-options');
+    expect(capturedEvents.length).toBeGreaterThan(0);
+    expect(lateEvents).toEqual([]);
   });
 
   it('strictly separates declaration fields from run options before Target calls', async () => {

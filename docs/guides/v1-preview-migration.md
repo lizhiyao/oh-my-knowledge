@@ -26,7 +26,7 @@ Do not copy scores from an old report into the new layout. Re-run the evaluation
 
 ## 2. Create a new eval-samples document
 
-The preview uses the strict `omk.eval-sample-set/v2` contract. Earlier sample documents are not read or converted. Generate a new document with `omk init` or `omk sample`, then review its criteria and weights before using it as evidence.
+The preview uses the strict `omk.eval-sample-set/v3` contract. Earlier sample documents are not read or converted. Generate a new document with `omk init` or `omk sample`, then review its criteria and weights before using it as evidence.
 
 Each rubric is a map of independently judged dimensions. Every dimension contains one `criterion` and a positive `weight`; weights within a sample must sum to 1. Keep exactly one canonical `eval-samples.json` or `eval-samples.yaml` in each auto-discovery scope.
 

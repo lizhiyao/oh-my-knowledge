@@ -18,7 +18,7 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
-  it('rejects the removed gemini built-in instead of treating it as a custom command', () => {
+  it('rejects the removed gemini built-in instead of treating it as a custom executor', () => {
     assert.throws(() => createExecutor('gemini'), /内置 gemini 执行器已移除/);
   });
 

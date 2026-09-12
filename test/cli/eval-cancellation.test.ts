@@ -16,9 +16,9 @@ it.each(['eval', 'sample', 'evolve', 'doctor'].flatMap((command) => (['SIGINT', 
   const samples = join(root, 'samples.json');
   await mkdir(skill);
   await writeFile(join(skill, 'SKILL.md'), '# Answer\nAnswer the question.\n');
-  await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [
-    { sample_id: 'answer', prompt: 'Answer.', assertions: [{ type: 'contains', value: 'answer' }] },
-  ] }));
+  await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v3', samples: [
+{ sampleId: 'answer', input: { inputKind: 'text', text: 'Answer.' }, evaluationContext: { assertions: [{ type: 'contains', value: 'answer' }] } }
+] }));
   await writeFile(executor, `#!/usr/bin/env node
 import { writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';

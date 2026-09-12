@@ -1,3 +1,4 @@
+import { authorSample } from './sample-mapping.js';
 import { accessSync, constants, readFileSync, writeFileSync, renameSync, rmSync, statSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -69,7 +70,7 @@ export function appendSamplesToFile(
     }
     const doc = parseSampleDocument(file, snapshot) as EvalSampleSetDocument;
     const merged = mergeAppendSamples(getSamplesArray(doc, file), fresh, reserved);
-    const next = { ...doc, samples: merged };
+    const next = { ...doc, samples: [...doc.samples, ...merged.slice(doc.samples.length).map(authorSample)] };
     getSamplesArray(next, file);
     const temporary = join(dirname(target), `.omk-samples-${randomUUID()}`);
     try {

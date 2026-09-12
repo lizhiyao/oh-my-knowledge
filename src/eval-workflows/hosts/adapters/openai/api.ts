@@ -1,3 +1,5 @@
+import { projectOpenAIApiInput } from './input.js';
+import { STATELESS_API_SAMPLE_INPUT_POLICY } from '../shared/sample-input.js';
 import { z } from 'zod';
 import {
   RuntimeIdentitySchema,
@@ -192,7 +194,8 @@ function identityManifest(
     facetId: 'adapter.input-projection',
     value: {
       directoryEntrypoint: 'SKILL.md',
-      promptTransport: 'responses-input-text',
+      authoredInput: STATELESS_API_SAMPLE_INPUT_POLICY,
+      promptTransport: 'responses-text-or-native-history',
       supportingFiles: 'canonical-user-envelope',
       systemInstructions: 'top-level-instructions',
       version: RESOURCE_PROFILE.promptSchemaVersion,
@@ -273,10 +276,7 @@ function requestBody(
 ): string {
   return JSON.stringify({
     model: target.binding.qualification.model,
-    input: trialState.prompt,
-    ...(runState.systemInstructions === undefined
-      ? {}
-      : { instructions: runState.systemInstructions }),
+    ...projectOpenAIApiInput(runState, trialState),
     max_output_tokens: policy.maxOutputTokens,
     stream: false,
     store: false,

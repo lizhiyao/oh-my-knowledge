@@ -8,6 +8,7 @@
 |---|---|---|
 | 命令行比较两版 skill | [快速上手](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [执行器](./reference/executors.md) · [用例格式](./reference/eval-sample-format.md) · [载体布局](./reference/artifact-layout.md) |
 | 在 Node.js 服务中接入 | [服务接入指南](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [底层 Core API](./reference/embedded-api.md) |
+| 由平台宿主下发评测任务 | [平台宿主集成指南](./guides/platform-host-integration.md) | [参考执行器 API](./reference/eval-hosts-api.md) · [Runtime API](./reference/eval-runtime-api.md) |
 | 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./explanation/effective-observation-review.md) |
 
 ## 完成具体任务
@@ -25,6 +26,8 @@
 - [术语表](./reference/glossary.md) · [工具对比](./reference/comparison.md)
 
 ## 迁移与设计规范
+
+- [通用 sample 规范草案](./specs/general-sample-proposal.md)
 
 - [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/storage-layout-spec.md)
 - [Core 设计](./specs/eval-core-vnext.md) · [评分等价性](./specs/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/cli-evaluation-input-compilation.md)

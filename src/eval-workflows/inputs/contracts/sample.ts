@@ -1,3 +1,5 @@
+import type { JsonValue } from '../../../eval-core/contracts/json.js';
+import type { SampleInput } from './sample-input.js';
 import type { Assertion } from './assertion.js';
 import type { Mock } from '../../../executors/contracts/mock.js';
 
@@ -48,8 +50,12 @@ export type SampleRubric = Record<string, SampleRubricCriterion>;
 
 export interface Sample {
   sample_id: string;
-  prompt: string;
-  context?: string;
+  input: SampleInput;
+  /** Evaluator-only source material; never appended to execution input. */
+  reference?: string;
+  expected?: JsonValue;
+  checks?: SampleCheck[];
+  executionData?: JsonValue;
   cwd?: string;
   rubric?: SampleRubric;
   assertions?: Assertion[];
@@ -90,12 +96,34 @@ export interface Sample {
 }
 
 export interface EvalSampleSetDocument {
-  schemaVersion: 'omk.eval-sample-set/v2';
+  schemaVersion: 'omk.eval-sample-set/v3';
   requires?: {
     tools?: string[];
     files?: string[];
     env?: string[];
     preflight?: string[];
   };
-  samples: Sample[];
+  samples: AuthoredSample[];
+}
+
+/** Public v3 envelope. Workflow normalization flattens controls without introducing prompt aliases. */
+export interface AuthoredSample {
+  sampleId: string;
+  input: SampleInput;
+  executionContext?: Pick<Sample, 'cwd' | 'allowedTools' | 'mocks' | 'mocksStrict' | 'environment'> & {
+    data?: JsonValue;
+  };
+  expected?: JsonValue;
+  evaluationContext?: Pick<Sample, 'rubric' | 'assertions' | 'reference' | 'checks'>;
+  annotations?: Pick<Sample, 'capability' | 'difficulty' | 'construct' | 'provenance' | 'covers' | 'tripwire'>;
+}
+
+/** Explicit evidence bindings; source absence is missing evidence, never a passing comparison. */
+export interface SampleCheck {
+  checkKind: 'exact-match';
+  checkId: string;
+  actual: { sourceKind: 'output' | 'trace'; pointer: string };
+  expectedPointer: string;
+  layer: 'fact' | 'behavior';
+  weight?: number;
 }

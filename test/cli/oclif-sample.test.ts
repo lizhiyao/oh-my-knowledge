@@ -1,3 +1,4 @@
+import { createWorkflowSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 /**
  * oclif 路由验收 + sample command 生命周期测试。
  * 验证 sample 三模式入口都能正确分流到生产 execute():
@@ -35,14 +36,14 @@ describe('oclif sample', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-sample-command-'));
     try {
       writeFileSync(join(root, 'SKILL.md'), '# Example');
-      const samples = [{ sample_id: 'one', prompt: 'Review' }];
+      const samples = [{ sample_id: 'one', input: { inputKind: 'text' as const, text: 'Review' } }];
       generateSamples.mockReset();
       generateSamples.mockResolvedValue({ samples, costUSD: 0 });
       await runCommand(SampleCommand, [root, '--executor', 'claude', '--model', 'fixture', '--count', '1', '--focus', 'errors', '--no-mock'], { cwd: root });
       expect(generateSamples).toHaveBeenCalledWith(expect.objectContaining({
         skillContent: '# Example', model: 'fixture', executorName: 'claude', count: 1, focus: 'errors', noMock: true,
       }));
-      expect(JSON.parse(readFileSync(join(root, '.omk', 'eval-samples.json'), 'utf8')).samples).toEqual(samples);
+      expect(JSON.parse(readFileSync(join(root, '.omk', 'eval-samples.json'), 'utf8')).samples).toEqual(createWorkflowSampleSetDocument(samples).samples);
     } finally {
       rmSync(root, { recursive: true, force: true });
       generateSamples.mockReset();

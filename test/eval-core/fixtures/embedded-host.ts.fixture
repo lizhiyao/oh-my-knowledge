@@ -99,6 +99,15 @@ import {
   type EvalSampleSetDocument,
 } from 'oh-my-knowledge/eval-samples';
 import { projectCoreArtifactGraph } from 'oh-my-knowledge/projections';
+import {
+  CODEX_CLI_MIN_SUPPORTED_VERSION,
+  CODEX_CLI_REFERENCE_ADAPTER_VERSION,
+  DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS,
+  createCodexCliReferenceExecutor,
+  type CodexCliContentIdentityFile,
+  type CodexCliEnvironmentEntry,
+  type CreateCodexCliReferenceExecutorInput,
+} from 'oh-my-knowledge/eval-hosts';
 import { createCoreStudioCatalog } from 'oh-my-knowledge/studio';
 import {
   createObservationMcpServer,
@@ -126,8 +135,8 @@ void comparabilityAssessmentVersion;
 void comparabilityRunIdentityDigest;
 
 const sampleSet: EvalSampleSetDocument = createEvalSampleSetDocument([{
-  sample_id: 'typescript-host',
-  prompt: 'Verify the package contract.',
+  sampleId: 'typescript-host',
+  input: { inputKind: 'text', text: 'Verify the package contract.' },
 }]);
 const sampleSchema: URL = resolveEvalSampleJsonSchema('eval-sample-set.schema.json');
 void sampleSet;
@@ -619,3 +628,48 @@ async function consume(): Promise<EvaluationRunResult> {
 
 void consume;
 void advancedBoundary;
+
+const referenceEnvironment: Readonly<Record<string, CodexCliEnvironmentEntry>> = {
+  CODEX_SESSION_SECRET: { value: 'typescript-credential', identity: { identityKind: 'credential' } },
+  HOME: { value: '/home/vendor-account', identity: { identityKind: 'behavior', value: '/home/vendor-account' } },
+};
+const referenceIdentityFiles: readonly CodexCliContentIdentityFile[] = [
+  { facetId: 'typescript-codex-config', path: '/etc/codex/config.toml' },
+];
+const referenceInput: CreateCodexCliReferenceExecutorInput = {
+  executorId: 'typescript.vendor-codex/v1',
+  executablePath: '/usr/local/bin/codex',
+  model: 'typescript-model',
+  effort: 'medium',
+  sandbox: 'read-only',
+  environment: referenceEnvironment,
+  contentIdentityFiles: referenceIdentityFiles,
+  identityProbeTimeoutMs: DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS,
+  fingerprintFacets: { deployment: 'typescript-host' },
+};
+const referenceExecutor = createCodexCliReferenceExecutor(referenceInput);
+const referenceVersions: [string, string] = [
+  CODEX_CLI_MIN_SUPPORTED_VERSION,
+  CODEX_CLI_REFERENCE_ADAPTER_VERSION,
+];
+// @ts-expect-error The published seam takes plain configuration, never a leased resource provider.
+createCodexCliReferenceExecutor({ ...referenceInput, workspaceProvider });
+async function referenceBoundary(): Promise<void> {
+  const executor = await referenceExecutor;
+  const executed = await executor.execute({
+    input: 'typescript-reference',
+    artifact: { name: 'reference', kind: 'baseline', source: 'baseline', content: null },
+    config: undefined,
+    sampleId: 'one',
+    variantId: 'baseline',
+    trialIndex: 0,
+    attemptNumber: 1,
+    signal: new AbortController().signal,
+  });
+  const answer: string | undefined = executed.output;
+  const trace: unknown = executed.trace;
+  void answer;
+  void trace;
+}
+void referenceVersions;
+void referenceBoundary;

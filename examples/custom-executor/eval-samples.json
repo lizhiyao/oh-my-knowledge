@@ -1,28 +1,38 @@
 {
-  "schemaVersion": "omk.eval-sample-set/v2",
+  "schemaVersion": "omk.eval-sample-set/v3",
   "samples": [
     {
-      "sample_id": "echo-green",
-      "prompt": "Return exactly this word: GREEN",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "GREEN"
-        }
-      ]
+      "sampleId": "echo-green",
+      "input": {
+        "inputKind": "text",
+        "text": "Return exactly this word: GREEN"
+      },
+      "evaluationContext": {
+        "assertions": [
+          {
+            "type": "contains",
+            "value": "GREEN"
+          }
+        ]
+      }
     },
     {
-      "sample_id": "echo-ready",
-      "prompt": "Return exactly this phrase: READY FOR EVAL",
-      "assertions": [
-        {
-          "type": "contains_all",
-          "values": [
-            "READY",
-            "EVAL"
-          ]
-        }
-      ]
+      "sampleId": "echo-ready",
+      "input": {
+        "inputKind": "text",
+        "text": "Return exactly this phrase: READY FOR EVAL"
+      },
+      "evaluationContext": {
+        "assertions": [
+          {
+            "type": "contains_all",
+            "values": [
+              "READY",
+              "EVAL"
+            ]
+          }
+        ]
+      }
     }
   ]
 }

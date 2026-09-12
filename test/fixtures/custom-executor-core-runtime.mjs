@@ -3,8 +3,18 @@ import { appendFile, writeFile } from 'node:fs/promises';
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
 const request = JSON.parse(input);
-const schemaVersion = 'omk.custom-command-exchange/v1';
+const schemaVersion = 'omk.custom-executor-exchange/v1';
 const mode = process.env.OMK_TEST_MODE ?? 'success';
+if (request.schemaVersion !== schemaVersion) throw new Error('Unsupported exchange');
+
+if (mode === 'removed-protocol') {
+  process.stdout.write(JSON.stringify({
+    schemaVersion: 'omk.custom-command-exchange/v1',
+    resultStatus: 'completed',
+    output: { value: 'ok', classification: 'public' },
+  }));
+  process.exit(0);
+}
 
 if (process.env.OMK_TEST_INVOCATIONS) {
   await appendFile(process.env.OMK_TEST_INVOCATIONS, 'spawn\n');

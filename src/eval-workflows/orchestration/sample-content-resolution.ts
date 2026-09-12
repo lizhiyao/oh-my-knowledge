@@ -36,7 +36,7 @@ export interface ResolvedSampleContentRecord extends SampleContentResolution {
   readonly sourceUrlDigest: `sha256:${string}`;
   readonly contentDigest: `sha256:${string}`;
   readonly sampleIds: readonly string[];
-  readonly fields: readonly ('prompt' | 'context')[];
+  readonly fields: readonly ('input.text')[];
 }
 
 export interface ResolvedSampleContents {
@@ -69,7 +69,7 @@ interface UrlOccurrence {
   readonly fetchUrl: string;
   readonly sampleId: string;
   readonly sampleIndex: number;
-  readonly field: 'prompt' | 'context';
+  readonly field: 'input.text';
 }
 
 interface UrlGroup {
@@ -148,8 +148,8 @@ export function safeUrlLabel(url: string): string {
 function occurrences(samples: readonly Readonly<Sample>[]): readonly UrlOccurrence[] {
   const found: UrlOccurrence[] = [];
   for (const [sampleIndex, sample] of samples.entries()) {
-    for (const field of ['prompt', 'context'] as const) {
-      const text = sample[field];
+    for (const field of ['input.text'] as const) {
+      const text = sample.input.inputKind === 'text' ? sample.input.text : undefined;
       if (typeof text !== 'string' || text === '') continue;
       for (const match of text.matchAll(URL_PATTERN)) {
         const rawUrl = stripUnbalancedClosingPunctuation(match[0]);
@@ -295,10 +295,8 @@ export async function resolveSampleContents(
     item.result.content,
   ]));
   for (const sample of cloned) {
-    for (const field of ['prompt', 'context'] as const) {
-      const current = sample[field];
-      if (typeof current !== 'string') continue;
-      sample[field] = replaceResolvedUrlOccurrences(current, contentsByFetchUrl);
+    if (sample.input.inputKind === 'text') {
+      sample.input.text = replaceResolvedUrlOccurrences(sample.input.text, contentsByFetchUrl);
     }
   }
   const records: ResolvedSampleContentRecord[] = [];

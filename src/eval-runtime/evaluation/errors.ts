@@ -1,5 +1,6 @@
 import {
   type EvaluationResult,
+  type ExecutedEvaluation,
 } from './contracts.js';
 
 /** Stable, redacted event-consumption failure from the canonical facade. */
@@ -8,16 +9,20 @@ export class EvaluationEventConsumptionError extends Error {
     | 'EVAL_RUNTIME_EVENT_OBSERVER_FAILED'
     | 'EVAL_RUNTIME_EVENT_STREAM_FAILED';
   readonly runResult?: EvaluationResult;
+  /** Set by the execute-only entry, whose consumed work is a handle rather than a scored Run. */
+  readonly executed?: ExecutedEvaluation;
 
   constructor(input: Readonly<{
     code: EvaluationEventConsumptionError['code'];
     message: string;
     runResult?: EvaluationResult;
+    executed?: ExecutedEvaluation;
   }>) {
     super(input.message);
     this.name = 'EvaluationEventConsumptionError';
     this.code = input.code;
     this.runResult = input.runResult;
+    this.executed = input.executed;
   }
 }
 

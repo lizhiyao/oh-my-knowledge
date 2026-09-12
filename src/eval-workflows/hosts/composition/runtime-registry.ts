@@ -30,10 +30,10 @@ import {
   type CodexSdkCoreConfiguration,
 } from '../adapters/codex/sdk.js';
 import {
-  createCustomCommandExecutorAdapter,
-  type CustomCommandConfiguration,
-  type CustomCommandRuntimeDescription,
-} from '../adapters/custom/command.js';
+  createCustomExecutorAdapter,
+  type CustomExecutorConfiguration,
+  type CustomExecutorRuntimeDescription,
+} from '../adapters/custom/executor.js';
 import {
   createOpenAIApiExecutorAdapter,
   type OpenAIApiCoreConfiguration,
@@ -68,9 +68,9 @@ export type ProductionExecutorAdapterConfiguration = ProductionExecutorPreflight
   | { readonly adapterKind: 'openai-api'; readonly api: OpenAIApiCoreConfiguration }
   | { readonly adapterKind: 'anthropic-api'; readonly api: AnthropicApiCoreConfiguration }
   | {
-      readonly adapterKind: 'custom-command';
-      readonly runtime: CustomCommandRuntimeDescription;
-      readonly command: CustomCommandConfiguration;
+      readonly adapterKind: 'custom-executor';
+      readonly runtime: CustomExecutorRuntimeDescription;
+      readonly command: CustomExecutorConfiguration;
     }
 );
 
@@ -163,7 +163,7 @@ function snapshotConfiguration(
           }),
         }),
       }) as ProductionExecutorAdapterConfiguration;
-    case 'custom-command':
+    case 'custom-executor':
       return Object.freeze({
         adapterKind: configuration.adapterKind,
         preflightDeclarations,
@@ -225,13 +225,13 @@ function executorFactory(
       case 'anthropic-api':
         port = await createAnthropicApiExecutorAdapter({ ...common, api: configuration.api });
         break;
-      case 'custom-command':
+      case 'custom-executor':
         if (configuration.runtime.implementationId !== implementationId) fail({
           code: 'PRODUCTION_RUNTIME_REGISTRY_INVALID',
           implementationId,
-          message: 'Custom command Runtime identity 与注册键不一致。',
+          message: 'Custom executor Runtime identity 与注册键不一致。',
         });
-        port = await createCustomCommandExecutorAdapter({
+        port = await createCustomExecutorAdapter({
           target: context.target,
           binding: context.binding,
           runtime: configuration.runtime,
@@ -273,11 +273,11 @@ export function createProductionRuntimeFactoryRegistry(
     });
     let captured: ProductionExecutorAdapterConfiguration;
     try {
-      if (configuration.adapterKind === 'custom-command'
+      if (configuration.adapterKind === 'custom-executor'
           && configuration.runtime.implementationId !== implementationId) fail({
         code: 'PRODUCTION_RUNTIME_REGISTRY_INVALID',
         implementationId,
-        message: 'Custom command Runtime identity 与注册键不一致。',
+        message: 'Custom executor Runtime identity 与注册键不一致。',
       });
       captured = snapshotConfiguration(configuration);
     } catch (cause) {

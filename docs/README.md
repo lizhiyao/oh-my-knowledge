@@ -8,6 +8,7 @@ Choose an entry for your task. Version 1.0 is still in Beta iteration; existing 
 |---|---|---|
 | Compare two skills from the CLI | [Quickstart](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [Executors](./reference/executors.md) · [Sample format](./reference/eval-sample-format.md) · [Artifact layout](./reference/artifact-layout.md) |
 | Integrate a Node.js service | [Service guide](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [Core API](./reference/embedded-api.md) |
+| Dispatch evaluations from a platform host | [Platform host guide](./guides/platform-host-integration.md) | [Reference Executors API](./reference/eval-hosts-api.md) · [Runtime API](./reference/eval-runtime-api.md) |
 | Inspect real tasks and knowledge gaps | [Observation and task trajectories](./guides/observe-production.md) | [Codex case](./guides/codex-observe-case.md) · [Effective review semantics](./explanation/effective-observation-review.md) |
 
 ## Complete a task
@@ -25,6 +26,8 @@ Choose an entry for your task. Version 1.0 is still in Beta iteration; existing 
 - [Glossary](./reference/glossary.md) · [Tool comparison](./reference/comparison.md)
 
 ## Migration and design specs
+
+- [General sample proposal (draft)](./specs/general-sample-proposal.md)
 
 - [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/storage-layout-spec.md)
 - [Core design](./specs/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/cli-evaluation-input-compilation.md)

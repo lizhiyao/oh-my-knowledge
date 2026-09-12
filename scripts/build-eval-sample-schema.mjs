@@ -14,7 +14,7 @@ if (mode !== '--write' && mode !== '--check') {
   throw new Error('Usage: node scripts/build-eval-sample-schema.mjs <--write|--check>');
 }
 
-const schemaDir = resolve('schemas/eval-samples/v2');
+const schemaDir = resolve('schemas/eval-samples/v3');
 const fileName = 'eval-sample-set.schema.json';
 
 function sortJson(value) {
@@ -35,7 +35,7 @@ if (mode === '--write') {
     }
   }
   writeFileSync(resolve(schemaDir, fileName), rendered);
-  console.log('Generated Eval Sample Set v2 schema.');
+  console.log('Generated Eval Sample Set v3 schema.');
   process.exit(0);
 }
 
@@ -52,4 +52,4 @@ if (unexpected.length > 0) {
   console.error(`Unexpected Eval Sample schemas: ${unexpected.join(', ')}`);
   process.exit(1);
 }
-console.log('Checked Eval Sample Set v2 schema.');
+console.log('Checked Eval Sample Set v3 schema.');

@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "1.0.0-beta.7",
+  "version": "1.0.0-beta.8",
   "packageManager": "yarn@4.16.0",
   "description": "OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.",
   "type": "module",
@@ -25,6 +25,10 @@
       "types": "./dist/eval-runtime/contracts.d.ts",
       "import": "./dist/eval-runtime/contracts.js"
     },
+    "./eval-hosts": {
+      "types": "./dist/eval-workflows/hosts/reference-executors.d.ts",
+      "import": "./dist/eval-workflows/hosts/reference-executors.js"
+    },
     "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
     "./eval-core/schemas/v2/*": "./dist/eval-core/contracts/schemas/v2/*",
     "./eval-core/schemas/v3/*": "./dist/eval-core/contracts/schemas/v3/*",
@@ -34,7 +38,7 @@
       "types": "./dist/eval-workflows/inputs/eval-samples.d.ts",
       "import": "./dist/eval-workflows/inputs/eval-samples.js"
     },
-    "./eval-samples/schemas/v2/*": "./dist/eval-workflows/inputs/contracts/schemas/v2/*",
+    "./eval-samples/schemas/v3/*": "./dist/eval-workflows/inputs/contracts/schemas/v3/*",
     "./projections": {
       "types": "./dist/eval-workflows/projections/index.d.ts",
       "import": "./dist/eval-workflows/projections/index.js"

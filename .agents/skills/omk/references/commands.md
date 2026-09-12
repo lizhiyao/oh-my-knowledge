@@ -594,7 +594,7 @@ omk sample [skillPath] [flags]
 
 **Flags:**
 
-- `--append` `boolean`:在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
+- `--append` `boolean`:在已有用例文件上追加新生成的用例（撞 sampleId 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
 - `--batch` `boolean`:批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
 - `--count` `option`:生成用例条数。不传由 LLM 按 skill 类型自动决定。
 - `--executor` `option`:执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
@@ -667,21 +667,15 @@ omk studio --port 8080 --no-open
 
 ## eval-samples 字段参考
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `sample_id` | 是 | 唯一标识 |
-| `prompt` | 是 | 用户提示词 |
-| `context` | 否 | 附加上下文（代码片段等） |
-| `cwd` | 否 | executor 工作目录，用于指定目标仓库路径 |
-| `rubric` | 否 | LLM 评分标准 |
-| `assertions` | 否 | 断言数组（含 `mock_hit` 等新 v0.30 类型） |
-| `dimensions` | 否 | 多维度评分 `{ 维度名: 评分标准 }` |
-| `capability` | 否 | 能力标签（HF Dataset Cards 风） |
-| `difficulty` | 否 | 难度等级 |
-| `construct` | 否 | 测的是什么构念 |
-| `provenance` | 否 | 用例来源（`omk sample` 自动打） |
-| `mocks` | 否 | 工具调用 mock 返回（sandbox 评测） |
-| `environment` | 否 | 题设环境声明（仅注入 prompt，不物化） |
-| `tripwire` | 否 | 标记为「故意诱错」用例并作为 Core Sample annotation 保留；不改变评分或 Decision |
+只使用 `omk.eval-sample-set/v3`；v2 不兼容，不自动改写旧文件。每个样本包含：
 
-完整 schema 见 [docs/specs/sample-design-spec.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/specs/sample-design-spec.md)。
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `sampleId` | 是 | 唯一标识 |
+| `input` | 是 | 文本、结构化 JSON 或消息历史；API 执行器支持 JSON 和普通角色历史；工具历史使用 custom-executor |
+| `executionContext` | 否 | `cwd`、工具控制、mocks、题设 environment 和应用 `data` |
+| `expected` | 否 | 仅供评分器使用的参考结果 |
+| `evaluationContext` | 否 | `rubric`、`assertions`、评分 `reference`、结构化 `checks` |
+| `annotations` | 否 | 来源、难度、能力、覆盖锚点和诱错标记 |
+
+完整契约与能力边界见 [样本格式](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/reference/eval-sample-format.md)。

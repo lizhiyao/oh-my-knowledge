@@ -1,3 +1,5 @@
+import { parseStatelessApiSampleInput } from '../adapters/shared/sample-input.js';
+import { UnsupportedSampleSchemaError } from '../../inputs/schemas/error.js';
 import { createHash } from 'node:crypto';
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, resolve } from 'node:path';
@@ -178,18 +180,19 @@ function registry(): ResourceRegistry {
   };
 }
 
-const PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS = new Set([
-  'codex',
-  'codex-sdk',
-  'claude',
-  'claude-sdk',
-  'openai-api',
-  'anthropic-api',
+const PRODUCTION_EXECUTOR_INPUT_POLICIES = new Map<string, 'text' | 'stateless-api'>([
+  ['codex', 'text'],
+  ['codex-sdk', 'text'],
+  ['claude', 'text'],
+  ['claude-sdk', 'text'],
+  ['openai-api', 'stateless-api'],
+  ['anthropic-api', 'stateless-api'],
 ]);
 
 interface ResolvedTargetRuntime {
   readonly implementationId: string;
   readonly implementationResource?: ResolvedResourceDescriptor;
+  readonly sampleInputPolicy?: 'text' | 'stateless-api';
 }
 
 async function resolveTargetRuntime(
@@ -198,19 +201,19 @@ async function resolveTargetRuntime(
   requestedExecutorId: string,
   hostExecutorImplementationIds: ReadonlySet<string>,
 ): Promise<ResolvedTargetRuntime> {
-  if (PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS.has(requestedExecutorId)
+  if (PRODUCTION_EXECUTOR_INPUT_POLICIES.has(requestedExecutorId)
       || hostExecutorImplementationIds.has(requestedExecutorId)) {
-    return { implementationId: requestedExecutorId };
+    return { implementationId: requestedExecutorId, sampleInputPolicy: PRODUCTION_EXECUTOR_INPUT_POLICIES.get(requestedExecutorId) ?? 'text' };
   }
   const executablePath = absolute(projectRoot, requestedExecutorId);
   const descriptor = await fileResource(resources, {
     resourceKind: 'runtime-implementation',
     path: executablePath,
     classification: 'sensitive',
-    mediaType: 'application/vnd.omk.custom-command-runtime',
+    mediaType: 'application/vnd.omk.custom-executor-runtime',
     lineage: {
-      lineageKind: 'custom-command-runtime',
-      exchangeSchemaVersion: 'omk.custom-command-exchange/v1',
+      lineageKind: 'custom-executor-runtime',
+      exchangeSchemaVersion: 'omk.custom-executor-exchange/v1',
     },
   }).catch((cause: unknown) => {
     if (!(cause instanceof CliEvaluationInputError)
@@ -224,7 +227,7 @@ async function resolveTargetRuntime(
     });
   });
   return {
-    implementationId: `custom-command-${descriptor.digest.slice('sha256:'.length)}`,
+    implementationId: `custom-executor-${descriptor.digest.slice('sha256:'.length)}`,
     implementationResource: descriptor,
   };
 }
@@ -711,7 +714,7 @@ async function resolvedSampleContentResources(
   readonly contentDigest: `sha256:${string}`;
   readonly transportKind: 'http' | 'mcp';
   readonly sampleIds: readonly string[];
-  readonly fields: readonly ('prompt' | 'context')[];
+  readonly fields: readonly ('input.text')[];
 }[]> {
   return Promise.all(contents.map(async (content) => {
     const path = await materializeBytes(
@@ -863,7 +866,8 @@ export async function resolveNodeCliEvaluationRequest(
       code: 'CLI_INPUT_RESOLUTION_FAILED',
       sourcePath: request.values.locators.samples,
       fieldPath: 'samples',
-      message: '无法读取或解析 samples；请检查用例路径、文件权限和内容格式。',
+      message: cause instanceof UnsupportedSampleSchemaError ? cause.message
+        : '无法读取或解析 samples；请检查用例路径、文件权限和内容格式。',
       cause,
     });
   }
@@ -968,6 +972,20 @@ export async function resolveNodeCliEvaluationRequest(
     request.values.targetRuntime.executorId,
     hostExecutorImplementationIds,
   );
+  if (targetRuntime.implementationResource === undefined) {
+    for (const sample of resolvedSamples) {
+      if (targetRuntime.sampleInputPolicy === 'stateless-api') {
+        try { parseStatelessApiSampleInput(sample.input as JsonValue); }
+        catch (cause) {
+          return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${sample.sample_id}.input`,
+            message: cause instanceof Error ? cause.message : 'Unsupported API sample input.', cause });
+        }
+      } else if (sample.input.inputKind !== 'text') {
+        return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${sample.sample_id}.input`,
+          message: 'This executor supports only text samples. Use openai-api or anthropic-api for JSON/plain message history, or custom-executor for application-specific input.' });
+      }
+    }
+  }
   const resolvedMockControls = await resolvedMocks(
     resources,
     resolvedSamples,

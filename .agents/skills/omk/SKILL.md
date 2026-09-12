@@ -227,15 +227,23 @@ v2 比 v1 更好（verdict: PROGRESS，Δ=+0.7，95% CI [+0.3, +1.1]）：
 
 ## 指定工作目录（cwd）
 
-当评测用例需要模型读取特定仓库的代码时，可在 sample 中设置 `cwd` 字段：
+当评测用例需要模型读取特定仓库的代码时，可在 sample 中设置 `executionContext.cwd` 字段：
 
 ```yaml
-- sample_id: task-001
-  prompt: "实现用户登录功能，要求支持手机号和邮箱两种方式"
-  cwd: "/path/to/target-repo"
-  assertions:
-    - type: contains_all
-      values: ["auth.ts", "login.tsx"]
+schemaVersion: omk.eval-sample-set/v3
+samples:
+  - sampleId: task-001
+    input:
+      inputKind: text
+      text: 实现用户登录功能，要求支持手机号和邮箱两种方式
+    executionContext:
+      cwd: /path/to/target-repo
+    evaluationContext:
+      assertions:
+        - type: contains_all
+          values:
+            - auth.ts
+            - login.tsx
 ```
 
 `cwd` 会作为 executor 的工作目录，Codex / Claude 等 agent runtime 会在该目录下运行并读取仓库代码。适用于「给一个任务 query，断言应该修改哪些文件」的 A/B 评测场景。

@@ -752,7 +752,7 @@ Series 的实验单位是一轮完整 Run。Trial、retry、sample 与评委 rep
 | 统计分析方式 | `reanalyze()` | 分析及结论。 |
 | 结论规则 | `redecide()` | 只重做结论。 |
 
-如果 prompt、实际输入或执行配置变了，应重新运行 `evaluate()`。下面的 `correctedGoldDataset` 等变量代表你更新后的完整声明：
+如果 prompt、实际输入或执行配置变了，应重新运行 `evaluate()`。如果希望 Target 调用先跑完并沉淀，之后再决定评分口径，用 `executeEvaluation()` 停在 Execution，再用 `scoreExecutedEvaluation()` 评分，见[拆分为先执行、后评分](#staged-execute-score)。下面的 `correctedGoldDataset` 等变量代表你更新后的完整声明：
 
 ```ts
 import { reanalyze, redecide, rescore } from 'oh-my-knowledge';
@@ -775,6 +775,77 @@ const redecided = await redecide(
 ```
 
 `rescore()` 复用 Execution，`reanalyze()` 复用 Execution 与 Evaluation，`redecide()` 复用 Execution、Evaluation 与 Analysis。每次调用都接收一份完整的新声明，确保默认值与 identity 在后缀运行前封存。Core 会拒绝任何属于已跳过阶段的变化；只有当前进程中的原始 canonical result object 携带所需 source authority。Run options、进度事件与预算消耗只作用于新执行的后缀；复用 bundle 保留原始 identity 与历史 evidence，不会再次计费。跨进程复用持久化结果时，先用 `loadEvaluationResult()` 通过独立 verifier 重新取得 source authority，见[在新进程里读回历史结果再复用](#restore-stored-results)；report 或 JSON clone 绝不是充分证据。
+
+</details>
+
+<a id="staged-execute-score"></a>
+<a id="拆分为先执行后评分"></a>
+
+<details>
+<summary>拆分为先执行、后评分</summary>
+
+Target 调用最贵时，可以让它只跑一次，之后再决定评分口径。`executeEvaluation()` 只执行 Execution stage 并返回 `ExecutedEvaluation` 句柄；`scoreExecutedEvaluation()` 接收一份完整的新声明加上该句柄，在不再次调用 Target 的前提下执行 Evaluation、Analysis、Decision 与 Report：
+
+```ts
+import {
+  executeEvaluation,
+  saveExecutedEvaluation,
+  loadExecutedEvaluation,
+  scoreExecutedEvaluation,
+} from 'oh-my-knowledge';
+
+const executed = await executeEvaluation(input, {
+  runId: 'release-42-execution',
+  signal,
+});
+console.log(executed.runId, executed.bundle.records.length);
+
+const first = await scoreExecutedEvaluation(
+  { ...input, dataset: goldV1 },
+  executed,
+  { runId: 'release-42-gold-v1' },
+);
+const second = await scoreExecutedEvaluation(
+  { ...input, dataset: goldV2, evaluators: revisedEvaluators },
+  executed,
+  { runId: 'release-42-gold-v2' },
+);
+```
+
+句柄就是 Execution stage 的已认证 evidence：它的 `runId`、`executionPlanDigest` 与 `executionInputDigest`，以及 `ExecutionBundle` 本体。`bundleOrigin` 表明这批工作是在当前进程完成的（`runtime`），还是从存储重新接纳回来的（`store`）。要在后续进程里评分，先把 envelope 持久化，再由宿主 verifier 独立认证后重新接纳：
+
+```ts
+const reference = await saveExecutedEvaluation({ executed, store: hostContentStore });
+
+const reloaded = await loadExecutedEvaluation({
+  reference,
+  resolver: hostContentResolver,
+  verifier: {
+    verifierId: 'acme.execution-authority/v1',
+    async verify({ reference: candidate }) {
+      const attestation = await executionRegistry.authenticate(candidate.digest);
+      return {
+        verifiedExecutedDigest: candidate.digest,
+        attestationDigest: attestation.digest,
+        verifiedProvenanceBundleDigests: attestation.provenanceBundleDigests,
+        verifiedCacheRecordDigests: attestation.cacheRecordDigests,
+      };
+    },
+  },
+});
+```
+
+envelope 使用 media type `application/vnd.omk.executed-evaluation+json;version=1`（`EXECUTED_EVALUATION_MEDIA_TYPE`），并始终以 `classification: 'gold'` 写入，因为它保存的是绝不能作为 context 回流给 Target 的 Target evidence。存储由宿主负责，OMK 只固定 envelope 结构与 digest。
+
+准入沿用与 `rescore()` 完全相同的 Core 规则，而且刻意收窄：新声明必须逐字节复现封存的 Execution stage，Gold、Evaluator、评委 rubric、Analysis 与 Decision 内容都可以变化。因此 prompt、执行输入或执行配置一旦变化，会在任何评分工作之前被拒绝；来自 `structuredClone()`、JSON 反序列化或手工拼装的手柄同样被拒绝。这类拒绝统一是一个 `EvaluationConfigurationError`，code 为 `EVAL_RUNTIME_REUSE_INVALID`，其 `cause` 只携带脱敏来源，不含宿主错误文本。每次评分都是一个普通 Run：拥有自己的 `runId`，只产生后缀阶段的进度事件，只消耗后缀预算；被复用的 Execution bundle 保留原始 identity，不会二次计费。
+
+复用本身不构成发布结论的依据：
+
+- 由同一 envelope 评分出的两份结果共享 Execution stage identity，因此 `assessComparability()` 会把执行视为不变，只读你声明的 subject 变化。这是关于封存 bytes 的 identity 陈述，不是“两次评分时模型、供应商或环境表现一致”的证据。
+- verifier 未认证该 envelope 的 provenance bundle 时，其 provenance status 保持 indeterminate：Report 只能声称 `unknown` provenance，声明了 Decision 时也会被门槛拦住，哪怕被评分的事实毫无变化。经过一次成功的存储往返并不会自动恢复信任。
+- 只执行 Run 没有任何分数。请把 `executeEvaluation()` 视为未完成的工作：持久化句柄、完成评分并归档评分后的 `EvaluationResult`，或让句柄留在进程内。要持久化一次完整的已评分 Run，仍然使用 `saveEvaluationResult()`。
+
+可直接运行的单文件样板 `examples/eval-runtime/staged-execute-score.mjs` 离线走完整个流程：一次合成 Target 调用，然后在同一个已持久化 envelope 上套用两套评分口径。
 
 </details>
 
@@ -1182,7 +1253,7 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port（包括 subprocess command Executor adapter）、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
+显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port（包括 subprocess command Executor adapter）、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；宿主按下发 id 与 config 执行评测、又不想自己重写供应商协议时，官方参考执行器使用 `oh-my-knowledge/eval-hosts`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
 
 可运行的[最小示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime)与 packed-package fixture 会在 clean host 中验证 canonical API。
 

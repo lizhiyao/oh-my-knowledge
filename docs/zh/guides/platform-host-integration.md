@@ -17,7 +17,7 @@
 
 | 下发内容 | 载体 | 执行侧映射 |
 |---|---|---|
-| 评测用例 | 已发布 schema `omk.eval-sample-set/v2`（入口 `oh-my-knowledge/eval-samples`；schema 文件用 `resolveEvalSampleJsonSchema` 解析） | 编译为 `EvaluateInput.dataset.samples` |
+| 评测用例 | 已发布 schema `omk.eval-sample-set/v3`（入口 `oh-my-knowledge/eval-samples`；schema 文件用 `resolveEvalSampleJsonSchema` 解析） | 编译为 `EvaluateInput.dataset.samples` |
 | analyses／decision／policy／experiment／comparisons 等可序列化测量声明 | 已发布 Core JSON Schema（`oh-my-knowledge/eval-core/schemas/v1..v5/*`），运行时按文件名用 `resolveEvaluationCoreJsonSchema` 解析；每个文件名只对应一个版本目录，如 `evaluation-definition.schema.json` 在 `v5`、`measurement-policy.schema.json` 在 `v1` | 映射为 `EvaluateInput.analyses`、`decision`、`policy`、`experiment`、`comparisons` |
 | executor／evaluator／评委／报告逻辑 | 只下发「注册表 id＋配置＋版本 digest」，不下发代码 | 执行侧按 id 从自有注册表解析实现（见下一节），注入 `variants`／`evaluators` |
 
@@ -88,6 +88,70 @@ executors.set('executor:http-qa@2026.09.1', (ref) => ({
 
 它只承载 `ExecutorInvocation` 合法持有的字段，不伪造 run／trial／attempt 坐标或执行计划 digest。调用里出现 leased 受控资源（workspace overlay、原生 MCP 配置、工具调用拦截）时失败关闭，声明这些 capability 也会在构造阶段被拒——需要受控资源时用同进程 Executor。它也不是插件加载器：OMK 不做实现发现、下载或动态装载，注册与版本治理始终是宿主的责任。
 
+## 用官方参考执行器接入下发协议
+
+`registryId@version` 通常指向你亲手写的 `execute()`。当这个「实现」其实是供应商 CLI 时，在宿主侧重新实现一遍协议正是测量 bug 的来源：漏掉 `--ignore-user-config`、参数顺序不同、JSONL 解析放宽，都会产出看起来合理却无人能归因的答案。因此 OMK 把自己内部使用的供应商适配器，以**参考执行器**的形式通过 `oh-my-knowledge/eval-hosts` 发布出来——输入配置，输出一个规范的 façade `Executor`，两侧都不引入注册表、发现、下载或动态装载。当下发布的是 Codex CLI 这一个。
+
+```ts
+import {
+  createCodexCliReferenceExecutor,
+  type CodexCliEnvironmentEntry,
+} from 'oh-my-knowledge/eval-hosts';
+
+/** 参考执行器工厂是异步的：返回前要探测供应商可执行文件。 */
+const referenceFactories = new Map<
+  string,
+  (ref: DispatchedRef) => Promise<DispatchedExecutor>
+>();
+
+referenceFactories.set('executor.vendor-codex@2026.09.1', async (ref) => {
+  const environment: Record<string, CodexCliEnvironmentEntry> = {
+    // `behavior` 会把取值写进测量 identity，因此这里放稳定标签，是一次明确断言：
+    // 该条目不影响测量——二进制已经由适配器自己的 `launcher` 与 `binary` 指纹钉住。
+    PATH: { value: process.env.PATH ?? '', identity: { identityKind: 'behavior', value: 'host-managed' } },
+    // `credential` 什么都不记录，但会把输出与 trace 的处理等级抬到 `secret`。
+    CODEX_SESSION_TOKEN: {
+      value: await secrets.read('codex-session-token'),
+      identity: { identityKind: 'credential' },
+    },
+  };
+  return createCodexCliReferenceExecutor({
+    executorId: ref.registryId,
+    executablePath: String(ref.config.executablePath),
+    model: String(ref.config.model),
+    sandbox: 'read-only',
+    environment,
+    // 上面注册表里的下发配置 digest 仍然要进 identity。
+    fingerprintFacets: { configDigest: ref.configDigest },
+  });
+});
+
+const resolveExecutor = async (ref: DispatchedRef): Promise<DispatchedExecutor> => {
+  const build = executors.get(`${ref.registryId}@${ref.version}`)
+    ?? referenceFactories.get(`${ref.registryId}@${ref.version}`);
+  if (build === undefined) {
+    // 失败关闭：绝不降级，也绝不换一个「差不多」的实现顶上。
+    throw new Error(`unregistered executor: ${ref.registryId}@${ref.version}`);
+  }
+  return build(ref);
+};
+```
+
+白拿到的部分：
+
+- **身份来自观测，而不是许愿。** `executor.version` 是被探测到的供应商发布号，保留键 `codexCli` 记录适配器版本、版本下限、钉住的运行参数控制、launcher 与二进制摘要、分类后的环境、字节上限、本接缝写死的控制项，以及输入投影版本。可比性评估因此能区分「同 id 不同供应商构建」和「同构建不同配置」。
+- **知识载体走受支持的投影路径。** artifact 的 content 字符串被渲染进与 OMK 自有宿主完全一致的版本化 prompt 信封——逐字节相同——所以在产品宿主与你的下发宿主之间切换，不会移动输入。
+- **认证而非自述。** 每次部署对装配好的执行器跑一次 `oh-my-knowledge/eval-runtime` 的 `checkExecutor()`：它经由真实 Runtime façade 检查成功、失败、取消、清理、telemetry 与测量各项。
+
+仍然归你、以及会失败关闭的部分：
+
+- **需要计划内租约的资源不在这条接缝上。** trial workspace overlay、原生 MCP 配置、工具调用前 mock 拦截、逐用例工具白名单、`runtimeContext` 投影，都会各自返回稳定的 `OMK_CODEX_CLI_*_UNSUPPORTED` 错误码且不启动进程——适配器宁可拒绝，也不会以比密封计划更弱的隔离去跑。需要这些能力的下发，只能由宿主自己实现适配器。
+- **供应商侧账号与网络隔离。** 适配器只转发你声明的环境变量，并为每次尝试准备私有临时目录；它管不住供应商进程在网络上的行为，也管不住一份凭据属于哪个账号。
+- **版本下限的治理。** `CODEX_CLI_MIN_SUPPORTED_VERSION` 记录的是验证过协议的下限，不是「之上的版本都测过」。不兼容的上游变更会以 `OMK_CODEX_CLI_PROTOCOL_INVALID` 或 `OMK_CODEX_CLI_UPGRADE_REQUIRED` 暴露，而不是给出一份被静默重新解释的答案。抬高下限会同步提升适配器版本，并应进入你的注册表版本键，看板才分得清两个时代。
+- **凭据与成本。** 读取、轮转、付费调用始终是宿主侧；`credential` 条目只负责抬升处理等级。
+
+导出清单、每个错误码的含义与漂移治理规则见[参考执行器 API](../reference/eval-hosts-api)。
+
 ## 持久过程回写
 
 `EvaluationRunOptions.onEvent` 是**有序、best-effort 的进度投影**：缓冲有界（`eventBufferCapacity`，默认 256），消费落后时会丢弃最旧的进度事件、保留最新事件，因此事件序号可能出现缺口；observer 失败也不影响测量终态。它适合做进度条，**不适合做审计**。
@@ -134,10 +198,26 @@ const result = await prepared.run({
 
 可运行的参考样板见 [`examples/eval-runtime/result-store.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/result-store.mjs)（临时目录上的文件后端 ContentStore／ContentResolver，在存储边界校验 digest，另配一个独立的审计回执 verifier）；单进程视角的同一流程见[在新进程里读回历史结果再复用](./eval-runtime#restore-stored-results)。
 
+### 先执行、后评分
+
+当 Target 调用必须在评分标准确定之前跑完——标注队列还在运转、评委 rubric 仍在评审，或一次执行要服务多个候选版本——就把两个阶段拆开，而不是回读一次已评分的 Run：
+
+1. **执行。** `executeEvaluation(input, options)` 只运行 Execution stage，返回 `ExecutedEvaluation` 句柄（`runId`、`executionPlanDigest`、`executionInputDigest`、`ExecutionBundle` 本体，`bundleOrigin: 'runtime'`）。不会尝试任何 Evaluator、评委、Analysis、Decision 或 Report。
+2. **封存。** `saveExecutedEvaluation({ executed, store })` 以 `EXECUTED_EVALUATION_MEDIA_TYPE` 写入 envelope `omk.eval-runtime.stored-executed/v1`，分类固定为 `gold`。它只承载 Target evidence，绝不能作为 context 回流给 Target。
+3. **重新接纳。** `loadExecutedEvaluation({ reference, resolver, verifier })` 校验存储完整性与宿主认证，返回 `bundleOrigin: 'store'` 的句柄。与已存 result 不同，执行 envelope 与声明无关：这一步会比较的内容里没有 plan digest，因为一个 envelope 本就服务于后续多份评分声明。
+4. **评分。** `scoreExecutedEvaluation(newInput, executed, options)` 先封存新声明，再按 `rescore` 使用的同一条 Core 规则准入该 envelope，并以零次 Target 调用执行 Evaluation 及其后续阶段。每个评分版本重复一次。
+
+有两条边界记录在宿主侧，而不是由 OMK 代劳：
+
+- **每份评分 Run 都要绑定它复用的 envelope。** 把 `executed.bundle.bundleDigest` 与每个评分 `runId` 一起持久化。看板展示三份评分结果却不说明它们共享同一次执行，读者就会把三个评分版本当成三次独立测量。
+- **重新接纳的 envelope 无法靠存储恢复信任。** verifier 未认证 provenance bundle 时该状态保持 indeterminate：评分 Report 照常完成，但只能声称 `unknown` provenance，声明了 Decision 也会被门槛拦住。只靠校验和的 verifier 重新接纳属于诊断路径，不是发布证据。
+
+可运行的样板 [`examples/eval-runtime/staged-execute-score.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/staged-execute-score.mjs) 离线走完整个拆分流程；调用侧的叙述见[拆分为先执行、后评分](./eval-runtime#staged-execute-score)。
+
 ## 可比性治理工作流
 
 - **identity facet 从第一天进下发协议。** executor 的 `executorId`／`version`／`fingerprintFacets`、evaluator 的 `instrumentId` 与 implementation 版本、评委的 `judgeId`／`version`、所用 schema 的 digest——全部属于测量身份，应当是下发契约的固定字段，而不是事后补充。
-- **评测用例集同样要版本化。** `omk.eval-sample-set/v2` 文档自带 `schemaVersion`，但 `EvaluateInput.dataset` 只有 `datasetId`、样本内容与可选的 `analysisCohorts`／`annotations`，没有版本字段：样本内容变化会改变 sealed plan digest（跨进程回读必须用同一份声明），而 `datasetId` 本身不会告诉你标注是否被改过。平台应把用例集版本与内容 digest 作为下发契约的固定字段，并写进 `dataset.annotations`，让看板与 `assessComparability` 的 reason 能区分「同 id、不同标注」的两次测量。修正标注后用 `rescore()` 重评属于新的测量版本，必须与修正前的结果分区展示。
+- **评测用例集同样要版本化。** `omk.eval-sample-set/v3` 文档自带 `schemaVersion`，但 `EvaluateInput.dataset` 只有 `datasetId`、样本内容与可选的 `analysisCohorts`／`annotations`，没有版本字段：样本内容变化会改变 sealed plan digest（跨进程回读必须用同一份声明），而 `datasetId` 本身不会告诉你标注是否被改过。平台应把用例集版本与内容 digest 作为下发契约的固定字段，并写进 `dataset.annotations`，让看板与 `assessComparability` 的 reason 能区分「同 id、不同标注」的两次测量。修正标注后用 `rescore()` 重评属于新的测量版本，必须与修正前的结果分区展示。
 - **评分标准变更走版本化流程**：发布新契约版本→标记 `BREAKING-COMPARABILITY`→新旧结果在看板分区展示。仓库内的 rubric 评委 prompt 由 `test/measurement-governance` 的 prompt registry 冻结治理，任何字节漂移都会被测试拦截；平台自有的评委 prompt 也应有同样的冻结与版本管理。
 - **`assessComparability` 的三个状态独立解读**：`designStatus`（compatible／incompatible）看测量设计是否可比；`evidenceQualificationStatus`（verified／conditional／rejected）看证据认证是否完整；`comparabilityStatus`（compatible／conditional／incompatible）是派生的总体结论。设计可比不代表证据过关，反之亦然。
 - **看板分区展示。** 不可比（incompatible）的结果单独分区并展示 reason code，不与可比结果混在同一条趋势线里；conditional 的结果标注限制条件后再展示。
@@ -152,6 +232,7 @@ stored result 恒为 `gold` 分类——包含原始输出、trace 与完整证�
 
 - [在 Node.js 服务中使用](./eval-runtime)
 - [Runtime API 参考](../reference/eval-runtime-api)
+- [参考执行器 API](../reference/eval-hosts-api)
 - [底层 Core API（高级）](../reference/embedded-api)
 - [评测用例格式](../reference/eval-sample-format)
 - [术语表](../reference/glossary)

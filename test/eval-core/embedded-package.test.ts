@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -52,6 +53,11 @@ const ADVANCED_RUNTIME_HOST_FIXTURE = join(
   REPO_ROOT,
   'test/eval-runtime/fixtures/advanced-host.mjs',
 );
+const REFERENCE_EXECUTORS_HOST_FIXTURE = join(
+  REPO_ROOT,
+  'test/eval-workflows/fixtures/reference-executors-host.mjs',
+);
+const CODEX_VENDOR_STANDIN = join(REPO_ROOT, 'test/fixtures/codex-cli-core-runtime.mjs');
 const PUBLIC_RUNTIME_EXAMPLE = join(REPO_ROOT, 'examples/eval-runtime/run.mjs');
 
 describe('published embedded Evaluation API', () => {
@@ -149,8 +155,8 @@ describe('published embedded Evaluation API', () => {
     ))).toBe(true);
     expect(JSON.parse(readFileSync(join(
       packageDirectory,
-      'dist/eval-workflows/inputs/contracts/schemas/v2/eval-sample-set.schema.json',
-    ), 'utf8')).title).toBe('OMK Eval Sample Set v2');
+      'dist/eval-workflows/inputs/contracts/schemas/v3/eval-sample-set.schema.json',
+    ), 'utf8')).title).toBe('OMK Eval Sample Set v3');
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({
       name: 'independent-omk-host',
       private: true,
@@ -167,6 +173,9 @@ describe('published embedded Evaluation API', () => {
       join(projectRoot, 'runtime-conformance-host.mjs'),
     );
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
+    copyFileSync(REFERENCE_EXECUTORS_HOST_FIXTURE, join(projectRoot, 'reference-executors-host.mjs'));
+    copyFileSync(CODEX_VENDOR_STANDIN, join(projectRoot, 'vendor-codex.mjs'));
+    chmodSync(join(projectRoot, 'vendor-codex.mjs'), 0o755);
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
     copyFileSync(join(REPO_ROOT, 'examples/eval-runtime/retrieval-abstention.mjs'), join(projectRoot, 'retrieval-abstention.mjs'));
     copyFileSync(join(REPO_ROOT, 'test/eval-runtime/fixtures/retrieval-abstention-host.mjs'), join(projectRoot, 'retrieval-abstention-host.mjs'));
@@ -191,6 +200,7 @@ const assert = require('node:assert/strict');
   const evalRuntime = await import('oh-my-knowledge/eval-runtime');
   const evalRuntimeAdvanced = await import('oh-my-knowledge/eval-runtime/advanced');
   const evalRuntimeContracts = await import('oh-my-knowledge/eval-runtime/contracts');
+  const evalHosts = await import('oh-my-knowledge/eval-hosts');
   const evalSamples = await import('oh-my-knowledge/eval-samples');
   const projections = await import('oh-my-knowledge/projections');
   const studio = await import('oh-my-knowledge/studio');
@@ -240,7 +250,21 @@ const assert = require('node:assert/strict');
   );
   assert.equal(typeof evalRuntimeAdvanced.DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES, 'number');
   assert.equal(typeof evalRuntimeContracts.SourceNeutralTraceSchema.safeParse, 'function');
-  assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v2');
+  assert.deepEqual(Object.keys(evalHosts).sort(), [
+    'CODEX_CLI_MIN_SUPPORTED_VERSION',
+    'CODEX_CLI_REFERENCE_ADAPTER_VERSION',
+    'DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS',
+    'createCodexCliReferenceExecutor',
+  ]);
+  assert.equal(typeof evalHosts.createCodexCliReferenceExecutor, 'function');
+  assert.match(evalHosts.CODEX_CLI_MIN_SUPPORTED_VERSION, /^[0-9]+[.][0-9]+[.][0-9]+$/u);
+  assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v3');
+  const authored = { sampleId: 'public-v3', input: { inputKind: 'text', text: 'Exact input bytes.' } };
+  const sampleDocument = evalSamples.createEvalSampleSetDocument([authored]);
+  assert.deepEqual(sampleDocument.samples, [authored]);
+  assert.equal(evalSamples.EvalSampleSetDocumentSchema.safeParse(sampleDocument).success, true);
+  assert.equal(Object.hasOwn(evalSamples, 'normalizeAuthoredSample'), false);
+
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
   assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
   assert.equal(typeof studio.createCoreStudioCatalog, 'function');
@@ -274,10 +298,10 @@ const assert = require('node:assert/strict');
   );
   assert.equal(executionPlanSchema.default.title, 'OMK Execution Plan v4');
   const sampleSchema = await import(
-    'oh-my-knowledge/eval-samples/schemas/v2/eval-sample-set.schema.json',
+    'oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json',
     { with: { type: 'json' } }
   );
-  assert.equal(sampleSchema.default.title, 'OMK Eval Sample Set v2');
+  assert.equal(sampleSchema.default.title, 'OMK Eval Sample Set v3');
   try {
     require('oh-my-knowledge');
     throw new Error('require() unexpectedly loaded the ESM-only package root');
@@ -293,6 +317,12 @@ const assert = require('node:assert/strict');
   try {
     await import('oh-my-knowledge/eval-runtime/adapters/json-executor');
     throw new Error('eval-runtime deep import unexpectedly succeeded');
+  } catch (error) {
+    assert.equal(error.code, 'ERR_PACKAGE_PATH_NOT_EXPORTED');
+  }
+  try {
+    await import('oh-my-knowledge/eval-workflows/hosts/adapters/codex/cli.js');
+    throw new Error('reference adapter deep import unexpectedly succeeded');
   } catch (error) {
     assert.equal(error.code, 'ERR_PACKAGE_PATH_NOT_EXPORTED');
   }
@@ -591,6 +621,35 @@ const assert = require('node:assert/strict');
     ]).toEqual([]);
   });
 
+  it('tarball clean-room 通过 eval-hosts 装配官方参考 Executor 并拒绝租约资源', () => {
+    const isolatedHome = join(projectRoot, 'eval-hosts-home');
+    const isolatedConfig = join(projectRoot, 'eval-hosts-config');
+    const isolatedCache = join(projectRoot, 'eval-hosts-cache');
+    for (const directory of [isolatedHome, isolatedConfig, isolatedCache]) mkdirSync(directory);
+    const result = spawnSync(process.execPath, [join(projectRoot, 'reference-executors-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        HOME: isolatedHome,
+        XDG_CONFIG_HOME: isolatedConfig,
+        XDG_CACHE_HOME: isolatedCache,
+      },
+    });
+    expect({
+      status: result.status,
+      signal: result.signal,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
+    expect([
+      ...readdirSync(isolatedHome),
+      ...readdirSync(isolatedConfig),
+      ...readdirSync(isolatedCache),
+    ]).toEqual([]);
+  });
+
   it('不再提供旧 evaluation-core 子路径兼容层', () => {
     const retiredSubpath = ['oh-my-knowledge', 'evaluation-core'].join('/');
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `
@@ -643,11 +702,12 @@ const assert = require('node:assert/strict');
       './eval-core/schemas/v3/*',
       './eval-core/schemas/v4/*',
       './eval-core/schemas/v5/*',
+      './eval-hosts',
       './eval-runtime',
       './eval-runtime/advanced',
       './eval-runtime/contracts',
       './eval-samples',
-      './eval-samples/schemas/v2/*',
+      './eval-samples/schemas/v3/*',
       './mcp',
       './package.json',
       './projections',

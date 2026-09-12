@@ -1,103 +1,113 @@
 {
-  "schemaVersion": "omk.eval-sample-set/v2",
+  "schemaVersion": "omk.eval-sample-set/v3",
   "samples": [
     {
-      "sample_id": "artifact-001",
-      "prompt": "先确定当前工作目录，再读取当前工作目录下的 ./skills/runtime-context-check.md，返回第一行里的随机 runtime token 和文件总行数。不要搜索整个仓库，不要解释。",
-      "rubric": {
-        "artifact_following": {
-          "criterion": "显式 artifact 注入后，是否稳定输出 artifact 特征标记",
-          "weight": 0.5
-        },
-        "tool_path": {
-          "criterion": "是否直接命中目标文件，而不是搜索整个仓库",
-          "weight": 0.5
-        }
+      "sampleId": "artifact-001",
+      "input": {
+        "inputKind": "text",
+        "text": "先确定当前工作目录，再读取当前工作目录下的 ./skills/runtime-context-check.md，返回第一行里的随机 runtime token 和文件总行数。不要搜索整个仓库，不要解释。"
       },
-      "assertions": [
-        {
-          "type": "tools_called",
-          "values": [
-            "Bash",
-            "Read"
-          ],
-          "weight": 1
+      "evaluationContext": {
+        "rubric": {
+          "artifact_following": {
+            "criterion": "显式 artifact 注入后，是否稳定输出 artifact 特征标记",
+            "weight": 0.5
+          },
+          "tool_path": {
+            "criterion": "是否直接命中目标文件，而不是搜索整个仓库",
+            "weight": 0.5
+          }
         },
-        {
-          "type": "tool_output_contains",
-          "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
-          "weight": 1
-        },
-        {
-          "type": "tool_input_contains",
-          "value": "Bash:wc -l",
-          "weight": 1
-        },
-        {
-          "type": "contains",
-          "value": "ARTIFACT_OK",
-          "weight": 1
-        },
-        {
-          "type": "contains",
-          "value": "ANALYSIS_DONE",
-          "weight": 0.5
-        },
-        {
-          "type": "turns_min",
-          "value": 4,
-          "weight": 0.5
-        }
-      ]
+        "assertions": [
+          {
+            "type": "tools_called",
+            "values": [
+              "Bash",
+              "Read"
+            ],
+            "weight": 1
+          },
+          {
+            "type": "tool_output_contains",
+            "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
+            "weight": 1
+          },
+          {
+            "type": "tool_input_contains",
+            "value": "Bash:wc -l",
+            "weight": 1
+          },
+          {
+            "type": "contains",
+            "value": "ARTIFACT_OK",
+            "weight": 1
+          },
+          {
+            "type": "contains",
+            "value": "ANALYSIS_DONE",
+            "weight": 0.5
+          },
+          {
+            "type": "turns_min",
+            "value": 4,
+            "weight": 0.5
+          }
+        ]
+      }
     },
     {
-      "sample_id": "artifact-002",
-      "prompt": "先确定当前工作目录。只输出一行结果，格式是 `RUNTIME:<第一行>|LINES:<行数>`。目标文件是当前工作目录下的 ./skills/runtime-context-check.md，其中第一行是随机 runtime token。不要解释，不要搜索整个仓库。",
-      "rubric": {
-        "completeness": {
-          "criterion": "是否同时给出 runtime marker 和行数",
-          "weight": 0.5
-        },
-        "discipline": {
-          "criterion": "是否遵守 artifact 规定的受控输出格式",
-          "weight": 0.5
-        }
+      "sampleId": "artifact-002",
+      "input": {
+        "inputKind": "text",
+        "text": "先确定当前工作目录。只输出一行结果，格式是 `RUNTIME:<第一行>|LINES:<行数>`。目标文件是当前工作目录下的 ./skills/runtime-context-check.md，其中第一行是随机 runtime token。不要解释，不要搜索整个仓库。"
       },
-      "assertions": [
-        {
-          "type": "tools_called",
-          "values": [
-            "Bash",
-            "Read"
-          ],
-          "weight": 1
+      "evaluationContext": {
+        "rubric": {
+          "completeness": {
+            "criterion": "是否同时给出 runtime marker 和行数",
+            "weight": 0.5
+          },
+          "discipline": {
+            "criterion": "是否遵守 artifact 规定的受控输出格式",
+            "weight": 0.5
+          }
         },
-        {
-          "type": "tool_output_contains",
-          "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
-          "weight": 1
-        },
-        {
-          "type": "tool_input_contains",
-          "value": "Bash:wc -l",
-          "weight": 1
-        },
-        {
-          "type": "contains",
-          "value": "ARTIFACT_OK",
-          "weight": 1
-        },
-        {
-          "type": "regex",
-          "pattern": "RUNTIME:.*\\|LINES:\\d+",
-          "weight": 0.5
-        },
-        {
-          "type": "turns_min",
-          "value": 4,
-          "weight": 0.5
-        }
-      ]
+        "assertions": [
+          {
+            "type": "tools_called",
+            "values": [
+              "Bash",
+              "Read"
+            ],
+            "weight": 1
+          },
+          {
+            "type": "tool_output_contains",
+            "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
+            "weight": 1
+          },
+          {
+            "type": "tool_input_contains",
+            "value": "Bash:wc -l",
+            "weight": 1
+          },
+          {
+            "type": "contains",
+            "value": "ARTIFACT_OK",
+            "weight": 1
+          },
+          {
+            "type": "regex",
+            "pattern": "RUNTIME:.*\\|LINES:\\d+",
+            "weight": 0.5
+          },
+          {
+            "type": "turns_min",
+            "value": 4,
+            "weight": 0.5
+          }
+        ]
+      }
     }
   ]
 }

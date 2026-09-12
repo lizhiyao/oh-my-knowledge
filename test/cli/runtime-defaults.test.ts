@@ -153,8 +153,10 @@ describe('API runtime model wiring', () => {
     const skill = join(root, 'review.md');
     writeFileSync(skill, '# Review\nGive an accurate answer.\n');
     writeFileSync(samples, JSON.stringify({
-      schemaVersion: 'omk.eval-sample-set/v2',
-      samples: [{ sample_id: 'model-check', prompt: 'Say Paris.', rubric: { accuracy: { criterion: 'Paris is stated.', weight: 1 } } }],
+      schemaVersion: 'omk.eval-sample-set/v3',
+      samples: [
+{ sampleId: 'model-check', input: { inputKind: 'text', text: 'Say Paris.' }, evaluationContext: { rubric: { accuracy: { criterion: 'Paris is stated.', weight: 1 } } } }
+],
     }));
     const requests: Array<{ model: string }> = [];
     vi.stubGlobal('fetch', async (_url: unknown, init: RequestInit) => {

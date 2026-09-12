@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { mergeAppendSamples, appendSamplesToFile, preflightSampleAppend } from '../../../src/eval-workflows/inputs/append-samples.js';
-import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
-import { createEvalSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
+import type { Sample, AuthoredSample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
+import { createWorkflowSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
-const s = (id: string, prompt = 'p'): Sample => ({ sample_id: id, prompt }) as Sample;
+const s = (id: string, prompt = 'p'): Sample => ({ sample_id: id, input: { inputKind: 'text', text: prompt } });
 const ids = (arr: Sample[]): string[] => arr.map((x) => x.sample_id);
 
 describe('mergeAppendSamples (--append 合并 + id 去重)', () => {
@@ -36,7 +36,7 @@ describe('mergeAppendSamples (--append 合并 + id 去重)', () => {
     const merged = mergeAppendSamples([s('x', 'old')], [s('x', 'new-prompt')]);
     assert.equal(merged.length, 2);
     assert.equal(merged[1].sample_id, 'x-2');
-    assert.equal(merged[1].prompt, 'new-prompt');
+    assert.equal(textOf(merged[1]), 'new-prompt');
   });
 
   it('已有为空:新用例原样返回', () => {
@@ -56,18 +56,27 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-append-')); });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it.each(['{broken', '{}', '{"schemaVersion":"omk.eval-sample-set/v2","samples":[{}]}'])('预检拒绝损坏或非法文档：%s', (raw) => {
+  it.each(['{broken', '{}', '{"schemaVersion":"omk.eval-sample-set/v3","samples":[{}]}'])('预检拒绝损坏或非法文档：%s', (raw) => {
     const file = join(dir, 'eval-samples.json');
     writeFileSync(file, raw);
     assert.throws(() => preflightSampleAppend(file));
     assert.equal(readFileSync(file, 'utf8'), raw);
   });
 
+  it('追加保留既有 v3 空分组、金标和输入字节', () => {
+    const file = join(dir, 'eval-samples.json');
+    const original = { sampleId: 'original', input: { inputKind: 'text', text: ' Q\r\n ' },
+      executionContext: {}, annotations: {}, expected: null };
+    writeFileSync(file, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v3', samples: [original] }));
+    appendSamplesToFile(file, [s('new')]);
+    assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).samples[0], original);
+  });
+
   it('生成期间文件被修改时保留外部改动', () => {
     const file = join(dir, 'eval-samples.json');
-    writeFileSync(file, JSON.stringify(createEvalSampleSetDocument([s('original')])));
+    writeFileSync(file, JSON.stringify(createWorkflowSampleSetDocument([s('original')])));
     const snapshot = preflightSampleAppend(file);
-    const edited = JSON.stringify(createEvalSampleSetDocument([s('external')]));
+    const edited = JSON.stringify(createWorkflowSampleSetDocument([s('external')]));
     writeFileSync(file, edited);
     assert.throws(() => appendSamplesToFile(file, [s('generated')], undefined, snapshot), /changed during generation/);
     assert.equal(readFileSync(file, 'utf8'), edited);
@@ -76,7 +85,7 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
   it.each(['json', 'yaml'])('通过 %s 软链追加共享样本，保留链接和格式', (extension) => {
     const target = join(dir, 'shared.data');
     const file = join(dir, `eval-samples.${extension}`);
-    const document = createEvalSampleSetDocument([s('original')]);
+    const document = createWorkflowSampleSetDocument([s('original')]);
     writeFileSync(target, extension === 'json' ? JSON.stringify(document) : yaml.dump(document));
     symlinkSync('shared.data', file);
     const snapshot = preflightSampleAppend(file);
@@ -84,8 +93,8 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
     assert.ok(lstatSync(file).isSymbolicLink());
     assert.equal(readlinkSync(file), 'shared.data');
     const raw = readFileSync(target, 'utf8');
-    const parsed = (extension === 'json' ? JSON.parse(raw) : yaml.load(raw)) as { samples: Sample[] };
-    assert.deepEqual(ids(parsed.samples), ['original', 'generated']);
+    const parsed = (extension === 'json' ? JSON.parse(raw) : yaml.load(raw)) as { samples: AuthoredSample[] };
+    assert.deepEqual(parsed.samples.map((sample) => sample.sampleId), ['original', 'generated']);
     assert.deepEqual(readdirSync(dir).sort(), [`eval-samples.${extension}`, 'shared.data']);
   });
 
@@ -93,13 +102,13 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
     const target = join(dir, 'shared.json');
     const first = join(dir, 'eval-samples.json');
     const second = join(dir, 'alias.json');
-    writeFileSync(target, JSON.stringify(createEvalSampleSetDocument([s('original')])));
+    writeFileSync(target, JSON.stringify(createWorkflowSampleSetDocument([s('original')])));
     symlinkSync(target, first);
     symlinkSync(target, second);
     const snapshot = preflightSampleAppend(first);
     appendSamplesToFile(second, [s('external')]);
     assert.throws(() => appendSamplesToFile(first, [s('generated')], undefined, snapshot), /changed during generation/);
-    assert.deepEqual(ids(JSON.parse(readFileSync(target, 'utf8')).samples), ['original', 'external']);
+    assert.deepEqual((JSON.parse(readFileSync(target, 'utf8')).samples as AuthoredSample[]).map((sample) => sample.sampleId), ['original', 'external']);
     assert.ok(lstatSync(first).isSymbolicLink());
     assert.ok(lstatSync(second).isSymbolicLink());
   });
@@ -108,7 +117,7 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
     const original = join(dir, 'original.json');
     const replacement = join(dir, 'replacement.json');
     const file = join(dir, 'eval-samples.json');
-    const content = JSON.stringify(createEvalSampleSetDocument([s('original')]));
+    const content = JSON.stringify(createWorkflowSampleSetDocument([s('original')]));
     writeFileSync(original, content);
     writeFileSync(replacement, content);
     symlinkSync(original, file);
@@ -124,36 +133,41 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
 
   it('版本化 JSON：追加并撞 id 去重，保留协议包装', () => {
     const f = join(dir, 'eval-samples.json');
-    writeFileSync(f, JSON.stringify(createEvalSampleSetDocument([s('s001'), s('s002')]), null, 2));
+    writeFileSync(f, JSON.stringify(createWorkflowSampleSetDocument([s('s001'), s('s002')]), null, 2));
     const total = appendSamplesToFile(f, [s('s001'), s('s003')]);
     assert.equal(total, 4);
     const parsed = JSON.parse(readFileSync(f, 'utf-8'));
-    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v2');
-    assert.deepEqual(parsed.samples.map((x: Sample) => x.sample_id), ['s001', 's002', 's001-2', 's003']);
+    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v3');
+    assert.deepEqual(parsed.samples.map((x: AuthoredSample) => x.sampleId), ['s001', 's002', 's001-2', 's003']);
   });
 
   it('版本化 JSON：保留 requires', () => {
     const f = join(dir, 'eval-samples.json');
-    writeFileSync(f, JSON.stringify(createEvalSampleSetDocument(
+    writeFileSync(f, JSON.stringify(createWorkflowSampleSetDocument(
       [s('s001')],
       { tools: ['git'] },
     ), null, 2));
     appendSamplesToFile(f, [s('s002')]);
     const parsed = JSON.parse(readFileSync(f, 'utf-8'));
     assert.deepEqual(parsed.requires, { tools: ['git'] });
-    assert.deepEqual(parsed.samples.map((x: Sample) => x.sample_id), ['s001', 's002']);
+    assert.deepEqual(parsed.samples.map((x: AuthoredSample) => x.sampleId), ['s001', 's002']);
   });
 
   it('YAML 文件：round-trip 保留 YAML 与版本化包装', () => {
     const f = join(dir, 'eval-samples.yaml');
-    writeFileSync(f, yaml.dump(createEvalSampleSetDocument([s('s001')])));
+    writeFileSync(f, yaml.dump(createWorkflowSampleSetDocument([s('s001')])));
     appendSamplesToFile(f, [s('s002')]);
     const parsed = yaml.load(readFileSync(f, 'utf-8')) as {
       schemaVersion: string;
-      samples: Sample[];
+      samples: AuthoredSample[];
     };
-    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v2');
-    assert.deepEqual(parsed.samples.map((x) => x.sample_id), ['s001', 's002']);
+    assert.equal(parsed.schemaVersion, 'omk.eval-sample-set/v3');
+    assert.deepEqual(parsed.samples.map((x) => x.sampleId), ['s001', 's002']);
   });
 });
 
+
+function textOf(sample: Sample): string {
+  if (sample.input.inputKind !== 'text') throw new Error('Expected a text fixture.');
+  return sample.input.text;
+}

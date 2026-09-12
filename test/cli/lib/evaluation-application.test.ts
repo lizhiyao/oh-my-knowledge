@@ -27,9 +27,9 @@ async function fixture() {
   await mkdir(join(skill, '.omk'), { recursive: true });
   await writeFile(join(skill, 'SKILL.md'), '# Answer\nAnswer directly.\n');
   const samplesPath = join(skill, '.omk', 'eval-samples.json');
-  await writeFile(samplesPath, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [
-    { sample_id: 'answer', prompt: 'Answer.', assertions: [{ type: 'contains', value: 'fixture' }] },
-  ] }));
+  await writeFile(samplesPath, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v3', samples: [
+{ sampleId: 'answer', input: { inputKind: 'text', text: 'Answer.' }, evaluationContext: { assertions: [{ type: 'contains', value: 'fixture' }] } }
+] }));
   const outputDirectory = join(root, 'reports');
   const flags = { samples: samplesPath, 'skill-dir': skillDir, executor: resolve('test/fixtures/custom-executor/core-fixture-executor.sh'), model: 'fixture', control: 'baseline', treatment: skill, 'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': outputDirectory };
   const prepare = (extra: Record<string, unknown> = {}, settings: { evalConfig?: EvalConfig; lang?: 'en' | 'zh'; environment?: NodeJS.ProcessEnv } = {}) => prepareCliEvaluation({ ...flags, ...extra }, { projectRoot: root, evalConfig: settings.evalConfig, lang: settings.lang ?? 'zh', env: settings.environment });

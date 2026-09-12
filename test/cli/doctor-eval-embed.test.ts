@@ -32,12 +32,10 @@ function setupBrokenSkillDir(): string {
   writeFileSync(join(skillDir, 'v2.md'), 'hi'); // need at least 2 variants for control/treatment
   // 写 minimal samples
   writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify({
-    schemaVersion: 'omk.eval-sample-set/v2',
-    samples: [{
-      sample_id: 's1',
-      prompt: 'test prompt',
-      assertions: [{ type: 'contains', value: 'test' }],
-    }],
+    schemaVersion: 'omk.eval-sample-set/v3',
+    samples: [
+{ sampleId: 's1', input: { inputKind: 'text', text: 'test prompt' }, evaluationContext: { assertions: [{ type: 'contains', value: 'test' }] } }
+],
   }));
   return tmp;
 }
@@ -52,23 +50,19 @@ function setupBatchMixedSkillDir(): string {
   mkdirSync(join(skillDir, 'broken', '.omk'), { recursive: true });
   writeFileSync(join(skillDir, 'broken', 'SKILL.md'), 'hi');
   writeFileSync(join(skillDir, 'broken', '.omk', 'eval-samples.json'), JSON.stringify({
-    schemaVersion: 'omk.eval-sample-set/v2',
-    samples: [{
-      sample_id: 'b1',
-      prompt: 'test prompt for broken',
-      assertions: [{ type: 'contains', value: 'test' }],
-    }],
+    schemaVersion: 'omk.eval-sample-set/v3',
+    samples: [
+{ sampleId: 'b1', input: { inputKind: 'text', text: 'test prompt for broken' }, evaluationContext: { assertions: [{ type: 'contains', value: 'test' }] } }
+],
   }));
   // healthy：batch 至少有一个 entry；单独跑会 pass
   mkdirSync(join(skillDir, 'healthy', '.omk'), { recursive: true });
   writeFileSync(join(skillDir, 'healthy', 'SKILL.md'), '你是一个版本健康的 skill, 内容足够长以通过 skill_readable rule。');
   writeFileSync(join(skillDir, 'healthy', '.omk', 'eval-samples.json'), JSON.stringify({
-    schemaVersion: 'omk.eval-sample-set/v2',
-    samples: [{
-      sample_id: 'h1',
-      prompt: 'test prompt for healthy',
-      assertions: [{ type: 'contains', value: 'test' }],
-    }],
+    schemaVersion: 'omk.eval-sample-set/v3',
+    samples: [
+{ sampleId: 'h1', input: { inputKind: 'text', text: 'test prompt for healthy' }, evaluationContext: { assertions: [{ type: 'contains', value: 'test' }] } }
+],
   }));
   return tmp;
 }
@@ -219,12 +213,10 @@ describe('omk eval doctor preflight embedding', () => {
       writeFileSync(join(skillDir, 'v2.md'), '你是一个版本 2 的代码审查助手,加了安全检查。');
       writeFileSync(join(skillDir, 'draft.md'), 'hi');  // < 10 字符,本来会 fail
       writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify({
-        schemaVersion: 'omk.eval-sample-set/v2',
-        samples: [{
-          sample_id: 's1',
-          prompt: 'review',
-          assertions: [{ type: 'contains', value: 'review' }],
-        }],
+        schemaVersion: 'omk.eval-sample-set/v3',
+        samples: [
+{ sampleId: 's1', input: { inputKind: 'text', text: 'review' }, evaluationContext: { assertions: [{ type: 'contains', value: 'review' }] } }
+],
       }));
 
       const { stdout, stderr } = await runCommand(EvalCommand, [

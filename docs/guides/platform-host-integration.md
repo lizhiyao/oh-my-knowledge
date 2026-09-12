@@ -17,7 +17,7 @@ If you only call `evaluate()` inside a single service, start with the [Node.js s
 
 | Dispatched content | Carrier | Execution-side mapping |
 |---|---|---|
-| Evaluation cases | Published schema `omk.eval-sample-set/v2` (entry `oh-my-knowledge/eval-samples`; resolve the schema file with `resolveEvalSampleJsonSchema`) | Compiled into `EvaluateInput.dataset.samples` |
+| Evaluation cases | Published schema `omk.eval-sample-set/v3` (entry `oh-my-knowledge/eval-samples`; resolve the schema file with `resolveEvalSampleJsonSchema`) | Compiled into `EvaluateInput.dataset.samples` |
 | analyses / decision / policy / experiment / comparisons and other serializable measurement declarations | Published Core JSON Schemas (`oh-my-knowledge/eval-core/schemas/v1..v5/*`), resolved by file name at runtime with `resolveEvaluationCoreJsonSchema`; each file name maps to exactly one version directory, e.g. `evaluation-definition.schema.json` in `v5` and `measurement-policy.schema.json` in `v1` | Mapped to `EvaluateInput.analyses`, `decision`, `policy`, `experiment`, `comparisons` |
 | executor / evaluator / judge / report logic | Dispatch only a "registry id + config + version digest"; never dispatch code | The execution side resolves the implementation from its own registry by id (next section) and injects it into `variants` / `evaluators` |
 
@@ -88,6 +88,71 @@ When a registered implementation does not live in the execution-side process, yo
 
 It carries only the fields an `ExecutorInvocation` legitimately holds and never fabricates run/trial/attempt coordinates or an execution plan digest. Leased controlled resources in the invocation (workspace overlays, native MCP config, tool-call interception) fail closed, and declaring those capabilities is rejected at construction — use an in-process Executor when you need controlled resources. It is also not a plugin loader: OMK performs no implementation discovery, download, or dynamic loading, and registration plus version governance always stays with the host.
 
+## Official reference Executors
+
+A `registryId@version` entry usually points at an `execute()` you wrote. When the "implementation" is really a vendor CLI, rewriting its protocol on the host side is where measurement bugs come from: a dropped `--ignore-user-config`, a different argument order, or a lenient JSONL parse all produce plausible answers whose provenance nobody can attribute. OMK therefore publishes its internal vendor adapters as **reference Executors** through `oh-my-knowledge/eval-hosts` — configuration in, a canonical façade `Executor` out, with no registry, discovery, download, or dynamic loading on either side. The Codex CLI adapter is the one shipped here today.
+
+```ts
+import {
+  createCodexCliReferenceExecutor,
+  type CodexCliEnvironmentEntry,
+} from 'oh-my-knowledge/eval-hosts';
+
+/** Reference factories are async: they probe the vendor binary before returning. */
+const referenceFactories = new Map<
+  string,
+  (ref: DispatchedRef) => Promise<DispatchedExecutor>
+>();
+
+referenceFactories.set('executor.vendor-codex@2026.09.1', async (ref) => {
+  const environment: Record<string, CodexCliEnvironmentEntry> = {
+    // `behavior` puts a value into measurement identity, so a stable label here is an explicit
+    // assertion that this entry does not move the measurement — the binary is already pinned by
+    // the adapter's own `launcher` and `binary` facets.
+    PATH: { value: process.env.PATH ?? '', identity: { identityKind: 'behavior', value: 'host-managed' } },
+    // `credential` records nothing but lifts output and trace handling to `secret`.
+    CODEX_SESSION_TOKEN: {
+      value: await secrets.read('codex-session-token'),
+      identity: { identityKind: 'credential' },
+    },
+  };
+  return createCodexCliReferenceExecutor({
+    executorId: ref.registryId,
+    executablePath: String(ref.config.executablePath),
+    model: String(ref.config.model),
+    sandbox: 'read-only',
+    environment,
+    // Your dispatched config digest still belongs in identity, exactly as in the registry above.
+    fingerprintFacets: { configDigest: ref.configDigest },
+  });
+});
+
+const resolveExecutor = async (ref: DispatchedRef): Promise<DispatchedExecutor> => {
+  const build = executors.get(`${ref.registryId}@${ref.version}`)
+    ?? referenceFactories.get(`${ref.registryId}@${ref.version}`);
+  if (build === undefined) {
+    // Fail closed: never degrade, and never substitute a "close enough" implementation.
+    throw new Error(`unregistered executor: ${ref.registryId}@${ref.version}`);
+  }
+  return build(ref);
+};
+```
+
+What you get for free:
+
+- **Identity assembled from observation.** `executor.version` is the probed vendor release, and the reserved `codexCli` facet records the adapter version, version floor, pinned runtime controls, launcher and binary digests, the classified environment, byte limits, the controls this seam hard-codes, and the input-projection version. Comparability assessment can then separate "same id, different vendor build" from "same vendor build, different config".
+- **A supported knowledge-carrier projection.** The artifact's content string is rendered into the same versioned prompt envelope OMK's own host uses — byte for byte — so switching between the product host and your dispatch host cannot move the input.
+- **Certification rather than self-report.** Run `checkExecutor()` from `oh-my-knowledge/eval-runtime` once per deployment against the assembled Executor: it drives success, failure, cancellation, cleanup, telemetry and measurement checks through the real Runtime façade.
+
+What stays yours, and what fails closed:
+
+- **Leased, plan-bound resources are out of scope at this seam.** Trial workspace overlays, native MCP configuration, pre-tool-call mock interception, per-trial tool allow-lists and `runtimeContext` projection each return a stable `OMK_CODEX_CLI_*_UNSUPPORTED` code with no spawn — the adapter refuses rather than running with weaker isolation than the plan sealed. A dispatch that needs them requires a host-owned adapter.
+- **Vendor-side account and network isolation.** The adapter forwards only the environment you declare and gives each attempt a private temporary working directory; it cannot contain what the vendor process does over the network, or which account a credential belongs to.
+- **Version-floor governance.** `CODEX_CLI_MIN_SUPPORTED_VERSION` records the lowest vendor release verified against the protocol, not a tested set of later releases. An incompatible upstream change surfaces as `OMK_CODEX_CLI_PROTOCOL_INVALID` or `OMK_CODEX_CLI_UPGRADE_REQUIRED` instead of a silently reinterpreted answer. Raising the floor raises the adapter version and belongs in your registry's version key, so a dashboard can tell the two eras apart.
+- **Credentials and cost.** Reading, rotating and paying for the vendor call remain host-side; a credential entry only raises handling classification.
+
+The export list, per-code meanings and drift rules are in the [Reference Executors API](../reference/eval-hosts-api).
+
 ## Durable process write-back
 
 `EvaluationRunOptions.onEvent` is an **ordered, best-effort progress projection**: the buffer is bounded (`eventBufferCapacity`, default 256), the oldest pending progress events are dropped and the newest retained when the consumer falls behind, so event sequence numbers may show gaps; observer failure never changes the measurement end state. It is right for progress bars and **wrong for audit**.
@@ -135,10 +200,26 @@ The standard path for reloading a result in another process (re-scoring party, a
 
 For a runnable reference sample, see [`examples/eval-runtime/result-store.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/result-store.mjs) (a file-backed ContentStore/ContentResolver over a temporary directory that checks digests at the store boundary, plus an independent audit-receipt verifier); the same flow from a single-process perspective is in [Restore a stored result in a new process](./eval-runtime#restore-stored-results).
 
+### Execute once, score later
+
+When Target work must finish before the scoring standard exists — an annotation queue still running, a judge rubric still under review, or one execution serving several release candidates — split the two stages instead of reloading a scored Run:
+
+1. **Execute.** `executeEvaluation(input, options)` runs only the Execution stage and resolves to an `ExecutedEvaluation` handle (`runId`, `executionPlanDigest`, `executionInputDigest`, the `ExecutionBundle`, `bundleOrigin: 'runtime'`). No Evaluator, judge, analysis, decision, or report is attempted.
+2. **Seal.** `saveExecutedEvaluation({ executed, store })` writes the envelope `omk.eval-runtime.stored-executed/v1` under `EXECUTED_EVALUATION_MEDIA_TYPE`, always with classification `gold`. It carries Target evidence only — never hand it back to a Target as context.
+3. **Re-admit.** `loadExecutedEvaluation({ reference, resolver, verifier })` checks storage integrity plus the host attestation and returns a handle with `bundleOrigin: 'store'`. Unlike a stored result, an execution envelope is declaration-agnostic: no plan digest is compared here, because one envelope is meant to serve many later scoring declarations.
+4. **Score.** `scoreExecutedEvaluation(newInput, executed, options)` seals the new declaration, admits the envelope against it with the same Core rule `rescore` uses, and runs Evaluation onward with zero Target calls. Repeat per scoring version.
+
+Two limits belong in the host's records, not in OMK:
+
+- **Bind every scoring Run to the envelope it reused.** Persist `executed.bundle.bundleDigest` next to each scored `runId`. A dashboard that shows three scored Runs without saying they share one execution invites readers to treat three scoring versions as three independent measurements.
+- **A re-admitted envelope cannot regain trust through storage.** A verifier that does not attest the provenance bundle leaves that status indeterminate: the scored Report still completes, but it may claim only `unknown` provenance and a declared Decision stays gated. Re-admission under a checksum-only verifier is a diagnostic path, not release evidence.
+
+The runnable sample [`examples/eval-runtime/staged-execute-score.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/staged-execute-score.mjs) performs the whole split offline; the caller-side narrative is in [Split execution and scoring](./eval-runtime#staged-execute-score).
+
 ## Comparability governance workflow
 
 - **Identity facets enter the dispatch protocol from day one.** The executor's `executorId` / `version` / `fingerprintFacets`, the evaluator's `instrumentId` and implementation version, the judge's `judgeId` / `version`, and the digests of the schemas in use are all measurement identity — fixed fields of the dispatched contract, not afterthoughts.
-- **Version the evaluation sample set too.** An `omk.eval-sample-set/v2` document carries its own `schemaVersion`, but `EvaluateInput.dataset` only has `datasetId`, the sample content, and optional `analysisCohorts` / `annotations` — no version field. Changing sample content changes the sealed plan digest (a cross-process reload requires the same declaration), while `datasetId` alone never tells you whether the gold answers were edited. Put the sample-set version and content digest into the dispatched contract as fixed fields and record them in `dataset.annotations`, so dashboards and `assessComparability` reasons can tell "same id, different gold" apart. A `rescore()` after correcting gold is a new measurement version and must be shown separately from the pre-correction results.
+- **Version the evaluation sample set too.** An `omk.eval-sample-set/v3` document carries its own `schemaVersion`, but `EvaluateInput.dataset` only has `datasetId`, the sample content, and optional `analysisCohorts` / `annotations` — no version field. Changing sample content changes the sealed plan digest (a cross-process reload requires the same declaration), while `datasetId` alone never tells you whether the gold answers were edited. Put the sample-set version and content digest into the dispatched contract as fixed fields and record them in `dataset.annotations`, so dashboards and `assessComparability` reasons can tell "same id, different gold" apart. A `rescore()` after correcting gold is a new measurement version and must be shown separately from the pre-correction results.
 - **Scoring-standard changes go through versioning**: publish a new contract version → mark `BREAKING-COMPARABILITY` → show old and new results in separate dashboard partitions. In this repository, rubric judge prompts are frozen and governed by the `test/measurement-governance` prompt registry, and any byte drift is caught by tests; platform-owned judge prompts deserve the same freeze and version management.
 - **Interpret the three `assessComparability` statuses independently**: `designStatus` (compatible / incompatible) covers whether the measurement designs are comparable; `evidenceQualificationStatus` (verified / conditional / rejected) covers whether evidence authentication is complete; `comparabilityStatus` (compatible / conditional / incompatible) is the derived overall verdict. A comparable design does not imply qualified evidence, or vice versa.
 - **Partition dashboards.** Show incompatible results in a separate partition with their reason codes; never mix them into the same trend line as comparable results. Annotate conditional results with their limiting conditions.
@@ -153,6 +234,7 @@ Copies written back to the evaluation center should be positioned as **dispatche
 
 - [Use in a Node.js service](./eval-runtime)
 - [Runtime API reference](../reference/eval-runtime-api)
+- [Reference Executors API](../reference/eval-hosts-api)
 - [Core API (advanced)](../reference/embedded-api)
 - [Eval sample format](../reference/eval-sample-format)
 - [Glossary](../reference/glossary)

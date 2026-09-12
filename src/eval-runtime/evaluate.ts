@@ -61,6 +61,7 @@ export {
   type EvaluateInput,
   type EvaluationRunOptions,
   type PreparedEvaluation,
+  type ExecutedEvaluation,
   type ExecutorCheckInput,
   type ExecutorCheckResult,
 } from './evaluation/contracts.js';
@@ -77,14 +78,27 @@ export {
   prepareEvaluation,
   evaluate,
 } from './evaluation/prepare.js';
+export { executeEvaluation } from './evaluation/execute-stage.js';
 export {
   restorePreparedEvaluationResult,
   createCanonicalEvaluationSeriesMemberSource,
   rescore,
   reanalyze,
   redecide,
+  scoreExecutedEvaluation,
   assessComparability,
 } from './evaluation/reuse.js';
+export {
+  EXECUTED_EVALUATION_MEDIA_TYPE,
+  ExecutedEvaluationStoreError,
+  loadExecutedEvaluation,
+  saveExecutedEvaluation,
+  type ExecutedEvaluationVerification,
+  type ExecutedEvaluationVerificationRequest,
+  type ExecutedEvaluationVerifier,
+  type LoadExecutedEvaluationInput,
+  type SaveExecutedEvaluationInput,
+} from './executed-store.js';
 export {
   checkExecutor,
   checkContentStore,

@@ -1,5 +1,7 @@
 # omk 用例设计指南
 
+本页采用 v3 封套：元数据放在 `annotations`，评分声明放在 `evaluationContext`，运行控制放在 `executionContext`。完整字段和能力边界见[样本格式](../reference/eval-sample-format.md)。
+
 > **面向 omk 用户**：怎么给 sample 声明测量学元数据、写沙箱字段、跑评测前自检。背后的学术对齐（HELM / IRT / Construct Validity / 污染防御等）与 schema 扩展决策见文末第六节附录——我们把设计依据完整摊开，不藏在内部档里。
 
 ## 一、为什么用例设计需要科学性
@@ -11,40 +13,45 @@ omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / lengt
 ## 二、Sample 元数据 schema
 
 ```yaml
-# eval-samples.yaml
-schemaVersion: omk.eval-sample-set/v2
+schemaVersion: omk.eval-sample-set/v3
 samples:
-  - sample_id: s001
-    prompt: "用 React 画一个折线图，数据是日期 + 数值，给最小可运行代码"
-    rubric:
-      component_selection:
-        criterion: "应识别 Line 组件并使用正确的数据格式"
-        weight: 0.6
-      completeness:
-        criterion: "必须包含图表渲染容器"
-        weight: 0.4
-    assertions:
-      - { type: contains, value: "Line", weight: 1 }
-      - { type: regex, pattern: "data", weight: 1 }
-
-    # 测量元数据（纯文档 / 诊断，不参与 grading）
-    capability:
-      - component-recognition          # string[]，能力维度，可多个；归一时大小写/短横线/驼峰不敏感
-      - api-selection
-    difficulty: easy                    # 'easy' | 'medium' | 'hard'（强枚举，防错）
-    construct: necessity                # 'necessity' | 'quality' | 'capability' suggested，允许自定义 string
-    provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
-    covers:                             # Skill Map 使用的可选声明结构锚点
-      - targetKind: reference
-        ref: references/chart-api.md
-      - targetKind: workflow_node
-        ref: chart.render
+  - sampleId: s001
+    input:
+      inputKind: text
+      text: 用 React 画一个折线图，数据是日期 + 数值，给最小可运行代码
+    evaluationContext:
+      rubric:
+        component_selection:
+          criterion: 应识别 Line 组件并使用正确的数据格式
+          weight: 0.6
+        completeness:
+          criterion: 必须包含图表渲染容器
+          weight: 0.4
+      assertions:
+        - type: contains
+          value: Line
+          weight: 1
+        - type: regex
+          pattern: data
+          weight: 1
+    annotations:
+      capability:
+        - component-recognition
+        - api-selection
+      difficulty: easy
+      construct: necessity
+      provenance: human
+      covers:
+        - targetKind: reference
+          ref: references/chart-api.md
+        - targetKind: workflow_node
+          ref: chart.render
 ```
 
 ### 字段语义
 
 - **capability**（string[]）：该用例覆盖的能力维度。建议从 capability matrix 角度声明，让用户能看到「我覆盖了 component-recognition × 8 sample / api-selection × 6 sample / fallback × 2 sample，fallback 维度 thin」。归一规则：大小写不敏感 + 短横线 / 驼峰 / 下划线 / 空格归一，所以 `api-selection` / `apiSelection` / `API_Selection` / `api selection` 都算同一个 capability。
-- **difficulty**（enum）：简单分桶（easy / medium / hard）。`difficulty: 'easy?'` 这种 typo 会被 `loadSamples` reject 并报错含 sample_id 定位。
+- **difficulty**（enum）：简单分桶（easy / medium / hard）。`difficulty: 'easy?'` 这种 typo 会被 `loadSamples` reject 并报错含 sampleId 定位。
 - **construct**（string）：**这个 sample 测的是哪类事**。区别于 capability：capability 是「测什么具体能力」（api-selection），construct 是「测哪个 construct 类型」。三个建议值：
   - `necessity`（必要性）：baseline-vs-skill，测 skill 是否必需。Δ 大不一定是 skill 写得好，可能只因为 baseline 不知道领域知识（自明结论）。
   - `quality`（质量）：skill-v1 vs skill-v2，测同知识不同写法谁让模型答得更准。这才是 omk 测量学严谨真用武之地。
@@ -68,38 +75,49 @@ samples:
 为了让评测脱离真实外部环境（数据库/API/文件系统/真 git push 等），Sample 还有一组沙箱字段。omk runtime 在工具调用前匹配 mocks，命中即返回假数据，不真调底层。
 
 ```yaml
-schemaVersion: omk.eval-sample-set/v2
+schemaVersion: omk.eval-sample-set/v3
 samples:
-  - sample_id: s002
-    prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
-    rubric:
-      workflow_quality:
-        criterion: "应调用 logstore_query 工具，filter 包含 ERROR，时间窗口为 1 小时"
-        weight: 1
-    assertions:
-      - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
-      - { type: mock_hit, value: "Bash:1", weight: 1 }
-    mocksStrict: true              # 默认 true；未命中的工具调用直接 deny，不透传真调
-    tripwire: false                # 是否为诱错样本；默认 false
-    environment:                   # 仅作 prompt 上下文，不物化文件或环境变量
-      cli_available: ["log-cli"]
-      files_available: ["~/.config/log-cli.json"]
-      notes: "log-cli 已认证，token 在环境变量"
-    mocks:
-      - tool: Bash
-        match:
-          command_glob: "*log-cli query --filter ERROR*"
-        return:
-          stdout: '{"count": 42}'
-          exit: 0
-      - tool: Read
-        match:
-          file_path_endswith: "tasks/state.json"
-        return: '{"status":"running"}'
-      - tool: WebFetch
-        match:
-          url_glob: "https://internal.example.com/api/*"
-        return: "ok"
+  - sampleId: s002
+    input:
+      inputKind: text
+      text: 用 antlogs-query 查最近 1 小时 ERROR 日志数量
+    executionContext:
+      mocks:
+        - tool: Bash
+          match:
+            command_glob: '*log-cli query --filter ERROR*'
+          return:
+            stdout: '{"count": 42}'
+            exit: 0
+        - tool: Read
+          match:
+            file_path_endswith: tasks/state.json
+          return: '{"status":"running"}'
+        - tool: WebFetch
+          match:
+            url_glob: https://internal.example.com/api/*
+          return: ok
+      mocksStrict: true
+      environment:
+        cli_available:
+          - log-cli
+        files_available:
+          - ~/.config/log-cli.json
+        notes: log-cli 已认证，token 在环境变量
+    evaluationContext:
+      rubric:
+        workflow_quality:
+          criterion: 应调用 logstore_query 工具，filter 包含 ERROR，时间窗口为 1 小时
+          weight: 1
+      assertions:
+        - type: tool_input_contains
+          value: Bash:logstore_query
+          weight: 1
+        - type: mock_hit
+          value: Bash:1
+          weight: 1
+    annotations:
+      tripwire: false
 ```
 
 **字段语义**：
@@ -233,7 +251,7 @@ omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / lengt
 **加任何新字段前的硬约束**
 
 - 不进 `buildJudgePrompt` signature（`test/eval-runtime/rubric-prompt-isolation.test.ts` 防御回归）
-- 默认必须进入完整契约的 `sampleHash`。唯一排除项是作为 map key 的 `sample_id`；任何会改变执行或结果解释的字段，都必须让复用和跨报告可比性失效。
+- 默认必须进入完整契约的 `sampleHash`。唯一排除项是作为 map key 的 `sampleId`；任何会改变执行或结果解释的字段，都必须让复用和跨报告可比性失效。
 - 不进 verdict / Δ 算法
 - 跟现有元数据字段 + `rubric` / `assertions` 语义不重叠
 
@@ -256,3 +274,9 @@ omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / lengt
 - [Hugging Face Dataset Cards](https://huggingface.co/docs/hub/datasets-cards)
 - [Judging LLM-as-a-Judge with MT-Bench / Chatbot Arena (2306.05685)](https://arxiv.org/abs/2306.05685)
 - [Chatbot Arena Open Platform (2403.04132)](https://arxiv.org/pdf/2403.04132)
+
+## 实现边界
+
+`eval-workflows/inputs/contracts` 定义纯样本类型，`inputs/schemas` 负责校验和机器 Schema。跨字段校验补充 JSON Schema 无法表达的身份摘要、工具调用关系和引用完整性。`inputs/sample-mapping.ts` 只做公开封套与私有工作流 DTO 的纯映射，后者的运行控制和注释沿用工作流解析；它不是第二种公开协议，也不读取 v2。文件和 API 写出统一的 v3 封套。
+
+`orchestration/measurement-design.ts` 将样本编译为 Core 声明。精确比较留在 `eval-runtime/evaluators`，执行器与评分器在 `hosts/composition` 装配。Core 不依赖样本编写、文件系统或具体执行器。新增任务通过应用 Schema 和显式检查表达，不按被测对象扩增样本目录或执行协议。

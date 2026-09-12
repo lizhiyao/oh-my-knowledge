@@ -119,9 +119,9 @@ server:
       readFileSync(join(__dirname, '..', '..', 'fixtures', 'code-review', 'eval-samples.json'), 'utf-8'),
     );
     // At minimum, verify the JSON has the expected structure
-    assert.equal(jsonSamples.schemaVersion, 'omk.eval-sample-set/v2');
+    assert.equal(jsonSamples.schemaVersion, 'omk.eval-sample-set/v3');
     assert.ok(Array.isArray(jsonSamples.samples));
     assert.ok(jsonSamples.samples.length > 0);
-    assert.ok(jsonSamples.samples[0].sample_id);
+    assert.ok(jsonSamples.samples[0].sampleId);
   });
 });
