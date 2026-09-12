@@ -1,10 +1,10 @@
-# 自定义 executor
+# 自定义执行器
 
 [English](./README.md)
 
 ## 用途
 
-这个示例演示 OMK 的自定义命令 JSON stdin／stdout 契约，不要求使用托管模型。目录包含：
+这个示例演示 OMK 的自定义执行器 JSON stdin／stdout 契约，不要求使用托管模型。目录包含：
 
 - `echo-executor.sh`：确定性、零成本的协议烟测；
 - `ollama-executor.py`：本地 Ollama adapter。
@@ -23,8 +23,9 @@ omk eval --control baseline --treatment echo-assistant \
 尝试本地 Ollama 模型：
 
 ```bash
+chmod +x ollama-executor.py
 omk eval --control baseline --treatment echo-assistant \
-  --executor "python ollama-executor.py" --model llama3 --no-judge --report-only
+  --executor ./ollama-executor.py --model llama3 --no-judge --report-only
 ```
 
 ## 证据边界

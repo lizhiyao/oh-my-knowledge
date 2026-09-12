@@ -22,7 +22,7 @@ export function parseStatelessApiSampleInput(value: JsonValue): SampleInput | un
     let conversationCount = 0;
     for (const message of input.messages) {
       if (message.role === 'tool' || (message.role === 'assistant' && message.toolCalls !== undefined)) {
-        throw new TypeError('API sample history does not support tool calls/results; use custom-command.');
+        throw new TypeError('API sample history does not support tool calls/results; use custom-executor.');
       }
       if (message.content.trim() === '') throw new TypeError('API sample history requires non-empty message content.');
       if (message.role === 'system') continue;

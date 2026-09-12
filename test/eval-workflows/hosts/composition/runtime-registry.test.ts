@@ -37,7 +37,7 @@ function configurations(): ReadonlyMap<string, ProductionExecutorAdapterConfigur
       preflightDeclarations: [],
     }],
     ['custom-tool', {
-      adapterKind: 'custom-command',
+      adapterKind: 'custom-executor',
       preflightDeclarations: [],
       runtime: {
         implementationId: 'custom-tool',

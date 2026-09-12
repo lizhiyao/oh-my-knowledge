@@ -28,10 +28,10 @@
 - `src/eval-workflows/inputs/contracts/sample.ts` 的 v2 用户 Sample 要求字符串 `prompt`；`context` 是字符串，`environment` 明确为 prompt-only 题设，不物化文件。
 - `src/eval-workflows/orchestration/measurement-design.ts` 的 `renderedPrompt` 将 context 放入代码围栏，并拼接环境段；生成的 Core sample.input 是字符串。任意调整拼接格式都会改变被测输入。
 - `src/eval-core/contracts/definition.ts` 的 `EvaluationSampleSchema` 已提供 JSON `input`、`executionContext`、`expected`、`evaluationContext`，以及独立分析和注释信息。
-- `src/eval-workflows/hosts/adapters/custom/command.ts` 的执行请求只含 input、executionContext 和执行控制等必要内容，不含 expected／evaluationContext；其输出和 trace 均可为 JSON。该 adapter 只声明 invoke 协议，不能据此声称支持交互 session。
+- `src/eval-workflows/hosts/adapters/custom/executor.ts` 的执行请求只含 input、executionContext 和执行控制等必要内容，不含 expected／evaluationContext；其输出和 trace 均可为 JSON。该 adapter 只声明 invoke 协议，不能据此声称支持交互 session。
 - `test/eval-core/conformance/targets.test.ts` 覆盖 prepare → execute → evaluate → analyze → decide → report，并检查执行上下文不含金标。它是合约测试，不等于真实 prompt、检索、会话或工作流能力验收。
 
-基线命令：`yarn vitest run test/eval-core/conformance/targets.test.ts test/eval-workflows/hosts/adapters/custom/command.test.ts test/eval-workflows/input-compilation/compile.test.ts`。2026-09-13 在独立工作树运行，3 个文件、68 项通过。没有调用模型。代表场景证据见下一节。
+基线命令：`yarn vitest run test/eval-core/conformance/targets.test.ts test/eval-workflows/hosts/adapters/custom/executor.test.ts test/eval-workflows/input-compilation/compile.test.ts`。2026-09-13 在独立工作树运行，3 个文件、68 项通过。没有调用模型。代表场景证据见下一节。
 
 ## 3. 代表场景与支持矩阵
 
@@ -103,7 +103,7 @@ workflow 的 executionContext 指定初始状态和隔离资源；expected 指�
 | RAG 排名与引用 | 无分级相关性／引用结构化字段；context 只是文本 | 固定语料检索适配，输出来自实际排序 | 精确排名／引用 fixture 评分可用；不是语义 RAG 指标结论 |
 | 消息历史与库存查询 | 无原生消息输入字段 | 历史解释＋文件工具适配 | 实际查询参数／结果评分；并非在线多轮模拟 |
 | workflow 状态 | 无节点状态期望字段；covers 非断言 | 本地文件状态转换适配 | 批准、拒绝、转人工及损坏结果评分；缺失输出不产生完整结论 |
-| 金标隔离 | assertions／rubric 沿既有编译路径 | 4 类执行上下文均无 expected／evaluationContext 和金标标记 | expected 仅供评分绑定；custom-command 请求边界另有基线测试 |
+| 金标隔离 | assertions／rubric 沿既有编译路径 | 4 类执行上下文均无 expected／evaluationContext 和金标标记 | expected 仅供评分绑定；custom-executor 请求边界另有基线测试 |
 | 交互 session、多模态、生产数据库 | 不据此宣称支持 | 本轮未验证 | 需要各自适配器和真实证据，不能由 JSON Schema 推断 |
 
 复现：[historical probe at d7088ca7](https://github.com/lizhiyao/oh-my-knowledge/blob/d7088ca73574ee18ef85e71250d77d93b231646a/test/eval-workflows/general-sample-proposal.test.ts)。四类最小样本和执行逻辑位于同一测试文件，直接可读和可运行；使用现有 Core sample，而非未发布 v3 文件。所有执行为本机离线、每 trial 隔离目录，无网络、凭证或模型。结果经真实 Core 分析与报告 materialization；有完整证据的结果再次序列化验证。测试内 runtime identity 和分析策略为 conformance fixture，不是已注册生产测量工具；不得使用 fixture 的 verdict 宣称模型改进或发布资格。

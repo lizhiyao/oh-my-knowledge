@@ -116,7 +116,7 @@ eval-workflows/
 
 executors/
 ├── contracts/          # executor ports, runtime identity, result, and trace facts
-├── preflight/          # host tool, file, environment, and custom-command readiness
+├── preflight/          # host tool, file, environment, and custom-executor readiness
 └── <provider>/         # provider-specific runtime implementations
 ```
 
@@ -222,7 +222,7 @@ Ordinary `ExecutorFn` calls serve generation, judges and auxiliary analysis. Mea
 | Codex SDK | Provider protocol and Trace | Ordinary calls own a per-call isolated home; measured calls bind SDK identity and Trial resources, whose lifetime cannot be delegated to an ordinary-call wrapper |
 | Claude SDK | Provider protocol, Trace and mock infrastructure | Measured calls fix setting sources and verify SDK runtime capabilities; auxiliary calls retain their own configuration and result protocol |
 | OpenAI / Anthropic HTTP | Token-usage primitives; both measured HTTP adapters share an identified transport and protocol infrastructure | Ordinary calls read environment configuration and use call timeouts; measured calls inject transport/credentials, use Core cancellation and output bounds, and retain fail-closed parsing |
-| Custom command | Subprocess infrastructure | Ordinary command output differs from the versioned measurement request/response exchange; concatenating wrappers does not make these one protocol |
+| Custom executor | Subprocess infrastructure | Ordinary command output differs from the versioned measurement request/response exchange; concatenating wrappers does not make these one protocol |
 
 Codex argument extraction preserves argument order, prompt bytes and each caller's empty-value handling. Environment selection, timeout, error envelopes and cleanup remain outside the argument utility. Ordinary calls own call-level timeouts; measurement follows Core attempt cancellation without adding a second measurement timeout. Workspaces remain separate per Trial, retries retain the same Trial state, and failure usage and Trace retain their declared semantics.
 

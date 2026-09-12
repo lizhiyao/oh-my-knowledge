@@ -29,9 +29,9 @@ import {
   createCodexSdkCoreSchemaValidators,
 } from '../adapters/codex/sdk-protocol.js';
 import {
-  createCustomCommandCoreSchemaValidators,
-  customCommandExecutorCapabilities,
-} from '../adapters/custom/command.js';
+  createCustomExecutorCoreSchemaValidators,
+  customExecutorCapabilities,
+} from '../adapters/custom/executor.js';
 import {
   createOpenAIApiCoreSchemaValidators,
 } from '../adapters/openai/protocol.js';
@@ -136,8 +136,8 @@ async function executorConfiguration(
         && typeof resource.lineage === 'object'
         && resource.lineage !== null
         && !Array.isArray(resource.lineage)
-        && resource.lineage.lineageKind === 'custom-command-runtime'
-        && implementationId === `custom-command-${resource.descriptor.digest.slice('sha256:'.length)}`
+        && resource.lineage.lineageKind === 'custom-executor-runtime'
+        && implementationId === `custom-executor-${resource.descriptor.digest.slice('sha256:'.length)}`
       ));
       if (runtimeResource === undefined) {
         throw new NodeCliProductionCompositionError(
@@ -146,11 +146,11 @@ async function executorConfiguration(
         );
       }
       return Object.freeze({
-        adapterKind: 'custom-command',
+        adapterKind: 'custom-executor',
         runtime: {
           implementationId,
           version: '1.0.0',
-          capabilities: customCommandExecutorCapabilities(),
+          capabilities: customExecutorCapabilities(),
           contentIdentityFiles: [{ facetId: 'runtime-executable', path: runtimeResource.locator }],
         },
         command: {
@@ -171,7 +171,7 @@ function productionSchemaValidators(): ReadonlyMap<string, CoreSchemaValidator> 
     ...createClaudeSdkCoreSchemaValidators(),
     ...createOpenAIApiCoreSchemaValidators(),
     ...createAnthropicApiCoreSchemaValidators(),
-    ...createCustomCommandCoreSchemaValidators(),
+    ...createCustomExecutorCoreSchemaValidators(),
   ];
   return new Map(validators.map((validator) => [schemaIdentityKey(validator.schema), validator]));
 }

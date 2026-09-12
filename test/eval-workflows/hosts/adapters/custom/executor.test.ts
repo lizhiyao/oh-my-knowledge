@@ -34,9 +34,9 @@ import {
   type ExecutorTrialContext,
 } from '../../../../../src/eval-core/execution/index.js';
 import {
-  CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
-  createCustomCommandExecutorAdapter,
-} from '../../../../../src/eval-workflows/hosts/adapters/custom/command.js';
+  CUSTOM_EXECUTOR_EXCHANGE_SCHEMA_VERSION,
+  createCustomExecutorAdapter,
+} from '../../../../../src/eval-workflows/hosts/adapters/custom/executor.js';
 import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
@@ -52,7 +52,7 @@ import {
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
 
 const FIXTURE = fileURLToPath(new URL(
-  '../../../../fixtures/custom-command-core-runtime.mjs',
+  '../../../../fixtures/custom-executor-core-runtime.mjs',
   import.meta.url,
 ));
 
@@ -73,9 +73,9 @@ function capabilities(supportsMockInterception = false): ExecutorCapabilities {
     schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
     protocols: [{
       protocolId: 'omk.invoke/v1',
-      inputSchema: schema('custom-command-input'),
-      outputSchema: schema('custom-command-output'),
-      traceSchema: schema('custom-command-trace'),
+      inputSchema: schema('custom-executor-input'),
+      outputSchema: schema('custom-executor-output'),
+      traceSchema: schema('custom-executor-trace'),
       execution: {
         concurrency: { safety: 'parallel-safe' },
         cancellation: 'best-effort',
@@ -251,7 +251,7 @@ async function createAdapter(
     descriptor: {
       resourceId: 'runtime-implementation-test',
       digest: `sha256:${createHash('sha256').update(runtimeBytes).digest('hex')}` as Sha256Digest,
-      mediaType: 'application/vnd.omk.custom-command-runtime',
+      mediaType: 'application/vnd.omk.custom-executor-runtime',
       classification: 'sensitive' as const,
       size: runtimeBytes.byteLength,
     },
@@ -300,7 +300,7 @@ async function createAdapter(
     targetId: 'target-a',
     targetKind: 'function',
     protocolId: 'omk.invoke/v1',
-    executorId: 'test.omk.custom-command/v1',
+    executorId: 'test.omk.custom-executor/v1',
     executionRequirements,
     executionControls,
   };
@@ -314,16 +314,16 @@ async function createAdapter(
     executionControlsDigest: digest(executionControls),
     resourceLeaseRequirements,
     qualification: {
-      model: 'custom-command',
+      model: 'custom-executor',
       executionRequirements,
       resourceIntegrity: 'digest-before-use',
     },
   };
-  return createCustomCommandExecutorAdapter({
+  return createCustomExecutorAdapter({
     target,
     binding,
     runtime: {
-      implementationId: 'test.omk.custom-command/v1',
+      implementationId: 'test.omk.custom-executor/v1',
       version: '1.0.0',
       capabilities: capabilities(options.supportsMockInterception),
       ...(identityFile === undefined ? {} : {
@@ -389,9 +389,9 @@ async function execute(
   }
 }
 
-describe('custom-command Core Executor adapter', () => {
+describe('custom-executor Core Executor adapter', () => {
   it('uses content evidence conservatively and keeps secret environment values out of identity', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-identity-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-identity-'));
     const port = await createAdapter(cwd, {
       environment: { OMK_TEST_SECRET: 'do-not-persist-this-secret' },
     });
@@ -423,7 +423,7 @@ describe('custom-command Core Executor adapter', () => {
   });
 
   it('sends a canonical source-neutral request without ambient env and preserves unknown usage', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-request-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-request-'));
     const result = await execute(await createAdapter(cwd, {
       environment: { OMK_TEST_EXPLICIT: 'visible' },
     }));
@@ -437,7 +437,7 @@ describe('custom-command Core Executor adapter', () => {
       inheritedHome: null,
       explicitValue: 'visible',
       request: {
-        schemaVersion: CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
+        schemaVersion: CUSTOM_EXECUTOR_EXCHANGE_SCHEMA_VERSION,
         run: { runId: 'run-a' },
         trial: {
           targetId: 'target-a',
@@ -449,13 +449,13 @@ describe('custom-command Core Executor adapter', () => {
       },
     });
     const trace = result.trace?.value as { cwd?: unknown } | undefined;
-    expect(trace?.cwd).toEqual(expect.stringContaining('omk-custom-command-run-'));
+    expect(trace?.cwd).toEqual(expect.stringContaining('omk-custom-executor-run-'));
     expect(trace?.cwd).not.toBe(await realpath(cwd));
     expect(existsSync(trace?.cwd as string)).toBe(false);
   });
 
   it('passes real Core prepare and execution with identity unchanged and one process per attempt', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-core-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-core-'));
     const invocations = join(cwd, 'invocations.log');
     const port = await createAdapter(cwd, {
       environment: { OMK_TEST_INVOCATIONS: invocations },
@@ -491,7 +491,7 @@ describe('custom-command Core Executor adapter', () => {
       },
     }, {
       runId: 'run-a',
-      bundleId: 'bundle-custom-command',
+      bundleId: 'bundle-custom-executor',
     });
 
     expect(bundle.executionBundleStatus).toBe('completed');
@@ -504,7 +504,7 @@ describe('custom-command Core Executor adapter', () => {
   });
 
   it('forwards reported usage exactly and keeps structured child failures redacted', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-usage-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-usage-'));
     const completed = await execute(await createAdapter(cwd, {
       environment: { OMK_TEST_USAGE: '1' },
     }));
@@ -522,17 +522,18 @@ describe('custom-command Core Executor adapter', () => {
       evaluationError: {
         code: 'TEST_PROVIDER_UNAVAILABLE',
         stage: 'infrastructure',
-        message: 'Custom-command Runtime reported a structured failure.',
+        message: 'Custom executor Runtime reported a structured failure.',
       },
       usage: { inputTokens: 3 },
     });
   });
 
   it.each([
-    ['invalid', 'OMK_CUSTOM_COMMAND_OUTPUT_INVALID'],
-    ['exit', 'OMK_CUSTOM_COMMAND_EXIT_NONZERO'],
+    ['invalid', 'OMK_CUSTOM_EXECUTOR_OUTPUT_INVALID'],
+    ['removed-protocol', 'OMK_CUSTOM_EXECUTOR_OUTPUT_INVALID'],
+    ['exit', 'OMK_CUSTOM_EXECUTOR_EXIT_NONZERO'],
   ])('fails closed for %s output without leaking child diagnostics', async (mode, code) => {
-    const cwd = await mkdtemp(join(tmpdir(), `omk-custom-command-${mode}-`));
+    const cwd = await mkdtemp(join(tmpdir(), `omk-custom-executor-${mode}-`));
     const promise = execute(await createAdapter(cwd, {
       environment: { OMK_TEST_MODE: mode },
     }));
@@ -548,17 +549,17 @@ describe('custom-command Core Executor adapter', () => {
   });
 
   it('bounds stdout independently of Core timeout policy', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-limit-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-limit-'));
     await expect(execute(await createAdapter(cwd, {
       environment: { OMK_TEST_MODE: 'oversized' },
       maxOutputBytes: 256,
     }))).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_CUSTOM_COMMAND_OUTPUT_LIMIT_EXCEEDED' },
+      evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_OUTPUT_LIMIT_EXCEEDED' },
     });
   });
 
   it('reverifies declared implementation bytes before every spawn', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-reverify-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-reverify-'));
     const script = join(cwd, 'runtime.mjs');
     const invocations = join(cwd, 'invocations.log');
     await copyFile(FIXTURE, script);
@@ -569,13 +570,13 @@ describe('custom-command Core Executor adapter', () => {
     await appendFile(script, '\n// changed after assembly\n');
 
     await expect(execute(port)).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_CUSTOM_COMMAND_IDENTITY_CHANGED' },
+      evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_IDENTITY_CHANGED' },
     });
     expect(existsSync(invocations)).toBe(false);
   });
 
   it('projects only verified leases and runs inside the requested workspace overlay', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-workspace-'));
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-executor-workspace-'));
     const baseSnapshotPath = join(root, 'base');
 
     await mkdir(baseSnapshotPath);
@@ -625,7 +626,7 @@ describe('custom-command Core Executor adapter', () => {
     });
 
     expect(result.trace?.value).toMatchObject({
-      cwd: expect.stringMatching(/omk-custom-command-run-[^/]+\/trial-/),
+      cwd: expect.stringMatching(/omk-custom-executor-run-[^/]+\/trial-/),
       request: {
         resources: [{
           resourceId: 'workspace-a',
@@ -638,7 +639,7 @@ describe('custom-command Core Executor adapter', () => {
   });
 
   it('projects only the current Trial workspace and tool policy from an aggregate lease', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-sample-controls-'));
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-executor-sample-controls-'));
     const workspace = async (suffix: 'a' | 'b') => {
       const baseSnapshotPath = join(root, `base-${suffix}`);
 
@@ -727,12 +728,12 @@ describe('custom-command Core Executor adapter', () => {
     expect(JSON.stringify(resultB.trace?.value)).not.toContain(workspaceA.baseSnapshotPath);
     await expect(execute(port, new AbortController().signal, controlB, 'sample-a'))
       .rejects.toMatchObject({
-        evaluationError: { code: 'OMK_CUSTOM_COMMAND_EXECUTION_CONTROL_MISMATCH' },
+        evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_EXECUTION_CONTROL_MISMATCH' },
       });
   });
 
   it('projects only the current Trial mock plan closure from an aggregate lease', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-sample-mocks-'));
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-executor-sample-mocks-'));
     const [mockA, mockB] = await Promise.all([
       mockResources(root, 'a'),
       mockResources(root, 'b'),
@@ -806,7 +807,7 @@ describe('custom-command Core Executor adapter', () => {
   });
 
   it('rejects unreferenced mock helper leases before spawning', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-mock-closure-'));
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-executor-mock-closure-'));
     const mock = await mockResources(root, 'a');
     const invocations = join(root, 'invocations.log');
     const extraPath = join(root, 'mock-payload-extra.json');
@@ -858,13 +859,13 @@ describe('custom-command Core Executor adapter', () => {
 
     await expect(execute(port, new AbortController().signal, control))
       .rejects.toMatchObject({
-        evaluationError: { code: 'OMK_CUSTOM_COMMAND_MOCK_CONFIG_INVALID' },
+        evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_MOCK_CONFIG_INVALID' },
       });
     expect(existsSync(invocations)).toBe(false);
   });
 
   it('delivers the Core AbortSignal to the child and waits for termination', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-cancel-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-cancel-'));
     const started = join(cwd, 'started');
     const cancelled = join(cwd, 'cancelled');
     const controller = new AbortController();
@@ -884,14 +885,14 @@ describe('custom-command Core Executor adapter', () => {
 
     expect(await outcome).toMatchObject({
       error: {
-        evaluationError: { code: 'OMK_CUSTOM_COMMAND_CANCELLED' },
+        evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_CANCELLED' },
       },
     });
     expect(await readFile(cancelled, 'utf8')).toBe('cancelled');
   });
 
   it('does not spawn when the Core signal is already aborted', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-pre-abort-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-pre-abort-'));
     const invocations = join(cwd, 'invocations.log');
     const controller = new AbortController();
     controller.abort('already-cancelled');
@@ -899,13 +900,13 @@ describe('custom-command Core Executor adapter', () => {
     await expect(execute(await createAdapter(cwd, {
       environment: { OMK_TEST_INVOCATIONS: invocations },
     }), controller.signal)).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_CUSTOM_COMMAND_CANCELLED' },
+      evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_CANCELLED' },
     });
     expect(existsSync(invocations)).toBe(false);
   });
 
   it('defers ephemeral run cleanup until a racing live trial is released', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-dispose-race-'));
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-executor-dispose-race-'));
     const port = await createAdapter(root);
     const run = await port.openRun({
       runId: 'run-a',
@@ -943,7 +944,7 @@ describe('custom-command Core Executor adapter', () => {
   });
 
   it('rejects analysis-only gold resources before spawning', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-command-gold-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-custom-executor-gold-'));
     const payload = join(cwd, 'gold.json');
     const invocations = join(cwd, 'invocations.log');
     await writeFile(payload, '{}');
@@ -971,7 +972,7 @@ describe('custom-command Core Executor adapter', () => {
     });
 
     await expect(execute(port)).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_CUSTOM_COMMAND_RESOURCE_FORBIDDEN' },
+      evaluationError: { code: 'OMK_CUSTOM_EXECUTOR_RESOURCE_FORBIDDEN' },
     });
     expect(existsSync(invocations)).toBe(false);
   });

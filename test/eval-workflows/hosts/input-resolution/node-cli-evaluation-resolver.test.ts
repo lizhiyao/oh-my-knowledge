@@ -545,7 +545,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(runtime).toBeDefined();
     expect(runtime!.descriptor.classification).toBe('sensitive');
     expect(compiled.definition.targets.every((target) => (
-      target.executorId === `custom-command-${runtime!.descriptor.digest.slice('sha256:'.length)}`
+      target.executorId === `custom-executor-${runtime!.descriptor.digest.slice('sha256:'.length)}`
     ))).toBe(true);
     const executorBindings = compiled.runtimeBinding.bindings.filter((binding) => (
       binding.runtimeKind === 'executor'

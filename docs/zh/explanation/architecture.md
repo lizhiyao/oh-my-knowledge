@@ -114,7 +114,7 @@ eval-workflows/
 
 executors/
 ├── contracts/          # executor 端口、Runtime 身份、结果与 trace 事实
-├── preflight/          # 宿主工具、文件、环境变量与自定义命令就绪检查
+├── preflight/          # 宿主工具、文件、环境变量与自定义执行器就绪检查
 └── <provider>/         # provider 专属 Runtime 实现
 ```
 
@@ -202,7 +202,7 @@ Studio。这些路径用途不同，共用机制须按契约提取。用户 faç
 | Codex SDK | 共用 provider 协议与 Trace | 普通调用管理单次调用的隔离 home；测量调用绑定 SDK 身份和 Trial 资源，生命周期不能由普通调用封装接管 |
 | Claude SDK | 共用 provider 协议、Trace 与 mock 基础设施 | 测量路径固定设置来源并核验 SDK 运行能力；普通辅助调用仍采用自身配置和结果协议 |
 | OpenAI／Anthropic HTTP | 共用 token 用量基础操作；两种测量 HTTP 适配器共用带身份的 transport 和协议基础设施 | 普通路径读取环境配置、采用调用超时；测量路径显式注入 transport／凭证，使用 Core 取消与输出限制，保留失败关闭的解析 |
-| 自定义命令 | 共用子进程基础设施 | 普通命令输出和测量的版本化请求／响应交换不同，不能通过拼接包装视为同一协议 |
+| 自定义执行器 | 共用子进程基础设施 | 普通命令输出和测量的版本化请求／响应交换不同，不能通过拼接包装视为同一协议 |
 
 Codex 参数抽取保持参数顺序、prompt 字节和各调用方的空值处理。环境选择、超时、错误信封与资源清理没有下沉到参数工具：普通调用负责调用级超时，测量调用服从 Core attempt 的取消；不在适配器叠加第二套测量超时。每个 Trial 的工作区独立，同 Trial 重试沿用其状态，失败用量与 Trace 按现有声明保存。
 
