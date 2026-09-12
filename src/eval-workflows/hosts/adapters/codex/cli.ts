@@ -1,7 +1,5 @@
 import { buildCodexExecArguments } from '../../../../executors/openai/codex/cli-arguments.js';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
 import {
   RuntimeIdentitySchema,
   canonicalizeJson,
@@ -39,6 +37,7 @@ import { mergeOutputClassification } from '../shared/classified-environment.js';
 import {
   codexCliExecutorCapabilities,
   parseCodexCliStream,
+  requiresCodexUpgrade,
   type ParsedCodexCliStream,
 } from './cli-protocol.js';
 import {
@@ -51,6 +50,7 @@ import {
   type CodexCliRunState,
 } from './cli-resources.js';
 import { createSameProcessExecutorAdapter } from '../../../../eval-runtime/adapters/same-process.js';
+import { probeCodexCliVersion } from './version.js';
 
 export {
   createCodexCliCoreSchemaValidators,
@@ -132,49 +132,6 @@ function captureConfiguration(input: Readonly<CodexCliCoreConfiguration>): Captu
     maxPromptBytes,
     identityProbeTimeoutMs,
   });
-}
-
-async function runVersionProbe(
-  configuration: CapturedConfiguration,
-): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'omk-codex-identity-'));
-  try {
-    const internalAbort = new AbortController();
-    const { child, done } = spawnWithSigintPropagation(
-      configuration.executablePath,
-      ['--version'],
-      {
-        cwd: directory,
-        env: { ...configuration.environment },
-        maxBuffer: Math.min(configuration.maxOutputBytes, 64 * 1024),
-        timeoutMs: configuration.identityProbeTimeoutMs,
-        abortSignal: internalAbort.signal,
-      },
-    );
-    let stdinFailed = child.stdin === null;
-    if (child.stdin === null) internalAbort.abort();
-    else {
-      child.stdin.once('error', () => {
-        stdinFailed = true;
-        internalAbort.abort();
-      });
-      child.stdin.end();
-    }
-    let stdout: string;
-    try {
-      stdout = (await done).stdout.trim();
-    } catch {
-      if (stdinFailed) throw new TypeError('Codex CLI version probe stdin is unavailable.');
-      throw new TypeError('Codex CLI version probe failed.');
-    }
-    const match = /^(?:codex-cli(?:-exec)?\s+)?([^\s]+)$/.exec(stdout);
-    if (match?.[1] === undefined || match[1].length > 128) {
-      throw new TypeError('Codex CLI version probe returned an invalid version.');
-    }
-    return match[1];
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
 }
 
 async function assertIdentityFilesUnchanged(
@@ -270,7 +227,12 @@ async function resolveIdentity(
     { facetId: 'codex-executable', path: configuration.executablePath },
     ...additionalIdentityFiles,
   ], 'Codex CLI');
-  const version = await runVersionProbe(configuration);
+  const version = await probeCodexCliVersion({
+    executablePath: configuration.executablePath,
+    environment: configuration.environment,
+    maxOutputBytes: configuration.maxOutputBytes,
+    timeoutMs: configuration.identityProbeTimeoutMs,
+  });
   await assertIdentityFilesUnchanged(files);
   const evidence = files.map(({ facetId, digest, size }) => ({ facetId, digest, size }));
   const identity = RuntimeIdentitySchema.parse({
@@ -307,27 +269,6 @@ export function buildCodexCliCoreArguments(input: Readonly<{
     color: 'never',
     shellEnvironmentInheritance: 'none',
   });
-}
-
-function requiresCodexUpgrade(stdout: string): boolean {
-  for (const line of stdout.split('\n')) {
-    try {
-      const event = JSON.parse(line) as { type?: string; message?: unknown; error?: { message?: unknown } };
-      if (!event || typeof event !== 'object') continue;
-      let message = event.type === 'error' ? event.message
-        : event.type === 'turn.failed' ? event.error?.message : undefined;
-      if (typeof message !== 'string') continue;
-      if (message.startsWith('{')) {
-        const detail = JSON.parse(message) as { error?: { message?: unknown } };
-        message = detail?.error?.message;
-      }
-      if (typeof message === 'string'
-          && /^The '[^'\r\n]+' model requires a newer version of Codex\./.test(message)) return true;
-    } catch {
-      // Only recognized provider error events produce an actionable, redacted code.
-    }
-  }
-  return false;
 }
 
 function processFailure(error: unknown, signal: AbortSignal): never {

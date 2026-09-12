@@ -102,9 +102,19 @@ export async function checkExecutor<
       'Executor check expectedErrorCode 无效。',
     );
   }
+  const capabilities = executor.declaration.capabilities;
+  // The probe must not demand seed control the Target never claimed: a stochastic runtime with
+  // seedControl=unsupported is certified under the same uncontrolled design the product host
+  // compiles for it, instead of failing plan admission before any Executor code runs.
+  const seedCoupling: 'shared-within-block' | 'uncontrolled' =
+    (capabilities?.determinism ?? 'unknown') === 'deterministic'
+    || (capabilities?.seedControl ?? 'unsupported') !== 'unsupported'
+    ? 'shared-within-block'
+    : 'uncontrolled';
   return runExecutorConformance({
     implementationId: executor.declaration.executorId,
     protocolId: executor.protocolId,
+    seedCoupling,
     createExecutor() {
       return executor.createPort(variant.variantId);
     },
