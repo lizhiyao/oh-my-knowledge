@@ -21,6 +21,16 @@ export class EvaluationEventConsumptionError extends Error {
   }
 }
 
+/**
+ * Redacted origin of a failure that a facade boundary re-reports under its own code.
+ * Carries only the underlying stable code, never the wrapped error's text: message and
+ * cause stay free of host data. `code` is present only for `failureKind: 'configuration'`.
+ */
+export type EvaluationFailureOrigin = Readonly<{
+  failureKind: 'configuration' | 'invariant' | 'unknown';
+  code?: string;
+}>;
+
 export class EvaluationConfigurationError extends TypeError {
   readonly code:
     | 'EVAL_RUNTIME_INPUT_INVALID'
@@ -30,9 +40,15 @@ export class EvaluationConfigurationError extends TypeError {
     | 'EVAL_RUNTIME_COMPARABILITY_INVALID'
     | 'EVAL_RUNTIME_REUSE_INVALID'
     | 'EVAL_RUNTIME_SERIES_INVALID';
+  /** Set only when a boundary wraps another failure; absent on a direct rejection. */
+  declare readonly cause: EvaluationFailureOrigin | undefined;
 
-  constructor(code: EvaluationConfigurationError['code'], message: string) {
-    super(message);
+  constructor(
+    code: EvaluationConfigurationError['code'],
+    message: string,
+    origin?: EvaluationFailureOrigin,
+  ) {
+    super(message, origin === undefined ? undefined : { cause: origin });
     this.name = 'EvaluationConfigurationError';
     this.code = code;
   }
@@ -41,6 +57,7 @@ export class EvaluationConfigurationError extends TypeError {
 export function configurationFailure(
   code: EvaluationConfigurationError['code'],
   message: string,
+  origin?: EvaluationFailureOrigin,
 ): never {
-  throw new EvaluationConfigurationError(code, message);
+  throw new EvaluationConfigurationError(code, message, origin);
 }

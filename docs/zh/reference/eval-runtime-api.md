@@ -28,7 +28,7 @@
 | `checkContentStore` | 验证宿主 ContentStore／ContentResolver 的 descriptor 完整性与稳定性、幂等写入，以及回读 value、classification 和 media type；宿主异常只会归约为稳定 reason code。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量探针检查 Executor 行为。 |
 | `RUNTIME_CHECK_RESULT_SCHEMA_VERSION` | 全部可序列化 `checkRuntime` result envelope 共享的版本标记。 |
-| `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。 |
+| `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。当边界转述另一个失败时，`cause` 只携带其脱敏来源。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
 
 内容存储一致性检查使用 `ContentStoreCheckInput`、`ContentStoreCheckResult` 与 `ContentStoreConformanceCheck`。

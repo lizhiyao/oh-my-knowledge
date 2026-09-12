@@ -35,13 +35,25 @@ import {
 } from './result-state.js';
 import {
   configurationFailure,
+  type EvaluationFailureOrigin,
   EvaluationConfigurationError,
   EvaluationEventConsumptionError,
 } from './errors.js';
 import {
   materializeAuthenticatedEvaluationRunResult,
+  EvaluationStageSessionError,
+  type EvaluationStageSessionErrorCode,
   type AdvancedPreparedEvaluation as CoreAdvancedPreparedEvaluation,
 } from '../../eval-core/engine/index.js';
+import {
+  ExecutionRuntimeConfigurationError,
+} from '../../eval-core/execution/types.js';
+import {
+  EvaluationRuntimeConfigurationError,
+} from '../../eval-core/evaluation/types.js';
+import {
+  AnalysisRuntimeConfigurationError,
+} from '../../eval-core/analysis/types.js';
 import {
   type SealedRunPlan,
 } from '../../eval-core/compiler/index.js';
@@ -297,6 +309,69 @@ function assertReusablePrefix(
   }
 }
 
+/** @internal A reuse invariant the Runtime itself broke; no host input should reach it. */
+export class ReuseInvariantViolation extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReuseInvariantViolation';
+  }
+}
+
+const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** Codes that describe how the caller opened the stage session, not how OMK drove it. */
+const CALLER_STAGE_SESSION_CODES: readonly EvaluationStageSessionErrorCode[] = [
+  'EVALUATION_STAGE_SESSION_RUN_ID_INVALID',
+  'EVALUATION_STAGE_SESSION_RUN_ID_ACTIVE',
+  'EVALUATION_STAGE_SESSION_EVENT_BUFFER_CAPACITY_INVALID',
+];
+
+type ReuseFailureReport = Readonly<{
+  message: string;
+  origin: EvaluationFailureOrigin;
+}>;
+
+function configurationReport(code: string): ReuseFailureReport {
+  return {
+    message: 'Evaluation stage reuse 因 Run 配置错误失败关闭。',
+    origin: STABLE_ERROR_CODE.test(code)
+      ? { failureKind: 'configuration', code }
+      : { failureKind: 'configuration' },
+  };
+}
+
+function invariantReport(): ReuseFailureReport {
+  return {
+    message: 'Evaluation stage reuse 命中 OMK 内部不变量失败。',
+    origin: { failureKind: 'invariant' },
+  };
+}
+
+/**
+ * @internal Maps one caught suffix failure onto the reuse boundary's redacted report.
+ * The public code stays `EVAL_RUNTIME_REUSE_INVALID`; diagnosability comes from a
+ * per-origin sentence plus a `cause` that carries only a stable Core code.
+ */
+export function describeReuseFailure(failure: unknown): ReuseFailureReport {
+  if (failure instanceof EvaluationStageSessionError) {
+    return CALLER_STAGE_SESSION_CODES.includes(failure.code)
+      ? configurationReport(failure.code)
+      : invariantReport();
+  }
+  if (failure instanceof ExecutionRuntimeConfigurationError
+      || failure instanceof EvaluationRuntimeConfigurationError
+      || failure instanceof AnalysisRuntimeConfigurationError) {
+    return configurationReport(failure.code);
+  }
+  if (failure instanceof ReuseInvariantViolation) {
+    return invariantReport();
+  }
+  return {
+    message: 'Evaluation stage reuse 无法完成。',
+    origin: { failureKind: 'unknown' },
+  };
+}
+
 async function runEvaluationSuffix(
   reuseKind: EvaluationReuseKind,
   input: Readonly<EvaluateInput>,
@@ -349,7 +424,7 @@ async function runEvaluationSuffix(
       evaluation = await evaluationRun.source;
     }
     if (evaluation === undefined) {
-      throw new TypeError('Evaluation stage source is unavailable.');
+      throw new ReuseInvariantViolation('Evaluation stage source is unavailable.');
     }
     let analysis = prefix.analysis;
     if (reuseKind !== 'redecide') {
@@ -358,7 +433,7 @@ async function runEvaluationSuffix(
       analysis = await analysisRun.source;
     }
     if (analysis === undefined) {
-      throw new TypeError('Analysis stage source is unavailable.');
+      throw new ReuseInvariantViolation('Analysis stage source is unavailable.');
     }
     const decisionRun = session.decide({ execution, evaluation, analysis });
     consumer.enqueue(decisionRun.events);
@@ -388,9 +463,11 @@ async function runEvaluationSuffix(
     options.signal?.removeEventListener('abort', abortFromCaller);
   }
   if (stageFailure !== undefined || result === undefined) {
+    const report = describeReuseFailure(stageFailure);
     return configurationFailure(
       'EVAL_RUNTIME_REUSE_INVALID',
-      'Evaluation stage reuse 无法完成。',
+      report.message,
+      report.origin,
     );
   }
   if (consumer.state.observerFailed) {
