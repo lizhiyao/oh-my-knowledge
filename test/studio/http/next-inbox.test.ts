@@ -2,13 +2,17 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it } from 'vitest';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
+import { buildObservationInboxReport, saveObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import type { ConversationCatalog } from '../../../src/observability/conversation/catalog.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';
 
 const servers: ReportServer[] = [];
 const dirs: string[] = [];
+
+const fixtureTrace = fileURLToPath(new URL('../../fixtures/codex-knowledge-debugger-failure.jsonl', import.meta.url));
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.stop()));
@@ -113,4 +117,49 @@ describe('Next-hosted observation inbox route', () => {
     assert.equal(response.status, 503);
     assert.equal(await response.text(), 'studio_source_unavailable');
   }, 20000);
+
+  it('serves the conversation thread that the review card links to', async () => {
+    const dir = observationsDir();
+    const report = buildObservationInboxReport(fixtureTrace);
+    const session = report.experience!.sessions[0];
+    saveObservationInboxReport(report, dir);
+    const threadId = session.threadId;
+    const catalog: ConversationCatalog = {
+      async listConversations() {
+        return { conversations: [], totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 };
+      },
+      async getConversation(id) {
+        if (id !== threadId) return undefined;
+        return {
+          threadId,
+          sourceThreadId: threadId,
+          sourceKind: session.sourceKind,
+          title: '深链目标会话',
+          relatedSkillNames: [session.skillName],
+          tasks: session.turns.map((turn) => ({
+            turnId: turn.turnId,
+            title: '任务',
+            status: 'completed' as const,
+            eventCount: 1,
+            toolCallCount: 0,
+            toolFailureCount: 0,
+            relatedSkillNames: [],
+          })),
+        };
+      },
+      async loadTaskTrajectory() {
+        return undefined;
+      },
+    };
+    const server = createNextStudioServer({ port: 0, observationsDir: dir, conversationCatalog: catalog });
+    servers.push(server);
+    const url = await server.start();
+
+    // Tabs 只服务端渲染当前面板，深链本身由 inbox-experience-review.test.tsx 锁定；
+    // 这里锁的是同一个宿主上收件箱与它的下钻目标都可达。
+    assert.equal((await fetch(`${url}/observe/inbox`)).status, 200);
+    const thread = await fetch(`${url}/observe/conversations/${encodeURIComponent(threadId)}`);
+    assert.equal(thread.status, 200);
+    assert.match(await thread.text(), /深链目标会话/);
+  }, 30000);
 });
