@@ -429,6 +429,61 @@ describe('canonical eval-runtime API', () => {
       .not.toBe(source.artifacts?.decision?.decisionDigest);
   });
 
+  it('reports the underlying Core configuration code when a reuse suffix fails closed', async () => {
+    let targetInvocations = 0;
+    const declaration = executor(async ({ input: invocationInput, config }) => {
+      targetInvocations += 1;
+      return { output: config.answers[invocationInput.prompt] };
+    });
+    const input = pairedInput(declaration);
+    const durable = {
+      ...input,
+      policy: { ...input.policy, eventDelivery: { writerMode: 'required' as const } },
+    };
+    const source = await evaluate(durable, {
+      runId: 'reuse-writer-required-source',
+      eventWriter: { write: async () => {} },
+    });
+    expect(source.status).toBe('completed');
+    targetInvocations = 0;
+
+    const suffixes = [
+      ['rescore', rescore, 'EVALUATION_RUNTIME_EVENT_WRITER_REQUIRED'],
+      ['reanalyze', reanalyze, 'ANALYSIS_RUNTIME_EVENT_WRITER_REQUIRED'],
+      ['redecide', redecide, 'DECISION_EVENT_WRITER_REQUIRED'],
+    ] as const;
+    for (const [name, run, code] of suffixes) {
+      await expect(run(durable, source, { runId: `reuse-writer-required-${name}` })).rejects
+        .toMatchObject({
+          code: 'EVAL_RUNTIME_REUSE_INVALID',
+          message: 'Evaluation stage reuse 因 Run 配置错误失败关闭。',
+          cause: { failureKind: 'configuration', code },
+        });
+    }
+    expect(targetInvocations).toBe(0);
+
+    // Same entry point, different failure class: `policy.eventDelivery` is part of the run
+    // contract identity only, never a stage plan digest, so changing it cannot break the
+    // reusable prefix. Rejecting the source itself needs a declaration change, and that
+    // rejection carries no wrapped origin.
+    const changed = {
+      ...durable,
+      variants: durable.variants.map((current, index) => index === 1 ? {
+        ...current,
+        artifact: { ...current.artifact, content: 'Changed execution input.' },
+      } : current),
+    };
+    const rejection: unknown = await rescore(changed, source, {
+      runId: 'reuse-premise-mismatch',
+    }).catch((error: unknown) => error);
+    expect(rejection).toBeInstanceOf(EvaluationConfigurationError);
+    const premiseFailure = rejection as EvaluationConfigurationError;
+    expect(premiseFailure.code).toBe('EVAL_RUNTIME_REUSE_INVALID');
+    expect(premiseFailure.message)
+      .toBe('Evaluation source result 与新声明的可复用阶段不一致。');
+    expect('cause' in premiseFailure).toBe(false);
+  });
+
   it('rejects cloned results and incompatible reusable prefixes before invoking a Target', async () => {
     let targetInvocations = 0;
     const declaration = executor(async ({ input, config }) => {

@@ -119,7 +119,8 @@ const result = await prepared.run({
 边界：
 
 - **事件不改变测量终态。** 回写成功与否，结果的分数与证据都不受影响，声明了 Decision 时的 verdict 同样不受影响；`required`＋`fail-run` 改变的是 run 的成败判定，不是测量语义。
-- **声明 `required` 却未注入写入器，会在调用任何 Target 之前失败关闭。** 每个 Core 阶段都会检查这组配对：`evaluate()` 与 `prepared.run()` 会 resolve 出 `status: 'failed'`、`error.code` 为 `EXECUTION_RUNTIME_EVENT_WRITER_REQUIRED`、`stage` 为 `configuration` 的结果；`rescore`／`reanalyze`／`redecide` 则以 `EVAL_RUNTIME_REUSE_INVALID` reject，因为复用边界用自身的 code 报告同一个 Core 配置失败。镜像情形在标准入口与复用入口共用同一道守卫并失败关闭：delivery 为 `disabled` 却传入写入器，会以 `EVAL_RUNTIME_INPUT_INVALID` 被拒。
+- **声明 `required` 却未注入写入器，会在调用任何 Target 之前失败关闭。** 每个 Core 阶段都会检查这组配对：`evaluate()` 与 `prepared.run()` 会 resolve 出 `status: 'failed'`、`error.code` 为 `EXECUTION_RUNTIME_EVENT_WRITER_REQUIRED`、`stage` 为 `configuration` 的结果；`rescore`／`reanalyze`／`redecide` 以复用边界自身的 code 拒绝，并把底层 Core code 放进 `error.cause`：依次为 `EVALUATION_RUNTIME_EVENT_WRITER_REQUIRED`、`ANALYSIS_RUNTIME_EVENT_WRITER_REQUIRED`、`DECISION_EVENT_WRITER_REQUIRED`。镜像情形在标准入口与复用入口共用同一道守卫并失败关闭：delivery 为 `disabled` 却传入写入器，会以 `EVAL_RUNTIME_INPUT_INVALID` 被拒。
+- **复用失败会说明来源，但不泄露内容。** `EVAL_RUNTIME_REUSE_INVALID` 仍是后缀边界唯一的公开 code，但每次拒绝都有各自的一句话，并带一个脱敏 `cause`，由 `cause.failureKind` 区分三类来源：`configuration`（Run 配置错误，`cause.code` 给出稳定的 Core code）、`invariant`（OMK 自身断言被破坏）、`unknown`（阶段抛出的其他失败）。复用前提本身不成立——历史结果与新声明不一致——继续保留独立的一句话，且完全不带 `cause`，因此「这份结果不能复用」不需要从共用文案里猜。`cause` 只装这些稳定 token，不放被包装异常的任何文本；它是非枚举属性，读取 `error.cause` 可用，但不会进入序列化 payload。
 - 消费侧失败收敛为 `EvaluationEventConsumptionError`（code 为 `EVAL_RUNTIME_EVENT_OBSERVER_FAILED` 或 `EVAL_RUNTIME_EVENT_STREAM_FAILED`），错误对象带 `runResult` 承载 Core 终态，宿主可以先落盘再决定告警。
 
 ## 跨进程回读与重评

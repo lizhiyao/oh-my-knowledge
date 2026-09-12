@@ -28,7 +28,7 @@ The canonical API for application developers:
 | `checkContentStore` | Exercise a host ContentStore／ContentResolver pair for descriptor integrity and stability, idempotent writes, and round-trip value, classification, and media type; host exceptions are reduced to stable reason codes. |
 | `checkExecutor` | Exercise an Executor through success, failure, cancellation, cleanup, and measurement checks. |
 | `RUNTIME_CHECK_RESULT_SCHEMA_VERSION` | Version tag shared by all serializable `checkRuntime` result envelopes. |
-| `EvaluationConfigurationError` | Stable caller-configuration failure with a public code and no rejected payload. |
+| `EvaluationConfigurationError` | Stable caller-configuration failure with a public code and no rejected payload; when a boundary re-reports another failure, `cause` carries only its redacted origin. |
 | `EvaluationEventConsumptionError` | Stable, redacted observer／event-stream failure that retains the terminal `EvaluationResult` when available. |
 
 Content storage conformance uses `ContentStoreCheckInput`, `ContentStoreCheckResult`, and `ContentStoreConformanceCheck`.
