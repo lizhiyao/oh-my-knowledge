@@ -67,7 +67,7 @@ export function SessionReviewActions({
   const buttonType = (value: ObservationReviewVerdict) => (current === value ? 'primary' : 'default');
   const revokeTitle = (value: ObservationReviewVerdict) => (current === value ? labels.revokeHint : undefined);
   return (
-    <Space direction="vertical" size={4} style={{ alignItems: 'flex-start' }}>
+    <Space orientation="vertical" size={4} style={{ alignItems: 'flex-start' }}>
       <Space size={4} wrap>
         <Button size="small" type={buttonType('real_issue')} title={revokeTitle('real_issue')} loading={pending} onClick={() => void submit('real_issue')}>
           {labels.confirm}

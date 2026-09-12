@@ -191,7 +191,7 @@ omk studio --host 0.0.0.0                 # 局域网访问（默认 127.0.0.1�
 omk studio --no-open                      # 不自动开浏览器
 ```
 
-Studio 首页直接索引本机 Codex 对话。先选择对话，再选择任务查看四泳道任务轨迹；进行中的任务支持实时跟随。顶部「知识载体」入口用于浏览 doctor / eval / observe 报告，`/observe-inbox` 用于复核 observation。无需为了浏览本机 Codex 对话而先运行 `omk observe ingest`。
+Studio 首页直接索引本机 Codex 对话。先选择对话，再选择任务查看四泳道任务轨迹；进行中的任务支持实时跟随。顶部「知识载体」入口用于浏览 doctor / eval / observe 报告，`/observe/inbox` 用于复核 observation。无需为了浏览本机 Codex 对话而先运行 `omk observe ingest`。
 
 ## 第五步：解读结果
 

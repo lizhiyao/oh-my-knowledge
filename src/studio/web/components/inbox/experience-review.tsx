@@ -1,6 +1,6 @@
 'use client';
 import { useMemo } from 'react';
-import { Empty, List, Space, Tag, Typography } from 'antd';
+import { Empty, Listy, Space, Tag, Typography } from 'antd';
 import type { ExperienceSessionSummary } from '../../../../observability/contracts/experience';
 import type { ObservationMetricKey, ObservationReviewState } from '../../../../observability/contracts/review';
 import {
@@ -51,49 +51,47 @@ export function ExperienceReviewSection({
     return <Empty description={zh ? '暂无经验会话复盘记录。' : 'No experience review sessions yet.'} />;
   }
   return (
-    <List
-      dataSource={sorted}
+    <Listy
+      items={sorted}
       rowKey={(session) => session.id}
-      renderItem={(session) => {
+      itemRender={(session) => {
         const priority = reviewPriorityMeta(session.reviewPriority, lang);
         const entry = reviewState.entries[reviewStateKey('experience_session', session.id)];
         const unapplied = unappliedMetricAnnotations ? ownRecordValue(unappliedMetricAnnotations, session.id) : undefined;
         return (
-          <List.Item>
-            <div style={{ width: '100%' }}>
-              <Space size={8} wrap style={{ marginBottom: 4 }}>
-                <Typography.Text strong code>{session.skillName}</Typography.Text>
-                <Tag color={priority.tone}>{priority.label}</Tag>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {formatRange(session.startTimestamp, session.endTimestamp)}
-                </Typography.Text>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {session.sourceKind}
-                </Typography.Text>
-                <Typography.Link href={conversationHref(session.threadId, lang)} style={{ fontSize: 12 }}>
-                  {zh ? '查看对话任务' : 'Conversation tasks'}
-                </Typography.Link>
-              </Space>
-              {session.sessionStory?.summary ? (
-                <Typography.Paragraph style={{ fontSize: 13, marginBottom: 8 }}>
-                  {session.sessionStory.summary}
-                </Typography.Paragraph>
-              ) : null}
-              {unapplied && unapplied.length > 0 ? (
-                <Typography.Paragraph type="warning" style={{ fontSize: 12, marginBottom: 8 }}>
-                  {zh
-                    ? `标注未生效：${unapplied.join('、')}。证据不足以完整重放，已存指标未改变。`
-                    : `Annotations not applied: ${unapplied.join(', ')}. Evidence is insufficient for a full replay; stored metrics are unchanged.`}
-                </Typography.Paragraph>
-              ) : null}
-              <SessionReviewActions
-                sessionId={session.id}
-                verdict={entry?.verdict}
-                reason={entry?.reason}
-                lang={lang}
-              />
-            </div>
-          </List.Item>
+          <div style={{ width: '100%' }}>
+            <Space size={8} wrap style={{ marginBottom: 4 }}>
+              <Typography.Text strong code>{session.skillName}</Typography.Text>
+              <Tag color={priority.tone}>{priority.label}</Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {formatRange(session.startTimestamp, session.endTimestamp)}
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {session.sourceKind}
+              </Typography.Text>
+              <Typography.Link href={conversationHref(session.threadId, lang)} style={{ fontSize: 12 }}>
+                {zh ? '查看对话任务' : 'Conversation tasks'}
+              </Typography.Link>
+            </Space>
+            {session.sessionStory?.summary ? (
+              <Typography.Paragraph style={{ fontSize: 13, marginBottom: 8 }}>
+                {session.sessionStory.summary}
+              </Typography.Paragraph>
+            ) : null}
+            {unapplied && unapplied.length > 0 ? (
+              <Typography.Paragraph type="warning" style={{ fontSize: 12, marginBottom: 8 }}>
+                {zh
+                  ? `标注未生效：${unapplied.join('、')}。证据不足以完整重放，已存指标未改变。`
+                  : `Annotations not applied: ${unapplied.join(', ')}. Evidence is insufficient for a full replay; stored metrics are unchanged.`}
+              </Typography.Paragraph>
+            ) : null}
+            <SessionReviewActions
+              sessionId={session.id}
+              verdict={entry?.verdict}
+              reason={entry?.reason}
+              lang={lang}
+            />
+          </div>
         );
       }}
     />
