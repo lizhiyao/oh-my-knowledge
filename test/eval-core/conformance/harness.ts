@@ -203,6 +203,7 @@ export interface ConformanceHarnessOptions {
   runtimeRegistry?: ConformanceRuntimeRegistry;
   executorAssurance?: RuntimeIdentity['assuranceLevel'];
   evaluatorUsage?: UsageRecord;
+  executorsByTargetId?: ReadonlyMap<string, ExecutionExecutor>;
 }
 
 export class InMemoryConformanceArtifactStore {
@@ -1219,7 +1220,7 @@ export async function runConformanceScenario(
     ...(options.faults === undefined ? {} : { faults: options.faults }),
   });
   const localExecutor = makeExecutor(target, plan, localBinding);
-  const executorsByTargetId = registry?.executorsByTargetId
+  const executorsByTargetId = options.executorsByTargetId ?? registry?.executorsByTargetId
     ?? new Map(plan.execution.targets.map((entry) => [entry.targetId, localExecutor]));
   const evaluatorsByEvaluatorId = registry?.evaluatorsByEvaluatorId
     ?? makeEvaluatorRegistry(target, plan, localBinding, options.evaluatorUsage);
