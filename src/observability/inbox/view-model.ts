@@ -238,6 +238,12 @@ export {
 } from './review-semantics.js';
 export type { ReviewPriorityTone } from './review-semantics.js';
 export {
+  INDICATOR_KEYS,
+  indicatorHelp,
+  indicatorLabel,
+} from './metric-semantics.js';
+export type { IndicatorHelpKey } from './metric-semantics.js';
+export {
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
 } from './review-state.js';

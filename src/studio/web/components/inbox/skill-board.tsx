@@ -7,8 +7,10 @@ import {
   type ObservationSkillRollup,
   type SkillReviewTone,
 } from '../../../../observability/inbox/skill-rollups';
+import type { IndicatorHelpKey } from '../../../../observability/inbox/metric-semantics';
 import type { ObservationInboxViewModel } from '../../../../observability/inbox/view-model';
 import type { Language } from '../layout/shell';
+import { MetricBadge } from './metric-badge';
 
 const REVIEW_TAG_COLOR: Record<SkillReviewTone, string> = {
   error: 'error',
@@ -17,16 +19,16 @@ const REVIEW_TAG_COLOR: Record<SkillReviewTone, string> = {
   success: 'success',
 };
 
-const METRIC_LABELS: Record<keyof ObservationSkillRollup['metricCounts'], { zh: string; en: string }> = {
-  bash: { zh: 'Bash调用', en: 'Bash calls' },
-  read: { zh: 'Read', en: 'Read' },
-  grep: { zh: 'Grep', en: 'Grep' },
-  uncertainty: { zh: '回答不确定', en: 'Uncertain' },
-  explicitMarker: { zh: '明确说缺口', en: 'Explicit gap' },
-  bashProbe: { zh: 'Bash试探', en: 'Bash probes' },
-  notFound: { zh: '路径不存在', en: 'Path missing' },
-  toolLimit: { zh: '工具限制', en: 'Tool limits' },
-  toolFailure: { zh: '工具执行失败', en: 'Tool failures' },
+const METRIC_KEYS: Record<keyof ObservationSkillRollup['metricCounts'], IndicatorHelpKey> = {
+  bash: 'bash',
+  read: 'read',
+  grep: 'grep',
+  uncertainty: 'hedging',
+  explicitMarker: 'explicitMarker',
+  bashProbe: 'bashProbe',
+  notFound: 'notFound',
+  toolLimit: 'toolLimit',
+  toolFailure: 'toolFailure',
 };
 
 function formatTimestamp(value: string): string {
@@ -67,11 +69,12 @@ export function SkillBoard({
         {
           title: zh ? '子项指标' : 'Metrics',
           render: (_: unknown, row) => (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {(Object.keys(METRIC_LABELS) as Array<keyof ObservationSkillRollup['metricCounts']>)
-                .map((key) => `${zh ? METRIC_LABELS[key].zh : METRIC_LABELS[key].en} ${row.metricCounts[key]}`)
-                .join(' · ')}
-            </Typography.Text>
+            <span style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {(Object.keys(METRIC_KEYS) as Array<keyof ObservationSkillRollup['metricCounts']>)
+                .map((key) => (
+                  <MetricBadge key={key} metricKey={METRIC_KEYS[key]} value={row.metricCounts[key]} lang={lang} />
+                ))}
+            </span>
           ),
         },
         { title: zh ? '高风险' : 'High', dataIndex: ['counts', 'high'], align: 'right' },
