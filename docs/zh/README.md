@@ -27,6 +27,8 @@
 
 ## 迁移与设计规范
 
+- [通用 sample 规范草案](./specs/general-sample-proposal.md)
+
 - [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/storage-layout-spec.md)
 - [Core 设计](./specs/eval-core-vnext.md) · [评分等价性](./specs/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/cli-evaluation-input-compilation.md)
 - [知识领域模型（草案）](./specs/knowledge-domain-model.md) · [知识缺口信号](./specs/knowledge-gap-signal-spec.md) · [证据门控管理](./specs/evidence-gated-management.md)

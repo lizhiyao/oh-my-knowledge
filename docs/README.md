@@ -27,6 +27,8 @@ Choose an entry for your task. Version 1.0 is still in Beta iteration; existing 
 
 ## Migration and design specs
 
+- [General sample proposal (draft)](./specs/general-sample-proposal.md)
+
 - [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/storage-layout-spec.md)
 - [Core design](./specs/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/cli-evaluation-input-compilation.md)
 - [Knowledge domain model (draft)](./specs/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/knowledge-gap-signal-spec.md) · [Evidence-gated management](./specs/evidence-gated-management.md)
