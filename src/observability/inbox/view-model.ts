@@ -221,11 +221,13 @@ export {
 export type { SignalSeverityMeta, SignalSeverityTone, SignalSourceMeta } from './signal-semantics.js';
 export {
   buildObservationSkillRollups,
+  buildReviewActionItems,
   skillReviewLabel,
   timestampedOccurrences,
 } from './skill-rollups.js';
 export type {
   ObservationSkillRollup,
+  ReviewActionItem,
   SkillReviewTone,
   SkillRollupMetricCounts,
   SkillRollupSeverityCounts,

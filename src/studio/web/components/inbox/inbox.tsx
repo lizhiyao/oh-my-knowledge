@@ -7,12 +7,11 @@ import { SignalSection } from './signals';
 import { SkillBoard } from './skill-board';
 import { ExperienceReviewSection } from './experience-review';
 import { MetricsGuide } from './metrics-guide';
+import { TimelineView } from './timeline-view';
+import { SkillChains } from './skill-chains';
+import { ReviewActionsPanel } from './review-actions-panel';
 
-const PENDING_TABS = [
-  { key: 'action', zh: '复核待办', en: 'Review actions' },
-  { key: 'timeline', zh: '时间轴', en: 'Timeline' },
-  { key: 'chains', zh: 'Skill 链', en: 'Skill chains' },
-] as const;
+const PENDING_TABS: readonly { key: string; zh: string; en: string }[] = [];
 
 /**
  * 观测收件箱 React 骨架（#839 批次 2）：信号明细与 Skill 看板已迁移，
@@ -81,6 +80,35 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
             key: 'metrics',
             label: zh ? '指标' : 'Metrics',
             children: <MetricsGuide lang={lang} />,
+          },
+          {
+            key: 'timeline',
+            label: zh ? '时间轴' : 'Timeline',
+            children: (
+              <TimelineView
+                sessions={model.experienceReports.flatMap((report) => report.sessions)}
+                lang={lang}
+              />
+            ),
+          },
+          {
+            key: 'action',
+            label: zh ? '复核待办' : 'Review actions',
+            children: (
+              <ReviewActionsPanel
+                model={model}
+                lang={lang}
+                onSelectSkill={(skillName) => {
+                  setSkillFilter(skillName);
+                  setActiveTab('signals');
+                }}
+              />
+            ),
+          },
+          {
+            key: 'chains',
+            label: zh ? 'Skill 链' : 'Skill chains',
+            children: <SkillChains chains={model.skillChains} lang={lang} />,
           },
           ...PENDING_TABS.map((tab) => ({
             key: tab.key,
