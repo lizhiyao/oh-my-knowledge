@@ -19,7 +19,6 @@ import {
 import { buildSkillIndex } from '../../application/index.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
 import { DEFAULT_LANG } from '../../presentation/layout.js';
-import { renderObservationInboxPage } from '../../presentation/observation-inbox-renderer.js';
 import { readJsonObjectBody } from '../request-errors.js';
 import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
@@ -62,18 +61,6 @@ export function createObservationRoutes({
   includeInbox,
 }: ObservationRoutesOptions): ObservationRouteHandler {
   const routes: StudioRouteDefinition<ObservationRouteContext>[] = [
-    ...(includeInbox ? [{
-      pattern: '/observe/inbox',
-      handler({ response, url, lang }: ObservationRouteContext) {
-        const skill = url.searchParams.get('skill') || undefined;
-        const html = renderObservationInboxPage(
-          buildObservationInboxViewModel(observationsDir, { skill }),
-          lang,
-        );
-        response.writeHead(200, HTML_HEADERS);
-        response.end(html);
-      },
-    }] as const : []),
     {
       pattern: '/observe/sessions/*id',
       handler({ response, url, params, lang }) {

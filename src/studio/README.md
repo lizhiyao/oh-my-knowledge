@@ -42,7 +42,7 @@ DSH 插件和 CLI 评测预览使用 `createReportServer`，无需启动 Next。
 | `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页（只读报告）。 |
 | `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告（只读报告）。 |
 | `managed-history-renderer` | `/knowledge/managed` 及受管对象历史（只读报告）。 |
-| `observation-inbox-renderer`、`observation-inbox/` | `/observe/inbox` 的信号、指标、体验、流程、复核、时间轴及配套样式和脚本。**剩余唯一带用户交互（复核 mutation）的 HTML 页面，仅默认宿主提供**；#839 前提修正（独立宿主消费数据层而非页面）后按收敛路径迁移：批次 0 已裁剪独立宿主路由，随后逐子视图 React 化并删除本模块组。 |
+| `observation-inbox-renderer`、`observation-inbox/` | 已删除（#839 收口）。`/observe/inbox` 现由 Next 宿主 `web/components/inbox/`（React + AntD）渲染；共享投影与语义位于 `observability/inbox/`（view-model、signal-semantics、skill-rollups、metric-semantics、review-semantics）。 |
 | `layout`、`report-shell`、`icons`、`inline-markdown` | 上述 HTML 页面的外壳、图标和安全内容渲染。Markdown 解析与纯文本计算位于 application。 |
 | `trajectory-live`、`trajectory-routing` | HTML 轨迹页的客户端脚本生成。纯连线计算位于 `application/replay/routing`，React 直接消费计算模块。 |
 

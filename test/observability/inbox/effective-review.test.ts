@@ -13,7 +13,6 @@ import type { ObservationReviewState } from '../../../src/observability/inbox/re
 import ObserveInbox from '../../../src/cli/commands/observe/inbox.js';
 import { runCommand } from '../../helpers/run-command.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
-import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
 
 const emptyReviewState: ObservationReviewState = {
   kind: 'observe-review-state', schemaVersion: 2,
@@ -123,8 +122,6 @@ describe('effective observation review', () => {
       assert.equal(api.status, 200);
       const apiView = await api.json() as { effectiveExperienceReports: ObservationExperienceReport[] };
       assert.deepEqual(apiView.effectiveExperienceReports, json.effectiveExperienceReports);
-      const html = await fetch(`${url}/observe/inbox?skill=audit&lang=zh`);
-      assert.equal(await html.text(), renderObservationInboxPage(expected, 'zh'));
     } finally {
       await server.stop();
     }
