@@ -6,9 +6,9 @@ import type { Language } from '../layout/shell';
 import { SignalSection } from './signals';
 import { SkillBoard } from './skill-board';
 import { ExperienceReviewSection } from './experience-review';
+import { MetricsGuide } from './metrics-guide';
 
 const PENDING_TABS = [
-  { key: 'metrics', zh: '指标', en: 'Metrics' },
   { key: 'action', zh: '复核待办', en: 'Review actions' },
   { key: 'timeline', zh: '时间轴', en: 'Timeline' },
   { key: 'chains', zh: 'Skill 链', en: 'Skill chains' },
@@ -76,6 +76,11 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
                 lang={lang}
               />
             ),
+          },
+          {
+            key: 'metrics',
+            label: zh ? '指标' : 'Metrics',
+            children: <MetricsGuide lang={lang} />,
           },
           ...PENDING_TABS.map((tab) => ({
             key: tab.key,
