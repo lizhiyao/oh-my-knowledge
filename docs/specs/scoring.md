@@ -35,7 +35,9 @@ layerScore = 1 + passedObservedWeight / observedWeight × 4
 
 The result is rounded to two decimals on a 1–5 scale. Structural non-applicability is excluded from assertion scoring coverage. Analysis Bundle v2 still retains the rectangular input coordinate, classifies it separately as `notApplicable`, and authenticates its row identity and reason through `notApplicableRows`, so it does not degrade evidence completeness. Missing, invalid, failed, unavailable, and not-started observations remain explicit coverage states and never become `false`. If no weight was observed, the layer is missing rather than zero.
 
-Implementation: `omk.assertion-layer-table/v1` in `src/eval-workflows/measurement/analysis/assertion-layer.ts`.
+Each criterion also seals its evaluator’s applicable sample scope. Different samples may have different checks; every target and trial for the same sample must use the same design. Missing applicable rows fail closed; absent out-of-scope rows are not manufactured as evidence. The table and parameter contracts are v2; see the [comparability change](./evaluation-scoring-equivalence).
+
+Implementation: `omk.assertion-layer-table/v2` in `src/eval-workflows/measurement/analysis/assertion-layer.ts`.
 
 ## Judge and dimension derivation
 

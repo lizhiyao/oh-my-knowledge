@@ -40,9 +40,9 @@ import {
 } from './analysis-support.js';
 
 export const ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID =
-  'omk.assertion-layer-table/v1' as const;
+  'omk.assertion-layer-table/v2' as const;
 
-const ALGORITHM_VERSION = 'omk.assertion-layer-aggregation/v1' as const;
+const ALGORITHM_VERSION = 'omk.assertion-layer-aggregation/v2' as const;
 
 const ASSERTION_LAYER_CAPABILITIES: JsonValue = {
   capabilityKind: 'analysis-node',
@@ -65,7 +65,7 @@ const ASSERTION_LAYER_CAPABILITIES: JsonValue = {
 export const ASSERTION_LAYER_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJson(
   RuntimeIdentitySchema.parse({
     implementationId: ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
-    version: '2.0.0',
+    version: '3.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
       algorithmVersion: ALGORITHM_VERSION,
@@ -79,7 +79,7 @@ export const ASSERTION_LAYER_ANALYSIS_IDENTITY: RuntimeIdentity = deepFreezeCano
       structuralNotApplicableReason: ASSERTION_NOT_APPLICABLE_REASON,
       coreCoverageSemantics: 'structural-not-applicable/v1',
       samplingUnitLineage: 'preserved-from-analysis-metric-rows',
-      criterionDesign: 'sealed-explicit-parameters',
+      criterionDesign: 'sealed-sample-scoped-parameters/v2',
       outputSchema: ASSERTION_LAYER_TABLE_SCHEMA,
       parameterSchema: ASSERTION_LAYER_PARAMETERS_SCHEMA,
       declaredCapabilities: ASSERTION_LAYER_CAPABILITIES,
@@ -124,7 +124,10 @@ function entryFromRow(
   criterion: AssertionLayerCriterionParameter,
 ): AssertionEntry {
   const base = {
-    ...criterion,
+    criterionId: criterion.criterionId,
+    metricId: criterion.metricId,
+    layerDisposition: criterion.layerDisposition,
+    weight: criterion.weight,
     rowId: row.rowId,
     evaluatorId: row.evaluatorId,
     censored: row.censored,
@@ -200,10 +203,12 @@ function buildAssertionLayerTable(
         compareStrings(left.metricId, right.metricId)
       ));
       const first = orderedRows[0];
-      if (orderedRows.length !== parameters.criteria.length
-          || new Set(orderedRows.map((row) => row.metricId)).size !== orderedRows.length) {
+      const expectedMetricIds = parameters.criteria.filter((criterion) => (
+        criterion.applicableSampleIds === undefined || criterion.applicableSampleIds.includes(first.sampleId)
+      )).map((criterion) => criterion.metricId);
+      if (canonicalizeJson(orderedRows.map((row) => row.metricId)) !== canonicalizeJson(expectedMetricIds)) {
         throw new TypeError(
-          'Every assertion measurement unit must contain exactly one row per Metric.',
+          'Every assertion measurement unit must contain exactly one row per applicable Metric.',
         );
       }
       if (new Set(orderedRows.map((row) => canonicalizeJson(row.samplingUnitIds))).size !== 1) {

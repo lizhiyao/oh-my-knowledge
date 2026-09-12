@@ -60,6 +60,12 @@ API adapter identity advances to 1.3.0 and its input Schema to v2; the supported
 
 Custom executor's `omk.custom-executor-exchange/v1` request receives the complete structured input envelope and `trial.executionContext`. Expected answers and evaluation context are excluded from every executor request.
 
+Structured checks are scoped to their authored sample. Assertion aggregation now seals that scope (table and parameter v2), so a mixed sample set can complete analysis without requiring every check on every sample. This changes analysis identity; rerun old comparisons. See [scoring semantics](../specs/evaluation-scoring-equivalence).
+
+### What cross-executor acceptance establishes
+
+The offline production-chain test uses one unchanged file containing text, typed JSON, and plain message history with the same exact-match checks through both API adapters and a real custom-executor subprocess. Correct and deliberately incorrect references produce the same respective grading results; gold stays out of requests and each executor retains a distinct execution identity. API transport is simulated, so this establishes mapping, scoring, and persistence behavior—not live provider availability or model quality. CLI/SDK coverage here establishes text compilation and early rejection of JSON/history; valid tool history is rejected before API transport.
+
 ## Structured checks
 
 A `checkKind: exact-match` check binds a JSON pointer in actual output or trace to a JSON pointer in `expected`. OMK reuses the Evaluation Runtime canonical JSON exact-match evaluator; object key order is irrelevant, while array order and JSON types remain significant. There is no fuzzy coercion. Each check declares whether it contributes to the `fact` or `behavior` layer and optionally a positive weight.

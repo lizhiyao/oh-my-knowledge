@@ -211,6 +211,10 @@ duplicate scheduling merely because both invoke Core.
 
 Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain remains a design proposal, without placeholder implementation.
 
+### Sample input admission
+
+Input schema validation belongs to `inputs/schemas`, executor selection to `hosts/input-resolution`, shared API input policy to `hosts/adapters/shared`, and provider mapping to each provider adapter. Validation at authoring, CLI admission, and the independently callable runtime boundary protects different entry points; it is not a reason to bypass runtime validation or move host behavior into Core.
+
 ### Provider mechanics and measurement adaptation
 
 Ordinary `ExecutorFn` calls serve generation, judges and auxiliary analysis. Measurement adapters make stricter capability, provenance and failure-evidence commitments. The current implementation separates reusable mechanics from policy; the ordinary interface must not constrain Runtime capabilities.
