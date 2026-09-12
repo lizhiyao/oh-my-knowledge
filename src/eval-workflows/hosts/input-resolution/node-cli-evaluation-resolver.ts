@@ -1,3 +1,4 @@
+import { parseStatelessApiSampleInput } from '../adapters/shared/sample-input.js';
 import { UnsupportedSampleSchemaError } from '../../inputs/schemas/error.js';
 import { createHash } from 'node:crypto';
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -179,18 +180,19 @@ function registry(): ResourceRegistry {
   };
 }
 
-const PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS = new Set([
-  'codex',
-  'codex-sdk',
-  'claude',
-  'claude-sdk',
-  'openai-api',
-  'anthropic-api',
+const PRODUCTION_EXECUTOR_INPUT_POLICIES = new Map<string, 'text' | 'stateless-api'>([
+  ['codex', 'text'],
+  ['codex-sdk', 'text'],
+  ['claude', 'text'],
+  ['claude-sdk', 'text'],
+  ['openai-api', 'stateless-api'],
+  ['anthropic-api', 'stateless-api'],
 ]);
 
 interface ResolvedTargetRuntime {
   readonly implementationId: string;
   readonly implementationResource?: ResolvedResourceDescriptor;
+  readonly sampleInputPolicy?: 'text' | 'stateless-api';
 }
 
 async function resolveTargetRuntime(
@@ -199,9 +201,9 @@ async function resolveTargetRuntime(
   requestedExecutorId: string,
   hostExecutorImplementationIds: ReadonlySet<string>,
 ): Promise<ResolvedTargetRuntime> {
-  if (PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS.has(requestedExecutorId)
+  if (PRODUCTION_EXECUTOR_INPUT_POLICIES.has(requestedExecutorId)
       || hostExecutorImplementationIds.has(requestedExecutorId)) {
-    return { implementationId: requestedExecutorId };
+    return { implementationId: requestedExecutorId, sampleInputPolicy: PRODUCTION_EXECUTOR_INPUT_POLICIES.get(requestedExecutorId) ?? 'text' };
   }
   const executablePath = absolute(projectRoot, requestedExecutorId);
   const descriptor = await fileResource(resources, {
@@ -970,10 +972,19 @@ export async function resolveNodeCliEvaluationRequest(
     request.values.targetRuntime.executorId,
     hostExecutorImplementationIds,
   );
-  const structuredSample = resolvedSamples.find((sample) => sample.input.inputKind !== 'text');
-  if (structuredSample !== undefined && targetRuntime.implementationResource === undefined) {
-    return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${structuredSample.sample_id}.input`,
-      message: 'Structured JSON and message history currently require the custom-command invoke adapter. This executor has no declared native input adapter; input will not be stringified.' });
+  if (targetRuntime.implementationResource === undefined) {
+    for (const sample of resolvedSamples) {
+      if (targetRuntime.sampleInputPolicy === 'stateless-api') {
+        try { parseStatelessApiSampleInput(sample.input as JsonValue); }
+        catch (cause) {
+          return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${sample.sample_id}.input`,
+            message: cause instanceof Error ? cause.message : 'Unsupported API sample input.', cause });
+        }
+      } else if (sample.input.inputKind !== 'text') {
+        return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${sample.sample_id}.input`,
+          message: 'This executor supports only text samples. Use openai-api or anthropic-api for JSON/plain message history, or custom-command for application-specific input.' });
+      }
+    }
   }
   const resolvedMockControls = await resolvedMocks(
     resources,

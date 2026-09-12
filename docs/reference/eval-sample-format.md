@@ -44,7 +44,21 @@ The machine contract is [Eval Sample Set v3 JSON Schema](../../schemas/eval-samp
 - `json`: `inputKind`, `value`, `schema`, and `schemaDocument`. `schema` contains Core `schemaVersion`, `schemaUri`, and `schemaDigest`; the digest must equal the canonical JSON digest of the embedded document and the URI must equal its `$id`. A self-contained JSON Schema 2020-12 validates `value` without coercion, defaults, property removal, or remote schema loading.
 - `messages`: `inputKind: messages`, `interactionMode: history`, and a nonempty `messages` array. Each message has `messageId`, `role`, and textual `content`. Roles are `system`, `user`, `assistant`, and `tool`. Assistant `toolCalls` contain `toolCallId`, `name`, and JSON-object `arguments`; tool results reference an outstanding earlier `toolCallId`. Duplicate IDs, orphan/duplicate results, incomplete tool calls, and late system messages are rejected.
 
-**JSON and message history currently require custom-command.** Its `omk.custom-command-exchange/v1` request receives the complete structured input envelope, with application execution data in `trial.executionContext`. Text input compiles to a string. Built-in text executors reject structured input before execution; they do not silently stringify it. History is supplied data, not an interactive user simulator. Multimodal content and interactive sessions are outside this contract.
+**Adapter support is explicit:**
+
+| Executor | Text | JSON | Message history |
+| --- | --- | --- | --- |
+| `openai-api`, `anthropic-api` | Yes | Canonical JSON user envelope | Native system/user/assistant roles |
+| `codex`, `codex-sdk`, `claude`, `claude-sdk` | Yes | Rejected | Rejected |
+| custom-command | Yes | Complete input envelope | Complete input envelope; application-owned interpretation |
+
+The API adapters validate JSON against its authored schema and send the complete typed envelope as canonical JSON in user content. This is an explicit text projection, not a provider-side JSON input channel or an output-schema guarantee. Message history is sent using native roles; supporting files and execution data are a separate content block on the first user message. OpenAI uses `instructions` for the knowledge artifact and native system messages for sample system content. Anthropic puts the artifact and sample system messages in ordered top-level `system` blocks. Message IDs remain in OMK evidence and are not fabricated as provider IDs.
+
+API history must contain non-empty content, optional leading system messages, then alternating user/assistant messages starting and ending with user. Tool-call history, assistant prefill and other sequences fail before transport; use custom-command for those application protocols. Input history is supplied context, not observed execution: output traces still describe only the newly generated turn. No tools, remote conversation state or user simulator are enabled.
+
+API adapter identity advances to 1.3.0 and its input Schema to v2; the supported projection policy participates in the fingerprint. Existing raw Core JSON and text rendering remain supported, but a raw Core object with `inputKind` explicitly opts into authored-input validation. Start a new comparison series after changing adapter identity. Sample files remain v3. Vendor mappings follow [Responses](https://developers.openai.com/api/reference/typescript/resources/responses/methods/create) and [Messages](https://platform.claude.com/docs/en/api/messages/create).
+
+Custom-command's `omk.custom-command-exchange/v1` request receives the complete structured input envelope and `trial.executionContext`. Expected answers and evaluation context are excluded from every executor request.
 
 ## Structured checks
 

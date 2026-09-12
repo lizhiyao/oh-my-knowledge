@@ -250,9 +250,12 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
+  input: JsonValue = { question: 'Q' },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
-  const trial = await run.openTrial({
+  let trial: Awaited<ReturnType<typeof run.openTrial>> | undefined;
+  try {
+    trial = await run.openTrial({
     signal: new AbortController().signal,
     sampleId: 'sample-a',
     targetId: 'target-a',
@@ -264,7 +267,7 @@ async function execute(
       mockInterception: { mockInterceptionMode: 'not-required' },
     },
     protocolId: 'omk.invoke/v1',
-    input: { question: 'Q' },
+    input,
     executionContext: { locale: 'zh-CN' },
     targetConfig,
     trialIndex: 0,
@@ -272,19 +275,61 @@ async function execute(
     schedulingBlockId: digest({ block: 'a' }),
     samplingUnitIds: {},
   });
-  try {
     return await trial.execute({
       attemptId: digest({ attempt: 'a' }),
       attemptNumber: 1,
       signal,
     });
   } finally {
-    await trial.dispose();
+    await trial?.dispose();
     await run.dispose();
   }
 }
 
 describe('Anthropic API Core Executor adapter', () => {
+  it('sends native role history, keeping context separate and omitting authored IDs', async () => {
+    const value = await fixture();
+    const input: JsonValue = { inputKind: 'messages', interactionMode: 'history', messages: [
+      { messageId: 's1', role: 'system', content: 'Scenario system instructions.' },
+      { messageId: 'u1', role: 'user', content: '  First question.\n' },
+      { messageId: 'a1', role: 'assistant', content: 'First answer.' },
+      { messageId: 'u2', role: 'user', content: 'Next question.' },
+    ] };
+    await execute(await createAdapter(value), value.target.config as JsonValue, undefined, input);
+    const body = JSON.parse(value.observations.requests[0]!.body);
+    expect(body.messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: expect.stringContaining('"locale":"zh-CN"') }, { type: 'text', text: '  First question.\n' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'First answer.' }] },
+      { role: 'user', content: [{ type: 'text', text: 'Next question.' }] },
+    ]);
+    expect(body.system).toEqual([{ type: 'text', text: expect.stringContaining('# Knowledge') }, { type: 'text', text: 'Scenario system instructions.' }]);
+    expect(body).not.toHaveProperty('tools');
+    expect(JSON.stringify(body)).toContain('omk.stateless-api-history-context/v1');
+    expect(JSON.stringify(body)).not.toContain('messageId');
+    expect(JSON.stringify(body)).not.toContain('evaluationContext');
+  });
+
+  it('rejects oversized history before transport', async () => {
+    const value = await fixture();
+    await expect(execute(await createAdapter(value, { maxRequestBytes: 1024 }), value.target.config as JsonValue, undefined,
+      { inputKind: 'messages', interactionMode: 'history', messages: [{ messageId: 'u', role: 'user', content: 'x'.repeat(2048) }] }))
+      .rejects.toThrow(/input limit/);
+    expect(value.observations.requests).toHaveLength(0);
+  });
+
+  it('rejects tool history before transport', async () => {
+    const value = await fixture();
+    const input: JsonValue = { inputKind: 'messages', interactionMode: 'history', messages: [
+      { messageId: 'u1', role: 'user', content: 'Use the tool.' },
+      { messageId: 'a1', role: 'assistant', content: '', toolCalls: [{ toolCallId: 'c1', name: 'read', arguments: {} }] },
+      { messageId: 't1', role: 'tool', toolCallId: 'c1', content: 'result' },
+      { messageId: 'u2', role: 'user', content: 'Continue.' },
+    ] };
+    await expect(execute(await createAdapter(value), value.target.config as JsonValue, undefined, input))
+      .rejects.toThrow(/tool calls/);
+    expect(value.observations.requests).toHaveLength(0);
+  });
+
   it('keeps credentials identity-invariant while endpoint changes identity', async () => {
     const value = await fixture();
     const first = await createAdapter(value, { apiKey: 'first-secret' });
@@ -300,7 +345,7 @@ describe('Anthropic API Core Executor adapter', () => {
     expect(JSON.stringify(relocated.identity)).not.toContain('proxy.example.test');
     expect(first.identity).toMatchObject({
       implementationId: 'test.omk.anthropic-api/v1',
-      version: '1.2.0',
+      version: '1.3.0',
       fingerprintBasis: 'opaque',
       assuranceLevel: 'unknown',
       capabilities: {
@@ -537,7 +582,7 @@ describe('Anthropic API Core Executor adapter', () => {
     });
   });
 
-  it('forwards cancellation to the transport and waits for settlement', async () => {
+  it('forwards native-history cancellation to the transport and waits for settlement', async () => {
     let started = false;
     let settled = false;
     const value = await fixture({
@@ -554,6 +599,7 @@ describe('Anthropic API Core Executor adapter', () => {
       await createAdapter(value),
       value.target.config as JsonValue,
       controller.signal,
+      { inputKind: 'messages', interactionMode: 'history', messages: [{ messageId: 'u', role: 'user', content: 'Cancel this task.' }] },
     );
     await expect.poll(() => started).toBe(true);
     controller.abort();
