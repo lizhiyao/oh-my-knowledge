@@ -6,19 +6,28 @@ import {
   type JsonValue,
 } from '../../src/eval-core/contracts/index.js';
 import {
+  EXECUTED_EVALUATION_MEDIA_TYPE,
   EVALUATION_RESULT_MEDIA_TYPE,
   EvaluationConfigurationError,
   EvaluationResultStoreError,
+  ExecutedEvaluationStoreError,
   evaluate,
+  executeEvaluation,
   loadEvaluationResult,
+  loadExecutedEvaluation,
   prepareEvaluation,
   reanalyze,
   rescore,
   saveEvaluationResult,
+  saveExecutedEvaluation,
+  scoreExecutedEvaluation,
+  type ContentDescriptor,
   type ContentResolver,
   type ContentStore,
   type ContentValue,
   type CustomEvaluator,
+  type ExecutedEvaluation,
+  type ExecutedEvaluationVerification,
   type EvaluationResult,
   type EvaluationResultVerification,
   type Executor,
@@ -632,5 +641,290 @@ describe('eval-runtime content infrastructure', () => {
 
     expect(storeFailure.status).toBe('failed');
     expect(JSON.stringify(storeFailure)).not.toContain(rejectedSecret);
+  });
+});
+
+function executedVerificationFor(
+  bundle: ExecutedEvaluation['bundle'],
+  verifiedExecutedDigest: string,
+  attested: boolean,
+): ExecutedEvaluationVerification {
+  return {
+    verifiedExecutedDigest,
+    attestationDigest: digestCanonicalJson(['attested', verifiedExecutedDigest]),
+    verifiedProvenanceBundleDigests: attested ? [bundle.bundleDigest] : [],
+    verifiedCacheRecordDigests: bundle.records.flatMap((record) => {
+      const digest = 'cache' in record ? record.cache.sourceRecordDigest : undefined;
+      return digest === undefined ? [] : [digest];
+    }),
+  };
+}
+
+describe('eval-runtime executed evaluation store', () => {
+  async function reload(
+    ports: ReturnType<typeof inMemoryContentPorts>,
+    reference: ContentDescriptor,
+    executed: ExecutedEvaluation,
+    attested = true,
+  ): Promise<ExecutedEvaluation> {
+    return loadExecutedEvaluation({
+      reference,
+      resolver: ports.contentResolver,
+      verifier: {
+        verifierId: 'test.executed-verifier/v1',
+        async verify({ reference: candidate }) {
+          return executedVerificationFor(executed.bundle, candidate.digest, attested);
+        },
+      },
+    });
+  }
+
+  it('persists one execution envelope and re-admits it for scoring without a Target call', async () => {
+    const ports = inMemoryContentPorts();
+    const sourceCalls: string[] = [];
+    const executed = await executeEvaluation(
+      evaluationInput({}, undefined, sourceCalls),
+      { runId: 'staged-store-source' },
+    );
+    expect(sourceCalls).toEqual(['execute']);
+
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+
+    expect(reference.mediaType).toBe(EXECUTED_EVALUATION_MEDIA_TYPE);
+    expect(ports.values.get(reference.digest)?.classification).toBe('gold');
+
+    const restoredCalls: string[] = [];
+    const loaded = await reload(ports, structuredClone(reference), executed);
+
+    expect(loaded.bundleOrigin).toBe('store');
+    expect(loaded.runId).toBe('staged-store-source');
+    expect(loaded.bundle).toEqual(executed.bundle);
+    expect(loaded.bundle).not.toBe(executed.bundle);
+
+    const changed = evaluationInput({}, undefined, restoredCalls);
+    changed.dataset.samples[0].expected = 'different';
+    const scored = await scoreExecutedEvaluation(changed, loaded, {
+      runId: 'staged-store-scored',
+    });
+
+    expect(scored.status).toBe('completed');
+    expect(scored.artifacts?.execution?.bundleDigest).toBe(executed.bundle.bundleDigest);
+    expect(restoredCalls).toEqual([]);
+    expect(sourceCalls).toEqual(['execute']);
+  });
+
+  it('keeps one loaded envelope immutable against an in-place consumer', async () => {
+    const ports = inMemoryContentPorts();
+    const executed = await executeEvaluation(evaluationInput(), {
+      runId: 'staged-store-freeze-source',
+    });
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+    const loaded = await reload(ports, structuredClone(reference), executed);
+
+    expect(Object.isFrozen(loaded.bundle)).toBe(true);
+    expect(Object.isFrozen(loaded.bundle.records)).toBe(true);
+    const writable = loaded.bundle as unknown as {
+      records: Array<{ output?: { value?: unknown } }>;
+    };
+    const nestedOutput = writable.records[0]?.output;
+    expect(nestedOutput).toBeDefined();
+    expect(Object.isFrozen(nestedOutput)).toBe(true);
+
+    // Zod parsing used to hand back a mutable bundle shared by the handle and its WeakMap state, so
+    // an in-place tidy-up persisted unrecoverable evidence while still returning a descriptor.
+    expect(() => {
+      (nestedOutput as { value: unknown }).value = 'sanitised in place';
+    }).toThrow(TypeError);
+
+    const targetCalls: string[] = [];
+    const changed = evaluationInput({}, undefined, targetCalls);
+    changed.dataset.samples[0].expected = 'different';
+    const scored = await scoreExecutedEvaluation(changed, loaded, {
+      runId: 'staged-store-freeze-scored',
+    });
+
+    expect(scored.status).toBe('completed');
+    expect(scored.artifacts?.execution?.bundleDigest).toBe(executed.bundle.bundleDigest);
+    expect(targetCalls).toEqual([]);
+
+    const resaved = await saveExecutedEvaluation({ executed: loaded, store: ports.contentStore });
+    expect(resaved.digest).toBe(reference.digest);
+    expect((await reload(ports, structuredClone(resaved), executed)).bundle).toEqual(
+      executed.bundle,
+    );
+  });
+
+  it('keeps a host attestation from upgrading what an unverified envelope may claim', async () => {
+    const ports = inMemoryContentPorts();
+    const executed = await executeEvaluation(evaluationInput(), {
+      runId: 'staged-store-trust',
+    });
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+
+    const attested = await reload(ports, reference, executed, true);
+    const unattested = await reload(ports, reference, executed, false);
+    const attestedResult = await scoreExecutedEvaluation(evaluationInput(), attested, {
+      runId: 'staged-store-attested',
+    });
+    const unattestedResult = await scoreExecutedEvaluation(evaluationInput(), unattested, {
+      runId: 'staged-store-unattested',
+    });
+
+    expect(attestedResult.report?.provenance.trust).toBe('declared');
+    expect(unattestedResult.report?.provenance.trust).toBe('unknown');
+    expect(attestedResult.artifacts?.execution?.bundleDigest)
+      .toBe(executed.bundle.bundleDigest);
+    expect(unattestedResult.artifacts?.execution?.bundleDigest)
+      .toBe(executed.bundle.bundleDigest);
+  });
+
+  it('rejects a handle that is not canonical, a foreign reference, and a mismatched attestation', async () => {
+    const ports = inMemoryContentPorts();
+    const executed = await executeEvaluation(evaluationInput(), {
+      runId: 'staged-store-rejections',
+    });
+
+    await expect(saveExecutedEvaluation({
+      executed: structuredClone(executed),
+      store: ports.contentStore,
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EXECUTED_NOT_CANONICAL' });
+    await expect(saveExecutedEvaluation({
+      executed: { ...structuredClone(executed), bundleOrigin: 'store' },
+      store: ports.contentStore,
+    } as never)).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EXECUTED_NOT_CANONICAL' });
+
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+    await expect(loadExecutedEvaluation({
+      reference: { ...reference, mediaType: EVALUATION_RESULT_MEDIA_TYPE },
+      resolver: ports.contentResolver,
+      verifier: {
+        verifierId: 'test.executed-verifier/v1',
+        async verify({ reference: candidate }) {
+          return executedVerificationFor(executed.bundle, candidate.digest, true);
+        },
+      },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EXECUTED_REFERENCE_INVALID' });
+
+    await expect(loadExecutedEvaluation({
+      reference,
+      resolver: ports.contentResolver,
+      verifier: {
+        verifierId: 'test.wrong-executed-verifier/v1',
+        async verify() {
+          return executedVerificationFor(
+            executed.bundle,
+            digestCanonicalJson('some other envelope'),
+            true,
+          );
+        },
+      },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EXECUTED_VERIFICATION_FAILED' });
+
+    let verifierError: unknown;
+    try {
+      await loadExecutedEvaluation({
+        reference,
+        resolver: ports.contentResolver,
+        verifier: {
+          verifierId: 'test.failing-executed-verifier/v1',
+          async verify() {
+            throw new Error('private signing-key path');
+          },
+        },
+      });
+    } catch (error) {
+      verifierError = error;
+    }
+
+    expect(verifierError).toBeInstanceOf(ExecutedEvaluationStoreError);
+    expect((verifierError as Error).message).not.toContain('private signing-key path');
+  });
+
+  it('rejects a tampered envelope even when storage and the verifier accept its new digest', async () => {
+    const ports = inMemoryContentPorts();
+    const executed = await executeEvaluation(evaluationInput(), {
+      runId: 'staged-store-tampered',
+    });
+    const originalReference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+    const original = ports.values.get(originalReference.digest)!;
+    const envelope = structuredClone(original.value) as Record<string, JsonValue>;
+    (envelope.bundle as Record<string, JsonValue>).executionInputDigest
+      = digestCanonicalJson('forged execution input');
+    const tamperedDigest = digestCanonicalJson(envelope);
+    ports.values.set(tamperedDigest, { ...original, value: envelope });
+
+    await expect(loadExecutedEvaluation({
+      reference: { mediaType: EXECUTED_EVALUATION_MEDIA_TYPE, digest: tamperedDigest },
+      resolver: ports.contentResolver,
+      verifier: {
+        verifierId: 'test.permissive-executed-verifier/v1',
+        async verify({ reference: candidate }) {
+          return executedVerificationFor(executed.bundle, candidate.digest, true);
+        },
+      },
+    })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EXECUTED_CONTENT_INVALID' });
+  });
+
+  it('binds one loaded envelope to the execution stage it was sealed for', async () => {
+    const ports = inMemoryContentPorts();
+    const executed = await executeEvaluation(evaluationInput(), {
+      runId: 'staged-store-binding',
+    });
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+    const loaded = await reload(ports, reference, executed);
+    const incompatible = evaluationInput();
+    incompatible.variants[0].artifact = {
+      ...incompatible.variants[0].artifact,
+      content: 'A different prompt.',
+    };
+
+    await expect(scoreExecutedEvaluation(incompatible, loaded, {
+      runId: 'staged-store-binding-scored',
+    })).rejects.toMatchObject({
+      code: 'EVAL_RUNTIME_REUSE_INVALID',
+      message: 'ExecutedEvaluation 与新声明的可复用阶段不一致。',
+    });
+  });
+
+  it('requires one reference-captured execution output to stay resolvable', async () => {
+    const ports = inMemoryContentPorts();
+    const input = evaluationInput({
+      evidence: { output: 'reference', trace: 'none' },
+    }, {
+      contentStore: ports.contentStore,
+      contentResolver: ports.contentResolver,
+    });
+    const executed = await executeEvaluation(input, { runId: 'staged-store-closure' });
+    const record = executed.bundle.records[0];
+    const output = record.executionStatus === 'completed' ? record.output : undefined;
+    expect(output?.contentKind).toBe('descriptor');
+    if (output?.contentKind !== 'descriptor') return;
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+    ports.values.delete(output.descriptor.digest);
+
+    await expect(reload(ports, reference, executed)).rejects.toMatchObject({
+      code: 'EVAL_RUNTIME_EXECUTED_RESOLVE_FAILED',
+    });
   });
 });

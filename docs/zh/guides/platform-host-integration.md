@@ -134,6 +134,22 @@ const result = await prepared.run({
 
 可运行的参考样板见 [`examples/eval-runtime/result-store.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/result-store.mjs)（临时目录上的文件后端 ContentStore／ContentResolver，在存储边界校验 digest，另配一个独立的审计回执 verifier）；单进程视角的同一流程见[在新进程里读回历史结果再复用](./eval-runtime#restore-stored-results)。
 
+### 先执行、后评分
+
+当 Target 调用必须在评分标准确定之前跑完——标注队列还在运转、评委 rubric 仍在评审，或一次执行要服务多个候选版本——就把两个阶段拆开，而不是回读一次已评分的 Run：
+
+1. **执行。** `executeEvaluation(input, options)` 只运行 Execution stage，返回 `ExecutedEvaluation` 句柄（`runId`、`executionPlanDigest`、`executionInputDigest`、`ExecutionBundle` 本体，`bundleOrigin: 'runtime'`）。不会尝试任何 Evaluator、评委、Analysis、Decision 或 Report。
+2. **封存。** `saveExecutedEvaluation({ executed, store })` 以 `EXECUTED_EVALUATION_MEDIA_TYPE` 写入 envelope `omk.eval-runtime.stored-executed/v1`，分类固定为 `gold`。它只承载 Target evidence，绝不能作为 context 回流给 Target。
+3. **重新接纳。** `loadExecutedEvaluation({ reference, resolver, verifier })` 校验存储完整性与宿主认证，返回 `bundleOrigin: 'store'` 的句柄。与已存 result 不同，执行 envelope 与声明无关：这一步会比较的内容里没有 plan digest，因为一个 envelope 本就服务于后续多份评分声明。
+4. **评分。** `scoreExecutedEvaluation(newInput, executed, options)` 先封存新声明，再按 `rescore` 使用的同一条 Core 规则准入该 envelope，并以零次 Target 调用执行 Evaluation 及其后续阶段。每个评分版本重复一次。
+
+有两条边界记录在宿主侧，而不是由 OMK 代劳：
+
+- **每份评分 Run 都要绑定它复用的 envelope。** 把 `executed.bundle.bundleDigest` 与每个评分 `runId` 一起持久化。看板展示三份评分结果却不说明它们共享同一次执行，读者就会把三个评分版本当成三次独立测量。
+- **重新接纳的 envelope 无法靠存储恢复信任。** verifier 未认证 provenance bundle 时该状态保持 indeterminate：评分 Report 照常完成，但只能声称 `unknown` provenance，声明了 Decision 也会被门槛拦住。只靠校验和的 verifier 重新接纳属于诊断路径，不是发布证据。
+
+可运行的样板 [`examples/eval-runtime/staged-execute-score.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/staged-execute-score.mjs) 离线走完整个拆分流程；调用侧的叙述见[拆分为先执行、后评分](./eval-runtime#staged-execute-score)。
+
 ## 可比性治理工作流
 
 - **identity facet 从第一天进下发协议。** executor 的 `executorId`／`version`／`fingerprintFacets`、evaluator 的 `instrumentId` 与 implementation 版本、评委的 `judgeId`／`version`、所用 schema 的 digest——全部属于测量身份，应当是下发契约的固定字段，而不是事后补充。
