@@ -14,13 +14,13 @@ import {
   type EvalSampleSetDocument,
   type Sample,
 } from '../../../src/eval-workflows/inputs/contracts/sample.js';
-import { createEvalSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 const tmp = () => join(tmpdir(), `omk-dep-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 const sampleSetJson = (
   samples: Sample[],
   requires?: EvalSampleSetDocument['requires'],
-): string => JSON.stringify(createEvalSampleSetDocument(samples, requires));
+): string => JSON.stringify(createWorkflowSampleSetDocument(samples, requires));
 
 describe('extractDependencies', () => {
   it('从 skill 内容提取 CLI 工具', () => {
@@ -81,7 +81,7 @@ describe('extractDependencies', () => {
   it('从 sample assertions 提取 CLI 工具', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: '测试',
+      input: { inputKind: 'text' as const, text: '测试' },
       assertions: [
         { type: 'contains', value: 'FOO_SESSION=$(foo-cli session init)' },
       ],
@@ -93,7 +93,7 @@ describe('extractDependencies', () => {
   it('不从 assertions 提取文件路径（避免误报）', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: '测试',
+      input: { inputKind: 'text' as const, text: '测试' },
       assertions: [
         { type: 'contains', value: 'physicalPage/commands.md' },
       ],
@@ -299,7 +299,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-dep-wrapper-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson(
-      [{ sample_id: 's1', prompt: '测试' }],
+      [{ sample_id: 's1', input: { inputKind: 'text' as const, text: '测试' } }],
       { tools: ['foo-cli'], env: ['FOO_TOKEN'] },
     ));
     const result = loadSamples(p);
@@ -313,7 +313,7 @@ describe('loadSamples 版本化对象格式', async () => {
   it('无 requires 时保持未声明状态', () => {
     const p = join(tmpdir(), `omk-dep-array-${Date.now()}.json`);
     cleanups.push(p);
-    writeFileSync(p, sampleSetJson([{ sample_id: 's1', prompt: '测试' }]));
+    writeFileSync(p, sampleSetJson([{ sample_id: 's1', input: { inputKind: 'text' as const, text: '测试' } }]));
     const result = loadSamples(p);
     assert.equal(result.samples.length, 1);
     assert.equal(result.requires, undefined);
@@ -325,10 +325,10 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-noise-assertion-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
-      assertions: [{ type: 'tools_not_called', values: [], weight: 0 }],
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
+      assertions: [{ type: 'tools_not_called', values: [], weight: 1 }],
     }]));
-    assert.throws(() => loadSamples(p), /tools_not_called.*非空/);
+    assert.throws(() => loadSamples(p), /tools_not_called.*non-empty/);
     for (const f of cleanups) { try { unlinkSync(f); } catch {} }
     cleanups.length = 0;
   });
@@ -337,10 +337,10 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-noise-assertion-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'tools_called', weight: 1 }],
     }]));
-    assert.throws(() => loadSamples(p), /tools_called.*非空/);
+    assert.throws(() => loadSamples(p), /tools_called.*non-empty/);
     for (const f of cleanups) { try { unlinkSync(f); } catch {} }
     cleanups.length = 0;
   });
@@ -349,7 +349,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-bad-value-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'tool_input_not_contains', value: '--force', weight: 1 }],
     }]));
     assert.throws(() => loadSamples(p), /Tool:needle/);
@@ -361,7 +361,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-bad-value-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'tool_input_contains', value: 'Bash:', weight: 1 }],
     }]));
     assert.throws(() => loadSamples(p), /Tool:needle/);
@@ -373,7 +373,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-cjk-value-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'contains', value: '留档', weight: 1 }],
     }]));
     assert.throws(() => loadSamples(p), /CJK|全角/);
@@ -385,7 +385,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-fw-value-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'contains_any', values: ['ECONNREFUSED', '【失败】'], weight: 1 }],
     }]));
     assert.throws(() => loadSamples(p), /CJK|全角|contains_any/);
@@ -397,7 +397,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-phrase-value-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'contains', value: 'task completed', weight: 1 }],
     }]));
     assert.throws(() => loadSamples(p), /空白|whitespace|short(er|ened)|内部/i);
@@ -409,7 +409,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-ok-value-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'contains', value: 'ECONNREFUSED', weight: 1 },
         { type: 'contains', value: 'skylark_doc_create', weight: 1 },
@@ -427,7 +427,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-lenient-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'contains', value: '留档', weight: 1 }],
     }]));
     const orig = process.env.OMK_LENIENT_ASSERTIONS;
@@ -446,7 +446,7 @@ describe('loadSamples 版本化对象格式', async () => {
     const p = join(tmpdir(), `omk-regex-cjk-${Date.now()}.json`);
     cleanups.push(p);
     writeFileSync(p, sampleSetJson([{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'regex', pattern: '风险等级:\\s*(高|中|低)', weight: 1 }],
     }]));
     assert.throws(() => loadSamples(p), /CJK|regex/i);

@@ -1,164 +1,79 @@
-# Eval sample format
+# Evaluation sample format
 
-An **eval-samples** file is the versioned test-set document `omk eval` / `omk doctor` run against. Its `samples` array contains cases, each with a `prompt` plus optional `rubric`, `assertions`, and metadata. JSON and YAML are first-class formats: use `eval-samples.json` for generated output or `eval-samples.yaml` for hand authoring.
-
-For *designing* a rigorous sample set (what to test, how many, the metadata fields), see [sample design](../specs/sample-design-spec) — this page is the field-by-field format reference.
+OMK uses one `omk.eval-sample-set/v3` envelope for prompt, RAG, skill, agent, and workflow tasks. The envelope separates execution input, execution conditions, expected results, grading declarations, and annotations. Task-specific JSON schemas describe application data; they do not introduce separate sample protocols.
 
 ## Storage locations
 
-Recommended layouts:
+Automatic discovery recognizes `.omk/eval-samples.json` or `.omk/eval-samples.yaml` in the selected scope. Having both is an ambiguity error. Use `--samples <path>` for another JSON/YAML file or a directory of split files. IDs must be unique across all loaded files. Root `requires` optionally contains `tools`, `files`, `env`, and `preflight` string arrays.
 
-- Project-shared samples: put `eval-samples.json` or `eval-samples.yaml` at the project root. Use this for A/B comparisons where variants must run on the same test set.
-- Skill-local samples: put `eval-samples.json` or `eval-samples.yaml` under `<skill>/.omk/`. A private sample set therefore requires a directory skill (`<skill>/SKILL.md`).
+Beta uses **v3 only**. v2 and unversioned inputs are rejected; no compatibility reader or migration tool is provided. Loading never rewrites the old file. Reauthor a new document or generate one with `omk init` / `omk sample`. Existing reports retain their own schemas. New inputs and scoring bindings establish a new measurement identity; do not splice old scores into a new comparison.
 
-`omk eval` auto-discovers skill-local samples only when exactly one treatment identifies a skill. Multi-variant comparisons should use project-shared samples or an explicit `--samples` path.
-
-Auto-discovery recognizes only those two canonical names. If both JSON and YAML exist in the same scope, omk fails with an ambiguity error rather than silently choosing one. `.yml`, `samples.*`, flat-skill sidecars such as `<name>.eval-samples.*`, and split directories are not auto-discovered. You can still load a custom JSON / YAML file or a split directory explicitly with `--samples`.
-
-Every file must declare `schemaVersion: omk.eval-sample-set/v2`. Legacy top-level arrays are rejected. The root document, every sample, assertion, mock, and nested contract are strict: unknown fields fail before execution instead of being ignored. The published JSON Schema is [`schemas/eval-samples/v2/eval-sample-set.schema.json`](../../schemas/eval-samples/v2/eval-sample-set.schema.json).
+The machine contract is [Eval Sample Set v3 JSON Schema](../../schemas/eval-samples/v3/eval-sample-set.schema.json). Unknown fields are rejected, including legacy `prompt`, `context`, and `sample_id` fields.
 
 ```json
 {
-  "schemaVersion": "omk.eval-sample-set/v2",
-  "samples": [
-    {
-      "sample_id": "s001",
-      "prompt": "Review this code for security issues",
-      "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-      "rubric": {
-        "security": {
-          "criterion": "Identifies the injection vulnerability and explains its impact",
-          "weight": 0.6
-        },
-        "actionability": {
-          "criterion": "Provides a directly usable parameterized-query fix",
-          "weight": 0.4
-        }
-      },
-      "assertions": [
-        { "type": "contains", "value": "SQL", "weight": 1 },
-        { "type": "contains", "value": "parameterized", "weight": 1 },
-        { "type": "not_contains", "value": "safe", "weight": 0.5 }
-      ]
-    }
-  ]
-}
-```
-
-The root may also contain `requires` with `tools`, `files`, `env`, and `preflight` string arrays. No other root fields are accepted.
-
-## Fields
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sample_id` | `string` | **yes** | Unique sample ID |
-| `prompt` | `string` | **yes** | User prompt sent to the model |
-| `context` | `string` | no | Extra context (e.g. code). Wrapped in a code block and appended to the prompt. URLs are auto-fetched at runtime. |
-| `cwd` | `string` | no | Per-sample working-directory override (runtime context for this one case) |
-| `rubric` | `object` | no | Named, independently judged dimensions; every value contains `criterion` and `weight` |
-| `rubric.<name>.criterion` | `string` | yes | One non-empty scoring criterion for this dimension |
-| `rubric.<name>.weight` | `number` | yes | Positive weight in `(0, 1]`; all rubric weights for the sample must sum to 1 |
-| `assertions` | `array` | no | Assertion checks; see [assertion types](#assertion-types) |
-| `assertions[].type` | `string` | **yes** | Assertion type |
-| `assertions[].value` | `string\|number` | depends | Check value (required for `contains`, `min_length`, `cost_max`, etc.) |
-| `assertions[].values` | `array` | depends | String array (required for `contains_all`, `contains_any`) |
-| `assertions[].pattern` | `string` | depends | Regex pattern (required for `regex`) |
-| `assertions[].flags` | `string` | no | Regex flags (default `"i"`) |
-| `assertions[].schema` | `object` | depends | JSON Schema object (required for `json_schema`, via [ajv](https://ajv.js.org/)) |
-| `assertions[].reference` | `string` | depends | Reference text (required for `semantic_similarity`) |
-| `assertions[].threshold` | `number` | no | Pass threshold; default depends on type — `3` for LLM-scored types, `0.5` for `rouge_n_min` / `bleu_min`, `1` for `mock_hit` |
-| `assertions[].fn` | `string` | depends | Path to a custom assertion JS file (required for `custom`) |
-| `assertions[].weight` | `number` | no | Weight (default 1) |
-| `assertions[].not` | `boolean` | no | Invert a valid pass/fail reading; works with any type |
-| `assertions[].n` | `number` | no | n-gram order for `rouge_n_min` (default 1) |
-
-The loader validates this contract before any model call. A rubric must contain at least one dimension; dimension names and criteria must be non-blank, weights must be finite and positive, and the per-sample sum must equal 1 within `1e-9`. The published JSON Schema expresses the local shape and bounds; the runtime validator additionally enforces the cross-property weight sum. Invalid input is a configuration error and is never counted as model failure.
-
-## Metadata & sandbox fields
-
-A sample can also carry **metadata** (documentation / diagnostics only — these never enter grading / judge / verdict) and **sandbox** fields (for evals decoupled from the real environment). Full guidance lives in [sample design](../specs/sample-design-spec); here is the field index:
-
-| Field | Type | Purpose |
-|---|---|---|
-| `capability` | `string[]` | capability dimensions this sample covers (drives coverage diagnostics) |
-| `difficulty` | `'easy' \| 'medium' \| 'hard'` | difficulty bucket (strict enum) |
-| `construct` | `string` | what it measures: `necessity` / `quality` / `capability` (custom allowed) |
-| `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | data source |
-| `covers` | `{ targetKind, ref }[]` | optional declared skill-structure anchors for high-value samples; used by Skill Map only |
-| `mocks` | `object[]` | tool-call interception list — requires an executor with mock-interception support |
-| `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `true`; set `false` only to explicitly allow pass-through) |
-| `tripwire` | `boolean` | trap sample: the LLM is **expected** to fail (default `false`) |
-| `environment` | `object` | prompt-only preconditions: `cli_available` / `files_available` / `notes`; does not materialize files or env vars |
-
-The loader also validates cross-field references. Every `mock_hit: "Tool:N"` must identify the Nth declared mock for that exact tool; a missing mock or out-of-range ordinal is a configuration error. Executor compatibility is checked separately before evaluation. See [executors](./executors#sample-mock-compatibility) for the support matrix.
-
-`mocks[].tool` uses the same source-neutral identity namespace as trace assertions (`Bash`, `Read`, `Edit`, and so on). Executor adapters normalize runtime-native names such as `exec_command`, `command_execution`, and `apply_patch` before matching. Exact native names remain accepted for backward compatibility and custom tools.
-
-`covers` is optional and intentionally explicit, not inferred from prompt text. Use it first on critical or high-signal samples, so Studio can draw declared structure edges without forcing every sample to become a maintenance task. Omitting `covers` means the structure edge is undeclared in Skill Map, not proven untested:
-
-Studio also surfaces this declaration in the Skill Map node detail panel: selecting a node shows whether its structure relation is explicitly declared by `sample.covers`.
-
-```yaml
-schemaVersion: omk.eval-sample-set/v2
-samples:
-  - sample_id: release-risk-summary
-    prompt: "Summarize release risk and rollback plan."
-    covers:
-      - targetKind: reference
-        ref: references/release-policy.md
-      - targetKind: workflow
-        ref: release
-      - targetKind: workflow_node
-        ref: release.check
-```
-
-Allowed `targetKind` values are `skill`, `skill_file`, `frontmatter`, `reference`, `script`, `hard_rule`, `workflow`, and `workflow_node`. For `reference` / `script`, `ref` is the path relative to the skill root. For `hard_rule` / `workflow`, use the rule or workflow id. For `workflow_node`, use `workflowId.nodeId`. This field never enters grading, the judge prompt, the verdict, or the sample fingerprint.
-
-## URL auto-fetching
-
-URLs in `prompt` and `context` are auto-fetched before evaluation and inlined into the text. Useful when referencing online docs, API references, etc.:
-
-```json
-{
-  "schemaVersion": "omk.eval-sample-set/v2",
+  "schemaVersion": "omk.eval-sample-set/v3",
   "samples": [{
-    "sample_id": "s001",
-    "prompt": "Generate test cases from this PRD: https://wiki.example.com/prd/feature-x"
+    "sampleId": "review-1",
+    "input": { "inputKind": "text", "text": "Review: db.query('SELECT * FROM users WHERE name=' + username)" },
+    "evaluationContext": {
+      "assertions": [{ "type": "contains", "value": "SQL" }],
+      "rubric": { "security": { "criterion": "Identify the injection risk and a concrete fix.", "weight": 1 } }
+    },
+    "annotations": { "provenance": "human", "difficulty": "easy" }
   }]
 }
 ```
 
-During the host Resolve stage, URLs are replaced with the resolved content **before** the Evaluation Core Dataset is compiled. Each canonical URL is resolved once, its normalized UTF-8 bytes are sealed as a digest-addressed `content` resource, and those same bytes enter the Dataset input and Definition digest. Transport details (HTTP vs MCP) remain non-canonical lineage, so changing transport alone does not change the measurement identity.
+## Fields
 
-Resolution order is MCP first for matching URLs (for example SSO-protected private docs), then safe HTTP for the rest or as an MCP fallback. Resolution is fail-closed: if any non-placeholder URL cannot be resolved, the evaluation does not continue with the raw URL. This prevents transient network state from silently changing the construct being measured.
+| Field | Contract |
+| --- | --- |
+| `sampleId` | Required stable nonempty identifier; unique within the loaded dataset |
+| `input` | Required `text`, `json`, or `messages` input |
+| `executionContext` | Optional `cwd`, `allowedTools`, `mocks`, `mocksStrict`, prompt-only `environment`, and application JSON `data` |
+| `expected` | Optional JSON reference results; available only through explicit evaluator bindings |
+| `evaluationContext` | Optional `assertions`, `rubric`, evaluator-only `reference`, and structured `checks` |
+| `annotations` | Optional `capability`, `difficulty`, `construct`, `provenance`, `covers`, and `tripwire`; does not enter execution input |
 
-**Private-doc URLs**: drop a `.mcp.json` config file into the project dir, or pass `--mcp-config <path>`:
+`rubric` values contain a nonempty `criterion` and positive `weight`; weights sum to 1. `reference` replaces the ambiguous scoring use of `context`: it is **never appended to input**. Faithfulness and context-recall assertions require their own `reference` or `evaluationContext.reference`. Text rubric and LLM assertion scoring require text input. No new judge prompt or scoring formula is introduced.
+
+## Input and adapter support
+
+- `text`: `{ "inputKind": "text", "text": "..." }`. Whitespace is preserved. A declared `executionContext.environment` is explicitly rendered as a prompt-only precondition; it does not create files. HTTP URLs in `input.text` retain the existing host resolution behavior: content is resolved and sealed before compilation, or the run fails. References and structured values are not scanned or fetched.
+- `json`: `inputKind`, `value`, `schema`, and `schemaDocument`. `schema` contains Core `schemaVersion`, `schemaUri`, and `schemaDigest`; the digest must equal the canonical JSON digest of the embedded document and the URI must equal its `$id`. A self-contained JSON Schema 2020-12 validates `value` without coercion, defaults, property removal, or remote schema loading.
+- `messages`: `inputKind: messages`, `interactionMode: history`, and a nonempty `messages` array. Each message has `messageId`, `role`, and textual `content`. Roles are `system`, `user`, `assistant`, and `tool`. Assistant `toolCalls` contain `toolCallId`, `name`, and JSON-object `arguments`; tool results reference an outstanding earlier `toolCallId`. Duplicate IDs, orphan/duplicate results, incomplete tool calls, and late system messages are rejected.
+
+**JSON and message history currently require custom-command.** Its `omk.custom-command-exchange/v1` request receives the complete structured input envelope, with application execution data in `trial.executionContext`. Text input compiles to a string. Built-in text executors reject structured input before execution; they do not silently stringify it. History is supplied data, not an interactive user simulator. Multimodal content and interactive sessions are outside this contract.
+
+## Structured checks
+
+A `checkKind: exact-match` check binds a JSON pointer in actual output or trace to a JSON pointer in `expected`. OMK reuses the Evaluation Runtime canonical JSON exact-match evaluator; object key order is irrelevant, while array order and JSON types remain significant. There is no fuzzy coercion. Each check declares whether it contributes to the `fact` or `behavior` layer and optionally a positive weight.
 
 ```json
 {
-  "mcpServers": {
-    "docs": {
-      "command": "npx",
-      "args": ["@example/docs-mcp-server"],
-      "env": { "DOCS_API_TOKEN": "xxx" },
-      "urlPatterns": ["docs.example.com"],
-      "fetchTool": {
-        "name": "fetch_doc",
-        "urlTransform": {
-          "regex": "docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)",
-          "params": { "namespace": "$1", "slug": "$2" }
-        },
-        "contentExtract": "data.body"
-      }
-    }
+  "sampleId": "classification-1",
+  "input": { "inputKind": "text", "text": "Classify this invoice dispute." },
+  "expected": { "category": "billing" },
+  "evaluationContext": {
+    "checks": [{
+      "checkKind": "exact-match",
+      "checkId": "category",
+      "actual": { "sourceKind": "output", "pointer": "/category" },
+      "expectedPointer": "/category",
+      "layer": "fact"
+    }]
   }
 }
 ```
 
-**Public URLs**: fetched through a bounded HTTP resolver. Redirect targets are revalidated, loopback/private/link-local destinations are rejected, only textual UTF-8 responses are accepted, and response size is capped. Private-network or authenticated documents must use an explicitly configured MCP resolver; credentials in URL authorities are rejected. RFC placeholder domains such as `example.com` remain literal and are never fetched.
+This sample expects a structured executor output such as `{ "category": "billing" }`. Missing output, trace, or pointer evidence remains missing; it is not a successful match. Separate checks can compare ranked document IDs, tool arguments, and actual state snapshots. An exact ranking comparison is not nDCG, semantic answer quality, or proof of an external state change. State evidence must be produced by the executor from the actual system being tested. Runtime API retrieval and trajectory evaluators retain their separate documented declarations; this file format does not implicitly activate them.
 
-The project-root `.mcp.json` is auto-discovered. `--mcp-config` or `eval.yaml.mcpConfig` overrides it. Resolver-owned MCP clients live for one Resolve session only and are always closed before Core compilation continues.
-`urlPatterns` entries are hostname allowlists: use an exact host such as `docs.example.com` or an explicit subdomain wildcard such as `*.example.com`; path/query substring matching is not allowed.
+## Metadata & sandbox fields
+
+`annotations.covers` declares structure anchors using `targetKind` and `ref`; it never proves node execution. `tripwire` marks an intentionally difficult sample and does not invert grading. `executionContext.mocks` requires an executor that supports interception; `mocksStrict` defaults to deny unmatched calls. `mock_hit` must reference an existing mock. `executionContext.cwd` supplies the workspace fixture; resources are managed by the existing host isolation mechanism. See [executors](./executors#sample-mock-compatibility).
+
+For former v2 `prompt: Q` plus `context: C`, write the intended full input explicitly, for example `input.text: "Q\n\n```\nC\n```"`. If C is grading-only evidence, put it in `evaluationContext.reference` instead. These are different experiments. Do not infer one from the other or silently rewrite user data.
 
 ## Scoring strategy
 
@@ -222,9 +137,9 @@ See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-
 
 | Type | Description |
 |---|---|
-| `faithfulness` | output stays grounded in `sample.context` (anti-hallucination) |
-| `answer_relevancy` | output directly answers `sample.prompt`; catches dodging, topic drift, verbosity |
-| `context_recall` | gold facts in `sample.context` are actually used in the output (`reference` may enumerate the gold facts) |
+| `faithfulness` | output stays grounded in `evaluationContext.reference` (anti-hallucination) |
+| `answer_relevancy` | output directly answers `input.text`; catches dodging, topic drift, verbosity |
+| `context_recall` | gold facts in `evaluationContext.reference` are actually used in the output (`reference` may enumerate the gold facts) |
 | `semantic_similarity` | holistic semantic similarity to `reference` |
 
 **Universal modifier:**

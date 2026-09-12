@@ -1,164 +1,79 @@
-# 评测用例格式
+# 评测样本格式
 
-**eval-samples** 文件是 `omk eval` / `omk doctor` 使用的版本化用例集文档。它的 `samples` 数组包含具体用例，每条一个 `prompt`，外加可选的 `rubric`、`assertions` 和元数据。JSON 与 YAML 都是一等格式：生成结果默认使用 `eval-samples.json`，手写时可使用 `eval-samples.yaml`。
-
-想知道怎么**设计**一套严谨用例（测什么、测几条、元数据字段），见[用例设计](../specs/sample-design-spec)；本页是逐字段的格式参考。
+OMK 用同一个 `omk.eval-sample-set/v3` 封套表达 prompt、RAG、skill、agent 和 workflow 的样本。共同骨架分开执行输入、运行条件、预期结果、评分声明和注释；应用专用 JSON Schema 描述任务数据，不再另建多套样本协议。
 
 ## 存放位置
 
-推荐把项目共享用例和 skill 私有用例分开：
+自动发现只识别当前作用域的 `.omk/eval-samples.json` 或 `.omk/eval-samples.yaml`，同时存在两者会报歧义错误。其他 JSON／YAML 文件或分片目录使用 `--samples <path>` 显式指定。所有加载文件中的 ID 必须唯一。根级 `requires` 可包含 `tools`、`files`、`env` 和 `preflight` 字符串数组。
 
-- 项目共享用例：放在项目根目录的 `eval-samples.json` 或 `eval-samples.yaml`。适合多个 variant 做 A/B 对比，保证它们跑同一套测试集。
-- skill 私有用例：放在 `<skill>/.omk/eval-samples.json` 或 `<skill>/.omk/eval-samples.yaml`。因此，私有用例要求使用目录 skill（`<skill>/SKILL.md`）。
+Beta 阶段**只支持 v3**。v2 和未版本化输入明确报错，不保留兼容 reader，不提供迁移工具。读取不会改写旧文件；请重新编写新文档，或通过 `omk init`／`omk sample` 生成后审阅。已有报告继续遵守自身 Schema。新输入和评分绑定形成新的测量身份，不能直接把旧分数拼进新比较序列。
 
-`omk eval` 只会在单 treatment 且能明确定位到某个 skill 时自动发现 skill 私有用例。多版本对比建议使用项目共享用例，或显式传 `--samples`。
-
-自动发现只识别以上两个 canonical 文件名。同一作用域同时存在 JSON 与 YAML 时，omk 会报告歧义并停止，不会静默选择其中一个。`.yml`、`samples.*`、`<name>.eval-samples.*` 扁平 sidecar 和分片目录均不参与自动发现；仍可通过 `--samples` 显式读取自定义 JSON / YAML 文件或分片目录。
-
-每个文件都必须声明 `schemaVersion: omk.eval-sample-set/v2`，历史顶层数组格式会被拒绝。根文档、sample、assertion、mock 及其嵌套契约都采用严格校验；未知字段会在执行前报错，不会被静默忽略。发布的 JSON Schema 位于 [`schemas/eval-samples/v2/eval-sample-set.schema.json`](../../../schemas/eval-samples/v2/eval-sample-set.schema.json)。
+机器契约见 [Eval Sample Set v3 JSON Schema](../../../schemas/eval-samples/v3/eval-sample-set.schema.json)。未知字段会被拒绝，包括旧 `prompt`、`context` 和 `sample_id` 字段。
 
 ```json
 {
-  "schemaVersion": "omk.eval-sample-set/v2",
-  "samples": [
-    {
-      "sample_id": "s001",
-      "prompt": "审查这段代码的安全性",
-      "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-      "rubric": {
-        "security": {
-          "criterion": "准确识别注入漏洞并说明影响",
-          "weight": 0.6
-        },
-        "actionability": {
-          "criterion": "给出可直接采用的参数化查询修复",
-          "weight": 0.4
-        }
-      },
-      "assertions": [
-        { "type": "contains", "value": "SQL", "weight": 1 },
-        { "type": "contains", "value": "parameterized", "weight": 1 },
-        { "type": "not_contains", "value": "safe", "weight": 0.5 }
-      ]
-    }
-  ]
-}
-```
-
-根文档还可以声明 `requires`，其中包含 `tools`、`files`、`env`、`preflight` 字符串数组；除此之外不接受其它根字段。
-
-## 字段说明
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `sample_id` | `string` | **是** | 用例唯一标识 |
-| `prompt` | `string` | **是** | 发送给模型的用户提示词 |
-| `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后。也支持 URL，运行时自动抓取内容 |
-| `cwd` | `string` | 否 | 单用例工作目录覆盖（这一条的 runtime context） |
-| `rubric` | `object` | 否 | 具名且独立判定的评分维度；每个值包含 `criterion` 与 `weight` |
-| `rubric.<name>.criterion` | `string` | 是 | 当前维度的一条非空评分准则 |
-| `rubric.<name>.weight` | `number` | 是 | `(0, 1]` 内的正权重；单条 sample 的所有 rubric 权重之和必须为 1 |
-| `assertions` | `array` | 否 | 断言检查列表，详见[断言类型](#断言类型) |
-| `assertions[].type` | `string` | **是** | 断言类型 |
-| `assertions[].value` | `string\|number` | 视类型 | 检查值（`contains`、`min_length`、`cost_max` 等必填） |
-| `assertions[].values` | `array` | 视类型 | 字符串数组（`contains_all`、`contains_any` 必填） |
-| `assertions[].pattern` | `string` | 视类型 | 正则表达式（`regex` 必填） |
-| `assertions[].flags` | `string` | 否 | 正则标志（默认 `"i"`） |
-| `assertions[].schema` | `object` | 视类型 | JSON Schema 对象（`json_schema` 必填，基于 [ajv](https://ajv.js.org/)） |
-| `assertions[].reference` | `string` | 视类型 | 参考文本（`semantic_similarity` 必填） |
-| `assertions[].threshold` | `number` | 否 | 通过阈值；默认值随类型而定 —— LLM 打分类为 `3`，`rouge_n_min` / `bleu_min` 为 `0.5`，`mock_hit` 为 `1` |
-| `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
-| `assertions[].weight` | `number` | 否 | 权重（默认 1） |
-| `assertions[].not` | `boolean` | 否 | 反转有效的通过／失败读数，适用于任意类型 |
-| `assertions[].n` | `number` | 否 | `rouge_n_min` 的 n-gram 阶数（默认 1） |
-
-loader 会在任何模型调用前校验完整契约。rubric 至少包含一个维度；维度名与 criterion 不能是空白文本，weight 必须是有限正数，单条 sample 内的权重和须在 `1e-9` 容差内等于 1。发布的 JSON Schema 表达局部结构与数值范围，runtime validator 额外执行跨属性的权重和校验。非法输入会作为配置错误失败，绝不会计入模型失败。
-
-## 元数据与沙箱字段
-
-用例还能带**元数据**（纯文档 / 诊断用，不参与 grading / judge / verdict）和**沙箱**字段（用于脱离真实环境评测）。完整指引见[用例设计](../specs/sample-design-spec)，这里给字段索引：
-
-| 字段 | 类型 | 用途 |
-|------|------|------|
-| `capability` | `string[]` | 该用例覆盖的能力维度（驱动 coverage 诊断） |
-| `difficulty` | `'easy' \| 'medium' \| 'hard'` | 难度分桶（强枚举） |
-| `construct` | `string` | 测什么：`necessity` / `quality` / `capability`（允许自定义） |
-| `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
-| `covers` | `{ targetKind, ref }[]` | 可选声明的 skill 结构锚点，建议先用于关键用例；仅用于 Skill Map |
-| `mocks` | `object[]` | 工具调用拦截列表 —— 要求执行器支持 mock 拦截 |
-| `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `true`；只有显式允许透传时才设为 `false`） |
-| `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
-| `environment` | `object` | 仅作 prompt 上下文的前置：`cli_available` / `files_available` / `notes`；不会物化文件或环境变量 |
-
-loader 还会校验跨字段引用。每条 `mock_hit: "Tool:N"` 必须指向该工具声明的第 N 条 mock；mock 不存在或序号越界都属于配置错误。执行器兼容性会在评测前单独检查，支持矩阵见[执行器](./executors#sample-mock-兼容性)。
-
-`mocks[].tool` 与 trace 断言使用同一套 source-neutral 工具身份（如 `Bash`、`Read`、`Edit`）。executor adapter 会先把 `exec_command`、`command_execution`、`apply_patch` 等 runtime-native 名称归一化再匹配；为兼容旧用例和自定义工具，原生名称的精确匹配仍然保留。
-
-`covers` 是可选的显式声明字段，不从 prompt 文本里推断。建议先给关键用例、关键 reference / workflow / hard rule 声明它，让 Studio 能画出已声明的结构边，而不是要求每条用例都变成维护负担。不写只表示 Skill Map 暂无这条声明边，不代表该结构一定没被测到：
-
-Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节点时，会显示该结构关系是否由 `sample.covers` 显式声明。
-
-```yaml
-schemaVersion: omk.eval-sample-set/v2
-samples:
-  - sample_id: release-risk-summary
-    prompt: "总结发布风险和回滚方案。"
-    covers:
-      - targetKind: reference
-        ref: references/release-policy.md
-      - targetKind: workflow
-        ref: release
-      - targetKind: workflow_node
-        ref: release.check
-```
-
-`targetKind` 支持 `skill`、`skill_file`、`frontmatter`、`reference`、`script`、`hard_rule`、`workflow`、`workflow_node`。`reference` / `script` 的 `ref` 是相对 skill 根目录的路径；`hard_rule` / `workflow` 使用规则或 workflow id；`workflow_node` 使用 `workflowId.nodeId`。这个字段不进入 grading、评委 prompt、verdict，也不进入 sample 指纹。
-
-## URL 自动抓取
-
-`prompt` 和 `context` 中的 URL 会在评测前自动抓取内容并内联到文本中。适用于引用在线文档、API 文档等场景：
-
-```json
-{
-  "schemaVersion": "omk.eval-sample-set/v2",
+  "schemaVersion": "omk.eval-sample-set/v3",
   "samples": [{
-    "sample_id": "s001",
-    "prompt": "请根据以下 PRD 文档生成评测用例：https://wiki.example.com/prd/feature-x"
+    "sampleId": "review-1",
+    "input": { "inputKind": "text", "text": "审查：db.query('SELECT * FROM users WHERE name=' + username)" },
+    "evaluationContext": {
+      "assertions": [{ "type": "contains", "value": "SQL" }],
+      "rubric": { "security": { "criterion": "指出注入风险并给出具体修复。", "weight": 1 } }
+    },
+    "annotations": { "provenance": "human", "difficulty": "easy" }
   }]
 }
 ```
 
-宿主会在 Resolve 阶段解析 URL，并在编译 Evaluation Core Dataset **之前**替换为实际内容。每个规范 URL 只解析一次；规范化后的 UTF-8 字节会封存为按摘要寻址的 `content` 资源，同一份字节同时进入 Dataset input 与 Definition digest。HTTP／MCP 等传输细节只保留在非规范 lineage 中，因此仅切换传输方式不会改变测量身份。
+## 字段说明
 
-解析顺序是：匹配 URL 优先使用 MCP（例如受 SSO 保护的私有文档），其余 URL 或 MCP 失败的 URL 再使用安全 HTTP。解析采用失败关闭：任何非占位 URL 无法解析时，本次评测直接停止，不会静默退回原始 URL 继续测量，避免临时网络状态改变实际测量 construct。
+| 字段 | 契约 |
+| --- | --- |
+| `sampleId` | 必填，稳定的非空 ID，在加载的数据集中唯一 |
+| `input` | 必填，区分 `text`、`json` 和 `messages` |
+| `executionContext` | 可选，包含 `cwd`、`allowedTools`、`mocks`、`mocksStrict`、仅作题设的 `environment` 和应用 JSON `data` |
+| `expected` | 可选，参考结果 JSON，只通过显式评分绑定消费 |
+| `evaluationContext` | 可选，包含 `assertions`、`rubric`、仅供评分的 `reference` 和结构化 `checks` |
+| `annotations` | 可选，包含 `capability`、`difficulty`、`construct`、`provenance`、`covers` 和 `tripwire`，不进入执行输入 |
 
-**私有文档 URL**：在项目目录放一个 `.mcp.json` 配置文件，或通过 `--mcp-config` 指定路径：
+`rubric` 每项包含非空 `criterion` 和正数 `weight`，权重之和为 1。`reference` 取代旧 `context` 含混的评分用途，**绝不拼入执行输入**。faithfulness 和 context-recall 断言需要自身的 `reference` 或 `evaluationContext.reference`。文本 rubric 和 LLM 断言评分要求文本输入。本次不引入新的评委 prompt 或评分公式。
+
+## 输入与适配器支持
+
+- `text`：`{ "inputKind": "text", "text": "..." }`，保留空白字符。声明 `executionContext.environment` 时，显式渲染为仅作 prompt 上下文的题设，不创建文件。`input.text` 内 HTTP URL 沿用宿主解析行为：编译前解析并封存内容，失败则停止；评分参考和结构化值不会被扫描、抓取。
+- `json`：包含 `inputKind`、`value`、`schema`、`schemaDocument`。`schema` 复用 Core 的 `schemaVersion`、`schemaUri`、`schemaDigest`；摘要必须等于内嵌文档的 canonical JSON 摘要，URI 必须等于其 `$id`。自包含 JSON Schema 2020-12 校验 `value`，不做类型转换、默认值填充、属性删除或远端 Schema 加载。
+- `messages`：包含 `inputKind: messages`、`interactionMode: history` 和非空 `messages`。每条消息有 `messageId`、`role` 和文本 `content`。角色为 `system`、`user`、`assistant`、`tool`。assistant 的 `toolCalls` 包含 `toolCallId`、`name`、JSON 对象 `arguments`；tool 结果引用此前尚未完成的调用。同一 ID 重复、孤立或重复结果、未完成调用、迟到的 system 消息均会被拒绝。
+
+**JSON 和消息历史当前要求 custom-command。** 其 `omk.custom-command-exchange/v1` 请求收到完整结构化输入封套，应用运行数据进入 `trial.executionContext`；文本输入编译为字符串。内置文本执行器会在执行前拒绝结构化输入，不静默字符串化。历史是已提供的数据，不是交互式用户模拟器；多模态和实时会话不在本契约内。
+
+## 结构化检查
+
+`checkKind: exact-match` 将输出或轨迹中的 JSON pointer，与 `expected` 中的 JSON pointer 显式绑定。OMK 复用 Evaluation Runtime 的 canonical JSON 精确比较评分器：对象键序无关，数组顺序和 JSON 类型有意义，不进行模糊转换。每个检查声明归属 `fact` 或 `behavior` 层，可指定正数权重。
 
 ```json
 {
-  "mcpServers": {
-    "docs": {
-      "command": "npx",
-      "args": ["@example/docs-mcp-server"],
-      "env": { "DOCS_API_TOKEN": "xxx" },
-      "urlPatterns": ["docs.example.com"],
-      "fetchTool": {
-        "name": "fetch_doc",
-        "urlTransform": {
-          "regex": "docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)",
-          "params": { "namespace": "$1", "slug": "$2" }
-        },
-        "contentExtract": "data.body"
-      }
-    }
+  "sampleId": "classification-1",
+  "input": { "inputKind": "text", "text": "Classify this invoice dispute." },
+  "expected": { "category": "billing" },
+  "evaluationContext": {
+    "checks": [{
+      "checkKind": "exact-match",
+      "checkId": "category",
+      "actual": { "sourceKind": "output", "pointer": "/category" },
+      "expectedPointer": "/category",
+      "layer": "fact"
+    }]
   }
 }
 ```
 
-**公网 URL**：通过有界 HTTP resolver 获取。每次重定向都会重新校验目标；loopback／私网／link-local 地址会被拒绝；只接受文本型 UTF-8 响应，并限制响应大小。私网或需要认证的文档必须显式配置 MCP resolver；URL authority 中携带凭证会被拒绝。`example.com` 等 RFC 占位域名保持字面量，永不发起请求。
+此样本要求执行器输出结构化值，例如 `{ "category": "billing" }`。缺少 output、trace 或 pointer 对应证据时仍按缺失处理，不视为匹配成功。可用独立检查比较有序文档 ID、工具参数和实际状态快照。精确排名比较不等于 nDCG、语义回答质量或外部状态已经改变的证明；状态证据必须由执行器从真实被测系统读取。Runtime API 的检索和轨迹评分器保留其独立的既有声明，文件格式不会隐式启用它们。
 
-项目根目录的 `.mcp.json` 会被自动发现，`--mcp-config` 或 `eval.yaml.mcpConfig` 可显式覆盖。resolver 启动的 MCP 客户端只存活于单次 Resolve 会话，并且会在继续编译 Core 之前全部关闭。
-`urlPatterns` 是 hostname allowlist：使用 `docs.example.com` 这样的精确 host，或 `*.example.com` 这样的显式子域通配；不允许按 path／query 子串匹配。
+## 元数据与沙箱字段
+
+`annotations.covers` 通过 `targetKind` 和 `ref` 声明结构锚点，不能证明节点实际执行。`tripwire` 标记故意诱错样本，不反转评分。`executionContext.mocks` 要求执行器支持工具拦截，`mocksStrict` 默认拒绝未匹配调用，`mock_hit` 必须引用已有 mock。`executionContext.cwd` 提供工作区 fixture，资源沿用宿主隔离机制。详见[执行器](./executors#sample-mock-compatibility)。
+
+旧 v2 的 `prompt: Q` 加 `context: C`，需要显式编写完整输入，例如 `input.text: "Q\n\n```\nC\n```"`。如果 C 只是评分参考，应放入 `evaluationContext.reference`。二者是不同实验，不能互相推断，也不自动改写用户数据。
 
 ## 评分策略
 
@@ -222,9 +137,9 @@ samples:
 
 | 类型 | 说明 |
 |------|------|
-| `faithfulness` | 输出是否被 `sample.context` 支持（反幻觉） |
-| `answer_relevancy` | 输出是否切题回答 `sample.prompt`；能抓住跑题、回避、冗余 |
-| `context_recall` | `sample.context` 关键事实在输出中的覆盖率（`reference` 可显式列 gold facts） |
+| `faithfulness` | 输出是否被 `evaluationContext.reference` 支持（反幻觉） |
+| `answer_relevancy` | 输出是否切题回答 `input.text`；能抓住跑题、回避、冗余 |
+| `context_recall` | `evaluationContext.reference` 关键事实在输出中的覆盖率（`reference` 可显式列 gold facts） |
 | `semantic_similarity` | 与 `reference` 的整体语义相似度 |
 
 **通用修饰：**

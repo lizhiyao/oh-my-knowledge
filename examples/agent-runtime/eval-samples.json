@@ -1,55 +1,73 @@
 {
-  "schemaVersion": "omk.eval-sample-set/v2",
+  "schemaVersion": "omk.eval-sample-set/v3",
   "samples": [
     {
-      "sample_id": "find-owner",
-      "prompt": "Which team owns the billing webhook, and what file proves it?",
-      "cwd": "./workspace",
-      "rubric": {
-        "quality": {
-          "criterion": "The answer should inspect the workspace and cite OWNERS.md or services/billing-webhook.md.",
-          "weight": 1
-        }
+      "sampleId": "find-owner",
+      "input": {
+        "inputKind": "text",
+        "text": "Which team owns the billing webhook, and what file proves it?"
       },
-      "assertions": [
-        {
-          "type": "contains_all",
-          "values": [
-            "Payments",
-            "Platform",
-            "billing-webhook"
-          ]
-        }
-      ],
-      "capability": [
-        "repo-navigation"
-      ],
-      "construct": "capability"
+      "executionContext": {
+        "cwd": "./workspace"
+      },
+      "evaluationContext": {
+        "rubric": {
+          "quality": {
+            "criterion": "The answer should inspect the workspace and cite OWNERS.md or services/billing-webhook.md.",
+            "weight": 1
+          }
+        },
+        "assertions": [
+          {
+            "type": "contains_all",
+            "values": [
+              "Payments",
+              "Platform",
+              "billing-webhook"
+            ]
+          }
+        ]
+      },
+      "annotations": {
+        "capability": [
+          "repo-navigation"
+        ],
+        "construct": "capability"
+      }
     },
     {
-      "sample_id": "summarize-runbook",
-      "prompt": "Summarize the deploy check for the billing webhook.",
-      "cwd": "./workspace",
-      "rubric": {
-        "quality": {
-          "criterion": "The answer should mention signature verification and retry queue checks.",
-          "weight": 1
-        }
+      "sampleId": "summarize-runbook",
+      "input": {
+        "inputKind": "text",
+        "text": "Summarize the deploy check for the billing webhook."
       },
-      "assertions": [
-        {
-          "type": "contains_all",
-          "values": [
-            "signature",
-            "retry"
-          ]
-        }
-      ],
-      "capability": [
-        "repo-navigation",
-        "runbook-summary"
-      ],
-      "construct": "quality"
+      "executionContext": {
+        "cwd": "./workspace"
+      },
+      "evaluationContext": {
+        "rubric": {
+          "quality": {
+            "criterion": "The answer should mention signature verification and retry queue checks.",
+            "weight": 1
+          }
+        },
+        "assertions": [
+          {
+            "type": "contains_all",
+            "values": [
+              "signature",
+              "retry"
+            ]
+          }
+        ]
+      },
+      "annotations": {
+        "capability": [
+          "repo-navigation",
+          "runbook-summary"
+        ],
+        "construct": "quality"
+      }
     }
   ]
 }

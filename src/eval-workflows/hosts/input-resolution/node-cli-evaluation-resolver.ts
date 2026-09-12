@@ -1,3 +1,4 @@
+import { UnsupportedSampleSchemaError } from '../../inputs/schemas/error.js';
 import { createHash } from 'node:crypto';
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, resolve } from 'node:path';
@@ -711,7 +712,7 @@ async function resolvedSampleContentResources(
   readonly contentDigest: `sha256:${string}`;
   readonly transportKind: 'http' | 'mcp';
   readonly sampleIds: readonly string[];
-  readonly fields: readonly ('prompt' | 'context')[];
+  readonly fields: readonly ('input.text')[];
 }[]> {
   return Promise.all(contents.map(async (content) => {
     const path = await materializeBytes(
@@ -863,7 +864,8 @@ export async function resolveNodeCliEvaluationRequest(
       code: 'CLI_INPUT_RESOLUTION_FAILED',
       sourcePath: request.values.locators.samples,
       fieldPath: 'samples',
-      message: '无法读取或解析 samples；请检查用例路径、文件权限和内容格式。',
+      message: cause instanceof UnsupportedSampleSchemaError ? cause.message
+        : '无法读取或解析 samples；请检查用例路径、文件权限和内容格式。',
       cause,
     });
   }
@@ -968,6 +970,11 @@ export async function resolveNodeCliEvaluationRequest(
     request.values.targetRuntime.executorId,
     hostExecutorImplementationIds,
   );
+  const structuredSample = resolvedSamples.find((sample) => sample.input.inputKind !== 'text');
+  if (structuredSample !== undefined && targetRuntime.implementationResource === undefined) {
+    return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${structuredSample.sample_id}.input`,
+      message: 'Structured JSON and message history currently require the custom-command invoke adapter. This executor has no declared native input adapter; input will not be stringified.' });
+  }
   const resolvedMockControls = await resolvedMocks(
     resources,
     resolvedSamples,

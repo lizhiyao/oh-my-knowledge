@@ -5,7 +5,7 @@ import { loadSamples, listSampleFilesInDir } from '../inputs/load-samples.js';
 import { defaultSkillLocalSamplesFile, findSkillSamplesPath, findCanonicalSamplesFile } from '../inputs/sample-locator.js';
 import { getSamplesArray, parseSampleDocument } from '../inputs/sample-document.js';
 import { appendSamplesToFile, preflightSampleAppend } from '../inputs/append-samples.js';
-import { createEvalSampleSetDocument } from '../inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../inputs/schemas/sample-set.js';
 import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 
 type Generator = typeof generateSamples;
@@ -97,7 +97,7 @@ export async function generateSkillSamples(input: GenerateSkillSamplesInput, gen
     total = appendSamplesToFile(existing, samples, reserved, snapshot);
   } else {
     mkdirSync(dirname(outputPath), { recursive: true });
-    createJsonFileAtomic(outputPath, createEvalSampleSetDocument(samples));
+    createJsonFileAtomic(outputPath, createWorkflowSampleSetDocument(samples));
   }
   return { outputPath, added: samples.length, total, costUSD, appended: Boolean(existing) };
 }

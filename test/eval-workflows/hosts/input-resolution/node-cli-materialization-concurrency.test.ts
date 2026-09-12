@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { parseCliEvaluationRequest } from '../../../../src/eval-workflows/input-compilation/index.js';
 import { resolveNodeCliEvaluationRequest } from '../../../../src/eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.js';
-import { createEvalSampleSetDocument } from '../../../../src/eval-workflows/inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 const barrier = vi.hoisted(() => ({
   entered: undefined as (() => void) | undefined,
@@ -46,8 +46,8 @@ it('does not expose a partial resource to another resolver and removes staging f
     await mkdir(join(root, 'skills'));
     await writeFile(join(root, 'skills', 'control.md'), '# Control\nAnswer directly.\n');
     await writeFile(join(root, 'skills', 'treatment.md'), '# Treatment\nUse supplied knowledge.\n');
-    await writeFile(join(root, 'samples.json'), JSON.stringify(createEvalSampleSetDocument([{
-      sample_id: 'sample-a', prompt: 'Return an answer.',
+    await writeFile(join(root, 'samples.json'), JSON.stringify(createWorkflowSampleSetDocument([{
+      sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'Return an answer.' },
       assertions: [{ type: 'contains', value: 'answer' }],
     }])));
     const request = parseCliEvaluationRequest({

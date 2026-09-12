@@ -3,10 +3,10 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureSkillSamples, generateSkillSamples, discoverSkillSampleTasks } from '../../../src/eval-workflows/sample-generation/skill-samples.js';
-import { createEvalSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 
-const sample = { sample_id: 'new', prompt: 'Check the input' };
-const serialized = (id: string) => JSON.stringify(createEvalSampleSetDocument([{ ...sample, sample_id: id }]));
+const sample = { sample_id: 'new', input: { inputKind: 'text' as const, text: 'Check the input' } };
+const serialized = (id: string) => JSON.stringify(createWorkflowSampleSetDocument([{ ...sample, sample_id: id }]));
 
 describe('宿主无关的样本生成与保存用例', () => {
   let root: string;
@@ -42,7 +42,7 @@ describe('宿主无关的样本生成与保存用例', () => {
     const result = await generateSkillSamples({ skillPath, samplesPath, options }, generate);
     expect(generate).toHaveBeenCalledWith({ ...options, skillContent: '# Skill\nPreserve these bytes.\n' });
     expect(result).toEqual({ outputPath: samplesPath, added: 1, total: 1, costUSD: 0.25, appended: false });
-    expect(JSON.parse(readFileSync(samplesPath, 'utf8'))).toEqual(createEvalSampleSetDocument([sample]));
+    expect(JSON.parse(readFileSync(samplesPath, 'utf8'))).toEqual(createWorkflowSampleSetDocument([sample]));
   });
 
   it('生成前拒绝已有文件，不调用模型', async () => {
@@ -63,7 +63,7 @@ describe('宿主无关的样本生成与保存用例', () => {
     const generate = vi.fn(async () => ({ samples: [sample], costUSD: 0 }));
     await generateSkillSamples({ skillPath, samplesPath: directory, options, append: true }, generate);
     expect(lstatSync(alias).isSymbolicLink()).toBe(true);
-    expect(JSON.parse(readFileSync(shared, 'utf8')).samples.map((s: { sample_id: string }) => s.sample_id)).toEqual(['old', 'new-2']);
+    expect(JSON.parse(readFileSync(shared, 'utf8')).samples.map((s: { sampleId: string }) => s.sampleId)).toEqual(['old', 'new-2']);
   });
 
   it('生成期间出现目标文件时保留外部内容', async () => {
@@ -99,7 +99,7 @@ describe('宿主无关的样本生成与保存用例', () => {
 
   it.each(['missing', 'broken', 'empty'])('显式样本%s时不自动生成', async (state) => {
     samplesPath = join(root, 'eval-samples.json');
-    const content = state === 'broken' ? '{broken' : JSON.stringify(createEvalSampleSetDocument([]));
+    const content = state === 'broken' ? '{broken' : JSON.stringify(createWorkflowSampleSetDocument([]));
     if (state !== 'missing') writeFileSync(samplesPath, content);
     const generate = vi.fn();
     await expect(ensureSkillSamples({ skillPath, samplesPath, options, explicit: true }, generate)).rejects.toThrow();
@@ -119,6 +119,6 @@ describe('宿主无关的样本生成与保存用例', () => {
     const result = await ensureSkillSamples({ skillPath, samplesPath, options, explicit: false, onGenerating }, generate);
     expect(result).toMatchObject({ status: 'generated', outputPath: samplesPath, added: 1 });
     expect(onGenerating).toHaveBeenCalledWith(samplesPath);
-    expect(JSON.parse(readFileSync(samplesPath, 'utf8')).samples).toEqual([sample]);
+    expect(JSON.parse(readFileSync(samplesPath, 'utf8')).samples).toEqual(createWorkflowSampleSetDocument([sample]).samples);
   });
 });

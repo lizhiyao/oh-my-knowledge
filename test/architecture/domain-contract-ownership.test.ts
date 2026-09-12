@@ -17,6 +17,7 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/eval-workflows/inputs/contracts/config.ts',
   'src/executors/contracts/mock.ts',
   'src/eval-workflows/inputs/contracts/sample.ts',
+  'src/eval-workflows/inputs/contracts/sample-input.ts',
   'src/eval-workflows/inputs/contracts/variant.ts',
   'src/eval-workflows/instruments/contracts/config.ts',
   'src/eval-workflows/inputs/contracts/assertion-kind.ts',
@@ -379,7 +380,15 @@ describe('领域契约所有权', () => {
               && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier)
             || ((file === 'src/executors/contracts/trace-source.ts' && ['zod', './trace-source-schema.js'].includes(specifier) || (file === 'src/executors/contracts/trace.ts' && ['zod', './tool-call-status-schema.js'].includes(specifier))))
             || (file === 'src/observability/contracts/trace.ts' && ['zod', './trace-metadata-schema.js'].includes(specifier)));
-            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target) && !declarativeEnumTypeImport) {
+            // Authoring DTOs reuse Core JSON/schema identities through type-only imports.
+            const coreAuthoringTypeImport = [
+              'src/eval-workflows/inputs/contracts/sample.ts',
+              'src/eval-workflows/inputs/contracts/sample-input.ts',
+            ].includes(file) && [
+              '../../../eval-core/contracts/json.js',
+              '../../../eval-core/contracts/common.js',
+            ].includes(specifier);
+            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target) && !declarativeEnumTypeImport && !coreAuthoringTypeImport) {
               violations.push(`${file}：依赖了非契约模块 ${specifier}`);
             }
           }

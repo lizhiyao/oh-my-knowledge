@@ -26,7 +26,7 @@ omk --version
 
 ## 二、新建评测用例文档
 
-预览版只使用严格的 `omk.eval-sample-set/v2` 契约，不读取或转换更早的用例文档。请通过 `omk init` 或 `omk sample` 生成新文档，并在作为证据使用前复核准则与权重。
+预览版只使用严格的 `omk.eval-sample-set/v3` 契约，不读取或转换更早的用例文档。请通过 `omk init` 或 `omk sample` 生成新文档，并在作为证据使用前复核准则与权重。
 
 每条 rubric 是独立判定维度的映射。每个维度包含一条 `criterion` 与一个正 `weight`，同一 sample 的权重和必须为 1。每个自动发现作用域只保留一份 canonical `eval-samples.json` 或 `eval-samples.yaml`。
 

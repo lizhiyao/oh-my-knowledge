@@ -265,7 +265,7 @@ Advanced adapter 还暴露 `McpConfigAccess`、`McpConfigDescriptor`、`McpConfi
 
 | 下发内容 | 载体 | 映射 |
 |---|---|---|
-| 评测用例 | `omk.eval-sample-set/v2`，经 `oh-my-knowledge/eval-samples`（`resolveEvalSampleJsonSchema`） | `EvaluateInput.dataset.samples` |
+| 评测用例 | `omk.eval-sample-set/v3`，经 `oh-my-knowledge/eval-samples`（`resolveEvalSampleJsonSchema`） | `EvaluateInput.dataset.samples` |
 | 可序列化的测量声明 | `oh-my-knowledge/eval-core/schemas/v1..v5/*` 下的已发布 Core JSON Schema，按文件名用 `resolveEvaluationCoreJsonSchema` 解析；每个文件名只对应一个版本目录，如 `evaluation-definition.schema.json` 在 `v5`、`measurement-policy.schema.json` 在 `v1` | `analyses`、`decision`、`policy`、`experiment`、`comparisons` |
 | executor／evaluator／评委实现 | 注册表 id＋版本＋配置＋配置 digest；绝不下发代码 | 执行侧从宿主注册表解析实现，再注入 `variants` / `evaluators` |
 

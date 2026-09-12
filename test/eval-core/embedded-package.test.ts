@@ -155,8 +155,8 @@ describe('published embedded Evaluation API', () => {
     ))).toBe(true);
     expect(JSON.parse(readFileSync(join(
       packageDirectory,
-      'dist/eval-workflows/inputs/contracts/schemas/v2/eval-sample-set.schema.json',
-    ), 'utf8')).title).toBe('OMK Eval Sample Set v2');
+      'dist/eval-workflows/inputs/contracts/schemas/v3/eval-sample-set.schema.json',
+    ), 'utf8')).title).toBe('OMK Eval Sample Set v3');
     writeFileSync(join(projectRoot, 'package.json'), JSON.stringify({
       name: 'independent-omk-host',
       private: true,
@@ -258,7 +258,13 @@ const assert = require('node:assert/strict');
   ]);
   assert.equal(typeof evalHosts.createCodexCliReferenceExecutor, 'function');
   assert.match(evalHosts.CODEX_CLI_MIN_SUPPORTED_VERSION, /^[0-9]+[.][0-9]+[.][0-9]+$/u);
-  assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v2');
+  assert.equal(evalSamples.EVAL_SAMPLE_SET_SCHEMA_VERSION, 'omk.eval-sample-set/v3');
+  const authored = { sampleId: 'public-v3', input: { inputKind: 'text', text: 'Exact input bytes.' } };
+  const sampleDocument = evalSamples.createEvalSampleSetDocument([authored]);
+  assert.deepEqual(sampleDocument.samples, [authored]);
+  assert.equal(evalSamples.EvalSampleSetDocumentSchema.safeParse(sampleDocument).success, true);
+  assert.equal(Object.hasOwn(evalSamples, 'normalizeAuthoredSample'), false);
+
   assert.equal(typeof evalSamples.resolveEvalSampleJsonSchema, 'function');
   assert.equal(typeof projections.projectCoreArtifactGraph, 'function');
   assert.equal(typeof studio.createCoreStudioCatalog, 'function');
@@ -292,10 +298,10 @@ const assert = require('node:assert/strict');
   );
   assert.equal(executionPlanSchema.default.title, 'OMK Execution Plan v4');
   const sampleSchema = await import(
-    'oh-my-knowledge/eval-samples/schemas/v2/eval-sample-set.schema.json',
+    'oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json',
     { with: { type: 'json' } }
   );
-  assert.equal(sampleSchema.default.title, 'OMK Eval Sample Set v2');
+  assert.equal(sampleSchema.default.title, 'OMK Eval Sample Set v3');
   try {
     require('oh-my-knowledge');
     throw new Error('require() unexpectedly loaded the ESM-only package root');
@@ -701,7 +707,7 @@ const assert = require('node:assert/strict');
       './eval-runtime/advanced',
       './eval-runtime/contracts',
       './eval-samples',
-      './eval-samples/schemas/v2/*',
+      './eval-samples/schemas/v3/*',
       './mcp',
       './package.json',
       './projections',

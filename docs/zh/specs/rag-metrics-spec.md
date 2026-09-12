@@ -6,9 +6,9 @@ omk 的三个 RAG 专用 assertion type(`faithfulness` / `answer_relevancy` / `c
 
 | Metric | 回答的问题 | 输入需求 |
 |---|---|---|
-| `faithfulness` | 输出是否被 context 支持 (anti-hallucination) | output + context (sample.context 或 assertion.reference) |
+| `faithfulness` | 输出是否被 context 支持 (anti-hallucination) | output + context (evaluationContext.reference 或 assertion.reference) |
 | `answer_relevancy` | 输出是否切题回答了 prompt | output + prompt (sample.prompt) |
-| `context_recall` | gold context 中的关键信息是否在输出中被使用 | output + reference (assertion.reference 或 sample.context fallback) |
+| `context_recall` | gold context 中的关键信息是否在输出中被使用 | output + reference (assertion.reference 或 evaluationContext.reference fallback) |
 
 三个一起用最有效——RAG 失败模式经常是"流畅地编造"(answer_relevancy 高 + faithfulness 低),靠任何单一 metric 看不出。
 
@@ -95,16 +95,25 @@ omk 的差异化在"严谨性叠加":粒度比 RAGAS 粗，但每个 1-5 分都�
 
 ```yaml
 samples:
-  - sample_id: my_rag_sample
-    prompt: 根据 context 回答 X
-    context: |
-      [gold context here]
-    assertions:
-      - type: faithfulness
-        threshold: 4
-      - type: answer_relevancy
-      - type: context_recall
-        # 不传 reference,自动用 sample.context
+  - sampleId: my_rag_sample
+    input:
+      inputKind: text
+      text: |-
+        根据 context 回答 X
+
+        ```
+        [gold context here]
+
+        ```
+    evaluationContext:
+      assertions:
+        - type: faithfulness
+          threshold: 4
+        - type: answer_relevancy
+        - type: context_recall
+      reference: |
+        [gold context here]
+schemaVersion: omk.eval-sample-set/v3
 ```
 
 context_recall 也可以传独立的 gold key facts:

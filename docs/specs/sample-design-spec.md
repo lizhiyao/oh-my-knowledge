@@ -1,5 +1,7 @@
 # Sample design guide
 
+This page uses v3: metadata belongs in `annotations`, grading declarations in `evaluationContext`, and runtime controls in `executionContext`. See the [sample format](../reference/eval-sample-format.md) for the complete contract and adapter boundaries.
+
 > **For omk users**: how to declare measurement metadata on a sample, write sandbox fields, and self-check before running an eval. The academic alignment behind it (HELM / IRT / Construct Validity / contamination defense, etc.) and the schema-extension decisions are laid out in the appendix (§6) — we put the full rationale on the table rather than tucking it away in an internal note.
 
 ## 1. Why sample design needs to be rigorous
@@ -11,40 +13,45 @@ The most common construct mismatch: you run baseline-vs-skill intending to measu
 ## 2. Sample metadata schema
 
 ```yaml
-# eval-samples.yaml
-schemaVersion: omk.eval-sample-set/v2
+schemaVersion: omk.eval-sample-set/v3
 samples:
-  - sample_id: s001
-    prompt: "Draw a line chart in React; data is date + value, give minimal runnable code"
-    rubric:
-      component_selection:
-        criterion: "Must identify the Line component and use the correct data format"
-        weight: 0.6
-      completeness:
-        criterion: "Must include a chart render container"
-        weight: 0.4
-    assertions:
-      - { type: contains, value: "Line", weight: 1 }
-      - { type: regex, pattern: "data", weight: 1 }
-
-    # Measurement metadata (docs/diagnostics only, never enter grading)
-    capability:
-      - component-recognition          # string[], capability dimensions, multiple allowed; normalized case/dash/camelCase-insensitive
-      - api-selection
-    difficulty: easy                    # 'easy' | 'medium' | 'hard' (strict enum, typo-proof)
-    construct: necessity                # 'necessity' | 'quality' | 'capability' suggested, custom string allowed
-    provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
-    covers:                             # optional declared structure anchors for Skill Map
-      - targetKind: reference
-        ref: references/chart-api.md
-      - targetKind: workflow_node
-        ref: chart.render
+  - sampleId: s001
+    input:
+      inputKind: text
+      text: Draw a line chart in React; data is date + value, give minimal runnable code
+    evaluationContext:
+      rubric:
+        component_selection:
+          criterion: Must identify the Line component and use the correct data format
+          weight: 0.6
+        completeness:
+          criterion: Must include a chart render container
+          weight: 0.4
+      assertions:
+        - type: contains
+          value: Line
+          weight: 1
+        - type: regex
+          pattern: data
+          weight: 1
+    annotations:
+      capability:
+        - component-recognition
+        - api-selection
+      difficulty: easy
+      construct: necessity
+      provenance: human
+      covers:
+        - targetKind: reference
+          ref: references/chart-api.md
+        - targetKind: workflow_node
+          ref: chart.render
 ```
 
 ### Field semantics
 
 - **capability** (`string[]`): the capability dimensions this sample covers. Declare them from a capability-matrix perspective, so you can see "I cover component-recognition × 8 samples / api-selection × 6 samples / fallback × 2 samples, fallback is thin". Normalization rule: case-insensitive, plus dash / camelCase / underscore / space folding, so `api-selection` / `apiSelection` / `API_Selection` / `api selection` all count as the same capability.
-- **difficulty** (enum): a simple bucketing (easy / medium / hard). A typo like `difficulty: 'easy?'` is rejected by `loadSamples` with an error that names the sample_id.
+- **difficulty** (enum): a simple bucketing (easy / medium / hard). A typo like `difficulty: 'easy?'` is rejected by `loadSamples` with an error that names the sampleId.
 - **construct** (`string`): **which kind of thing this sample measures**. Distinct from capability: capability is "which concrete ability is tested" (api-selection), construct is "which construct type is tested". Three suggested values:
   - `necessity`: baseline-vs-skill, measures whether the skill is necessary at all. A large Δ doesn't necessarily mean the skill is well written — it may simply be that baseline doesn't know the domain knowledge (a self-evident conclusion).
   - `quality`: skill-v1 vs skill-v2, measures which phrasing of the same knowledge lets the model answer more accurately. This is where omk's measurement rigor truly earns its keep.
@@ -68,38 +75,49 @@ These metadata fields are used only for:
 To run evals decoupled from the real external environment (databases / APIs / filesystem / actual git push, etc.), a sample also carries a group of sandbox fields. The omk runtime matches mocks before a tool call; on a hit it returns fake data instead of really invoking the underlying tool.
 
 ```yaml
-schemaVersion: omk.eval-sample-set/v2
+schemaVersion: omk.eval-sample-set/v3
 samples:
-  - sample_id: s002
-    prompt: "Use antlogs-query to count ERROR logs in the last 1 hour"
-    rubric:
-      workflow_quality:
-        criterion: "Must call the logstore_query tool with an ERROR filter and a one-hour window"
-        weight: 1
-    assertions:
-      - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
-      - { type: mock_hit, value: "Bash:1", weight: 1 }
-    mocksStrict: true              # default true; unmatched tool calls are denied, never passed through
-    tripwire: false                # whether this sample is a "trap sample"; default false
-    environment:                   # prompt-only assumptions; no files or env vars are materialized
-      cli_available: ["log-cli"]
-      files_available: ["~/.config/log-cli.json"]
-      notes: "log-cli is authenticated, token in env var"
-    mocks:
-      - tool: Bash
-        match:
-          command_glob: "*log-cli query --filter ERROR*"
-        return:
-          stdout: '{"count": 42}'
-          exit: 0
-      - tool: Read
-        match:
-          file_path_endswith: "tasks/state.json"
-        return: '{"status":"running"}'
-      - tool: WebFetch
-        match:
-          url_glob: "https://internal.example.com/api/*"
-        return: "ok"
+  - sampleId: s002
+    input:
+      inputKind: text
+      text: Use antlogs-query to count ERROR logs in the last 1 hour
+    executionContext:
+      mocks:
+        - tool: Bash
+          match:
+            command_glob: '*log-cli query --filter ERROR*'
+          return:
+            stdout: '{"count": 42}'
+            exit: 0
+        - tool: Read
+          match:
+            file_path_endswith: tasks/state.json
+          return: '{"status":"running"}'
+        - tool: WebFetch
+          match:
+            url_glob: https://internal.example.com/api/*
+          return: ok
+      mocksStrict: true
+      environment:
+        cli_available:
+          - log-cli
+        files_available:
+          - ~/.config/log-cli.json
+        notes: log-cli is authenticated, token in env var
+    evaluationContext:
+      rubric:
+        workflow_quality:
+          criterion: Must call the logstore_query tool with an ERROR filter and a one-hour window
+          weight: 1
+      assertions:
+        - type: tool_input_contains
+          value: Bash:logstore_query
+          weight: 1
+        - type: mock_hit
+          value: Bash:1
+          weight: 1
+    annotations:
+      tripwire: false
 ```
 
 **Field semantics:**
@@ -233,7 +251,7 @@ The initial schema kept four measurement-validity fields (capability / difficult
 **Hard constraints before adding any new field**
 
 - Must not enter the `buildJudgePrompt` signature (`test/eval-runtime/rubric-prompt-isolation.test.ts` guards the regression)
-- Must enter the complete-contract `sampleHash` by default. `sample_id` is the only excluded map key; any field that changes execution or interpretation must invalidate reuse and cross-report comparability.
+- Must enter the complete-contract `sampleHash` by default. `sampleId` is the only excluded map key; any field that changes execution or interpretation must invalidate reuse and cross-report comparability.
 - Must not enter the verdict / Δ algorithm
 - Must not semantically overlap the existing metadata fields + `rubric` / `assertions`
 
@@ -256,3 +274,9 @@ The initial schema kept four measurement-validity fields (capability / difficult
 - [Hugging Face Dataset Cards](https://huggingface.co/docs/hub/datasets-cards)
 - [Judging LLM-as-a-Judge with MT-Bench / Chatbot Arena (2306.05685)](https://arxiv.org/abs/2306.05685)
 - [Chatbot Arena Open Platform (2403.04132)](https://arxiv.org/pdf/2403.04132)
+
+## Implementation boundaries
+
+`eval-workflows/inputs/contracts` owns pure authoring types; `inputs/schemas` validates them and exports the machine schema. Cross-field validation supplements JSON Schema with schema identity, tool-call relationships and reference resolution. `inputs/sample-mapping.ts` is the pure boundary to the private workflow DTO, whose execution controls and annotations are resolved by the existing workflow. It is not an alternative public protocol or a v2 reader. File/API writers emit only the canonical v3 envelope.
+
+`orchestration/measurement-design.ts` compiles samples into Core declarations. Exact comparison stays in `eval-runtime/evaluators`; `hosts/composition` binds the evaluator and execution adapters. Core never imports sample authoring, filesystem or concrete executors. New task shapes use application schemas and explicit checks rather than new object-specific sample directories or execution protocols.

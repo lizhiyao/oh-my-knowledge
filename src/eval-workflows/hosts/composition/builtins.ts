@@ -1,3 +1,4 @@
+import { createExactMatchEvaluator, EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID } from '../../../eval-runtime/evaluators/exact-match.js';
 import {
   createExecutionAssertionEvaluatorImplementation,
   EXECUTION_ASSERTION_EVALUATOR_IDENTITY,
@@ -45,6 +46,27 @@ export type OmkBuiltinScoringBindingFactories = Pick<
 export function createBuiltinOmkScoringBindingFactories(): OmkBuiltinScoringBindingFactories {
   return {
     evaluatorsByImplementationId: new Map([
+      [EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID, (context) => {
+        const actual = context.evaluator.inputs.find((binding) => binding.bindingId === 'actual');
+        const expected = context.evaluator.inputs.find((binding) => binding.bindingId === 'expected');
+        if (context.evaluator.metricIds.length !== 1 || context.evaluator.inputs.length !== 2
+          || context.evaluator.config !== undefined || expected?.sourceKind !== 'expected'
+          || (actual?.sourceKind !== 'output' && actual?.sourceKind !== 'trace')) {
+          throw new TypeError('Exact-match binding requires one Metric and actual/expected inputs.');
+        }
+        return {
+          port: createExactMatchEvaluator({
+            metricId: context.evaluator.metricIds[0],
+            actualSourceKind: actual.sourceKind,
+            sessionIsolationKey: context.sessionIsolationKey,
+          }),
+          satisfiesVersionConstraint: true,
+          preflightDeclarations: [
+            { preflightKind: 'credential', preflightDisposition: 'not-required', checkId: 'exact-match-credential', reasonCode: 'local-deterministic-evaluator' },
+            { preflightKind: 'connectivity', preflightDisposition: 'not-required', checkId: 'exact-match-connectivity', reasonCode: 'local-deterministic-evaluator' },
+          ],
+        };
+      }],
       [OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID, (context) => ({
         port: createSameProcessEvaluatorAdapter({
           identity: OUTPUT_ASSERTION_EVALUATOR_IDENTITY,

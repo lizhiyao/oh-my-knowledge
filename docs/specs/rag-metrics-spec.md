@@ -6,9 +6,9 @@ Design, prompt shape, and relationship to mainstream approaches for omk's three 
 
 | Metric | Question it answers | Input requirements |
 |---|---|---|
-| `faithfulness` | Is the output supported by the context (anti-hallucination)? | output + context (`sample.context` or `assertion.reference`) |
+| `faithfulness` | Is the output supported by the context (anti-hallucination)? | output + context (`evaluationContext.reference` or `assertion.reference`) |
 | `answer_relevancy` | Does the output actually answer the prompt? | output + prompt (`sample.prompt`) |
-| `context_recall` | Are the key facts from the gold context actually used in the output? | output + reference (`assertion.reference`, or `sample.context` fallback) |
+| `context_recall` | Are the key facts from the gold context actually used in the output? | output + reference (`assertion.reference`, or `evaluationContext.reference` fallback) |
 
 They are most useful together. RAG failures are often "fluently fabricated" (high `answer_relevancy` + low `faithfulness`), which no single metric can surface on its own.
 
@@ -95,16 +95,25 @@ omk differentiates on "stacked rigor": granularity is coarser than RAGAS, but ev
 
 ```yaml
 samples:
-  - sample_id: my_rag_sample
-    prompt: Answer X based on the context
-    context: |
-      [gold context here]
-    assertions:
-      - type: faithfulness
-        threshold: 4
-      - type: answer_relevancy
-      - type: context_recall
-        # omit reference, auto-uses sample.context
+  - sampleId: my_rag_sample
+    input:
+      inputKind: text
+      text: |-
+        Answer X based on the context
+
+        ```
+        [gold context here]
+
+        ```
+    evaluationContext:
+      assertions:
+        - type: faithfulness
+          threshold: 4
+        - type: answer_relevancy
+        - type: context_recall
+      reference: |
+        [gold context here]
+schemaVersion: omk.eval-sample-set/v3
 ```
 
 `context_recall` can also take its own gold key facts:

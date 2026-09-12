@@ -304,8 +304,8 @@ export default class Sample extends BaseCommand {
     }),
     append: Flags.boolean({
       description: bilingual({
-        zh: '在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。',
-        en: 'Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces. Without it, an existing file errors out. Often paired with --focus.',
+        zh: '在已有用例文件上追加新生成的用例（撞 sampleId 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。',
+        en: 'Append newly generated samples to the existing samples file (colliding sampleId auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces. Without it, an existing file errors out. Often paired with --focus.',
       }),
       default: false,
     }),
