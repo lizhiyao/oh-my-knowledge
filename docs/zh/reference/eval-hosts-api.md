@@ -25,7 +25,7 @@ OMK 的产品宿主在本仓库内部使用各供应商适配器。这个子路�
 
 ## 装配阶段：拿到执行器之前就会被拒的事
 
-1. **配置固化。** `executablePath` 必须是绝对路径且不含 NUL；`model` 非空；`sandbox` 与 `effort` 取自已发布枚举；各类上限为正整数；每个 `CodexCliEnvironmentEntry` 都经过校验与分类。`credential` 条目会把输出与 trace 的处理等级抬到 `secret`，而本接缝的下限是 `sensitive`——取值本身绝不进入身份指纹，只有分类后的摘要进入。
+1. **配置固化。** `executablePath` 必须是绝对路径且不含 NUL；`model` 非空；`sandbox` 取 `read-only`／`workspace-write`，`effort` 取 `low`／`medium`／`high`／`xhigh`／`max`，两者都在装配期拒绝，而不是留给供应商报错；各类上限为正整数；每个 `CodexCliEnvironmentEntry` 都经过校验与分类。`credential` 条目会把输出与 trace 的处理等级抬到 `secret`，本接缝的下限是 `sensitive`，而 `outputTaint` 只会往上抬，声明它并不能把凭据降回更低的等级；取值本身绝不进入身份指纹，进入的只有分类后条目的摘要。
 2. **内容身份采集。** 对可执行文件加上每个 `CodexCliContentIdentityFile` 计算摘要。
 3. **版本探测。** 在 `identityProbeTimeoutMs` 内用声明的环境执行一次 `--version`。非正式发布串（例如 `0.146.0-alpha.1` 或 `nightly`）按不支持的版本格式拒绝；低于 `CODEX_CLI_MIN_SUPPORTED_VERSION` 的发布按低于支持下限拒绝。探测到的版本就是返回对象的 `executor.version`。
 4. **复验。** 探测之后重新读取身份文件；一旦漂移就直接抛错，而不是把一个已经在脚下变过的二进制固化进指纹。

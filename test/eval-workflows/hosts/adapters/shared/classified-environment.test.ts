@@ -59,4 +59,36 @@ describe('classified environment', () => {
     expect(JSON.stringify(captured.identity)).not.toContain(proxy);
     expect(captured.outputClassification).toBe('secret');
   });
+
+  it('treats outputTaint as a raise that never lowers its own role', () => {
+    const credentialLevels = [undefined, 'sensitive', 'secret'] as const;
+    for (const outputTaint of credentialLevels) {
+      const captured = captureClassifiedEnvironment({
+        PROVIDER_API_KEY: {
+          value: 'credential-value',
+          ...(outputTaint === undefined ? {} : { outputTaint }),
+          identity: { identityKind: 'credential' },
+        },
+      });
+      expect(captured.outputClassification).toBe('secret');
+      expect(captured.identity).toEqual([{
+        keyDigest: digestCanonicalJson('PROVIDER_API_KEY'),
+        identityKind: 'credential',
+        ...(outputTaint === undefined ? {} : { outputTaint }),
+      }]);
+    }
+
+    // The rule is a maximum, not a blanket escalation: entries without credential material keep
+    // the level their own role requires.
+    expect(captureClassifiedEnvironment({
+      LOCALE: {
+        value: 'en-US',
+        outputTaint: 'sensitive',
+        identity: { identityKind: 'behavior', value: 'en-US' },
+      },
+    }).outputClassification).toBe('sensitive');
+    expect(captureClassifiedEnvironment({
+      REGION: { value: 'cn', identity: { identityKind: 'behavior', value: 'cn' } },
+    }).outputClassification).toBe('public');
+  });
 });

@@ -64,6 +64,9 @@ const INPUT_PROJECTION_VERSION = 'omk.codex-cli-prompt/v1';
 const SOURCE_PROTOCOL = 'codex exec --json';
 const TRACE_MEDIA_TYPE = 'application/vnd.omk.source-neutral-trace+json';
 
+/** The published effort enum, kept runtime-readable because TypeScript types cannot guard decoded host config. */
+const CODEX_CLI_EFFORT_VALUES = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
 /** A released `major.minor.patch` only: pre-release and custom builds fail closed. */
 const ReleaseVersionSchema = z.string().regex(/^\d+\.\d+\.\d+$/u);
 
@@ -74,7 +77,7 @@ export interface CreateCodexCliReferenceExecutorInput {
   readonly executablePath: string;
   /** Pinned at assembly time so every variant in one Run measures the same model. */
   readonly model: string;
-  readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  readonly effort?: (typeof CODEX_CLI_EFFORT_VALUES)[number];
   /** Defaults to `read-only`; `workspace-write` still stays inside the attempt-private directory. */
   readonly sandbox?: 'read-only' | 'workspace-write';
   /** Complete classified environment. Nothing is inherited from process.env. */
@@ -91,7 +94,7 @@ export interface CreateCodexCliReferenceExecutorInput {
 interface CapturedReferenceConfiguration {
   readonly executablePath: string;
   readonly model: string;
-  readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  readonly effort?: (typeof CODEX_CLI_EFFORT_VALUES)[number];
   readonly sandbox: 'read-only' | 'workspace-write';
   readonly environment: Readonly<Record<string, string>>;
   readonly environmentIdentity: readonly JsonValue[];
@@ -120,6 +123,11 @@ function captureConfiguration(
   if (input.sandbox !== undefined
       && input.sandbox !== 'read-only' && input.sandbox !== 'workspace-write') {
     throw new TypeError('Codex CLI reference Executor sandbox must be read-only or workspace-write.');
+  }
+  if (input.effort !== undefined && !CODEX_CLI_EFFORT_VALUES.includes(input.effort)) {
+    throw new TypeError(
+      'Codex CLI reference Executor effort must be low, medium, high, xhigh, or max.',
+    );
   }
   const environment = captureCodexEnvironment(input.environment);
   const effort = input.effort;

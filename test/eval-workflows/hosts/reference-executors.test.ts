@@ -508,6 +508,50 @@ describe('Codex CLI reference Executor', () => {
     expect(existsSync(fixture.invocationLog)).toBe(false);
   });
 
+  it('keeps a credential entry at secret handling when the host declares a lower taint', async () => {
+    const fixture = await vendor();
+    const executor = await assemble(fixture, {
+      environment: {
+        ...fixture.env,
+        CODEX_SESSION_SECRET: {
+          value: CREDENTIAL,
+          outputTaint: 'sensitive',
+          identity: { identityKind: 'credential' },
+        },
+      },
+    });
+
+    // A declared taint raises handling; it cannot talk a credential down below its own role.
+    expect(executor.outputClassification).toBe('secret');
+    expect(executor.traceClassification).toBe('secret');
+  });
+
+  it('refuses an effort outside the published enum before probing the vendor', async () => {
+    const fixture = await vendor();
+    // A non-executable binary makes any spawn fail loudly, so reaching the effort diagnostic
+    // proves assembly rejected the declaration before the version probe ran.
+    await chmod(fixture.executablePath, 0o644);
+    for (const effort of ['definitely-invalid', '', 'HIGH', 'xHigh', null, 3]) {
+      await expect(createCodexCliReferenceExecutor({
+        executorId: 'vendor.codex-cli/reference',
+        executablePath: fixture.executablePath,
+        model: 'gpt-fixture',
+        environment: fixture.env,
+        effort: effort as never,
+      })).rejects.toThrow(/effort must be low, medium, high, xhigh, or max/);
+    }
+    expect(existsSync(fixture.invocationLog)).toBe(false);
+
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      const pinned = await assemble(await vendor(), { effort });
+      expect(codexFacet(pinned).runtime).toEqual({
+        model: 'gpt-fixture',
+        effort,
+        sandbox: 'read-only',
+      });
+    }
+  });
+
   it('admits only vendor releases at or above the frozen protocol floor', async () => {
     const above = await assemble(await vendor({ OMK_TEST_VERSION_OUTPUT: 'codex-cli 0.147.0' }));
     expect(above.version).toBe('0.147.0');

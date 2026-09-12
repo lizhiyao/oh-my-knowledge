@@ -46,6 +46,14 @@ const EnvironmentSchema = z.record(
   }).strict(),
 );
 
+function identityClassificationFloor(
+  identityKind: ClassifiedEnvironmentEntry['identity']['identityKind'],
+): 'public' | 'sensitive' | 'secret' {
+  if (identityKind === 'credential') return 'secret';
+  if (identityKind === 'effect-locator') return 'sensitive';
+  return 'public';
+}
+
 export function captureClassifiedEnvironment(
   input: Readonly<Record<string, ClassifiedEnvironmentEntry>> | undefined,
 ): CapturedClassifiedEnvironment {
@@ -68,14 +76,13 @@ export function captureClassifiedEnvironment(
       ...(entry.outputTaint === undefined ? {} : { outputTaint: entry.outputTaint }),
     }))),
     outputClassification: entries.reduce<'public' | 'sensitive' | 'secret'>((result, [, entry]) => (
+      // outputTaint raises handling for this value's role; it never lowers what that role already requires.
       mergeOutputClassification(
         result,
-        entry.outputTaint
-          ?? (entry.identity.identityKind === 'credential'
-            ? 'secret'
-            : entry.identity.identityKind === 'effect-locator'
-              ? 'sensitive'
-              : 'public'),
+        mergeOutputClassification(
+          identityClassificationFloor(entry.identity.identityKind),
+          entry.outputTaint ?? 'public',
+        ),
       )
     ), 'public'),
   });
