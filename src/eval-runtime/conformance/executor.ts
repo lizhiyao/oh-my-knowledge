@@ -35,6 +35,12 @@ export interface ExecutorConformanceProbeInput {
   readonly failure: ExecutorConformanceProbeCase & { readonly expectedErrorCode: string };
   /** Must be bounded when cancellation is ignored; conformance does not isolate hostile code. */
   readonly cancellation: ExecutorConformanceProbeCase;
+  /**
+   * Sampling the probe compiles under. Defaults to `shared-within-block`; a stochastic runtime that
+   * declares no seed control must be probed `uncontrolled`, or Core plan admission rejects it
+   * before the Executor runs.
+   */
+  readonly seedCoupling?: 'shared-within-block' | 'uncontrolled';
   readonly seed?: string;
   readonly runId?: string;
 }
@@ -226,7 +232,7 @@ function definition(
       ? {}
       : { config: structuredClone(probe.targetConfig) }),
   });
-  return createExactMatchDefinition({
+  const built = createExactMatchDefinition({
     datasetId: `eval-runtime-conformance-${phase}`,
     seed: input.seed ?? 'eval-runtime-conformance-v2',
     samples: ['probe-a', 'probe-b'].map((sampleId) => ({
@@ -238,6 +244,16 @@ function definition(
     treatment: target('treatment'),
     bootstrap: { resamples: 100 },
   });
+  if (input.seedCoupling === undefined || input.seedCoupling === 'shared-within-block') {
+    return built;
+  }
+  return {
+    ...built,
+    experiment: {
+      ...built.experiment,
+      sampling: { ...built.experiment.sampling, seedCoupling: input.seedCoupling },
+    },
+  };
 }
 
 async function runProbe(

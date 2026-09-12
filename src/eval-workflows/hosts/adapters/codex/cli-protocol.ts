@@ -41,3 +41,29 @@ export function parseCodexCliStream(stdout: string): ParsedCodexCliStream {
   }
   return parseCodexCoreEvents(values, CODEX_CLI_PROTOCOL_PROFILE);
 }
+
+/**
+ * Recognises the one vendor message this adapter can act on without echoing provider text: the
+ * selected model needs a newer Codex CLI. Detection stays structural, so a credential that happens
+ * to appear in stdout can never be quoted back into a diagnostic.
+ */
+export function requiresCodexUpgrade(stdout: string): boolean {
+  for (const line of stdout.split('\n')) {
+    try {
+      const event = JSON.parse(line) as { type?: string; message?: unknown; error?: { message?: unknown } };
+      if (!event || typeof event !== 'object') continue;
+      let message = event.type === 'error' ? event.message
+        : event.type === 'turn.failed' ? event.error?.message : undefined;
+      if (typeof message !== 'string') continue;
+      if (message.startsWith('{')) {
+        const detail = JSON.parse(message) as { error?: { message?: unknown } };
+        message = detail?.error?.message;
+      }
+      if (typeof message === 'string'
+          && /^The '[^'\r\n]+' model requires a newer version of Codex\./.test(message)) return true;
+    } catch {
+      // Only recognized provider error events produce an actionable, redacted code.
+    }
+  }
+  return false;
+}

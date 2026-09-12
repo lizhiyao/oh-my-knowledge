@@ -5,7 +5,7 @@ import { appendFile, readFile, writeFile } from 'node:fs/promises';
 const args = process.argv.slice(2);
 
 if (args.length === 1 && args[0] === '--version') {
-  process.stdout.write('codex-cli 0.146.0\n');
+  process.stdout.write(`${process.env.OMK_TEST_VERSION_OUTPUT ?? 'codex-cli 0.146.0'}\n`);
   process.exit(0);
 }
 
@@ -32,6 +32,7 @@ if (stdin !== '') {
 }
 
 const mode = process.env.OMK_TEST_MODE ?? 'success';
+let answer = 'fixture answer';
 if (mode === 'upgrade-required' || mode === 'upgrade-decoy') {
   const message = "The 'private-model' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.";
   process.stdout.write(JSON.stringify(mode === 'upgrade-required'
@@ -43,6 +44,28 @@ if (mode === 'upgrade-required' || mode === 'upgrade-decoy') {
 if (mode === 'exit') {
   process.stderr.write('sensitive provider failure');
   process.exit(7);
+}
+if (mode === 'conformance') {
+  const separator = args.lastIndexOf('--');
+  const prompt = separator < 0 ? '' : args.slice(separator + 1).join(' ');
+  const brace = prompt.indexOf('{');
+  let task;
+  try {
+    task = JSON.parse(brace < 0 ? prompt : prompt.slice(brace)).task;
+  } catch {
+    process.stderr.write('sensitive conformance parse failure');
+    process.exit(1);
+  }
+  const requested = typeof task === 'object' && task !== null ? task.prompt : undefined;
+  if (requested === 'failure') {
+    process.stderr.write('sensitive provider failure');
+    process.exit(1);
+  }
+  if (requested === 'cancellation') {
+    process.on('SIGTERM', () => process.exit(0));
+    await new Promise(() => setInterval(() => {}, 1_000));
+  }
+  answer = `answer:${String(requested)}`;
 }
 if (mode === 'invalid') {
   process.stdout.write('{not-json}\n');
@@ -63,7 +86,6 @@ if (mode === 'wait') {
   await new Promise(() => setInterval(() => {}, 1_000));
 }
 
-let answer = 'fixture answer';
 if (mode === 'workspace-state') {
   answer = await readFile('.trial-marker', 'utf8').catch(() => 'clean');
   await writeFile('.trial-marker', 'contaminated');

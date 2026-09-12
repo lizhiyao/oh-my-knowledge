@@ -1253,7 +1253,7 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port（包括 subprocess command Executor adapter）、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
+显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port（包括 subprocess command Executor adapter）、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；宿主按下发 id 与 config 执行评测、又不想自己重写供应商协议时，官方参考执行器使用 `oh-my-knowledge/eval-hosts`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
 
 可运行的[最小示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime)与 packed-package fixture 会在 clean host 中验证 canonical API。
 

@@ -27,6 +27,7 @@ Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does 
 | `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
 | `oh-my-knowledge/eval-runtime` | explicit equivalent of the package-root Runtime façade |
 | `oh-my-knowledge/eval-runtime/advanced` | low-level Runtime assembly, identities, adapters, builders, and lifecycle SPI |
+| `oh-my-knowledge/eval-hosts` | official reference Executors: vendor CLI adapters assembled from plain configuration |
 | `oh-my-knowledge/projections` | downstream artifact projections |
 | `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
 | `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |

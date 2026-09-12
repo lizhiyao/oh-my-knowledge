@@ -24,6 +24,7 @@ const PACKAGE_ENTRYPOINTS = new Set([
   'dsh-plugin/index.ts',
   'eval-core/index.ts',
   'eval-runtime/index.ts',
+  'eval-workflows/hosts/reference-executors.ts',
   'eval-workflows/inputs/eval-samples.ts',
   'eval-workflows/projections/index.ts',
   'mcp/index.ts',
@@ -167,6 +168,10 @@ describe('src 最终领域地图', () => {
     expect(manifest.exports['./eval-runtime']).toEqual({
       types: './dist/eval-runtime/index.d.ts',
       import: './dist/eval-runtime/index.js',
+    });
+    expect(manifest.exports['./eval-hosts']).toEqual({
+      types: './dist/eval-workflows/hosts/reference-executors.d.ts',
+      import: './dist/eval-workflows/hosts/reference-executors.js',
     });
     expect(manifest.exports['./eval-samples']).toEqual({
       types: './dist/eval-workflows/inputs/eval-samples.d.ts',

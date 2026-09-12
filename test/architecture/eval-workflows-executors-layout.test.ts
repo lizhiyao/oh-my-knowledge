@@ -30,7 +30,7 @@ describe('eval-workflows 与 executors 领域布局', () => {
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
       .toEqual(['adapters', 'composition', 'evaluators', 'input-resolution', 'resource-leases']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
-      .toEqual(['application.ts', 'types.ts']);
+      .toEqual(['application.ts', 'reference-executors.ts', 'types.ts']);
   });
 
   it('executors 保留独立的执行前检查边界', () => {
