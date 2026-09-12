@@ -8,16 +8,43 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 | `application/` | 查询、聚合和视图投影。`replay/` 分开投影装配、卡片布局、操作摘要、时间格式和连线计算。 |
 | `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。 |
 | `presentation/` | 独立 HTML 报告与调试页面，以及其样式、脚本生成和转义工具。 |
-| `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge` 按功能组织，`components/layout` 放共享外壳和主题。 |
+| `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge`、`inbox` 按功能组织，`components/layout` 放共享外壳和主题。 |
 | `index.ts` | `oh-my-knowledge/studio` 公开入口，保持既有类型、常量、查询、投影、渲染与路由导出。内部模块直接引用所属层，不经过公开聚合入口。 |
 
 原 `core-runs/` 已按职责归入上述目录；文件名中的 `core-run` 表示消费 Evaluation Core 产物，不表示 Studio 属于 eval-core。
 
 ## 两类页面宿主
 
-CLI `studio` 使用 `createNextStudioServer`。Observe 的会话与任务页、Measure、Knowledge 的列表与详情由 Next 渲染，其余报告页与 API/SSE 由 HTTP adapter 处理。
+CLI `studio` 使用 `createNextStudioServer`。Observe 的会话与任务页、观测收件箱、Measure、Knowledge 的列表与详情由 Next 渲染，其余报告页与 API/SSE 由 HTTP adapter 处理。
 
 DSH 插件和 CLI 评测预览使用 `createReportServer`，无需启动 Next。它们仍消费 HTML 渲染器。HTML 和 React 共用 application 查询与投影，不能为各自页面另算一份业务口径。
+
+## 观测收件箱页面盘点（React）
+
+默认宿主 `GET /observe/inbox` 由 Next 渲染（`web/app/observe/inbox/page.tsx`，`force-dynamic`），组件在 `web/components/inbox/`；独立宿主与 CLI 评测预览不注册收件箱路由组，任意收件箱路径 404。页面只呈现 `observability/inbox/` 的宿主无关投影与语义，不自算口径。
+
+| 子视图 | 组件 | 数据来源 |
+| --- | --- | --- |
+| 信号 | `signals.tsx` | `model.items`，可按 Skill 本地筛选 |
+| Skill 看板 | `skill-board.tsx` | `inbox/skill-rollups.ts` 聚合 |
+| 体验复盘 | `experience-review.tsx` | `effectiveExperienceReports` 与 `unappliedMetricAnnotations` |
+| 指标 | `metrics-guide.tsx`、`metric-badge.tsx` | `inbox/metric-semantics.ts` 文案 |
+| 时间轴 | `timeline-view.tsx` | `effectiveExperienceReports` |
+| 复核待办 | `review-actions-panel.tsx` | `buildReviewActionItems` 优先级判定 |
+| Skill 链 | `skill-chains.tsx` | `model.skillChains` |
+
+复核写入只有 `experience_session` 一类：同意／否决／留意见走 `POST /api/observe-inbox/review-state`，再次点击当前结论即撤销，走 `DELETE`。撤销判定收敛在 `inbox/review-semantics.ts` 的 `reviewActionRequest` 纯函数里，可脱离 DOM 独立测试。渲染的是读取时派生的有效复核投影，不是原始 `experienceReports`，否则已提交的结论会被静默忽略。
+
+### 相对历史 HTML 版的显式减法
+
+以下能力随 HTML 渲染层一并删除，React 版当前不提供：
+
+- `evidence_metric`、`goal_slice_correction`、`reviewer_judgment`、`soft_standard` 四类复核写入入口；读侧仍保留「标注未生效」提示。
+- 全文筛选输入框与严重度筛选按钮组；现只有 Skill 看板点击筛选与 `?skill=` 过滤标识。
+- 经验详情弹窗与时间轴全文弹窗；下钻改由「查看对话任务」深链到 `/observe/conversations/:threadId`。
+- 过程发现工作区（过程发现 JSON 与 Skill 下钻明细）。
+
+补回其中任何一项都要先确定它在七个子视图里的归属，不把旧页面的筛选栏原样搬到新信息架构上。
 
 ## HTML 调用盘点
 
@@ -27,7 +54,7 @@ DSH 插件和 CLI 评测预览使用 `createReportServer`，无需启动 Next。
 
 | 入口 | 宿主 | 直达页面 |
 | --- | --- | --- |
-| CLI `omk studio`（`cli/commands/studio.ts`） | Next（`createNextStudioServer`） | 会话列表/详情/轨迹、Measure、Knowledge 列表/详情为 React；其余路径回落到下方 HTML 路由。 |
+| CLI `omk studio`（`cli/commands/studio.ts`） | Next（`createNextStudioServer`） | 会话列表/详情/轨迹、观测收件箱、Measure、Knowledge 列表/详情为 React；其余路径回落到下方 HTML 路由。 |
 | CLI 评测预览（`cli/lib/run-core-evaluation.ts`，TTY 下 eval 完成后自动启动） | 独立（`createReportServer`） | `/measure/:runId`（HTML）。收件箱路由组不注册（`observationInbox: false`，#839 批次 0）。 |
 | DSH 插件 `/omk observe`（`dsh-plugin/index.ts`） | 独立（`createReportServer`） | 任务轨迹 `/observe/conversations/:thread/tasks/:turn`（HTML）。收件箱路由组不注册（`observationInbox: false`，#839 批次 0）；收件箱数据经数据层落盘，不走页面。 |
 
@@ -42,7 +69,7 @@ DSH 插件和 CLI 评测预览使用 `createReportServer`，无需启动 Next。
 | `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页（只读报告）。 |
 | `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告（只读报告）。 |
 | `managed-history-renderer` | `/knowledge/managed` 及受管对象历史（只读报告）。 |
-| `observation-inbox-renderer`、`observation-inbox/` | `/observe/inbox` 的信号、指标、体验、流程、复核、时间轴及配套样式和脚本。**剩余唯一带用户交互（复核 mutation）的 HTML 页面，仅默认宿主提供**；#839 前提修正（独立宿主消费数据层而非页面）后按收敛路径迁移：批次 0 已裁剪独立宿主路由，随后逐子视图 React 化并删除本模块组。 |
+| `observation-inbox-renderer`、`observation-inbox/` | 已删除（#839 收口）。`/observe/inbox` 现由 Next 宿主 `web/components/inbox/`（React + AntD）渲染；共享投影与语义位于 `observability/inbox/`（view-model、signal-semantics、skill-rollups、metric-semantics、review-semantics）。 |
 | `layout`、`report-shell`、`icons`、`inline-markdown` | 上述 HTML 页面的外壳、图标和安全内容渲染。Markdown 解析与纯文本计算位于 application。 |
 | `trajectory-live`、`trajectory-routing` | HTML 轨迹页的客户端脚本生成。纯连线计算位于 `application/replay/routing`，React 直接消费计算模块。 |
 

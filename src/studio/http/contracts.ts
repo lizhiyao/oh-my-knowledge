@@ -25,9 +25,10 @@ export interface ReportServerOptions {
   /** 是否把别项目的 doctor 索引卡片合进机器级总览。 */
   includeDoctorCards?: boolean;
   /**
-   * 是否提供观测收件箱路由（/observe/inbox 与 /api/observe-inbox/*）。默认 true。
-   * 仅默认宿主（omk studio）提供；独立宿主（DSH 插件、CLI 评测预览）没有收件箱
-   * 页面入口，装配时传 false 裁剪（#839 批次 0）。数据层 observability/inbox 不受影响。
+   * 是否提供观测收件箱 API 路由组（/api/observe-inbox/*）。默认 true。
+   * 仅默认宿主（omk studio）提供；独立宿主（DSH 插件、CLI 评测预览）装配时传 false
+   * 裁剪（#839 批次 0）。收件箱页面由 Next 宿主渲染，不经这个开关；数据层
+   * observability/inbox 不受影响。
    */
   observationInbox?: boolean;
 }

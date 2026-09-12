@@ -9,7 +9,7 @@ describe('Studio observation route boundary', () => {
     for (const forbidden of [
       'buildObservationInboxViewModel',
       'buildKnowledgeDebuggerViewModel',
-      'renderObservationInboxPage',
+      'observation-inbox-renderer',
       'renderKnowledgeDebuggerPage',
       'loadObservationSourceRecordArchive',
       'updateObservationReviewState',

@@ -1,9 +1,9 @@
 import type { ExperienceReviewPriority } from '../contracts/experience.js';
-import type { ObservationReviewVerdict } from '../contracts/review.js';
+import type { ObservationReviewTargetType, ObservationReviewVerdict } from '../contracts/review.js';
 
 /**
- * 观测收件箱复核语义的展示元信息（宿主无关纯函数，#839 批次 3）。
- * HTML 渲染器与 React 页面共用同一份优先级与判定文案；样式归呈现层。
+ * 观测收件箱复核语义的展示元信息（宿主无关纯函数）。
+ * 优先级与判定文案只此一份，React 页面直接消费；样式归呈现层。
  */
 
 export type ReviewPriorityTone = 'error' | 'warning' | 'neutral';
@@ -44,6 +44,38 @@ export function reviewVerdictBadge(
   }
 }
 
+/** 一次复核点击对应的 review-state 请求：撤销走 DELETE，写入走 POST。 */
+export type ReviewActionRequest =
+  | {
+      readonly method: 'DELETE';
+      readonly targetType: ObservationReviewTargetType;
+      readonly targetId: string;
+    }
+  | {
+      readonly method: 'POST';
+      readonly targetType: ObservationReviewTargetType;
+      readonly targetId: string;
+      readonly verdict: ObservationReviewVerdict;
+      readonly reason?: string;
+    };
+
+/**
+ * 点击当前结论且没有附带意见即撤销这条复核，其余情况写入新结论。
+ * 放在数据层是为了让「撤销」这条口径可独立测试，而不是埋在组件的事件处理里。
+ */
+export function reviewActionRequest(
+  targetType: ObservationReviewTargetType,
+  targetId: string,
+  current: ObservationReviewVerdict | undefined,
+  next: ObservationReviewVerdict,
+  reason?: string,
+): ReviewActionRequest {
+  if (current === next && !reason) return { method: 'DELETE', targetType, targetId };
+  return reason === undefined
+    ? { method: 'POST', targetType, targetId, verdict: next }
+    : { method: 'POST', targetType, targetId, verdict: next, reason };
+}
+
 /** 复核状态条目的 key（与 review-state.ts 的持久化 key 同构；独立为纯函数供 client bundle 使用）。 */
 export function reviewStateKey(targetType: string, targetId: string): string {
   return `${targetType}:${targetId}`;
@@ -57,6 +89,8 @@ export function reviewActionLabels(lang: 'zh' | 'en' = 'zh'): {
   saveNote: string;
   cancelNote: string;
   notePlaceholder: string;
+  revoke: string;
+  revokeHint: string;
 } {
   return lang === 'en'
     ? {
@@ -66,6 +100,8 @@ export function reviewActionLabels(lang: 'zh' | 'en' = 'zh'): {
         saveNote: 'Save note',
         cancelNote: 'Cancel',
         notePlaceholder: 'Add context or rationale for this session…',
+        revoke: 'Undo review',
+        revokeHint: 'Click the active verdict again to revoke this review.',
       }
     : {
         confirm: '同意',
@@ -74,5 +110,7 @@ export function reviewActionLabels(lang: 'zh' | 'en' = 'zh'): {
         saveNote: '保存意见',
         cancelNote: '取消',
         notePlaceholder: '补充这个 session 的上下文或理由…',
+        revoke: '撤销复核',
+        revokeHint: '再次点击当前结论即可撤销这条复核。',
       };
 }

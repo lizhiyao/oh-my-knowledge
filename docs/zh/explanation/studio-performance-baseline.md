@@ -33,7 +33,7 @@ yarn studio:baseline
 | `GET /observe/health/obs-0009` | — | 2.4 | 56.1 KB |
 | `GET /observe/skill-trend/baseline-skill-000` | — | 3.7 | 50.3 KB |
 | `GET /api/observe-inbox` | — | 1.1 | 13.6 KB |
-| `GET /observe/inbox` | — | 5.2 | 699.1 KB |
+| `GET /observe/inbox`（已退役） | — | 5.2 | 699.1 KB |
 
 冷 `/api/skills` 期间事件循环 p99 延迟：0.0 ms；24 并发 `GET /knowledge`（热）：墙钟 58.6 ms，事件循环 p99 11.1 ms。
 
@@ -48,7 +48,7 @@ yarn studio:baseline
 | `GET /observe/health/obs-0059` | — | 4.4 | 98.0 KB |
 | `GET /observe/skill-trend/baseline-skill-000` | — | 9.6 | 107.1 KB |
 | `GET /api/observe-inbox` | — | 3.6 | 205.2 KB |
-| `GET /observe/inbox` | — | 20.4 | 3.11 MB |
+| `GET /observe/inbox`（已退役） | — | 20.4 | 3.11 MB |
 
 冷 `/api/skills` 期间事件循环 p99 延迟：0.0 ms；24 并发 `GET /knowledge`（热）：墙钟 233 ms，事件循环 p99 19.2 ms。
 
@@ -63,14 +63,14 @@ yarn studio:baseline
 | `GET /observe/health/obs-0199` | — | 13.5 | 215.3 KB |
 | `GET /observe/skill-trend/baseline-skill-000` | — | 44.2 | 266.0 KB |
 | `GET /api/observe-inbox` | — | 26.5 | 2.01 MB |
-| `GET /observe/inbox` | — | 132 | 17.03 MB |
+| `GET /observe/inbox`（已退役） | — | 132 | 17.03 MB |
 
 冷 `/api/skills` 期间事件循环 p99 延迟：11.5 ms；24 并发 `GET /knowledge`（热）：墙钟 1031 ms，事件循环 p99 48.4 ms。
 
 ## 结论与决策
 
 1. **`querySkillTrend` 是实测确认的 O(N²) 热点——已修复。** 原实现先 listAnalyses 全量解析所有 observe-health 报告，再逐条 loadAnalysis 重新扫描目录各读一次。实测热请求：10.5 ms（small）/ 215 ms（medium）/ 2344 ms（large）。修复后单遍扫描、每份报告只解析一次，语义不变（live 优先、卡片按 id 去重、最旧在前）。同条件复测：3.7 / 9.6 / 44.2 ms，large 档提升 53 倍。这是基线证实为必要的唯一优化；它是算法修复，不是新增缓存层。
-2. **响应体积随规模线性增长；暂不引入服务端分页。** `/observe/inbox` 在三档下分别为 0.7 / 3.1 / 17 MB，`/api/skills` 为 24 KB / 633 KB / 5.9 MB。Studio 是本地单用户工具，这些体积下的传输已包含在上表热耗时内，因此记录取舍而不行动：旧 HTML inbox 页面将在剩余 Next.js 迁移批次退役，分页／可视区域渲染在该批次随真实入口决定，不为即将替换的页面新增机制。
+2. **响应体积随规模线性增长；暂不引入服务端分页。** `/observe/inbox` 在三档下分别为 0.7 / 3.1 / 17 MB，`/api/skills` 为 24 KB / 633 KB / 5.9 MB。Studio 是本地单用户工具，这些体积下的传输已包含在上表热耗时内，因此记录取舍而不行动。旧 HTML inbox 页面已在 #839 收口批次退役：表中三行 `/observe/inbox` 是退役前的测量，`yarn studio:baseline` 不再采集该路由，因此与重跑结果不可比。React 收件箱的分页／可视区域渲染按它自己的真实入口另行决定，不沿用已退役页面的口径。
 3. **同步文件系统操作在该规模下可接受。** large 档 24 并发下事件循环 p99 ≤ 48.4 ms，冷索引构建 ≤ 11.5 ms。不引入异步 I/O 改写或 worker 卸载；若未来宿主改变并发模型，以本页数值为参照再评估。
 4. **缓存指纹成本有界且可接受。** `/api/skills` 热耗时包含逐请求的元数据指纹重算（约 10 / 80 / 260 次文件 stat）与对缓存索引的 `structuredClone`。100 skill 时 54.5 ms 热耗时不足以证明文件监听或增量失效机制；有界 keyed LRU（容量 8）仍是全部机制，不引入无界 `Map<fingerprint, entry>`。此项同时闭环缓存批次遗留的「先测量元数据扫描成本再决定失效机制」。
 5. **冷启动即一次全量扫描。** 三档分别为 33.7 / 30.5 / 137 ms——首个请求支付目录扫描与索引构建，后续请求复用。可接受，不加预热。

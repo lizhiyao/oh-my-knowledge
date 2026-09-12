@@ -64,9 +64,10 @@ describe('Studio observation routes', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('serves the canonical inbox page without old page aliases and preserves the API contract', async () => {
+  it('keeps the inbox API contract while the page moved to the Next host', async () => {
+    // 收口后 /observe/inbox 页面由 Next 宿主渲染；report-server 层不再回落 HTML 页面。
     const page = await request(`${baseUrl}/observe/inbox?skill=audit`);
-    assert.equal(page.status, 200);
+    assert.equal(page.status, 404);
 
     const items = await request(`${baseUrl}/api/observe-inbox?severity=high&limit=1`);
     assert.equal(items.status, 200);
