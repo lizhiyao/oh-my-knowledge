@@ -2,6 +2,7 @@ import { ownRecordValue } from '../../shared/record-count.js';
 import type { TraceSourceKind } from '../contracts/trace.js';
 import type { ObservationInboxItem } from '../contracts/inbox.js';
 import type { ObservationInboxViewModel } from './view-model.js';
+import { signalEvidenceConclusion } from './signal-semantics.js';
 
 /**
  * Skill 观测看板的聚合逻辑（宿主无关纯函数，#839 批次 2）。
@@ -139,4 +140,123 @@ export function buildObservationSkillRollups(model: SkillRollupModel): Observati
     if (bRisk !== aRisk) return bRisk - aRisk;
     return b.invocationCount - a.invocationCount;
   });
+}
+
+/** Reviewer 待办建议项（由看板聚合派生，#839 批次 5）。 */
+export interface ReviewActionItem {
+  readonly skillName: string;
+  readonly priority: 'P0' | 'P1' | 'P2' | 'P3';
+  readonly tone: SkillReviewTone;
+  readonly action: string;
+  readonly reason: string;
+  readonly evidenceCount: number;
+  readonly sample: string;
+}
+
+const ACTION_PRIORITY_RANK: Record<string, number> = { P0: 4, P1: 3, P2: 2, P3: 1 };
+
+interface ActionText {
+  readonly action: { readonly zh: string; readonly en: string };
+  readonly reason: { readonly zh: string; readonly en: string };
+}
+
+const ACTION_TEXT: Record<'high' | 'repeated' | 'low' | 'noise' | 'empty', ActionText> = {
+  high: {
+    action: { zh: '先看这个 skill 是否漏写了关键信息', en: 'Check whether this skill is missing key information' },
+    reason: {
+      zh: '有高风险记录：agent 查找失败后，没有看到它在同一轮里找到替代结果，或回答里明确暴露了缺口。',
+      en: 'High-risk findings: the agent failed to find something and no same-turn alternative appeared, or the answer exposed a gap.',
+    },
+  },
+  repeated: {
+    action: { zh: '看是否要补一段“推荐查找路径”', en: 'Consider adding a recommended lookup path' },
+    reason: {
+      zh: 'agent 在这个 skill 运行时反复试目录或路径，共 {count} 次。单次不用改，但反复出现可能说明 skill 没告诉它该优先看哪里。',
+      en: 'The agent repeatedly probed directories or paths in this skill ({count} times). Once is fine, but repetition suggests the skill does not say where to look first.',
+    },
+  },
+  low: {
+    action: { zh: '抽几条看看是否真的影响使用', en: 'Sample a few entries to see whether they affect usage' },
+    reason: {
+      zh: '当前主要是低风险记录：可能只是 agent 正常探索路径，或回答里出现了不确定表达。先看样例，不要直接改 skill。',
+      en: 'Mostly low-risk findings: possibly normal path exploration or hedging. Sample first; do not change the skill directly.',
+    },
+  },
+  noise: {
+    action: { zh: '暂时不用改 skill', en: 'No skill change needed for now' },
+    reason: {
+      zh: '当前只有文件不存在、权限、文件过大或工具执行失败这类记录。它们更像运行环境或工具限制，默认不作为 skill 修改依据。',
+      en: 'Only missing files, permissions, oversized files, or tool failures. These look like environment or tool limits, not skill content issues.',
+    },
+  },
+  empty: {
+    action: { zh: '打开明细看 1-2 条证据', en: 'Open the details and check 1-2 evidence entries' },
+    reason: {
+      zh: '这类记录说明运行中出现过异常信号，但现在还不能直接判断 skill 需要修改。',
+      en: 'These records show abnormal signals during runs, but they do not yet prove the skill needs a change.',
+    },
+  },
+};
+
+/**
+ * 从看板聚合派生 Reviewer 待办建议（与历史 HTML 版优先级判定一致）：
+ * 高风险 → P0；低风险累计 3 次以上 → P1；有低/不确定 → P2；仅噪声 → P3。
+ */
+export function buildReviewActionItems(
+  model: SkillRollupModel,
+  lang: 'zh' | 'en' = 'zh',
+): ReviewActionItem[] {
+  const rollups = buildObservationSkillRollups(model);
+  const itemsBySkill = model.allItems.reduce((map, item) => {
+    const existing = map.get(item.skillName) ?? [];
+    existing.push(item);
+    map.set(item.skillName, existing);
+    return map;
+  }, new Map<string, ObservationInboxItem[]>());
+  return rollups
+    .filter((row) => row.observationCount > 0)
+    .map((row) => {
+      const groupItems = itemsBySkill.get(row.skillName) ?? [];
+      const repeatedMedium = groupItems
+        .filter((item) => item.severity === 'medium')
+        .reduce((sum, item) => sum + item.occurrences, 0);
+      const noiseCount = groupItems
+        .filter((item) => item.severity === 'noise')
+        .reduce((sum, item) => sum + item.occurrences, 0);
+      let priority: ReviewActionItem['priority'] = 'P2';
+      let tone: SkillReviewTone = 'neutral';
+      let text = ACTION_TEXT.empty;
+      if (row.counts.high > 0) {
+        priority = 'P0';
+        tone = 'error';
+        text = ACTION_TEXT.high;
+      } else if (repeatedMedium >= 3) {
+        priority = 'P1';
+        tone = 'warning';
+        text = ACTION_TEXT.repeated;
+      } else if (row.counts.medium > 0 || row.counts.low > 0) {
+        priority = 'P2';
+        tone = 'warning';
+        text = ACTION_TEXT.low;
+      } else if (noiseCount > 0) {
+        priority = 'P3';
+        tone = 'neutral';
+        text = ACTION_TEXT.noise;
+      }
+      const topItem = groupItems[0];
+      return {
+        skillName: row.skillName,
+        priority,
+        tone,
+        action: text.action[lang],
+        reason: text.reason[lang].replace('{count}', String(repeatedMedium)),
+        evidenceCount: groupItems.reduce((sum, item) => sum + item.occurrences, 0),
+        sample: topItem ? signalEvidenceConclusion(topItem, lang) : '',
+      };
+    })
+    .sort((a, b) => {
+      const byPriority = (ACTION_PRIORITY_RANK[b.priority] ?? 0) - (ACTION_PRIORITY_RANK[a.priority] ?? 0);
+      if (byPriority !== 0) return byPriority;
+      return b.evidenceCount - a.evidenceCount;
+    });
 }
