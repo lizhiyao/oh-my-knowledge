@@ -1,3 +1,5 @@
+import { projectAnthropicApiInput } from './input.js';
+import { STATELESS_API_SAMPLE_INPUT_POLICY } from '../shared/sample-input.js';
 import { z } from 'zod';
 import {
   RuntimeIdentitySchema,
@@ -191,7 +193,8 @@ function identityManifest(
     facetId: 'adapter.input-projection',
     value: {
       directoryEntrypoint: 'SKILL.md',
-      promptTransport: 'messages-user-text',
+      authoredInput: STATELESS_API_SAMPLE_INPUT_POLICY,
+      promptTransport: 'messages-text-or-native-history',
       supportingFiles: 'canonical-user-envelope',
       systemInstructions: 'top-level-system',
       version: RESOURCE_PROFILE.promptSchemaVersion,
@@ -274,11 +277,9 @@ function requestBody(
   return JSON.stringify({
     model: target.binding.qualification.model,
     max_tokens: policy.maxOutputTokens,
-    messages: [{ role: 'user', content: trialState.prompt }],
+    ...projectAnthropicApiInput(runState, trialState),
     stream: false,
-    ...(runState.systemInstructions === undefined
-      ? {}
-      : { system: runState.systemInstructions }),
+
     ...(target.binding.qualification.effort === undefined
       ? {}
       : { output_config: { effort: target.binding.qualification.effort } }),

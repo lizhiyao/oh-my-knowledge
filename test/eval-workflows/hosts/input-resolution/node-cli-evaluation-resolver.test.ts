@@ -96,6 +96,15 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
 }
 
 describe('resolveNodeCliEvaluationRequest', () => {
+  it.each(['claude', 'codex', 'claude-sdk', 'codex-sdk'])('rejects native history for text-only %s before compilation', async (executor) => {
+    const root = await fixture('unsupported-history');
+    await writeFile(join(root, 'samples.json'), sampleSetJson([{ sample_id: 'history',
+      input: { inputKind: 'messages', interactionMode: 'history', messages: [{ messageId: 'u', role: 'user', content: 'Hello.' }] },
+    }]));
+    await expect(resolveNodeCliEvaluationRequest(request(root, { executor }), { projectRoot: root, materializationRoot: join(root, 'resolved') }))
+      .rejects.toMatchObject({ code: 'CLI_INPUT_INVALID', fieldPath: 'samples.history.input', message: expect.stringContaining('only text samples') });
+  });
+
   it('preserves the actionable legacy version diagnostic without exposing sample content', async () => {
     const root = await fixture('legacy');
     const raw = JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [{ sample_id: 'old', prompt: 'SECRET_INPUT' }] });

@@ -1,3 +1,4 @@
+import { parseStatelessApiSampleInput, STATELESS_API_SAMPLE_INPUT_POLICY } from './sample-input.js';
 import { z } from 'zod';
 import {
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
@@ -49,10 +50,10 @@ function schemaIdentity(
   profile: StatelessApiProtocolProfile,
   name: 'input' | 'output' | 'trace',
 ): SchemaIdentity {
-  const contractVersion = name === 'trace' ? 'v2' : 'v1';
+  const contractVersion = name === 'output' ? 'v1' : 'v2';
   const schemaVersion = `omk.${profile.providerId}-${name}/${contractVersion}`;
   const descriptor: JsonValue = name === 'input'
-    ? { valueKind: 'json-value' }
+    ? { valueKind: 'json-value', authoredInput: STATELESS_API_SAMPLE_INPUT_POLICY }
     : name === 'output'
       ? { valueKind: 'string' }
       : STATELESS_API_TRACE_SCHEMA_DESCRIPTOR;
@@ -74,7 +75,9 @@ export function createStatelessApiCoreSchemaValidators(
     Object.freeze({
       schema: deepFreezeCanonicalJson(schemaIdentity(profile, 'input')),
       parse(value: unknown): JsonValue {
-        return JsonValueSchema.parse(value);
+        const input = JsonValueSchema.parse(value);
+        parseStatelessApiSampleInput(input);
+        return input;
       },
     }),
     Object.freeze({

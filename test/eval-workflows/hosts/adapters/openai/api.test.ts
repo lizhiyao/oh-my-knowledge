@@ -259,9 +259,12 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
+  input: JsonValue = { question: 'Q' },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
-  const trial = await run.openTrial({
+  let trial: Awaited<ReturnType<typeof run.openTrial>> | undefined;
+  try {
+    trial = await run.openTrial({
     signal: new AbortController().signal,
     sampleId: 'sample-a',
     targetId: 'target-a',
@@ -273,7 +276,7 @@ async function execute(
       mockInterception: { mockInterceptionMode: 'not-required' },
     },
     protocolId: 'omk.invoke/v1',
-    input: { question: 'Q' },
+    input,
     executionContext: { locale: 'zh-CN' },
     targetConfig,
     trialIndex: 0,
@@ -281,19 +284,62 @@ async function execute(
     schedulingBlockId: digest({ block: 'a' }),
     samplingUnitIds: {},
   });
-  try {
     return await trial.execute({
       attemptId: digest({ attempt: 'a' }),
       attemptNumber: 1,
       signal,
     });
   } finally {
-    await trial.dispose();
+    await trial?.dispose();
     await run.dispose();
   }
 }
 
 describe('OpenAI API Core Executor adapter', () => {
+  it('sends native role history, keeping context separate and omitting authored IDs', async () => {
+    const value = await fixture();
+    const input: JsonValue = { inputKind: 'messages', interactionMode: 'history', messages: [
+      { messageId: 's1', role: 'system', content: 'Scenario system instructions.' },
+      { messageId: 'u1', role: 'user', content: '  First question.\n' },
+      { messageId: 'a1', role: 'assistant', content: 'First answer.' },
+      { messageId: 'u2', role: 'user', content: 'Next question.' },
+    ] };
+    await execute(await createAdapter(value), value.target.config as JsonValue, undefined, input);
+    const body = JSON.parse(value.observations.requests[0]!.body);
+    expect(body.input).toEqual([
+      { role: 'system', content: 'Scenario system instructions.' },
+      { role: 'user', content: [{ type: 'input_text', text: expect.stringContaining('"locale":"zh-CN"') }, { type: 'input_text', text: '  First question.\n' }] },
+      { role: 'assistant', content: 'First answer.' },
+      { role: 'user', content: 'Next question.' },
+    ]);
+    expect(body.instructions).toContain('# Knowledge');
+    expect(body).toMatchObject({ store: false, tools: [], tool_choice: 'none', truncation: 'disabled' });
+    expect(JSON.stringify(body)).toContain('omk.stateless-api-history-context/v1');
+    expect(JSON.stringify(body)).not.toContain('messageId');
+    expect(JSON.stringify(body)).not.toContain('evaluationContext');
+  });
+
+  it('rejects oversized history before transport', async () => {
+    const value = await fixture();
+    await expect(execute(await createAdapter(value, { maxRequestBytes: 1024 }), value.target.config as JsonValue, undefined,
+      { inputKind: 'messages', interactionMode: 'history', messages: [{ messageId: 'u', role: 'user', content: 'x'.repeat(2048) }] }))
+      .rejects.toThrow(/input limit/);
+    expect(value.observations.requests).toHaveLength(0);
+  });
+
+  it('rejects tool history before transport', async () => {
+    const value = await fixture();
+    const input: JsonValue = { inputKind: 'messages', interactionMode: 'history', messages: [
+      { messageId: 'u1', role: 'user', content: 'Use the tool.' },
+      { messageId: 'a1', role: 'assistant', content: '', toolCalls: [{ toolCallId: 'c1', name: 'read', arguments: {} }] },
+      { messageId: 't1', role: 'tool', toolCallId: 'c1', content: 'result' },
+      { messageId: 'u2', role: 'user', content: 'Continue.' },
+    ] };
+    await expect(execute(await createAdapter(value), value.target.config as JsonValue, undefined, input))
+      .rejects.toThrow(/tool calls/);
+    expect(value.observations.requests).toHaveLength(0);
+  });
+
   it('advertises trace v2 and keeps stateless provider constraints fail-closed', () => {
     const traceValidator = createOpenAIApiCoreSchemaValidators().find(
       (validator) => validator.schema.schemaVersion === 'omk.openai-api-trace/v2',
@@ -335,7 +381,7 @@ describe('OpenAI API Core Executor adapter', () => {
     expect(JSON.stringify(relocated.identity)).not.toMatch(/proxy\.example|org-sensitive|proj-sensitive/);
     expect(first.identity).toMatchObject({
       implementationId: 'test.omk.openai-api/v1',
-      version: '1.2.0',
+      version: '1.3.0',
       fingerprintBasis: 'opaque',
       assuranceLevel: 'unknown',
       capabilities: {
@@ -592,7 +638,7 @@ describe('OpenAI API Core Executor adapter', () => {
     });
   });
 
-  it('forwards cancellation to the transport and waits for settlement', async () => {
+  it('forwards native-history cancellation to the transport and waits for settlement', async () => {
     let started = false;
     let settled = false;
     const value = await fixture({
@@ -609,6 +655,7 @@ describe('OpenAI API Core Executor adapter', () => {
       await createAdapter(value),
       value.target.config as JsonValue,
       controller.signal,
+      { inputKind: 'messages', interactionMode: 'history', messages: [{ messageId: 'u', role: 'user', content: 'Cancel this task.' }] },
     );
     await expect.poll(() => started).toBe(true);
     controller.abort();
