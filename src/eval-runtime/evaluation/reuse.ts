@@ -357,11 +357,12 @@ export async function scoreExecutedEvaluation(
   executed: ExecutedEvaluation,
   options?: Readonly<EvaluationRunOptions>,
 ): Promise<EvaluationResult> {
+  const captured = captureRunOptions(options);
   const prepared = corePreparedCapability(await prepareEvaluation(input));
   return runSuffixStages(
     prepared,
     { execution: admitExecutedEvaluationStage(prepared, executed) },
-    captureRunOptions(options),
+    captured,
     'Evaluation stage scoring',
   );
 }

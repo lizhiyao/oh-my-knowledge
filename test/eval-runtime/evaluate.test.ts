@@ -14,6 +14,7 @@ import {
   scoreExecutedEvaluation,
   type Clock,
   type CustomEvaluator,
+  type EventObserver,
   type Executor,
   type Evaluator,
   type RubricJudgeEvaluator,
@@ -965,6 +966,35 @@ describe('canonical eval-runtime API', () => {
 
     const result = await pending;
     expect(result.runId).toBe('captured-run-options');
+
+    // The staged score entry also prepares before it runs, so run identity and event sinks must
+    // bind at entry: a host that recycles one options object across scored versions cannot
+    // misroute this Run's identity, cancellation or event delivery.
+    const declaration = pairedInput();
+    const executed = await executeEvaluation(declaration, {
+      runId: 'staged-capture-source',
+      clock: fixedClock,
+    });
+    const capturedEvents: number[] = [];
+    const lateEvents: number[] = [];
+    const scoreOptions: { runId: string; clock: Clock; onEvent: EventObserver } = {
+      runId: 'captured-score-run-options',
+      clock: fixedClock,
+      onEvent: (event) => {
+        capturedEvents.push(event.sequence);
+      },
+    };
+    const pendingScore = scoreExecutedEvaluation(declaration, executed, scoreOptions);
+    scoreOptions.runId = 'mutated-score-run-options';
+    scoreOptions.onEvent = (event) => {
+      lateEvents.push(event.sequence);
+    };
+
+    const scored = await pendingScore;
+    expect(scored.status).toBe('completed');
+    expect(scored.runId).toBe('captured-score-run-options');
+    expect(capturedEvents.length).toBeGreaterThan(0);
+    expect(lateEvents).toEqual([]);
   });
 
   it('strictly separates declaration fields from run options before Target calls', async () => {

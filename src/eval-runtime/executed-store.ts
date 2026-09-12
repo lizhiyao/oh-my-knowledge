@@ -328,7 +328,9 @@ export async function loadExecutedEvaluation(
   }
   let bundle: ExecutionBundle;
   try {
-    bundle = parseExecutionBundleDocument(stored.data.bundle);
+    // Zod parsing yields a fresh mutable object that the handle and the WeakMap state both share:
+    // freeze it before either is exposed, or an in-place edit corrupts this same envelope.
+    bundle = deepFreezeCanonicalJson(parseExecutionBundleDocument(stored.data.bundle));
   } catch {
     return failure('EVAL_RUNTIME_EXECUTED_CONTENT_INVALID', 'ExecutionBundle 未通过 canonical 校验。');
   }

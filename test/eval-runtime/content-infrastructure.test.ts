@@ -716,6 +716,50 @@ describe('eval-runtime executed evaluation store', () => {
     expect(sourceCalls).toEqual(['execute']);
   });
 
+  it('keeps one loaded envelope immutable against an in-place consumer', async () => {
+    const ports = inMemoryContentPorts();
+    const executed = await executeEvaluation(evaluationInput(), {
+      runId: 'staged-store-freeze-source',
+    });
+    const reference = await saveExecutedEvaluation({
+      executed,
+      store: ports.contentStore,
+    });
+    const loaded = await reload(ports, structuredClone(reference), executed);
+
+    expect(Object.isFrozen(loaded.bundle)).toBe(true);
+    expect(Object.isFrozen(loaded.bundle.records)).toBe(true);
+    const writable = loaded.bundle as unknown as {
+      records: Array<{ output?: { value?: unknown } }>;
+    };
+    const nestedOutput = writable.records[0]?.output;
+    expect(nestedOutput).toBeDefined();
+    expect(Object.isFrozen(nestedOutput)).toBe(true);
+
+    // Zod parsing used to hand back a mutable bundle shared by the handle and its WeakMap state, so
+    // an in-place tidy-up persisted unrecoverable evidence while still returning a descriptor.
+    expect(() => {
+      (nestedOutput as { value: unknown }).value = 'sanitised in place';
+    }).toThrow(TypeError);
+
+    const targetCalls: string[] = [];
+    const changed = evaluationInput({}, undefined, targetCalls);
+    changed.dataset.samples[0].expected = 'different';
+    const scored = await scoreExecutedEvaluation(changed, loaded, {
+      runId: 'staged-store-freeze-scored',
+    });
+
+    expect(scored.status).toBe('completed');
+    expect(scored.artifacts?.execution?.bundleDigest).toBe(executed.bundle.bundleDigest);
+    expect(targetCalls).toEqual([]);
+
+    const resaved = await saveExecutedEvaluation({ executed: loaded, store: ports.contentStore });
+    expect(resaved.digest).toBe(reference.digest);
+    expect((await reload(ports, structuredClone(resaved), executed)).bundle).toEqual(
+      executed.bundle,
+    );
+  });
+
   it('keeps a host attestation from upgrading what an unverified envelope may claim', async () => {
     const ports = inMemoryContentPorts();
     const executed = await executeEvaluation(evaluationInput(), {
