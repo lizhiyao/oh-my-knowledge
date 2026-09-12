@@ -212,6 +212,14 @@ function filterReportBySkill(report: ObservationInboxReport, skillName?: string)
 
 export { severityReasonFor } from './index.js';
 export {
+  signalEvidenceConclusion,
+  signalRuleDescription,
+  signalSemanticEvidence,
+  signalSeverityMeta,
+  signalSourceMeta,
+} from './signal-semantics.js';
+export type { SignalSeverityMeta, SignalSeverityTone, SignalSourceMeta } from './signal-semantics.js';
+export {
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
 } from './review-state.js';

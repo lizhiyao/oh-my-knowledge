@@ -1,22 +1,28 @@
 import type { Lang } from '../../../shared/language.js';
-import { severityReasonFor } from '../../../observability/inbox/view-model.js';
 import type { ObservationInboxItem } from '../../../observability/inbox/view-model.js';
+import {
+  signalEvidenceConclusion,
+  signalRuleDescription as describeSignalRule,
+  signalSemanticEvidence,
+  signalSeverityMeta,
+  signalSourceMeta,
+  type SignalSeverityTone,
+} from '../../../observability/inbox/view-model.js';
 import { e } from '../layout.js';
 
 export type ObservationSignalRenderers = ReturnType<typeof createObservationSignalRenderers>;
 
+const SEVERITY_COLORS: Record<SignalSeverityTone, { color: string; bg: string }> = {
+  error: { color: 'var(--red)', bg: 'rgba(220,38,38,.08)' },
+  warning: { color: 'var(--yellow)', bg: 'rgba(202,138,4,.10)' },
+  info: { color: 'var(--accent)', bg: 'rgba(37,99,235,.08)' },
+  neutral: { color: 'var(--text-muted)', bg: 'var(--bg-muted)' },
+};
+
 export function createObservationSignalRenderers(lang: Lang) {
   const reviewSeverityMeta = (item: ObservationInboxItem): { label: string; decision: string; color: string; bg: string } => {
-    if (item.severity === 'high') {
-      return { label: '高风险/需关注', decision: '优先看，可能要补 SKILL.md 或改 skill 说明', color: 'var(--red)', bg: 'rgba(220,38,38,.08)' };
-    }
-    if (item.severity === 'medium') {
-      return { label: '低风险/抽样确认', decision: '通常不需要改 skill；抽样确认是否反复浪费时间', color: 'var(--yellow)', bg: 'rgba(202,138,4,.10)' };
-    }
-    if (item.severity === 'low') {
-      return { label: '不确定/低优先级', decision: '模型只是说不确定，不一定需要改 skill', color: 'var(--accent)', bg: 'rgba(37,99,235,.08)' };
-    }
-    return { label: '无异常/无需改 skill', decision: '更像路径、权限、文件太大或工具限制；先不当成 skill 内容缺失', color: 'var(--text-muted)', bg: 'var(--bg-muted)' };
+    const meta = signalSeverityMeta(item.severity);
+    return { label: meta.label, decision: meta.decision, ...SEVERITY_COLORS[meta.tone] };
   };
   const renderSeverityBadge = (item: ObservationInboxItem): string => {
     const meta = reviewSeverityMeta(item);
@@ -25,32 +31,8 @@ export function createObservationSignalRenderers(lang: Lang) {
       <span style="color:var(--text-muted);font-size:11px">${e(meta.decision)}</span>
     </div>`;
   };
-  const semanticEvidence = (item: ObservationInboxItem): string => {
-    const tool = item.evidence.tool || 'Tool';
-    const target = item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || '';
-    if (item.signalSubtype === 'tool_limit') return `${tool} 触发工具限制：${item.evidence.outputSnippet || target}`;
-    if (item.signalSubtype === 'transient_file_missing') return `${tool} 访问了临时文件但文件不存在：${item.evidence.path || target}`;
-    if (item.signalSubtype === 'skill_asset_read_failed') return `${tool} 读取该 skill 自身资源失败：${item.evidence.path || target}`;
-    if (item.signalSubtype === 'not_found') return `${tool} 访问了不存在的路径：${item.evidence.path || target}`;
-    if (item.signalSubtype === 'permission_denied') return `${tool} 被权限拒绝：${item.evidence.path || target}`;
-    if (item.signalSubtype === 'bash_probe') return `skill 运行过程中，agent 调用了一条 Bash 命令：${item.evidence.query || target}`;
-    if (item.signalSubtype === 'hard_miss') return `${tool} 未命中且后续未找到同主题成功证据：${target}`;
-    if (item.signalSubtype === 'exploratory_miss') return `${tool} 前序未命中，但后续有成功搜索证据：${target}`;
-    return target || item.evidence.outputSnippet || '';
-  };
-  const evidenceConclusion = (item: ObservationInboxItem): string => {
-    if (item.signalSubtype === 'bash_probe') return 'skill 运行过程中，agent 调用了一条 Bash 命令。';
-    if (item.signalSubtype === 'tool_limit') return `${item.evidence.tool || '工具'} 触发了文件太长、token 或超时限制。`;
-    if (item.signalSubtype === 'transient_file_missing') return `${item.evidence.tool || '工具'} 访问了临时文件，但文件不存在。`;
-    if (item.signalSubtype === 'skill_asset_read_failed') return `${item.evidence.tool || '工具'} 读取该 skill 自身资源失败。`;
-    if (item.signalSubtype === 'not_found') return `${item.evidence.tool || '工具'} 访问了不存在的路径。`;
-    if (item.signalSubtype === 'permission_denied') return `${item.evidence.tool || '工具'} 被权限拒绝。`;
-    if (item.signalSubtype === 'hard_miss') return `${item.evidence.tool || '工具'} 没有拿到有效结果，后续也没有看到同主题成功证据。`;
-    if (item.signalSubtype === 'exploratory_miss') return `${item.evidence.tool || '工具'} 前面没有拿到结果，但后续找到了相关内容。`;
-    if (item.signalType === 'hedging') return '模型文本里出现了不确定表达。';
-    if (item.signalType === 'explicit_marker') return '模型文本里出现了显式标记。';
-    return semanticEvidence(item);
-  };
+  const semanticEvidence = (item: ObservationInboxItem): string => signalSemanticEvidence(item);
+  const evidenceConclusion = (item: ObservationInboxItem): string => signalEvidenceConclusion(item);
   const evidenceQuote = (item: ObservationInboxItem): string => {
     return item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || item.evidence.outputSnippet || '';
   };
@@ -81,12 +63,8 @@ export function createObservationSignalRenderers(lang: Lang) {
       ${quote ? `<code style="display:block;margin-top:5px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.45;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--bg-muted);padding:4px 6px;border-radius:4px">${e(quote.slice(0, max))}</code>` : ''}
     </div>`;
   };
-  const signalRuleDescription = (item: ObservationInboxItem): string => {
-    const reason = severityReasonFor(item, lang);
-    const meta = reviewSeverityMeta(item);
-    const prefix = `${meta.label}: ${item.signalType}/${item.signalSubtype}, confidence=${item.confidence.toFixed(2)}.`;
-    return `${prefix} ${reason}`;
-  };
+  const signalRuleDescription = (item: ObservationInboxItem): string =>
+    describeSignalRule(item, lang);
   const renderSignalLabel = (item: ObservationInboxItem): string => {
     const desc = signalRuleDescription(item);
     return `<span style="position:relative;display:inline-flex;align-items:center;gap:4px;overflow:visible">
@@ -102,8 +80,17 @@ export function createObservationSignalRenderers(lang: Lang) {
     </div>`;
   };
   const renderSourceBadge = (item: ObservationInboxItem): string => {
-    const label = item.sourceKind === 'dsh' ? 'DeepSeek Harness' : item.sourceKind === 'openclaw' ? 'OpenClaw' : item.sourceKind === 'codex' ? 'Codex' : item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
-    const color = item.sourceKind === 'dsh' ? '#0f766e' : item.sourceKind === 'openclaw' ? '#7c3aed' : item.sourceKind === 'codex' ? '#1677ff' : item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
+    const meta = signalSourceMeta(item.sourceKind);
+    const colors: Record<string, string> = {
+      teal: '#0f766e',
+      purple: '#7c3aed',
+      geekblue: '#1677ff',
+      green: 'var(--green)',
+      blue: 'var(--accent)',
+      neutral: 'var(--text-muted)',
+    };
+    const label = meta.label;
+    const color = colors[meta.tone];
     return `<span title="调用日志来源：${e(label)}" style="display:inline-flex;margin-top:4px;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:${color};font-size:11px;font-weight:650">${e(label)}</span>`;
   };
   return {
