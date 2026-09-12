@@ -23,9 +23,9 @@ Use one common envelope with versioned input/evidence contracts, rather than sep
 
 Baseline: `03eb64d1954a510b3931434ed232d79f4421ea2d`.
 
-The v2 user contract in `src/eval-workflows/inputs/contracts/sample.ts` requires a string prompt. `measurement-design.ts` renders context in a code fence and prepends prompt-only environment descriptions. Core's `EvaluationSampleSchema` already separates arbitrary JSON input, executionContext, expected, and evaluationContext. The custom-command adapter accepts JSON input/output/trace and excludes expected/evaluationContext from execution requests; it advertises invoke, not interactive session support.
+The v2 user contract in `src/eval-workflows/inputs/contracts/sample.ts` requires a string prompt. `measurement-design.ts` renders context in a code fence and prepends prompt-only environment descriptions. Core's `EvaluationSampleSchema` already separates arbitrary JSON input, executionContext, expected, and evaluationContext. The custom-executor adapter accepts JSON input/output/trace and excludes expected/evaluationContext from execution requests; it advertises invoke, not interactive session support.
 
-Baseline verification: `yarn vitest run test/eval-core/conformance/targets.test.ts test/eval-workflows/hosts/adapters/custom/command.test.ts test/eval-workflows/input-compilation/compile.test.ts` passed 68 tests across three files on 2026-09-13 in an isolated worktree, without model calls. Existing conformance fixtures prove lifecycle contracts, not representative application capabilities.
+Baseline verification: `yarn vitest run test/eval-core/conformance/targets.test.ts test/eval-workflows/hosts/adapters/custom/executor.test.ts test/eval-workflows/input-compilation/compile.test.ts` passed 68 tests across three files on 2026-09-13 in an isolated worktree, without model calls. Existing conformance fixtures prove lifecycle contracts, not representative application capabilities.
 
 ## Representative probes to implement
 
@@ -83,7 +83,7 @@ Native means the layer already has a direct contract. Adapted means a test-local
 | RAG ranking/citations | No structured graded relevance/citation fields; context is text | Adapted retrieval over frozen corpus; actual ranking | Exact fixture ranking/citation scoring, not semantic RAG validity |
 | History and inventory tool | No native message input field | Adapted history interpretation and file-backed lookup | Actual arguments/results scored; not online conversation simulation |
 | Workflow states | No node-state expectations; covers is not an assertion | Adapted file-backed state transitions | Approved/rejected/manual-review and corrupted outcomes; absent output stays nonconclusive |
-| Gold isolation | Existing assertion/rubric compilation | Four executor contexts exclude expected/evaluationContext and gold markers | Expected is evaluator-bound; baseline custom-command tests cover process request boundary |
+| Gold isolation | Existing assertion/rubric compilation | Four executor contexts exclude expected/evaluationContext and gold markers | Expected is evaluator-bound; baseline custom-executor tests cover process request boundary |
 | Interactive sessions, multimodality, production databases | No support inferred here | Not validated in this work | Require dedicated adapters/evidence, not schema acceptance |
 
 Reproduce with [historical probe at d7088ca7](https://github.com/lizhiyao/oh-my-knowledge/blob/d7088ca73574ee18ef85e71250d77d93b231646a/test/eval-workflows/general-sample-proposal.test.ts). The four minimal samples and executable logic are colocated in that test file, using existing Core samples rather than an unpublished v3 loader. Runs are local/offline, with isolated per-trial directories and no network, credentials, or model calls. Actual Core analysis/report materialization runs; complete results are serialized and revalidated. Runtime identities and analysis policies belong to the conformance fixture, not registered production instruments. Its verdict is not evidence of model improvement or release eligibility.

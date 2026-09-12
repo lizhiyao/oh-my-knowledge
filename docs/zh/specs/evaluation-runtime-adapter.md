@@ -54,7 +54,7 @@ Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Samplin
 
 Assembly 首先复制并深度冻结 Definition、Series 和 RuntimeBindingRequest。Factory 按 `implementationId` 查找，但按 binding 分别调用，因此共享同一实现的两个 reference 仍得到不同 port instance。
 
-`createProductionRuntimeFactoryRegistry()` 是 Codex CLI／SDK、Claude CLI／SDK、OpenAI API、Anthropic API、custom command，以及 OMK 自有 scoring／analysis 实现的唯一生产映射。它先快照化配置并暴露不可变 map view，不调用未使用的 factory。Executor preflight declaration 是必填宿主输入，并与同一配置一起捕获；registry 不伪造 doctor、credential、connectivity、filesystem、MCP 或 mock 检查成功。Node support port 共享一个校验 digest 的 content store 实例，clock 也必须显式传入。
+`createProductionRuntimeFactoryRegistry()` 是 Codex CLI／SDK、Claude CLI／SDK、OpenAI API、Anthropic API、custom executor，以及 OMK 自有 scoring／analysis 实现的唯一生产映射。它先快照化配置并暴露不可变 map view，不调用未使用的 factory。Executor preflight declaration 是必填宿主输入，并与同一配置一起捕获；registry 不伪造 doctor、credential、connectivity、filesystem、MCP 或 mock 检查成功。Node support port 共享一个校验 digest 的 content store 实例，clock 也必须显式传入。
 
 Factory 返回实际 port identity 和 version resolution。Assembly 校验 port 形状与 implementation identity，捕获不可变 identity snapshot，并用原始实例的方法包装 port。Executor binding 还必须与 `TargetDefinition.executionRequirements` 精确相等；qualification 直接复用该 canonical 值，不重新派生 feature 语义。Core preparation resolver 和运行 port 由同一个 entry 投影；后续 registry 或请求对象变化不能造成 split-brain。只有 Core 能把 requirements 与实际 port capability manifest 做匹配。
 
@@ -110,17 +110,17 @@ Core attempt 的 `AbortSignal`、trial seed、Target／Evaluator 配置、已验
 
 Composition root conformance 使用 `test.*` 命名空间下、根据输入和 binding 动态生成结果的实现。它们会经过真实 Core prepare 与 run 路径，但不会被导出或伪装成生产 Executor／Evaluator 算法。
 
-## 七、Custom-command Runtime adapter
+## 七、Custom executor Runtime adapter
 
-`createCustomCommandExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它接受 sealed Target 与 RuntimeBinding、绝对 executable path、显式 argument vector，以及完整且逐项分类的 child environment。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory。它从准确的 sample-scoped Trial control 选择工作目录：需要 workspace 时从已验证快照创建新的 Trial 私有副本，否则创建空的 Trial 私有目录；两者均在 Trial 结束时删除，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
+`createCustomExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它接受 sealed Target 与 RuntimeBinding、绝对 executable path、显式 argument vector，以及完整且逐项分类的 child environment。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory。它从准确的 sample-scoped Trial control 选择工作目录：需要 workspace 时从已验证快照创建新的 Trial 私有副本，否则创建空的 Trial 私有目录；两者均在 Trial 结束时删除，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
 
-每次 attempt 只启动一个进程，并通过 stdin 发送一份 canonical `omk.custom-command-exchange/v1` JSON 文档。文档只包含 Core run／trial／attempt context、准确的 effective execution control、内容寻址的 isolation key，以及当前 Trial 已验证的 resource lease 投影。Resource entry 按 resource ID canonical 排序。自定义 Runtime 实现本身是每个 executor binding 中一项 sensitive、内容寻址的资源；adapter 只启动其 Run 级 immutable snapshot，绝不启动原始 locator。adapter 会拒绝与 sealed Target 不一致的 Trial control，要求 binding lease 精确覆盖，并从 child request 中排除 Runtime 实现及其它 Sample 的全部 workspace。Gold classification 和 analysis-only resource kind 会在创建进程前 fail closed。响应是严格、source-neutral、带版本的文档：成功响应可包含 output／trace 和已报告 usage；结构化失败只暴露稳定 code 与 execution／infrastructure stage。未报告 usage 继续保持缺失；多余字段和非法 JSON fail closed；child stderr 不进入 Core error。
+每次 attempt 只启动一个进程，并通过 stdin 发送一份 canonical `omk.custom-executor-exchange/v1` JSON 文档。文档只包含 Core run／trial／attempt context、准确的 effective execution control、内容寻址的 isolation key，以及当前 Trial 已验证的 resource lease 投影。Resource entry 按 resource ID canonical 排序。自定义 Runtime 实现本身是每个 executor binding 中一项 sensitive、内容寻址的资源；adapter 只启动其 Run 级 immutable snapshot，绝不启动原始 locator。adapter 会拒绝与 sealed Target 不一致的 Trial control，要求 binding lease 精确覆盖，并从 child request 中排除 Runtime 实现及其它 Sample 的全部 workspace。Gold classification 和 analysis-only resource kind 会在创建进程前 fail closed。响应是严格、source-neutral、带版本的文档：成功响应可包含 output／trace 和已报告 usage；结构化失败只暴露稳定 code 与 execution／infrastructure stage。未报告 usage 继续保持缺失；多余字段和非法 JSON fail closed；child stderr 不进入 Core error。
 
 这版 process-per-attempt contract 只支持 `omk.invoke/v1`，不声明 `omk.session/v1`。Session adapter 必须真正持有 per-trial 隔离 session 的生命周期，不能把互相独立的子进程伪装成保留了对话状态。
 
 Adapter 把 Core attempt 的原始 `AbortSignal` 直接交给进程协调器；协调器先发 SIGTERM，再以有界 SIGKILL 兜底，并等待 child 真正 settle。即使 child 捕获 SIGTERM 后以零码退出，取消仍是权威结果。Adapter 不拥有 timeout、retry、budget 或 cache。每条输出流另有显式 byte limit 作为宿主内存保护；该限制进入 Runtime implementation facet，不属于 measurement Policy。
 
-Custom-command identity 采用保守模型。每个 assembly 周期都重新解析，不使用进程级缓存。若宿主明确提供本地实现文件，adapter 会对实际字节计算 hash，记录 canonical role／digest／size 证据，并在每次 spawn 前复核；由于 adapter 无法证明调用方列出的文件覆盖完整，assurance 仍为 `declared`。没有内容证据时，basis 是 `opaque`，assurance 是 `unknown`。Argument、executable path digest、分类后的 environment identity、sample-scoped 工作目录执行方式、输出限制、exchange version、进程组合与 identity coverage 都作为不泄露 secret 的 implementation facet 捕获。因此，command string 或 path 本身绝不可能产生 `verified` identity。Capability 是 factory 持有的固定 manifest，不根据 Target requirement 动态补齐，并且必须诚实声明本 adapter 的 best-effort cancellation 与 per-invocation stateless lifecycle。
+Custom executor identity 采用保守模型。每个 assembly 周期都重新解析，不使用进程级缓存。若宿主明确提供本地实现文件，adapter 会对实际字节计算 hash，记录 canonical role／digest／size 证据，并在每次 spawn 前复核；由于 adapter 无法证明调用方列出的文件覆盖完整，assurance 仍为 `declared`。没有内容证据时，basis 是 `opaque`，assurance 是 `unknown`。Argument、executable path digest、分类后的 environment identity、sample-scoped 工作目录执行方式、输出限制、exchange version、进程组合与 identity coverage 都作为不泄露 secret 的 implementation facet 捕获。因此，command string 或 path 本身绝不可能产生 `verified` identity。Capability 是 factory 持有的固定 manifest，不根据 Target requirement 动态补齐，并且必须诚实声明本 adapter 的 best-effort cancellation 与 per-invocation stateless lifecycle。
 
 ## 八、Codex CLI Runtime adapter
 
@@ -163,13 +163,13 @@ RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 loca
 
 这些只是 acquisition requirement。后续 Verified HostResource lease 层仍须在 port 打开 run 前验证 kind、classification、size、digest、实际字节／目录树、隔离和 exactly-once release。Gold resource 不得出现在 executor 或 evaluator binding requirement 中。
 
-Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。Workspace binding lease 只暴露已验证的只读 base。Codex CLI／SDK、Claude CLI／SDK、DSH 和 custom-command adapter 在每个 Trial 开始时创建私有可写副本，在 Trial 结束时释放；没有绑定 workspace 的 Trial 从空的私有目录开始。同一 Trial 的 attempt 保留目录状态，不同 Trial 和 run 绝不共享可写工作目录。Run 不再分配可写 overlay。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
+Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。Workspace binding lease 只暴露已验证的只读 base。Codex CLI／SDK、Claude CLI／SDK、DSH 和 custom-executor adapter 在每个 Trial 开始时创建私有可写副本，在 Trial 结束时释放；没有绑定 workspace 的 Trial 从空的私有目录开始。同一 Trial 的 attempt 保留目录状态，不同 Trial 和 run 绝不共享可写工作目录。Run 不再分配可写 overlay。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
 
 文件身份是实际消费字节的 SHA-256。目录树身份使用 `omk.tree-sha256/v1`：条目按相对路径排序，并将条目类型、UTF-8 路径、文件大小、executable／non-executable mode 和文件字节纳入 framing。空目录参与身份；symlink 和特殊文件 fail closed。Pinned Git 还会验证精确的 `HEAD` commit 和干净的常规文件 checkout；dirty、untracked、ignored 或 submodule 内容不能冒充 commit 内容。根 `.git` metadata 在 resolve 与 lease 两个阶段的目录树身份中都会被排除。只有 snapshot 的实际 size 和 digest 都与 v2 descriptor 一致才会被接受。Acquisition 失败会清理部分创建的 run root；成功的 lease 暴露同一个幂等 `dispose()` promise，底层只尝试一次清理。
 
 单资源和整个 run 的字节／条目上限约束取得的 snapshot。Trial 副本受已验证 base 的大小限制；这不是 provider 后续新建文件的磁盘配额。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
 
-**BREAKING-COMPARABILITY：** Trial 工作区隔离修正了原先共享 run 目录的行为。Codex CLI／SDK、Claude CLI／SDK 和 DSH adapter implementation version 更新为 `2.0.0`；custom-command 在工作目录 facet 中封存 `trial-private-sealed-snapshot-v2`。新身份将修正后的执行条件与旧报告区分开。要建立可比基线，需要重新评测；不提供恢复旧目录共享行为的兼容模式。本次修正不改变 prompt 字节、评分和统计、Core Schema 或报告存储格式。
+**BREAKING-COMPARABILITY：** Trial 工作区隔离修正了原先共享 run 目录的行为。Codex CLI／SDK、Claude CLI／SDK 和 DSH adapter implementation version 更新为 `2.0.0`；custom-executor 在工作目录 facet 中封存 `trial-private-sealed-snapshot-v2`。新身份将修正后的执行条件与旧报告区分开。要建立可比基线，需要重新评测；不提供恢复旧目录共享行为的兼容模式。本次修正不改变 prompt 字节、评分和统计、Core Schema 或报告存储格式。
 
 Runtime 通过 `createEvaluationExecution()` 持有运行生命周期。接口只接收 Core Definition、MeasurementPolicy、可选运行元数据、显式 engine port，以及可选的宿主 `acquireRun` 回调，不依赖 Workflow／CLI 类型。Prepare 在物理 preflight 前封存 Core Plan；start 获取宿主资源、激活 binding-scoped access，只有获取成功且未取消时才启动 Core。调度、超时、重试和预算仍由 Core 独占。
 

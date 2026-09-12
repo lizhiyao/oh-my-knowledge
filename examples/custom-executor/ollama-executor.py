@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""OMK custom-command exchange v1 adapter for a local Ollama model."""
+"""OMK custom-executor exchange v1 adapter for a local Ollama model."""
 
 import json
 import sys
 import urllib.request
 
-SCHEMA_VERSION = "omk.custom-command-exchange/v1"
+SCHEMA_VERSION = "omk.custom-executor-exchange/v1"
 
 
 def artifact(request):

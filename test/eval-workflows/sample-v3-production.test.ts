@@ -42,7 +42,7 @@ if(input.inputKind==='messages') {
   writeFileSync('state.json',JSON.stringify({status}));
   result=JSON.parse(readFileSync('state.json','utf8'));
 }
-process.stdout.write(JSON.stringify({schemaVersion:'omk.custom-command-exchange/v1',resultStatus:'completed',
+process.stdout.write(JSON.stringify({schemaVersion:'omk.custom-executor-exchange/v1',resultStatus:'completed',
  output:{value:{result},classification:'public'},trace:{value:{isolationChecked:true},classification:'public'}}));
 `;
 
@@ -86,7 +86,7 @@ async function run(mode: 'correct' | 'wrong' | 'missing') {
   return runCoreEvaluationCommand({ prepared });
 }
 
-describe('v3 through the production CLI workflow and custom-command adapter', () => {
+describe('v3 through the production CLI workflow and custom-executor adapter', () => {
   it.each(['correct', 'wrong', 'missing'] as const)('measures four actual offline tasks: %s', async (mode) => {
     const result = await run(mode);
     expect(result.stored).toBeDefined();

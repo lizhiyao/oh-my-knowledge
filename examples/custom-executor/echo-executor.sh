@@ -1,17 +1,19 @@
 #!/bin/sh
-# OMK custom-command exchange v1 的最小确定性实现。
+# OMK custom-executor exchange v1 的最小确定性实现。
 
 python3 -c '
 import json
 import sys
 
 request = json.load(sys.stdin)
+if request.get("schemaVersion") != "omk.custom-executor-exchange/v1":
+    raise ValueError("Unsupported OMK request")
 prompt = request["trial"]["input"]
 if not isinstance(prompt, str):
     raise TypeError("trial.input must be a string")
 
 print(json.dumps({
-    "schemaVersion": "omk.custom-command-exchange/v1",
+    "schemaVersion": "omk.custom-executor-exchange/v1",
     "resultStatus": "completed",
     "output": {
         "value": "Echo: " + prompt,

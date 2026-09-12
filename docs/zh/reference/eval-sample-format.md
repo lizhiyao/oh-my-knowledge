@@ -50,15 +50,15 @@ Beta 阶段**只支持 v3**。v2 和未版本化输入明确报错，不保留�
 | --- | --- | --- | --- |
 | `openai-api`、`anthropic-api` | 支持 | canonical JSON 用户封套 | 原生 system/user/assistant 角色 |
 | `codex`、`codex-sdk`、`claude`、`claude-sdk` | 支持 | 拒绝 | 拒绝 |
-| custom-command | 支持 | 完整输入封套 | 完整输入封套，由应用解释 |
+| custom-executor | 支持 | 完整输入封套 | 完整输入封套，由应用解释 |
 
 API 适配器先按样本 Schema 校验 JSON，再把完整类型封套以 canonical JSON 发送到用户内容。这是明确的文本映射，不是服务商的 JSON 输入通道，也不保证结构化输出。消息历史使用原生角色；支持文件和运行数据作为独立内容块放在第一条 user 消息中。OpenAI 用 `instructions` 承载知识载体，样本 system 内容保留为原生系统消息；Anthropic 将知识载体与样本系统消息依次放入顶层 `system` 内容块。消息 ID 保留在 OMK 证据中，不冒充服务商消息 ID。
 
-API 历史要求内容非空，可有前置 system 消息，随后 user/assistant 交替，并以 user 开始和结束。工具调用历史、assistant 预填和其他序列在请求前被拒绝；这些应用协议使用 custom-command。输入历史是题设，不是本轮执行证据，输出轨迹只记录新生成的一轮。不启用工具、远端会话状态或用户模拟器。
+API 历史要求内容非空，可有前置 system 消息，随后 user/assistant 交替，并以 user 开始和结束。工具调用历史、assistant 预填和其他序列在请求前被拒绝；这些应用协议使用 custom-executor。输入历史是题设，不是本轮执行证据，输出轨迹只记录新生成的一轮。不启用工具、远端会话状态或用户模拟器。
 
 API adapter identity 升级到 1.3.0，输入 Schema 升级到 v2，支持的映射策略计入指纹。原有 Core 原始 JSON 和文本渲染继续支持；Core 对象一旦声明 `inputKind`，就采用样本输入校验。更换适配器身份后应建立新比较序列，样本文件仍为 v3。供应商映射依据 [Responses](https://developers.openai.com/api/reference/typescript/resources/responses/methods/create) 和 [Messages](https://platform.claude.com/docs/en/api/messages/create) 官方协议。
 
-custom-command 的 `omk.custom-command-exchange/v1` 请求收到完整结构化输入封套和 `trial.executionContext`。所有执行器请求均不包含标准答案和评分上下文。
+custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构化输入封套和 `trial.executionContext`。所有执行器请求均不包含标准答案和评分上下文。
 
 ## 结构化检查
 

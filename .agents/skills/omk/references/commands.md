@@ -672,7 +672,7 @@ omk studio --port 8080 --no-open
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `sampleId` | 是 | 唯一标识 |
-| `input` | 是 | 文本、结构化 JSON 或消息历史；API 执行器支持 JSON 和普通角色历史；工具历史使用 custom-command |
+| `input` | 是 | 文本、结构化 JSON 或消息历史；API 执行器支持 JSON 和普通角色历史；工具历史使用 custom-executor |
 | `executionContext` | 否 | `cwd`、工具控制、mocks、题设 environment 和应用 `data` |
 | `expected` | 否 | 仅供评分器使用的参考结果 |
 | `evaluationContext` | 否 | `rubric`、`assertions`、评分 `reference`、结构化 `checks` |

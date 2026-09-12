@@ -210,10 +210,10 @@ async function resolveTargetRuntime(
     resourceKind: 'runtime-implementation',
     path: executablePath,
     classification: 'sensitive',
-    mediaType: 'application/vnd.omk.custom-command-runtime',
+    mediaType: 'application/vnd.omk.custom-executor-runtime',
     lineage: {
-      lineageKind: 'custom-command-runtime',
-      exchangeSchemaVersion: 'omk.custom-command-exchange/v1',
+      lineageKind: 'custom-executor-runtime',
+      exchangeSchemaVersion: 'omk.custom-executor-exchange/v1',
     },
   }).catch((cause: unknown) => {
     if (!(cause instanceof CliEvaluationInputError)
@@ -227,7 +227,7 @@ async function resolveTargetRuntime(
     });
   });
   return {
-    implementationId: `custom-command-${descriptor.digest.slice('sha256:'.length)}`,
+    implementationId: `custom-executor-${descriptor.digest.slice('sha256:'.length)}`,
     implementationResource: descriptor,
   };
 }
@@ -982,7 +982,7 @@ export async function resolveNodeCliEvaluationRequest(
         }
       } else if (sample.input.inputKind !== 'text') {
         return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${sample.sample_id}.input`,
-          message: 'This executor supports only text samples. Use openai-api or anthropic-api for JSON/plain message history, or custom-command for application-specific input.' });
+          message: 'This executor supports only text samples. Use openai-api or anthropic-api for JSON/plain message history, or custom-executor for application-specific input.' });
       }
     }
   }

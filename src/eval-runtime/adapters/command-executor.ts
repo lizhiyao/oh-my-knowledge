@@ -17,7 +17,7 @@ import type {
 
 /**
  * Façade-level subprocess exchange. Deliberately distinct from the sealed host-seam protocol
- * `omk.custom-command-exchange/v1`: a canonical invocation carries no runId, trialId, attemptId,
+ * `omk.custom-executor-exchange/v1`: a canonical invocation carries no runId, trialId, attemptId,
  * isolation key or execution plan digest, and this adapter never fabricates them. Hosts that need
  * plan-bound isolation, workspace overlays, native MCP config or mock interception must compose the
  * advanced execution seam instead.

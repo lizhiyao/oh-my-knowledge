@@ -15,7 +15,7 @@
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
 
-原内置 `gemini` 执行器已经移除，因为它无法提供可信内置集成所需的 trace、隔离、mock 和成本证据。既有 `executor: gemini` 配置现在会明确失败，不会静默回退到自定义命令协议。需要继续使用 Gemini CLI 时，请编写[自定义执行器](#自定义执行器)适配 OMK 的 JSON stdin/stdout 协议。
+原内置 `gemini` 执行器已经移除，因为它无法提供可信内置集成所需的 trace、隔离、mock 和成本证据。既有 `executor: gemini` 配置现在会明确失败，不会静默回退到自定义执行器协议。需要继续使用 Gemini CLI 时，请编写[自定义执行器](#自定义执行器)适配 OMK 的 JSON stdin/stdout 协议。
 
 ## Sample mock 兼容性
 
@@ -26,7 +26,7 @@ API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_
 | `claude` / `claude-sdk` | 支持，通过原生 hooks 拦截 |
 | `codex` / `codex-sdk` | 不支持；当前 CLI 和 SDK 能输出 trace，但没有工具拦截 hook |
 | `anthropic-api` / `openai-api` | 不支持 |
-| 自定义命令 | 通过 `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE` 委托；命令必须安装或消费 omk 提供的 hook |
+| 自定义执行器 | 通过 `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE` 委托；命令必须安装或消费 omk 提供的 hook |
 
 目标执行器不支持拦截时，`omk sample` 会自动生成无 mock 用例，并移除依赖模拟调用的正向证据（`mock_hit`、`tools_called`、`tools_count_min`、`tool_input_contains`、`tool_output_contains`）。模型若仍输出 `environment`，其中的事实会迁移到明确标注「未物化」的 `context`，不会被丢弃或冒充 fixture。`omk eval` 会在任何模型调用前拒绝已有的 mocks 用例；`--dry-run` 和 `--skip-doctor` 也不能绕过，避免把评测环境不兼容误算成模型失败。
 
@@ -95,7 +95,13 @@ dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
 
 ## 自定义执行器
 
+**自定义执行器（Custom Executor，`custom-executor`）**让你定义样本如何执行：你的程序接收输入，调用 RAG、agent 或 workflow，再返回结果。OMK 负责样本格式、评分、版本比较和证据保存。
+
 `omk eval --executor` 接受**一个可执行文件路径**。路径相对于评测项目目录解析；`node my-provider.mjs`、`python my-provider.py` 这样的带参数命令不会被当作 shell 命令执行。脚本须有 shebang 和执行权限；需要参数时，用一个可执行包装脚本调用你的服务。
+
+### Beta 改名：BREAKING-PROTOCOL／BREAKING-COMPARABILITY
+
+`custom-command` 统一改为 `custom-executor`。已有脚本的请求校验及响应 `schemaVersion` 须从 `omk.custom-command-exchange/v1` 改为 `omk.custom-executor-exchange/v1`；旧响应直接拒绝，不保留别名或兼容模式。错误码统一使用 `OMK_CUSTOM_EXECUTOR_*`。Runtime ID、资源 lineage 与输入／输出／trace Schema identity 同步采用新命名空间，需重新运行比较以建立新基线。历史报告不会回写。配置中的可执行文件路径保持原样；`custom-executor` 是适配器名称，不是 `--executor` 的字面值。
 
 ### 先跑通 stdin/stdout
 
@@ -106,12 +112,12 @@ dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
 let text = '';
 for await (const chunk of process.stdin) text += chunk;
 const request = JSON.parse(text);
-if (request.schemaVersion !== 'omk.custom-command-exchange/v1') {
+if (request.schemaVersion !== 'omk.custom-executor-exchange/v1') {
   throw new Error('Unsupported OMK request');
 }
 // 接入服务时，读取 request.trial.input，返回服务的实际输出。
 console.log(JSON.stringify({
-  schemaVersion: 'omk.custom-command-exchange/v1',
+  schemaVersion: 'omk.custom-executor-exchange/v1',
   resultStatus: 'completed',
   output: { value: '接入成功', classification: 'public' },
 }));
@@ -130,7 +136,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 \
 
 ### 接入自己的服务
 
-每次尝试启动一个进程，stdin 接收一个 JSON 请求，stdout 必须返回一个 JSON 响应。日志写到 stderr。当前协议是 `omk.custom-command-exchange/v1`，不接受旧的 `{ ok, output: "..." }` 或纯文本响应。
+每次尝试启动一个进程，stdin 接收一个 JSON 请求，stdout 必须返回一个 JSON 响应。日志写到 stderr。当前协议是 `omk.custom-executor-exchange/v1`，不接受旧的 `{ ok, output: "..." }` 或纯文本响应。
 
 | 请求字段 | 用途 |
 |---|---|
@@ -148,10 +154,10 @@ omk eval --control code-review-v1 --treatment code-review-v2 \
 调用失败可以返回稳定的错误代码：
 
 ```json
-{"schemaVersion":"omk.custom-command-exchange/v1","resultStatus":"failed","error":{"code":"SERVICE_UNAVAILABLE","stage":"execution"}}
+{"schemaVersion":"omk.custom-executor-exchange/v1","resultStatus":"failed","error":{"code":"SERVICE_UNAVAILABLE","stage":"execution"}}
 ```
 
-`stage` 为 `execution` 或 `infrastructure`。非零退出、超时和非法响应同样会记录为执行失败；例如旧协议输出会产生 `OMK_CUSTOM_COMMAND_OUTPUT_INVALID`。从报告的执行覆盖和失败证据排查，不能把失败当成低分答案。
+`stage` 为 `execution` 或 `infrastructure`。非零退出、超时和非法响应同样会记录为执行失败；例如旧协议输出会产生 `OMK_CUSTOM_EXECUTOR_OUTPUT_INVALID`。从报告的执行覆盖和失败证据排查，不能把失败当成低分答案。
 
 上述协议用于 `omk eval` 的目标执行。`doctor`／`sample`／`evolve` 的模型调用接口及自定义 LLM 评委仍使用旧的 `{ model, system, prompt }` 适配接口；不要把仅实现本节协议的脚本直接用作那些模型调用。需要评委时通过 `--judge-models` 单独配置受支持的执行器。
 
