@@ -12,6 +12,7 @@ import {
   evaluate,
   loadEvaluationResult,
   prepareEvaluation,
+  reanalyze,
   rescore,
   saveEvaluationResult,
   type ContentResolver,
@@ -23,7 +24,7 @@ import {
   type Executor,
 } from '../../src/eval-runtime/index.js';
 
-function executor(): Executor<string, undefined, string> {
+function executor(targetCalls?: string[]): Executor<string, undefined, string> {
   return {
     executorId: 'test.content-executor/v1',
     version: '1.0.0',
@@ -32,6 +33,7 @@ function executor(): Executor<string, undefined, string> {
     capabilities: { determinism: 'deterministic' },
     async execute({ signal }) {
       signal.throwIfAborted();
+      targetCalls?.push('execute');
       return { output: 'answer' };
     },
   };
@@ -76,6 +78,7 @@ function evaluator(): CustomEvaluator<{ actual: string }> {
 function evaluationInput(
   policy: Record<string, unknown> = {},
   infrastructure?: Readonly<{ contentStore?: ContentStore; contentResolver?: ContentResolver }>,
+  targetCalls?: string[],
 ) {
   return {
     dataset: {
@@ -90,7 +93,7 @@ function evaluationInput(
         source: 'inline' as const,
         content: 'Answer.',
       },
-      execution: { executor: executor() },
+      execution: { executor: executor(targetCalls) },
     }],
     evaluators: [evaluator()],
     comparisons: [],
@@ -171,18 +174,23 @@ function verificationFor(
 describe('eval-runtime content infrastructure', () => {
   it('persists, resolves, and re-admits a canonical result for stage reuse', async () => {
     const ports = inMemoryContentPorts();
-    const input = evaluationInput();
-    const source = await evaluate(input, { runId: 'stored-result-source', clock: {
-      monotonicNow: () => 0,
-      timestamp: () => '2026-09-05T00:00:00.000Z',
-      sleep: () => Promise.resolve(),
-    } });
+    const sourceCalls: string[] = [];
+    const source = await evaluate(evaluationInput({}, undefined, sourceCalls), {
+      runId: 'stored-result-source',
+      clock: {
+        monotonicNow: () => 0,
+        timestamp: () => '2026-09-05T00:00:00.000Z',
+        sleep: () => Promise.resolve(),
+      },
+    });
+    expect(sourceCalls).toEqual(['execute']);
     const reference = await saveEvaluationResult({ result: source, store: ports.contentStore });
 
     expect(reference.mediaType).toBe(EVALUATION_RESULT_MEDIA_TYPE);
     const stored = ports.values.get(reference.digest);
     expect(stored?.classification).toBe('gold');
-    const prepared = await prepareEvaluation(evaluationInput());
+    const restoredCalls: string[] = [];
+    const prepared = await prepareEvaluation(evaluationInput({}, undefined, restoredCalls));
     const restored = await loadEvaluationResult({
       prepared,
       reference: structuredClone(reference),
@@ -197,11 +205,28 @@ describe('eval-runtime content infrastructure', () => {
 
     expect(restored).toEqual(source);
     expect(restored).not.toBe(source);
-    const changed = evaluationInput();
+    expect(restoredCalls).toEqual([]);
+
+    const changed = evaluationInput({}, undefined, restoredCalls);
     changed.dataset.samples[0].expected = 'different';
     const rescored = await rescore(changed, restored, { runId: 'stored-result-rescored' });
     expect(rescored.status).toBe('completed');
     expect(rescored.artifacts?.execution).toBe(restored.artifacts?.execution);
+    expect(rescored.artifacts?.evaluation?.bundleDigest)
+      .not.toBe(restored.artifacts?.evaluation?.bundleDigest);
+    expect(restoredCalls).toEqual([]);
+
+    const reanalyzed = await reanalyze({
+      ...changed,
+      analyses: [{ ...changed.analyses[0], statistic: 'quantile' as const, probability: 0.5 }],
+    }, rescored, { runId: 'stored-result-reanalyzed' });
+    expect(reanalyzed.status).toBe('completed');
+    expect(reanalyzed.artifacts?.execution).toBe(rescored.artifacts?.execution);
+    expect(reanalyzed.artifacts?.evaluation).toBe(rescored.artifacts?.evaluation);
+    expect(reanalyzed.artifacts?.analysis?.bundleDigest)
+      .not.toBe(rescored.artifacts?.analysis?.bundleDigest);
+    expect(restoredCalls).toEqual([]);
+    expect(sourceCalls).toEqual(['execute']);
   });
 
   it('rejects cloned sources, mismatched plans, and tampered stored content', async () => {

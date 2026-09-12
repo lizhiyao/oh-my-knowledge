@@ -48,6 +48,7 @@ import {
 import {
   prepareEvaluation,
   captureRunOptions,
+  assertEventWriterDelivery,
 } from './prepare.js';
 import {
   randomUUID,
@@ -318,6 +319,7 @@ async function runEvaluationSuffix(
     );
   }
   const prefix = assertReusablePrefix(reuseKind, prepared.plan, source);
+  assertEventWriterDelivery(prepared.plan, options);
   const runId = options.runId ?? `run-${randomUUID()}`;
   const controller = new AbortController();
   const abortFromCaller = (): void => controller.abort(options.signal?.reason);
@@ -334,6 +336,7 @@ async function runEvaluationSuffix(
       signal: controller.signal,
       ...(options.annotations === undefined ? {} : { annotations: options.annotations }),
       ...(options.summaries === undefined ? {} : { summaries: options.summaries }),
+      ...(options.eventWriter === undefined ? {} : { eventWriter: options.eventWriter }),
       ...(options.eventBufferCapacity === undefined
         ? {}
         : { eventBufferCapacity: options.eventBufferCapacity }),

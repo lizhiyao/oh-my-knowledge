@@ -35,3 +35,16 @@ node examples/eval-runtime/retrieval-abstention.mjs
 原样运行会排除 1 条待标注样本，执行 2 条已标注样本；正确弃答为 `1`，误弃答与禁用命中为 `0`。独立项目复制 `retrieval-abstention.mjs`，并安装包含该能力的 OMK 版本与 Zod。尚未发版的能力先使用对应源码检出运行。
 
 接入自己的系统时，先替换 `source`，再修改 `executor.execute()`，最后核对各项 `coverage`。完整的数据规则、返回格式、能力声明和结果解释见[四步使用指南](../../docs/zh/guides/eval-runtime.md#retrieval-abstention)。
+
+## 结果存储与加载信任边界
+
+这个单文件示例基于 `node:fs` 在显式临时目录中实现宿主自有的存储端口（`ContentStore.put` / `ContentResolver.resolve`），用 `saveEvaluationResult()` 持久化一份 canonical 结果，再模拟第二个进程重新声明同一契约，用 `loadEvaluationResult()` 恢复结果，并在不重跑被测目标的情况下按修正后的 Gold 标注执行 rescore。
+
+```bash
+yarn build
+node examples/eval-runtime/result-store.mjs
+```
+
+存储归宿主所有：OMK 不发现、不初始化、也不扫描宿主存储——Runtime 只调用显式注入的 `put()` / `resolve()` 端口，凭证、租户、保留策略和物理根目录都留在宿主一侧。示例同时演示恢复结果的信任边界：provenance bundle、cache 回执与 policy 执行这三组已认证 digest 来自生产时刻由宿主签名的审计回执，而不是重新解析存储的 envelope；只做校验和的 verifier 会被 fail closed 拒绝。进程内 HMAC 密钥只是替身，生产环境应接入真实签名／审计系统（KMS、透明日志、认证机构）。命令输出保存的 reference、双方一致的 plan digest，以及未新增目标调用的 rescore 摘要。
+
+在独立服务中使用时，复制 `result-store.mjs`，把文件存储换成你的对象存储或数据库对这两个端口的实现，把回执 verifier 换成你的认证后端。只认证宿主能独立取得的 digest 集合；未认证的部分由 Runtime fail closed 拦截。

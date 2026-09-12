@@ -689,7 +689,7 @@ if (assessment.comparabilityStatus !== 'compatible') {
 }
 ```
 
-该 Assessment 不会比较分数，也不会判断候选是否进步；它只检查声明 subject 变化后，测量设计是否保持不变，以及两条 source chain 是否具备足够的认证证据。必须保留原始 result object：clone 或反序列化 artifact 无法保留进程内 Core source authority，因此会失败关闭。跨进程持久化 admission 在 Runtime artifact-store adapter 落地前继续由高级 Core surface 提供。
+该 Assessment 不会比较分数，也不会判断候选是否进步；它只检查声明 subject 变化后，测量设计是否保持不变，以及两条 source chain 是否具备足够的认证证据。必须保留原始 result object：clone 或反序列化 artifact 无法保留进程内 Core source authority，因此会失败关闭。跨进程读回历史结果时，先用 [在新进程里读回历史结果再复用](#restore-stored-results) 的 `loadEvaluationResult()` 重新取得 source authority，再交给 `assessComparability()`。
 
 </details>
 
@@ -774,7 +774,57 @@ const redecided = await redecide(
 );
 ```
 
-`rescore()` 复用 Execution，`reanalyze()` 复用 Execution 与 Evaluation，`redecide()` 复用 Execution、Evaluation 与 Analysis。每次调用都接收一份完整的新声明，确保默认值与 identity 在后缀运行前封存。Core 会拒绝任何属于已跳过阶段的变化；只有当前进程中的原始 canonical result object 携带所需 source authority。Run options、进度事件与预算消耗只作用于新执行的后缀；复用 bundle 保留原始 identity 与历史 evidence，不会再次计费。跨进程复用持久化 Bundle 时，应通过 Core 显式 admission 并独立验证 provenance；report 或 JSON clone 绝不是充分证据。
+`rescore()` 复用 Execution，`reanalyze()` 复用 Execution 与 Evaluation，`redecide()` 复用 Execution、Evaluation 与 Analysis。每次调用都接收一份完整的新声明，确保默认值与 identity 在后缀运行前封存。Core 会拒绝任何属于已跳过阶段的变化；只有当前进程中的原始 canonical result object 携带所需 source authority。Run options、进度事件与预算消耗只作用于新执行的后缀；复用 bundle 保留原始 identity 与历史 evidence，不会再次计费。跨进程复用持久化结果时，先用 `loadEvaluationResult()` 通过独立 verifier 重新取得 source authority，见[在新进程里读回历史结果再复用](#restore-stored-results)；report 或 JSON clone 绝不是充分证据。
+
+</details>
+
+<a id="restore-stored-results"></a>
+<a id="在新进程里读回历史结果再复用"></a>
+
+<details>
+<summary>在新进程里读回历史结果再复用</summary>
+
+分阶段复用要求传入当前进程里的原始 `result`。历史 Run 落在另一个进程或另一台机器上时，用下面三步把它读回来，再交给 `rescore()`、`reanalyze()`、`redecide()` 或 `assessComparability()`：
+
+1. **保存**：`saveEvaluationResult({ result, store })` 把 canonical result 写成一份 Gold 级 ContentDescriptor（media type `application/vnd.omk.evaluation-result+json;version=1`）。存储仍归宿主，OMK 只规定信封与摘要。
+2. **读回**：`prepareEvaluation(input)` 用产生这份 result 的同一声明重新封存 Plan，`loadEvaluationResult({ prepared, reference, resolver, verifier })` 依次校验 reference、内容摘要与 sealed plan digest，并由 `verifier` 独立完成信任认证。
+3. **复用**：返回的 result 与原始 result 等价，携带进程内 Core source authority，可直接进入分阶段复用；被复用的阶段不会再次调用 Target，也不会再次计费。
+
+```ts
+import {
+  loadEvaluationResult,
+  prepareEvaluation,
+  rescore,
+  saveEvaluationResult,
+} from 'oh-my-knowledge';
+
+const reference = await saveEvaluationResult({ result, store: hostResultStore });
+
+const restored = await loadEvaluationResult({
+  prepared: await prepareEvaluation(input),
+  reference,
+  resolver: hostContentResolver,
+  verifier: {
+    verifierId: 'acme.result-authority/v1',
+    async verify({ reference: candidate, planDigest }) {
+      const attestation = await resultRegistry.authenticate(candidate.digest, planDigest);
+      return {
+        verifiedResultDigest: candidate.digest,
+        attestationDigest: attestation.digest,
+        verifiedProvenanceBundleDigests: attestation.provenanceBundleDigests,
+        verifiedCacheRecordDigests: attestation.cacheRecordDigests,
+        verifiedPolicyExecutionDigests: attestation.policyExecutionDigests,
+      };
+    },
+  },
+});
+
+const rescored = await rescore({ ...input, dataset: correctedGoldDataset }, restored, {
+  runId: 'restored-corrected-gold',
+});
+```
+
+`verifier` 是宿主的独立信任边界，不能只复算摘要：它必须认证产生这份 result 的 Runtime、provenance bundle、cache receipt 与 policy execution，并把 attestation 绑定到确切的 stored envelope digest；五个字段缺一不可，authority 不完整同样失败关闭。下列情况都在调用任何 Target 前失败关闭：reference 或内容元数据无效、内容摘要与 descriptor 不匹配、stored plan 与 `prepared` 的 sealed plan 不一致、resolver 或 verifier 调用失败、result 引用的 evidence content 无法解析，以及 Core admission 拒绝。`structuredClone()` 或 JSON 反序列化得到的对象始终失败关闭——只有 `loadEvaluationResult()` 返回的 result 才具备复用资格。
 
 </details>
 
@@ -1023,7 +1073,7 @@ const result = await running;
 
 进度事件用于观察，可能丢失；最终结论以返回的 `result` 为准。它不适合作为必须逐条保留的审计日志。
 
-`runId`、`signal`、`onEvent`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。`evaluate()` 有意不提供持久、无损的事件投递；advanced 宿主应通过显式的 `createMeasurementPolicy({ eventDelivery: ... })`、`eventWriter` 与 `runEvaluation()` 配对使用。取消只由调用方传入的 `AbortSignal` 控制。
+`runId`、`signal`、`onEvent`、`eventWriter`、`clock`、报告 annotation／summary 与 `eventBufferCapacity` 都属于可选的第二个 `EvaluationRunOptions` 参数，不属于测量声明。`onEvent` 是 best-effort 进度观察器。已投递事件保持顺序，但慢观察器不会反向阻塞测量：有界 Core stream 会丢弃最旧的待处理进度并保留较新的事件，因此序号允许出现缺口。`eventBufferCapacity` 控制这项内存上界，默认值为 256。观察器失败时，OMK 完成清理后抛出 `EvaluationEventConsumptionError`，其中保留终态 `runResult`，并由 canonical façade 隐去宿主回调的原始异常。持久事件投递同样留在 canonical façade 上：在测量声明里写明 `policy.eventDelivery`，再传入 `eventWriter`，写入器就会按顺序逐条收到事件。**完整性只由 `writerMode: 'required'` 保证**：写入失败即整次运行失败。`optional`＋`ignore` 下，该阶段首次写入失败会静默停止持久投递，run 仍然完成，结果里也没有任何字段报告这次截断，因此不是审计级配置。两种错配都会在调用任何 Target 之前失败关闭：delivery 为 `disabled` 却传入写入器，以及声明 `required` 却未注入写入器。取消只由调用方传入的 `AbortSignal` 控制。
 
 </details>
 
@@ -1132,7 +1182,7 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
+显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port（包括 subprocess command Executor adapter）、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
 
 可运行的[最小示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime)与 packed-package fixture 会在 clean host 中验证 canonical API。
 

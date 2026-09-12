@@ -35,3 +35,16 @@ node examples/eval-runtime/retrieval-abstention.mjs
 The unmodified example excludes one pending sample and executes two reviewed samples. Correct abstention is `1`; false abstention and forbidden hits are `0`. In a separate project, copy `retrieval-abstention.mjs` and install an OMK version containing this capability plus Zod. Use the corresponding source checkout for features that have not yet shipped.
 
 To connect your system, replace `source`, adapt `executor.execute()`, then inspect each metric's `coverage`. Follow the [four-step guide](../../docs/guides/eval-runtime.md#retrieval-abstention) for data rules, return forms, capability declarations, and result interpretation.
+
+## Result store and load trust boundary
+
+This single-file example implements the host-owned storage ports (`ContentStore.put` / `ContentResolver.resolve`) over `node:fs` in an explicit temporary directory, persists one canonical result with `saveEvaluationResult()`, then simulates a second process that re-declares the same contract, restores the result with `loadEvaluationResult()`, and rescores it with a corrected Gold label without invoking the target again.
+
+```bash
+yarn build
+node examples/eval-runtime/result-store.mjs
+```
+
+Storage belongs to the host: OMK never discovers, provisions, or scans host storage — the Runtime only calls the explicitly injected `put()` / `resolve()` ports, while credentials, tenancy, retention, and the physical root remain on your side. The example also demonstrates the restore trust boundary: the verified provenance-bundle, cache-record, and policy-execution digest sets come from a host-signed audit receipt witnessed at production time, never from re-parsing the stored envelope, and a checksum-only verifier is rejected fail closed. The in-process HMAC key stands in for your real signing／audit service (KMS, transparency log, attestation authority). The command prints the saved reference, the shared plan digest, and a rescore summary with zero extra target invocations.
+
+To use it in a separate service, copy `result-store.mjs`, replace the file-backed store with your object storage or database implementation of the two ports, and replace the receipt verifier with your attestation backend. Certify only the digest sets your host can independently authenticate; the Runtime fails closed on anything unauthenticated.

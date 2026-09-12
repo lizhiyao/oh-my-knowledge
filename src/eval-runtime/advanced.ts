@@ -73,6 +73,16 @@ export type {
   JsonSessionExecutorContext,
   RuntimeValueParser,
 } from './adapters/json-executor.js';
+export {
+  DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES,
+  SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION,
+  createSubprocessCommandExecutor,
+} from './adapters/command-executor.js';
+export type {
+  CreateSubprocessCommandExecutorInput,
+  SubprocessCommandConfiguration,
+  SubprocessCommandValueParser,
+} from './adapters/command-executor.js';
 export type {
   AllowedToolsInput,
   AllowedToolsPlan,

@@ -137,6 +137,7 @@ export function captureRunOptions(
     'summaries',
     'eventBufferCapacity',
     'onEvent',
+    'eventWriter',
     'clock',
   ]);
   if (input === null || typeof input !== 'object'
@@ -153,6 +154,11 @@ export function captureRunOptions(
       || (input.annotations !== undefined && !JsonValueSchema.safeParse(input.annotations).success)
       || (input.summaries !== undefined && !JsonValueSchema.safeParse(input.summaries).success)
       || (input.onEvent !== undefined && typeof input.onEvent !== 'function')
+      || (input.eventWriter !== undefined && (
+        input.eventWriter === null || typeof input.eventWriter !== 'object'
+        || Array.isArray(input.eventWriter)
+        || typeof input.eventWriter.write !== 'function'
+      ))
       || (input.clock !== undefined && (
         input.clock === null || typeof input.clock !== 'object'
         || typeof input.clock.monotonicNow !== 'function'
@@ -177,8 +183,23 @@ export function captureRunOptions(
       ? {}
       : { eventBufferCapacity: input.eventBufferCapacity }),
     ...(input.onEvent === undefined ? {} : { onEvent: input.onEvent }),
+    ...(input.eventWriter === undefined ? {} : { eventWriter: input.eventWriter }),
     ...(input.clock === undefined ? {} : { clock: input.clock }),
   });
+}
+
+/** Rejects a lossless writer when the sealed Plan disabled durable event delivery. */
+export function assertEventWriterDelivery(
+  plan: SealedRunPlan,
+  options: Readonly<EvaluationRunOptions>,
+): void {
+  if (options.eventWriter !== undefined
+      && plan.measurementPolicy.eventDelivery.writerMode === 'disabled') {
+    configurationFailure(
+      'EVAL_RUNTIME_INPUT_INVALID',
+      'Evaluation eventWriter 需要 policy.eventDelivery.writerMode 为 optional 或 required。',
+    );
+  }
 }
 
 function collectResolvedRuntimes(plan: SealedRunPlan): readonly RuntimeCapabilityResolution[] {
@@ -354,6 +375,7 @@ async function runPrepared(
 ): Promise<EvaluationResult> {
   const options = captureRunOptions(optionsInput);
   const runId = options.runId ?? `run-${randomUUID()}`;
+  assertEventWriterDelivery(prepared.plan, options);
   try {
     const result = await runPreparedEvaluation({
       prepared,
@@ -366,6 +388,7 @@ async function runPrepared(
         ? {}
         : { eventBufferCapacity: options.eventBufferCapacity }),
       ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
+      ...(options.eventWriter === undefined ? {} : { eventWriter: options.eventWriter }),
     });
     return attachDefinition(result, runId, prepared.plan);
   } catch (error) {

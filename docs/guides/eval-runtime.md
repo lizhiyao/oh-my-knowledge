@@ -692,7 +692,7 @@ if (assessment.comparabilityStatus !== 'compatible') {
 }
 ```
 
-The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. Persistent cross-process admission remains available through the advanced Core surface until the Runtime artifact-store adapter lands.
+The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. To assess results restored from another process, regain source authority first with `loadEvaluationResult()` from [Restore a stored result in a new process](#restore-stored-results), then call `assessComparability()`.
 
 </details>
 
@@ -777,7 +777,57 @@ const redecided = await redecide(
 );
 ```
 
-`rescore()` reuses Execution, `reanalyze()` reuses Execution plus Evaluation, and `redecide()` reuses Execution plus Evaluation plus Analysis. Each call takes a complete new declaration so defaults and identities are sealed before the suffix runs. Core rejects any change that belongs to a skipped stage, and only exact canonical result objects from the current process carry the required source authority. Run options, progress events, and budget consumption apply to the newly executed suffix; reused bundles retain their original identity and historical evidence without charging their work again. To reuse persisted Bundle documents across processes, use explicit Core admission with independent provenance verification; a report or JSON clone is never sufficient evidence.
+`rescore()` reuses Execution, `reanalyze()` reuses Execution plus Evaluation, and `redecide()` reuses Execution plus Evaluation plus Analysis. Each call takes a complete new declaration so defaults and identities are sealed before the suffix runs. Core rejects any change that belongs to a skipped stage, and only exact canonical result objects from the current process carry the required source authority. Run options, progress events, and budget consumption apply to the newly executed suffix; reused bundles retain their original identity and historical evidence without charging their work again. To reuse a persisted result across processes, regain source authority through `loadEvaluationResult()` and its independent verifier, as described in [Restore a stored result in a new process](#restore-stored-results); a report or JSON clone is never sufficient evidence.
+
+</details>
+
+<a id="restore-stored-results"></a>
+<a id="restore-a-stored-result-in-a-new-process"></a>
+
+<details>
+<summary>Restore a stored result in a new process</summary>
+
+Stage reuse takes an exact `result` from the current process. When the historical Run lives in another process or on another machine, restore it in three steps and then hand it to `rescore()`, `reanalyze()`, `redecide()`, or `assessComparability()`:
+
+1. **Save**: `saveEvaluationResult({ result, store })` writes the canonical result as one Gold-classified ContentDescriptor (media type `application/vnd.omk.evaluation-result+json;version=1`). Storage stays with the host; OMK only fixes the envelope and the digest.
+2. **Restore**: `prepareEvaluation(input)` reseals the Plan from the same declaration that produced the result, and `loadEvaluationResult({ prepared, reference, resolver, verifier })` validates the reference, the content digest, and the sealed plan digest before `verifier` authenticates trust independently.
+3. **Reuse**: the returned result is equivalent to the original and carries in-process Core source authority, so it enters stage reuse directly; reused stages never call a Target again and never charge again.
+
+```ts
+import {
+  loadEvaluationResult,
+  prepareEvaluation,
+  rescore,
+  saveEvaluationResult,
+} from 'oh-my-knowledge';
+
+const reference = await saveEvaluationResult({ result, store: hostResultStore });
+
+const restored = await loadEvaluationResult({
+  prepared: await prepareEvaluation(input),
+  reference,
+  resolver: hostContentResolver,
+  verifier: {
+    verifierId: 'acme.result-authority/v1',
+    async verify({ reference: candidate, planDigest }) {
+      const attestation = await resultRegistry.authenticate(candidate.digest, planDigest);
+      return {
+        verifiedResultDigest: candidate.digest,
+        attestationDigest: attestation.digest,
+        verifiedProvenanceBundleDigests: attestation.provenanceBundleDigests,
+        verifiedCacheRecordDigests: attestation.cacheRecordDigests,
+        verifiedPolicyExecutionDigests: attestation.policyExecutionDigests,
+      };
+    },
+  },
+});
+
+const rescored = await rescore({ ...input, dataset: correctedGoldDataset }, restored, {
+  runId: 'restored-corrected-gold',
+});
+```
+
+The `verifier` is the host's independent trust boundary and must do more than recompute a digest: it authenticates the Runtime that produced the result, the provenance bundles, the cache receipts, and the policy executions, and binds the attestation to the exact stored envelope digest. All five fields are required, and incomplete authority fails closed. Every case below fails closed before any Target call: an invalid reference or content metadata, a content digest that disagrees with the descriptor, a stored plan that disagrees with the sealed plan of `prepared`, a failing resolver or verifier call, evidence content referenced by the result that cannot be resolved, and Core admission rejection. An object from `structuredClone()` or JSON deserialization always fails closed—only the result returned by `loadEvaluationResult()` is eligible for reuse.
 
 </details>
 
@@ -1026,7 +1076,7 @@ const result = await running;
 
 Progress events are for observation and may be dropped; use the returned `result` for the final conclusion. They are not a durable audit log.
 
-`runId`, `signal`, `onEvent`, `clock`, report annotations／summaries, and `eventBufferCapacity` belong to the optional second `EvaluationRunOptions` argument; they are not measurement declarations. `onEvent` is a best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable, lossless event delivery is intentionally absent from `evaluate()`; advanced hosts pair `runEvaluation()` with an explicit `createMeasurementPolicy({ eventDelivery: ... })` and `eventWriter`. The caller's `AbortSignal` controls cancellation.
+`runId`, `signal`, `onEvent`, `eventWriter`, `clock`, report annotations／summaries, and `eventBufferCapacity` belong to the optional second `EvaluationRunOptions` argument; they are not measurement declarations. `onEvent` is a best-effort progress observer. Delivered events remain ordered, but a slow observer does not backpressure measurement: the bounded Core stream drops the oldest pending progress event and retains recent progress, so sequence gaps are expected. `eventBufferCapacity` controls that memory bound and defaults to 256. An observer failure throws `EvaluationEventConsumptionError` after cleanup and retains the terminal `runResult`; the canonical façade redacts the host callback's original error. Durable delivery stays on this same façade: declare `policy.eventDelivery` in the measurement declaration and pass `eventWriter`, which then receives events one by one in order. Completeness is guaranteed only by `writerMode: 'required'`, which turns a writer failure into a run failure; under `optional` + `ignore` the first failed write silently stops durable delivery for that stage while the run still completes and nothing reports the truncation, so that pairing is not audit-grade. Both misconfigurations fail closed before the first Target call: supplying a writer while delivery is `disabled`, and declaring `required` without an injected writer. The caller's `AbortSignal` controls cancellation.
 
 </details>
 
@@ -1135,7 +1185,7 @@ import {
 } from 'oh-my-knowledge/eval-runtime/advanced';
 ```
 
-The explicit `oh-my-knowledge/eval-runtime` subpath exposes the same canonical façade as the package root. Use `oh-my-knowledge/eval-runtime/advanced` for custom ports, staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, transported cross-process comparability, or custom comparability policies. `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
+The explicit `oh-my-knowledge/eval-runtime` subpath exposes the same canonical façade as the package root. Use `oh-my-knowledge/eval-runtime/advanced` for custom ports (including the subprocess command Executor adapter), staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, transported cross-process comparability, or custom comparability policies. Restoring a historical result across processes for stage reuse stays on the canonical façade; see [Restore a stored result in a new process](#restore-stored-results). `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
 
 The runnable [minimal example](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime) and packed-package fixtures exercise the canonical API in a clean host.
 
