@@ -1,3 +1,4 @@
+import { createWorkflowSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -37,7 +38,7 @@ const report = {
         representativeEvidence: [{ tool: 'Grep', query: 'schema' }],
       }],
     };
-const sample = { sample_id: 'draft', prompt: 'Review', provenance: 'production-trace' as const };
+const sample = { sample_id: 'draft', input: { inputKind: 'text' as const, text: 'Review' }, provenance: 'production-trace' as const };
 const options = { model: 'fixture', executorName: 'fixture', noMock: true };
 describe('trace 草稿生成用例', () => {
   let root: string;
@@ -57,7 +58,7 @@ describe('trace 草稿生成用例', () => {
     const result = await generateTraceDrafts({ observationsDir: root, skill: 'wiki', options }, generate);
     expect(result).toEqual({ draftStatus: 'generated', outputPath: output, count: 1, costUSD: 0.1 });
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({ ...options, items: [expect.objectContaining({ skillName: 'wiki', sourceTrace: '/tmp/trace/session.jsonl' })] }));
-    expect(JSON.parse(readFileSync(output, 'utf8')).samples).toEqual([sample]);
+    expect(JSON.parse(readFileSync(output, 'utf8')).samples).toEqual(createWorkflowSampleSetDocument([sample]).samples);
     expect(readFileSync(source, 'utf8')).toBe(before);
   });
   it.each(['skill', 'noise'])('没有匹配信号（%s）时不执行生成器', async (mode) => {

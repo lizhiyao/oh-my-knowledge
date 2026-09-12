@@ -10,7 +10,7 @@ import {
   resolveNodeCliEvaluationRequest,
 } from '../../../../src/eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.js';
 import {
-  createEvalSampleSetDocument,
+  createWorkflowSampleSetDocument,
 } from '../../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import {
   BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
@@ -28,8 +28,8 @@ const roots: string[] = [];
 
 const sampleSetJson = (
   samples: Sample[],
-  requires?: Parameters<typeof createEvalSampleSetDocument>[1],
-): string => JSON.stringify(createEvalSampleSetDocument(samples, requires));
+  requires?: Parameters<typeof createWorkflowSampleSetDocument>[1],
+): string => JSON.stringify(createWorkflowSampleSetDocument(samples, requires));
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -47,7 +47,7 @@ async function fixture(label: string): Promise<string> {
   await writeFile(join(root, 'fixtures', 'secret.json'), JSON.stringify({ token: 'secret-value' }));
   await writeFile(join(root, 'samples.json'), sampleSetJson([{
     sample_id: 'sample-a',
-    prompt: 'Return a concise JSON answer.',
+    input: { inputKind: 'text' as const, text: 'Return a concise JSON answer.' },
     rubric: {
       quality: { criterion: 'The response is correct and concise.', weight: 1 },
     },
@@ -96,6 +96,14 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
 }
 
 describe('resolveNodeCliEvaluationRequest', () => {
+  it('preserves the actionable legacy version diagnostic without exposing sample content', async () => {
+    const root = await fixture('legacy');
+    const raw = JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [{ sample_id: 'old', prompt: 'SECRET_INPUT' }] });
+    await writeFile(join(root, 'samples.json'), raw);
+    await expect(resolveNodeCliEvaluationRequest(request(root), { projectRoot: root, materializationRoot: join(root, 'resolved') }))
+      .rejects.toMatchObject({ fieldPath: 'samples', message: 'Unsupported sample schema omk.eval-sample-set/v2. Rewrite as omk.eval-sample-set/v3; the original file has not been changed.' });
+    expect(await readFile(join(root, 'samples.json'), 'utf8')).toBe(raw);
+  });
   it.each([
     ['short-name', 'control', 'skills/control.md'],
     ['relative-path', './skills/control.md', 'skills/../skills/control.md'],
@@ -192,8 +200,8 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('sample-content');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
-      prompt: 'Use https://docs.acme.dev/spec twice: https://docs.acme.dev/spec.',
-      context: 'Context https://docs.acme.dev/spec',
+      input: { inputKind: 'text' as const, text: "Use https://docs.acme.dev/spec twice: https://docs.acme.dev/spec.\n\n```\nContext https://docs.acme.dev/spec\n```" },
+      reference: 'Context https://docs.acme.dev/spec',
       rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
@@ -228,7 +236,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
       sourceUrlDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       transportKind: 'mcp',
       sampleIds: ['sample-a'],
-      fields: ['context', 'prompt'],
+      fields: ['input.text'],
     });
     expect(resolved.staticRunMetadata?.annotations).toMatchObject({
       sampleContentResolution: [expect.objectContaining({
@@ -241,7 +249,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('binds resolved URL bytes into the Definition digest but not the transport', async () => {
     const root = await fixture('sample-content-identity');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: {
+      sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'Use https://docs.acme.dev/spec' }, rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
     }]));
@@ -277,7 +285,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('fails closed and still closes the one-shot resolver session', async () => {
     const root = await fixture('sample-content-failure');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'Use https://docs.acme.dev/spec', rubric: {
+      sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'Use https://docs.acme.dev/spec' }, rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
     }]));
@@ -302,7 +310,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('sample-content-credentials');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
-      prompt: 'Use https://user:secret@docs.acme.dev/spec',
+      input: { inputKind: 'text' as const, text: 'Use https://user:secret@docs.acme.dev/spec' },
       rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
@@ -409,7 +417,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('private-materialization');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-a',
-      prompt: 'A',
+      input: { inputKind: 'text' as const, text: 'A' },
       rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
@@ -454,7 +462,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const compileWith = async (commandGlob: string, suffix: string) => {
       await writeFile(join(root, 'samples.json'), sampleSetJson([{
         sample_id: 'sample-a',
-        prompt: 'A',
+        input: { inputKind: 'text' as const, text: 'A' },
         rubric: {
           quality: { criterion: 'Correct.', weight: 1 },
         },
@@ -481,14 +489,14 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('mock-strict-default');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
       sample_id: 'sample-default',
-      prompt: 'A',
+      input: { inputKind: 'text' as const, text: 'A' },
       rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
       mocks: [{ tool: 'Read', return: 'default' }],
     }, {
       sample_id: 'sample-opt-out',
-      prompt: 'B',
+      input: { inputKind: 'text' as const, text: 'B' },
       rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
@@ -702,12 +710,12 @@ describe('resolveNodeCliEvaluationRequest', () => {
     await writeFile(join(root, 'workspace-a', 'identity.txt'), 'workspace-a');
     await writeFile(join(root, 'workspace-b', 'identity.txt'), 'workspace-b');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'A', rubric: {
+      sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'A' }, rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
       cwd: 'workspace-a', allowedTools: ['Read'],
     }, {
-      sample_id: 'sample-b', prompt: 'B', rubric: {
+      sample_id: 'sample-b', input: { inputKind: 'text' as const, text: 'B' }, rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
       cwd: 'workspace-b', allowedTools: ['Bash'],
@@ -786,7 +794,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('multi-sample');
     await writeFile(join(root, 'samples.json'), sampleSetJson([
       {
-        sample_id: 'sample-a', prompt: 'A', rubric: {
+        sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'A' }, rubric: {
           quality: { criterion: 'Correct.', weight: 1 },
         },
         assertions: [
@@ -796,7 +804,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
         ],
       },
       {
-        sample_id: 'sample-b', prompt: 'B', rubric: {
+        sample_id: 'sample-b', input: { inputKind: 'text' as const, text: 'B' }, rubric: {
           quality: { criterion: 'Correct.', weight: 1 },
         },
         assertions: [
@@ -826,13 +834,13 @@ describe('resolveNodeCliEvaluationRequest', () => {
     const root = await fixture('partial-applicability');
     await writeFile(join(root, 'samples.json'), sampleSetJson([
       {
-        sample_id: 'sample-a', prompt: 'A', rubric: {
+        sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'A' }, rubric: {
           accuracy: { criterion: 'Correct.', weight: 0.7 },
           safety: { criterion: 'Safe.', weight: 0.3 },
         },
         assertions: [{ type: 'semantic_similarity', reference: 'A' }],
       },
-      { sample_id: 'sample-b', prompt: 'B', rubric: {
+      { sample_id: 'sample-b', input: { inputKind: 'text' as const, text: 'B' }, rubric: {
         style: { criterion: 'Concise.', weight: 1 },
       } },
     ]));
@@ -934,7 +942,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('keeps production sample validation strict despite the legacy ambient escape hatch', async () => {
     const root = await fixture('strict-loader');
     await writeFile(join(root, 'samples.json'), sampleSetJson([{
-      sample_id: 'sample-a', prompt: 'A', rubric: {
+      sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'A' }, rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       },
       assertions: [{ type: 'contains', value: 'X' }],
@@ -950,7 +958,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
   it('preserves normalized sample dependency requirements for host preflight', async () => {
     const root = await fixture('dependencies');
     await writeFile(join(root, 'samples.json'), sampleSetJson(
-      [{ sample_id: 'sample-a', prompt: 'A', rubric: {
+      [{ sample_id: 'sample-a', input: { inputKind: 'text' as const, text: 'A' }, rubric: {
         quality: { criterion: 'Correct.', weight: 1 },
       } }],
       {

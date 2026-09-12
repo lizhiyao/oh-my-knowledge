@@ -265,7 +265,7 @@ Versioned wire contracts for adapter and trace authors:
 
 | Dispatched content | Carrier | Mapping |
 |---|---|---|
-| Evaluation cases | `omk.eval-sample-set/v2` through `oh-my-knowledge/eval-samples` (`resolveEvalSampleJsonSchema`) | `EvaluateInput.dataset.samples` |
+| Evaluation cases | `omk.eval-sample-set/v3` through `oh-my-knowledge/eval-samples` (`resolveEvalSampleJsonSchema`) | `EvaluateInput.dataset.samples` |
 | Serializable measurement declarations | Published Core JSON Schemas under `oh-my-knowledge/eval-core/schemas/v1..v5/*`, resolved by file name with `resolveEvaluationCoreJsonSchema`; each file name maps to exactly one version directory, e.g. `evaluation-definition.schema.json` in `v5` and `measurement-policy.schema.json` in `v1` | `analyses`, `decision`, `policy`, `experiment`, `comparisons` |
 | Executor / evaluator / judge implementations | Registry id + version + config + config digest; never code | Resolved from the host registry, then injected into `variants` / `evaluators` |
 

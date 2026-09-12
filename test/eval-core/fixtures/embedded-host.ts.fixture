@@ -135,8 +135,8 @@ void comparabilityAssessmentVersion;
 void comparabilityRunIdentityDigest;
 
 const sampleSet: EvalSampleSetDocument = createEvalSampleSetDocument([{
-  sample_id: 'typescript-host',
-  prompt: 'Verify the package contract.',
+  sampleId: 'typescript-host',
+  input: { inputKind: 'text', text: 'Verify the package contract.' },
 }]);
 const sampleSchema: URL = resolveEvalSampleJsonSchema('eval-sample-set.schema.json');
 void sampleSet;

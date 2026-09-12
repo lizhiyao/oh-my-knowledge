@@ -1,43 +1,79 @@
-schemaVersion: omk.eval-sample-set/v2
+schemaVersion: omk.eval-sample-set/v3
 samples:
-  - sample_id: refund-window
-    prompt: What is the refund window for the Pro plan?
-    context: |
-      Pricing policy:
-      - Starter plan refunds are available within 7 days.
-      - Pro plan refunds are available within 14 days.
-      - Enterprise contracts use the signed order form.
-    assertions:
-      - type: faithfulness
-        threshold: 4
-      - type: answer_relevancy
-        threshold: 4
-      - type: context_recall
-        reference: Pro plan refunds are available within 14 days.
-  - sample_id: unsupported-sla
-    prompt: What uptime SLA does the Pro plan include?
-    context: |
-      Pricing policy:
-      - Starter plan refunds are available within 7 days.
-      - Pro plan refunds are available within 14 days.
-      - Enterprise contracts use the signed order form.
-    assertions:
-      - type: contains_any
-        values:
-          - unspecified
-          - context
-          - mention
-      - type: faithfulness
-        threshold: 4
-  - sample_id: enterprise-source
-    prompt: Where should I check Enterprise refund terms?
-    context: |
-      Pricing policy:
-      - Starter plan refunds are available within 7 days.
-      - Pro plan refunds are available within 14 days.
-      - Enterprise contracts use the signed order form.
-    assertions:
-      - type: context_recall
-        reference: Enterprise contracts use the signed order form.
-      - type: answer_relevancy
-        threshold: 4
+  - sampleId: refund-window
+    input:
+      inputKind: text
+      text: |-
+        What is the refund window for the Pro plan?
+
+        ```
+        Pricing policy:
+        - Starter plan refunds are available within 7 days.
+        - Pro plan refunds are available within 14 days.
+        - Enterprise contracts use the signed order form.
+
+        ```
+    evaluationContext:
+      assertions:
+        - type: faithfulness
+          threshold: 4
+        - type: answer_relevancy
+          threshold: 4
+        - type: context_recall
+          reference: Pro plan refunds are available within 14 days.
+      reference: |
+        Pricing policy:
+        - Starter plan refunds are available within 7 days.
+        - Pro plan refunds are available within 14 days.
+        - Enterprise contracts use the signed order form.
+  - sampleId: unsupported-sla
+    input:
+      inputKind: text
+      text: |-
+        What uptime SLA does the Pro plan include?
+
+        ```
+        Pricing policy:
+        - Starter plan refunds are available within 7 days.
+        - Pro plan refunds are available within 14 days.
+        - Enterprise contracts use the signed order form.
+
+        ```
+    evaluationContext:
+      assertions:
+        - type: contains_any
+          values:
+            - unspecified
+            - context
+            - mention
+        - type: faithfulness
+          threshold: 4
+      reference: |
+        Pricing policy:
+        - Starter plan refunds are available within 7 days.
+        - Pro plan refunds are available within 14 days.
+        - Enterprise contracts use the signed order form.
+  - sampleId: enterprise-source
+    input:
+      inputKind: text
+      text: |-
+        Where should I check Enterprise refund terms?
+
+        ```
+        Pricing policy:
+        - Starter plan refunds are available within 7 days.
+        - Pro plan refunds are available within 14 days.
+        - Enterprise contracts use the signed order form.
+
+        ```
+    evaluationContext:
+      assertions:
+        - type: context_recall
+          reference: Enterprise contracts use the signed order form.
+        - type: answer_relevancy
+          threshold: 4
+      reference: |
+        Pricing policy:
+        - Starter plan refunds are available within 7 days.
+        - Pro plan refunds are available within 14 days.
+        - Enterprise contracts use the signed order form.

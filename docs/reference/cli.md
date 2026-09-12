@@ -413,7 +413,7 @@ omk sample --batch                  # generate for skills missing eval-samples
 **Flags:**
 
 ```text
-  --append                    Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces. Without it, an existing file errors out. Often paired with --focus.
+  --append                    Append newly generated samples to the existing samples file (colliding sampleId auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces. Without it, an existing file errors out. Often paired with --focus.
   --batch                     Batch mode: scan --skill-dir, generate samples for any skill missing them.
   --count <value>             Number of samples to generate. Defaults to LLM auto-selection by skill type.
   --executor <value>          Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.

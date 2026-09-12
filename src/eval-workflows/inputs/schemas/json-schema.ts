@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { EvalSampleSetDocumentSchema } from './sample-set.js';
 
 const SCHEMA_URI =
-  'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-samples/v2/eval-sample-set.schema.json';
+  'https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/eval-samples/v3/eval-sample-set.schema.json';
 
 function assertNoEmptySchemaNode(value: unknown, path = '$'): void {
   if (Array.isArray(value)) {
@@ -45,7 +45,13 @@ export function generateEvalSampleSetJsonSchema(): Record<string, unknown> {
     reused: 'ref',
   });
   annotateRubricContract(generated);
-  const schema = { ...generated, $id: SCHEMA_URI };
+  const schema = { ...generated, $id: SCHEMA_URI, 'x-omk-invariants': [
+    'Files contain acyclic JSON data with nesting depth below 32.',
+    'JSON input schema identity matches its embedded schemaDocument; value satisfies that self-contained JSON Schema 2020-12.',
+    'Message and tool-call IDs are unique; tool results resolve outstanding calls and histories contain no incomplete calls.',
+    'Structured-check expectedPointer resolves within expected; missing actual evidence is handled by Core.',
+    'Cross-field assertion and mock references are validated before execution.',
+  ] };
   assertNoEmptySchemaNode(schema);
   return schema;
 }

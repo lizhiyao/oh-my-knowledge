@@ -413,7 +413,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 **Flags:**
 
 ```text
-  --append                    在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
+  --append                    在已有用例文件上追加新生成的用例（撞 sampleId 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
   --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
   --count <value>             生成用例条数。不传由 LLM 按 skill 类型自动决定。
   --executor <value>          执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。

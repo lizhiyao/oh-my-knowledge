@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { queryObservationInbox } from '../../observability/inbox/index.js';
 import { observationDraftsDir } from '../../observability/inbox/paths.js';
 import { createJsonFileAtomic } from '../../shared/atomic-json.js';
-import { createEvalSampleSetDocument } from '../inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../inputs/schemas/sample-set.js';
 import type { generateSamplesFromTraces } from './generator.js';
 
 type TraceGenerator = typeof generateSamplesFromTraces;
@@ -37,6 +37,6 @@ export async function generateTraceDrafts(input: {
   options.signal?.throwIfAborted();
   if (samples.length === 0) return { draftStatus: 'empty' as const, costUSD };
   mkdirSync(dirname(outputPath), { recursive: true });
-  createJsonFileAtomic(outputPath, createEvalSampleSetDocument(samples));
+  createJsonFileAtomic(outputPath, createWorkflowSampleSetDocument(samples));
   return { draftStatus: 'generated' as const, outputPath, count: samples.length, costUSD };
 }

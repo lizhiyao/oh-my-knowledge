@@ -1,5 +1,9 @@
 # 通用 sample 规范草案（#842）
 
+> 历史研究记录（#842／#863）。后续实施已采用 v3-only：不读取 v2、不提供迁移工具，不改写用户旧文件或报告。本文的迁移工具与兼容窗口建议已被该决定取代。当前可用契约和实际支持范围以[样本格式](../reference/eval-sample-format.md)为准。
+
+当前生产链路验收：`yarn vitest run test/eval-workflows/sample-v3-production.test.ts`。旧原型已由该验收替代，不在当前测试树重复保留。
+
 状态：设计评审草案，包含离线可行性证据；尚未批准公共契约实现。本文不发布新的 sample Schema，不改变 `omk.eval-sample-set/v2`、prompt 字节、评分或持久化身份。关联：[需求 #842](https://github.com/lizhiyao/oh-my-knowledge/issues/842)。
 
 ## 1. 研究依据与设计取舍
@@ -38,7 +42,7 @@
 | agent：两轮澄清后查库存 | 带角色和关联 ID 的消息历史、隔离库存 fixture | 正确查询参数和答复，必要的工具约束 | 历史重放与交互用户模拟区分；工具结果必须对应真实离线调用 |
 | workflow：订单校验与审批 | 订单 JSON、初始状态、确定性节点图 | 最终状态和必要节点后置条件 | 真实状态转换、拒绝路径、终态与“完成”文本不一致的负例 |
 
-第一轮原型已通过 `yarn vitest run test/eval-workflows/general-sample-proposal.test.ts`（8 项）；`yarn typecheck` 对应的 `tsc --noEmit` 通过。原型复用真实 Core 生命周期和评分／报告校验，离线逻辑实际分类、排序语料、读取库存文件、落盘状态转换，且对故意损坏的结果判失败。每次试验使用独立临时目录并清理，执行上下文未含金标或评测专用标记。
+第一轮原型已通过 [historical probe at d7088ca7](https://github.com/lizhiyao/oh-my-knowledge/blob/d7088ca73574ee18ef85e71250d77d93b231646a/test/eval-workflows/general-sample-proposal.test.ts)（8 项）；`yarn typecheck` 对应的 `tsc --noEmit` 通过。原型复用真实 Core 生命周期和评分／报告校验，离线逻辑实际分类、排序语料、读取库存文件、落盘状态转换，且对故意损坏的结果判失败。每次试验使用独立临时目录并清理，执行上下文未含金标或评测专用标记。
 
 这仅证明通过测试内离线 adapter 的可行性：不证明 v2 能加载新封套，不证明原生模型消息转换、不证明交互式多轮或生产 workflow 接入。原型评分使用固定 fixture 的结构化结果精确匹配，不把它称为通用 RAG 指标或 agent 质量评分。另验证了负金额拒绝、大额转人工、缺失输出保持非完整／非结论状态，以及真实 v2 加载器拒绝新封套。最终矩阵分别列用户入口、执行器、评分器、证据和报告，不允许以任一层支持推出全链路支持。
 
@@ -102,7 +106,7 @@ workflow 的 executionContext 指定初始状态和隔离资源；expected 指�
 | 金标隔离 | assertions／rubric 沿既有编译路径 | 4 类执行上下文均无 expected／evaluationContext 和金标标记 | expected 仅供评分绑定；custom-command 请求边界另有基线测试 |
 | 交互 session、多模态、生产数据库 | 不据此宣称支持 | 本轮未验证 | 需要各自适配器和真实证据，不能由 JSON Schema 推断 |
 
-复现：`yarn vitest run test/eval-workflows/general-sample-proposal.test.ts`。四类最小样本和执行逻辑位于同一测试文件，直接可读和可运行；使用现有 Core sample，而非未发布 v3 文件。所有执行为本机离线、每 trial 隔离目录，无网络、凭证或模型。结果经真实 Core 分析与报告 materialization；有完整证据的结果再次序列化验证。测试内 runtime identity 和分析策略为 conformance fixture，不是已注册生产测量工具；不得使用 fixture 的 verdict 宣称模型改进或发布资格。
+复现：[historical probe at d7088ca7](https://github.com/lizhiyao/oh-my-knowledge/blob/d7088ca73574ee18ef85e71250d77d93b231646a/test/eval-workflows/general-sample-proposal.test.ts)。四类最小样本和执行逻辑位于同一测试文件，直接可读和可运行；使用现有 Core sample，而非未发布 v3 文件。所有执行为本机离线、每 trial 隔离目录，无网络、凭证或模型。结果经真实 Core 分析与报告 materialization；有完整证据的结果再次序列化验证。测试内 runtime identity 和分析策略为 conformance fixture，不是已注册生产测量工具；不得使用 fixture 的 verdict 宣称模型改进或发布资格。
 
 ## 8. 迁移示例与实施决策
 

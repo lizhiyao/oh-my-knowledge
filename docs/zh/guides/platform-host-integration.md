@@ -17,7 +17,7 @@
 
 | 下发内容 | 载体 | 执行侧映射 |
 |---|---|---|
-| 评测用例 | 已发布 schema `omk.eval-sample-set/v2`（入口 `oh-my-knowledge/eval-samples`；schema 文件用 `resolveEvalSampleJsonSchema` 解析） | 编译为 `EvaluateInput.dataset.samples` |
+| 评测用例 | 已发布 schema `omk.eval-sample-set/v3`（入口 `oh-my-knowledge/eval-samples`；schema 文件用 `resolveEvalSampleJsonSchema` 解析） | 编译为 `EvaluateInput.dataset.samples` |
 | analyses／decision／policy／experiment／comparisons 等可序列化测量声明 | 已发布 Core JSON Schema（`oh-my-knowledge/eval-core/schemas/v1..v5/*`），运行时按文件名用 `resolveEvaluationCoreJsonSchema` 解析；每个文件名只对应一个版本目录，如 `evaluation-definition.schema.json` 在 `v5`、`measurement-policy.schema.json` 在 `v1` | 映射为 `EvaluateInput.analyses`、`decision`、`policy`、`experiment`、`comparisons` |
 | executor／evaluator／评委／报告逻辑 | 只下发「注册表 id＋配置＋版本 digest」，不下发代码 | 执行侧按 id 从自有注册表解析实现（见下一节），注入 `variants`／`evaluators` |
 
@@ -217,7 +217,7 @@ const result = await prepared.run({
 ## 可比性治理工作流
 
 - **identity facet 从第一天进下发协议。** executor 的 `executorId`／`version`／`fingerprintFacets`、evaluator 的 `instrumentId` 与 implementation 版本、评委的 `judgeId`／`version`、所用 schema 的 digest——全部属于测量身份，应当是下发契约的固定字段，而不是事后补充。
-- **评测用例集同样要版本化。** `omk.eval-sample-set/v2` 文档自带 `schemaVersion`，但 `EvaluateInput.dataset` 只有 `datasetId`、样本内容与可选的 `analysisCohorts`／`annotations`，没有版本字段：样本内容变化会改变 sealed plan digest（跨进程回读必须用同一份声明），而 `datasetId` 本身不会告诉你标注是否被改过。平台应把用例集版本与内容 digest 作为下发契约的固定字段，并写进 `dataset.annotations`，让看板与 `assessComparability` 的 reason 能区分「同 id、不同标注」的两次测量。修正标注后用 `rescore()` 重评属于新的测量版本，必须与修正前的结果分区展示。
+- **评测用例集同样要版本化。** `omk.eval-sample-set/v3` 文档自带 `schemaVersion`，但 `EvaluateInput.dataset` 只有 `datasetId`、样本内容与可选的 `analysisCohorts`／`annotations`，没有版本字段：样本内容变化会改变 sealed plan digest（跨进程回读必须用同一份声明），而 `datasetId` 本身不会告诉你标注是否被改过。平台应把用例集版本与内容 digest 作为下发契约的固定字段，并写进 `dataset.annotations`，让看板与 `assessComparability` 的 reason 能区分「同 id、不同标注」的两次测量。修正标注后用 `rescore()` 重评属于新的测量版本，必须与修正前的结果分区展示。
 - **评分标准变更走版本化流程**：发布新契约版本→标记 `BREAKING-COMPARABILITY`→新旧结果在看板分区展示。仓库内的 rubric 评委 prompt 由 `test/measurement-governance` 的 prompt registry 冻结治理，任何字节漂移都会被测试拦截；平台自有的评委 prompt 也应有同样的冻结与版本管理。
 - **`assessComparability` 的三个状态独立解读**：`designStatus`（compatible／incompatible）看测量设计是否可比；`evidenceQualificationStatus`（verified／conditional／rejected）看证据认证是否完整；`comparabilityStatus`（compatible／conditional／incompatible）是派生的总体结论。设计可比不代表证据过关，反之亦然。
 - **看板分区展示。** 不可比（incompatible）的结果单独分区并展示 reason code，不与可比结果混在同一条趋势线里；conditional 的结果标注限制条件后再展示。

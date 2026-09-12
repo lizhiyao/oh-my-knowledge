@@ -16,6 +16,7 @@ export const EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID =
 export interface CreateExactMatchEvaluatorInput {
   readonly metricId?: string;
   readonly actualBindingId?: string;
+  readonly actualSourceKind?: 'output' | 'trace';
   readonly expectedBindingId?: string;
   readonly sessionIsolationKey?: string;
 }
@@ -30,6 +31,7 @@ function binding(
 export function createExactMatchEvaluatorIdentity(input: Readonly<{
   metricId?: string;
   actualBindingId?: string;
+  actualSourceKind?: 'output' | 'trace';
   expectedBindingId?: string;
 }> = {}): RuntimeIdentity {
   const metricId = input.metricId ?? 'correct';
@@ -39,7 +41,7 @@ export function createExactMatchEvaluatorIdentity(input: Readonly<{
     implementationId: EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
     version: '1.0.0',
     capabilities: {
-      inputSourceKinds: ['expected', 'output'],
+      inputSourceKinds: ['expected', input.actualSourceKind ?? 'output'],
       metricValueTypes: ['boolean'],
       schemas: [],
     },
@@ -48,6 +50,7 @@ export function createExactMatchEvaluatorIdentity(input: Readonly<{
       metricId,
       actualBindingId,
       expectedBindingId,
+      ...(input.actualSourceKind === 'trace' ? { actualSourceKind: 'trace' } : {}),
     },
   });
 }
@@ -60,7 +63,7 @@ export function createExactMatchEvaluator(
   const actualBindingId = input.actualBindingId ?? 'actual';
   const expectedBindingId = input.expectedBindingId ?? 'expected';
   return createSameProcessEvaluatorAdapter({
-    identity: createExactMatchEvaluatorIdentity({ metricId, actualBindingId, expectedBindingId }),
+    identity: createExactMatchEvaluatorIdentity({ metricId, actualBindingId, expectedBindingId, actualSourceKind: input.actualSourceKind }),
     sessionIsolationKey: input.sessionIsolationKey ?? 'omk.eval-runtime.exact-match/v1',
     resourceLeases: { forRun: () => undefined },
     implementation: {

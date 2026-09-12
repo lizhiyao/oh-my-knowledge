@@ -1,8 +1,10 @@
+import { normalizeAuthoredSample } from './sample-mapping.js';
+import { isJsonValue } from '../../shared/json-value.js';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Sample } from './contracts/sample.js';
-import { detailedSchemaIssue } from './schemas/error.js';
+import { detailedSchemaIssue, rejectLegacySampleVersion } from './schemas/error.js';
 import { EvalSampleSetDocumentSchema, SampleSchema } from './schemas/sample-set.js';
 import type { DependencyRequirements } from '../../executors/preflight/contracts.js';
 import { sampleContractValidationError } from './sample-contract.js';
@@ -43,7 +45,7 @@ export interface LoadSamplesResult {
  * Load samples from a single file OR a directory of sample files.
  *
  * File mode (.json / .yaml / .yml):
- * - Versioned object: `{ schemaVersion: 'omk.eval-sample-set/v2', requires?, samples }`
+ * - Versioned object: `{ schemaVersion: 'omk.eval-sample-set/v3', requires?, samples }`
  *
  * Directory mode (e.g. `<skill>/.omk/`):
  * - Glob `*.{json,yaml,yml}` minus reserved prefixes (report*, health*, _*)
@@ -102,7 +104,7 @@ function loadSamplesFromDir(
       const prev = seenIds.get(s.sample_id);
       if (prev) {
         throw new Error(
-          `duplicate sample_id "${s.sample_id}" in ${dir}: ` +
+          `duplicate sampleId "${s.sample_id}" in ${dir}: ` +
           `defined in both "${prev}" and "${f}"`,
         );
       }
@@ -176,14 +178,11 @@ export function validateSamples(
     const firstIndex = firstIndexBySampleId.get(sample.sample_id);
     if (firstIndex !== undefined) {
       throw new Error(
-        `duplicate sample_id "${sample.sample_id}" at samples[${i}] `
+        `duplicate sampleId "${sample.sample_id}" at samples[${i}] `
         + `(first defined at samples[${firstIndex}])`,
       );
     }
     firstIndexBySampleId.set(sample.sample_id, i);
-    if (!sample.prompt || typeof sample.prompt !== 'string') {
-      throw new Error(`samples[${i}] (${sample.sample_id}) missing or invalid required field: prompt (must be a non-empty string)`);
-    }
 
     // validate optional metadata enums; help users typo-check (`'easy?'` etc).
     if (sample.difficulty !== undefined && !VALID_DIFFICULTY.has(sample.difficulty)) {
@@ -332,6 +331,8 @@ function loadSampleFile(
   const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
   const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
 
+  rejectLegacySampleVersion(parsed);
+  if (!isJsonValue(parsed)) throw new Error(`invalid samples file: ${samplesPath}: expected acyclic JSON data with depth below 32`);
   const document = EvalSampleSetDocumentSchema.safeParse(parsed);
   if (!document.success) {
     const issue = detailedSchemaIssue(document.error);
@@ -340,7 +341,7 @@ function loadSampleFile(
       `invalid samples file: ${samplesPath}: ${field}: ${issue?.message ?? 'invalid shape'}`,
     );
   }
-  const samples = document.data.samples;
+  const samples = document.data.samples.map(normalizeAuthoredSample);
   const requires = document.data.requires as DependencyRequirements | undefined;
 
   validateSamples(samples);

@@ -379,7 +379,7 @@ describe('dependenciesPresentRule', () => {
 });
 
 describe('samplesContractAlignedRule', () => {
-  const goodSample: Sample = { sample_id: 's1', prompt: 'review this code' };
+  const goodSample: Sample = { sample_id: 's1', input: { inputKind: 'text' as const, text: 'review this code' } };
 
   it('skips when no samples are provided', async () => {
     const r = await samplesContractAlignedRule.check(ctxWith(sampleSkill()));
@@ -393,7 +393,7 @@ describe('samplesContractAlignedRule', () => {
 
   it('warns when some samples are missing prompt', async () => {
     const r = await samplesContractAlignedRule.check(ctxWith(sampleSkill(), {
-      samples: [goodSample, { sample_id: 's2', prompt: '' }],
+      samples: [goodSample, { sample_id: 's2', input: { inputKind: 'text' as const, text: '' } }],
     }));
     assert.equal(r.status, 'warn');
     assert.ok(r.message.includes('1'));
@@ -401,7 +401,7 @@ describe('samplesContractAlignedRule', () => {
 
   it('passes when all samples have non-empty prompt', async () => {
     const r = await samplesContractAlignedRule.check(ctxWith(sampleSkill(), {
-      samples: [goodSample, { sample_id: 's2', prompt: 'another' }],
+      samples: [goodSample, { sample_id: 's2', input: { inputKind: 'text' as const, text: 'another' } }],
     }));
     assert.equal(r.status, 'pass');
   });

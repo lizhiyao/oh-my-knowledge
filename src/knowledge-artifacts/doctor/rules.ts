@@ -265,7 +265,7 @@ export const samplesContractAlignedRule: DoctorRule = {
         detail: { count: 0 },
       };
     }
-    const missing = ctx.samples.filter((s) => !s.prompt || s.prompt.trim().length === 0);
+    const missing = ctx.samples.filter((s) => s.input.inputKind === 'text' && s.input.text.trim().length === 0);
     if (missing.length > 0) {
       return {
         status: 'warn',

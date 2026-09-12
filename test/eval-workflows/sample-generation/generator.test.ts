@@ -1,3 +1,4 @@
+import { createWorkflowSampleSetDocument } from '../../../src/eval-workflows/inputs/schemas/sample-set.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { interruptedExecResult } from '../../../src/executors/core/runtime.js';
@@ -44,9 +45,9 @@ describe('generateSamples', () => {
       capturedPrompt = input.prompt;
       return {
         ok: true,
-        output: JSON.stringify([{
+        output: JSON.stringify(createWorkflowSampleSetDocument([{
           sample_id: 's001',
-          prompt: 'review the integration',
+          input: { inputKind: 'text' as const, text: 'review the integration' },
           rubric: {
             quality: { criterion: 'explain the correct result', weight: 1 },
           },
@@ -59,7 +60,7 @@ describe('generateSamples', () => {
             { type: 'tools_not_called', values: ['Write'] },
             { type: 'contains', value: 'Sentry.init' },
           ],
-        }]),
+        }]).samples),
         durationMs: 1,
         durationApiMs: 1,
         inputTokens: 0,
@@ -86,7 +87,7 @@ describe('generateSamples', () => {
     assert.equal(result.samples[0].mocks, undefined);
     assert.equal(result.samples[0].mocksStrict, undefined);
     assert.equal(result.samples[0].environment, undefined);
-    assert.match(result.samples[0].context ?? '', /题设引用路径（未物化）：app\.js/);
+    assert.match(textOf(result.samples[0]), /题设引用路径（未物化）：app\.js/);
     assert.deepEqual(
       result.samples[0].assertions?.map((assertion) => assertion.type),
       ['tools_not_called', 'contains'],
@@ -140,7 +141,7 @@ describe('buildSamplesFromTracesPrompt', () => {
   it('adds a mockless override for trace drafts when requested', () => {
     const prompt = buildSamplesFromTracesPrompt(items, undefined, { noMock: true });
     assert.match(prompt, /不要生成 mocks/);
-    assert.match(prompt, /trace 证据写入 context 和 rubric/);
+    assert.match(prompt, /trace 证据写入 input.text 和 evaluationContext.rubric/);
   });
 });
 
@@ -208,9 +209,9 @@ describe('generateSamplesFromTraces', () => {
     const r = await generateSamplesFromTraces({
       items: oneItem,
       model: 'test-model',
-      executor: mockExec(JSON.stringify([{ sample_id: 'trace-1', prompt: 'reproduce the failed search for x', rubric: {
+      executor: mockExec(JSON.stringify(createWorkflowSampleSetDocument([{ sample_id: 'trace-1', input: { inputKind: 'text' as const, text: 'reproduce the failed search for x' }, rubric: {
         quality: { criterion: 'should locate the file', weight: 1 },
-      } }])),
+      } }]).samples)),
     });
     assert.ok(r.samples.length >= 1);
     assert.ok(r.samples.every((s) => s.provenance === 'production-trace'));
@@ -267,48 +268,48 @@ describe('buildSamplesPrompt', () => {
 // sanitize boundary (UltraReview Bug #1 fix)
 describe('sanitizeGeneratedSamples', () => {
   it('default-stamps provenance: "llm-generated" when missing', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p' }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' } }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].provenance, 'llm-generated');
   });
 
   it('preserves valid LLM-output provenance value', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', provenance: 'human' }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, provenance: 'human' }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].provenance, 'human');
   });
 
   it('strips invalid provenance enum + auto-stamps llm-generated', () => {
     // 之前的 bug: `if (!s.provenance)` 只看 truthy, 'invalid' 会保留 → 写盘 → 下次 loadSamples reject
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', provenance: 'invalid' as Sample['provenance'] }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, provenance: 'invalid' as Sample['provenance'] }];
     const { stripped } = sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].provenance, 'llm-generated', 'invalid provenance must be replaced');
     assert.ok(stripped.some((s) => s.includes('provenance')));
   });
 
   it('strips invalid difficulty enum', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', difficulty: 'Easy' as Sample['difficulty'] }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, difficulty: 'Easy' as Sample['difficulty'] }];
     const { stripped } = sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].difficulty, undefined, 'invalid difficulty must be deleted');
     assert.ok(stripped.some((s) => s.includes('difficulty')));
   });
 
   it('strips capability when not string[]', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', capability: 'single' as unknown as string[] }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, capability: 'single' as unknown as string[] }];
     const { stripped } = sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].capability, undefined);
     assert.ok(stripped.some((s) => s.includes('capability')));
   });
 
   it('strips capability when array contains non-strings', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', capability: ['ok', 123] as unknown as string[] }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, capability: ['ok', 123] as unknown as string[] }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].capability, undefined);
   });
 
   it('preserves valid capability + difficulty + construct + provenance', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       capability: ['api-selection'], difficulty: 'medium', construct: 'capability', provenance: 'llm-generated',
     }];
     const { stripped } = sanitizeGeneratedSamples(samples);
@@ -319,14 +320,14 @@ describe('sanitizeGeneratedSamples', () => {
   });
 
   it('default sample_id when missing', () => {
-    const samples: Sample[] = [{ prompt: 'p' } as Sample];
+    const samples: Sample[] = [{ input: { inputKind: 'text' as const, text: 'p' } } as Sample];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].sample_id, 's001');
   });
 
   it('strips tools_not_called with empty values (noise assertion)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'tool_input_contains', value: 'Bash:foo', weight: 1 },
         { type: 'tools_not_called', values: [], weight: 0 },
@@ -340,7 +341,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('strips tools_called with non-string entries', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'tools_called', values: ['Bash', '', null as unknown as string], weight: 1 },
       ],
@@ -352,7 +353,7 @@ describe('sanitizeGeneratedSamples', () => {
   // Rule A: text-class value content guard (CJK / fullwidth / whitespace / length).
   it('rule A: strips contains with CJK value (LLM-output literal Chinese unstable)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'contains', value: '留档', weight: 1 },
         { type: 'contains', value: 'ECONNREFUSED', weight: 1 },
@@ -366,7 +367,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule A: strips contains with fullwidth bracket "【...】"', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'contains', value: '【需求文档】', weight: 1 }],
     }];
     const { stripped } = sanitizeGeneratedSamples(samples);
@@ -376,7 +377,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule A: strips contains_any whose any entry violates value rule', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         // 第一项 ASCII OK，第二项中文 → 整条挂(短路即可,因为该断言语义不能"部分容忍")
         { type: 'contains_any', values: ['ECONNRESET', '连接重置'], weight: 1 },
@@ -389,7 +390,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule A: strips contains with internal whitespace (phrase, not token)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'contains', value: 'git push origin', weight: 1 },     // phrase → strip
         { type: 'contains', value: 'git-push-origin', weight: 1 },     // hyphenated token → keep
@@ -402,7 +403,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule A: strips regex pattern containing CJK characters', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'regex', pattern: '风险等级:\\s*(高|中|低)', weight: 1 }],
     }];
     const { stripped } = sanitizeGeneratedSamples(samples);
@@ -413,7 +414,7 @@ describe('sanitizeGeneratedSamples', () => {
   // Rule B: positive tool-bound assertion's tool name must be in SKILL.md.
   it('rule B: strips tool_input_contains whose tool name not in SKILL.md', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'tool_input_contains', value: 'WebFetch:irk5ik/kg7h1z', weight: 1 },
         { type: 'tool_input_contains', value: 'Read:checks/x.md', weight: 1 },
@@ -429,7 +430,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule B: keeps tool_input_contains when tool name appears in SKILL.md (case-insensitive)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'tool_input_contains', value: 'Bash:git push', weight: 1 },
         { type: 'tool_input_contains', value: 'webfetch:https://example.com', weight: 1 },
@@ -442,7 +443,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule B: tool_input_not_contains is exempt (forbidden tools need not be in SKILL.md)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         // git-push-with-force is a forbidden action, "--force" / "git push --force"
         // tool may not be mentioned in the doc even though the negative-rule sample
@@ -459,7 +460,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('rule B: when skillContent omitted, rule B silently passes (loader path)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [{ type: 'tool_input_contains', value: 'Mystery:foo', weight: 1 }],
     }];
     sanitizeGeneratedSamples(samples /* no opts */);
@@ -471,7 +472,7 @@ describe('sanitizeGeneratedSamples', () => {
     // 字面 token(命令名 / flag / 路径片段),不走 TEXT_VALUE_TYPES 的 ASCII-token 校验。
     // 走的是规则 B 的"Tool 名是否在 SKILL.md"+ 已有的"Tool:needle 格式"校验。
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'tool_input_contains', value: 'Bash:git stash', weight: 1 },   // needle 含空格 OK
       ],
@@ -482,7 +483,7 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('strips tool_input_not_contains with bare needle (no Tool: prefix)', () => {
     const samples: Sample[] = [{
-      sample_id: 's1', prompt: 'p',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' },
       assertions: [
         { type: 'tool_input_contains', value: 'Bash:foo', weight: 1 },
         { type: 'tool_input_not_contains', value: '--force', weight: 0.5 },
@@ -498,7 +499,7 @@ describe('sanitizeGeneratedSamples', () => {
   it('auto-sets mocksStrict=true when mocks exist but mocksStrict missing', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: 'p',
+      input: { inputKind: 'text' as const, text: 'p' },
       mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
     }];
     sanitizeGeneratedSamples(samples);
@@ -508,7 +509,7 @@ describe('sanitizeGeneratedSamples', () => {
   it('preserves explicit mocksStrict=false (escape hatch)', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: 'p',
+      input: { inputKind: 'text' as const, text: 'p' },
       mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
       mocksStrict: false,
     }];
@@ -517,7 +518,7 @@ describe('sanitizeGeneratedSamples', () => {
   });
 
   it('does not set mocksStrict when sample has no mocks', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p' }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' } }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].mocksStrict, undefined);
   });
@@ -525,7 +526,7 @@ describe('sanitizeGeneratedSamples', () => {
   it('mockless mode removes positive tool evidence recursively but keeps safety negatives', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: 'p',
+      input: { inputKind: 'text' as const, text: 'p' },
       environment: {
         cli_available: ['node'],
         files_available: ['app.js'],
@@ -558,7 +559,7 @@ describe('sanitizeGeneratedSamples', () => {
   it('removes mock_hit assertions that do not reference a real per-tool mock ordinal', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: 'p',
+      input: { inputKind: 'text' as const, text: 'p' },
       mocks: [
         { tool: 'Read', return: 'one' },
         { tool: 'Bash', return: 'two' },
@@ -584,38 +585,43 @@ describe('sanitizeGeneratedSamples', () => {
   });
 
   it('preserves valid tripwire boolean', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', tripwire: true }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, tripwire: true }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].tripwire, true);
   });
 
   it('strips non-boolean tripwire (LLM 偶尔返回 "true" 字符串)', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', tripwire: 'true' as unknown as boolean }];
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, tripwire: 'true' as unknown as boolean }];
     const { stripped } = sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].tripwire, undefined);
     assert.ok(stripped.some((s) => s.includes('tripwire')));
   });
 
-  it('throws on missing prompt(required field)', () => {
+  it('throws on missing input(required field)', () => {
     const samples: Sample[] = [{ sample_id: 's1' } as Sample];
-    assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required prompt field/);
+    assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required input field/);
   });
 
-  it('throws on non-string prompt(LLM 偶尔返回 number / null)', () => {
-    const samples: Sample[] = [{ sample_id: 's1', prompt: 456 as unknown as string }];
-    assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required prompt field.*number/);
+  it('throws on non-string text(LLM 偶尔返回 number / null)', () => {
+    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 456 as unknown as string } }];
+    assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required input field/);
   });
 
   it('default sample_id when type is non-string(LLM 返回 number)', () => {
     // Bug #2:写盘后下游 loadSamples 会 reject 整文件 — generator boundary 应规范化
-    const samples: Sample[] = [{ sample_id: 123 as unknown as string, prompt: 'p' }];
+    const samples: Sample[] = [{ sample_id: 123 as unknown as string, input: { inputKind: 'text' as const, text: 'p' } }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].sample_id, 's001', 'non-string sample_id should be replaced with default');
   });
 
   it('default sample_id when empty string', () => {
-    const samples: Sample[] = [{ sample_id: '', prompt: 'p' }];
+    const samples: Sample[] = [{ sample_id: '', input: { inputKind: 'text' as const, text: 'p' } }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].sample_id, 's001');
   });
 });
+
+function textOf(sample: Sample): string {
+  if (sample.input.inputKind !== 'text') throw new Error('Expected a text fixture.');
+  return sample.input.text;
+}

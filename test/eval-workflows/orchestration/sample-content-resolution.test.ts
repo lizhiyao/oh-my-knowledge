@@ -40,11 +40,11 @@ describe('resolveSampleContents', () => {
   it('resolves each canonical URL once, replaces every occurrence, and leaves sources immutable', async () => {
     const samples: Sample[] = [{
       sample_id: 's1',
-      prompt: 'Read https://docs.acme.dev/a and again https://docs.acme.dev/a.',
-      context: 'Mirror: https://docs.acme.dev/a#section',
+      input: { inputKind: 'text' as const, text: "Read https://docs.acme.dev/a and again https://docs.acme.dev/a.\n\n```\nMirror: https://docs.acme.dev/a#section\n```" },
+      reference: 'Mirror: https://docs.acme.dev/a#section',
     }, {
       sample_id: 's2',
-      prompt: 'Also https://docs.acme.dev/a',
+      input: { inputKind: 'text' as const, text: 'Also https://docs.acme.dev/a' },
     }];
     const resolve = vi.fn(async () => ({
       content: '\uFEFFLine 1\r\nLine 2\n',
@@ -57,15 +57,15 @@ describe('resolveSampleContents', () => {
 
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith('https://docs.acme.dev/a');
-    expect(result.samples[0]?.prompt.match(/--- OMK resolved content ---/g)).toHaveLength(2);
-    expect(result.samples[0]?.context).toContain('Line 1\nLine 2');
-    expect(result.samples[1]?.prompt).toContain('Line 1\nLine 2');
-    expect(samples[0]?.prompt).not.toContain('OMK resolved content');
+    expect(textOf(result.samples[0]).match(/--- OMK resolved content ---/g)).toHaveLength(3);
+    expect(result.samples[0]?.reference).toBe(samples[0].reference);
+    expect(textOf(result.samples[1])).toContain('Line 1\nLine 2');
+    expect(textOf(samples[0])).not.toContain('OMK resolved content');
     expect(result.contents).toEqual([
       expect.objectContaining({
         transportKind: 'mcp',
         sampleIds: ['s1', 's2'],
-        fields: ['context', 'prompt'],
+        fields: ['input.text'],
         sourceUrlDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
         contentDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       }),
@@ -75,7 +75,7 @@ describe('resolveSampleContents', () => {
   it('does not recursively rewrite URLs found inside already resolved content', async () => {
     const result = await resolveSampleContents([{
       sample_id: 's1',
-      prompt: 'Read https://a.acme.dev/doc and https://b.acme.dev/doc.',
+      input: { inputKind: 'text' as const, text: 'Read https://a.acme.dev/doc and https://b.acme.dev/doc.' },
     }], session(async (url) => ({
       content: url.includes('a.acme.dev')
         ? 'A references https://b.acme.dev/doc without embedding it.'
@@ -85,8 +85,8 @@ describe('resolveSampleContents', () => {
       classification: 'public',
     })));
 
-    expect(result.samples[0]?.prompt.match(/B authoritative content\./g)).toHaveLength(1);
-    expect(result.samples[0]?.prompt).toContain(
+    expect(textOf(result.samples[0]).match(/B authoritative content\./g)).toHaveLength(1);
+    expect(textOf(result.samples[0])).toContain(
       'A references https://b.acme.dev/doc without embedding it.',
     );
   });
@@ -95,7 +95,7 @@ describe('resolveSampleContents', () => {
     const repeated = Array.from({ length: 9 }, () => 'https://docs.acme.dev/large').join(' ');
     await expect(resolveSampleContents([{
       sample_id: 's1',
-      prompt: repeated,
+      input: { inputKind: 'text' as const, text: repeated },
     }], session(async () => ({
       content: 'x'.repeat(1024 * 1024),
       mediaType: 'text/plain',
@@ -108,7 +108,7 @@ describe('resolveSampleContents', () => {
     const calls: string[] = [];
     await resolveSampleContents([{
       sample_id: 's1',
-      prompt: 'https://z.acme.dev/doc https://a.acme.dev/doc',
+      input: { inputKind: 'text' as const, text: 'https://z.acme.dev/doc https://a.acme.dev/doc' },
     }], session(async (url) => {
       calls.push(url);
       return {
@@ -124,11 +124,11 @@ describe('resolveSampleContents', () => {
   it('keeps RFC placeholder URLs literal and rejects authority credentials', async () => {
     expect(isPlaceholderSampleUrl('https://wiki.example.com/prd')).toBe(true);
     expect(hasResolvableSampleUrls([{
-      sample_id: 's1', prompt: 'See https://wiki.example.com/prd.',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'See https://wiki.example.com/prd.' },
     }])).toBe(false);
 
     await expect(resolveSampleContents([{
-      sample_id: 's1', prompt: 'See https://user:secret@docs.acme.dev/a',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'See https://user:secret@docs.acme.dev/a' },
     }], session(async () => {
       throw new Error('must not run');
     }))).rejects.toBeInstanceOf(SampleContentResolutionError);
@@ -136,7 +136,7 @@ describe('resolveSampleContents', () => {
 
   it('fails closed instead of evaluating a raw URL', async () => {
     await expect(resolveSampleContents([{
-      sample_id: 's1', prompt: 'See https://docs.acme.dev/a',
+      sample_id: 's1', input: { inputKind: 'text' as const, text: 'See https://docs.acme.dev/a' },
     }], session(async () => {
       throw new Error('offline');
     }))).rejects.toMatchObject({
@@ -287,3 +287,8 @@ describe('safe HTTP address policy', () => {
     expect(isPublicNetworkAddress(address, family)).toBe(expected);
   });
 });
+
+function textOf(sample: Sample): string {
+  if (sample.input.inputKind !== 'text') throw new Error('Expected a text fixture.');
+  return sample.input.text;
+}

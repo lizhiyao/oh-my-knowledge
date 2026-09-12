@@ -1,3 +1,4 @@
+import { SampleInputSchema } from './schemas/sample-input.js';
 import { isJsonValue } from '../../shared/json-value.js';
 import {
   ASYNC_ASSERTION_TYPES,
@@ -285,6 +286,18 @@ function mockHitReferenceValidationError(
   return undefined;
 }
 
+/** Validate known reference data before spending execution work on an unresolvable check. */
+function hasExpectedPointer(value: unknown, pointer: string): boolean {
+  let current = value;
+  for (const encoded of pointer === '' ? [] : pointer.slice(1).split('/')) {
+    const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
+    if (current === null || typeof current !== 'object' || !Object.hasOwn(current, token)) return false;
+    if (Array.isArray(current) && !/^(?:0|[1-9]\d*)$/.test(token)) return false;
+    current = (current as Record<string, unknown>)[token];
+  }
+  return current !== undefined;
+}
+
 export function sampleContractValidationError(
   value: unknown,
   expectedId?: string,
@@ -294,8 +307,9 @@ export function sampleContractValidationError(
     !isNonEmptyString(value.sample_id)
     || (expectedId !== undefined && value.sample_id !== expectedId)
   ) return '"sample_id" must be a non-empty matching string';
-  if (!isNonEmptyString(value.prompt)) return '"prompt" must be a non-empty string';
-  for (const field of ['cwd', 'context'] as const) {
+  const input = SampleInputSchema.safeParse(value.input);
+  if (!input.success) return `"input": ${input.error.message}`;
+  for (const field of ['cwd', 'reference'] as const) {
     if (value[field] !== undefined && typeof value[field] !== 'string') {
       return `"${field}" must be a string when present`;
     }
@@ -319,6 +333,14 @@ export function sampleContractValidationError(
       ), 0) - 1) > RUBRIC_WEIGHT_SUM_TOLERANCE
     )
   ) return '"rubric" must map non-empty dimension names to criterion/weight objects whose weights sum to 1';
+  if (Array.isArray(value.checks)) {
+    for (const [index, check] of value.checks.entries()) {
+      if (!isRecord(check) || typeof check.expectedPointer !== 'string'
+        || !hasExpectedPointer(value.expected, check.expectedPointer)) {
+        return `"checks[${index}].expectedPointer" must resolve within expected`;
+      }
+    }
+  }
   if (value.assertions !== undefined) {
     if (!Array.isArray(value.assertions)) return '"assertions" must be an array';
     for (const [index, assertion] of value.assertions.entries()) {
@@ -330,9 +352,9 @@ export function sampleContractValidationError(
         isRecord(assertion)
         && (assertion.type === 'faithfulness' || assertion.type === 'context_recall')
         && !isNonEmptyString(assertion.reference)
-        && !isNonEmptyString(value.context)
+        && !isNonEmptyString(value.reference)
       ) {
-        return `${JSON.stringify(assertion.type)} requires sample "context" or assertion "reference"`;
+        return `${JSON.stringify(assertion.type)} requires sample "reference" or assertion "reference"`;
       }
     }
   }

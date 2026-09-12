@@ -19,7 +19,7 @@ import {
   managedRecordId,
   upsertManagedRecord,
 } from '../../src/knowledge-artifacts/governance/index.js';
-import { createEvalSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
+import { createWorkflowSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -403,9 +403,9 @@ describe('DSH plugin config boundary', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
       writeFileSync(join(dir, 'eval.yaml'), yaml);
-      writeFileSync(join(dir, 'samples.json'), JSON.stringify(createEvalSampleSetDocument([{
+      writeFileSync(join(dir, 'samples.json'), JSON.stringify(createWorkflowSampleSetDocument([{
         sample_id: 's1',
-        prompt: 'test',
+        input: { inputKind: 'text' as const, text: 'test' },
         assertions: [{ type: 'contains', value: 'host' }],
       }])));
       mkdirSync(join(dir, 'skills'));

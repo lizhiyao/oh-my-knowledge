@@ -1,5 +1,9 @@
 # General sample proposal (#842)
 
+> Historical research record (#842 / #863). Implementation subsequently adopted v3-only: no v2 reader or migration tool, and no rewriting old user files or reports. That decision supersedes migration-tool and compatibility-window proposals below. See the [sample format](../reference/eval-sample-format.md) for the current contract and verified support.
+
+Current production-path acceptance: `yarn vitest run test/eval-workflows/sample-v3-production.test.ts`. This replaces the historical prototype in the active test tree.
+
 Status: design review draft with offline feasibility evidence; public-contract implementation is not approved. This document does not publish a new sample schema or change `omk.eval-sample-set/v2`, prompt bytes, scoring, or persisted identities. See [issue #842](https://github.com/lizhiyao/oh-my-knowledge/issues/842).
 
 ## Research and direction
@@ -32,7 +36,7 @@ Baseline verification: `yarn vitest run test/eval-core/conformance/targets.test.
 | Agent: clarify then check inventory | Role-aware message history and isolated inventory fixture | Query arguments, answer, necessary tool constraints | Actual local tool results; replay distinct from simulation |
 | Workflow: validate and approve an order | Order, initial state, deterministic nodes | Final state and node postconditions | Actual state transitions, rejection branch, false success text |
 
-Initial probes pass `yarn vitest run test/eval-workflows/general-sample-proposal.test.ts` (eight tests); `tsc --noEmit` also passes. They exercise actual offline classification, corpus ranking, inventory file reads, and persisted state transitions through Core execution, grading, analysis, and verified reports. Corrupted outcomes fail grading; trial directories are isolated and cleaned; execution contexts exclude gold/evaluation-only markers.
+Initial probes pass [historical probe at d7088ca7](https://github.com/lizhiyao/oh-my-knowledge/blob/d7088ca73574ee18ef85e71250d77d93b231646a/test/eval-workflows/general-sample-proposal.test.ts) (eight tests); `tsc --noEmit` also passes. They exercise actual offline classification, corpus ranking, inventory file reads, and persisted state transitions through Core execution, grading, analysis, and verified reports. Corrupted outcomes fail grading; trial directories are isolated and cleaned; execution contexts exclude gold/evaluation-only markers.
 
 This proves test-adapter feasibility, not v2 loading, native message conversion, interactive sessions, or production workflow integration. Exact matching of fixture outcomes is not a general RAG or agent quality metric. Additional probes cover negative-amount rejection, large-order manual review, missing output remaining nonconclusive, and rejection of the proposed envelope by the actual v2 loader. The final matrix must independently cover the user entrypoint, executor, evaluator, evidence, and report.
 
@@ -82,7 +86,7 @@ Native means the layer already has a direct contract. Adapted means a test-local
 | Gold isolation | Existing assertion/rubric compilation | Four executor contexts exclude expected/evaluationContext and gold markers | Expected is evaluator-bound; baseline custom-command tests cover process request boundary |
 | Interactive sessions, multimodality, production databases | No support inferred here | Not validated in this work | Require dedicated adapters/evidence, not schema acceptance |
 
-Reproduce with `yarn vitest run test/eval-workflows/general-sample-proposal.test.ts`. The four minimal samples and executable logic are colocated in that test file, using existing Core samples rather than an unpublished v3 loader. Runs are local/offline, with isolated per-trial directories and no network, credentials, or model calls. Actual Core analysis/report materialization runs; complete results are serialized and revalidated. Runtime identities and analysis policies belong to the conformance fixture, not registered production instruments. Its verdict is not evidence of model improvement or release eligibility.
+Reproduce with [historical probe at d7088ca7](https://github.com/lizhiyao/oh-my-knowledge/blob/d7088ca73574ee18ef85e71250d77d93b231646a/test/eval-workflows/general-sample-proposal.test.ts). The four minimal samples and executable logic are colocated in that test file, using existing Core samples rather than an unpublished v3 loader. Runs are local/offline, with isolated per-trial directories and no network, credentials, or model calls. Actual Core analysis/report materialization runs; complete results are serialized and revalidated. Runtime identities and analysis policies belong to the conformance fixture, not registered production instruments. Its verdict is not evidence of model improvement or release eligibility.
 
 ## Migration example and implementation decision
 

@@ -876,9 +876,9 @@ async function productFixture(repeat: number): Promise<{ root: string; config: E
   await mkdir(join(root, 'skills', 'answer'), { recursive: true });
   await writeFile(join(root, 'skills', 'answer', 'SKILL.md'), '# Answer\nAnswer the question directly.\n');
   const samples = join(root, 'samples.json');
-  await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v2', samples: [
-    { sample_id: 'answer', prompt: 'Answer directly.', assertions: [{ type: 'contains', value: 'host' }] },
-  ] }));
+  await writeFile(samples, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v3', samples: [
+{ sampleId: 'answer', input: { inputKind: 'text', text: 'Answer directly.' }, evaluationContext: { assertions: [{ type: 'contains', value: 'host' }] } }
+] }));
   return { root,
     config: { samples, variants: [
       { name: 'control', role: 'control', artifact: 'baseline' },

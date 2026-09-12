@@ -1,3 +1,4 @@
+import { EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID } from '../../eval-runtime/evaluators/exact-match.js';
 import {
   digestCanonicalJson,
   type AnalysisCohortDefinition,
@@ -116,12 +117,20 @@ function digestId(prefix: string, value: JsonValue): string {
   return `${prefix}-${digestCanonicalJson(value).slice('sha256:'.length, 'sha256:'.length + 16)}`;
 }
 
-function renderedPrompt(sample: Readonly<Sample>): string {
+function executionInput(sample: Readonly<Sample>): JsonValue {
+  if (sample.input.inputKind !== 'text') {
+    if (sample.environment !== undefined) fail(`samples.${sample.sample_id}.executionContext.environment`,
+      'Prompt-only environment requires text input. Use executionContext.data for structured execution conditions.');
+    return structuredClone(sample.input) as JsonValue;
+  }
   const environment = renderEnvironmentSection(sample.environment);
-  const prompt = sample.context
-    ? `${sample.prompt}\n\n\`\`\`\n${sample.context}\n\`\`\``
-    : sample.prompt;
-  return environment === null ? prompt : `${environment}\n\n---\n\n${prompt}`;
+  return environment === null ? sample.input.text : `${environment}\n\n---\n\n${sample.input.text}`;
+}
+
+function judgeQuestion(sample: Readonly<Sample>): string {
+  if (sample.input.inputKind !== 'text') fail(`samples.${sample.sample_id}.evaluationContext`,
+    'Text LLM scoring requires text input; use a structured evaluator for this input kind.');
+  return sample.input.text;
 }
 
 function annotations(sample: Readonly<Sample>): JsonValue | undefined {
@@ -167,10 +176,10 @@ function llmCriterion(
   sample: Readonly<Sample>,
 ): JsonValue {
   const source = type === 'faithfulness'
-    ? assertion.reference ?? sample.context
+    ? assertion.reference ?? sample.reference
     : type === 'answer_relevancy'
-      ? sample.prompt
-      : assertion.reference ?? (type === 'context_recall' ? sample.context : undefined);
+      ? judgeQuestion(sample)
+      : assertion.reference ?? (type === 'context_recall' ? sample.reference : undefined);
   if (source === undefined || source.trim() === '') {
     fail(
       `samples.${sample.sample_id}.assertions`,
@@ -223,6 +232,23 @@ export function buildProductionMeasurementDesign(
   };
 
   for (const sample of sortedSamples) {
+    for (const check of sample.checks ?? []) {
+      if (sample.expected === undefined) fail(`samples.${sample.sample_id}.expected`, 'Structured checks require expected data.');
+      const criterionId = digestId('structured-check', { sampleId: sample.sample_id, check: check as unknown as JsonValue });
+      const metricId = `${criterionId}-result`;
+      metrics.push(metric(metricId, 'boolean'));
+      criteria.push({ criterionId, metricId, layerDisposition: check.layer, weight: check.weight ?? 1 });
+      templates.push({
+        evaluatorId: criterionId, evaluatorKind: 'assertion', runtimeBindingKind: 'builtin',
+        implementationId: EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
+        applicableSampleIds: [sample.sample_id], instrumentId: 'omk-structured-equality',
+        replicateGroupId: criterionId, metricIds: [metricId],
+        inputs: [
+          { bindingId: 'actual', ...check.actual },
+          { bindingId: 'expected', sourceKind: 'expected', pointer: check.expectedPointer },
+        ],
+      });
+    }
     for (const [index, assertion] of (sample.assertions ?? []).entries()) {
       const identity = criterionIdentity(sample.sample_id, assertion, index);
       const layer = resolveAssertionLayer(assertion) ?? 'excluded-mixed-layer';
@@ -407,7 +433,7 @@ export function buildProductionMeasurementDesign(
         contextFor(sample.sample_id)[contextKey] = {
           schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
           criterionId: design.dimensionId,
-          prompt: sample.prompt,
+          prompt: judgeQuestion(sample),
           rubric: rubric.criterion,
         };
       }
@@ -688,7 +714,9 @@ export function buildProductionMeasurementDesign(
     const sampleAnnotations = annotations(sample);
     return {
       sampleId: sample.sample_id,
-      input: renderedPrompt(sample),
+      input: executionInput(sample),
+      ...(sample.executionData === undefined ? {} : { executionContext: structuredClone(sample.executionData) }),
+      ...(sample.expected === undefined ? {} : { expected: structuredClone(sample.expected) }),
       ...(evaluationContext === undefined || Object.keys(evaluationContext).length === 0
         ? {}
         : { evaluationContext }),

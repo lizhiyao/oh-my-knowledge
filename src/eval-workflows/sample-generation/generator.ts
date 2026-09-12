@@ -1,9 +1,11 @@
+import { normalizeAuthoredSample } from '../inputs/sample-mapping.js';
+import { SampleInputSchema } from '../inputs/schemas/sample-input.js';
 import { createExecutor } from '../../executors/index.js';
 import { executorSupportsSampleMocks } from '../../executors/core/capabilities.js';
 import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../evaluation-defaults.js';
 import { sampleMockReferenceKeys } from '../inputs/sample-contract.js';
 import type { Sample, SampleProvenance } from '../inputs/contracts/sample.js';
-import { SampleSchema } from '../inputs/schemas/sample-set.js';
+import { SampleSchema, AuthoredSampleSchema } from '../inputs/schemas/sample-set.js';
 import { detailedSchemaIssue } from '../inputs/schemas/error.js';
 import { MockSchema } from '../inputs/schemas/mock.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
@@ -34,17 +36,20 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - 短 prompt（1-2 句），prompt 故意藏与 skill 矛盾的诱导（"直接用 X 就行 / 不用检查 / 我已经知道是 Y..."），测 skill 文档里写明的反模式 / 边界 / "不要做 X"
 - 必须含 **tools_not_called**（测"baseline 会犯的错"） + 1 条 tool_input_contains（测正确做法）
 - 用于装不进工作流的反应式知识（如"不要用 CGEvent / 必须用 PTY 模式 / 架构兼容性提示"等）
-- **必须在 sample 顶层加 \`"tripwire": true\`** — 让 omk 诊断知道"LLM fail 是预期",不要建议改 skill 文档
+- **必须在 sample.annotations 中加 \`"tripwire": true\`** — 让 omk 诊断知道"LLM fail 是预期",不要建议改 skill 文档
 
 判断完后在内部规划好配比再开始生成。**不要**在输出 JSON 里说明判断过程或配比，直接按规划生成样本即可。
 
 ---
 
-每个用例需包含以下字段：
-- sample_id: 唯一标识，格式为 s001, s002, ...
-- prompt: 用户会向使用此 skill 的 AI 提出的典型问题或指令
-- context: 可选，附加上下文信息（如代码片段、文档段落等），仅在需要时提供
-- rubric: **judge 评分的输入**，必须是包含 3-5 个具名维度的 JSON object。每个维度严格写成
+每个用例必须使用 v3 封套，只允许 sampleId、input、executionContext、expected、evaluationContext、annotations。
+评分字段嵌套在 evaluationContext，运行字段嵌套在 executionContext，元数据嵌套在 annotations；禁止在 sample 根级平铺这些字段。
+最小结构：{"sampleId":"s001","input":{"inputKind":"text","text":"任务"},"evaluationContext":{"rubric":{"quality":{"criterion":"正确完成任务","weight":1}}},"annotations":{"provenance":"llm-generated"}}
+字段说明：
+- sampleId: 唯一标识，格式为 s001, s002, ...
+- input: 对象，固定为 {"inputKind":"text","text":"用户会向使用此 skill 的 AI 提出的典型问题或指令"}。不要输出 prompt 或 context 字段；被测对象需要的材料直接写入 input.text。reference 仅供评委使用。
+- evaluationContext.reference: 可选，仅供评分的参考依据；执行所需的代码或材料直接写在 input.text 内。
+- evaluationContext.rubric: **judge 评分的输入**，必须是包含 3-5 个具名维度的 JSON object。每个维度严格写成
   \`{ "criterion": "一条可独立判定的准则", "weight": 0.x }\`，同一 sample 的 weight
   必须都是正数且总和严格等于 1。不要输出旧的 rubric 字符串或 dimensions 字段。
   omk 的 judge pipeline 会把每个 criterion 编译为一次独立 judge 调用，让 judge LLM 看完整
@@ -79,10 +84,10 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
     而不是精确字符串。
   - 占位符约定: \`<today>\` / \`<now>\` / \`<current_user>\` / \`<random_id>\` 等用尖括号包,
     跟 judge 说"这是占位,实际值看 trace 即可"。
-- assertions: **fact 层硬验证清单**,**总数 2-4 条 hard cap**(不许靠堆"测每一步参数"
+- evaluationContext.assertions: **fact 层硬验证清单**,**总数 2-4 条 hard cap**(不许靠堆"测每一步参数"
   来涨数量)。omk 的评分体系是 layered scoring: **fact 层**(deterministic 字面/工具断言)
   + **behavior 层**(代价指标如 turn 数 / 工具失败率) + **judge 层**(主观语义评分,从
-  sample.rubric 派生维度,judge LLM 看 trace 评 1-5)三层独立计分,verdict 是三层
+  sample.evaluationContext.rubric 派生维度,judge LLM 看 trace 评 1-5)三层独立计分,verdict 是三层
   独立过 threshold(默认 ${DEFAULT_GATE_THRESHOLD})。**fact 层的本职是测 deterministic 端点,不是测轨迹**。
 
   **断言哲学(关键):fact 测结果+里程碑,过程质量交 judge**
@@ -101,7 +106,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
          调 X 工具",才算里程碑。**你"觉得应该重要"** 的步骤不算 — 那是过程,
          归 judge 评。
 
-  **fact 层不测的**(转给 sample.rubric → judge):
+  **fact 层不测的**(转给 sample.evaluationContext.rubric → judge):
     - 中间步骤的具体命令/参数字面("git diff 用的是 --name-only 还是 --stat") —
       命令变体等价,字面匹配是 false-negative 噪音源
     - 工具调用顺序("应该先 stash 再 pull 还是先 pull 再 stash") — 顺序质量是
@@ -114,7 +119,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
     - 结果断言 1-2 条(最终产物 / 关键字段 / 错误码)
     - 里程碑断言 0-2 条(SKILL.md 明写的必经步)
     - tools_not_called 反模式断言 0-1 条(禁止接触某禁忌工具,如 tripwire sample)
-    - rubric 3-5 个判分维度(细致写明 judge 该看什么),由 sample.rubric 字段承载
+    - rubric 3-5 个判分维度(细致写明 judge 该看什么),由 sample.evaluationContext.rubric 字段承载
 
   各 fact 类型详解(下面这些都属于"结果"或"里程碑"范畴,不是"过程"):
 
@@ -177,7 +182,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         - 路径片段:"tasks/" / "/api/v2/" / ".gitignore"
 
   📋 **每条 contains 系列断言自检清单**(产 sample 前必走):
-        1. value 含任何中文字符? → 改用 sample.rubric 表达,**不要**写 contains
+        1. value 含任何中文字符? → 改用 sample.evaluationContext.rubric 表达,**不要**写 contains
         2. value 含空格的短语? → 同上,或考虑 tool_input_contains
         3. 表达的是"LLM 应该提到 X 概念" 类语义判断? → **必须**走 rubric → judge,
            即使 value 看起来像 token 也不行
@@ -185,7 +190,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
            contains 才合法
 
         生成 sample 时遇到诱惑想用 contains 测语义概念(如"应该说明不阻塞"、
-        "应该提供建议"、"应该留档") → **强制改写**:把这点加到 sample.rubric,
+        "应该提供建议"、"应该留档") → **强制改写**:把这点加到 sample.evaluationContext.rubric,
         让 judge 多维度评分;不要试图用 contains_any 列同义词糊弄过去。
 
         以上禁令是**硬性规则**,违反的 sample 会被人工审查拒绝并要求重写。
@@ -204,7 +209,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         tool_input_not_contains 或 tools_not_called。
   - { "type": "regex", "pattern": "...", "weight": 1 }
         ↑ 同 contains 限制:只用在固定格式字面量(如 SHA / UUID / 路径模板)。
-- environment: 可选,对象。**仅作 prompt 上下文的题设环境声明**,不会修改 PATH、创建文件或物化 fixture。
+- executionContext.environment: 可选,对象。**仅作 prompt 上下文的题设环境声明**,不会修改 PATH、创建文件或物化 fixture。
   字段:
     - cli_available: string[],已在 PATH 上的 CLI(如 ["node", "git", "code-host"])
     - files_available: string[],已存在的文件/脚本(如 ["~/.req-tool-api.json", "$SKILL_DIR/scripts/x.js"])
@@ -212,11 +217,11 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
   原则:
     只有用例明确把某项环境能力作为题设前提时才写。需要读取真实内容的文件不能放在
     files_available 里冒充 fixture:应放进 sample.cwd 下的真实 fixture,或由 mock 返回内容。
-- mocksStrict: **必填且必须设为 true**(只要 sample 配了 mocks)。
+- executionContext.mocksStrict: **必填且必须设为 true**(只要 sample 配了 mocks)。
   原因:mocksStrict=false 时,LLM 调到没匹配 mock 的命令会**透传到真 shell**,
   既可能真调外部接口产生副作用,也可能因二进制不存在(如 mcporter)报噪声错误污染评测信号。
   评测目的是在隔离环境下测 LLM 行为,不是测真接口可用性 — 总是 strict。
-- mocks: 可选,数组。该 sample 跑评测时拦截工具调用 + 返回 stub。**避免真调外部接口/CLI/MCP/写状态**。
+- executionContext.mocks: 可选,数组。该 sample 跑评测时拦截工具调用 + 返回 stub。**避免真调外部接口/CLI/MCP/写状态**。
   生成原则:
     1. **mocks 覆盖范围 = 业务调用 + 工作流前置 / 校验步骤** —
        (a) 业务调用(submit / create / push / search ...) 必 mock
@@ -303,7 +308,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         这是在测 generator 自己的脑补,不是 SKILL 实际要求,LLM 一选别的工具就判挂
    - ❌ 错的做法:SKILL.md 说"通知钉钉",generator 假设走 Bash + 某个钉钉机器人 URL —
         SKILL.md 没说就别假设
-   - ✅ 对的做法:把这个"应当完成的任务"写进 sample.rubric,让 judge 按 rubric 评分,
+   - ✅ 对的做法:把这个"应当完成的任务"写进 sample.evaluationContext.rubric,让 judge 按 rubric 评分,
         工具选择交给 LLM 自由发挥,judge 看意图(任务完成与否)而不是字面(用了哪个工具)
    - ✅ 兜底做法:如果一定要测"必须调到某工具",也只在 SKILL.md 明文说过该工具时才用
         tool_input_contains;否则用 tools_called 列一组"可接受工具"也比单写一个稳
@@ -352,17 +357,17 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 
    **数量配额**(hard cap):**每个 sample 总共 2-4 条 fact 断言** — 不许靠堆"测每一步
    工具参数"涨数量,多出来的都是 trajectory 噪音。如果你觉得 2-4 条覆盖不完作者意图
-   的细节,把那些细节写进 sample.rubric 让 judge 按维度评分 — judge 信号本来就比"某
+   的细节,把那些细节写进 sample.evaluationContext.rubric 让 judge 按维度评分 — judge 信号本来就比"某
    汉字是否出现在 trace"更接近"任务做没做对"。
 
 7. 如果 skill 涉及外部调用(MCP/CLI/HTTP/文件读),**必须**为本 sample 生成 mocks 数组,
    保证评测时 0 真调底层。query 类返回贴近真实 schema 的示例数据,write 类返回 success。
 
 可选元数据字段如能判断顺便填，无法判断时省略整个字段即可）：
-- capability: string[] — 该用例覆盖的能力维度。**值必须是中文短语**，描述这条 sample 在测什么能力，如 ["接口选择", "错误诊断", "PR 编号解析", "多步工作流"]。**不要用英文 slug 形式**(如 ❌ "api-selection" / "pr-iid-resolution")。专有名词(API / PR / SQL / SDK)可以保留英文,但短语主体用中文。
-- difficulty: "easy" | "medium" | "hard" — 难度等级。**值保持英文 enum**(系统识别符,UI 会自动展示成"容易/中等/困难")。
-- construct: string — 用例测的 construct 类型。**值用中文**,三选一:"必要性"(测知识必要性,LLM 没 skill 时该 fail)/"质量"(测 skill 写得好不好)/"能力"(测某具体能力)。
-- **tripwire: true** — **此 sample 是诱错样本时必填**。诱错样本(tripwire)= 故意诱导 LLM 走错的样本(用户用错前提 / 跳步骤 / 用错参数类型),目的是测 skill 是否能让 LLM 识破并纠正,**LLM 失败是预期结果**。
+- annotations.capability: string[] — 该用例覆盖的能力维度。**值必须是中文短语**，描述这条 sample 在测什么能力，如 ["接口选择", "错误诊断", "PR 编号解析", "多步工作流"]。**不要用英文 slug 形式**(如 ❌ "api-selection" / "pr-iid-resolution")。专有名词(API / PR / SQL / SDK)可以保留英文,但短语主体用中文。
+- annotations.difficulty: "easy" | "medium" | "hard" — 难度等级。**值保持英文 enum**(系统识别符,UI 会自动展示成"容易/中等/困难")。
+- annotations.construct: string — 用例测的 construct 类型。**值用中文**,三选一:"必要性"(测知识必要性,LLM 没 skill 时该 fail)/"质量"(测 skill 写得好不好)/"能力"(测某具体能力)。
+- **annotations.tripwire: true** — **此 sample 是诱错样本时必填**。诱错样本(tripwire)= 故意诱导 LLM 走错的样本(用户用错前提 / 跳步骤 / 用错参数类型),目的是测 skill 是否能让 LLM 识破并纠正,**LLM 失败是预期结果**。
   影响:omk 评测时,diagnostic 看到 tripwire:true 不会建议改 skill(因为 LLM 该 fail),避免误导 skill 作者。
   典型识别:prompt 含"直接用 X 就行了"/"不用检查"/"我已经知道是 Y"等用户错误前提诱导 + assertions 含 tools_not_called 或反模式断言 + construct 通常是 "necessity"。
   规则:诱错样本必填 tripwire:true。普通 capability sample 不要写 tripwire 字段。
@@ -370,8 +375,8 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 **JSON 输出规范（必须遵守）**：
 - 直接输出 JSON 数组，不要包含 markdown 代码块标记或其他文字
 - 字符串字段（prompt / rubric criterion / capability 等）内部如需引号，**必须用全角「」**而不是半角 \`""\`，避免漏转义破坏 JSON 解析
-- 例：错 → \`"prompt": "查询"Daily"标签..."\`（内部 \`"\` 未转义，JSON 解析失败）
-       对 → \`"prompt": "查询「Daily」标签..."\`（全角引号，无转义压力）`;
+- 例：错 → \`"text": "查询"Daily"标签..."\`（内部 \`"\` 未转义，JSON 解析失败）
+       对 → \`"text": "查询「Daily」标签..."\`（全角引号，无转义压力）`;
 
 const MOCKLESS_SYSTEM_OVERRIDE = `
 
@@ -383,7 +388,7 @@ files_available 或正向工具调用断言的规则：
 - 不要输出 mocks、mocksStrict、environment 字段。
 - 不要输出 mock_hit、tools_called、tools_count_min、tool_input_contains、tool_output_contains。
 - 可以保留 tools_not_called、tools_count_max、tool_input_not_contains 这类负向安全约束。
-- 把必要的输入事实直接写进 context，把可判分结果写进 rubric 或输出内容断言。
+- 把必要的输入事实直接写进 input.text，把可判分结果写进 rubric 或输出内容断言。
 - 不要假装某个文件、CLI 或工具调用已经由 fixture 物化。`;
 
 function generationSystemPrompt(mockless: boolean): string {
@@ -499,7 +504,9 @@ export async function generateSamples({
 
     let samples: Sample[];
     try {
-      samples = JSON.parse(jsonStr);
+      const authored: unknown = JSON.parse(jsonStr);
+      if (!Array.isArray(authored)) throw new TypeError('输出必须是 v3 sample 数组。');
+      samples = authored.map((sample) => normalizeAuthoredSample(AuthoredSampleSchema.parse(sample)));
     } catch (e) {
       lastErr = `JSON 解析失败: ${(e as Error).message}`;
       if (attempt === MAX_ATTEMPTS) throw new Error(`generation failed after ${MAX_ATTEMPTS} attempts (JSON invalid): ${lastErr}`);
@@ -550,7 +557,7 @@ async function finalizeSamples(
     samples: samples.map((sample, index) => {
       const parsed = SampleSchema.safeParse(sample);
       if (!parsed.success) {
-        throw new Error(`samples[${index}] does not satisfy Eval Sample Set v2: ${parsed.error.message}`);
+        throw new Error(`samples[${index}] does not satisfy Eval Sample Set v3: ${parsed.error.message}`);
       }
       return parsed.data;
     }),
@@ -638,7 +645,7 @@ export function buildSamplesFromTracesPrompt(
     ? `共生成约 ${count} 条评测用例，按各信号的「占比」分配配额（高频多、低频少），覆盖整体失败分布。`
     : '按各信号「占比」分配：高频信号多生成、低频少生成，覆盖整体失败分布。';
   const mocklessBlock = options.noMock
-    ? '\n\n目标执行器不支持工具调用拦截：不要生成 mocks、mocksStrict、environment 或正向工具调用断言；把 trace 证据写入 context 和 rubric。'
+    ? '\n\n目标执行器不支持工具调用拦截：不要生成 mocks、mocksStrict、environment 或正向工具调用断言；把 trace 证据写入 input.text 和 evaluationContext.rubric。'
     : '';
 
   return `${TRACE_GEN_INSTRUCTIONS}
@@ -721,7 +728,9 @@ export async function generateSamplesFromTraces({
     if (jsonMatch) jsonStr = jsonMatch[1].trim();
     let samples: Sample[];
     try {
-      samples = JSON.parse(jsonStr);
+      const authored: unknown = JSON.parse(jsonStr);
+      if (!Array.isArray(authored)) throw new TypeError('输出必须是 v3 sample 数组。');
+      samples = authored.map((sample) => normalizeAuthoredSample(AuthoredSampleSchema.parse(sample)));
     } catch (e) {
       lastErr = `JSON 解析失败: ${(e as Error).message}`;
       if (attempt === MAX_ATTEMPTS) throw new Error(`trace generation failed after ${MAX_ATTEMPTS} attempts (JSON invalid): ${lastErr}`);
@@ -944,8 +953,8 @@ export function sanitizeGeneratedSamples(
     if (typeof s.sample_id !== 'string' || s.sample_id.length === 0) {
       s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
     }
-    if (typeof s.prompt !== 'string' || s.prompt.length === 0) {
-      throw new Error(`samples[${i}] missing or invalid required prompt field (got ${typeof s.prompt})`);
+    if (!SampleInputSchema.safeParse(s.input).success) {
+      throw new Error(`samples[${i}] missing or invalid required input field`);
     }
 
     if (s.capability !== undefined) {
@@ -990,11 +999,9 @@ export function sanitizeGeneratedSamples(
           ? environmentAsPromptContext(s.environment)
           : null;
         if (environmentContext) {
-          const existingContext = typeof s.context === 'string' ? s.context.trim() : '';
-          s.context = existingContext
-            ? `${existingContext}\n\n${environmentContext}`
-            : environmentContext;
-          stripped.push(`samples[${i}].environment（已迁移到题设 context，未物化）`);
+          if (s.input.inputKind !== 'text') throw new Error('Generated environment requires text input.');
+          s.input = { inputKind: 'text', text: `${s.input.text}\n\n${environmentContext}` };
+          stripped.push(`samples[${i}].environment（已迁移到题设 input.text，未物化）`);
         } else {
           stripped.push(`samples[${i}].environment（未物化的环境声明不能充当 fixture）`);
         }
