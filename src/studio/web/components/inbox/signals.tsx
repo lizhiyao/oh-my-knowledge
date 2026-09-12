@@ -22,6 +22,46 @@ function evidenceQuote(item: ObservationInboxItem): string {
   return evidence.query || evidence.path || evidence.assistantSnippet || evidence.outputSnippet || '';
 }
 
+function SignalDetail({ item, lang }: { item: ObservationInboxItem; lang: Language }) {
+  const zh = lang === 'zh';
+  const entries = item.representativeEvidence.length > 0 ? item.representativeEvidence : [item.evidence];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {zh
+          ? '这里展示这条聚合记录下面的原始明细，每一条都是一次真实命中的证据。'
+          : 'Raw evidence entries behind this aggregated record; each is a real observed hit.'}
+      </Typography.Text>
+      {entries.map((evidence, index) => {
+        const quote = evidence.query || evidence.path || evidence.assistantSnippet || '';
+        const output = evidence.outputSnippet && evidence.outputSnippet !== quote ? evidence.outputSnippet : '';
+        return (
+          <div key={index} style={{ border: '1px solid var(--border, #e5e7eb)', borderRadius: 6, padding: '9px 10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 5 }}>
+              <Typography.Text strong style={{ fontSize: 12 }}>Evidence {index + 1}</Typography.Text>
+              <Typography.Text type="secondary" code style={{ fontSize: 11 }}>
+                {evidence.tool || item.signalType}{evidence.markerToken ? ` · ${evidence.markerToken}` : ''}
+              </Typography.Text>
+            </div>
+            <Typography.Paragraph style={{ fontSize: 12, marginBottom: 5 }}>
+              {signalEvidenceConclusion({ ...item, evidence }, lang)}
+            </Typography.Paragraph>
+            {quote ? (
+              <pre style={{ margin: 0, padding: 8, borderRadius: 5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11, maxHeight: 180, overflow: 'auto' }}>{quote}</pre>
+            ) : null}
+            {output ? (
+              <>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{zh ? '输出片段' : 'Output snippet'}</Typography.Text>
+                <pre style={{ margin: '3px 0 0', padding: 8, borderRadius: 5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11, maxHeight: 140, overflow: 'auto' }}>{output}</pre>
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SignalSection({ items, lang }: { items: ObservationInboxItem[]; lang: Language }) {
   const zh = lang === 'zh';
   return (
@@ -31,6 +71,10 @@ export function SignalSection({ items, lang }: { items: ObservationInboxItem[]; 
       dataSource={items}
       pagination={{ pageSize: 20, showSizeChanger: false }}
       scroll={{ x: 1100 }}
+      expandable={{
+        expandedRowRender: (item) => <SignalDetail item={item} lang={lang} />,
+        rowExpandable: (item) => (item.representativeEvidence.length > 0 ? item.representativeEvidence : [item.evidence]).length > 0,
+      }}
       columns={[
         {
           title: 'Skill',

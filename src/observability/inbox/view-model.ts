@@ -220,6 +220,32 @@ export {
 } from './signal-semantics.js';
 export type { SignalSeverityMeta, SignalSeverityTone, SignalSourceMeta } from './signal-semantics.js';
 export {
+  buildObservationSkillRollups,
+  buildReviewActionItems,
+  skillReviewLabel,
+  timestampedOccurrences,
+} from './skill-rollups.js';
+export type {
+  ObservationSkillRollup,
+  ReviewActionItem,
+  SkillReviewTone,
+  SkillRollupMetricCounts,
+  SkillRollupSeverityCounts,
+} from './skill-rollups.js';
+export {
+  reviewActionLabels,
+  reviewPriorityMeta,
+  reviewStateKey,
+  reviewVerdictBadge,
+} from './review-semantics.js';
+export type { ReviewPriorityTone } from './review-semantics.js';
+export {
+  INDICATOR_KEYS,
+  indicatorHelp,
+  indicatorLabel,
+} from './metric-semantics.js';
+export type { IndicatorHelpKey } from './metric-semantics.js';
+export {
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
 } from './review-state.js';
