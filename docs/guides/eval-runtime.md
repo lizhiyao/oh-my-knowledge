@@ -755,7 +755,7 @@ Correcting expected answers or changing scoring and statistics need not call the
 | Statistical analysis | `reanalyze()` | Analysis and decision. |
 | Decision rule | `redecide()` | Decision only. |
 
-Run `evaluate()` again if prompts, execution inputs, or execution settings changed. Names such as `correctedGoldDataset` below represent your revised complete declarations:
+Run `evaluate()` again if prompts, execution inputs, or execution settings changed. If you want the Target calls to finish and settle before any scoring rule is chosen, stop after Execution with `executeEvaluation()` and score later with `scoreExecutedEvaluation()`, as described in [Split execution and scoring](#staged-execute-score). Names such as `correctedGoldDataset` below represent your revised complete declarations:
 
 ```ts
 import { reanalyze, redecide, rescore } from 'oh-my-knowledge';
@@ -778,6 +778,77 @@ const redecided = await redecide(
 ```
 
 `rescore()` reuses Execution, `reanalyze()` reuses Execution plus Evaluation, and `redecide()` reuses Execution plus Evaluation plus Analysis. Each call takes a complete new declaration so defaults and identities are sealed before the suffix runs. Core rejects any change that belongs to a skipped stage, and only exact canonical result objects from the current process carry the required source authority. Run options, progress events, and budget consumption apply to the newly executed suffix; reused bundles retain their original identity and historical evidence without charging their work again. To reuse a persisted result across processes, regain source authority through `loadEvaluationResult()` and its independent verifier, as described in [Restore a stored result in a new process](#restore-stored-results); a report or JSON clone is never sufficient evidence.
+
+</details>
+
+<a id="staged-execute-score"></a>
+<a id="split-execution-and-scoring"></a>
+
+<details>
+<summary>Split execution and scoring</summary>
+
+When Target calls are the expensive part, run them once and decide the scoring rule later. `executeEvaluation()` executes only the Execution stage and returns an `ExecutedEvaluation` handle; `scoreExecutedEvaluation()` takes a complete new declaration plus that handle and runs Evaluation, Analysis, Decision, and Report with no further Target call:
+
+```ts
+import {
+  executeEvaluation,
+  saveExecutedEvaluation,
+  loadExecutedEvaluation,
+  scoreExecutedEvaluation,
+} from 'oh-my-knowledge';
+
+const executed = await executeEvaluation(input, {
+  runId: 'release-42-execution',
+  signal,
+});
+console.log(executed.runId, executed.bundle.records.length);
+
+const first = await scoreExecutedEvaluation(
+  { ...input, dataset: goldV1 },
+  executed,
+  { runId: 'release-42-gold-v1' },
+);
+const second = await scoreExecutedEvaluation(
+  { ...input, dataset: goldV2, evaluators: revisedEvaluators },
+  executed,
+  { runId: 'release-42-gold-v2' },
+);
+```
+
+The handle is the Execution stage's authenticated evidence: its `runId`, its `executionPlanDigest` and `executionInputDigest`, and the `ExecutionBundle` itself. `bundleOrigin` says whether the work was done in this process (`runtime`) or re-admitted from storage (`store`). To score in a later process, persist it and re-admit it under an independent host verifier:
+
+```ts
+const reference = await saveExecutedEvaluation({ executed, store: hostContentStore });
+
+const reloaded = await loadExecutedEvaluation({
+  reference,
+  resolver: hostContentResolver,
+  verifier: {
+    verifierId: 'acme.execution-authority/v1',
+    async verify({ reference: candidate }) {
+      const attestation = await executionRegistry.authenticate(candidate.digest);
+      return {
+        verifiedExecutedDigest: candidate.digest,
+        attestationDigest: attestation.digest,
+        verifiedProvenanceBundleDigests: attestation.provenanceBundleDigests,
+        verifiedCacheRecordDigests: attestation.cacheRecordDigests,
+      };
+    },
+  },
+});
+```
+
+Envelopes use media type `application/vnd.omk.executed-evaluation+json;version=1` (`EXECUTED_EVALUATION_MEDIA_TYPE`) and are written with `classification: 'gold'`, because they hold Target evidence that must never be handed back to a Target as context. Storage stays with the host; OMK fixes only the envelope and the digest.
+
+Admission is the same Core rule as `rescore()`, and it is deliberately narrow. The new declaration must reproduce the sealed Execution stage byte-for-byte; Gold, Evaluator, Judge rubric, Analysis, and Decision content may all change. So a changed prompt, execution input, or execution setting is rejected before any scoring work, and so is a handle from `structuredClone()`, JSON deserialization, or a hand-built object. Every such rejection is one `EvaluationConfigurationError` with code `EVAL_RUNTIME_REUSE_INVALID`; its `cause` carries only the redacted origin, never host error text. Each scoring call is an ordinary Run: it gets its own `runId`, emits only suffix-stage progress events, and consumes only the suffix budget, while the reused Execution bundle keeps its original identity and is never charged twice.
+
+What this does not license is a release verdict built on the reuse itself:
+
+- Two results scored from one envelope share the Execution stage identity, so `assessComparability()` sees the execution as invariant and reads only your declared subject changes. That is an identity statement about the sealed bytes, not evidence that the model, provider, or environment behaved the same way at both scoring times.
+- A verifier that does not attest the envelope's provenance bundle keeps its provenance status indeterminate. The resulting Report can then claim only `unknown` provenance, and a declared Decision stays gated even though the scored facts are unchanged. Trust is never restored by a successful round-trip through storage.
+- An execution-only Run has no scores at all. Treat `executeEvaluation()` as unfinished work: persist the handle, score it, and archive the scored `EvaluationResult`, or keep the handle in process. `saveEvaluationResult()` remains the way to persist a complete scored Run.
+
+The runnable single file `examples/eval-runtime/staged-execute-score.mjs` performs the whole flow offline: one synthetic Target call, then two scoring rules over the same persisted envelope.
 
 </details>
 

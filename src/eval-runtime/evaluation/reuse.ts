@@ -1,11 +1,11 @@
 import {
   type PreparedEvaluation,
   type EvaluationResult,
-  type EventObserver,
   type EvaluateInput,
   type EvaluationRunOptions,
   type AssessComparabilityInput,
   type EvaluationComparabilityAssessment,
+  type ExecutedEvaluation,
 } from './contracts.js';
 import {
   type Sha256Digest,
@@ -14,14 +14,10 @@ import {
   type EvaluationSeriesMembership,
   type EvaluationSeriesMemberSource,
   createEvaluationSeriesMemberSource,
-  type EvaluationEvent,
   type ExecutionBundleSource,
-  type EvaluationBundleSource,
-  type AnalysisBundleSource,
   assertExecutionBundleSourceMatchesPlan,
   assertEvaluationBundleSourceMatchesPlan,
   assertAnalysisBundleSourceMatchesPlan,
-  type DecisionResultSource,
   type ComparisonScope,
   createComparabilityPolicy,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
@@ -31,40 +27,28 @@ import {
   corePreparedEvaluations,
   attachDefinition,
   authenticatedCanonicalRuns,
+  executedEvaluations,
   type AuthenticatedCanonicalRun,
 } from './result-state.js';
 import {
   configurationFailure,
-  type EvaluationFailureOrigin,
   EvaluationConfigurationError,
-  EvaluationEventConsumptionError,
 } from './errors.js';
 import {
   materializeAuthenticatedEvaluationRunResult,
-  EvaluationStageSessionError,
-  type EvaluationStageSessionErrorCode,
   type AdvancedPreparedEvaluation as CoreAdvancedPreparedEvaluation,
 } from '../../eval-core/engine/index.js';
-import {
-  ExecutionRuntimeConfigurationError,
-} from '../../eval-core/execution/types.js';
-import {
-  EvaluationRuntimeConfigurationError,
-} from '../../eval-core/evaluation/types.js';
-import {
-  AnalysisRuntimeConfigurationError,
-} from '../../eval-core/analysis/types.js';
 import {
   type SealedRunPlan,
 } from '../../eval-core/compiler/index.js';
 import {
   prepareEvaluation,
   captureRunOptions,
-  assertEventWriterDelivery,
 } from './prepare.js';
 import {
-  randomUUID,
-} from 'node:crypto';
+  runSuffixStages,
+  type ReusableStagePrefix,
+} from './stage-session.js';
 
 /** @internal Re-admits one serialized result against an exact prepared contract. */
 export function restorePreparedEvaluationResult(
@@ -201,51 +185,6 @@ export function createCanonicalEvaluationSeriesMemberSource(
 
 type EvaluationReuseKind = 'rescore' | 'reanalyze' | 'redecide';
 
-interface ReuseEventConsumerState {
-  observerFailed: boolean;
-  observerFailure?: unknown;
-  streamFailed: boolean;
-  streamFailure?: unknown;
-}
-
-function createReuseEventConsumer(
-  observer: EventObserver | undefined,
-  controller: AbortController,
-) {
-  const state: ReuseEventConsumerState = {
-    observerFailed: false,
-    streamFailed: false,
-  };
-  let draining = Promise.resolve();
-  return Object.freeze({
-    state,
-    enqueue(events: AsyncIterable<EvaluationEvent>): void {
-      draining = draining.then(async () => {
-        try {
-          for await (const event of events) {
-            if (observer === undefined || state.observerFailed) continue;
-            try {
-              await observer(event);
-            } catch (error) {
-              state.observerFailed = true;
-              state.observerFailure = error;
-            }
-          }
-        } catch (error) {
-          if (!state.streamFailed) {
-            state.streamFailed = true;
-            state.streamFailure = error;
-            controller.abort(error);
-          }
-        }
-      });
-    },
-    async wait(): Promise<void> {
-      await draining;
-    },
-  });
-}
-
 function reuseSource(
   result: EvaluationResult,
 ): AuthenticatedCanonicalRun {
@@ -263,11 +202,7 @@ function assertReusablePrefix(
   reuseKind: EvaluationReuseKind,
   plan: SealedRunPlan,
   source: AuthenticatedCanonicalRun,
-): Readonly<{
-  execution: ExecutionBundleSource;
-  evaluation?: EvaluationBundleSource;
-  analysis?: AnalysisBundleSource;
-}> {
+): Readonly<ReusableStagePrefix> {
   const execution = source.sources.execution;
   if (execution === undefined) {
     return configurationFailure(
@@ -309,67 +244,17 @@ function assertReusablePrefix(
   }
 }
 
-/** @internal A reuse invariant the Runtime itself broke; no host input should reach it. */
-export class ReuseInvariantViolation extends TypeError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ReuseInvariantViolation';
+function corePreparedCapability(
+  preparedFacade: PreparedEvaluation,
+): CoreAdvancedPreparedEvaluation {
+  const prepared = corePreparedEvaluations.get(preparedFacade);
+  if (prepared === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'Evaluation prepared capability 无法用于阶段复用。',
+    );
   }
-}
-
-const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
-
-/** Codes that describe how the caller opened the stage session, not how OMK drove it. */
-const CALLER_STAGE_SESSION_CODES: readonly EvaluationStageSessionErrorCode[] = [
-  'EVALUATION_STAGE_SESSION_RUN_ID_INVALID',
-  'EVALUATION_STAGE_SESSION_RUN_ID_ACTIVE',
-  'EVALUATION_STAGE_SESSION_EVENT_BUFFER_CAPACITY_INVALID',
-];
-
-type ReuseFailureReport = Readonly<{
-  message: string;
-  origin: EvaluationFailureOrigin;
-}>;
-
-function configurationReport(code: string): ReuseFailureReport {
-  return {
-    message: 'Evaluation stage reuse 因 Run 配置错误失败关闭。',
-    origin: STABLE_ERROR_CODE.test(code)
-      ? { failureKind: 'configuration', code }
-      : { failureKind: 'configuration' },
-  };
-}
-
-function invariantReport(): ReuseFailureReport {
-  return {
-    message: 'Evaluation stage reuse 命中 OMK 内部不变量失败。',
-    origin: { failureKind: 'invariant' },
-  };
-}
-
-/**
- * @internal Maps one caught suffix failure onto the reuse boundary's redacted report.
- * The public code stays `EVAL_RUNTIME_REUSE_INVALID`; diagnosability comes from a
- * per-origin sentence plus a `cause` that carries only a stable Core code.
- */
-export function describeReuseFailure(failure: unknown): ReuseFailureReport {
-  if (failure instanceof EvaluationStageSessionError) {
-    return CALLER_STAGE_SESSION_CODES.includes(failure.code)
-      ? configurationReport(failure.code)
-      : invariantReport();
-  }
-  if (failure instanceof ExecutionRuntimeConfigurationError
-      || failure instanceof EvaluationRuntimeConfigurationError
-      || failure instanceof AnalysisRuntimeConfigurationError) {
-    return configurationReport(failure.code);
-  }
-  if (failure instanceof ReuseInvariantViolation) {
-    return invariantReport();
-  }
-  return {
-    message: 'Evaluation stage reuse 无法完成。',
-    origin: { failureKind: 'unknown' },
-  };
+  return prepared;
 }
 
 async function runEvaluationSuffix(
@@ -386,105 +271,13 @@ async function runEvaluationSuffix(
       'redecide() 需要新声明包含 Decision。',
     );
   }
-  const prepared = corePreparedEvaluations.get(preparedFacade);
-  if (prepared === undefined) {
-    return configurationFailure(
-      'EVAL_RUNTIME_REUSE_INVALID',
-      'Evaluation prepared capability 无法用于阶段复用。',
-    );
-  }
-  const prefix = assertReusablePrefix(reuseKind, prepared.plan, source);
-  assertEventWriterDelivery(prepared.plan, options);
-  const runId = options.runId ?? `run-${randomUUID()}`;
-  const controller = new AbortController();
-  const abortFromCaller = (): void => controller.abort(options.signal?.reason);
-  if (options.signal?.aborted) abortFromCaller();
-  else options.signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const consumer = createReuseEventConsumer(options.onEvent, controller);
-  let session: ReturnType<CoreAdvancedPreparedEvaluation['stages']> | undefined;
-  let result: EvaluationResult | undefined;
-  let stageFailure: unknown;
-  try {
-    session = prepared.stages({
-      runId,
-      ...(options.clock === undefined ? {} : { clock: options.clock }),
-      signal: controller.signal,
-      ...(options.annotations === undefined ? {} : { annotations: options.annotations }),
-      ...(options.summaries === undefined ? {} : { summaries: options.summaries }),
-      ...(options.eventWriter === undefined ? {} : { eventWriter: options.eventWriter }),
-      ...(options.eventBufferCapacity === undefined
-        ? {}
-        : { eventBufferCapacity: options.eventBufferCapacity }),
-    });
-    const execution = prefix.execution;
-    let evaluation = prefix.evaluation;
-    if (reuseKind === 'rescore') {
-      const evaluationRun = session.evaluate({ execution });
-      consumer.enqueue(evaluationRun.events);
-      evaluation = await evaluationRun.source;
-    }
-    if (evaluation === undefined) {
-      throw new ReuseInvariantViolation('Evaluation stage source is unavailable.');
-    }
-    let analysis = prefix.analysis;
-    if (reuseKind !== 'redecide') {
-      const analysisRun = session.analyze({ execution, evaluation });
-      consumer.enqueue(analysisRun.events);
-      analysis = await analysisRun.source;
-    }
-    if (analysis === undefined) {
-      throw new ReuseInvariantViolation('Analysis stage source is unavailable.');
-    }
-    const decisionRun = session.decide({ execution, evaluation, analysis });
-    consumer.enqueue(decisionRun.events);
-    const decision: DecisionResultSource | undefined = await decisionRun.source;
-    const reportRun = session.materializeReport({
-      execution,
-      evaluation,
-      analysis,
-      ...(decision === undefined ? {} : { decision }),
-    });
-    consumer.enqueue(reportRun.events);
-    const report = await reportRun.result;
-    const coreResult = materializeAuthenticatedEvaluationRunResult({
-      plan: prepared.plan,
-      execution,
-      evaluation,
-      analysis,
-      ...(decision === undefined ? {} : { decision }),
-      report,
-    });
-    result = attachDefinition(coreResult, runId, prepared.plan);
-  } catch (error) {
-    stageFailure = error;
-  } finally {
-    await session?.close();
-    await consumer.wait();
-    options.signal?.removeEventListener('abort', abortFromCaller);
-  }
-  if (stageFailure !== undefined || result === undefined) {
-    const report = describeReuseFailure(stageFailure);
-    return configurationFailure(
-      'EVAL_RUNTIME_REUSE_INVALID',
-      report.message,
-      report.origin,
-    );
-  }
-  if (consumer.state.observerFailed) {
-    throw new EvaluationEventConsumptionError({
-      code: 'EVAL_RUNTIME_EVENT_OBSERVER_FAILED',
-      message: 'Evaluation event observer 执行失败；评测保持 Core 终态并完成清理。',
-      runResult: result,
-    });
-  }
-  if (consumer.state.streamFailed) {
-    throw new EvaluationEventConsumptionError({
-      code: 'EVAL_RUNTIME_EVENT_STREAM_FAILED',
-      message: 'Evaluation event stream 消费失败；评测已取消并完成清理。',
-      runResult: result,
-    });
-  }
-  return result;
+  const prepared = corePreparedCapability(preparedFacade);
+  return runSuffixStages(
+    prepared,
+    assertReusablePrefix(reuseKind, prepared.plan, source),
+    options,
+    'Evaluation stage reuse',
+  );
 }
 
 /** Reuses an authenticated Execution stage and runs Evaluation onward. */
@@ -512,6 +305,66 @@ export async function redecide(
   options?: Readonly<EvaluationRunOptions>,
 ): Promise<EvaluationResult> {
   return runEvaluationSuffix('redecide', input, source, captureRunOptions(options));
+}
+
+/**
+ * @internal Re-admits one execution-only handle against a freshly sealed Plan.
+ * A Runtime-issued handle keeps its live source so attested provenance is not silently
+ * downgraded; a loaded handle has no live source and must pass Core's plan-bound admission
+ * with the host verification facts captured when it was loaded.
+ */
+function admitExecutedEvaluationStage(
+  prepared: CoreAdvancedPreparedEvaluation,
+  executed: ExecutedEvaluation,
+): ExecutionBundleSource {
+  const state = executedEvaluations.get(executed);
+  if (state === undefined) {
+    return configurationFailure(
+      'EVAL_RUNTIME_REUSE_INVALID',
+      'scoreExecutedEvaluation() 只接受 canonical Runtime 产生或经宿主 verifier 载入的原始执行句柄。',
+    );
+  }
+  const mismatch = (): never => configurationFailure(
+    'EVAL_RUNTIME_REUSE_INVALID',
+    'ExecutedEvaluation 与新声明的可复用阶段不一致。',
+  );
+  if (state.source !== undefined) {
+    try {
+      assertExecutionBundleSourceMatchesPlan(state.source, prepared.plan);
+      return state.source;
+    } catch (error) {
+      if (error instanceof EvaluationConfigurationError) throw error;
+      return mismatch();
+    }
+  }
+  if (state.verification === undefined) return mismatch();
+  try {
+    return prepared.admitExecutionBundle(state.bundle, state.verification);
+  } catch (error) {
+    if (error instanceof EvaluationConfigurationError) throw error;
+    return mismatch();
+  }
+}
+
+/**
+ * Scores one execution-only handle under a new measurement declaration: only the Evaluation,
+ * Analysis, Decision and report stages run here, so the Target is never called again.
+ * The new declaration must reproduce the handle's execution stage byte-for-byte; the scoring
+ * contract itself is free to change.
+ */
+export async function scoreExecutedEvaluation(
+  input: Readonly<EvaluateInput>,
+  executed: ExecutedEvaluation,
+  options?: Readonly<EvaluationRunOptions>,
+): Promise<EvaluationResult> {
+  const captured = captureRunOptions(options);
+  const prepared = corePreparedCapability(await prepareEvaluation(input));
+  return runSuffixStages(
+    prepared,
+    { execution: admitExecutedEvaluationStage(prepared, executed) },
+    captured,
+    'Evaluation stage scoring',
+  );
 }
 
 function comparabilitySourcePrefix(

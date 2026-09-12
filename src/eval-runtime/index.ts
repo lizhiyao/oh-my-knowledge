@@ -7,10 +7,12 @@ export {
   checkContentStore,
   checkExecutor,
   evaluate,
+  executeEvaluation,
   prepareEvaluation,
   reanalyze,
   redecide,
   rescore,
+  scoreExecutedEvaluation,
 } from './evaluate.js';
 export {
   evaluateSeries,
@@ -22,6 +24,12 @@ export {
   loadEvaluationResult,
   saveEvaluationResult,
 } from './result-store.js';
+export {
+  EXECUTED_EVALUATION_MEDIA_TYPE,
+  ExecutedEvaluationStoreError,
+  loadExecutedEvaluation,
+  saveExecutedEvaluation,
+} from './executed-store.js';
 export {
   RUNTIME_CHECK_RESULT_SCHEMA_VERSION,
   checkRuntime,
@@ -57,6 +65,7 @@ export type {
   EvidencePolicy,
   Evaluator,
   EventObserver,
+  ExecutedEvaluation,
   ExactMatchEvaluator,
   FailurePolicy,
   FamilyDecisionCriterion,
@@ -113,6 +122,13 @@ export type {
   LoadEvaluationResultInput,
   SaveEvaluationResultInput,
 } from './result-store.js';
+export type {
+  ExecutedEvaluationVerification,
+  ExecutedEvaluationVerificationRequest,
+  ExecutedEvaluationVerifier,
+  LoadExecutedEvaluationInput,
+  SaveExecutedEvaluationInput,
+} from './executed-store.js';
 export type { ContentStoreConformanceCheck } from './conformance/content-store.js';
 export type {
   CacheRuntimeCheckInput,

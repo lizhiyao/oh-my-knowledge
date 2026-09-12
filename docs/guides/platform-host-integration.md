@@ -200,6 +200,22 @@ The standard path for reloading a result in another process (re-scoring party, a
 
 For a runnable reference sample, see [`examples/eval-runtime/result-store.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/result-store.mjs) (a file-backed ContentStore/ContentResolver over a temporary directory that checks digests at the store boundary, plus an independent audit-receipt verifier); the same flow from a single-process perspective is in [Restore a stored result in a new process](./eval-runtime#restore-stored-results).
 
+### Execute once, score later
+
+When Target work must finish before the scoring standard exists — an annotation queue still running, a judge rubric still under review, or one execution serving several release candidates — split the two stages instead of reloading a scored Run:
+
+1. **Execute.** `executeEvaluation(input, options)` runs only the Execution stage and resolves to an `ExecutedEvaluation` handle (`runId`, `executionPlanDigest`, `executionInputDigest`, the `ExecutionBundle`, `bundleOrigin: 'runtime'`). No Evaluator, judge, analysis, decision, or report is attempted.
+2. **Seal.** `saveExecutedEvaluation({ executed, store })` writes the envelope `omk.eval-runtime.stored-executed/v1` under `EXECUTED_EVALUATION_MEDIA_TYPE`, always with classification `gold`. It carries Target evidence only — never hand it back to a Target as context.
+3. **Re-admit.** `loadExecutedEvaluation({ reference, resolver, verifier })` checks storage integrity plus the host attestation and returns a handle with `bundleOrigin: 'store'`. Unlike a stored result, an execution envelope is declaration-agnostic: no plan digest is compared here, because one envelope is meant to serve many later scoring declarations.
+4. **Score.** `scoreExecutedEvaluation(newInput, executed, options)` seals the new declaration, admits the envelope against it with the same Core rule `rescore` uses, and runs Evaluation onward with zero Target calls. Repeat per scoring version.
+
+Two limits belong in the host's records, not in OMK:
+
+- **Bind every scoring Run to the envelope it reused.** Persist `executed.bundle.bundleDigest` next to each scored `runId`. A dashboard that shows three scored Runs without saying they share one execution invites readers to treat three scoring versions as three independent measurements.
+- **A re-admitted envelope cannot regain trust through storage.** A verifier that does not attest the provenance bundle leaves that status indeterminate: the scored Report still completes, but it may claim only `unknown` provenance and a declared Decision stays gated. Re-admission under a checksum-only verifier is a diagnostic path, not release evidence.
+
+The runnable sample [`examples/eval-runtime/staged-execute-score.mjs`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/eval-runtime/staged-execute-score.mjs) performs the whole split offline; the caller-side narrative is in [Split execution and scoring](./eval-runtime#staged-execute-score).
+
 ## Comparability governance workflow
 
 - **Identity facets enter the dispatch protocol from day one.** The executor's `executorId` / `version` / `fingerprintFacets`, the evaluator's `instrumentId` and implementation version, the judge's `judgeId` / `version`, and the digests of the schemas in use are all measurement identity — fixed fields of the dispatched contract, not afterthoughts.

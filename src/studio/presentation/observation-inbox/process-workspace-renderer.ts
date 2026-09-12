@@ -6,6 +6,10 @@ import type {
   ObservationInboxItem,
   ObservationInboxViewModel,
 } from '../../../observability/inbox/view-model.js';
+import {
+  buildObservationSkillRollups,
+  type SkillReviewTone,
+} from '../../../observability/inbox/view-model.js';
 import { renderJson, skillAnchor } from './helpers.js';
 import type {
   IndicatorHelpKey,
@@ -40,7 +44,6 @@ export function createObservationProcessWorkspace({
     skillInvocationCounts,
     skillInvocationLastSeen,
     skillSessionCounts,
-    skillToolCallCounts,
     totalSkillInvocations,
   } = model;
   const { indicatorHelps, indicatorLabels, metric } = metricRenderers;
@@ -147,72 +150,13 @@ export function createObservationProcessWorkspace({
     map.set(item.skillName, existing);
     return map;
   }, new Map<string, ObservationInboxItem[]>());
-  const allSkillNames = Array.from(new Set([
-    ...Object.keys(skillInvocationCounts),
-    ...Array.from(itemsBySkill.keys()),
-  ]));
-  const skillRollups = allSkillNames.map((skillName) => {
-    const groupItems = itemsBySkill.get(skillName) ?? [];
-    const counts = {
-      high: groupItems.filter((item) => item.severity === 'high').length,
-      medium: groupItems.filter((item) => item.severity === 'medium').length,
-      low: groupItems.filter((item) => item.severity === 'low').length,
-      noise: groupItems.filter((item) => item.severity === 'noise').length,
-    };
-    const invocationCount = ownRecordValue(skillInvocationCounts, skillName) ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
-    const sessionCount = ownRecordValue(skillSessionCounts, skillName) ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
-    const lastProblemSeen = groupItems
-      .filter((item) => timestampedOccurrences(item) > 0)
-      .reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
-    const lastUsed = ownRecordValue(skillInvocationLastSeen, skillName) || lastProblemSeen || '';
-    const sources = Array.from(new Set(groupItems.map((item) => item.sourceKind))).sort();
-    const observationCount = groupItems.length;
-    const toolCounts = ownRecordValue(skillToolCallCounts, skillName) ?? {};
-    const metricCounts = {
-      bash: toolCounts.Bash ?? 0,
-      read: toolCounts.Read ?? 0,
-      grep: toolCounts.Grep ?? 0,
-      uncertainty: groupItems.filter((item) => item.signalType === 'hedging').reduce((sum, item) => sum + item.occurrences, 0),
-      explicitMarker: groupItems.filter((item) => item.signalType === 'explicit_marker').reduce((sum, item) => sum + item.occurrences, 0),
-      bashProbe: groupItems.filter((item) => item.signalSubtype === 'bash_probe').reduce((sum, item) => sum + item.occurrences, 0),
-      notFound: groupItems.filter((item) => item.signalSubtype === 'not_found').reduce((sum, item) => sum + item.occurrences, 0),
-      toolLimit: groupItems.filter((item) => item.signalSubtype === 'tool_limit').reduce((sum, item) => sum + item.occurrences, 0),
-      toolFailure: groupItems.filter((item) => item.signalSubtype === 'tool_failure').reduce((sum, item) => sum + item.occurrences, 0),
-    };
-    const actionableCount = counts.high;
-    const reviewLabel = actionableCount > 0
-      ? '高风险'
-      : counts.medium > 0
-        ? '低风险'
-        : counts.noise > 0
-          ? '无异常'
-          : '无异常';
-    const reviewColor = actionableCount > 0
-      ? 'var(--red)'
-      : counts.medium > 0
-        ? 'var(--yellow)'
-        : counts.noise > 0
-          ? 'var(--text-muted)'
-          : 'var(--green)';
-    return {
-      skillName,
-      invocationCount,
-      sessionCount,
-      observationCount,
-      counts,
-      lastProblemSeen,
-      lastUsed,
-      sources,
-      metricCounts,
-      reviewLabel,
-      reviewColor,
-    };
-  }).sort((a, b) => {
-    const aRisk = a.counts.high * 100 + a.counts.medium * 10 + a.counts.noise;
-    const bRisk = b.counts.high * 100 + b.counts.medium * 10 + b.counts.noise;
-    if (bRisk !== aRisk) return bRisk - aRisk;
-    return b.invocationCount - a.invocationCount;
-  });
+  const skillRollups = buildObservationSkillRollups(model);
+  const reviewToneColors: Record<SkillReviewTone, string> = {
+    error: 'var(--red)',
+    warning: 'var(--yellow)',
+    neutral: 'var(--text-muted)',
+    success: 'var(--green)',
+  };
   const skillRollupRows = skillRollups.map((row) => {
     const hasDetail = (itemsBySkill.get(row.skillName)?.length ?? 0) > 0;
     return `<tr data-observe-rollup-row data-skill-anchor="${e(skillAnchor(row.skillName))}" style="${hasDetail ? 'cursor:pointer' : ''}">
@@ -238,7 +182,7 @@ export function createObservationProcessWorkspace({
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px" title="${row.lastUsed ? '最近一次在 trace 中识别到 skill 调用的时间' : '当前 过程发现 report 中没有这个 skill 的调用时间信息；旧 report 需要重新 ingest 才会补齐'}">${row.lastUsed ? e(row.lastUsed.slice(0, 19).replace('T', ' ')) : '—'}</td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${row.sources.length > 0 ? e(row.sources.join(', ')) : '—'}</td>
       <td style="padding:9px 10px;text-align:right">
-        <span style="display:inline-flex;width:max-content;padding:3px 7px;border-radius:999px;background:var(--bg-muted);color:${row.reviewColor};font-size:12px;font-weight:650">${e(row.reviewLabel)}</span>
+        <span style="display:inline-flex;width:max-content;padding:3px 7px;border-radius:999px;background:var(--bg-muted);color:${reviewToneColors[row.reviewTone]};font-size:12px;font-weight:650">${e(row.reviewLabel)}</span>
       </td>
     </tr>`;
   }).join('');
