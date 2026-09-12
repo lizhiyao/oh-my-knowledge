@@ -1,6 +1,7 @@
 import 'server-only';
-import { nextCatalogContext, nextKnowledgeContext, nextObserveContext } from '../http/next-context';
+import { nextCatalogContext, nextInboxContext, nextKnowledgeContext, nextObserveContext } from '../http/next-context';
 import type { CoreStudioCatalog } from '../view-models/core-runs';
+import type { InboxPage } from '../http/inbox-page';
 import type { KnowledgePage } from '../http/knowledge-page';
 import type { ObservePage } from '../http/observe-page';
 
@@ -17,4 +18,8 @@ export function requestObservePage(): ObservePage {
 
 export function requestKnowledgePage(): KnowledgePage {
   return nextKnowledgeContext.get();
+}
+
+export function requestInboxPage(): InboxPage {
+  return nextInboxContext.get();
 }
