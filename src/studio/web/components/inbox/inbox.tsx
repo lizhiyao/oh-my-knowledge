@@ -5,10 +5,10 @@ import type { ObservationInboxViewModel } from '../../../../observability/inbox/
 import type { Language } from '../layout/shell';
 import { SignalSection } from './signals';
 import { SkillBoard } from './skill-board';
+import { ExperienceReviewSection } from './experience-review';
 
 const PENDING_TABS = [
   { key: 'metrics', zh: '指标', en: 'Metrics' },
-  { key: 'experience', zh: '体验复盘', en: 'Experience review' },
   { key: 'action', zh: '复核待办', en: 'Review actions' },
   { key: 'timeline', zh: '时间轴', en: 'Timeline' },
   { key: 'chains', zh: 'Skill 链', en: 'Skill chains' },
@@ -63,6 +63,17 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
                   setSkillFilter(skillName);
                   setActiveTab('signals');
                 }}
+              />
+            ),
+          },
+          {
+            key: 'experience',
+            label: zh ? '体验复盘' : 'Experience review',
+            children: (
+              <ExperienceReviewSection
+                sessions={model.experienceReports.flatMap((report) => report.sessions)}
+                reviewState={model.reviewState}
+                lang={lang}
               />
             ),
           },

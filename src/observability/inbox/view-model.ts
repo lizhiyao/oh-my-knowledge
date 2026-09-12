@@ -231,6 +231,13 @@ export type {
   SkillRollupSeverityCounts,
 } from './skill-rollups.js';
 export {
+  reviewActionLabels,
+  reviewPriorityMeta,
+  reviewStateKey,
+  reviewVerdictBadge,
+} from './review-semantics.js';
+export type { ReviewPriorityTone } from './review-semantics.js';
+export {
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
 } from './review-state.js';
