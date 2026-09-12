@@ -220,6 +220,17 @@ export {
 } from './signal-semantics.js';
 export type { SignalSeverityMeta, SignalSeverityTone, SignalSourceMeta } from './signal-semantics.js';
 export {
+  buildObservationSkillRollups,
+  skillReviewLabel,
+  timestampedOccurrences,
+} from './skill-rollups.js';
+export type {
+  ObservationSkillRollup,
+  SkillReviewTone,
+  SkillRollupMetricCounts,
+  SkillRollupSeverityCounts,
+} from './skill-rollups.js';
+export {
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
 } from './review-state.js';
