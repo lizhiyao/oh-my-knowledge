@@ -2,6 +2,11 @@ import {
   type SealedRunPlan,
 } from '../../eval-core/compiler/index.js';
 import {
+  type ExecutionBundle,
+  type ExecutionBundleSource,
+  type Sha256Digest,
+} from '../../eval-core/contracts/index.js';
+import {
   type AuthenticatedEvaluationRunSources,
   type AdvancedPreparedEvaluation as CoreAdvancedPreparedEvaluation,
   type EvaluationRunResult,
@@ -24,6 +29,22 @@ export interface AuthenticatedCanonicalRun {
 export const authenticatedCanonicalRuns = new WeakMap<object, AuthenticatedCanonicalRun>();
 
 export const corePreparedEvaluations = new WeakMap<object, CoreAdvancedPreparedEvaluation>();
+
+/**
+ * @internal One `ExecutedEvaluation` handle's re-admission material. A Runtime-issued handle
+ * keeps the live source so provenance stays attested; a stored handle must be re-admitted
+ * against the scoring plan with the host verification facts captured at load time.
+ */
+export interface ExecutedEvaluationState {
+  readonly bundle: ExecutionBundle;
+  readonly source?: ExecutionBundleSource;
+  readonly verification?: Readonly<{
+    verifiedProvenanceBundleDigests: ReadonlySet<Sha256Digest>;
+    verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>;
+  }>;
+}
+
+export const executedEvaluations = new WeakMap<object, ExecutedEvaluationState>();
 
 function hasExactArtifactSlot(
   artifacts: Readonly<Record<string, unknown>>,

@@ -48,3 +48,14 @@ node examples/eval-runtime/result-store.mjs
 Storage belongs to the host: OMK never discovers, provisions, or scans host storage — the Runtime only calls the explicitly injected `put()` / `resolve()` ports, while credentials, tenancy, retention, and the physical root remain on your side. The example also demonstrates the restore trust boundary: the verified provenance-bundle, cache-record, and policy-execution digest sets come from a host-signed audit receipt witnessed at production time, never from re-parsing the stored envelope, and a checksum-only verifier is rejected fail closed. The in-process HMAC key stands in for your real signing／audit service (KMS, transparency log, attestation authority). The command prints the saved reference, the shared plan digest, and a rescore summary with zero extra target invocations.
 
 To use it in a separate service, copy `result-store.mjs`, replace the file-backed store with your object storage or database implementation of the two ports, and replace the receipt verifier with your attestation backend. Certify only the digest sets your host can independently authenticate; the Runtime fails closed on anything unauthenticated.
+
+## Split execution and scoring
+
+This single-file example runs the Target once with `executeEvaluation()`, persists only the execution envelope with `saveExecutedEvaluation()`, re-admits it in a simulated second process through `loadExecutedEvaluation()`, and scores it twice with `scoreExecutedEvaluation()` under two Gold labels.
+
+```bash
+yarn build
+node examples/eval-runtime/staged-execute-score.mjs
+```
+
+The example prints three scoring runs against a single execution: the as-declared Gold answers 2 of 3, the corrected Gold answers 3 of 3, and `targetInvocations` stays at 3 throughout. It also shows the boundary: a declaration whose prompt changed is rejected with `EVAL_RUNTIME_REUSE_INVALID` before scoring, a cloned handle is rejected, and an envelope re-admitted by a checksum-only verifier scores normally but can claim only `provenanceTrust: "unknown"`. Copy `staged-execute-score.mjs` and replace the receipt verifier with your attestation backend when execution and scoring run at different times or on different machines.

@@ -48,3 +48,14 @@ node examples/eval-runtime/result-store.mjs
 存储归宿主所有：OMK 不发现、不初始化、也不扫描宿主存储——Runtime 只调用显式注入的 `put()` / `resolve()` 端口，凭证、租户、保留策略和物理根目录都留在宿主一侧。示例同时演示恢复结果的信任边界：provenance bundle、cache 回执与 policy 执行这三组已认证 digest 来自生产时刻由宿主签名的审计回执，而不是重新解析存储的 envelope；只做校验和的 verifier 会被 fail closed 拒绝。进程内 HMAC 密钥只是替身，生产环境应接入真实签名／审计系统（KMS、透明日志、认证机构）。命令输出保存的 reference、双方一致的 plan digest，以及未新增目标调用的 rescore 摘要。
 
 在独立服务中使用时，复制 `result-store.mjs`，把文件存储换成你的对象存储或数据库对这两个端口的实现，把回执 verifier 换成你的认证后端。只认证宿主能独立取得的 digest 集合；未认证的部分由 Runtime fail closed 拦截。
+
+## 拆分为先执行、后评分
+
+这个单文件示例用 `executeEvaluation()` 只跑一次被测目标，用 `saveExecutedEvaluation()` 只持久化执行 envelope，在模拟的第二个进程里通过 `loadExecutedEvaluation()` 重新接纳，再用 `scoreExecutedEvaluation()` 按两套 Gold 标注分别评分。
+
+```bash
+yarn build
+node examples/eval-runtime/staged-execute-score.mjs
+```
+
+示例针对同一次执行输出三轮评分：按原标注 3 题对 2 题，按修正标注 3 题全对，而 `targetInvocations` 始终是 3。它也演示了边界：prompt 已变化的声明会在评分前以 `EVAL_RUNTIME_REUSE_INVALID` 被拒绝，clone 出的句柄同样被拒绝；只做校验和的 verifier 重新接纳的 envelope 仍能正常评分，但只能声称 `provenanceTrust: "unknown"`。当执行与评分发生在不同时间或不同机器时，复制 `staged-execute-score.mjs`，并把回执 verifier 换成你的认证后端。

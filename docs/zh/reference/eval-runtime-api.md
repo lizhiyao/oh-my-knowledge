@@ -4,7 +4,7 @@
 
 ## `oh-my-knowledge`
 
-这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`evaluateSeries`、`prepareEvaluationSeries`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`saveEvaluationResult`、`loadEvaluationResult`、`checkRuntime`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
+这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`evaluateSeries`、`prepareEvaluationSeries`、`executeEvaluation`、`scoreExecutedEvaluation`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`saveEvaluationResult`、`loadEvaluationResult`、`saveExecutedEvaluation`、`loadExecutedEvaluation`、`checkRuntime`、`checkExecutor`、`checkContentStore`、稳定错误和公开模型 type。Core engine、builder、registration 与 adapter 不会进入包根。
 
 ## `oh-my-knowledge/eval-runtime`
 
@@ -16,6 +16,8 @@
 | `prepareEvaluation` | 在任何 Target 或 Evaluator 调用前，封存并检查最终 Definition、Policy、Plan、Runtime resolution、digest 和工作量估计。 |
 | `evaluateSeries` | 在一份固定测量设计下运行预注册数量的独立 member 评测，并跨 Run 汇总一个数值 Analysis result。 |
 | `prepareEvaluationSeries` | 在首次 Target 调用前封存全部 Series member、membership、Series plan 与总工作量估算。 |
+| `executeEvaluation` | 只运行一份 sealed 声明的 Execution stage，并返回 `ExecutedEvaluation` 句柄；不尝试任何 Evaluator、评委、Analysis、Decision 或 Report。 |
+| `scoreExecutedEvaluation` | 在新封存声明下评分一个 `ExecutedEvaluation`，复用其已认证 Execution stage，不再次调用 Target。 |
 | `rescore` | 复用已认证的 Execution stage，再按新封存声明执行 Evaluation、Analysis、Decision 与 Report。 |
 | `reanalyze` | 复用已认证的 Execution 与 Evaluation stage，再按新封存声明执行 Analysis、Decision 与 Report。 |
 | `redecide` | 复用已认证的 Execution、Evaluation 与 Analysis stage，再执行新声明的 Decision 与 Report。 |
@@ -24,6 +26,10 @@
 | `loadEvaluationResult` | 按准确的 `PreparedEvaluation` 解析并重新接纳已存结果；恢复 provenance authority 前必须通过独立宿主 verifier。 |
 | `EVALUATION_RESULT_MEDIA_TYPE` | 已存 result envelope 的版本化 media type。 |
 | `EvaluationResultStoreError` | 稳定且脱敏的存储、解析、认证、plan 或 content 错误。 |
+| `saveExecutedEvaluation` | 通过宿主注入的 `ContentStore` 持久化一个 `ExecutedEvaluation` 执行 envelope；版本化 envelope 始终按 Gold 分类。 |
+| `loadExecutedEvaluation` | 解析已存执行 envelope 并重新接纳为 `ExecutedEvaluation`，其 provenance authority 只来自独立宿主 verifier。 |
+| `EXECUTED_EVALUATION_MEDIA_TYPE` | 已存执行 envelope 的版本化 media type。 |
+| `ExecutedEvaluationStoreError` | 稳定且脱敏的执行 envelope 存储、解析、认证或 content 错误。 |
 | `checkRuntime` | 通过版本化行为探针检查单个注入的 Runtime 组件。当前支持 Executor、Custom Evaluator、Judge、execution／evaluation cache、ContentStore／ContentResolver 与 WorkspaceProvider。 |
 | `checkContentStore` | 验证宿主 ContentStore／ContentResolver 的 descriptor 完整性与稳定性、幂等写入，以及回读 value、classification 和 media type；宿主异常只会归约为稳定 reason code。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量探针检查 Executor 行为。 |
@@ -91,6 +97,10 @@ const variant: Variant<string, undefined, string> = {
 `EvaluationResult` 保留 Core `EvaluationRunResult` 的全部字段，并增加实际使用的 `runId`、`definition`、`policy` 与 `analysisResults`。最后一项只是按 `analysisId` 索引同一批 Core Analysis record 的只读视图，不是第二套分析实现。执行与评价 evidence 位于 `artifacts`，Decision 位于 `artifacts.decision`，公开 Report 位于 `report`。
 
 `saveEvaluationResult()` 只接受带完整 Execution／Evaluation／Analysis source chain 的原始已认证 result，通过调用方的 `ContentStore` 写入版本化 canonical JSON envelope，并返回内容寻址的 `ContentDescriptor`。Result 包含 sealed Definition 与 Dataset Gold，因此 Runtime 始终以 `classification: 'gold'` 写入，宿主必须实施匹配的访问控制。`loadEvaluationResult()` 要求调用方重新 prepare 完全相同的声明，保持调用方指定的 descriptor 不可变，通过注入的 `ContentResolver` 验证外层值，以及每份以 reference 捕获的 output、trace 与 Evaluator evidence，随后要求 `EvaluationResultVerifier` 认证准确 envelope，最后才让 Core 重新接纳每个 bundle 与 report。Verifier 是宿主信任边界，其 `EvaluationResultVerification` 必须显式列出经过独立认证的 provenance Bundle digest、cache receipt digest 与 Decision policy-execution digest。Runtime 只向 Core 传递这些事实，绝不从已存 Bundle 自身的 claim 推导 verified receipt；只重新计算公开 envelope checksum 不足以构成认证。Store、resolver 与 verifier 可以在宿主内部使用文件或数据库，但 Runtime 不会发现它们，并会同时脱敏 rejected promise 与 malformed return value。不一致 plan、不完整 result、保存 clone、丢失 reference content、被篡改 content 或认证不足均失败关闭。相关 type 包括 `SaveEvaluationResultInput`、`LoadEvaluationResultInput`、`EvaluationResultVerifier`、`EvaluationResultVerificationRequest` 与 `EvaluationResultVerification`。
+
+`executeEvaluation()` 只运行 Execution stage，并返回冻结的 `ExecutedEvaluation`：权威 `runId`、后续声明必须复现的两个 digest、`ExecutionBundle` 本体，以及取值为 `runtime` 或 `store` 的 `bundleOrigin`。它接收与 `evaluate()` 相同的 `EvaluateInput` 和 `EvaluationRunOptions`，因此事件、持久回写、预算、取消与清理全部归属这一次只执行 Run；观察器或 event stream 失败时，已消耗的工作仍通过 `EvaluationEventConsumptionError.executed` 交付。`scoreExecutedEvaluation()` 先封存一份完整的新声明，再以零次 Target 调用执行 Evaluation、Analysis、Decision 与 Report。准入沿用 `rescore()` 的 Core 规则：保留阶段必须逐字节复现句柄的 `executionPlanDigest` 与 `executionInputDigest`，而 Gold、Evaluator、评委、Analysis 与 Decision 口径都可以变化。Clone、反序列化或重新拼装的手柄不具备进程内 source authority，执行阶段已变化的声明同样如此；这类拒绝统一是一个 `EvaluationConfigurationError`，code 为 `EVAL_RUNTIME_REUSE_INVALID`，`cause` 只携带脱敏来源。
+
+`saveExecutedEvaluation()` 只持久化该执行 envelope —— `ExecutionBundle` 加两个 identity digest —— media type 为 `EXECUTED_EVALUATION_MEDIA_TYPE`，并始终以 `classification: 'gold'` 写入注入的 `ContentStore`，因为 Target evidence 绝不能作为 context 回流给 Target。`loadExecutedEvaluation()` 保持调用方指定的 `ContentDescriptor` 不可变，校验外层 digest 与 schema，以及每份以 reference 捕获的 output 与 trace，随后要求独立的 `ExecutedEvaluationVerifier` 在 `ExecutedEvaluationVerificationRequest` 上给出可认证的 `ExecutedEvaluationVerification`；存储、解析与认证失败都是脱敏的 `ExecutedEvaluationStoreError`。载入只决定存储完整性与宿主信任，绝不决定 plan 兼容性：envelope 与声明无关，因此可被后续任意评分声明复用，而绑定检查由上文的 `scoreExecutedEvaluation()` 完成。信任同样不能被存储升级：verifier 未列出的 provenance Bundle 会使该 envelope 保持 indeterminate provenance status，其 Report 只能声称 `unknown` provenance，声明了 Decision 时也会被门槛拦住，即便被评分的执行事实毫无变化。相关 type 包括 `SaveExecutedEvaluationInput` 与 `LoadExecutedEvaluationInput`。
 
 `EvaluateInput` 只包含测量声明；`EvaluationRunOptions` 容纳单次运行的 `runId`、取消、进度观察、持久 `eventWriter` 回写、报告 annotation／summary、event buffer 容量与 clock。`onEvent` 仍是有界的 best-effort observer，`eventWriter` 则按顺序逐条接收测量事件，并要求 `policy.eventDelivery.writerMode` 为 `optional` 或 `required`；**完整性只由 `required` 保证**，因为 `optional`＋`ignore` 下写入失败会静默停止该阶段的持久投递，而 run 仍然完成。两种错配都会在第一次 Target 调用前失败关闭：在 `disabled` 策略下传入 writer，以及声明 `required` 却未注入 writer。省略 `runId` 时由 Runtime 生成，并通过 `EvaluationResult.runId` 返回。`prepareEvaluation(input)` 会捕获全部可变声明、物化默认值、解析 Runtime capability，并在不调用 Target 或 Evaluator 的情况下封存 Core Plan。冻结的 `PreparedEvaluation` 暴露准确的 `definition`、`policy`、`plan`、完整运行契约 `planDigest`、`resolvedRuntimes` 与 `estimatedWork`；`run(options)` 直接执行同一份 sealed Plan，不重新读取 input 或重新编译。计划 coordinate 不包含 retry 与提前终止带来的变化，duration 和 provider cost 在执行前会明确保持不确定。
 

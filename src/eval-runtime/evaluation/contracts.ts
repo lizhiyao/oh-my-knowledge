@@ -10,6 +10,8 @@ import {
   type AnalysisRecord,
   type ComparisonScope,
   type ComparabilityAssessment,
+  type ExecutionBundle,
+  type Sha256Digest,
 } from '../../eval-core/contracts/index.js';
 import {
   type WorkspaceInput,
@@ -688,6 +690,21 @@ export interface PreparedEvaluation {
   readonly resolvedRuntimes: readonly RuntimeCapabilityResolution[];
   readonly estimatedWork: EvaluationWorkEstimate;
   run(options?: Readonly<EvaluationRunOptions>): Promise<EvaluationResult>;
+}
+
+/**
+ * One sealed execution stage: Target outputs and traces, with no score, analysis or report.
+ * `bundle.executionBundleStatus` carries a partial stop (cancellation, budget exhaustion);
+ * scoring it later is allowed and stays coverage-honest.
+ */
+export interface ExecutedEvaluation {
+  readonly runId: string;
+  /** The only identity a later scoring declaration must reproduce. */
+  readonly executionPlanDigest: Sha256Digest;
+  readonly executionInputDigest: Sha256Digest;
+  readonly bundle: ExecutionBundle;
+  /** `'runtime'` keeps Runtime-attested provenance; `'store'` re-admits under host verification. */
+  readonly bundleOrigin: 'runtime' | 'store';
 }
 
 export interface ExecutorCheckInput<

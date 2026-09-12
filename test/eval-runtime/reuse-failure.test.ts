@@ -3,9 +3,9 @@ import {
   EvaluationConfigurationError,
 } from '../../src/eval-runtime/evaluation/errors.js';
 import {
-  describeReuseFailure,
-  ReuseInvariantViolation,
-} from '../../src/eval-runtime/evaluation/reuse.js';
+  describeStageFailure,
+  StageInvariantViolation,
+} from '../../src/eval-runtime/evaluation/stage-session.js';
 import {
   ExecutionRuntimeConfigurationError,
 } from '../../src/eval-core/execution/types.js';
@@ -20,6 +20,11 @@ import {
 } from '../../src/eval-core/engine/index.js';
 
 const WRITER_REQUIRED = 'Required EventWriter mode needs an injected EventWriter.';
+
+const describeReuseFailure = (failure: unknown) => describeStageFailure(
+  failure,
+  'Evaluation stage reuse',
+);
 
 const coreConfigurationFailures = [
   new ExecutionRuntimeConfigurationError(
@@ -57,7 +62,7 @@ describe('reuse boundary failure origin', () => {
 
   it('separates an internal invariant from a host configuration failure and an unknown failure', () => {
     const invariant = describeReuseFailure(
-      new ReuseInvariantViolation('Evaluation stage source is unavailable.'),
+      new StageInvariantViolation('Evaluation stage source is unavailable.'),
     );
     const sessionMisuse = describeReuseFailure(
       new EvaluationStageSessionError(
@@ -95,5 +100,21 @@ describe('reuse boundary failure origin', () => {
     expect(JSON.stringify(error)).not.toMatch(/sample gold answer|tenant prompt text/);
     expect(Object.keys(error)).not.toContain('cause');
     expect(error.stack).not.toContain('sample gold answer');
+  });
+
+  it('keeps the reporting boundary in every message while the origin stays shared', () => {
+    const failure = new StageInvariantViolation('Evaluation stage source is unavailable.');
+    const reuse = describeReuseFailure(failure);
+    const scoring = describeStageFailure(failure, 'Evaluation stage scoring');
+
+    expect(scoring.origin).toEqual(reuse.origin);
+    expect(scoring.message).not.toBe(reuse.message);
+    for (const boundary of ['Evaluation stage reuse', 'Evaluation stage scoring'] as const) {
+      for (const candidate of [failure, new Error('host sink unavailable')]) {
+        expect(
+          describeStageFailure(candidate, boundary).message.startsWith(`${boundary} `),
+        ).toBe(true);
+      }
+    }
   });
 });
