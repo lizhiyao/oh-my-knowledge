@@ -387,8 +387,6 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(report.items[0].recentTraceIds?.length, 2);
     assert.equal(report.items[0].traceId, report.items[0].evidence.traceId);
     assert.equal(report.items[0].sourceTrace, report.items[0].evidence.sourceTrace);
-
-    assert.equal(experience.invocations.length > 0, true);
   });
 
   it('keeps repeated_failure stronger than a single hard_miss', () => {

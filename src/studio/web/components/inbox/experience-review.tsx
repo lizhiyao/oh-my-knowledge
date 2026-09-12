@@ -2,11 +2,12 @@
 import { useMemo } from 'react';
 import { Empty, List, Space, Tag, Typography } from 'antd';
 import type { ExperienceSessionSummary } from '../../../../observability/contracts/experience';
-import type { ObservationReviewState } from '../../../../observability/contracts/review';
+import type { ObservationMetricKey, ObservationReviewState } from '../../../../observability/contracts/review';
 import {
   reviewPriorityMeta,
   reviewStateKey,
 } from '../../../../observability/inbox/review-semantics';
+import { ownRecordValue } from '../../../../shared/record-count';
 import type { Language } from '../layout/shell';
 import { SessionReviewActions } from './review-actions';
 
@@ -20,17 +21,24 @@ function formatRange(start?: string, end?: string): string {
   return `${startLabel} → ${endLabel}`;
 }
 
+function conversationHref(threadId: string, lang: Language): string {
+  const path = `/observe/conversations/${encodeURIComponent(threadId)}`;
+  return lang === 'zh' ? path : `${path}?lang=${lang}`;
+}
+
 /**
- * V1 经验会话复盘概要列表（#839 批次 3）：skill、复盘优先级、会话摘要、
- * 时间范围与复核操作组。证据链、规则发现与时间轴明细随后续批次迁移。
+ * 经验会话复盘列表：skill、复盘优先级、会话摘要、时间范围、对话任务深链与复核操作组。
+ * 输入是读取时派生的有效复核投影，因此指标与已提交的复核结论一致。
  */
 export function ExperienceReviewSection({
   sessions,
   reviewState,
+  unappliedMetricAnnotations,
   lang,
 }: {
   sessions: readonly ExperienceSessionSummary[];
   reviewState: ObservationReviewState;
+  unappliedMetricAnnotations?: Record<string, ObservationMetricKey[]>;
   lang: Language;
 }) {
   const zh = lang === 'zh';
@@ -49,6 +57,7 @@ export function ExperienceReviewSection({
       renderItem={(session) => {
         const priority = reviewPriorityMeta(session.reviewPriority, lang);
         const entry = reviewState.entries[reviewStateKey('experience_session', session.id)];
+        const unapplied = unappliedMetricAnnotations ? ownRecordValue(unappliedMetricAnnotations, session.id) : undefined;
         return (
           <List.Item>
             <div style={{ width: '100%' }}>
@@ -61,10 +70,20 @@ export function ExperienceReviewSection({
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {session.sourceKind}
                 </Typography.Text>
+                <Typography.Link href={conversationHref(session.threadId, lang)} style={{ fontSize: 12 }}>
+                  {zh ? '查看对话任务' : 'Conversation tasks'}
+                </Typography.Link>
               </Space>
               {session.sessionStory?.summary ? (
                 <Typography.Paragraph style={{ fontSize: 13, marginBottom: 8 }}>
                   {session.sessionStory.summary}
+                </Typography.Paragraph>
+              ) : null}
+              {unapplied && unapplied.length > 0 ? (
+                <Typography.Paragraph type="warning" style={{ fontSize: 12, marginBottom: 8 }}>
+                  {zh
+                    ? `标注未生效：${unapplied.join('、')}。证据不足以完整重放，已存指标未改变。`
+                    : `Annotations not applied: ${unapplied.join(', ')}. Evidence is insufficient for a full replay; stored metrics are unchanged.`}
                 </Typography.Paragraph>
               ) : null}
               <SessionReviewActions

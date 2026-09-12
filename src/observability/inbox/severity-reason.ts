@@ -2,8 +2,7 @@ import type { ObservationInboxItem, ObservationSeverityReasonCode } from '../con
 
 /**
  * 严重度理由的纯函数与字典（无文件系统依赖）。
- * 从 index.js 抽出：React client bundle 与 HTML 渲染器共用，宿主侧按需引入（#839 批次 1）。
- * index.js 仍再导出本模块，既有 import 路径不变。
+ * 宿主无关：signal-semantics 与页面按需引入，文案只此一份。
  */
 
 const SEVERITY_REASON_ZH: Record<ObservationSeverityReasonCode, string> = {

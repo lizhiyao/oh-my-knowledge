@@ -10,7 +10,7 @@
  *   - 正向反馈(positive feedback):「很好 / 做得好 / good job / awesome」等
  *
  * 每类信号提供两个 API:
- *   - findXxxMatches(text): 返回所有命中范围(TextMatchRange[]),供 renderer 高亮
+ *   - findXxxMatches(text): 返回所有命中范围(TextMatchRange[]),供呈现层高亮
  *   - hasXxxSignal(text): 命中即 true,供计数 / 判定逻辑
  *
  * 词表与上下文规则是观测语义的一部分,改动会影响 `negativeFeedbackCount`、
@@ -18,9 +18,8 @@
  * indicators 字段的值,继而影响 Report 比较学。词表变更前先确认 inbox 测试
  * (`test/observability/inbox.test.ts`)的影响。
  *
- * 阶段 3 拆分历史:这些常量、helper、公开函数原本住在 `experience.ts` 末尾。
- * 拆出独立文件后,experience.ts 通过 re-export 维持对外签名兼容,renderer
- * 通过 feedback-projection facade 间接消费。
+ * 这些常量、helper、公开函数原本住在 `experience.ts` 末尾,拆出独立文件后
+ * 由 experience.ts re-export 维持对外签名不变。
  */
 
 export interface TextMatchRange {

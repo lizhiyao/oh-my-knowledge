@@ -56,6 +56,26 @@ describe('skill rollups (host-independent)', () => {
     assert.equal(rollup.sessionCount, 3);
   });
 
+  it('treats prototype-member skill names as data, never as inherited lookups', () => {
+    const [proto] = buildObservationSkillRollups(model({
+      allItems: [baseItem({ id: 'p1', skillName: '__proto__', severity: 'high' })],
+      skillInvocationCounts: Object.fromEntries([['__proto__', 4]]),
+      skillSessionCounts: Object.fromEntries([['__proto__', 2]]),
+    }));
+    assert.equal(proto.skillName, '__proto__');
+    assert.equal(proto.invocationCount, 4);
+    assert.equal(proto.sessionCount, 2);
+    assert.equal(proto.observationCount, 1);
+
+    // 普通下标读取会拿到 Object 构造函数，再被当成计数；这里必须回落到观测派生值。
+    const [ctor] = buildObservationSkillRollups(model({
+      allItems: [baseItem({ id: 'c1', skillName: 'constructor', occurrences: 2, recentSessionIds: ['s1'] })],
+    }));
+    assert.equal(ctor.skillName, 'constructor');
+    assert.equal(ctor.invocationCount, 2);
+    assert.equal(ctor.sessionCount, 1);
+  });
+
   it('labels tones bilingually', () => {
     assert.equal(skillReviewLabel('warning', 'zh'), '低风险');
     assert.equal(skillReviewLabel('warning', 'en'), 'Low risk');

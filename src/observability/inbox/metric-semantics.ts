@@ -1,7 +1,6 @@
 /**
- * 观测收件箱指标的标签与说明文案（宿主无关纯函数，#839 批次 4）。
- * 从 presentation/observation-inbox/metric-renderer 收敛到数据层，
- * HTML 渲染器与 React 页面共用；中文逐字保留，英文为新增。
+ * 观测收件箱指标的标签与说明文案（宿主无关纯函数）。
+ * 文案只此一份，React 页面直接消费；中文逐字保留，英文为新增。
  */
 
 export type IndicatorHelpKey =

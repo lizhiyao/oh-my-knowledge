@@ -332,7 +332,6 @@ describe('observe inbox - signal detection', () => {
     const annotatedReport = buildObservationInboxReport(file, { reviewState });
     const annotatedSession = annotatedReport.experience!.sessions[0];
     assert.equal(annotatedSession.indicators.deliverableArtifactSignalCount, 0);
-    assert.equal(annotatedReport.experience!.sessions.length > 0, true);
   });
 
   it('does not count delivery words from tool_result or skill context as assistant delivery', () => {

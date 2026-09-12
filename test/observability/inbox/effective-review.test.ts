@@ -97,7 +97,7 @@ describe('effective observation review', () => {
     assert.ok(view.unappliedMetricAnnotations[session.id].includes('hard_rule'));
   });
 
-  it.each([false, true])('shares the projection across CLI JSON, HTTP and HTML with rejected annotation=%s', async (rejected) => {
+  it.each([false, true])('shares the effective projection across CLI JSON and HTTP view with rejected annotation=%s', async (rejected) => {
     const observationsDir = join(root, `shared-${rejected}`);
     const persisted = saveObservationInboxReport(report, observationsDir);
     const before = readFileSync(persisted, 'utf-8');

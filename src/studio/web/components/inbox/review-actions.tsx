@@ -2,14 +2,14 @@
 import { useState } from 'react';
 import { Button, Input, message, Space, Tag, Typography } from 'antd';
 import type { ObservationReviewVerdict } from '../../../../observability/contracts/review';
-import { reviewActionLabels, reviewVerdictBadge } from '../../../../observability/inbox/review-semantics';
+import { reviewActionLabels, reviewActionRequest, reviewVerdictBadge } from '../../../../observability/inbox/review-semantics';
 import type { Language } from '../layout/shell';
 
 const REVIEW_ENDPOINT = '/api/observe-inbox/review-state';
 
 /**
- * 经验会话复核操作组（#839 批次 3）：同意/否决/留意见三按钮，
- * 提交 /api/observe-inbox/review-state，成功后才更新本地状态（与历史 HTML 版一致）。
+ * 经验会话复核操作组：同意／否决／留意见三按钮，请求成功才更新本地状态；
+ * 再次点击当前结论即撤销该条复核。
  */
 export function SessionReviewActions({
   sessionId,
@@ -30,41 +30,52 @@ export function SessionReviewActions({
   const [noteText, setNoteText] = useState(reason ?? '');
   const [pending, setPending] = useState(false);
 
-  async function submit(next: 'real_issue' | 'not_issue' | 'needs_more_context', note?: string) {
+  async function submit(next: ObservationReviewVerdict, note?: string) {
+    const request = reviewActionRequest('experience_session', sessionId, current, next, note);
+    const revoking = request.method === 'DELETE';
     setPending(true);
     try {
-      const response = await fetch(REVIEW_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetType: 'experience_session',
-          targetId: sessionId,
-          verdict: next,
-          ...(note ? { reason: note } : {}),
-        }),
-      });
+      const response = revoking
+        ? await fetch(
+            `${REVIEW_ENDPOINT}?targetType=${encodeURIComponent(request.targetType)}&targetId=${encodeURIComponent(request.targetId)}`,
+            { method: 'DELETE' },
+          )
+        : await fetch(REVIEW_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targetType: request.targetType,
+              targetId: request.targetId,
+              verdict: request.verdict,
+              ...(request.reason ? { reason: request.reason } : {}),
+            }),
+          });
       if (!response.ok) throw new Error(String(response.status));
-      setCurrent(next);
-      setCurrentReason(note);
+      setCurrent(revoking ? undefined : next);
+      setCurrentReason(revoking ? undefined : note);
+      if (revoking) setNoteText('');
       setNoteOpen(false);
     } catch {
-      message.error(zh ? '复核保存失败，请重试。' : 'Failed to save the review; please retry.');
+      message.error(revoking
+        ? (zh ? '撤销复核失败，请重试。' : 'Failed to revoke the review; please retry.')
+        : (zh ? '复核保存失败，请重试。' : 'Failed to save the review; please retry.'));
     } finally {
       setPending(false);
     }
   }
 
   const buttonType = (value: ObservationReviewVerdict) => (current === value ? 'primary' : 'default');
+  const revokeTitle = (value: ObservationReviewVerdict) => (current === value ? labels.revokeHint : undefined);
   return (
     <Space direction="vertical" size={4} style={{ alignItems: 'flex-start' }}>
       <Space size={4} wrap>
-        <Button size="small" type={buttonType('real_issue')} loading={pending} onClick={() => void submit('real_issue')}>
+        <Button size="small" type={buttonType('real_issue')} title={revokeTitle('real_issue')} loading={pending} onClick={() => void submit('real_issue')}>
           {labels.confirm}
         </Button>
-        <Button size="small" type={buttonType('not_issue')} danger={current === 'not_issue'} loading={pending} onClick={() => void submit('not_issue')}>
+        <Button size="small" type={buttonType('not_issue')} danger={current === 'not_issue'} title={revokeTitle('not_issue')} loading={pending} onClick={() => void submit('not_issue')}>
           {labels.reject}
         </Button>
-        <Button size="small" type={buttonType('needs_more_context')} loading={pending} onClick={() => setNoteOpen((open) => !open)}>
+        <Button size="small" type={buttonType('needs_more_context')} title={current === 'needs_more_context' ? labels.revoke : undefined} loading={pending} onClick={() => setNoteOpen((open) => !open)}>
           {labels.note}
         </Button>
         {current ? (
