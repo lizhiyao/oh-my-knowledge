@@ -4011,7 +4011,7 @@ describe('canonical eval-runtime API', () => {
     }, { runId: 'required-writer-missing' });
 
     expect(result.status).toBe('failed');
-    expect(result.error).toMatchObject({
+    expect(result.status === 'failed' ? result.error : undefined).toMatchObject({
       code: 'EXECUTION_RUNTIME_EVENT_WRITER_REQUIRED',
       stage: 'configuration',
     });
