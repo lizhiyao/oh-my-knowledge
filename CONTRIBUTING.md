@@ -39,7 +39,7 @@ git checkout main
 git pull --ff-only
 
 # cut a topic branch from main
-git checkout -b feat/my-feature
+git checkout -b codex/my-feature
 
 # Batch the intended changes, then run the complete local gate once before pushing.
 yarn install
@@ -48,14 +48,14 @@ yarn install
 yarn ci
 
 git commit -m "feat(cli): 中文 subject"
-git push -u origin feat/my-feature
+git push -u origin codex/my-feature
 
 # open a PR against **main**
 ```
 
-Avoid using remote CI as an incremental feedback loop. Batch related fixes, run
-`yarn ci` locally, and push the verified commit set once. If review finds more
-issues, finish the related fixes and rerun the local gate before the next push.
+Validation triggers, evidence reuse, and exceptions are defined once in
+[`AGENTS.md`](./AGENTS.md#开发反馈与验证). The commands below implement that policy;
+follow-up fixes do not automatically require another full local gate.
 
 ## Code review and definition of done
 
@@ -65,11 +65,9 @@ Do not wait for a maintainer to ask whether CR happened. Follow
 [`CODE_REVIEW.md`](./CODE_REVIEW.md) for the risk levels, review dimensions,
 finding format, validation ladder, and stopping rules.
 
-A green test suite is necessary but not sufficient. High-risk changes involving
-Evaluation Core, public schemas or APIs, persisted storage, executors, security
-boundaries, concurrency, or releases also require the relevant real user path or
-clean-room package check. Resolve every P0–P2 finding before handoff; either
-resolve P3 findings or link a deliberate follow-up.
+A green test suite alone does not establish completion. Use `CODE_REVIEW.md`
+for risk-specific evidence and finding resolution, and `AGENTS.md` for when to
+run the full gate or clean-room checks; do not independently expand those rules.
 
 The pull request description records user impact, the migration or compatibility
 decision, measurement caveats, the autonomous CR conclusion, real validation
@@ -160,6 +158,43 @@ docs(readme): 补充评测用例说明
 
 ## Tests
 
+### Fast development feedback
+
+```bash
+# Each edit: select the affected logic and its direct callers.
+yarn test test/scripts/test-profile.test.ts
+# Checkpoint: lint + typecheck + explicitly selected tests, without a build.
+yarn ci:quick test/scripts/test-profile.test.ts test/scripts/ci-quick.test.ts
+# Final changes before the first push: the complete gate.
+yarn ci
+```
+
+`yarn test` forwards Vitest arguments through the hermetic wrapper, which fails
+if tests mutate repository-owned content. Use that entry point for targeted
+runs too. `ci:quick` requires existing `.test.ts` / `.test.tsx` files under `test/`;
+no arguments, directories, missing files, or Vitest flags exit with code 2 before
+checks run. It does not infer affected tests or build artifacts. Every failed
+stage stops the command; passing it does not imply full CI coverage.
+
+### Build only what the selected test consumes
+
+| Test boundary / task | Preparation after relevant input changes |
+|---|---|
+| Imports source directly; no production assets | No build |
+| Compiled CLI, package modules, schemas or runtime assets | `yarn build:runtime` |
+| Source Next server / React production routes | `yarn build:studio:app` |
+| Compiled Studio / distributed package / complete suite | `yarn build` |
+| Regenerate CLI documentation | `yarn build:runtime` then `yarn build:docs` |
+
+`build:runtime` compiles source and scripts, checks schemas and copies runtime
+assets; it excludes Next. `build` adds Studio compilation and packaging. Changes
+to modules imported by Next pages also invalidate the Studio build, even when
+no React file changed. A pre-existing `dist` or `.next/BUILD_ID` only proves an
+artifact exists, not that it matches current source. Refresh the relevant build
+after source, dependency or build-config changes. Removed or renamed emitted
+files may require `yarn clean` before rebuilding. Preserve incremental caches
+between unchanged checks; use clean builds when the tested boundary requires it.
+
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
@@ -186,7 +221,7 @@ CLI 使用 [@oclif/core](https://oclif.io/docs/)。命令继承 `BaseCommand`，
 2. 继承 `BaseCommand`，声明 `static args / flags / examples / description`。帮助文案使用 `bilingual({zh, en})`。
 3. 在 `run()` 中调用 `await this.parse(Command)`，用 `this.lang` 获取语言。可能抛出 `CliExit` 的业务通过 `this.runWithCliExit(async () => { ... })` 执行，共享错误边界负责转换退出码。
 4. 用 `test/helpers/run-command.ts` 验证参数到业务的接线。只有 dispatcher、启动或独立进程行为需要真实 `node dist/cli/index.js` 测试。
-5. 修改命令声明后运行 `yarn build && yarn build:docs`。提交前按仓库门禁验证最终改动。
+5. 修改命令声明后运行 `yarn build:runtime && yarn build:docs`。提交前按仓库门禁验证最终改动。
 
 `eval/gold/index.ts` 是显式的 topic 命令：裸 `omk eval gold` 显示帮助后退出 `1`，让脚本识别缺少子命令。需要同样行为的新 topic 应明确实现该契约。
 
@@ -210,7 +245,7 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 | `docs/specs/cli-evaluation-input-compilation.md` | 英文输入 registry 表 |
 | `docs/zh/specs/cli-evaluation-input-compilation.md` | 中文输入 registry 表 |
 
-运行 `yarn build && yarn build:docs` 同步生成区段，`build:docs:check` 和测试会拦截漂移。marker 外的解释文字仍由人工维护。
+运行 `yarn build:runtime && yarn build:docs` 同步生成区段，`build:docs:check` 和测试会拦截漂移。marker 外的解释文字仍由人工维护。
 
 新增顶层命令时，为中英文 CLI 参考增加对应的 `<!-- omk:cli:<id>:flags:start -->`／`<!-- omk:cli:<id>:flags:end -->` marker，并更新官方 `SKILL.md` 的 `argument-hint`。顶层命令集合由 oclif 配置派生，不另建手写清单；子命令会自动进入完整命令参考。Skill 正文不复制生成参考。
 

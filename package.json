@@ -74,7 +74,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist dist-scripts node_modules/.cache/omk",
-    "build": "run-s build:src build:scripts schemas:check build:assets build:studio",
+    "build": "run-s build:runtime build:studio",
     "build:src": "tsc -p tsconfig.build.json",
     "build:scripts": "tsc -p tsconfig.scripts.json",
     "build:schemas": "run-s build:src schemas:write",
@@ -102,7 +102,9 @@
     "prepare": "husky",
     "build:studio": "run-s build:studio:app package:studio",
     "build:studio:app": "NEXT_TELEMETRY_DISABLED=1 next build src/studio/web --webpack",
-    "package:studio": "node scripts/package-studio.mjs"
+    "package:studio": "node scripts/package-studio.mjs",
+    "build:runtime": "run-s build:src build:scripts schemas:check build:assets",
+    "ci:quick": "node scripts/ci-quick.mjs"
   },
   "lint-staged": {
     "{src,test}/**/*.{ts,tsx}": [
