@@ -8,8 +8,6 @@ describe('Studio knowledge route boundary', () => {
     expect(composition).toContain('createKnowledgeRoutes');
     for (const forbidden of [
       'buildSkillIndex',
-      'renderSkillList',
-      'renderSkillDetail',
       'renderSkillHealthReport',
       'renderDoctorDetail',
       'renderManagedList',

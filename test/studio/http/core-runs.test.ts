@@ -411,6 +411,7 @@ describe('Core Studio route handler', () => {
         '/observe-health', '/observe-health/report', '/analyses', '/analyses/report',
         '/skills/audit', '/doctors/report', '/managed', '/managed/audit',
         '/skill-trend/audit', '/analyses-diff?from=a&to=b',
+        '/knowledge', '/knowledge/skills/audit',
       ]) {
         const obsolete = await fetch(`${url}${path}`, { redirect: 'manual' });
         assert.equal(obsolete.status, 404, `${path} is no longer a page route`);
@@ -424,7 +425,6 @@ describe('Core Studio route handler', () => {
         assert.equal(home.headers.get('location'), `/observe${query}`);
         let homeAppBar: string | undefined;
         for (const [path, active, status] of [
-          ['/knowledge', 'knowledge', 200],
           ['/observe/health', 'observe', 200],
           ['/measure', 'measure', 200],
           ['/measure/core-run-1', 'measure', 200],
@@ -438,9 +438,9 @@ describe('Core Studio route handler', () => {
           const appBar = appBars[0]!.replaceAll(' aria-current="page"', '');
           assert.ok(appBar.indexOf('href="/observe') < appBar.indexOf('href="/measure'));
           assert.ok(appBar.indexOf('href="/measure') < appBar.indexOf('href="/knowledge'));
-          if (path === '/knowledge') homeAppBar = appBar;
+          if (path === '/observe/health') homeAppBar = appBar;
           else assert.equal(appBar, homeAppBar, `${path} preserves the same branding and navigation`);
-          if (['/', '/knowledge', '/measure'].includes(path)) {
+          if (['/measure'].includes(path)) {
             assert.ok(html.includes('<body class="studio-workspace">'), `${path} uses the workspace shell`);
             assert.match(html, /<h1 class="studio-page-title">[^<]+<\/h1>/, `${path} keeps an accessible page heading`);
             assert.ok(!html.includes('class="studio-page-header'), `${path} has no redundant title row`);

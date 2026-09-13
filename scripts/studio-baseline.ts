@@ -318,13 +318,12 @@ async function measureScale(scale: BaselineScale, dist: DistModules): Promise<Sc
     });
 
     const warmOnly: readonly string[] = [
-      'GET /knowledge',
       'GET /api/observe-health',
       'GET /observe/health',
       `GET /observe/health/${dataset.latestAnalysisId}`,
       `GET /observe/skill-trend/${encodeURIComponent(dataset.firstSkillName)}`,
       'GET /api/observe-inbox',
-      // /observe/inbox 页面已由 Next 宿主渲染；本脚本测的是独立 HTML 宿主，那里按设计 404。
+      // /observe/inbox 与 /knowledge 页面已由 Next 宿主渲染；本脚本测的是独立 HTML 宿主，那里按设计 404。
     ];
     for (const route of warmOnly) {
       const path = route.slice('GET '.length);
@@ -342,7 +341,7 @@ async function measureScale(scale: BaselineScale, dist: DistModules): Promise<Sc
     monitor.enable();
     const concurrentStart = performance.now();
     await Promise.all(
-      Array.from({ length: CONCURRENCY }, () => measureRoute(`${baseUrl}/knowledge`)),
+      Array.from({ length: CONCURRENCY }, () => measureRoute(`${baseUrl}/observe/health`)),
     );
     const wallMs = performance.now() - concurrentStart;
     const eventLoopP99Ms = monitor.percentile(99) / 1e6;
@@ -386,7 +385,7 @@ export function renderBaselineMarkdown(results: readonly ScaleResult[]): string 
     lines.push(
       '',
       `冷 /api/skills 期间事件循环 p99 延迟：${formatMs(result.coldEventLoopP99Ms)} ms；`,
-      `${result.concurrency.requests} 并发 GET /knowledge（热）：墙钟 ${formatMs(result.concurrency.wallMs)} ms，事件循环 p99 ${formatMs(result.concurrency.eventLoopP99Ms)} ms。`,
+      `${result.concurrency.requests} 并发 GET /observe/health（热）：墙钟 ${formatMs(result.concurrency.wallMs)} ms，事件循环 p99 ${formatMs(result.concurrency.eventLoopP99Ms)} ms。`,
       '',
     );
   }

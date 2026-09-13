@@ -63,7 +63,7 @@ CLI 评测预览使用 `createReportServer` 并设置 `studioPages: false`，只
 | 模块组 | 现有用途与调用方 |
 | --- | --- |
 | `core-run-renderer` | `http/routes/core-runs` 输出独立评测运行列表、详情和错误页；CLI 评测预览直达 `/measure/:runId`；公开渲染 API 也从这里导出。 |
-| `skill-list-renderer`、`skill-detail-renderer` | `/knowledge` 与 `/knowledge/skills/:name` 的 HTML 页，由 `http/routes/knowledge` 调用。两个 Next 宿主都会拦截这两个路径，只挂评测页面的独立宿主又不注册知识路由，因此它们现在只服务公开渲染 API，不再是任何真实入口的页面。 |
+| `skill-list-renderer`、`skill-detail-renderer` | 已删除。`/knowledge` 与 `/knowledge/skills/:name` 只由 `web/app/knowledge/**`（React + AntD）渲染：HTML 宿主的知识路由组与 Next 的拦截条件同为 `studioPages`，两者不可能同时生效，因此这两个 HTML 出口在任何真实宿主上都不再可达。`/api/skills`、`/api/skills/:skill/diagnostics` 作为 JSON 事实源保留。 |
 | `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页（只读报告）。 |
 | `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告（只读报告）。 |
 | `managed-history-renderer` | `/knowledge/managed` 及受管对象历史（只读报告）。 |
@@ -71,4 +71,4 @@ CLI 评测预览使用 `createReportServer` 并设置 `studioPages: false`，只
 | `conversation-renderer`、`knowledge-debugger-renderer`、`trajectory-live`、`trajectory-routing` | 已删除。会话列表/详情与任务轨迹只由 `web/app/observe/**` 渲染，`/observe/sessions/:id` 手写调试入口随之退出；轨迹的连线计算保留在 `application/replay/routing.ts`，由 React 直接消费。HTML 宿主不再挂 `/observe`、`/observe/conversations/*`、`/observe/sessions/*`。 |
 | `layout`、`report-shell`、`icons`、`inline-markdown` | 上述 HTML 页面的外壳、图标和安全内容渲染。Markdown 解析与纯文本计算位于 application。 |
 
-只读报告页（skill-health、体检、受管历史、趋势与差异）不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，因此它们仍是活跃的页面能力。迁移其中任何一页到 React 都不会减少渲染层数量，除非同时裁剪对应的 HTML 路由。删除这些模块需要先迁移对应真实入口；目录名本身不是废弃标记。已被 Next 遮蔽的 HTML 知识页同时是 `oh-my-knowledge/studio` 的公开导出，删除属于公开契约变更，需要单独确认，不做静默清理。
+只读报告页（skill-health、体检、受管历史、趋势与差异）不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，因此它们仍是活跃的页面能力；但全仓已没有任何 React 页面或 CLI/MCP 输出链接进这一组，一级导航三项（`/observe`、`/measure`、`/knowledge`）都是 React，这些页面只能手打地址访问，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理。迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由；目录名本身不是废弃标记。`presentation/core-run-renderer` 是 `oh-my-knowledge/studio` 的唯一公开渲染导出，同时 `web/app/measure/**` 已提供 React 版 `/measure`，评测预览宿主仍在走 HTML 一份——收掉这条双轨需要先按公开契约变更处理，不做静默替换。

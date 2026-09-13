@@ -3,12 +3,6 @@ import { runInNewContext } from 'node:vm';
 import { describe, it } from 'vitest';
 import { layout } from '../../../src/studio/presentation/layout.js';
 import { renderAnalysisList, renderSkillDiffPage } from '../../../src/studio/presentation/knowledge-reports-renderer.js';
-import { renderSkillDetail } from '../../../src/studio/presentation/skill-detail-renderer.js';
-import type { SkillIndexEntry } from '../../../src/studio/view-models/skill-index.js';
-
-const entry: SkillIndexEntry = {
-  skillName: 'audit', doctor: null, observe: null, doctorHistory: [], observeHistory: [], band: 'gray',
-};
 
 describe('knowledge review presentation', () => {
   it('returns both empty and populated health lists to Observe in the selected language', () => {
@@ -28,20 +22,6 @@ describe('knowledge review presentation', () => {
     assert.match(html, /color:#16a34a">-25.0%<\/span>/);
     assert.match(html, /color:#16a34a">-20.0%<\/span>/);
     assert.match(html, /color:#16a34a">\+60.0%<\/span>/);
-  });
-
-  it('distinguishes missing outcomes from a measured zero failure rate', () => {
-    for (const [calls, resolved, cancelled, stability, expected] of [
-      [0, 0, 0, 'stable', 'Not measured'], [5, 0, 0, 'unknown', 'Not measured'],
-      [5, 5, 5, 'unknown', 'Not measured'], [5, 5, 0, 'stable', '0.0%'],
-    ] as const) {
-      const html = renderSkillDetail({ ...entry, observe: {
-        analysisId: 'a', generatedAt: '2026-09-01', healthBand: 'green', effectiveBand: 'green',
-        confidence: 'high', segmentCount: 20, gapRate: 0, failureRate: 0,
-        toolCallCount: calls, toolResolvedCount: resolved, toolCancelledCount: cancelled, stability,
-      } }, 'en');
-      assert.ok(html.includes(`<dt>Tool failures</dt><dd>${expected}</dd>`));
-    }
   });
 
   it('navigates to a complete language render even when storage is blocked', () => {

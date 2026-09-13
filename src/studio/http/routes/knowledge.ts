@@ -6,9 +6,7 @@ import { renderDoctorDetail } from '../../presentation/doctor-detail-renderer.js
 import { renderAnalysisList, renderSkillDiffPage, renderSkillTrendPage } from '../../presentation/knowledge-reports-renderer.js';
 import { DEFAULT_LANG } from '../../presentation/layout.js';
 import { renderManagedHistory, renderManagedList } from '../../presentation/managed-history-renderer.js';
-import { renderSkillDetail } from '../../presentation/skill-detail-renderer.js';
 import { renderSkillHealthReport } from '../../presentation/skill-health-renderer.js';
-import { renderSkillList } from '../../presentation/skill-list-renderer.js';
 import type { SkillReportContext } from '../../view-models/report-context.js';
 import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
@@ -195,16 +193,6 @@ export function createKnowledgeRoutes({
       },
     },
     {
-      // 原 skill-centric 工作台迁到 /knowledge。insightsBySkill 在 buildSkillIndex 里
-      // 跟 SkillIndex 一起算好并享受同一份缓存，renderer 只负责呈现。
-      pattern: '/knowledge',
-      handler({ response: res, lang, analysesDir, doctorsDir }) {
-        const idx = query.read({ analysesDir, doctorsDir });
-        res.writeHead(200, HTML_HEADERS);
-        res.end(renderSkillList(idx, lang));
-      },
-    },
-    {
       pattern: '/api/skills',
       handler({ response: res, analysesDir, doctorsDir }) {
         const idx = query.read({ analysesDir, doctorsDir });
@@ -218,21 +206,6 @@ export function createKnowledgeRoutes({
           summary: idx.summary,
           diagnosisSummary: idx.diagnosisSummary,
         }));
-      },
-    },
-    {
-      pattern: '/knowledge/skills/*skill',
-      handler({ response: res, params, lang, analysesDir, doctorsDir }) {
-        const skillName = params.skill;
-        const idx = query.read({ analysesDir, doctorsDir });
-        const entry = idx.entries.find((en) => en.skillName === skillName);
-        if (!entry) {
-          res.writeHead(404, TEXT_HEADERS);
-          res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
-          return;
-        }
-        res.writeHead(200, HTML_HEADERS);
-        res.end(renderSkillDetail(entry, lang, idx.insightsBySkill.get(entry.skillName) ?? []));
       },
     },
     {

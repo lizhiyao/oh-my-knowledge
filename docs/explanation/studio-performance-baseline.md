@@ -27,7 +27,7 @@ The script (`scripts/studio-baseline.ts`) synthesizes schema-valid datasets into
 | Route | Cold (ms) | Warm (ms, min of 5) | Response size |
 | --- | ---: | ---: | ---: |
 | `GET /api/skills` | 33.7 | 4.1 | 24.1 KB |
-| `GET /knowledge` | — | 4.3 | 38.3 KB |
+| `GET /knowledge` (retired) | — | 4.3 | 38.3 KB |
 | `GET /api/observe-health` | — | 3.1 | 1.5 KB |
 | `GET /observe/health` | — | 3.3 | 47.9 KB |
 | `GET /observe/health/obs-0009` | — | 2.4 | 56.1 KB |
@@ -42,7 +42,7 @@ Event-loop p99 during cold `/api/skills`: 0.0 ms. 24 concurrent warm `GET /knowl
 | Route | Cold (ms) | Warm (ms, min of 5) | Response size |
 | --- | ---: | ---: | ---: |
 | `GET /api/skills` | 30.5 | 10.9 | 633.3 KB |
-| `GET /knowledge` | — | 9.4 | 44.7 KB |
+| `GET /knowledge` (retired) | — | 9.4 | 44.7 KB |
 | `GET /api/observe-health` | — | 9.6 | 8.9 KB |
 | `GET /observe/health` | — | 9.9 | 101.3 KB |
 | `GET /observe/health/obs-0059` | — | 4.4 | 98.0 KB |
@@ -57,7 +57,7 @@ Event-loop p99 during cold `/api/skills`: 0.0 ms. 24 concurrent warm `GET /knowl
 | Route | Cold (ms) | Warm (ms, min of 5) | Response size |
 | --- | ---: | ---: | ---: |
 | `GET /api/skills` | 137 | 54.5 | 5.94 MB |
-| `GET /knowledge` | — | 42.1 | 62.9 KB |
+| `GET /knowledge` (retired) | — | 42.1 | 62.9 KB |
 | `GET /api/observe-health` | — | 43.2 | 29.9 KB |
 | `GET /observe/health` | — | 43.7 | 251.2 KB |
 | `GET /observe/health/obs-0199` | — | 13.5 | 215.3 KB |
@@ -77,6 +77,7 @@ Event-loop p99 during cold `/api/skills`: 11.5 ms. 24 concurrent warm `GET /know
 
 ## Limits and follow-ups
 
+- The HTML `/knowledge` page has been deleted: Next renders that path in every host that registers the knowledge group, so the standalone HTML host the harness drives no longer serves it. The `GET /knowledge` rows and the「24 concurrent warm `GET /knowledge`」lines above are pre-retirement numbers; `yarn studio:baseline` now probes `/observe/health` for concurrency, which keeps the measurement on a server-rendered page of comparable role.
 - The script measures the server side only. Client first-paint and lane-interaction costs are not produced here; the 17 MB legacy inbox HTML at large scale is the known client-side cost driver and is handled by the Next.js migration batch (viewport-aware rendering), with verification through the real entry points.
 - Conversations/task-list pages and SSE live tailing are not part of this dataset baseline; their refresh, race and cleanup behavior is verified in the data-flow batch (issue #836 §1.1).
 - Absolute numbers depend on the machine and on filesystem caches; always compare before/after on the same machine and commit with `yarn studio:baseline`.
