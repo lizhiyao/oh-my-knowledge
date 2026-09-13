@@ -239,7 +239,19 @@ describe('assertion-layer table contract', () => {
     expect(() => validator().parse(candidate)).toThrow('source row identities');
   });
 
-  it('rejects internally valid groups that disagree on the sealed criterion design', () => {
+  it('permits different sample designs but requires the same design across targets for one sample', () => {
+    const secondEntries = entries.slice(1).map((entry) => ({ ...entry, rowId: digestCanonicalJson({ source: entry.rowId, sample: 'b' }) }));
+    const candidate = { resultType: 'table', value: { schemaVersion: ASSERTION_LAYER_TABLE_SCHEMA_VERSION,
+      groups: [group(), group(secondEntries, 'sample-b')],
+    } };
+    expect(() => validator().parse(candidate)).not.toThrow();
+    const second = { ...group(secondEntries), targetId: 'target-b' };
+    second.groupId = assertionLayerGroupId(second);
+    candidate.value.groups[1] = second;
+    expect(() => validator().parse(candidate)).toThrow('same sealed criterion design');
+  });
+
+  it('rejects shared metric metadata drift across samples', () => {
     const secondEntries = entries.map((entry): AssertionEntry => ({
       ...entry,
       rowId: digestCanonicalJson({ row: entry.criterionId, sampleId: 'sample-b' }),
@@ -247,7 +259,7 @@ describe('assertion-layer table contract', () => {
     }));
     const candidate = envelope() as unknown as { value: { groups: AssertionLayerGroup[] } };
     candidate.value.groups.push(group(secondEntries, 'sample-b'));
-    expect(() => validator().parse(candidate)).toThrow('same sealed criterion design');
+    expect(() => validator().parse(candidate)).toThrow('same criterion identity, layer, and weight');
   });
 
   it('rejects a structurally not-applicable criterion marked as censored', () => {
@@ -263,8 +275,8 @@ describe('assertion-layer table contract', () => {
 
   it('publishes a strict, digest-bound v1 schema identity', () => {
     expect(ASSERTION_LAYER_TABLE_SCHEMA).toMatchObject({
-      schemaVersion: 'omk.assertion-layer-table/v1',
-      schemaUri: 'urn:omk:analysis-result:assertion-layer-table:v1',
+      schemaVersion: 'omk.assertion-layer-table/v2',
+      schemaUri: 'urn:omk:analysis-result:assertion-layer-table:v2',
     });
     expect(ASSERTION_LAYER_TABLE_SCHEMA.schemaDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(() => validator().parse({

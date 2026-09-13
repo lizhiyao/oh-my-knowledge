@@ -1,6 +1,12 @@
 # Executors
 
-An **executor** is the backend that runs an artifact against a model — it turns `(system, prompt, model)` into output. Which one you pick (`--executor`) decides *how* the model is called: the Claude CLI, the Agent SDK, codex, a raw HTTP API, or your own command. **Keep the executor fixed across a run** — comparing variants under different executors compares runtimes, not just the artifact (omk fingerprints the runtime and warns when they differ; see the construct-validity note below).
+An **executor** runs a sample against the system under test, using the selected knowledge artifact and execution conditions, and returns output and available execution evidence. `--executor` selects the invocation method: a CLI, SDK, HTTP API, or your executable adapter. Keep the model, executor, and execution conditions fixed when comparing knowledge versions. Reusing a sample file across executors does not make their runtime identities or scores interchangeable.
+
+## Choose an input and executor
+
+1. Write one [v3 sample set](./eval-sample-format): put the task in `input`, execution conditions in `executionContext`, and references and checks in `expected` / `evaluationContext`. Choose `text`, `json`, or `messages` by the task data, rather than by whether the target is a prompt, RAG, skill, agent, or workflow.
+2. Check the [input support matrix](./eval-sample-format#input-and-adapter-support). CLI/SDK adapters accept text; API adapters also accept JSON and plain role history. For application protocols such as tool history, provide a [custom executor](#custom-executor). Input support does not imply tools, workspace access, or a particular output shape.
+3. Keep the sample file and grading declarations fixed across version comparisons. Use `--samples ./eval-samples.json --executor openai-api`, or `--executor ./my-executor.mjs` for your adapter, with the chosen control, treatment, and model. `--dry-run` checks compilation and declared requirements; it does not prove the target will execute successfully.
 
 ## Built-in executors
 

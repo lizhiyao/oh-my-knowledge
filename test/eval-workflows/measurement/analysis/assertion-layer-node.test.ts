@@ -349,6 +349,35 @@ describe('assertion-layer Analysis node', () => {
     expect(result.includedRowIds).toHaveLength(included);
   });
 
+  it('aggregates sealed sample scopes without inventing rows or accepting incomplete applicable units', async () => {
+    const source = criteria.slice(0, 2);
+    const scoped = context(source);
+    scoped.inputs = scoped.inputs.map((input, index) => ({
+      ...input,
+      rows: (input as Extract<AnalysisNodeInput, { inputKind: 'metric-observations' }>).rows.map((row) => ({
+        ...row, sampleId: index === 0 ? 'sample-a' : 'sample-b',
+        trialId: digestCanonicalJson({ sample: index }),
+      })),
+    })) as AnalysisNodeExecutionContext['inputs'];
+    const declarations = source.map((criterion, index) => ({
+      criterionId: criterion.criterionId, metricId: criterion.metricId,
+      layerDisposition: criterion.layerDisposition, weight: criterion.weight,
+      applicableSampleIds: [index === 0 ? 'sample-a' : 'sample-b'],
+    }));
+    scoped.node = { ...scoped.node, parameters: { criteria: declarations } };
+    const result = await execute(scoped);
+    expect(completedValue(result)).toMatchObject({ groups: [
+      { sampleId: 'sample-a', entries: [expect.objectContaining({ metricId: source[0].metricId })], layers: { fact: { score: 5, coverage: { declaredCriteria: 1, observedWeight: 2 } } } },
+      { sampleId: 'sample-b', entries: [expect.objectContaining({ metricId: source[1].metricId })], layers: { fact: { score: 1, coverage: { declaredCriteria: 1, observedWeight: 3 } } } },
+    ] });
+    expect(result.includedRowIds).toHaveLength(2);
+    for (const scope of [['sample-a', 'sample-b'], ['sample-b']]) {
+      await expect(execute({ ...scoped, node: { ...scoped.node, parameters: {
+        criteria: [{ ...declarations[0], applicableSampleIds: scope }, declarations[1]],
+      } } })).rejects.toThrow('one row per applicable Metric');
+    }
+  });
+
   it('fails closed on mapping ambiguity, incomplete units, and sampling disagreement', async () => {
     const mismatchBase = context();
     const mismatch = {

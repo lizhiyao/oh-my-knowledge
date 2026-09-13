@@ -12,7 +12,7 @@ import {
   createAnalysisSchemaValidator,
 } from './analysis-support.js';
 
-const PARAMETERS_SCHEMA_VERSION = 'omk.parameters.assertion-layer/v1' as const;
+const PARAMETERS_SCHEMA_VERSION = 'omk.parameters.assertion-layer/v2' as const;
 
 export const AssertionLayerDispositionSchema = z.enum([
   'fact',
@@ -25,6 +25,9 @@ export const AssertionLayerCriterionParameterSchema = z.object({
   metricId: IdentifierSchema,
   layerDisposition: AssertionLayerDispositionSchema,
   weight: z.number().finite().positive(),
+  applicableSampleIds: z.array(IdentifierSchema).min(1).refine((ids) => new Set(ids).size === ids.length, {
+    message: 'Applicable sample IDs must be unique.',
+  }).optional(),
 }).strict();
 
 const AssertionLayerParametersSchema = z.object({
@@ -58,18 +61,24 @@ function compareCriteria(
 export function parseAssertionLayerParameters(value: unknown): AssertionLayerParameters {
   const parsed = AssertionLayerParametersSchema.parse(value);
   return {
-    criteria: [...parsed.criteria].sort(compareCriteria),
+    criteria: parsed.criteria.map((criterion) => ({
+      ...criterion,
+      ...(criterion.applicableSampleIds === undefined ? {} : {
+        applicableSampleIds: [...criterion.applicableSampleIds].sort(compareStrings),
+      }),
+    })).sort(compareCriteria),
   };
 }
 
 export const ASSERTION_LAYER_PARAMETERS_SCHEMA = analysisSchemaIdentity(
   PARAMETERS_SCHEMA_VERSION,
-  'urn:omk:parameters:assertion-layer:v1',
+  'urn:omk:parameters:assertion-layer:v2',
   analysisJsonSchema(AssertionLayerParametersSchema, [
     'criteria are normalized by metricId and criterionId before plan sealing',
     'criterionId and metricId are independently unique',
     'layer disposition is explicit and never inferred from evaluator or assertion strings',
     'weights are finite and strictly positive',
+    'omitted sample scope means all samples; an explicit scope is nonempty, unique, and canonically ordered',
   ]),
 );
 

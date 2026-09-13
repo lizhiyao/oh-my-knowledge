@@ -1,6 +1,12 @@
 # 执行器
 
-**执行器**是 omk 拿 artifact 去跑模型的后端 —— 把 `(system, prompt, model)` 变成输出。选哪个（`--executor`）决定模型**怎么被调用**：Claude CLI、Agent SDK、codex、裸 HTTP API，还是你自己的命令。**一次 run 里执行器要固定** —— 拿不同执行器跑不同 variant，比的是 runtime 而不只是 artifact（omk 会给 runtime 打指纹、不一致时告警，见下方 construct-validity 说明）。
+**执行器**负责按样本输入、知识载体和运行条件调用被测系统，返回输出与可提供的执行证据。`--executor` 选择调用方式：CLI、SDK、HTTP API 或你的可执行适配器。比较知识版本时，应固定模型、执行器与运行条件。同一份考卷可以复用，但不同执行器的身份与分数不能视为同一测量条件。
+
+## 选择输入与执行器
+
+1. 编写同一套 [v3 样本](./eval-sample-format)：任务写入 `input`，运行条件写入 `executionContext`，参考结果与评分声明写入 `expected`／`evaluationContext`。按任务数据选择 `text`、`json` 或 `messages`，无需为 prompt、RAG、skill、agent、workflow 分别设计考卷格式。
+2. 查看[输入支持矩阵](./eval-sample-format#输入与适配器支持)。CLI／SDK 适配器接收文本；API 适配器还支持 JSON 与普通角色历史。工具历史等应用协议通过[自定义执行器](#自定义执行器)接入。支持某种输入不等于支持工具、工作目录或保证某种输出格式。
+3. 比较版本时固定样本文件与评分声明，配合选定的 control、treatment 和 model 使用 `--samples ./eval-samples.json --executor openai-api`；自己的适配器使用 `--executor ./my-executor.mjs`。`--dry-run` 检查编译与声明的要求，不能证明被测系统实际执行成功。
 
 ## 内置执行器
 
