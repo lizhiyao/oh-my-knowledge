@@ -145,14 +145,26 @@ describe('eval-runtime façade architecture guard', () => {
   });
 
   it('does not expose competing evaluation vocabulary in public declarations', () => {
-    const prohibited = new Set(['runner', 'suite', 'cases', 'candidate', 'scoring', 'target', 'targets']);
+    const prohibited = new Set(['runner', 'suite', 'cases', 'candidate', 'scoring']);
     const publicSources = [
       'src/eval-runtime/evaluate.ts',
       'src/eval-runtime/index.ts',
     ].map((file) => readFileSync(resolve(file), 'utf8'));
+    // `target` 被禁的语义是「拿 target 当 artifact 的同义词」（terminology-spec §9）。Core `Target`
+    // 是 variant 到 execution requirements 的底层绑定，`XxxTarget`（如 `EvaluationRuntimeTarget`）、
+    // `targetId`、`targetKind` 都是这个正统概念的组成，不算竞争词汇。因此只禁裸 `target` 与
+    // 复数 `targets`（单独指代被测 artifact），豁免含 target 的复合命名。
+    const usesCompetingTargetTerm = (name: string): boolean => {
+      const terms = identifierTerms(name);
+      if (terms.includes('targets')) return true;
+      return terms.length === 1 && terms[0] === 'target';
+    };
     const violations = publicSources
       .flatMap(publicDeclarationNames)
-      .filter((name) => identifierTerms(name).some((term) => prohibited.has(term)));
+      .filter((name) => (
+        identifierTerms(name).some((term) => prohibited.has(term))
+          || usesCompetingTargetTerm(name)
+      ));
 
     expect(violations).toEqual([]);
     expect(publicDeclarationNames(`
@@ -160,13 +172,21 @@ describe('eval-runtime façade architecture guard', () => {
       export class ScoringEngine {}
       export function createCandidate(target: string): void;
       export { hidden as EvaluationSuite };
-    `).filter((name) => identifierTerms(name).some((term) => prohibited.has(term)))).toEqual([
+      export type EvaluationRuntimeTarget = { targetId: string };
+      export type TargetArtifact = { target: string };
+      export type ArtifactTargets = { items: string[] };
+    `).filter((name) => (
+      identifierTerms(name).some((term) => prohibited.has(term))
+        || usesCompetingTargetTerm(name)
+    ))).toEqual([
       'Runner',
       'cases',
       'ScoringEngine',
       'createCandidate',
       'target',
       'EvaluationSuite',
+      'target',
+      'ArtifactTargets',
     ]);
   });
 

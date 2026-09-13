@@ -228,3 +228,62 @@ export type {
   CustomEvaluatorResult,
   Metric,
 } from './custom-evaluator.js';
+
+// Imperative builders for assembling Definitions, Policies, and Evaluators directly.
+export { createExactMatchDefinition } from './builders/exact-match.js';
+export type {
+  ExactMatchDefinitionBuilderInput,
+  ExactMatchTarget,
+} from './builders/exact-match.js';
+export { createMeasurementPolicy } from './builders/policy.js';
+export type {
+  MeasurementEventDeliveryInput,
+  MeasurementFailurePolicyInput,
+  MeasurementAttemptBudgetScopeInput,
+  MeasurementBudgetPolicyInput,
+  MeasurementBudgetScopeInput,
+  MeasurementCachePolicyInput,
+  MeasurementEvidencePolicyInput,
+  MeasurementPolicyBuilderInput,
+  MeasurementProviderCostLimitInput,
+  MeasurementRetryBackoffInput,
+  MeasurementRetryPolicyInput,
+  MeasurementRunBudgetScopeInput,
+  MeasurementStagePolicyInput,
+} from './builders/policy.js';
+export { createPairedComparisonDefinition } from './builders/paired-comparison.js';
+export type {
+  EvaluationRuntimeTarget,
+  PairedComparisonDefinitionBuilderInput,
+} from './builders/paired-comparison.js';
+export {
+  EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
+  createExactMatchEvaluator,
+  createExactMatchEvaluatorIdentity,
+} from './evaluators/exact-match.js';
+export type { CreateExactMatchEvaluatorInput } from './evaluators/exact-match.js';
+export {
+  createRubricJudgeCriterion,
+  createRubricJudgeEvaluator,
+  createRubricJudgeEvaluatorDefinition,
+  createRubricJudgeEvaluatorIdentity,
+  createRubricJudgeEvaluatorRegistration,
+  createRubricJudgeInstrument,
+  createRubricJudgeMetricDefinition,
+  createRubricJudgeRuntimeConfig,
+  rubricJudgeInstrumentId,
+} from './judges/rubric-judge.js';
+export type {
+  CreateRubricJudgeEvaluatorInput,
+  RubricJudgeEvaluatorBinding,
+  RubricJudgeEvaluatorDefinitionBuilderInput,
+} from './judges/rubric-judge.js';
+export {
+  createRubricJudgeEvaluationContext,
+  createRubricJudgeKit,
+  createRubricJudgeRegistration,
+} from './judges/rubric-kit.js';
+export type {
+  CreateRubricJudgeKitInput,
+  RubricJudgeKit,
+} from './judges/rubric-kit.js';

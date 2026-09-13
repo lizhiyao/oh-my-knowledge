@@ -158,7 +158,7 @@ const resolveExecutor = async (ref: DispatchedRef): Promise<DispatchedExecutor> 
 
 审计级的过程回写用两个字段配合：
 
-- 准备或执行时在 `EvaluateInput.policy.eventDelivery` 声明投递模式（形状即 `MeasurementEventDeliveryInput`，可从 `oh-my-knowledge/eval-runtime/advanced` 具名导入；在 façade 上直接写字面量即可）：`writerMode` 取 `disabled`（默认）、`optional` 或 `required`，`writerFailureMode` 取 `ignore` 或 `fail-run`。两者按严格校验配对：`disabled` 只接受 `ignore`，`required` 只接受 `fail-run` 且缺省即 `fail-run`，`optional` 缺省为 `ignore`。
+- 准备或执行时在 `EvaluateInput.policy.eventDelivery` 声明投递模式（形状即 `MeasurementEventDeliveryInput`，可从 `oh-my-knowledge/eval-runtime` 具名导入；在 façade 上直接写字面量即可）：`writerMode` 取 `disabled`（默认）、`optional` 或 `required`，`writerFailureMode` 取 `ignore` 或 `fail-run`。两者按严格校验配对：`disabled` 只接受 `ignore`，`required` 只接受 `fail-run` 且缺省即 `fail-run`，`optional` 缺省为 `ignore`。
 - 在 `EvaluationRunOptions.eventWriter` 传入写入器，按顺序逐条持久化事件；事件形状见已发布 schema `evaluation-event.schema.json`（`resolveEvaluationCoreJsonSchema` 可解析）。**完整性只由 `required` 保证**：写入失败即整次运行失败，过程记录里的空洞不可能被误认为完整。`optional`＋`ignore` 是 best-effort——该阶段首次写入失败后会静默停止持久投递，run 仍然完成，结果里也没有任何字段报告这次截断，因此记录本身就是交付物时不要用它。
 
 ```ts
