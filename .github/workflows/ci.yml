@@ -14,6 +14,8 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    # 实测 1.6~2.6 分钟；没有超时则卡死的 runner 会一直占着作业，直到平台回收。
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
       # Enable Corepack before setup-node so its `cache: yarn` step resolves the
@@ -28,12 +30,16 @@ jobs:
       - run: yarn ci:quality
 
   test_22_shard:
-    name: test shard (22, ${{ matrix.shard }}/2)
+    name: test shard (22, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    # 实测成功作业最长约 4.1 分钟；不给超时则失联的 runner 会把作业占满到平台默认上限。
+    timeout-minutes: 12
     strategy:
       fail-fast: false
+      # vitest 按排序后的文件下标切片，而慢测试集中在字母序靠前处，所以加分片只缩短最慢作业、
+      # 不抹平倾斜（4 片仍为 105s／91s／27s／34s 的串行和）。取 4 是把最慢作业从 196s 降到 105s。
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -43,15 +49,20 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - run: yarn build
-      - run: yarn test --shard=${{ matrix.shard }}/2
+      # 内层 timeout 必须早于 timeout-minutes 触发：由我们自己收尾，日志才会留下测试停在哪
+      # 一个文件；只有 runner 侧超时的话，作业连一段可查的输出都不会有。
+      # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
+      # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
+      - run: timeout -k 30s 540 yarn test --shard=${{ matrix.shard }}/4
 
   test_24_shard:
-    name: test shard (24, ${{ matrix.shard }}/2)
+    name: test shard (24, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -61,7 +72,7 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - run: yarn build
-      - run: yarn test --shard=${{ matrix.shard }}/2
+      - run: timeout -k 30s 540 yarn test --shard=${{ matrix.shard }}/4
 
   # Keep the required status names stable while the full suites run in parallel.
   test_22:
