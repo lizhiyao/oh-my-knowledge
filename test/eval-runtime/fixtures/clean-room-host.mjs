@@ -12,7 +12,7 @@ import {
   checkExecutor,
   evaluate,
   prepareEvaluation,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge';
 
 const retryAttempts = [];
 const executor = {

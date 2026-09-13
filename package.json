@@ -13,40 +13,8 @@
       "types": "./dist/eval-core/index.d.ts",
       "import": "./dist/eval-core/index.js"
     },
-    "./eval-runtime": {
-      "types": "./dist/eval-runtime/index.d.ts",
-      "import": "./dist/eval-runtime/index.js"
-    },
-    "./eval-runtime/advanced": {
-      "types": "./dist/eval-runtime/advanced.d.ts",
-      "import": "./dist/eval-runtime/advanced.js"
-    },
-    "./eval-runtime/contracts": {
-      "types": "./dist/eval-runtime/contracts.d.ts",
-      "import": "./dist/eval-runtime/contracts.js"
-    },
-    "./eval-hosts": {
-      "types": "./dist/eval-workflows/hosts/reference-executors.d.ts",
-      "import": "./dist/eval-workflows/hosts/reference-executors.js"
-    },
-    "./eval-core/schemas/v1/*": "./dist/eval-core/contracts/schemas/v1/*",
-    "./eval-core/schemas/v2/*": "./dist/eval-core/contracts/schemas/v2/*",
-    "./eval-core/schemas/v3/*": "./dist/eval-core/contracts/schemas/v3/*",
-    "./eval-core/schemas/v4/*": "./dist/eval-core/contracts/schemas/v4/*",
-    "./eval-core/schemas/v5/*": "./dist/eval-core/contracts/schemas/v5/*",
-    "./eval-samples": {
-      "types": "./dist/eval-workflows/inputs/eval-samples.d.ts",
-      "import": "./dist/eval-workflows/inputs/eval-samples.js"
-    },
+    "./eval-core/schemas/*": "./dist/eval-core/contracts/schemas/*",
     "./eval-samples/schemas/v3/*": "./dist/eval-workflows/inputs/contracts/schemas/v3/*",
-    "./projections": {
-      "types": "./dist/eval-workflows/projections/index.d.ts",
-      "import": "./dist/eval-workflows/projections/index.js"
-    },
-    "./studio": {
-      "types": "./dist/studio/index.d.ts",
-      "import": "./dist/studio/index.js"
-    },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
       "import": "./dist/mcp/index.js"
@@ -54,8 +22,7 @@
     "./dsh-plugin": {
       "types": "./dist/dsh-plugin/index.d.ts",
       "import": "./dist/dsh-plugin/index.js"
-    },
-    "./package.json": "./package.json"
+    }
   },
   "bin": {
     "omk": "dist/cli/index.js",

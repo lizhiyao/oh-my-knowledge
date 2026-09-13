@@ -9,7 +9,7 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 | `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。 |
 | `presentation/` | 独立 HTML 报告页，以及其样式、脚本生成和转义工具。 |
 | `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge`、`inbox` 按功能组织，`components/layout` 放共享外壳和主题。 |
-| `index.ts` | `oh-my-knowledge/studio` 公开入口，导出 catalog、投影、view-model 与 JSON 路由。渲染实现不属于公开面，内部模块也直接引用所属层，不经过公开聚合入口。 |
+| `index.ts` | Studio 模块聚合入口，导出 catalog、投影、view-model 与 JSON 路由。渲染实现不属于公开面，内部模块也直接引用所属层，不经过公开聚合入口。 |
 
 原 `core-runs/` 已按职责归入上述目录；文件名中的 `core-run` 表示消费 Evaluation Core 产物，不表示 Studio 属于 eval-core。
 
@@ -73,4 +73,4 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 观测健康四页曾是「没有入口的孤岛」：一级导航三项（`/observe`、`/measure`、`/knowledge`）都是 React，全仓没有任何页面或 CLI/MCP 输出链进这一组，只能手打地址访问。本次按「先给 React 树真实入口 → 迁移 → 删 HTML 渲染层」的顺序收口：`/observe` 列表页顶部的分区导航（`web/components/observe/section-nav.tsx`）指向 `/observe/health`，健康详情再链向单 skill 趋势与批次差异，然后才删除两个 HTML renderer，避免出现「旧渲染层已删、入口仍缺失」的悬空窗口。收件箱刻意不进分区导航：它受宿主开关控制，在 DSH 上是 404，静态链接会承诺宿主未必提供的能力。
 
-剩下的只读报告页（体检详情 `/knowledge/doctors/:id`、受管历史 `/knowledge/managed`）仍不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，且同样没有 React 入口，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理；迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由，目录名本身不是废弃标记。`/measure` 的双轨已收口：HTML renderer 及其公开渲染导出删除，CLI 评测预览改挂 Next，`oh-my-knowledge/studio` 不再导出任何渲染实现，一级导航可达的页面全部是 React，`presentation/` 只服务上面列出的两页与共享外壳。
+剩下的只读报告页（体检详情 `/knowledge/doctors/:id`、受管历史 `/knowledge/managed`）仍不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，且同样没有 React 入口，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理；迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由，目录名本身不是废弃标记。`/measure` 的双轨已收口：HTML renderer 及其公开渲染导出删除，CLI 评测预览改挂 Next，Studio 不再导出任何渲染实现，一级导航可达的页面全部是 React，`presentation/` 只服务上面列出的两页与共享外壳。

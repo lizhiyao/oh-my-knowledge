@@ -4,12 +4,10 @@ import {
   createEvaluationRuntime,
   createInvokeExecutorIdentity,
   createExecutorFnAdapter,
-} from 'oh-my-knowledge/eval-runtime/advanced';
-import {
   createExactMatchDefinition,
   createExactMatchEvaluator,
   createMeasurementPolicy,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge';
 
 const identity = createInvokeExecutorIdentity({
   implementationId: 'example.staged-service/v1',

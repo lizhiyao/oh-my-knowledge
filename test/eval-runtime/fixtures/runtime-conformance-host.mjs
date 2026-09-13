@@ -2,11 +2,8 @@ import assert from 'node:assert/strict';
 import { z } from 'zod';
 import {
   RUNTIME_CHECK_RESULT_SCHEMA_VERSION,
-  checkRuntime as checkRuntimeFromRoot,
+  checkRuntime,
 } from 'oh-my-knowledge';
-import { checkRuntime } from 'oh-my-knowledge/eval-runtime';
-
-assert.equal(checkRuntimeFromRoot, checkRuntime);
 
 function waitForAbort(signal) {
   return new Promise((_resolve, reject) => {

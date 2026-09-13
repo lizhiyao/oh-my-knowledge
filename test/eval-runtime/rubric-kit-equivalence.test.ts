@@ -7,7 +7,7 @@ import {
   createRuntimeIdentity,
   runEvaluation,
   type OmkLlmJudgeInvocationPort,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 import {
   createMeasurementPolicy,
   createPairedComparisonDefinition,

@@ -7,11 +7,11 @@ import {
   createInvokeExecutorIdentity,
   createJsonExecutorAdapter,
   runExecutorConformance,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 import {
   createExecutorFnAdapter,
   type ExecResult,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 import {
   createExactMatchDefinition,
   createExactMatchEvaluator,

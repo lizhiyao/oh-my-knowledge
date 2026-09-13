@@ -36,7 +36,6 @@ contract:
 ```text
 oh-my-knowledge/eval-core/schemas/v1/<file>.schema.json
 oh-my-knowledge/eval-core/schemas/v2/<file>.schema.json
-oh-my-knowledge/eval-samples/schemas/v2/eval-sample-set.schema.json
 ```
 
 ## Maintainer workflow
