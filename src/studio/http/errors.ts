@@ -15,11 +15,6 @@ export const JSON_HEADERS: Readonly<Record<string, string>> = Object.freeze({
   'Cache-Control': 'no-store',
 });
 
-export const HTML_HEADERS: Readonly<Record<string, string>> = Object.freeze({
-  'Content-Type': 'text/html; charset=utf-8',
-  'Cache-Control': 'no-store',
-});
-
 export const TEXT_HEADERS: Readonly<Record<string, string>> = Object.freeze({
   'Content-Type': 'text/plain; charset=utf-8',
   'Cache-Control': 'no-store',

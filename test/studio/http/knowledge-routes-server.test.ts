@@ -40,13 +40,16 @@ describe('Studio knowledge routes', () => {
     assert.deepEqual(await api.json(), { schemaVersion: 1, rows: [] });
     assert.equal(managedResolutions, 1);
 
-    const managed = await fetch(`${baseUrl}/knowledge/managed`);
-    assert.equal(managed.status, 200);
-    assert.match(await managed.text(), /<body class="studio-workspace">/);
-    assert.equal(managedResolutions, 2);
+    // 受管列表与决策史两页由 Next 宿主渲染：独立 HTML 宿主按设计不挂这两个路径，也不会为它们解析受管目录。
+    for (const path of ['/knowledge/managed', '/knowledge/managed/abcdef123456']) {
+      const retired = await fetch(`${baseUrl}${path}`, { redirect: 'manual' });
+      assert.equal(retired.status, 404, `${path} 已退役`);
+      assert.equal(retired.headers.get('location'), null, `${path} 不留重定向`);
+    }
+    assert.equal(managedResolutions, 1);
 
     assert.equal((await fetch(`${baseUrl}/not-found`)).status, 404);
-    assert.equal(managedResolutions, 2);
+    assert.equal(managedResolutions, 1);
   });
 
   it('retires the health HTML pages on the standalone host while keeping their JSON APIs', async () => {

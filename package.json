@@ -58,7 +58,7 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint 'src/**/*.{ts,tsx}' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
+    "lint": "eslint 'src/**/*.{ts,tsx}' 'test/**/*.{ts,tsx}' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "lint-staged": "lint-staged",
     "test": "node scripts/run-tests-hermetic.mjs",
     "test:profile": "yarn build && node dist-scripts/test-profile.js",

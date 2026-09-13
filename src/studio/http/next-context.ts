@@ -3,6 +3,7 @@ import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import type { HealthPage } from './health-page.js';
 import type { InboxPage } from './inbox-page.js';
 import type { KnowledgePage } from './knowledge-page.js';
+import type { ManagedPage } from './managed-page.js';
 import type { ObservePage } from './observe-page.js';
 
 /**
@@ -45,3 +46,4 @@ export const nextObserveContext = defineStudioRequestContext<ObservePage>('obser
 export const nextKnowledgeContext = defineStudioRequestContext<KnowledgePage>('knowledge');
 export const nextInboxContext = defineStudioRequestContext<InboxPage>('inbox');
 export const nextHealthContext = defineStudioRequestContext<HealthPage>('health');
+export const nextManagedContext = defineStudioRequestContext<ManagedPage>('managed');

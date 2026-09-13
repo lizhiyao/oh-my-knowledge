@@ -1,7 +1,7 @@
 /**
  * Skill-centric 聚合 DTO。
  *
- * Studio 的 list / detail 呈现层(presentation/skill-*-renderer)只依赖这些稳定形状,
+ * Studio 的知识列表／详情呈现（`web/components/knowledge` 与 `/api/skills`）只依赖这些稳定形状,
  * 不直接 import server 装配层。runtime 函数(buildSkillIndex / detectInsights 等)
  * 运行逻辑归属于 src/studio/application/，与 HTTP host 解耦。
  */
@@ -85,11 +85,10 @@ export interface SkillGraphSnapshot {
 
 export interface SkillIndexEntry {
   skillName: string;
-  /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。renderer
-   *  老路径直接读这个,不必动 history。 */
+  /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。列表与综合灯只读这个。 */
   doctor: SkillDoctorSnapshot | null;
   observe: SkillObserveSnapshot | null;
-  /** 历史 snapshot,chronological 升序(最早 → 最近)。renderer 用它画 sparkline 趋势。 */
+  /** 历史 snapshot,chronological 升序(最早 → 最近)。详情用它给「体检历史」列表和 `?doctorRun=` 下钻。 */
   doctorHistory: SkillDoctorSnapshot[];
   observeHistory: SkillObserveSnapshot[];
   /** 综合健康灯。doctor / observe 任一红 → red;任一黄 → yellow;

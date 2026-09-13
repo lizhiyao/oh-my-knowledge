@@ -3,10 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
-import type { Lang } from '../../shared/language.js';
 import { createKnowledgeQuery } from '../application/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
-import { DEFAULT_LANG } from '../presentation/layout.js';
 import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS, writeJsonError } from './errors.js';
 import { RequestBodyError } from './request-errors.js';
@@ -50,7 +48,6 @@ export function createStudioRequestHandler({
     query,
     managedDir,
     includeObserveCards,
-    includeDoctorCards,
   });
   const observationRoutes = createObservationRoutes({
     observationsDir,
@@ -108,9 +105,6 @@ export function createStudioRequestHandler({
         response.end('Not Found');
         return;
       }
-      const langParam = url.searchParams.get('lang');
-      const lang: Lang = langParam === 'en' ? 'en' : langParam === 'zh' ? 'zh' : DEFAULT_LANG;
-
       if (coreStudioRoute !== undefined) {
         const coreResponse = await coreStudioRoute({
           method: request.method,
@@ -129,12 +123,10 @@ export function createStudioRequestHandler({
         response,
         url,
         path,
-        lang,
       };
 
       if (await hostRoutes(routeContext)) return;
-      // 观测／知识页面组按宿主开关整体不注册：剩下的只有 /health、/api/shutdown 与 /api/reports 的 JSON 投影，
-      // /measure 页面由 Next 宿主接管（Studio 页面组仍由默认宿主提供）。
+      // 页面渲染全部归 Next 宿主；这里剩下的只有 /health、/api/shutdown 与各 /api/* 的 JSON 投影与 SSE。
       if (studioPages) {
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;
