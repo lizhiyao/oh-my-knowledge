@@ -66,6 +66,7 @@ Check the current [CLI reference](../reference/cli.md) rather than copying 0.54 
 
 The published API is ESM-only on Node.js 22 or newer. Imports are restricted to the package export map; `oh-my-knowledge/dist/*` is private.
 
+- The `oh-my-knowledge/package.json` export is removed, with no replacement `version` export. Remove imports of this metadata; record dependency versions through your package manager or lockfile instead. `omk --version` remains available for CLI diagnostics.
 - Use `oh-my-knowledge` for the ordinary `evaluate()` and `checkExecutor()` façade, Runtime assembly, builders, and lifecycle SPI.
 - Replace the fixed `{ executor, control, treatment, evaluator }` call with `{ dataset, variants, evaluators, comparisons, analyses, experiment, policy }`. Bind execution and config under `variant.execution`, sampling under `experiment.sampling`, and statistical requests in `analyses[]`. An optional `decision` selects an analysis by `analysisId`. Pass run options such as `runId`, `signal`, and `onEvent` as the second argument; old shapes are not read.
 - Move former package-root Core imports to `oh-my-knowledge/eval-core`; use that subpath for Engine construction, staged execution, admission, verification, comparability, Series, and Core JSON Schemas.

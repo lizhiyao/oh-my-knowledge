@@ -66,6 +66,7 @@ omk eval --dry-run --samples eval-samples.yaml \
 
 公开 API 仅支持 ESM，要求 Node.js 22 或更高版本。import 必须经过 package export map，`oh-my-knowledge/dist/*` 属于私有路径。
 
+- 移除 `oh-my-knowledge/package.json` 导出，不提供替代的 `version` 导出。请删除该元数据 import，改由包管理器或锁文件记录依赖版本；CLI 诊断仍可使用 `omk --version`。
 - 普通 `evaluate()` 与 `checkExecutor()` façade、Runtime 装配、builder 与生命周期 SPI 均从 `oh-my-knowledge` 导入。
 - 将固定的 `{ executor, control, treatment, evaluator }` 调用改为 `{ dataset, variants, evaluators, comparisons, analyses, experiment, policy }`。执行器与配置绑定在 `variant.execution` 下，抽样设计位于 `experiment.sampling`；每项统计请求放在 `analyses[]`，可选 `decision` 通过 `analysisId` 选择分析结果。运行选项如 `runId`、`signal`、`onEvent` 放在第二个参数；旧结构不再读取。
 - 原包根 Core import 迁移到 `oh-my-knowledge/eval-core`；Engine 构造、分阶段执行、admission、verification、comparability、Series 与 Core JSON Schema 均从该子路径导入。
