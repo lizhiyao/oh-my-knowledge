@@ -123,6 +123,6 @@ describe('studio-baseline 输出', () => {
     assert.ok(markdown.includes('| `GET /api/skills` | 12.3 | 4.6 | 2.0 KB |'));
     assert.ok(markdown.includes('| `GET /observe/inbox` | — | 150 | 3.00 MB |'));
     assert.ok(markdown.includes('冷 /api/skills 期间事件循环 p99 延迟：9.9 ms'));
-    assert.ok(markdown.includes('24 并发 GET /knowledge（热）：墙钟 88.8 ms，事件循环 p99 6.2 ms。'));
+    assert.ok(markdown.includes('24 并发 GET /observe/health（热）：墙钟 88.8 ms，事件循环 p99 6.2 ms。'));
   });
 });

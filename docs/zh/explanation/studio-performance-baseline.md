@@ -27,7 +27,7 @@ yarn studio:baseline
 | 路由 | 冷 (ms) | 热 (ms，5 次取最小) | 响应体积 |
 | --- | ---: | ---: | ---: |
 | `GET /api/skills` | 33.7 | 4.1 | 24.1 KB |
-| `GET /knowledge` | — | 4.3 | 38.3 KB |
+| `GET /knowledge`（已退役） | — | 4.3 | 38.3 KB |
 | `GET /api/observe-health` | — | 3.1 | 1.5 KB |
 | `GET /observe/health` | — | 3.3 | 47.9 KB |
 | `GET /observe/health/obs-0009` | — | 2.4 | 56.1 KB |
@@ -42,7 +42,7 @@ yarn studio:baseline
 | 路由 | 冷 (ms) | 热 (ms，5 次取最小) | 响应体积 |
 | --- | ---: | ---: | ---: |
 | `GET /api/skills` | 30.5 | 10.9 | 633.3 KB |
-| `GET /knowledge` | — | 9.4 | 44.7 KB |
+| `GET /knowledge`（已退役） | — | 9.4 | 44.7 KB |
 | `GET /api/observe-health` | — | 9.6 | 8.9 KB |
 | `GET /observe/health` | — | 9.9 | 101.3 KB |
 | `GET /observe/health/obs-0059` | — | 4.4 | 98.0 KB |
@@ -57,7 +57,7 @@ yarn studio:baseline
 | 路由 | 冷 (ms) | 热 (ms，5 次取最小) | 响应体积 |
 | --- | ---: | ---: | ---: |
 | `GET /api/skills` | 137 | 54.5 | 5.94 MB |
-| `GET /knowledge` | — | 42.1 | 62.9 KB |
+| `GET /knowledge`（已退役） | — | 42.1 | 62.9 KB |
 | `GET /api/observe-health` | — | 43.2 | 29.9 KB |
 | `GET /observe/health` | — | 43.7 | 251.2 KB |
 | `GET /observe/health/obs-0199` | — | 13.5 | 215.3 KB |
@@ -77,6 +77,7 @@ yarn studio:baseline
 
 ## 限制与后续
 
+- HTML 版 `/knowledge` 页已删除：注册知识路由组的宿主都由 Next 接管该路径，夹取驱动的独立 HTML 宿主不再服务它。上表的 `GET /knowledge` 行与「24 并发 `GET /knowledge`（热）」都是退役前的数字；`yarn studio:baseline` 的并发探针改为 `/observe/health`，让测量继续落在一个同样承担服务端渲染的页面上。
 - 脚本只测服务端。客户端首屏与泳道交互成本不在此产出；large 档 17 MB 的旧版 inbox HTML 是已知的客户端成本驱动，由 Next.js 迁移批次（可视区域渲染）处理，并经真实入口验证。
 - 会话／任务列表页与 SSE 实时跟随不在本数据集基线内；其刷新、竞态与清理行为在数据流核验批次（issue #836 §1.1）验证。
 - 绝对数值依赖机器与文件系统缓存；前后对比必须用同机、同 commit 的 `yarn studio:baseline`。
