@@ -536,7 +536,7 @@ type KnowledgeWriteResult =
 | Capacity and interruption | Reject oversized/corrupt data without truncation; temporary files and lock failures cannot masquerade as commits |
 | Host boundary | Pure validation/projection has no fs, network, CLI, or model dependencies; tests use explicit temporary roots |
 
-Prioritize extracting candidate knowledge from one real work log and letting the user inspect each source. Implement the necessary source locators, candidate generation, and structural checks first; examine usefulness, scope completeness, and source fidelity. Introduce review projection and file transactions as usage requires, rather than making complete infrastructure a prerequisite. Section 10 defines initial Studio responsibilities; entity search, carrier changes, and evaluation integration follow actual needs. The appendices supply seed examples; supporting implementations must still satisfy the authority, concurrency, and failure acceptance criteria above.
+Prioritize extracting candidate knowledge from one real work log and letting the user inspect each source. Implement the necessary source locators, candidate generation, and structural checks first; examine usefulness, scope completeness, and source fidelity. Introduce review projection and file transactions as usage requires, rather than making complete infrastructure a prerequisite. Section 10 defines initial CLI responsibilities; entity search, carrier changes, and evaluation integration follow actual needs. The appendices supply seed examples; supporting implementations must still satisfy the authority, concurrency, and failure acceptance criteria above.
 
 ## 10. Architecture decisions for knowledge extraction from work logs
 
@@ -612,9 +612,7 @@ Admission is atomic per candidate, not a global transaction across all candidate
 
 Retaining, discarding, reviewing content, and publishing are separate operations. Retain/discard records express maintenance choices with a target revision, actor, timestamp, and rationale; they do not turn `pending` into `supported`. Editing uses an expected predecessor to create a revision while preserving previous content, sources, and operations. New revisions await review. Correcting entity mappings likewise cannot mutate historical knowledge. Maintenance choices are separate associated records, not new `KnowledgeReviewVerdict` values.
 
-Studio is the first user entry point. Users explicitly select one Codex log or session, optionally narrow the record range, then generate candidates, compare them with original records, edit, retain or discard them, and reopen saved content with its sources. Before generation, show the selected input scope, source coverage limitations, configured executor, and data transmission scope.
-
-Studio invokes shared application interfaces for extraction, source validation, and persistence; UI components and routes do not duplicate knowledge business rules. Add CLI access to the same read and operation contracts later as scripting needs arise; it is not a prerequisite for the first release. Automated validation covers the shared application interfaces directly and verifies the real Studio user path. JSON views/exports do not bypass validation or overwrite stores directly.
+CLI and Studio invoke the same application interface. JSON views/exports do not bypass validation or overwrite stores directly. Start with a CLI accepting an explicit file and optional record range, with source inspection and human handling; future Studio integration reuses the same read and operation contracts. Choose exact command names and flags alongside the existing command tree during implementation, without creating a second top-level lifecycle.
 
 Initially, source snapshots live in the user's explicitly chosen local workspace, with visible storage and executor-transmission scope. Do not scan global history, fetch sources automatically, or assume unlimited conversation retention. Retention limits and a deletion entry are part of the initial storage contract. Deleting a snapshot makes source resolution `unavailable`; permitted bindings/history remain without claiming current availability. Discarding a candidate is not source deletion, and one discarded candidate cannot delete a shared source.
 
@@ -622,7 +620,7 @@ Source reads, snapshot persistence, model transmission, and candidate admission 
 
 ### 10.6 Initial scope and architecture acceptance
 
-Ship one source adapter, one knowledge admission implementation, one file-storage adapter, and one Studio path. Extraction runs, evidence bindings, and maintenance choices use ordinary modules and records. Do not prebuild a plugin registry, generic workflow engine, message bus, vector store, or graph database.
+Ship one source adapter, one knowledge admission implementation, one file-storage adapter, and one CLI path. Extraction runs, evidence bindings, and maintenance choices use ordinary modules and records. Do not prebuild a plugin registry, generic workflow engine, message bus, vector store, or graph database.
 
 | Verification | Boundary to establish |
 |---|---|
@@ -630,7 +628,7 @@ Ship one source adapter, one knowledge admission implementation, one file-storag
 | Source-neutral in-memory source and Codex adapter contract tests | Source replacement preserves knowledge structure; original positions, selections, and missing states map accurately |
 | Untrusted extraction-output tests | Invented references, mismatched quotes, identity collisions, unknown entities, wrong roles, and invalid states cannot enter admitted revisions |
 | Idempotency, concurrency, and fault injection | No duplicate retries or overwritten revisions; partial commits, cancellation, and deletion remain explainable and recoverable |
-| Real Studio entry acceptance | Select a log or session in the UI, inspect generation scope and executor, generate candidates, compare original records, retain/discard/edit and reopen; missing sources, empty candidates, and generation failures remain explainable, without changing original logs or active carriers |
+| Real CLI entry acceptance | Selected log through extraction, source inspection, retain/discard/edit and reread, without changing original logs or active carriers |
 | Human inspection of the three existing real cases | Reuse value, applicability, and source faithfulness; one success never proves general method effectiveness |
 
 Architecture guards protect established ownership and dependencies. Do not register unanalyzed cycles or permit arbitrary cross-domain imports merely to pass tests. Adding a source, changing extractors, or replacing storage should primarily add/replace adapters. If it requires simultaneous changes to knowledge expression, review rules, and UI state machines, reassess boundary leakage. Evolve knowledge semantics only for actual domain needs, not platform response fields.
