@@ -248,8 +248,6 @@ Subprocess command adapter type 包括 `CreateSubprocessCommandExecutorInput`、
 
 Advanced adapter 还暴露 `McpConfigAccess`、`McpConfigDescriptor`、`McpConfigInput`、`McpConfigLease`、`McpConfigOpenRequest`、`McpConfigPlan`、`McpConfigProvider`、`MockInterceptionAccess`、`MockInterceptionDecision`、`MockInterceptionDescriptor`、`MockInterceptionLease`、`MockInterceptionOpenRequest`、`MockInterceptionProvider` 与 `MockInterceptionRequest`。
 
-`MeasurementCachePolicyInput` 是 advanced policy builder 对应的缓存策略输入类型。
-
 ## `oh-my-knowledge/eval-runtime/contracts`
 
 面向 adapter 与 trace 作者的版本化 wire contract：
