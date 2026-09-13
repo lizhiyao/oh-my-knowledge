@@ -1245,12 +1245,20 @@ The cancellation case must remain bounded if the implementation ignores its sign
 <details>
 <summary>When to use advanced APIs</summary>
 
-Most applications can use `evaluate()` and the [scoring methods](#scoring-methods) from the package root. Use advanced APIs when you need custom component lifecycles, staged runtime assembly, or lower-level measurement capabilities. Existing code that uses the functions below should import them from the `advanced` subpath:
+Most applications can use `evaluate()` and the [scoring methods](#scoring-methods) from the package root. Use advanced APIs when you need custom component lifecycles, staged runtime assembly, or lower-level measurement capabilities. The imperative builders that assemble Definitions, Policies, and Evaluators have moved from `advanced` into the canonical façade; existing code should import them from `oh-my-knowledge/eval-runtime` (or the package root):
+
+```ts
+import {
+  createExactMatchDefinition,
+  createMeasurementPolicy,
+} from 'oh-my-knowledge/eval-runtime';
+```
+
+Assembling the runtime, custom ports, and staged runs still use the `advanced` subpath:
 
 ```ts
 import {
   createEvaluationRuntime,
-  createExactMatchDefinition,
   createJsonExecutorAdapter,
   runEvaluation,
 } from 'oh-my-knowledge/eval-runtime/advanced';

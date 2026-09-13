@@ -2,13 +2,15 @@ import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   createEvaluationRuntime,
-  createExactMatchDefinition,
-  createExactMatchEvaluator,
   createInvokeExecutorIdentity,
   createJsonExecutorAdapter,
-  createMeasurementPolicy,
   runEvaluation,
 } from '../../src/eval-runtime/advanced.js';
+import {
+  createExactMatchDefinition,
+  createExactMatchEvaluator,
+  createMeasurementPolicy,
+} from '../../src/eval-runtime/index.js';
 
 function identity(input: Readonly<{
   trace?: 'unsupported' | 'optional' | 'required';

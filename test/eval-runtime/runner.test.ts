@@ -2,16 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEvaluationEngine } from '../../src/eval-core/index.js';
 import {
   createEvaluationRuntime,
-  createExactMatchDefinition,
-  createExactMatchEvaluator,
   createInvokeExecutorIdentity,
-  createMeasurementPolicy,
   runEvaluation,
 } from '../../src/eval-runtime/advanced.js';
 import {
   createExecutorFnAdapter,
   type ExecResult,
 } from '../../src/eval-runtime/advanced.js';
+import {
+  createExactMatchDefinition,
+  createExactMatchEvaluator,
+  createMeasurementPolicy,
+} from '../../src/eval-runtime/index.js';
 
 function executionResult(output: string): ExecResult {
   return {
@@ -216,7 +218,7 @@ describe('eval-runtime high-level runner', () => {
       eventBufferCapacity: 1,
       onEvent() { throw cause; },
     })).rejects.toMatchObject({
-      name: 'EvaluationEventConsumptionError',
+      name: 'HostEvaluationEventConsumptionError',
       code: 'EVAL_RUNTIME_EVENT_OBSERVER_FAILED',
       cause,
       runResult: { status: 'completed' },

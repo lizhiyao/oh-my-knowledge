@@ -50,7 +50,7 @@ export interface RunPreparedEvaluationInput {
   readonly onEvent?: EvaluationEventObserver;
 }
 
-export class EvaluationEventConsumptionError extends Error {
+export class HostEvaluationEventConsumptionError extends Error {
   readonly code:
     | 'EVAL_RUNTIME_EVENT_OBSERVER_FAILED'
     | 'EVAL_RUNTIME_EVENT_STREAM_FAILED';
@@ -58,13 +58,13 @@ export class EvaluationEventConsumptionError extends Error {
   override readonly cause: unknown;
 
   constructor(input: Readonly<{
-    code: EvaluationEventConsumptionError['code'];
+    code: HostEvaluationEventConsumptionError['code'];
     message: string;
     cause: unknown;
     runResult?: EvaluationRunResult;
   }>) {
     super(input.message);
-    this.name = 'EvaluationEventConsumptionError';
+    this.name = 'HostEvaluationEventConsumptionError';
     this.code = input.code;
     this.cause = input.cause;
     this.runResult = input.runResult;
@@ -123,7 +123,7 @@ async function consumeEvaluationRun(
     if (resultOutcome.status === 'rejected') throw resultOutcome.reason;
     const result = resultOutcome.value;
     if (observerFailed) {
-      throw new EvaluationEventConsumptionError({
+      throw new HostEvaluationEventConsumptionError({
         code: 'EVAL_RUNTIME_EVENT_OBSERVER_FAILED',
         message: 'Evaluation event observer 执行失败；评测保持 Core 终态并完成清理。',
         cause: observerFailure,
@@ -131,7 +131,7 @@ async function consumeEvaluationRun(
       });
     }
     if (streamFailed) {
-      throw new EvaluationEventConsumptionError({
+      throw new HostEvaluationEventConsumptionError({
         code: 'EVAL_RUNTIME_EVENT_STREAM_FAILED',
         message: 'Evaluation event stream 消费失败；评测已取消并完成清理。',
         cause: streamFailure,

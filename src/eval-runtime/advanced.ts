@@ -1,13 +1,15 @@
 export {
-  EvaluationEventConsumptionError,
+  HostEvaluationEventConsumptionError,
   runEvaluation,
 } from './runner.js';
 export type {
   MockInterceptionAccess,
   MockInterceptionDecision,
   MockInterceptionDescriptor,
+  MockInterceptionInput,
   MockInterceptionLease,
   MockInterceptionOpenRequest,
+  MockInterceptionPlan,
   MockInterceptionProvider,
   MockInterceptionRequest,
 } from './mock-interception.js';
@@ -16,34 +18,6 @@ export type {
   EvaluationEventObserver,
   RunEvaluationInput,
 } from './runner.js';
-export { createExactMatchDefinition } from './builders/exact-match.js';
-export type {
-  ExactMatchDefinitionBuilderInput,
-  ExactMatchTarget,
-} from './builders/exact-match.js';
-export { createMeasurementPolicy } from './builders/policy.js';
-export type {
-  MeasurementEventDeliveryInput,
-  MeasurementFailurePolicyInput,
-  MeasurementAttemptBudgetScopeInput,
-  MeasurementBudgetPolicyInput,
-  MeasurementBudgetScopeInput,
-  MeasurementCachePolicyInput,
-  MeasurementEvidencePolicyInput,
-  MeasurementPolicyBuilderInput,
-  MeasurementProviderCostLimitInput,
-  MeasurementRetryBackoffInput,
-  MeasurementRetryPolicyInput,
-  MeasurementRunBudgetScopeInput,
-  MeasurementStagePolicyInput,
-} from './builders/policy.js';
-export { createPairedComparisonDefinition } from './builders/paired-comparison.js';
-export type {
-  EvaluationRuntimeTarget,
-  PairedComparisonDefinitionBuilderInput,
-} from './builders/paired-comparison.js';
-export { createExactMatchEvaluator } from './evaluators/exact-match.js';
-export type { CreateExactMatchEvaluatorInput } from './evaluators/exact-match.js';
 export {
   createInvokeExecutorIdentity,
   createRuntimeIdentity,
@@ -112,15 +86,6 @@ export type {
   OmkLlmJudgeInvocationResult,
 } from './judges/invocation.js';
 export {
-  createRubricJudgeEvaluationContext,
-  createRubricJudgeKit,
-  createRubricJudgeRegistration,
-} from './judges/rubric-kit.js';
-export type {
-  CreateRubricJudgeKitInput,
-  RubricJudgeKit,
-} from './judges/rubric-kit.js';
-export {
   RuntimeConformanceError,
   assertExecutorConformance,
   runExecutorConformance,
@@ -131,10 +96,6 @@ export type {
   RuntimeConformanceCheck,
 } from './conformance/executor.js';
 export { createNodeEvaluationClock } from './clock.js';
-export {
-  EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID,
-  createExactMatchEvaluatorIdentity,
-} from './evaluators/exact-match.js';
 export {
   INVOKE_JSON_INPUT_SCHEMA,
   INVOKE_JSON_OUTPUT_SCHEMA,
@@ -169,19 +130,4 @@ export type {
   SameProcessResourceLeaseAccess,
   SameProcessRunScope,
 } from './adapters/same-process.js';
-export {
-  createRubricJudgeCriterion,
-  createRubricJudgeEvaluator,
-  createRubricJudgeEvaluatorDefinition,
-  createRubricJudgeEvaluatorIdentity,
-  createRubricJudgeEvaluatorRegistration,
-  createRubricJudgeInstrument,
-  createRubricJudgeMetricDefinition,
-  createRubricJudgeRuntimeConfig,
-  rubricJudgeInstrumentId,
-} from './judges/rubric-judge.js';
-export type {
-  CreateRubricJudgeEvaluatorInput,
-  RubricJudgeEvaluatorBinding,
-  RubricJudgeEvaluatorDefinitionBuilderInput,
-} from './judges/rubric-judge.js';
+

@@ -1242,12 +1242,20 @@ if (!runtimeCheck.conformant) console.error(runtimeCheck.checks);
 <details>
 <summary>何时需要高级 API</summary>
 
-多数业务接入使用包根的 `evaluate()` 和[评分方法](#评分方法)中的评分器即可。只有需要自己管理组件生命周期、分阶段装配运行环境或接入更底层的测量能力时，才使用高级入口。已有代码如果使用下面这些底层函数，应从 `advanced` 子路径导入：
+多数业务接入使用包根的 `evaluate()` 和[评分方法](#评分方法)中的评分器即可。只有需要自己管理组件生命周期、分阶段装配运行环境或接入更底层的测量能力时，才使用高级入口。构造 Definition、Policy 与 Evaluator 的命令式 builder 已从 `advanced` 迁入 canonical façade，已有代码应从 `oh-my-knowledge/eval-runtime`（或包根）导入：
+
+```ts
+import {
+  createExactMatchDefinition,
+  createMeasurementPolicy,
+} from 'oh-my-knowledge/eval-runtime';
+```
+
+而装配运行环境、自定义 port 与分阶段运行仍使用 `advanced` 子路径：
 
 ```ts
 import {
   createEvaluationRuntime,
-  createExactMatchDefinition,
   createJsonExecutorAdapter,
   runEvaluation,
 } from 'oh-my-knowledge/eval-runtime/advanced';

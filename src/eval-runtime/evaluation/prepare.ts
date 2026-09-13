@@ -73,7 +73,7 @@ import {
 } from 'node:crypto';
 import {
   runPreparedEvaluation,
-  EvaluationEventConsumptionError as AdvancedEvaluationEventConsumptionError,
+  HostEvaluationEventConsumptionError as AdvancedEvaluationEventConsumptionError,
 } from '../runner.js';
 import {
   attachDefinition,

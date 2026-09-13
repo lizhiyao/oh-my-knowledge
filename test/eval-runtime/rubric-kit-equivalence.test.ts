@@ -4,21 +4,21 @@ import {
   createEvaluationRuntime,
   createInvokeExecutorIdentity,
   createJsonExecutorAdapter,
-  createMeasurementPolicy,
-  createPairedComparisonDefinition,
-  createRubricJudgeKit,
   createRuntimeIdentity,
   runEvaluation,
   type OmkLlmJudgeInvocationPort,
 } from '../../src/eval-runtime/advanced.js';
 import {
+  createMeasurementPolicy,
+  createPairedComparisonDefinition,
   createRubricJudgeCriterion,
   createRubricJudgeEvaluatorDefinition,
   createRubricJudgeEvaluatorRegistration,
   createRubricJudgeInstrument,
+  createRubricJudgeKit,
   createRubricJudgeMetricDefinition,
   createRubricJudgeRuntimeConfig,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 
 const clock = {
   monotonicNow: () => 1,
