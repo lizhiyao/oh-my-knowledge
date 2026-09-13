@@ -48,6 +48,7 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 - 用户可见文案中文优先，中文使用全角标点；代码、路径、命令、URL、frontmatter、数学区间、技术标识符及英文技术括注保留对应语法。Conventional Commits 的 type(scope): 前缀保持半角。
 - LLM judge 统一称为“评委”，不称“判官”。PR 审查评论语言跟随用户操作系统设置语言。
 - PR 说明用户影响、迁移及测量限制，链接相关 Issue／前置 PR；不堆叠行号、测试清单或 diff 已体现的嵌套实现细节。
+- 对话回复中引用远端对象（PR、Issue、commit、Actions run／job、文档、本地服务地址）时，在同一句话里给出可点击 URL；URL 取自 CLI 输出的现成字段，不自行拼造，取不到就只写名称。
 
 ## 参考入口
 
