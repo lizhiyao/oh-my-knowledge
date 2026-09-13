@@ -10,23 +10,6 @@ export function e(text: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
-export function fmtDuration(ms: number | undefined | null): string {
-  const v = Number(ms || 0);
-  if (v < 1000) return `${v}ms`;
-  if (v < 60000) return `${(v / 1000).toFixed(1)}s`;
-  const min = Math.floor(v / 60000);
-  const sec = Math.round((v % 60000) / 1000);
-  return sec > 0 ? `${min}m${sec}s` : `${min}m`;
-}
-
-export function fmtCost(usd: number | undefined | null, reported: boolean = true): string {
-  // reported=false 时 executor 不报 cost(如 codex CLI),`usd` 是占位 0,
-  // 显示 "—" 跟"真的花了 $0"区分开。callsite 传 reported 时通常来自
-  // 评测报告的执行成本是否由 executor 明确报告，由 Evaluation Core 产物负责表达。
-  if (!reported) return '—';
-  return `$${Number(usd || 0).toFixed(4)}`;
-}
-
 export function fmtLocalTime(isoStr: string): string {
   const d = new Date(isoStr);
   const pad = (n: number): string => String(n).padStart(2, '0');
@@ -361,7 +344,7 @@ function langToggleButton(lang: Lang): string {
 
 type StudioSection = 'observe' | 'measure' | 'knowledge';
 
-export function renderStudioNavigation(lang: Lang, active?: StudioSection): string {
+function renderStudioNavigation(lang: Lang, active?: StudioSection): string {
   const query = lang === 'en' ? '?lang=en' : '';
   const items = [
     ['observe', '观测', 'Observe'],

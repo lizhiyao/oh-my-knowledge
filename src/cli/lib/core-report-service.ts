@@ -29,13 +29,12 @@ export async function announceCoreReport(
     return;
   }
   const { createCoreStudioCatalog } = await import('../../studio/application/core-run-catalog.js');
-  const { createReportServer } = await import('../../studio/http/report-server.js');
-  const server = createReportServer({
+  const { createNextStudioServer } = await import('../../studio/http/next-server.js');
+  const server = createNextStudioServer({
     coreStudioCatalog: createCoreStudioCatalog(store),
     // 评测预览宿主按设计只服务本次运行的 /measure 报告页：不挂观测／知识页面组，
-    // 也不渲染指向本宿主没有的一级导航。
+    // 壳层据此不渲染指向本宿主没有的一级导航。
     studioPages: false,
-    studioNavigation: false,
   });
   const serverUrl = await server.start();
   let closing = false;

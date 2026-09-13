@@ -9,15 +9,15 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 | `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。 |
 | `presentation/` | 独立 HTML 报告页，以及其样式、脚本生成和转义工具。 |
 | `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge`、`inbox` 按功能组织，`components/layout` 放共享外壳和主题。 |
-| `index.ts` | `oh-my-knowledge/studio` 公开入口，保持既有类型、常量、查询、投影、渲染与路由导出。内部模块直接引用所属层，不经过公开聚合入口。 |
+| `index.ts` | `oh-my-knowledge/studio` 公开入口，导出 catalog、投影、view-model 与 JSON 路由。渲染实现不属于公开面，内部模块也直接引用所属层，不经过公开聚合入口。 |
 
 原 `core-runs/` 已按职责归入上述目录；文件名中的 `core-run` 表示消费 Evaluation Core 产物，不表示 Studio 属于 eval-core。
 
 ## 两类页面宿主
 
-CLI `studio` 与 DSH 插件 `/omk observe` 使用 `createNextStudioServer`。Observe 的会话与任务页、观测收件箱、Measure、Knowledge 的列表与详情由 Next 渲染，其余报告页与 API/SSE 由 HTTP adapter 处理。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。
+CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。Observe 的会话与任务页、观测收件箱、Measure、Knowledge 的列表与详情由 Next 渲染，其余报告页与 API/SSE 由 HTTP adapter 处理。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
 
-CLI 评测预览使用 `createReportServer` 并设置 `studioPages: false`，只挂 `/measure` 与评测 API/SSE，因此既不启动 Next，也不为用不到的观测页面在用户项目里创建 observations 目录。HTML 和 React 共用 application 查询与投影，不能为各自页面另算一份业务口径。
+CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE），因此不为用不到的观测页面在用户项目里创建 observations 目录。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
 
 ## 观测收件箱页面盘点（React）
 
@@ -55,14 +55,14 @@ CLI 评测预览使用 `createReportServer` 并设置 `studioPages: false`，只
 | 入口 | 宿主 | 直达页面 |
 | --- | --- | --- |
 | CLI `omk studio`（`cli/commands/studio.ts`） | Next（`createNextStudioServer`） | 会话列表/详情/轨迹、观测收件箱、Measure、Knowledge 列表/详情为 React；其余路径回落到下方 HTML 路由。 |
-| CLI 评测预览（`cli/lib/run-core-evaluation.ts`，TTY 下 eval 完成后自动启动） | 独立（`createReportServer`，`studioPages: false`） | 只有 `/measure/:runId`（HTML）与评测 API/SSE；观测、知识页面组和收件箱路由组都不注册，相关路径 404。 |
+| CLI 评测预览（`cli/lib/run-core-evaluation.ts`，TTY 下 eval 完成后自动启动） | Next（`createNextStudioServer`，`studioPages: false`） | 只有 `/measure`、`/measure/:runId`（React）与 `/api/reports`；观测、知识页面组和收件箱路由组都不注册，壳层不渲染一级导航，相关路径 404。 |
 | DSH 插件 `/omk observe`（`dsh-plugin/index.ts`） | Next（`createNextStudioServer`） | 任务轨迹 `/observe/conversations/:thread/tasks/:turn`（React）。收件箱路由组不注册（`observationInbox: false`，#839 批次 0）；收件箱数据经数据层落盘，不走页面。 |
 
 ### 模块组用途与保留理由
 
 | 模块组 | 现有用途与调用方 |
 | --- | --- |
-| `core-run-renderer` | `http/routes/core-runs` 输出独立评测运行列表、详情和错误页；CLI 评测预览直达 `/measure/:runId`；公开渲染 API 也从这里导出。 |
+| `core-run-renderer` | 已删除。`/measure` 列表与详情只由 `web/app/measure/**`（React + AntD）渲染，展示无关的事实口径在 `application/core-run-format.ts`；`http/routes/core-runs` 只保留 `/api/reports` 的 JSON 投影，公开渲染导出 `renderCoreRunList`／`renderCoreRunDetail` 与其 `CoreStudioRenderRoutes` 注入点一并退出。 |
 | `skill-list-renderer`、`skill-detail-renderer` | 已删除。`/knowledge` 与 `/knowledge/skills/:name` 只由 `web/app/knowledge/**`（React + AntD）渲染：HTML 宿主的知识路由组与 Next 的拦截条件同为 `studioPages`，两者不可能同时生效，因此这两个 HTML 出口在任何真实宿主上都不再可达。`/api/skills`、`/api/skills/:skill/diagnostics` 作为 JSON 事实源保留。 |
 | `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页（只读报告）。 |
 | `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告（只读报告）。 |
@@ -71,4 +71,4 @@ CLI 评测预览使用 `createReportServer` 并设置 `studioPages: false`，只
 | `conversation-renderer`、`knowledge-debugger-renderer`、`trajectory-live`、`trajectory-routing` | 已删除。会话列表/详情与任务轨迹只由 `web/app/observe/**` 渲染，`/observe/sessions/:id` 手写调试入口随之退出；轨迹的连线计算保留在 `application/replay/routing.ts`，由 React 直接消费。HTML 宿主不再挂 `/observe`、`/observe/conversations/*`、`/observe/sessions/*`。 |
 | `layout`、`report-shell`、`icons`、`inline-markdown` | 上述 HTML 页面的外壳、图标和安全内容渲染。Markdown 解析与纯文本计算位于 application。 |
 
-只读报告页（skill-health、体检、受管历史、趋势与差异）不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，因此它们仍是活跃的页面能力；但全仓已没有任何 React 页面或 CLI/MCP 输出链接进这一组，一级导航三项（`/observe`、`/measure`、`/knowledge`）都是 React，这些页面只能手打地址访问，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理。迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由；目录名本身不是废弃标记。`presentation/core-run-renderer` 是 `oh-my-knowledge/studio` 的唯一公开渲染导出，同时 `web/app/measure/**` 已提供 React 版 `/measure`，评测预览宿主仍在走 HTML 一份——收掉这条双轨需要先按公开契约变更处理，不做静默替换。
+只读报告页（skill-health、体检、受管历史、趋势与差异）不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，因此它们仍是活跃的页面能力；但全仓已没有任何 React 页面或 CLI/MCP 输出链接进这一组，一级导航三项（`/observe`、`/measure`、`/knowledge`）都是 React，这些页面只能手打地址访问，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理。迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由；目录名本身不是废弃标记。`/measure` 的双轨已收口：HTML renderer 及其公开渲染导出删除，CLI 评测预览改挂 Next，`oh-my-knowledge/studio` 不再导出任何渲染实现，一级导航可达的页面全部是 React，`presentation/` 只服务上面列出的只读报告页。

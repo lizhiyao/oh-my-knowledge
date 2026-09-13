@@ -65,6 +65,15 @@ describe('Next Studio production boundary', () => {
     assert.match(skillHtml, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
     for (const label of ['健康体检','生产观测','待优化项']) assert.ok(skillHtml.includes(label));
     assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
+    // 壳层只有一份：迁移完成后评测页与兄弟页面共用同一个 header，差异只在 aria-current。
+    const knowledgeEn = await (await fetch(`${urlA}/knowledge?lang=en`)).text();
+    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0].replaceAll(' aria-current="page"', '');
+    const measureShell = shellOf(htmlA);
+    assert.equal(measureShell, shellOf(knowledgeEn));
+    for (const href of ['href="/observe?lang=en"', 'href="/measure?lang=en"', 'href="/knowledge?lang=en"']) {
+      assert.ok(measureShell.includes(href), `primary navigation links ${href}`);
+    }
+    assert.match(htmlA, /href="\/measure\?lang=en" aria-current="page"/);
     for (const path of ['/knowledge/skills/missing','/knowledge/skills/%ZZ']) assert.equal((await fetch(urlA+path)).status,404);
     assert.equal((await fetch(`${urlA}/knowledge`,{method:'POST'})).status,405);
     await a.stop();

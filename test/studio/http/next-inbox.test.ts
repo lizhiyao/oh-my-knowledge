@@ -189,9 +189,24 @@ describe('Next-hosted observation inbox route', () => {
     servers.push(server);
     const url = await server.start();
 
-    for (const path of ['/observe', '/observe/inbox', '/observe/conversations/thread', '/knowledge']) {
-      assert.equal((await fetch(`${url}${path}`)).status, 404, `${path} is not intercepted`);
+    for (const path of ['/', '/observe', '/observe/inbox', '/observe/conversations/thread', '/knowledge']) {
+      const trimmed = await fetch(`${url}${path}`, { redirect: 'manual' });
+      assert.equal(trimmed.status, 404, `${path} is not intercepted`);
+      assert.equal(trimmed.headers.get('location'), null, `${path} must not redirect to a page it does not serve`);
     }
-    assert.equal((await fetch(`${url}/measure`)).status, 200);
+
+    // 同一个开关也裁掉壳层导航：只挂 /measure 的宿主不渲染把用户导向 404 的兄弟链接。
+    const zhPage = await fetch(`${url}/measure`);
+    assert.equal(zhPage.status, 200);
+    const zhHtml = await zhPage.text();
+    assert.doesNotMatch(zhHtml, /aria-label="Studio 一级导航"/);
+    assert.doesNotMatch(zhHtml, /href="\/observe"/);
+    assert.match(zhHtml, /<a class="studio-brand" href="\/measure"/);
+
+    const enPage = await fetch(`${url}/measure?lang=en`);
+    assert.equal(enPage.status, 200);
+    const enHtml = await enPage.text();
+    assert.doesNotMatch(enHtml, /aria-label="Studio primary navigation"/);
+    assert.match(enHtml, /<a class="studio-brand" href="\/measure\?lang=en"/);
   }, 20000);
 });
