@@ -77,7 +77,7 @@ yarn studio:baseline
 
 ## 限制与后续
 
-- HTML 版 `/knowledge` 页与观测健康四页（`/observe/health`、`/observe/health/:id`、`/observe/skill-trend/:skill`、`/observe/health-diff`）已删除：注册这些路由组的宿主都由 Next 接管对应路径，夹取驱动的独立 HTML 宿主不再服务它们。上表这些页面行与「24 并发 `GET /knowledge`（热）」都是退役前的数字；`yarn studio:baseline` 的并发探针改为 `GET /api/observe-health`——同一份目录扫描与投影，只是不带 HTML 序列化，因此与页面行的历史数值不可比。本脚本仍只覆盖独立 HTML 宿主：React 页面的首屏由 Next 渲染，其成本不在此产出。
+- 独立 HTML 宿主已不再服务任何页面路由：所有 Studio 页面都由 Next 渲染，最后两页只读报告迁走后 `src/studio/presentation/` 随之删除。上表这些页面行与「24 并发 `GET /knowledge`（热）」都是退役前的数字；`yarn studio:baseline` 的并发探针改为 `GET /api/observe-health`——同一份目录扫描与投影，只是不带 HTML 序列化，因此与页面行的历史数值不可比。本脚本仍只覆盖独立宿主的 JSON 事实源：React 页面的首屏由 Next 渲染，其成本不在此产出。
 - 脚本只测服务端。客户端首屏与泳道交互成本不在此产出；large 档 17 MB 的旧版 inbox HTML 是已知的客户端成本驱动，由 Next.js 迁移批次（可视区域渲染）处理，并经真实入口验证。
 - 会话／任务列表页与 SSE 实时跟随不在本数据集基线内；其刷新、竞态与清理行为在数据流核验批次（issue #836 §1.1）验证。
 - 绝对数值依赖机器与文件系统缓存；前后对比必须用同机、同 commit 的 `yarn studio:baseline`。

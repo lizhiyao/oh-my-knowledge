@@ -4,7 +4,7 @@
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
  *   - observability 反向 driving diagnosis(已修)
  *   - Studio application / catalog 散落在交付层与 workflow(已修)
- *   - Studio presentation 直接 import observability 内部(已 facade 化)
+ *   - Studio presentation 直接 import observability 内部(已随 HTML 渲染层删除)
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
  * 规则形态:每条规则声明 from / to / 可选 whitelist + 注解。匹配 src-relative
@@ -197,11 +197,6 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'studio/application/',
-    to: 'studio/presentation/',
-    reason: 'Studio application 不依赖 HTML 呈现；presentation 只能消费应用结果与 view-model。',
-  },
-  {
-    from: 'studio/application/',
     to: 'studio/web/',
     reason: '共享投影与应用查询不得依赖 React 页面。',
   },
@@ -217,18 +212,8 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'studio/view-models/',
-    to: 'studio/presentation/',
-    reason: '视图类型契约不得依赖 HTML 渲染器。',
-  },
-  {
-    from: 'studio/view-models/',
     to: 'studio/web/',
     reason: '视图类型契约不得依赖 React 页面。',
-  },
-  {
-    from: 'studio/presentation/',
-    to: 'studio/http/',
-    reason: 'Studio presentation 是无 HTTP 状态的纯呈现层，不依赖请求、响应或 server 生命周期。',
   },
   {
     from: 'shared/',
@@ -264,11 +249,6 @@ const RULES: ForbiddenRule[] = [
     from: 'shared/',
     to: 'observability/',
     reason: 'shared 是跨领域叶子依赖；观测投影与 prompt 编目由上层能力拥有。',
-  },
-  {
-    from: 'studio/presentation/',
-    to: 'observability/',
-    reason: 'Studio presentation 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/skill-health/analyzer.ts。',
   },
 ];
 

@@ -4,10 +4,10 @@
 
 ## 渲染与查询边界
 
-- Studio 应用页面统一向 Next.js 收敛；新页面不再增加手写 HTML 实现。API、SSE 与独立报告入口按各自职责维护，不为迁移页面而复制领域查询。
-- view-models 仅存放类型契约；泳道布局、证据引用与活动快照的运行时计算放在 application 中，HTTP、React 和 HTML renderer 消费同一实现；application 不得依赖 presentation、http 或 web，view-models 不得反向依赖这些层或 application。
+- Studio 应用页面统一向 Next.js 收敛；手写 HTML 渲染层已删除，新页面不再增加它。API、SSE 按各自职责维护，不为迁移页面而复制领域查询。
+- view-models 仅存放类型契约；泳道布局、证据引用与活动快照的运行时计算放在 application 中，HTTP 与 React 消费同一实现；application 不得依赖 http 或 web，view-models 不得反向依赖这些层或 application。
 - Knowledge 页面与 API 共用 application 查询入口。缓存由服务实例持有，目录按请求解析，返回值不得暴露缓存内部的可变引用。
-- 清理旧渲染器前检查实际调用者；仍服务于独立报告或调试入口的实现不算死代码。具体迁移路由与剩余工作记录在 PR，不在本规则中维护易过期的路由清单。
+- 清理旧渲染器前检查实际调用者；仍服务于调试入口的实现不算死代码。具体迁移路由与剩余工作记录在 PR，不在本规则中维护易过期的路由清单。
 
 ## 领域约束
 
@@ -19,10 +19,10 @@
 
 - 人工预览的端口选择遵循根规则；用户可见 URL 使用 `server.start()` 返回的实际地址，不以默认端口拼接 URL。
 - 展示层消费 view-model，不直接读取或重算底层存储与评分语义。
-- 修改报告 UI 后，先审查受影响的 `test/studio/presentation/__snapshots__/*.snap` 实际变化，再决定是否更新 snapshot。
+- 修改页面 UI 后用渲染输出断言验证：用户实际读到的文字、链接与转义写在 `test/studio/web/*.test.tsx`，展示无关的事实口径写在 `test/studio/application/*-format.test.ts`。Studio 不使用 snapshot 测试。
 
 ## Code Review Rules
 
-- 必须拦截 presentation／http 层反向定义领域语义或绕过 view-model 读取底层数据。安全路径：在对应领域构造稳定投影，Studio 只负责呈现和传输。
+- 必须拦截 http／web 层反向定义领域语义或绕过 view-model 读取底层数据。安全路径：在对应领域构造稳定投影，Studio 只负责呈现和传输。
 - 必须拦截未转义的外部文本进入 HTML，以及敏感路径、凭证或原始异常泄漏给浏览器。安全路径：统一 escaping 与错误投影，并覆盖恶意输入测试。
 - 必须拦截没有人工审阅可见差异的 snapshot 批量更新。安全路径：先核对预期 UI 变化与用户影响，再更新最小 snapshot 并做必要的真实页面验收。

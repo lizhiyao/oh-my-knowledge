@@ -6,7 +6,7 @@ The inbox keeps source reports and human review state separate. The effective re
 
 `omk observe inbox --json` includes `effectiveExperienceReports`, `resolvedReviewSessions`, and `unappliedMetricAnnotations` alongside the existing `items` array. `GET /api/observe-inbox/view` exposes the same three fields; both support skill filtering. The existing `GET /api/observe-inbox` item-list response is unchanged. Studio consumes the same domain projection.
 
-Effective session indicators, basis codes, rule findings, inference, priorities, and skill totals belong to observability, not the HTML renderer. Deterministic priority uses the domain weighted score: scores of at least three mean `review_first`, positive scores below three mean `sample_review`, and zero means `routine_sample`. Domain reviewer findings can escalate this priority. Existing explicit LLM and manual-review precedence is retained, with provenance in `resolvedReviewSessions.source`.
+Effective session indicators, basis codes, rule findings, inference, priorities, and skill totals belong to observability, not Studio's rendering layer. Deterministic priority uses the domain weighted score: scores of at least three mean `review_first`, positive scores below three mean `sample_review`, and zero means `routine_sample`. Domain reviewer findings can escalate this priority. Existing explicit LLM and manual-review precedence is retained, with provenance in `resolvedReviewSessions.source`.
 
 ## Evidence and annotations
 
