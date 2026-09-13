@@ -20,7 +20,7 @@ describe('resolveActor', () => {
     vi.stubEnv('USER', 'environment-user');
     expect(resolveActor(flag)).toBe('Git User');
     expect(execFileSync).toHaveBeenCalledWith('git', ['config', 'user.name'], {
-      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000,
     });
   });
 

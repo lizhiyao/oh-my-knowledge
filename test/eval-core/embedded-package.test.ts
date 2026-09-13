@@ -83,6 +83,8 @@ describe('published embedded Evaluation API', () => {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       env: { ...process.env, npm_config_cache: npmCache },
+      // 同步调用会阻塞事件循环，vitest 的 hookTimeout 在此期间根本打不响；这是唯一的逃逸口。
+      timeout: 120_000,
     });
     const [{ filename }] = JSON.parse(packOutput) as [{ filename: string }];
     execFileSync('tar', [
@@ -91,7 +93,7 @@ describe('published embedded Evaluation API', () => {
       '--strip-components=1',
       '-C',
       packageDirectory,
-    ]);
+    ], { timeout: 60_000 });
     const repositoryPackage = JSON.parse(readFileSync(
       join(REPO_ROOT, 'package.json'),
       'utf8',
