@@ -90,6 +90,7 @@ describe('v3 through the production CLI workflow and custom-executor adapter', (
   it.each(['correct', 'wrong', 'missing'] as const)('measures four actual offline tasks: %s', async (mode) => {
     const result = await run(mode);
     expect(result.stored).toBeDefined();
+    expect(result.stored!.analysis.analysisBundleStatus).not.toBe('failed');
     const records = result.stored!.evaluation.records;
     const observations = records.flatMap((record) => record.evaluationStatus === 'completed' ? record.observations : []);
     const observed = observations.filter((observation) => observation.observationStatus === 'observed');

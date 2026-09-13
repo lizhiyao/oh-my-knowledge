@@ -19,7 +19,7 @@ import {
 import { AssertionLayerDispositionSchema } from './assertion-layer-parameters.js';
 
 export const ASSERTION_LAYER_TABLE_SCHEMA_VERSION =
-  'omk.assertion-layer-table/v1' as const;
+  'omk.assertion-layer-table/v2' as const;
 
 export const ASSERTION_LAYER_SCORE_DECIMALS = 2;
 export const ASSERTION_LAYER_SCORE_MIN = 1;
@@ -273,7 +273,8 @@ function validateAssertionLayerTable(value: AssertionLayerTableValue, issue: Iss
   if (new Set(rowIds).size !== rowIds.length) {
     issue(['groups'], 'Assertion source row identities must be globally unique.');
   }
-  const sealedCriterionDesign = criterionDesignKey(value.groups[0].entries);
+  const designsBySample = new Map<string, string>();
+  const criteriaByMetric = new Map<string, string>();
   for (const [groupIndex, group] of value.groups.entries()) {
     const entryKeys = group.entries.map(entryKey);
     if (new Set(entryKeys).size !== entryKeys.length
@@ -281,11 +282,22 @@ function validateAssertionLayerTable(value: AssertionLayerTableValue, issue: Iss
           !== canonicalizeJson([...entryKeys].sort(compareStrings))) {
       issue(['groups', groupIndex, 'entries'], 'Assertion entries must be unique and sorted.');
     }
-    if (criterionDesignKey(group.entries) !== sealedCriterionDesign) {
+    const design = criterionDesignKey(group.entries);
+    const sealedCriterionDesign = designsBySample.get(group.sampleId);
+    if (sealedCriterionDesign !== undefined && design !== sealedCriterionDesign) {
       issue(
         ['groups', groupIndex, 'entries'],
-        'Every measurement group must use the same sealed criterion design.',
+        'Every measurement group for the same sample must use the same sealed criterion design.',
       );
+    }
+    designsBySample.set(group.sampleId, design);
+    for (const entry of group.entries) {
+      const identity = criterionDesignKey([entry]);
+      const previous = criteriaByMetric.get(entry.metricId);
+      if (previous !== undefined && previous !== identity) {
+        issue(['groups', groupIndex, 'entries'], 'A Metric must keep the same criterion identity, layer, and weight across samples.');
+      }
+      criteriaByMetric.set(entry.metricId, identity);
     }
     const fact = group.entries.filter((entry) => entry.layerDisposition === 'fact');
     const behavior = group.entries.filter((entry) => entry.layerDisposition === 'behavior');
@@ -326,12 +338,12 @@ const AssertionLayerEnvelopeSchema = z.object({
 
 export const ASSERTION_LAYER_TABLE_SCHEMA = analysisSchemaIdentity(
   ASSERTION_LAYER_TABLE_SCHEMA_VERSION,
-  'urn:omk:analysis-result:assertion-layer-table:v1',
+  'urn:omk:analysis-result:assertion-layer-table:v2',
   analysisJsonSchema(AssertionLayerEnvelopeSchema, [
     'groups and criterion entries are unique and canonically ordered',
     'sampling-unit lineage is identical across every criterion in a measurement unit',
     'criterion identity, metric identity, layer disposition, and positive weight are explicit',
-    'every measurement group uses the same sealed criterion design',
+    'every measurement group for a sample uses the same sealed criterion design; a shared metric keeps its criterion metadata across samples',
     'criterion-not-applicable is structural and excluded from planned and observed coverage',
     'coverage exactly conserves every applicable source row status and weight',
     'mixed-layer criteria remain visible but are excluded from fact and behavior scores',

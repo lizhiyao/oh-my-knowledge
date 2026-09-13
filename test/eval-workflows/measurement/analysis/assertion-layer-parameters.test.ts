@@ -64,6 +64,14 @@ describe('assertion-layer parameter contract', () => {
     })).toThrow();
   });
 
+  it('normalizes explicit scopes and rejects empty or duplicate sample IDs', () => {
+    expect(parseAssertionLayerParameters({ criteria: [{ ...fact, applicableSampleIds: ['b', 'a'] }] }))
+      .toEqual({ criteria: [{ ...fact, applicableSampleIds: ['a', 'b'] }] });
+    for (const applicableSampleIds of [[], ['a', 'a']]) {
+      expect(() => parseAssertionLayerParameters({ criteria: [{ ...fact, applicableSampleIds }] })).toThrow();
+    }
+  });
+
   it('registers a validator whose output is the canonical plan materialization', () => {
     const validator = createAssertionLayerParameterSchemaValidators().get(
       schemaIdentityKey(ASSERTION_LAYER_PARAMETERS_SCHEMA),
@@ -72,8 +80,8 @@ describe('assertion-layer parameter contract', () => {
     expect(validator?.parse({ criteria: [fact, behavior, mixed] })).toEqual({
       criteria: [behavior, mixed, fact],
     });
-    expect(validator?.schema.schemaVersion).toBe('omk.parameters.assertion-layer/v1');
-    expect(validator?.schema.schemaUri).toBe('urn:omk:parameters:assertion-layer:v1');
+    expect(validator?.schema.schemaVersion).toBe('omk.parameters.assertion-layer/v2');
+    expect(validator?.schema.schemaUri).toBe('urn:omk:parameters:assertion-layer:v2');
   });
 });
 

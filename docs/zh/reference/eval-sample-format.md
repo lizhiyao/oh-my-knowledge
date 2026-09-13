@@ -60,6 +60,12 @@ API adapter identity 升级到 1.3.0，输入 Schema 升级到 v2，支持的映
 
 custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构化输入封套和 `trial.executionContext`。所有执行器请求均不包含标准答案和评分上下文。
 
+结构化检查只适用于其所在样本。断言汇总现已封存该范围（断言表和参数 v2），混合样本集可以完成分析，不会要求每道题执行所有检查。这改变分析身份，旧比较应重新运行，详见[评分语义](../specs/evaluation-scoring-equivalence)。
+
+### 跨执行器验收能证明什么
+
+离线生产链测试用同一个未修改的文件，包含文本、类型化 JSON 和普通消息历史，配合同一套精确匹配评分，运行两个 API 适配器与真实 custom-executor 子进程。正确参考答案与刻意错误的参考答案分别得到一致的评分结果；金标不进入请求，各执行器仍保留不同执行身份。API 传输被模拟，因此这证明输入映射、评分和持久化行为，不代表线上服务可用性或模型质量。这里对 CLI／SDK 验证的是文本编译与 JSON／历史的提前拒绝；合法工具历史会在 API 请求前拒绝。
+
 ## 结构化检查
 
 `checkKind: exact-match` 将输出或轨迹中的 JSON pointer，与 `expected` 中的 JSON pointer 显式绑定。OMK 复用 Evaluation Runtime 的 canonical JSON 精确比较评分器：对象键序无关，数组顺序和 JSON 类型有意义，不进行模糊转换。每个检查声明归属 `fact` 或 `behavior` 层，可指定正数权重。

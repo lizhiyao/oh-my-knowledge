@@ -476,6 +476,9 @@ export function buildProductionMeasurementDesign(
   const compositeInputs: AnalysisGraphDefinition['nodes'][number]['inputs'] = [];
   const compositeLayers: JsonValue[] = [];
   if (criteria.length > 0) {
+    const sampleScopeByMetric = new Map(templates.flatMap((template) => (
+      template.metricIds.map((metricId) => [metricId, template.applicableSampleIds] as const)
+    )));
     nodes.push({
       analysisNodeKind: 'reducer',
       nodeId: 'assertion-layer',
@@ -491,6 +494,9 @@ export function buildProductionMeasurementDesign(
           metricId: criterion.metricId,
           layerDisposition: criterion.layerDisposition,
           weight: criterion.weight,
+          ...(sampleScopeByMetric.get(criterion.metricId) === undefined ? {} : {
+            applicableSampleIds: [...sampleScopeByMetric.get(criterion.metricId)!],
+          }),
         })),
       },
     });
