@@ -6,8 +6,8 @@
 
 Studio 有两个宿主，共享同一应用层：
 
-- **Next.js 宿主（`omk studio`、DSH 插件 `/omk observe`）**：`next-server.ts` 拦截 `/observe*`、`/measure*`、`/knowledge*` 的 GET 请求，**每请求恰好装载一次**页面模型（`loadObservePage` / `loadKnowledgePage` / `catalog.list|get`），存入经 `Symbol.for` 桥接的 AsyncLocalStorage（CLI 模块图与 Next 产物解析到同一个 store），随后渲染。服务端组件经 `web/catalog.tsx` 读取快照；store 缺失是装配错误（`studio_context_missing` → 500），不是数据源失败（→ 503）。拦截集合跟随宿主的开关收缩：`observationInbox: false` 摘掉收件箱页面与 API，`studioPages: false` 摘掉整个观测／知识页面组，被摘掉的路径不再拦截，落回 HTTP 适配器得到 404。只读报告页（skill-health、体检、受管历史、趋势与差异）始终不在拦截集合里，由 HTTP 适配器渲染。
-- **独立 report-server 宿主（CLI 评测预览）**：`request-handler.ts` 每请求解析一次目录选择，经声明式路由表（`routes/router.ts`）分发到 JSON API 与 HTML 渲染器。该宿主以 `studioPages: false` 只保留 `/measure` 与评测 API/SSE，因此不启动 Next，也不创建 observations 目录。
+- **Next.js 宿主（`omk studio`、DSH 插件 `/omk observe`、CLI 评测预览）**：`next-server.ts` 拦截 `/observe*`、`/measure*`、`/knowledge*` 的 GET 请求，**每请求恰好装载一次**页面模型（`loadObservePage` / `loadKnowledgePage` / `catalog.list|get`），存入经 `Symbol.for` 桥接的 AsyncLocalStorage（CLI 模块图与 Next 产物解析到同一个 store），随后渲染。服务端组件经 `web/catalog.tsx` 读取快照；store 缺失是装配错误（`studio_context_missing` → 500），不是数据源失败（→ 503）。拦截集合跟随宿主的开关收缩：`observationInbox: false` 摘掉收件箱页面与 API，`studioPages: false` 摘掉整个观测／知识页面组，被摘掉的路径不再拦截，落回 HTTP 适配器得到 404。只读报告页（skill-health、体检、受管历史、趋势与差异）始终不在拦截集合里，由 HTTP 适配器渲染。CLI 评测预览设置 `studioPages: false`：它只提供 `/measure`，并且同一个开关让壳层不渲染一级导航，而不是给出指向 404 的链接。
+- **独立 report-server 宿主**：`request-handler.ts` 每请求解析一次目录选择，经声明式路由表（`routes/router.ts`）分发到 JSON API 与尚未迁到 React 的 HTML 报告页。Next 宿主包裹的就是这个 handler，未被拦截的路径——包括评测 JSON 投影 `/api/reports`——都由它服务。`studioPages: false` 同时抑制 observations 目录的创建副作用，因此只挂评测页的宿主不会在用户项目里落盘。
 
 ## 边界
 

@@ -38,7 +38,6 @@ export function createStudioRequestHandler({
   includeDoctorCards = false,
   observationInbox = true,
   studioPages = true,
-  studioNavigation = true,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -63,10 +62,7 @@ export function createStudioRequestHandler({
     ? undefined
     : createCoreStudioRouteHandler({
         catalog: coreStudioCatalog,
-        htmlBasePath: '/measure',
         apiBasePath: '/api/reports',
-        defaultLang: DEFAULT_LANG,
-        studioNavigation,
       });
   const hostRoutes = createStudioRouter([
     {
@@ -137,7 +133,8 @@ export function createStudioRequestHandler({
       };
 
       if (await hostRoutes(routeContext)) return;
-      // 独立报告宿主只挂 /measure：观测／知识页面组按宿主开关整体不注册（Studio 页面组仍由默认宿主提供）。
+      // 观测／知识页面组按宿主开关整体不注册：剩下的只有 /health、/api/shutdown 与 /api/reports 的 JSON 投影，
+      // /measure 页面由 Next 宿主接管（Studio 页面组仍由默认宿主提供）。
       if (studioPages) {
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;

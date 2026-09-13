@@ -1,14 +1,5 @@
 import type { CoreStudioCatalog } from '../../view-models/core-runs.js';
-import {
-  coreStudioMethodNotAllowedMessage,
-  coreStudioSourceUnavailableMessage,
-  renderCoreRunDetail,
-  renderCoreRunList,
-  renderCoreStudioError,
-  type CoreStudioRenderRoutes,
-} from '../../presentation/core-run-renderer.js';
-import type { Lang } from '../../../shared/language.js';
-import { HTML_HEADERS, JSON_HEADERS } from '../errors.js';
+import { JSON_HEADERS } from '../errors.js';
 
 export interface CoreStudioRouteRequest {
   readonly method?: string;
@@ -23,11 +14,7 @@ export interface CoreStudioRouteResponse {
 
 export interface CoreStudioRouteHandlerOptions {
   readonly catalog: CoreStudioCatalog;
-  readonly htmlBasePath: string;
   readonly apiBasePath: string;
-  readonly defaultLang?: Lang;
-  /** Enable the full Studio navigation only when its sibling routes are mounted. */
-  readonly studioNavigation?: boolean;
 }
 
 export type CoreStudioRouteHandler = (
@@ -49,24 +36,19 @@ function normalizeBasePath(value: string, name: string): string {
   return value;
 }
 
-function splitRequestUrl(value: string): { path: string; search: URLSearchParams } {
+function splitRequestUrl(value: string): { path: string } {
   const fragmentIndex = value.indexOf('#');
   const withoutFragment = fragmentIndex < 0 ? value : value.slice(0, fragmentIndex);
   const queryIndex = withoutFragment.indexOf('?');
-  return queryIndex < 0
-    ? { path: withoutFragment, search: new URLSearchParams() }
-    : {
-        path: withoutFragment.slice(0, queryIndex),
-        search: new URLSearchParams(withoutFragment.slice(queryIndex + 1)),
-      };
+  return { path: queryIndex < 0 ? withoutFragment : withoutFragment.slice(0, queryIndex) };
 }
 
-interface RunPathMatch {
+interface ApiPathMatch {
   readonly matched: boolean;
   readonly runId?: string;
 }
 
-function matchRunPath(path: string, basePath: string): RunPathMatch {
+function matchApiPath(path: string, basePath: string): ApiPathMatch {
   const prefix = `${basePath}/`;
   if (!path.startsWith(prefix)) return { matched: false };
   const encoded = path.slice(prefix.length);
@@ -86,78 +68,37 @@ function json(status: number, body: unknown, extraHeaders: Readonly<Record<strin
   });
 }
 
-function html(status: number, body: string, extraHeaders: Readonly<Record<string, string>> = {}): CoreStudioRouteResponse {
-  return Object.freeze({
-    status,
-    headers: Object.freeze({ ...HTML_HEADERS, ...extraHeaders }),
-    body,
-  });
-}
-
+/**
+ * `/measure` 的 HTML 面由 `web/app/measure/**`（React）渲染；这里只保留机器可读的 JSON 资源，
+ * 让嵌入宿主不必启 UI 也能取到同一份投影。
+ */
 export function createCoreStudioRouteHandler(
   options: CoreStudioRouteHandlerOptions,
 ): CoreStudioRouteHandler {
-  const htmlBasePath = normalizeBasePath(options.htmlBasePath, 'htmlBasePath');
   const apiBasePath = normalizeBasePath(options.apiBasePath, 'apiBasePath');
-  if (
-    htmlBasePath === apiBasePath
-    || htmlBasePath.startsWith(`${apiBasePath}/`)
-    || apiBasePath.startsWith(`${htmlBasePath}/`)
-  ) {
-    throw new TypeError('htmlBasePath and apiBasePath must not overlap');
-  }
-  const routes: CoreStudioRenderRoutes = Object.freeze({
-    listPath: htmlBasePath,
-    detailPath: (runId: string) => `${htmlBasePath}/${encodeURIComponent(runId)}`,
-    studioNavigation: options.studioNavigation,
-  });
-  const defaultLang = options.defaultLang ?? 'zh';
 
   return async (request) => {
-    const { path, search } = splitRequestUrl(request.url ?? '/');
-    const htmlRun = matchRunPath(path, htmlBasePath);
-    const apiRun = matchRunPath(path, apiBasePath);
-    const isMatched = path === htmlBasePath || path === apiBasePath || htmlRun.matched || apiRun.matched;
+    const { path } = splitRequestUrl(request.url ?? '/');
+    const apiRun = matchApiPath(path, apiBasePath);
+    const isMatched = path === apiBasePath || apiRun.matched;
     if (!isMatched) return undefined;
 
-    const requestedLang = search.get('lang');
-    const lang: Lang = requestedLang === 'en' || requestedLang === 'zh'
-      ? requestedLang
-      : defaultLang;
     if ((request.method ?? 'GET').toUpperCase() !== 'GET') {
-      return path === apiBasePath || apiRun.matched
-        ? json(405, { error: 'method_not_allowed' }, { Allow: 'GET' })
-        : html(405, renderCoreStudioError(coreStudioMethodNotAllowedMessage(lang), routes, lang), { Allow: 'GET' });
+      return json(405, { error: 'method_not_allowed' }, { Allow: 'GET' });
     }
 
     try {
-      if (path === htmlBasePath) {
-        return html(200, renderCoreRunList(await options.catalog.list(), routes, lang));
-      }
       if (path === apiBasePath) {
         return json(200, await options.catalog.list());
       }
-      if (htmlRun.matched) {
-        if (htmlRun.runId === undefined) {
-          return html(404, renderCoreStudioError(lang === 'en' ? 'Run not found.' : '运行记录不存在。', routes, lang));
-        }
-        const detail = await options.catalog.get(htmlRun.runId);
-        return detail === undefined
-          ? html(404, renderCoreStudioError(lang === 'en' ? 'Run not found.' : '运行记录不存在。', routes, lang))
-          : html(200, renderCoreRunDetail(detail, routes, lang));
-      }
-      if (apiRun.matched) {
-        if (apiRun.runId === undefined) return json(404, { error: 'core_run_not_found' });
-        const detail = await options.catalog.get(apiRun.runId);
-        return detail === undefined
-          ? json(404, { error: 'core_run_not_found' })
-          : json(200, detail);
-      }
-      return undefined;
+      // `isMatched` 已经把请求限定成「基路径」或「其下一层子路径」，这里只剩后者。
+      if (apiRun.runId === undefined) return json(404, { error: 'core_run_not_found' });
+      const detail = await options.catalog.get(apiRun.runId);
+      return detail === undefined
+        ? json(404, { error: 'core_run_not_found' })
+        : json(200, detail);
     } catch {
-      return path === apiBasePath || apiRun.matched
-        ? json(503, { error: 'core_studio_source_unavailable' })
-        : html(503, renderCoreStudioError(coreStudioSourceUnavailableMessage(lang), routes, lang));
+      return json(503, { error: 'core_studio_source_unavailable' });
     }
   };
 }

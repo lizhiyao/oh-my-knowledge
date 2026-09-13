@@ -39,13 +39,13 @@ detail view 明确省略原始 input、execution context、expected、evaluation
 
 视图状态不从分数阈值推导。run status、evidence status 与 conclusion status 保持正交；stage failure、cancel、budget exhaustion、missing observation、inconclusive Analysis 与 not-decided Decision 都保留 Core 原始状态和 reason code。
 
-## 四、Renderer 与 route adapter
+## 四、展示层与 route adapter
 
-`renderCoreRunList()` 与 `renderCoreRunDetail()` 只消费两种版本化 view。列表把 run、evidence 与 conclusion status 作为三个独立状态轴展示；详情展示 plan identity、阶段 coverage／budget、安全记录与数值 observation、Analysis、Decision，以及完整的五文档 lineage。它不会从分数推导一个总体质量状态。
+面向用户的 `/measure` 列表与详情是 `web/app/measure/**` 下的 React 服务端组件。它们消费的 `application/core-run-format.ts` 不含展示实现，只把两种版本化 view 变成有序的事实片段：列表把 run、evidence 与 conclusion status 作为三个独立状态轴展示，详情展示 plan identity、阶段 coverage／budget、安全记录与数值 observation、Analysis、Decision 以及完整的五文档 lineage。两者都不从分数推导总体质量状态。
 
-renderer 会转义所有投影值。全部导航路径都由调用方通过 `CoreStudioRenderRoutes` 注入，不假设 host、port 或部署方式。表格具备 caption 与限定作用域的列标题，status group 带无障碍标签，中英文视图保留完全相同的事实。
+所有投影值都被转义——页面由 React 的文本插值保证，仍存留的 HTML 外壳由显式转义保证——allow-list 之外的字段不会到达任一界面。表格把可见区块名与限定作用域的列标题配对，status group 带无障碍标签；中英文视图承载完全相同的事实，只有 label 被翻译，identifier、digest、status 与 reason code 原样保留。`web/components/measure/**` 是唯一渲染入口，独立 HTML renderer 及其 `CoreStudioRenderRoutes` 注入点已删除。
 
-`createCoreStudioRouteHandler()` 是 `CoreStudioCatalog` 之上的纯 HTTP 形状 adapter。它返回不可变 response envelope，不依赖 Node request／response object，因此生产 host 可以挂载它，而不必把 server authority 交给 catalog。调用方分别提供 HTML／API base path，并暴露列表与详情资源。不匹配的路径返回 `undefined`，非法或不存在的 identifier 返回稳定 404，不支持的方法返回 405；source failure 只返回脱敏的 `core_studio_source_unavailable`，不暴露 exception text 或 filesystem path。
+`createCoreStudioRouteHandler()` 是 `CoreStudioCatalog` 之上的纯 HTTP 形状 adapter，只提供机器可读资源。它返回不可变 response envelope，不依赖 Node request／response object，因此生产 host 可以挂载它，而不必把 server authority 交给 catalog。调用方提供唯一的 `apiBasePath`，整棵子树归它所有：区间外的路径返回 `undefined`，base path 返回 card 列表，单个可解码 segment 解析详情，空段、多余层级与不可解码 identifier 返回稳定 404，不支持的方法返回 405；source failure 只返回脱敏的 `core_studio_source_unavailable`，不暴露 exception text 或 filesystem path。
 
 ## 五、迁移边界
 
@@ -55,9 +55,9 @@ Core Studio 模块不导入已删除的旧 `ReportStore`、旧 `EvaluationReport
 
 ## Studio 应用框架
 
-Studio 的目标技术栈为 Next.js App Router、TypeScript 和 Ant Design。首轮迁移把 CLI 服务中的 `/measure` 列表与详情页替换为 React 组件。Observe 的会话列表、详情和实时任务轨迹也由 React 呈现，Knowledge 列表与详情也使用同一 StudioShell 和 Ant Design 组件；报告专属页面保留现有路由。已迁移页面只有一个生效实现，不回退到旧 HTML renderer。
+Studio 的目标技术栈为 Next.js App Router、TypeScript 和 Ant Design。`/measure` 列表与详情在所有宿主上都是 React 组件，包括只挂评测页的 CLI 评测预览宿主——它同样启动 Next，并裁掉兄弟页面组。Observe 的会话列表、详情和实时任务轨迹也由 React 呈现，Knowledge 列表与详情也使用同一 StudioShell 和 Ant Design 组件；报告专属页面保留现有路由。已迁移页面只有一个生效实现，不回退到旧 HTML renderer。
 
-Node 监听器负责 Next 的准备与关闭。服务端组件通过请求级上下文获得现有 `CoreStudioCatalog`，不同 Studio 实例不能串读彼此的数据源。在 HTML 流式响应开始前解析 catalog，以保持 404／503 状态。现有 JSON API 和独立 Core 渲染导出的契约保留；迁移不修改 Core 产物或测量语义。
+Node 监听器负责 Next 的准备与关闭。服务端组件通过请求级上下文获得现有 `CoreStudioCatalog`，不同 Studio 实例不能串读彼此的数据源。在 HTML 流式响应开始前解析 catalog，以保持 404／503 状态。JSON API 的契约保留；独立 Core 渲染导出随 HTML measure renderer 一并删除，`/measure` 不再有两份实现可能彼此漂移。迁移不修改 Core 产物或测量语义。
 
 `yarn build` 构建应用，并把生产资源复制到 `dist/studio/web`。发布包包含预构建 UI 和运行依赖；`omk studio` 沿用端口与目录参数，不在用户启动时构建前端。构建时关闭框架遥测。框架迁移需要通过隔离包安装、深层路由刷新、真实产物渲染以及监听器／SSE 清理验证。
 

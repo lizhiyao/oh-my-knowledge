@@ -101,6 +101,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       }
       if (!app) throw new Error('Studio UI is not started');
       request.headers['x-omk-studio-lang'] = new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh';
+      // 一级导航与页面组同源：裁掉兄弟路由的宿主不提供导航，否则链接指向自己没挂的页面。
+      request.headers['x-omk-studio-navigation'] = pageRoutes ? 'full' : 'none';
       const handler = app.getRequestHandler();
       if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
       else if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));

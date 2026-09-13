@@ -27,22 +27,18 @@ export interface ReportServerOptions {
   /**
    * 是否提供观测收件箱路由组（页面 /observe/inbox 与 API /api/observe-inbox/*）。默认 true。
    * 页面与 API 由同一个开关裁剪：Next 宿主据此决定是否接管 /observe/inbox，
-   * report-server 据此决定是否注册 API 路由组（#839 批次 0，收口后补齐页面侧）。
+   * report-server 据此决定是否注册 API 路由组。
    * 数据层 observability/inbox 与 CLI observe 子命令不受影响。
    */
   observationInbox?: boolean;
   /**
    * 是否挂载 Studio 观测／知识页面组（HTML 路由与 Next 侧对应的接管集合）。默认 true。
-   * 传 false 只保留独立报告宿主必需的 /health、/api/shutdown、/measure 与 /api/reports，
+   * 传 false 只保留评测预览必需的 /health、/api/shutdown 与 /api/reports：/measure 页面由
+   * Next 宿主提供，report-server 层不再持有对应的 HTML 路由。
    * 用于 CLI 评测预览宿主——它按设计只服务本次运行的 /measure 报告页。
+   * 壳层的一级导航由同一个开关裁剪：不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
    */
   studioPages?: boolean;
-  /**
-   * HTML 页壳层是否渲染「观测／评测／知识」一级导航。默认 true。
-   * 只挂 /measure 报告页的独立宿主传 false：它不提供这套兄弟路由，
-   * 渲染导航会把用户导向 404（与 core-run-renderer 的 studioNavigation 同一语义）。
-   */
-  studioNavigation?: boolean;
 }
 
 export interface ReportServer {
