@@ -40,9 +40,10 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const inbox = inboxRoutes && path === '/observe/inbox';
       const observe = pageRoutes && (inbox || path === '/observe' || path.startsWith('/observe/conversations/'));
       const knowledge = pageRoutes && (path === '/knowledge' || path.startsWith('/knowledge/skills/'));
+      const candidates = pageRoutes && path === '/knowledge/candidates';
       const health = pageRoutes && isHealthPath(path);
-      if (!measure && !observe && !knowledge && !health && !path.startsWith('/_next/')) return false;
-      if ((measure || observe || knowledge || health) && (request.method ?? 'GET') !== 'GET') {
+      if (!measure && !observe && !knowledge && !candidates && !health && !path.startsWith('/_next/')) return false;
+      if ((measure || observe || knowledge || candidates || health) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }

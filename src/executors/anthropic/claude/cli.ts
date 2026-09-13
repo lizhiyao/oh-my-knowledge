@@ -32,7 +32,7 @@ function applySkillIsolationToCliArgs(args: string[], allowedSkills: string[] | 
   args.push('--disable-slash-commands', '--disallowedTools', 'Skill');
 }
 
-export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort, abortSignal }: ExecutorInput): Promise<ExecResult> {
+export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, textOnly, effort, abortSignal }: ExecutorInput): Promise<ExecResult> {
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model,
     // 评测必须 bypass permission,否则 Bash / Edit / Write 等工具调用会卡在交互式确认。
     // sdk executor 用 options.permissionMode='bypassPermissions',cli 用此 flag 等价。
@@ -49,6 +49,10 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     args.push('--effort', effectiveEffort);
   }
   applySkillIsolationToCliArgs(args, allowedSkills);
+  if (textOnly) {
+    args.push('--tools', '', '--disallowedTools', '*', '--setting-sources', '',
+      '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--disable-slash-commands');
+  }
 
   const env = buildExecEnv(skillDir);
 

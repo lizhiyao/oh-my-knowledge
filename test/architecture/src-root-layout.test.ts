@@ -12,6 +12,7 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'eval-workflows',
   'evidence',
   'executors',
+  'knowledge',
   'knowledge-artifacts',
   'mcp',
   'observability',

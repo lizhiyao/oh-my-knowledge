@@ -62,6 +62,8 @@ flowchart TD
 
 ## 源码依赖模型
 
+`knowledge/` 拥有可复用知识的内容契约和纯接纳校验，区别于 `knowledge-artifacts/` 的载体生命周期。CLI 与 Studio 共享这些规则；来源读取、提炼调用与持久化由外层应用流程和 adapter 负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。目前该领域正在实现，完整用户入口以实际验收为准。
+
 `src` 的目录表达领域所有权，不机械套用一组全仓分层。维护时需要区分三类依赖：
 
 - **运行时实现边**必须保持无环。领域实现只能依赖它所消费的事实或更低层能力，不能借 facade、动态 import 或工具函数形成反向依赖。依赖图会保留指向 `contracts` 的 value import；已审计环按完整领域集合与环内边拓扑登记，新增任何返回路径都会使登记失效。TypeScript 与可执行 JavaScript 源码中的非字面量 dynamic import 也默认拒绝，必须按 importer、表达式与 canonical source digest 显式登记；

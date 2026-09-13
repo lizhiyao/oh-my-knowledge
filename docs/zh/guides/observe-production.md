@@ -125,3 +125,5 @@ omk sample --from-traces
 - [三阶段](../explanation/three-stage-workflow) —— observe 在闭环里的位置
 - [知识缺口信号规范](../specs/knowledge-gap-signal-spec) —— gap 信号是什么、怎么打分
 - [CLI 参考：`omk observe`](../reference/cli) —— 每个 flag 和子命令
+
+- [从日志提炼候选知识](./extract-knowledge)

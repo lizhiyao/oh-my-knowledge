@@ -12,6 +12,7 @@ import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS,
 import { RequestBodyError } from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
+import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
 
@@ -40,6 +41,7 @@ export function createStudioRequestHandler({
   studioPages = true,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
+  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
     catalog: conversationCatalog ?? createCodexConversationCatalog(),
@@ -136,6 +138,7 @@ export function createStudioRequestHandler({
       // 观测／知识页面组按宿主开关整体不注册：剩下的只有 /health、/api/shutdown 与 /api/reports 的 JSON 投影，
       // /measure 页面由 Next 宿主接管（Studio 页面组仍由默认宿主提供）。
       if (studioPages) {
+        if (await candidateRoutes(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;
         if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;

@@ -12,6 +12,30 @@ import { join } from 'node:path';
 import { withFileLock } from '../../src/shared/file-lock.js';
 
 describe('cross-process file lock', () => {
+  it('preserves an abandoned or malformed lock in conservative mode', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-conservative-'));
+    const path = join(dir, 'state.lock');
+    try {
+      writeFileSync(path, '{incomplete owner');
+      utimesSync(path, new Date(0), new Date(0));
+      assert.throws(() => withFileLock(path, () => assert.fail('must not acquire'), {
+        recoverStale: false, timeoutMs: 20, staleMs: 1, retryMs: 1,
+      }), /timed out waiting/);
+      assert.equal(existsSync(path), true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it('releases its lock when a transaction throws', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-throw-'));
+    const path = join(dir, 'state.lock');
+    try {
+      assert.throws(() => withFileLock(path, () => { throw new Error('transaction failed'); }, { recoverStale: false }), /transaction failed/);
+      assert.equal(existsSync(path), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it('releases its own lock after a successful transaction', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-'));
     const path = join(dir, 'state.lock');

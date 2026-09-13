@@ -125,3 +125,5 @@ It writes `.omk/observe/drafts/sample-drafts.json`. Treat the file as a review q
 - [The three stages](../explanation/three-stage-workflow) — observe's place in the loop
 - [Knowledge-gap signal spec](../specs/knowledge-gap-signal-spec) — what a gap signal is and how it's scored
 - [CLI reference: `omk observe`](../reference/cli) — every flag and subcommand
+
+- [Extract candidate knowledge from logs](./extract-knowledge)

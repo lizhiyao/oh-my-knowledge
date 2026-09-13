@@ -1,6 +1,11 @@
-import { describe, it } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { claudeCliExecutor } from '../../src/executors/anthropic/claude/cli.js';
+
+import { spawnWithSigintPropagation } from '../../src/executors/core/subprocess.js';
+vi.mock('../../src/executors/core/subprocess.js', () => ({
+  spawnWithSigintPropagation: vi.fn(() => ({ child: { stdin: { end() {} } }, done: Promise.resolve({ stdout: '', stderr: '' }) })),
+}));
 
 // claude CLI executor isolation 行为契约。
 //
@@ -36,6 +41,14 @@ describe('claude-cli executor — skill isolation degraded mode', () => {
     );
   });
 
-  // allowedSkills=[] 和 undefined 路径会真正 spawn claude CLI(不在 CI 装),无法
-  // 直接测;契约由 cliPartialAllowlistWarned 的 "首次 warn 不阻塞 spawn" 文档替代。
+  it('textOnly disables tools and discovery without changing ordinary executor calls', async () => {
+    await claudeCliExecutor({ model: 'test', prompt: 'fixture', lean: true, textOnly: true });
+    const args = vi.mocked(spawnWithSigintPropagation).mock.calls.at(-1)![1];
+    expect(args.slice(args.indexOf('--tools'), args.indexOf('--tools') + 2)).toEqual(['--tools', '']);
+    expect(args.slice(args.indexOf('--disallowedTools'), args.indexOf('--disallowedTools') + 2)).toEqual(['--disallowedTools', '*']);
+    expect(args).toContain('--strict-mcp-config');
+    expect(args).toContain('{"mcpServers":{}}');
+    await claudeCliExecutor({ model: 'test', prompt: 'fixture' });
+    expect(vi.mocked(spawnWithSigintPropagation).mock.calls.at(-1)![1]).not.toContain('--tools');
+  });
 });

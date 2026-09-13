@@ -15,6 +15,15 @@ import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 // 改用 -c approval_policy="never" config override 后,锁住别再退回去。
 
 describe('buildCodexArgs flag schema', () => {
+  it('restricts explicitly requested knowledge generation while leaving ordinary callers unchanged', () => {
+    const args = buildCodexArgs({ model: 'm', cwd: '/tmp/isolated', prompt: 'log data', textOnly: true });
+    assert.ok(args.includes('--strict-config'));
+    for (const setting of ['features.shell_tool=false', 'features.unified_exec=false', 'features.multi_agent=false', 'web_search="disabled"', 'tools.view_image=false']) {
+      assert.ok(args.includes(setting));
+      assert.equal(args[args.indexOf(setting) - 1], '-c');
+    }
+    assert.equal(buildCodexArgs({ model: 'm', prompt: 'ordinary' }).includes('features.shell_tool=false'), false);
+  });
   it('preserves the complete auxiliary invocation without enabling Trial policy', () => {
     const prompt = '---\nname: skill\n---\n正文';
     assert.deepEqual(buildCodexArgs({ model: 'm', cwd: '/tmp/a b', prompt }), [

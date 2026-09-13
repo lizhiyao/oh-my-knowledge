@@ -476,6 +476,52 @@ omk observe ingest <traceDir> [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--output-dir` `option`:输出目录，默认 .omk/observe/inbox（项目级，相对于 cwd；--global 写全局）。
 
+## omk observe knowledge
+
+从选定工作日志提炼、核对和维护候选知识。
+
+**用法:**
+
+```bash
+omk observe knowledge <operation> [flags]
+```
+
+**参数:**
+
+- `operation`(必填):操作：归档、生成、运行列表、恢复、列表、详情、保留、舍弃、修订、来源或删除来源。
+
+**Flags:**
+
+- `--end-record` `option`:最后一条记录序号，包含。
+- `--executor` `option`:生成执行器，沿用 OMK 的运行配置。
+- `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
+- `--id` `option`:知识身份；resume 时为运行身份。
+- `--input` `option`:revise：包含 title、content、entities、evidence 的 JSON 草稿。
+- `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--model` `option`:生成模型，沿用已配置模型。
+- `--reason` `option`:保留、舍弃或修订的理由。
+- `--revision` `option`:查看或处理的明确修订身份。
+- `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
+- `--snapshot` `option`:generate／source／delete-source：归档身份。
+- `--source` `option`:capture：一份 Codex JSONL 文件。
+- `--start-record` `option`:从零开始的非空记录序号，包含。
+- `--workspace` `option`:明确指定本地知识工作区；CLI 与 Studio 共用。
+
+**示例:**
+
+```bash
+omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl
+```
+
+```bash
+omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>
+```
+
+```bash
+omk observe knowledge list --workspace ./knowledge
+```
+
 ## omk observe show
 
 展开 observation inbox 中某条 item 的详情。

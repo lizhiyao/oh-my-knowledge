@@ -5,6 +5,7 @@ export interface CodexExecArguments {
   readonly prompt: string;
   readonly sandbox: 'read-only' | 'workspace-write';
   readonly strictConfig: boolean;
+  readonly textOnly?: boolean;
   readonly color?: 'never';
   readonly shellEnvironmentInheritance?: 'none';
   readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -18,6 +19,11 @@ export function buildCodexExecArguments(input: Readonly<CodexExecArguments>): st
     '--ignore-user-config',
     '--ignore-rules',
     ...(input.strictConfig ? ['--strict-config'] : []),
+    ...(input.textOnly ? [
+      '-c', 'features.shell_tool=false', '-c', 'features.unified_exec=false',
+      '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false',
+      '-c', 'web_search="disabled"', '-c', 'tools.view_image=false',
+    ] : []),
     '--skip-git-repo-check',
     ...(input.color === undefined ? [] : ['--color', input.color]),
     '--sandbox', input.sandbox,

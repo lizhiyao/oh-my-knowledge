@@ -37,6 +37,8 @@ export interface ExecutorInput {
    * 评测调用(eval / judge)绝不能开 lean,否则 LLM 调不了工具。
    */
   lean?: boolean;
+  /** Explicit restricted-generation policy implemented by the Codex and Claude CLI adapters. */
+  textOnly?: boolean;
   /**
    * Reasoning effort:控制扩展思考(extended thinking)的预算。
    *   - 'low': 几乎不思考,直接出答案。最快最便宜,适合结构化任务 / 生成场景。

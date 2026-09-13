@@ -41,6 +41,13 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
+  ...['observability/', 'executors/', 'cli/', 'studio/', 'evidence/', 'eval-workflows/', 'knowledge-artifacts/'].map((to) => ({
+    from: 'knowledge/', to,
+    reason: '知识内容和接纳规则保持宿主无关；来源、执行器与存储由应用层注入。',
+  })),
+  ...['eval-core/', 'eval-runtime/', 'shared/'].map((from) => ({
+    from, to: 'knowledge/', reason: '知识提炼不属于测量内核或跨领域叶子。',
+  })),
   ...['cli/lib/run-core-evaluation.ts', 'dsh-plugin/core-command.ts'].flatMap((from) => [
     'eval-workflows/orchestration/',
     'eval-workflows/input-compilation/',
@@ -510,6 +517,17 @@ function collectSharedLeafViolations(): string[] {
 }
 
 describe('架构边界守门', () => {
+  it('knowledge 纯逻辑只依赖自身与 Schema 校验库', () => {
+    const violations: string[] = [];
+    for (const file of listTsFiles(join(SRC_DIR, 'knowledge'))) {
+      for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'))) {
+        const target = resolveSpecifier(file, specifier);
+        if (specifier === 'zod' || (target && toSrcRelative(target).startsWith('knowledge/'))) continue;
+        violations.push(`${toSrcRelative(file)} → ${specifier}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
   it('Runtime Adapter provider 保持内聚目录与单向 shared 依赖', () => {
     const rootSourceFiles = readdirSync(RUNTIME_ADAPTERS_DIR, { withFileTypes: true })
       .filter((entry) => entry.isFile()
