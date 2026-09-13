@@ -4,9 +4,7 @@
 
 ## `oh-my-knowledge`
 
-The recommended ordinary-user entry. It exposes exactly the same canonical Runtime façade as `oh-my-knowledge/eval-runtime`: `evaluate`, `prepareEvaluation`, `evaluateSeries`, `prepareEvaluationSeries`, `executeEvaluation`, `scoreExecutedEvaluation`, `rescore`, `reanalyze`, `redecide`, `assessComparability`, `saveEvaluationResult`, `loadEvaluationResult`, `saveExecutedEvaluation`, `loadExecutedEvaluation`, `checkRuntime`, `checkExecutor`, `checkContentStore`, their stable errors, their public model types, and the imperative builders that assemble Definitions, Policies, and Evaluators (such as `createExactMatchDefinition`, `createMeasurementPolicy`, and `createRubricJudgeKit`). Core engines, registrations, and adapters are intentionally absent.
-
-## `oh-my-knowledge/eval-runtime`
+The recommended entry for all user-facing capabilities: the canonical Runtime façade (`evaluate`, `prepareEvaluation`, `evaluateSeries`, `prepareEvaluationSeries`, `executeEvaluation`, `scoreExecutedEvaluation`, `rescore`, `reanalyze`, `redecide`, `assessComparability`, `saveEvaluationResult`, `loadEvaluationResult`, `saveExecutedEvaluation`, `loadExecutedEvaluation`, `checkRuntime`, `checkExecutor`, `checkContentStore`), their stable errors, their public model types, the imperative builders that assemble Definitions, Policies, and Evaluators (such as `createExactMatchDefinition`, `createMeasurementPolicy`, and `createRubricJudgeKit`), Runtime assembly (`createEvaluationRuntime`), custom ports (adapters), staged runs (`runEvaluation`), and versioned wire schemas. Core engines are intentionally absent; import them from `oh-my-knowledge/eval-core`.
 
 The canonical API for application developers:
 
@@ -54,6 +52,47 @@ The canonical API for application developers:
 | `createRubricJudgeEvaluator` | Build a low-level Rubric Evaluator port. |
 | `createRubricJudgeEvaluatorRegistration` | Compose low-level Rubric bindings. |
 | `rubricJudgeInstrumentId` | Derive the built-in instrument ID. |
+| `runEvaluation` | Run an already assembled Core Definition, Runtime, and Policy. |
+| `HostEvaluationEventConsumptionError` | Event-consumption failure for `runEvaluation`; retains the underlying `cause`. |
+| `createEvaluationRuntime` | Assemble Executor／Evaluator registrations and Core built-ins. |
+| `EvaluationRuntimeAssemblyError` | Stable registration or resolution failure. |
+| `createInvokeExecutorIdentity` | Declare an `omk.invoke/v1` Executor identity. |
+| `createSessionExecutorIdentity` | Declare an isolated `omk.session/v1` Executor identity. |
+| `createRuntimeIdentity` | Declare another host Runtime identity. |
+| `createJsonExecutorAdapter` | Adapt a typed JSON callback to a Core Executor. |
+| `createJsonSessionExecutorAdapter` | Adapt a typed, per-trial JSON session lifecycle to a Core Executor. |
+| `createSubprocessCommandExecutor` | Declare an Executor that runs every attempt in a child process over `omk.subprocess-command-exchange/v1`. |
+| `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` | Exchange schema version stamped into every subprocess request and required in every response. |
+| `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` | Default per-attempt cap on child output bytes before the attempt fails closed. |
+| `runExecutorConformance` | Run the low-level Executor conformance probe. |
+| `assertExecutorConformance` | Throw when a conformance result failed. |
+| `RuntimeConformanceError` | Stable conformance assertion error. |
+| `createNodeEvaluationClock` | Supply the default Node.js Core clock. |
+| `INVOKE_JSON_INPUT_SCHEMA` | Default JSON input schema identity. |
+| `INVOKE_JSON_OUTPUT_SCHEMA` | Default JSON output schema identity. |
+| `INVOKE_JSON_TRACE_SCHEMA` | Default JSON trace schema identity. |
+| `SESSION_JSON_INPUT_SCHEMA` | Default session JSON input schema identity. |
+| `SESSION_JSON_OUTPUT_SCHEMA` | Default session JSON output schema identity. |
+| `SESSION_JSON_TRACE_SCHEMA` | Default session JSON trace schema identity. |
+| `createExecutorFnAdapter` | Bridge the legacy `ExecutorFn`. |
+| `createSameProcessExecutorAdapter` | Implement explicit in-process Executor lifecycle SPI. |
+| `createSameProcessEvaluatorAdapter` | Implement explicit in-process Evaluator lifecycle SPI. |
+| `RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID` | Built-in Rubric Judge Evaluator implementation ID. |
+| `RUBRIC_JUDGE_BINDINGS` | Built-in Rubric Judge bindings. |
+| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION` | Rubric Judge instrument schema version. |
+| `RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION` | Rubric Judge context schema version. |
+| `RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION` | Rubric Judge evidence schema version. |
+| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA` | Rubric Judge instrument schema. |
+| `RUBRIC_JUDGE_CONTEXT_SCHEMA` | Rubric Judge context schema. |
+| `RUBRIC_JUDGE_EVIDENCE_SCHEMA` | Rubric Judge evidence schema. |
+| `SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION` | Source-neutral trace schema version. |
+| `SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR` | Source-neutral trace schema descriptor. |
+| `SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR` | Source-neutral trace without mocks schema descriptor. |
+| `SourceNeutralTraceSchema` | Source-neutral trace schema. |
+| `SourceNeutralTraceWithoutMocksSchema` | Source-neutral trace without mocks schema. |
+| `SourceNeutralMockStatsSchema` | Source-neutral mock stats schema. |
+| `parseSourceNeutralTrace` | Parse a source-neutral trace. |
+| `attachSourceNeutralMockStats` | Attach source-neutral mock stats. |
 
 Content storage conformance uses `ContentStoreCheckInput`, `ContentStoreCheckResult`, and `ContentStoreConformanceCheck`.
 
@@ -68,6 +107,8 @@ Evaluation-cache, Custom Evaluator, and Judge probes include concurrent canonica
 Mock interception types are `MockInterceptionDescriptor`, `MockInterceptionInput`, `MockInterceptionPlan`, `MockInterceptionProvider`, `MockInterceptionOpenRequest`, `MockInterceptionLease`, `MockInterceptionAccess`, `MockInterceptionRequest`, and `MockInterceptionDecision`.
 
 Builder types are `ExactMatchDefinitionBuilderInput`, `ExactMatchTarget`, `PairedComparisonDefinitionBuilderInput`, `EvaluationRuntimeTarget`, `MeasurementPolicyBuilderInput`, `MeasurementStagePolicyInput`, `MeasurementRetryPolicyInput`, `MeasurementRetryBackoffInput`, `MeasurementFailurePolicyInput`, `MeasurementEvidencePolicyInput`, `MeasurementEventDeliveryInput`, `MeasurementBudgetPolicyInput`, `MeasurementBudgetScopeInput`, `MeasurementAttemptBudgetScopeInput`, `MeasurementRunBudgetScopeInput`, `MeasurementCachePolicyInput`, `MeasurementProviderCostLimitInput`, `CreateExactMatchEvaluatorInput`, `CreateRubricJudgeKitInput`, `RubricJudgeKit`, `CreateRubricJudgeEvaluatorInput`, `RubricJudgeEvaluatorBinding`, and `RubricJudgeEvaluatorDefinitionBuilderInput`.
+
+Runtime assembly types are `RunEvaluationInput`, `EvaluationEventObserver`, `CreateEvaluationRuntimeInput`, `EvaluationRuntimeSupportPorts`, and `RuntimePortRegistration`. Identity and JSON adapter types are `InvokeExecutorIdentityDeclaration`, `SessionExecutorIdentityDeclaration`, `RuntimeIdentityDeclaration`, `CreateJsonExecutorAdapterInput`, `CreateJsonSessionExecutorAdapterInput`, `JsonExecutorInvocation`, `JsonExecutorInvocationResult`, `JsonSessionExecutorContext`, `JsonSessionExecutorAttempt`, `JsonExecutorSession`, and `RuntimeValueParser`. Judge invocation types are `OmkLlmJudgeEffort`, `OmkLlmJudgeInvocationPort`, `OmkLlmJudgeInvocationRequest`, and `OmkLlmJudgeInvocationResult`. Conformance types are `ExecutorConformanceProbeInput`, `ExecutorConformanceResult`, and `RuntimeConformanceCheck`. Legacy and lifecycle SPI types are `CreateExecutorFnAdapterInput`, `ExecutorFn`, `ExecutorInput`, `ExecResult`, `ExecutorFnInputMapper`, `ExecutorFnResultMapper`, `CreateSameProcessExecutorAdapterInput`, `CreateSameProcessEvaluatorAdapterInput`, `SameProcessExecutorImplementation`, `SameProcessEvaluatorImplementation`, `SameProcessResourceLeaseAccess`, `SameProcessRunScope`, and `SameProcessOperationScope`. Subprocess command adapter types are `CreateSubprocessCommandExecutorInput`, `SubprocessCommandConfiguration`, and `SubprocessCommandValueParser`. Rubric wire types are `RubricJudgeInstrument`, `RubricJudgeRuntimeConfig`, `RubricJudgeConfig`, `RubricJudgeCriterion`, and `RubricJudgeTracePolicy`. Trace types are `SourceNeutralTrace` and `SourceNeutralMockStats`.
 
 Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, `VariantExecution`, `RuntimeContext`, `AllowedToolsInput`, `AllowedToolsPlan`, `McpConfigDescriptor`, `McpConfigInput`, `McpConfigPlan`, `McpConfigProvider`, `McpConfigOpenRequest`, `McpConfigLease`, `McpConfigAccess`, `WorkspaceDescriptor`, `WorkspaceInput`, `WorkspacePlan`, `WorkspaceProvider`, `WorkspaceOpenRequest`, `WorkspaceLease`, `WorkspaceAccess`, `ContentDescriptor`, `ContentValue`, `ContentStoreRequest`, `ContentStore`, `ContentResolver`, `ExecutionCache`, `ExecutionCacheEntry`, `EvaluationCache`, `EvaluationCacheEntry`, `ExecutorIdentityVerifier`, `ExecutorIdentityVerificationRequest`, `ExecutorIdentityVerification`, `EvaluationInfrastructure`, `Dataset`, `Sample`, `EvaluationExecutor`, `Executor`, `InvokeExecutor`, `SessionExecutor`, `ExecutorSessionContext`, `ExecutorSessionAttempt`, `ExecutorSession`, `ExecutorCapabilities`, `ExecutorInvocation`, `ExecutorResult`, `Evaluator`, `ExactMatchEvaluator`, `RetrievalEvaluator`, `RetrievalMetricIds`, `AbstentionEvaluator`, `AbstentionMetricIds`, `ToolTrajectoryEvaluator`, `ToolTrajectoryMatchMode`, `RubricJudgeEvaluator`, `RubricJudgeMember`, `RubricJudgeAggregation`, `CustomEvaluator`, `CustomEvaluatorInvocation`, `CustomEvaluatorResult`, `CustomEvaluatorBinding`, `CustomEvaluatorContent`, `Metric`, `Judge`, `Rubric`, `Experiment`, `SamplingDesign`, `AnalysisRequest`, `CohortFilter`, `Comparison`, `ComparisonFamilyMember`, `CompositeMetricComponent`, `CompositeAggregation`, `Decision`, `FamilyDecisionCriterion`, `Policy`, `StagePolicy`, `RetryPolicy`, `RetryBackoff`, `FailurePolicy`, `CachePolicy`, `EvidencePolicy`, `BudgetPolicy`, `BudgetScope`, `RunBudgetScope`, `AttemptBudgetScope`, `ProviderCostLimit`, `EvaluateInput`, `EvaluationRunOptions`, `EvaluationResult`, `PreparedEvaluation`, `PreparedEvaluationPlan`, `RuntimeCapabilityResolution`, `EvaluationWorkEstimate`, `EventObserver`, `EvaluationEventWriter`, `Clock`, `AssessComparabilityInput`, `EvaluationComparabilitySubject`, and `EvaluationComparabilityAssessment`. Series uses `EvaluationSeriesInput`, `EvaluationSeriesStability`, `EvaluationSeriesRunOptions`, `PreparedEvaluationSeries`, `EvaluationSeriesWorkEstimate`, `EvaluationSeriesMemberResult`, `EvaluationSeriesResult`, `EvaluationSeriesStabilityResult`, and `RunStabilityValue`. Executor behavioral checks use `ExecutorCheckInput`, `ExecutorCheckResult`, and `RuntimeConformanceCheck`.
 
@@ -210,52 +251,6 @@ The example also scopes correct-abstention analysis to `unanswerable`, false-abs
 
 Dataset preparation and the forbidden-ID helper are example code, not additional OMK public APIs. Callers may replace them without changing the built-in abstention instrument. This release adds a composable scoring capability rather than prescribing a seven-metric suite.
 
-## `oh-my-knowledge/eval-runtime/advanced`
-
-Low-level host assembly and extension SPI. Applications should prefer `evaluate()`.
-
-| Export | Purpose |
-|---|---|
-| `runEvaluation` | Run an already assembled Core Definition, Runtime, and Policy. |
-| `HostEvaluationEventConsumptionError` | Event-consumption failure for `runEvaluation`; retains the underlying `cause`. |
-| `createEvaluationRuntime` | Assemble Executor／Evaluator registrations and Core built-ins. |
-| `EvaluationRuntimeAssemblyError` | Stable registration or resolution failure. |
-| `createInvokeExecutorIdentity` | Declare an `omk.invoke/v1` Executor identity. |
-| `createSessionExecutorIdentity` | Declare an isolated `omk.session/v1` Executor identity. |
-| `createRuntimeIdentity` | Declare another host Runtime identity. |
-| `createJsonExecutorAdapter` | Adapt a typed JSON callback to a Core Executor. |
-| `createJsonSessionExecutorAdapter` | Adapt a typed, per-trial JSON session lifecycle to a Core Executor. |
-| `createSubprocessCommandExecutor` | Declare an Executor that runs every attempt in a child process over `omk.subprocess-command-exchange/v1`. |
-| `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` | Exchange schema version stamped into every subprocess request and required in every response. |
-| `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` | Default per-attempt cap on child output bytes before the attempt fails closed. |
-| `runExecutorConformance` | Run the low-level Executor conformance probe. |
-| `assertExecutorConformance` | Throw when a conformance result failed. |
-| `RuntimeConformanceError` | Stable conformance assertion error. |
-| `createNodeEvaluationClock` | Supply the default Node.js Core clock. |
-| `INVOKE_JSON_INPUT_SCHEMA` | Default JSON input schema identity. |
-| `INVOKE_JSON_OUTPUT_SCHEMA` | Default JSON output schema identity. |
-| `INVOKE_JSON_TRACE_SCHEMA` | Default JSON trace schema identity. |
-| `SESSION_JSON_INPUT_SCHEMA` | Default session JSON input schema identity. |
-| `SESSION_JSON_OUTPUT_SCHEMA` | Default session JSON output schema identity. |
-| `SESSION_JSON_TRACE_SCHEMA` | Default session JSON trace schema identity. |
-| `createExecutorFnAdapter` | Bridge the legacy `ExecutorFn`. |
-| `createSameProcessExecutorAdapter` | Implement explicit in-process Executor lifecycle SPI. |
-| `createSameProcessEvaluatorAdapter` | Implement explicit in-process Evaluator lifecycle SPI. |
-
-Run and assembly types are `RunEvaluationInput`, `EvaluationEventObserver`, `CreateEvaluationRuntimeInput`, `EvaluationRuntimeSupportPorts`, and `RuntimePortRegistration`. Identity and JSON adapter types are `InvokeExecutorIdentityDeclaration`, `SessionExecutorIdentityDeclaration`, `RuntimeIdentityDeclaration`, `CreateJsonExecutorAdapterInput`, `CreateJsonSessionExecutorAdapterInput`, `JsonExecutorInvocation`, `JsonExecutorInvocationResult`, `JsonSessionExecutorContext`, `JsonSessionExecutorAttempt`, `JsonExecutorSession`, `RuntimeValueParser`, `AllowedToolsInput`, `AllowedToolsPlan`, `WorkspaceDescriptor`, `WorkspaceInput`, `WorkspacePlan`, `WorkspaceProvider`, `WorkspaceOpenRequest`, `WorkspaceLease`, and `WorkspaceAccess`. Judge invocation types are `OmkLlmJudgeEffort`, `OmkLlmJudgeInvocationPort`, `OmkLlmJudgeInvocationRequest`, and `OmkLlmJudgeInvocationResult`. Conformance types are `ExecutorConformanceProbeInput`, `ExecutorConformanceResult`, and `RuntimeConformanceCheck`. Legacy and lifecycle SPI types are `CreateExecutorFnAdapterInput`, `ExecutorFn`, `ExecutorInput`, `ExecResult`, `ExecutorFnInputMapper`, `ExecutorFnResultMapper`, `CreateSameProcessExecutorAdapterInput`, `CreateSameProcessEvaluatorAdapterInput`, `SameProcessExecutorImplementation`, `SameProcessEvaluatorImplementation`, `SameProcessResourceLeaseAccess`, `SameProcessRunScope`, and `SameProcessOperationScope`.
-
-Subprocess command adapter types are `CreateSubprocessCommandExecutorInput`, `SubprocessCommandConfiguration`, and `SubprocessCommandValueParser`. The child reads one canonical JSON request from stdin and writes one `omk.subprocess-command-exchange/v1` document to stdout. The adapter inherits only `PATH` plus the declared environment, caps child output bytes, terminates the child on the declared deadline or on cancellation, and never surfaces child stderr as evidence. Declared parsers must validate without transforming: a truncated, over-deadline, cancelled, schema-invalid, or transformed exchange fails closed with a stable `OMK_SUBPROCESS_COMMAND_*` code, while a payload the declaration itself rejects fails closed with `EVAL_RUNTIME_EXECUTOR_INPUT_INVALID` or `EVAL_RUNTIME_EXECUTOR_TARGET_CONFIG_INVALID` before any spawn. The command joins the Runtime identity through a `command` fingerprint facet, so changing the executable, arguments, environment, working directory, deadline, or output cap changes identity and therefore comparability. This exchange deliberately carries no run, trial, attempt, isolation-key, or execution-plan coordinate and cannot lease workspace overlays, native MCP config, or mock interception; an invocation carrying one fails closed with `OMK_SUBPROCESS_COMMAND_ISOLATION_UNSUPPORTED`. Plan-bound subprocess isolation with leased resources remains the sealed host-seam protocol `omk.custom-executor-exchange/v1`.
-
-Advanced adapter types additionally expose `McpConfigAccess`, `McpConfigDescriptor`, `McpConfigInput`, `McpConfigLease`, `McpConfigOpenRequest`, `McpConfigPlan`, `McpConfigProvider`, `MockInterceptionAccess`, `MockInterceptionDecision`, `MockInterceptionDescriptor`, `MockInterceptionLease`, `MockInterceptionOpenRequest`, `MockInterceptionProvider`, and `MockInterceptionRequest`.
-
-## `oh-my-knowledge/eval-runtime/contracts`
-
-Versioned wire contracts for adapter and trace authors:
-
-- Rubric identities and schemas: `RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID`, `RUBRIC_JUDGE_BINDINGS`, `RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION`, `RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION`, `RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION`, `RUBRIC_JUDGE_INSTRUMENT_SCHEMA`, `RUBRIC_JUDGE_CONTEXT_SCHEMA`, and `RUBRIC_JUDGE_EVIDENCE_SCHEMA`.
-- Rubric types: `RubricJudgeInstrument`, `RubricJudgeRuntimeConfig`, `RubricJudgeConfig`, `RubricJudgeCriterion`, and `RubricJudgeTracePolicy`.
-- Trace values: `SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION`, `SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR`, `SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR`, `SourceNeutralTraceSchema`, `SourceNeutralTraceWithoutMocksSchema`, `SourceNeutralMockStatsSchema`, `parseSourceNeutralTrace`, and `attachSourceNeutralMockStats`.
-- Trace types: `SourceNeutralTrace` and `SourceNeutralMockStats`.
 
 ## Dispatch contract
 
@@ -263,7 +258,7 @@ Versioned wire contracts for adapter and trace authors:
 
 | Dispatched content | Carrier | Mapping |
 |---|---|---|
-| Evaluation cases | `omk.eval-sample-set/v3` through `oh-my-knowledge/eval-samples` (`resolveEvalSampleJsonSchema`) | `EvaluateInput.dataset.samples` |
+| Evaluation cases | `omk.eval-sample-set/v3` (schema file resolved via `oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json`) | `EvaluateInput.dataset.samples` |
 | Serializable measurement declarations | Published Core JSON Schemas under `oh-my-knowledge/eval-core/schemas/v1..v5/*`, resolved by file name with `resolveEvaluationCoreJsonSchema`; each file name maps to exactly one version directory, e.g. `evaluation-definition.schema.json` in `v5` and `measurement-policy.schema.json` in `v1` | `analyses`, `decision`, `policy`, `experiment`, `comparisons` |
 | Executor / evaluator / judge implementations | Registry id + version + config + config digest; never code | Resolved from the host registry, then injected into `variants` / `evaluators` |
 
@@ -271,7 +266,7 @@ Versioning rules: the dispatched contract carries its own `schemaVersion`, and a
 
 ## Migration
 
-The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. The general façade also replaces the earlier fixed `{ executor, control, treatment, evaluator }` input with `{ variants, evaluators, comparisons, analyses }`; Executor and config now live under each Variant's `execution`, Sampling Design alone selects paired or independent semantics, and every summary or interval is an explicit named `analyses[]` request. Remove `comparisonKind` and replace the redundant `analysis: { analyses: [...] }` wrapper with `analyses: [...]`; neither old shape is read or detected. Move `runId`, `signal`, `onEvent`, `clock`, `annotations`, `summaries`, and `eventBufferCapacity` from the declaration into the optional second `EvaluationRunOptions` argument; omitted `runId` is generated. A Decision optionally selects one interval or one explicitly bounded comparison family by `analysisId`. Rubric evaluation requires `judges + aggregation`; the singular `judge + model + effort` shape is not accepted. Policy fields are grouped under `execution`, `evaluation`, `failure`, `budget`, and `evidence`; the earlier flat concurrency, timeout, invocation, failure, and classification fields are not accepted. There is no 0.x compatibility reader, old overload, or legacy-shape detector. Move low-level imports from `oh-my-knowledge/eval-runtime` to `oh-my-knowledge/eval-runtime/advanced`; wire schemas remain at `/contracts`. `createEvaluationEngine` has one meaning and one home: import the full staged engine from `oh-my-knowledge/eval-core`; use advanced `runEvaluation` when a preassembled Runtime, Definition, and Policy only need a standard complete run. New hosts should import `evaluate`, `prepareEvaluation`, or `checkExecutor` from the package root. The `/eval-runtime` entry remains the explicit equivalent for consumers that prefer domain-qualified imports.
+The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. The general façade also replaces the earlier fixed `{ executor, control, treatment, evaluator }` input with `{ variants, evaluators, comparisons, analyses }`; Executor and config now live under each Variant's `execution`, Sampling Design alone selects paired or independent semantics, and every summary or interval is an explicit named `analyses[]` request. Remove `comparisonKind` and replace the redundant `analysis: { analyses: [...] }` wrapper with `analyses: [...]`; neither old shape is read or detected. Move `runId`, `signal`, `onEvent`, `clock`, `annotations`, `summaries`, and `eventBufferCapacity` from the declaration into the optional second `EvaluationRunOptions` argument; omitted `runId` is generated. A Decision optionally selects one interval or one explicitly bounded comparison family by `analysisId`. Rubric evaluation requires `judges + aggregation`; the singular `judge + model + effort` shape is not accepted. Policy fields are grouped under `execution`, `evaluation`, `failure`, `budget`, and `evidence`; the earlier flat concurrency, timeout, invocation, failure, and classification fields are not accepted. There is no 0.x compatibility reader, old overload, or legacy-shape detector. All user-facing capabilities now live at the package root: the canonical façade, Runtime assembly, builders, adapters, and wire schemas. `createEvaluationEngine` has one meaning and one home: import the full staged engine from `oh-my-knowledge/eval-core`; use `runEvaluation` from the package root when a preassembled Runtime, Definition, and Policy only need a standard complete run. New hosts should import `evaluate`, `prepareEvaluation`, or `checkExecutor` from the package root.
 
 Budget limits now live under explicit scopes: replace `budget.maxInvocations` with `budget.run.maxInvocations`. The old form is neither read nor detected.
 

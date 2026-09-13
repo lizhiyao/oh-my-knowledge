@@ -45,9 +45,8 @@ function importsFrom(source: string): string[] {
 }
 
 function isForbiddenWorkflowImport(specifier: string): boolean {
-  const packageEntry = 'oh-my-knowledge/eval-runtime';
-  if (specifier === packageEntry || specifier.startsWith(`${packageEntry}/`)) return true;
-  return /(?:^|\/)eval-runtime(?:\/(?:index|advanced|evaluate)(?:\.[cm]?[jt]sx?)?)?$/.test(
+  if (specifier === 'oh-my-knowledge') return true;
+  return /(?:^|\/)eval-runtime(?:\/(?:index|evaluate)(?:\.[cm]?[jt]sx?)?)?$/.test(
     specifier,
   );
 }
@@ -110,36 +109,34 @@ describe('eval-runtime façade architecture guard', () => {
     expect(violations).toEqual([]);
   });
 
-  it('recognizes package, directory, façade, and advanced entry imports', () => {
+  it('recognizes package, directory, and façade entry imports', () => {
     const forbidden = [
-      'oh-my-knowledge/eval-runtime',
-      'oh-my-knowledge/eval-runtime/advanced',
-      'oh-my-knowledge/eval-runtime/contracts',
+      'oh-my-knowledge',
       '../../eval-runtime',
       '../../eval-runtime/index.js',
       '../../eval-runtime/index.ts',
       '../../eval-runtime/evaluate.js',
-      '../../eval-runtime/advanced.js',
+      '../../eval-runtime/index.js',
     ];
     const allowed = [
       '../../eval-runtime/runtime.js',
       '../../eval-runtime/identity.js',
-      '../../eval-runtime/contracts/index.js',
+      '../../eval-runtime/judges/rubric-contracts.js',
       '../../eval-core/contracts/index.js',
     ];
 
     expect(forbidden.filter((specifier) => !isForbiddenWorkflowImport(specifier))).toEqual([]);
     expect(allowed.filter(isForbiddenWorkflowImport)).toEqual([]);
     expect(importsFrom(`
-      import 'oh-my-knowledge/eval-runtime';
+      import 'oh-my-knowledge';
       import type { EvaluateInput } from '../../eval-runtime/index.js';
       export { evaluate } from '../../eval-runtime/evaluate.js';
-      type Lazy = import('../../eval-runtime/advanced.js').RunEvaluationInput;
+      type Lazy = import('../../eval-runtime/index.js').RunEvaluationInput;
       const load = () => import('../../eval-runtime');
     `)).toEqual(forbidden.filter((_specifier, index) => index < 1).concat([
       '../../eval-runtime/index.js',
       '../../eval-runtime/evaluate.js',
-      '../../eval-runtime/advanced.js',
+      '../../eval-runtime/index.js',
       '../../eval-runtime',
     ]));
   });

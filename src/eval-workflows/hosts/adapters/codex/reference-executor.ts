@@ -359,7 +359,7 @@ async function runAttempt(
  * (`content === null`, such as a directory Skill). Retry, timeout and budget policy stay with the
  * Runtime through `invocation.signal`; vendor-side account and network isolation remain the host's
  * responsibility. Verify the supported surface with `checkExecutor` from
- * `oh-my-knowledge/eval-runtime`.
+ * `oh-my-knowledge`.
  */
 export async function createCodexCliReferenceExecutor(
   input: Readonly<CreateCodexCliReferenceExecutorInput>,

@@ -66,11 +66,11 @@ omk eval --dry-run --samples eval-samples.yaml \
 
 公开 API 仅支持 ESM，要求 Node.js 22 或更高版本。import 必须经过 package export map，`oh-my-knowledge/dist/*` 属于私有路径。
 
-- 普通 `evaluate()` 与 `checkExecutor()` façade 从 `oh-my-knowledge` 导入；显式子路径 `oh-my-knowledge/eval-runtime` 与其等价。
+- 普通 `evaluate()` 与 `checkExecutor()` façade、Runtime 装配、builder 与生命周期 SPI 均从 `oh-my-knowledge` 导入。
 - 将固定的 `{ executor, control, treatment, evaluator }` 调用改为 `{ dataset, variants, evaluators, comparisons, analyses, experiment, policy }`。执行器与配置绑定在 `variant.execution` 下，抽样设计位于 `experiment.sampling`；每项统计请求放在 `analyses[]`，可选 `decision` 通过 `analysisId` 选择分析结果。运行选项如 `runId`、`signal`、`onEvent` 放在第二个参数；旧结构不再读取。
 - 原包根 Core import 迁移到 `oh-my-knowledge/eval-core`；Engine 构造、分阶段执行、admission、verification、comparability、Series 与 Core JSON Schema 均从该子路径导入。
-- `createEvaluationEngine` 只从 `oh-my-knowledge/eval-core` 导入；`eval-runtime/advanced` 已移除含义模糊的窄化重导出。已装配输入只需一次标准完整运行时，在 advanced 使用 `runEvaluation`。
-- eval-samples、projection、Studio、MCP 与 DSH 集成分别使用 `oh-my-knowledge/eval-samples`、`oh-my-knowledge/projections`、`oh-my-knowledge/studio`、`oh-my-knowledge/mcp` 与 `oh-my-knowledge/dsh-plugin`。
+- `createEvaluationEngine` 只从 `oh-my-knowledge/eval-core` 导入。已装配输入只需一次标准完整运行时，从 `oh-my-knowledge` 使用 `runEvaluation`。
+- MCP 与 DSH 集成分别使用 `oh-my-knowledge/mcp` 与 `oh-my-knowledge/dsh-plugin`。
 - 同步 `require()` 改为 ESM import 或动态 `import()`。
 - Engine Runtime 装配改用 binding resolver，一次返回 resolution 与配置好的 port。
 - Series Analysis 与 Decision Runtime 通过 `openRun()` 打开 run-scoped session，并用 `dispose()` 释放；Series run 必须提供 `runId`，结果是带 terminal status 的 union。

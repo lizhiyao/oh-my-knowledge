@@ -8,7 +8,7 @@ If you only call `evaluate()` inside a single service, start with the [Node.js s
 
 - **The host owns effects; Core owns measurement semantics.** Credentials, networking, storage, queues, and tenant isolation are all implemented by the platform host. OMK Core only expresses versionable measurement contracts and deterministic transformations; it never touches those effects.
 - **Dispatch, queues, retries, resumption, and tenancy are OMK non-goals.** OMK does not provide task dispatch, cross-process queues, platform-level retries, checkpoint resumption, or multi-tenant isolation — build those in the platform. The retry inside `policy` is only attempt-level retry within one sealed measurement contract, not task rescheduling.
-- **The canonical Report is not pluggable.** Report field semantics are the anchor of cross-version comparability and cannot be replaced with host-specific structures. Custom reports have exactly two paths: derive views from canonical results via `oh-my-knowledge/projections`, or put host metadata into the Report's existing host slots — `summaries` and `annotations` are passed as run options and land in the Report verbatim, and `extensions` is a Report field of its own.
+- **The canonical Report is not pluggable.** Report field semantics are the anchor of cross-version comparability and cannot be replaced with host-specific structures. Custom reports put host metadata into the Report's existing host slots — `summaries` and `annotations` are passed as run options and land in the Report verbatim, and `extensions` is a Report field of its own.
 - **Derived views never overwrite original evidence.** The platform may cache derived views to speed up dashboards, but the original results and evidence chain must be preserved intact, and every derived view must be regenerable from that evidence at any time.
 
 ## Dispatch mapping contract
@@ -17,7 +17,7 @@ If you only call `evaluate()` inside a single service, start with the [Node.js s
 
 | Dispatched content | Carrier | Execution-side mapping |
 |---|---|---|
-| Evaluation cases | Published schema `omk.eval-sample-set/v3` (entry `oh-my-knowledge/eval-samples`; resolve the schema file with `resolveEvalSampleJsonSchema`) | Compiled into `EvaluateInput.dataset.samples` |
+| Evaluation cases | Published schema `omk.eval-sample-set/v3` (resolve the schema file via `oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json`) | Compiled into `EvaluateInput.dataset.samples` |
 | analyses / decision / policy / experiment / comparisons and other serializable measurement declarations | Published Core JSON Schemas (`oh-my-knowledge/eval-core/schemas/v1..v5/*`), resolved by file name at runtime with `resolveEvaluationCoreJsonSchema`; each file name maps to exactly one version directory, e.g. `evaluation-definition.schema.json` in `v5` and `measurement-policy.schema.json` in `v1` | Mapped to `EvaluateInput.analyses`, `decision`, `policy`, `experiment`, `comparisons` |
 | executor / evaluator / judge / report logic | Dispatch only a "registry id + config + version digest"; never dispatch code | The execution side resolves the implementation from its own registry by id (next section) and injects it into `variants` / `evaluators` |
 
@@ -38,7 +38,7 @@ import type {
   CustomEvaluator,
   EvaluationExecutor,
   Judge,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge';
 
 /** Published invoke/session Executor union — no need to assemble your own. */
 type DispatchedExecutor = EvaluationExecutor<JsonValue, JsonValue | undefined, JsonValue>;
@@ -82,76 +82,11 @@ Registry requirements:
 
 - The registration key is `registryId@version`; any behavior-affecting change (config shape, dependency upgrade, prompt edit) must bump the version.
 - Identity facets must be complete: executors declare `executorId`, `version`, and `fingerprintFacets`; custom evaluators declare `instrumentId` plus `implementation.implementationId` / `implementation.version` / `implementation.schemas.fingerprintFacets`; judges declare `judgeId`, `version`, and `fingerprintFacets`. These facets are the identity input to comparability assessment.
-- **Capability self-declaration is an honesty obligation.** Determinism, concurrency safety, cancellation support, and trace/usage telemetry are all self-declared by the executor (use `createInvokeExecutorIdentity` / `createSessionExecutorIdentity` from `oh-my-knowledge/eval-runtime/advanced` to build the complete capability manifest). Declaring capabilities you do not have corrupts measurement conclusions and is harder to detect than a crash.
+- **Capability self-declaration is an honesty obligation.** Determinism, concurrency safety, cancellation support, and trace/usage telemetry are all self-declared by the executor (use `createInvokeExecutorIdentity` / `createSessionExecutorIdentity` from `oh-my-knowledge` to build the complete capability manifest). Declaring capabilities you do not have corrupts measurement conclusions and is harder to detect than a crash.
 
-When a registered implementation does not live in the execution-side process, you do not have to assemble your own subprocess protocol: `createSubprocessCommandExecutor()` from `oh-my-knowledge/eval-runtime/advanced` wraps "one command" into an Executor. The exchange protocol is the versioned `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` (`omk.subprocess-command-exchange/v1`): the request is written to the child's stdin as one line of canonical JSON, and the child's **whole stdout must be exactly one response document** — a trailing newline is fine, but any extra output (a debug print, a progress line) fails closed with `OMK_SUBPROCESS_COMMAND_RESPONSE_INVALID`. Diagnostics belong on stderr, which is never parsed and only counted against the byte cap; exceeding `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` (10 MiB) per stream or `timeoutMs` terminates the child and fails closed. The executable path, arguments, and environment come from your own registry and are digested into the `command` identity facet; the child inherits only `PATH` plus the environment variables you declare explicitly. That inherited `PATH` is **not** part of the facet, so a bare executable name can resolve to a different binary on another host while the fingerprint stays identical — declare an absolute `executablePath` when the fingerprint has to pin the binary.
+When a registered implementation does not live in the execution-side process, you do not have to assemble your own subprocess protocol: `createSubprocessCommandExecutor()` from `oh-my-knowledge` wraps "one command" into an Executor. The exchange protocol is the versioned `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` (`omk.subprocess-command-exchange/v1`): the request is written to the child's stdin as one line of canonical JSON, and the child's **whole stdout must be exactly one response document** — a trailing newline is fine, but any extra output (a debug print, a progress line) fails closed with `OMK_SUBPROCESS_COMMAND_RESPONSE_INVALID`. Diagnostics belong on stderr, which is never parsed and only counted against the byte cap; exceeding `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` (10 MiB) per stream or `timeoutMs` terminates the child and fails closed. The executable path, arguments, and environment come from your own registry and are digested into the `command` identity facet; the child inherits only `PATH` plus the environment variables you declare explicitly. That inherited `PATH` is **not** part of the facet, so a bare executable name can resolve to a different binary on another host while the fingerprint stays identical — declare an absolute `executablePath` when the fingerprint has to pin the binary.
 
 It carries only the fields an `ExecutorInvocation` legitimately holds and never fabricates run/trial/attempt coordinates or an execution plan digest. Leased controlled resources in the invocation (workspace overlays, native MCP config, tool-call interception) fail closed, and declaring those capabilities is rejected at construction — use an in-process Executor when you need controlled resources. It is also not a plugin loader: OMK performs no implementation discovery, download, or dynamic loading, and registration plus version governance always stays with the host.
-
-## Official reference Executors
-
-A `registryId@version` entry usually points at an `execute()` you wrote. When the "implementation" is really a vendor CLI, rewriting its protocol on the host side is where measurement bugs come from: a dropped `--ignore-user-config`, a different argument order, or a lenient JSONL parse all produce plausible answers whose provenance nobody can attribute. OMK therefore publishes its internal vendor adapters as **reference Executors** through `oh-my-knowledge/eval-hosts` — configuration in, a canonical façade `Executor` out, with no registry, discovery, download, or dynamic loading on either side. The Codex CLI adapter is the one shipped here today.
-
-```ts
-import {
-  createCodexCliReferenceExecutor,
-  type CodexCliEnvironmentEntry,
-} from 'oh-my-knowledge/eval-hosts';
-
-/** Reference factories are async: they probe the vendor binary before returning. */
-const referenceFactories = new Map<
-  string,
-  (ref: DispatchedRef) => Promise<DispatchedExecutor>
->();
-
-referenceFactories.set('executor.vendor-codex@2026.09.1', async (ref) => {
-  const environment: Record<string, CodexCliEnvironmentEntry> = {
-    // `behavior` puts a value into measurement identity, so a stable label here is an explicit
-    // assertion that this entry does not move the measurement — the binary is already pinned by
-    // the adapter's own `launcher` and `binary` facets.
-    PATH: { value: process.env.PATH ?? '', identity: { identityKind: 'behavior', value: 'host-managed' } },
-    // `credential` records nothing but lifts output and trace handling to `secret`.
-    CODEX_SESSION_TOKEN: {
-      value: await secrets.read('codex-session-token'),
-      identity: { identityKind: 'credential' },
-    },
-  };
-  return createCodexCliReferenceExecutor({
-    executorId: ref.registryId,
-    executablePath: String(ref.config.executablePath),
-    model: String(ref.config.model),
-    sandbox: 'read-only',
-    environment,
-    // Your dispatched config digest still belongs in identity, exactly as in the registry above.
-    fingerprintFacets: { configDigest: ref.configDigest },
-  });
-});
-
-const resolveExecutor = async (ref: DispatchedRef): Promise<DispatchedExecutor> => {
-  const build = executors.get(`${ref.registryId}@${ref.version}`)
-    ?? referenceFactories.get(`${ref.registryId}@${ref.version}`);
-  if (build === undefined) {
-    // Fail closed: never degrade, and never substitute a "close enough" implementation.
-    throw new Error(`unregistered executor: ${ref.registryId}@${ref.version}`);
-  }
-  return build(ref);
-};
-```
-
-What you get for free:
-
-- **Identity assembled from observation.** `executor.version` is the probed vendor release, and the reserved `codexCli` facet records the adapter version, version floor, pinned runtime controls, launcher and binary digests, the classified environment, byte limits, the controls this seam hard-codes, and the input-projection version. Comparability assessment can then separate "same id, different vendor build" from "same vendor build, different config".
-- **A supported knowledge-carrier projection.** The artifact's content string is rendered into the same versioned prompt envelope OMK's own host uses — byte for byte — so switching between the product host and your dispatch host cannot move the input.
-- **Certification rather than self-report.** Run `checkExecutor()` from `oh-my-knowledge/eval-runtime` once per deployment against the assembled Executor: it drives success, failure, cancellation, cleanup, telemetry and measurement checks through the real Runtime façade.
-
-What stays yours, and what fails closed:
-
-- **Leased, plan-bound resources are out of scope at this seam.** Trial workspace overlays, native MCP configuration, pre-tool-call mock interception, per-trial tool allow-lists and `runtimeContext` projection each return a stable `OMK_CODEX_CLI_*_UNSUPPORTED` code with no spawn — the adapter refuses rather than running with weaker isolation than the plan sealed. A dispatch that needs them requires a host-owned adapter.
-- **Vendor-side account and network isolation.** The adapter forwards only the environment you declare and gives each attempt a private temporary working directory; it cannot contain what the vendor process does over the network, or which account a credential belongs to.
-- **Version-floor governance.** `CODEX_CLI_MIN_SUPPORTED_VERSION` records the lowest vendor release verified against the protocol, not a tested set of later releases. An incompatible upstream change surfaces as `OMK_CODEX_CLI_PROTOCOL_INVALID` or `OMK_CODEX_CLI_UPGRADE_REQUIRED` instead of a silently reinterpreted answer. Raising the floor raises the adapter version and belongs in your registry's version key, so a dashboard can tell the two eras apart.
-- **Credentials and cost.** Reading, rotating and paying for the vendor call remain host-side; a credential entry only raises handling classification.
-
-The export list, per-code meanings and drift rules are in the [Reference Executors API](../reference/eval-hosts-api).
 
 ## Durable process write-back
 
@@ -159,7 +94,7 @@ The export list, per-code meanings and drift rules are in the [Reference Executo
 
 Audit-grade write-back combines two fields:
 
-- Declare the delivery mode in `EvaluateInput.policy.eventDelivery` when preparing or evaluating (the shape is `MeasurementEventDeliveryInput`, nameable from `oh-my-knowledge/eval-runtime`; on the façade you only write the literal): `writerMode` is `disabled` (the default), `optional`, or `required`, and `writerFailureMode` is `ignore` or `fail-run`. The pairing is strictly validated: `disabled` accepts only `ignore`, `required` accepts only `fail-run` and defaults to it, and `optional` defaults to `ignore`.
+- Declare the delivery mode in `EvaluateInput.policy.eventDelivery` when preparing or evaluating (the shape is `MeasurementEventDeliveryInput`, nameable from `oh-my-knowledge`; on the façade you only write the literal): `writerMode` is `disabled` (the default), `optional`, or `required`, and `writerFailureMode` is `ignore` or `fail-run`. The pairing is strictly validated: `disabled` accepts only `ignore`, `required` accepts only `fail-run` and defaults to it, and `optional` defaults to `ignore`.
 - Pass a writer in `EvaluationRunOptions.eventWriter` to persist events one by one in order; the event shape is the published schema `evaluation-event.schema.json` (resolvable with `resolveEvaluationCoreJsonSchema`). **Completeness is guaranteed only by `required`**: it turns a failed write into a failed run, so a hole in the process record is impossible to mistake for a complete one. `optional` + `ignore` is best-effort — the first failed write silently stops durable delivery for that stage, the run still completes, and nothing in the result reports the truncation, so never use it where the record is the deliverable.
 
 ```ts
@@ -234,7 +169,6 @@ Copies written back to the evaluation center should be positioned as **dispatche
 
 - [Use in a Node.js service](./eval-runtime)
 - [Runtime API reference](../reference/eval-runtime-api)
-- [Reference Executors API](../reference/eval-hosts-api)
 - [Core API (advanced)](../reference/embedded-api)
 - [Eval sample format](../reference/eval-sample-format)
 - [Glossary](../reference/glossary)

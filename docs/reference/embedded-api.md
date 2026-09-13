@@ -23,13 +23,8 @@ Synchronous `require('oh-my-knowledge')` is intentionally unsupported. OMK does 
 
 | Entry point | Ownership |
 |---|---|
-| `oh-my-knowledge` | recommended `evaluate()`, repeat-run `evaluateSeries()`, `assessComparability()`, and conformance-check façade for ordinary hosts |
+| `oh-my-knowledge` | recommended `evaluate()`, repeat-run `evaluateSeries()`, `assessComparability()`, conformance-check façade, Runtime assembly, identities, adapters, builders, and lifecycle SPI |
 | `oh-my-knowledge/eval-core` | advanced staged execution, artifact admission and verification, comparability, Series, and Schema discovery |
-| `oh-my-knowledge/eval-runtime` | explicit equivalent of the package-root Runtime façade |
-| `oh-my-knowledge/eval-runtime/advanced` | low-level Runtime assembly, identities, adapters, and lifecycle SPI |
-| `oh-my-knowledge/eval-hosts` | official reference Executors: vendor CLI adapters assembled from plain configuration |
-| `oh-my-knowledge/projections` | downstream artifact projections |
-| `oh-my-knowledge/studio` | Studio Core-run catalog and routes |
 | `oh-my-knowledge/mcp` / `oh-my-knowledge/dsh-plugin` | integration-specific APIs |
 
 All other paths, including `oh-my-knowledge/dist/*`, are private and blocked by the package export map.

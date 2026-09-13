@@ -287,3 +287,135 @@ export type {
   CreateRubricJudgeKitInput,
   RubricJudgeKit,
 } from './judges/rubric-kit.js';
+
+// Host assembly SPI (formerly eval-runtime/advanced).
+export {
+  HostEvaluationEventConsumptionError,
+  runEvaluation,
+} from './runner.js';
+export type {
+  EvaluationEventObserver,
+  RunEvaluationInput,
+} from './runner.js';
+export {
+  createInvokeExecutorIdentity,
+  createRuntimeIdentity,
+  createSessionExecutorIdentity,
+} from './identity.js';
+export type {
+  InvokeExecutorIdentityDeclaration,
+  RuntimeIdentityDeclaration,
+  SessionExecutorIdentityDeclaration,
+} from './identity.js';
+export {
+  EvaluationRuntimeAssemblyError,
+  createEvaluationRuntime,
+} from './runtime.js';
+export type { CreateEvaluationRuntimeInput } from './runtime.js';
+export {
+  createJsonExecutorAdapter,
+  createJsonSessionExecutorAdapter,
+} from './adapters/json-executor.js';
+export type {
+  CreateJsonExecutorAdapterInput,
+  CreateJsonSessionExecutorAdapterInput,
+  JsonExecutorInvocation,
+  JsonExecutorInvocationResult,
+  JsonExecutorSession,
+  JsonSessionExecutorAttempt,
+  JsonSessionExecutorContext,
+  RuntimeValueParser,
+} from './adapters/json-executor.js';
+export {
+  DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES,
+  SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION,
+  createSubprocessCommandExecutor,
+} from './adapters/command-executor.js';
+export type {
+  CreateSubprocessCommandExecutorInput,
+  SubprocessCommandConfiguration,
+  SubprocessCommandValueParser,
+} from './adapters/command-executor.js';
+export type {
+  OmkLlmJudgeEffort,
+  OmkLlmJudgeInvocationPort,
+  OmkLlmJudgeInvocationRequest,
+  OmkLlmJudgeInvocationResult,
+} from './judges/invocation.js';
+export {
+  RuntimeConformanceError,
+  assertExecutorConformance,
+  runExecutorConformance,
+} from './conformance/executor.js';
+export type {
+  ExecutorConformanceProbeInput,
+  ExecutorConformanceResult,
+} from './conformance/executor.js';
+export { createNodeEvaluationClock } from './clock.js';
+export {
+  INVOKE_JSON_INPUT_SCHEMA,
+  INVOKE_JSON_OUTPUT_SCHEMA,
+  INVOKE_JSON_TRACE_SCHEMA,
+  SESSION_JSON_INPUT_SCHEMA,
+  SESSION_JSON_OUTPUT_SCHEMA,
+  SESSION_JSON_TRACE_SCHEMA,
+} from './identity.js';
+export type {
+  EvaluationRuntimeSupportPorts,
+  RuntimePortRegistration,
+} from './runtime.js';
+export { createExecutorFnAdapter } from './adapters/executor-fn.js';
+export type {
+  CreateExecutorFnAdapterInput,
+  ExecResult,
+  ExecutorFn,
+  ExecutorFnInputMapper,
+  ExecutorFnResultMapper,
+  ExecutorInput,
+} from './adapters/executor-fn.js';
+export {
+  createSameProcessEvaluatorAdapter,
+  createSameProcessExecutorAdapter,
+} from './adapters/same-process.js';
+export type {
+  CreateSameProcessEvaluatorAdapterInput,
+  CreateSameProcessExecutorAdapterInput,
+  SameProcessEvaluatorImplementation,
+  SameProcessExecutorImplementation,
+  SameProcessOperationScope,
+  SameProcessResourceLeaseAccess,
+  SameProcessRunScope,
+} from './adapters/same-process.js';
+
+// Wire contracts (formerly eval-runtime/contracts).
+export {
+  RUBRIC_JUDGE_BINDINGS,
+  RUBRIC_JUDGE_CONTEXT_SCHEMA,
+  RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+  RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
+  RUBRIC_JUDGE_EVIDENCE_SCHEMA,
+  RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION,
+  RUBRIC_JUDGE_INSTRUMENT_SCHEMA,
+  RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION,
+} from './judges/rubric-contracts.js';
+export type {
+  RubricJudgeConfig,
+  RubricJudgeCriterion,
+  RubricJudgeInstrument,
+  RubricJudgeRuntimeConfig,
+  RubricJudgeTracePolicy,
+} from './judges/rubric-contracts.js';
+export {
+  SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
+  SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
+  SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
+  SourceNeutralMockStatsSchema,
+  SourceNeutralTraceSchema,
+  SourceNeutralTraceWithoutMocksSchema,
+  attachSourceNeutralMockStats,
+  parseSourceNeutralTrace,
+} from './traces/source-neutral.js';
+export type {
+  SourceNeutralMockStats,
+  SourceNeutralTrace,
+} from './traces/source-neutral.js';

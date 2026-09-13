@@ -19,11 +19,9 @@ function restoreHostCapabilities() {
 }
 
 try {
-  const [root, core, projections, studio] = await Promise.all([
+  const [root, core] = await Promise.all([
     import('oh-my-knowledge'),
     import('oh-my-knowledge/eval-core'),
-    import('oh-my-knowledge/projections'),
-    import('oh-my-knowledge/studio'),
   ]);
 
   // Node 的 ESM loader 自身会读取环境变量；外层测试以隔离 HOME 和目录快照检查
@@ -51,9 +49,7 @@ try {
       || typeof root.checkExecutor !== 'function'
       || root.createEvaluationEngine !== undefined
       || typeof core.createEvaluationEngine !== 'function'
-      || typeof core.assessComparability !== 'function'
-      || typeof projections.projectCoreArtifactGraph !== 'function'
-      || typeof studio.createCoreStudioCatalog !== 'function') {
+      || typeof core.assessComparability !== 'function') {
     throw new Error('Evaluation Core pure-memory contract operation failed');
   }
 

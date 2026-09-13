@@ -7,7 +7,7 @@ import {
   SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION,
   createSubprocessCommandExecutor,
   type SubprocessCommandConfiguration,
-} from '../../../src/eval-runtime/advanced.js';
+} from '../../../src/eval-runtime/index.js';
 import {
   checkExecutor,
   type Artifact,

@@ -66,11 +66,11 @@ Check the current [CLI reference](../reference/cli.md) rather than copying 0.54 
 
 The published API is ESM-only on Node.js 22 or newer. Imports are restricted to the package export map; `oh-my-knowledge/dist/*` is private.
 
-- Use `oh-my-knowledge` for the ordinary `evaluate()` and `checkExecutor()` façade. The explicit `oh-my-knowledge/eval-runtime` subpath is equivalent.
+- Use `oh-my-knowledge` for the ordinary `evaluate()` and `checkExecutor()` façade, Runtime assembly, builders, and lifecycle SPI.
 - Replace the fixed `{ executor, control, treatment, evaluator }` call with `{ dataset, variants, evaluators, comparisons, analyses, experiment, policy }`. Bind execution and config under `variant.execution`, sampling under `experiment.sampling`, and statistical requests in `analyses[]`. An optional `decision` selects an analysis by `analysisId`. Pass run options such as `runId`, `signal`, and `onEvent` as the second argument; old shapes are not read.
 - Move former package-root Core imports to `oh-my-knowledge/eval-core`; use that subpath for Engine construction, staged execution, admission, verification, comparability, Series, and Core JSON Schemas.
-- Import `createEvaluationEngine` only from `oh-my-knowledge/eval-core`; the ambiguous narrowed re-export has been removed from `eval-runtime/advanced`. Use `runEvaluation` there for a standard complete run over preassembled inputs.
-- Use `oh-my-knowledge/eval-samples`, `oh-my-knowledge/projections`, `oh-my-knowledge/studio`, `oh-my-knowledge/mcp`, or `oh-my-knowledge/dsh-plugin` for those explicit surfaces.
+- Import `createEvaluationEngine` only from `oh-my-knowledge/eval-core`. Use `runEvaluation` from `oh-my-knowledge` for a standard complete run over preassembled inputs.
+- Use `oh-my-knowledge/mcp` or `oh-my-knowledge/dsh-plugin` for those integration surfaces.
 - Replace synchronous `require()` with ESM imports or dynamic `import()`.
 - Engine Runtime assembly now uses binding resolvers that return the resolution and configured port together.
 - Series Analysis and Decision Runtimes open run-scoped sessions with `openRun()` and `dispose()`; Series runs require a `runId` and return a terminal status union.
