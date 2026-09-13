@@ -10,11 +10,6 @@ export function e(text: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
-/** A JavaScript string literal embedded in a double-quoted HTML event attribute. */
-export function jsString(value: string): string {
-  return e(JSON.stringify(value));
-}
-
 export function fmtDuration(ms: number | undefined | null): string {
   const v = Number(ms || 0);
   if (v < 1000) return `${v}ms`;

@@ -35,8 +35,7 @@ import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
 } from '../../../src/observability/inbox/review-state.js';
-import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
-import { businessActionTag, checklistItem, reviewProjectionForFixture } from './_helpers.js';
+import { businessActionTag, checklistItem } from './_helpers.js';
 
 describe('observe inbox - signal detection', () => {
   it('does not count embedded words as user correction signals', () => {
@@ -333,27 +332,6 @@ describe('observe inbox - signal detection', () => {
     const annotatedReport = buildObservationInboxReport(file, { reviewState });
     const annotatedSession = annotatedReport.experience!.sessions[0];
     assert.equal(annotatedSession.indicators.deliverableArtifactSignalCount, 0);
-    const rendered = renderObservationInboxPage({
-      allItems: annotatedReport.items,
-      items: annotatedReport.items,
-      reports: [annotatedReport],
-      experienceReports: [annotatedReport.experience!],
-      skillInvocationCounts: annotatedReport.meta.skillInvocationCounts ?? {},
-      skillSessionCounts: annotatedReport.meta.skillSessionCounts ?? {},
-      skillInvocationLastSeen: annotatedReport.meta.skillInvocationLastSeen ?? {},
-      skillToolCallCounts: annotatedReport.meta.skillToolCallCounts ?? {},
-      skillChains: {},
-      skillDerivedStandards: {},
-      skillResolvedStandards: {},
-      totalSkillInvocations: 1,
-      severitySkillCounts: { high: 0, medium: 0, low: 0, noise: 0 },
-      skillCount: 1,
-      reportCount: 1,
-      latestSeenLabel: '2026-05-10 00:00:02',
-      reviewState,
-      ...reviewProjectionForFixture(annotatedReport.experience!, reviewState),
-    });
-    assert.match(rendered, /<span class="inbox-answer-check is-(?:detected|absent)"[^>]*>[\s\S]*(?:没给可点开的产物|给了可点开的产物|会话进行中)/);
   });
 
   it('does not count delivery words from tool_result or skill context as assistant delivery', () => {

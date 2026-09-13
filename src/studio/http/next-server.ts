@@ -5,13 +5,15 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextCatalogContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { nextCatalogContext, nextInboxContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { TEXT_HEADERS } from './errors.js';
 import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { loadObservePage, type ObservePage } from './observe-page.js';
 
 import { loadKnowledgePage, type KnowledgePage } from './knowledge-page.js';
+import { loadInboxPage, type InboxPage } from './inbox-page.js';
+import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
 /** Next owns migrated pages; existing API/SSE capabilities keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
@@ -31,7 +33,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
     async handle(request, response) {
       const path = (request.url ?? '/').split('?')[0];
       const measure = path === '/measure' || path.startsWith('/measure/');
-      const observe = path === '/observe' || path.startsWith('/observe/conversations/');
+      const inbox = path === '/observe/inbox';
+      const observe = inbox || path === '/observe' || path.startsWith('/observe/conversations/');
       const knowledge = path === '/knowledge' || path.startsWith('/knowledge/skills/');
       if (!measure && !observe && !knowledge && !path.startsWith('/_next/')) return false;
       if ((measure || observe || knowledge) && (request.method ?? 'GET') !== 'GET') {
@@ -50,9 +53,18 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           response.end('skill_not_found'); return true;
         }
       }
+      const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+      let inboxPage: InboxPage | undefined;
+      if (inbox) {
+        try { inboxPage = loadInboxPage(options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR, searchParams.get('skill') ?? undefined); }
+        catch {
+          response.writeHead(503, TEXT_HEADERS);
+          response.end('studio_source_unavailable'); return true;
+        }
+      }
       let observePage: ObservePage | undefined;
-      if (observe) {
-        try { observePage = await loadObservePage(conversationCatalog, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
+      if (observe && !inbox) {
+        try { observePage = await loadObservePage(conversationCatalog, path, searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end('studio_source_unavailable'); return true;
@@ -87,7 +99,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       if (!app) throw new Error('Studio UI is not started');
       request.headers['x-omk-studio-lang'] = new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh';
       const handler = app.getRequestHandler();
-      if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
+      if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
+      else if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
       else if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
       else if (catalog) await nextCatalogContext.run(catalog as CoreStudioCatalog, () => handler(request, response));
       else await handler(request, response);

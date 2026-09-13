@@ -4,7 +4,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['test/**/*.test.ts'],
+    // Studio React 页面的测试是 .tsx；只收 .ts 会让它们被静默跳过而 CI 仍然全绿。
+    include: ['test/**/*.test.{ts,tsx}'],
     testTimeout: 30000,
     // Git/Node subprocesses become I/O-bound under full CPU parallelism.
     // Keep proportional headroom while allowing larger hosts to scale.

@@ -33,7 +33,7 @@ The script (`scripts/studio-baseline.ts`) synthesizes schema-valid datasets into
 | `GET /observe/health/obs-0009` | — | 2.4 | 56.1 KB |
 | `GET /observe/skill-trend/baseline-skill-000` | — | 3.7 | 50.3 KB |
 | `GET /api/observe-inbox` | — | 1.1 | 13.6 KB |
-| `GET /observe/inbox` | — | 5.2 | 699.1 KB |
+| `GET /observe/inbox` (retired) | — | 5.2 | 699.1 KB |
 
 Event-loop p99 during cold `/api/skills`: 0.0 ms. 24 concurrent warm `GET /knowledge`: wall 58.6 ms, event-loop p99 11.1 ms.
 
@@ -48,7 +48,7 @@ Event-loop p99 during cold `/api/skills`: 0.0 ms. 24 concurrent warm `GET /knowl
 | `GET /observe/health/obs-0059` | — | 4.4 | 98.0 KB |
 | `GET /observe/skill-trend/baseline-skill-000` | — | 9.6 | 107.1 KB |
 | `GET /api/observe-inbox` | — | 3.6 | 205.2 KB |
-| `GET /observe/inbox` | — | 20.4 | 3.11 MB |
+| `GET /observe/inbox` (retired) | — | 20.4 | 3.11 MB |
 
 Event-loop p99 during cold `/api/skills`: 0.0 ms. 24 concurrent warm `GET /knowledge`: wall 233 ms, event-loop p99 19.2 ms.
 
@@ -63,14 +63,14 @@ Event-loop p99 during cold `/api/skills`: 0.0 ms. 24 concurrent warm `GET /knowl
 | `GET /observe/health/obs-0199` | — | 13.5 | 215.3 KB |
 | `GET /observe/skill-trend/baseline-skill-000` | — | 44.2 | 266.0 KB |
 | `GET /api/observe-inbox` | — | 26.5 | 2.01 MB |
-| `GET /observe/inbox` | — | 132 | 17.03 MB |
+| `GET /observe/inbox` (retired) | — | 132 | 17.03 MB |
 
 Event-loop p99 during cold `/api/skills`: 11.5 ms. 24 concurrent warm `GET /knowledge`: wall 1031 ms, event-loop p99 48.4 ms.
 
 ## Findings and decisions
 
 1. **`querySkillTrend` was a proven O(N²) hotspot — fixed.** It listed and parsed every observe-health report, then re-scanned the directory once per report to load each one again. Measured warm: 10.5 ms (small) / 215 ms (medium) / 2344 ms (large). It now scans the directory once and parses each report a single time, with unchanged semantics (live-first, card dedup by id, oldest-first). Same-condition re-measurement: 3.7 / 9.6 / 44.2 ms — 53× faster at large scale. This is the only optimization the baseline proved necessary; it is an algorithmic fix, not a new caching layer.
-2. **Response sizes grow linearly; no server-side pagination for now.** `/observe/inbox` ships 0.7 / 3.1 / 17 MB and `/api/skills` 24 KB / 633 KB / 5.9 MB across the scales. Studio is a local single-user tool where these transfers complete in the measured warm latencies, so the tradeoff is recorded rather than acted on: the legacy HTML inbox page retires in the remaining Next.js migration batch, and pagination/virtualized rendering is decided there with real entry points — not added to pages that are being replaced.
+2. **Response sizes grow linearly; no server-side pagination for now.** `/observe/inbox` shipped 0.7 / 3.1 / 17 MB and `/api/skills` 24 KB / 633 KB / 5.9 MB across the scales. Studio is a local single-user tool where these transfers complete in the measured warm latencies, so the tradeoff is recorded rather than acted on. The legacy HTML inbox page has since retired in the #839 cutover: the three `/observe/inbox` rows are pre-retirement measurements that `yarn studio:baseline` no longer collects, so they are not comparable against a fresh run. Pagination or virtualized rendering for the React inbox is decided against its own real entry point, not carried over from the retired page.
 3. **Synchronous filesystem I/O is acceptable at these scales.** Event-loop p99 stays at ≤ 48.4 ms under 24 concurrent requests at large scale, and cold index builds show ≤ 11.5 ms. No async-I/O rewrite or worker offload is introduced; the numbers are the reference if a future host changes the concurrency profile.
 4. **Cache fingerprint cost is bounded and acceptable.** The warm `/api/skills` latency includes the per-request metadata fingerprint rescan (≈10 / 80 / 260 file stats) plus a `structuredClone` of the cached index. At 54.5 ms warm for 100 skills this does not justify an fs watcher or incremental invalidation; the bounded keyed LRU (capacity 8) remains the whole mechanism, and no unbounded `Map<fingerprint, entry>` is introduced. This closes the "measure metadata scan cost before deciding on invalidation machinery" follow-up from the cache batch.
 5. **Cold start is one full scan.** 33.7 / 30.5 / 137 ms at the three scales — the first request pays the directory scan and index build that later requests reuse. Acceptable; no eager warmup added.

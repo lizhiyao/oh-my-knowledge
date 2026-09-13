@@ -5,9 +5,8 @@ import type { ObservationInboxViewModel } from './view-model.js';
 import { signalEvidenceConclusion } from './signal-semantics.js';
 
 /**
- * Skill 观测看板的聚合逻辑（宿主无关纯函数，#839 批次 2）。
- * 从 presentation/observation-inbox/process-workspace-renderer 抽到数据层，
- * HTML 渲染器与 React 页面共用同一份聚合与排序语义，避免第二份业务口径。
+ * Skill 观测看板的聚合逻辑（宿主无关纯函数）。
+ * 聚合与排序语义只此一份，React 页面直接消费，避免第二份业务口径。
  */
 
 export interface SkillRollupMetricCounts {
@@ -199,7 +198,7 @@ const ACTION_TEXT: Record<'high' | 'repeated' | 'low' | 'noise' | 'empty', Actio
 };
 
 /**
- * 从看板聚合派生 Reviewer 待办建议（与历史 HTML 版优先级判定一致）：
+ * 从看板聚合派生 Reviewer 待办建议的优先级判定：
  * 高风险 → P0；低风险累计 3 次以上 → P1；有低/不确定 → P2；仅噪声 → P3。
  */
 export function buildReviewActionItems(

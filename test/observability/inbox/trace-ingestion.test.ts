@@ -10,8 +10,7 @@ import {
   loadObservationInboxReports,
   saveObservationInboxReport,
 } from '../../../src/observability/inbox/index.js';
-import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
-import { baseItem, businessActionTag, businessChannel, reviewProjectionForFixture } from './_helpers.js';
+import { baseItem, businessActionTag, businessChannel } from './_helpers.js';
 
 describe('observe inbox - trace ingestion', () => {
   it('skips unsupported experience reports without changing files or hiding current inbox v2', () => {
@@ -388,40 +387,6 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(report.items[0].recentTraceIds?.length, 2);
     assert.equal(report.items[0].traceId, report.items[0].evidence.traceId);
     assert.equal(report.items[0].sourceTrace, report.items[0].evidence.sourceTrace);
-
-    const rendered = renderObservationInboxPage({
-      allItems: report.items,
-      items: report.items,
-      reports: [report],
-      experienceReports: [experience],
-      skillInvocationCounts: report.meta.skillInvocationCounts ?? {},
-      skillSessionCounts: report.meta.skillSessionCounts ?? {},
-      skillInvocationLastSeen: report.meta.skillInvocationLastSeen ?? {},
-      skillToolCallCounts: report.meta.skillToolCallCounts ?? {},
-      skillChains: {},
-      skillDerivedStandards: {},
-      skillResolvedStandards: {},
-      totalSkillInvocations: experience.invocations.length,
-      severitySkillCounts: { high: 0, medium: 0, low: 1, noise: 0 },
-      skillCount: 1,
-      reportCount: 1,
-      latestSeenLabel: '2026-05-01 00:10:02',
-      reviewState: {
-        kind: 'observe-review-state',
-        schemaVersion: 2,
-        updatedAt: '2026-05-01T00:00:00.000Z',
-        entries: {},
-      },
-      ...reviewProjectionForFixture(experience, {
-        kind: 'observe-review-state',
-        schemaVersion: 2,
-        updatedAt: '2026-05-01T00:00:00.000Z',
-        entries: {},
-      }),
-    });
-    assert.equal((rendered.match(/data-inbox-card="audit"/g) ?? []).length, 1);
-    assert.equal((rendered.match(/data-session-tab="/g) ?? []).length, 2);
-    assert.match(rendered, /2 次调用/);
   });
 
   it('keeps repeated_failure stronger than a single hard_miss', () => {

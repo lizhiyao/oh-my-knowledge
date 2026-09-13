@@ -324,7 +324,7 @@ async function measureScale(scale: BaselineScale, dist: DistModules): Promise<Sc
       `GET /observe/health/${dataset.latestAnalysisId}`,
       `GET /observe/skill-trend/${encodeURIComponent(dataset.firstSkillName)}`,
       'GET /api/observe-inbox',
-      'GET /observe/inbox',
+      // /observe/inbox 页面已由 Next 宿主渲染；本脚本测的是独立 HTML 宿主，那里按设计 404。
     ];
     for (const route of warmOnly) {
       const path = route.slice('GET '.length);

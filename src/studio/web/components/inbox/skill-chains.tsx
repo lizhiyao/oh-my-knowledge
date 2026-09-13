@@ -17,7 +17,7 @@ export function SkillChains({
     return <Empty description={zh ? '暂无 skill 链路。' : 'No skill chains yet.'} />;
   }
   return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={12} style={{ width: '100%' }}>
       {entries.map(([skillName, chain]) => {
         const hardRules = chain.healthCheck.hardRules;
         return (

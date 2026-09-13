@@ -110,11 +110,7 @@ describe('Knowledge Debugger task trajectory server', () => {
   });
 
   it('links an observed session to a fact-only task trajectory', async () => {
-    const inbox = await fetch(`${baseUrl}/observe/inbox`);
-    assert.equal(inbox.status, 200);
-    assert.match(inbox.body, new RegExp(`/observe/conversations/${encodeURIComponent(threadId)}`));
-    assert.match(inbox.body, /查看对话任务/);
-
+    // 收口后 /observe/inbox 页面由 Next 宿主渲染；本层（report-server）断言轨迹与会话页。
     const conversations = await fetch(`${baseUrl}/observe`);
     assert.equal(conversations.status, 200);
     assert.match(conversations.body, /<nav class="studio-nav" aria-label="Studio 一级导航">/);
@@ -136,7 +132,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.equal(replay.status, 200);
     const navigation = (html: string) => html.match(/<header class="app-bar">[\s\S]*?<\/header>/g);
     const appBarStyles = (html: string) => html.match(/\.app-bar\s*\{[^}]*\}/g);
-    for (const page of [inbox, conversation, replay]) {
+    for (const page of [conversation, replay]) {
       assert.deepEqual(navigation(page.body), navigation(conversations.body));
       assert.deepEqual(appBarStyles(page.body), appBarStyles(conversations.body));
       assert.match(page.body, /href="\/observe" aria-current="page">观测<\/a>/);

@@ -7,9 +7,8 @@ import { severityReasonFor } from './severity-reason.js';
 
 /**
  * 观测收件箱信号子视图的展示语义（宿主无关纯函数）。
- * HTML 渲染器（presentation/observation-inbox）与 React 页面（studio/web/components/inbox）
- * 共用同一份文案与映射，避免出现第二套业务语义（#839 批次 1）。
- * 样式（色值、布局）仍归各呈现层；这里只输出语义字段与 tone。
+ * 文案与映射只此一份，React 页面（studio/web/components/inbox）直接消费，
+ * 避免出现第二套业务语义。样式（色值、布局）仍归呈现层；这里只输出语义字段与 tone。
  */
 
 export type SignalSeverityTone = 'error' | 'warning' | 'info' | 'neutral';

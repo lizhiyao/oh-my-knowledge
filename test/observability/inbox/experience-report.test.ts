@@ -12,11 +12,6 @@ import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
 } from '../../../src/observability/inbox/review-state.js';
-import {
-  renderFeedbackAttributionLabel,
-  renderObservationInboxPage,
-} from '../../../src/studio/presentation/observation-inbox-renderer.js';
-import { reviewProjectionForFixture } from './_helpers.js';
 
 describe('observe inbox - experience report', () => {
   it('fails closed instead of throwing when persisted aggregates overflow', () => {
@@ -467,88 +462,6 @@ describe('observe inbox - experience report', () => {
     assert.ok(reviewerReport.traceLinks.some((ref) => ref.messageUuid === 'u3'));
     assert.ok(reviewerReport.authorSuggestions.length > 0);
     assert.equal('llmAnnotation' in reviewerReport, false);
-    const rendered = renderObservationInboxPage({
-      allItems: report.items,
-      items: report.items,
-      reports: [report],
-      experienceReports: [experience],
-      skillInvocationCounts: report.meta.skillInvocationCounts ?? {},
-      skillSessionCounts: report.meta.skillSessionCounts ?? {},
-      skillInvocationLastSeen: report.meta.skillInvocationLastSeen ?? {},
-      skillToolCallCounts: report.meta.skillToolCallCounts ?? {},
-      skillChains: {},
-      skillDerivedStandards: {},
-      skillResolvedStandards: {},
-      totalSkillInvocations: 1,
-      severitySkillCounts: { high: 1, medium: 0, low: 0, noise: 0 },
-      skillCount: 1,
-      reportCount: 1,
-      latestSeenLabel: '2026-05-01 00:00:04',
-      reviewState: {
-        kind: 'observe-review-state',
-        schemaVersion: 2,
-        updatedAt: '2026-05-01T00:00:00.000Z',
-        entries: {},
-      },
-      ...reviewProjectionForFixture(experience, {
-        kind: 'observe-review-state',
-        schemaVersion: 2,
-        updatedAt: '2026-05-01T00:00:00.000Z',
-        entries: {},
-      }),
-    });
-    assert.match(rendered, /观测收件箱/);
-    assert.match(rendered, /class="inbox-shell"/);
-    assert.match(rendered, /data-inbox-card="/);
-    assert.match(rendered, /data-inbox-detail="/);
-    assert.match(rendered, /data-inbox-filter="all"/);
-    assert.match(rendered, /data-inbox-filter="review_first"/);
-    assert.match(rendered, /data-inbox-verdict="real_issue"/);
-    assert.match(rendered, /data-inbox-skill-search-input/);
-    assert.match(rendered, /data-inbox-session-search-input/);
-    assert.match(rendered, /data-inbox-skill-search=/);
-    assert.match(rendered, /data-inbox-session-search=/);
-    assert.match(rendered, /function applyInboxFilters/);
-    assert.match(rendered, /function clearInboxSearch/);
-    assert.match(rendered, /inbox-flow-timeline/);
-    assert.match(rendered, /inbox-flow-rail/);
-    assert.match(rendered, /inbox-flow-range/);
-    assert.match(rendered, /data-manual-mark-mode="metrics"/);
-    assert.match(rendered, /这条消息不在当前 skill 窗口内，不能直接打指标标签/);
-    assert.match(rendered, /function selectInboxCard/);
-    assert.match(rendered, /function setInboxFilter/);
-    assert.match(rendered, /Session 执行过程/);
-    assert.match(rendered, /Skill 事件窗口/);
-    assert.match(rendered, /Skill record 范围：/);
-    assert.match(rendered, /① 这次跑得怎么样/);
-    assert.match(rendered, /这次跑得怎么样/);
-    assert.match(rendered, /已完成 \/ 结果如下/);
-    assert.match(rendered, /② 日志上下游链路/);
-    assert.match(rendered, /③ 流程规则执行细节/);
-    assert.match(rendered, /④ 原文回溯/);
-    assert.match(rendered, /给 skill 作者的优化建议/);
-    assert.match(rendered, /目标关键词/);
-    assert.match(rendered, /结果关键词/);
-    assert.match(rendered, /产物关键词/);
-    assert.match(rendered, /schema|audit/);
-    assert.match(rendered, /目标已识别|目标不明确/);
-    assert.match(rendered, /给了用户最终答复|没给用户最终答复|会话进行中/);
-    assert.match(rendered, /给了可点开的产物|没给可点开的产物|会话进行中/);
-    assert.match(rendered, /核心工具未声明/);
-    assert.match(rendered, /标注有结果/);
-    assert.match(rendered, /标注有产物/);
-    assert.doesNotMatch(rendered, /有结果产物/);
-    assert.match(rendered, /跳转原文/);
-    assert.doesNotMatch(rendered, /跳转用户原文/);
-    assert.doesNotMatch(rendered, /触发依据/);
-    assert.doesNotMatch(rendered, /原文回溯建议/);
-    assert.match(rendered, /data-message-uuid="u3"/);
-    assert.match(rendered, /function jumpToExperienceMessage/);
-    assert.match(rendered, /工具状态未知/);
-    assert.match(rendered, /1 次工具结果状态未知/);
-    assert.match(rendered, /状态未知 1/);
-    assert.doesNotMatch(rendered, /工具执行成功 2 \/ 100%/);
-    assert.doesNotMatch(rendered, /人工中断 1 \/ 50%/);
 
     const metricScopeId = experience.sessions[0]?.id;
     assert.ok(metricScopeId);
@@ -1239,16 +1152,6 @@ expected_tools:
     assert.equal((fileSignal.canonicalAttributions ?? fileSignal.attributions).some((attribution) =>
       attribution.skillName === 'damai-daily' && attribution.attributionRole === 'primary_fault'
     ), false);
-  });
-
-  it('escapes feedback attribution labels in the session story renderer', () => {
-    const rendered = renderFeedbackAttributionLabel({
-      skillName: '<img onerror="x">',
-      attributionRole: 'primary_fault',
-      reasonCode: 'object_match',
-    });
-    assert.match(rendered, /&lt;img onerror=&quot;x&quot;&gt;/);
-    assert.doesNotMatch(rendered, /<img onerror="x">/);
   });
 
   it('keeps apply-cc promise follow-up separate from unrelated preview feedback', () => {

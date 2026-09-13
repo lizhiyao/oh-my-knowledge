@@ -2,6 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   reviewActionLabels,
+  reviewActionRequest,
   reviewPriorityMeta,
   reviewStateKey,
   reviewVerdictBadge,
@@ -27,6 +28,47 @@ describe('review semantics (host-independent)', () => {
     assert.equal(reviewActionLabels('en').confirm, 'Confirm');
     assert.equal(reviewActionLabels('zh').note, '留意见');
     assert.equal(reviewActionLabels('en').saveNote, 'Save note');
+    assert.equal(reviewActionLabels('zh').revoke, '撤销复核');
+    assert.equal(reviewActionLabels('en').revoke, 'Undo review');
+    assert.match(reviewActionLabels('zh').revokeHint, /撤销/);
+    assert.match(reviewActionLabels('en').revokeHint, /revoke/i);
+  });
+
+  it('writes a verdict that is not the current one', () => {
+    assert.deepEqual(
+      reviewActionRequest('experience_session', 's1', undefined, 'real_issue'),
+      { method: 'POST', targetType: 'experience_session', targetId: 's1', verdict: 'real_issue' },
+    );
+    // 换结论是写入，不是撤销。
+    assert.deepEqual(
+      reviewActionRequest('experience_session', 's1', 'real_issue', 'not_issue'),
+      { method: 'POST', targetType: 'experience_session', targetId: 's1', verdict: 'not_issue' },
+    );
+  });
+
+  it('revokes when the current verdict is clicked again without a note', () => {
+    assert.deepEqual(
+      reviewActionRequest('experience_session', 's1', 'real_issue', 'real_issue'),
+      { method: 'DELETE', targetType: 'experience_session', targetId: 's1' },
+    );
+    // 清空意见后保存，等价于撤销这条留意见复核。
+    assert.deepEqual(
+      reviewActionRequest('experience_session', 's1', 'needs_more_context', 'needs_more_context', undefined),
+      { method: 'DELETE', targetType: 'experience_session', targetId: 's1' },
+    );
+  });
+
+  it('keeps a note on the same verdict as a write', () => {
+    assert.deepEqual(
+      reviewActionRequest('experience_session', 's1', 'needs_more_context', 'needs_more_context', '还需要 trace'),
+      {
+        method: 'POST',
+        targetType: 'experience_session',
+        targetId: 's1',
+        verdict: 'needs_more_context',
+        reason: '还需要 trace',
+      },
+    );
   });
 
   it('builds review state keys identical to the persisted shape', () => {
