@@ -20,6 +20,9 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
   let app: { prepare(): Promise<void>; close(): Promise<void>; getRequestHandler(): (request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse) => Promise<void> } | undefined;
   const knowledgeQuery = options.knowledgeQuery ?? createKnowledgeQuery(options);
   const conversationCatalog = options.conversationCatalog ?? createCodexConversationCatalog();
+  // 页面组开关与 report-server 侧同源：裁掉的路径不接管，落回 HTML 宿主得到 404，语义与独立宿主一致。
+  const inboxRoutes = (options.studioPages ?? true) && (options.observationInbox ?? true);
+  const pageRoutes = options.studioPages ?? true;
   return createReportServer({ ...options, conversationCatalog, knowledgeQuery }, {
     async prepare() {
       const dir = fileURLToPath(new URL('../web/', import.meta.url));
@@ -33,9 +36,9 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
     async handle(request, response) {
       const path = (request.url ?? '/').split('?')[0];
       const measure = path === '/measure' || path.startsWith('/measure/');
-      const inbox = path === '/observe/inbox';
-      const observe = inbox || path === '/observe' || path.startsWith('/observe/conversations/');
-      const knowledge = path === '/knowledge' || path.startsWith('/knowledge/skills/');
+      const inbox = inboxRoutes && path === '/observe/inbox';
+      const observe = pageRoutes && (inbox || path === '/observe' || path.startsWith('/observe/conversations/'));
+      const knowledge = pageRoutes && (path === '/knowledge' || path.startsWith('/knowledge/skills/'));
       if (!measure && !observe && !knowledge && !path.startsWith('/_next/')) return false;
       if ((measure || observe || knowledge) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });

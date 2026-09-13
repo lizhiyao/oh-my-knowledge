@@ -92,13 +92,14 @@ Studio marks the most recent task as **Running** only while it is still active a
 
 Live updates only reread local logs and refresh the current view; they do not call a model. `omk studio` uses the fixed port `7799` by default; pass `--port` explicitly to change it.
 
-The page exposes three traceable layers with distinct responsibilities:
+The page exposes four traceable layers with distinct responsibilities:
 
 - **Semantic trajectory** projects Trace IR into the four lanes for human understanding. When a long task exceeds the display bound, the projection keeps tool calls paired with their results, retains the request, final answer, task boundaries, and failures first, then samples the remaining nodes across time instead of blindly dropping the middle;
+- **Knowledge access** summarizes when and how each knowledge item entered the context. The page states plainly that access records show reads or injections and do not establish causation;
 - **Normalized events** list source-neutral Trace IR in source order so you can verify what the adapter extracted;
-- **Raw logs** show the redacted, bounded JSONL archive stored beside the report so you can inspect the adapter input. Old reports, missing sources, and archive limits are reported explicitly. Opaque `encrypted_content` is acknowledged but never decrypted or presented as model reasoning.
+- **Source records** show the redacted, bounded JSONL archive stored beside the report so you can inspect the adapter input. Old reports, missing sources, and archive limits are reported explicitly. Opaque `encrypted_content` is acknowledged but never decrypted or presented as model reasoning.
 
-**View raw log** in a semantic node detail first locates the corresponding source record, then falls back to the normalized event when raw logs are unavailable. This link uses source locators preserved by Trace IR; the renderer does not parse Codex-specific logs.
+**View source records** in an integrity notice switches to the Source records tab so you can check the pre-normalization input yourself. This link uses source locators preserved by Trace IR; the renderer does not parse Codex-specific logs.
 
 Codex session metadata is normalized as `session_context`, including the observable runtime version, Memory / History modes, context-window identity, dynamic tool names, and base instructions. Per-turn workspace, model, approval, and sandbox settings are recorded as `execution_context` or `settings`. These fields describe task inputs; they do not prove that the model used or followed them.
 

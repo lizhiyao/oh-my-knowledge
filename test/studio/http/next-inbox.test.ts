@@ -162,4 +162,36 @@ describe('Next-hosted observation inbox route', () => {
     assert.equal(thread.status, 200);
     assert.match(await thread.text(), /深链目标会话/);
   }, 30000);
+
+  it('stops intercepting the inbox page when the host opts out of the inbox route group', async () => {
+    const dir = observationsDir();
+    const server = createNextStudioServer({
+      port: 0, observationsDir: dir, conversationCatalog: emptyCatalog, observationInbox: false,
+    });
+    servers.push(server);
+    const url = await server.start();
+
+    // 收件箱页面与 API 由同一个开关裁剪：不接管才会落回 HTML 宿主得到 404，而不是渲染一个本应下线的手写页。
+    assert.equal((await fetch(`${url}/observe/inbox`)).status, 404);
+    assert.equal((await fetch(`${url}/api/observe-inbox/view`)).status, 404);
+    // 同宿主的兄弟页面组不受影响。
+    assert.equal((await fetch(`${url}/observe`)).status, 200);
+  }, 20000);
+
+  it('serves only /measure when the host trims the Studio page group', async () => {
+    const server = createNextStudioServer({
+      port: 0,
+      observationsDir: observationsDir(),
+      conversationCatalog: emptyCatalog,
+      coreStudioCatalog: { async list() { return []; }, async get() { return undefined; }, async inspect() { return undefined; } },
+      studioPages: false,
+    });
+    servers.push(server);
+    const url = await server.start();
+
+    for (const path of ['/observe', '/observe/inbox', '/observe/conversations/thread', '/knowledge']) {
+      assert.equal((await fetch(`${url}${path}`)).status, 404, `${path} is not intercepted`);
+    }
+    assert.equal((await fetch(`${url}/measure`)).status, 200);
+  }, 20000);
 });

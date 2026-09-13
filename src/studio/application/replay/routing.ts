@@ -1,25 +1,5 @@
 import type { FlowRouteMetrics, FlowRoutePlan, FlowRouteRequest, HorizontalObstacleIndex, RoutingPoint, RoutingRect } from '../../view-models/trajectory-routing.js';
 
-
-export function planFlowMarkerProgresses(pathLength: number, markerCount: number): number[] {
-  if (!Number.isFinite(pathLength) || pathLength <= 0 || !Number.isFinite(markerCount) || markerCount <= 0) return [];
-  const length = Math.max(1, pathLength);
-  const count = Math.max(1, Math.floor(markerCount));
-  const minimumEndpointOffset = Math.min(18, length / 2);
-  const closestDistanceFromEnd = Math.max(
-    minimumEndpointOffset,
-    Math.min(28, length * .28),
-  );
-  const furthestDistanceFromEnd = Math.max(closestDistanceFromEnd, length - minimumEndpointOffset);
-  const spacing = count > 1
-    ? Math.min(34, (furthestDistanceFromEnd - closestDistanceFromEnd) / (count - 1))
-    : 0;
-  return Array.from({ length: count }, (_value, markerIndex) => {
-    const distanceFromEnd = closestDistanceFromEnd + spacing * (count - markerIndex - 1);
-    return Math.max(0, Math.min(1, 1 - distanceFromEnd / length));
-  });
-}
-
 export function createHorizontalObstacleIndex<Owner>(
   rects: RoutingRect<Owner>[],
   bucketSize = 240,
@@ -38,7 +18,7 @@ export function createHorizontalObstacleIndex<Owner>(
   return { bucketSize: safeBucketSize, buckets, all: rects };
 }
 
-export function queryHorizontalObstacleIndex<Owner>(
+function queryHorizontalObstacleIndex<Owner>(
   index: HorizontalObstacleIndex<Owner>,
   minX: number,
   maxX: number,
@@ -64,11 +44,11 @@ export function queryHorizontalObstacleIndex<Owner>(
   return matches;
 }
 
-export function routingPointInsideRect(point: RoutingPoint, rect: RoutingRect): boolean {
+function routingPointInsideRect(point: RoutingPoint, rect: RoutingRect): boolean {
   return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
 }
 
-export function routingLineHitsRect(
+function routingLineHitsRect(
   fromPoint: RoutingPoint,
   toPoint: RoutingPoint,
   rect: RoutingRect,
@@ -96,7 +76,7 @@ export function routingLineHitsRect(
   return entry <= exit && exit >= 0 && entry <= 1;
 }
 
-export function routingQuadraticHitsRect(
+function routingQuadraticHitsRect(
   fromPoint: RoutingPoint,
   control: RoutingPoint,
   toPoint: RoutingPoint,
@@ -117,7 +97,7 @@ export function routingQuadraticHitsRect(
   return false;
 }
 
-export function routingMoveToward(fromPoint: RoutingPoint, toPoint: RoutingPoint, distance: number): RoutingPoint {
+function routingMoveToward(fromPoint: RoutingPoint, toPoint: RoutingPoint, distance: number): RoutingPoint {
   const dx = toPoint.x - fromPoint.x;
   const dy = toPoint.y - fromPoint.y;
   const length = Math.hypot(dx, dy) || 1;
@@ -127,7 +107,7 @@ export function routingMoveToward(fromPoint: RoutingPoint, toPoint: RoutingPoint
   };
 }
 
-export function routingEdgePoint(rect: RoutingRect, targetX: number, targetY: number): RoutingPoint {
+function routingEdgePoint(rect: RoutingRect, targetX: number, targetY: number): RoutingPoint {
   const centerX = (rect.left + rect.right) / 2;
   const centerY = (rect.top + rect.bottom) / 2;
   const dx = targetX - centerX;
@@ -140,7 +120,7 @@ export function routingEdgePoint(rect: RoutingRect, targetX: number, targetY: nu
   return { x: centerX + dx * scale, y: centerY + dy * scale };
 }
 
-export function routingConnectionPoints(fromRect: RoutingRect, toRect: RoutingRect): { from: RoutingPoint; to: RoutingPoint } {
+function routingConnectionPoints(fromRect: RoutingRect, toRect: RoutingRect): { from: RoutingPoint; to: RoutingPoint } {
   const fromCenter = { x: (fromRect.left + fromRect.right) / 2, y: (fromRect.top + fromRect.bottom) / 2 };
   const toCenter = { x: (toRect.left + toRect.right) / 2, y: (toRect.top + toRect.bottom) / 2 };
   const from = routingEdgePoint(fromRect, toCenter.x, toCenter.y);
@@ -151,7 +131,7 @@ export function routingConnectionPoints(fromRect: RoutingRect, toRect: RoutingRe
   };
 }
 
-export function routingRectPort(rect: RoutingRect, side: 'left' | 'right' | 'top' | 'bottom'): RoutingPoint {
+function routingRectPort(rect: RoutingRect, side: 'left' | 'right' | 'top' | 'bottom'): RoutingPoint {
   const centerX = (rect.left + rect.right) / 2;
   const centerY = (rect.top + rect.bottom) / 2;
   if (side === 'left') return { x: rect.left, y: centerY };
@@ -160,7 +140,7 @@ export function routingRectPort(rect: RoutingRect, side: 'left' | 'right' | 'top
   return { x: centerX, y: rect.bottom };
 }
 
-export function routingFlowControlPoint(
+function routingFlowControlPoint(
   points: { from: RoutingPoint; to: RoutingPoint },
   requestedBend?: number,
   side = 1,
@@ -180,7 +160,7 @@ export function routingFlowControlPoint(
   };
 }
 
-export function routingRoundedPolylinePath(routePoints: RoutingPoint[], radius = 10): string {
+function routingRoundedPolylinePath(routePoints: RoutingPoint[], radius = 10): string {
   if (routePoints.length < 2) return '';
   let d = `M ${routePoints[0].x} ${routePoints[0].y}`;
   for (let pointIndex = 1; pointIndex < routePoints.length - 1; pointIndex += 1) {

@@ -19,7 +19,7 @@
 
 - 人工预览的端口选择遵循根规则；用户可见 URL 使用 `server.start()` 返回的实际地址，不以默认端口拼接 URL。
 - 展示层消费 view-model，不直接读取或重算底层存储与评分语义。
-- 修改报告 UI 后，先审查 `test/__snapshots__/html-renderer.test.ts.snap` 的实际变化，再决定是否更新 snapshot。
+- 修改报告 UI 后，先审查受影响的 `test/studio/presentation/__snapshots__/*.snap` 实际变化，再决定是否更新 snapshot。
 
 ## Code Review Rules
 

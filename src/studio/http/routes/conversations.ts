@@ -1,12 +1,6 @@
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
-import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
-import {
-  renderConversationDetailPage,
-  renderConversationIndexPage,
-} from '../../presentation/conversation-renderer.js';
-import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversation-activity.js';
-import { STUDIO_SOURCE_UNAVAILABLE, HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
+import { STUDIO_SOURCE_UNAVAILABLE, JSON_HEADERS, writeJsonError } from '../errors.js';
 import type {
   LiveStreamRegistry,
   StudioRouteContext,
@@ -44,14 +38,6 @@ export function createConversationRoutes({
         }
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(buildConversationDetailActivitySnapshot(conversation)));
-      },
-    },
-    {
-      pattern: '/observe',
-      async handler({ response, lang }) {
-        const html = renderConversationIndexPage(await catalog.listConversations(), lang);
-        response.writeHead(200, HTML_HEADERS);
-        response.end(html);
       },
     },
     {
@@ -136,45 +122,6 @@ export function createConversationRoutes({
       },
     },
     {
-      pattern: '/observe/conversations/:thread/tasks/:turn',
-      async handler({ response, params, lang }) {
-        const threadId = params.thread;
-        const turnId = params.turn;
-        const trajectory = threadId && turnId
-          ? await catalog.loadTaskTrajectory(threadId, turnId)
-          : undefined;
-        if (!trajectory) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end(lang === 'en' ? 'task trajectory not found' : '任务轨迹不存在');
-          return;
-        }
-        const sourceRecords = {
-          ...trajectory.sourceRecords,
-          records: [],
-        };
-        const html = renderKnowledgeDebuggerPage(
-          buildKnowledgeDebuggerViewModel(
-            trajectory.session,
-            turnId,
-            trajectory.ingestion,
-            sourceRecords,
-          ),
-          lang,
-          {
-            sourceRecordsEndpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/source-records`,
-            ...(trajectory.liveObservable && catalog.observeTaskTrajectory ? {
-              live: {
-                endpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/live`,
-                revision: trajectory.revision,
-              },
-            } : {}),
-          },
-        );
-        response.writeHead(200, HTML_HEADERS);
-        response.end(html);
-      },
-    },
-    {
       pattern: '/api/conversations/:thread/tasks/:turn/source-records',
       async handler({ response, params }) {
         const threadId = params.thread;
@@ -188,19 +135,6 @@ export function createConversationRoutes({
         }
         response.writeHead(200, JSON_HEADERS);
         response.end(JSON.stringify(trajectory.sourceRecords));
-      },
-    },
-    {
-      pattern: '/observe/conversations/:thread',
-      async handler({ response, params, lang }) {
-        const conversation = params.thread ? await catalog.getConversation(params.thread) : undefined;
-        if (!conversation) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end(lang === 'en' ? 'conversation not found' : '对话不存在');
-          return;
-        }
-        response.writeHead(200, HTML_HEADERS);
-        response.end(renderConversationDetailPage(conversation, lang));
       },
     },
     {

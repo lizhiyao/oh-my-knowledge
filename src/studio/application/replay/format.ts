@@ -26,7 +26,7 @@ export function formatRelativeTimestamp(value: string | undefined, start: string
   return formatRelativeTime(Math.max(0, valueMs - startMs));
 }
 
-export function formatRelativeTime(milliseconds: number): string {
+function formatRelativeTime(milliseconds: number): string {
   const totalTenths = Math.max(0, Math.round(milliseconds / 100));
   const minutes = Math.floor(totalTenths / 600);
   const seconds = Math.floor((totalTenths % 600) / 10);
@@ -39,7 +39,7 @@ export function formatDisplayTimestamp(value: string | undefined, lang: Lang): s
   return value.slice(0, 19).replace('T', ' ');
 }
 
-export function formatElapsed(milliseconds: number, lang: Lang): string {
+function formatElapsed(milliseconds: number, lang: Lang): string {
   const seconds = Math.max(0, milliseconds / 1000);
   if (seconds < 60) {
     const value = Number.isInteger(seconds) ? seconds.toFixed(0) : seconds.toFixed(1);

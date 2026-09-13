@@ -170,7 +170,7 @@ async function studioUrl(
   if (state.serverUrl) return state.serverUrl;
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const layout = projectLayout(cwd);
-  const { createReportServer } = await import('../studio/http/report-server.js');
+  const { createNextStudioServer } = await import('../studio/http/next-server.js');
   const {
     createNodeCoreContentStore,
     createNodeCoreRunArtifactStore,
@@ -178,7 +178,7 @@ async function studioUrl(
   const { createCoreStudioCatalog } = await import('../studio/application/core-run-catalog.js');
   const reportsDir = layout.evalDir;
   const contentStore = createNodeCoreContentStore(join(reportsDir, 'content'));
-  state.server = createReportServer({
+  state.server = createNextStudioServer({
     port: 0,
     coreStudioCatalog: createCoreStudioCatalog(createNodeCoreRunArtifactStore(reportsDir, {
       contentResolver: contentStore,
@@ -188,7 +188,7 @@ async function studioUrl(
     observationsDir: layout.observeInboxDir,
     managedDir: layout.managedDir,
     conversationCatalog: state.catalog,
-    // DSH 宿主无收件箱页面入口（输出落盘路径），裁剪收件箱路由（#839 批次 0）。
+    // DSH 宿主无收件箱页面入口（输出落盘路径），裁剪收件箱页面与 API（#839 批次 0）。
     observationInbox: false,
   });
   state.serverUrl = await state.server.start();

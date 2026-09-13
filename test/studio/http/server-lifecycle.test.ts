@@ -75,11 +75,9 @@ describe('Studio server lifecycle', () => {
       async loadTaskTrajectory() { return undefined; },
     } });
     runningServers.push(server);
-    for (const path of ['/observe', '/api/conversations/activity']) {
-      const response = await fetch(`${await server.start()}${path}`);
-      assert.equal(response.status, 503);
-      assert.deepEqual(await response.json(), { error: 'studio_source_unavailable' });
-    }
+    const response = await fetch(`${await server.start()}/api/conversations/activity`);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'studio_source_unavailable' });
   });
 
   it('can retry after a failed listen and formats a usable IPv6 URL', async () => {

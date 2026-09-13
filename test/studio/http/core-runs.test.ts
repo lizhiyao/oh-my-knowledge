@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -351,6 +352,36 @@ describe('Core Studio route handler', () => {
     };
   }
 
+  it('serves only the measure group when the host trims the Studio pages', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-core-pages-off-'));
+    const observationsDir = join(root, 'observations');
+    let server: ReturnType<typeof createReportServer> | undefined;
+    try {
+      server = createReportServer({
+        port: 0, coreStudioCatalog: catalog(), observationsDir,
+        studioPages: false, studioNavigation: false,
+      });
+      const url = await server.start();
+      // 不挂观测页面就不该为了一个用不到的目录在用户项目里落盘。
+      assert.equal(existsSync(observationsDir), false);
+
+      assert.equal((await fetch(`${url}/api/reports`)).status, 200);
+      const page = await fetch(`${url}/measure/core-run-1`);
+      assert.equal(page.status, 200);
+      const html = await page.text();
+      assert.ok(html.includes('progress-policy'));
+      assert.doesNotMatch(html, /aria-label="Studio 一级导航"/);
+      for (const path of ['/', '/observe', '/observe/inbox', '/knowledge', '/api/observe-inbox/view']) {
+        const trimmed = await fetch(`${url}${path}`, { redirect: 'manual' });
+        assert.equal(trimmed.status, 404, `${path} is not mounted on a measure-only host`);
+        assert.equal(trimmed.headers.get('location'), null, `${path} must not redirect to a page it does not serve`);
+      }
+    } finally {
+      await server?.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('connects the production HTTP server to the evaluation catalog', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omk-core-route-wiring-'));
     let server: ReturnType<typeof createReportServer> | undefined;
@@ -376,7 +407,7 @@ describe('Core Studio route handler', () => {
       assert.ok((await page.text()).includes('progress-policy'));
       for (const path of [
         '/conversations', '/conversations/thread/tasks/turn', '/reports', '/reports/core-run-1',
-        '/observe-inbox', '/observe-debugger/session', '/observations', '/observations/inbox',
+        '/observe-inbox', '/observe-debugger/session', '/observe/sessions/session', '/observations', '/observations/inbox',
         '/observe-health', '/observe-health/report', '/analyses', '/analyses/report',
         '/skills/audit', '/doctors/report', '/managed', '/managed/audit',
         '/skill-trend/audit', '/analyses-diff?from=a&to=b',
@@ -393,8 +424,8 @@ describe('Core Studio route handler', () => {
         assert.equal(home.headers.get('location'), `/observe${query}`);
         let homeAppBar: string | undefined;
         for (const [path, active, status] of [
-          ['/observe', 'observe', 200],
           ['/knowledge', 'knowledge', 200],
+          ['/observe/health', 'observe', 200],
           ['/measure', 'measure', 200],
           ['/measure/core-run-1', 'measure', 200],
           ['/measure/missing', 'measure', 404],
@@ -407,9 +438,9 @@ describe('Core Studio route handler', () => {
           const appBar = appBars[0]!.replaceAll(' aria-current="page"', '');
           assert.ok(appBar.indexOf('href="/observe') < appBar.indexOf('href="/measure'));
           assert.ok(appBar.indexOf('href="/measure') < appBar.indexOf('href="/knowledge'));
-          if (path === '/observe') homeAppBar = appBar;
+          if (path === '/knowledge') homeAppBar = appBar;
           else assert.equal(appBar, homeAppBar, `${path} preserves the same branding and navigation`);
-          if (['/', '/observe', '/knowledge', '/measure'].includes(path)) {
+          if (['/', '/knowledge', '/measure'].includes(path)) {
             assert.ok(html.includes('<body class="studio-workspace">'), `${path} uses the workspace shell`);
             assert.match(html, /<h1 class="studio-page-title">[^<]+<\/h1>/, `${path} keeps an accessible page heading`);
             assert.ok(!html.includes('class="studio-page-header'), `${path} has no redundant title row`);
@@ -424,7 +455,6 @@ describe('Core Studio route handler', () => {
           ]) {
             assert.ok(html.replaceAll(' aria-current="page"', '').includes(`href="/${section}${query}">${label}</a>`));
           }
-          if (path === '/observe') assert.ok(html.includes('conversation-index-app'));
           if (path === '/measure/core-run-1') assert.ok(html.includes('progress-policy'));
         }
       }
