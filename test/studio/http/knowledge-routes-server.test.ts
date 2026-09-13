@@ -49,8 +49,13 @@ describe('Studio knowledge routes', () => {
     assert.equal(managedResolutions, 2);
   });
 
-  it('serves the health page without old page aliases, retired APIs, or the removed chart asset', async () => {
-    assert.equal((await fetch(`${baseUrl}/observe/health?lang=en`)).status, 200);
+  it('retires the health HTML pages on the standalone host while keeping their JSON APIs', async () => {
+    // 观测健康列表/详情/趋势/差异四页改由 Next 宿主渲染；独立 HTML 宿主按设计不再挂这些路径，也不留重定向别名。
+    for (const path of ['/observe/health', '/observe/health/report-a', '/observe/health-diff?from=a&to=b', '/observe/skill-trend/audit']) {
+      const response = await fetch(`${baseUrl}${path}`, { redirect: 'manual' });
+      assert.equal(response.status, 404, `${path} 已退役`);
+      assert.equal(response.headers.get('location'), null, `${path} 不留重定向`);
+    }
     const pageRedirect = await fetch(`${baseUrl}/analyses?lang=en`, { redirect: 'manual' });
     assert.equal(pageRedirect.status, 404);
     assert.equal(pageRedirect.headers.get('location'), null);
@@ -61,6 +66,7 @@ describe('Studio knowledge routes', () => {
     assert.equal(apiLegacy.status, 404);
     assert.equal(apiLegacy.headers.get('location'), null);
 
+    assert.equal((await fetch(`${baseUrl}/api/observe-health`)).status, 200, 'Next 页面与外部消费者仍以这组 JSON API 为数据源');
     assert.equal((await fetch(`${baseUrl}/static/chart.js`)).status, 404);
   });
 

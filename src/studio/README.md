@@ -54,9 +54,9 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 | 入口 | 宿主 | 直达页面 |
 | --- | --- | --- |
-| CLI `omk studio`（`cli/commands/studio.ts`） | Next（`createNextStudioServer`） | 会话列表/详情/轨迹、观测收件箱、Measure、Knowledge 列表/详情为 React；其余路径回落到下方 HTML 路由。 |
+| CLI `omk studio`（`cli/commands/studio.ts`） | Next（`createNextStudioServer`） | 会话列表/详情/轨迹、观测收件箱、观测健康列表/详情/趋势/差异、Measure、Knowledge 列表/详情为 React；其余路径回落到下方 HTML 路由。 |
 | CLI 评测预览（`cli/lib/run-core-evaluation.ts`，TTY 下 eval 完成后自动启动） | Next（`createNextStudioServer`，`studioPages: false`） | 只有 `/measure`、`/measure/:runId`（React）与 `/api/reports`；观测、知识页面组和收件箱路由组都不注册，壳层不渲染一级导航，相关路径 404。 |
-| DSH 插件 `/omk observe`（`dsh-plugin/index.ts`） | Next（`createNextStudioServer`） | 任务轨迹 `/observe/conversations/:thread/tasks/:turn`（React）。收件箱路由组不注册（`observationInbox: false`，#839 批次 0）；收件箱数据经数据层落盘，不走页面。 |
+| DSH 插件 `/omk observe`（`dsh-plugin/index.ts`） | Next（`createNextStudioServer`） | 会话列表/详情、观测健康列表/详情/趋势/差异、任务轨迹 `/observe/conversations/:thread/tasks/:turn`（React）；健康页的入口是 `/observe` 顶部的分区导航。收件箱路由组不注册（`observationInbox: false`，#839 批次 0）；收件箱数据经数据层落盘，不走页面。 |
 
 ### 模块组用途与保留理由
 
@@ -64,11 +64,13 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 | --- | --- |
 | `core-run-renderer` | 已删除。`/measure` 列表与详情只由 `web/app/measure/**`（React + AntD）渲染，展示无关的事实口径在 `application/core-run-format.ts`；`http/routes/core-runs` 只保留 `/api/reports` 的 JSON 投影，公开渲染导出 `renderCoreRunList`／`renderCoreRunDetail` 与其 `CoreStudioRenderRoutes` 注入点一并退出。 |
 | `skill-list-renderer`、`skill-detail-renderer` | 已删除。`/knowledge` 与 `/knowledge/skills/:name` 只由 `web/app/knowledge/**`（React + AntD）渲染：HTML 宿主的知识路由组与 Next 的拦截条件同为 `studioPages`，两者不可能同时生效，因此这两个 HTML 出口在任何真实宿主上都不再可达。`/api/skills`、`/api/skills/:skill/diagnostics` 作为 JSON 事实源保留。 |
-| `knowledge-reports-renderer`、`skill-health-renderer` | 观测健康列表、报告详情、趋势与差异页（只读报告）。 |
+| `knowledge-reports-renderer`、`skill-health-renderer` | 已删除。`/observe/health`、`/observe/health/:id`、`/observe/health-diff`、`/observe/skill-trend/:skill` 只由 `web/app/observe/health*`、`web/app/observe/skill-trend/*`（React + AntD）渲染；展示无关的事实口径（分档配色、样本不足静音、趋势折线几何、差异 Δ）在 `application/health-format.ts`，路径识别与 400/404 语义在 `http/health-page.ts`。`/api/observe-health*`、`/api/skill-trend/*`、`/api/analyses-diff` 作为 JSON 事实源保留。 |
 | `doctor-detail-renderer` | `/knowledge/doctors/:id` 体检报告（只读报告）。 |
 | `managed-history-renderer` | `/knowledge/managed` 及受管对象历史（只读报告）。 |
 | `observation-inbox-renderer`、`observation-inbox/` | 已删除（#839 收口）。`/observe/inbox` 现由 Next 宿主 `web/components/inbox/`（React + AntD）渲染；共享投影与语义位于 `observability/inbox/`（view-model、signal-semantics、skill-rollups、metric-semantics、review-semantics）。 |
 | `conversation-renderer`、`knowledge-debugger-renderer`、`trajectory-live`、`trajectory-routing` | 已删除。会话列表/详情与任务轨迹只由 `web/app/observe/**` 渲染，`/observe/sessions/:id` 手写调试入口随之退出；轨迹的连线计算保留在 `application/replay/routing.ts`，由 React 直接消费。HTML 宿主不再挂 `/observe`、`/observe/conversations/*`、`/observe/sessions/*`。 |
 | `layout`、`report-shell`、`icons`、`inline-markdown` | 上述 HTML 页面的外壳、图标和安全内容渲染。Markdown 解析与纯文本计算位于 application。 |
 
-只读报告页（skill-health、体检、受管历史、趋势与差异）不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，因此它们仍是活跃的页面能力；但全仓已没有任何 React 页面或 CLI/MCP 输出链接进这一组，一级导航三项（`/observe`、`/measure`、`/knowledge`）都是 React，这些页面只能手打地址访问，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理。迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由；目录名本身不是废弃标记。`/measure` 的双轨已收口：HTML renderer 及其公开渲染导出删除，CLI 评测预览改挂 Next，`oh-my-knowledge/studio` 不再导出任何渲染实现，一级导航可达的页面全部是 React，`presentation/` 只服务上面列出的只读报告页。
+观测健康四页曾是「没有入口的孤岛」：一级导航三项（`/observe`、`/measure`、`/knowledge`）都是 React，全仓没有任何页面或 CLI/MCP 输出链进这一组，只能手打地址访问。本次按「先给 React 树真实入口 → 迁移 → 删 HTML 渲染层」的顺序收口：`/observe` 列表页顶部的分区导航（`web/components/observe/section-nav.tsx`）指向 `/observe/health`，健康详情再链向单 skill 趋势与批次差异，然后才删除两个 HTML renderer，避免出现「旧渲染层已删、入口仍缺失」的悬空窗口。收件箱刻意不进分区导航：它受宿主开关控制，在 DSH 上是 404，静态链接会承诺宿主未必提供的能力。
+
+剩下的只读报告页（体检详情 `/knowledge/doctors/:id`、受管历史 `/knowledge/managed`）仍不在 Next 的拦截集合里，两个 Next 宿主都回落到 HTML，且同样没有 React 入口，所以「迁 React」还是「退役页面、只留 `/api/*` 事实源」是产品判断，不是渲染层清理；迁移其中任何一页都不会减少渲染层数量，除非同时裁掉对应 HTML 路由，目录名本身不是废弃标记。`/measure` 的双轨已收口：HTML renderer 及其公开渲染导出删除，CLI 评测预览改挂 Next，`oh-my-knowledge/studio` 不再导出任何渲染实现，一级导航可达的页面全部是 React，`presentation/` 只服务上面列出的两页与共享外壳。

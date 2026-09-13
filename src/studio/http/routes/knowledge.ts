@@ -3,10 +3,8 @@ import type { KnowledgeQuery } from '../../application/knowledge-query.js';
 import { listAnalyses, loadAnalysis, loadDoctorReport, querySkillDiff, querySkillTrend } from '../../application/knowledge-reports.js';
 import { buildSkillContext } from '../../application/skill-health.js';
 import { renderDoctorDetail } from '../../presentation/doctor-detail-renderer.js';
-import { renderAnalysisList, renderSkillDiffPage, renderSkillTrendPage } from '../../presentation/knowledge-reports-renderer.js';
 import { DEFAULT_LANG } from '../../presentation/layout.js';
 import { renderManagedHistory, renderManagedList } from '../../presentation/managed-history-renderer.js';
-import { renderSkillHealthReport } from '../../presentation/skill-health-renderer.js';
 import type { SkillReportContext } from '../../view-models/report-context.js';
 import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
@@ -53,13 +51,6 @@ export function createKnowledgeRoutes({
       handler({ response: res, analysesDir }) {
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify(listAnalyses(analysesDir, includeObserveCards)));
-      },
-    },
-    {
-      pattern: '/observe/health',
-      handler({ response: res, analysesDir, lang }) {
-        res.writeHead(200, HTML_HEADERS);
-        res.end(renderAnalysisList(listAnalyses(analysesDir, includeObserveCards), lang));
       },
     },
     {
@@ -116,19 +107,6 @@ export function createKnowledgeRoutes({
       },
     },
     {
-      pattern: '/observe/health/*id',
-      handler({ response: res, params, lang, analysesDir }) {
-        const report = loadAnalysis(analysesDir, params.id, includeObserveCards);
-        if (!report) {
-          res.writeHead(404, TEXT_HEADERS);
-          res.end('analysis not found');
-          return;
-        }
-        res.writeHead(200, HTML_HEADERS);
-        res.end(renderSkillHealthReport(report, lang));
-      },
-    },
-    {
       pattern: '/api/observe-health/*id',
       handler({ response: res, params, analysesDir }) {
         const report = loadAnalysis(analysesDir, params.id, includeObserveCards);
@@ -145,33 +123,6 @@ export function createKnowledgeRoutes({
       handler({ response: res, params, analysesDir }) {
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify(querySkillTrend(analysesDir, params.skill, includeObserveCards)));
-      },
-    },
-    {
-      pattern: '/observe/skill-trend/*skill',
-      handler({ response: res, params, lang, analysesDir }) {
-        res.writeHead(200, HTML_HEADERS);
-        res.end(renderSkillTrendPage(querySkillTrend(analysesDir, params.skill, includeObserveCards), lang));
-      },
-    },
-    {
-      pattern: '/observe/health-diff',
-      handler({ response: res, url, lang, analysesDir }) {
-        const fromId = url.searchParams.get('from');
-        const toId = url.searchParams.get('to');
-        if (!fromId || !toId) {
-          res.writeHead(400, TEXT_HEADERS);
-          res.end('missing from/to query params');
-          return;
-        }
-        const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
-        if (!diff) {
-          res.writeHead(404, TEXT_HEADERS);
-          res.end('analysis not found');
-          return;
-        }
-        res.writeHead(200, HTML_HEADERS);
-        res.end(renderSkillDiffPage(diff, lang));
       },
     },
     {

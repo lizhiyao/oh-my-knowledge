@@ -269,10 +269,6 @@ const RULES: ForbiddenRule[] = [
     from: 'studio/presentation/',
     to: 'observability/',
     reason: 'Studio presentation 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/skill-health/analyzer.ts。',
-    whitelist: [
-      // 允许的 facade 访问点(以及它们的 .ts 解析后路径)。
-      'studio/presentation/skill-health-renderer.ts::observability/skill-health/analyzer.ts',
-    ],
   },
 ];
 
