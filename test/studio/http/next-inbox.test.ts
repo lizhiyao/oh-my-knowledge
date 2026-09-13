@@ -189,7 +189,11 @@ describe('Next-hosted observation inbox route', () => {
     servers.push(server);
     const url = await server.start();
 
-    for (const path of ['/', '/observe', '/observe/inbox', '/observe/conversations/thread', '/knowledge']) {
+    for (const path of [
+      '/', '/observe', '/observe/inbox', '/observe/conversations/thread', '/knowledge',
+      // 观测健康四页与其余页面组同一个开关裁剪：只挂 /measure 的宿主不能把它们带回去。
+      '/observe/health', '/observe/health/report-a', '/observe/health-diff?from=a&to=b', '/observe/skill-trend/audit',
+    ]) {
       const trimmed = await fetch(`${url}${path}`, { redirect: 'manual' });
       assert.equal(trimmed.status, 404, `${path} is not intercepted`);
       assert.equal(trimmed.headers.get('location'), null, `${path} must not redirect to a page it does not serve`);

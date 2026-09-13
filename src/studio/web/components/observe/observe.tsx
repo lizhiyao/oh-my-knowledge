@@ -8,6 +8,7 @@ import type { ConversationListItem } from '../../../../observability/view-models
 import { EventRecords, RawRecords } from './records';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
+import { ObserveSectionNav } from './section-nav';
 import type { Language } from '../layout/shell';
 
 const displayTime = (value: string | undefined) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
@@ -78,6 +79,7 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
     return selected && (!workspace || item.cwd === workspace) && (!model || item.model === model) && `${item.title} ${item.preview ?? ''} ${item.cwd ?? ''}`.toLowerCase().includes(query.toLowerCase());
   }).sort((a,b) => Number(running(b)) - Number(running(a)));
   return <>
+    <ObserveSectionNav active="conversations" lang={lang}/>
     <div className="observe-toolbar">
       <Segmented value={filter} onChange={value=>{setFilter(value);setCurrent(1);}} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
       <div className="observe-toolbar-actions conversation-filters">

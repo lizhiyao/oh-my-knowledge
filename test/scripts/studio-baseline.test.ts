@@ -91,8 +91,6 @@ describe('studio-baseline 夹具有效性', () => {
   it('writeBaselineDataset 产出的数据集可被 buildSkillIndex 全量索引', () => {
     const scale = BASELINE_SCALES[0]!;
     const layout = writeBaselineDataset(scale, writers, makeTempRoot());
-    assert.equal(layout.latestAnalysisId, `obs-${String(scale.analyses - 1).padStart(4, '0')}`);
-    assert.equal(layout.firstSkillName, 'baseline-skill-000');
 
     const index = buildSkillIndex(layout.analysesDir, layout.doctorsDir, layout.observationsDir);
     assert.equal(index.summary.totalSkills, scale.skills);
@@ -123,6 +121,6 @@ describe('studio-baseline 输出', () => {
     assert.ok(markdown.includes('| `GET /api/skills` | 12.3 | 4.6 | 2.0 KB |'));
     assert.ok(markdown.includes('| `GET /observe/inbox` | — | 150 | 3.00 MB |'));
     assert.ok(markdown.includes('冷 /api/skills 期间事件循环 p99 延迟：9.9 ms'));
-    assert.ok(markdown.includes('24 并发 GET /observe/health（热）：墙钟 88.8 ms，事件循环 p99 6.2 ms。'));
+    assert.ok(markdown.includes('24 并发 GET /api/observe-health（热）：墙钟 88.8 ms，事件循环 p99 6.2 ms。'));
   });
 });

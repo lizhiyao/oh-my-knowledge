@@ -5,13 +5,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextCatalogContext, nextInboxContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { nextCatalogContext, nextHealthContext, nextInboxContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { TEXT_HEADERS } from './errors.js';
 import type { CoreStudioCatalog } from '../view-models/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { loadObservePage, type ObservePage } from './observe-page.js';
 
 import { loadKnowledgePage, type KnowledgePage } from './knowledge-page.js';
+import { isHealthPath, loadHealthPage, type HealthPage } from './health-page.js';
 import { loadInboxPage, type InboxPage } from './inbox-page.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
@@ -39,14 +40,38 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const inbox = inboxRoutes && path === '/observe/inbox';
       const observe = pageRoutes && (inbox || path === '/observe' || path.startsWith('/observe/conversations/'));
       const knowledge = pageRoutes && (path === '/knowledge' || path.startsWith('/knowledge/skills/'));
-      if (!measure && !observe && !knowledge && !path.startsWith('/_next/')) return false;
-      if ((measure || observe || knowledge) && (request.method ?? 'GET') !== 'GET') {
+      const health = pageRoutes && isHealthPath(path);
+      if (!measure && !observe && !knowledge && !health && !path.startsWith('/_next/')) return false;
+      if ((measure || observe || knowledge || health) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }
+      const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+      let healthPage: HealthPage | undefined;
+      if (health) {
+        try {
+          const loaded = loadHealthPage(
+            { analysesDir: knowledgeQuery.directories().analysesDir, includeObserveCards: options.includeObserveCards ?? false },
+            path,
+            searchParams,
+          );
+          if (loaded.status === 'missing_query_params') {
+            response.writeHead(400, TEXT_HEADERS);
+            response.end('missing from/to query params'); return true;
+          }
+          if (loaded.status === 'analysis_not_found') {
+            response.writeHead(404, TEXT_HEADERS);
+            response.end('analysis not found'); return true;
+          }
+          healthPage = loaded.page;
+        } catch {
+          response.writeHead(503, TEXT_HEADERS);
+          response.end('studio_source_unavailable'); return true;
+        }
+      }
       let knowledgePage: KnowledgePage | undefined;
       if (knowledge) {
-        try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
+        try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end('studio_source_unavailable'); return true;
@@ -56,7 +81,6 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           response.end('skill_not_found'); return true;
         }
       }
-      const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
       let inboxPage: InboxPage | undefined;
       if (inbox) {
         try { inboxPage = loadInboxPage(options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR, searchParams.get('skill') ?? undefined); }
@@ -100,11 +124,12 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         }
       }
       if (!app) throw new Error('Studio UI is not started');
-      request.headers['x-omk-studio-lang'] = new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'zh';
+      request.headers['x-omk-studio-lang'] = searchParams.get('lang') === 'en' ? 'en' : 'zh';
       // 一级导航与页面组同源：裁掉兄弟路由的宿主不提供导航，否则链接指向自己没挂的页面。
       request.headers['x-omk-studio-navigation'] = pageRoutes ? 'full' : 'none';
       const handler = app.getRequestHandler();
       if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
+      else if (healthPage) await nextHealthContext.run(healthPage, () => handler(request, response));
       else if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
       else if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
       else if (catalog) await nextCatalogContext.run(catalog as CoreStudioCatalog, () => handler(request, response));

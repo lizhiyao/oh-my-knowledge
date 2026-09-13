@@ -168,9 +168,6 @@ export interface BaselineDatasetLayout {
   readonly analysesDir: string;
   readonly doctorsDir: string;
   readonly observationsDir: string;
-  /** 最新一份 observe-health 的 recordId（详情路由参数）。 */
-  readonly latestAnalysisId: string;
-  readonly firstSkillName: string;
 }
 
 export function writeBaselineDataset(
@@ -181,7 +178,6 @@ export function writeBaselineDataset(
   const analysesDir = join(root, 'analyses');
   const doctorsDir = join(root, 'doctors');
   const observationsDir = join(root, 'observations');
-  let latestAnalysisId = '';
   for (let index = 0; index < scale.analyses; index += 1) {
     const recordId = `obs-${String(index).padStart(4, '0')}`;
     writers.writeMeasurementReportBundle({
@@ -192,7 +188,6 @@ export function writeBaselineDataset(
       createdAt: timestampAt(index),
       report: buildObserveHealthReport(scale, index),
     });
-    latestAnalysisId = recordId;
   }
   for (let index = 0; index < scale.doctorReports; index += 1) {
     writers.writeMeasurementReportBundle({
@@ -220,8 +215,6 @@ export function writeBaselineDataset(
     analysesDir,
     doctorsDir,
     observationsDir,
-    latestAnalysisId,
-    firstSkillName: skillNameAt(scale, 0),
   };
 }
 
@@ -280,6 +273,9 @@ async function loadDist(): Promise<DistModules> {
 
 const WARM_REPEATS = 5;
 const CONCURRENCY = 24;
+/** 并发探针落点：请求路径与表格/结论展示行同源，避免路由改动后文案失真。 */
+const CONCURRENCY_PROBE_PATH = '/api/observe-health';
+const CONCURRENCY_PROBE = `GET ${CONCURRENCY_PROBE_PATH}`;
 
 async function measureRoute(url: string): Promise<{ ms: number; bytes: number }> {
   const start = performance.now();
@@ -318,12 +314,9 @@ async function measureScale(scale: BaselineScale, dist: DistModules): Promise<Sc
     });
 
     const warmOnly: readonly string[] = [
-      'GET /api/observe-health',
-      'GET /observe/health',
-      `GET /observe/health/${dataset.latestAnalysisId}`,
-      `GET /observe/skill-trend/${encodeURIComponent(dataset.firstSkillName)}`,
+      CONCURRENCY_PROBE,
       'GET /api/observe-inbox',
-      // /observe/inbox 与 /knowledge 页面已由 Next 宿主渲染；本脚本测的是独立 HTML 宿主，那里按设计 404。
+      // /observe/inbox、/knowledge 与观测健康列表/详情/趋势页已由 Next 宿主渲染；本脚本测的是独立 HTML 宿主，那里按设计 404。
     ];
     for (const route of warmOnly) {
       const path = route.slice('GET '.length);
@@ -341,7 +334,7 @@ async function measureScale(scale: BaselineScale, dist: DistModules): Promise<Sc
     monitor.enable();
     const concurrentStart = performance.now();
     await Promise.all(
-      Array.from({ length: CONCURRENCY }, () => measureRoute(`${baseUrl}/observe/health`)),
+      Array.from({ length: CONCURRENCY }, () => measureRoute(`${baseUrl}${CONCURRENCY_PROBE_PATH}`)),
     );
     const wallMs = performance.now() - concurrentStart;
     const eventLoopP99Ms = monitor.percentile(99) / 1e6;
@@ -385,7 +378,7 @@ export function renderBaselineMarkdown(results: readonly ScaleResult[]): string 
     lines.push(
       '',
       `冷 /api/skills 期间事件循环 p99 延迟：${formatMs(result.coldEventLoopP99Ms)} ms；`,
-      `${result.concurrency.requests} 并发 GET /observe/health（热）：墙钟 ${formatMs(result.concurrency.wallMs)} ms，事件循环 p99 ${formatMs(result.concurrency.eventLoopP99Ms)} ms。`,
+      `${result.concurrency.requests} 并发 ${CONCURRENCY_PROBE}（热）：墙钟 ${formatMs(result.concurrency.wallMs)} ms，事件循环 p99 ${formatMs(result.concurrency.eventLoopP99Ms)} ms。`,
       '',
     );
   }

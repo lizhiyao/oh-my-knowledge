@@ -16,8 +16,6 @@ export function fmtLocalTime(isoStr: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-export const COLORS: string[] = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--chart-6)'];
-
 export const I18N: Record<Lang, Record<string, string>> = {
   zh: {
     title: '评测报告',
@@ -86,48 +84,6 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantArtifactSource: '知识来源',
     variantExecutionStrategy: '执行策略',
     variantRuntimeContext: '运行环境',
-    // --- observability (skill health / trend / diff) ---
-    skillHealthTitle: 'Skill 健康度日报',
-    noAnalyses: '暂无 skill 健康度日报。运行 <code>omk observe &lt;trace-dir&gt;</code> 生成。',
-    backToEvalReports: '← 评测报告',
-    backToAnalyses: '← Skill 健康度日报',
-    analysesCompareHint: '选两个报告的 from/to 单选框,点 Compare 生成 diff。',
-    analysesCompareBtn: '对比 →',
-    analysesFromLabel: 'from',
-    analysesToLabel: 'to',
-    analysesSessions: '会话',
-    analysesSegs: '段',
-    analysesSkills: '技能',
-    analysesLowN: '样本不足',
-    skillTrendHeading: 'Skill 趋势',
-    noTrendData: '暂无趋势数据。该 skill 尚未出现在任何分析报告里。',
-    trendNPoints: '个时间点',
-    trendEarliest: '最早',
-    trendLatest: '最新',
-    trendLegendGap: 'gap rate',
-    trendLegendWeighted: 'weighted gap',
-    trendLegendFailure: 'failure rate',
-    trendLegendCoverage: 'coverage',
-    trendColTimestamp: '时间',
-    trendColSegs: '段数',
-    trendColGap: 'Gap',
-    trendColWeighted: '加权',
-    trendColFailure: '失败率',
-    trendColCoverage: '覆盖',
-    trendColTokens: 'Tokens',
-    trendColDuration: '耗时',
-    skillDiffHeading: 'Skill 健康度对比',
-    diffSortHint: '按 gap 变化量排序;绿色=改善,红色=恶化',
-    diffTagRemoved: '已消失',
-    diffTagNew: '新增',
-    diffNavFrom: '起点',
-    diffNavTo: '终点',
-    diffColSkill: 'Skill',
-    diffColSegments: '段数',
-    diffColWeightedGap: '加权 Gap',
-    diffColFailureRate: '失败率',
-    diffColCoverage: '覆盖',
-    viewTrendLink: '查看趋势 →',
     artifactHashLabel: '版本指纹',
     artifactHashTooltip: 'skill 内容指纹的 SHA-256 前 12 位(不含路径/时间/git):目录-skill(本地或 git)覆盖整棵可分发树(SKILL.md + references/ 资产,排除 .omk/.git/node_modules/evolve;改任意资产都变,git 源经隔离副本物化、整树暴露给 executor),单文件-skill 取该 .md 字节;用于辨别报告对应哪一版 skill,同输入指纹不变——防止"改动效果"和"随机波动"混淆',
     switchLang: '英文',
@@ -199,48 +155,6 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantArtifactSource: 'Source',
     variantExecutionStrategy: 'Execution Strategy',
     variantRuntimeContext: 'Runtime Context',
-    // --- observability (skill health / trend / diff) ---
-    skillHealthTitle: 'Skill Health Reports',
-    noAnalyses: 'No skill health reports yet. Run <code>omk observe &lt;trace-dir&gt;</code> to generate.',
-    backToEvalReports: '← Eval reports',
-    backToAnalyses: '← Skill Health Reports',
-    analysesCompareHint: 'Pick from/to radios on two reports, then click Compare to generate a diff.',
-    analysesCompareBtn: 'Compare →',
-    analysesFromLabel: 'from',
-    analysesToLabel: 'to',
-    analysesSessions: 'sessions',
-    analysesSegs: 'segs',
-    analysesSkills: 'skills',
-    analysesLowN: 'low N',
-    skillTrendHeading: 'Skill Trend',
-    noTrendData: 'No trend data. This skill has not appeared in any analysis report yet.',
-    trendNPoints: 'data points',
-    trendEarliest: 'earliest',
-    trendLatest: 'latest',
-    trendLegendGap: 'gap rate',
-    trendLegendWeighted: 'weighted gap',
-    trendLegendFailure: 'failure rate',
-    trendLegendCoverage: 'coverage',
-    trendColTimestamp: 'Timestamp',
-    trendColSegs: 'Segs',
-    trendColGap: 'Gap',
-    trendColWeighted: 'Weighted',
-    trendColFailure: 'Failure',
-    trendColCoverage: 'Coverage',
-    trendColTokens: 'Tokens',
-    trendColDuration: 'Duration',
-    skillDiffHeading: 'Skill Health Diff',
-    diffSortHint: 'Sorted by |Δgap|; green=improved, red=regressed',
-    diffTagRemoved: 'removed',
-    diffTagNew: 'new',
-    diffNavFrom: 'from',
-    diffNavTo: 'to',
-    diffColSkill: 'Skill',
-    diffColSegments: 'Segments',
-    diffColWeightedGap: 'Weighted gap',
-    diffColFailureRate: 'Failure rate',
-    diffColCoverage: 'Coverage',
-    viewTrendLink: 'trend →',
     artifactHashLabel: 'Version fingerprint',
     artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill content (content-only: no path/time/git): a directory-skill (local or git) covers the whole distributable tree (SKILL.md + references/ assets, excluding .omk/.git/node_modules/evolve; any asset change flips it; git sources are materialized into an isolated copy whose whole tree is exposed to the executor), a file-skill covers the single .md bytes. Identifies which version of the skill this report ran — same input = same fingerprint. Keeps "intentional change" separate from "random variance"',
     switchLang: 'Chinese',
@@ -406,13 +320,6 @@ html{scrollbar-gutter:stable}
   --yellow:#d97706;              /* 警告琥珀 */
   --yellow-bg:rgba(217,119,6,.16);
   --info-bg:rgba(79,70,229,.06);
-  /* 图表色 */
-  --chart-1:#4f46e5;
-  --chart-2:#d97706;
-  --chart-3:#059669;
-  --chart-4:#ec4899;
-  --chart-5:#06b6d4;
-  --chart-6:#7c3aed;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
