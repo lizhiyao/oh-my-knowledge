@@ -53,7 +53,8 @@ jobs:
       # 一个文件；只有 runner 侧超时的话，作业连一段可查的输出都不会有。
       # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
-      - run: timeout -k 30s 540 yarn test --shard=${{ matrix.shard }}/4
+      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
+      - run: timeout -k 30s 540 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
 
   test_24_shard:
     name: test shard (24, ${{ matrix.shard }}/4)
@@ -72,7 +73,8 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - run: yarn build
-      - run: timeout -k 30s 540 yarn test --shard=${{ matrix.shard }}/4
+      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
+      - run: timeout -k 30s 540 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
 
   # Keep the required status names stable while the full suites run in parallel.
   test_22:

@@ -165,26 +165,9 @@ describe('src 最终领域地图', () => {
       types: './dist/eval-core/index.d.ts',
       import: './dist/eval-core/index.js',
     });
-    expect(manifest.exports['./eval-runtime']).toEqual({
-      types: './dist/eval-runtime/index.d.ts',
-      import: './dist/eval-runtime/index.js',
-    });
-    expect(manifest.exports['./eval-hosts']).toEqual({
-      types: './dist/eval-workflows/hosts/reference-executors.d.ts',
-      import: './dist/eval-workflows/hosts/reference-executors.js',
-    });
-    expect(manifest.exports['./eval-samples']).toEqual({
-      types: './dist/eval-workflows/inputs/eval-samples.d.ts',
-      import: './dist/eval-workflows/inputs/eval-samples.js',
-    });
-    expect(manifest.exports['./projections']).toEqual({
-      types: './dist/eval-workflows/projections/index.d.ts',
-      import: './dist/eval-workflows/projections/index.js',
-    });
-    expect(manifest.exports['./studio']).toEqual({
-      types: './dist/studio/index.d.ts',
-      import: './dist/studio/index.js',
-    });
+    expect(manifest.exports['./eval-core/schemas/*']).toEqual(
+      './dist/eval-core/contracts/schemas/*',
+    );
     expect(manifest.exports['./mcp']).toEqual({
       types: './dist/mcp/index.d.ts',
       import: './dist/mcp/index.js',

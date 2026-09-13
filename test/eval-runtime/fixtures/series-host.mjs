@@ -1,14 +1,9 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import {
-  evaluateSeries as evaluateSeriesFromRoot,
+  evaluateSeries,
   prepareEvaluationSeries,
 } from 'oh-my-knowledge';
-import {
-  evaluateSeries as evaluateSeriesFromSubpath,
-} from 'oh-my-knowledge/eval-runtime';
-
-assert.equal(evaluateSeriesFromRoot, evaluateSeriesFromSubpath);
 
 const outputs = ['A', 'B', 'A'];
 let targetInvocations = 0;

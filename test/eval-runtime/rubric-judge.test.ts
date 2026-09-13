@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EvaluationPortFailure } from '../../src/eval-core/evaluation/index.js';
 import {
   createRuntimeIdentity,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 import {
   createRubricJudgeCriterion,
   createRubricJudgeEvaluationContext,
@@ -16,7 +16,7 @@ import {
 } from '../../src/eval-runtime/index.js';
 import {
   SourceNeutralTraceSchema,
-} from '../../src/eval-runtime/contracts.js';
+} from '../../src/eval-runtime/index.js';
 import { isValidToolCallInfo } from '../../src/executors/result-validation.js';
 import {
   createRubricJudgeInstrument as createWorkflowInstrument,

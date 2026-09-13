@@ -8,7 +8,7 @@
 
 - **宿主持有 effect，Core 持有测量语义。** 凭证、网络、存储、队列、租户隔离全部由平台宿主实现；OMK Core 只表达可版本化的测量契约与确定性变换，不触碰任何 effect。
 - **派发／队列／重试／续跑／租户是 OMK 非目标。** OMK 不提供任务派发、跨进程队列、平台级重试、断点续跑或多租户隔离，这些能力由平台自建。`policy` 里的 retry 只是单次 sealed 测量契约内的 attempt 级重试，不是任务重调度。
-- **canonical Report 不可插拔。** 测量产生的 Report 字段语义是跨版本可比性的锚点，不能替换成宿主自定义结构。自定义报告只有两条路：用 `oh-my-knowledge/projections` 从 canonical 结果做派生视图，或把宿主元数据放进 Report 已有的宿主槽位——`summaries` 与 `annotations` 由 run options 传入并原样落进 Report，`extensions` 是 Report 自带的扩展字段。
+- **canonical Report 不可插拔。** 测量产生的 Report 字段语义是跨版本可比性的锚点，不能替换成宿主自定义结构。自定义报告把宿主元数据放进 Report 已有的宿主槽位——`summaries` 与 `annotations` 由 run options 传入并原样落进 Report，`extensions` 是 Report 自带的扩展字段。
 - **派生视图不覆盖原始证据。** 平台可以缓存派生视图加速看板，但原始结果与证据链必须完整保留，且派生视图可以随时从原始证据重新生成。
 
 ## 下发映射契约
@@ -17,7 +17,7 @@
 
 | 下发内容 | 载体 | 执行侧映射 |
 |---|---|---|
-| 评测用例 | 已发布 schema `omk.eval-sample-set/v3`（入口 `oh-my-knowledge/eval-samples`；schema 文件用 `resolveEvalSampleJsonSchema` 解析） | 编译为 `EvaluateInput.dataset.samples` |
+| 评测用例 | 已发布 schema `omk.eval-sample-set/v3`（schema 文件经 `oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json` 解析） | 编译为 `EvaluateInput.dataset.samples` |
 | analyses／decision／policy／experiment／comparisons 等可序列化测量声明 | 已发布 Core JSON Schema（`oh-my-knowledge/eval-core/schemas/v1..v5/*`），运行时按文件名用 `resolveEvaluationCoreJsonSchema` 解析；每个文件名只对应一个版本目录，如 `evaluation-definition.schema.json` 在 `v5`、`measurement-policy.schema.json` 在 `v1` | 映射为 `EvaluateInput.analyses`、`decision`、`policy`、`experiment`、`comparisons` |
 | executor／evaluator／评委／报告逻辑 | 只下发「注册表 id＋配置＋版本 digest」，不下发代码 | 执行侧按 id 从自有注册表解析实现（见下一节），注入 `variants`／`evaluators` |
 
@@ -38,7 +38,7 @@ import type {
   CustomEvaluator,
   EvaluationExecutor,
   Judge,
-} from 'oh-my-knowledge/eval-runtime';
+} from 'oh-my-knowledge';
 
 /** 已发布的 invoke／session Executor 联合类型，不必自己拼。 */
 type DispatchedExecutor = EvaluationExecutor<JsonValue, JsonValue | undefined, JsonValue>;
@@ -82,75 +82,11 @@ executors.set('executor:http-qa@2026.09.1', (ref) => ({
 
 - 注册键＝`registryId@version`；任何影响行为的变更（配置结构、依赖升级、prompt 改动）都必须升版本号。
 - identity facet 完整落位：executor 声明 `executorId`、`version`、`fingerprintFacets`；custom evaluator 声明 `instrumentId` 与 `implementation.implementationId`／`implementation.version`／`implementation.schemas.fingerprintFacets`；评委声明 `judgeId`、`version`、`fingerprintFacets`。这些 facet 是可比性评估的 identity 输入。
-- **capability 自我声明是诚实义务。** determinism、并发安全、取消支持、trace 与 usage 上报能力全部由执行器自我声明（可用 `oh-my-knowledge/eval-runtime/advanced` 的 `createInvokeExecutorIdentity`／`createSessionExecutorIdentity` 生成完整 capability 清单）。声明了不具备的能力会污染测量结论，而且比崩溃更难被发现。
+- **capability 自我声明是诚实义务。** determinism、并发安全、取消支持、trace 与 usage 上报能力全部由执行器自我声明（可用 `oh-my-knowledge` 的 `createInvokeExecutorIdentity`／`createSessionExecutorIdentity` 生成完整 capability 清单）。声明了不具备的能力会污染测量结论，而且比崩溃更难被发现。
 
-注册表里的实现不在执行侧进程里时，不必自己拼子进程协议：`oh-my-knowledge/eval-runtime/advanced` 的 `createSubprocessCommandExecutor()` 把「一条命令」包成 Executor。交换协议是版本化的 `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION`（`omk.subprocess-command-exchange/v1`）：请求以一行 canonical JSON 写进子进程 stdin，而子进程的**整个 stdout 必须恰好是一份响应文档**——结尾换行可以接受，但任何额外输出（调试打印、进度行）都会以 `OMK_SUBPROCESS_COMMAND_RESPONSE_INVALID` 失败关闭。诊断信息应写到 stderr：stderr 永不被解析，只计入字节上限；单条流超过 `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES`（10 MiB）或超过 `timeoutMs` 即终止子进程并失败关闭。可执行文件路径、参数与环境变量来自你自己的注册表，摘要后进 `command` identity facet；子进程只继承 `PATH` 与你显式声明的环境变量。继承来的 `PATH` **不在** facet 内，因此裸命令名可能在另一台宿主上解析到不同的二进制，而 fingerprint 保持不变——需要让 fingerprint 钉住二进制时，声明绝对路径的 `executablePath`。
+注册表里的实现不在执行侧进程里时，不必自己拼子进程协议：`oh-my-knowledge` 的 `createSubprocessCommandExecutor()` 把「一条命令」包成 Executor。交换协议是版本化的 `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION`（`omk.subprocess-command-exchange/v1`）：请求以一行 canonical JSON 写进子进程 stdin，而子进程的**整个 stdout 必须恰好是一份响应文档**——结尾换行可以接受，但任何额外输出（调试打印、进度行）都会以 `OMK_SUBPROCESS_COMMAND_RESPONSE_INVALID` 失败关闭。诊断信息应写到 stderr：stderr 永不被解析，只计入字节上限；单条流超过 `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES`（10 MiB）或超过 `timeoutMs` 即终止子进程并失败关闭。可执行文件路径、参数与环境变量来自你自己的注册表，摘要后进 `command` identity facet；子进程只继承 `PATH` 与你显式声明的环境变量。继承来的 `PATH` **不在** facet 内，因此裸命令名可能在另一台宿主上解析到不同的二进制，而 fingerprint 保持不变——需要让 fingerprint 钉住二进制时，声明绝对路径的 `executablePath`。
 
 它只承载 `ExecutorInvocation` 合法持有的字段，不伪造 run／trial／attempt 坐标或执行计划 digest。调用里出现 leased 受控资源（workspace overlay、原生 MCP 配置、工具调用拦截）时失败关闭，声明这些 capability 也会在构造阶段被拒——需要受控资源时用同进程 Executor。它也不是插件加载器：OMK 不做实现发现、下载或动态装载，注册与版本治理始终是宿主的责任。
-
-## 用官方参考执行器接入下发协议
-
-`registryId@version` 通常指向你亲手写的 `execute()`。当这个「实现」其实是供应商 CLI 时，在宿主侧重新实现一遍协议正是测量 bug 的来源：漏掉 `--ignore-user-config`、参数顺序不同、JSONL 解析放宽，都会产出看起来合理却无人能归因的答案。因此 OMK 把自己内部使用的供应商适配器，以**参考执行器**的形式通过 `oh-my-knowledge/eval-hosts` 发布出来——输入配置，输出一个规范的 façade `Executor`，两侧都不引入注册表、发现、下载或动态装载。当下发布的是 Codex CLI 这一个。
-
-```ts
-import {
-  createCodexCliReferenceExecutor,
-  type CodexCliEnvironmentEntry,
-} from 'oh-my-knowledge/eval-hosts';
-
-/** 参考执行器工厂是异步的：返回前要探测供应商可执行文件。 */
-const referenceFactories = new Map<
-  string,
-  (ref: DispatchedRef) => Promise<DispatchedExecutor>
->();
-
-referenceFactories.set('executor.vendor-codex@2026.09.1', async (ref) => {
-  const environment: Record<string, CodexCliEnvironmentEntry> = {
-    // `behavior` 会把取值写进测量 identity，因此这里放稳定标签，是一次明确断言：
-    // 该条目不影响测量——二进制已经由适配器自己的 `launcher` 与 `binary` 指纹钉住。
-    PATH: { value: process.env.PATH ?? '', identity: { identityKind: 'behavior', value: 'host-managed' } },
-    // `credential` 什么都不记录，但会把输出与 trace 的处理等级抬到 `secret`。
-    CODEX_SESSION_TOKEN: {
-      value: await secrets.read('codex-session-token'),
-      identity: { identityKind: 'credential' },
-    },
-  };
-  return createCodexCliReferenceExecutor({
-    executorId: ref.registryId,
-    executablePath: String(ref.config.executablePath),
-    model: String(ref.config.model),
-    sandbox: 'read-only',
-    environment,
-    // 上面注册表里的下发配置 digest 仍然要进 identity。
-    fingerprintFacets: { configDigest: ref.configDigest },
-  });
-});
-
-const resolveExecutor = async (ref: DispatchedRef): Promise<DispatchedExecutor> => {
-  const build = executors.get(`${ref.registryId}@${ref.version}`)
-    ?? referenceFactories.get(`${ref.registryId}@${ref.version}`);
-  if (build === undefined) {
-    // 失败关闭：绝不降级，也绝不换一个「差不多」的实现顶上。
-    throw new Error(`unregistered executor: ${ref.registryId}@${ref.version}`);
-  }
-  return build(ref);
-};
-```
-
-白拿到的部分：
-
-- **身份来自观测，而不是许愿。** `executor.version` 是被探测到的供应商发布号，保留键 `codexCli` 记录适配器版本、版本下限、钉住的运行参数控制、launcher 与二进制摘要、分类后的环境、字节上限、本接缝写死的控制项，以及输入投影版本。可比性评估因此能区分「同 id 不同供应商构建」和「同构建不同配置」。
-- **知识载体走受支持的投影路径。** artifact 的 content 字符串被渲染进与 OMK 自有宿主完全一致的版本化 prompt 信封——逐字节相同——所以在产品宿主与你的下发宿主之间切换，不会移动输入。
-- **认证而非自述。** 每次部署对装配好的执行器跑一次 `oh-my-knowledge/eval-runtime` 的 `checkExecutor()`：它经由真实 Runtime façade 检查成功、失败、取消、清理、telemetry 与测量各项。
-
-仍然归你、以及会失败关闭的部分：
-
-- **需要计划内租约的资源不在这条接缝上。** trial workspace overlay、原生 MCP 配置、工具调用前 mock 拦截、逐用例工具白名单、`runtimeContext` 投影，都会各自返回稳定的 `OMK_CODEX_CLI_*_UNSUPPORTED` 错误码且不启动进程——适配器宁可拒绝，也不会以比密封计划更弱的隔离去跑。需要这些能力的下发，只能由宿主自己实现适配器。
-- **供应商侧账号与网络隔离。** 适配器只转发你声明的环境变量，并为每次尝试准备私有临时目录；它管不住供应商进程在网络上的行为，也管不住一份凭据属于哪个账号。
-- **版本下限的治理。** `CODEX_CLI_MIN_SUPPORTED_VERSION` 记录的是验证过协议的下限，不是「之上的版本都测过」。不兼容的上游变更会以 `OMK_CODEX_CLI_PROTOCOL_INVALID` 或 `OMK_CODEX_CLI_UPGRADE_REQUIRED` 暴露，而不是给出一份被静默重新解释的答案。抬高下限会同步提升适配器版本，并应进入你的注册表版本键，看板才分得清两个时代。
-- **凭据与成本。** 读取、轮转、付费调用始终是宿主侧；`credential` 条目只负责抬升处理等级。
-
-导出清单、每个错误码的含义与漂移治理规则见[参考执行器 API](../reference/eval-hosts-api)。
 
 ## 持久过程回写
 
@@ -158,7 +94,7 @@ const resolveExecutor = async (ref: DispatchedRef): Promise<DispatchedExecutor> 
 
 审计级的过程回写用两个字段配合：
 
-- 准备或执行时在 `EvaluateInput.policy.eventDelivery` 声明投递模式（形状即 `MeasurementEventDeliveryInput`，可从 `oh-my-knowledge/eval-runtime` 具名导入；在 façade 上直接写字面量即可）：`writerMode` 取 `disabled`（默认）、`optional` 或 `required`，`writerFailureMode` 取 `ignore` 或 `fail-run`。两者按严格校验配对：`disabled` 只接受 `ignore`，`required` 只接受 `fail-run` 且缺省即 `fail-run`，`optional` 缺省为 `ignore`。
+- 准备或执行时在 `EvaluateInput.policy.eventDelivery` 声明投递模式（形状即 `MeasurementEventDeliveryInput`，可从 `oh-my-knowledge` 具名导入；在 façade 上直接写字面量即可）：`writerMode` 取 `disabled`（默认）、`optional` 或 `required`，`writerFailureMode` 取 `ignore` 或 `fail-run`。两者按严格校验配对：`disabled` 只接受 `ignore`，`required` 只接受 `fail-run` 且缺省即 `fail-run`，`optional` 缺省为 `ignore`。
 - 在 `EvaluationRunOptions.eventWriter` 传入写入器，按顺序逐条持久化事件；事件形状见已发布 schema `evaluation-event.schema.json`（`resolveEvaluationCoreJsonSchema` 可解析）。**完整性只由 `required` 保证**：写入失败即整次运行失败，过程记录里的空洞不可能被误认为完整。`optional`＋`ignore` 是 best-effort——该阶段首次写入失败后会静默停止持久投递，run 仍然完成，结果里也没有任何字段报告这次截断，因此记录本身就是交付物时不要用它。
 
 ```ts
@@ -232,7 +168,6 @@ stored result 恒为 `gold` 分类——包含原始输出、trace 与完整证�
 
 - [在 Node.js 服务中使用](./eval-runtime)
 - [Runtime API 参考](../reference/eval-runtime-api)
-- [参考执行器 API](../reference/eval-hosts-api)
 - [底层 Core API（高级）](../reference/embedded-api)
 - [评测用例格式](../reference/eval-sample-format)
 - [术语表](../reference/glossary)

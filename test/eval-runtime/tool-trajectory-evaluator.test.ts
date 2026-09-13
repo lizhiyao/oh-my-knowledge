@@ -20,7 +20,7 @@ import {
 import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceSchema,
-} from '../../src/eval-runtime/contracts.js';
+} from '../../src/eval-runtime/index.js';
 
 interface AgentConfig {
   readonly [key: string]: JsonValue;

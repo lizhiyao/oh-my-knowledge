@@ -15,7 +15,7 @@ import { derivePlannedExecutionCoordinates } from '../../src/eval-core/contracts
 import {
   createInvokeExecutorIdentity,
   createJsonExecutorAdapter,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 
 const workspaceA: WorkspaceDescriptor = {
   resourceId: 'workspace-a',

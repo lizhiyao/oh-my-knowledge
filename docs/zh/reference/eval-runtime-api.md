@@ -4,9 +4,7 @@
 
 ## `oh-my-knowledge`
 
-这是普通用户的推荐入口，与 `oh-my-knowledge/eval-runtime` 暴露完全相同的 canonical Runtime façade：`evaluate`、`prepareEvaluation`、`evaluateSeries`、`prepareEvaluationSeries`、`executeEvaluation`、`scoreExecutedEvaluation`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`saveEvaluationResult`、`loadEvaluationResult`、`saveExecutedEvaluation`、`loadExecutedEvaluation`、`checkRuntime`、`checkExecutor`、`checkContentStore`、稳定错误、公开模型 type，以及构造 Definition、Policy 与 Evaluator 的命令式 builder（如 `createExactMatchDefinition`、`createMeasurementPolicy`、`createRubricJudgeKit`）。Core engine、registration 与 adapter 不会进入包根。
-
-## `oh-my-knowledge/eval-runtime`
+所有用户能力的推荐入口：canonical Runtime façade（`evaluate`、`prepareEvaluation`、`evaluateSeries`、`prepareEvaluationSeries`、`executeEvaluation`、`scoreExecutedEvaluation`、`rescore`、`reanalyze`、`redecide`、`assessComparability`、`saveEvaluationResult`、`loadEvaluationResult`、`saveExecutedEvaluation`、`loadExecutedEvaluation`、`checkRuntime`、`checkExecutor`、`checkContentStore`）、稳定错误、公开模型 type、构造 Definition、Policy 与 Evaluator 的命令式 builder（如 `createExactMatchDefinition`、`createMeasurementPolicy`、`createRubricJudgeKit`）、Runtime 装配（`createEvaluationRuntime`）、自定义 port（adapter）、分阶段运行（`runEvaluation`）与版本化 wire schema。Core engine 不进入包根，从 `oh-my-knowledge/eval-core` 导入。
 
 面向应用开发者的 canonical API：
 
@@ -54,6 +52,47 @@
 | `createRubricJudgeEvaluator` | 构造一个底层 Rubric Evaluator port。 |
 | `createRubricJudgeEvaluatorRegistration` | 组合底层 Rubric binding。 |
 | `rubricJudgeInstrumentId` | 派生内置 instrument ID。 |
+| `runEvaluation` | 运行已装配的 Core Definition、Runtime 与 Policy。 |
+| `HostEvaluationEventConsumptionError` | `runEvaluation` 的事件消费错误；保留底层 `cause`。 |
+| `createEvaluationRuntime` | 装配 Executor／Evaluator registration 与 Core built-in。 |
+| `EvaluationRuntimeAssemblyError` | 稳定的 registration 或 resolution 错误。 |
+| `createInvokeExecutorIdentity` | 声明 `omk.invoke/v1` Executor identity。 |
+| `createSessionExecutorIdentity` | 声明隔离的 `omk.session/v1` Executor identity。 |
+| `createRuntimeIdentity` | 声明其它宿主 Runtime identity。 |
+| `createJsonExecutorAdapter` | 将 typed JSON callback 适配到 Core Executor。 |
+| `createJsonSessionExecutorAdapter` | 将 typed、per-trial JSON session lifecycle 适配到 Core Executor。 |
+| `createSubprocessCommandExecutor` | 声明一个每次 attempt 都在子进程中执行、使用 `omk.subprocess-command-exchange/v1` 的 Executor。 |
+| `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` | 写入每个子进程请求、且响应必须回带的 exchange schema version。 |
+| `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` | 子进程输出字节的默认单次 attempt 上限，超出即失败关闭。 |
+| `runExecutorConformance` | 执行底层 Executor conformance probe。 |
+| `assertExecutorConformance` | Conformance 失败时抛错。 |
+| `RuntimeConformanceError` | 稳定的 conformance assertion error。 |
+| `createNodeEvaluationClock` | 显式提供 Node.js Core clock。 |
+| `INVOKE_JSON_INPUT_SCHEMA` | 默认 JSON input schema identity。 |
+| `INVOKE_JSON_OUTPUT_SCHEMA` | 默认 JSON output schema identity。 |
+| `INVOKE_JSON_TRACE_SCHEMA` | 默认 JSON trace schema identity。 |
+| `SESSION_JSON_INPUT_SCHEMA` | 默认 session JSON input schema identity。 |
+| `SESSION_JSON_OUTPUT_SCHEMA` | 默认 session JSON output schema identity。 |
+| `SESSION_JSON_TRACE_SCHEMA` | 默认 session JSON trace schema identity。 |
+| `createExecutorFnAdapter` | 兼容旧 `ExecutorFn`。 |
+| `createSameProcessExecutorAdapter` | 实现进程内 Executor 生命周期 SPI。 |
+| `createSameProcessEvaluatorAdapter` | 实现进程内 Evaluator 生命周期 SPI。 |
+| `RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID` | 内置 Rubric Judge Evaluator implementation ID。 |
+| `RUBRIC_JUDGE_BINDINGS` | 内置 Rubric Judge bindings。 |
+| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION` | Rubric Judge instrument schema version。 |
+| `RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION` | Rubric Judge context schema version。 |
+| `RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION` | Rubric Judge evidence schema version。 |
+| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA` | Rubric Judge instrument schema。 |
+| `RUBRIC_JUDGE_CONTEXT_SCHEMA` | Rubric Judge context schema。 |
+| `RUBRIC_JUDGE_EVIDENCE_SCHEMA` | Rubric Judge evidence schema。 |
+| `SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION` | Source-neutral trace schema version。 |
+| `SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR` | Source-neutral trace schema descriptor。 |
+| `SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR` | Source-neutral trace without mocks schema descriptor。 |
+| `SourceNeutralTraceSchema` | Source-neutral trace schema。 |
+| `SourceNeutralTraceWithoutMocksSchema` | Source-neutral trace without mocks schema。 |
+| `SourceNeutralMockStatsSchema` | Source-neutral mock stats schema。 |
+| `parseSourceNeutralTrace` | 解析 source-neutral trace。 |
+| `attachSourceNeutralMockStats` | 附加 source-neutral mock stats。 |
 
 内容存储一致性检查使用 `ContentStoreCheckInput`、`ContentStoreCheckResult` 与 `ContentStoreConformanceCheck`。
 
@@ -68,6 +107,8 @@ Evaluation cache、Custom Evaluator 与 Judge 探针包含经 canonical Core 调
 Mock interception type 包括 `MockInterceptionDescriptor`、`MockInterceptionInput`、`MockInterceptionPlan`、`MockInterceptionProvider`、`MockInterceptionOpenRequest`、`MockInterceptionLease`、`MockInterceptionAccess`、`MockInterceptionRequest` 与 `MockInterceptionDecision`。
 
 Builder type 包括 `ExactMatchDefinitionBuilderInput`、`ExactMatchTarget`、`PairedComparisonDefinitionBuilderInput`、`EvaluationRuntimeTarget`、`MeasurementPolicyBuilderInput`、`MeasurementStagePolicyInput`、`MeasurementRetryPolicyInput`、`MeasurementRetryBackoffInput`、`MeasurementFailurePolicyInput`、`MeasurementEvidencePolicyInput`、`MeasurementEventDeliveryInput`、`MeasurementBudgetPolicyInput`、`MeasurementBudgetScopeInput`、`MeasurementAttemptBudgetScopeInput`、`MeasurementRunBudgetScopeInput`、`MeasurementCachePolicyInput`、`MeasurementProviderCostLimitInput`、`CreateExactMatchEvaluatorInput`、`CreateRubricJudgeKitInput`、`RubricJudgeKit`、`CreateRubricJudgeEvaluatorInput`、`RubricJudgeEvaluatorBinding` 与 `RubricJudgeEvaluatorDefinitionBuilderInput`。
+
+Runtime 装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`CreateEvaluationRuntimeInput`、`EvaluationRuntimeSupportPorts` 与 `RuntimePortRegistration`。Identity 与 JSON adapter type 包括 `InvokeExecutorIdentityDeclaration`、`SessionExecutorIdentityDeclaration`、`RuntimeIdentityDeclaration`、`CreateJsonExecutorAdapterInput`、`CreateJsonSessionExecutorAdapterInput`、`JsonExecutorInvocation`、`JsonExecutorInvocationResult`、`JsonSessionExecutorContext`、`JsonSessionExecutorAttempt`、`JsonExecutorSession` 与 `RuntimeValueParser`。Judge invocation type 包括 `OmkLlmJudgeEffort`、`OmkLlmJudgeInvocationPort`、`OmkLlmJudgeInvocationRequest` 与 `OmkLlmJudgeInvocationResult`。Conformance type 包括 `ExecutorConformanceProbeInput`、`ExecutorConformanceResult` 与 `RuntimeConformanceCheck`。旧 bridge 与生命周期 SPI type 包括 `CreateExecutorFnAdapterInput`、`ExecutorFn`、`ExecutorInput`、`ExecResult`、`ExecutorFnInputMapper`、`ExecutorFnResultMapper`、`CreateSameProcessExecutorAdapterInput`、`CreateSameProcessEvaluatorAdapterInput`、`SameProcessExecutorImplementation`、`SameProcessEvaluatorImplementation`、`SameProcessResourceLeaseAccess`、`SameProcessRunScope` 与 `SameProcessOperationScope`。Subprocess command adapter type 包括 `CreateSubprocessCommandExecutorInput`、`SubprocessCommandConfiguration` 与 `SubprocessCommandValueParser`。Rubric wire type 包括 `RubricJudgeInstrument`、`RubricJudgeRuntimeConfig`、`RubricJudgeConfig`、`RubricJudgeCriterion` 与 `RubricJudgeTracePolicy`。Trace type 包括 `SourceNeutralTrace` 与 `SourceNeutralMockStats`。
 
 公开模型 type 包括 `Artifact`、`ArtifactKind`、`ArtifactSource`、`Variant`、`VariantExecution`、`RuntimeContext`、`AllowedToolsInput`、`AllowedToolsPlan`、`McpConfigDescriptor`、`McpConfigInput`、`McpConfigPlan`、`McpConfigProvider`、`McpConfigOpenRequest`、`McpConfigLease`、`McpConfigAccess`、`WorkspaceDescriptor`、`WorkspaceInput`、`WorkspacePlan`、`WorkspaceProvider`、`WorkspaceOpenRequest`、`WorkspaceLease`、`WorkspaceAccess`、`ContentDescriptor`、`ContentValue`、`ContentStoreRequest`、`ContentStore`、`ContentResolver`、`ExecutionCache`、`ExecutionCacheEntry`、`EvaluationCache`、`EvaluationCacheEntry`、`ExecutorIdentityVerifier`、`ExecutorIdentityVerificationRequest`、`ExecutorIdentityVerification`、`EvaluationInfrastructure`、`Dataset`、`Sample`、`EvaluationExecutor`、`Executor`、`InvokeExecutor`、`SessionExecutor`、`ExecutorSessionContext`、`ExecutorSessionAttempt`、`ExecutorSession`、`ExecutorCapabilities`、`ExecutorInvocation`、`ExecutorResult`、`Evaluator`、`ExactMatchEvaluator`、`RetrievalEvaluator`、`RetrievalMetricIds`、`AbstentionEvaluator`、`AbstentionMetricIds`、`ToolTrajectoryEvaluator`、`ToolTrajectoryMatchMode`、`RubricJudgeEvaluator`、`RubricJudgeMember`、`RubricJudgeAggregation`、`CustomEvaluator`、`CustomEvaluatorInvocation`、`CustomEvaluatorResult`、`CustomEvaluatorBinding`、`CustomEvaluatorContent`、`Metric`、`Judge`、`Rubric`、`Experiment`、`SamplingDesign`、`AnalysisRequest`、`CohortFilter`、`Comparison`、`ComparisonFamilyMember`、`CompositeMetricComponent`、`CompositeAggregation`、`Decision`、`FamilyDecisionCriterion`、`Policy`、`StagePolicy`、`RetryPolicy`、`RetryBackoff`、`FailurePolicy`、`CachePolicy`、`EvidencePolicy`、`BudgetPolicy`、`BudgetScope`、`RunBudgetScope`、`AttemptBudgetScope`、`ProviderCostLimit`、`EvaluateInput`、`EvaluationRunOptions`、`EvaluationResult`、`PreparedEvaluation`、`PreparedEvaluationPlan`、`RuntimeCapabilityResolution`、`EvaluationWorkEstimate`、`EventObserver`、`EvaluationEventWriter`、`Clock`、`AssessComparabilityInput`、`EvaluationComparabilitySubject` 与 `EvaluationComparabilityAssessment`。Series 使用 `EvaluationSeriesInput`、`EvaluationSeriesStability`、`EvaluationSeriesRunOptions`、`PreparedEvaluationSeries`、`EvaluationSeriesWorkEstimate`、`EvaluationSeriesMemberResult`、`EvaluationSeriesResult`、`EvaluationSeriesStabilityResult` 与 `RunStabilityValue`。Executor 行为检查使用 `ExecutorCheckInput`、`ExecutorCheckResult` 与 `RuntimeConformanceCheck`。
 
@@ -210,52 +251,6 @@ const abstention: AbstentionEvaluator = {
 
 数据准备与禁用 ID 辅助函数是示例代码，不是额外的 OMK 公开 API。调用方可以替换它们而不改变内置弃答 instrument。本次增加可组合评分能力，不规定固定七指标套件。
 
-## `oh-my-knowledge/eval-runtime/advanced`
-
-面向底层宿主装配与扩展的 SPI。普通应用应优先使用 `evaluate()`。
-
-| Export | 用途 |
-|---|---|
-| `runEvaluation` | 运行已装配的 Core Definition、Runtime 与 Policy。 |
-| `HostEvaluationEventConsumptionError` | `runEvaluation` 的事件消费错误；保留底层 `cause`。 |
-| `createEvaluationRuntime` | 装配 Executor／Evaluator registration 与 Core built-in。 |
-| `EvaluationRuntimeAssemblyError` | 稳定的 registration 或 resolution 错误。 |
-| `createInvokeExecutorIdentity` | 声明 `omk.invoke/v1` Executor identity。 |
-| `createSessionExecutorIdentity` | 声明隔离的 `omk.session/v1` Executor identity。 |
-| `createRuntimeIdentity` | 声明其它宿主 Runtime identity。 |
-| `createJsonExecutorAdapter` | 将 typed JSON callback 适配到 Core Executor。 |
-| `createJsonSessionExecutorAdapter` | 将 typed、per-trial JSON session lifecycle 适配到 Core Executor。 |
-| `createSubprocessCommandExecutor` | 声明一个每次 attempt 都在子进程中执行、使用 `omk.subprocess-command-exchange/v1` 的 Executor。 |
-| `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` | 写入每个子进程请求、且响应必须回带的 exchange schema version。 |
-| `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` | 子进程输出字节的默认单次 attempt 上限，超出即失败关闭。 |
-| `runExecutorConformance` | 执行底层 Executor conformance probe。 |
-| `assertExecutorConformance` | Conformance 失败时抛错。 |
-| `RuntimeConformanceError` | 稳定的 conformance assertion error。 |
-| `createNodeEvaluationClock` | 显式提供 Node.js Core clock。 |
-| `INVOKE_JSON_INPUT_SCHEMA` | 默认 JSON input schema identity。 |
-| `INVOKE_JSON_OUTPUT_SCHEMA` | 默认 JSON output schema identity。 |
-| `INVOKE_JSON_TRACE_SCHEMA` | 默认 JSON trace schema identity。 |
-| `SESSION_JSON_INPUT_SCHEMA` | 默认 session JSON input schema identity。 |
-| `SESSION_JSON_OUTPUT_SCHEMA` | 默认 session JSON output schema identity。 |
-| `SESSION_JSON_TRACE_SCHEMA` | 默认 session JSON trace schema identity。 |
-| `createExecutorFnAdapter` | 兼容旧 `ExecutorFn`。 |
-| `createSameProcessExecutorAdapter` | 实现进程内 Executor 生命周期 SPI。 |
-| `createSameProcessEvaluatorAdapter` | 实现进程内 Evaluator 生命周期 SPI。 |
-
-Run 与装配 type 包括 `RunEvaluationInput`、`EvaluationEventObserver`、`CreateEvaluationRuntimeInput`、`EvaluationRuntimeSupportPorts` 与 `RuntimePortRegistration`。Identity 与 JSON adapter type 包括 `InvokeExecutorIdentityDeclaration`、`SessionExecutorIdentityDeclaration`、`RuntimeIdentityDeclaration`、`CreateJsonExecutorAdapterInput`、`CreateJsonSessionExecutorAdapterInput`、`JsonExecutorInvocation`、`JsonExecutorInvocationResult`、`JsonSessionExecutorContext`、`JsonSessionExecutorAttempt`、`JsonExecutorSession`、`RuntimeValueParser`、`AllowedToolsInput`、`AllowedToolsPlan`、`WorkspaceDescriptor`、`WorkspaceInput`、`WorkspacePlan`、`WorkspaceProvider`、`WorkspaceOpenRequest`、`WorkspaceLease` 与 `WorkspaceAccess`。Judge invocation type 包括 `OmkLlmJudgeEffort`、`OmkLlmJudgeInvocationPort`、`OmkLlmJudgeInvocationRequest` 与 `OmkLlmJudgeInvocationResult`。Conformance type 包括 `ExecutorConformanceProbeInput`、`ExecutorConformanceResult` 与 `RuntimeConformanceCheck`。旧 bridge 与生命周期 SPI type 包括 `CreateExecutorFnAdapterInput`、`ExecutorFn`、`ExecutorInput`、`ExecResult`、`ExecutorFnInputMapper`、`ExecutorFnResultMapper`、`CreateSameProcessExecutorAdapterInput`、`CreateSameProcessEvaluatorAdapterInput`、`SameProcessExecutorImplementation`、`SameProcessEvaluatorImplementation`、`SameProcessResourceLeaseAccess`、`SameProcessRunScope` 与 `SameProcessOperationScope`。
-
-Subprocess command adapter type 包括 `CreateSubprocessCommandExecutorInput`、`SubprocessCommandConfiguration` 与 `SubprocessCommandValueParser`。子进程从 stdin 读取一份 canonical JSON 请求，并向 stdout 写回一份 `omk.subprocess-command-exchange/v1` 文档。Adapter 只继承 `PATH` 与显式声明的环境变量，限制子进程输出字节数，在声明的 deadline 或取消时终止子进程，并且绝不把子进程 stderr 当作证据上报。声明的 parser 只允许校验与收窄，不允许改写值：被截断、超时、取消、schema 不合法或被改写的 exchange 一律以稳定的 `OMK_SUBPROCESS_COMMAND_*` code 失败关闭；声明自身就无法接受的 payload 则在 spawn 之前以 `EVAL_RUNTIME_EXECUTOR_INPUT_INVALID` 或 `EVAL_RUNTIME_EXECUTOR_TARGET_CONFIG_INVALID` 失败关闭。Command 通过 `command` fingerprint facet 参与 Runtime identity，因此改变可执行文件、参数、环境、工作目录、deadline 或输出上限都会改变 identity，也即改变可比性。该 exchange 刻意不携带 run、trial、attempt、isolation key 或 execution plan coordinate，也无法租借 workspace overlay、native MCP config 或 mock interception；调用中携带其中任何一项都会以 `OMK_SUBPROCESS_COMMAND_ISOLATION_UNSUPPORTED` 失败关闭。需要绑定 Plan 且租借资源的子进程隔离，仍由 sealed host-seam 协议 `omk.custom-executor-exchange/v1` 承担。
-
-Advanced adapter 还暴露 `McpConfigAccess`、`McpConfigDescriptor`、`McpConfigInput`、`McpConfigLease`、`McpConfigOpenRequest`、`McpConfigPlan`、`McpConfigProvider`、`MockInterceptionAccess`、`MockInterceptionDecision`、`MockInterceptionDescriptor`、`MockInterceptionLease`、`MockInterceptionOpenRequest`、`MockInterceptionProvider` 与 `MockInterceptionRequest`。
-
-## `oh-my-knowledge/eval-runtime/contracts`
-
-面向 adapter 与 trace 作者的版本化 wire contract：
-
-- Rubric identity 与 schema：`RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID`、`RUBRIC_JUDGE_BINDINGS`、`RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION`、`RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION`、`RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION`、`RUBRIC_JUDGE_INSTRUMENT_SCHEMA`、`RUBRIC_JUDGE_CONTEXT_SCHEMA` 与 `RUBRIC_JUDGE_EVIDENCE_SCHEMA`。
-- Rubric type：`RubricJudgeInstrument`、`RubricJudgeRuntimeConfig`、`RubricJudgeConfig`、`RubricJudgeCriterion` 与 `RubricJudgeTracePolicy`。
-- Trace value：`SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION`、`SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR`、`SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR`、`SourceNeutralTraceSchema`、`SourceNeutralTraceWithoutMocksSchema`、`SourceNeutralMockStatsSchema`、`parseSourceNeutralTrace` 与 `attachSourceNeutralMockStats`。
-- Trace type：`SourceNeutralTrace` 与 `SourceNeutralMockStats`。
 
 ## 下发契约
 
@@ -263,7 +258,7 @@ Advanced adapter 还暴露 `McpConfigAccess`、`McpConfigDescriptor`、`McpConfi
 
 | 下发内容 | 载体 | 映射 |
 |---|---|---|
-| 评测用例 | `omk.eval-sample-set/v3`，经 `oh-my-knowledge/eval-samples`（`resolveEvalSampleJsonSchema`） | `EvaluateInput.dataset.samples` |
+| 评测用例 | `omk.eval-sample-set/v3`（schema 文件经 `oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json` 解析） | `EvaluateInput.dataset.samples` |
 | 可序列化的测量声明 | `oh-my-knowledge/eval-core/schemas/v1..v5/*` 下的已发布 Core JSON Schema，按文件名用 `resolveEvaluationCoreJsonSchema` 解析；每个文件名只对应一个版本目录，如 `evaluation-definition.schema.json` 在 `v5`、`measurement-policy.schema.json` 在 `v1` | `analyses`、`decision`、`policy`、`experiment`、`comparisons` |
 | executor／evaluator／评委实现 | 注册表 id＋版本＋配置＋配置 digest；绝不下发代码 | 执行侧从宿主注册表解析实现，再注入 `variants` / `evaluators` |
 
@@ -271,7 +266,7 @@ Advanced adapter 还暴露 `McpConfigAccess`、`McpConfigDescriptor`、`McpConfi
 
 ## 迁移
 
-`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons, analyses }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，Sampling Design 独占 paired／independent 语义，每项 summary 或 interval 都是具名的 `analyses[]` 请求。删除 `comparisonKind`，并将多余的 `analysis: { analyses: [...] }` 包装直接改为 `analyses: [...]`；旧结构不会被读取或检测。把 `runId`、`signal`、`onEvent`、`clock`、`annotations`、`summaries` 与 `eventBufferCapacity` 从声明移到可选的第二个 `EvaluationRunOptions` 参数；省略 `runId` 时自动生成。Decision 可省略；传入时通过 `analysisId` 精确选择一个 interval，或选择一份显式有界的 comparison family。Rubric 评测必须使用 `judges + aggregation`，不接受单数 `judge + model + effort` 结构。Policy 字段统一归入 `execution`、`evaluation`、`failure`、`budget` 与 `evidence`；早期扁平的 concurrency、timeout、invocation、failure 与 classification 字段不再接受。它不提供 0.x 兼容读取、旧 overload 或旧结构检测。已有底层 import 从 `oh-my-knowledge/eval-runtime` 移到 `oh-my-knowledge/eval-runtime/advanced`；wire schema 仍位于 `/contracts`。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则使用 advanced 的 `runEvaluation`。新宿主从包根导入 `evaluate`、`prepareEvaluation` 或 `checkExecutor`；偏好领域限定 import 的消费者仍可使用完全等价的 `/eval-runtime` 入口。
+`1.0.0-beta` canonical 入口用面向用户的 façade 取代了原先的装配优先 surface。一般化 façade 还用 `{ variants, evaluators, comparisons, analyses }` 取代早期固定的 `{ executor, control, treatment, evaluator }` 输入；Executor 与 config 下沉到各 Variant 的 `execution`，Sampling Design 独占 paired／independent 语义，每项 summary 或 interval 都是具名的 `analyses[]` 请求。删除 `comparisonKind`，并将多余的 `analysis: { analyses: [...] }` 包装直接改为 `analyses: [...]`；旧结构不会被读取或检测。把 `runId`、`signal`、`onEvent`、`clock`、`annotations`、`summaries` 与 `eventBufferCapacity` 从声明移到可选的第二个 `EvaluationRunOptions` 参数；省略 `runId` 时自动生成。Decision 可省略；传入时通过 `analysisId` 精确选择一个 interval，或选择一份显式有界的 comparison family。Rubric 评测必须使用 `judges + aggregation`，不接受单数 `judge + model + effort` 结构。Policy 字段统一归入 `execution`、`evaluation`、`failure`、`budget` 与 `evidence`；早期扁平的 concurrency、timeout、invocation、failure 与 classification 字段不再接受。它不提供 0.x 兼容读取、旧 overload 或旧结构检测。所有用户能力现在都在包根：canonical façade、Runtime 装配、builder、adapter 与 wire schema。`createEvaluationEngine` 只有一种含义和一个入口：完整 staged engine 从 `oh-my-knowledge/eval-core` 导入；如果已经装配好 Runtime、Definition 与 Policy，只需一次标准完整运行，则从包根使用 `runEvaluation`。新宿主从包根导入 `evaluate`、`prepareEvaluation` 或 `checkExecutor`。
 
 预算 limit 现在位于显式 scope 下：将 `budget.maxInvocations` 改为 `budget.run.maxInvocations`。旧结构不会被读取或检测。
 

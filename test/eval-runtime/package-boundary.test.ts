@@ -6,8 +6,6 @@ import { describe, expect, it } from 'vitest';
 const DIST_ROOT = resolve('dist');
 const ENTRIES = [
   'eval-runtime/index.js',
-  'eval-runtime/advanced.js',
-  'eval-runtime/contracts.js',
 ] as const;
 
 async function moduleGraph(entry: string): Promise<{
@@ -62,19 +60,4 @@ describe('published eval-runtime dependency boundary', () => {
     });
   }
 
-  it('keeps legacy and lifecycle SPI out of the canonical entry graph', async () => {
-    const { modules } = await moduleGraph(resolve(DIST_ROOT, 'eval-runtime/index.js'));
-    expect(modules).not.toContain('eval-runtime/advanced.js');
-    expect(modules).not.toContain('eval-runtime/adapters/executor-fn.js');
-  });
-
-  it('keeps implementation modules out of the contracts entry graph', async () => {
-    const { modules } = await moduleGraph(resolve(DIST_ROOT, 'eval-runtime/contracts.js'));
-    expect(modules.filter((file) => (
-      file.startsWith('eval-runtime/adapters/')
-      || file === 'eval-runtime/runtime.js'
-      || file === 'eval-runtime/runner.js'
-      || file === 'eval-runtime/judges/rubric-judge.js'
-    ))).toEqual([]);
-  });
 });

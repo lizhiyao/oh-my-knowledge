@@ -634,7 +634,7 @@ const result = await evaluate({
 
 查看 `result.analysisResults['candidate-correctness']` 的状态、有效观测数和均值。这里只汇总 `prompt-v2`；要对比两个版本，应声明引用同一指标的比较分析。
 
-评委 callback 只执行一次 provider 调用，不得自行重试。`replicateCount` 只重复评测，不重复 Target 执行，也不增加 Bootstrap 样本量。存在多个成员时，`mean` 会在各成员的 replicate 先求均值后赋予成员等权；`weighted-mean` 要求为每个 `memberId` 显式提供正权重，且总和为 1。`require-complete` 会在任一计划坐标不可用时排除整个 Target × Sample × Trial panel 读数。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge/eval-runtime/contracts` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
+评委 callback 只执行一次 provider 调用，不得自行重试。`replicateCount` 只重复评测，不重复 Target 执行，也不增加 Bootstrap 样本量。存在多个成员时，`mean` 会在各成员的 replicate 先求均值后赋予成员等权；`weighted-mean` 要求为每个 `memberId` 显式提供正权重，且总和为 1。`require-complete` 会在任一计划坐标不可用时排除整个 Target × Sample × Trial panel 读数。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
 
 </details>
 
@@ -1242,26 +1242,20 @@ if (!runtimeCheck.conformant) console.error(runtimeCheck.checks);
 <details>
 <summary>何时需要高级 API</summary>
 
-多数业务接入使用包根的 `evaluate()` 和[评分方法](#评分方法)中的评分器即可。只有需要自己管理组件生命周期、分阶段装配运行环境或接入更底层的测量能力时，才使用高级入口。构造 Definition、Policy 与 Evaluator 的命令式 builder 已从 `advanced` 迁入 canonical façade，已有代码应从 `oh-my-knowledge/eval-runtime`（或包根）导入：
+多数业务接入使用包根的 `evaluate()` 和[评分方法](#评分方法)中的评分器即可。包根暴露所有用户能力：canonical façade（`evaluate`、`prepareEvaluation` 等）、构造 Definition、Policy 与 Evaluator 的命令式 builder（`createExactMatchDefinition`、`createMeasurementPolicy`、`createRubricJudgeKit` 等）、Runtime 装配（`createEvaluationRuntime`）、自定义 port（包括 subprocess command Executor adapter）、分阶段运行（`runEvaluation`）与版本化 wire schema：
 
 ```ts
 import {
+  evaluate,
   createExactMatchDefinition,
   createMeasurementPolicy,
-} from 'oh-my-knowledge/eval-runtime';
-```
-
-而装配运行环境、自定义 port 与分阶段运行仍使用 `advanced` 子路径：
-
-```ts
-import {
   createEvaluationRuntime,
   createJsonExecutorAdapter,
   runEvaluation,
-} from 'oh-my-knowledge/eval-runtime/advanced';
+} from 'oh-my-knowledge';
 ```
 
-显式子路径 `oh-my-knowledge/eval-runtime` 与包根暴露同一套 canonical façade。自定义 port（包括 subprocess command Executor adapter）、分阶段宿主装配或旧 `ExecutorFn` bridge 使用 `oh-my-knowledge/eval-runtime/advanced`；宿主按下发 id 与 config 执行评测、又不想自己重写供应商协议时，官方参考执行器使用 `oh-my-knowledge/eval-hosts`；版本化 wire schema 使用 `oh-my-knowledge/eval-runtime/contracts`；多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
+多指标图、自定义 Analysis Runtime、artifact 重放、跨进程 transported comparability 或自定义 comparability policy 使用 `oh-my-knowledge/eval-core`。MCP 集成使用 `oh-my-knowledge/mcp`，DSH 集成使用 `oh-my-knowledge/dsh-plugin`。跨进程读回历史 result 再做分阶段复用属于 canonical façade，见[在新进程里读回历史结果再复用](#restore-stored-results)。`eval-workflows` 只依赖 runtime foundation 叶子模块，不依赖任一用户 façade。`package.json#exports` 之外的深路径均为私有实现。
 
 可运行的[最小示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime)与 packed-package fixture 会在 clean host 中验证 canonical API。
 

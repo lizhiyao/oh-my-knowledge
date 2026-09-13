@@ -637,7 +637,7 @@ const result = await evaluate({
 
 Read the status, included observation count, and mean in `result.analysisResults['candidate-correctness']`. This summarizes `prompt-v2` only; declare a comparison analysis over the same metric to compare versions.
 
-The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes the whole Target × Sample × Trial panel reading if any planned coordinate is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge/eval-runtime/contracts`.
+The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes the whole Target × Sample × Trial panel reading if any planned coordinate is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge`.
 
 </details>
 
@@ -1245,26 +1245,20 @@ The cancellation case must remain bounded if the implementation ignores its sign
 <details>
 <summary>When to use advanced APIs</summary>
 
-Most applications can use `evaluate()` and the [scoring methods](#scoring-methods) from the package root. Use advanced APIs when you need custom component lifecycles, staged runtime assembly, or lower-level measurement capabilities. The imperative builders that assemble Definitions, Policies, and Evaluators have moved from `advanced` into the canonical façade; existing code should import them from `oh-my-knowledge/eval-runtime` (or the package root):
+Most applications can use `evaluate()` and the [scoring methods](#scoring-methods) from the package root. The package root exposes all user-facing capabilities: the canonical façade (`evaluate`, `prepareEvaluation`, etc.), imperative builders that assemble Definitions, Policies, and Evaluators (`createExactMatchDefinition`, `createMeasurementPolicy`, `createRubricJudgeKit`, etc.), Runtime assembly (`createEvaluationRuntime`), custom ports (including the subprocess command Executor adapter), staged runs (`runEvaluation`), and versioned wire schemas:
 
 ```ts
 import {
+  evaluate,
   createExactMatchDefinition,
   createMeasurementPolicy,
-} from 'oh-my-knowledge/eval-runtime';
-```
-
-Assembling the runtime, custom ports, and staged runs still use the `advanced` subpath:
-
-```ts
-import {
   createEvaluationRuntime,
   createJsonExecutorAdapter,
   runEvaluation,
-} from 'oh-my-knowledge/eval-runtime/advanced';
+} from 'oh-my-knowledge';
 ```
 
-The explicit `oh-my-knowledge/eval-runtime` subpath exposes the same canonical façade as the package root. Use `oh-my-knowledge/eval-runtime/advanced` for custom ports (including the subprocess command Executor adapter), staged host assembly, or the legacy `ExecutorFn` bridge; use `oh-my-knowledge/eval-hosts` for OMK's official reference Executors, which turn a dispatched id plus config into a façade Executor so a host does not reimplement a vendor protocol; use `oh-my-knowledge/eval-runtime/contracts` for versioned wire schemas; use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, transported cross-process comparability, or custom comparability policies. Restoring a historical result across processes for stage reuse stays on the canonical façade; see [Restore a stored result in a new process](#restore-stored-results). `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
+Use `oh-my-knowledge/eval-core` for multi-metric graphs, custom Analysis Runtime implementations, artifact replay, transported cross-process comparability, or custom comparability policies. Use `oh-my-knowledge/mcp` for MCP integration and `oh-my-knowledge/dsh-plugin` for DSH integration. Restoring a historical result across processes for stage reuse stays on the canonical façade; see [Restore a stored result in a new process](#restore-stored-results). `eval-workflows` depends on the leaf runtime foundation modules, never on either user façade. Deep paths outside `package.json#exports` are private.
 
 The runnable [minimal example](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/eval-runtime) and packed-package fixtures exercise the canonical API in a clean host.
 
