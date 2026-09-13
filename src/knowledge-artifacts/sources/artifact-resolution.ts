@@ -47,6 +47,16 @@ function buildMetadata(content: string): Record<string, unknown> | undefined {
 // 否则一次成功的 install/eval 也会在用户终端打印吓人的 `fatal: path ... does not exist`。
 const GIT_PROBE_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore'];
 
+// 下面的 git 调用全走 execFileSync：它阻塞事件循环，`timeout` 是唯一的逃逸口。少了上限，仓库落在
+// 会卡顿的挂载（NFS／CIFS／网络盘）上时，只读命令也会永久挂住。本地探测正常毫秒级返回，30s 是慢盘
+// 余量，不是预期耗时。
+const GIT_PROBE_TIMEOUT_MS = 30_000;
+
+// fetch 是唯一合法可能慢的路径：`--depth 1` 仍要把整棵 tree 传下来，慢链路／大仓库都得给真实余量。
+// 这里只封顶等待，不额外设 GIT_TERMINAL_PROMPT=0 —— 那会让私有 HTTPS 源失去「在终端里输凭据」这条
+// 现在能走通的路；超时已经足够把非交互场景下读 /dev/tty 的挂住变成 fail-closed。
+const GIT_FETCH_TIMEOUT_MS = 120_000;
+
 // 用 `cat-file blob` 而非 `git show`:`git show <ref>:<目录>` 对**目录**会退出码 0 并打印树清单
 // (`tree <ref>:path\n\nSKILL.md`),被这里当成"文件存在 + 内容"误收 —— 名字以 .md 结尾的目录会被
 // classify 误判为 file-skill、物化出树清单当 skill 正文,也会让 eval 把清单文本量成 skill 内容。
@@ -59,7 +69,7 @@ export function gitShowFile(ref: string, filePath: string, cwd: string = process
     // `--` 隔断 tree-ish:ref 可能来自盘上受管记录的 locator(用户可手改 / 随仓库分发,被 omk list 等只读
     // 命令喂进来),前缀 `-` 的 ref 不得被当成 git 选项解析(与 #219 fetch 路径同口径,见
     // feedback_git_subprocess_dashdash)。加 `--` 后 dash-ref 退化为「非法 object name」fail-closed,普通 ref 输出不变。
-    return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
+    return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS }).trim();
   } catch {
     return null;
   }
@@ -71,7 +81,7 @@ export function gitShowFile(ref: string, filePath: string, cwd: string = process
  */
 export function gitShowBytes(ref: string, filePath: string, cwd: string = process.cwd()): Buffer | null {
   try {
-    return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer;`--` 隔断同 gitShowFile
+    return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS }); // 无 encoding → Buffer;`--` 隔断同 gitShowFile
   } catch {
     return null;
   }
@@ -88,7 +98,7 @@ export function gitResolveCommit(ref: string, cwd: string = process.cwd()): stri
   if (!ref || ref.startsWith('-')) return null;
   try {
     const out = execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
-      { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
+      { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS }).trim();
     return out || null;
   } catch {
     return null;
@@ -112,7 +122,7 @@ export interface GitTreeEntry {
 export function gitLsTreeBlobs(ref: string, treePath: string, cwd: string = process.cwd()): GitTreeEntry[] {
   let out: string;
   try {
-    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', '--', `${ref}:${treePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
+    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', '--', `${ref}:${treePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS });
   } catch {
     return [];
   }
@@ -156,7 +166,7 @@ export function resolveGitRepoContext(fromPath: string): GitRepoContext {
   const existing = nearestExistingDir(absInput);
   const anchor = realpathSync(existing);
   const repoRoot = realpathSync(
-    execFileSync('git', ['-C', anchor, 'rev-parse', '--show-toplevel'], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim(),
+    execFileSync('git', ['-C', anchor, 'rev-parse', '--show-toplevel'], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS }).trim(),
   );
   // 对称归一:repoRoot 经 realpath,fromPath 也必须经同源 realpath,否则 fromPath 尚不在磁盘时
   // (纯 git eval:skill 只在 HEAD、工作树已删)absFrom 保留未归一字面,在 macOS /var ↔ /private/var
@@ -365,7 +375,7 @@ export function fetchRemoteGitRef(url: string, ref: string): RemoteGitCheckout {
     }
   };
   try {
-    execFileSync('git', ['init', '--bare', '--quiet', bare], { stdio: GIT_PROBE_STDIO });
+    execFileSync('git', ['init', '--bare', '--quiet', bare], { stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS });
     try {
       // `--` 隔断:git fetch 会扫描**全部** argv 找带短横的选项,不止第一个。少了 `--`,一个形如
       // `--upload-pack=<cmd>` 的 ref 会被当成选项执行任意命令(RCE)。`--` 后一切按位置参数
@@ -373,7 +383,10 @@ export function fetchRemoteGitRef(url: string, ref: string): RemoteGitCheckout {
       execFileSync(
         'git',
         ['--git-dir', bare, 'fetch', '--depth', '1', '--quiet', '--', url, `${ref}:refs/omk/fetched`],
-        { stdio: GIT_PROBE_STDIO },
+        {
+          stdio: GIT_PROBE_STDIO,
+          timeout: GIT_FETCH_TIMEOUT_MS,
+        },
       );
     } catch {
       throw new SourceResolveError('cli.install.remote_fetch_failed', { url, ref });
@@ -383,6 +396,7 @@ export function fetchRemoteGitRef(url: string, ref: string): RemoteGitCheckout {
       sha = execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/omk/fetched'], {
         encoding: 'utf-8',
         stdio: GIT_PROBE_STDIO,
+        timeout: GIT_PROBE_TIMEOUT_MS,
       }).trim();
     } catch {
       throw new SourceResolveError('cli.install.remote_ref_not_found', { url, ref });
