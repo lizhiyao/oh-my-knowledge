@@ -193,7 +193,7 @@ describe('Studio observation routes', () => {
     }
   });
 
-  it('omits inbox routes when the host opts out, keeping the debugger group', async () => {
+  it('omits inbox routes when the host opts out, keeping the conversation group', async () => {
     const scoped = createReportServer({
       port: 0,
       observationsDir,
@@ -222,9 +222,9 @@ describe('Studio observation routes', () => {
       });
       assert.equal(posted.status, 404);
 
-      const session = await request(`${scopedUrl}/observe/sessions/missing`);
-      assert.equal(session.status, 404);
-      assert.match(session.body, /观测会话不存在/);
+      const activity = await request(`${scopedUrl}/api/conversations/activity`);
+      assert.equal(activity.status, 200);
+      assert.equal(JSON.parse(activity.body).revision !== undefined, true);
     } finally {
       await scoped.stop();
     }

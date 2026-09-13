@@ -465,6 +465,6 @@ For full descriptions: `omk studio --help`.
 
 <!-- omk:cli:studio:flags:end -->
 
-Starts the local knowledge workbench. The homepage indexes local Codex conversations directly and prioritizes running work. Select a conversation and task to inspect its four-lane Task Trajectory, then cross-check the semantic trajectory against normalized events and raw logs. Running tasks support live following; stale unclosed tasks are labeled **End status not recorded**. This browsing path does not require `omk observe ingest` first.
+Starts the local knowledge workbench. The homepage indexes local Codex conversations directly and prioritizes running work. Select a conversation and task to inspect its four-lane Task Trajectory, then cross-check the semantic trajectory against knowledge access, normalized events, and source records. Running tasks support live following; stale unclosed tasks are labeled **End status not recorded**. This browsing path does not require `omk observe ingest` first.
 
 The primary navigation is **Observe → Measure → Knowledge**, with page routes `/observe`, `/measure`, and `/knowledge`. Observe lists conversations and task trajectories; Measure presents Core evaluations; Knowledge presents knowledge health and management. Visit `/observe/inbox` for the observation reviewer queue. Old page addresses are no longer served. CI gates use `omk eval`'s exit route, while automation should read the Core report artifacts.

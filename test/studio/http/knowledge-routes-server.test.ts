@@ -49,7 +49,7 @@ describe('Studio knowledge routes', () => {
     assert.equal(managedResolutions, 2);
   });
 
-  it('serves the health page without old page aliases and preserves the API and chart asset', async () => {
+  it('serves the health page without old page aliases, retired APIs, or the removed chart asset', async () => {
     assert.equal((await fetch(`${baseUrl}/observe/health?lang=en`)).status, 200);
     const pageRedirect = await fetch(`${baseUrl}/analyses?lang=en`, { redirect: 'manual' });
     assert.equal(pageRedirect.status, 404);
@@ -61,10 +61,7 @@ describe('Studio knowledge routes', () => {
     assert.equal(apiLegacy.status, 404);
     assert.equal(apiLegacy.headers.get('location'), null);
 
-    const chart = await fetch(`${baseUrl}/static/chart.js`);
-    assert.equal(chart.status, 200);
-    assert.match(chart.headers.get('content-type') ?? '', /application\/javascript/);
-    assert.ok((await chart.text()).length > 1000);
+    assert.equal((await fetch(`${baseUrl}/static/chart.js`)).status, 404);
   });
 
   it('answers analyses-diff without from/to as a stable 400 contract', async () => {

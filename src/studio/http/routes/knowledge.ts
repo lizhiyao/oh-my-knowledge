@@ -10,7 +10,6 @@ import { renderSkillDetail } from '../../presentation/skill-detail-renderer.js';
 import { renderSkillHealthReport } from '../../presentation/skill-health-renderer.js';
 import { renderSkillList } from '../../presentation/skill-list-renderer.js';
 import type { SkillReportContext } from '../../view-models/report-context.js';
-import { loadChartJsBundle } from '../chart-asset.js';
 import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
 import { createStudioRouter, type StudioRouteDefinition } from './router.js';
@@ -51,21 +50,6 @@ export function createKnowledgeRoutes({
         : (): string => resolveManagedDir(projectManagedDir());
 
   const routes: StudioRouteDefinition<KnowledgeRouteContext>[] = [
-    {
-      // 静态资源:chart.js UMD bundle(供详情页趋势大图使用)。
-      // 用 require.resolve 拿包路径,避开 dist 相对路径脆弱性。
-      pattern: '/static/chart.js',
-      handler({ response: res }) {
-        const bytes = loadChartJsBundle();
-        if (!bytes) {
-          res.writeHead(500, TEXT_HEADERS);
-          res.end('chart_asset_unavailable');
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
-        res.end(bytes);
-      },
-    },
     {
       pattern: '/api/observe-health',
       handler({ response: res, analysesDir }) {

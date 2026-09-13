@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { primaryTrajectoryEvidenceRef, trajectoryEvidenceRef } from '../../../src/studio/application/trajectory-evidence.js';
+import { trajectoryEvidenceRef } from '../../../src/studio/application/trajectory-evidence.js';
 import type { ExperienceTimelineEvent } from '../../../src/observability/contracts/experience.js';
 
 function event(
@@ -24,17 +24,6 @@ describe('trajectory evidence references', () => {
       normalizedEventId: 'event-3',
       sourceLineIndex: 17,
       traceId: 'trace-event-3',
-    });
-  });
-
-  it('prefers an event that can reach raw evidence', () => {
-    assert.deepEqual(primaryTrajectoryEvidenceRef([
-      event('normalized-only'),
-      event('raw-backed', 23),
-    ]), {
-      normalizedEventId: 'raw-backed',
-      sourceLineIndex: 23,
-      traceId: 'trace-raw-backed',
     });
   });
 });

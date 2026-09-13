@@ -52,7 +52,7 @@ export function buildConversationDetailActivitySnapshot(
   };
 }
 
-export function latestOpenConversationTask(
+function latestOpenConversationTask(
   conversation: ConversationListItem,
 ): ConversationTaskItem | undefined {
   for (let index = conversation.tasks.length - 1; index >= 0; index -= 1) {

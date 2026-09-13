@@ -42,6 +42,8 @@ describe('Observe Next production routes', () => {
     const url=await server.start();
     for(const path of ['/observe','/observe/conversations/thread']) {
       const response=await fetch(url+path);assert.equal(response.status,200);
+      // 会话页展示的是随时在变的任务状态，浏览器不得用陈旧缓存恢复它。
+      assert.match(response.headers.get('cache-control')??'',/no-store/);
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       assert.match(html,/href="\/observe" aria-current="page"/);
       if(path==='/observe') {

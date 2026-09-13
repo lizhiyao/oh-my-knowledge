@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../src/observability/inbox/index.js';
 import { buildKnowledgeDebuggerViewModel } from '../../src/observability/conversation/knowledge-debugger.js';
-import { renderKnowledgeDebuggerPage } from '../../src/studio/presentation/knowledge-debugger-renderer.js';
+import { projectReplay } from '../../src/studio/application/replay/projection.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const tracePath = join(
@@ -38,20 +38,16 @@ describe('redacted real Codex task trajectory example', () => {
     assert.ok(model.knowledgeEvidence.some((item) =>
       item.knowledgeKind === 'skill' && item.label === 'openai-docs'));
 
-    const html = renderKnowledgeDebuggerPage(model, 'zh');
-    assert.match(html, /任务轨迹/);
-    assert.match(html, /openai-docs/);
-    assert.match(html, /首次命令|Process exited with code 1|失败/);
-    assert.match(html, /aria-label="完整任务时间轴"/);
-    assert.match(html, /<body class="studio-workspace">/);
-    assert.match(html, /\.studio-workspace\{[^}]*height:100dvh;[^}]*overflow:hidden/);
-    assert.equal((html.match(/<section class="trajectory-lane(?: has-two-rows)?" data-lane=/g) ?? []).length, 4);
-    assert.match(html, /aria-label="类型筛选"/);
-    assert.match(html, /data-trajectory-facet="knowledge:skill"/);
-    assert.match(html, /data-trajectory-facet="tool:bash"/);
-    assert.match(html, /data-trajectory-facet="status:failure"/);
-    assert.match(html, /data-trajectory-facets="[^"]*knowledge:skill[^"]*"/);
-    assert.doesNotMatch(html, /--timeline-width:|class="[^"]*\bis-marker\b/);
-    assert.doesNotMatch(html, /返回观测收件箱/);
+    const replay = projectReplay(model, 'zh', { pendingToolResults: false });
+    assert.deepEqual(
+      [...new Set(replay.cards.map((card) => card.lane))].sort(),
+      ['action', 'conversation', 'knowledge', 'result'],
+    );
+    assert.ok(replay.cards.some((card) => card.lane === 'knowledge' && card.title === 'openai-docs'));
+    assert.ok(replay.cards.some((card) => card.title.includes('memory 默认是开着的吗')));
+    assert.ok(replay.cards.some((card) => card.tone === 'failure'));
+    for (const facet of ['knowledge:skill', 'status:failure', 'tool:bash']) {
+      assert.ok(replay.facets.some((item) => item.id === facet), facet);
+    }
   });
 });

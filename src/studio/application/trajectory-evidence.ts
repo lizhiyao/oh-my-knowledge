@@ -11,11 +11,3 @@ export function trajectoryEvidenceRef(
     ...(event.traceId ? { traceId: event.traceId } : {}),
   };
 }
-
-export function primaryTrajectoryEvidenceRef(
-  events: ExperienceTimelineEvent[],
-): TrajectoryEvidenceRef | undefined {
-  return trajectoryEvidenceRef(
-    events.find((event) => event.sourceLineIndex !== undefined) ?? events[0],
-  );
-}

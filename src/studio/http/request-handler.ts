@@ -37,6 +37,8 @@ export function createStudioRequestHandler({
   includeObserveCards = false,
   includeDoctorCards = false,
   observationInbox = true,
+  studioPages = true,
+  studioNavigation = true,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -64,7 +66,7 @@ export function createStudioRequestHandler({
         htmlBasePath: '/measure',
         apiBasePath: '/api/reports',
         defaultLang: DEFAULT_LANG,
-        studioNavigation: true,
+        studioNavigation,
       });
   const hostRoutes = createStudioRouter([
     {
@@ -92,7 +94,8 @@ export function createStudioRequestHandler({
   ]);
 
   function prepare(): void {
-    if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
+    // 只有挂载观测页面时才需要观测目录；独立报告宿主不产生这个副作用。
+    if (studioPages && !existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
   }
 
   async function handleRequest(
@@ -134,9 +137,12 @@ export function createStudioRequestHandler({
       };
 
       if (await hostRoutes(routeContext)) return;
-      if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
-      if (await conversationRoutes(routeContext)) return;
-      if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
+      // 独立报告宿主只挂 /measure：观测／知识页面组按宿主开关整体不注册（Studio 页面组仍由默认宿主提供）。
+      if (studioPages) {
+        if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
+        if (await conversationRoutes(routeContext)) return;
+        if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
+      }
 
       response.writeHead(404, TEXT_HEADERS);
       response.end('Not Found');

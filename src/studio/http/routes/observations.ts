@@ -5,22 +5,15 @@ import {
   queryObservationInbox,
 } from '../../../observability/inbox/index.js';
 import { buildObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
-import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,
   updateObservationReviewState,
   type ObservationReviewStateUpdate,
 } from '../../../observability/inbox/review-state.js';
-import {
-  loadObservationSourceRecordArchive,
-  summarizeObservationSourceRecordArchive,
-} from '../../../observability/inbox/source-record-archive.js';
 import { buildSkillIndex } from '../../application/index.js';
-import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
-import { DEFAULT_LANG } from '../../presentation/layout.js';
 import { readJsonObjectBody } from '../request-errors.js';
-import { HTML_HEADERS, JSON_HEADERS, TEXT_HEADERS, writeJsonError } from '../errors.js';
+import { JSON_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
 import { createStudioRouter, type StudioRouteDefinition } from './router.js';
 
@@ -41,19 +34,6 @@ export type ObservationRouteHandler = (
   context: ObservationRouteContext,
 ) => Promise<boolean>;
 
-function findKnowledgeDebuggerContext(observationsDir: string, experienceSessionId: string) {
-  const inbox = buildObservationInboxViewModel(observationsDir);
-  const report = inbox.reports.find((candidate) =>
-    candidate.experience?.sessions.some((session) => session.id === experienceSessionId)
-  );
-  const session = report?.experience?.sessions.find((candidate) => candidate.id === experienceSessionId);
-  if (!report || !session) return undefined;
-  const sourceRecordRef = report.meta.sourceRecordArchives?.find((candidate) =>
-    candidate.experienceSessionId === experienceSessionId
-  );
-  return { report, session, sourceRecordRef };
-}
-
 export function createObservationRoutes({
   observationsDir,
   includeObserveCards,
@@ -61,65 +41,6 @@ export function createObservationRoutes({
   includeInbox,
 }: ObservationRoutesOptions): ObservationRouteHandler {
   const routes: StudioRouteDefinition<ObservationRouteContext>[] = [
-    {
-      pattern: '/observe/sessions/*id',
-      handler({ response, url, params, lang }) {
-        const experienceSessionId = params.id;
-        const context = experienceSessionId
-          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
-          : undefined;
-        if (!context) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
-          return;
-        }
-        const targetTurnId = url.searchParams.get('turnId')?.trim();
-        if (!targetTurnId) {
-          const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
-          response.writeHead(302, {
-            Location: `/observe/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
-          });
-          response.end();
-          return;
-        }
-        if (!context.session.turns.some((turn) => turn.turnId === targetTurnId)) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end(lang === 'en' ? 'task turn not found' : '任务不存在');
-          return;
-        }
-        const html = renderKnowledgeDebuggerPage(
-          buildKnowledgeDebuggerViewModel(
-            context.session,
-            targetTurnId,
-            context.report.meta.ingestion,
-            summarizeObservationSourceRecordArchive(context.sourceRecordRef),
-          ),
-          lang,
-          {
-            sourceRecordsEndpoint: `/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records`,
-          },
-        );
-        response.writeHead(200, HTML_HEADERS);
-        response.end(html);
-      },
-    },
-    {
-      pattern: '/api/observe-debugger/*id/source-records',
-      handler({ response, params }) {
-        const experienceSessionId = params.id;
-        const context = experienceSessionId
-          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
-          : undefined;
-        if (!context) {
-          writeJsonError(response, 404, 'experience_session_not_found');
-          return;
-        }
-        response.writeHead(200, JSON_HEADERS);
-        response.end(JSON.stringify(
-          loadObservationSourceRecordArchive(context.sourceRecordRef, observationsDir),
-        ));
-      },
-    },
     ...(includeInbox ? [{
       pattern: '/api/observe-inbox/view',
       handler({ response, url }: ObservationRouteContext) {

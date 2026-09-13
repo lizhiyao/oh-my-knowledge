@@ -98,14 +98,6 @@ describe('Conversation activity server', () => {
     assert.equal(completed.runningCount, 0);
   });
 
-  it('prevents the conversation detail page from being restored from stale cache', async () => {
-    const response = await fetch(`${baseUrl}/observe/conversations/${encodeURIComponent(threadId)}`);
-
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get('cache-control'), 'no-store');
-    assert.match(await response.text(), /data-activity-endpoint="\/api\/conversations\/thread%2Factivity\/activity"/u);
-  });
-
   it('bumps both list and detail revisions when a conversation is renamed', async () => {
     const listEndpoint = `${baseUrl}/api/conversations/activity`;
     const detailEndpoint = `${baseUrl}/api/conversations/${encodeURIComponent(threadId)}/activity`;

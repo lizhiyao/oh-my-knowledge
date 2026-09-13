@@ -5,7 +5,7 @@ export function inlineMarkdownText(value: string): string {
   return plainText(parseInline(value));
 }
 
-export function parseInline(value: string, depth: number = 0): InlineNode[] {
+function parseInline(value: string, depth: number = 0): InlineNode[] {
   if (depth >= 4) return [{ nodeKind: 'text', value }];
   const nodes: InlineNode[] = [];
   let text = '';
@@ -98,7 +98,7 @@ function matchingParenthesis(value: string, opening: number): number {
   return -1;
 }
 
-export function plainText(nodes: InlineNode[]): string {
+function plainText(nodes: InlineNode[]): string {
   return nodes.map((node) => (
     node.nodeKind === 'text' || node.nodeKind === 'code'
       ? node.value
