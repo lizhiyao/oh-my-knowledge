@@ -28,13 +28,8 @@ import {
 } from 'oh-my-knowledge/eval-core';
 import {
   createEvaluationRuntime,
-  createExactMatchDefinition,
   createInvokeExecutorIdentity,
   createJsonExecutorAdapter,
-  createPairedComparisonDefinition,
-  createMeasurementPolicy,
-  createRubricJudgeKit,
-  createRubricJudgeRegistration,
   type OmkLlmJudgeInvocationPort,
   type ExecutorConformanceProbeInput,
   assertExecutorConformance,
@@ -42,6 +37,14 @@ import {
   runEvaluation,
 } from 'oh-my-knowledge/eval-runtime/advanced';
 import {
+  type RuntimePortRegistration,
+} from 'oh-my-knowledge/eval-runtime/advanced';
+import {
+  createExactMatchDefinition,
+  createPairedComparisonDefinition,
+  createMeasurementPolicy,
+  createRubricJudgeKit,
+  createRubricJudgeRegistration,
   createRubricJudgeCriterion,
   createRubricJudgeEvaluator,
   createRubricJudgeEvaluatorDefinition,
@@ -49,8 +52,7 @@ import {
   createRubricJudgeInstrument,
   createRubricJudgeMetricDefinition,
   createRubricJudgeRuntimeConfig,
-  type RuntimePortRegistration,
-} from 'oh-my-knowledge/eval-runtime/advanced';
+} from 'oh-my-knowledge/eval-runtime';
 import {
   assessComparability as assessRuntimeComparability,
   checkExecutor,

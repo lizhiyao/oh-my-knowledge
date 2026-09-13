@@ -2,16 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { createEvaluationExecution, EvaluationRuntimeLifecycleError, type EvaluationRunLease } from '../../src/eval-runtime/execution.js';
 import {
   createEvaluationRuntime,
-  createExactMatchDefinition,
-  createExactMatchEvaluator,
   createInvokeExecutorIdentity,
-  createMeasurementPolicy,
   runEvaluation,
 } from '../../src/eval-runtime/advanced.js';
 import {
   createExecutorFnAdapter,
   type ExecResult,
 } from '../../src/eval-runtime/advanced.js';
+import {
+  createExactMatchDefinition,
+  createExactMatchEvaluator,
+  createMeasurementPolicy,
+} from '../../src/eval-runtime/index.js';
 
 function executionResult(output: string): ExecResult {
   return {

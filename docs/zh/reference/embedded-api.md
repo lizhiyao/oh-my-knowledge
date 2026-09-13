@@ -26,7 +26,7 @@ OMK 有意不支持同步 `require('oh-my-knowledge')`，也不发布第二份 C
 | `oh-my-knowledge` | 面向普通宿主的推荐 `evaluate()`、重复运行 `evaluateSeries()`、`assessComparability()` 与一致性检查 façade |
 | `oh-my-knowledge/eval-core` | 高级分阶段执行、artifact admission 与验证、comparability、Series 和 Schema 发现 |
 | `oh-my-knowledge/eval-runtime` | 与包根 Runtime façade 完全等价的显式入口 |
-| `oh-my-knowledge/eval-runtime/advanced` | 底层 Runtime 装配、identity、adapter、builder 与生命周期 SPI |
+| `oh-my-knowledge/eval-runtime/advanced` | 底层 Runtime 装配、identity、adapter 与生命周期 SPI |
 | `oh-my-knowledge/eval-hosts` | 官方参考执行器：用普通配置装配供应商 CLI adapter |
 | `oh-my-knowledge/projections` | 下游 artifact projection |
 | `oh-my-knowledge/studio` | Studio Core-run catalog 与 route |

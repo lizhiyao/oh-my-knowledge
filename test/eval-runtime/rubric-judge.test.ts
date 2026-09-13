@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { EvaluationPortFailure } from '../../src/eval-core/evaluation/index.js';
 import {
-  createRubricJudgeEvaluationContext,
-  createRubricJudgeKit,
-  createRubricJudgeRegistration,
   createRuntimeIdentity,
 } from '../../src/eval-runtime/advanced.js';
 import {
   createRubricJudgeCriterion,
+  createRubricJudgeEvaluationContext,
   createRubricJudgeEvaluator,
   createRubricJudgeEvaluatorDefinition,
   createRubricJudgeInstrument,
+  createRubricJudgeKit,
   createRubricJudgeMetricDefinition,
+  createRubricJudgeRegistration,
   createRubricJudgeRuntimeConfig,
-} from '../../src/eval-runtime/advanced.js';
+} from '../../src/eval-runtime/index.js';
 import {
   SourceNeutralTraceSchema,
 } from '../../src/eval-runtime/contracts.js';
