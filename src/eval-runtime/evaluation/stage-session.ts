@@ -30,6 +30,7 @@ import {
   EvaluationConfigurationError,
   type EvaluationFailureOrigin,
   EvaluationEventConsumptionError,
+  STABLE_ERROR_CODE,
 } from './errors.js';
 import {
   attachDefinition,
@@ -48,8 +49,6 @@ export class StageInvariantViolation extends TypeError {
     this.name = 'StageInvariantViolation';
   }
 }
-
-const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 
 /** Codes that describe how the caller opened the stage session, not how OMK drove it. */
 const CALLER_STAGE_SESSION_CODES: readonly EvaluationStageSessionErrorCode[] = [

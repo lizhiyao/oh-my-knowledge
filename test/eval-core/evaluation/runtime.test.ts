@@ -1102,6 +1102,93 @@ describe('Evaluation Core Evaluation runtime', () => {
   });
 
   it.each([
+    'per-coordinate',
+    'per-batch',
+    'start-end-only',
+  ] as const)('reports scoring progress at %s granularity', async (progressGranularity) => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.eventDelivery.writerMode = 'optional';
+      policy.eventDelivery.progressGranularity = progressGranularity;
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const run = startEvaluation(plan, source, ports(fake.port), {
+      runId: `progress-${progressGranularity}-run`,
+      bundleId: `progress-${progressGranularity}-bundle`,
+    });
+    await run.result;
+    const journal: EvaluationEvent[] = [];
+    for await (const event of run.events) journal.push(event);
+    const planned = (journal.find((event) => event.eventKind === 'evaluation.run.started')!
+      .data as { planned: number }).planned;
+    expect(planned).toBeGreaterThan(1);
+    const progress = journal
+      .filter((event) => event.eventKind === 'evaluation.run.progress')
+      .map((event) => event.data as {
+        completed: number;
+        total: number;
+        failed: number;
+        maxConcurrency: number;
+        retry: { maxAttempts: number; retryableErrorCodes: string[] };
+      });
+    if (progressGranularity === 'start-end-only') {
+      expect(progress).toEqual([]);
+      return;
+    }
+    const last = progress.at(-1)!;
+    expect(last).toMatchObject({ completed: planned, total: planned, failed: 0 });
+    expect(last.maxConcurrency).toBeGreaterThan(0);
+    expect(last.retry).toEqual(expect.objectContaining({
+      maxAttempts: expect.any(Number),
+      retryableErrorCodes: expect.any(Array),
+    }));
+    expect('timeoutMs' in last).toBe(false);
+    expect(progress.every((event, index) => (
+      index === 0 || event.completed > progress[index - 1]!.completed
+    ))).toBe(true);
+    if (progressGranularity === 'per-coordinate') {
+      expect(progress.map((event) => event.completed)).toEqual(
+        Array.from({ length: planned }, (_, index) => index + 1),
+      );
+    } else {
+      expect(progress.length).toBe(Math.ceil(planned / last.maxConcurrency));
+      expect(progress.length).toBeLessThan(planned);
+    }
+  });
+
+  it('keeps settled records when a progress write fails the run', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.eventDelivery.writerMode = 'optional';
+      policy.eventDelivery.writerFailureMode = 'fail-run';
+      policy.eventDelivery.progressGranularity = 'per-coordinate';
+      policy.evaluation.maxConcurrency = 2;
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const run = startEvaluation(plan, source, ports(fake.port, {
+      eventWriter: {
+        async write(event) {
+          if (event.eventKind === 'evaluation.run.progress') throw new Error('progress writer failed');
+        },
+      },
+    }), {
+      runId: 'progress-writer-run',
+      bundleId: 'progress-writer-bundle',
+    });
+    const bundle = await run.result;
+    const settled = bundle.records.filter((record) => record.evaluationStatus !== 'not-evaluated');
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-event-writer-failed',
+    });
+    // A coordinate the Evaluator really ran for must not be rewritten as not-evaluated evidence
+    // just because the progress projection died halfway through its batch.
+    expect(settled).toHaveLength(fake.state.attempts);
+    expect(settled.length).toBeGreaterThan(1);
+  });
+
+  it.each([
     ['cancelled', 'evaluation.run.cancelled'],
     ['budget-exhausted', 'evaluation.run.budget-exhausted'],
   ] as const)('lets terminal EventWriter failure override an existing %s stop', async (

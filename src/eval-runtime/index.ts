@@ -294,6 +294,7 @@ export {
 export type {
   FormulaCalculatorId,
   FormulaEvaluator,
+  FormulaEvaluatorBinding,
   FormulaEvaluatorConfig,
 } from './evaluators/formula.js';
 

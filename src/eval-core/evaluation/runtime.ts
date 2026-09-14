@@ -1428,6 +1428,31 @@ async function runEvaluation(
       (item): item is EligibleCoordinate => !('reasonCode' in item),
     );
     const width = plan.evaluation.policy.runtime.maxConcurrency;
+    const granularity = plan.measurementPolicy.eventDelivery.progressGranularity ?? 'per-batch';
+    const total = coordinates.length;
+    const runtimePolicy = plan.evaluation.policy.runtime;
+    const progressMetadata = {
+      maxConcurrency: width,
+      retry: {
+        maxAttempts: runtimePolicy.retry.maxAttempts,
+        retryableErrorCodes: [...runtimePolicy.retry.retryableErrorCodes],
+      },
+      ...(runtimePolicy.timeoutMs === undefined ? {} : { timeoutMs: runtimePolicy.timeoutMs }),
+    };
+    // A record already settled as not-evaluated still consumes one unit of planned work.
+    let completed = records.size;
+    let failed = [...records.values()].filter(
+      (record) => record.evaluationStatus === 'failed',
+    ).length;
+    const emitProgress = async () => {
+      if (granularity === 'start-end-only') return true;
+      return events.emit('evaluation.run.progress', 'run', options.runId, {
+        completed,
+        total,
+        failed,
+        ...progressMetadata,
+      });
+    };
     for (let offset = 0;
       offset < eligibleCoordinates.length && stop.stopKind === undefined;
       offset += width) {
@@ -1442,50 +1467,40 @@ async function runEvaluation(
         controller.signal,
         setStop,
       )));
-      const granularity = plan.measurementPolicy.eventDelivery.progressGranularity ?? 'per-batch';
-      const retry = plan.evaluation.policy.runtime.retry;
-      const timeoutMs = plan.evaluation.policy.runtime.timeoutMs;
-      const emitProgress = async () => {
-        if (granularity === 'start-end-only') return;
-        const completed = records.size;
-        const total = coordinates.length;
-        const failed = [...records.values()].filter(
-          (record) => record.evaluationStatus === 'failed',
-        ).length;
-        await events.emit('evaluation.run.progress', 'run', options.runId, {
-          completed,
-          total,
-          failed,
-          maxConcurrency: width,
-          retry: {
-            maxAttempts: retry.maxAttempts,
-            retryableErrorCodes: [...retry.retryableErrorCodes],
-          },
-          ...(timeoutMs === undefined ? {} : { timeoutMs }),
-        });
-      };
+      let batchFailures = 0;
+      let progressFailed = false;
       for (let index = 0; index < results.length; index += 1) {
         const result = results[index];
-        if (result.record !== undefined) records.set(result.record.evaluationId, result.record);
+        const record = result.record;
+        if (record !== undefined && !records.has(record.evaluationId)) {
+          completed += 1;
+          if (record.evaluationStatus === 'failed') failed += 1;
+        }
+        if (record !== undefined) records.set(record.evaluationId, record);
         if (result.cacheEntry !== undefined) pendingCache.push(result.cacheEntry);
         if (result.verifiedCacheRecordDigest !== undefined) {
           verifiedCacheRecordDigests.add(result.verifiedCacheRecordDigest);
         }
-        if (granularity === 'per-coordinate') await emitProgress();
+        if (record !== undefined && record.evaluationStatus === 'failed') batchFailures += 1;
+        // Progress is a projection: a dead EventWriter must never drop a settled record here,
+        // because finalization would otherwise rewrite that coordinate as not-evaluated evidence.
+        if (granularity === 'per-coordinate' && !progressFailed) {
+          progressFailed = !(await emitProgress());
+        }
       }
-      const failures = results.filter((result) => result.record?.evaluationStatus === 'failed').length;
-      const totalFailures = [...records.values()].filter(
-        (record) => record.evaluationStatus === 'failed',
-      ).length;
-      if (granularity === 'per-batch') await emitProgress();
+      const totalFailures = failed;
+      if (granularity === 'per-batch' && !progressFailed) {
+        progressFailed = !(await emitProgress());
+      }
       const policy = plan.evaluation.policy.failure;
-      if (stop.stopKind === undefined && policy.failureMode === 'fail-fast' && failures > 0) {
+      if (stop.stopKind === undefined && policy.failureMode === 'fail-fast' && batchFailures > 0) {
         setStop('failed', 'evaluation-failure-policy-fail-fast');
       } else if (stop.stopKind === undefined
           && policy.failureMode === 'failure-threshold'
           && totalFailures > (policy.maxFailures ?? 0)) {
         setStop('failed', 'evaluation-failure-policy-threshold');
       }
+      if (progressFailed) break;
     }
     } catch (error) {
       if (!(error instanceof EvaluationAttemptCancelledError

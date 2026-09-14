@@ -33,6 +33,7 @@ import {
   configurationFailure,
   EvaluationEventConsumptionError,
   EvaluationConfigurationError,
+  STABLE_ERROR_CODE,
 } from './errors.js';
 import {
   IdentifierSchema,
@@ -541,9 +542,13 @@ async function prepareCapturedEvaluation(
     return facade;
   } catch (error) {
     if (error instanceof EvaluationConfigurationError) throw error;
+    const code = (error as Readonly<{ code?: unknown }>)?.code;
     return configurationFailure(
       'EVAL_RUNTIME_INPUT_INVALID',
       'Evaluation 无法封存为可执行 Plan。',
+      typeof code === 'string' && STABLE_ERROR_CODE.test(code)
+        ? { failureKind: 'configuration', code }
+        : { failureKind: 'configuration' },
     );
   }
 }
