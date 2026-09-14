@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/index.js';
+import { querySkillTrend } from '../../../src/studio/application/knowledge-reports.js';
 import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,
@@ -317,7 +318,6 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(assessHealth(partial, [], 'zh').color, partial.observe?.effectiveBand);
     const local = buildSkillIndex(proj, emptyDoctors, emptyObs).entries.find((entry) => entry.skillName === 'partial')!;
     assert.equal(local.observe?.effectiveBand, partial.observe?.effectiveBand);
-    assert.equal(local.observeHistory[0].effectiveBand, 'gray');
   });
 
   it('汇总与行状态同时采用活跃知识缺口信号', () => {
@@ -460,7 +460,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(d.doctorHistory.length, 1, 'doctor 同 reportId 的 live+卡片 dedup 为 1 条,不双计');
     assert.ok((d.doctor?.results.length ?? 0) > 0, 'live 盖卡片:取含 results 的 live 那份,非卡片空壳');
     const o = idx.entries.find((e) => e.skillName === 'o')!;
-    assert.equal(o.observeHistory.length, 1, 'observe 同 analysisId 的 live+卡片 dedup 为 1 条,不双计');
+    assert.ok(o.observe, 'observe 至少产出一份快照');
+    assert.equal(querySkillTrend(emptyAnalyses, 'o', true).points.length, 1, 'observe 同 analysisId 的 live+卡片 dedup 为 1 条,不双计(历次记录由趋势页承载)');
   });
 
   it('doctor prune 删正文连带删卡片 → 被 prune 的报告不经卡片复活', () => {

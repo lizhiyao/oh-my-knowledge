@@ -88,9 +88,9 @@ export interface SkillIndexEntry {
   /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。列表与综合灯只读这个。 */
   doctor: SkillDoctorSnapshot | null;
   observe: SkillObserveSnapshot | null;
-  /** 历史 snapshot,chronological 升序(最早 → 最近)。详情用它给「体检历史」列表和 `?doctorRun=` 下钻。 */
+  /** 历史 snapshot,chronological 升序(最早 → 最近)。详情用它给「体检历史」列表和 `?doctorRun=` 下钻。
+   *  观测侧没有对应的 history:同一批 analyses 报告由 `/observe/skill-trend/:skill` 承担,#880 退出契约。 */
   doctorHistory: SkillDoctorSnapshot[];
-  observeHistory: SkillObserveSnapshot[];
   /** 综合健康灯。doctor / observe 任一红 → red;任一黄 → yellow;
    *  全绿 → green;皆未跑 → gray。 */
   band: 'green' | 'yellow' | 'red' | 'gray';

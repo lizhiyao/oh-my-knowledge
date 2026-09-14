@@ -4,10 +4,38 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { useStudioNavigation } from './navigation';
+import { useStudioRoute } from './current-route';
 export type Language = 'zh' | 'en';
+
+/**
+ * 由宿主注入的 `pathname?search` 生成目标语言地址：其余查询参数（如 `?doctorRun=`）
+ * 必须跟着走，否则换语言会静默换掉所见证据。zh 是页面缺省值，切回中文是删掉参数。
+ */
+export function languageSwitchHref(route: string, target: Language): string {
+  const queryIndex = route.indexOf('?');
+  const pathname = queryIndex < 0 ? route : route.slice(0, queryIndex);
+  const params = new URLSearchParams(queryIndex < 0 ? '' : route.slice(queryIndex + 1));
+  if (target === 'en') params.set('lang', 'en');
+  else params.delete('lang');
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function LanguageSwitch({ lang }: { lang: Language }) {
+  const route = useStudioRoute();
+  if (!route) return null;
+  const href = languageSwitchHref(route, lang === 'zh' ? 'en' : 'zh');
+  return <a
+    className="studio-lang"
+    href={href}
+    aria-label={lang === 'zh' ? '切换到英文界面' : 'Switch to the Chinese interface'}
+    title={lang === 'zh' ? '当前语言：中文' : 'Current language: English'}
+  >{lang === 'zh' ? '英文' : '中文'}</a>;
+}
+
 export function StudioShell({ lang, children, active }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | false }) {
   const suffix = lang === 'en' ? '?lang=en' : '';
-  // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404。
+  // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
   const navigation = useStudioNavigation();
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
     <div className="studio-app"><header className="studio-header"><a className="studio-brand" href={`/${navigation ? '' : 'measure'}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></a>
@@ -16,6 +44,7 @@ export function StudioShell({ lang, children, active }: { lang: Language; childr
         <a href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</a>
         <a href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</a>
       </nav> : null}
+      <LanguageSwitch lang={lang} />
     </header><main className="studio-content">{children}</main></div>
   </ConfigProvider>;
 }

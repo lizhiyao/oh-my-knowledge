@@ -61,10 +61,11 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 - `/knowledge/doctors/:id` 独立体检页退役，无替代 URL：它的独有信息（逐条 finding 与修复建议、多采样 `k/n` 支持度、采样降级告警、跨轮次体检历史与 `?doctorRun=` 下钻）全部并进了 skill 详情的体检面板。全仓没有任何页面、CLI 或 MCP 输出链向该地址。
 - 受管页的时间显示从服务端本地时区改为显式 UTC 标注。同一时刻在两种宿主下读出不同墙上时间是原页面的缺陷，跨机器对账证据时尤其危险，因此不做兼容。
+- `SkillIndexEntry.observeHistory`（以及 `/api/skills` 里同名的展开字段）已退出契约：它与 `/observe/skill-trend/:skill` 读的是同一批 analyses 目录下的 observe-health 报告，页面只读 `observe`（最新一次），留一份只写不读的历次数组等于给同一条时间轴造第二个出口。观测历次记录的唯一承载面是趋势页。
 - 体检面板顶部的通过／警告／失败计数沿用报告自带的 `passCount`／`warnCount`／`failCount`，它们把信息性的 `:_summary` 也计入，因此该轮 `_summary` 仅为信息性（pass／warn）时列表会比规则项多一项——与列表页「健康体检」列同一份数，不改评分口径；`_summary` 自己失败时（全部采样解析失败，它是这一轮唯一的失败记录）它会作为失败规则出现在列表里，页面不会既报红又宣称「所有规则通过」。以上口径由测试显式钉住。
 
 ## HTML 渲染层的终点
 
 `src/studio/presentation/` 已随本批删除：最后两页只读报告（体检详情、受管历史）迁到 Next，共享外壳 `layout.ts`／`report-shell.ts`／`icons.ts` 与 `view-models/report-context.ts` 一并退出，因为 React 侧由 `web/components/layout/shell` 与 antd 提供外壳和图标。Studio 自此只有一份页面实现，Markdown 解析与纯文本计算留在 `application/`，`http/` 层不再产出页面 HTML。
 
-旧外壳的 `#lang-toggle`（一键切中英文并保留当前 path／query／hash）随外壳删除，Next 壳层未提供等价控件：站内语言由 `?lang=en` 与站点导航决定，页内跳转自行继承该参数。补齐它需要壳层的当前路径感知，属于全站（含此前已迁移的观测、评测页面）共同缺失的能力，不随本批只做局部兼容层。
+旧外壳的 `#lang-toggle` 已回到 Next 壳层（`web/components/layout/shell`）：它渲染成真实链接，切换地址由宿主按请求注入的 `x-omk-studio-route` 生成，保留当前 path 与其余 query（含 `?doctorRun=` 下钻，切语言不会换掉所见证据），切回中文是删掉 `lang` 参数而不是写 `lang=zh`。与旧控件的两处显式减法：不再把选择写进 `localStorage`（语言只由 URL 决定，同一地址在任意浏览器上渲染同一份口径），也不保留 URL fragment（站内页面无锚点跳转）。壳层没有走 Next 的 `useSearchParams`：它会把整棵子树降级为纯客户端渲染，SSR 里就没有这条链接。
