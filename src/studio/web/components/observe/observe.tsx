@@ -9,13 +9,12 @@ import { EventRecords, RawRecords } from './records';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
 import { ObserveSectionNav } from './section-nav';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
+import { displayTime } from '../display-time';
 
-const displayTime = (value: string | undefined) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
-const suffix = (lang: Language) => lang === 'en' ? '?lang=en' : '';
-const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${suffix(lang)}`;
-const taskPath = (threadId: string, turnId: string) => `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}`;
-const statuses: Record<string, string> = { open: '进行中', completed: '已完成', failed: '失败', aborted: '已中止', interrupted: '已中断', unknown: '未知', success: '成功', failure: '失败', cancelled: '已取消' };
+const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${langSuffix(lang)}`;
+const taskHref = (threadId: string, turnId: string, lang: Language) => `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}${langSuffix(lang)}`;
+const statuses: Record<string, string> = { open: '进行中', completed: '已完成', failed: '失败', aborted: '已中止', interrupted: '已中断', unknown: '未知' };
 function Status({status, lang}: {status: string; lang: Language}) {
   return <Tag className={status === 'open' ? 'studio-running-status' : undefined} color={status === 'open' ? 'processing' : status === 'failed' ? 'error' : undefined}>{status === 'open' && <span className="studio-running-dot" aria-hidden="true"/>}{lang === 'zh' ? statuses[status] ?? status : status}</Tag>;
 }
@@ -99,7 +98,7 @@ function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'i
         const liveTask=[...item.tasks].reverse().find(task=>task.status==='open');
         const task=liveTask??item.tasks.at(-1);
         if(!task)return <Typography.Text type="secondary">{zh?'暂无轨迹':'No trajectory'}</Typography.Text>;
-        return <Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{liveTask?(zh?'查看实时轨迹':'View live'):(zh?'查看最近轨迹':'View latest')}</Link>;
+        return <Link href={taskHref(item.threadId,task.sourceTurnId??task.turnId,lang)}>{liveTask?(zh?'查看实时轨迹':'View live'):(zh?'查看最近轨迹':'View latest')}</Link>;
       }},
     ]}/>
     {rows.length===0&&<div className="conversation-empty-count" role="status">{zh?`匹配 0 / 共 ${conversations.length} 个会话`:`0 matched / ${conversations.length} conversations`}</div>}
@@ -112,13 +111,13 @@ function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'c
   const tasks=newest?[...item.tasks].reverse():item.tasks;
   return <>
     <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:zh?'会话详情':'Conversation details'}]}/>
+      <Breadcrumb items={[{title:<Link href={`/observe${langSuffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:zh?'会话详情':'Conversation details'}]}/>
       <div className="observe-detail-title"><h1 title={item.title}>{item.title}</h1><span className="observe-detail-count">{item.turnCount??item.tasks.length} {zh?'个任务':'tasks'}</span></div>
       <div className="observe-detail-meta"><span>{item.model??item.sourceKind}</span><span className="observe-workspace" title={item.cwd}>{item.cwd??'—'}</span><span>{item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'}</span><span className={(item.toolFailureCount??0)>0?'observe-failure':undefined}>{item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</span></div>
     </header>
     <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/><ActivityNotice activity={activity} lang={lang}/></div>
     <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" rowClassName={task => task.status === 'open' ? 'studio-running-row' : ''} dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
-      {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
+      {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={taskHref(item.threadId,task.sourceTurnId??task.turnId,lang)}>{task.title}</Link>},
       {title:zh?'状态':'Status',width:100,dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
       {title:zh?'开始时间':'Started',width:210,ellipsis:true,dataIndex:'startTimestamp'},
       {title:zh?'耗时（毫秒）':'Duration (ms)',width:120,dataIndex:'durationMs',render:(value:number|undefined)=>value??'—'},
@@ -169,7 +168,7 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
     <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
+      <Breadcrumb items={[{title:<Link href={`/observe${langSuffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
     <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
         <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button></h1>

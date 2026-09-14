@@ -1,23 +1,27 @@
 import type { CoreStudioCatalog } from '../../view-models/measure/core-runs.js';
-import { JSON_HEADERS } from '../errors.js';
+import {
+  CORE_STUDIO_SOURCE_UNAVAILABLE,
+  JSON_HEADERS,
+  type StudioApiErrorCode,
+} from '../errors.js';
 
-export interface CoreStudioRouteRequest {
+interface CoreStudioRouteRequest {
   readonly method?: string;
   readonly url?: string;
 }
 
-export interface CoreStudioRouteResponse {
+interface CoreStudioRouteResponse {
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
 }
 
-export interface CoreStudioRouteHandlerOptions {
+interface CoreStudioRouteHandlerOptions {
   readonly catalog: CoreStudioCatalog;
   readonly apiBasePath: string;
 }
 
-export type CoreStudioRouteHandler = (
+type CoreStudioRouteHandler = (
   request: CoreStudioRouteRequest,
 ) => Promise<CoreStudioRouteResponse | undefined>;
 
@@ -68,6 +72,10 @@ function json(status: number, body: unknown, extraHeaders: Readonly<Record<strin
   });
 }
 
+function jsonError(status: number, code: StudioApiErrorCode, extraHeaders: Readonly<Record<string, string>> = {}): CoreStudioRouteResponse {
+  return json(status, { error: code }, extraHeaders);
+}
+
 /**
  * `/measure` 的 HTML 面由 `web/app/measure/**`（React）渲染；这里只保留机器可读的 JSON 资源，
  * 让嵌入宿主不必启 UI 也能取到同一份投影。
@@ -84,7 +92,7 @@ export function createCoreStudioRouteHandler(
     if (!isMatched) return undefined;
 
     if ((request.method ?? 'GET').toUpperCase() !== 'GET') {
-      return json(405, { error: 'method_not_allowed' }, { Allow: 'GET' });
+      return jsonError(405, 'method_not_allowed', { Allow: 'GET' });
     }
 
     try {
@@ -92,13 +100,13 @@ export function createCoreStudioRouteHandler(
         return json(200, await options.catalog.list());
       }
       // `isMatched` 已经把请求限定成「基路径」或「其下一层子路径」，这里只剩后者。
-      if (apiRun.runId === undefined) return json(404, { error: 'core_run_not_found' });
+      if (apiRun.runId === undefined) return jsonError(404, 'core_run_not_found');
       const detail = await options.catalog.get(apiRun.runId);
       return detail === undefined
-        ? json(404, { error: 'core_run_not_found' })
+        ? jsonError(404, 'core_run_not_found')
         : json(200, detail);
     } catch {
-      return json(503, { error: 'core_studio_source_unavailable' });
+      return jsonError(503, CORE_STUDIO_SOURCE_UNAVAILABLE);
     }
   };
 }

@@ -3,18 +3,9 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import { RunDetail, RunList } from '../../../src/studio/web/components/measure/measure';
-import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../src/studio/index.js';
+import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../src/studio/view-models/measure/core-runs.js';
 import { card, detail } from '../fixtures/core-run-view.js';
-
-/** React 文本节点的转义结果；值被整体丢弃同样算失败。 */
-function reactText(payload: string): string {
-  return payload
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#x27;');
-}
+import { reactText } from '../../helpers/react-ssr.js';
 
 function runDetail(view: CoreStudioRunDetail, lang: 'zh' | 'en'): string {
   return renderToString(createElement(RunDetail, { detail: view, lang }));

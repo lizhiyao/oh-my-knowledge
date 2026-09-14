@@ -20,6 +20,7 @@ import type {
   SkillIndexEntry,
 } from '../../../src/studio/view-models/knowledge/skill-index.js';
 import { KnowledgeView } from '../../../src/studio/web/components/knowledge/knowledge.js';
+import { reactText, visibleText } from '../../helpers/react-ssr.js';
 
 type Lang = 'zh' | 'en';
 
@@ -103,7 +104,7 @@ function detailPage(
   const query = { read: () => index } as unknown as KnowledgeQuery;
   const page = loadKnowledgePage(query, '/knowledge/skills/demo', lang, doctorRunId);
   assert.ok(page && page.pageKind === 'detail', 'detail page');
-  return renderToString(createElement(KnowledgeView, { page, lang })).replaceAll('<!-- -->', '');
+  return visibleText(renderToString(createElement(KnowledgeView, { page, lang })));
 }
 
 /** doctor graph sidecar 的投影：默认绑到当前轮次 `doctor-current` 的内容哈希上。 */
@@ -208,7 +209,7 @@ describe('体检详情的逐条规则', () => {
     ]);
     const html = detailPage([dirty], 'zh');
     assert.doesNotMatch(html, /<img src=x onerror=alert\(1\)>/);
-    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'), '转义后仍需可见');
+    assert.ok(html.includes(reactText(payload)), '转义后仍需可见');
   });
 });
 
@@ -305,6 +306,6 @@ describe('知识对象结构', () => {
       artifactHash: payload,
     }));
     assert.doesNotMatch(zh, /<img src=x onerror=alert\(1\)>/);
-    assert.ok(zh.includes('&lt;img src=x onerror=alert(1)&gt;'), '转义后仍需可见');
+    assert.ok(zh.includes(reactText(payload)), '转义后仍需可见');
   });
 });

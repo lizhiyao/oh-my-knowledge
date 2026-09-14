@@ -5,6 +5,9 @@
  * high/medium 信号(来自 Diagnosis 投影),卡片不应该落到灰色「未评估」,
  * 否则只跑了 observe ingest 拿到 `skill_md_not_found` 的 skill 会被红色筛选
  * 漏掉。
+ *
+ * 断言用 label + color:这两个字段就是页面实际读到的东西。green 档下「健康」与
+ * 「良好」同色,只有 label 能分开,所以每条都成对断言。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -36,37 +39,49 @@ function mkInsight(severity: Insight['severity'], id = 'i1'): Insight {
   };
 }
 
+function mkDoctor(passCount: number): NonNullable<SkillIndexEntry['doctor']> {
+  return {
+    reportId: 'd1',
+    timestamp: '2026-05-09T10:00:00Z',
+    status: 'pass',
+    passCount,
+    warnCount: 0,
+    failCount: 0,
+    results: [],
+  };
+}
+
 describe('assessHealth — Diagnosis-only skill', () => {
-  it('三大维度都没跑 + 有 high insight → red,不再落灰色', () => {
+  it('三大维度都没跑 + 有 high insight → 不健康/red,不再落灰色', () => {
     const h = assessHealth(mkEntry(), [mkInsight('high')], 'zh');
-    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.label, '不健康');
     assert.equal(h.color, 'red');
     assert.equal(h.score, null);
   });
 
-  it('三大维度都没跑 + 只有 medium insight → yellow', () => {
+  it('三大维度都没跑 + 只有 medium insight → 待改进/yellow', () => {
     const h = assessHealth(mkEntry(), [mkInsight('medium')], 'zh');
-    assert.equal(h.grade, 'fair');
+    assert.equal(h.label, '待改进');
     assert.equal(h.color, 'yellow');
     assert.equal(h.score, null);
   });
 
-  it('三大维度都没跑 + 只有 low insight → 仍然 unscored', () => {
+  it('三大维度都没跑 + 只有 low insight → 仍然未评估', () => {
     const h = assessHealth(mkEntry(), [mkInsight('low')], 'zh');
-    assert.equal(h.grade, 'unscored');
+    assert.equal(h.label, '未评估');
     assert.equal(h.color, 'gray');
   });
 
-  it('三大维度都没跑 + insights 完全为空 → unscored', () => {
+  it('三大维度都没跑 + insights 完全为空 → 未评估', () => {
     const h = assessHealth(mkEntry(), [], 'zh');
-    assert.equal(h.grade, 'unscored');
+    assert.equal(h.label, '未评估');
     assert.equal(h.color, 'gray');
   });
 
   it('EN 文案也走对应分支', () => {
     const h = assessHealth(mkEntry(), [mkInsight('high')], 'en');
-    assert.equal(h.grade, 'unhealthy');
     assert.equal(h.label, 'Unhealthy');
+    assert.equal(h.color, 'red');
   });
 });
 
@@ -82,31 +97,38 @@ describe('assessHealth — observe confidence guard', () => {
 
   it('underpowered red observe 单独存在 → 中性灰「未评估」,既不红也不绿', () => {
     const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [], 'zh');
-    // 低 N observe 不算可信维度:不能硬标红,更不能从 excellent 兜底翻成硬绿「健康」。
-    assert.equal(h.grade, 'unscored');
+    // 低 N observe 不算可信维度:不能硬标红,更不能从健康兜底翻成硬绿。
+    assert.equal(h.label, '未评估');
     assert.equal(h.color, 'gray');
     assert.equal(h.score, null);
   });
 
   it('underpowered observe + high insight → 仍按可信信号(Diagnosis)标红', () => {
     const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [mkInsight('high')], 'zh');
-    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.label, '不健康');
     assert.equal(h.color, 'red');
   });
 
-  it('doctor 全绿 + underpowered observe → excellent,observe 不进分也不拉低', () => {
+  it('doctor 全绿 + underpowered observe → 健康,observe 不进分也不拉低', () => {
     const h = assessHealth(mkEntry({
-      doctor: { reportId: 'd1', timestamp: '2026-05-09T10:00:00Z', status: 'pass', passCount: 8, warnCount: 0, failCount: 0, results: [] },
+      doctor: mkDoctor(8),
       observe: observe('underpowered', 'red'),
     }), [], 'zh');
-    assert.equal(h.grade, 'excellent');
+    assert.equal(h.label, '健康');
     assert.equal(h.color, 'green');
     assert.equal(h.score, 100);
   });
 
-  it('high-confidence red observe still drives unhealthy/red', () => {
+  it('有可信维度且只剩 low insight → 同色 green 下用「良好」区分于「健康」', () => {
+    const h = assessHealth(mkEntry({ doctor: mkDoctor(8) }), [mkInsight('low')], 'zh');
+    assert.equal(h.label, '良好');
+    assert.equal(h.color, 'green');
+    assert.equal(h.score, 100);
+  });
+
+  it('high-confidence red observe still drives 不健康/red', () => {
     const h = assessHealth(mkEntry({ observe: observe('high', 'red') }), [], 'zh');
-    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.label, '不健康');
     assert.equal(h.color, 'red');
   });
 
@@ -121,7 +143,7 @@ describe('assessHealth — observe confidence guard', () => {
       toolCancelledCount: 0,
     };
     const h = assessHealth(mkEntry({ observe: sparse }), [], 'zh');
-    assert.equal(h.grade, 'unscored');
+    assert.equal(h.label, '未评估');
     assert.equal(h.color, 'gray');
     assert.equal(h.score, null);
   });

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { createCoreStudioRouteHandler } from '../../../src/studio/http/routes/core-runs.js';
-import type { CoreStudioCatalog, CoreStudioRunDetail } from '../../../src/studio/index.js';
+import type { CoreStudioCatalog, CoreStudioRunDetail } from '../../../src/studio/view-models/measure/core-runs.js';
 import { card, detail } from '../fixtures/core-run-view.js';
 
 // view-model 样板与 React 行为面测试共用 fixtures，两条渲染链断言同一份事实。

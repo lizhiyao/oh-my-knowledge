@@ -21,7 +21,7 @@ export type ManagedObserveBadge = 'production_gap' | 'underpowered' | 'elevated'
 /** 知识缺口信号类型（与观测侧四类信号同名，额外键不进展示）。 */
 export type ManagedGapSignalType = keyof ManagedObservation['gapByType'];
 
-export interface ManagedGapArea {
+interface ManagedGapArea {
   signalType: ManagedGapSignalType;
   count: number;
 }
@@ -93,7 +93,7 @@ export function projectObserveBadge(
 }
 
 /** 生命周期状态 → 色调。未知 token 归 muted（非法状态由校验层拦下，这里只保证不崩）。 */
-export function managedStateTone(state: string): ManagedTone {
+function managedStateTone(state: string): ManagedTone {
   if (state === 'promoted') return 'green';
   if (state === 'stale') return 'red';
   if (state === 'measurable') return 'accent';

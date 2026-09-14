@@ -15,6 +15,7 @@ import { projectManagedListRow, projectManagedTimeline } from '../../../src/stud
 import type { ManagedPage } from '../../../src/studio/http/pages/managed-page';
 import { ManagedHistoryView, ManagedListView } from '../../../src/studio/web/components/knowledge/managed';
 import { coreManagedEvidence } from '../../helpers/core-managed-evidence.js';
+import { reactText, visibleText } from '../../helpers/react-ssr.js';
 
 type Lang = 'zh' | 'en';
 
@@ -33,7 +34,7 @@ function versionHeads(html: string): Array<{ hash: string; current: boolean }> {
 
 function renderList(rows: ManagedListRow[], lang: Lang): string {
   const page: Extract<ManagedPage, { pageKind: 'list' }> = { pageKind: 'list', rows: rows.map(projectManagedListRow) };
-  return renderToString(createElement(ManagedListView, { page, lang })).replaceAll('<!-- -->', '');
+  return visibleText(renderToString(createElement(ManagedListView, { page, lang })));
 }
 
 function renderHistory(record: ManagedArtifactRecord, lang: Lang): string {
@@ -46,17 +47,7 @@ function renderHistory(record: ManagedArtifactRecord, lang: Lang): string {
     installedAt: record.installedAt,
     segments: projectManagedTimeline(record),
   };
-  return renderToString(createElement(ManagedHistoryView, { page, lang })).replaceAll('<!-- -->', '');
-}
-
-/** React 文本节点的转义结果；值被整体丢弃同样算失败。 */
-function reactText(payload: string): string {
-  return payload
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#x27;');
+  return visibleText(renderToString(createElement(ManagedHistoryView, { page, lang })));
 }
 
 const V0 = 'hashV0contenthashlong';

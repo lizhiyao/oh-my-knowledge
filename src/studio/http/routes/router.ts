@@ -1,4 +1,4 @@
-import { TEXT_HEADERS, writeJsonError } from '../errors.js';
+import { writeJsonError } from '../errors.js';
 import { assertTrustedMutationRequest } from '../request-errors.js';
 import type { StudioRouteContext } from './contracts.js';
 
@@ -76,7 +76,7 @@ function compile<C extends StudioRouteContext>(
   };
 }
 
-export type StudioRouter<C extends StudioRouteContext> = (context: C) => Promise<boolean>;
+type StudioRouter<C extends StudioRouteContext> = (context: C) => Promise<boolean>;
 
 export function createStudioRouter<C extends StudioRouteContext>(
   definitions: readonly StudioRouteDefinition<C>[],
@@ -114,12 +114,7 @@ export function createStudioRouter<C extends StudioRouteContext>(
         for (const value of route.methods) allowed.add(value);
       }
       const allow = [...allowed].sort().join(', ');
-      if (context.path.startsWith('/api/')) {
-        writeJsonError(context.response, 405, 'method_not_allowed', { Allow: allow });
-      } else {
-        context.response.writeHead(405, { ...TEXT_HEADERS, Allow: allow });
-        context.response.end('method_not_allowed');
-      }
+      writeJsonError(context.response, 405, 'method_not_allowed', { Allow: allow });
       return true;
     }
     return false;

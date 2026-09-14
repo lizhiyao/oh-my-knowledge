@@ -17,7 +17,7 @@ type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host'> & {
   requestShutdown(): void;
 };
 
-export interface StudioRequestHandler {
+interface StudioRequestHandler {
   prepare(): void;
   handle(request: IncomingMessage, response: ServerResponse): Promise<void>;
   close(): void;

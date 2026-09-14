@@ -22,18 +22,18 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
   const failed = (doctor?.failCount ?? 0) > 0 || observeBand === 'red';
   const warned = (doctor?.warnCount ?? 0) > 0 || observeBand === 'yellow';
   if (high || failed) {
-    return { grade: 'unhealthy', score, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
+    return { score, label: lang === 'zh' ? '不健康' : 'Unhealthy', color: 'red' };
   }
   if (medium || warned) {
-    return { grade: 'fair', score, label: lang === 'zh' ? '待改进' : 'Fair', emoji: '🟡', color: 'yellow' };
+    return { score, label: lang === 'zh' ? '待改进' : 'Fair', color: 'yellow' };
   }
   if (score === null) {
-    return { grade: 'unscored', score: null, label: lang === 'zh' ? '未评估' : 'Unscored', emoji: '⚪', color: 'gray' };
+    return { score: null, label: lang === 'zh' ? '未评估' : 'Unscored', color: 'gray' };
   }
   if (insights.length === 0) {
-    return { grade: 'excellent', score, label: lang === 'zh' ? '健康' : 'Excellent', emoji: '🟢', color: 'green' };
+    return { score, label: lang === 'zh' ? '健康' : 'Excellent', color: 'green' };
   }
-  return { grade: 'good', score, label: lang === 'zh' ? '良好' : 'Good', emoji: '🟢', color: 'green' };
+  return { score, label: lang === 'zh' ? '良好' : 'Good', color: 'green' };
 }
 
 export function observedToolFailureRate(observe: SkillObserveSnapshot): number | null {

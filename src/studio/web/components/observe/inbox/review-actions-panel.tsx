@@ -1,19 +1,10 @@
 'use client';
 import { useMemo } from 'react';
 import { Table, Tag, Typography } from 'antd';
-import {
-  buildReviewActionItems,
-  type SkillReviewTone,
-} from '../../../../../observability/inbox/skill-rollups';
+import { buildReviewActionItems } from '../../../../../observability/inbox/skill-rollups';
 import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
 import type { Language } from '../../layout/shell';
-
-const PRIORITY_COLOR: Record<SkillReviewTone, string> = {
-  error: 'error',
-  warning: 'warning',
-  neutral: 'default',
-  success: 'success',
-};
+import { tagStatus } from '../../tag-color';
 
 /** Reviewer 待办建议（#839 批次 5）：回答"现在该先看哪个 skill、看什么"。 */
 export function ReviewActionsPanel({
@@ -48,7 +39,7 @@ export function ReviewActionsPanel({
             title: 'P',
             dataIndex: 'priority',
             width: 64,
-            render: (priority: string, row) => <Tag color={PRIORITY_COLOR[row.tone]}>{priority}</Tag>,
+            render: (priority: string, row) => <Tag color={tagStatus(row.tone)}>{priority}</Tag>,
           },
           {
             title: 'Skill',

@@ -27,7 +27,7 @@ import {
   formatUsage,
   statusTone,
 } from '../../../application/measure/core-run-format';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
 
 const COPY = {
   zh: {
@@ -93,7 +93,7 @@ const VALUE_LABELS: Record<string, string> = {
   completed: '已完成', cancelled: '已取消', 'budget-exhausted': '预算耗尽', failed: '失败', 'budget-censored': '预算截断',
   complete: '完整', partial: '部分缺失', unresolvable: '无法解析', conclusive: '可形成结论', inconclusive: '证据不足',
   'not-evaluated': '未评估', decided: '已判定', 'not-decided': '未判定', 'within-budget': '预算内', exhausted: '已耗尽',
-  unverifiable: '不可验证', observed: '已观测', missing: '缺失', invalid: '无效', passed: '通过',
+  unverifiable: '不可验证',
   'self-contained': '自包含', resolvable: '可回溯', 'summary-only': '仅摘要',
 };
 
@@ -138,7 +138,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
   const [query, setQuery] = useState('');
   const copy = COPY[lang];
   const filtered = useMemo(() => runs.filter((run) => `${run.runId} ${run.reportId}`.toLowerCase().includes(query.toLowerCase())), [runs, query]);
-  const suffix = lang === 'zh' ? '' : '?lang=en';
+  const suffix = langSuffix(lang);
   return <>
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
@@ -320,7 +320,7 @@ function Lineage({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) 
 
 export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang: Language }) {
   const copy = COPY[lang];
-  const suffix = lang === 'zh' ? '' : '?lang=en';
+  const suffix = langSuffix(lang);
   const { run, stages } = detail;
   // Tabs／Collapse 默认只服务端渲染展开的那一块，证据必须整份在文档里，不靠点开才拉。
   const scopePanel = <div className="measure-tab">

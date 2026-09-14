@@ -25,7 +25,7 @@ export type ManagedPage =
     segments: ManagedVersionSegment[];
   };
 
-export type ManagedPageLoad =
+type ManagedPageLoad =
   | { status: 'ok'; page: ManagedPage }
   | { status: 'record_not_found' };
 

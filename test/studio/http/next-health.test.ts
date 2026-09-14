@@ -9,6 +9,7 @@ import type { SkillSegment } from '../../../src/observability/trace/index.js';
 import type { ConversationCatalog } from '../../../src/observability/conversation/catalog.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
 import type { ReportServer, ReportServerOptions } from '../../../src/studio/http/contracts.js';
+import { visibleText } from '../../helpers/react-ssr.js';
 
 const servers: ReportServer[] = [];
 const roots: string[] = [];
@@ -72,9 +73,8 @@ async function serve(options: Omit<ReportServerOptions, 'port'>): Promise<string
   return server.start();
 }
 
-/** React 在相邻动态文本之间插 `<!-- -->` 定界；剥掉注释后才能按可见顺序断言。 */
 async function htmlOf(response: Response): Promise<string> {
-  return (await response.text()).replaceAll('<!-- -->', '');
+  return visibleText(await response.text());
 }
 
 describe('Next 宿主的观测健康页面组', () => {

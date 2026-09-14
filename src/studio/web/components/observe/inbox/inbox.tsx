@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Button, Space, Tabs, Tag, Typography } from 'antd';
 import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
-import type { Language } from '../../layout/shell';
+import { langSuffix, type Language } from '../../layout/shell';
 import { SignalSection } from './signals';
 import { SkillBoard } from './skill-board';
 import { ExperienceReviewSection } from './experience-review';
@@ -33,7 +33,7 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
           {model.activeSkill ? (
             <>
               <Tag color="processing">{`${zh ? '已按 Skill 过滤' : 'Filtered by skill'}: ${model.activeSkill}`}</Tag>
-              <Typography.Link href={lang === 'zh' ? '/observe/inbox' : `/observe/inbox?lang=${lang}`} style={{ fontSize: 12 }}>
+              <Typography.Link href={`/observe/inbox${langSuffix(lang)}`} style={{ fontSize: 12 }}>
                 {zh ? '查看全量' : 'View all'}
               </Typography.Link>
             </>

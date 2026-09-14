@@ -20,16 +20,6 @@ import type {
 } from '../../../diagnosis/contracts.js';
 import { isActiveDiagnosisLifecycle } from '../../../diagnosis/lifecycle.js';
 
-export type {
-  DetectInsightsOptions,
-  Insight,
-  InsightAudience,
-  InsightCategory,
-  InsightEvidence,
-  InsightRecommendation,
-  InsightSeverity,
-} from '../../view-models/knowledge/insight.js';
-
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
 function underpoweredCaveat(observe: SkillObserveSnapshot): InsightEvidence | null {
@@ -250,7 +240,7 @@ function projectDiagnosis(diagnosis: Diagnosis): Insight {
   };
 }
 
-export function projectDiagnosticsToInsights(diagnostics: Diagnosis[]): Insight[] {
+function projectDiagnosticsToInsights(diagnostics: Diagnosis[]): Insight[] {
   return diagnostics
     .filter((diagnosis) => isActiveDiagnosisLifecycle(diagnosis.lifecycle))
     .map(projectDiagnosis)

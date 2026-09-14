@@ -1,8 +1,7 @@
 'use client';
 import Link from 'next/link';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
 
-const suffix = (lang: Language) => (lang === 'en' ? '?lang=en' : '');
 
 /**
  * 观测分区入口：会话流与 Skill 健康度是同一层级的两个观察视角。
@@ -11,8 +10,8 @@ const suffix = (lang: Language) => (lang === 'en' ? '?lang=en' : '');
 export function ObserveSectionNav({ active, lang }: { active: 'conversations' | 'health'; lang: Language }) {
   const zh = lang === 'zh';
   const items = [
-    { key: 'conversations' as const, href: `/observe${suffix(lang)}`, label: zh ? '会话' : 'Conversations' },
-    { key: 'health' as const, href: `/observe/health${suffix(lang)}`, label: zh ? 'Skill 健康度' : 'Skill health' },
+    { key: 'conversations' as const, href: `/observe${langSuffix(lang)}`, label: zh ? '会话' : 'Conversations' },
+    { key: 'health' as const, href: `/observe/health${langSuffix(lang)}`, label: zh ? 'Skill 健康度' : 'Skill health' },
   ];
   return (
     <nav className="observe-section-nav" aria-label={zh ? '观测分区' : 'Observe sections'}>

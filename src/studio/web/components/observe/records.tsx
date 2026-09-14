@@ -4,6 +4,7 @@ import { Button, Descriptions, Drawer, Empty, Input, Space, Table, Tag, Typograp
 import type { ExperienceTimelineEvent } from '../../../../observability/contracts/experience';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import type { Language } from '../layout/shell';
+import { displayTime } from '../display-time';
 
 type RecordRow = { id: string; index: number; timestamp?: string; type: string; label: string; text: string; data: Record<string, unknown>; limited: boolean };
 export function EventRecords({events,lang}: {events:ExperienceTimelineEvent[];lang:Language}) {
@@ -25,7 +26,7 @@ function RecordBrowser({rows,lang,raw=false,notice}: {rows:RecordRow[];lang:Lang
     {notice&&<p className="record-notice">{notice}</p>}
     <Table<RecordRow> className="measure-table" size="small" rowKey="id" dataSource={filtered} scroll={{x:'max-content'}} pagination={{pageSize:20,showSizeChanger:false,hideOnSinglePage:true}} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh?'没有匹配的记录':'No matching records'}/>}} columns={[
       {title:zh?'序号':'Index',dataIndex:'index',width:80,align:'right'},
-      {title:zh?'时间':'Time',dataIndex:'timestamp',width:210,render:(value:string|undefined)=>value?.replace('T',' ').replace(/Z$/,' UTC')??'—'},
+      {title:zh?'时间':'Time',dataIndex:'timestamp',width:210,render:(value:string|undefined)=>displayTime(value)},
       {title:zh?'类型':'Type',dataIndex:'type',width:200},
       ...(!raw?[{title:zh?'事件':'Event',dataIndex:'label'}]:[]),
       {title:zh?'内容':'Content',width:130,fixed:'right',render:(_,row)=><Space><Button type="link" size="small" onClick={()=>setSelectedId(row.id)}>{zh?'查看详情':'View details'}</Button>{row.limited&&<Tag color="warning">{zh?'受限':'Limited'}</Tag>}</Space>},

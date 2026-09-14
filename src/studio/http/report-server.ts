@@ -41,7 +41,7 @@ export function formatListenError(port: number, error: unknown): Error | null {
   return null;
 }
 
-export function createReportServer(options: ReportServerOptions = {}, presentation?: StudioAppHost): ReportServer {
+export function createReportServer(options: ReportServerOptions = {}, appHost?: StudioAppHost): ReportServer {
   const {
     port,
     host: hostOption,
@@ -65,7 +65,7 @@ export function createReportServer(options: ReportServerOptions = {}, presentati
   async function startListener(): Promise<string> {
     if (server) return serverUrl!;
     requestHandler.prepare();
-    await presentation?.prepare();
+    await appHost?.prepare();
 
     const listenPort = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
     // host 默认 127.0.0.1（本机回环，默认安全）。容器／远程场景需显式对外暴露。
@@ -74,7 +74,7 @@ export function createReportServer(options: ReportServerOptions = {}, presentati
     const boot = (candidatePort: number): Promise<Server> => new Promise((resolve, reject) => {
       const candidate = createServer(async (request, response) => {
         try {
-          if (await presentation?.handle(request, response)) return;
+          if (await appHost?.handle(request, response)) return;
           await requestHandler.handle(request, response);
         } catch {
           // 走到这里说明宿主自身故障（requestHandler 内部已兜住数据源错误），不得伪装成数据源不可用。
@@ -134,13 +134,13 @@ export function createReportServer(options: ReportServerOptions = {}, presentati
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = null;
     serverUrl = null;
-    await presentation?.close();
+    await appHost?.close();
   }
 
   function start(): Promise<string> {
     return serialize(async () => {
       try { return await startListener(); }
-      catch (error) { await presentation?.close(); throw error; }
+      catch (error) { await appHost?.close(); throw error; }
     });
   }
 
@@ -154,5 +154,3 @@ export function createReportServer(options: ReportServerOptions = {}, presentati
     getUrl: () => serverUrl,
   };
 }
-
-export type { ReportServer, ReportServerOptions } from './contracts.js';

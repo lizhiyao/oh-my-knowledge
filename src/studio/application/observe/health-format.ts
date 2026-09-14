@@ -21,9 +21,9 @@ export type HealthConfidence = 'high' | 'low' | 'underpowered';
 
 export type HealthBand = SkillHealthReport['overall']['healthBand'];
 
-export type GapSignalType = GapSignalRef['type'];
+type GapSignalType = GapSignalRef['type'];
 
-export interface Delta {
+interface Delta {
   /** 形如 `+1.2%` / `-3`；null 差值不交出片段。 */
   text: string;
   tone: HealthTone;
@@ -109,7 +109,7 @@ export interface HealthReportFacts {
   deadKb: { total: number; entries: readonly { path: string; type: string; lineCount?: number }[] };
 }
 
-export interface TrendChart {
+interface TrendChart {
   width: number;
   height: number;
   grid: readonly { y: number; label: string }[];
@@ -126,7 +126,7 @@ export interface HealthTrendFacts {
   chart: TrendChart;
 }
 
-export interface HealthDiffRow extends SkillDiffRow {
+interface HealthDiffRow extends SkillDiffRow {
   deltas: { segments: Delta | null; gap: Delta | null; failure: Delta | null; coverage: Delta | null };
 }
 

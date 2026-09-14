@@ -6,7 +6,9 @@ import { projectDoctorRules, projectDoctorSampling } from '../../../application/
 import type { SkillDoctorSnapshot } from '../../../view-models/knowledge/skill-index';
 import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/pages/knowledge-page';
 import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/contracts';
-import type { Language } from '../layout/shell';
+import { projectObserveBadge } from '../../../application/knowledge/managed-format';
+import { langSuffix, type Language } from '../layout/shell';
+import { displayTime } from '../display-time';
 import { KnowledgeSectionNav } from './section-nav';
 
 const { Text } = Typography;
@@ -14,7 +16,6 @@ function Health({ row }: { row: KnowledgeRow }) {
   const color = { green: 'success', yellow: 'warning', red: 'error', gray: 'default' }[row.health.color];
   return <Space size={4}><Tag color={color}>{row.health.label}</Tag>{row.health.score !== null && <Text>{row.health.score}</Text>}</Space>;
 }
-function date(value: string | undefined) { return value ? value.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') : '—'; }
 
 const RULE_STATUS = {
   pass: { color: 'success', zh: '通过', en: 'pass' },
@@ -137,7 +138,7 @@ function GraphStructure({ graph, run, zh }: { graph: DoctorGraphView; run: Skill
       <Text strong>{zh ? '知识对象结构' : 'Knowledge structure'}</Text>
       <Tag color={tier.color}>{zh ? tier.zh : tier.en}</Tag>
       {graph.artifactHash && <Text className="knowledge-graph-hash" code title={graph.artifactHash}>{graph.artifactHash}</Text>}
-      <Text type="secondary">{zh ? `来自体检 ${graph.sourceId} · ${date(graph.generatedAt)}` : `from doctor run ${graph.sourceId} · ${date(graph.generatedAt)}`}</Text>
+      <Text type="secondary">{zh ? `来自体检 ${graph.sourceId} · ${displayTime(graph.generatedAt)}` : `from doctor run ${graph.sourceId} · ${displayTime(graph.generatedAt)}`}</Text>
     </div>
     <div className="knowledge-graph-note">{zh ? BINDING_NOTE[graph.binding].zh : BINDING_NOTE[graph.binding].en}</div>
     {graph.sourceId !== run.reportId && <div className="knowledge-graph-note">
@@ -182,7 +183,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
       <Tag color="success">{run.passCount} {zh ? '通过' : 'passed'}</Tag>
       <Tag color="warning">{run.warnCount} {zh ? '警告' : 'warnings'}</Tag>
       <Tag color="error">{run.failCount} {zh ? '失败' : 'failed'}</Tag>
-      <Text type="secondary">{date(run.timestamp)}</Text>
+      <Text type="secondary">{displayTime(run.timestamp)}</Text>
       {isCurrent
         ? <Tag color="processing">{zh ? '当前' : 'current'}</Tag>
         : <a href={detailHref}>{zh ? '← 返回当前体检' : '← back to current run'}</a>}
@@ -196,8 +197,8 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
           const counts = <Text type="secondary"> {item.passCount}✓ {item.warnCount}⚠ {item.failCount}✗</Text>;
           return <li key={item.reportId}>
             {item.reportId === run.reportId
-              ? <Text>{date(item.timestamp)}</Text>
-              : <a href={`${detailHref}${detailHref.includes('?') ? '&' : '?'}doctorRun=${encodeURIComponent(item.reportId)}`}>{date(item.timestamp)}</a>}
+              ? <Text>{displayTime(item.timestamp)}</Text>
+              : <a href={`${detailHref}${detailHref.includes('?') ? '&' : '?'}doctorRun=${encodeURIComponent(item.reportId)}`}>{displayTime(item.timestamp)}</a>}
             {counts}
           </li>;
         })}
@@ -208,7 +209,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
 
 export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Language }) {
   const zh = lang === 'zh';
-  const suffix = zh ? '' : '?lang=en';
+  const suffix = langSuffix(lang);
   const [query, setQuery] = useState('');
   if (page.pageKind === 'index') {
     const rows = page.rows.filter((row) => row.skillName.toLowerCase().includes(query.toLowerCase()));
@@ -219,9 +220,9 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
         { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <a href={`/knowledge/skills/${encodeURIComponent(name)}${suffix}`} title={name}>{name}</a> },
         { title: zh ? '健康' : 'Health', width: 140, render: (_, row) => <Health row={row}/> },
         { title: zh ? '健康体检' : 'Doctor', width: 140, render: (_, { doctor }) => doctor ? `${doctor.passCount}✓ ${doctor.warnCount}⚠ ${doctor.failCount}✗` : '—' },
-        { title: zh ? '生产观测' : 'Observe', width: 120, render: (_, { observe }) => !observe ? '—' : observe.confidence === 'underpowered' ? (zh ? '样本不足' : 'Underpowered') : `${(observe.gapRate * 100).toFixed(1)}% ${zh ? '缺口' : 'gap'}` },
+        { title: zh ? '生产观测' : 'Observe', width: 120, render: (_, { observe }) => !observe ? '—' : projectObserveBadge(observe) === 'underpowered' ? (zh ? '样本不足' : 'Underpowered') : `${(observe.gapRate * 100).toFixed(1)}% ${zh ? '缺口' : 'gap'}` },
         { title: zh ? '问题' : 'Findings', dataIndex: 'insightCount', width: 72, align: 'right' },
-        { title: zh ? '更新时间' : 'Updated', width: 200, ellipsis: true, render: (_, row) => date([row.doctor?.timestamp, row.observe?.generatedAt].filter((value): value is string => Boolean(value)).sort().at(-1)) },
+        { title: zh ? '更新时间' : 'Updated', width: 200, ellipsis: true, render: (_, row) => displayTime([row.doctor?.timestamp, row.observe?.generatedAt].filter((value): value is string => Boolean(value)).sort().at(-1)) },
       ]}/>
     </>;
   }

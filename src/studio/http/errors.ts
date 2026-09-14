@@ -35,7 +35,6 @@ export type StudioApiErrorCode =
   | 'skill_diagnostics_not_found'
   | 'conversation_not_found'
   | 'task_trajectory_not_found'
-  | 'experience_session_not_found'
   | 'core_run_not_found'
   | 'live_task_trajectory_unavailable'
   | typeof STUDIO_SOURCE_UNAVAILABLE
