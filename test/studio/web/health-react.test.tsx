@@ -227,6 +227,8 @@ describe('观测健康 React 页面', () => {
     const html = render({ pageKind: 'index', rows }, 'zh');
     assert.match(html, /<a[^>]*aria-current="page" href="\/observe\/health">/);
     assert.ok(html.includes('href="/observe/health/obs-1"') && html.includes('href="/observe/health/obs-2"'));
+    assert.match(html, /aria-label="知识分区"/);
+    assert.doesNotMatch(html, /aria-label="观测分区"/);
     assert.match(html, /需关注/);
     assert.match(html, /样本不足/);
     assert.ok(html.includes('2026-09-02 08:30'), '时间戳截到分钟');
@@ -246,13 +248,13 @@ describe('观测健康 React 页面', () => {
     assert.match(html, /暂无 Skill 健康度日报/);
   });
 
-  it('空列表与详情页都按当前语言给出返回观测入口', () => {
+  it('空列表与详情页都按当前语言给出返回知识入口', () => {
     const report = projectReport('a', reportOf({ s: skillOf('s', { segments: 40 }) }));
     const trend = projectTrend({ skillName: 's', points: [] });
     const diff = { fromId: 'a', toId: 'b', fromAt: '2026-09-01T08:30:00Z', toAt: '2026-09-02T08:30:00Z', rows: projectDiff([]) };
     const row = { id: 'a', generatedAt: '2026-09-02T08:30:00Z', sessionCount: 1, segmentCount: 40, skillCount: 1, healthBand: 'green' as const, confidence: 'high' as const };
     for (const lang of ['zh', 'en'] as const) {
-      const href = `href="/observe${lang === 'en' ? '?lang=en' : ''}"`;
+      const href = `href="/knowledge${lang === 'en' ? '?lang=en' : ''}"`;
       for (const page of [
         { pageKind: 'report' as const, report },
         { pageKind: 'trend' as const, trend },
@@ -260,7 +262,7 @@ describe('观测健康 React 页面', () => {
         { pageKind: 'index' as const, rows: [] },
         { pageKind: 'index' as const, rows: projectIndexRows([row]) },
       ]) {
-        assert.ok(render(page, lang).includes(href), `${page.pageKind} 的 ${lang} 回观测入口不能丢`);
+        assert.ok(render(page, lang).includes(href), `${page.pageKind} 的 ${lang} 回知识入口不能丢`);
       }
     }
   });

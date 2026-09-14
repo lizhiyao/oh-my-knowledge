@@ -33,7 +33,7 @@ function LanguageSwitch({ lang }: { lang: Language }) {
   >{lang === 'zh' ? '英文' : '中文'}</a>;
 }
 
-export function StudioShell({ lang, children, active }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | false }) {
+export function StudioShell({ lang, children, active, utilitiesInSidebar = false }: { utilitiesInSidebar?: boolean; lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | false }) {
   const suffix = `?lang=${lang}`;
   // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
   const navigation = useStudioNavigation();
@@ -44,7 +44,7 @@ export function StudioShell({ lang, children, active }: { lang: Language; childr
         <a href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</a>
         <a href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</a>
       </nav> : null}
-      <div className="studio-global-actions">{!navigation && <LanguageSwitch lang={lang}/>}</div>
-    </header><main className="studio-content">{children}</main>{navigation && <StudioUtilities lang={lang}/>}</div>
+      <div className="studio-global-actions">{navigation ? !utilitiesInSidebar && <StudioUtilities lang={lang} placement="bottomRight"/> : <LanguageSwitch lang={lang}/>}</div>
+    </header><main className="studio-content">{children}</main></div>
   </ConfigProvider>;
 }

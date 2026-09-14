@@ -117,7 +117,7 @@ describe('Next 宿主的观测健康页面组', () => {
     const detailHtml = await htmlOf(detail);
     assert.match(detailHtml, /各 skill 健康度/);
     assert.match(detailHtml, /2\/4 失败（50%）/, '工具失败读数与 CLI 同口径');
-    assert.ok(detailHtml.includes('href="/observe"'), '详情页面包屑回观测');
+    assert.ok(detailHtml.includes('href="/knowledge"'), '详情页面包屑回知识');
     assert.match(detailHtml, /&lt;script&gt;alert/, 'skill 名以转义文本可见，而不是被静默丢弃');
     assert.doesNotMatch(detailHtml, /<script>alert/);
 
@@ -152,7 +152,7 @@ describe('Next 宿主的观测健康页面组', () => {
     assert.equal(post.headers.get('allow'), 'GET');
   }, 30000);
 
-  it('会话页给出健康度入口，收件箱开关不影响健康页可达', async () => {
+  it('健康度入口归知识区，收件箱开关不影响健康页可达', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-next-health-nav-')); roots.push(root);
     const analysesDir = join(root, 'analyses');
     writeReport({ root: analysesDir, recordId: 'obs-a', generatedAt: '2026-09-01T08:30:00Z', segments: [segmentOf('audit', 0)] });
@@ -164,7 +164,9 @@ describe('Next 宿主的观测健康页面组', () => {
     });
     const observe = await fetch(`${url}/observe`);
     assert.equal(observe.status, 200);
-    assert.match(await observe.text(), /href="\/observe\/health\?lang=zh"[^>]*>Skill 健康度/);
+    assert.doesNotMatch(await observe.text(), /Skill 健康度/);
+    const knowledge = await fetch(`${url}/knowledge`);
+    assert.match(await knowledge.text(), /href="\/observe\/health"[^>]*>Skill 健康度/);
 
     // 健康页只挂在 studioPages 上：DSH 这类裁掉收件箱的宿主仍要能看，否则迁移等于把页面弄丢。
     assert.equal((await fetch(`${url}/observe/health`)).status, 200);

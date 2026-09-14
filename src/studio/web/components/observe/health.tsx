@@ -15,7 +15,7 @@ import type {
   HealthTrendFacts,
 } from '../../../application/health-format';
 import type { Language } from '../layout/shell';
-import { ObserveSectionNav } from './section-nav';
+import { KnowledgeSectionNav } from '../knowledge/section-nav';
 
 const suffix = (lang: Language) => (lang === 'en' ? '?lang=en' : '');
 const reportHref = (id: string, lang: Language) => `/observe/health/${encodeURIComponent(id)}${suffix(lang)}`;
@@ -35,7 +35,7 @@ const TONE_BAR: Record<HealthTone, string> = {
 const SERIES_COLOR = { gap: '#f87171', weighted: '#fbbf24', failure: '#a78bfa', coverage: '#4ade80' } as const;
 
 const zhCopy = {
-  observeCrumb: '观测',
+  knowledgeCrumb: '知识',
   listTitle: 'Skill 健康度日报',
   compareHint: '选两个报告的 from/to 单选框，点「对比」生成 diff。',
   compareBtn: '对比 →',
@@ -151,7 +151,7 @@ const zhCopy = {
 };
 
 const enCopy: typeof zhCopy = {
-  observeCrumb: 'Observe',
+  knowledgeCrumb: 'Knowledge',
   listTitle: 'Skill Health Reports',
   compareHint: 'Pick from/to on two reports, then click Compare to generate a diff.',
   compareBtn: 'Compare →',
@@ -300,7 +300,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
     ? `/observe/health-diff?${new URLSearchParams({ from: from as string, to: to as string, ...(lang === 'en' ? { lang: 'en' } : {}) })}`
     : undefined;
   return <>
-    <ObserveSectionNav active="health" lang={lang}/>
+    <KnowledgeSectionNav active="health" lang={lang}/>
     <div className="observe-toolbar">
       <Typography.Text type="secondary">{copy.compareHint}</Typography.Text>
       <div className="observe-toolbar-actions">
@@ -437,7 +437,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/observe${suffix(lang)}`}>{copy.observeCrumb}</Link> },
+        { title: <Link href={`/knowledge${suffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
         { title: <Link href={`/observe/health${suffix(lang)}`}>{copy.listTitle}</Link> },
         { title: report.analysisId },
       ]}/>
@@ -523,7 +523,7 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/observe${suffix(lang)}`}>{copy.observeCrumb}</Link> },
+        { title: <Link href={`/knowledge${suffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
         { title: <Link href={`/observe/health${suffix(lang)}`}>{copy.listTitle}</Link> },
         { title: copy.trendCrumb },
       ]}/>
@@ -596,7 +596,7 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/observe${suffix(lang)}`}>{copy.observeCrumb}</Link> },
+        { title: <Link href={`/knowledge${suffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
         { title: <Link href={`/observe/health${suffix(lang)}`}>{copy.listTitle}</Link> },
         { title: copy.diffCrumb },
       ]}/>

@@ -92,10 +92,10 @@ describe('Next Studio production boundary', () => {
     assert.equal(await staleRun.text(), 'doctor_run_not_found');
     const drilled = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`);
     assert.equal(drilled.status, 200);
-    assert.match(await drilled.text(), /studio-settings-trigger/);
+    assert.match(await drilled.text(), /studio-utilities-trigger/);
     assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
     const knowledgeZh = await (await fetch(`${urlA}/knowledge`)).text();
-    assert.match(knowledgeZh, /studio-settings-trigger/);
+    assert.match(knowledgeZh, /studio-utilities-trigger/);
     assert.doesNotMatch(knowledgeZh, /class="studio-lang"/);
     // 所有完整 Studio 页面共用全局设置入口。
     const knowledgeEn = await (await fetch(`${urlA}/knowledge?lang=en`)).text();
@@ -104,7 +104,7 @@ describe('Next Studio production boundary', () => {
       .replaceAll(' aria-current="page"', '');
     const measureShell = shellOf(htmlA);
     assert.equal(measureShell, shellOf(knowledgeEn));
-    assert.match(knowledgeEn, /studio-settings-trigger/);
+    assert.match(knowledgeEn, /studio-utilities-trigger/);
     for (const href of ['href="/observe?lang=en"', 'href="/measure?lang=en"', 'href="/knowledge?lang=en"']) {
       assert.ok(measureShell.includes(href), `primary navigation links ${href}`);
     }

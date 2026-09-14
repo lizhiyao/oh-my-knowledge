@@ -23,6 +23,11 @@ it('presents projects and readable conversation links without raw Markdown or ta
   expect(html).toContain('aria-label="最近对话"');
   expect(html).toContain('aria-label="项目"');
   expect(html).toContain('查看全部对话');
+  const sidebar = html.slice(html.indexOf('<aside'), html.indexOf('</aside>'));
+  expect(sidebar).toContain('设置与帮助');
+  expect(sidebar).toContain('observe-sidebar-scroll');
+  expect(html).not.toContain('Skill 健康度');
+  expect(html).not.toContain('本地工作区');
 });
 
 it('opens a reader with in-place extraction and retains project navigation', () => {

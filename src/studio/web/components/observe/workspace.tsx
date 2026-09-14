@@ -8,6 +8,7 @@ import type { ConversationListItem } from '../../../../observability/view-models
 import type { Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
 import { ConversationReader } from './reader';
+import { StudioUtilities } from '../layout/utilities';
 
 export function conversationLabel(value: string): string {
   return value.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -27,6 +28,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   const index = page.pageKind === 'index' ? page.model : page.navigation;
   const [view, setView] = useState('recent');
   const [query, setQuery] = useState('');
+  const [allProjects, setAllProjects] = useState(false);
   const [current, setCurrent] = useState(1);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const activity = useActivity(selected ? `/api/conversations/${encodeURIComponent(selected.threadId)}/activity` : '/api/conversations/activity', page.revision);
@@ -56,7 +58,8 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   return <div className={`observe-workbench${navigationOpen ? ' navigation-open' : ''}`}>
     <aside className="observe-sidebar" aria-label={t('项目与会话', 'Projects and conversations')}>
       <Input allowClear aria-label={t('搜索项目或会话', 'Search projects or conversations')} placeholder={t('搜索项目或会话', 'Search projects or conversations')} value={query} onChange={event => { setQuery(event.target.value); setCurrent(1); }}/>
-      <div className="observe-projects" aria-label={t('项目', 'Projects')}><h2>{t('项目', 'Projects')}</h2>{[...groups].map(([id, items]) => {
+      <div className="observe-sidebar-scroll">
+      <div className="observe-projects" aria-label={t('项目', 'Projects')}><h2>{t('项目', 'Projects')}</h2>{[...groups].filter(([id], i) => allProjects || query || i < 6 || selected && projectId(selected) === id || view === id).map(([id, items]) => {
         const visible = items.filter(matches); if (!visible.length) return null;
         const name = projectName(items[0], zh);
         const shown = visible.slice(0, 12);
@@ -68,12 +71,14 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
           {visible.length > 12 && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个会话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
       })}{query && !index.conversations.some(matches) && <p>{t('没有匹配的项目或会话', 'No matching projects or conversations')}</p>}</div>
+      {groups.size > 6 && !query && <button className="observe-sidebar-link" onClick={() => setAllProjects(value => !value)}>{allProjects ? t('收起项目', 'Show fewer projects') : t('查看全部项目', 'View all projects')}</button>}
       <section className="observe-recents" aria-label={t('最近对话', 'Recent conversations')}>
         <header><h2>{t('最近对话', 'Recent conversations')}</h2><button aria-pressed={view === 'running'} onClick={() => choose(view === 'running' ? 'recent' : 'running')}>{t('仅进行中', 'Running only')}</button></header>
         <div className="observe-recent-links">{index.conversations.filter(item => matches(item) && (view !== 'running' || running(item))).slice(0, 15).map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
-        <button className="observe-project-overview" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
+        <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
       </section>
-      <Link className="observe-health-entry" href={`/observe/health?lang=${lang}`}>{t('Skill 健康度', 'Skill health')}</Link>
+      </div>
+      <StudioUtilities lang={lang}/>
     </aside>
     <main className="observe-workspace-main">
       <div className="observe-workspace-tools"><Button className="observe-navigation-toggle" size="small" onClick={() => setNavigationOpen(value => !value)}>{t('项目与会话', 'Projects and conversations')}</Button><ActivityNotice activity={activity} lang={lang}/></div>
