@@ -1,5 +1,5 @@
 'use client';
-import { StudioSettingsButton } from './settings';
+import { StudioUtilities } from './utilities';
 import type { ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -44,7 +44,7 @@ export function StudioShell({ lang, children, active }: { lang: Language; childr
         <a href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</a>
         <a href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</a>
       </nav> : null}
-      <div className="studio-global-actions">{navigation ? <StudioSettingsButton lang={lang}/> : <LanguageSwitch lang={lang}/>}</div>
-    </header><main className="studio-content">{children}</main></div>
+      <div className="studio-global-actions">{!navigation && <LanguageSwitch lang={lang}/>}</div>
+    </header><main className="studio-content">{children}</main>{navigation && <StudioUtilities lang={lang}/>}</div>
   </ConfigProvider>;
 }

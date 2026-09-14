@@ -54,12 +54,13 @@ describe('Observe Next production routes', () => {
         assert.doesNotMatch(html,/查看最近轨迹|查看实时轨迹/);
       }
     }
-    for (const query of ['offset=-1', 'limit=11', 'offset=1.5']) {
+    for (const query of ['offset=-1', 'limit=11', 'offset=1.5', 'before=a&after=b', 'before=']) {
       const invalid = await fetch(`${url}/api/conversations/thread/messages?${query}`);
       assert.equal(invalid.status, 400);
       assert.deepEqual(await invalid.json(), { error: 'invalid_pagination' });
     }
     assert.equal((await fetch(`${url}/api/conversations/missing/messages`)).status, 404);
+    assert.equal((await fetch(`${url}/api/conversations/thread/messages?before=missing`)).status, 409);
     const messages = await fetch(`${url}/api/conversations/thread/messages`);
     assert.equal(messages.status, 200);
     assert.doesNotMatch(await messages.text(), /private-session-locator-must-not-be-serialized/);

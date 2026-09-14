@@ -21,6 +21,8 @@ it('pages newest turns, isolates unavailable turns and returns only readable hum
   };
   const first = await readConversationTurns(catalog, 'thread', 0, 2);
   expect(first?.total).toBe(3);
+  expect(first?.hasOlder).toBe(true);
+  expect(first?.hasNewer).toBe(false);
   expect(first?.turns.map(turn => turn.task.turnId)).toEqual(['new', 'broken']);
   expect(first?.turns[0].messages.map(message => message.text)).toEqual(['Question new', 'Full answer']);
   expect(first?.turns[1].unavailable).toBe(true);
@@ -28,4 +30,16 @@ it('pages newest turns, isolates unavailable turns and returns only readable hum
   expect(calls).toEqual(['new', 'broken']);
   expect((await readConversationTurns(catalog, 'thread', 2, 2))?.turns[0].task.turnId).toBe('old');
   expect(await readConversationTurns(catalog, 'missing', 0, 2)).toBeUndefined();
+  // New activity must not shift a history request anchored to a previously loaded turn.
+  tasks.push({ ...tasks[0], turnId: 'appended' });
+  const history = await readConversationTurns(catalog, 'thread', 0, 2, { before: 'broken' });
+  expect(history?.turns.map(turn => turn.task.turnId)).toEqual(['old']);
+  expect(history?.hasOlder).toBe(false);
+  const catchup = await readConversationTurns(catalog, 'thread', 0, 2, { after: 'broken' });
+  expect(catchup?.turns.map(turn => turn.task.turnId)).toEqual(['new', 'broken']);
+  expect(catchup?.hasNewer).toBe(true);
+  const remaining = await readConversationTurns(catalog, 'thread', 1, 2, { after: 'new' });
+  expect(remaining?.turns.map(turn => turn.task.turnId)).toEqual(['appended']);
+  expect(remaining?.hasNewer).toBe(false);
+  await expect(readConversationTurns(catalog, 'thread', 0, 2, { before: 'removed' })).rejects.toThrow('conversation_cursor_unavailable');
 });

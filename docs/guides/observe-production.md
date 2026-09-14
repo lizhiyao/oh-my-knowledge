@@ -70,9 +70,9 @@ Start `omk studio` directly; `observe ingest` is not required. Studio reads the 
 omk studio
 ```
 
-The sidebar groups conversations by project, with cross-project Recent and Running views and project, title, and directory search. Opening a conversation reads user and assistant messages directly, newest turns first, five turns per page. Expand long messages in place; open Execution details for tool calls and raw evidence. Knowledge extraction starts directly from the conversation.
+The sidebar separates Projects from Recent conversations, with search and a running-only filter. Settings and Help stay at the bottom left. Conversations display complete user and assistant messages in chronological order, initially positioned at the latest content. Scroll up or select Load earlier conversation to read history without losing your place. Updates show a New messages button while you read history; select it to return to the latest content. Execution details contains tool calls and raw evidence. Knowledge extraction starts directly from the conversation.
 
-Project grouping follows local Git common-directory relationships, including repository subdirectories and linked worktrees. Uncertain directories remain separate; conversations without a directory appear under Unassigned. Matching names or remote URLs alone never merge projects. The browser remembers the last conversation; Recent returns to the overview. Grouping and reading do not call a model or rewrite source logs. Tool error counts do not determine the final outcome.
+Project grouping follows local Git common-directory relationships, including repository subdirectories and linked worktrees. Uncertain directories remain separate; conversations without a directory appear under Unassigned. Matching names or remote URLs alone never merge projects. The browser remembers the last conversation; View all conversations returns to the overview. Grouping and reading do not call a model or rewrite source logs. Tool error counts do not determine the final outcome.
 
  The homepage currently indexes local Codex sessions directly; Claude Code, OpenClaw, and markdown traces still enter observation reports through `omk observe`.
 

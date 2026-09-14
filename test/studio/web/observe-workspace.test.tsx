@@ -20,6 +20,9 @@ it('presents projects and readable conversation links without raw Markdown or ta
   expect(html).not.toContain('<script>bad'); expect(html).toContain('&lt;script&gt;bad');
   expect(html).toContain('/observe/conversations/thread%2Fa?lang=zh');
   expect(html).not.toContain('查看最近轨迹');
+  expect(html).toContain('aria-label="最近对话"');
+  expect(html).toContain('aria-label="项目"');
+  expect(html).toContain('查看全部对话');
 });
 
 it('opens a reader with in-place extraction and retains project navigation', () => {
@@ -27,4 +30,6 @@ it('opens a reader with in-place extraction and retains project navigation', () 
   expect(html).toContain('对话内容'); expect(html).toContain('正在读取对话');
   expect(html).toContain('提炼知识'); expect(html).toContain('已提炼知识');
   expect(html).toContain('Example project'); expect(html).not.toContain('<table');
+  expect(html).not.toContain('ant-pagination');
+  expect(html).not.toContain('最近轮次优先');
 });

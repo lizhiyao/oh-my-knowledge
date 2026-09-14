@@ -53,7 +53,13 @@ describe('壳层语言切换控件', () => {
   it('完整 Studio 将语言等偏好集中到设置入口', () => {
     assert.match(render('zh', '/knowledge'), />设\s*置<\/span>/);
     assert.match(render('en', '/knowledge'), />Settings<\/span>/);
-    assert.doesNotMatch(render('zh', '/knowledge'), /class="studio-lang"/);
+    const html = render('zh', '/knowledge');
+    assert.doesNotMatch(html, /class="studio-lang"/);
+    assert.doesNotMatch(html.split('</header>')[0], /studio-settings-trigger/);
+    assert.match(html, /<footer[^>]*studio-utilities/);
+    assert.match(html, /本地工作区/);
+    assert.match(html, /帮\s*助/);
+    assert.doesNotMatch(html, /退出登录|订阅|剩余额度/);
   });
 
   it('宿主裁掉一级导航时仍然提供语言切换', () => {

@@ -2,13 +2,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, Empty, Input, Pagination, Space } from 'antd';
+import { Button, Empty, Input, Pagination } from 'antd';
 import type { ObservePage } from '../../../http/observe-page';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
-import type { ConversationReaderPage } from '../../../view-models/conversation-reader';
 import type { Language } from '../layout/shell';
-import { ActivityNotice, Status, useActivity } from './activity';
-import { ExtractedKnowledge } from './extracted-knowledge';
+import { ActivityNotice, useActivity } from './activity';
+import { ConversationReader } from './reader';
 
 export function conversationLabel(value: string): string {
   return value.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -57,8 +56,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   return <div className={`observe-workbench${navigationOpen ? ' navigation-open' : ''}`}>
     <aside className="observe-sidebar" aria-label={t('项目与会话', 'Projects and conversations')}>
       <Input allowClear aria-label={t('搜索项目或会话', 'Search projects or conversations')} placeholder={t('搜索项目或会话', 'Search projects or conversations')} value={query} onChange={event => { setQuery(event.target.value); setCurrent(1); }}/>
-      <nav className="observe-global-views"><button className={!selected && view === 'recent' ? 'selected' : ''} onClick={() => choose('recent')}>{t('最近会话', 'Recent conversations')}<span>{index.conversations.length}</span></button><button className={!selected && view === 'running' ? 'selected' : ''} onClick={() => choose('running')}>{t('进行中', 'Running')}<span>{index.conversations.filter(running).length}</span></button></nav>
-      <div className="observe-projects"><h2>{t('项目', 'Projects')}</h2>{[...groups].map(([id, items]) => {
+      <div className="observe-projects" aria-label={t('项目', 'Projects')}><h2>{t('项目', 'Projects')}</h2>{[...groups].map(([id, items]) => {
         const visible = items.filter(matches); if (!visible.length) return null;
         const name = projectName(items[0], zh);
         const shown = visible.slice(0, 12);
@@ -70,11 +68,16 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
           {visible.length > 12 && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个会话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
       })}{query && !index.conversations.some(matches) && <p>{t('没有匹配的项目或会话', 'No matching projects or conversations')}</p>}</div>
+      <section className="observe-recents" aria-label={t('最近对话', 'Recent conversations')}>
+        <header><h2>{t('最近对话', 'Recent conversations')}</h2><button aria-pressed={view === 'running'} onClick={() => choose(view === 'running' ? 'recent' : 'running')}>{t('仅进行中', 'Running only')}</button></header>
+        <div className="observe-recent-links">{index.conversations.filter(item => matches(item) && (view !== 'running' || running(item))).slice(0, 15).map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
+        <button className="observe-project-overview" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
+      </section>
       <Link className="observe-health-entry" href={`/observe/health?lang=${lang}`}>{t('Skill 健康度', 'Skill health')}</Link>
     </aside>
     <main className="observe-workspace-main">
       <div className="observe-workspace-tools"><Button className="observe-navigation-toggle" size="small" onClick={() => setNavigationOpen(value => !value)}>{t('项目与会话', 'Projects and conversations')}</Button><ActivityNotice activity={activity} lang={lang}/></div>
-      {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang}/> : <>
+      {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang} title={conversationLabel(selected.title)} project={projectName(selected, zh)}/> : <>
         <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个会话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开会话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
         <div className="observe-session-list">{rows.slice((visiblePage - 1) * 20, visiblePage * 20).map(item => <Link className="observe-session-row" key={item.threadId} href={href(item.threadId, lang)}>
           <div><strong title={conversationLabel(item.title)}>{conversationLabel(item.title)}</strong><p>{item.tasks.at(-1) ? `${t('最近请求：', 'Latest request: ')}${conversationLabel(item.tasks.at(-1)!.title)}` : t('打开后读取会话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
@@ -84,30 +87,4 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
       </>}
     </main>
   </div>;
-}
-
-function ConversationReader({ item, revision, lang }: { item: ConversationListItem; revision: string; lang: Language }) {
-  const zh = lang === 'zh'; const t = (cn: string, en: string) => zh ? cn : en;
-  const [page, setPage] = useState(1); const [data, setData] = useState<ConversationReaderPage>(); const [failed, setFailed] = useState(false); const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const active = new AbortController(); setFailed(false);
-    fetch(`/api/conversations/${encodeURIComponent(item.threadId)}/messages?offset=${(page - 1) * 5}&limit=5`, { signal: active.signal, cache: 'no-store' })
-      .then(response => { if (!response.ok) throw new Error('unavailable'); return response.json(); })
-      .then(value => { if (!active.signal.aborted) setData(value); }).catch(() => { if (!active.signal.aborted) setFailed(true); });
-    return () => active.abort();
-  }, [item.threadId, page, revision, attempt]);
-  return <>
-    <header className="observe-reader-header"><div><p title={item.cwd}>{projectName(item, zh)}</p><h1 title={conversationLabel(item.title)}>{conversationLabel(item.title)}</h1><small>{item.model ?? item.sourceKind} · {t(`${item.turnCount ?? item.tasks.length} 轮对话`, `${item.turnCount ?? item.tasks.length} turns`)} · {t('最近轮次优先', 'Latest turns first')}</small></div><ExtractedKnowledge threadId={item.threadId} lang={lang}/></header>
-    <div className="observe-conversation-reader" aria-label={t('对话内容', 'Conversation content')}>
-      {failed ? <Alert type="error" title={t('暂时无法读取对话', 'Cannot read this conversation')} action={<Button onClick={() => setAttempt(value => value + 1)}>{t('重试', 'Retry')}</Button>}/> : !data ? <p role="status">{t('正在读取对话…', 'Reading conversation…')}</p> : data.turns.length ? data.turns.map(({ task, messages, unavailable }) => <article key={task.turnId} className="observe-reading-turn">
-        <header><Space><Status status={task.status} lang={lang}/><time>{time(task.startTimestamp)}</time></Space><Link href={`/observe/conversations/${encodeURIComponent(item.threadId)}/tasks/${encodeURIComponent(task.sourceTurnId ?? task.turnId)}?lang=${lang}`}>{t('查看执行详情', 'Execution details')}</Link></header>
-        {unavailable ? <Alert type="warning" title={t('这一轮的消息暂不可读，可查看执行详情。', 'Messages in this turn are unavailable. Open execution details.')}/> : messages.length ? messages.map((message, i) => <section className={`observe-reading-message ${message.role === 'user' ? 'human' : 'assistant'}`} key={i}>
-          <strong>{message.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong>
-          {message.text.length > 1000 ? <details><summary>{message.text.slice(0, 400)}… <span>{t('展开全文', 'Read more')}</span></summary><div className="observe-message-text">{message.text}</div></details> : <div className="observe-message-text">{message.text}</div>}
-        </section>) : <p>{t('这一轮没有对话消息。', 'No conversation messages in this turn.')}</p>}
-        {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
-      </article>) : <Empty description={t('没有可读取的对话轮次', 'No conversation turns available')}/>}
-    </div>
-    <Pagination current={page} total={data?.total ?? item.tasks.length} pageSize={5} showSizeChanger={false} onChange={value => { setData(undefined); setPage(value); }}/>
-  </>;
 }
