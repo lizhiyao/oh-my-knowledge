@@ -77,7 +77,7 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 `src/studio/presentation/` 已随本批删除：最后两页只读报告（体检详情、受管历史）迁到 Next，共享外壳 `layout.ts`／`report-shell.ts`／`icons.ts` 与 `view-models/report-context.ts` 一并退出，因为 React 侧由 `web/components/layout/shell` 与 antd 提供外壳和图标。Studio 自此只有一份页面实现，Markdown 解析与纯文本计算留在 `application/`，`http/` 层不再产出页面 HTML。
 
-语言由地址决定，本机全局设置只提供地址没有 `lang` 时的默认值：`http/next-server.ts` 读到没有 `lang` 的页面地址、而设置语言是英文时，302 补上 `?lang=en`，所以裸地址不再等价于「中文」。重定向只覆盖页面地址，`/api/*` 不参与（浏览器的 POST 一旦被 302 会退化成 GET）。
+语言由地址决定，本机全局设置只提供地址没有 `lang` 时的默认值：`http/next-server.ts` 读到没有 `lang` 的页面地址、而设置语言是英文时，302 补上 `?lang=en`，所以裸地址不再等价于「中文」。重定向只覆盖页面地址，`/api/*` 不参与（浏览器的 POST 一旦被 302 会退化成 GET）。语言是偏好而不是渲染前提：设置文件读坏（软链、超大、非法 JSON、schema 不符）时页面按内置默认 `zh` 照常渲染，损坏由 `GET /api/settings` 以 `settings_unavailable` 报告，不放大成整站 500（否则连诊断用的设置抽屉也一起不可用）。
 
 旧外壳的 `#lang-toggle` 已回到 Next 壳层（`web/components/layout/shell`）：它渲染成真实链接，切换地址由宿主按请求注入的 `x-omk-studio-route` 生成，保留当前 path 与其余 query（含 `?doctorRun=` 下钻，切语言不会换掉所见证据），两种语言都显式写 `lang`；页面内静态链接走同一口径的 `langSuffix`。省略参数就等于把这次选择交回全局偏好，下一跳会被 302 改写成英文。完整 Studio 页面把语言收进设置抽屉，只有宿主裁掉一级导航（只挂 `/measure`）时壳层才渲染独立的 `studio-lang` 链接。与旧控件的两处显式减法：不再把选择写进 `localStorage`（偏好落在本机设置文件里，不在浏览器里），也不保留 URL fragment（站内页面无锚点跳转）。壳层没有走 Next 的 `useSearchParams`：它会把整棵子树降级为纯客户端渲染，SSR 里就没有这条链接。
 

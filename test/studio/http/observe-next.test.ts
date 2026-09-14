@@ -117,4 +117,29 @@ describe('Observe Next production routes', () => {
       if(previous===undefined)delete process.env.OMK_LANG;else process.env.OMK_LANG=previous;
     }
   },20000);
+  it('设置文件损坏时页面退回内置语言默认，损坏由设置接口报告',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'omk-observe-broken-settings-'));roots.push(root);
+    const home=await mkdtemp(join(tmpdir(),'omk-home-broken-'));roots.push(home);
+    await writeFile(join(home,'settings.json'),'{"schemaVersion":1,');
+    const server=createNextStudioServer({port:0,observationsDir:root,conversationCatalog:{
+      async listConversations(){return {conversations:[],totalTurnCount:0,totalToolCallCount:0,totalToolFailureCount:0};},
+      async getConversation(){return undefined;},async loadTaskTrajectory(){return undefined;},
+    }});servers.push(server);
+    const url=await server.start();
+    const previousHome=process.env.OMK_HOME;
+    const previousLang=process.env.OMK_LANG;
+    try{
+      process.env.OMK_HOME=home;delete process.env.OMK_LANG;
+      // 语言只是偏好：读不到就按内置默认渲染，不能让整个 Studio 变成 500（诊断入口也在同一个页面壳里）。
+      const page=await fetch(`${url}/observe`,{redirect:'manual'});
+      assert.equal(page.status,200);
+      assert.match(await page.text(),/href="\/observe\?lang=zh" aria-current="page"/);
+      const api=await fetch(`${url}/api/settings`);
+      assert.equal(api.status,400);
+      assert.equal((await api.json() as {error?:string}).error,'settings_unavailable');
+    }finally{
+      if(previousHome===undefined)delete process.env.OMK_HOME;else process.env.OMK_HOME=previousHome;
+      if(previousLang===undefined)delete process.env.OMK_LANG;else process.env.OMK_LANG=previousLang;
+    }
+  },20000);
 });

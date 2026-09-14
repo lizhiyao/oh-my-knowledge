@@ -19,6 +19,11 @@ import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/manage
 import { resolveManagedRootOption } from './managed-root.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
+/** 语言只是偏好：设置文件读坏时退回内置默认，页面照常可用，错误留给 /api/settings 报告。 */
+function preferredLanguage(): 'zh' | 'en' {
+  try { return new UserSettingsStore().resolve().language; } catch { return 'zh'; }
+}
+
 /** Next owns every Studio page; JSON APIs and SSE keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
   let app: { prepare(): Promise<void>; close(): Promise<void>; getRequestHandler(): (request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse) => Promise<void> } | undefined;
@@ -53,7 +58,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         response.end('method_not_allowed'); return true;
       }
       const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
-      if (!path.startsWith('/_next/') && !searchParams.has('lang') && new UserSettingsStore().resolve().language === 'en') {
+      if (!path.startsWith('/_next/') && !searchParams.has('lang') && preferredLanguage() === 'en') {
         searchParams.set('lang', 'en'); response.writeHead(302, { Location: `${path}?${searchParams}` }); response.end(); return true;
       }
       let healthPage: HealthPage | undefined;
