@@ -16,6 +16,7 @@ export function conversationLabel(value: string): string {
     .replace(/\*\*/g, '').trim();
 }
 const running = (item: ConversationListItem) => item.tasks.some(task => task.status === 'open');
+const hasProject = (item: ConversationListItem) => Boolean(item.project || item.cwd);
 const projectId = (item: ConversationListItem) => item.project?.projectId ?? item.cwd ?? 'unassigned';
 const projectName = (item: ConversationListItem, zh: boolean) => item.project?.name ?? item.cwd?.split('/').filter(Boolean).at(-1) ?? (zh ? '未归属项目' : 'Unassigned');
 const time = (value?: string) => value ? value.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') : '—';
@@ -49,12 +50,15 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
     else { setView(next); window.history.replaceState(null, '', `/observe?${new URLSearchParams({ view: next, lang })}`); }
   }
   const groups = new Map<string, ConversationListItem[]>();
-  for (const item of index.conversations) { const id = projectId(item); groups.set(id, [...(groups.get(id) ?? []), item]); }
+  for (const item of index.conversations.filter(hasProject)) { const id = projectId(item); groups.set(id, [...(groups.get(id) ?? []), item]); }
   const matches = (item: ConversationListItem) => `${conversationLabel(item.title)} ${item.cwd ?? ''} ${item.project?.name ?? ''}`.toLowerCase().includes(query.toLowerCase());
+  const independent = index.conversations.filter(item => !hasProject(item) && matches(item));
+  const shownIndependent = independent.slice(0, 15);
+  if (selected && independent.some(item => item.threadId === selected.threadId) && !shownIndependent.some(item => item.threadId === selected.threadId)) shownIndependent.push(selected);
   const rows = index.conversations.filter(item => matches(item) && (view === 'recent' || (view === 'running' ? running(item) : projectId(item) === view)));
   const visiblePage = Math.min(current, Math.max(1, Math.ceil(rows.length / 20)));
   const group = groups.get(view);
-  const heading = view === 'recent' ? t('最近会话', 'Recent conversations') : view === 'running' ? t('进行中的会话', 'Running conversations') : group?.[0] ? projectName(group[0], zh) : t('项目', 'Project');
+  const heading = view === 'recent' ? t('全部对话', 'All conversations') : view === 'running' ? t('进行中的会话', 'Running conversations') : group?.[0] ? projectName(group[0], zh) : t('项目', 'Project');
   return <div className={`observe-workbench${navigationOpen ? ' navigation-open' : ''}`}>
     <aside className="observe-sidebar" aria-label={t('项目与会话', 'Projects and conversations')}>
       <Input allowClear aria-label={t('搜索项目或会话', 'Search projects or conversations')} placeholder={t('搜索项目或会话', 'Search projects or conversations')} value={query} onChange={event => { setQuery(event.target.value); setCurrent(1); }}/>
@@ -72,11 +76,13 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         </details>;
       })}{query && !index.conversations.some(matches) && <p>{t('没有匹配的项目或会话', 'No matching projects or conversations')}</p>}</div>
       {groups.size > 6 && !query && <button className="observe-sidebar-link" onClick={() => setAllProjects(value => !value)}>{allProjects ? t('收起项目', 'Show fewer projects') : t('查看全部项目', 'View all projects')}</button>}
-      <section className="observe-recents" aria-label={t('最近对话', 'Recent conversations')}>
-        <header><h2>{t('最近对话', 'Recent conversations')}</h2><button aria-pressed={view === 'running'} onClick={() => choose(view === 'running' ? 'recent' : 'running')}>{t('仅进行中', 'Running only')}</button></header>
-        <div className="observe-recent-links">{index.conversations.filter(item => matches(item) && (view !== 'running' || running(item))).slice(0, 15).map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
-        <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
+      <section className="observe-recents" aria-label={t('独立对话', 'Standalone conversations')}>
+        <header><h2>{t('独立对话', 'Standalone conversations')}</h2></header>
+        <div className="observe-recent-links">{shownIndependent.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
+        {!independent.length && <p className="observe-independent-empty">{query ? t('没有匹配的独立对话', 'No matching standalone conversations') : t('暂无独立对话', 'No standalone conversations yet')}</p>}
       </section>
+      <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
+      <button className="observe-sidebar-link" aria-pressed={view === 'running'} onClick={() => choose(view === 'running' ? 'recent' : 'running')}>{t('进行中的对话', 'Running conversations')}</button>
       </div>
       <StudioUtilities lang={lang}/>
     </aside>

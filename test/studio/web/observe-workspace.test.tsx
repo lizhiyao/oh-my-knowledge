@@ -20,7 +20,7 @@ it('presents projects and readable conversation links without raw Markdown or ta
   expect(html).not.toContain('<script>bad'); expect(html).toContain('&lt;script&gt;bad');
   expect(html).toContain('/observe/conversations/thread%2Fa?lang=zh');
   expect(html).not.toContain('查看最近轨迹');
-  expect(html).toContain('aria-label="最近对话"');
+  expect(html).toContain('aria-label="独立对话"');
   expect(html).toContain('aria-label="项目"');
   expect(html).toContain('查看全部对话');
   const sidebar = html.slice(html.indexOf('<aside'), html.indexOf('</aside>'));
@@ -37,4 +37,24 @@ it('opens a reader with in-place extraction and retains project navigation', () 
   expect(html).toContain('Example project'); expect(html).not.toContain('<table');
   expect(html).not.toContain('ant-pagination');
   expect(html).not.toContain('最近轮次优先');
+});
+
+
+it('separates standalone conversations from project conversations while keeping all in the overview', () => {
+  const standalone = { ...item, threadId: 'standalone', title: 'Standalone example', project: undefined };
+  const directory = { ...item, threadId: 'directory', title: 'Directory example', project: undefined, cwd: '/example/directory' };
+  for (const lang of ['zh', 'en'] as const) {
+    const html = renderToStaticMarkup(createElement(ObserveWorkspace, { lang, page: { pageKind: 'index', model: { ...index, conversations: [item, directory, standalone] }, revision: 'test' } }));
+    const sidebar = html.slice(html.indexOf('<aside'), html.indexOf('</aside>'));
+    const projects = sidebar.slice(sidebar.indexOf('class="observe-projects"'), sidebar.indexOf('<section'));
+    const independent = sidebar.slice(sidebar.indexOf('<section'), sidebar.indexOf('</section>'));
+    expect(projects).not.toContain('Standalone example');
+    expect(projects).toContain('Directory example');
+    expect(independent).toContain('Standalone example');
+    expect(independent).not.toContain('Directory example');
+    expect(independent).not.toContain('Issue #375');
+    expect(sidebar.match(/href="\/observe\/conversations\/thread%2Fa/g)).toHaveLength(1);
+    const overview = html.slice(html.indexOf('class="observe-workspace-main"'));
+    for (const title of ['Standalone example', 'Directory example', 'Issue #375']) expect(overview).toContain(title);
+  }
 });

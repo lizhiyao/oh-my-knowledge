@@ -48,7 +48,7 @@ describe('Observe Next production routes', () => {
       assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
       if(path==='/observe') {
         assert.match(html,/项目与会话/);
-        assert.match(html,/最近会话/);
+        assert.match(html,/全部对话/);
         assert.match(html,/未归属项目/);
         assert.match(html,/href="\/observe\/conversations\/empty-thread\?lang=zh"/);
         assert.doesNotMatch(html,/查看最近轨迹|查看实时轨迹/);
