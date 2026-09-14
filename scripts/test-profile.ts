@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const VITEST_ENTRY = resolve(REPO_ROOT, 'node_modules', 'vitest', 'vitest.mjs');
+const TEST_ENTRY = resolve(REPO_ROOT, 'scripts', 'run-tests-hermetic.mjs');
 
 interface VitestFileResult {
   name: string;
@@ -47,8 +47,7 @@ function runVitest(reportFile: string): Promise<number> {
   const start = performance.now();
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [
-      VITEST_ENTRY,
-      'run',
+      TEST_ENTRY,
       '--reporter=default',
       '--reporter=json',
       `--outputFile.json=${reportFile}`,

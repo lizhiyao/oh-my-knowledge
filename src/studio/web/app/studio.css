@@ -100,6 +100,32 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .health-delta{font-size:11px}
 @media(max-width:700px){.observe-section-nav{gap:16px}.health-skill-metrics{grid-template-columns:1fr}.health-skill-head{flex-wrap:wrap;gap:8px}}
 
+.managed-table .ant-table-tbody>tr>td{height:52px}
+.managed-state{display:inline-flex;align-items:center;gap:6px}
+.managed-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.managed-mark{color:#8893a5;font-weight:700}
+.managed-verdict{font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.managed-count{font-variant-numeric:tabular-nums}
+.managed-legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:12px;color:#657085}
+.managed-legend>span{display:inline-flex;align-items:center;gap:6px}
+.managed-timeline{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+.managed-version{display:flex;align-items:center;gap:8px;font-size:12px}
+.managed-event-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.managed-event-time{font-size:12px;font-variant-numeric:tabular-nums}
+.managed-event-meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:2px;font-size:12px;color:#657085;overflow-wrap:anywhere}
+.managed-event-hint{color:#c0352b}
+.knowledge-alert{margin-bottom:12px}
+.knowledge-rules{margin-top:4px}
+.knowledge-rules--fold{margin-top:12px}
+.knowledge-rule{display:flex;flex-direction:column;gap:10px}
+.knowledge-rule-message{overflow-wrap:anywhere}
+.knowledge-findings{display:flex;flex-direction:column;gap:10px}
+.knowledge-finding-desc{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;overflow-wrap:anywhere}
+.knowledge-finding-sug{margin-top:4px;padding:6px 10px;background:#f4f3fd;color:#4338ca;border-radius:6px;font-size:12.5px;line-height:1.6;overflow-wrap:anywhere}
+.knowledge-runs{margin-top:20px}
+.knowledge-runs ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12px;font-variant-numeric:tabular-nums}
+
+
 /* Knowledge review keeps the candidate, its source, and decisions visible together. */
 .knowledge-candidates{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;gap:12px;overflow:hidden}
 .candidate-heading,.candidate-workspace{display:flex;align-items:center;gap:12px;flex-shrink:0;min-width:0}.candidate-heading{justify-content:space-between}.candidate-heading h1{font-size:20px;margin:2px 0}.candidate-heading>div{min-width:0}.candidate-heading .ant-space{flex-shrink:0}.candidate-workspace>.ant-input{flex:1;min-width:0}

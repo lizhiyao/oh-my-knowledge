@@ -109,6 +109,14 @@ describe('selected Codex evidence snapshots', () => {
     expect(store.read(captured.snapshotId)).toMatchObject({ status: 'unavailable', reason: 'deleted' });
     expect(readFileSync(path, 'utf8')).toBe('changed');
   });
+  it('keeps unknown raw envelopes local instead of exposing them as generation excerpts', () => {
+    const root = temp(); const path = source(root);
+    writeFileSync(path, readFileSync(path, 'utf8') + '\n' + JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'must-stay-local' } }));
+    const captured = new CodexEvidenceStore(join(root, 'evidence')).capture({ path });
+    expect(JSON.stringify(captured.records)).toContain('must-stay-local');
+    expect(JSON.stringify(captured.excerpts)).not.toContain('must-stay-local');
+    expect(captured.excerpts.some((entry) => entry.text === 'Alpha 使用 Beta')).toBe(true);
+  });
   it('detects corruption and cancels without snapshot pollution', () => {
     const root = temp(); const path = source(root); const evidenceRoot = join(root, 'evidence');
     const store = new CodexEvidenceStore(evidenceRoot);

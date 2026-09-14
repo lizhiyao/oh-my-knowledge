@@ -1,6 +1,6 @@
 import { createWorkflowSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 /**
- * oclif 路由验收 + sample command 生命周期测试。
+ * sample command 生命周期测试；真实 dispatcher／启动契约由 oclif-startup 覆盖。
  * 验证 sample 三模式入口都能正确分流到生产 execute():
  * - 缺 positional + 非 batch / from-traces → exit 2 + 中文 hint
  * - --batch 走不存在的 skill-dir → exit 1
@@ -92,7 +92,7 @@ describe('oclif sample', () => {
 
   it('缺 positional + 非 batch + 非 from-traces → exit 2 (生产 execute 透传)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', '--lang', 'zh']);
+      await runCommand(SampleCommand, ['--lang', 'zh']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -134,7 +134,8 @@ describe('oclif sample', () => {
 
   it('非法 --count --lang en → exit 2 + English parser error', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', 'skills/demo/SKILL.md', '--count', 'abc', '--lang', 'en']);
+      // flag 的双语解析文案在模块加载时绑定，必须用新进程验证启动 argv。
+      await execFileAsync(process.execPath, [CLI, 'sample', 'skills/demo/SKILL.md', '--count', 'abc', '--lang', 'en'], { timeout: 10000 });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

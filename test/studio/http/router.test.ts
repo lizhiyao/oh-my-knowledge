@@ -29,7 +29,6 @@ function fakeContext(path: string, method = 'GET', headers: Record<string, strin
     response,
     url: new URL(path, 'http://127.0.0.1'),
     path,
-    lang: 'zh',
   };
   return { context, captured };
 }

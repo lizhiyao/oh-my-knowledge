@@ -15,11 +15,11 @@ const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 const hash = (text: string): string => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
-function eventText(event: TraceEvent): string {
+function eventText(event: TraceEvent): string | undefined {
   if ('text' in event && typeof event.text === 'string') return event.text;
   if (event.eventKind === 'tool_result') return event.output;
   if (event.eventKind === 'tool_call') return JSON.stringify(event.input);
-  return JSON.stringify(event);
+  return undefined;
 }
 
 /** Captures only the explicitly selected records; parsing reuses the Codex trace adapter. */
@@ -72,11 +72,15 @@ export class CodexEvidenceStore implements EvidenceStore {
       sourceVersion: hash(JSON.stringify(records)), projectionVersion: 'knowledge-window-v1',
       capturedAt: new Date().toISOString(), startRecord: start, endRecord: records.at(-1)!.recordIndex,
       limitations, records,
-      excerpts: session.events.map((event, index) => ({
-        evidenceRef: `${snapshotId}:${index}`, recordIndex: records[event.sourceIndex].recordIndex,
-        eventKind: event.eventKind, ...('role' in event ? { role: event.role } : {}),
-        ...(event.timestamp ? { timestamp: event.timestamp } : {}), text: eventText(event),
-      })),
+      excerpts: session.events.flatMap((event, index) => {
+        const text = eventText(event);
+        if (text === undefined) return [];
+        return [{
+          evidenceRef: `${snapshotId}:${index}`, recordIndex: records[event.sourceIndex].recordIndex,
+          eventKind: event.eventKind, ...('role' in event ? { role: event.role } : {}),
+          ...(event.timestamp ? { timestamp: event.timestamp } : {}), text,
+        }];
+      }),
     };
     const stored = EvidenceWindowSchema.parse(window);
     const serialized = JSON.stringify(stored, null, 2);

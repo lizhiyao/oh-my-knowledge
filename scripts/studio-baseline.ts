@@ -316,7 +316,7 @@ async function measureScale(scale: BaselineScale, dist: DistModules): Promise<Sc
     const warmOnly: readonly string[] = [
       CONCURRENCY_PROBE,
       'GET /api/observe-inbox',
-      // /observe/inbox、/knowledge 与观测健康列表/详情/趋势页已由 Next 宿主渲染；本脚本测的是独立 HTML 宿主，那里按设计 404。
+      // 独立 HTML 宿主已不服务任何页面路由：所有页面由 Next 渲染，页面路径在这里按设计 404。本脚本只量 JSON 事实源。
     ];
     for (const route of warmOnly) {
       const path = route.slice('GET '.length);
