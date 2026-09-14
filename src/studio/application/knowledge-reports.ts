@@ -1,7 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import type { DoctorReport } from '../../knowledge-artifacts/doctor/contracts.js';
-import { parseDoctorReport } from '../../knowledge-artifacts/doctor/report-parser.js';
-import { listDoctorCards, listLiveObserveCards, listObserveCards } from '../../evidence/storage/discovery-index.js';
+import { listLiveObserveCards, listObserveCards } from '../../evidence/storage/discovery-index.js';
 import { listMeasurementReportPaths, measurementRecordIdFromReportPath } from '../../evidence/storage/report-bundle.js';
 import { confidenceOf, measuredToolFailureRate, toolStabilityOf, type SkillHealth, type SkillHealthReport } from '../../observability/skill-health/analyzer.js';
 import { parseSkillHealthReport } from '../../observability/skill-health/report.js';
@@ -81,42 +79,6 @@ export function loadAnalysis(dir: string, id: string, includeCards = false): Ski
     } catch { /* corrupt 真身 */ }
   }
   return null;
-}
-
-/** 扫 doctorsDir 找 id 匹配的 doctor 报告（文件名不一定等于 report id）。
- *  批量 doctor 会按 skill 拆成多份共享同一 id 的 per-skill 文件，传 skillName 时
- *  优先返回含该 skill 的那份；都不含时回退首个 id 命中（单 skill / 无参行为不变）。 */
-export function loadDoctorReport(dir: string, id: string, skillName?: string, includeCards = false): DoctorReport | null {
-  let fallback: DoctorReport | null = null;
-  const seenRecords = new Set<string>();
-  for (const path of listMeasurementReportPaths(dir, 'doctor')) {
-    const recordId = measurementRecordIdFromReportPath(path);
-    if (recordId === null || seenRecords.has(recordId)) continue;
-    try {
-      const data = parseDoctorReport(JSON.parse(readFileSync(path, 'utf-8')));
-      if (!data || data.id !== id) continue;
-      seenRecords.add(recordId);
-      if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
-      fallback ??= data;
-    } catch { /* skip */ }
-  }
-  if (fallback) return fallback;
-  // 仅机器级模式兜底;固定 --doctors-dir / --global 不回源别项目卡片(逃生舱语义)。
-  if (!includeCards) return null;
-  // 别项目:按 doctor 卡片(reportId 匹配 + 可选 skillName)的 path 读真身。detail 路由传的 id 是 reportId(非卡片 stem)。
-  for (const card of listDoctorCards()) {
-    if (card.reportId !== id) continue;
-    if (skillName && card.skillName !== skillName) continue;
-    if (!existsSync(card.path)) continue;
-    try {
-      const data = parseDoctorReport(JSON.parse(readFileSync(card.path, 'utf-8')));
-      if (data && data.id === id) {
-        if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
-        fallback ??= data;
-      }
-    } catch { /* corrupt 真身 */ }
-  }
-  return fallback;
 }
 
 function trendPointOf(analysisId: string, generatedAt: string, h: SkillHealth): SkillTrendPoint {

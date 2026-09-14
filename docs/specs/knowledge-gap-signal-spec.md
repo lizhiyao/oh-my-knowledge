@@ -247,7 +247,7 @@ This is conditional measurement, not an absolute verdict: low N does not mean th
 
 A single evaluation's gap rate is the baseline; the real value lies in the trend across multiple evaluations.
 
-omk already has the `src/studio/presentation/trends.ts` cross-evaluation time-series table. This spec requires a new column in that table:
+omk already has the cross-evaluation time-series table built by `querySkillTrend` in `src/studio/application/knowledge-reports.ts` and rendered by the `/observe/skill-trend/:skill` page. This spec requires a new column in that table:
 
 ```
 | Time | git commit | composite | coverage | gap_rate | Sample set | Sample count | Cost |

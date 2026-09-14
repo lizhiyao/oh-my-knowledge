@@ -28,7 +28,7 @@ describe('Next Studio production boundary', () => {
     const analysesDir = join(root, 'analyses');
     const skillName = 'audit/<script>alert(1)</script>';
     writeMeasurementReportBundle({ rootDir: doctorsDir, measurementDomain: 'doctor', recordId: 'knowledge-test', reportId: 'doctor-test', createdAt: '2026-09-10T00:00:00Z', report: {
-      kind: 'doctor', schemaVersion: '3.0.0', id: 'doctor-test', timestamp: '2026-09-10T00:00:00Z', cliVersion: 'test', cwd: root, executorName: 'script', model: 'test', outcome: 'passed', totals: {pass:1,warn:0,fail:0}, ruleStats: {pass:1,warn:0,fail:0,skipped:0,total:1}, skills: [{skillName,skillPath:root,status:'pass',results:[{ruleId:'fixture',severity:'info',labelKey:'fixture',status:'pass',message:'<script>unsafe()</script>',durationMs:0}]}],
+      kind: 'doctor', schemaVersion: '3.0.0', id: 'doctor-test', timestamp: '2026-09-10T00:00:00Z', cliVersion: 'test', cwd: root, executorName: 'script', model: 'test', outcome: 'warnings_only', totals: {pass:0,warn:1,fail:0}, ruleStats: {pass:0,warn:1,fail:0,skipped:0,total:1}, skills: [{skillName,skillPath:root,status:'warn',results:[{ruleId:'fixture',severity:'warn',labelKey:'fixture',status:'warn',message:'fixture warned',detail:{displayName:'<script>unsafe()</script>'},durationMs:0}]}],
     }});
     const a = createNextStudioServer({port:0,doctorsDir,analysesDir,observationsDir:join(root,'a'),coreStudioCatalog:catalog});
     const b = createNextStudioServer({port:0,doctorsDir:join(root,'empty-doctors'),analysesDir,observationsDir:join(root,'b'),coreStudioCatalog:{...catalog,list:async()=>[]}});
@@ -64,6 +64,11 @@ describe('Next Studio production boundary', () => {
     const skillHtml = await skill.text();
     assert.match(skillHtml, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
     for (const label of ['健康体检','生产观测','待优化项']) assert.ok(skillHtml.includes(label));
+    // 点名一个不存在的轮次不静默回落到当前那次：URL 与所见证据必须一致。
+    const staleRun = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=pruned-run`);
+    assert.equal(staleRun.status, 404);
+    assert.equal(await staleRun.text(), 'doctor_run_not_found');
+    assert.equal((await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`)).status, 200);
     assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
     // 壳层只有一份：迁移完成后评测页与兄弟页面共用同一个 header，差异只在 aria-current。
     const knowledgeEn = await (await fetch(`${urlA}/knowledge?lang=en`)).text();

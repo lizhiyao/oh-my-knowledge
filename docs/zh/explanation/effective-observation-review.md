@@ -6,7 +6,7 @@
 
 `omk observe inbox --json` 在原有 `items` 数组之外提供 `effectiveExperienceReports`、`resolvedReviewSessions` 和 `unappliedMetricAnnotations`。`GET /api/observe-inbox/view` 提供同样三个字段，两者均支持按 skill 筛选。原有 `GET /api/observe-inbox` 的条目列表响应保持不变。Studio 消费同一领域投影。
 
-有效会话指标、依据代码、规则发现、辅助推断、优先级和 skill 汇总由 observability 负责，不由 HTML renderer 定义。确定性优先级使用领域加权分数：至少三分为 `review_first`，大于零且不足三分为 `sample_review`，零分为 `routine_sample`。领域审阅发现可以进一步提升优先级。既有显式 LLM 与人工审阅优先关系保留，来源通过 `resolvedReviewSessions.source` 表达。
+有效会话指标、依据代码、规则发现、辅助推断、优先级和 skill 汇总由 observability 负责，不由 Studio 呈现层定义。确定性优先级使用领域加权分数：至少三分为 `review_first`，大于零且不足三分为 `sample_review`，零分为 `routine_sample`。领域审阅发现可以进一步提升优先级。既有显式 LLM 与人工审阅优先关系保留，来源通过 `resolvedReviewSessions.source` 表达。
 
 ## 证据与标注
 

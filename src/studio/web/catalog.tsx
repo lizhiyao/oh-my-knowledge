@@ -1,9 +1,10 @@
 import 'server-only';
-import { nextCatalogContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextObserveContext } from '../http/next-context';
+import { nextCatalogContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextManagedContext, nextObserveContext } from '../http/next-context';
 import type { CoreStudioCatalog } from '../view-models/core-runs';
 import type { HealthPage } from '../http/health-page';
 import type { InboxPage } from '../http/inbox-page';
 import type { KnowledgePage } from '../http/knowledge-page';
+import type { ManagedPage } from '../http/managed-page';
 import type { ObservePage } from '../http/observe-page';
 
 // 宿主按请求注入 AsyncLocalStorage store；两侧模块经 globalThis 上的 Symbol.for 键
@@ -27,4 +28,8 @@ export function requestInboxPage(): InboxPage {
 
 export function requestHealthPage(): HealthPage {
   return nextHealthContext.get();
+}
+
+export function requestManagedPage(): ManagedPage {
+  return nextManagedContext.get();
 }
