@@ -7,7 +7,7 @@
 - Studio 应用页面统一向 Next.js 收敛；手写 HTML 渲染层已删除，新页面不再增加它。API、SSE 按各自职责维护，不为迁移页面而复制领域查询。
 - view-models 仅存放类型契约；泳道布局、证据引用与活动快照的运行时计算放在 application 中，HTTP 与 React 消费同一实现；application 不得依赖 http 或 web，view-models 不得反向依赖这些层或 application。
 - 客户端组件（`'use client'`）按值 import 的模块会进浏览器 chunk，因此其运行时依赖闭包不得触达 Node 宿主能力；只是取类型就用 `import type`，该边会被 TS 擦除、不算闭包成员。口径由 `test/architecture/studio-client-runtime-closure.test.ts` 钉住；`next build` 里的报错只是同一件事的下游后果，不能当防线用。
-- Studio 的具名导出必须有按名导入它的消费者：`export` 是对外承诺，没有消费者的承诺只是没人能兑现的表面积。口径由 `test/architecture/studio-export-consumers.test.ts` 钉住，消费者集合是 `src`／`test`／`scripts`／`examples` 全量（package exports 没有 Studio 子路径，仓内收窄不算破坏对外契约）；只有 Next.js 在 `web/app/**` 按约定读取的导出（`metadata`、`dynamic` 等）按「名字＋位置」豁免，同一个名字放在 `app` 外照样判红。`noUnusedLocals` 关闭、`no-unused-vars` 只 warn、`tsc --noEmit` 不含 `src/studio/web`，静态检查不会替你守这条；修法只有删声明和补真实调用方两种，不加豁免名单。
+- Studio 的具名导出必须有按名导入它的消费者：`export` 是对外承诺，没有消费者的承诺只是没人能兑现的表面积。口径由 `test/architecture/studio-export-consumers.test.ts` 钉住，消费者集合是 `src`／`test`／`scripts`／`examples` 全量（package exports 没有 Studio 子路径，仓内收窄不算破坏对外契约）；只有 Next.js 在 `web/app/**` 按约定读取的导出（`metadata`、`dynamic` 等）按「名字＋位置」豁免，同一个名字放在 `app` 外照样判红。`no-unused-vars` 在 `--max-warnings 0` 下确实拦得住未使用的局部，但它把 `export` 本身算作使用，所以零消费者的导出对 lint 与编译器都不可见（`noUnusedLocals` 还是 false，`tsc --noEmit` 又排除 `src/studio/web`），静态检查不会替你守这条；修法只有删声明和补真实调用方两种，不加豁免名单。
 - Knowledge 页面与 API 共用 application 查询入口。缓存由服务实例持有，目录按请求解析，返回值不得暴露缓存内部的可变引用。
 - 清理旧渲染器前检查实际调用者；仍服务于调试入口的实现不算死代码。具体迁移路由与剩余工作记录在 PR，不在本规则中维护易过期的路由清单。
 

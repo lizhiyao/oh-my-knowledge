@@ -2,9 +2,10 @@
  * 架构边界守门：`src/studio/**` 的具名导出必须有仓库内按名导入的消费者。
  *
  * 起因是 Studio 冗余盘点：一轮审计在 web／http／view-models 里找出一批零引用导出（类型别名、
- * 只被已删渲染层用过的投影函数）。仓库里没有静态信号能看见它们——`noUnusedLocals` 是 false，
- * `@typescript-eslint/no-unused-vars` 只到 warn，`yarn typecheck` 的 tsconfig 还排除了
- * `src/studio/web`；而未使用的**导出**本来就不在编译器眼里。于是这类代码只能靠人眼发现，
+ * 只被已删渲染层用过的投影函数）。仓库里没有静态信号能看见它们：`@typescript-eslint/no-unused-vars`
+ * 虽然因 `--max-warnings 0` 拦得住未使用的局部，但它把 `export` 本身算作使用；未使用的**导出**
+ * 同样不在编译器眼里（`noUnusedLocals` 是 false，`yarn typecheck` 的 tsconfig 还排除了
+ * `src/studio/web`）。于是这类代码只能靠人眼发现，
  * 清干净一轮又会重新长回来。这里把「声明在 Studio、除声明文件外没人按名字导入」变成 CI 失败。
  *
  * 口径边界（刻意不扩）：
@@ -299,8 +300,12 @@ export function consumeWhole(): number {
   return wholeA.A_ONE + wholeA.A_TWO;
 }
 `,
-  // Next 约定豁免只覆盖 app 目录之下：同名导出放在别处照样判死。
+  // Next 约定豁免只覆盖 app 目录之下、且只覆盖约定名本身：
+  // 同一个名字放在 `app` 外照样判死，`app` 内的非约定名也照样判死。
   'app/page.tsx': `export const dynamic = 'force-dynamic';
+export function unusedInAppDir(): number {
+  return 1;
+}
 export default function Page(): null {
   return null;
 }
@@ -359,12 +364,15 @@ describe('Studio 具名导出的消费者守门', () => {
       [
         'dead.ts', 'live.ts', 'consumer.ts', 'whole-a.ts', 'whole-b.ts', 'whole-c.ts',
         'whole-users.ts', 'not-an-app-page.ts',
-      ].map((entry) => fixturePath('lib', entry)),
+      ].map((entry) => fixturePath('lib', entry)).concat(fixturePath('app', 'page.tsx')),
       listSourceFiles(fixtureRoot),
       { appDir: fixturePath('app'), display: (path) => path.slice(`${fixtureRoot}/`.length) },
     );
 
+    // 豁免的正向半：`dynamic` 不在结果里，而同一个文件的 `unusedInAppDir` 在——
+    // 少了后一条，「整个 app 目录跳过」这种实现也能通过本用例。
     expect(report.unused.map((entry) => `${entry.file} ⇒ ${entry.name}`)).toEqual([
+      'app/page.tsx ⇒ unusedInAppDir',
       'lib/consumer.ts ⇒ use',
       'lib/dead.ts ⇒ UnusedShape',
       'lib/dead.ts ⇒ selfReferenced',
