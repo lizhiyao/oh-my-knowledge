@@ -36,6 +36,9 @@ export type EvaluationFailureOrigin = Readonly<{
   code?: string;
 }>;
 
+/** Shape gate for a stable, host-data-free error code that a facade may re-publish. */
+export const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
 export class EvaluationConfigurationError extends TypeError {
   readonly code:
     | 'EVAL_RUNTIME_INPUT_INVALID'

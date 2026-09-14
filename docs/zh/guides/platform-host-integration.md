@@ -92,6 +92,8 @@ executors.set('executor:http-qa@2026.09.1', (ref) => ({
 
 `EvaluationRunOptions.onEvent` 是**有序、best-effort 的进度投影**：缓冲有界（`eventBufferCapacity`，默认 256），消费落后时会丢弃最旧的进度事件、保留最新事件，因此事件序号可能出现缺口；observer 失败也不影响测量终态。它适合做进度条，**不适合做审计**。
 
+评分阶段的细粒度进度读 `evaluation.run.progress` 事件，payload 为 `{ completed, total, failed, maxConcurrency, retry, timeoutMs? }`：`total` 是本次 Run 计划的全部 coordinate（含未评定的），`completed` 与 `failed` 随 coordinate 落定单调递增，`maxConcurrency`／`retry`／`timeoutMs` 是评分阶段的执行控制元数据，`timeoutMs` 未配置时不出现。发射频率由 `EvaluateInput.policy.eventDelivery.progressGranularity` 控制：`per-batch`（缺省，按并发宽度每批一条）、`per-coordinate`（每条 coordinate 一条）、`start-end-only`（不发中间进度，只保留 `evaluation.run.started` 与终态事件）。省略该字段即维持 `per-batch` 且不写入封存 Plan，已有 Plan 的 digest 不变；进度事件属于过程记录，不改变任何测量终态。进度写入在 `fail-run` 下失败会让本次 Run 停止调度后续批次，但 Evaluator 已经产出的 record 仍保留在 Bundle 中——已被真实测得的 coordinate 不会被改写成未评定证据。
+
 审计级的过程回写用两个字段配合：
 
 - 准备或执行时在 `EvaluateInput.policy.eventDelivery` 声明投递模式（形状即 `MeasurementEventDeliveryInput`，可从 `oh-my-knowledge` 具名导入；在 façade 上直接写字面量即可）：`writerMode` 取 `disabled`（默认）、`optional` 或 `required`，`writerFailureMode` 取 `ignore` 或 `fail-run`。两者按严格校验配对：`disabled` 只接受 `ignore`，`required` 只接受 `fail-run` 且缺省即 `fail-run`，`optional` 缺省为 `ignore`。

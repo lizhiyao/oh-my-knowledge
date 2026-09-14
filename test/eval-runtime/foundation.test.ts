@@ -168,6 +168,17 @@ describe('eval-runtime foundation', () => {
       backpressureMode: 'block',
       writerFailureMode: 'fail-run',
     });
+    expect(createMeasurementPolicy({
+      eventDelivery: { writerMode: 'optional', progressGranularity: 'per-coordinate' },
+    }).eventDelivery).toEqual({
+      writerMode: 'optional',
+      backpressureMode: 'block',
+      writerFailureMode: 'ignore',
+      progressGranularity: 'per-coordinate',
+    });
+    expect(() => createMeasurementPolicy({
+      eventDelivery: { writerMode: 'optional', progressGranularity: 'per-attempt' },
+    } as never)).toThrow();
     expect(() => createMeasurementPolicy({
       eventDelivery: { writerMode: 'required', writerFailureMode: 'ignore' },
     } as never)).toThrow();
