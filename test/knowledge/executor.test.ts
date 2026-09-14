@@ -1,8 +1,30 @@
+import { existsSync, readdirSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('knowledge generation executor boundary', () => {
+  it.each(['success', 'failure', 'tool', 'cancel'] as const)('cleans Codex text execution after %s', async (outcome) => {
+    let directory = '';
+    const controller = new AbortController();
+    const model = configuredExtractionModel('codex', 'test', async (input) => {
+      directory = input.cwd!;
+      expect(readdirSync(directory)).toEqual([]);
+      expect(input.allowedSkills).toEqual([]);
+      expect(input.prompt).toBe('selected text');
+      if (outcome === 'failure') throw new Error('fixture failure');
+      if (outcome === 'cancel') controller.abort();
+      return { ok: true, output: '{"proposals":[]}', durationMs: 1, durationApiMs: 1,
+        inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
+        costUSD: 0, stopReason: 'end_turn', numTurns: 1,
+        ...(outcome === 'tool' ? { toolCalls: [{ tool: 'read_file', input: {}, output: '', success: true }] } : {}) };
+    });
+    const promise = model.generate('system', 'selected text', controller.signal);
+    if (outcome === 'success') expect(await promise).toMatchObject({ output: '{"proposals":[]}' });
+    else await expect(promise).rejects.toThrow();
+    expect(directory).not.toBe('');
+    expect(existsSync(directory)).toBe(false);
+  });
   it.each(['openai-api', 'anthropic-api'])('sends text without tools through %s', async (executor) => {
     vi.stubEnv('OPENAI_API_KEY', 'fixture');
     vi.stubEnv('ANTHROPIC_API_KEY', 'fixture');
@@ -23,7 +45,7 @@ describe('knowledge generation executor boundary', () => {
     await expect(model.generate('system', 'selected evidence', controller.signal)).rejects.toThrow();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
-  it.each(['codex', 'codex-sdk', 'claude', 'claude-sdk'])('rejects agent executor %s before invoking a runtime', (executor) => {
-    expect(() => configuredExtractionModel(executor, 'test')).toThrow('restricted');
+  it.each(['codex-sdk', 'claude', 'claude-sdk'])('rejects agent executor %s before invoking a runtime', (executor) => {
+    expect(() => configuredExtractionModel(executor, 'test')).toThrow('adapter');
   });
 });

@@ -14,17 +14,13 @@ omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl -
 
 ```bash
 omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --json
-omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --json
+omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --json
 omk observe knowledge list --workspace ./knowledge --json
 ```
 
-默认 `generate` 完全在本地运行，不读取全局模型配置、不启动 agent、不联网。Node 读取／解析来源，共享应用层提取候选、校验引用并保存；CLI 与 Studio 只负责交互。
+生成发送归档中的选定片段与覆盖限制，使用明确配置的执行器和模型，可能产生费用。支持 codex、openai-api、anthropic-api；其它执行器尚未提供此入口。凭证配置沿用对应执行器。原始日志路径和原始记录封装不作为生成输入，但选定片段本身可能包含敏感内容，应先核对。
 
-本地规则只摘录用户／助手消息中以 `经验：`、`规则：`、`方法：`、`教训：`、`Lesson:`、`Rule:` 或 `Method:` 开头的单行条目，允许列表前缀。跳过工具输出、引用行和代码块；每条最多 4096 字符，每次最多取前 12 条，无匹配时返回零条。原文逐字保留，条目中的业务实体、条件和语义尚未解析，不能把摘录当作已完成的知识归纳。需要处理更多条目时缩小来源记录范围。
-
-需要语义归纳时，显式同时传 `--executor openai-api --model <model>`（也支持 `anthropic-api`）。此选项发送选定片段和覆盖限制，使用对应 API 凭证并可能产生费用；请求不提供工具。未验证隔离能力的 agent 执行器暂不开放。原始日志路径和记录封装不作为输入，但选定文本自身可能含敏感信息，应先预览。
-
-本地规则版本记录为 `knowledge-local-rules-v1`，与模型提炼版本分别追踪；已有运行和修订可继续读取。
+日志由本地 Node 读取和解析，模型只接收整理后的选定片段；CLI 与 Studio 共用这一应用流程。Codex 在空临时工作目录运行，沿用执行器的只读 sandbox、忽略用户配置和规则的调用参数，并要求不调用工具。若实际发生工具调用，本次输出不接纳；这不是禁止所有文件访问的强隔离保证。API 请求不提供工具。此前的关键词摘录入口已移除，旧的本地规则运行记录仍可读取。
 
 允许零候选，部分输出不合法时保留拒绝原因。引用匹配只说明位置存在，不能证明陈述为真。来源中的行为、他人说法和提炼推断分别呈现；未知时间与条件不补成确定事实。
 
@@ -47,7 +43,11 @@ omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revis
 
 ## Studio
 
-启动 `omk studio`，使用命令返回的地址。在 Knowledge 页面选择“从工作日志提炼知识”，输入与 CLI 相同的工作区路径并打开。可以选择日志、预览范围并直接在本地生成；需要语义提炼时再显式选择 API 执行器与模型。候选与原文并列展示，实体提及可定位到原文，修订／保留／舍弃均使用同一保存协议。处理后重新打开，仍可查看修订历史。
+启动 `omk studio`，使用命令返回的地址。在 Knowledge 页面选择“从工作日志提炼知识”，输入与 CLI 相同的工作区路径并打开。可以选择日志、预览范围、明确执行器与模型后生成；候选与原文并列展示，实体提及可定位到原文，修订／保留／舍弃均使用同一保存协议。处理后重新打开，仍可查看修订历史。
+
+## Codex 版本检查
+
+OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若服务器报告模型需要更新客户端，应升级或明确选择兼容的现有客户端，不必切换模型或 API。桌面应用与命令行可能使用不同版本。
 
 ## 中断与来源管理
 

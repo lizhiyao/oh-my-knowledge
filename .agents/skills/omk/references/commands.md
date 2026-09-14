@@ -493,13 +493,13 @@ omk observe knowledge <operation> [flags]
 **Flags:**
 
 - `--end-record` `option`:最后一条记录序号，包含。
-- `--executor` `option`:可选语义提炼执行器：openai-api 或 anthropic-api；默认本地规则提取。
+- `--executor` `option`:生成执行器，沿用 OMK 的运行配置。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
 - `--id` `option`:知识身份；resume 时为运行身份。
 - `--input` `option`:revise：包含 title、content、entities、evidence 的 JSON 草稿。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--model` `option`:语义提炼时必须明确指定模型。
+- `--model` `option`:生成模型，沿用已配置模型。
 - `--reason` `option`:保留、舍弃或修订的理由。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
@@ -515,7 +515,7 @@ omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl
 ```
 
 ```bash
-omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id>
+omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>
 ```
 
 ```bash

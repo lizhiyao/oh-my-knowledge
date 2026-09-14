@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +11,7 @@ describe('Studio candidate action boundary', () => {
   let server: ReturnType<typeof createReportServer>;
   let url: string;
   beforeAll(async () => {
-    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '方法：发布之前核对当前版本。' }] } }));
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '项目约束' }] } }));
     server = createReportServer({ port: 0, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
     url = await server.start();
   });
@@ -26,9 +25,6 @@ describe('Studio candidate action boundary', () => {
     expect(captured.status).toBe(200);
     const snapshot = await captured.json() as { snapshotId: string };
     expect(snapshot.snapshotId).toBeTruthy();
-    const generated = await post({ operation: 'generate', snapshot: snapshot.snapshotId, runId: randomUUID() });
-    expect(generated.status).toBe(200);
-    expect(await generated.json()).toMatchObject({ status: 'completed', committed: [expect.objectContaining({ knowledgeId: expect.any(String) })] });
     expect((await post({ operation: 'delete-source', snapshot: snapshot.snapshotId })).status).toBe(200);
   });
   it('rejects cross-origin mutation before touching a source', async () => {

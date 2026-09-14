@@ -12,16 +12,12 @@ describe('observe knowledge command wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);
     const path = join(root, 'trace.jsonl');
     const workspace = join(root, 'knowledge');
-    writeFileSync(path, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '规则：发布之前核对当前版本。' }] } }));
+    writeFileSync(path, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '请记住项目规则' }] } }));
     const output = await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', path, '--json'], { cwd: root });
     const captured = JSON.parse(output.stdout);
     expect(captured.records).toHaveLength(1);
     const read = await runCommand(ObserveKnowledge, ['source', '--workspace', workspace, '--snapshot', captured.snapshotId, '--json'], { cwd: root });
     expect(JSON.parse(read.stdout).status).toBe('available');
-    const generated = await runCommand(ObserveKnowledge, ['generate', '--workspace', workspace, '--snapshot', captured.snapshotId, '--json'], { cwd: root });
-    const run = JSON.parse(generated.stdout);
-    expect(run).toMatchObject({ status: 'completed', executor: 'local', model: 'knowledge-local-rules-v1' });
-    expect(run.committed).toHaveLength(1);
     await runCommand(ObserveKnowledge, ['delete-source', '--workspace', workspace, '--snapshot', captured.snapshotId], { cwd: root });
     const deleted = await runCommand(ObserveKnowledge, ['source', '--workspace', workspace, '--snapshot', captured.snapshotId, '--json'], { cwd: root });
     expect(JSON.parse(deleted.stdout)).toMatchObject({ status: 'unavailable', reason: 'deleted' });

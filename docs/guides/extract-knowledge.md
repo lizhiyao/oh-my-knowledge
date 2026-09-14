@@ -9,19 +9,15 @@ Choose an explicit local workspace shared by CLI and Studio. Replace paths and i
 ```bash
 omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl --json
 omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --json
-omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --json
+omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --json
 omk observe knowledge list --workspace ./knowledge --json
 ```
 
 Capture is local and makes no model call. Optional `--start-record 10 --end-record 30` selects inclusive, zero-based nonempty record indices. Inspect the captured scope, excerpts and limitations before generating.
 
-By default, `generate` runs entirely locally without global model defaults, agent processes or network calls. Node reads and parses the source; the shared application selects candidates, validates citations and persists them. CLI and Studio provide the interaction layer.
+Generation sends selected excerpts and coverage limitations to the configured executor and model and may incur costs. Supported executors are codex, openai-api and anthropic-api; their existing credential configuration applies. Native log paths and raw record envelopes are excluded from model input, but selected text can itself contain sensitive information.
 
-Local rules select single-line user/assistant entries starting with `Lesson:`, `Rule:`, `Method:`, `经验：`, `规则：`, `方法：`, or `教训：`, with optional list prefixes. Tool output, quote lines and fenced blocks are skipped. Entries are limited to 4096 characters and the first 12 matches per run; no matches means zero candidates. Text is preserved verbatim. Business entities, conditions and semantics are not parsed: this is excerpt selection, not completed knowledge synthesis. Narrow the source record range to process further entries.
-
-For semantic synthesis, explicitly supply both `--executor openai-api --model <model>` (or `anthropic-api`). This sends selected excerpts and scope limitations using the configured API credentials and may incur charges; requests provide no tools. Agent executors without a verified isolation boundary are unavailable. Native paths and raw envelopes are excluded, but the selected text may contain sensitive information, so preview it first.
-
-Runs record `knowledge-local-rules-v1` separately from model extraction versions. Existing runs and revisions remain readable.
+Local Node code reads and parses the log; the model receives only the prepared selected excerpts. CLI and Studio share this application flow. Codex runs in an empty temporary working directory with the executor’s read-only sandbox and ignore-user-config/ignore-rules arguments, and is instructed not to call tools. Any observed tool call causes rejection of the output; this is not a strict guarantee against all file access. API requests provide no tools. The keyword-excerpt entry has been removed; existing local-rule run records remain readable.
 
 Zero candidates is valid. Invalid proposals retain rejection reasons. Exact quote matching checks location integrity, not truth. Recorded behavior, source assertions and inference remain distinct; missing conditions and times remain unknown.
 
@@ -44,7 +40,11 @@ Use the actual generation, not the example number. Edits create a new revision t
 
 ## Studio
 
-Run `omk studio` and open its returned address. On Knowledge, choose the work-log extraction entry, enter the same workspace and open it. Select a log, inspect the scope and generate locally. Explicitly choose an API executor and model only when semantic synthesis is needed. Candidates and original records appear side by side, including links to entity mentions. Editing, retaining, discarding and reopening use the same application and persistence protocol as CLI.
+Run `omk studio` and open its returned address. On Knowledge, choose the work-log extraction entry, enter the same workspace and open it. Select a log, inspect the scope and configure the executor/model before generation. Candidates and original records appear side by side, including links to entity mentions. Editing, retaining, discarding and reopening use the same application and persistence protocol as CLI.
+
+## Codex version check
+
+OMK uses `codex` from the current process PATH. Check `codex --version`; if the server reports that the model requires a newer client, update or explicitly select an existing compatible client rather than changing models or APIs. The desktop app and shell may use different versions.
 
 ## Recovery and data
 
