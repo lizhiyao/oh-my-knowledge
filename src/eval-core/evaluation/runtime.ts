@@ -1454,6 +1454,21 @@ async function runEvaluation(
       const totalFailures = [...records.values()].filter(
         (record) => record.evaluationStatus === 'failed',
       ).length;
+      const completed = records.size;
+      const total = coordinates.length;
+      const retry = plan.evaluation.policy.runtime.retry;
+      const timeoutMs = plan.evaluation.policy.runtime.timeoutMs;
+      await events.emit('evaluation.run.progress', 'run', options.runId, {
+        completed,
+        total,
+        failed: totalFailures,
+        maxConcurrency: width,
+        retry: {
+          maxAttempts: retry.maxAttempts,
+          retryableErrorCodes: [...retry.retryableErrorCodes],
+        },
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
       const policy = plan.evaluation.policy.failure;
       if (stop.stopKind === undefined && policy.failureMode === 'fail-fast' && failures > 0) {
         setStop('failed', 'evaluation-failure-policy-fail-fast');

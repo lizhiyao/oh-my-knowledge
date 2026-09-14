@@ -1093,7 +1093,8 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     const terminals = journal.filter((event) => event.eventKind.startsWith('evaluation.run.')
-      && event.eventKind !== 'evaluation.run.started');
+      && event.eventKind !== 'evaluation.run.started'
+      && event.eventKind !== 'evaluation.run.progress');
     expect(terminals).toEqual([expect.objectContaining({
       eventKind: 'evaluation.run.failed',
       data: expect.objectContaining({ bundleDigest: bundle.bundleDigest }),
