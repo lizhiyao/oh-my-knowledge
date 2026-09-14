@@ -102,14 +102,13 @@ export function parseCodexJsonl(stdout: string): CodexJsonlParseResult {
 }
 
 /** Invocation policy for non-Trial callers such as generation and judge calls. */
-export function buildCodexArgs({ model, cwd, prompt, textOnly }: { model: string; cwd?: string | null; prompt: string; textOnly?: boolean }): string[] {
+export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: string | null; prompt: string }): string[] {
   return buildCodexExecArguments({
     ...(model ? { model } : {}),
     ...(cwd ? { workingDirectory: cwd } : {}),
     prompt,
     sandbox: 'read-only',
-    strictConfig: textOnly === true,
-    textOnly,
+    strictConfig: false,
   });
 }
 
@@ -127,7 +126,7 @@ function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: s
   return done.then((r) => ({ stdout: r.stdout, stderr: r.stderr }));
 }
 
-export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, textOnly }: ExecutorInput): Promise<ExecResult> {
+export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal }: ExecutorInput): Promise<ExecResult> {
   isolateCodexCwd(allowedSkills, cwd);
 
   // codex CLI 没有 --system-prompt flag。降级:把 system 拼到 prompt 头部,
@@ -142,7 +141,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     hasWarnedCost = true;
   }
 
-  const args = buildCodexArgs({ model, cwd, prompt: finalPrompt, textOnly });
+  const args = buildCodexArgs({ model, cwd, prompt: finalPrompt });
   const env = buildExecEnv(skillDir);
 
   const start = Date.now();

@@ -10,7 +10,7 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ ...common, operation: z.literal('runs') }),
   z.strictObject({ ...common, operation: z.literal('show'), id: text, revision: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
-  z.strictObject({ ...common, operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: z.string().uuid() }),
+  z.strictObject({ ...common, operation: z.literal('generate'), snapshot: text, executor: text.optional(), model: text.optional(), runId: z.string().uuid() }),
   z.strictObject({ ...common, operation: z.literal('resume'), id: text }),
   z.strictObject({ ...common, operation: z.literal('delete-source'), snapshot: text }),
   z.strictObject({ ...common, operation: z.literal('maintain'), id: text, revision: text, generation: z.number().int().positive(), choice: z.enum(['retain', 'discard']), reason: text }),
@@ -27,7 +27,9 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
     case 'show': return app.detail(request.id, request.revision);
     case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
     case 'generate': {
-      const run = await app.generate(request.snapshot, configuredExtractionModel(request.executor, request.model), request.runId, signal);
+      if (!!request.executor !== !!request.model) throw new Error('Executor and model must be provided together.');
+      const model = request.executor ? configuredExtractionModel(request.executor, request.model!) : undefined;
+      const run = await app.generate(request.snapshot, model, request.runId, signal);
       return { runId: run.runId, status: run.status, committed: run.committed, rejections: run.rejections };
     }
     case 'resume': { const run = app.resume(request.id, signal); return { runId: run.runId, status: run.status, committed: run.committed, rejections: run.rejections }; }

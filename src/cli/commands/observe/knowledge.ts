@@ -2,7 +2,6 @@ import { readFileSync, lstatSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
-import { resolveRuntimeSelection } from '../../lib/runtime-defaults.js';
 import { createLocalKnowledgeApplication } from '../../../observability/knowledge-extraction/local.js';
 import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
 
@@ -25,14 +24,14 @@ export default class ObserveKnowledge extends BaseCommand {
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
     reason: Flags.string({ description: description('保留、舍弃或修订的理由。', 'Reason for retaining, discarding, or editing.') }),
     input: Flags.string({ description: description('revise：包含 title、content、entities、evidence 的 JSON 草稿。', 'revise: JSON draft with title, content, entities, evidence.') }),
-    executor: Flags.string({ description: description('生成执行器，沿用 OMK 的运行配置。', 'Generation executor, using OMK runtime configuration.') }),
-    model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
+    executor: Flags.string({ description: description('可选语义提炼执行器：openai-api 或 anthropic-api；默认本地规则提取。', 'Optional semantic extractor: openai-api or anthropic-api; defaults to local rules.') }),
+    model: Flags.string({ description: description('语义提炼时必须明确指定模型。', 'Explicit model required for semantic extraction.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID，用于重试同一次运行。', 'generate: stable UUID for retrying the same run.') }),
     json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要。', 'Print complete JSON instead of a readable summary.') }),
   };
   static examples = [
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
-    '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
+    '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
   ];
   async run(): Promise<void> {
@@ -47,12 +46,15 @@ export default class ObserveKnowledge extends BaseCommand {
       switch (args.operation) {
         case 'capture': result = app.capture({ path: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }, signal); break;
         case 'generate': {
-          const runtime = resolveRuntimeSelection({ executor: flags.executor, model: flags.model }, { lang: this.lang });
+          if (!!flags.executor !== !!flags.model) this.error('--executor and --model must be provided together', { exit: 2 });
+          const model = flags.executor ? configuredExtractionModel(flags.executor, flags.model!) : undefined;
           const snapshot = need(flags.snapshot, 'snapshot');
           const source = app.source(snapshot);
           if (source.status !== 'available') this.error(`Source unavailable: ${source.reason}`);
-          this.logToStderr(`${runtime.executor} / ${runtime.model} · ${snapshot} · ${this.lang === 'zh' ? '仅发送选定来源片段；费用以执行器实际报告为准。' : 'Only selected excerpts are sent; cost depends on executor reporting.'}`);
-          result = await app.generate(snapshot, configuredExtractionModel(runtime.executor, runtime.model), flags['run-id'], signal);
+          this.logToStderr(model
+            ? `${model.executor} / ${model.model} · ${snapshot} · ${this.lang === 'zh' ? '仅发送选定来源片段；可能产生 API 费用。' : 'Only selected excerpts are sent; API charges may apply.'}`
+            : (this.lang === 'zh' ? '本地规则提取，不调用模型；仅摘录明确标注的条目，等待复核。' : 'Local rules only; no model call. Explicitly labelled entries await review.'));
+          result = await app.generate(snapshot, model, flags['run-id'], signal);
           break;
         }
         case 'runs': result = app.runs(); break;

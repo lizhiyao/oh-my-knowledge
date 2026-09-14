@@ -7,7 +7,7 @@ export const ExtractionRunSchema = z.strictObject({
   runId: z.string().uuid(), requestDigest: z.string(), generation: z.number().int().positive(),
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
   executor: z.string().min(1), model: z.string().min(1),
-  promptVersion: z.literal('knowledge-extraction-v1'), promptHash: z.string(), inputDigest: z.string(),
+  promptVersion: z.enum(['knowledge-extraction-v1', 'knowledge-local-rules-v1']), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
   startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['generating', 'prepared', 'completed', 'failed', 'cancelled']),

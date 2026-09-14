@@ -5,6 +5,7 @@ import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.
 import type { ExtractionRun, ExtractionRunStore } from './runs.js';
 import { checkExtractionResponse, type ExtractionProposal } from './proposals.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
+import { extractLocalProposals, LOCAL_EXTRACTION_VERSION } from './local-extraction.js';
 
 export interface ExtractionModel {
   executor: string; model: string;
@@ -45,19 +46,23 @@ export class KnowledgeApplication {
       sources: grounding.sourceBindings.map((binding) => this.source(binding.snapshotId, binding.sourceVersion)),
     };
   }
-  async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal): Promise<ExtractionRun> {
+  async generate(snapshotId: string, model: ExtractionModel | undefined = undefined, runId = this.ports.id(), signal?: AbortSignal): Promise<ExtractionRun> {
     signal?.throwIfAborted();
     const source = this.source(snapshotId);
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
     const window = source.window;
     // Native paths/raw envelopes stay local. The model receives only registered excerpts and scope notices.
     const input = JSON.stringify({ excerpts: window.excerpts, limitations: window.limitations });
-    const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
-      promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input), actor: this.ports.actor });
+    const executor = model?.executor ?? 'local';
+    const modelId = model?.model ?? LOCAL_EXTRACTION_VERSION;
+    const prompt = model ? EXTRACTION_PROMPT : LOCAL_EXTRACTION_VERSION;
+    const promptVersion = model ? EXTRACTION_PROMPT_VERSION : LOCAL_EXTRACTION_VERSION;
+    const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor, model: modelId,
+      promptHash: this.ports.hash(prompt), inputDigest: this.ports.hash(input), actor: this.ports.actor });
     let run: ExtractionRun = {
       runId, requestDigest, generation: 1, snapshotId, sourceVersion: window.sourceVersion,
-      executor: model.executor, model: model.model, promptVersion: EXTRACTION_PROMPT_VERSION,
-      promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input),
+      executor, model: modelId, promptVersion,
+      promptHash: this.ports.hash(prompt), inputDigest: this.ports.hash(input),
       actor: this.ports.actor, startedAt: this.ports.now(), status: 'generating', intents: [], rejections: [], committed: [],
     };
     // Exclusive reservation precedes any model call. A retry never starts another generation.
@@ -68,7 +73,9 @@ export class KnowledgeApplication {
       return previous.status === 'prepared' ? this.resume(runId, signal) : previous;
     }
     try {
-      const result = await model.generate(EXTRACTION_PROMPT, input, signal);
+      const result: Awaited<ReturnType<ExtractionModel['generate']>> = model
+        ? await model.generate(prompt, input, signal)
+        : { output: JSON.stringify({ proposals: extractLocalProposals(window.excerpts) }), durationMs: 0 };
       signal?.throwIfAborted();
       if (result.output.length > 2 * 1024 * 1024) throw new Error('Extraction response exceeds capacity.');
       run = this.saveRun(run, { rawOutput: result.output,

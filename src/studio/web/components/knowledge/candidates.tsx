@@ -13,7 +13,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
   const [source, setSource] = useState('');
   const [start, setStart] = useState<number | null>(null);
   const [end, setEnd] = useState<number | null>(null);
-  const [executor, setExecutor] = useState('codex');
+  const [executor, setExecutor] = useState('local');
   const [model, setModel] = useState('');
   const [snapshot, setSnapshot] = useState<KnowledgeCandidateSource | null>(null);
   const [notice, setNotice] = useState('');
@@ -99,7 +99,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
     <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
-          <strong title={row.title}>{row.title}</strong><span>{row.choice === 'retain' ? t('已保留', 'Retained') : row.choice === 'discard' ? t('已舍弃', 'Discarded') : t('待处理', 'Unreviewed')} · {t('待复核', 'Pending review')}</span></button>) : <Empty description={t('打开工作区或选择一份日志开始。', 'Open a workspace or select a log to begin.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
+          <strong title={row.title}>{row.title}</strong><span>{row.choice === 'retain' ? t('已保留', 'Retained') : row.choice === 'discard' ? t('已舍弃', 'Discarded') : t('待处理', 'Unreviewed')} · {t('待复核', 'Pending review')}</span></button>) : <Empty description={t('选择日志，默认在本地摘录规则条目，不调用模型；候选需要人工复核。', 'Select a log to extract labelled entries locally without a model; candidates require review.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </aside>
       <article className="candidate-content">
         {!detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
@@ -145,12 +145,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
       <div className="candidate-form"><label>{t('Codex 日志文件', 'Codex log file')}<Input value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
         <Space><label>{t('起始记录（从零开始）', 'First record (zero-based)')}<InputNumber min={0} value={start} disabled={busy} onChange={(value) => { setStart(value); setSnapshot(null); }}/></label><label>{t('结束记录（包含）', 'Last record (inclusive)')}<InputNumber min={0} value={end} disabled={busy} onChange={(value) => { setEnd(value); setSnapshot(null); }}/></label></Space>
         <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('归档并预览范围', 'Capture and preview scope')}</Button>
-        <label>{t('执行器', 'Executor')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={setExecutor} options={['codex', 'claude', 'claude-sdk', 'openai-api', 'anthropic-api'].map((value) => ({ value, label: value }))}/></label>
-        <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>
-        {snapshot && <><Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
+        <label>{t('提取方式', 'Extraction mode')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={setExecutor} options={[{ value: 'local', label: t('本地规则（不调用模型）', 'Local rules (no model)') }, ...['openai-api', 'anthropic-api'].map((value) => ({ value, label: value }))]}/></label>
+        {executor !== 'local' && <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>}
+        {snapshot && <><Alert type="info" title={executor === 'local' ? t('在本地提取，不发送日志。', 'Extract locally without sending logs.') : t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
           {snapshot.limitations.map((item, index) => <Alert type="warning" key={index} title={item}/>)}
-          <p>{t('仅处理选定输入；不会自动修改 AGENTS.md 或 skill。模型费用以执行器实际报告为准。', 'Only selected input is processed. No automatic AGENTS.md or skill edits. Cost depends on executor reporting.')}</p>
-          <Button type="primary" loading={busy} disabled={!model.trim()} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('生成候选', 'Generate candidates')}</Button></>}
+          <p>{executor === 'local' ? t('仅摘录以“经验：”“规则：”“方法：”“教训：”开头的单行条目（支持 Lesson、Rule、Method）。最多 12 条；无匹配时为零条。未做语义归纳或业务实体识别，仍需人工复核。', 'Select single-line entries labelled Lesson:, Rule:, Method:, or their documented Chinese equivalents. At most 12 entries; no matches means zero. No semantic synthesis or business entity identification; review is required.') : t('仅发送选定片段，可能产生 API 费用。', 'Only selected excerpts are sent; API charges may apply.')}</p>
+          <Button type="primary" loading={busy} disabled={executor !== 'local' && !model.trim()} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, ...(executor === 'local' ? {} : { executor, model }), runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('生成候选', 'Generate candidates')}</Button></>}
       </div>
     </Drawer>
     <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} width={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId); })}>{t('保存新修订', 'Save new revision')}</Button>}>
