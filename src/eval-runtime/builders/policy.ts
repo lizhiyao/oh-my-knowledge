@@ -85,13 +85,23 @@ export interface MeasurementPolicyBuilderInput {
   readonly eventDelivery?: MeasurementEventDeliveryInput;
 }
 
-export type MeasurementEventDeliveryInput =
+export type MeasurementEventDeliveryInput = Readonly<{
+  /** Scoring-stage progress cadence; omitted keeps the Core default of `per-batch`. */
+  progressGranularity?: MeasurementPolicy['eventDelivery']['progressGranularity'];
+}> & (
   | Readonly<{ writerMode: 'disabled'; writerFailureMode?: 'ignore' }>
   | Readonly<{
       writerMode: 'optional';
       writerFailureMode?: 'ignore' | 'fail-run';
     }>
-  | Readonly<{ writerMode: 'required'; writerFailureMode?: 'fail-run' }>;
+  | Readonly<{ writerMode: 'required'; writerFailureMode?: 'fail-run' }>
+);
+
+const ProgressGranularityInputSchema = z.enum([
+  'per-coordinate',
+  'per-batch',
+  'start-end-only',
+]);
 
 const RetryBackoffInputSchema = z.discriminatedUnion('backoffKind', [
   z.object({ backoffKind: z.literal('none') }).strict(),
@@ -189,14 +199,17 @@ const EventDeliveryInputSchema = z.discriminatedUnion('writerMode', [
   z.object({
     writerMode: z.literal('disabled'),
     writerFailureMode: z.literal('ignore').optional(),
+    progressGranularity: ProgressGranularityInputSchema.optional(),
   }).strict(),
   z.object({
     writerMode: z.literal('optional'),
     writerFailureMode: z.enum(['ignore', 'fail-run']).optional(),
+    progressGranularity: ProgressGranularityInputSchema.optional(),
   }).strict(),
   z.object({
     writerMode: z.literal('required'),
     writerFailureMode: z.literal('fail-run').optional(),
+    progressGranularity: ProgressGranularityInputSchema.optional(),
   }).strict(),
 ]);
 
@@ -316,6 +329,9 @@ export function createMeasurementPolicy(
       writerMode: eventDelivery.writerMode,
       backpressureMode: 'block',
       writerFailureMode,
+      ...(eventDelivery.progressGranularity === undefined
+        ? {}
+        : { progressGranularity: eventDelivery.progressGranularity }),
     },
   }));
 }

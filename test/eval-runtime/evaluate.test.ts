@@ -662,6 +662,31 @@ describe('canonical eval-runtime API', () => {
     expect(invocations).not.toHaveBeenCalled();
   });
 
+  it('surfaces the Core reference code when no Sample carries a standard answer', async () => {
+    let invocations = 0;
+    const declaration = executor(async ({ input, config }) => {
+      invocations += 1;
+      return { output: config.answers[input.prompt] };
+    });
+    const paired = pairedInput(declaration);
+    const input = {
+      ...paired,
+      dataset: {
+        ...paired.dataset,
+        samples: paired.dataset.samples.map((sample) => ({
+          sampleId: sample.sampleId, input: sample.input,
+        })),
+      },
+    };
+
+    await expect(prepareEvaluation(input as never)).rejects.toMatchObject({
+      code: 'EVAL_RUNTIME_INPUT_INVALID',
+      message: 'Evaluation 无法封存为可执行 Plan。',
+      cause: { failureKind: 'configuration', code: 'EVAL_DEFINITION_MISSING_REFERENCE' },
+    });
+    expect(invocations).toBe(0);
+  });
+
   it('reports the underlying Core configuration code when a reuse suffix fails closed', async () => {
     let targetInvocations = 0;
     const declaration = executor(async ({ input: invocationInput, config }) => {

@@ -191,6 +191,7 @@ export const PUBLIC_API = {
       'ExecResult',
       'FormulaCalculatorId',
       'FormulaEvaluator',
+      'FormulaEvaluatorBinding',
       'FormulaEvaluatorConfig',
       'ExecutedEvaluation',
       'ExecutedEvaluationVerification',
