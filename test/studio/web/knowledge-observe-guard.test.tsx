@@ -16,7 +16,7 @@ import { KnowledgeView } from '../../../src/studio/web/components/knowledge/know
 import type { SkillIndex, SkillIndexEntry } from '../../../src/studio/view-models/skill-index';
 
 function entryWith(observe: SkillIndexEntry['observe'], overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
-  return { skillName: 'thin-skill', doctor: null, observe, doctorHistory: [], observeHistory: [], band: observe?.effectiveBand ?? 'gray', ...overrides };
+  return { skillName: 'thin-skill', doctor: null, observe, doctorHistory: [], band: observe?.effectiveBand ?? 'gray', ...overrides };
 }
 
 const underpowered = {

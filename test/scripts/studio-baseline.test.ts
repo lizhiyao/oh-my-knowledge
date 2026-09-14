@@ -12,7 +12,7 @@ import {
   writeBaselineDataset,
   type BaselineDatasetWriters,
   type ScaleResult,
-} from '../../scripts/studio-baseline.js';
+} from '../../scripts/bench/studio-baseline.js';
 import { writeMeasurementReportBundle } from '../../src/evidence/storage/report-bundle.js';
 import { parseDoctorReport } from '../../src/knowledge-artifacts/doctor/report-parser.js';
 import {

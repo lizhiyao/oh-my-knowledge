@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Alert, Collapse, Descriptions, Empty, Input, Space, Table, Tabs, Tag, Typography } from 'antd';
-import type { DoctorRuleView, DoctorSamplingView } from '../../../application/doctor-format';
+import type { DoctorGraphView, DoctorRuleView, DoctorSamplingView } from '../../../application/doctor-format';
 import { projectDoctorRules, projectDoctorSampling } from '../../../application/doctor-format';
 import type { SkillDoctorSnapshot } from '../../../view-models/skill-index';
 import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/knowledge-page';
@@ -78,13 +78,105 @@ function SamplingAlert({ sampling, zh }: { sampling: DoctorSamplingView; zh: boo
   />;
 }
 
-function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, zh, suffix }: {
+/** 绑定强度的可视档位：三档弱绑定各有名字与配色，不靠 tooltip 区分。 */
+const BINDING_TIER = {
+  'content-hash': { color: 'success', zh: '内容哈希绑定', en: 'content-hash binding' },
+  'source-locator': { color: 'warning', zh: '仅来源路径一致', en: 'source path only' },
+  'name-only': { color: 'error', zh: '仅名称一致', en: 'name only' },
+  mixed: { color: 'warning', zh: '绑定强度不一', en: 'mixed binding' },
+} as const satisfies Record<DoctorGraphView['binding'], { color: string; zh: string; en: string }>;
+
+/** 每一档的口径直接写进页面正文：计数可以被读成结论，强度说明决定了它能不能被这样读。 */
+const BINDING_NOTE = {
+  'content-hash': {
+    zh: '结构按内容哈希绑定，可以跨机器核对到被体检的那份内容。',
+    en: 'Bound by content hash — this structure describes the exact content that was checked.',
+  },
+  'source-locator': {
+    zh: '只核对到来源路径一致，内容有没有变动未被证明，下面的计数不能读成「我改过的就是这份」。',
+    en: 'Only the source path matches. Unchanged content is not proven, so the counts below cannot be read as "this is the content I edited".',
+  },
+  'name-only': {
+    zh: '图谱既没有内容哈希也没有来源路径，只按知识对象名称对上；改名或同名换内容都会读成同一份结构，这不是内容证明。',
+    en: 'The graph carries neither a content hash nor a source path — nodes were matched by name only. Renames and same-name rewrites collapse into this one structure; it is not proof of content.',
+  },
+  mixed: {
+    zh: '同一轮里各对象的绑定强度不一致，这里按最弱的一档呈现，下面的计数不能读成内容证明。',
+    en: 'Binding strengths differ across objects in this run and the weakest one is shown here, so the counts below are not proof of content.',
+  },
+} as const satisfies Record<DoctorGraphView['binding'], { zh: string; en: string }>;
+
+const NODE_KIND = {
+  skill_file: { zh: 'SKILL 文件', en: 'skill files' },
+  frontmatter: { zh: 'frontmatter', en: 'frontmatter' },
+  reference: { zh: '引用', en: 'references' },
+  script: { zh: '脚本', en: 'scripts' },
+  preflight: { zh: '预检', en: 'preflights' },
+  tool: { zh: '工具', en: 'tools' },
+  hard_rule: { zh: '硬规则', en: 'hard rules' },
+  workflow: { zh: '工作流', en: 'workflows' },
+  workflow_node: { zh: '流程节点', en: 'workflow nodes' },
+  doctor_rule_result: { zh: '体检规则结果', en: 'doctor rules' },
+} as const satisfies Record<string, { zh: string; en: string }>;
+
+function nodeKindLabel(kind: string, zh: boolean): string {
+  const label = NODE_KIND[kind as keyof typeof NODE_KIND];
+  return label ? (zh ? label.zh : label.en) : kind;
+}
+
+/** 知识对象结构：体检 graph sidecar 的绑定强度与分类计数（#884）。 */
+function GraphStructure({ graph, run, zh }: { graph: DoctorGraphView; run: SkillDoctorSnapshot; zh: boolean }) {
+  const tier = BINDING_TIER[graph.binding];
+  const counts: [string, number][] = [
+    [zh ? '引用' : 'references', graph.counts.references],
+    [zh ? '脚本' : 'scripts', graph.counts.scripts],
+    [zh ? '工作流' : 'workflows', graph.counts.workflows],
+    [zh ? '流程节点' : 'workflow nodes', graph.counts.workflowNodes],
+    [zh ? '硬规则' : 'hard rules', graph.counts.hardRules],
+    [zh ? '图谱节点' : 'graph nodes', graph.nodeCount],
+    [zh ? '图谱边' : 'graph edges', graph.edgeCount],
+  ];
+  const definitionTotal = graph.nodeGroups.reduce((sum, group) => sum + group.nodes.length, 0);
+  return <div className="knowledge-graph">
+    <div className="knowledge-graph-head">
+      <Text strong>{zh ? '知识对象结构' : 'Knowledge structure'}</Text>
+      <Tag color={tier.color}>{zh ? tier.zh : tier.en}</Tag>
+      {graph.artifactHash && <Text className="knowledge-graph-hash" code title={graph.artifactHash}>{graph.artifactHash}</Text>}
+      <Text type="secondary">{zh ? `来自体检 ${graph.sourceId} · ${date(graph.generatedAt)}` : `from doctor run ${graph.sourceId} · ${date(graph.generatedAt)}`}</Text>
+    </div>
+    <div className="knowledge-graph-note">{zh ? BINDING_NOTE[graph.binding].zh : BINDING_NOTE[graph.binding].en}</div>
+    {graph.sourceId !== run.reportId && <div className="knowledge-graph-note">
+      {zh
+        ? `上面这份结构证据来自体检 ${graph.sourceId}，当前查看的是 ${run.reportId}，计数不属于本轮。`
+        : `This structure was captured in run ${graph.sourceId} while you are viewing ${run.reportId}; the counts are not from the displayed run.`}
+    </div>}
+    <div className="knowledge-graph-counts">{counts.map(([label, value]) => <span key={label}>
+      <Text type="secondary">{label}</Text> <Text strong>{value}</Text>
+    </span>)}</div>
+    {definitionTotal > 0 && <Collapse className="knowledge-rules knowledge-rules--fold" size="small" ghost items={[{
+      key: 'definition-nodes',
+      label: zh
+        ? `展开 ${definitionTotal} 个定义节点（${graph.nodeGroups.length} 类）`
+        : `Show ${definitionTotal} definition nodes (${graph.nodeGroups.length} kinds)`,
+      children: <Collapse size="small" items={graph.nodeGroups.map((group) => ({
+        key: group.nodeKind,
+        label: <Space size={6}><Text strong>{nodeKindLabel(group.nodeKind, zh)}</Text><Tag>{group.nodes.length}</Tag></Space>,
+        children: <ul className="knowledge-graph-nodes">{group.nodes.map((node, index) => <li key={node.stableKey ?? `${node.nodeKind}:${index}`}>
+          <Text>{node.label}</Text>{node.status && <Text type="secondary"> · {node.status}</Text>}
+        </li>)}</ul>,
+      }))}/>,
+    }]}/>}
+  </div>;
+}
+
+function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, graph, zh, suffix }: {
   run: SkillDoctorSnapshot;
   skillName: string;
   isCurrent: boolean;
   doctorRuns: DoctorRunSummary[];
   rules: DoctorRuleView[];
   sampling: DoctorSamplingView | null;
+  graph: DoctorGraphView | null;
   zh: boolean;
   suffix: string;
 }) {
@@ -101,6 +193,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, z
         : <a href={detailHref}>{zh ? '← 返回当前体检' : '← back to current run'}</a>}
     </Space>
     <DoctorRules rules={rules} zh={zh}/>
+    {graph && <GraphStructure graph={graph} run={run} zh={zh}/>}
     {doctorRuns.length > 1 && <div className="knowledge-runs">
       <Text strong>{zh ? '体检历史' : 'Doctor history'}</Text>
       <ul>
@@ -141,7 +234,7 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
       ]}/>
     </>;
   }
-  const { row, insights, toolFailureRate, doctorRuns, doctorRun } = page;
+  const { row, insights, toolFailureRate, doctorRuns, doctorRun, graph } = page;
   const { doctor, observe } = row;
   const activeDoctor = doctorRun ?? doctor;
   return <>
@@ -156,6 +249,7 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
           doctorRuns={doctorRuns}
           rules={projectDoctorRules(activeDoctor.results)}
           sampling={projectDoctorSampling(activeDoctor.results)}
+          graph={graph}
           zh={zh}
           suffix={suffix}
         />

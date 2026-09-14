@@ -198,7 +198,9 @@ between unchanged checks; use clean builds when the tested boundary requires it.
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
-- CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
+- CI classifies the complete event diff on PRs and `main` pushes. The exact root rule files listed in `scripts/ci/scope.mjs` use governance tests and whitespace checks. Ordinary `docs/**/*.md` and root README changes additionally run runtime/document-contract checks and the documentation build, without Studio or the full test matrix.
+- Source, dependencies, CI/build/site configuration, skills, prompts, generated documentation and unknown paths run the complete Node 22/24 matrix. Missing history, empty diffs or classification errors select the full gate. Renames include both old and new paths; mixed changes use the strongest gate.
+- Required checks remain `test (22)` and `test (24)`. They require the selected gate to succeed; a failed, cancelled or unexpectedly skipped gate cannot pass. Branch protection and the requirement to stay current with `main` are unchanged.
 - 按层归属测试契约：领域单元测试覆盖完整分支矩阵，command 集成测试覆盖参数到业务的接线和输出信封，真实 `node dist/cli/index.js` 只覆盖 dispatcher、startup、进程退出、模块加载时 cwd、打包资源等进程边界。
 - command 业务测试优先使用 `test/helpers/run-command.ts` 运行源码 Command 的完整 Oclif 生命周期，不要为每个 case 重复启动 Node。只有被测行为依赖 dispatcher、模块加载时环境或独立 `process` 时才使用 `execFile`，并在测试注释里说明该边界。
 - Oclif 的公共行为（例如 unknown flag 的统一 exit code）用代表命令锁一次；各命令只增加自身特有的 flag 校验、文案或历史回归，避免重复框架契约。
@@ -235,7 +237,7 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 
 ### 生成文档
 
-命令的 description／flags／args／examples 和 `CLI_EVALUATION_INPUT_REGISTRY` 是对应生成内容的单一来源。`scripts/build-docs.ts` 维护五个目标：
+命令的 description／flags／args／examples 和 `CLI_EVALUATION_INPUT_REGISTRY` 是对应生成内容的单一来源。`scripts/build/docs.ts` 维护五个目标：
 
 | 目标 | 生成内容 |
 |---|---|
@@ -289,3 +291,41 @@ PRs expanding into those areas will usually be declined. If you're unsure whethe
 ## Security
 
 See the [Security notice](./README.md#security-notice) in the README for risks around custom assertions and the local report server.
+
+## Release reliability and diagnosis
+
+CD waits up to ten minutes for a successful **full** CI run on the exact tag
+commit. Evidence must come from this repository's `ci.yml`, from a `main` push
+or an explicit CI dispatch, with quality and every Node 22/24 shard successful.
+A PR check, ancestor commit, skipped matrix or older success behind a newer
+failed run cannot substitute. If the tag commit only has lightweight CI, dispatch
+`CI` manually on that same tag, let it finish, and rerun release verification;
+do not move/recreate the release tag. CI dispatch always selects the full gate.
+
+Verification has read-only permissions. It builds once, packs with lifecycle
+scripts disabled, installs that tarball into an isolated temporary directory,
+and checks the CLI, module imports and packaged assets. The immutable artifact
+contains the tarball, SHA-512 integrity, commit/version identity, installation
+result and CI run/attempt reference. The OIDC publishing job downloads that
+artifact and validates its identity and digest again, then publishes the tarball
+with `--ignore-scripts`. It does not reinstall dependencies or rebuild the package.
+Local `prepublishOnly` remains intact for manual folder publication.
+
+Publication is serialized without cancelling an active upload. A registry
+version with the exact same package integrity is treated as already uploaded;
+a different or missing integrity fails closed. Tests, installs, builds and npm
+publication are never automatically retried. Only read-only GitHub/registry GETs
+retry transient timeouts, selected network failures, HTTP 408/429/5xx (at most
+three attempts). An uncertain upload requires inspecting the registry and
+rerunning the failed publish job with the original artifact. Rerunning all jobs
+can rebuild different bytes and is not a substitute for reusing that artifact.
+
+CI/CD bounded commands preserve logs, periodic memory/process samples and a
+structured outcome: success, command failure, process timeout, evidence-backed
+OOM, cancellation, execution failure, explicit network failure or an unexplained signal. `scripts/ci/diagnostics.mjs report`
+aggregates counts into `summary.json` and the Actions job summary. Diagnostic
+artifacts include the run, attempt and job identity and are retained for 14 days;
+use these categories when comparing failure frequency. SIGKILL alone is not OOM,
+and runner loss or a job-level kill may prevent final records/upload: missing
+evidence remains unknown. The process deadline precedes the job deadline so
+normal hangs leave time for termination, classification and artifact upload.

@@ -4,11 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
+import { persistDoctorGraphSidecars } from '../../../src/evidence/graph/doctor.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
 import { createCoreStudioCatalog } from '../../../src/studio/application/core-run-catalog.js';
 import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { runConformanceScenario } from '../../eval-core/conformance/harness.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';
+import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
 
 const servers: ReportServer[] = [];
 const roots: string[] = [];
@@ -27,9 +29,21 @@ describe('Next Studio production boundary', () => {
     const doctorsDir = join(root, 'doctors');
     const analysesDir = join(root, 'analyses');
     const skillName = 'audit/<script>alert(1)</script>';
-    writeMeasurementReportBundle({ rootDir: doctorsDir, measurementDomain: 'doctor', recordId: 'knowledge-test', reportId: 'doctor-test', createdAt: '2026-09-10T00:00:00Z', report: {
+    const doctorReport: DoctorReport = {
       kind: 'doctor', schemaVersion: '3.0.0', id: 'doctor-test', timestamp: '2026-09-10T00:00:00Z', cliVersion: 'test', cwd: root, executorName: 'script', model: 'test', outcome: 'warnings_only', totals: {pass:0,warn:1,fail:0}, ruleStats: {pass:0,warn:1,fail:0,skipped:0,total:1}, skills: [{skillName,skillPath:root,status:'warn',results:[{ruleId:'fixture',severity:'warn',labelKey:'fixture',status:'warn',message:'fixture warned',detail:{displayName:'<script>unsafe()</script>'},durationMs:0}]}],
-    }});
+    };
+    const { reportPath } = writeMeasurementReportBundle({ rootDir: doctorsDir, measurementDomain: 'doctor', recordId: 'knowledge-test', reportId: 'doctor-test', createdAt: '2026-09-10T00:00:00Z', report: doctorReport });
+    // 用真实生产者落 graph sidecar：绑定强度、计数与 sourceLocator 都来自体检写入的那份文件，
+    // 而不是测试手搓的近似结构。sourceLocator 指向 tmpdir，正好用来验证机器路径不外泄。
+    persistDoctorGraphSidecars({
+      report: doctorReport,
+      skill: doctorReport.skills[0]!,
+      sourcePath: reportPath,
+      outputDir: doctorsDir,
+      fileStem: 'knowledge-test',
+      generatedAt: '2026-09-10T00:00:00Z',
+      lang: 'zh',
+    });
     const a = createNextStudioServer({port:0,doctorsDir,analysesDir,observationsDir:join(root,'a'),coreStudioCatalog:catalog});
     const b = createNextStudioServer({port:0,doctorsDir:join(root,'empty-doctors'),analysesDir,observationsDir:join(root,'b'),coreStudioCatalog:{...catalog,list:async()=>[]}});
     servers.push(a,b);
@@ -64,17 +78,40 @@ describe('Next Studio production boundary', () => {
     const skillHtml = await skill.text();
     assert.match(skillHtml, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
     for (const label of ['健康体检','生产观测','待优化项']) assert.ok(skillHtml.includes(label));
+    // 结构证据随真实 sidecar 出现，且弱绑定必须在页面上自己说清楚（#884）。
+    assert.match(skillHtml, /知识对象结构/);
+    assert.match(skillHtml, /仅来源路径一致/);
+    assert.match(skillHtml, /内容有没有变动未被证明/);
+    // RSC 会把页面 props 序列化进 HTML 负载：sourceLocator／graphPath／evidence path 都是用户
+    // 机器的绝对路径，一旦上了页面模型就在这里泄出去，所以断言整页读不到 tmpdir。
+    assert.ok(!skillHtml.includes(root), 'skill detail must not leak the absolute skill path');
+    assert.ok(!knowledgeHtml.includes(root), 'knowledge list must not leak it either');
     // 点名一个不存在的轮次不静默回落到当前那次：URL 与所见证据必须一致。
     const staleRun = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=pruned-run`);
     assert.equal(staleRun.status, 404);
     assert.equal(await staleRun.text(), 'doctor_run_not_found');
-    assert.equal((await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`)).status, 200);
+    const drilled = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`);
+    assert.equal(drilled.status, 200);
+    // 换语言不改所见证据：下钻地址的 ?doctorRun= 必须跟着切换链接一起走。
+    const drilledSwitch = /<a class="studio-lang"[^>]*href="([^"]+)"/u.exec(await drilled.text())?.[1];
+    assert.equal(drilledSwitch?.replaceAll('&amp;', '&'), `/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test&lang=en`);
     assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
-    // 壳层只有一份：迁移完成后评测页与兄弟页面共用同一个 header，差异只在 aria-current。
+    // 语言切换是真实链接：跟随中文页给出的地址要落到同一页的英文版（#880）。
+    const knowledgeZh = await (await fetch(`${urlA}/knowledge`)).text();
+    const switchHref = /<a class="studio-lang"[^>]*href="([^"]+)"/u.exec(knowledgeZh)?.[1];
+    assert.equal(switchHref, '/knowledge?lang=en');
+    const switched = await fetch(`${urlA}${switchHref}`);
+    assert.equal(switched.status, 200);
+    assert.match(await switched.text(), /aria-label="Switch to the Chinese interface"/);
+    // 壳层只有一份：迁移完成后评测页与兄弟页面共用同一个 header，差异只在 aria-current
+    // 与语言切换的目标地址（它按当前页生成，逐页不同，单独断言）。
     const knowledgeEn = await (await fetch(`${urlA}/knowledge?lang=en`)).text();
-    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0].replaceAll(' aria-current="page"', '');
+    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0]
+      .replace(/<a class="studio-lang"[\s\S]*?<\/a>/u, '<lang-switch/>')
+      .replaceAll(' aria-current="page"', '');
     const measureShell = shellOf(htmlA);
     assert.equal(measureShell, shellOf(knowledgeEn));
+    assert.match(knowledgeEn, /<a class="studio-lang"[^>]*href="\/knowledge"/u);
     for (const href of ['href="/observe?lang=en"', 'href="/measure?lang=en"', 'href="/knowledge?lang=en"']) {
       assert.ok(measureShell.includes(href), `primary navigation links ${href}`);
     }

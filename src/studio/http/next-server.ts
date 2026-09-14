@@ -155,6 +155,11 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       request.headers['x-omk-studio-lang'] = searchParams.get('lang') === 'en' ? 'en' : 'zh';
       // 一级导航与页面组同源：裁掉兄弟路由的宿主不提供导航，否则链接指向自己没挂的页面。
       request.headers['x-omk-studio-navigation'] = pageRoutes ? 'full' : 'none';
+      // 语言切换要保留当前页的其余查询参数（如 ?doctorRun=），而 Next 侧 useSearchParams
+      // 会把整棵子树降级为纯客户端渲染、SSR 里没有地址，所以路径由宿主按请求注入。
+      const requestUrl = request.url ?? '/';
+      const queryIndex = requestUrl.indexOf('?');
+      request.headers['x-omk-studio-route'] = queryIndex < 0 ? requestUrl : `${requestUrl.slice(0, queryIndex)}?${requestUrl.slice(queryIndex + 1)}`;
       const handler = app.getRequestHandler();
       if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
       else if (healthPage) await nextHealthContext.run(healthPage, () => handler(request, response));

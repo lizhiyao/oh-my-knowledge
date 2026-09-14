@@ -2,7 +2,7 @@
 
 omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
 
-<!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
+<!-- 维护者须知：本文件里的 Flags 区块由 scripts/build/docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
 ## `omk init`
 

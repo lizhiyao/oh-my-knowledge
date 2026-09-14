@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { findSlowTestFiles, parseTop } from '../../scripts/test-profile.js';
+import { findSlowTestFiles, parseTop } from '../../scripts/bench/test-profile.js';
 
 describe('test-profile', () => {
   it('默认展示 15 个慢文件，并允许覆盖数量', () => {

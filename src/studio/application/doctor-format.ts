@@ -6,6 +6,7 @@
  * application/health-format.ts、application/managed-format.ts 同一条边界。
  */
 import type { DoctorRuleResult, DoctorRuleStatus } from '../../knowledge-artifacts/doctor/contracts.js';
+import type { SkillGraphNodePreview, SkillGraphSnapshot } from '../view-models/skill-index.js';
 
 /** 体检引擎在 finding 上使用的中文分级词（见 doctor/health/dimension-spec.ts 的 HealthFindingLevel）。 */
 type EngineFindingLevel = '错误' | '警告' | '建议';
@@ -122,4 +123,80 @@ export function projectDoctorSampling(results: readonly DoctorRuleResult[]): Doc
   if (typeof requested !== 'number' || typeof succeeded !== 'number') return null;
   if (requested <= 1 || succeeded >= requested) return null;
   return { requested, succeeded };
+}
+
+/** 结构证据的分组条目：同一类定义节点归并，供折叠区按类呈现。 */
+export interface DoctorGraphNodeGroup {
+  nodeKind: string;
+  nodes: SkillGraphNodePreview[];
+}
+
+export interface DoctorGraphView {
+  /**
+   * Studio 聚合 sidecar 时实际采用的绑定强度。`source-locator` 是路径对上、`name-only` 只是
+   * 名称对上、`mixed` 是同一轮里强弱不一，三档都不构成内容证明。
+   */
+  binding: SkillGraphSnapshot['bindingStrength'];
+  /**
+   * 可跨机器核对的内容身份。`sourceLocator` 是用户本机的绝对路径，对页面没有额外信息量，
+   * 因此不进这层投影，只留内容哈希。
+   */
+  artifactHash?: string;
+  /** 该结构来自哪一轮体检——与页面正在查看的轮次不一定同一次。 */
+  sourceId: string;
+  generatedAt: string;
+  nodeCount: number;
+  edgeCount: number;
+  counts: {
+    references: number;
+    scripts: number;
+    workflows: number;
+    workflowNodes: number;
+    hardRules: number;
+  };
+  nodeGroups: DoctorGraphNodeGroup[];
+}
+
+/** 定义节点的呈现顺序：跟着 skill 的物理结构走，未知类型排最后且不丢弃。 */
+const DEFINITION_NODE_ORDER: readonly string[] = [
+  'skill_file', 'frontmatter', 'reference', 'script', 'preflight', 'tool',
+  'hard_rule', 'workflow', 'workflow_node', 'doctor_rule_result',
+];
+
+function nodeOrder(kind: string): number {
+  const index = DEFINITION_NODE_ORDER.indexOf(kind);
+  return index < 0 ? DEFINITION_NODE_ORDER.length : index;
+}
+
+/**
+ * doctor graph sidecar 的结构证据投影。没有 sidecar、或 sidecar 里没有 doctor 阶段的
+ * 结构事实时返回 null —— 页面宁可不显示，也不给出一份读不出绑定强度的空壳。
+ */
+export function projectDoctorGraph(graph: SkillGraphSnapshot | undefined | null): DoctorGraphView | null {
+  const stage = graph?.doctor;
+  if (!graph || !stage) return null;
+  const grouped = new Map<string, SkillGraphNodePreview[]>();
+  for (const node of stage.definitionNodes) {
+    const list = grouped.get(node.nodeKind) ?? [];
+    list.push(node);
+    grouped.set(node.nodeKind, list);
+  }
+  return {
+    binding: graph.bindingStrength,
+    ...(graph.artifactHash ? { artifactHash: graph.artifactHash } : {}),
+    sourceId: stage.sourceId,
+    generatedAt: stage.generatedAt,
+    nodeCount: stage.nodeCount,
+    edgeCount: stage.edgeCount,
+    counts: {
+      references: stage.references,
+      scripts: stage.scripts,
+      workflows: stage.workflows,
+      workflowNodes: stage.workflowNodes,
+      hardRules: stage.hardRules,
+    },
+    nodeGroups: [...grouped]
+      .sort(([left], [right]) => nodeOrder(left) - nodeOrder(right) || left.localeCompare(right))
+      .map(([nodeKind, nodes]) => ({ nodeKind, nodes })),
+  };
 }

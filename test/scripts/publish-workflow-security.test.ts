@@ -19,7 +19,7 @@ interface WorkflowStep {
 
 interface PublishWorkflow {
   jobs?: {
-    publish?: {
+    [name: string]: {
       'runs-on'?: string;
       permissions?: Record<string, unknown>;
       steps?: WorkflowStep[];
@@ -46,16 +46,16 @@ describe('npm 发布供应链', () => {
     assert.equal(setupNode?.with?.['node-version'], '24.x');
     assert.equal(setupNode?.with?.['package-manager-cache'], false, '发布构建不应复用包管理器缓存');
     assert.match(setupPackageManagers?.run ?? '', /npm@\^11\.5\.1/, 'Trusted Publishing 要求 npm >= 11.5.1');
-    assert.match(publish?.run ?? '', /^npm publish\b/);
+    assert.match(publish?.run ?? '', /scripts\/release\/package\.mjs publish/);
     assert.doesNotMatch(publish?.run ?? '', /--provenance\b/, 'OIDC 发布会自动生成 provenance');
-    assert.equal(publish?.env, undefined, 'npm publish 不应注入 token 环境变量');
+    assert.deepEqual(Object.keys(publish?.env ?? {}), ['NPM_DIST_TAG'], '发布步骤仅传递频道，不注入 npm token');
     assert.doesNotMatch(source, /NPM_TOKEN|NODE_AUTH_TOKEN/, '发布 workflow 不应引用长期 npm token');
   });
 
   it('prerelease 使用 next dist-tag 并创建 GitHub prerelease，正式版本使用 latest', () => {
     const { workflow } = loadWorkflow();
     const steps = workflow.jobs?.publish?.steps ?? [];
-    const validate = steps.find((step) => step.name === 'Validate release tag');
+    const validate = workflow.jobs?.verify?.steps?.find((step) => step.name === 'Validate release tag');
     const publish = steps.find((step) => step.name === 'Publish to NPM');
     const githubRelease = steps.find((step) => step.name === 'Create GitHub Release');
 
@@ -63,10 +63,10 @@ describe('npm 发布供应链', () => {
     assert.match(validate?.run ?? '', /npm_tag=latest/);
     assert.match(validate?.run ?? '', /github_prerelease=true/);
     assert.match(validate?.run ?? '', /github_prerelease=false/);
-    assert.match(publish?.run ?? '', /steps\.release\.outputs\.npm_tag/);
+    assert.equal(publish?.env?.NPM_DIST_TAG, '${{ needs.verify.outputs.npm_tag }}');
     assert.equal(
       githubRelease?.with?.prerelease,
-      '${{ steps.release.outputs.github_prerelease }}',
+      '${{ needs.verify.outputs.github_prerelease }}',
     );
   });
 });

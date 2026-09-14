@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [main]
   pull_request:
@@ -11,8 +12,59 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Classify the complete change against the event base
+        id: scope
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD_SHA: ${{ github.sha }}
+        run: node scripts/ci/scope.mjs
+
+  lightweight:
+    needs: changes
+    if: ${{ needs.changes.outputs.scope == 'rules' || needs.changes.outputs.scope == 'docs' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --immutable
+      - name: Check changed text and repository rules
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD_SHA: ${{ github.sha }}
+        run: |
+          git diff --check "$CI_BASE_SHA" "$CI_HEAD_SHA" --
+          yarn test test/scripts/review-governance.test.ts test/scripts/ci-scope.test.ts
+      - name: Check documentation contracts and build the site
+        if: ${{ needs.changes.outputs.scope == 'docs' }}
+        run: |
+          yarn build:runtime
+          yarn build:docs:check
+          yarn test test/scripts/markdown-cmd-refs.test.ts test/scripts/docs-i18n-mirror-links.test.ts test/scripts/vitepress-config-links.test.ts test/scripts/evaluation-docs-current-contract.test.ts test/scripts/eval-core-terminology-guard.test.ts test/scripts/eval-runtime-facade-guard.test.ts test/eval-runtime/public-api.test.ts
+          yarn docs:build
+
   quality:
+    needs: changes
+    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     runs-on: ubuntu-latest
     # 实测 1.6~2.6 分钟；没有超时则卡死的 runner 会一直占着作业，直到平台回收。
     timeout-minutes: 12
@@ -27,9 +79,23 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --immutable
-      - run: yarn ci:quality
+      - run: node scripts/ci/diagnostics.mjs run quality "$RUNNER_TEMP/ci-diagnostics" 600000 yarn ci:quality
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
 
   test_22_shard:
+    needs: changes
+    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test shard (22, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     # 实测成功作业最长约 4.1 分钟；不给超时则失联的 runner 会把作业占满到平台默认上限。
@@ -49,14 +115,27 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - run: yarn build
-      # 内层 timeout 必须早于 timeout-minutes 触发：由我们自己收尾，日志才会留下测试停在哪
-      # 一个文件；只有 runner 侧超时的话，作业连一段可查的输出都不会有。
+      # 进程超时早于作业超时，保留测试进度、资源采样与退出分类。
       # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
       # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: timeout -k 30s 540 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
 
   test_24_shard:
+    needs: changes
+    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test shard (24, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -74,33 +153,65 @@ jobs:
       - run: yarn install --immutable
       - run: yarn build
       # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: timeout -k 30s 540 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
 
-  # Keep the required status names stable while the full suites run in parallel.
+  # Required names stay stable. A skipped suite is valid only after an explicit light gate succeeds.
   test_22:
     name: test (22)
     if: ${{ always() }}
-    needs: [quality, test_22_shard]
+    needs: [changes, lightweight, quality, test_22_shard]
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
-      - name: Require quality and every Node 22 shard
+      - name: Require the selected gate
         env:
+          CHANGE_RESULT: ${{ needs.changes.result }}
+          SCOPE: ${{ needs.changes.outputs.scope }}
+          LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_22_shard.result }}
         run: |
-          test "$QUALITY_RESULT" = success
-          test "$SHARD_RESULT" = success
+          if [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
+            test "$LIGHT_RESULT" = success
+            test "$QUALITY_RESULT" = skipped
+            test "$SHARD_RESULT" = skipped
+          else
+            test "$QUALITY_RESULT" = success
+            test "$SHARD_RESULT" = success
+          fi
 
   test_24:
     name: test (24)
     if: ${{ always() }}
-    needs: [quality, test_24_shard]
+    needs: [changes, lightweight, quality, test_24_shard]
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
-      - name: Require quality and every Node 24 shard
+      - name: Require the selected gate
         env:
+          CHANGE_RESULT: ${{ needs.changes.result }}
+          SCOPE: ${{ needs.changes.outputs.scope }}
+          LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_24_shard.result }}
         run: |
-          test "$QUALITY_RESULT" = success
-          test "$SHARD_RESULT" = success
+          if [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
+            test "$LIGHT_RESULT" = success
+            test "$QUALITY_RESULT" = skipped
+            test "$SHARD_RESULT" = skipped
+          else
+            test "$QUALITY_RESULT" = success
+            test "$SHARD_RESULT" = success
+          fi
