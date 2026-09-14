@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [main]
   pull_request:
@@ -78,7 +79,19 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --immutable
-      - run: yarn ci:quality
+      - run: node scripts/ci-run.mjs quality "$RUNNER_TEMP/ci-diagnostics" 600000 yarn ci:quality
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-report.mjs "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
 
   test_22_shard:
     needs: changes
@@ -102,12 +115,23 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - run: yarn build
-      # 内层 timeout 必须早于 timeout-minutes 触发：由我们自己收尾，日志才会留下测试停在哪
-      # 一个文件；只有 runner 侧超时的话，作业连一段可查的输出都不会有。
+      # 进程超时早于作业超时，保留测试进度、资源采样与退出分类。
       # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
       # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: timeout -k 30s 540 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - run: node scripts/ci-run.mjs tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-report.mjs "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
 
   test_24_shard:
     needs: changes
@@ -129,7 +153,19 @@ jobs:
       - run: yarn install --immutable
       - run: yarn build
       # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: timeout -k 30s 540 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - run: node scripts/ci-run.mjs tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-report.mjs "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
 
   # Required names stay stable. A skipped suite is valid only after an explicit light gate succeeds.
   test_22:

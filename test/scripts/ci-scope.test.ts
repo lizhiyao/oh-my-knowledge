@@ -60,7 +60,7 @@ const workflow = load(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
 
 describe('required CI checks', () => {
   it('always emits both protected names and falls back to full jobs on missing classification', () => {
-    expect(Object.keys(workflow.on)).toEqual(['push', 'pull_request']);
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch', 'push', 'pull_request']);
     for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
       expect(workflow.jobs[job].needs).toBe('changes');
       expect(workflow.jobs[job].if).toContain("needs.changes.result != 'success'");

@@ -3,35 +3,38 @@ name: CD - Publish to NPM
 on:
   push:
     tags:
-      - 'v*' # 仅在推送以 'v' 开头的 Tag 时触发，例如 v0.19.0
+      - 'v*'
+
+# Serialize publication, including different tags updating the same npm channel.
+concurrency:
+  group: npm-publication
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
+    # Stage deadlines total 27 minutes; reserve time for setup and diagnostics.
+    timeout-minutes: 32
     permissions:
-      contents: write # 创建 GitHub Release(npm publish 完成后自动建, release notes 由 GitHub 从 PR 列表自动生成)
-      id-token: write # npm Trusted Publishing 通过 OIDC 换取短期发布凭证，并自动生成 provenance
-
+      contents: read
+      actions: read
+    outputs:
+      npm_tag: ${{ steps.release.outputs.npm_tag }}
+      github_prerelease: ${{ steps.release.outputs.github_prerelease }}
+      artifact_name: release-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
     - name: Checkout Code
       uses: actions/checkout@v7
-
+      with:
+        fetch-depth: 0
     - name: Setup Node.js
       uses: actions/setup-node@v7
       with:
         node-version: '24.x'
-        registry-url: 'https://registry.npmjs.org'
         package-manager-cache: false
-
-    - name: Setup package managers
-      run: |
-        corepack enable
-        npm install --global 'npm@^11.5.1'
-        node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)" "$(npm --version)"
-
-    - name: Install dependencies
-      run: yarn install --immutable
-
     - name: Validate release tag
       id: release
       shell: bash
@@ -71,29 +74,92 @@ jobs:
 
         git fetch --no-tags origin main
         tag_commit="$(git rev-list -n 1 "${tag_ref}")"
+        if [[ "${tag_commit}" != "${GITHUB_SHA}" ]]; then
+          echo "::error::Release tag moved after this run started."
+          exit 1
+        fi
         if ! git merge-base --is-ancestor "${tag_commit}" origin/main; then
           echo "::error::Release tag ${GITHUB_REF_NAME} must point to a commit reachable from origin/main."
           exit 1
         fi
 
-    - name: Run Lint
-      run: yarn run lint
+    - name: Require full CI evidence for the exact release commit
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: node scripts/ci-run.mjs ci-evidence "$RUNNER_TEMP/release-diagnostics" 660000 node scripts/release-evidence.mjs "$RUNNER_TEMP/release-bundle"
+    - name: Setup package managers
+      run: corepack enable
+    - name: Install dependencies
+      run: node scripts/ci-run.mjs install "$RUNNER_TEMP/release-diagnostics" 240000 yarn install --immutable
+    - name: Build once
+      run: node scripts/ci-run.mjs build "$RUNNER_TEMP/release-diagnostics" 300000 yarn build
+    - name: Pack the built bytes
+      run: node scripts/ci-run.mjs pack "$RUNNER_TEMP/release-diagnostics" 60000 node scripts/release-package.mjs pack "$RUNNER_TEMP/release-bundle"
+    - name: Verify the package through an isolated installation
+      run: node scripts/ci-run.mjs package-smoke "$RUNNER_TEMP/release-diagnostics" 360000 node scripts/release-package.mjs smoke "$RUNNER_TEMP/release-bundle"
+    - name: Save verified package and evidence
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/release-bundle
+        if-no-files-found: error
+        retention-days: 14
+    - name: Summarize diagnostics
+      if: ${{ always() }}
+      env:
+        CI_JOB_STATUS: ${{ job.status }}
+      run: node scripts/ci-report.mjs "$RUNNER_TEMP/release-diagnostics"
+    - name: Save diagnostics
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-verify-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/release-diagnostics
+        retention-days: 14
 
-    - name: Build Project
-      run: yarn run build
-
-    - name: Run Tests
-      run: yarn run test
-
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24.x'
+        registry-url: 'https://registry.npmjs.org'
+        package-manager-cache: false
+    - name: Setup package managers
+      run: |
+        npm install --global 'npm@^11.5.1'
+        node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)" "$(npm --version)"
+    - name: Download verified package
+      uses: actions/download-artifact@v7
+      with:
+        name: ${{ needs.verify.outputs.artifact_name }}
+        path: ${{ runner.temp }}/release-bundle
     - name: Publish to NPM
-      run: npm publish --access public --tag "${{ steps.release.outputs.npm_tag }}"
-
-    # softprops/action-gh-release 是行业通用 GitHub Release action (~17k stars)。
-    # generate_release_notes 让 GitHub 直接从 tag 之间的 PR 列表自动生成
-    # "What's Changed" + "Full Changelog: compare URL"。不再维护单独的 CHANGELOG.md —
-    # PR title / description 是唯一信息源, BREAKING / migration 在 PR 描述里写清楚。
+      env:
+        NPM_DIST_TAG: ${{ needs.verify.outputs.npm_tag }}
+      run: node scripts/ci-run.mjs publish "$RUNNER_TEMP/release-diagnostics" 240000 node scripts/release-package.mjs publish "$RUNNER_TEMP/release-bundle" "$NPM_DIST_TAG"
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
-        prerelease: ${{ steps.release.outputs.github_prerelease }}
+        prerelease: ${{ needs.verify.outputs.github_prerelease }}
+    - name: Summarize diagnostics
+      if: ${{ always() }}
+      env:
+        CI_JOB_STATUS: ${{ job.status }}
+      run: node scripts/ci-report.mjs "$RUNNER_TEMP/release-diagnostics"
+    - name: Save diagnostics
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-publish-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/release-diagnostics
+        retention-days: 14
