@@ -1,18 +1,16 @@
 'use client';
 import { resolveKnowledgeWorkspace } from './workspace';
-import { ConversationPicker } from './conversation-picker';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread, initialTurn, initialId }: { lang: Language; initialWorkspace?: string; initialThread?: string; initialTurn?: string; initialId?: string }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
-  const [showConversations, setShowConversations] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(!!initialWorkspace);
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
@@ -76,7 +74,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
       setExecutor(provider); setModel(defaultModel);
       if (root) { await refresh(root, true); if (initialId) { const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id: initialId }); setDetail(next); } }
-      if (initialThread) setShowConversations(true);
     });
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
@@ -112,18 +109,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   return <section className="knowledge-candidates">
-    <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('从工作记录提炼知识', 'Extract knowledge from work logs')}</h1></div>
+    <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
       <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
-        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={() => setShowConversations(true)}>{t('从会话选择', 'Choose a conversation')}</Button>}
+        {rows.length > 0 && <Button type="primary" disabled={busy} href={`/observe?${new URLSearchParams({ lang })}`}>{t('从会话选择', 'Choose a conversation')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
         <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
-    {detail?.origin && <a href={`/observe/conversations/${encodeURIComponent(detail.origin.threadId)}/tasks/${encodeURIComponent(detail.origin.turnId)}?${new URLSearchParams({ workspace, ...(zh ? {} : { lang: 'en' }) })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
+    {detail?.origin && <a href={`/observe/conversations/${encodeURIComponent(detail.origin.threadId)}${detail.origin.turnId ? `/tasks/${encodeURIComponent(detail.origin.turnId)}` : ''}?${new URLSearchParams({ workspace, ...(zh ? {} : { lang: 'en' }) })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={() => workspace ? setShowConversations(true) : setShowSettings(true)} onHistory={() => setShowRuns(true)}/>
+      onChoose={() => { window.location.assign(`/observe?${new URLSearchParams({ lang })}`); }} onHistory={() => setShowRuns(true)}/>
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
@@ -169,11 +166,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
         </div>
       </aside>
     </div>}
-    <Drawer title={t('从会话提炼知识', 'Extract from a conversation')} open={showConversations} onClose={() => !busy && setShowConversations(false)} width={720} destroyOnHidden>
-      {error && <Alert type="error" title={error}/>}
-      {!workspace && <Button onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>}
-      <ConversationPicker lang={lang} initialThread={initialThread} initialTurn={initialTurn} workspace={workspace} busy={busy} api={api} work={work} onCaptured={value => { setSnapshot(value); setShowConversations(false); setShowImport(true); }}/>
-    </Drawer>
     <Drawer title={t('本次保存位置', 'Save location for this operation')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在右上角“设置”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
         <p className="candidate-help">{t('全局位置：', 'Global location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用全局位置', 'Use global location')}</Button>
@@ -247,7 +239,7 @@ export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, lat
         <span>{t('先预览内容，再确认发送给模型。', 'Preview the content before confirming a model request.')}</span>
       </div>
       <ol className="candidate-steps">
-        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('在观测会话里选择任务和消息。', 'Choose a task and messages from an observed conversation.')}</span></li>
+        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('打开观测会话，直接点击提炼知识。', 'Open an observed conversation and click Extract knowledge.')}</span></li>
         <li><strong>{t('预览并提炼', 'Preview and extract')}</strong><span>{t('确认内容和模型，生成待核对的知识。', 'Confirm the content and model to propose knowledge.')}</span></li>
         <li><strong>{t('核对并保留', 'Review and keep')}</strong><span>{t('对照原文，保留、修改或舍弃。', 'Check the original text, then keep, edit, or discard.')}</span></li>
       </ol>

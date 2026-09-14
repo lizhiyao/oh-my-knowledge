@@ -10,8 +10,8 @@ const common = { workspace: text };
 const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversations') }),
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversation'), threadId: text }),
-  z.strictObject({ workspace: z.string().optional(), operation: z.literal('preview-conversation'), threadId: text, turnId: text }),
-  z.strictObject({ ...common, operation: z.literal('capture-conversation'), threadId: text, turnId: text, sourceVersion: text, recordIndexes: z.array(z.number().int().nonnegative()).min(1).max(1000) }),
+  z.strictObject({ workspace: z.string().optional(), operation: z.literal('preview-conversation'), threadId: text, turnId: text.optional() }),
+  z.strictObject({ ...common, operation: z.literal('capture-conversation'), threadId: text, turnId: text.optional(), sourceVersion: text, recordIndexes: z.array(z.number().int().nonnegative()).min(1).max(1000) }),
   z.strictObject({ ...common, operation: z.literal('related'), threadId: text }),
   z.strictObject({ ...common, operation: z.literal('list') }),
   z.strictObject({ ...common, operation: z.literal('runs') }),
@@ -39,7 +39,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
   }
   if (request.operation === 'preview-conversation' || request.operation === 'capture-conversation') {
     if (!catalog) throw new Error('Conversation catalog unavailable.');
-    const { window, messages } = await conversationExtractionSource(catalog, request.threadId, request.turnId);
+    const { window, messages } = await conversationExtractionSource(catalog, request.threadId, request.turnId, signal);
     if (request.operation === 'preview-conversation') return { origin: window.origin, sourceVersion: window.sourceVersion, messages };
     if (request.sourceVersion !== window.sourceVersion) throw new Error('Source conflict. Preview again.');
     const selected = new Set(request.recordIndexes);

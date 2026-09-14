@@ -27,12 +27,12 @@ describe('knowledge extraction onboarding', () => {
     expect(render()).toContain('还没有提炼记录');
     expect(render({ hasWorkspace: false })).toContain('设置保存位置并开始');
   });
-  it('links observed tasks to extraction using encoded identities', () => {
+  it('starts extraction in place instead of navigating to a selection page', () => {
     const html = renderToStaticMarkup(createElement(ExtractedKnowledge, { lang: 'zh', threadId: 'thread/a', turnId: 'turn&b' }));
     expect(html).toContain('提炼知识');
     expect(html).toContain('已提炼知识');
-    expect(html).toContain('thread=thread%2Fa');
-    expect(html).toContain('turn=turn%26b');
+    expect(html).not.toContain('href=');
+    expect(html).toContain('<button');
   });
   it('provides the same guidance in English', () => {
     const html = render({ lang: 'en', latest });

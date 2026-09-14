@@ -105,7 +105,7 @@ export function projectCodexEvidence(selection: SourceSelection, signal?: AbortS
     if (!isCodexJsonl(rawRecords)) throw new Error('Selected records do not identify a Codex log.');
     const snapshotId = randomUUID();
     const session = parseCodexSessionFile(path, rawRecords);
-    const limitations: string[] = selection.records ? ['Explicit messages from an observed task; surrounding context and unselected records are omitted. Source text may be redacted by observation.'] : [];
+    const limitations: string[] = selection.records ? ['Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation.'] : [];
     if (start > 0 || end !== undefined) limitations.push('Explicit record range; surrounding context may be missing.');
     if (end !== undefined && records.at(-1)!.recordIndex < end) limitations.push('Source ended before the requested final record.');
     if (malformed) limitations.push(`${malformed} malformed source records retained as raw evidence.`);
