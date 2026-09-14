@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
-import type { ObservePage } from '../../../http/observe-page';
+import type { ObservePage } from '../../../http/pages/observe-page';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import { EventRecords, RawRecords } from './records';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';

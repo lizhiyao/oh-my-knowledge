@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import type { CoreStudioCatalog } from '../../../src/studio/view-models/core-runs.js';
+import type { CoreStudioCatalog } from '../../../src/studio/view-models/measure/core-runs.js';
 import {
   nextCatalogContext,
   nextKnowledgeContext,

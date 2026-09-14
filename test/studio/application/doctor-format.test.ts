@@ -11,8 +11,8 @@ import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-
 import type {
   SkillGraphNodePreview,
   SkillGraphSnapshot,
-} from '../../../src/studio/view-models/skill-index.js';
-import { projectDoctorGraph, projectDoctorRules, projectDoctorSampling } from '../../../src/studio/application/doctor-format.js';
+} from '../../../src/studio/view-models/knowledge/skill-index.js';
+import { projectDoctorGraph, projectDoctorRules, projectDoctorSampling } from '../../../src/studio/application/knowledge/doctor-format.js';
 
 function rule(
   ruleId: string,

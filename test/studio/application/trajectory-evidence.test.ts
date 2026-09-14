@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { trajectoryEvidenceRef } from '../../../src/studio/application/trajectory-evidence.js';
+import { trajectoryEvidenceRef } from '../../../src/studio/application/conversations/trajectory-evidence.js';
 import type { ExperienceTimelineEvent } from '../../../src/observability/contracts/experience.js';
 
 function event(

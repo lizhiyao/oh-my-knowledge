@@ -44,7 +44,7 @@ describe('Studio React 渲染层守门', () => {
     const files = listSourceFiles(WEB_DIR);
     // 扫描为空会让这条断言变成假绿：React 页面必须真实在场。
     expect(files.length).toBeGreaterThan(0);
-    expect(files.some((file) => file.endsWith('components/inbox/inbox.tsx'))).toBe(true);
+    expect(files.some((file) => file.endsWith('components/observe/inbox/inbox.tsx'))).toBe(true);
 
     const violations = files.flatMap((file) => {
       const source = readFileSync(file, 'utf-8');
@@ -58,7 +58,7 @@ describe('Studio React 渲染层守门', () => {
 
   it('src/studio/web 渲染有效复核投影而不是原始 experienceReports', () => {
     const files = listSourceFiles(WEB_DIR);
-    const inboxPage = files.find((file) => file.endsWith('components/inbox/inbox.tsx'));
+    const inboxPage = files.find((file) => file.endsWith('components/observe/inbox/inbox.tsx'));
     expect(inboxPage, '收件箱页面必须在场，否则这条守门是假绿').toBeTruthy();
     // effectiveExperienceReports 里的 E 是大写，不会命中这个子串。
     expect(readFileSync(inboxPage!, 'utf-8').includes('effectiveExperienceReports')).toBe(true);

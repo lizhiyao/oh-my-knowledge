@@ -14,7 +14,7 @@ import type {
   CoreStudioRunDetail,
   CoreStudioRuntimeIdentity,
   CoreStudioUsage,
-} from '../../../view-models/core-runs';
+} from '../../../view-models/measure/core-runs';
 import {
   formatAssumptionCheck,
   formatBudget,
@@ -26,7 +26,7 @@ import {
   formatRuntimeIdentity,
   formatUsage,
   statusTone,
-} from '../../../application/core-run-format';
+} from '../../../application/measure/core-run-format';
 import type { Language } from '../layout/shell';
 
 const COPY = {

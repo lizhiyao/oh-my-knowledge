@@ -6,8 +6,8 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, it } from 'vitest';
 import { buildObservationInboxViewModel, type ObservationInboxViewModel } from '../../../src/observability/inbox/view-model.js';
-import { SignalSection } from '../../../src/studio/web/components/inbox/signals';
-import { SkillBoard } from '../../../src/studio/web/components/inbox/skill-board';
+import { SignalSection } from '../../../src/studio/web/components/observe/inbox/signals';
+import { SkillBoard } from '../../../src/studio/web/components/observe/inbox/skill-board';
 import { baseItem } from '../../observability/inbox/_helpers';
 
 /**

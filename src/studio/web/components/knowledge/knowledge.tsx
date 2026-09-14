@@ -1,10 +1,10 @@
 'use client';
 import { useState } from 'react';
 import { Alert, Collapse, Descriptions, Empty, Input, Space, Table, Tabs, Tag, Typography } from 'antd';
-import type { DoctorGraphView, DoctorRuleView, DoctorSamplingView } from '../../../application/doctor-format';
-import { projectDoctorRules, projectDoctorSampling } from '../../../application/doctor-format';
-import type { SkillDoctorSnapshot } from '../../../view-models/skill-index';
-import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/knowledge-page';
+import type { DoctorGraphView, DoctorRuleView, DoctorSamplingView } from '../../../application/knowledge/doctor-format';
+import { projectDoctorRules, projectDoctorSampling } from '../../../application/knowledge/doctor-format';
+import type { SkillDoctorSnapshot } from '../../../view-models/knowledge/skill-index';
+import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/pages/knowledge-page';
 import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/contracts';
 import type { Language } from '../layout/shell';
 import { KnowledgeSectionNav } from './section-nav';

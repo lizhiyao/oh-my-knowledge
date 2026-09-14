@@ -1,7 +1,7 @@
 /**
  * 架构边界守门：'use client' 模块的运行时依赖闭包不得触达 Node 内建模块。
  *
- * 起因是 `application/health-format.ts` 里的一句注释：它只服务服务端，React 页面只能
+ * 起因是 `application/observe/health-format.ts` 里的一句注释：它只服务服务端，React 页面只能
  * 按类型 import，「值导入会经 analyzer.ts 把 node:fs 拖进客户端 bundle」。口径成立却
  * 没人钉。把 `components/observe/health.tsx` 改成值导入做反向验证：健康页的 React 渲染
  * 用例、`yarn lint`、`yarn typecheck` 全绿（`src/studio/web` 甚至不在根 tsconfig 的
@@ -305,7 +305,7 @@ describe('客户端运行时依赖闭包守门', () => {
     // 扫描为空或解析退化都会把门禁变成假绿：入口必须真实在场，每条边必须算得动。
     expect(report.entries.length).toBeGreaterThan(0);
     expect(
-      report.entries.some((entry) => entry.endsWith(join('components', 'inbox', 'inbox.tsx'))),
+      report.entries.some((entry) => entry.endsWith(join('components', 'observe', 'inbox', 'inbox.tsx'))),
       '收件箱客户端组件必须在场，否则入口发现已经失效',
     ).toBe(true);
 

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport, saveObservationInboxReport } from '../../../src/observability/inbox/index.js';
-import { createKnowledgeQuery } from '../../../src/studio/application/knowledge-query.js';
-import { loadKnowledgePage } from '../../../src/studio/http/knowledge-page.js';
+import { createKnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query.js';
+import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page.js';
 
 describe('Studio inbox cache source', () => {
   it('observes new reports in reports/ without a restart or cache reset', () => {

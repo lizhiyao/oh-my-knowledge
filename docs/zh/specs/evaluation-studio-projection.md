@@ -41,7 +41,7 @@ detail view 明确省略原始 input、execution context、expected、evaluation
 
 ## 四、展示层与 route adapter
 
-面向用户的 `/measure` 列表与详情是 `web/app/measure/**` 下的 React 服务端组件。它们消费的 `application/core-run-format.ts` 不含展示实现，只把两种版本化 view 变成有序的事实片段：列表把 run、evidence 与 conclusion status 作为三个独立状态轴展示，详情展示 plan identity、阶段 coverage／budget、安全记录与数值 observation、Analysis、Decision 以及完整的五文档 lineage。两者都不从分数推导总体质量状态。
+面向用户的 `/measure` 列表与详情是 `web/app/measure/**` 下的 React 服务端组件。它们消费的 `application/measure/core-run-format.ts` 不含展示实现，只把两种版本化 view 变成有序的事实片段：列表把 run、evidence 与 conclusion status 作为三个独立状态轴展示，详情展示 plan identity、阶段 coverage／budget、安全记录与数值 observation、Analysis、Decision 以及完整的五文档 lineage。两者都不从分数推导总体质量状态。
 
 所有投影值都由 React 的文本插值转义——独立 HTML renderer 及其外壳已删除，Studio 页面不再由字符串拼接产出——allow-list 之外的字段不会到达页面。表格把可见区块名与限定作用域的列标题配对，status group 带无障碍标签；中英文视图承载完全相同的事实，只有 label 被翻译，identifier、digest、status 与 reason code 原样保留。`web/components/measure/**` 是唯一渲染入口，独立 HTML renderer 及其 `CoreStudioRenderRoutes` 注入点已删除。
 

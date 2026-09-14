@@ -1,6 +1,6 @@
 import { listManagedRows } from '../../../knowledge-artifacts/governance/index.js';
-import type { KnowledgeQuery } from '../../application/knowledge-query.js';
-import { listAnalyses, loadAnalysis, querySkillDiff, querySkillTrend } from '../../application/knowledge-reports.js';
+import type { KnowledgeQuery } from '../../application/knowledge/knowledge-query.js';
+import { listAnalyses, loadAnalysis, querySkillDiff, querySkillTrend } from '../../application/knowledge/knowledge-reports.js';
 import { JSON_HEADERS, writeJsonError } from '../errors.js';
 import { resolveManagedRootOption } from '../managed-root.js';
 import type { StudioRouteContext } from './contracts.js';

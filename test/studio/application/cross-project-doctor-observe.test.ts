@@ -1,4 +1,4 @@
-import { assessHealth } from '../../../src/studio/application/skill-health.js';
+import { assessHealth } from '../../../src/studio/application/knowledge/skill-health.js';
 /**
  * 机器级总览验收(doctor / observe-health 域):buildSkillIndex 把别项目的 doctor/observe 卡片合并进 skill 索引;
  * doctor 历史 prune 删正文时连带删卡片,杜绝「被 prune 的报告经卡片复活」。全程隔离 OMK_ARTIFACT_INDEX_DIR。
@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/index.js';
-import { querySkillTrend } from '../../../src/studio/application/knowledge-reports.js';
+import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/knowledge/skill-index.js';
+import { querySkillTrend } from '../../../src/studio/application/knowledge/knowledge-reports.js';
 import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,

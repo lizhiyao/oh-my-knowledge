@@ -2,7 +2,7 @@
  * 体检详情在 React 知识页的呈现，补齐被退役的 `/knowledge/doctors/:id` 独立页的差集：
  * 逐条 finding 与修复建议、多采样 k/n 支持度、采样降级告警、跨轮次体检历史与 `?doctorRun=` 下钻。
  *
- * 排序、剔除 `:_summary`、n>1 门槛等口径在 application/doctor-format 侧测（见
+ * 排序、剔除 `:_summary`、n>1 门槛等口径在 application/knowledge/doctor-format 侧测（见
  * ../application/doctor-format.test.ts）；这里只锁用户实际读到的文字与链接。
  * Tabs 的 SSR 只输出激活面板，而体检是首个面板，所以逐条规则可直接断言。
  */
@@ -11,14 +11,14 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-artifacts/doctor/contracts.js';
-import { loadKnowledgePage } from '../../../src/studio/http/knowledge-page.js';
-import type { KnowledgeQuery } from '../../../src/studio/application/knowledge-query.js';
+import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page.js';
+import type { KnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query.js';
 import type {
   SkillDoctorSnapshot,
   SkillGraphSnapshot,
   SkillIndex,
   SkillIndexEntry,
-} from '../../../src/studio/view-models/skill-index.js';
+} from '../../../src/studio/view-models/knowledge/skill-index.js';
 import { KnowledgeView } from '../../../src/studio/web/components/knowledge/knowledge.js';
 
 type Lang = 'zh' | 'en';

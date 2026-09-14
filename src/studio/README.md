@@ -4,10 +4,10 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 
 | 目录 | 职责 |
 | --- | --- |
-| `view-models/` | 跨层共享的类型契约，不含运行时计算。 |
-| `application/` | 查询、聚合和视图投影。`replay/` 分开投影装配、卡片布局、操作摘要、时间格式和连线计算。 |
-| `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。 |
-| `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge`、`inbox` 按功能组织，`components/layout` 放共享外壳和主题。 |
+| `view-models/` | 跨层共享的类型契约，不含运行时计算。按域分子目录，与 `application/` 同名对齐。 |
+| `application/` | 查询、聚合和视图投影。按域分子目录：`conversations/`（会话与任务轨迹，含 `replay/` 的投影装配、卡片布局、操作摘要、时间格式和连线计算）、`knowledge/`（体检、受管与 skill 索引）、`measure/`（评测运行）、`observe/`（观测健康）。域名只由目录承担，文件名不变。 |
+| `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。`pages/` 放两类宿主共用的页面装载器：识别地址、装载证据、给出 400/404/503 契约，不渲染。 |
+| `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge` 按地址分区组织，`components/observe/inbox` 跟随 `/observe/inbox`，`components/layout` 放共享外壳和主题。 |
 | `index.ts` | Studio 模块聚合入口，导出 catalog、投影、view-model 与 JSON 路由。渲染实现不属于公开面，内部模块也直接引用所属层，不经过公开聚合入口。 |
 
 原 `core-runs/` 已按职责归入上述目录；文件名中的 `core-run` 表示消费 Evaluation Core 产物，不表示 Studio 属于 eval-core。
@@ -16,11 +16,11 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 
 CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的会话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情与受管决策史两页。HTTP adapter 不渲染页面 HTML：它只提供 `/api/*` 的 JSON 事实源、SSE、`/health` 与纯文本缺页／错误文档（`http/request-handler.ts`），外加一条站点入口 `GET /` → 302 `/observe`（原样带上 query，`http/routes/conversations.ts`）——根路径不在 Next 宿主的接管集合里，所以始终由 HTTP adapter 回答。这条重定向属于观测路由组，因此只在挂页面组时存在：只挂 `/measure` 的评测预览宿主对 `/` 给 404，与它把壳层品牌链接指向 `/measure` 是同一口径。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
 
-CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE），因此不为用不到的观测页面在用户项目里创建 observations 目录。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
+CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE），因此不为用不到的观测页面在用户项目里创建 observations 目录。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/measure/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
 
 ## 观测收件箱页面盘点（React）
 
-默认宿主 `GET /observe/inbox` 由 Next 渲染（`web/app/observe/inbox/page.tsx`，`force-dynamic`），组件在 `web/components/inbox/`；CLI 评测预览从不注册收件箱路由组，DSH 插件以 `observationInbox: false` 退出，因此两者的任意收件箱路径都 404。页面只呈现 `observability/inbox/` 的宿主无关投影与语义，不自算口径。
+默认宿主 `GET /observe/inbox` 由 Next 渲染（`web/app/observe/inbox/page.tsx`，`force-dynamic`），组件在 `web/components/observe/inbox/`；CLI 评测预览从不注册收件箱路由组，DSH 插件以 `observationInbox: false` 退出，因此两者的任意收件箱路径都 404。页面只呈现 `observability/inbox/` 的宿主无关投影与语义，不自算口径。
 
 | 子视图 | 组件 | 数据来源 |
 | --- | --- | --- |
@@ -51,12 +51,12 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 | 页面 | 组件 | 数据来源 |
 | --- | --- | --- |
-| 受管列表 `/knowledge/managed` | `web/components/knowledge/managed.tsx` | `http/managed-page.ts` → `application/managed-format.ts` 的 `projectManagedListRow` |
+| 受管列表 `/knowledge/managed` | `web/components/knowledge/managed.tsx` | `http/pages/managed-page.ts` → `application/knowledge/managed-format.ts` 的 `projectManagedListRow` |
 | 决策史 `/knowledge/managed/:id` | 同上（`pageKind: 'detail'`） | `projectManagedTimeline` 的版本分段与事件行 |
-| 体检详情（原独立页） | `web/components/knowledge/knowledge.tsx` 的体检面板 | `application/doctor-format.ts` 的 `projectDoctorRules`／`projectDoctorSampling` |
-| 知识对象结构（体检面板内） | 同上（`GraphStructure`） | `application/doctor-format.ts` 的 `projectDoctorGraph` ← `SkillIndexEntry.graph` |
+| 体检详情（原独立页） | `web/components/knowledge/knowledge.tsx` 的体检面板 | `application/knowledge/doctor-format.ts` 的 `projectDoctorRules`／`projectDoctorSampling` |
+| 知识对象结构（体检面板内） | 同上（`GraphStructure`） | `application/knowledge/doctor-format.ts` 的 `projectDoctorGraph` ← `SkillIndexEntry.graph` |
 
-「知识对象结构」读的是体检产出的 graph sidecar（`application/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only` 两档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。三档由「有内容哈希 → 有来源路径 → 只有名称」定出：体检正常产出前两档，`name-only` 只出现在既没有 `artifactHash` 也没有 `sourceLocator` 的 sidecar 上（跨机器搬来的、或被裁剪过的），不是一轮常规体检的结果。`sourceLocator` 是用户本机的绝对路径，与受管页同一条口径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 只取最新一轮，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。**多轮结构对比是明确的非目标**：一页同时只有一份结构证据，要做对比得先定义「对比什么、差多少算变化」，那是新需求而不是这里的缺口。
+「知识对象结构」读的是体检产出的 graph sidecar（`application/knowledge/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only` 两档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。三档由「有内容哈希 → 有来源路径 → 只有名称」定出：体检正常产出前两档，`name-only` 只出现在既没有 `artifactHash` 也没有 `sourceLocator` 的 sidecar 上（跨机器搬来的、或被裁剪过的），不是一轮常规体检的结果。`sourceLocator` 是用户本机的绝对路径，与受管页同一条口径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 只取最新一轮，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。**多轮结构对比是明确的非目标**：一页同时只有一份结构证据，要做对比得先定义「对比什么、差多少算变化」，那是新需求而不是这里的缺口。
 
 受管根目录按请求解析，不在启动时冻结，否则长会话里会跟 `omk list` 分叉（口径见 `http/managed-root.ts`）；JSON 路由 `/api/managed` 与页面宿主共用同一解析器。记录的 `source.locator`／`url` 是用户机器上的绝对路径，不进页面模型——RSC 会把 props 序列化进页面负载。
 

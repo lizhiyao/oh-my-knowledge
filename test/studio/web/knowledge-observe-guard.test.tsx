@@ -10,10 +10,10 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
-import { loadKnowledgePage } from '../../../src/studio/http/knowledge-page';
-import type { KnowledgeQuery } from '../../../src/studio/application/knowledge-query';
+import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page';
+import type { KnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query';
 import { KnowledgeView } from '../../../src/studio/web/components/knowledge/knowledge';
-import type { SkillIndex, SkillIndexEntry } from '../../../src/studio/view-models/skill-index';
+import type { SkillIndex, SkillIndexEntry } from '../../../src/studio/view-models/knowledge/skill-index';
 
 function entryWith(observe: SkillIndexEntry['observe'], overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
   return { skillName: 'thin-skill', doctor: null, observe, doctorHistory: [], band: observe?.effectiveBand ?? 'gray', ...overrides };

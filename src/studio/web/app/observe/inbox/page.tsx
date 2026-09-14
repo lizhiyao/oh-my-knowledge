@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { requestInboxPage } from '../../../catalog';
-import { InboxView } from '../../../components/inbox/inbox';
+import { InboxView } from '../../../components/observe/inbox/inbox';
 import { StudioShell } from '../../../components/layout/shell';
 import { pageTitle, studioLang } from '../../../components/layout/page-titles';
 

@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
-import { createKnowledgeQuery } from '../application/knowledge-query.js';
+import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
 import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS, writeJsonError } from './errors.js';

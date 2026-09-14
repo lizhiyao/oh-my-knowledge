@@ -8,10 +8,10 @@ import {
   projectReport,
   projectTrend,
   type HealthReportFacts,
-} from '../../../src/studio/application/health-format.js';
+} from '../../../src/studio/application/observe/health-format.js';
 import type { SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
-import type { SkillDiffRow } from '../../../src/studio/view-models/knowledge-reports.js';
-import type { HealthPage } from '../../../src/studio/http/health-page.js';
+import type { SkillDiffRow } from '../../../src/studio/view-models/knowledge/knowledge-reports.js';
+import type { HealthPage } from '../../../src/studio/http/pages/health-page.js';
 import { HealthView } from '../../../src/studio/web/components/observe/health';
 import { coverageOf, reportOf, skillOf, trendPointOf } from '../fixtures/health-report.js';
 
