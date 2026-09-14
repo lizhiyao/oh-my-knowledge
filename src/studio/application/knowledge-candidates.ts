@@ -1,3 +1,4 @@
+import { DEFAULT_KNOWLEDGE_DIR } from '../../evidence/storage/default-dirs.js';
 import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
 import { conversationExtractionSource } from './conversation-extraction.js';
 import { z } from 'zod';
@@ -8,6 +9,7 @@ import type { KnowledgeApplication } from '../../observability/knowledge-extract
 const text = z.string().trim().min(1);
 const common = { workspace: text };
 const requestSchema = z.discriminatedUnion('operation', [
+  z.strictObject({ operation: z.literal('defaults') }),
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversations') }),
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversation'), threadId: text }),
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('preview-conversation'), threadId: text, turnId: text }),
@@ -27,6 +29,7 @@ const requestSchema = z.discriminatedUnion('operation', [
 export async function executeKnowledgeCandidateAction(input: unknown, signal?: AbortSignal,
   create: (root: string) => KnowledgeApplication = createLocalKnowledgeApplication, catalog?: ConversationCatalog): Promise<unknown> {
   const request = requestSchema.parse(input);
+  if (request.operation === 'defaults') return { workspace: DEFAULT_KNOWLEDGE_DIR };
   if (request.operation === 'conversations') {
     if (!catalog) throw new Error('Conversation catalog unavailable.');
     return (await catalog.listConversations()).conversations.map(({ threadId, title, cwd }) => ({ threadId, title, cwd }));

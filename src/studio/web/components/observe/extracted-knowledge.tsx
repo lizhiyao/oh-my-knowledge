@@ -1,4 +1,5 @@
 'use client';
+import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input } from 'antd';
 import type { Language } from '../layout/shell';
@@ -12,7 +13,10 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
-  useEffect(() => { const root = new URLSearchParams(window.location.search).get('workspace') || window.localStorage.getItem('omk.knowledge.workspace') || ''; setWorkspace(root); if (root) window.localStorage.setItem('omk.knowledge.workspace', root); }, []);
+  useEffect(() => { const active = new AbortController();
+    resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal).then(({ workspace: root }) => { if (!active.signal.aborted) { setWorkspace(root); window.localStorage.setItem('omk.knowledge.workspace', root); } }).catch(() => { if (!active.signal.aborted) setError(true); });
+    return () => active.abort();
+  }, []);
   const params = new URLSearchParams({ ...(workspace ? { workspace } : {}), ...(zh ? {} : { lang: 'en' }) });
   const extraction = new URLSearchParams(params); extraction.set('thread', threadId); if (turnId) extraction.set('turn', turnId);
   async function load() {
@@ -24,7 +28,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
       const value = await response.json(); if (!active.signal.aborted) setRuns(value);
     } catch { if (!active.signal.aborted) setError(true); } finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
-  return <><Button type="primary" href={`/knowledge/candidates?${extraction}`}>{zh ? '提炼知识' : 'Extract knowledge'}</Button><Button onClick={() => { setOpen(true); if (workspace) void load(); }}>{zh ? '已提炼知识' : 'Extracted knowledge'}</Button>
+  return <><div className="conversation-knowledge-actions"><Button type="primary" href={`/knowledge/candidates?${extraction}`}>{zh ? '提炼知识' : 'Extract knowledge'}</Button><Button onClick={() => { setOpen(true); if (workspace) void load(); }}>{zh ? '已提炼知识' : 'Extracted knowledge'}</Button></div>
     <Drawer title={zh ? '这个会话的提炼记录' : 'Extractions from this conversation'} open={open} onClose={() => setOpen(false)} width={560}>
       <p>{zh ? '查看所选知识目录中，这个会话的提炼结果。' : 'Show this conversation’s extraction results in the selected knowledge folder.'}</p>
       <Input disabled={busy} aria-label={zh ? '知识保存目录' : 'Knowledge folder'} value={workspace} onChange={event => { setWorkspace(event.target.value); setRuns([]); }}/>

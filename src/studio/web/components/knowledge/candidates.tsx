@@ -1,4 +1,5 @@
 'use client';
+import { resolveKnowledgeWorkspace } from './workspace';
 import { ConversationPicker } from './conversation-picker';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
@@ -9,6 +10,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [workspace, setWorkspace] = useState(initialWorkspace);
+  const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
   const [showConversations, setShowConversations] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -69,9 +71,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
     const url = new URL(window.location.href); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
-    const root = initialWorkspace || window.localStorage.getItem('omk.knowledge.workspace') || '';
-    if (root) { setWorkspace(root); setWorkspaceDraft(root); window.localStorage.setItem('omk.knowledge.workspace', root); }
     void work(async () => {
+      const { workspace: root, defaultWorkspace: fallback } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
+      setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
+      window.localStorage.setItem('omk.knowledge.workspace', root);
       if (root) { await refresh(root, true); if (initialId) { const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id: initialId }); setDetail(next); } }
       if (initialThread) setShowConversations(true);
     });
@@ -173,6 +176,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
     </Drawer>
     <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('提炼结果和原始记录保存在这台电脑上。选择一个目录，之后 CLI 和 Studio 都可以从这里重新打开。', 'Keep extracted knowledge and source records on this computer. Choose a folder that both CLI and Studio can reopen.')}</p>
+        <p className="candidate-help">{t('默认位置：', 'Default location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用默认位置', 'Use default location')}</Button>
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
