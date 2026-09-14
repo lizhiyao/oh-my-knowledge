@@ -78,6 +78,14 @@ function mirrorExists(base: string): boolean {
 }
 
 describe('docs/zh 跨语言悬链 gate', () => {
+  it('keeps an English and Chinese page for every published Markdown path', () => {
+    const files: string[] = [];
+    walkMarkdown(DOCS_ROOT, files);
+    const english = files.filter(file => !isUnder(file, ZH_ROOT)).map(file => relative(DOCS_ROOT, file)).sort();
+    const chinese = files.filter(file => isUnder(file, ZH_ROOT)).map(file => relative(ZH_ROOT, file)).sort();
+    assert.deepEqual(chinese, english, 'Published documentation pages need matching EN/ZH paths.');
+  });
+
   it('docs/zh 与 zh-facing 入口的站内链接不得 climb 回英文根 docs/(当 zh 镜像存在时)', () => {
     const files: string[] = [];
     walkMarkdown(ZH_ROOT, files);

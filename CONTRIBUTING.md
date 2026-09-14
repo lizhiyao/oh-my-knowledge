@@ -198,7 +198,9 @@ between unchanged checks; use clean builds when the tested boundary requires it.
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
-- CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
+- CI classifies the complete event diff on PRs and `main` pushes. The exact root rule files listed in `scripts/ci-scope.mjs` use governance tests and whitespace checks. Ordinary `docs/**/*.md` and root README changes additionally run runtime/document-contract checks and the documentation build, without Studio or the full test matrix.
+- Source, dependencies, CI/build/site configuration, skills, prompts, generated documentation and unknown paths run the complete Node 22/24 matrix. Missing history, empty diffs or classification errors select the full gate. Renames include both old and new paths; mixed changes use the strongest gate.
+- Required checks remain `test (22)` and `test (24)`. They require the selected gate to succeed; a failed, cancelled or unexpectedly skipped gate cannot pass. Branch protection and the requirement to stay current with `main` are unchanged.
 - 按层归属测试契约：领域单元测试覆盖完整分支矩阵，command 集成测试覆盖参数到业务的接线和输出信封，真实 `node dist/cli/index.js` 只覆盖 dispatcher、startup、进程退出、模块加载时 cwd、打包资源等进程边界。
 - command 业务测试优先使用 `test/helpers/run-command.ts` 运行源码 Command 的完整 Oclif 生命周期，不要为每个 case 重复启动 Node。只有被测行为依赖 dispatcher、模块加载时环境或独立 `process` 时才使用 `execFile`，并在测试注释里说明该边界。
 - Oclif 的公共行为（例如 unknown flag 的统一 exit code）用代表命令锁一次；各命令只增加自身特有的 flag 校验、文案或历史回归，避免重复框架契约。

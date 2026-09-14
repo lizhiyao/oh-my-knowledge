@@ -1,11 +1,22 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const read = (path: string): string => readFileSync(join(root, path), 'utf8');
 
 describe('autonomous review governance', () => {
+  it('keeps local Markdown links in repository rules resolvable', () => {
+    for (const path of ['AGENTS.md', 'CLAUDE.md', 'CODE_REVIEW.md', 'CONTRIBUTING.md', '.github/PULL_REQUEST_TEMPLATE.md']) {
+      for (const match of read(path).matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
+        const target = match[1].split(/[?#]/)[0];
+        if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
+        const file = resolve(dirname(join(root, path)), decodeURIComponent(target));
+        expect(existsSync(file), `${path} -> ${target}`).toBe(true);
+      }
+    }
+  });
+
   it('keeps the cross-agent entrypoints connected to the review playbook', () => {
     const agents = read('AGENTS.md');
     expect(agents).toContain('## 自主 CR 与完成定义');
