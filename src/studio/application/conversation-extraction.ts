@@ -13,12 +13,19 @@ export async function conversationExtractionSource(catalog: ConversationCatalog,
   let bytes = 0;
   for (const id of turnId ? [turnId] : turns) {
     signal?.throwIfAborted();
-    const trajectory = await catalog.loadTaskTrajectory(threadId, id, { includeNextHumanMessage: false });
-    if (!trajectory || trajectory.sourceRecords.status !== 'available' || trajectory.sourceRecords.truncated
-      || trajectory.sourceRecords.records.some(record => record.truncated)) throw new Error('Conversation source unavailable or incomplete.');
-    if (path && path !== trajectory.session.sourceTrace) throw new Error('Conversation source conflict.');
-    path = trajectory.session.sourceTrace;
-    const task = projectCodexEvidence({ path, records: trajectory.sourceRecords.records.map(record => ({ recordIndex: record.sourceIndex, raw: record.raw })) }, signal);
+    let source: { path: string; records: EvidenceWindow['records'] } | undefined;
+    if (catalog.loadTaskMessageRecords) source = await catalog.loadTaskMessageRecords(threadId, id);
+    else {
+      const trajectory = await catalog.loadTaskTrajectory(threadId, id, { includeNextHumanMessage: false });
+      if (!trajectory || trajectory.sourceRecords.status !== 'available' || trajectory.sourceRecords.truncated
+        || trajectory.sourceRecords.records.some(record => record.truncated)) throw new Error('Conversation source unavailable or incomplete.');
+      source = { path: trajectory.session.sourceTrace, records: trajectory.sourceRecords.records.map(record => ({ recordIndex: record.sourceIndex, raw: record.raw })) };
+    }
+    if (!source) throw new Error('Conversation source unavailable.');
+    if (path && path !== source.path) throw new Error('Conversation source conflict.');
+    path = source.path;
+    if (!source.records.length) continue;
+    const task = projectCodexEvidence(source, signal);
     const indexes = new Set(task.excerpts.filter(entry => entry.eventKind === 'message' && ['user', 'assistant'].includes(entry.role ?? '')).map(entry => entry.recordIndex));
     for (const record of task.records.filter(record => indexes.has(record.recordIndex))) {
       const previous = records.get(record.recordIndex);

@@ -68,6 +68,8 @@ export interface ConversationCatalog {
   listConversations(): Promise<ConversationIndexViewModel>;
   getConversation(threadId: string): Promise<ConversationListItem | undefined>;
   loadTaskTrajectory(threadId: string, turnId: string, options?: { includeNextHumanMessage?: boolean }): Promise<ConversationTaskTrajectory | undefined>;
+  /** Complete message records for extraction, before the page archive truncation. */
+  loadTaskMessageRecords?(threadId: string, turnId: string): Promise<{ path: string; records: { recordIndex: number; raw: string }[] } | undefined>;
   /** Optional live capability. Static catalogs do not need to implement it. */
   observeTaskTrajectory?(
     threadId: string,
@@ -172,6 +174,22 @@ class CodexConversationCatalog implements ConversationCatalog {
     } finally {
       this.trajectoryPromises.delete(key);
     }
+  }
+
+  async loadTaskMessageRecords(threadId: string, turnId: string) {
+    const row = this.findThreadRow(threadId);
+    if (!row || !existsSync(row.rolloutPath)) return undefined;
+    const index = await this.currentIndexFor(row);
+    const task = index.tasks.find(item => item.turnId === turnId);
+    if (!task) return undefined;
+    const selected = readCodexTaskRecords(index, task, { includeNextHumanMessage: false });
+    if (selected.malformedRecordCount) throw new Error('Conversation source incomplete.');
+    const session = parseCodexSessionFile(row.rolloutPath, selected.records);
+    const indexes = new Set(session.events.filter(event => event.eventKind === 'message'
+      && 'role' in event && ['user', 'assistant'].includes(event.role)).map(event => event.sourceIndex));
+    const records = selected.lines.filter(line => indexes.has(line.line)).map(line => ({ recordIndex: line.line, raw: line.text }));
+    if (records.reduce((sum, record) => sum + Buffer.byteLength(record.raw), 0) > 16 * 1024 * 1024) throw new Error('Conversation exceeds capacity.');
+    return { path: row.rolloutPath, records };
   }
 
   async observeTaskTrajectory(
