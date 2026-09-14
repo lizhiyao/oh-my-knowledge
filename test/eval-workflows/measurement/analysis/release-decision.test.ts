@@ -505,16 +505,16 @@ describe('OMK Release DecisionPolicy', () => {
     expect(capabilities.parameterSchema).toEqual(RELEASE_DECISION_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(RELEASE_DECISION_POLICY_V4_IDENTITY)).toBe(true);
     expect(RELEASE_DECISION_POLICY_V1_IDENTITY.fingerprint).toBe(
-      'sha256:0c13bef0733f511a6b17ffd3e9e3274231f36262a0e2aa23668b17aaf484bc5c',
+      'sha256:36fbff0bf3d895c1fe0521ad4fd9627c9d1a89d8476b794d9f271d9f2966453c',
     );
     expect(RELEASE_DECISION_POLICY_V2_IDENTITY.fingerprint).toBe(
-      'sha256:e905b666e7b0ec35fbb0a4c005ceb19eaf072fd807d97bb359e58f7910af5cc9',
+      'sha256:872b2709aee20fbafaba394ec4a0efd984e6ed640faa9ee072e9bb480e2985c8',
     );
     expect(RELEASE_DECISION_POLICY_V3_IDENTITY.fingerprint).toBe(
-      'sha256:fec0a532957eb6ce17cd5866ec7851a0bca0e9cc70e70748c60049d1766839a9',
+      'sha256:34b053fe9c7083ceb78b1f692beea7d8710e60a2a189baee0468364e2dd0cc67',
     );
     expect(RELEASE_DECISION_POLICY_V4_IDENTITY.fingerprint).toBe(
-      'sha256:310b31c9cd1c3a689c5c760f35a6b5ab869b6959bc70047c0fb4362024f821ee',
+      'sha256:a07e61fd995d5aa09a0605905970e6df8f7fb5a7039a172f66cbad7a584e7412',
     );
     expect([...createReleaseDecisionPolicies().keys()]).toEqual([
       RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID,
@@ -541,7 +541,7 @@ describe('OMK Release DecisionPolicy', () => {
       BOOTSTRAP_FAMILY_ANALYSIS_V2_IMPLEMENTATION_ID,
     ]);
     expect(RELEASE_DECISION_POLICY_V5_IDENTITY.fingerprint).toBe(
-      'sha256:2ef98d77984528a583cce8eeb4e4bc108865d29e270d42f87ac9de731dad8e86',
+      'sha256:a4871e1a89f39fc60a01b8b3e502deb009a2862cafd10833cdfb2bbca7babac4',
     );
 
     const sampleIds = Array.from({ length: 4 }, (_, index) => `sample-${index + 1}`);
@@ -645,7 +645,7 @@ describe('OMK Release DecisionPolicy', () => {
       RELEASE_DECISION_POLICY_V6_IMPLEMENTATION_ID,
     );
     expect(RELEASE_DECISION_POLICY_V6_IDENTITY.fingerprint).toBe(
-      'sha256:3214ed21b603d3faa6b175cddf7fe701e0ca9c25055f4d7154d053ecacd1283a',
+      'sha256:9fbcf41f30e0e6009ccf1603914cd82359ff6cd8135f6359deb8f5f131530c72',
     );
   });
 
@@ -695,7 +695,7 @@ describe('OMK Release DecisionPolicy', () => {
       parameterSchema: RELEASE_DECISION_PARAMETERS_V3_SCHEMA,
     });
     expect(RELEASE_DECISION_POLICY_V7_IDENTITY.fingerprint).toBe(
-      'sha256:bb7ef4efe65de02150c8e577875c68eb71fa6b2ce6bb87eff305901bb55e3d48',
+      'sha256:a3cf1c32d54bcea409d337de10c34953b2e58779637563aa66f6dd739063ba82',
     );
   });
 
