@@ -1,9 +1,9 @@
 /**
- * scripts/build-docs.ts 集成测试 — codegen 输出的 commands.md 内容稳定性。
+ * scripts/build/docs.ts 集成测试 — codegen 输出的 commands.md 内容稳定性。
  * 测试策略:
  * - 直接断言已提交的 .agents/skills/omk/references/commands.md(代表 codegen 结果)
  *   的 schema 性质:13 命令 H2 / 关键 flag 存在 / 子命令空格分隔 / `<%= config.bin %>` 已替换
- * - spawn `node dist-scripts/build-docs.js --check` 验证 --check 模式在不漂移时
+ * - spawn `node dist-scripts/build/docs.js --check` 验证 --check 模式在不漂移时
  *   exit 0,在漂移时 exit 1。走 dist 而非 tsx,因为 tsx 装在 node_modules 时
  *   oclif Config.load 会自动 register tsx loader,把 ajv 等库的 .json 文件
  *   按 JS 解析,破坏 production 行为。
@@ -29,7 +29,7 @@ import { Config } from '@oclif/core';
 import yaml from 'js-yaml';
 // 从 build-docs.ts 复用 getTopLevelIds 派生函数(单一来源是 oclif Command 文件目录,
 // 不再 hardcode 常量),让 cli.md codegen 跟 SKILL.md frontmatter gate 共用同一份真值。
-import { getTopLevelIds } from '../../scripts/build-docs.js';
+import { getTopLevelIds } from '../../scripts/build/docs.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,7 +38,7 @@ const COMMANDS_MD = join(PROJECT_ROOT, '.agents/skills/omk/references/commands.m
 const CLI_EN = join(PROJECT_ROOT, 'docs/reference/cli.md');
 const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/reference/cli.md');
 const SKILL_MD = join(PROJECT_ROOT, '.agents', 'skills', 'omk', 'SKILL.md');
-const BUILD_DOCS = join(PROJECT_ROOT, 'dist-scripts/build-docs.js');
+const BUILD_DOCS = join(PROJECT_ROOT, 'dist-scripts/build/docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
 const MARKER_END = '<!-- omk:cli:end -->';

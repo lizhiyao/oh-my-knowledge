@@ -1,4 +1,4 @@
-// scripts/build-docs.ts — 从 oclif Config 渲染若干 markdown 文件的 marker 区段。
+// scripts/build/docs.ts — 从 oclif Config 渲染若干 markdown 文件的 marker 区段。
 //
 // 来源:src/cli/commands/*.ts(双语 description / examples / flags / args)。
 //
@@ -164,7 +164,7 @@ function renderCommandFullbody(cmd: Command.Loadable, bin: string): string[] {
 function generateFullbody(config: Config): string {
   const cmds = [...config.commands].sort((a, b) => a.id.localeCompare(b.id));
   const lines: string[] = [];
-  lines.push('<!-- 此段由 scripts/build-docs.ts 从 src/cli/commands/ 自动生成。');
+  lines.push('<!-- 此段由 scripts/build/docs.ts 从 src/cli/commands/ 自动生成。');
   lines.push('     改 CLI 后跑 `yarn build:docs` 同步,CI `yarn build:docs:check` 会拦截 drift。-->');
   lines.push('');
   for (const cmd of cmds) {
@@ -496,9 +496,9 @@ async function main(): Promise<void> {
   }
 }
 
-// 只在直接 `node dist/scripts/build-docs.js ...` 跑时进 main();被 test 当 module
+// 只在直接 `node dist-scripts/build/docs.js ...` 跑时进 main();被 test 当 module
 // import 时不跑(test import getTopLevelIds / buildTargets 用)。
-const isMain = process.argv[1] && /build-docs\.js$/.test(process.argv[1]);
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   main().catch((err: unknown) => {
     process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);

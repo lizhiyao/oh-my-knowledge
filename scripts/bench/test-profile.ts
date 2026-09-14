@@ -5,8 +5,8 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TEST_ENTRY = resolve(REPO_ROOT, 'scripts', 'run-tests-hermetic.mjs');
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const TEST_ENTRY = resolve(REPO_ROOT, 'scripts', 'ci', 'test.mjs');
 
 interface VitestFileResult {
   name: string;

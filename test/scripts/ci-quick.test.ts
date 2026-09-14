@@ -10,8 +10,8 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'omk-ci-quick-')); roots.push(root);
-  for (const path of ['scripts', 'test', 'node_modules/vitest']) mkdirSync(join(root, path), { recursive: true });
-  for (const name of ['ci-quick.mjs', 'run-tests-hermetic.mjs']) cpSync(resolve('scripts', name), join(root, 'scripts', name));
+  for (const path of ['scripts/ci', 'test', 'node_modules/vitest']) mkdirSync(join(root, path), { recursive: true });
+  for (const name of ['quick.mjs', 'test.mjs']) cpSync(resolve('scripts/ci', name), join(root, 'scripts/ci', name));
   writeFileSync(join(root, 'test/a.test.ts'), '');
   writeFileSync(join(root, 'test/b.test.tsx'), '');
   writeFileSync(join(root, 'owned.txt'), 'original');
@@ -24,7 +24,7 @@ function fixture() {
     if (args[0] === process.env.QUICK_FAIL_STAGE) process.exit(7);
     if (process.env.QUICK_SIGNAL === '1') process.kill(process.pid, 'SIGTERM');
     if (args[0] === 'test') {
-      const result = spawnSync(process.execPath, ['scripts/run-tests-hermetic.mjs', ...args.slice(1)], {stdio: 'inherit'});
+      const result = spawnSync(process.execPath, ['scripts/ci/test.mjs', ...args.slice(1)], {stdio: 'inherit'});
       process.exit(result.status ?? 1);
     }
   `);
@@ -40,7 +40,7 @@ function fixture() {
     // The boundary under test is the script's process exit, argument forwarding,
     // and invocation of the real hermetic wrapper, without running nested suites.
     run(args: string[], env: NodeJS.ProcessEnv = {}) {
-      return spawnSync(process.execPath, ['scripts/ci-quick.mjs', ...args], {
+      return spawnSync(process.execPath, ['scripts/ci/quick.mjs', ...args], {
         cwd: root, encoding: 'utf8', timeout: 10000,
         env: { ...process.env, npm_execpath: join(root, 'yarn.mjs'), ...env },
       });

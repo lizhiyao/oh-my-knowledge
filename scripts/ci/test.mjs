@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const VITEST = join(PROJECT_ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 
 function gitWorkspacePaths() {

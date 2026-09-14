@@ -6,11 +6,11 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { load } from 'js-yaml';
 // @ts-expect-error Standalone Node scripts run without a TypeScript build.
-import { fullCI, findEvidence, readJSON } from '../../scripts/release-evidence.mjs';
+import { fullCI, findEvidence, readJSON } from '../../scripts/release/evidence.mjs';
 // @ts-expect-error Standalone Node script.
-import { failureCategory, runBounded } from '../../scripts/ci-run.mjs';
+import { failureCategory, runBounded } from '../../scripts/ci/diagnostics.mjs';
 // @ts-expect-error Standalone Node script.
-import { verifyBundle, publicationState, publish, pack } from '../../scripts/release-package.mjs';
+import { verifyBundle, publicationState, publish, pack } from '../../scripts/release/package.mjs';
 
 const roots: string[] = [];
 const temp = () => { const root = mkdtempSync(join(tmpdir(), 'omk-release-test-')); roots.push(root); return root; };
@@ -86,7 +86,7 @@ describe('bounded command diagnostics', () => {
   });
   it('cancels the CLI wrapper and records an actual signal without leaving the child running', async () => {
     const directory = temp();
-    const wrapper = spawn(process.execPath, ['scripts/ci-run.mjs', 'cancel-test', directory, '5000', process.execPath,
+    const wrapper = spawn(process.execPath, ['scripts/ci/diagnostics.mjs', 'run', 'cancel-test', directory, '5000', process.execPath,
       '-e', "console.log('ready'); setInterval(()=>{},1000)"], { stdio: ['ignore', 'pipe', 'pipe'] });
     const finished = new Promise<number | null>(resolve => wrapper.on('close', code => resolve(code)));
     await new Promise<void>(resolve => wrapper.stdout.on('data', chunk => { if (chunk.toString().includes('ready')) resolve(); }));
@@ -102,7 +102,7 @@ describe('bounded command diagnostics', () => {
   it('records ordinary failures and aggregates machine-readable counts', async () => {
     const directory = temp();
     expect(await runBounded({ name: 'failed-test', directory, timeoutMs: 3000, command: [process.execPath, '-e', 'process.exit(7)'] })).toBe(7);
-    const result = spawnSync(process.execPath, ['scripts/ci-report.mjs', directory], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: join(directory, 'summary.md') } });
+    const result = spawnSync(process.execPath, ['scripts/ci/diagnostics.mjs', 'report', directory], { encoding: 'utf8', env: { ...process.env, GITHUB_STEP_SUMMARY: join(directory, 'summary.md') } });
     expect(result.status).toBe(0);
     expect(JSON.parse(readFileSync(join(directory, 'summary.json'), 'utf8')).counts).toEqual({ command_failure: 1 });
   });

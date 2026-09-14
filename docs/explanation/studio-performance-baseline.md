@@ -8,7 +8,7 @@ Measured on 2026-09-11 on a single machine, on the `codex/836-studio-runtime-arc
 yarn studio:baseline
 ```
 
-The script (`scripts/studio-baseline.ts`) synthesizes schema-valid datasets into a temporary root, serves them through the real `createReportServer` on a random port, and prints the tables below. Numbers are only meaningful as same-machine, same-commit comparisons — not as absolute cross-machine values.
+The script (`scripts/bench/studio-baseline.ts`) synthesizes schema-valid datasets into a temporary root, serves them through the real `createReportServer` on a random port, and prints the tables below. Numbers are only meaningful as same-machine, same-commit comparisons — not as absolute cross-machine values.
 
 ## Scales
 

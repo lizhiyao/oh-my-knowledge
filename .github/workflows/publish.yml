@@ -86,17 +86,17 @@ jobs:
     - name: Require full CI evidence for the exact release commit
       env:
         GH_TOKEN: ${{ github.token }}
-      run: node scripts/ci-run.mjs ci-evidence "$RUNNER_TEMP/release-diagnostics" 660000 node scripts/release-evidence.mjs "$RUNNER_TEMP/release-bundle"
+      run: node scripts/ci/diagnostics.mjs run ci-evidence "$RUNNER_TEMP/release-diagnostics" 660000 node scripts/release/evidence.mjs "$RUNNER_TEMP/release-bundle"
     - name: Setup package managers
       run: corepack enable
     - name: Install dependencies
-      run: node scripts/ci-run.mjs install "$RUNNER_TEMP/release-diagnostics" 240000 yarn install --immutable
+      run: node scripts/ci/diagnostics.mjs run install "$RUNNER_TEMP/release-diagnostics" 240000 yarn install --immutable
     - name: Build once
-      run: node scripts/ci-run.mjs build "$RUNNER_TEMP/release-diagnostics" 300000 yarn build
+      run: node scripts/ci/diagnostics.mjs run build "$RUNNER_TEMP/release-diagnostics" 300000 yarn build
     - name: Pack the built bytes
-      run: node scripts/ci-run.mjs pack "$RUNNER_TEMP/release-diagnostics" 60000 node scripts/release-package.mjs pack "$RUNNER_TEMP/release-bundle"
+      run: node scripts/ci/diagnostics.mjs run pack "$RUNNER_TEMP/release-diagnostics" 60000 node scripts/release/package.mjs pack "$RUNNER_TEMP/release-bundle"
     - name: Verify the package through an isolated installation
-      run: node scripts/ci-run.mjs package-smoke "$RUNNER_TEMP/release-diagnostics" 360000 node scripts/release-package.mjs smoke "$RUNNER_TEMP/release-bundle"
+      run: node scripts/ci/diagnostics.mjs run package-smoke "$RUNNER_TEMP/release-diagnostics" 360000 node scripts/release/package.mjs smoke "$RUNNER_TEMP/release-bundle"
     - name: Save verified package and evidence
       uses: actions/upload-artifact@v7
       with:
@@ -108,7 +108,7 @@ jobs:
       if: ${{ always() }}
       env:
         CI_JOB_STATUS: ${{ job.status }}
-      run: node scripts/ci-report.mjs "$RUNNER_TEMP/release-diagnostics"
+      run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/release-diagnostics"
     - name: Save diagnostics
       if: ${{ always() }}
       uses: actions/upload-artifact@v7
@@ -145,7 +145,7 @@ jobs:
     - name: Publish to NPM
       env:
         NPM_DIST_TAG: ${{ needs.verify.outputs.npm_tag }}
-      run: node scripts/ci-run.mjs publish "$RUNNER_TEMP/release-diagnostics" 240000 node scripts/release-package.mjs publish "$RUNNER_TEMP/release-bundle" "$NPM_DIST_TAG"
+      run: node scripts/ci/diagnostics.mjs run publish "$RUNNER_TEMP/release-diagnostics" 240000 node scripts/release/package.mjs publish "$RUNNER_TEMP/release-bundle" "$NPM_DIST_TAG"
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v3
       with:
@@ -155,7 +155,7 @@ jobs:
       if: ${{ always() }}
       env:
         CI_JOB_STATUS: ${{ job.status }}
-      run: node scripts/ci-report.mjs "$RUNNER_TEMP/release-diagnostics"
+      run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/release-diagnostics"
     - name: Save diagnostics
       if: ${{ always() }}
       uses: actions/upload-artifact@v7

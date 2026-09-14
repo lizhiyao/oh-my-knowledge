@@ -1,10 +1,10 @@
-// scripts/studio-baseline.ts — Studio 容量与性能基线（issue #836 1.2）。
+// scripts/bench/studio-baseline.ts — Studio 容量与性能基线（issue #836 1.2）。
 //
 // 在小 / 中 / 大三档代表性数据集上，经真实 createReportServer(port 0) 测量：
 // 冷 / 热查询耗时、目录扫描成本（含在冷响应内）、响应体积、并发下事件循环延迟。
 // 产物是纯 markdown 表格，供 docs/explanation/studio-performance-baseline.md 引用。
 //
-// 运行：yarn studio:baseline（先 build，再执行 dist-scripts/studio-baseline.js）。
+// 运行：yarn studio:baseline（先 build，再执行 dist-scripts/bench/studio-baseline.js）。
 // 复现条件：同一台机器、同一 commit；数值只做同条件前后对比，不做跨机绝对值对比。
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export interface BaselineScale {
   readonly name: 'small' | 'medium' | 'large';

@@ -30,7 +30,7 @@ jobs:
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           CI_HEAD_SHA: ${{ github.sha }}
-        run: node scripts/ci-scope.mjs
+        run: node scripts/ci/scope.mjs
 
   lightweight:
     needs: changes
@@ -79,12 +79,12 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --immutable
-      - run: node scripts/ci-run.mjs quality "$RUNNER_TEMP/ci-diagnostics" 600000 yarn ci:quality
+      - run: node scripts/ci/diagnostics.mjs run quality "$RUNNER_TEMP/ci-diagnostics" 600000 yarn ci:quality
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
           CI_JOB_STATUS: ${{ job.status }}
-        run: node scripts/ci-report.mjs "$RUNNER_TEMP/ci-diagnostics"
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
       - name: Save diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -119,12 +119,12 @@ jobs:
       # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
       # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: node scripts/ci-run.mjs tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
           CI_JOB_STATUS: ${{ job.status }}
-        run: node scripts/ci-report.mjs "$RUNNER_TEMP/ci-diagnostics"
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
       - name: Save diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -153,12 +153,12 @@ jobs:
       - run: yarn install --immutable
       - run: yarn build
       # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: node scripts/ci-run.mjs tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
           CI_JOB_STATUS: ${{ job.status }}
-        run: node scripts/ci-report.mjs "$RUNNER_TEMP/ci-diagnostics"
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
       - name: Save diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v7

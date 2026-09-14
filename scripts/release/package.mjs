@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readJSON } from './release-evidence.mjs';
+import { readJSON } from './evidence.mjs';
 
 const integrity = file => `sha512-${createHash('sha512').update(readFileSync(file)).digest('base64')}`;
 const execute = (command, args, options = {}) => execFileSync(command, args, {

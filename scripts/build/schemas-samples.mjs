@@ -7,11 +7,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
-import { generateEvalSampleSetJsonSchema } from '../dist/eval-workflows/inputs/schemas/json-schema.js';
+import { generateEvalSampleSetJsonSchema } from '../../dist/eval-workflows/inputs/schemas/json-schema.js';
 
 const mode = process.argv[2];
 if (mode !== '--write' && mode !== '--check') {
-  throw new Error('Usage: node scripts/build-eval-sample-schema.mjs <--write|--check>');
+  throw new Error('Usage: node scripts/build/schemas-samples.mjs <--write|--check>');
 }
 
 const schemaDir = resolve('schemas/eval-samples/v3');

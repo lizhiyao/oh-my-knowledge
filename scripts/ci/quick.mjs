@@ -3,7 +3,7 @@ import { realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
+const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'));
 const usage = '用法：yarn ci:quick <test/路径.test.ts 或 .test.tsx> [...]（必须显式指定已有测试文件）';
 
 function main() {

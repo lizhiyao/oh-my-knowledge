@@ -198,7 +198,7 @@ between unchanged checks; use clean builds when the tested boundary requires it.
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
-- CI classifies the complete event diff on PRs and `main` pushes. The exact root rule files listed in `scripts/ci-scope.mjs` use governance tests and whitespace checks. Ordinary `docs/**/*.md` and root README changes additionally run runtime/document-contract checks and the documentation build, without Studio or the full test matrix.
+- CI classifies the complete event diff on PRs and `main` pushes. The exact root rule files listed in `scripts/ci/scope.mjs` use governance tests and whitespace checks. Ordinary `docs/**/*.md` and root README changes additionally run runtime/document-contract checks and the documentation build, without Studio or the full test matrix.
 - Source, dependencies, CI/build/site configuration, skills, prompts, generated documentation and unknown paths run the complete Node 22/24 matrix. Missing history, empty diffs or classification errors select the full gate. Renames include both old and new paths; mixed changes use the strongest gate.
 - Required checks remain `test (22)` and `test (24)`. They require the selected gate to succeed; a failed, cancelled or unexpectedly skipped gate cannot pass. Branch protection and the requirement to stay current with `main` are unchanged.
 - 按层归属测试契约：领域单元测试覆盖完整分支矩阵，command 集成测试覆盖参数到业务的接线和输出信封，真实 `node dist/cli/index.js` 只覆盖 dispatcher、startup、进程退出、模块加载时 cwd、打包资源等进程边界。
@@ -237,7 +237,7 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 
 ### 生成文档
 
-命令的 description／flags／args／examples 和 `CLI_EVALUATION_INPUT_REGISTRY` 是对应生成内容的单一来源。`scripts/build-docs.ts` 维护五个目标：
+命令的 description／flags／args／examples 和 `CLI_EVALUATION_INPUT_REGISTRY` 是对应生成内容的单一来源。`scripts/build/docs.ts` 维护五个目标：
 
 | 目标 | 生成内容 |
 |---|---|
@@ -322,7 +322,7 @@ can rebuild different bytes and is not a substitute for reusing that artifact.
 
 CI/CD bounded commands preserve logs, periodic memory/process samples and a
 structured outcome: success, command failure, process timeout, evidence-backed
-OOM, cancellation, execution failure, explicit network failure or an unexplained signal. `ci-report.mjs`
+OOM, cancellation, execution failure, explicit network failure or an unexplained signal. `scripts/ci/diagnostics.mjs report`
 aggregates counts into `summary.json` and the Actions job summary. Diagnostic
 artifacts include the run, attempt and job identity and are retained for 14 days;
 use these categories when comparing failure frequency. SIGKILL alone is not OOM,

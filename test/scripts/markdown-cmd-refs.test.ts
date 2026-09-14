@@ -9,7 +9,7 @@
  *
  * 本测试 scan 全仓 user-facing markdown,把 `omk <cmd>` 第一 token 跟 oclif Config
  * 真值集合比对,任何 stale / typo / removed 命令都会被拦。真值来自
- * `getTopLevelIds(Config.load)`(scripts/build-docs.ts 已经收口为单一派生函数),
+ * `getTopLevelIds(Config.load)`(scripts/build/docs.ts 已经收口为单一派生函数),
  * oclif Command 文件目录是唯一真值源。
  */
 import { describe, it } from 'vitest';
@@ -18,7 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Config } from '@oclif/core';
-import { getTopLevelIds } from '../../scripts/build-docs.js';
+import { getTopLevelIds } from '../../scripts/build/docs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
