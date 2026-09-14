@@ -291,3 +291,41 @@ PRs expanding into those areas will usually be declined. If you're unsure whethe
 ## Security
 
 See the [Security notice](./README.md#security-notice) in the README for risks around custom assertions and the local report server.
+
+## Release reliability and diagnosis
+
+CD waits up to ten minutes for a successful **full** CI run on the exact tag
+commit. Evidence must come from this repository's `ci.yml`, from a `main` push
+or an explicit CI dispatch, with quality and every Node 22/24 shard successful.
+A PR check, ancestor commit, skipped matrix or older success behind a newer
+failed run cannot substitute. If the tag commit only has lightweight CI, dispatch
+`CI` manually on that same tag, let it finish, and rerun release verification;
+do not move/recreate the release tag. CI dispatch always selects the full gate.
+
+Verification has read-only permissions. It builds once, packs with lifecycle
+scripts disabled, installs that tarball into an isolated temporary directory,
+and checks the CLI, module imports and packaged assets. The immutable artifact
+contains the tarball, SHA-512 integrity, commit/version identity, installation
+result and CI run/attempt reference. The OIDC publishing job downloads that
+artifact and validates its identity and digest again, then publishes the tarball
+with `--ignore-scripts`. It does not reinstall dependencies or rebuild the package.
+Local `prepublishOnly` remains intact for manual folder publication.
+
+Publication is serialized without cancelling an active upload. A registry
+version with the exact same package integrity is treated as already uploaded;
+a different or missing integrity fails closed. Tests, installs, builds and npm
+publication are never automatically retried. Only read-only GitHub/registry GETs
+retry transient timeouts, selected network failures, HTTP 408/429/5xx (at most
+three attempts). An uncertain upload requires inspecting the registry and
+rerunning the failed publish job with the original artifact. Rerunning all jobs
+can rebuild different bytes and is not a substitute for reusing that artifact.
+
+CI/CD bounded commands preserve logs, periodic memory/process samples and a
+structured outcome: success, command failure, process timeout, evidence-backed
+OOM, cancellation, execution failure, explicit network failure or an unexplained signal. `ci-report.mjs`
+aggregates counts into `summary.json` and the Actions job summary. Diagnostic
+artifacts include the run, attempt and job identity and are retained for 14 days;
+use these categories when comparing failure frequency. SIGKILL alone is not OOM,
+and runner loss or a job-level kill may prevent final records/upload: missing
+evidence remains unknown. The process deadline precedes the job deadline so
+normal hangs leave time for termination, classification and artifact upload.
