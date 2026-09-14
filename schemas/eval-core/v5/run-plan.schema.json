@@ -2264,6 +2264,14 @@
           ],
           "type": "string"
         },
+        "progressGranularity": {
+          "enum": [
+            "per-coordinate",
+            "per-batch",
+            "start-end-only"
+          ],
+          "type": "string"
+        },
         "writerFailureMode": {
           "enum": [
             "ignore",

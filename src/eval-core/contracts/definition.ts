@@ -400,6 +400,7 @@ export const EventDeliveryPolicySchema = z.object({
   writerMode: z.enum(['disabled', 'optional', 'required']),
   backpressureMode: z.enum(['block']),
   writerFailureMode: z.enum(['ignore', 'fail-run']),
+  progressGranularity: z.enum(['per-coordinate', 'per-batch', 'start-end-only']).optional(),
 }).strict();
 
 export const MeasurementPolicySchema = z.object({

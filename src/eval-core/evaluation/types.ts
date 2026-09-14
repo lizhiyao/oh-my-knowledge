@@ -17,6 +17,7 @@ import type { RunBudgetSource } from '../budget/index.js';
 
 export const EVALUATION_RUNTIME_EVENT_KINDS = [
   'evaluation.run.started',
+  'evaluation.run.progress',
   'evaluation.run.completed',
   'evaluation.run.cancelled',
   'evaluation.run.budget-exhausted',
