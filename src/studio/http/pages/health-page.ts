@@ -24,12 +24,12 @@ export type HealthPage =
  * 页面装载结果。状态码语义与既有一致：缺 from/to 是请求错（400），
  * 报告／身份查不到是缺页（404），数据源读取抛错由宿主兜成 503。
  */
-export type HealthPageLoad =
+type HealthPageLoad =
   | { status: 'ok'; page: HealthPage }
   | { status: 'missing_query_params' }
   | { status: 'analysis_not_found' };
 
-export interface HealthPageSource {
+interface HealthPageSource {
   readonly analysesDir: string;
   readonly includeObserveCards: boolean;
 }

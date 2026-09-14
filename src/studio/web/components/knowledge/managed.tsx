@@ -9,16 +9,13 @@ import type {
   ManagedTone,
 } from '../../../application/knowledge/managed-format';
 import type { ManagedPage } from '../../../http/pages/managed-page';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
+import { displayTime } from '../display-time';
 import { KnowledgeSectionNav } from './section-nav';
 
 const { Text } = Typography;
 
-/** 页内跳转统一带 lang，否则点一下就掉回默认中文；zh 是默认 → 空串，不脏 URL。 */
-const suffix = (lang: Language): string => (lang === 'en' ? '?lang=en' : '');
 const shortHash = (hash: string): string => hash.slice(0, 12);
-/** 与其他 Studio 页面同口径：显示 UTC 并显式标注，不用服务器本地时区（那会让同一记录在不同机器上读出不同时刻）。 */
-const displayTime = (value: string): string => value.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC');
 
 const TONE_HEX: Record<ManagedTone, string> = {
   green: '#1f9d63',
@@ -130,7 +127,7 @@ function EventLine({ event, zh, lang }: { event: ManagedTimelineEvent; zh: boole
       {event.observeBadge === 'production_gap' && (
         <span className="managed-event-hint">{zh ? '建议补对应用例后重跑 omk eval' : 'add matching samples, then re-run omk eval'}</span>
       )}
-      {event.runId && <a href={`/measure/${encodeURIComponent(event.runId)}${suffix(lang)}`}>{zh ? '查看报告 →' : 'report →'}</a>}
+      {event.runId && <a href={`/measure/${encodeURIComponent(event.runId)}${langSuffix(lang)}`}>{zh ? '查看报告 →' : 'report →'}</a>}
       {event.reason && <em>{zh ? `「${event.reason}」` : `"${event.reason}"`}</em>}
     </div>
   </div>;
@@ -175,7 +172,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
             title: zh ? '名称' : 'Name',
             dataIndex: ['row', 'name'],
             ellipsis: { showTitle: false },
-            render: (name: string, item) => <a href={`/knowledge/managed/${encodeURIComponent(item.row.id)}${suffix(lang)}`} title={name}>{name}</a>,
+            render: (name: string, item) => <a href={`/knowledge/managed/${encodeURIComponent(item.row.id)}${langSuffix(lang)}`} title={name}>{name}</a>,
           },
           { title: zh ? '类型' : 'Kind', dataIndex: ['row', 'kind'], width: 110 },
           {
@@ -233,7 +230,7 @@ export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, 
     <KnowledgeSectionNav active="managed" lang={lang} />
     <div className="measure-heading">
       <div>
-        <a href={`/knowledge/managed${suffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</a>
+        <a href={`/knowledge/managed${langSuffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</a>
         <h1 title={page.name}>{page.name}</h1>
         <p>{[page.artifactKind, page.sourceKind, shortHash(page.contentHash), `${zh ? '纳管于' : 'since'} ${displayTime(page.installedAt)}`].join(' · ')}</p>
       </div>

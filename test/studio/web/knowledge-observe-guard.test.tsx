@@ -14,6 +14,7 @@ import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page
 import type { KnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query';
 import { KnowledgeView } from '../../../src/studio/web/components/knowledge/knowledge';
 import type { SkillIndex, SkillIndexEntry } from '../../../src/studio/view-models/knowledge/skill-index';
+import { reactText } from '../../helpers/react-ssr.js';
 
 function entryWith(observe: SkillIndexEntry['observe'], overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
   return { skillName: 'thin-skill', doctor: null, observe, doctorHistory: [], band: observe?.effectiveBand ?? 'gray', ...overrides };
@@ -54,7 +55,7 @@ describe('知识列表的 underpowered 口径', () => {
     const payload = `</script><img src=x onerror=alert(1)>`;
     const html = renderIndex([entryWith(underpowered, { skillName: payload })]);
     assert.ok(!html.includes('<img src=x'), 'payload must not become markup');
-    assert.ok(html.includes('&lt;/script&gt;&lt;img src=x'), 'payload must stay visible as data');
+    assert.ok(html.includes(reactText(payload)), 'payload must stay visible as data');
   });
 });
 

@@ -12,9 +12,9 @@ import type { SkillGraphNodePreview, SkillGraphSnapshot } from '../../view-model
 type EngineFindingLevel = '错误' | '警告' | '建议';
 
 /** 呈现分级：error=确诊问题，warning=亚健康，tip=建议，info=引擎给了未知级别时按信息呈现。 */
-export type DoctorFindingTone = 'error' | 'warning' | 'tip' | 'info';
+type DoctorFindingTone = 'error' | 'warning' | 'tip' | 'info';
 
-export interface DoctorFindingView {
+interface DoctorFindingView {
   tone: DoctorFindingTone;
   description: string;
   suggestion?: string;
@@ -108,7 +108,7 @@ export function projectDoctorRules(results: readonly DoctorRuleResult[]): Doctor
 }
 
 /** 该次体检的 summary 规则（无则 null），用于采样降级与耗时等元信息。 */
-export function findDoctorSummary(results: readonly DoctorRuleResult[]): DoctorRuleResult | undefined {
+function findDoctorSummary(results: readonly DoctorRuleResult[]): DoctorRuleResult | undefined {
   return results.find((result) => result.ruleId.endsWith(SUMMARY_SUFFIX));
 }
 
@@ -126,7 +126,7 @@ export function projectDoctorSampling(results: readonly DoctorRuleResult[]): Doc
 }
 
 /** 结构证据的分组条目：同一类定义节点归并，供折叠区按类呈现。 */
-export interface DoctorGraphNodeGroup {
+interface DoctorGraphNodeGroup {
   nodeKind: string;
   nodes: SkillGraphNodePreview[];
 }

@@ -25,12 +25,12 @@ interface ObservationRoutesOptions {
   readonly includeInbox: boolean;
 }
 
-export interface ObservationRouteContext extends StudioRouteContext {
+interface ObservationRouteContext extends StudioRouteContext {
   readonly analysesDir: string;
   readonly doctorsDir: string;
 }
 
-export type ObservationRouteHandler = (
+type ObservationRouteHandler = (
   context: ObservationRouteContext,
 ) => Promise<boolean>;
 

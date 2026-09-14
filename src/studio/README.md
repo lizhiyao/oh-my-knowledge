@@ -6,17 +6,18 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 | --- | --- |
 | `view-models/` | 跨层共享的类型契约，不含运行时计算。按域分子目录，与 `application/` 同名对齐。 |
 | `application/` | 查询、聚合和视图投影。按域分子目录：`conversations/`（会话与任务轨迹，含 `replay/` 的投影装配、卡片布局、操作摘要、时间格式和连线计算）、`knowledge/`（体检、受管与 skill 索引）、`measure/`（评测运行）、`observe/`（观测健康）。域名只由目录承担，文件名不变。 |
-| `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。`pages/` 放两类宿主共用的页面装载器：识别地址、装载证据、给出 400/404/503 契约，不渲染。 |
-| `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge` 按地址分区组织，`components/observe/inbox` 跟随 `/observe/inbox`，`components/layout` 放共享外壳和主题。 |
-| `index.ts` | Studio 模块聚合入口，导出 catalog、投影、view-model 与 JSON 路由。渲染实现不属于公开面，内部模块也直接引用所属层，不经过公开聚合入口。 |
+| `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。`pages/` 放页面装载器：识别地址、装载证据、给出 400/404/503 契约，不渲染。它只服务 Next 宿主——`next-server.ts` 在流式响应前调它定状态码，`web/catalog.tsx` 经 AsyncLocalStorage 取同一份页面模型；HTTP adapter 的 `/api/*` JSON 路由不经过 `pages/`，自己也从不产出页面 HTML。 |
+| `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge` 按地址分区组织，`components/observe/inbox` 跟随 `/observe/inbox`，`components/layout` 放共享外壳和主题。`components/` 根下只放跨分区共用的呈现原语：`tag-color.ts`（语义 tone → antd Tag 状态）、`display-time.ts`（时间戳的展示口径）——分区需要同一件事时导入这里，不各自另算一份。 |
 
-原 `core-runs/` 已按职责归入上述目录；文件名中的 `core-run` 表示消费 Evaluation Core 产物，不表示 Studio 属于 eval-core。
+原 `core-runs/` 已按职责归入上述目录；文件名中的 `core-run` 表示消费 Evaluation Core 产物，不表示 Studio 属于 eval-core。`src/studio/index.ts` 聚合入口已删除：package exports 里没有 Studio 子路径，全仓没有读者，内部模块一律直接引用所属层。
 
-## 两类页面宿主
+## 页面宿主与 JSON 宿主
 
 CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的会话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情与受管决策史两页。HTTP adapter 不渲染页面 HTML：它只提供 `/api/*` 的 JSON 事实源、SSE、`/health` 与纯文本缺页／错误文档（`http/request-handler.ts`），外加一条站点入口 `GET /` → 302 `/observe`（原样带上 query，`http/routes/conversations.ts`）——根路径不在 Next 宿主的接管集合里，所以始终由 HTTP adapter 回答。这条重定向属于观测路由组，因此只在挂页面组时存在：只挂 `/measure` 的评测预览宿主对 `/` 给 404，与它把壳层品牌链接指向 `/measure` 是同一口径。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
 
 CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE），因此不为用不到的观测页面在用户项目里创建 observations 目录。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/measure/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
+
+`createReportServer` 的第二个参数是页面宿主接缝（`StudioAppHost`，`http/app-host.ts`）：Next 宿主从那里接管页面路径，不传它就得到只服务 JSON 面的独立模式。全仓没有产品入口用独立模式起服务，它的读者是性能基线脚本（`scripts/bench/studio-baseline.ts`）与直接验证 `/api/*` 的 HTTP 层测试。
 
 ## 观测收件箱页面盘点（React）
 

@@ -2,7 +2,7 @@ import { projectDoctorsDir, projectObserveHealthDir, resolveDoctorsDir, resolveO
 import { DEFAULT_OBSERVATIONS_DIR } from '../../../observability/inbox/index.js';
 import { buildSkillIndex, createSkillIndexCache, type SkillIndexCache } from './skill-index.js';
 
-export interface KnowledgeQueryOptions {
+interface KnowledgeQueryOptions {
   analysesDir?: string | (() => string);
   doctorsDir?: string | (() => string);
   observationsDir?: string;

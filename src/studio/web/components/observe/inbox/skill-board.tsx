@@ -1,23 +1,12 @@
 'use client';
 import { useMemo } from 'react';
 import { Table, Tag, Tooltip, Typography } from 'antd';
-import {
-  buildObservationSkillRollups,
-  skillReviewLabel,
-  type ObservationSkillRollup,
-  type SkillReviewTone,
-} from '../../../../../observability/inbox/skill-rollups';
+import { buildObservationSkillRollups, skillReviewLabel, type ObservationSkillRollup } from '../../../../../observability/inbox/skill-rollups';
 import type { IndicatorHelpKey } from '../../../../../observability/inbox/metric-semantics';
 import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
 import type { Language } from '../../layout/shell';
+import { tagStatus } from '../../tag-color';
 import { MetricBadge } from './metric-badge';
-
-const REVIEW_TAG_COLOR: Record<SkillReviewTone, string> = {
-  error: 'error',
-  warning: 'warning',
-  neutral: 'default',
-  success: 'success',
-};
 
 const METRIC_KEYS: Record<keyof ObservationSkillRollup['metricCounts'], IndicatorHelpKey> = {
   bash: 'bash',
@@ -110,7 +99,7 @@ export function SkillBoard({
           align: 'right',
           render: (_: unknown, row) => (
             <Tooltip title={zh ? '按过程发现的最高严重度给出复盘优先级' : 'Review priority from the highest observation severity'}>
-              <Tag color={REVIEW_TAG_COLOR[row.reviewTone]}>{skillReviewLabel(row.reviewTone, lang)}</Tag>
+              <Tag color={tagStatus(row.reviewTone)}>{skillReviewLabel(row.reviewTone, lang)}</Tag>
             </Tooltip>
           ),
         },

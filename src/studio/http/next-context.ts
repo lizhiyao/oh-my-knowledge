@@ -19,7 +19,7 @@ export class StudioContextMissingError extends Error {
   }
 }
 
-export interface StudioRequestContext<T> {
+interface StudioRequestContext<T> {
   run<R>(store: T, fn: () => R): R;
   get(): T;
 }

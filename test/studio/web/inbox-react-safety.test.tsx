@@ -9,6 +9,7 @@ import { buildObservationInboxViewModel, type ObservationInboxViewModel } from '
 import { SignalSection } from '../../../src/studio/web/components/observe/inbox/signals';
 import { SkillBoard } from '../../../src/studio/web/components/observe/inbox/skill-board';
 import { baseItem } from '../../observability/inbox/_helpers';
+import { reactText } from '../../helpers/react-ssr.js';
 
 /**
  * 三类载荷：标签闭合、属性逃逸、原型链成员名。
@@ -19,16 +20,6 @@ const ATTACKS = [
   `constructor<svg onload=alert(3)>`,
   `__proto__" onmouseover="alert(4)`,
 ];
-
-/** React 文本节点的转义结果，用于正向断言：值被整体丢弃同样算失败。 */
-function reactText(payload: string): string {
-  return payload
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#x27;');
-}
 
 function assertInert(html: string, payload: string): void {
   for (const marker of ['<script>', '<img src=x', '<svg onload', 'onmouseover="alert']) {

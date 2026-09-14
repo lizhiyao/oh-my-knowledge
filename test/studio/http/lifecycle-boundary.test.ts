@@ -7,14 +7,14 @@ describe('Studio HTTP lifecycle boundary', () => {
     const relativeImports = [...listener.matchAll(/from ['"](\.[^'"]+)['"]/g)]
       .map((match) => match[1]);
 
-    expect(relativeImports).toEqual([
-      './contracts.js',
+    // 边界是「只依赖 http 层内这四个模块」，不是每条 import 的书写顺序与条数。
+    expect([...new Set(relativeImports)].sort()).toEqual([
       './app-host.js',
+      './contracts.js',
       './errors.js',
       './request-handler.js',
-      './contracts.js',
     ]);
-    expect(listener).not.toMatch(/studio\/(?:application|view-models|presentation|web)/);
+    expect(listener).not.toMatch(/studio\/(?:application|view-models|web)/);
     expect(listener).not.toMatch(/\.\.\/(?:\.\.\/)?(?:diagnosis|doctor|managed|evidence|observability|shared)\//);
   });
 

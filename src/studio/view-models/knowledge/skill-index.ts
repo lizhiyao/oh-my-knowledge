@@ -38,7 +38,7 @@ export interface SkillObserveSnapshot {
   confidence: 'high' | 'low' | 'underpowered';
 }
 
-export interface SkillGraphStageSnapshot {
+interface SkillGraphStageSnapshot {
   sourceKind: 'doctor';
   sourceId: string;
   graphId: string;
@@ -57,15 +57,6 @@ export interface SkillGraphNodePreview {
   parentSampleStableKey?: string;
   coverage?: 'declared' | 'undeclared';
   coveredBySamples?: string[];
-}
-
-export interface SkillGraphCoverageEdgePreview {
-  sampleStableKey?: string;
-  sampleLabel: string;
-  sampleStatus?: string;
-  targetStableKey: string;
-  targetNodeKind: string;
-  targetLabel: string;
 }
 
 export interface SkillGraphSnapshot {

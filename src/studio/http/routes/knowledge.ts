@@ -12,12 +12,12 @@ interface KnowledgeRoutesOptions {
   readonly managedDir: string | (() => string) | undefined;
 }
 
-export interface KnowledgeRouteContext extends StudioRouteContext {
+interface KnowledgeRouteContext extends StudioRouteContext {
   readonly analysesDir: string;
   readonly doctorsDir: string;
 }
 
-export type KnowledgeRouteHandler = (
+type KnowledgeRouteHandler = (
   context: KnowledgeRouteContext,
 ) => Promise<boolean>;
 

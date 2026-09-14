@@ -14,23 +14,14 @@ import type { SkillDiffRow } from '../../../src/studio/view-models/knowledge/kno
 import type { HealthPage } from '../../../src/studio/http/pages/health-page.js';
 import { HealthView } from '../../../src/studio/web/components/observe/health';
 import { coverageOf, reportOf, skillOf, trendPointOf } from '../fixtures/health-report.js';
-
-/** React 文本节点的转义结果；值被整体丢弃同样算失败。 */
-function reactText(payload: string): string {
-  return payload
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#x27;');
-}
+import { reactText, visibleText } from '../../helpers/react-ssr.js';
 
 /**
- * 渲染成可比对的字符串：React 会在相邻动态文本之间插 `<!-- -->` 定界，
- * 剥掉注释后按可见顺序断言，既锁住取值也锁住相邻关系。
+ * 渲染成可比对的字符串：剥掉 React 的文本定界注释后按可见顺序断言，
+ * 既锁住取值也锁住相邻关系。
  */
 function render(page: HealthPage, lang: 'zh' | 'en'): string {
-  return renderToString(createElement(HealthView, { page, lang })).replaceAll('<!-- -->', '');
+  return visibleText(renderToString(createElement(HealthView, { page, lang })));
 }
 
 /** confidence 字段之前的报告形状：顶层与 per-skill 都没有该键。 */

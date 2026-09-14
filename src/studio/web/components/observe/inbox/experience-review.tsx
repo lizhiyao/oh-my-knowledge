@@ -8,7 +8,8 @@ import {
   reviewStateKey,
 } from '../../../../../observability/inbox/review-semantics';
 import { ownRecordValue } from '../../../../../shared/record-count';
-import type { Language } from '../../layout/shell';
+import { langSuffix, type Language } from '../../layout/shell';
+import { tagStatus } from '../../tag-color';
 import { SessionReviewActions } from './review-actions';
 
 const PRIORITY_RANK: Record<string, number> = { review_first: 0, sample_review: 1 };
@@ -22,8 +23,7 @@ function formatRange(start?: string, end?: string): string {
 }
 
 function conversationHref(threadId: string, lang: Language): string {
-  const path = `/observe/conversations/${encodeURIComponent(threadId)}`;
-  return lang === 'zh' ? path : `${path}?lang=${lang}`;
+  return `/observe/conversations/${encodeURIComponent(threadId)}${langSuffix(lang)}`;
 }
 
 /**
@@ -62,7 +62,7 @@ export function ExperienceReviewSection({
           <div style={{ width: '100%' }}>
             <Space size={8} wrap style={{ marginBottom: 4 }}>
               <Typography.Text strong code>{session.skillName}</Typography.Text>
-              <Tag color={priority.tone}>{priority.label}</Tag>
+              <Tag color={tagStatus(priority.tone)}>{priority.label}</Tag>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {formatRange(session.startTimestamp, session.endTimestamp)}
               </Typography.Text>

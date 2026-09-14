@@ -7,10 +7,6 @@ export interface StudioRouteContext {
   readonly path: string;
 }
 
-export type StudioRouteHandler = (
-  context: StudioRouteContext,
-) => boolean | Promise<boolean>;
-
 export interface LiveStreamRegistry {
   add(close: () => void): void;
   delete(close: () => void): void;

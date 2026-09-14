@@ -14,10 +14,10 @@ export type InsightSeverity = 'high' | 'medium' | 'low';
 
 export type InsightAudience = 'skill-author' | 'sample-author' | 'omk-maintainer';
 
-export type InsightPerspective = 'doctor' | 'observe';
+type InsightPerspective = 'doctor' | 'observe';
 
 /** 现象证据:把抽象"X 模式 N 条"翻译成用户能看到的具体行为。 */
-export interface InsightIllustration {
+interface InsightIllustration {
   sampleId: string;
   /** 用户给 LLM 的 prompt(截断到 ~200 字)。 */
   samplePrompt?: string;
@@ -40,7 +40,7 @@ export interface InsightEvidence {
 }
 
 /** 可粘贴的 patch 片段。target 指明改哪种文件,location 是文件/章节,snippet 是代码块。 */
-export interface InsightPatch {
+interface InsightPatch {
   target: 'skill' | 'sample-environment' | 'sample-mocks' | 'doctor-rule';
   /** 目标位置描述,如 'sample s003 的 mocks 数组' / 'SKILL.md「项目创建」节'。 */
   location: string;
@@ -55,7 +55,7 @@ export interface InsightRecommendation {
 }
 
 /** 该 insight 关联的具体阶段元素 — UI 渲染 timeline 时用来在阶段卡内挂 #N 徽章。 */
-export interface InsightStageRefs {
+interface InsightStageRefs {
   doctorRuleIds?: string[];
   /** observe 信号类型标签:'high-failure-rate' / 'gap' / 'uncovered-files'。
    *  observe 内单条信号没像 doctor rule / eval sample 那么细的 id,用类型标即可。 */

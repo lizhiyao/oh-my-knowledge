@@ -21,6 +21,11 @@ export function languageSwitchHref(route: string, target: Language): string {
   return query ? `${pathname}?${query}` : pathname;
 }
 
+/** 页面内静态链接的语言参数：zh 是缺省值，切回中文就是删掉参数，与 languageSwitchHref 同口径。 */
+export function langSuffix(lang: Language): string {
+  return lang === 'en' ? '?lang=en' : '';
+}
+
 function LanguageSwitch({ lang }: { lang: Language }) {
   const route = useStudioRoute();
   if (!route) return null;
@@ -34,7 +39,7 @@ function LanguageSwitch({ lang }: { lang: Language }) {
 }
 
 export function StudioShell({ lang, children, active }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | false }) {
-  const suffix = lang === 'en' ? '?lang=en' : '';
+  const suffix = langSuffix(lang);
   // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
   const navigation = useStudioNavigation();
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>

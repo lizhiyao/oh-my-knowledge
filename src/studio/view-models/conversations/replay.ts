@@ -63,7 +63,7 @@ export interface ReplayMilestone {
   tone: ReplayMilestoneTone;
 }
 
-export interface ReplayField {
+interface ReplayField {
   label: string;
   value: string;
   detail: string;

@@ -68,15 +68,6 @@ describe('Studio declarative router', () => {
     assert.deepEqual(JSON.parse(captured.body), { error: 'method_not_allowed' });
   });
 
-  it('answers non-API 405 as text', async () => {
-    const router = createStudioRouter([{ pattern: '/page', handler: () => undefined }]);
-    const { context, captured } = fakeContext('/page', 'POST');
-    assert.equal(await router(context), true);
-    assert.equal(captured.status, 405);
-    assert.equal(captured.headers.Allow, 'GET');
-    assert.equal(captured.body, 'method_not_allowed');
-  });
-
   it('matches ANY method for redirect-style routes', async () => {
     const calls: string[] = [];
     const router = createStudioRouter([

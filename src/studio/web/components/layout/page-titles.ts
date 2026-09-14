@@ -20,7 +20,7 @@ const TITLES = {
   managed: { zh: '受管决策史', en: 'Managed history' },
 } as const;
 
-export type StudioPageTitle = keyof typeof TITLES;
+type StudioPageTitle = keyof typeof TITLES;
 
 export function studioLang(searchParams: { lang?: string }): Language {
   return searchParams.lang === 'en' ? 'en' : 'zh';

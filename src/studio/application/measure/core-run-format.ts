@@ -13,7 +13,7 @@ import type {
  */
 
 /** 与 antd Tag 的语义色一致；`default` 表示该取值本身不表达好坏，不得着色。 */
-export type StatusTone = 'success' | 'warning' | 'error' | 'default';
+type StatusTone = 'success' | 'warning' | 'error' | 'default';
 
 const TONES: Readonly<Record<Exclude<StatusTone, 'default'>, readonly string[]>> = {
   success: ['completed', 'complete', 'conclusive', 'within-budget', 'decided', 'observed', 'passed', 'self-contained'],

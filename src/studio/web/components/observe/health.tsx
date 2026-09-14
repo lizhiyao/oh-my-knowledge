@@ -14,20 +14,17 @@ import type {
   HealthTone,
   HealthTrendFacts,
 } from '../../../application/observe/health-format';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
+import { tagStatus } from '../tag-color';
 import { ObserveSectionNav } from './section-nav';
 
-const suffix = (lang: Language) => (lang === 'en' ? '?lang=en' : '');
-const reportHref = (id: string, lang: Language) => `/observe/health/${encodeURIComponent(id)}${suffix(lang)}`;
-const trendHref = (skill: string, lang: Language) => `/observe/skill-trend/${encodeURIComponent(skill)}${suffix(lang)}`;
+const reportHref = (id: string, lang: Language) => `/observe/health/${encodeURIComponent(id)}${langSuffix(lang)}`;
+const trendHref = (skill: string, lang: Language) => `/observe/skill-trend/${encodeURIComponent(skill)}${langSuffix(lang)}`;
 const stamp = (iso: string) => iso.slice(0, 16).replace('T', ' ');
 const day = (iso: string) => iso.slice(0, 10);
 /** 比率取整到百分位是展示选择；判定阈值已在服务端投影成 tone。 */
 const pct = (ratio: number | null | undefined) => (ratio == null ? '—' : `${Math.round(ratio * 100)}%`);
 
-const TONE_TAG: Record<HealthTone, 'success' | 'warning' | 'error' | 'default'> = {
-  success: 'success', warning: 'warning', error: 'error', neutral: 'default',
-};
 /** 色带填充色：neutral 表示样本不足，不给硬色。 */
 const TONE_BAR: Record<HealthTone, string> = {
   success: '#1f9d63', warning: '#d97706', error: '#dc2626', neutral: '#b0b8c5',
@@ -56,7 +53,6 @@ const zhCopy = {
   bandYellow: '待观察',
   bandRed: '需关注',
   lowN: '样本不足',
-  confidenceLow: '可信度偏低',
   reportKind: '生产观察报告',
   timeRangeLabel: '时间窗：',
   generatedAtLabel: '生成于：',
@@ -172,7 +168,6 @@ const enCopy: typeof zhCopy = {
   bandYellow: 'Watch',
   bandRed: 'Attention',
   lowN: 'Low N',
-  confidenceLow: 'Low confidence',
   reportKind: 'Observe report',
   timeRangeLabel: 'Window: ',
   generatedAtLabel: 'Generated: ',
@@ -276,7 +271,7 @@ const SIGNAL_LABEL_KEY = {
 } as const;
 
 function BandTag({ tone, label }: { tone: HealthTone; label: string }) {
-  return <Tag color={TONE_TAG[tone]}>{label}</Tag>;
+  return <Tag color={tagStatus(tone)}>{label}</Tag>;
 }
 
 function bandLabel(band: HealthBand, confidence: HealthConfidence, copy: typeof zhCopy): string {
@@ -437,8 +432,8 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/observe${suffix(lang)}`}>{copy.observeCrumb}</Link> },
-        { title: <Link href={`/observe/health${suffix(lang)}`}>{copy.listTitle}</Link> },
+        { title: <Link href={`/observe${langSuffix(lang)}`}>{copy.observeCrumb}</Link> },
+        { title: <Link href={`/observe/health${langSuffix(lang)}`}>{copy.listTitle}</Link> },
         { title: report.analysisId },
       ]}/>
       <div className="observe-detail-title">
@@ -523,8 +518,8 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/observe${suffix(lang)}`}>{copy.observeCrumb}</Link> },
-        { title: <Link href={`/observe/health${suffix(lang)}`}>{copy.listTitle}</Link> },
+        { title: <Link href={`/observe${langSuffix(lang)}`}>{copy.observeCrumb}</Link> },
+        { title: <Link href={`/observe/health${langSuffix(lang)}`}>{copy.listTitle}</Link> },
         { title: copy.trendCrumb },
       ]}/>
       <div className="observe-detail-title"><h1 title={trend.skillName}>{copy.trendHeading} · {trend.skillName}</h1></div>
@@ -596,8 +591,8 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/observe${suffix(lang)}`}>{copy.observeCrumb}</Link> },
-        { title: <Link href={`/observe/health${suffix(lang)}`}>{copy.listTitle}</Link> },
+        { title: <Link href={`/observe${langSuffix(lang)}`}>{copy.observeCrumb}</Link> },
+        { title: <Link href={`/observe/health${langSuffix(lang)}`}>{copy.listTitle}</Link> },
         { title: copy.diffCrumb },
       ]}/>
       <div className="observe-detail-title"><h1>{copy.diffHeading}</h1></div>

@@ -34,16 +34,7 @@ import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../../evidence
 import { assessHealth } from './skill-health.js';
 import { detectInsights } from './skill-insights.js';
 
-export type {
-  SkillDoctorSnapshot,
-  SkillGraphSnapshot,
-  SkillIndex,
-  SkillIndexEntry,
-  SkillIndexSummary,
-  SkillObserveSnapshot,
-} from '../../view-models/knowledge/skill-index.js';
-
-export interface SkillIndexCacheEntry {
+interface SkillIndexCacheEntry {
   readonly fingerprint: string;
   readonly result: SkillIndex;
 }
@@ -296,7 +287,7 @@ function latestTimestamp(entry: SkillIndexEntry): string {
   return [entry.doctor?.timestamp, entry.observe?.generatedAt].filter(Boolean).sort().at(-1) ?? '';
 }
 
-export interface BuildSkillIndexOptions {
+interface BuildSkillIndexOptions {
   includeObserveCards?: boolean;
   includeDoctorCards?: boolean;
   /** Owned by the querying server; omitted for uncached standalone builds. */
