@@ -64,13 +64,17 @@ The first version is offline-only and does not follow a session that is still be
 
 ## Inspect one task
 
-Start `omk studio` directly; `observe ingest` is not required. Studio reads the local Codex conversation index and organizes Codex rollouts as **Thread → Turn**:
+Start `omk studio` directly; `observe ingest` is not required. Studio reads the local Codex conversation index and organizes Codex rollouts as **Project → Conversation → Messages**:
 
 ```bash
 omk studio
 ```
 
-Select a conversation from the overview, then choose one task to open **Task Trajectory**. The overview supports title and workspace search and separates running, unarchived, and archived conversations. The homepage currently indexes local Codex sessions directly; Claude Code, OpenClaw, and markdown traces still enter observation reports through `omk observe`.
+The sidebar groups conversations by project, with cross-project Recent and Running views and project, title, and directory search. Opening a conversation reads user and assistant messages directly, newest turns first, five turns per page. Expand long messages in place; open Execution details for tool calls and raw evidence. Knowledge extraction starts directly from the conversation.
+
+Project grouping follows local Git common-directory relationships, including repository subdirectories and linked worktrees. Uncertain directories remain separate; conversations without a directory appear under Unassigned. Matching names or remote URLs alone never merge projects. The browser remembers the last conversation; Recent returns to the overview. Grouping and reading do not call a model or rewrite source logs. Tool error counts do not determine the final outcome.
+
+ The homepage currently indexes local Codex sessions directly; Claude Code, OpenClaw, and markdown traces still enter observation reports through `omk observe`.
 
 Task boundaries prefer a source-native `turnId`, then lifecycle events such as `turn_started` / `turn_completed`. Only sources without native turn boundaries fall back to user-message segmentation. Skill attribution annotates knowledge related to the selected turn; it never defines the task boundary.
 

@@ -11,7 +11,7 @@ import { buildConversationActivitySnapshot, buildConversationDetailActivitySnaps
 
 export type ObservePage =
   | { pageKind: 'index'; model: ConversationIndexViewModel; revision: string }
-  | { pageKind: 'conversation'; model: ConversationListItem; revision: string }
+  | { pageKind: 'conversation'; model: ConversationListItem; navigation: ConversationIndexViewModel; revision: string }
   | { pageKind: 'trajectory'; threadId: string; turnId: string; revision: string; status: ExperienceTurnStatus; live: boolean; replay: ReplayProjection; model: Omit<KnowledgeDebuggerViewModel, 'session'> };
 
 /** Project only the selected task window; do not serialize the full source session. */
@@ -28,7 +28,7 @@ export async function loadObservePage(catalog: ConversationCatalog, path: string
   catch { return undefined; }
   if (turnId === undefined) {
     const model = await catalog.getConversation(threadId);
-    return model ? { pageKind: 'conversation', model, revision: buildConversationDetailActivitySnapshot(model).revision } : undefined;
+    return model ? { pageKind: 'conversation', model, navigation: await catalog.listConversations(), revision: buildConversationDetailActivitySnapshot(model).revision } : undefined;
   }
   const trajectory = await catalog.loadTaskTrajectory(threadId, turnId);
   if (!trajectory) return undefined;

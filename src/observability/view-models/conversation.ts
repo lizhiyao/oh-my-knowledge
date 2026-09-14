@@ -19,7 +19,10 @@ export interface ConversationTaskItem {
   relatedSkillNames: string[];
 }
 
+export interface ConversationProject { projectId: string; name: string; directory: string }
+
 export interface ConversationListItem {
+  project?: ConversationProject;
   threadId: string;
   sourceThreadId: string;
   sourceKind: TraceSourceKind;

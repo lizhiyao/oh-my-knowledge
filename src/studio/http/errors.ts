@@ -27,6 +27,7 @@ export type StudioApiErrorCode =
   | 'settings_conflict'
   | 'method_not_allowed'
   | 'missing_query_params'
+  | 'invalid_pagination'
   | 'invalid_json_body'
   | 'json_body_not_object'
   | 'request_body_too_large'

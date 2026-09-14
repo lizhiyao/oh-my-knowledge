@@ -47,13 +47,22 @@ describe('Observe Next production routes', () => {
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
       if(path==='/observe') {
-        assert.match(html,/任务轨迹/);
-        assert.ok(html.includes(`href="/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}">查看最近轨迹</a>`));
-        assert.ok(html.includes('href="/observe/conversations/live-thread/tasks/source%2Flive">查看实时轨迹</a>'));
-        assert.match(html,/暂无轨迹/);
-        assert.doesNotMatch(html,/href="\/observe\/conversations\/empty-thread\/tasks\//);
+        assert.match(html,/项目与会话/);
+        assert.match(html,/最近会话/);
+        assert.match(html,/未归属项目/);
+        assert.match(html,/href="\/observe\/conversations\/empty-thread\?lang=zh"/);
+        assert.doesNotMatch(html,/查看最近轨迹|查看实时轨迹/);
       }
     }
+    for (const query of ['offset=-1', 'limit=11', 'offset=1.5']) {
+      const invalid = await fetch(`${url}/api/conversations/thread/messages?${query}`);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'invalid_pagination' });
+    }
+    assert.equal((await fetch(`${url}/api/conversations/missing/messages`)).status, 404);
+    const messages = await fetch(`${url}/api/conversations/thread/messages`);
+    assert.equal(messages.status, 200);
+    assert.doesNotMatch(await messages.text(), /private-session-locator-must-not-be-serialized/);
     const task=`/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}`;
     const response=await fetch(url+task);assert.equal(response.status,200);
     const html=await response.text();assert.match(html,/语义轨迹/);assert.match(html,/知识访问/);

@@ -64,13 +64,17 @@ omk observe show <inbox_id>
 
 ## 查看一次任务
 
-直接启动 `omk studio` 即可，不需要先运行 `observe ingest`。Studio 会读取本机 Codex 会话索引，在首页按「对话(Thread) → 任务(Turn)」组织 Codex rollout：
+直接启动 `omk studio` 即可，不需要先运行 `observe ingest`。Studio 会读取本机 Codex 会话索引，按「项目 → 会话 → 对话内容」组织 Codex rollout：
 
 ```bash
 omk studio
 ```
 
-先从对话总览选择一段对话，再选择其中一次任务进入「任务轨迹」。对话总览支持按标题或工作目录搜索，并区分进行中、未归档与已归档对话。当前首页直接索引本机 Codex 会话；Claude Code、OpenClaw 和 markdown trace 仍通过 `omk observe` 进入观测报告。
+左侧按项目组织会话，也可以从「最近会话」「进行中」跨项目查找，或搜索项目、会话标题及工作目录。打开会话后直接阅读用户与助手消息，最近轮次优先、每页 5 轮；长消息可展开全文，工具调用和原始依据按需进入「执行详情」。在会话详情可直接发起知识提炼。
+
+项目归组复用本地 Git 仓库的 common directory 关系，因此同一仓库的子目录和 worktree 归到一起；无法确认仓库关系时按目录独立展示，没有工作目录的会话放入「未归属项目」。不会仅凭目录同名或远端地址合并项目。浏览器记住上次打开的会话；点击「最近会话」可回到总览。归组与阅读不调用模型、不改写原始日志，工具报错次数不代表最终任务失败。
+
+当前首页直接索引本机 Codex 会话；Claude Code、OpenClaw 和 markdown trace 仍通过 `omk observe` 进入观测报告。
 
 任务边界优先使用来源明确提供的 `turnId`，其次使用 `turn_started` / `turn_completed` 等生命周期事件；只有来源没有原生 Turn 边界时，才退化为按用户消息切分。Skill 归因只解释选定任务与哪些知识载体有关，不参与划定任务范围。
 

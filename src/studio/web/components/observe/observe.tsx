@@ -3,130 +3,23 @@ import { ExtractedKnowledge } from './extracted-knowledge';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Alert, Breadcrumb, Button, Empty, Input, Popover, Segmented, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { Alert, Breadcrumb, Button, Popover, Space, Table, Tabs, Tag } from 'antd';
 import type { ObservePage } from '../../../http/observe-page';
-import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import { EventRecords, RawRecords } from './records';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
-import { ObserveSectionNav } from './section-nav';
+import { ObserveWorkspace } from './workspace';
+import { Status } from './activity';
 import type { Language } from '../layout/shell';
 
 const displayTime = (value: string | undefined) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
 const suffix = (lang: Language) => lang === 'en' ? '?lang=en' : '';
 const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${suffix(lang)}`;
-const taskPath = (threadId: string, turnId: string) => `/observe/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}`;
-const statuses: Record<string, string> = { open: '进行中', completed: '已完成', failed: '失败', aborted: '已中止', interrupted: '已中断', unknown: '未知', success: '成功', failure: '失败', cancelled: '已取消' };
-function Status({status, lang}: {status: string; lang: Language}) {
-  return <Tag className={status === 'open' ? 'studio-running-status' : undefined} color={status === 'open' ? 'processing' : status === 'failed' ? 'error' : undefined}>{status === 'open' && <span className="studio-running-dot" aria-hidden="true"/>}{lang === 'zh' ? statuses[status] ?? status : status}</Tag>;
-}
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
-/** Refresh only when the domain activity revision changes; cancel polling on navigation. */
-function useActivity(endpoint: string, revision: string) {
-  const router = useRouter();
-  const [failed, setFailed] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    let pending = false;
-    const check = async () => {
-      if (pending || document.hidden) return;
-      pending = true;
-      setChecking(true);
-      try {
-        const response = await fetch(endpoint, { signal: controller.signal, cache: 'no-store' });
-        if (!response.ok) throw new Error('activity unavailable');
-        const activity = await response.json() as {revision: string};
-        if (!controller.signal.aborted) {
-          setFailed(false);
-          if (activity.revision !== revision) router.refresh();
-        }
-      } catch { if (!controller.signal.aborted) setFailed(true); }
-      finally { pending = false; if (!controller.signal.aborted) setChecking(false); }
-    };
-    if (attempt > 0) void check();
-    const timer = setInterval(check, 5000);
-    return () => { clearInterval(timer); controller.abort(); };
-  }, [endpoint, revision, router, attempt]);
-  return { failed, checking, retry: () => setAttempt(value => value + 1) };
-}
-
-function ActivityNotice({activity, lang}: {activity: ReturnType<typeof useActivity>; lang: Language}) {
-  if (!activity.failed) return null;
-  return <div className="observe-update-notice"><span role="status" title={lang === 'zh' ? '暂时无法获取新内容，当前列表仍可查看；系统会自动重试。' : 'Updates are unavailable. Existing records remain available; automatic retries continue.'}><span aria-hidden="true">⚠</span> {lang === 'zh' ? '更新暂不可用' : 'Updates unavailable'}</span><Button type="link" size="small" loading={activity.checking} onClick={activity.retry}>{lang === 'zh' ? '重试' : 'Retry'}</Button></div>;
-}
-
 export function ObserveView({page, lang}: {page: ObservePage; lang: Language}) {
-  if (page.pageKind === 'index') return <ConversationList page={page} lang={lang}/>;
-  if (page.pageKind === 'conversation') return <ConversationDetail page={page} lang={lang}/>;
+  if (page.pageKind !== 'trajectory') return <ObserveWorkspace page={page} lang={lang}/>;
   return <Trajectory page={page} lang={lang}/>;
-}
-function ConversationList({page, lang}: {page: Extract<ObservePage, {pageKind:'index'}>; lang: Language}) {
-  const zh = lang === 'zh';
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [workspace, setWorkspace] = useState<string>();
-  const [model, setModel] = useState<string>();
-  const [current, setCurrent] = useState(1);
-  const conversations = page.model.conversations;
-  const options = (values: (string | undefined)[]) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort().map(value => ({value, label:value}));
-  const filtered = filter !== 'all' || Boolean(query || workspace || model);
-  const activity = useActivity('/api/conversations/activity', page.revision);
-  const running = (item: ConversationListItem) => item.tasks.some(task => task.status === 'open');
-  const rows = conversations.filter(item => {
-    const selected = filter === 'all' || (filter === 'running' ? running(item) : filter === 'archived' ? item.archived : !item.archived);
-    return selected && (!workspace || item.cwd === workspace) && (!model || item.model === model) && `${item.title} ${item.preview ?? ''} ${item.cwd ?? ''}`.toLowerCase().includes(query.toLowerCase());
-  }).sort((a,b) => Number(running(b)) - Number(running(a)));
-  return <>
-    <ObserveSectionNav active="conversations" lang={lang}/>
-    <div className="observe-toolbar">
-      <Segmented value={filter} onChange={value=>{setFilter(value);setCurrent(1);}} options={[{value:'all',label:zh?'全部':'All'},{value:'running',label:zh?'进行中':'Running'},{value:'active',label:zh?'未归档':'Unarchived'},{value:'archived',label:zh?'已归档':'Archived'}]}/>
-      <div className="observe-toolbar-actions conversation-filters">
-        <Select className="conversation-workspace-filter" allowClear showSearch aria-label={zh?'筛选工作目录':'Filter workspace'} placeholder={zh?'全部工作目录':'All workspaces'} value={workspace} options={options(conversations.map(item=>item.cwd))} onChange={value=>{setWorkspace(value);setCurrent(1);}}/>
-        <Select className="conversation-model-filter" allowClear showSearch aria-label={zh?'筛选模型':'Filter model'} placeholder={zh?'全部模型':'All models'} value={model} options={options(conversations.map(item=>item.model))} onChange={value=>{setModel(value);setCurrent(1);}}/>
-        <Input allowClear aria-label={zh?'搜索会话':'Search conversations'} placeholder={zh?'搜索标题或工作目录':'Search title or workspace'} value={query} onChange={event=>{setQuery(event.target.value);setCurrent(1);}}/>
-        {filtered&&<Button onClick={()=>{setFilter('all');setWorkspace(undefined);setModel(undefined);setQuery('');setCurrent(1);}}>{zh?'重置筛选':'Reset filters'}</Button>}
-        <ActivityNotice activity={activity} lang={lang}/>
-      </div>
-    </div>
-    <Table className="measure-table conversation-table" tableLayout="fixed" size="small" rowKey="threadId" rowClassName={item => running(item) ? 'studio-running-row' : ''} dataSource={rows} scroll={{x:900}} pagination={{current:Math.min(current,Math.max(1,Math.ceil(rows.length/20))),onChange:setCurrent,pageSize:20,showSizeChanger:false,showTotal:()=>filtered?(zh?`匹配 ${rows.length} / 共 ${conversations.length} 个会话`:`${rows.length} matched / ${conversations.length} conversations`):(zh?`共 ${conversations.length} 个会话`:`${conversations.length} conversations`)}} locale={{emptyText:<Empty description={zh?'没有匹配的会话。受支持的运行时产生任务轨迹后，会话会显示在这里。':'No matching conversations. Sessions appear after a supported runtime produces task traces.'}/>}} columns={[
-      {title:zh?'最近活动':'Recent activity',width:200,render:(_,item)=><div className="conversation-activity"><div className="conversation-activity-time"><time className="conversation-time" title={item.endTimestamp??item.startTimestamp}>{(item.endTimestamp??item.startTimestamp)?.replace('T',' ').replace(/\.\d{3}Z$/,' UTC')??'—'}</time></div><div className="conversation-activity-meta"><Typography.Text type="secondary" title={item.model ?? item.sourceKind}>{item.model ?? item.sourceKind}</Typography.Text>{running(item)&&<span className="conversation-running"><span className="studio-running-dot" aria-hidden="true"/>{zh?'进行中':'Running'}</span>}</div></div>},
-      {title:zh?'会话':'Conversation',ellipsis:true,render:(_,item)=><><Link title={item.title} href={conversationHref(item.threadId,lang)}>{item.title}</Link>{item.archived&&<Tag>{zh?'已归档':'Archived'}</Tag>}</>},
-      {title:zh?'工作目录':'Workspace',width:'28%',ellipsis:true,dataIndex:'cwd',render:(value:string|undefined)=><span title={value}>{value??'—'}</span>},
-      {title:zh?'任务':'Tasks',width:72,align:'right',dataIndex:'turnCount',render:(value:number|undefined)=>value??'—'},
-      {title:zh?'任务轨迹':'Task trajectory',width:132,className:'conversation-action',render:(_,item)=>{
-        const liveTask=[...item.tasks].reverse().find(task=>task.status==='open');
-        const task=liveTask??item.tasks.at(-1);
-        if(!task)return <Typography.Text type="secondary">{zh?'暂无轨迹':'No trajectory'}</Typography.Text>;
-        return <Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{liveTask?(zh?'查看实时轨迹':'View live'):(zh?'查看最近轨迹':'View latest')}</Link>;
-      }},
-    ]}/>
-    {rows.length===0&&<div className="conversation-empty-count" role="status">{zh?`匹配 0 / 共 ${conversations.length} 个会话`:`0 matched / ${conversations.length} conversations`}</div>}
-  </>;
-}
-function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'conversation'}>;lang:Language}) {
-  const zh=lang==='zh'; const item=page.model;
-  const [newest,setNewest]=useState(true);
-  const activity=useActivity(`/api/conversations/${encodeURIComponent(item.threadId)}/activity`,page.revision);
-  const tasks=newest?[...item.tasks].reverse():item.tasks;
-  return <>
-    <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:zh?'会话详情':'Conversation details'}]}/>
-      <div className="observe-detail-title"><h1 title={item.title}>{item.title}</h1><span className="observe-detail-count">{item.turnCount??item.tasks.length} {zh?'个任务':'tasks'}</span></div>
-      <div className="observe-detail-meta"><span>{item.model??item.sourceKind}</span><span className="observe-workspace" title={item.cwd}>{item.cwd??'—'}</span><span>{item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'}</span><span className={(item.toolFailureCount??0)>0?'observe-failure':undefined}>{item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</span></div>
-    </header>
-    <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/><Space><ExtractedKnowledge threadId={item.threadId} lang={lang}/><ActivityNotice activity={activity} lang={lang}/></Space></div>
-    <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" rowClassName={task => task.status === 'open' ? 'studio-running-row' : ''} dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
-      {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
-      {title:zh?'状态':'Status',width:100,dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
-      {title:zh?'开始时间':'Started',width:210,ellipsis:true,dataIndex:'startTimestamp'},
-      {title:zh?'耗时（毫秒）':'Duration (ms)',width:120,dataIndex:'durationMs',render:(value:number|undefined)=>value??'—'},
-      {title:zh?'工具调用':'Tool calls',width:100,dataIndex:'toolCallCount'},
-      {title:zh?'工具失败':'Tool failures',width:100,dataIndex:'toolFailureCount'},
-    ]}/>
-  </>;
 }
 function SourceRecords({endpoint,lang}: {endpoint:string;lang:Language}) {
   const [value,setValue]=useState<ObservationSourceRecordArchiveView>(); const [failed,setFailed]=useState(false);

@@ -1,3 +1,4 @@
+import { conversationProject } from './project.js';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
@@ -338,6 +339,7 @@ class CodexConversationCatalog implements ConversationCatalog {
       sourceThreadId: row.id,
       sourceKind: 'codex',
       title: conversationTitle(row),
+      project: conversationProject(row.cwd),
       preview: row.preview,
       cwd: row.cwd,
       model: row.model,

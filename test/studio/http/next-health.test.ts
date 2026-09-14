@@ -164,7 +164,7 @@ describe('Next 宿主的观测健康页面组', () => {
     });
     const observe = await fetch(`${url}/observe`);
     assert.equal(observe.status, 200);
-    assert.match(await observe.text(), /aria-current="page" href="\/observe"/);
+    assert.match(await observe.text(), /href="\/observe\/health\?lang=zh"[^>]*>Skill 健康度/);
 
     // 健康页只挂在 studioPages 上：DSH 这类裁掉收件箱的宿主仍要能看，否则迁移等于把页面弄丢。
     assert.equal((await fetch(`${url}/observe/health`)).status, 200);
