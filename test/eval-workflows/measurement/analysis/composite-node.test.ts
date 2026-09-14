@@ -279,7 +279,7 @@ describe('composite Analysis node', () => {
     expect(Object.isFrozen(COMPOSITE_ANALYSIS_IDENTITY)).toBe(true);
     expect(COMPOSITE_ANALYSIS_IDENTITY.version).toBe('2.0.0');
     expect(COMPOSITE_ANALYSIS_IDENTITY.fingerprint).toBe(
-      'sha256:fbbf7b280541ed0d8de5beefdee153bede7813ca10c157f4ec8c679cd92aae3b',
+      'sha256:3f761eba8775e91d66b77050f10238c3304571be49da67d403c5db7607048f01',
     );
   });
 

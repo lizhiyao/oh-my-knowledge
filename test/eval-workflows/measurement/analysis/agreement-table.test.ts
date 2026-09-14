@@ -79,7 +79,7 @@ describe('Agreement Analysis table', () => {
     expect(AGREEMENT_TABLE_SCHEMA).toEqual({
       schemaVersion: 'omk.agreement-table/v2',
       schemaUri: 'urn:omk:analysis-result:agreement-table:v2',
-      schemaDigest: 'sha256:ab4c54b0ad48ff57b609bc7b86de155e79d027c20da2f4bd43afa010149e7cef',
+      schemaDigest: 'sha256:8baa7b53ced56ffd993d5d2b8e67fb621cc044e9f84406710118df4192b2dea7',
     });
 
     expect(value.pairs.map((pair) => pair.sampleId)).toEqual(sealed.sampleIds);
@@ -157,7 +157,7 @@ describe('Agreement Analysis table', () => {
     expect(AGREEMENT_TABLE_V1_SCHEMA).toEqual({
       schemaVersion: 'omk.agreement-table/v1',
       schemaUri: 'urn:omk:analysis-result:agreement-table:v1',
-      schemaDigest: 'sha256:ba2a45e25c820d71d04538ce971e20c9491e4ba792623508c77d7c195b69a972',
+      schemaDigest: 'sha256:bb9ac6faa74dcbfecdab646a1b4d34cfa5daeba845cb8e74540ed6a3f3c571bc',
     });
     expect(value.statistics.alphaInterval).toEqual({
       intervalStatus: 'observed',

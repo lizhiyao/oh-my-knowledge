@@ -248,11 +248,11 @@ describe('Agreement Analysis node', () => {
     expect(capabilities.parameterSchema).toEqual(AGREEMENT_PARAMETERS_SCHEMA);
     expect(Object.isFrozen(AGREEMENT_ANALYSIS_IDENTITY)).toBe(true);
     expect(AGREEMENT_ANALYSIS_V2_IDENTITY.fingerprint).toBe(
-      'sha256:f93712cdf9b2cadc19d049291b458a72f670fcd7f4a9b2873a0b4ecc11229581',
+      'sha256:6dfdce329f9e652633cff897932f0565f44012cc064777a9d21268f28246e04a',
     );
     expect(AGREEMENT_ANALYSIS_IDENTITY.implementationId).toBe('omk.agreement-table/v3');
     expect(AGREEMENT_ANALYSIS_IDENTITY.fingerprint).toBe(
-      'sha256:4de30b1ec1e3a19ec92d9f34b503ba755649230de49550e79c9d77b0060101b1',
+      'sha256:3377e4db3831cff417e9351d9da9c17c86d0948a371a6b34b454dbcc5bc215fd',
     );
 
     const result = await execute(context());
@@ -288,7 +288,7 @@ describe('Agreement Analysis node', () => {
 
   it('registers the explicitly versioned assignment-aware runtime identities', () => {
     expect(AGREEMENT_ANALYSIS_V1_IDENTITY.fingerprint).toBe(
-      'sha256:c88a9d4fcc67c892da96ce7e4baec35e9ec8bf04da4afd7fb966c3f0dbb03373',
+      'sha256:c4adc8704db0fcbab8f6765eb19ab8d11924f038a3485dd14860dd56f103d10b',
     );
     expect(createAgreementAnalysisNodes().get(
       AGREEMENT_ANALYSIS_V1_IMPLEMENTATION_ID,

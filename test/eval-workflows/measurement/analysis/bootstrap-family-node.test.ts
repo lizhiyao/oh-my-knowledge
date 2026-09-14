@@ -241,7 +241,7 @@ describe('Bootstrap family Analysis node', () => {
     expect(capabilities.outputSchema).toEqual(BOOTSTRAP_FAMILY_TABLE_V2_SCHEMA);
     expect(Object.isFrozen(BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY)).toBe(true);
     expect(BOOTSTRAP_FAMILY_ANALYSIS_V2_IDENTITY.fingerprint).toBe(
-      'sha256:d4f3e63bab6e71173686d2f5b94ca736a64d3d8ef52038d2108eb7c90de7664a',
+      'sha256:05f6e8b900b8557c04e0597197daabb66ccced0522081735d8ab8d8406ed9eb2',
     );
     await expect(executeV2()).resolves.toMatchObject({
       analysisStatus: 'completed',
