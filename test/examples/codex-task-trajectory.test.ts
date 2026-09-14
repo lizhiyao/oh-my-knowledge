@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../src/observability/inbox/index.js';
 import { buildKnowledgeDebuggerViewModel } from '../../src/observability/conversation/knowledge-debugger.js';
-import { projectReplay } from '../../src/studio/application/replay/projection.js';
+import { projectReplay } from '../../src/studio/application/conversations/replay/projection.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const tracePath = join(

@@ -11,7 +11,7 @@ import {
   updateObservationReviewState,
   type ObservationReviewStateUpdate,
 } from '../../../observability/inbox/review-state.js';
-import { buildSkillIndex } from '../../application/index.js';
+import { buildSkillIndex } from '../../application/knowledge/skill-index.js';
 import { readJsonObjectBody } from '../request-errors.js';
 import { JSON_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
@@ -25,12 +25,12 @@ interface ObservationRoutesOptions {
   readonly includeInbox: boolean;
 }
 
-export interface ObservationRouteContext extends StudioRouteContext {
+interface ObservationRouteContext extends StudioRouteContext {
   readonly analysesDir: string;
   readonly doctorsDir: string;
 }
 
-export type ObservationRouteHandler = (
+type ObservationRouteHandler = (
   context: ObservationRouteContext,
 ) => Promise<boolean>;
 

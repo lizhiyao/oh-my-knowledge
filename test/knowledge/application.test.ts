@@ -1,4 +1,4 @@
-import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge-candidates.js';
+import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

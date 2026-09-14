@@ -240,7 +240,7 @@ describe('dimension Analysis node', () => {
     expect(Object.isFrozen(DIMENSION_ANALYSIS_IDENTITY.capabilities)).toBe(true);
     expect(DIMENSION_ANALYSIS_IDENTITY.version).toBe('2.0.0');
     expect(DIMENSION_ANALYSIS_IDENTITY.fingerprint).toBe(
-      'sha256:5e1ea39bce994b140ea526d037a91b4dcf4e859fe6e2aff0356febc44cac47e6',
+      'sha256:5bcaca92eb97d726d2530b533f076e92a5be988bade8ec4c219e98cdb939f222',
     );
   });
 

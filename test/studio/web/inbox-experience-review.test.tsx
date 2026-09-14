@@ -4,7 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import type { ObservationReviewState } from '../../../src/observability/contracts/review.js';
-import { ExperienceReviewSection } from '../../../src/studio/web/components/inbox/experience-review';
+import { ExperienceReviewSection } from '../../../src/studio/web/components/observe/inbox/experience-review';
 
 /**
  * 复盘卡片的渲染契约：深链、复盘优先级与未生效标注。
@@ -26,14 +26,15 @@ function sessions() {
 }
 
 describe('经验复盘卡片渲染契约', () => {
-  it('给出回到对话任务的深链，英文下保留语言参数', () => {
+  it('给出回到对话任务的深链，两种语言都显式带上 lang', () => {
     const href = `/observe/conversations/${encodeURIComponent(sessions()[0].threadId)}`;
 
     const zh = renderToString(
       <ExperienceReviewSection sessions={sessions()} reviewState={emptyReviewState} lang="zh" />,
     );
     // reviewer 看到结论却回不到证据，等于这条复盘没有出口。
-    assert.ok(zh.includes(`href="${href}"`), `复盘卡片必须深链到 ${href}`);
+    // 中文同样要带上：裸地址的语言由本机全局设置决定，省略参数会让下一次跳转被改写成英文偏好。
+    assert.ok(zh.includes(`href="${href}?lang=zh"`), `复盘卡片必须深链到 ${href}`);
     assert.ok(zh.includes('查看对话任务'));
     assert.ok(zh.includes('建议优先复盘'));
 

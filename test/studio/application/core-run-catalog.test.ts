@@ -3,10 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import {
-  createCoreStudioCatalog,
-  projectCoreStudioRunDetail,
-} from '../../../src/studio/index.js';
+import { createCoreStudioCatalog } from '../../../src/studio/application/measure/core-run-catalog.js';
+import { projectCoreStudioRunDetail } from '../../../src/studio/application/measure/core-run-projection.js';
 import { digestCanonicalJson } from '../../../src/eval-core/contracts/index.js';
 import { CoreDownstreamProjectionError } from '../../../src/eval-workflows/projections/index.js';
 import {

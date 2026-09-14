@@ -4,17 +4,16 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, Breadcrumb, Button, Popover, Space, Table, Tabs, Tag } from 'antd';
-import type { ObservePage } from '../../../http/observe-page';
+import type { ObservePage } from '../../../http/pages/observe-page';
 import { EventRecords, RawRecords } from './records';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
 import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
+import { displayTime } from '../display-time';
 
-const displayTime = (value: string | undefined) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
-const suffix = (lang: Language) => lang === 'en' ? '?lang=en' : '';
-const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${suffix(lang)}`;
+const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${langSuffix(lang)}`;
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
 export function ObserveView({page, lang}: {page: ObservePage; lang: Language}) {
@@ -63,7 +62,7 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
     <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={`/observe${suffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
+      <Breadcrumb items={[{title:<Link href={`/observe${langSuffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
     <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
         <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button></h1>

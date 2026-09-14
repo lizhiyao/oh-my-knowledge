@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Modal, Select, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
-import type { KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge-candidates';
+import type { KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
 import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 
 type Preview = { origin: NonNullable<KnowledgeCandidateSource['origin']>; sourceVersion: string; messages: KnowledgeCandidateSource['excerpts'] };
@@ -74,7 +74,7 @@ export function ExtractConversation({ threadId, turnId, lang, onFinished }: { th
   const link = (id: string) => `/knowledge/candidates?${new URLSearchParams({ workspace, id, lang })}`;
   const scope = turnId ? t('当前这一轮', 'This turn') : t('当前会话', 'This conversation');
   return <><Button type="primary" onClick={() => void prepare()}>{t('提炼知识', 'Extract knowledge')}</Button>
-    <Modal centered title={t('提炼知识', 'Extract knowledge')} open={open} width={640} closable={stage !== 'generating'} maskClosable={false}
+    <Modal centered title={t('提炼知识', 'Extract knowledge')} open={open} width={640} closable={stage !== 'generating'} mask={{ closable: false }}
       onCancel={() => { controller.current?.abort(); setOpen(false); }}
       footer={stage === 'confirm' ? <Space><Button onClick={() => setOpen(false)}>{t('取消', 'Cancel')}</Button><Button type="primary" disabled={!selected.length || !workspace.trim() || !model.trim()} onClick={() => void generate()}>{t('开始提炼', 'Start extraction')}</Button></Space>
         : stage === 'generating' ? <Button onClick={() => controller.current?.abort()}>{t('取消提炼', 'Cancel extraction')}</Button>

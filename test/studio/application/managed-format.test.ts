@@ -13,7 +13,7 @@ import {
   projectManagedListRow,
   projectManagedTimeline,
   projectObserveBadge,
-} from '../../../src/studio/application/managed-format.js';
+} from '../../../src/studio/application/knowledge/managed-format.js';
 import { coreManagedEvidence } from '../../helpers/core-managed-evidence.js';
 
 const ROW = (over: Partial<ManagedListRow>): ManagedListRow => ({

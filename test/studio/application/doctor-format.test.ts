@@ -11,8 +11,8 @@ import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-
 import type {
   SkillGraphNodePreview,
   SkillGraphSnapshot,
-} from '../../../src/studio/view-models/skill-index.js';
-import { projectDoctorGraph, projectDoctorRules, projectDoctorSampling } from '../../../src/studio/application/doctor-format.js';
+} from '../../../src/studio/view-models/knowledge/skill-index.js';
+import { projectDoctorGraph, projectDoctorRules, projectDoctorSampling } from '../../../src/studio/application/knowledge/doctor-format.js';
 
 function rule(
   ruleId: string,
@@ -155,8 +155,8 @@ describe('结构证据投影', () => {
     assert.equal(projectDoctorGraph({ bindingStrength: 'content-hash' }), null);
   });
 
-  it('四档绑定强度原样投影，供页面按档位配色', () => {
-    const strengths = ['content-hash', 'source-locator', 'name-only', 'mixed'] as const;
+  it('三档绑定强度原样投影，供页面按档位配色', () => {
+    const strengths = ['content-hash', 'source-locator', 'name-only'] as const;
     assert.deepEqual(
       strengths.map((bindingStrength) => projectDoctorGraph(graph({ bindingStrength }))?.binding),
       strengths,

@@ -3,18 +3,9 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import { RunDetail, RunList } from '../../../src/studio/web/components/measure/measure';
-import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../src/studio/index.js';
+import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../src/studio/view-models/measure/core-runs.js';
 import { card, detail } from '../fixtures/core-run-view.js';
-
-/** React 文本节点的转义结果；值被整体丢弃同样算失败。 */
-function reactText(payload: string): string {
-  return payload
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#x27;');
-}
+import { reactText } from '../../helpers/react-ssr.js';
 
 function runDetail(view: CoreStudioRunDetail, lang: 'zh' | 'en'): string {
   return renderToString(createElement(RunDetail, { detail: view, lang }));
@@ -131,7 +122,7 @@ describe('measure react list keeps the three status axes orthogonal', () => {
     for (const value of ['已完成', '已取消', '预算耗尽', '失败', '完整', '部分缺失', '无法解析', '可形成结论', '证据不足', '未评估']) {
       assert.ok(html.includes(value), `missing status label: ${value}`);
     }
-    assert.ok(html.includes('href="/measure/core-run-1"'));
+    assert.ok(html.includes('href="/measure/core-run-1?lang=zh"'));
     for (const host of ['localhost', '127.0.0.1', ':7799']) {
       assert.ok(!html.includes(host), `navigation must not embed a host or port: ${host}`);
     }

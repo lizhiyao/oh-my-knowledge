@@ -8,9 +8,9 @@ import { buildKnowledgeDebuggerViewModel } from '../../../src/observability/conv
 import type { KnowledgeDebuggerViewModel } from '../../../src/observability/view-models/knowledge-debugger.js';
 import type { ExperienceTimelineEvent } from '../../../src/observability/contracts/experience.js';
 import type { Lang } from '../../../src/shared/language.js';
-import { projectReplay } from '../../../src/studio/application/replay/projection.js';
-import { visibleAxisTicks } from '../../../src/studio/application/replay/layout.js';
-import type { ReplayCard, ReplayProjection } from '../../../src/studio/view-models/replay.js';
+import { projectReplay } from '../../../src/studio/application/conversations/replay/projection.js';
+import { visibleAxisTicks } from '../../../src/studio/application/conversations/replay/layout.js';
+import type { ReplayCard, ReplayProjection } from '../../../src/studio/view-models/conversations/replay.js';
 
 const root = mkdtempSync(join(tmpdir(), 'omk-replay-projection-'));
 const tracePath = join(root, 'rollout.jsonl');

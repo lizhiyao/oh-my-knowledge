@@ -56,6 +56,7 @@ describe('Next-hosted observation inbox route', () => {
     // Next 产物在场才说明这是 App Router 渲染，而不是回落到别的手写 HTML 宿主。
     assert.match(html, /\/_next\/static\//);
     assert.match(html, /<h1>观测收件箱<\/h1>/);
+    assert.match(html, /<title>OMK · 观测收件箱<\/title>/);
     assert.match(html, /ant-tabs/);
     for (const tab of ['信号', 'Skill 看板', '体验复盘', '指标', '时间轴', '复核待办', 'Skill 链']) {
       assert.ok(html.includes(tab), `tab ${tab} must be rendered`);
@@ -204,7 +205,8 @@ describe('Next-hosted observation inbox route', () => {
     assert.equal(zhPage.status, 200);
     const zhHtml = await zhPage.text();
     assert.doesNotMatch(zhHtml, /aria-label="Studio 一级导航"/);
-    assert.doesNotMatch(zhHtml, /href="\/observe"/);
+    assert.doesNotMatch(zhHtml, /href="\/observe/);
+    // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
     assert.match(zhHtml, /<a class="studio-brand" href="\/measure\?lang=zh"/);
 
     const enPage = await fetch(`${url}/measure?lang=en`);

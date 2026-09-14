@@ -1,8 +1,7 @@
 'use client';
 import Link from 'next/link';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
 
-const suffix = (lang: Language) => (lang === 'en' ? '?lang=en' : '');
 
 /**
  * 知识分区入口：知识对象、Skill 健康度与受管决策史。
@@ -11,9 +10,9 @@ const suffix = (lang: Language) => (lang === 'en' ? '?lang=en' : '');
 export function KnowledgeSectionNav({ active, lang }: { active: 'skills' | 'managed' | 'health'; lang: Language }) {
   const zh = lang === 'zh';
   const items = [
-    { key: 'skills' as const, href: `/knowledge${suffix(lang)}`, label: zh ? '知识对象' : 'Knowledge artifacts' },
-    { key: 'health' as const, href: `/observe/health${suffix(lang)}`, label: zh ? 'Skill 健康度' : 'Skill health' },
-    { key: 'managed' as const, href: `/knowledge/managed${suffix(lang)}`, label: zh ? '受管决策史' : 'Managed history' },
+    { key: 'skills' as const, href: `/knowledge${langSuffix(lang)}`, label: zh ? '知识对象' : 'Knowledge artifacts' },
+    { key: 'health' as const, href: `/observe/health${langSuffix(lang)}`, label: zh ? 'Skill 健康度' : 'Skill health' },
+    { key: 'managed' as const, href: `/knowledge/managed${langSuffix(lang)}`, label: zh ? '受管决策史' : 'Managed history' },
   ];
   return (
     <nav className="observe-section-nav" aria-label={zh ? '知识分区' : 'Knowledge sections'}>

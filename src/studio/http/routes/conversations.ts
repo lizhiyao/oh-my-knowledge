@@ -1,6 +1,6 @@
-import { readConversationTurns } from '../../application/conversation-reader.js';
+import { readConversationTurns } from '../../application/conversations/conversation-reader.js';
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
-import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversation-activity.js';
+import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
 import { STUDIO_SOURCE_UNAVAILABLE, JSON_HEADERS, writeJsonError } from '../errors.js';
 import type {
   LiveStreamRegistry,

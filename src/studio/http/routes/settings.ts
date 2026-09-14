@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { studioSettings, saveStudioSettings } from '../../application/settings.js';
+import { studioSettings, saveStudioSettings } from '../../application/settings/settings.js';
 import { JSON_HEADERS, writeJsonError } from '../errors.js';
 import { RequestBodyError } from '../request-errors.js';
 import { readJsonObjectBody } from '../request-errors.js';

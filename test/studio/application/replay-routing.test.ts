@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { createHorizontalObstacleIndex, planFlowRoute } from '../../../src/studio/application/replay/routing.js';
-import type { RoutingRect } from '../../../src/studio/view-models/trajectory-routing.js';
+import { createHorizontalObstacleIndex, planFlowRoute } from '../../../src/studio/application/conversations/replay/routing.js';
+import type { RoutingRect } from '../../../src/studio/view-models/conversations/trajectory-routing.js';
 
 function rect(
   left: number,

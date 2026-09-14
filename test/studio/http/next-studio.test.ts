@@ -6,7 +6,7 @@ import { afterEach, describe, it } from 'vitest';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 import { persistDoctorGraphSidecars } from '../../../src/evidence/graph/doctor.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
-import { createCoreStudioCatalog } from '../../../src/studio/application/core-run-catalog.js';
+import { createCoreStudioCatalog } from '../../../src/studio/application/measure/core-run-catalog.js';
 import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { runConformanceScenario } from '../../eval-core/conformance/harness.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';
@@ -59,6 +59,9 @@ describe('Next Studio production boundary', () => {
     assert.equal(detail.status,200);
     const detailHtml=await detail.text();
     for(const label of ['评测范围','分析结果','证据与定义']) assert.ok(detailHtml.includes(label));
+    // 标签标题按页面与对象给出：同开几个评测页时要分得清读的是哪一次运行。
+    assert.match(htmlA, /<title>OMK · Evaluations<\/title>/);
+    assert.match(detailHtml, /<title>OMK · 运行 · next-real-run<\/title>/);
     const asset = htmlA.match(/src="([^\"]*\/_next\/[^\"]+\.js[^\"]*)"/)?.[1];
     assert.ok(asset);
     assert.equal((await fetch(new URL(asset.replaceAll('&amp;','&'),urlA))).status,200);
@@ -69,6 +72,7 @@ describe('Next Studio production boundary', () => {
     const knowledge = await fetch(`${urlA}/knowledge`);
     const knowledgeHtml = await knowledge.text();
     assert.equal(knowledge.status, 200);
+    // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
     assert.match(knowledgeHtml, /href="\/knowledge\?lang=zh" aria-current="page"/);
     assert.match(knowledgeHtml, /knowledge-table/);
     assert.match(knowledgeHtml, /audit\/&lt;script&gt;/);
@@ -82,10 +86,25 @@ describe('Next Studio production boundary', () => {
     assert.match(skillHtml, /知识对象结构/);
     assert.match(skillHtml, /仅来源路径一致/);
     assert.match(skillHtml, /内容有没有变动未被证明/);
+    // 详情页标题带对象身份；skill 名是外部文本，进 `<title>` 也只能是转义后的文字。
+    assert.match(knowledgeHtml, /<title>OMK · 知识对象<\/title>/);
+    assert.match(skillHtml, /<title>OMK · 知识对象 · audit\/&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/title>/);
     // RSC 会把页面 props 序列化进 HTML 负载：sourceLocator／graphPath／evidence path 都是用户
     // 机器的绝对路径，一旦上了页面模型就在这里泄出去，所以断言整页读不到 tmpdir。
     assert.ok(!skillHtml.includes(root), 'skill detail must not leak the absolute skill path');
     assert.ok(!knowledgeHtml.includes(root), 'knowledge list must not leak it either');
+    // 同一条口径只管页面模型，不扩到 JSON 路由：它是页面之外的机读投影，仓库内的读者只有性能
+    // 基线与测试。反向钉住定位符仍在，防止把「收缩 JSON 契约」当成页面清理顺手做掉（见 README）。
+    const skillsApi: {entries: {skillName: string, graph?: {
+      sourceLocator?: string,
+      doctor?: {graphPath?: string},
+    }}[]} = await (await fetch(`${urlA}/api/skills`)).json();
+    const apiGraph = skillsApi.entries.find((entry) => entry.skillName === skillName)?.graph;
+    assert.deepEqual(
+      [apiGraph?.sourceLocator, apiGraph?.doctor?.graphPath],
+      [root, join(doctorsDir, 'knowledge-test', 'derived', 'graph.json')],
+      '/api/skills keeps the locators as the machine-readable projection',
+    );
     // 点名一个不存在的轮次不静默回落到当前那次：URL 与所见证据必须一致。
     const staleRun = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=pruned-run`);
     assert.equal(staleRun.status, 404);
@@ -123,6 +142,18 @@ describe('Next Studio production boundary', () => {
     for(const path of ['/measure','/measure/run']){
       const response=await fetch(url+path);assert.equal(response.status,503);
       assert.equal(await response.text(),'core_studio_source_unavailable');
+    }
+  },15000);
+
+  it('projects a failing knowledge directory resolver to 503 without leaking the cause',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'omk-next-knowledge-error-'));roots.push(root);
+    // 目录按请求解析，长会话里项目根可能已经消失：读不出事实要收敛成稳定 503，
+    // 而不是让 Next 流式吐出 200 或把带路径的原因透给浏览器。口径与受管根目录同源。
+    const server=createNextStudioServer({port:0,analysesDir:()=>{throw new Error('EACCES /private/token');},doctorsDir:join(root,'doctors'),observationsDir:root});servers.push(server);
+    const url=await server.start();
+    for(const path of ['/knowledge','/knowledge/skills/audit']){
+      const response=await fetch(url+path);assert.equal(response.status,503,path);
+      assert.equal(await response.text(),'studio_source_unavailable',path);
     }
   },15000);
 });

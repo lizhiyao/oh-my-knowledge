@@ -2,8 +2,8 @@
 import { resolveKnowledgeWorkspace } from './workspace';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
-import type { Language } from '../layout/shell';
-import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge-candidates';
+import { langSuffix, type Language } from '../layout/shell';
+import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
   const zh = lang === 'zh';
@@ -109,18 +109,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   return <section className="knowledge-candidates">
-    <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
+    <header className="candidate-heading"><div><a href={`/knowledge${langSuffix(lang)}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
       <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
-        {rows.length > 0 && <Button type="primary" disabled={busy} href={`/observe?${new URLSearchParams({ lang })}`}>{t('从会话选择', 'Choose a conversation')}</Button>}
+        {rows.length > 0 && <Button type="primary" disabled={busy} href={`/observe${langSuffix(lang)}`}>{t('从会话选择', 'Choose a conversation')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
         <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
-    {detail?.origin && <a href={`/observe/conversations/${encodeURIComponent(detail.origin.threadId)}${detail.origin.turnId ? `/tasks/${encodeURIComponent(detail.origin.turnId)}` : ''}?${new URLSearchParams({ workspace, ...(zh ? {} : { lang: 'en' }) })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
+    {detail?.origin && <a href={`/observe/conversations/${encodeURIComponent(detail.origin.threadId)}${detail.origin.turnId ? `/tasks/${encodeURIComponent(detail.origin.turnId)}` : ''}?${new URLSearchParams({ workspace, lang })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={() => { window.location.assign(`/observe?${new URLSearchParams({ lang })}`); }} onHistory={() => setShowRuns(true)}/>
+      onChoose={() => { window.location.assign(`/observe${langSuffix(lang)}`); }} onHistory={() => setShowRuns(true)}/>
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
@@ -166,7 +166,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         </div>
       </aside>
     </div>}
-    <Drawer title={t('本次保存位置', 'Save location for this operation')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
+    <Drawer title={t('本次保存位置', 'Save location for this operation')} open={showSettings} onClose={() => !busy && setShowSettings(false)} size={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在右上角“设置”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
         <p className="candidate-help">{t('全局位置：', 'Global location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用全局位置', 'Use global location')}</Button>
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
@@ -177,7 +177,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
     </Drawer>
-    <Drawer title={snapshot ? t('确认提炼内容与模型', 'Confirm content and model') : t('导入日志文件', 'Import a log file')} open={showImport} onClose={() => !busy && setShowImport(false)} width={560}>
+    <Drawer title={snapshot ? t('确认提炼内容与模型', 'Confirm content and model') : t('导入日志文件', 'Import a log file')} open={showImport} onClose={() => !busy && setShowImport(false)} size={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}{!snapshot && <p>{t('选择包含项目事实、你的纠正，或问题处理经过的记录。先在本地预览，再决定是否交给模型提炼。', 'Choose a record containing project facts, your corrections, or a problem and its resolution. Preview it locally before sending it to a model.')}</p>}
         {!snapshot?.origin && <><label>{t('工作记录文件（Codex JSONL）', 'Work log file (Codex JSONL)')}<Input placeholder="/.../rollout-….jsonl" value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
         <p className="candidate-help">{t('粘贴这台电脑上日志文件的完整路径。默认读取整份文件，可在下方缩小范围。', 'Paste the full path to a log file on this computer. Read the entire file or narrow the range below.')}</p>
@@ -195,7 +195,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
           <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
-    <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} width={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId); })}>{t('保存新修订', 'Save new revision')}</Button>}>
+    <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} size={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId); })}>{t('保存新修订', 'Save new revision')}</Button>}>
       <p>{t('修改标题、陈述与上下文。来源及实体身份保持绑定；新修订重新等待复核。', 'Edit the title, statements, and context. Sources and entity identities remain bound; the new revision awaits review.')}</p>
       <Input aria-label={t('修订理由', 'Revision reason')} value={reason} placeholder={t('修订理由', 'Revision reason')} onChange={(event) => setReason(event.target.value)}/>
       {editableDraft && <div className="candidate-form">
@@ -211,7 +211,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         </section>)}
       </div>}
     </Drawer>
-    <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} width={620}>
+    <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size={620}>
       {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;

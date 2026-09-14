@@ -1,5 +1,5 @@
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
-import { createKnowledgeQuery } from '../application/knowledge-query.js';
+import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -7,24 +7,24 @@ import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
 import { nextCatalogContext, nextHealthContext, nextInboxContext, nextManagedContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
-import { TEXT_HEADERS } from './errors.js';
-import type { CoreStudioCatalog } from '../view-models/core-runs.js';
+import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
+import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
-import { loadObservePage, type ObservePage } from './observe-page.js';
+import { loadObservePage, type ObservePage } from './pages/observe-page.js';
 
-import { loadKnowledgePage, type KnowledgePage } from './knowledge-page.js';
-import { isHealthPath, loadHealthPage, type HealthPage } from './health-page.js';
-import { loadInboxPage, type InboxPage } from './inbox-page.js';
-import { isManagedPath, loadManagedPage, type ManagedPage } from './managed-page.js';
+import { loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
+import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-page.js';
+import { loadInboxPage, type InboxPage } from './pages/inbox-page.js';
+import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
-/** Next owns migrated pages; existing API/SSE capabilities keep their domain adapters. */
+/** Next owns every Studio page; JSON APIs and SSE keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
   let app: { prepare(): Promise<void>; close(): Promise<void>; getRequestHandler(): (request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse) => Promise<void> } | undefined;
   const knowledgeQuery = options.knowledgeQuery ?? createKnowledgeQuery(options);
   const conversationCatalog = options.conversationCatalog ?? createCodexConversationCatalog();
-  // 页面组开关与 report-server 侧同源：裁掉的路径不接管，落回 HTML 宿主得到 404，语义与独立宿主一致。
+  // 页面组开关与 report-server 侧同源：裁掉的路径不接管，落回 HTTP adapter 得到 404，语义与独立宿主一致。
   const inboxRoutes = (options.studioPages ?? true) && (options.observationInbox ?? true);
   const pageRoutes = options.studioPages ?? true;
   const resolveManagedRoot = resolveManagedRootOption(options.managedDir);
@@ -75,7 +75,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           healthPage = loaded.page;
         } catch {
           response.writeHead(503, TEXT_HEADERS);
-          response.end('studio_source_unavailable'); return true;
+          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
         }
       }
       let knowledgePage: KnowledgePage | undefined;
@@ -83,7 +83,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, searchParams.get('lang') === 'en' ? 'en' : 'zh', searchParams.get('doctorRun')); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
-          response.end('studio_source_unavailable'); return true;
+          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
         }
         if (!knowledgePage) {
           response.writeHead(404, TEXT_HEADERS);
@@ -110,7 +110,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           managedPage = loaded.page;
         } catch {
           response.writeHead(503, TEXT_HEADERS);
-          response.end('studio_source_unavailable'); return true;
+          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
         }
       }
       let inboxPage: InboxPage | undefined;
@@ -118,7 +118,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         try { inboxPage = loadInboxPage(options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR, searchParams.get('skill') ?? undefined); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
-          response.end('studio_source_unavailable'); return true;
+          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
         }
       }
       let observePage: ObservePage | undefined;
@@ -126,7 +126,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         try { observePage = await loadObservePage(conversationCatalog, path, searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
-          response.end('studio_source_unavailable'); return true;
+          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
         }
         if (!observePage) {
           response.writeHead(404, TEXT_HEADERS);
@@ -152,7 +152,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           }
         } catch {
           response.writeHead(503, TEXT_HEADERS);
-          response.end('core_studio_source_unavailable'); return true;
+          response.end(CORE_STUDIO_SOURCE_UNAVAILABLE); return true;
         }
       }
       if (!app) throw new Error('Studio UI is not started');

@@ -16,7 +16,7 @@ export function StudioUtilities({ lang, placement = 'topLeft' }: { lang: Languag
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 3-.6 2.2-2 .9L4.4 5.5 2 9.5l1.6 1.6v1.8L2 14.5l2.4 4 2-.6 2 .9L9 21h6l.6-2.2 2-.9 2 .6 2.4-4-1.6-1.6v-1.8L22 9.5l-2.4-4-2 .6-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>{zh ? '设置与帮助' : 'Settings and help'}</span>
     </button></Dropdown>}/>
-    <Drawer title={zh ? '使用帮助' : 'Help'} open={help} onClose={() => setHelp(false)} width={440}>
+    <Drawer title={zh ? '使用帮助' : 'Help'} open={help} onClose={() => setHelp(false)} size={440}>
       <div className="studio-help">
         <h3>{zh ? '找到并阅读对话' : 'Find and read conversations'}</h3>
         <p>{zh ? '左侧按项目查找会话，或从独立对话直接打开。对话按时间顺序排列，向上滚动可加载更早内容。查看历史时，有更新会提示“有新消息”。' : 'Find a conversation under its project or open a standalone conversation. Messages follow chronological order. Scroll up to load earlier content; new messages are announced while you read history.'}</p>

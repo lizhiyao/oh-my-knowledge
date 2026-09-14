@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { ConversationCatalog } from '../../src/observability/conversation/catalog.js';
-import { readConversationTurns } from '../../src/studio/application/conversation-reader.js';
+import { readConversationTurns } from '../../src/studio/application/conversations/conversation-reader.js';
 
 it('pages newest turns, isolates unavailable turns and returns only readable human/assistant text', async () => {
   const tasks = ['old', 'broken', 'new'].map(turnId => ({ turnId, title: turnId, status: 'completed' as const, eventCount: 1, toolCallCount: 0, toolFailureCount: 0, relatedSkillNames: [] }));

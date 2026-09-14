@@ -8,29 +8,20 @@ import {
   projectReport,
   projectTrend,
   type HealthReportFacts,
-} from '../../../src/studio/application/health-format.js';
+} from '../../../src/studio/application/observe/health-format.js';
 import type { SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
-import type { SkillDiffRow } from '../../../src/studio/view-models/knowledge-reports.js';
-import type { HealthPage } from '../../../src/studio/http/health-page.js';
+import type { SkillDiffRow } from '../../../src/studio/view-models/knowledge/knowledge-reports.js';
+import type { HealthPage } from '../../../src/studio/http/pages/health-page.js';
 import { HealthView } from '../../../src/studio/web/components/observe/health';
 import { coverageOf, reportOf, skillOf, trendPointOf } from '../fixtures/health-report.js';
-
-/** React 文本节点的转义结果；值被整体丢弃同样算失败。 */
-function reactText(payload: string): string {
-  return payload
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#x27;');
-}
+import { reactText, visibleText } from '../../helpers/react-ssr.js';
 
 /**
- * 渲染成可比对的字符串：React 会在相邻动态文本之间插 `<!-- -->` 定界，
- * 剥掉注释后按可见顺序断言，既锁住取值也锁住相邻关系。
+ * 渲染成可比对的字符串：剥掉 React 的文本定界注释后按可见顺序断言，
+ * 既锁住取值也锁住相邻关系。
  */
 function render(page: HealthPage, lang: 'zh' | 'en'): string {
-  return renderToString(createElement(HealthView, { page, lang })).replaceAll('<!-- -->', '');
+  return visibleText(renderToString(createElement(HealthView, { page, lang })));
 }
 
 /** confidence 字段之前的报告形状：顶层与 per-skill 都没有该键。 */
@@ -192,7 +183,7 @@ describe('观测健康 React 页面', () => {
     assert.equal(html.match(/class="ant-collapse-item/g)?.length, 4);
     assert.equal(html.match(/class="health-skill"/g)?.length, 4, '折叠面板未展开时也必须已在文档里');
     assert.equal((html.match(/查看趋势 →/g) ?? []).length, 4);
-    assert.ok(html.includes('href="/observe/skill-trend/skill-0"'), '趋势链接指向单 skill 趋势页');
+    assert.ok(html.includes('href="/observe/skill-trend/skill-0?lang=zh"'), '趋势链接指向单 skill 趋势页');
     assert.ok(!html.includes('localhost') && !html.includes('127.0.0.1'), '页面地址不携带宿主');
   });
 
@@ -225,8 +216,8 @@ describe('观测健康 React 页面', () => {
       { id: 'obs-2', generatedAt: '2026-09-01T08:00:00Z', sessionCount: 1, segmentCount: 3, skillCount: 1, healthBand: 'red', confidence: 'underpowered' },
     ]);
     const html = render({ pageKind: 'index', rows }, 'zh');
-    assert.match(html, /<a[^>]*aria-current="page" href="\/observe\/health">/);
-    assert.ok(html.includes('href="/observe/health/obs-1"') && html.includes('href="/observe/health/obs-2"'));
+    assert.match(html, /<a[^>]*aria-current="page" href="\/observe\/health\?lang=zh">/);
+    assert.ok(html.includes('href="/observe/health/obs-1?lang=zh"') && html.includes('href="/observe/health/obs-2?lang=zh"'));
     assert.match(html, /aria-label="知识分区"/);
     assert.doesNotMatch(html, /aria-label="观测分区"/);
     assert.match(html, /需关注/);
@@ -254,7 +245,7 @@ describe('观测健康 React 页面', () => {
     const diff = { fromId: 'a', toId: 'b', fromAt: '2026-09-01T08:30:00Z', toAt: '2026-09-02T08:30:00Z', rows: projectDiff([]) };
     const row = { id: 'a', generatedAt: '2026-09-02T08:30:00Z', sessionCount: 1, segmentCount: 40, skillCount: 1, healthBand: 'green' as const, confidence: 'high' as const };
     for (const lang of ['zh', 'en'] as const) {
-      const href = `href="/knowledge${lang === 'en' ? '?lang=en' : ''}"`;
+      const href = `href="/knowledge?lang=${lang}"`;
       for (const page of [
         { pageKind: 'report' as const, report },
         { pageKind: 'trend' as const, trend },
@@ -276,7 +267,7 @@ describe('观测健康 React 页面', () => {
       ],
     });
     const html = render({ pageKind: 'trend', trend }, 'zh');
-    assert.ok(html.includes('href="/observe/health/obs%2F1"'), '身份编码后进链接，不拼出越段路径');
+    assert.ok(html.includes('href="/observe/health/obs%2F1?lang=zh"'), '身份编码后进链接，不拼出越段路径');
     assert.match(html, /6\/8 结果可比较 · 2 取消/);
     assert.match(html, /2 个时间点/);
     assert.ok(/<path d="M[^"]*"[^>]*stroke="#f87171"/.test(html), '折线以 gap 序列色绘制，与图例同色');
@@ -296,12 +287,12 @@ describe('观测健康 React 页面', () => {
       ]),
     };
     const html = render({ pageKind: 'diff', diff }, 'zh');
-    assert.ok(html.includes('href="/observe/skill-trend/both"'));
+    assert.ok(html.includes('href="/observe/skill-trend/both?lang=zh"'));
     assert.match(html, /class="[^"]*health-delta tone-success[^"]*"[^>]*>-25\.0%/);
     assert.match(html, /已消失/);
     assert.match(html, /新增/);
     assert.equal(html.match(/class="health-pair"/g)?.length, 12, '三行四栏都在文档里');
-    assert.ok(html.includes('href="/observe/health/obs-1"') && html.includes('href="/observe/health/obs-2"'));
+    assert.ok(html.includes('href="/observe/health/obs-1?lang=zh"') && html.includes('href="/observe/health/obs-2?lang=zh"'));
     assert.match(html, /按 gap 变化量排序/);
   });
 

@@ -1,9 +1,11 @@
 import {
   CORE_STUDIO_RUN_CARD_SCHEMA_VERSION,
   CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION,
-  type CoreStudioRunCard,
-  type CoreStudioRunDetail,
-} from '../../../src/studio/index.js';
+} from '../../../src/studio/application/measure/core-run-projection.js';
+import type {
+  CoreStudioRunCard,
+  CoreStudioRunDetail,
+} from '../../../src/studio/view-models/measure/core-runs.js';
 
 /**
  * Evaluation Core 运行记录的 view-model 样板：`/api/reports` 的 JSON 投影与 `/measure` 的 React

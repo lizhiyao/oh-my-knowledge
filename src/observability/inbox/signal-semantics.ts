@@ -7,7 +7,7 @@ import { severityReasonFor } from './severity-reason.js';
 
 /**
  * 观测收件箱信号子视图的展示语义（宿主无关纯函数）。
- * 文案与映射只此一份，React 页面（studio/web/components/inbox）直接消费，
+ * 文案与映射只此一份，React 页面（studio/web/components/observe/inbox）直接消费，
  * 避免出现第二套业务语义。样式（色值、布局）仍归呈现层；这里只输出语义字段与 tone。
  */
 

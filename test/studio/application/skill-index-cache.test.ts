@@ -7,8 +7,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/index.js';
-import type { SkillIndex } from '../../../src/studio/view-models/index.js';
+import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/knowledge/skill-index.js';
+import type { SkillIndex } from '../../../src/studio/view-models/knowledge/skill-index.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
 

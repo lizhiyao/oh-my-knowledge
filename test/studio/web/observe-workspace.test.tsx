@@ -18,7 +18,8 @@ it('presents projects and readable conversation links without raw Markdown or ta
   expect(html).toContain('项目与会话'); expect(html).toContain('Example project');
   expect(html).toContain('Issue #375'); expect(html).not.toContain('[https://');
   expect(html).not.toContain('<script>bad'); expect(html).toContain('&lt;script&gt;bad');
-  expect(html).toContain('/observe/conversations/thread%2Fa?lang=zh');
+  // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
+  expect(html).toContain('/observe/conversations/thread%2Fa?lang=zh"');
   expect(html).not.toContain('查看最近轨迹');
   expect(html).toContain('aria-label="独立对话"');
   expect(html).toContain('aria-label="项目"');

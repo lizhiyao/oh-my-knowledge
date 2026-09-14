@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Drawer, Input, Select } from 'antd';
-import type { StudioSettings } from '../../../view-models/settings';
+import type { StudioSettings } from '../../../view-models/settings/settings';
 import type { Language } from './shell';
 
 /** One settings surface across Studio; reading or saving never invokes a model. */
@@ -44,7 +44,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
     finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
   return <>{trigger ? trigger(() => void load()) : <Button className="studio-settings-trigger" onClick={() => void load()}>{zh ? '设置' : 'Settings'}</Button>}
-    <Drawer title={zh ? '全局设置' : 'Global settings'} open={open} onClose={() => { controller.current?.abort(); setOpen(false); }} width={600} extra={<Button type="primary" disabled={!data || busy || !workspace.trim()} onClick={() => void save()}>{zh ? '保存设置' : 'Save settings'}</Button>}>
+    <Drawer title={zh ? '全局设置' : 'Global settings'} open={open} onClose={() => { controller.current?.abort(); setOpen(false); }} size={600} extra={<Button type="primary" disabled={!data || busy || !workspace.trim()} onClick={() => void save()}>{zh ? '保存设置' : 'Save settings'}</Button>}>
       <div className="candidate-form">
         <p>{zh ? '保存在这台电脑上，CLI 与 Studio 共用。只影响后续操作，不移动已有数据或改变历史运行。' : 'Saved on this computer and shared with CLI. Applies to future actions without moving data or changing past runs.'}</p>
         {error && <Alert type="error" title={error} action={<Button disabled={busy} onClick={() => void load()}>{zh ? '重新读取' : 'Reload'}</Button>}/>}

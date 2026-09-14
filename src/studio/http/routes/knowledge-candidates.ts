@@ -1,5 +1,5 @@
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
-import { executeKnowledgeCandidateAction } from '../../application/knowledge-candidates.js';
+import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { JSON_HEADERS } from '../errors.js';
 import { readJsonObjectBody } from '../request-errors.js';
 import { createStudioRouter } from './router.js';

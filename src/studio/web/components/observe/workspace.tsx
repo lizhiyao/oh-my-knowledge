@@ -3,14 +3,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Empty, Input, Pagination } from 'antd';
-import type { ObservePage } from '../../../http/observe-page';
+import type { ObservePage } from '../../../http/pages/observe-page';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
-import type { Language } from '../layout/shell';
+import { langSuffix, type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
 import { ConversationReader } from './reader';
 import { StudioUtilities } from '../layout/utilities';
+import { displayTime } from '../display-time';
 
-export function conversationLabel(value: string): string {
+function conversationLabel(value: string): string {
   return value.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(issues|pull)\/(\d+)/g, (_, type, number) => `${type === 'pull' ? 'PR' : 'Issue'} #${number}`)
     .replace(/\*\*/g, '').trim();
@@ -19,8 +20,7 @@ const running = (item: ConversationListItem) => item.tasks.some(task => task.sta
 const hasProject = (item: ConversationListItem) => Boolean(item.project || item.cwd);
 const projectId = (item: ConversationListItem) => item.project?.projectId ?? item.cwd ?? 'unassigned';
 const projectName = (item: ConversationListItem, zh: boolean) => item.project?.name ?? item.cwd?.split('/').filter(Boolean).at(-1) ?? (zh ? '未归属项目' : 'Unassigned');
-const time = (value?: string) => value ? value.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') : '—';
-const href = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}?lang=${lang}`;
+const href = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${langSuffix(lang)}`;
 
 export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { pageKind: 'trajectory' }>; lang: Language }) {
   const zh = lang === 'zh'; const router = useRouter();
@@ -46,8 +46,9 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   }, [selected?.threadId, page.pageKind, router, lang]);
   function choose(next: string) {
     setNavigationOpen(false); setCurrent(1);
-    if (selected) router.push(`/observe?${new URLSearchParams({ view: next, lang })}`);
-    else { setView(next); window.history.replaceState(null, '', `/observe?${new URLSearchParams({ view: next, lang })}`); }
+    const target = `/observe?${new URLSearchParams({ view: next, lang })}`;
+    if (selected) router.push(target);
+    else { setView(next); window.history.replaceState(null, '', target); }
   }
   const groups = new Map<string, ConversationListItem[]>();
   for (const item of index.conversations.filter(hasProject)) { const id = projectId(item); groups.set(id, [...(groups.get(id) ?? []), item]); }
@@ -92,7 +93,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个会话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开会话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
         <div className="observe-session-list">{rows.slice((visiblePage - 1) * 20, visiblePage * 20).map(item => <Link className="observe-session-row" key={item.threadId} href={href(item.threadId, lang)}>
           <div><strong title={conversationLabel(item.title)}>{conversationLabel(item.title)}</strong><p>{item.tasks.at(-1) ? `${t('最近请求：', 'Latest request: ')}${conversationLabel(item.tasks.at(-1)!.title)}` : t('打开后读取会话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
-          <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={time(item.endTimestamp ?? item.startTimestamp)}>{(item.endTimestamp ?? item.startTimestamp)?.slice(5, 16).replace('T', ' ') ?? '—'}</time>{(item.toolFailureCount ?? 0) > 0 && <small title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
+          <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{(item.endTimestamp ?? item.startTimestamp)?.slice(5, 16).replace('T', ' ') ?? '—'}</time>{(item.toolFailureCount ?? 0) > 0 && <small title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
         </Link>)}{!rows.length && <Empty description={t('暂无匹配的会话。已有运行记录会自动出现在这里。', 'No matching conversations. Existing runtime records appear here automatically.')}/>}</div>
         <Pagination current={visiblePage} total={rows.length} pageSize={20} showSizeChanger={false} onChange={setCurrent}/>
       </>}

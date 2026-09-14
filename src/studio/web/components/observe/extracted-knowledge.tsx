@@ -18,7 +18,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
     resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal).then(({ workspace: root }) => { if (!active.signal.aborted) { setWorkspace(root); } }).catch(() => { if (!active.signal.aborted) setError(true); });
     return () => active.abort();
   }, []);
-  const params = new URLSearchParams({ ...(workspace ? { workspace } : {}), ...(zh ? {} : { lang: 'en' }) });
+  const params = new URLSearchParams({ ...(workspace ? { workspace } : {}), lang });
   async function load() {
     controller.current?.abort(); const active = new AbortController(); controller.current = active;
     setBusy(true); setError(false);
@@ -29,7 +29,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
     } catch { if (!active.signal.aborted) setError(true); } finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
   return <><div className="conversation-knowledge-actions"><ExtractConversation threadId={threadId} turnId={turnId} lang={lang} onFinished={() => { if (open && workspace) void load(); }}/><Button onClick={() => { setOpen(true); if (workspace) void load(); }}>{zh ? '已提炼知识' : 'Extracted knowledge'}</Button></div>
-    <Drawer title={zh ? '这个会话的提炼记录' : 'Extractions from this conversation'} open={open} onClose={() => setOpen(false)} width={560}>
+    <Drawer title={zh ? '这个会话的提炼记录' : 'Extractions from this conversation'} open={open} onClose={() => setOpen(false)} size={560}>
       <p>{zh ? '查看所选知识目录中，这个会话的提炼结果。' : 'Show this conversation’s extraction results in the selected knowledge folder.'}</p>
       <Input disabled={busy} aria-label={zh ? '知识保存目录' : 'Knowledge folder'} value={workspace} onChange={event => { setWorkspace(event.target.value); setRuns([]); }}/>
       <Button disabled={!workspace.trim()} loading={busy} onClick={() => void load()}>{zh ? '读取记录' : 'Load history'}</Button>

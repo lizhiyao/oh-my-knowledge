@@ -29,7 +29,6 @@ const PACKAGE_ENTRYPOINTS = new Set([
   'eval-workflows/inputs/eval-samples.ts',
   'eval-workflows/projections/index.ts',
   'mcp/index.ts',
-  'studio/index.ts',
 ]);
 
 const ALLOWED_ENTRYPOINT_EDGES = new Set([

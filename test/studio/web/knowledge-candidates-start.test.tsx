@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { KnowledgeCandidateStart, KnowledgeCandidates } from '../../../src/studio/web/components/knowledge/candidates.js';
-import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/knowledge-candidates.js';
+import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 const latest: KnowledgeCandidateRun = { runId: 'fixture', status: 'completed', committed: [], rejections: [] };
 const render = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeCandidateStart, {
   lang: 'zh', hasWorkspace: true, loading: false, busy: false, onChoose() {}, onHistory() {}, ...overrides,

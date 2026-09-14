@@ -3,13 +3,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import Link from 'next/link';
 import { Alert, Button, Empty, Space } from 'antd';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
-import type { ConversationReaderPage } from '../../../view-models/conversation-reader';
-import type { Language } from '../layout/shell';
+import type { ConversationReaderPage } from '../../../view-models/conversations/conversation-reader';
+import { langSuffix, type Language } from '../layout/shell';
+import { displayTime } from '../display-time';
 import { Status } from './activity';
 import { ExtractedKnowledge } from './extracted-knowledge';
 
 type Turn = ConversationReaderPage['turns'][number];
-const time = (value?: string) => value?.replace('T', ' ').replace(/(?:\.\d+)?Z$/, ' UTC') ?? '—';
 
 /** Cursors identify turns, so appending new turns cannot shift the history window. */
 export function ConversationReader({ item, revision, lang, title, project }: { item: ConversationListItem; revision: string; lang: Language; title: string; project: string }) {
@@ -95,7 +95,7 @@ export function ConversationReader({ item, revision, lang, title, project }: { i
       {hasOlder && <div className="observe-history-control"><Button type="text" loading={busy && lastMode.current === 'older'} onClick={() => void load('older')}>{t('加载更早的对话', 'Load earlier conversation')}</Button></div>}
       {failed && <Alert type="error" title={t('暂时无法读取更多对话，已加载内容仍可查看。', 'Cannot load more conversation. Loaded messages remain available.')} action={<Button onClick={() => { if (resetRequired) { current.current = []; follow.current = true; setResetRequired(false); void load('latest'); } else void load(lastMode.current); }}>{resetRequired ? t('重新读取会话', 'Reload conversation') : t('重试', 'Retry')}</Button>}/>}
       {!loaded && !failed ? <p role="status">{t('正在读取对话…', 'Reading conversation…')}</p> : !turns.length && !failed ? <Empty description={t('没有可读取的对话轮次', 'No conversation turns available')}/> : turns.map(({ task, messages, unavailable }) => <article key={task.turnId} data-turn-id={task.turnId} className="observe-reading-turn">
-        <header><Space><Status status={task.status} lang={lang}/><time>{time(task.startTimestamp)}</time></Space><Link href={`/observe/conversations/${encodeURIComponent(item.threadId)}/tasks/${encodeURIComponent(task.sourceTurnId ?? task.turnId)}?lang=${lang}`}>{t('查看执行详情', 'Execution details')}</Link></header>
+        <header><Space><Status status={task.status} lang={lang}/><time>{displayTime(task.startTimestamp)}</time></Space><Link href={`/observe/conversations/${encodeURIComponent(item.threadId)}/tasks/${encodeURIComponent(task.sourceTurnId ?? task.turnId)}${langSuffix(lang)}`}>{t('查看执行详情', 'Execution details')}</Link></header>
         {unavailable ? <Alert type="warning" title={t('这一轮的消息暂不可读，可查看执行详情。', 'Messages in this turn are unavailable. Open execution details.')}/> : messages.length ? messages.map((message, i) => <section className={`observe-reading-message ${message.role === 'user' ? 'human' : 'assistant'}`} key={i}><strong>{message.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong><div className="observe-message-text">{message.text}</div></section>) : <p>{t('这一轮没有对话消息。', 'No conversation messages in this turn.')}</p>}
         {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
       </article>)}

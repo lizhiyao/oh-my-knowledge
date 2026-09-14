@@ -1,4 +1,4 @@
-import type { StudioSettings } from '../../../view-models/settings.js';
+import type { StudioSettings } from '../../../view-models/settings/settings.js';
 /** Node owns durable preferences. URL values override this operation only. */
 export async function resolveKnowledgeWorkspace(explicit = '', signal?: AbortSignal) {
   const response = await fetch('/api/settings', { signal });
