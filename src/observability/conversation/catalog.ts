@@ -67,7 +67,7 @@ export interface ConversationTaskTrajectorySubscriptionOptions {
 export interface ConversationCatalog {
   listConversations(): Promise<ConversationIndexViewModel>;
   getConversation(threadId: string): Promise<ConversationListItem | undefined>;
-  loadTaskTrajectory(threadId: string, turnId: string): Promise<ConversationTaskTrajectory | undefined>;
+  loadTaskTrajectory(threadId: string, turnId: string, options?: { includeNextHumanMessage?: boolean }): Promise<ConversationTaskTrajectory | undefined>;
   /** Optional live capability. Static catalogs do not need to implement it. */
   observeTaskTrajectory?(
     threadId: string,
@@ -160,11 +160,12 @@ class CodexConversationCatalog implements ConversationCatalog {
   async loadTaskTrajectory(
     threadId: string,
     turnId: string,
+    options: { includeNextHumanMessage?: boolean } = {},
   ): Promise<ConversationTaskTrajectory | undefined> {
-    const key = `${threadId}\u0000${turnId}`;
+    const key = `${threadId}\u0000${turnId}\u0000${options.includeNextHumanMessage !== false}`;
     const existing = this.trajectoryPromises.get(key);
     if (existing) return existing;
-    const pending = this.loadTaskTrajectoryUncached(threadId, turnId);
+    const pending = this.loadTaskTrajectoryUncached(threadId, turnId, options.includeNextHumanMessage !== false);
     this.trajectoryPromises.set(key, pending);
     try {
       return await pending;
@@ -199,6 +200,7 @@ class CodexConversationCatalog implements ConversationCatalog {
   private async loadTaskTrajectoryUncached(
     threadId: string,
     turnId: string,
+    includeNextHumanMessage: boolean,
   ): Promise<ConversationTaskTrajectory | undefined> {
     const row = this.findThreadRow(threadId);
     if (!row || !existsSync(row.rolloutPath)) return undefined;
@@ -210,18 +212,19 @@ class CodexConversationCatalog implements ConversationCatalog {
       indexedTask = index.tasks.find((task) => task.turnId === turnId);
     }
     if (!indexedTask) return undefined;
-    return this.trajectoryFromIndex(row, index, indexedTask);
+    return this.trajectoryFromIndex(row, index, indexedTask, includeNextHumanMessage);
   }
 
   private trajectoryFromIndex(
     row: CodexThreadRow,
     index: CodexRolloutIndex,
     indexedTask: CodexIndexedTask,
+    includeNextHumanMessage = true,
   ): ConversationTaskTrajectory {
     const threadId = row.id;
     const turnId = indexedTask.turnId;
     const selected = readCodexTaskRecords(index, indexedTask, {
-      includeNextHumanMessage: true,
+      includeNextHumanMessage,
     });
     const traceSession = parseCodexSessionFile(row.rolloutPath, selected.records);
     const fullSessionTimeline = projectTraceSessionTimeline(traceSession);

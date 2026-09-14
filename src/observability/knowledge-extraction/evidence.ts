@@ -9,6 +9,7 @@ export const EvidenceWindowSchema = z.strictObject({
   capturedAt: z.iso.datetime({ offset: true }),
   startRecord: z.number().int().nonnegative(),
   endRecord: z.number().int().nonnegative(),
+  origin: z.strictObject({ threadId: z.string().min(1), turnId: z.string().min(1), title: z.string(), cwd: z.string().optional() }).optional(),
   limitations: z.array(z.string()),
   records: z.array(z.strictObject({
     recordIndex: z.number().int().nonnegative(), raw: z.string(),
@@ -20,7 +21,7 @@ export const EvidenceWindowSchema = z.strictObject({
   })).max(100_000),
 });
 export type EvidenceWindow = z.infer<typeof EvidenceWindowSchema>;
-export type SourceSelection = { path: string; startRecord?: number; endRecord?: number };
+export type SourceSelection = { path: string; startRecord?: number; endRecord?: number; records?: EvidenceWindow['records']; origin?: EvidenceWindow['origin'] };
 export type SourceResolution =
   | { status: 'available'; window: EvidenceWindow }
   | { status: 'unavailable'; reason: 'missing' | 'deleted' | 'invalid_source' | 'version_mismatch'; detail: string };

@@ -39,10 +39,11 @@ export function createStudioRequestHandler({
   studioPages = true,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
-  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers);
+  const catalog = conversationCatalog ?? createCodexConversationCatalog();
+  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
-    catalog: conversationCatalog ?? createCodexConversationCatalog(),
+    catalog,
     liveStreams: liveStreamClosers,
   });
   const query = knowledgeQuery ?? createKnowledgeQuery({ analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards });

@@ -56,6 +56,7 @@ export class KnowledgeApplication {
       promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input), actor: this.ports.actor });
     let run: ExtractionRun = {
       runId, requestDigest, generation: 1, snapshotId, sourceVersion: window.sourceVersion,
+      ...(window.origin ? { origin: window.origin } : {}),
       executor: model.executor, model: model.model, promptVersion: EXTRACTION_PROMPT_VERSION,
       promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input),
       actor: this.ports.actor, startedAt: this.ports.now(), status: 'generating', intents: [], rejections: [], committed: [],

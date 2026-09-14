@@ -1,3 +1,4 @@
+import { ExtractedKnowledge } from '../../../src/studio/web/components/observe/extracted-knowledge.js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -10,7 +11,7 @@ const render = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeC
 describe('knowledge extraction onboarding', () => {
   it('explains the next action and keeps workspace paths out of the empty main page', () => {
     const html = renderToStaticMarkup(createElement(KnowledgeCandidates, { lang: 'zh', initialWorkspace: '/private/example' }));
-    expect(html).toContain('选择工作记录');
+    expect(html).toContain('从会话选择');
     expect(html).toContain('预览并提炼');
     expect(html).toContain('核对并保留');
     expect(html).not.toContain('/private/example');
@@ -26,9 +27,16 @@ describe('knowledge extraction onboarding', () => {
     expect(render()).toContain('还没有提炼记录');
     expect(render({ hasWorkspace: false })).toContain('设置保存位置并开始');
   });
+  it('links observed tasks to extraction using encoded identities', () => {
+    const html = renderToStaticMarkup(createElement(ExtractedKnowledge, { lang: 'zh', threadId: 'thread/a', turnId: 'turn&b' }));
+    expect(html).toContain('提炼知识');
+    expect(html).toContain('已提炼知识');
+    expect(html).toContain('thread=thread%2Fa');
+    expect(html).toContain('turn=turn%26b');
+  });
   it('provides the same guidance in English', () => {
     const html = render({ lang: 'en', latest });
-    expect(html).toContain('Choose a work log');
+    expect(html).toContain('Choose a conversation');
     expect(html).toContain('Last extraction completed with 0 candidates');
     expect(html).toContain('Preview the content before confirming a model request.');
   });

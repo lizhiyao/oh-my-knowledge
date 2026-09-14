@@ -1,4 +1,5 @@
 'use client';
+import { ExtractedKnowledge } from './extracted-knowledge';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -116,7 +117,7 @@ function ConversationDetail({page,lang}: {page: Extract<ObservePage,{pageKind:'c
       <div className="observe-detail-title"><h1 title={item.title}>{item.title}</h1><span className="observe-detail-count">{item.turnCount??item.tasks.length} {zh?'个任务':'tasks'}</span></div>
       <div className="observe-detail-meta"><span>{item.model??item.sourceKind}</span><span className="observe-workspace" title={item.cwd}>{item.cwd??'—'}</span><span>{item.toolCallCount??'—'} {zh?'次工具调用':'tool calls'}</span><span className={(item.toolFailureCount??0)>0?'observe-failure':undefined}>{item.toolFailureCount??'—'} {zh?'次工具失败':'tool failures'}</span></div>
     </header>
-    <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/><ActivityNotice activity={activity} lang={lang}/></div>
+    <div className="observe-toolbar"><Segmented value={newest?'newest':'oldest'} onChange={value=>setNewest(value==='newest')} options={[{value:'newest',label:zh?'最新优先':'Newest first'},{value:'oldest',label:zh?'最早优先':'Oldest first'}]}/><Space><ExtractedKnowledge threadId={item.threadId} lang={lang}/><ActivityNotice activity={activity} lang={lang}/></Space></div>
     <Table className="measure-table" tableLayout="fixed" size="middle" rowKey="turnId" rowClassName={task => task.status === 'open' ? 'studio-running-row' : ''} dataSource={tasks} scroll={{x:750}} locale={{emptyText:zh?'没有识别到任务边界':'No task boundaries found'}} columns={[
       {title:zh?'任务':'Task',ellipsis:true,render:(_,task)=><Link href={`${taskPath(item.threadId,task.sourceTurnId??task.turnId)}${suffix(lang)}`}>{task.title}</Link>},
       {title:zh?'状态':'Status',width:100,dataIndex:'status',render:(status:string)=><Status status={status} lang={lang}/>},
@@ -174,7 +175,7 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
         <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button></h1>
       </Popover>
-      <Space className="trajectory-controls" size="small"><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
+      <Space className="trajectory-controls" size="small" wrap><ExtractedKnowledge threadId={page.threadId} turnId={page.turnId} lang={lang}/><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
     </div>
     <div className="observe-detail-meta"><span>{displayTime(model.summary.observedStartTimestamp)}</span><span>{model.summary.observedModels.join(', ')}</span><span>{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'}</span><span className={model.summary.toolFailureCount>0?'observe-failure':undefined}>{model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</span>
       {model.integrity.status==='partial'&&<Popover trigger="click" placement="bottomRight" open={integrityOpen} onOpenChange={setIntegrityOpen} styles={{container:{padding:16},title:{marginBottom:8,fontSize:14,lineHeight:'20px'},content:{fontSize:13,lineHeight:'20px'}}} title={onlyUnknown?(zh?'部分事件未解析':'Some events are unparsed'):(zh?'轨迹展示受限':'Trajectory limitations')} content={<div className="observe-integrity-detail">

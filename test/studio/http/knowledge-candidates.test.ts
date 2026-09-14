@@ -2,17 +2,29 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
+import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
   const workspace = join(root, 'knowledge');
   const source = join(root, 'source.jsonl');
+  let changed = false;
+  const message = (role: string, text: string) => JSON.stringify({ type: 'response_item', payload: { type: 'message', role, content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }] } });
+  const catalog: ConversationCatalog = {
+    async listConversations() { return { conversations: [], totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 }; },
+    async getConversation(threadId) { return threadId === 'thread' ? { threadId, sourceThreadId: threadId, sourceKind: 'codex', title: '项目对话', cwd: '/project', tasks: [{ turnId: 'turn', title: '处理问题', status: 'completed', eventCount: 3, toolCallCount: 0, toolFailureCount: 0, relatedSkillNames: [] }], relatedSkillNames: [] } : undefined; },
+    async loadTaskTrajectory() { return { session: { sourceTrace: source }, sourceRecords: { status: 'available', truncated: false, records: [
+      { sourceIndex: 10, raw: message('user', changed ? 'changed' : '选择这条约束'), truncated: false },
+      { sourceIndex: 11, raw: message('assistant', '不要自动带上这条回复'), truncated: false },
+    ] } } as ConversationTaskTrajectory; },
+  };
   let server: ReturnType<typeof createReportServer>;
   let url: string;
   beforeAll(async () => {
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '项目约束' }] } }));
-    server = createReportServer({ port: 0, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
+    server = createReportServer({ port: 0, conversationCatalog: catalog, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
     url = await server.start();
   });
   afterAll(async () => { await server?.stop(); rmSync(root, { recursive: true, force: true }); });
@@ -26,6 +38,20 @@ describe('Studio candidate action boundary', () => {
     const snapshot = await captured.json() as { snapshotId: string };
     expect(snapshot.snapshotId).toBeTruthy();
     expect((await post({ operation: 'delete-source', snapshot: snapshot.snapshotId })).status).toBe(200);
+  });
+  it('previews catalog messages, captures only the selection, and preserves the return identity', async () => {
+    const preview = await (await post({ operation: 'preview-conversation', threadId: 'thread', turnId: 'turn' })).json() as { sourceVersion: string; messages: { text: string }[] };
+    expect(preview.messages.map(message => message.text)).toEqual(['选择这条约束', '不要自动带上这条回复']);
+    const input = { operation: 'capture-conversation', threadId: 'thread', turnId: 'turn', sourceVersion: preview.sourceVersion, recordIndexes: [10] };
+    expect((await post({ ...input, recordIndexes: [999] })).status).toBe(400);
+    expect((await post({ ...input, turnId: 'other' })).status).toBe(400);
+    const captured = await (await post(input)).json() as { snapshotId: string; excerpts: { text: string }[] };
+    expect(captured.excerpts.map(entry => entry.text)).toEqual(['选择这条约束']);
+    const stored = createLocalKnowledgeApplication(workspace).source(captured.snapshotId);
+    expect(stored.status === 'available' && stored.window.origin).toEqual({ threadId: 'thread', turnId: 'turn', title: '项目对话', cwd: '/project' });
+    changed = true;
+    expect((await post(input)).status).toBe(409);
+    changed = false;
   });
   it('rejects cross-origin mutation before touching a source', async () => {
     const response = await post({ operation: 'capture', source }, 'https://untrusted.example');

@@ -1,14 +1,16 @@
 'use client';
+import { ConversationPicker } from './conversation-picker';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Language; initialWorkspace?: string }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread, initialTurn, initialId }: { lang: Language; initialWorkspace?: string; initialThread?: string; initialTurn?: string; initialId?: string }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
+  const [showConversations, setShowConversations] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(!!initialWorkspace);
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
@@ -64,9 +66,15 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
   async function open(id: string, revision?: string) {
     const next = await api<KnowledgeCandidateDetail>('show', { id, ...(revision ? { revision } : {}) });
     setDetail(next); setCitation(0); setReason('');
+    const url = new URL(window.location.href); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
-    if (initialWorkspace) void work(() => refresh(initialWorkspace, true));
+    const root = initialWorkspace || window.localStorage.getItem('omk.knowledge.workspace') || '';
+    if (root) { setWorkspace(root); setWorkspaceDraft(root); window.localStorage.setItem('omk.knowledge.workspace', root); }
+    void work(async () => {
+      if (root) { await refresh(root, true); if (initialId) { const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id: initialId }); setDetail(next); } }
+      if (initialThread) setShowConversations(true);
+    });
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
   }, []);
@@ -104,13 +112,15 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
     <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('从工作记录提炼知识', 'Extract knowledge from work logs')}</h1></div>
       <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
-        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={() => setShowImport(true)}>{t('选择工作记录', 'Choose a work log')}</Button>}
+        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={() => setShowConversations(true)}>{t('从会话选择', 'Choose a conversation')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
+        <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
+    {detail?.origin && <a href={`/observe/conversations/${encodeURIComponent(detail.origin.threadId)}/tasks/${encodeURIComponent(detail.origin.turnId)}?${new URLSearchParams({ workspace, ...(zh ? {} : { lang: 'en' }) })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={() => workspace ? setShowImport(true) : setShowSettings(true)} onHistory={() => setShowRuns(true)}/>
+      onChoose={() => workspace ? setShowConversations(true) : setShowSettings(true)} onHistory={() => setShowRuns(true)}/>
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
@@ -156,23 +166,28 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
         </div>
       </aside>
     </div>}
+    <Drawer title={t('从会话提炼知识', 'Extract from a conversation')} open={showConversations} onClose={() => !busy && setShowConversations(false)} width={720} destroyOnHidden>
+      {error && <Alert type="error" title={error}/>}
+      {!workspace && <Button onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>}
+      <ConversationPicker lang={lang} initialThread={initialThread} initialTurn={initialTurn} workspace={workspace} busy={busy} api={api} work={work} onCaptured={value => { setSnapshot(value); setShowConversations(false); setShowImport(true); }}/>
+    </Drawer>
     <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('提炼结果和原始记录保存在这台电脑上。选择一个目录，之后 CLI 和 Studio 都可以从这里重新打开。', 'Keep extracted knowledge and source records on this computer. Choose a folder that both CLI and Studio can reopen.')}</p>
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
-          await refresh(root, true); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
-          const url = new URL(window.location.href); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
+          await refresh(root, true); window.localStorage.setItem('omk.knowledge.workspace', root); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
+          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
     </Drawer>
-    <Drawer title={t('选择工作记录', 'Choose a work log')} open={showImport} onClose={() => !busy && setShowImport(false)} width={560}>
-      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('选择包含项目事实、你的纠正，或问题处理经过的记录。先在本地预览，再决定是否交给模型提炼。', 'Choose a record containing project facts, your corrections, or a problem and its resolution. Preview it locally before sending it to a model.')}</p>
-        <label>{t('工作记录文件（Codex JSONL）', 'Work log file (Codex JSONL)')}<Input placeholder="/.../rollout-….jsonl" value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
+    <Drawer title={snapshot ? t('确认提炼内容与模型', 'Confirm content and model') : t('导入日志文件', 'Import a log file')} open={showImport} onClose={() => !busy && setShowImport(false)} width={560}>
+      <div className="candidate-form">{error && <Alert type="error" title={error}/>}{!snapshot && <p>{t('选择包含项目事实、你的纠正，或问题处理经过的记录。先在本地预览，再决定是否交给模型提炼。', 'Choose a record containing project facts, your corrections, or a problem and its resolution. Preview it locally before sending it to a model.')}</p>}
+        {!snapshot?.origin && <><label>{t('工作记录文件（Codex JSONL）', 'Work log file (Codex JSONL)')}<Input placeholder="/.../rollout-….jsonl" value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
         <p className="candidate-help">{t('粘贴这台电脑上日志文件的完整路径。默认读取整份文件，可在下方缩小范围。', 'Paste the full path to a log file on this computer. Read the entire file or narrow the range below.')}</p>
         <details><summary>{t('只选部分记录（可选）', 'Select a record range (optional)')}</summary><Space wrap><label>{t('起始记录（从零开始）', 'First record (zero-based)')}<InputNumber min={0} value={start} disabled={busy} onChange={(value) => { setStart(value); setSnapshot(null); }}/></label><label>{t('结束记录（包含）', 'Last record (inclusive)')}<InputNumber min={0} value={end} disabled={busy} onChange={(value) => { setEnd(value); setSnapshot(null); }}/></label></Space></details>
-        <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('读取并预览', 'Read and preview')}</Button>
-        {snapshot && <><section><h3 className="candidate-form-heading">{t('核对将要提炼的内容', 'Review the selected content')}</h3>
+        <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('读取并预览', 'Read and preview')}</Button></>}
+        {snapshot && <><section>{snapshot.origin && <p>{t('来源会话：', 'Conversation: ')}{snapshot.origin.title}</p>}<h3 className="candidate-form-heading">{t('核对将要提炼的内容', 'Review the selected content')}</h3>
           <p className="candidate-help">{t('以下内容已在本地读取，尚未发送给模型。', 'This content was read locally and has not been sent to a model.')}</p>
           <pre className="candidate-source-preview">{snapshot.excerpts.map((entry) => `[${entry.role ?? entry.eventKind}] ${entry.text}`).join('\n\n')}</pre>
         </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
@@ -224,11 +239,11 @@ export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, lat
     <div className="candidate-start-main">
       <h2>{t('选一段工作记录，找出值得复用的经验', 'Find reusable knowledge in a work log')}</h2>
       <p className="candidate-start-intro">{t('OMK 帮你整理其中的项目事实、解决方法和经验。你核对原文，决定哪些值得留下。', 'OMK proposes project facts, methods, and lessons. Compare them with the original text and choose what to keep.')}</p>
-      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{hasWorkspace ? t('选择工作记录', 'Choose a work log') : t('设置保存位置并开始', 'Choose where to save and begin')}</Button>
+      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{hasWorkspace ? t('从会话选择', 'Choose a conversation') : t('设置保存位置并开始', 'Choose where to save and begin')}</Button>
         <span>{t('先预览内容，再确认发送给模型。', 'Preview the content before confirming a model request.')}</span>
       </div>
       <ol className="candidate-steps">
-        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('一份 Codex 工作日志，可限定范围。', 'Select a Codex work log and an optional range.')}</span></li>
+        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('在观测会话里选择任务和消息。', 'Choose a task and messages from an observed conversation.')}</span></li>
         <li><strong>{t('预览并提炼', 'Preview and extract')}</strong><span>{t('确认内容和模型，生成待核对的知识。', 'Confirm the content and model to propose knowledge.')}</span></li>
         <li><strong>{t('核对并保留', 'Review and keep')}</strong><span>{t('对照原文，保留、修改或舍弃。', 'Check the original text, then keep, edit, or discard.')}</span></li>
       </ol>

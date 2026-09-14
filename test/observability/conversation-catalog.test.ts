@@ -52,6 +52,21 @@ describe('Codex conversation catalog', () => {
     assert.equal(overview.conversations[0]?.tasks[0]?.title, '刚开始的实时任务');
   });
 
+  it('can exclude the next user message for extraction without changing trajectory feedback', async () => {
+    const root = temporaryRoot();
+    const codexHome = join(root, 'codex');
+    const source = join(root, 'rollout.jsonl');
+    writeFileSync(source, rollout('thread'));
+    createStateDatabase(codexHome, [thread('thread', source, 'user', 'cli', 'conversation', Date.now())], []);
+    const catalog = createCodexConversationCatalog({ codexHome, cacheDir: join(root, 'cache'), useBackgroundProcess: false });
+    const [trajectory, extraction] = await Promise.all([
+      catalog.loadTaskTrajectory('thread', 'turn-a'),
+      catalog.loadTaskTrajectory('thread', 'turn-a', { includeNextHumanMessage: false }),
+    ]);
+    assert.ok(trajectory?.sourceRecords.records.some(record => record.raw.includes('第二项任务')));
+    assert.ok(extraction?.sourceRecords.records.some(record => record.raw.includes('第一项任务')));
+    assert.ok(!extraction?.sourceRecords.records.some(record => record.raw.includes('第二项任务')));
+  });
   it('indexes adjacent native turns without leaking records across boundaries', () => {
     const root = temporaryRoot();
     const rolloutPath = join(root, 'rollout-main.jsonl');

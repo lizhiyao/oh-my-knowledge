@@ -34,54 +34,7 @@ export class CodexEvidenceStore implements EvidenceStore {
     return join(this.root, `${snapshotId}.json`);
   }
   capture(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow {
-    signal?.throwIfAborted();
-    const path = realpathSync(selection.path);
-    if (!lstatSync(path).isFile()) throw new Error('Select one Codex log file.');
-    const start = selection.startRecord ?? 0;
-    const end = selection.endRecord;
-    if (!Number.isSafeInteger(start) || start < 0
-      || (end !== undefined && (!Number.isSafeInteger(end) || end < start))) throw new Error('Invalid record range.');
-    const records: EvidenceWindow['records'] = [];
-    const rawRecords: unknown[] = [];
-    let recordIndex = 0;
-    let bytes = 0;
-    let malformed = 0;
-    forEachNonEmptyUtf8Line(path, (raw) => {
-      signal?.throwIfAborted();
-      const index = recordIndex++;
-      if (index < start) return;
-      if (end !== undefined && index > end) return false;
-      bytes += Buffer.byteLength(raw, 'utf8');
-      if (bytes > MAX_BYTES || records.length >= 100_000) throw new Error('Selected source exceeds capacity; choose a smaller record range.');
-      records.push({ recordIndex: index, raw });
-      try { rawRecords.push(JSON.parse(raw)); } catch { rawRecords.push(null); malformed++; }
-      return end === undefined || index < end;
-    });
-    if (!records.length) throw new Error('Selected record range is empty.');
-    if (!isCodexJsonl(rawRecords)) throw new Error('Selected records do not identify a Codex log.');
-    const snapshotId = randomUUID();
-    const session = parseCodexSessionFile(path, rawRecords);
-    const limitations: string[] = [];
-    if (start > 0 || end !== undefined) limitations.push('Explicit record range; surrounding context may be missing.');
-    if (end !== undefined && records.at(-1)!.recordIndex < end) limitations.push('Source ended before the requested final record.');
-    if (malformed) limitations.push(`${malformed} malformed source records retained as raw evidence.`);
-    if (session.events.some((event) => event.eventKind === 'context_compaction')) limitations.push('Source contains compaction; earlier context may be unavailable.');
-    if (session.events.some((event) => event.eventKind === 'unknown')) limitations.push('Some source events could not be interpreted.');
-    const window: EvidenceWindow = {
-      snapshotId, sourceKind: 'codex', sourcePath: path,
-      sourceVersion: hash(JSON.stringify(records)), projectionVersion: 'knowledge-window-v1',
-      capturedAt: new Date().toISOString(), startRecord: start, endRecord: records.at(-1)!.recordIndex,
-      limitations, records,
-      excerpts: session.events.flatMap((event, index) => {
-        const text = eventText(event);
-        if (text === undefined) return [];
-        return [{
-          evidenceRef: `${snapshotId}:${index}`, recordIndex: records[event.sourceIndex].recordIndex,
-          eventKind: event.eventKind, ...('role' in event ? { role: event.role } : {}),
-          ...(event.timestamp ? { timestamp: event.timestamp } : {}), text,
-        }];
-      }),
-    };
+    const window = projectCodexEvidence(selection, signal);
     const stored = EvidenceWindowSchema.parse(window);
     const serialized = JSON.stringify(stored, null, 2);
     if (Buffer.byteLength(serialized) > MAX_BYTES) throw new Error('Projected source exceeds capacity; choose a smaller range.');
@@ -90,7 +43,7 @@ export class CodexEvidenceStore implements EvidenceStore {
         .reduce((sum, name) => sum + lstatSync(join(this.root, name)).size, 0);
       if (total + Buffer.byteLength(serialized) + 256 > MAX_TOTAL_BYTES) throw new Error('Evidence storage capacity exceeded; delete unneeded snapshots.');
       signal?.throwIfAborted();
-      createJsonFileAtomic(this.path(snapshotId), { ...stored, windowDigest: hash(serialized) });
+      createJsonFileAtomic(this.path(stored.snapshotId), { ...stored, windowDigest: hash(serialized) });
     }, { recoverStale: false });
     return stored;
   }
@@ -119,4 +72,60 @@ export class CodexEvidenceStore implements EvidenceStore {
       writeJsonFileAtomic(path, { snapshotId, deleted: true });
     }, { recoverStale: false });
   }
+}
+
+/** Shared projection for local preview and immutable capture. */
+export function projectCodexEvidence(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow {
+    signal?.throwIfAborted();
+    const path = selection.records ? selection.path : realpathSync(selection.path);
+    if (!selection.records && !lstatSync(path).isFile()) throw new Error('Select one Codex log file.');
+    const start = selection.startRecord ?? 0;
+    const end = selection.endRecord;
+    if (!Number.isSafeInteger(start) || start < 0
+      || (end !== undefined && (!Number.isSafeInteger(end) || end < start))) throw new Error('Invalid record range.');
+    const records: EvidenceWindow['records'] = [];
+    const rawRecords: unknown[] = [];
+    let recordIndex = 0;
+    let bytes = 0;
+    let malformed = 0;
+    const collect = (raw: string, suppliedIndex?: number) => {
+      signal?.throwIfAborted();
+      const index = suppliedIndex ?? recordIndex++;
+      if (index < start) return;
+      if (end !== undefined && index > end) return false;
+      bytes += Buffer.byteLength(raw, 'utf8');
+      if (bytes > MAX_BYTES || records.length >= 100_000) throw new Error('Selected source exceeds capacity; choose a smaller record range.');
+      records.push({ recordIndex: index, raw });
+      try { rawRecords.push(JSON.parse(raw)); } catch { rawRecords.push(null); malformed++; }
+      return end === undefined || index < end;
+    };
+    if (selection.records) { for (const record of selection.records) collect(record.raw, record.recordIndex); }
+    else forEachNonEmptyUtf8Line(path, collect);
+    if (!records.length) throw new Error('Selected record range is empty.');
+    if (!isCodexJsonl(rawRecords)) throw new Error('Selected records do not identify a Codex log.');
+    const snapshotId = randomUUID();
+    const session = parseCodexSessionFile(path, rawRecords);
+    const limitations: string[] = selection.records ? ['Explicit messages from an observed task; surrounding context and unselected records are omitted. Source text may be redacted by observation.'] : [];
+    if (start > 0 || end !== undefined) limitations.push('Explicit record range; surrounding context may be missing.');
+    if (end !== undefined && records.at(-1)!.recordIndex < end) limitations.push('Source ended before the requested final record.');
+    if (malformed) limitations.push(`${malformed} malformed source records retained as raw evidence.`);
+    if (session.events.some((event) => event.eventKind === 'context_compaction')) limitations.push('Source contains compaction; earlier context may be unavailable.');
+    if (session.events.some((event) => event.eventKind === 'unknown')) limitations.push('Some source events could not be interpreted.');
+    const window: EvidenceWindow = {
+      snapshotId, sourceKind: 'codex', sourcePath: path,
+      sourceVersion: hash(JSON.stringify(records)), projectionVersion: 'knowledge-window-v1',
+      capturedAt: new Date().toISOString(), startRecord: records[0].recordIndex, endRecord: records.at(-1)!.recordIndex,
+      ...(selection.origin ? { origin: selection.origin } : {}),
+      limitations, records,
+      excerpts: session.events.flatMap((event, index) => {
+        const text = eventText(event);
+        if (text === undefined) return [];
+        return [{
+          evidenceRef: `${snapshotId}:${index}`, recordIndex: records[event.sourceIndex].recordIndex,
+          eventKind: event.eventKind, ...('role' in event ? { role: event.role } : {}),
+          ...(event.timestamp ? { timestamp: event.timestamp } : {}), text,
+        }];
+      }),
+    };
+    return EvidenceWindowSchema.parse(window);
 }

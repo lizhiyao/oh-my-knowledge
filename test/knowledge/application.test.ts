@@ -1,3 +1,4 @@
+import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge-candidates.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -53,6 +54,21 @@ describe('shared knowledge application', () => {
     expect(entry.revision.createdBy).toMatchObject({ actorKind: 'agent', executionRef: id });
     expect(await app.generate(snapshot.snapshotId, model, id)).toEqual(run);
     expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it('retains conversation links and maintenance choices after deleting source text', async () => {
+    const { app, model, source, generate } = setup();
+    const origin = { threadId: 'thread', turnId: 'turn', title: 'Private conversation title', cwd: '/private/project' };
+    const snapshot = app.capture({ path: source, origin });
+    const run = await app.generate(snapshot.snapshotId, model);
+    expect(run.origin).toEqual(origin);
+    expect(generate.mock.calls[0][1]).not.toContain(origin.title);
+    const ref = run.committed[0];
+    app.maintain(ref.knowledgeId, ref.revisionId, 'retain', 'Checked', 1);
+    app.deleteSource(snapshot.snapshotId);
+    const related = await executeKnowledgeCandidateAction({ operation: 'related', workspace: 'fixture', threadId: 'thread' }, undefined, () => app);
+    expect(related).toMatchObject([{ runId: run.runId, committed: [{ knowledgeId: ref.knowledgeId, choice: 'retain' }] }]);
+    const detail = await executeKnowledgeCandidateAction({ operation: 'show', workspace: 'fixture', id: ref.knowledgeId }, undefined, () => app);
+    expect(detail).toMatchObject({ origin, sources: [{ status: 'unavailable', reason: 'deleted' }] });
   });
   it('recovers interrupted commits using persisted identities without calling the model again', async () => {
     const { app, snapshot, model, generate, knowledge, runs } = setup();

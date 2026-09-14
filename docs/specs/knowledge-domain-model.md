@@ -1219,3 +1219,8 @@ const isolatedCheckMethod = successItem(
 ```
 
 </details>
+
+
+### Studio conversation-to-extraction links
+
+Studio selects tasks and messages through the existing ConversationCatalog and shared Codex evidence projection; file import remains a supplementary entry. The server resolves source identities and checks the preview version before capturing selected messages. Model invocation still requires a separate confirmation, without adding unselected context. Snapshots and extraction runs optionally retain the conversation, task, title, and working directory. Candidates link back to the original task, while conversations show extraction history and maintenance choices from the selected knowledge folder. Deleting a source snapshot retains the extraction association; evidence availability is reported separately. Existing snapshots and runs without conversation metadata remain readable, without guessing their associations.

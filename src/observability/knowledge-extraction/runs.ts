@@ -1,3 +1,4 @@
+import { EvidenceWindowSchema } from './evidence.js';
 import { z } from 'zod';
 import { KnowledgeActorSchema } from '../../knowledge/contracts.js';
 import { GroundingSchema } from '../../knowledge/store.js';
@@ -6,6 +7,7 @@ import { KnowledgeRevisionSchema } from '../../knowledge/contracts.js';
 export const ExtractionRunSchema = z.strictObject({
   runId: z.string().uuid(), requestDigest: z.string(), generation: z.number().int().positive(),
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
+  origin: EvidenceWindowSchema.shape.origin,
   executor: z.string().min(1), model: z.string().min(1),
   promptVersion: z.enum(['knowledge-extraction-v1', 'knowledge-local-rules-v1']), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
