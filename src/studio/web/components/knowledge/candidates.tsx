@@ -8,6 +8,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [workspace, setWorkspace] = useState(initialWorkspace);
+  const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
+  const [showSettings, setShowSettings] = useState(false);
+  const [loading, setLoading] = useState(!!initialWorkspace);
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
   const [detail, setDetail] = useState<KnowledgeCandidateDetail | null>(null);
   const [source, setSource] = useState('');
@@ -46,15 +49,24 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
         : cause instanceof Error && cause.message === 'knowledge_capacity_exceeded'
           ? t('超出保存或输入上限，请缩小记录范围或删除不再需要的来源快照。', 'Capacity exceeded. Narrow the selection or delete unneeded snapshots.')
           : t('操作未完成。请检查路径、输入格式和执行器配置；生成详情可通过 CLI 查看。', 'Operation failed. Check paths, input format, and executor settings; use CLI for generation details.'));
-    } finally { controller.current = null; setBusy(false); }
+    } finally { controller.current = null; setBusy(false); setLoading(false); }
   }
-  async function refresh() { setRows(await api<KnowledgeCandidateRow[]>('list')); }
+  async function refresh(root = workspace, selectFirst = false) {
+    const [nextRows, nextRuns] = await Promise.all([
+      api<KnowledgeCandidateRow[]>('list', { workspace: root }),
+      api<KnowledgeCandidateRun[]>('runs', { workspace: root }),
+    ]);
+    const nextDetail = selectFirst && nextRows[0]
+      ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: nextRows[0].knowledgeId }) : undefined;
+    setRows(nextRows); setRuns(nextRuns);
+    if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason(''); }
+  }
   async function open(id: string, revision?: string) {
     const next = await api<KnowledgeCandidateDetail>('show', { id, ...(revision ? { revision } : {}) });
     setDetail(next); setCitation(0); setReason('');
   }
   useEffect(() => {
-    if (initialWorkspace) void work(refresh);
+    if (initialWorkspace) void work(() => refresh(initialWorkspace, true));
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
   }, []);
@@ -89,14 +101,17 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   return <section className="knowledge-candidates">
-    <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('从工作中留下知识', 'Keep knowledge from your work')}</h1></div>
-      <Space><Button disabled={busy || !workspace.trim()} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('生成记录', 'Generation history')}</Button><Button type="primary" disabled={busy || !workspace.trim()} onClick={() => setShowImport(true)}>{t('选择日志', 'Select a log')}</Button></Space></header>
-    <div className="candidate-workspace"><Input aria-label={t('知识工作区', 'Knowledge workspace')} placeholder={t('本地知识工作区路径，与 CLI 共用', 'Local workspace path, shared with CLI')} value={workspace} disabled={busy} onChange={(event) => { setWorkspace(event.target.value); setSnapshot(null); setRows([]); setDetail(null); }}/>
-      <Button loading={busy} disabled={!workspace.trim()} onClick={() => void work(async () => { await refresh(); const url = new URL(window.location.href); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url); })}>{t('打开', 'Open')}</Button>
-      {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}</div>
+    <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('从工作记录提炼知识', 'Extract knowledge from work logs')}</h1></div>
+      <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>
+        {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
+        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={() => setShowImport(true)}>{t('选择工作记录', 'Choose a work log')}</Button>}
+        {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
+      </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
-    <div className="candidate-columns">
+    {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
+      onChoose={() => workspace ? setShowImport(true) : setShowSettings(true)} onHistory={() => setShowRuns(true)}/>
+      : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
           <strong title={row.title}>{row.title}</strong><span>{row.choice === 'retain' ? t('已保留', 'Retained') : row.choice === 'discard' ? t('已舍弃', 'Discarded') : t('待处理', 'Unreviewed')} · {t('待复核', 'Pending review')}</span></button>) : <Empty description={t('打开工作区或选择一份日志开始。', 'Open a workspace or select a log to begin.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
@@ -140,17 +155,33 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
           {detail?.sources.map((entry, index) => entry.status === 'unavailable' ? <Alert key={index} type="warning" title={`${t('来源不可用', 'Source unavailable')}: ${entry.reason}`}/> : <Button key={index} danger size="small" disabled={busy} onClick={() => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { snapshot: entry.window.snapshotId }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}>{t('删除来源快照', 'Delete source snapshot')}</Button>)}
         </div>
       </aside>
-    </div>
-    <Drawer title={t('选择工作日志', 'Select a work log')} open={showImport} onClose={() => !busy && setShowImport(false)} width={560}>
-      <div className="candidate-form"><label>{t('Codex 日志文件', 'Codex log file')}<Input value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
-        <Space><label>{t('起始记录（从零开始）', 'First record (zero-based)')}<InputNumber min={0} value={start} disabled={busy} onChange={(value) => { setStart(value); setSnapshot(null); }}/></label><label>{t('结束记录（包含）', 'Last record (inclusive)')}<InputNumber min={0} value={end} disabled={busy} onChange={(value) => { setEnd(value); setSnapshot(null); }}/></label></Space>
-        <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('归档并预览范围', 'Capture and preview scope')}</Button>
-        <label>{t('执行器', 'Executor')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={setExecutor} options={['codex', 'openai-api', 'anthropic-api'].map((value) => ({ value, label: value }))}/></label>
+    </div>}
+    <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
+      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('提炼结果和原始记录保存在这台电脑上。选择一个目录，之后 CLI 和 Studio 都可以从这里重新打开。', 'Keep extracted knowledge and source records on this computer. Choose a folder that both CLI and Studio can reopen.')}</p>
+        <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
+        <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
+          const root = workspaceDraft.trim();
+          await refresh(root, true); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
+          const url = new URL(window.location.href); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
+        })}>{t('使用此保存位置', 'Use this location')}</Button>
+      </div>
+    </Drawer>
+    <Drawer title={t('选择工作记录', 'Choose a work log')} open={showImport} onClose={() => !busy && setShowImport(false)} width={560}>
+      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('选择包含项目事实、你的纠正，或问题处理经过的记录。先在本地预览，再决定是否交给模型提炼。', 'Choose a record containing project facts, your corrections, or a problem and its resolution. Preview it locally before sending it to a model.')}</p>
+        <label>{t('工作记录文件（Codex JSONL）', 'Work log file (Codex JSONL)')}<Input placeholder="/.../rollout-….jsonl" value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
+        <p className="candidate-help">{t('粘贴这台电脑上日志文件的完整路径。默认读取整份文件，可在下方缩小范围。', 'Paste the full path to a log file on this computer. Read the entire file or narrow the range below.')}</p>
+        <details><summary>{t('只选部分记录（可选）', 'Select a record range (optional)')}</summary><Space wrap><label>{t('起始记录（从零开始）', 'First record (zero-based)')}<InputNumber min={0} value={start} disabled={busy} onChange={(value) => { setStart(value); setSnapshot(null); }}/></label><label>{t('结束记录（包含）', 'Last record (inclusive)')}<InputNumber min={0} value={end} disabled={busy} onChange={(value) => { setEnd(value); setSnapshot(null); }}/></label></Space></details>
+        <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('读取并预览', 'Read and preview')}</Button>
+        {snapshot && <><section><h3 className="candidate-form-heading">{t('核对将要提炼的内容', 'Review the selected content')}</h3>
+          <p className="candidate-help">{t('以下内容已在本地读取，尚未发送给模型。', 'This content was read locally and has not been sent to a model.')}</p>
+          <pre className="candidate-source-preview">{snapshot.excerpts.map((entry) => `[${entry.role ?? entry.eventKind}] ${entry.text}`).join('\n\n')}</pre>
+        </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
+        <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={setExecutor} options={['codex', 'openai-api', 'anthropic-api'].map((value) => ({ value, label: value }))}/></label>
         <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>
-        {snapshot && <><Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
+        <Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
           {snapshot.limitations.map((item, index) => <Alert type="warning" key={index} title={item}/>)}
           <p>{t('仅处理选定输入；不会自动修改 AGENTS.md 或 skill。模型费用以执行器实际报告为准。', 'Only selected input is processed. No automatic AGENTS.md or skill edits. Cost depends on executor reporting.')}</p>
-          <Button type="primary" loading={busy} disabled={!model.trim()} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('生成候选', 'Generate candidates')}</Button></>}
+          <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
     <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} width={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId); })}>{t('保存新修订', 'Save new revision')}</Button>}>
@@ -169,8 +200,50 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '' }: { lang: Lan
         </section>)}
       </div>}
     </Drawer>
-    <Drawer title={t('生成记录', 'Generation history')} open={showRuns} onClose={() => setShowRuns(false)} width={620}>
-      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{run.status}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
+    <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} width={620}>
+      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
+}
+
+function extractionStatusLabel(status: string, lang: Language): string {
+  const labels: Record<string, [string, string]> = {
+    completed: ['提炼完成', 'Completed'], generating: ['提炼中', 'Extracting'],
+    prepared: ['待完成保存', 'Ready to save'], failed: ['提炼失败', 'Failed'], cancelled: ['已取消', 'Cancelled'],
+  };
+  return labels[status]?.[lang === 'zh' ? 0 : 1] ?? status;
+}
+
+export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, latest, failedToLoad, onChoose, onHistory }: {
+  lang: Language; hasWorkspace: boolean; loading: boolean; busy: boolean;
+  latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void;
+}) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const emptyResult = latest?.status === 'completed' && latest.committed.length === 0;
+  return <div className="candidate-start">
+    <div className="candidate-start-main">
+      <h2>{t('选一段工作记录，找出值得复用的经验', 'Find reusable knowledge in a work log')}</h2>
+      <p className="candidate-start-intro">{t('OMK 帮你整理其中的项目事实、解决方法和经验。你核对原文，决定哪些值得留下。', 'OMK proposes project facts, methods, and lessons. Compare them with the original text and choose what to keep.')}</p>
+      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{hasWorkspace ? t('选择工作记录', 'Choose a work log') : t('设置保存位置并开始', 'Choose where to save and begin')}</Button>
+        <span>{t('先预览内容，再确认发送给模型。', 'Preview the content before confirming a model request.')}</span>
+      </div>
+      <ol className="candidate-steps">
+        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('一份 Codex 工作日志，可限定范围。', 'Select a Codex work log and an optional range.')}</span></li>
+        <li><strong>{t('预览并提炼', 'Preview and extract')}</strong><span>{t('确认内容和模型，生成待核对的知识。', 'Confirm the content and model to propose knowledge.')}</span></li>
+        <li><strong>{t('核对并保留', 'Review and keep')}</strong><span>{t('对照原文，保留、修改或舍弃。', 'Check the original text, then keep, edit, or discard.')}</span></li>
+      </ol>
+      <p className="candidate-help">{t('保留后可随时重读；不会自动改写你的 AGENTS.md 或 skill。', 'Reopen saved knowledge any time. Your AGENTS.md and skills are not changed automatically.')}</p>
+    </div>
+    <aside className="candidate-start-side">
+      <h3>{t('什么记录适合提炼？', 'What makes a useful record?')}</h3>
+      <ul><li>{t('项目的明确事实与约束', 'Explicit project facts and constraints')}</li><li>{t('你对助手做出的具体纠正', 'A specific correction you gave the assistant')}</li><li>{t('问题处理经过，以及成功或失败的结果', 'How a problem was handled and what happened')}</li></ul>
+      <div className="candidate-last-run" role="status">
+        {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <p>{t('暂时无法读取已有记录。请检查保存位置。', 'Could not load existing records. Check the save location.')}</p> : latest ? <>
+          <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionStatusLabel(latest.status, lang)}`)}</strong>
+          <p>{emptyResult ? (latest.rejections.length ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
+          <Button type="link" disabled={busy} onClick={onHistory}>{t('查看提炼记录', 'View extraction history')}</Button>
+        </> : <p>{t('还没有提炼记录，从左侧选择一份工作记录开始。', 'No extractions yet. Choose a work log to begin.')}</p>}
+      </div>
+    </aside>
+  </div>;
 }

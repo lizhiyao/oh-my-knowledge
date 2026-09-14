@@ -23,7 +23,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
   const app = create(request.workspace);
   switch (request.operation) {
     case 'list': return app.list();
-    case 'runs': return app.runs().map(({ runId, status, startedAt, committed, rejections }) => ({ runId, status, startedAt, committed, rejections }));
+    case 'runs': return app.runs().sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(({ runId, status, startedAt, committed, rejections }) => ({ runId, status, startedAt, committed, rejections }));
     case 'show': return app.detail(request.id, request.revision);
     case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
     case 'generate': {
