@@ -78,12 +78,11 @@ function SamplingAlert({ sampling, zh }: { sampling: DoctorSamplingView; zh: boo
   />;
 }
 
-/** 绑定强度的可视档位：三档弱绑定各有名字与配色，不靠 tooltip 区分。 */
+/** 绑定强度的可视档位：两档弱绑定各有名字与配色，不靠 tooltip 区分。 */
 const BINDING_TIER = {
   'content-hash': { color: 'success', zh: '内容哈希绑定', en: 'content-hash binding' },
   'source-locator': { color: 'warning', zh: '仅来源路径一致', en: 'source path only' },
   'name-only': { color: 'error', zh: '仅名称一致', en: 'name only' },
-  mixed: { color: 'warning', zh: '绑定强度不一', en: 'mixed binding' },
 } as const satisfies Record<DoctorGraphView['binding'], { color: string; zh: string; en: string }>;
 
 /** 每一档的口径直接写进页面正文：计数可以被读成结论，强度说明决定了它能不能被这样读。 */
@@ -99,10 +98,6 @@ const BINDING_NOTE = {
   'name-only': {
     zh: '图谱既没有内容哈希也没有来源路径，只按知识对象名称对上；改名或同名换内容都会读成同一份结构，这不是内容证明。',
     en: 'The graph carries neither a content hash nor a source path — nodes were matched by name only. Renames and same-name rewrites collapse into this one structure; it is not proof of content.',
-  },
-  mixed: {
-    zh: '同一轮里各对象的绑定强度不一致，这里按最弱的一档呈现，下面的计数不能读成内容证明。',
-    en: 'Binding strengths differ across objects in this run and the weakest one is shown here, so the counts below are not proof of content.',
   },
 } as const satisfies Record<DoctorGraphView['binding'], { zh: string; en: string }>;
 

@@ -134,7 +134,7 @@ export interface DoctorGraphNodeGroup {
 export interface DoctorGraphView {
   /**
    * Studio 聚合 sidecar 时实际采用的绑定强度。`source-locator` 是路径对上、`name-only` 只是
-   * 名称对上、`mixed` 是同一轮里强弱不一，三档都不构成内容证明。
+   * 名称对上，两档弱绑定都不构成内容证明。
    */
   binding: SkillGraphSnapshot['bindingStrength'];
   /**

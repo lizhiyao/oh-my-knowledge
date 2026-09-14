@@ -56,9 +56,11 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 | 体检详情（原独立页） | `web/components/knowledge/knowledge.tsx` 的体检面板 | `application/doctor-format.ts` 的 `projectDoctorRules`／`projectDoctorSampling` |
 | 知识对象结构（体检面板内） | 同上（`GraphStructure`） | `application/doctor-format.ts` 的 `projectDoctorGraph` ← `SkillIndexEntry.graph` |
 
-「知识对象结构」读的是体检产出的 graph sidecar（`application/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only`／`mixed` 三档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。`sourceLocator` 是用户本机的绝对路径，与受管页同一条口径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 是按最新一轮体检挑的，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。
+「知识对象结构」读的是体检产出的 graph sidecar（`application/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only` 两档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。三档由「有内容哈希 → 有来源路径 → 只有名称」定出：体检正常产出前两档，`name-only` 只出现在既没有 `artifactHash` 也没有 `sourceLocator` 的 sidecar 上（跨机器搬来的、或被裁剪过的），不是一轮常规体检的结果。`sourceLocator` 是用户本机的绝对路径，与受管页同一条口径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 只取最新一轮，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。**多轮结构对比是明确的非目标**：一页同时只有一份结构证据，要做对比得先定义「对比什么、差多少算变化」，那是新需求而不是这里的缺口。
 
 受管根目录按请求解析，不在启动时冻结，否则长会话里会跟 `omk list` 分叉（口径见 `http/managed-root.ts`）；JSON 路由 `/api/managed` 与页面宿主共用同一解析器。记录的 `source.locator`／`url` 是用户机器上的绝对路径，不进页面模型——RSC 会把 props 序列化进页面负载。
+
+「绝对路径不进页面」这条口径只约束页面模型，不扩展到 `/api/*`。它防的是一个具体机制：RSC 会把页面 props 序列化进 HTML 负载，所以字段挂在页面模型上，即使从没被渲染也会出现在响应里。JSON 路由没有这个机制，它是页面之外的机读投影（`/api/managed` 的机读口径由同名测试钉住），Studio 宿主又只监听本机，因此那里原样返回 `graph.sourceLocator`／`graph.doctor.graphPath`／`source.locator` 跟在终端里打印路径是同一件事，不构成跨信任边界的泄漏。仓库内对这两个路由的读者目前只有性能基线与测试，**没有 CLI 或 MCP 读者**——所以不动它不是因为有人在消费，而是收缩已发布的 JSON 契约要单独决定并说明影响，不在页面类改造里顺手做。
 
 ### 知识分区相对历史 HTML 版的显式减法
 

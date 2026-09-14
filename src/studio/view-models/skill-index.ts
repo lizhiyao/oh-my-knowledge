@@ -69,8 +69,11 @@ export interface SkillGraphCoverageEdgePreview {
 }
 
 export interface SkillGraphSnapshot {
-  /** Studio 聚合 graph sidecar 时实际采用的绑定强度。 */
-  bindingStrength: 'content-hash' | 'source-locator' | 'name-only' | 'mixed';
+  /**
+   * Studio 聚合 graph sidecar 时实际采用的绑定强度。档位由 `application/skill-index.ts`
+   * 的 `doctorGraphForSkill` 按「有内容哈希 → 有来源路径 → 只有名称」定出，只此三档。
+   */
+  bindingStrength: 'content-hash' | 'source-locator' | 'name-only';
   artifactHash?: string;
   sourceLocator?: string;
   doctor?: SkillGraphStageSnapshot & {

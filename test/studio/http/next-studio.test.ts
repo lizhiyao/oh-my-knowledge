@@ -86,6 +86,18 @@ describe('Next Studio production boundary', () => {
     // 机器的绝对路径，一旦上了页面模型就在这里泄出去，所以断言整页读不到 tmpdir。
     assert.ok(!skillHtml.includes(root), 'skill detail must not leak the absolute skill path');
     assert.ok(!knowledgeHtml.includes(root), 'knowledge list must not leak it either');
+    // 同一条口径只管页面模型，不扩到 JSON 路由：它是页面之外的机读投影，仓库内的读者只有性能
+    // 基线与测试。反向钉住定位符仍在，防止把「收缩 JSON 契约」当成页面清理顺手做掉（见 README）。
+    const skillsApi: {entries: {skillName: string, graph?: {
+      sourceLocator?: string,
+      doctor?: {graphPath?: string},
+    }}[]} = await (await fetch(`${urlA}/api/skills`)).json();
+    const apiGraph = skillsApi.entries.find((entry) => entry.skillName === skillName)?.graph;
+    assert.deepEqual(
+      [apiGraph?.sourceLocator, apiGraph?.doctor?.graphPath],
+      [root, join(doctorsDir, 'knowledge-test', 'derived', 'graph.json')],
+      '/api/skills keeps the locators as the machine-readable projection',
+    );
     // 点名一个不存在的轮次不静默回落到当前那次：URL 与所见证据必须一致。
     const staleRun = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=pruned-run`);
     assert.equal(staleRun.status, 404);

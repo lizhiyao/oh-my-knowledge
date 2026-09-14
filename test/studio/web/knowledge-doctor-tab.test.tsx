@@ -252,13 +252,12 @@ describe('知识对象结构', () => {
     ['content-hash', 'ant-tag-success', '内容哈希绑定', '可以跨机器核对到被体检的那份内容'],
     ['source-locator', 'ant-tag-warning', '仅来源路径一致', '内容有没有变动未被证明'],
     ['name-only', 'ant-tag-error', '仅名称一致', '这不是内容证明'],
-    ['mixed', 'ant-tag-warning', '绑定强度不一', '按最弱的一档呈现'],
   ];
   const tierPage = (bindingStrength: SkillGraphSnapshot['bindingStrength']): string => detailPage(
     [CURRENT], 'zh', undefined, graphSidecar({ bindingStrength, artifactHash: undefined }),
   );
 
-  it('四档绑定强度各自可读，只有内容哈希那一档能被读成内容证明', () => {
+  it('三档绑定强度各自可读，只有内容哈希那一档能被读成内容证明', () => {
     for (const [bindingStrength, color, label, note] of TIERS) {
       const zh = tierPage(bindingStrength);
       assert.match(zh, new RegExp(`<span class="ant-tag[^"]*${color}[^"]*"[^>]*>${label}<`), bindingStrength);
