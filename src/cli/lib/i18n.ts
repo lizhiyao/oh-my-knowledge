@@ -1,3 +1,4 @@
+import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import type { Lang } from '../../shared/language.js';
 import { CLI_DICT, type CliMessageKey } from './i18n-dict.js';
 
@@ -20,7 +21,7 @@ export function parseLangFromArgv(argv: readonly string[]): string | undefined {
 }
 
 /**
- * 优先级: --lang flag > OMK_LANG env > 默认 zh。
+ * 优先级: --lang flag > OMK_LANG env > 全局设置 > 默认 zh。
  * 不识别的值静默退回默认,避免在解析阶段抛错让用户卡住。
  */
 export function getCliLang(flagValue?: string): CliLang {
@@ -28,7 +29,7 @@ export function getCliLang(flagValue?: string): CliLang {
   for (const c of candidates) {
     if (c && SUPPORTED.has(c)) return c as CliLang;
   }
-  return DEFAULT_LANG;
+  try { return new UserSettingsStore().resolve().language; } catch { return DEFAULT_LANG; }
 }
 
 /**

@@ -28,7 +28,7 @@ omk doctor [target] [flags]
 - `--gate` `boolean`:静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
 - `--global` `boolean`:写全局 ~/.oh-my-knowledge/doctor，而非项目 .omk/doctor
 - `--json` `boolean`:JSON 输出到 stdout，适合 CI / 外部脚本消费。
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--model` `option`:LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
 - `--output-dir` `option`:报告输出目录，默认项目级 .omk/doctor（--global 写全局）。
 - `--repeat` `option`:健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。
@@ -91,7 +91,7 @@ omk eval [flags]
 - `--holdout-ratio` `option`:留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
 - `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Claude 使用 haiku，其他执行器沿用被测模型。
 - `--judge-repeat` `option`:每个维度由评委评价 N 次
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--layered-stats` `boolean`:输出分层统计
 - `--mcp-config` `option`:MCP 配置文件路径
 - `--model` `option`:被测模型
@@ -145,7 +145,7 @@ omk eval gold [flags]
 
 **Flags:**
 
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 
 ## omk eval gold compare
 
@@ -166,7 +166,7 @@ omk eval gold compare <runId> [flags]
 - `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
 - `--evaluator` `option`:显式选择 Core evaluator ID。
 - `--gold-dir` `option`:gold dataset 目录，必填
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--metric` `option`:显式选择 Core metric ID。
 - `--minimum-alpha` `option`:可选的一致性阈值；按 Krippendorff α 置信区间下界评估
 - `--reports-dir` `option`:只读取指定 Core 报告目录（默认当前项目 + 全局）
@@ -187,7 +187,7 @@ omk eval gold init [flags]
 **Flags:**
 
 - `--annotator` `option`:标注者名，写入 metadata.yaml
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--out` `option` (默认 `./gold-dataset`):输出目录，默认 ./gold-dataset
 
 ## omk eval gold validate
@@ -206,7 +206,7 @@ omk eval gold validate <dir> [flags]
 
 **Flags:**
 
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 
 ## omk evolve
 
@@ -231,7 +231,7 @@ omk evolve <skillPath> [flags]
 - `--improve-mode` `agent|rewrite` (默认 `agent`):改写策略（默认：agent）
 - `--improve-model` `option`:负责重写 skill 的 LLM，默认沿用被测模型
 - `--judge-models` `option`:评委 model（单评委约束），格式 executor:model。默认跟随所选执行器；Codex 沿用被测模型。
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--model` `option`:被评测的 LLM。Codex 自动读取本机配置；无用例时也用作自动生成用例的出题模型。
 - `--no-edit-budget` `boolean`:关掉 edit budget 约束（允许任意大小的单轮改动）
 - `--no-reject-memory` `boolean`:关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
@@ -273,7 +273,7 @@ omk init [targetDir] [flags]
 **Flags:**
 
 - `--force` `boolean`:允许覆盖目标目录中已有的 omk 脚手架文件
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--samples` `3|20` (默认 `3`):官方起步用例数量：3 条用于快速跑通，20 条用于达到默认启发式证据下限
 
 **示例:**
@@ -318,7 +318,7 @@ omk install <input> [flags]
 - `--git-ref` `option`:远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
 - `--git-url` `option`:远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
 - `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
 
 **示例:**
@@ -373,7 +373,7 @@ omk list [flags]
 
 - `--global` `boolean`:看全局受管目录（~/.oh-my-knowledge/governance/managed）而非项目 .omk/governance/managed
 - `--json` `boolean`:输出 JSON（含完整可比性 marker），供脚本消费
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 
 **示例:**
 
@@ -415,7 +415,7 @@ omk observe [sessionsDir] [flags]
 - `--from` `option`:起始时间 ISO，优先级高于 --last
 - `--global` `boolean`:写全局 ~/.oh-my-knowledge/observe/health，而非项目 .omk/observe/health
 - `--kb` `option`:知识库 root，启用 KB-aware 分析
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--last` `option`:时间窗(7d / 24h / 30m）
 - `--output-dir` `option`:健康报告输出目录，默认项目级 .omk/observe/health（--global 写全局）
 - `--skills` `option`:只看指定 skill，逗号分隔
@@ -448,7 +448,7 @@ omk observe inbox [flags]
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
 - `--input-dir` `option`:inbox 数据目录，默认 .omk/observe/inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe/inbox。
 - `--json` `boolean`:JSON 格式输出（schemaVersion: 1，kind 标识查询、聚合或增强复盘）
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--limit` `option`:限制条数，默认 20
 - `--llm-enhanced-review` `boolean`:显式调用模型进行链路增强复盘，包含标准抽取、目标判断、类型判断、产物匹配和 owner 建议
 - `--model` `option`:LLM 增强复盘使用的模型。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
@@ -473,7 +473,7 @@ omk observe ingest <traceDir> [flags]
 
 - `--global` `boolean`:写入全局 ~/.oh-my-knowledge/observe/inbox，而非项目 .omk/observe/inbox。
 - `--json` `boolean`:把完整 observation inbox 报告输出到 stdout；默认只输出摘要。
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--output-dir` `option`:输出目录，默认 .omk/observe/inbox（项目级，相对于 cwd；--global 写全局）。
 
 ## omk observe knowledge
@@ -498,7 +498,7 @@ omk observe knowledge <operation> [flags]
 - `--id` `option`:知识身份；resume 时为运行身份。
 - `--input` `option`:revise：包含 title、content、entities、evidence 的 JSON 草稿。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--reason` `option`:保留、舍弃或修订的理由。
 - `--revision` `option`:查看或处理的明确修订身份。
@@ -506,7 +506,7 @@ omk observe knowledge <operation> [flags]
 - `--snapshot` `option`:generate／source／delete-source：归档身份。
 - `--source` `option`:capture：一份 Codex JSONL 文件。
 - `--start-record` `option`:从零开始的非空记录序号，包含。
-- `--workspace` `option`:明确指定本地知识工作区；CLI 与 Studio 共用。
+- `--workspace` `option`:本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。
 
 **示例:**
 
@@ -540,7 +540,7 @@ omk observe show <inboxId> [flags]
 
 - `--global` `boolean`:直接读取全局 ~/.oh-my-knowledge/observe/inbox（跳过项目级与兜底）。
 - `--input-dir` `option`:inbox 数据目录
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 
 ## omk promote
 
@@ -564,7 +564,7 @@ omk promote <name> [flags]
 - `--global` `boolean`:操作全局受管目录而非项目 .omk/governance/managed
 - `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
 - `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--reason` `option`:promote / 越门的理由（写入决定）
 
 **示例:**
@@ -607,7 +607,7 @@ omk rollback <name> [flags]
 - `--global` `boolean`:操作全局受管目录而非项目 .omk/governance/managed
 - `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
 - `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--reason` `option`:回退的理由（写入决定）
 
 **示例:**
@@ -646,7 +646,7 @@ omk sample [skillPath] [flags]
 - `--executor` `option`:执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
 - `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--model` `option`:生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
 - `--no-mock` `boolean`:不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
 - `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observe/inbox。
@@ -690,7 +690,7 @@ omk studio [flags]
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）
 - `--global` `boolean`:只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先；governance/managed 不受影响
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
 - `--no-open` `boolean`:不自动打开浏览器
 - `--observations-dir` `option`:观测收件箱数据目录（可选，默认 .omk/observe/inbox）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配

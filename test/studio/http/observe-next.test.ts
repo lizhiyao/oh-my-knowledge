@@ -45,7 +45,7 @@ describe('Observe Next production routes', () => {
       // 会话页展示的是随时在变的任务状态，浏览器不得用陈旧缓存恢复它。
       assert.match(response.headers.get('cache-control')??'',/no-store/);
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
-      assert.match(html,/href="\/observe" aria-current="page"/);
+      assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
       if(path==='/observe') {
         assert.match(html,/任务轨迹/);
         assert.ok(html.includes(`href="/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}">查看最近轨迹</a>`));

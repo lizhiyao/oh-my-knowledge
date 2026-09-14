@@ -14,7 +14,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => { const active = new AbortController();
-    resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal).then(({ workspace: root }) => { if (!active.signal.aborted) { setWorkspace(root); window.localStorage.setItem('omk.knowledge.workspace', root); } }).catch(() => { if (!active.signal.aborted) setError(true); });
+    resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal).then(({ workspace: root }) => { if (!active.signal.aborted) { setWorkspace(root); } }).catch(() => { if (!active.signal.aborted) setError(true); });
     return () => active.abort();
   }, []);
   const params = new URLSearchParams({ ...(workspace ? { workspace } : {}), ...(zh ? {} : { lang: 'en' }) });

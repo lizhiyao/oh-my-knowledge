@@ -1,8 +1,7 @@
 /**
  * 壳层语言切换（#880）：随 HTML 外壳删除的 `#lang-toggle` 回到 Next 壳层。
  *
- * href 语义由纯函数锁住：切到英文只追加／替换 `lang`，切回中文删掉该参数（页面在缺少 `lang`
- * 时读到的就是中文），其余查询参数原样保留。渲染用例锁住宿主裁掉一级导航时切换控件仍然可用，
+ * href 语义由纯函数锁住：切到英文只追加／替换 `lang`，切回中文显式设置 `lang=zh`，其余查询参数原样保留。渲染用例锁住宿主裁掉一级导航时切换控件仍然可用，
  * 以及宿主没有注入路由时不给出失效链接。
  */
 import assert from 'node:assert/strict';
@@ -34,33 +33,27 @@ describe('languageSwitchHref', () => {
     );
   });
 
-  it('切回中文删掉 lang，页面按默认语言渲染', () => {
+  it('切回中文显式覆盖全局语言偏好', () => {
     assert.equal(
       languageSwitchHref('/knowledge/skills/demo?lang=en&doctorRun=r1', 'zh'),
-      '/knowledge/skills/demo?doctorRun=r1',
+      '/knowledge/skills/demo?lang=zh&doctorRun=r1',
     );
-    assert.equal(languageSwitchHref('/observe?lang=en', 'zh'), '/observe');
+    assert.equal(languageSwitchHref('/observe?lang=en', 'zh'), '/observe?lang=zh');
   });
 
   it('保留已编码的路径，不让它退化成另一个身份', () => {
     assert.equal(
       languageSwitchHref('/knowledge/skills/audit%2F%3Cscript%3E?lang=en', 'zh'),
-      '/knowledge/skills/audit%2F%3Cscript%3E',
+      '/knowledge/skills/audit%2F%3Cscript%3E?lang=zh',
     );
   });
 });
 
 describe('壳层语言切换控件', () => {
-  it('中文页面给出英文入口，链接指回当前页并带上 lang', () => {
-    const html = render('zh', '/knowledge/skills/demo?doctorRun=r1');
-    assert.match(html, /class="studio-lang"[^>]+href="\/knowledge\/skills\/demo\?doctorRun=r1&amp;lang=en"/);
-    assert.match(html, /aria-label="切换到英文界面"[^>]*>英文<\/a>/);
-  });
-
-  it('英文页面给出中文入口，链接不再携带 lang', () => {
-    const html = render('en', '/knowledge/skills/demo?lang=en&doctorRun=r1');
-    assert.match(html, /href="\/knowledge\/skills\/demo\?doctorRun=r1"/);
-    assert.match(html, /aria-label="Switch to the Chinese interface"[^>]*>中文<\/a>/);
+  it('完整 Studio 将语言等偏好集中到设置入口', () => {
+    assert.match(render('zh', '/knowledge'), />设\s*置<\/span>/);
+    assert.match(render('en', '/knowledge'), />Settings<\/span>/);
+    assert.doesNotMatch(render('zh', '/knowledge'), /class="studio-lang"/);
   });
 
   it('宿主裁掉一级导航时仍然提供语言切换', () => {

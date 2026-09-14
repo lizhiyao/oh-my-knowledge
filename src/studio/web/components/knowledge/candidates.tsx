@@ -72,9 +72,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
   }
   useEffect(() => {
     void work(async () => {
-      const { workspace: root, defaultWorkspace: fallback } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
+      const { workspace: root, defaultWorkspace: fallback, executor: provider, model: defaultModel } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
-      window.localStorage.setItem('omk.knowledge.workspace', root);
+      setExecutor(provider); setModel(defaultModel);
       if (root) { await refresh(root, true); if (initialId) { const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id: initialId }); setDetail(next); } }
       if (initialThread) setShowConversations(true);
     });
@@ -113,7 +113,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   return <section className="knowledge-candidates">
     <header className="candidate-heading"><div><a href={`/knowledge${zh ? '' : '?lang=en'}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('从工作记录提炼知识', 'Extract knowledge from work logs')}</h1></div>
-      <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>
+      <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
         {rows.length > 0 && <Button type="primary" disabled={busy} onClick={() => setShowConversations(true)}>{t('从会话选择', 'Choose a conversation')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
@@ -171,16 +171,16 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
     </div>}
     <Drawer title={t('从会话提炼知识', 'Extract from a conversation')} open={showConversations} onClose={() => !busy && setShowConversations(false)} width={720} destroyOnHidden>
       {error && <Alert type="error" title={error}/>}
-      {!workspace && <Button onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>}
+      {!workspace && <Button onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>}
       <ConversationPicker lang={lang} initialThread={initialThread} initialTurn={initialTurn} workspace={workspace} busy={busy} api={api} work={work} onCaptured={value => { setSnapshot(value); setShowConversations(false); setShowImport(true); }}/>
     </Drawer>
-    <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
-      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('提炼结果和原始记录保存在这台电脑上。选择一个目录，之后 CLI 和 Studio 都可以从这里重新打开。', 'Keep extracted knowledge and source records on this computer. Choose a folder that both CLI and Studio can reopen.')}</p>
-        <p className="candidate-help">{t('默认位置：', 'Default location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用默认位置', 'Use default location')}</Button>
+    <Drawer title={t('本次保存位置', 'Save location for this operation')} open={showSettings} onClose={() => !busy && setShowSettings(false)} width={560}>
+      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在右上角“设置”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
+        <p className="candidate-help">{t('全局位置：', 'Global location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用全局位置', 'Use global location')}</Button>
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
-          await refresh(root, true); window.localStorage.setItem('omk.knowledge.workspace', root); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
+          await refresh(root, true); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
           const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
@@ -195,7 +195,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialThread
           <p className="candidate-help">{t('以下内容已在本地读取，尚未发送给模型。', 'This content was read locally and has not been sent to a model.')}</p>
           <pre className="candidate-source-preview">{snapshot.excerpts.map((entry) => `[${entry.role ?? entry.eventKind}] ${entry.text}`).join('\n\n')}</pre>
         </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
-        <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={setExecutor} options={['codex', 'openai-api', 'anthropic-api'].map((value) => ({ value, label: value }))}/></label>
+        <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={value => { setExecutor(value); setModel(''); }} options={['codex', 'openai-api', 'anthropic-api'].map((value) => ({ value, label: value }))}/></label>
         <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>
         <Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
           {snapshot.limitations.map((item, index) => <Alert type="warning" key={index} title={item}/>)}

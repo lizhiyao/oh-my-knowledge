@@ -1,3 +1,4 @@
+import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { createKnowledgeQuery } from '../application/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,9 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         response.end('method_not_allowed'); return true;
       }
       const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+      if (!path.startsWith('/_next/') && !searchParams.has('lang') && new UserSettingsStore().resolve().language === 'en') {
+        searchParams.set('lang', 'en'); response.writeHead(302, { Location: `${path}?${searchParams}` }); response.end(); return true;
+      }
       let healthPage: HealthPage | undefined;
       if (health) {
         try {

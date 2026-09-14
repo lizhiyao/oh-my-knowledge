@@ -1,3 +1,4 @@
+import { createSettingsRoutes } from './routes/settings.js';
 import { existsSync, mkdirSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
@@ -40,6 +41,7 @@ export function createStudioRequestHandler({
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
+  const settingsRoutes = createSettingsRoutes();
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
@@ -131,6 +133,7 @@ export function createStudioRequestHandler({
       if (await hostRoutes(routeContext)) return;
       // 页面渲染全部归 Next 宿主；这里剩下的只有 /health、/api/shutdown 与各 /api/* 的 JSON 投影与 SSE。
       if (studioPages) {
+        if (await settingsRoutes(routeContext)) return;
         if (await candidateRoutes(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;

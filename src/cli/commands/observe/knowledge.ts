@@ -2,7 +2,7 @@ import { readFileSync, lstatSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
-import { resolveRuntimeSelection } from '../../lib/runtime-defaults.js';
+import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
 import { createLocalKnowledgeApplication } from '../../../observability/knowledge-extraction/local.js';
 import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
 
@@ -15,7 +15,7 @@ export default class ObserveKnowledge extends BaseCommand {
   };
   static flags = {
     lang: LANG_FLAG,
-    workspace: Flags.string({ required: true, description: description('明确指定本地知识工作区；CLI 与 Studio 共用。', 'Explicit local knowledge workspace shared with Studio.') }),
+    workspace: Flags.string({ description: description('本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。', 'Local knowledge workspace; defaults to global settings shared with Studio.') }),
     source: Flags.string({ description: description('capture：一份 Codex JSONL 文件。', 'capture: one Codex JSONL file.') }),
     'start-record': Flags.integer({ min: 0, description: description('从零开始的非空记录序号，包含。', 'Zero-based nonempty record index, inclusive.') }),
     'end-record': Flags.integer({ min: 0, description: description('最后一条记录序号，包含。', 'Last record index, inclusive.') }),
@@ -41,13 +41,14 @@ export default class ObserveKnowledge extends BaseCommand {
       if (!value?.trim()) this.error(`--${name} ${this.lang === 'zh' ? '不能为空' : 'is required'}`, { exit: 2 });
       return value!;
     };
-    const app = createLocalKnowledgeApplication(need(flags.workspace, 'workspace'));
+    const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
+    const app = createLocalKnowledgeApplication(settings.workspace);
     await this.runWithCancellation(async (signal) => {
       let result: unknown;
       switch (args.operation) {
         case 'capture': result = app.capture({ path: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }, signal); break;
         case 'generate': {
-          const runtime = resolveRuntimeSelection({ executor: flags.executor, model: flags.model }, { lang: this.lang });
+          const runtime = { executor: settings.executor, model: need(settings.model, 'model') };
           const snapshot = need(flags.snapshot, 'snapshot');
           const source = app.source(snapshot);
           if (source.status !== 'available') this.error(`Source unavailable: ${source.reason}`);

@@ -22,6 +22,9 @@ export const TEXT_HEADERS: Readonly<Record<string, string>> = Object.freeze({
 
 /** API 错误响应体 { error: <code> } 的稳定 code 全集；新增 code 在此登记。 */
 export type StudioApiErrorCode =
+  | 'settings_unavailable'
+  | 'settings_invalid'
+  | 'settings_conflict'
   | 'method_not_allowed'
   | 'missing_query_params'
   | 'invalid_json_body'

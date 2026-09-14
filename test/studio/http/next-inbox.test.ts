@@ -205,7 +205,7 @@ describe('Next-hosted observation inbox route', () => {
     const zhHtml = await zhPage.text();
     assert.doesNotMatch(zhHtml, /aria-label="Studio 一级导航"/);
     assert.doesNotMatch(zhHtml, /href="\/observe"/);
-    assert.match(zhHtml, /<a class="studio-brand" href="\/measure"/);
+    assert.match(zhHtml, /<a class="studio-brand" href="\/measure\?lang=zh"/);
 
     const enPage = await fetch(`${url}/measure?lang=en`);
     assert.equal(enPage.status, 200);

@@ -1,11 +1,9 @@
-/** Server owns filesystem defaults; the browser remembers only the user's selection. */
+import type { StudioSettings } from '../../../view-models/settings.js';
+/** Node owns durable preferences. URL values override this operation only. */
 export async function resolveKnowledgeWorkspace(explicit = '', signal?: AbortSignal) {
-  const response = await fetch('/api/knowledge/candidates', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ operation: 'defaults' }), signal,
-  });
-  if (!response.ok) throw new Error('Knowledge defaults unavailable.');
-  const defaults = await response.json() as { workspace: string };
-  const workspace = explicit.trim() || window.localStorage.getItem('omk.knowledge.workspace')?.trim() || defaults.workspace;
-  return { workspace, defaultWorkspace: defaults.workspace };
+  const response = await fetch('/api/settings', { signal });
+  if (!response.ok) throw new Error('Knowledge settings unavailable.');
+  const settings = await response.json() as StudioSettings;
+  return { workspace: explicit.trim() || settings.effective.workspace, defaultWorkspace: settings.effective.workspace,
+    executor: settings.effective.executor, model: settings.effective.model };
 }

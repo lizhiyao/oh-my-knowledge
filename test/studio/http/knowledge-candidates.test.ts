@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DEFAULT_KNOWLEDGE_DIR } from '../../../src/evidence/storage/default-dirs.js';
 import { createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
 import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
@@ -31,11 +30,6 @@ describe('Studio candidate action boundary', () => {
   afterAll(async () => { await server?.stop(); rmSync(root, { recursive: true, force: true }); });
   const post = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/candidates`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace, ...body }),
-  });
-  it('provides the configured default without requiring a selected workspace', async () => {
-    const response = await post({ operation: 'defaults', workspace: undefined });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ workspace: DEFAULT_KNOWLEDGE_DIR });
   });
   it('uses the selected local workspace and shared capture operation', async () => {
     expect(await (await post({ operation: 'list' })).json()).toEqual([]);
