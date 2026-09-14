@@ -1,5 +1,6 @@
 /**
- * 体检结果的呈现口径：规则排序、`:_summary` 伪规则剔除、finding 分级与 k/n 支持度门槛。
+ * 体检结果的呈现口径：规则排序、`:_summary` 伪规则剔除、finding 分级与 k/n 支持度门槛，
+ * 以及 graph sidecar 结构证据的绑定强度与分类计数。
  *
  * 这些都是「同一条 finding 在详情／终端里必须读成同一种颜色」的口径，与 React 的措辞无关，
  * 所以在 application 层直接锁；页面能渲染出什么由 web/knowledge-doctor-tab.test.tsx 负责。
@@ -7,7 +8,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-artifacts/doctor/contracts.js';
-import { projectDoctorRules, projectDoctorSampling } from '../../../src/studio/application/doctor-format.js';
+import type {
+  SkillGraphNodePreview,
+  SkillGraphSnapshot,
+} from '../../../src/studio/view-models/skill-index.js';
+import { projectDoctorGraph, projectDoctorRules, projectDoctorSampling } from '../../../src/studio/application/doctor-format.js';
 
 function rule(
   ruleId: string,
@@ -29,6 +34,9 @@ function rule(
 function finding(level: string, description: string, extra: Record<string, unknown> = {}) {
   return { level, description, ...extra };
 }
+
+/** 体检阶段的结构事实：sidecar 基座字段 + 分类计数与定义节点。 */
+type DoctorStage = NonNullable<SkillGraphSnapshot['doctor']>;
 
 describe('体检规则的呈现排序', () => {
   it('fail → warn → pass → skipped，组内保持引擎产出顺序', () => {
@@ -113,5 +121,79 @@ describe('采样降级判定', () => {
     assert.equal(projectDoctorSampling(sampling(undefined)), null);
     assert.equal(projectDoctorSampling(sampling({ requested: 'two', succeeded: 1 })), null);
     assert.equal(projectDoctorSampling([rule('skill_health:a', 'warn')]), null);
+  });
+});
+
+describe('结构证据投影', () => {
+  function stage(overrides: Partial<DoctorStage> = {}): DoctorStage {
+    return {
+      sourceKind: 'doctor',
+      sourceId: 'doctor-2',
+      graphId: 'doctor:doctor-2:demo',
+      generatedAt: '2026-09-10T02:00:00.000Z',
+      nodeCount: 12,
+      edgeCount: 18,
+      references: 3,
+      scripts: 1,
+      workflows: 2,
+      workflowNodes: 5,
+      hardRules: 4,
+      definitionNodes: [],
+      ...overrides,
+    };
+  }
+  const preview = (nodeKind: string, label: string): SkillGraphNodePreview => ({ nodeKind, label });
+  const graph = (overrides: Partial<SkillGraphSnapshot> = {}): SkillGraphSnapshot => ({
+    bindingStrength: 'content-hash',
+    doctor: stage(),
+    ...overrides,
+  });
+
+  it('没有 sidecar、或 sidecar 里没有 doctor 阶段的结构事实时不呈现结构', () => {
+    assert.equal(projectDoctorGraph(undefined), null);
+    assert.equal(projectDoctorGraph(null), null);
+    assert.equal(projectDoctorGraph({ bindingStrength: 'content-hash' }), null);
+  });
+
+  it('四档绑定强度原样投影，供页面按档位配色', () => {
+    const strengths = ['content-hash', 'source-locator', 'name-only', 'mixed'] as const;
+    assert.deepEqual(
+      strengths.map((bindingStrength) => projectDoctorGraph(graph({ bindingStrength }))?.binding),
+      strengths,
+    );
+  });
+
+  it('内容哈希留在投影里，来源定位符是本机绝对路径所以不进页面', () => {
+    const byHash = projectDoctorGraph(graph({
+      artifactHash: 'sha256:aaa',
+      sourceLocator: '/Users/me/.claude/skills/demo/SKILL.md',
+    }));
+    assert.equal(byHash?.artifactHash, 'sha256:aaa');
+    assert.equal('sourceLocator' in byHash!, false);
+    const byLocator = projectDoctorGraph(graph({
+      bindingStrength: 'source-locator',
+      sourceLocator: '/Users/me/.claude/skills/demo/SKILL.md',
+    }));
+    assert.equal(byLocator?.artifactHash, undefined);
+  });
+
+  it('分类计数与节点／边数、来源轮次透传，供「这份证据来自哪一轮」的读法', () => {
+    const view = projectDoctorGraph(graph({ bindingStrength: 'name-only' }));
+    assert.deepEqual(view?.counts, { references: 3, scripts: 1, workflows: 2, workflowNodes: 5, hardRules: 4 });
+    assert.deepEqual([view?.nodeCount, view?.edgeCount, view?.sourceId, view?.generatedAt], [12, 18, 'doctor-2', '2026-09-10T02:00:00.000Z']);
+  });
+
+  it('定义节点按 skill 的物理结构归并排序，未知类型排最后且不丢弃', () => {
+    const view = projectDoctorGraph(graph({ doctor: stage({ definitionNodes: [
+      preview('doctor_rule_result', 'r:a'), preview('tool', 'bash'), preview('reference', 'a.md'),
+      preview('hard_rule', '不许直接推送'), preview('reference', 'b.md'), preview('future_kind', '未知节点'),
+    ] }) }));
+    assert.deepEqual(view?.nodeGroups.map((group) => [group.nodeKind, group.nodes.map((node) => node.label)]), [
+      ['reference', ['a.md', 'b.md']],
+      ['tool', ['bash']],
+      ['hard_rule', ['不许直接推送']],
+      ['doctor_rule_result', ['r:a']],
+      ['future_kind', ['未知节点']],
+    ]);
   });
 });

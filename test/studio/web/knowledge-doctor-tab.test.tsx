@@ -13,7 +13,12 @@ import { describe, it } from 'vitest';
 import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-artifacts/doctor/contracts.js';
 import { loadKnowledgePage } from '../../../src/studio/http/knowledge-page.js';
 import type { KnowledgeQuery } from '../../../src/studio/application/knowledge-query.js';
-import type { SkillDoctorSnapshot, SkillIndex, SkillIndexEntry } from '../../../src/studio/view-models/skill-index.js';
+import type {
+  SkillDoctorSnapshot,
+  SkillGraphSnapshot,
+  SkillIndex,
+  SkillIndexEntry,
+} from '../../../src/studio/view-models/skill-index.js';
 import { KnowledgeView } from '../../../src/studio/web/components/knowledge/knowledge.js';
 
 type Lang = 'zh' | 'en';
@@ -73,7 +78,12 @@ const OLDER = snapshot('doctor-older', '2026-07-01T00:00:00.000Z', [
   dimensionRule('skill_health:a', 'warn', [{ level: '警告', description: '彼时只有一条弱信号' }]),
 ]);
 
-function detailPage(runs: SkillDoctorSnapshot[], lang: Lang, doctorRunId?: string) {
+function detailPage(
+  runs: SkillDoctorSnapshot[],
+  lang: Lang,
+  doctorRunId?: string,
+  graph?: SkillGraphSnapshot,
+) {
   // doctorHistory 升序（最早 → 最近），当前 snapshot 等于最后一项 —— 与 buildSkillIndex 同形状。
   const entry: SkillIndexEntry = {
     skillName: 'demo',
@@ -81,6 +91,7 @@ function detailPage(runs: SkillDoctorSnapshot[], lang: Lang, doctorRunId?: strin
     observe: null,
     doctorHistory: runs,
     band: 'yellow',
+    ...(graph ? { graph } : {}),
   };
   const index = {
     entries: [entry],
@@ -93,6 +104,33 @@ function detailPage(runs: SkillDoctorSnapshot[], lang: Lang, doctorRunId?: strin
   const page = loadKnowledgePage(query, '/knowledge/skills/demo', lang, doctorRunId);
   assert.ok(page && page.pageKind === 'detail', 'detail page');
   return renderToString(createElement(KnowledgeView, { page, lang })).replaceAll('<!-- -->', '');
+}
+
+/** doctor graph sidecar 的投影：默认绑到当前轮次 `doctor-current` 的内容哈希上。 */
+function graphSidecar(overrides: Partial<SkillGraphSnapshot> = {}): SkillGraphSnapshot {
+  return {
+    bindingStrength: 'content-hash',
+    artifactHash: 'sha256:0f3a',
+    doctor: {
+      sourceKind: 'doctor',
+      sourceId: 'doctor-current',
+      graphId: 'doctor:doctor-current:demo',
+      generatedAt: '2026-07-02T00:00:00.000Z',
+      nodeCount: 12,
+      edgeCount: 18,
+      references: 3,
+      scripts: 1,
+      workflows: 2,
+      workflowNodes: 5,
+      hardRules: 4,
+      definitionNodes: [
+        { nodeKind: 'reference', label: 'a.md' },
+        { nodeKind: 'reference', label: 'b.md' },
+        { nodeKind: 'hard_rule', label: '不许直接推送 main' },
+      ],
+    },
+    ...overrides,
+  };
 }
 
 describe('体检详情的逐条规则', () => {
@@ -205,5 +243,69 @@ describe('体检历史与下钻', () => {
   it('未运行体检时给出空态而不是报错', () => {
     const html = detailPage([], 'zh');
     assert.match(html, /尚未运行体检/);
+  });
+});
+
+describe('知识对象结构', () => {
+  /** 每档一个名字与配色；弱绑定的否定口径写在正文里，不藏进 tooltip。 */
+  const TIERS: [SkillGraphSnapshot['bindingStrength'], string, string, string][] = [
+    ['content-hash', 'ant-tag-success', '内容哈希绑定', '可以跨机器核对到被体检的那份内容'],
+    ['source-locator', 'ant-tag-warning', '仅来源路径一致', '内容有没有变动未被证明'],
+    ['name-only', 'ant-tag-error', '仅名称一致', '这不是内容证明'],
+    ['mixed', 'ant-tag-warning', '绑定强度不一', '按最弱的一档呈现'],
+  ];
+  const tierPage = (bindingStrength: SkillGraphSnapshot['bindingStrength']): string => detailPage(
+    [CURRENT], 'zh', undefined, graphSidecar({ bindingStrength, artifactHash: undefined }),
+  );
+
+  it('四档绑定强度各自可读，只有内容哈希那一档能被读成内容证明', () => {
+    for (const [bindingStrength, color, label, note] of TIERS) {
+      const zh = tierPage(bindingStrength);
+      assert.match(zh, new RegExp(`<span class="ant-tag[^"]*${color}[^"]*"[^>]*>${label}<`), bindingStrength);
+      assert.match(zh, new RegExp(note), bindingStrength);
+    }
+    for (const [bindingStrength] of TIERS.filter(([strength]) => strength !== 'content-hash')) {
+      assert.doesNotMatch(tierPage(bindingStrength), /可以跨机器核对/, `${bindingStrength} 不该被读成内容证明`);
+    }
+  });
+
+  it('哈希与计数默认可读，来源定位符是本机绝对路径所以不进页面', () => {
+    const zh = detailPage([CURRENT], 'zh', undefined, graphSidecar({
+      bindingStrength: 'name-only',
+      artifactHash: undefined,
+      sourceLocator: '/Users/me/.claude/skills/demo/SKILL.md',
+    }));
+    assert.match(zh, /引用<\/span> <span[^>]*><strong>3<\/strong>/, '计数不需要展开就能读');
+    assert.doesNotMatch(zh, /\/Users\/me\/\.claude/);
+    assert.match(detailPage([CURRENT], 'zh', undefined, graphSidecar()), /sha256:0f3a/);
+
+    const en = detailPage([CURRENT], 'en', undefined, graphSidecar());
+    assert.match(en, />content-hash binding</);
+    assert.match(en, /describes the exact content that was checked/);
+    assert.doesNotMatch(en, /内容哈希绑定|跨机器核对/);
+  });
+
+  it('结构证据来自别的轮次时说明它不属于本轮计数', () => {
+    const zh = detailPage([OLDER, CURRENT], 'zh', 'doctor-older', graphSidecar());
+    assert.match(zh, /上面这份结构证据来自体检 doctor-current，当前查看的是 doctor-older/);
+    assert.match(zh, /计数不属于本轮/);
+    assert.match(detailPage([OLDER, CURRENT], 'en', 'doctor-older', graphSidecar()),
+      /captured in run doctor-current while you are viewing doctor-older/);
+  });
+
+  it('定义节点折叠，只给「展开 N 个定义节点」入口；没有 sidecar 时整块不出现', () => {
+    const zh = detailPage([CURRENT], 'zh', undefined, graphSidecar());
+    assert.match(zh, /展开 3 个定义节点（2 类）/);
+    assert.doesNotMatch(zh, /不许直接推送 main/, '定义节点默认折叠');
+    assert.doesNotMatch(detailPage([CURRENT], 'zh'), /知识对象结构/);
+  });
+
+  it('sidecar 里的文本按 React 口径转义，不作为标记注入', () => {
+    const payload = '<img src=x onerror=alert(1)>';
+    const zh = detailPage([CURRENT], 'zh', undefined, graphSidecar({
+      artifactHash: payload,
+    }));
+    assert.doesNotMatch(zh, /<img src=x onerror=alert\(1\)>/);
+    assert.ok(zh.includes('&lt;img src=x onerror=alert(1)&gt;'), '转义后仍需可见');
   });
 });

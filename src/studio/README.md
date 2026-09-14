@@ -54,6 +54,9 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 | 受管列表 `/knowledge/managed` | `web/components/knowledge/managed.tsx` | `http/managed-page.ts` → `application/managed-format.ts` 的 `projectManagedListRow` |
 | 决策史 `/knowledge/managed/:id` | 同上（`pageKind: 'detail'`） | `projectManagedTimeline` 的版本分段与事件行 |
 | 体检详情（原独立页） | `web/components/knowledge/knowledge.tsx` 的体检面板 | `application/doctor-format.ts` 的 `projectDoctorRules`／`projectDoctorSampling` |
+| 知识对象结构（体检面板内） | 同上（`GraphStructure`） | `application/doctor-format.ts` 的 `projectDoctorGraph` ← `SkillIndexEntry.graph` |
+
+「知识对象结构」读的是体检产出的 graph sidecar（`application/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only`／`mixed` 三档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。`sourceLocator` 是用户本机的绝对路径，与受管页同一条口径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 是按最新一轮体检挑的，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。
 
 受管根目录按请求解析，不在启动时冻结，否则长会话里会跟 `omk list` 分叉（口径见 `http/managed-root.ts`）；JSON 路由 `/api/managed` 与页面宿主共用同一解析器。记录的 `source.locator`／`url` 是用户机器上的绝对路径，不进页面模型——RSC 会把 props 序列化进页面负载。
 
