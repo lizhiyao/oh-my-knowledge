@@ -59,6 +59,9 @@ describe('Next Studio production boundary', () => {
     assert.equal(detail.status,200);
     const detailHtml=await detail.text();
     for(const label of ['评测范围','分析结果','证据与定义']) assert.ok(detailHtml.includes(label));
+    // 标签标题按页面与对象给出：同开几个评测页时要分得清读的是哪一次运行。
+    assert.match(htmlA, /<title>OMK · Evaluations<\/title>/);
+    assert.match(detailHtml, /<title>OMK · 运行 · next-real-run<\/title>/);
     const asset = htmlA.match(/src="([^\"]*\/_next\/[^\"]+\.js[^\"]*)"/)?.[1];
     assert.ok(asset);
     assert.equal((await fetch(new URL(asset.replaceAll('&amp;','&'),urlA))).status,200);
@@ -82,6 +85,9 @@ describe('Next Studio production boundary', () => {
     assert.match(skillHtml, /知识对象结构/);
     assert.match(skillHtml, /仅来源路径一致/);
     assert.match(skillHtml, /内容有没有变动未被证明/);
+    // 详情页标题带对象身份；skill 名是外部文本，进 `<title>` 也只能是转义后的文字。
+    assert.match(knowledgeHtml, /<title>OMK · 知识对象<\/title>/);
+    assert.match(skillHtml, /<title>OMK · 知识对象 · audit\/&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/title>/);
     // RSC 会把页面 props 序列化进 HTML 负载：sourceLocator／graphPath／evidence path 都是用户
     // 机器的绝对路径，一旦上了页面模型就在这里泄出去，所以断言整页读不到 tmpdir。
     assert.ok(!skillHtml.includes(root), 'skill detail must not leak the absolute skill path');
@@ -142,6 +148,18 @@ describe('Next Studio production boundary', () => {
     for(const path of ['/measure','/measure/run']){
       const response=await fetch(url+path);assert.equal(response.status,503);
       assert.equal(await response.text(),'core_studio_source_unavailable');
+    }
+  },15000);
+
+  it('projects a failing knowledge directory resolver to 503 without leaking the cause',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'omk-next-knowledge-error-'));roots.push(root);
+    // 目录按请求解析，长会话里项目根可能已经消失：读不出事实要收敛成稳定 503，
+    // 而不是让 Next 流式吐出 200 或把带路径的原因透给浏览器。口径与受管根目录同源。
+    const server=createNextStudioServer({port:0,analysesDir:()=>{throw new Error('EACCES /private/token');},doctorsDir:join(root,'doctors'),observationsDir:root});servers.push(server);
+    const url=await server.start();
+    for(const path of ['/knowledge','/knowledge/skills/audit']){
+      const response=await fetch(url+path);assert.equal(response.status,503,path);
+      assert.equal(await response.text(),'studio_source_unavailable',path);
     }
   },15000);
 });

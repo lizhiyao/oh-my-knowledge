@@ -14,7 +14,7 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 
 ## 两类页面宿主
 
-CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的会话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情与受管决策史两页。HTTP adapter 只提供 `/api/*` 的 JSON 事实源、SSE 和缺页／错误文档，不再挂任何页面路由。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
+CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的会话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情与受管决策史两页。HTTP adapter 不渲染页面 HTML：它只提供 `/api/*` 的 JSON 事实源、SSE、`/health` 与纯文本缺页／错误文档（`http/request-handler.ts`），外加一条站点入口 `GET /` → 302 `/observe`（原样带上 query，`http/routes/conversations.ts`）——根路径不在 Next 宿主的接管集合里，所以始终由 HTTP adapter 回答。这条重定向属于观测路由组，因此只在挂页面组时存在：只挂 `/measure` 的评测预览宿主对 `/` 给 404，与它把壳层品牌链接指向 `/measure` 是同一口径。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
 
 CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE），因此不为用不到的观测页面在用户项目里创建 observations 目录。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
 
@@ -74,3 +74,5 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 `src/studio/presentation/` 已随本批删除：最后两页只读报告（体检详情、受管历史）迁到 Next，共享外壳 `layout.ts`／`report-shell.ts`／`icons.ts` 与 `view-models/report-context.ts` 一并退出，因为 React 侧由 `web/components/layout/shell` 与 antd 提供外壳和图标。Studio 自此只有一份页面实现，Markdown 解析与纯文本计算留在 `application/`，`http/` 层不再产出页面 HTML。
 
 旧外壳的 `#lang-toggle` 已回到 Next 壳层（`web/components/layout/shell`）：它渲染成真实链接，切换地址由宿主按请求注入的 `x-omk-studio-route` 生成，保留当前 path 与其余 query（含 `?doctorRun=` 下钻，切语言不会换掉所见证据），切回中文是删掉 `lang` 参数而不是写 `lang=zh`。与旧控件的两处显式减法：不再把选择写进 `localStorage`（语言只由 URL 决定，同一地址在任意浏览器上渲染同一份口径），也不保留 URL fragment（站内页面无锚点跳转）。壳层没有走 Next 的 `useSearchParams`：它会把整棵子树降级为纯客户端渲染，SSR 里就没有这条链接。
+
+页面标题按路由给出，补回 HTML 外壳时代 `<title>OMK · <页面名></title>` 提供的能力：`web/app/layout.tsx` 的 `metadata.title` 只留 `OMK Studio` 兜底与 `OMK · %s` 模板，14 个页面各自用 `generateMetadata` 从 `web/components/layout/page-titles.ts` 取标签，语言随 `?lang=` 切换。词条一律取自页面已有的可见措辞（面包屑、分区导航、`<h1>`），不另起第二套命名。详情页再拼上对象身份（运行 ID、skill 名、报告 ID、受管记录 ID），它取自**地址**而不是页面模型：标题只需要区分对象，不必为此起一次数据装载，也就不会把本机定位符带进标题。skill 名这类外部文本进标题仍只是转义后的文字，由知识详情页的宿主用例钉住。

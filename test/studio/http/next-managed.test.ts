@@ -97,6 +97,7 @@ describe('Next-hosted managed decision history', () => {
     // Next 产物在场才说明这是 App Router 渲染，而不是回落到某个手写 HTML 出口。
     assert.match(html, /\/_next\/static\//);
     assert.match(section(html, /<h1>[\s\S]*?<\/h1>/u, 'page heading'), /受管 skill 决策史/);
+    assert.match(html, /<title>OMK · 受管决策史<\/title>/);
 
     const body = section(html, /<tbody[\s\S]*?<\/tbody>/u, 'managed table body');
     assert.match(body, /href="\/knowledge\/managed\/[0-9a-f]{12}"[^>]*>review</);
@@ -114,12 +115,16 @@ describe('Next-hosted managed decision history', () => {
     const url = await startHost({ managedDir: managedDirWith(record) });
     const list = await (await fetch(`${url}/knowledge/managed?lang=en`)).text();
     assert.match(section(list, /<h1>[\s\S]*?<\/h1>/u, 'page heading'), /Managed skill decision history/);
+    // 标题跟着语言走。
+    assert.match(list, /<title>OMK · Managed history<\/title>/);
     // 页内跳转必须继承 lang，否则点一次详情就掉回默认中文。
     assert.match(
       section(list, /<tbody[\s\S]*?<\/tbody>/u, 'managed table body'),
       /href="\/knowledge\/managed\/[0-9a-f]{12}\?lang=en"/,
     );
     const detail = await (await fetch(`${url}/knowledge/managed/${record.id}?lang=en`)).text();
+    // 详情页标题带记录身份：同开几条决策史时不必点开才知道是哪一条。
+    assert.ok(detail.includes(`<title>OMK · Managed history · ${record.id}</title>`), 'history title carries the record id');
     const backLink = section(detail, /<a[^>]*>← Managed skills<\/a>/u, 'back link');
     assert.match(backLink, /href="\/knowledge\/managed\?lang=en"/);
     assert.match(section(detail, TIMELINE, 'decision timeline'), /Promote/);

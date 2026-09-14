@@ -45,6 +45,8 @@ describe('Observe Next production routes', () => {
       // 会话页展示的是随时在变的任务状态，浏览器不得用陈旧缓存恢复它。
       assert.match(response.headers.get('cache-control')??'',/no-store/);
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
+      // 标签标题按页面与对象给出：会话详情带上 threadId，列表只给页面名。
+      assert.ok(html.includes(path === '/observe' ? '<title>OMK · 会话列表</title>' : '<title>OMK · 会话详情 · thread</title>'), `title of ${path}`);
       assert.match(html,/href="\/observe" aria-current="page"/);
       if(path==='/observe') {
         assert.match(html,/任务轨迹/);
@@ -57,6 +59,7 @@ describe('Observe Next production routes', () => {
     const task=`/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}`;
     const response=await fetch(url+task);assert.equal(response.status,200);
     const html=await response.text();assert.match(html,/语义轨迹/);assert.match(html,/知识访问/);
+    assert.ok(html.includes(`<title>OMK · 任务轨迹 · thread/${turnId}</title>`), 'trajectory title names the task');
     assert.doesNotMatch(html,/private-session-locator-must-not-be-serialized/);
     assert.equal((await fetch(`${url}/api/conversations/thread/tasks/${encodeURIComponent(turnId)}/source-records`)).status,200);
     for(const path of ['/observe/conversations/missing','/observe/conversations/%ZZ',`${task}-missing`]) assert.equal((await fetch(url+path)).status,404);
