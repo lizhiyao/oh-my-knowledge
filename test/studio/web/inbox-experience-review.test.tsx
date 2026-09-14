@@ -4,7 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import type { ObservationReviewState } from '../../../src/observability/contracts/review.js';
-import { ExperienceReviewSection } from '../../../src/studio/web/components/inbox/experience-review';
+import { ExperienceReviewSection } from '../../../src/studio/web/components/observe/inbox/experience-review';
 
 /**
  * 复盘卡片的渲染契约：深链、复盘优先级与未生效标注。

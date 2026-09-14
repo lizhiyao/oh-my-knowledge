@@ -1,7 +1,7 @@
 import type { CoverageReport } from '../../../src/observability/analysis/coverage-analyzer.js';
 import type { GapReport } from '../../../src/observability/analysis/contracts.js';
 import type { SkillHealth, SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
-import type { SkillTrendPoint } from '../../../src/studio/view-models/knowledge-reports.js';
+import type { SkillTrendPoint } from '../../../src/studio/view-models/knowledge/knowledge-reports.js';
 
 /**
  * 观测健康报告夹具：只造页面口径要读的字段，其余按真实报告的派生关系补齐，

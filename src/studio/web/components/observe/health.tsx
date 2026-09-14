@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Breadcrumb, Button, Collapse, Empty, Progress, Radio, Table, Tag, Typography } from 'antd';
-import type { HealthPage } from '../../../http/health-page';
+import type { HealthPage } from '../../../http/pages/health-page';
 import type {
   HealthBand,
   HealthConfidence,
@@ -13,7 +13,7 @@ import type {
   HealthSkillFacts,
   HealthTone,
   HealthTrendFacts,
-} from '../../../application/health-format';
+} from '../../../application/observe/health-format';
 import type { Language } from '../layout/shell';
 import { ObserveSectionNav } from './section-nav';
 

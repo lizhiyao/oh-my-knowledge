@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { CoreStudioCatalog } from '../view-models/core-runs.js';
-import type { HealthPage } from './health-page.js';
-import type { InboxPage } from './inbox-page.js';
-import type { KnowledgePage } from './knowledge-page.js';
-import type { ManagedPage } from './managed-page.js';
-import type { ObservePage } from './observe-page.js';
+import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
+import type { HealthPage } from './pages/health-page.js';
+import type { InboxPage } from './pages/inbox-page.js';
+import type { KnowledgePage } from './pages/knowledge-page.js';
+import type { ManagedPage } from './pages/managed-page.js';
+import type { ObservePage } from './pages/observe-page.js';
 
 /**
  * 装配错误：宿主在渲染前没有注入该请求上下文。

@@ -1,4 +1,4 @@
-import { createKnowledgeQuery } from '../application/knowledge-query.js';
+import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -7,14 +7,14 @@ import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
 import { nextCatalogContext, nextHealthContext, nextInboxContext, nextManagedContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { TEXT_HEADERS } from './errors.js';
-import type { CoreStudioCatalog } from '../view-models/core-runs.js';
+import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
-import { loadObservePage, type ObservePage } from './observe-page.js';
+import { loadObservePage, type ObservePage } from './pages/observe-page.js';
 
-import { loadKnowledgePage, type KnowledgePage } from './knowledge-page.js';
-import { isHealthPath, loadHealthPage, type HealthPage } from './health-page.js';
-import { loadInboxPage, type InboxPage } from './inbox-page.js';
-import { isManagedPath, loadManagedPage, type ManagedPage } from './managed-page.js';
+import { loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
+import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-page.js';
+import { loadInboxPage, type InboxPage } from './pages/inbox-page.js';
+import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 

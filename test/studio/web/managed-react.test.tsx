@@ -11,8 +11,8 @@ import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import type { ManagedListRow } from '../../../src/knowledge-artifacts/governance/index.js';
 import type { ManagedArtifactRecord, ManagedObservation } from '../../../src/knowledge-artifacts/governance/contracts.js';
-import { projectManagedListRow, projectManagedTimeline } from '../../../src/studio/application/managed-format';
-import type { ManagedPage } from '../../../src/studio/http/managed-page';
+import { projectManagedListRow, projectManagedTimeline } from '../../../src/studio/application/knowledge/managed-format';
+import type { ManagedPage } from '../../../src/studio/http/pages/managed-page';
 import { ManagedHistoryView, ManagedListView } from '../../../src/studio/web/components/knowledge/managed';
 import { coreManagedEvidence } from '../../helpers/core-managed-evidence.js';
 

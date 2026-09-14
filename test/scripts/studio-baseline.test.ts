@@ -21,7 +21,7 @@ import {
   type ObservationInboxReport,
 } from '../../src/observability/inbox/index.js';
 import { parseSkillHealthReport } from '../../src/observability/skill-health/report.js';
-import { buildSkillIndex } from '../../src/studio/application/skill-index.js';
+import { buildSkillIndex } from '../../src/studio/application/knowledge/skill-index.js';
 
 const writers: BaselineDatasetWriters = {
   writeMeasurementReportBundle,

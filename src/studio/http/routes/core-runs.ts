@@ -1,4 +1,4 @@
-import type { CoreStudioCatalog } from '../../view-models/core-runs.js';
+import type { CoreStudioCatalog } from '../../view-models/measure/core-runs.js';
 import { JSON_HEADERS } from '../errors.js';
 
 export interface CoreStudioRouteRequest {

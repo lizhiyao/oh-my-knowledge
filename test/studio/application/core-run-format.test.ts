@@ -12,7 +12,7 @@ import type {
   CoreStudioMetricObservation,
   CoreStudioProvenance,
   CoreStudioRuntimeIdentity,
-} from '../../../src/studio/view-models/core-runs.js';
+} from '../../../src/studio/view-models/measure/core-runs.js';
 import {
   formatAssumptionCheck,
   formatBudget,
@@ -24,7 +24,7 @@ import {
   formatRuntimeIdentity,
   formatUsage,
   statusTone,
-} from '../../../src/studio/application/core-run-format.js';
+} from '../../../src/studio/application/measure/core-run-format.js';
 
 function budget(over: Partial<CoreStudioBudget> = {}): CoreStudioBudget {
   return {

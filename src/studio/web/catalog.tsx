@@ -1,11 +1,11 @@
 import 'server-only';
 import { nextCatalogContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextManagedContext, nextObserveContext } from '../http/next-context';
-import type { CoreStudioCatalog } from '../view-models/core-runs';
-import type { HealthPage } from '../http/health-page';
-import type { InboxPage } from '../http/inbox-page';
-import type { KnowledgePage } from '../http/knowledge-page';
-import type { ManagedPage } from '../http/managed-page';
-import type { ObservePage } from '../http/observe-page';
+import type { CoreStudioCatalog } from '../view-models/measure/core-runs';
+import type { HealthPage } from '../http/pages/health-page';
+import type { InboxPage } from '../http/pages/inbox-page';
+import type { KnowledgePage } from '../http/pages/knowledge-page';
+import type { ManagedPage } from '../http/pages/managed-page';
+import type { ObservePage } from '../http/pages/observe-page';
 
 // 宿主按请求注入 AsyncLocalStorage store；两侧模块经 globalThis 上的 Symbol.for 键
 // 解析到同一个 ALS 实例。store 缺失是装配错误（StudioContextMissingError），

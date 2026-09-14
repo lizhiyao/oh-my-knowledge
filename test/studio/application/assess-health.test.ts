@@ -8,8 +8,9 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { assessHealth } from '../../../src/studio/application/skill-health.js';
-import type { Insight, SkillIndexEntry } from '../../../src/studio/view-models/index.js';
+import { assessHealth } from '../../../src/studio/application/knowledge/skill-health.js';
+import type { Insight } from '../../../src/studio/view-models/knowledge/insight.js';
+import type { SkillIndexEntry } from '../../../src/studio/view-models/knowledge/skill-index.js';
 
 function mkEntry(overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
   return {

@@ -11,7 +11,7 @@ import {
   updateObservationReviewState,
   type ObservationReviewStateUpdate,
 } from '../../../observability/inbox/review-state.js';
-import { buildSkillIndex } from '../../application/index.js';
+import { buildSkillIndex } from '../../application/knowledge/skill-index.js';
 import { readJsonObjectBody } from '../request-errors.js';
 import { JSON_HEADERS, writeJsonError } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';

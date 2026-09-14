@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { inlineMarkdownText } from '../../../src/studio/application/inline-markdown.js';
+import { inlineMarkdownText } from '../../../src/studio/application/conversations/replay/inline-markdown.js';
 
 describe('inline Markdown visible text', () => {
   it('keeps the visible text of supported inline semantics', () => {

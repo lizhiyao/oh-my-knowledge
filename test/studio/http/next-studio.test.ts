@@ -6,7 +6,7 @@ import { afterEach, describe, it } from 'vitest';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 import { persistDoctorGraphSidecars } from '../../../src/evidence/graph/doctor.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
-import { createCoreStudioCatalog } from '../../../src/studio/application/core-run-catalog.js';
+import { createCoreStudioCatalog } from '../../../src/studio/application/measure/core-run-catalog.js';
 import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { runConformanceScenario } from '../../eval-core/conformance/harness.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';

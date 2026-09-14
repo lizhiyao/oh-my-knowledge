@@ -7,8 +7,8 @@ import type {
   ManagedObserveBadge,
   ManagedTimelineEvent,
   ManagedTone,
-} from '../../../application/managed-format';
-import type { ManagedPage } from '../../../http/managed-page';
+} from '../../../application/knowledge/managed-format';
+import type { ManagedPage } from '../../../http/pages/managed-page';
 import type { Language } from '../layout/shell';
 import { KnowledgeSectionNav } from './section-nav';
 

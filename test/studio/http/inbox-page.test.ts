@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { loadInboxPage } from '../../../src/studio/http/inbox-page.js';
+import { loadInboxPage } from '../../../src/studio/http/pages/inbox-page.js';
 
 const dirs: string[] = [];
 afterEach(() => {
