@@ -1442,6 +1442,28 @@ async function runEvaluation(
         controller.signal,
         setStop,
       )));
+      const granularity = plan.measurementPolicy.eventDelivery.progressGranularity ?? 'per-batch';
+      const retry = plan.evaluation.policy.runtime.retry;
+      const timeoutMs = plan.evaluation.policy.runtime.timeoutMs;
+      const emitProgress = async () => {
+        if (granularity === 'start-end-only') return;
+        const completed = records.size;
+        const total = coordinates.length;
+        const failed = [...records.values()].filter(
+          (record) => record.evaluationStatus === 'failed',
+        ).length;
+        await events.emit('evaluation.run.progress', 'run', options.runId, {
+          completed,
+          total,
+          failed,
+          maxConcurrency: width,
+          retry: {
+            maxAttempts: retry.maxAttempts,
+            retryableErrorCodes: [...retry.retryableErrorCodes],
+          },
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        });
+      };
       for (let index = 0; index < results.length; index += 1) {
         const result = results[index];
         if (result.record !== undefined) records.set(result.record.evaluationId, result.record);
@@ -1449,26 +1471,13 @@ async function runEvaluation(
         if (result.verifiedCacheRecordDigest !== undefined) {
           verifiedCacheRecordDigests.add(result.verifiedCacheRecordDigest);
         }
+        if (granularity === 'per-coordinate') await emitProgress();
       }
       const failures = results.filter((result) => result.record?.evaluationStatus === 'failed').length;
       const totalFailures = [...records.values()].filter(
         (record) => record.evaluationStatus === 'failed',
       ).length;
-      const completed = records.size;
-      const total = coordinates.length;
-      const retry = plan.evaluation.policy.runtime.retry;
-      const timeoutMs = plan.evaluation.policy.runtime.timeoutMs;
-      await events.emit('evaluation.run.progress', 'run', options.runId, {
-        completed,
-        total,
-        failed: totalFailures,
-        maxConcurrency: width,
-        retry: {
-          maxAttempts: retry.maxAttempts,
-          retryableErrorCodes: [...retry.retryableErrorCodes],
-        },
-        ...(timeoutMs === undefined ? {} : { timeoutMs }),
-      });
+      if (granularity === 'per-batch') await emitProgress();
       const policy = plan.evaluation.policy.failure;
       if (stop.stopKind === undefined && policy.failureMode === 'fail-fast' && failures > 0) {
         setStop('failed', 'evaluation-failure-policy-fail-fast');
