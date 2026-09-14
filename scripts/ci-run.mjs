@@ -52,7 +52,7 @@ export async function runBounded({ name, directory, timeoutMs, command, graceMs 
   process.off('SIGTERM', cancel); process.off('SIGINT', cancel);
   const category = failureCategory({ ...result, timedOut, cancelled, spawnError, tail, oomKilled: oomCount() > initialOom });
   const record = { name, startedAt, finishedAt: new Date().toISOString(), durationMs: Math.round(performance.now() - start),
-    ...result, category, ...(spawnError ? { spawnError } : {}), attempts: 1, readOnlyRetries: (tail.match(/\[read-only retry\]/g) ?? []).length };
+    ...result, category, ...(spawnError ? { spawnError } : {}), attempts: 1 };
   writeFileSync(join(directory, `${name}.json`), JSON.stringify(record, null, 2));
   console.log(`\n[${name}] ${category} (${record.durationMs} ms)`);
   return category === 'success' ? 0 : cancelled ? 130 : timedOut ? 124 : result.code || 1;
