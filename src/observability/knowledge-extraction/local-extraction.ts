@@ -22,7 +22,7 @@ export function extractLocalProposals(excerpts: EvidenceWindow['excerpts']): Ext
       if (!entry) continue;
       const quote = entry[1].trimEnd();
       if (quote.length > 4096) continue;
-      const start = match.index + line.indexOf(entry[1]);
+      const start = match.index + line.length - entry[1].length;
       const selection = { evidenceRef: excerpt.evidenceRef, start, end: start + quote.length, quote };
       const proposalId = `local-${proposals.length + 1}`;
       proposals.push({

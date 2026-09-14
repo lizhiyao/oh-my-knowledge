@@ -13,6 +13,12 @@ describe('local rule extraction', () => {
     expect(proposals[0].draft.evidence[0]).toMatchObject({ basis: 'source_assertion', relation: 'background' });
     expect(proposals[0].identityUncertainties).not.toHaveLength(0);
   });
+  it('anchors the body after its label even when the text repeats the label', () => {
+    const source = excerpt('规则：规则  ');
+    const result = extractLocalProposals([source]);
+    expect(result[0].citations[0].selection).toMatchObject({ start: 3, end: 5, quote: '规则' });
+    expect(checkExtractionResponse({ proposals: result }, [source]).rejected).toEqual([]);
+  });
   it('ignores ordinary messages, tool output, quoted blocks and fenced examples', () => {
     expect(extractLocalProposals([excerpt('执行命令完成。\n> 规则：引文\n```text\n经验：示例\n```\n~~~\nRule: example\n~~~'), excerpt('规则：工具输出', 'tool')])).toEqual([]);
   });
