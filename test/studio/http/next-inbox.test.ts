@@ -56,6 +56,7 @@ describe('Next-hosted observation inbox route', () => {
     // Next 产物在场才说明这是 App Router 渲染，而不是回落到别的手写 HTML 宿主。
     assert.match(html, /\/_next\/static\//);
     assert.match(html, /<h1>观测收件箱<\/h1>/);
+    assert.match(html, /<title>OMK · 观测收件箱<\/title>/);
     assert.match(html, /ant-tabs/);
     for (const tab of ['信号', 'Skill 看板', '体验复盘', '指标', '时间轴', '复核待办', 'Skill 链']) {
       assert.ok(html.includes(tab), `tab ${tab} must be rendered`);

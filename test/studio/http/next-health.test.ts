@@ -107,10 +107,14 @@ describe('Next 宿主的观测健康页面组', () => {
     for (const id of ['obs-a', 'obs-b']) assert.ok(listHtml.includes(`href="/observe/health/${id}"`), `${id} 没有入口`);
     assert.ok(listHtml.includes('2026-09-02 08:30'), '列表按生成时间展示，最新在前');
     assert.doesNotMatch(listHtml, /<script>alert/, '报告里的外部文本不能成为标记');
+    // 标签标题带页面名，详情与趋势再带上对象身份：多标签同开时不必点开才知道读的是哪一份。
+    assert.match(listHtml, /<title>OMK · Skill 健康度日报<\/title>/);
 
     const enList = await fetch(`${url}/observe/health?lang=en`);
     assert.equal(enList.status, 200);
-    assert.match(await htmlOf(enList), /Pick from\/to on two reports/);
+    const enListHtml = await htmlOf(enList);
+    assert.match(enListHtml, /Pick from\/to on two reports/);
+    assert.match(enListHtml, /<title>OMK · Skill Health Reports<\/title>/);
 
     const detail = await fetch(`${url}/observe/health/obs-a`);
     assert.equal(detail.status, 200);
@@ -120,20 +124,27 @@ describe('Next 宿主的观测健康页面组', () => {
     assert.ok(detailHtml.includes('href="/observe"'), '详情页面包屑回观测');
     assert.match(detailHtml, /&lt;script&gt;alert/, 'skill 名以转义文本可见，而不是被静默丢弃');
     assert.doesNotMatch(detailHtml, /<script>alert/);
+    assert.match(detailHtml, /<title>OMK · Skill 健康度日报 · obs-a<\/title>/);
 
     const trend = await fetch(`${url}/observe/skill-trend/audit`);
     assert.equal(trend.status, 200);
     const trendHtml = await htmlOf(trend);
     assert.match(trendHtml, /2 个时间点/);
     assert.ok(trendHtml.includes('href="/observe/health/obs-a"'), '每个时间点链回它的报告');
+    assert.match(trendHtml, /<title>OMK · Skill 趋势 · audit<\/title>/);
     const emptyTrend = await fetch(`${url}/observe/skill-trend/never-seen`);
     assert.equal(emptyTrend.status, 200);
-    assert.match(await htmlOf(emptyTrend), /暂无趋势数据/);
+    const emptyTrendHtml = await htmlOf(emptyTrend);
+    assert.match(emptyTrendHtml, /暂无趋势数据/);
+    // 标题的对象身份来自地址：没有数据的趋势页也要说清是哪个 skill，否则空页只剩一个通用标签。
+    assert.match(emptyTrendHtml, /<title>OMK · Skill 趋势 · never-seen<\/title>/);
 
     const diff = await fetch(`${url}/observe/health-diff?from=obs-a&to=obs-b`);
     assert.equal(diff.status, 200);
     const diffHtml = await htmlOf(diff);
-    assert.match(diffHtml, /Skill 健康度对比/);
+    // 对比页的可见标题与标签标题同源：前者是页面措辞，后者是它的复用，不能只证明其中一件。
+    assert.match(diffHtml, /<h1[^>]*>Skill 健康度对比<\/h1>/);
+    assert.match(diffHtml, /<title>OMK · Skill 健康度对比<\/title>/);
     assert.match(diffHtml, /已消失/, '只在起点出现的 skill 要标出来');
 
     // 契约：缺参是请求错，查不到是缺页，且都不带重定向。
@@ -168,6 +179,22 @@ describe('Next 宿主的观测健康页面组', () => {
 
     // 健康页只挂在 studioPages 上：DSH 这类裁掉收件箱的宿主仍要能看，否则迁移等于把页面弄丢。
     assert.equal((await fetch(`${url}/observe/health`)).status, 200);
+    // 收件箱由同一个开关单独裁剪：它关掉只影响自己的路径，不牵连健康页。
     assert.equal((await fetch(`${url}/observe/inbox`)).status, 404);
   }, 30000);
+
+  it('观测目录解析抛错时四页都收敛成 503，不把原因透给浏览器', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-next-health-error-')); roots.push(root);
+    // 目录按请求解析：读不出事实时整组页面给同一个稳定 503，原因（带本机路径）留在服务端。
+    const url = await serve({
+      analysesDir: () => { throw new Error('EACCES /private/token'); },
+      doctorsDir: join(root, 'doctors'),
+      observationsDir: join(root, 'observations'),
+    });
+    for (const path of ['/observe/health', '/observe/health/obs-a', '/observe/skill-trend/audit', '/observe/health-diff?from=obs-a&to=obs-b']) {
+      const response = await fetch(`${url}${path}`);
+      assert.equal(response.status, 503, path);
+      assert.equal(await response.text(), 'studio_source_unavailable', path);
+    }
+  }, 20000);
 });

@@ -36,8 +36,10 @@ export function formatDuration(ms: number | undefined | null): string {
   const value = Number(ms || 0);
   if (value < 1000) return `${value}ms`;
   if (value < 60000) return `${(value / 1000).toFixed(1)}s`;
-  const minutes = Math.floor(value / 60000);
-  const seconds = Math.round((value % 60000) / 1000);
+  let minutes = Math.floor(value / 60000);
+  let seconds = Math.round((value % 60000) / 1000);
+  // 秒单独四舍五入会凑出 "1m60s" 这种不存在的时刻：满 60 秒要进到分钟。
+  if (seconds === 60) { minutes += 1; seconds = 0; }
   return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
 }
 
