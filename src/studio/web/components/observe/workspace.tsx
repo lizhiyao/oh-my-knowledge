@@ -66,7 +66,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         return <details key={id} open={selected ? projectId(selected) === id : view === id}>
           <summary><span title={items[0].project?.directory ?? items[0].cwd}>{name}</span><span>{items.length}</span></summary>
           <button className="observe-project-overview" onClick={() => choose(id)}>{t('查看项目会话', 'View project conversations')}</button>
-          {shown.map(item => <Link key={item.threadId} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small>{item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind}</small></Link>)}
+          {shown.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small>{item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind}</small></Link>)}
           {visible.length > 12 && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个会话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
       })}{query && !index.conversations.some(matches) && <p>{t('没有匹配的项目或会话', 'No matching projects or conversations')}</p>}</div>
