@@ -17,7 +17,6 @@ function mkEntry(overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
     doctor: null,
     observe: null,
     doctorHistory: [],
-    observeHistory: [],
     band: 'gray',
     ...overrides,
   };

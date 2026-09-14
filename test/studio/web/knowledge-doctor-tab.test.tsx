@@ -80,7 +80,6 @@ function detailPage(runs: SkillDoctorSnapshot[], lang: Lang, doctorRunId?: strin
     doctor: runs.at(-1) ?? null,
     observe: null,
     doctorHistory: runs,
-    observeHistory: [],
     band: 'yellow',
   };
   const index = {

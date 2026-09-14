@@ -380,14 +380,11 @@ export function buildSkillIndex(
   const entries: SkillIndexEntry[] = [...allSkills].map((skillName) => {
     const doctorHistory = doctorBy[skillName] ?? [];
     const observeHistory = observeBy[skillName] ?? [];
-    const doctor = doctorHistory.at(-1) ?? null;
-    const observe = observeHistory.at(-1) ?? null;
     return {
       skillName,
-      doctor,
-      observe,
+      doctor: doctorHistory.at(-1) ?? null,
+      observe: observeHistory.at(-1) ?? null,
       doctorHistory,
-      observeHistory,
       band: 'gray',
     };
   });

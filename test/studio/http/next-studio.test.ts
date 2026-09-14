@@ -68,13 +68,28 @@ describe('Next Studio production boundary', () => {
     const staleRun = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=pruned-run`);
     assert.equal(staleRun.status, 404);
     assert.equal(await staleRun.text(), 'doctor_run_not_found');
-    assert.equal((await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`)).status, 200);
+    const drilled = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`);
+    assert.equal(drilled.status, 200);
+    // 换语言不改所见证据：下钻地址的 ?doctorRun= 必须跟着切换链接一起走。
+    const drilledSwitch = /<a class="studio-lang"[^>]*href="([^"]+)"/u.exec(await drilled.text())?.[1];
+    assert.equal(drilledSwitch?.replaceAll('&amp;', '&'), `/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test&lang=en`);
     assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
-    // 壳层只有一份：迁移完成后评测页与兄弟页面共用同一个 header，差异只在 aria-current。
+    // 语言切换是真实链接：跟随中文页给出的地址要落到同一页的英文版（#880）。
+    const knowledgeZh = await (await fetch(`${urlA}/knowledge`)).text();
+    const switchHref = /<a class="studio-lang"[^>]*href="([^"]+)"/u.exec(knowledgeZh)?.[1];
+    assert.equal(switchHref, '/knowledge?lang=en');
+    const switched = await fetch(`${urlA}${switchHref}`);
+    assert.equal(switched.status, 200);
+    assert.match(await switched.text(), /aria-label="Switch to the Chinese interface"/);
+    // 壳层只有一份：迁移完成后评测页与兄弟页面共用同一个 header，差异只在 aria-current
+    // 与语言切换的目标地址（它按当前页生成，逐页不同，单独断言）。
     const knowledgeEn = await (await fetch(`${urlA}/knowledge?lang=en`)).text();
-    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0].replaceAll(' aria-current="page"', '');
+    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0]
+      .replace(/<a class="studio-lang"[\s\S]*?<\/a>/u, '<lang-switch/>')
+      .replaceAll(' aria-current="page"', '');
     const measureShell = shellOf(htmlA);
     assert.equal(measureShell, shellOf(knowledgeEn));
+    assert.match(knowledgeEn, /<a class="studio-lang"[^>]*href="\/knowledge"/u);
     for (const href of ['href="/observe?lang=en"', 'href="/measure?lang=en"', 'href="/knowledge?lang=en"']) {
       assert.ok(measureShell.includes(href), `primary navigation links ${href}`);
     }
