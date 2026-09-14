@@ -4369,10 +4369,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"es-module-lexer@npm:^2.0.0, es-module-lexer@npm:^2.3.2":
+"es-module-lexer@npm:^2.3.2":
   version: 2.3.2
   resolution: "es-module-lexer@npm:2.3.2"
   checksum: 10c0/5e7389424c43478439f12f9a6aca1750f6f99afa384fc3de329f4a45f152ab156671055008adaafc74960877abf8cc338aeebf6bed8c21297b146fd6eb7a22f8
+  languageName: node
+  linkType: hard
+
+"es-module-lexer@npm:^3.0.2":
+  version: 3.0.2
+  resolution: "es-module-lexer@npm:3.0.2"
+  checksum: 10c0/b04a0a5f5c2785e3edd53dcb5e4e9cfb7b8523d4cf9bf8b3abd6e1aaa7c4401f9d9174fb9a3c9374f0b4ca7f75487c3ff9b97f39f341507afa8ddf49ba37c56b
   languageName: node
   linkType: hard
 
@@ -5927,7 +5934,7 @@ __metadata:
     "@types/react-dom": "npm:19"
     ajv: "npm:^8.18.0"
     antd: "npm:^6.6.3"
-    es-module-lexer: "npm:^2.0.0"
+    es-module-lexer: "npm:^3.0.2"
     eslint: "npm:^10.1.0"
     husky: "npm:^9.1.7"
     js-yaml: "npm:^4.1.1"
