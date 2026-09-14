@@ -12,7 +12,7 @@ async function moduleGraph(entry: string): Promise<{
   modules: string[];
   externalImports: string[];
 }> {
-  await init;
+  await init();
   const pending = [entry];
   const visited = new Set<string>();
   const externalImports = new Set<string>();
@@ -23,7 +23,7 @@ async function moduleGraph(entry: string): Promise<{
     const source = readFileSync(file, 'utf8');
     const [imports] = parse(source);
     for (const imported of imports) {
-      const specifier = source.slice(imported.s, imported.e);
+      const specifier = source.slice(imported.start, imported.end);
       if (!specifier.startsWith('.')) {
         externalImports.add(specifier);
         continue;
