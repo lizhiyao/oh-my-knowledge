@@ -8,15 +8,15 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
-import { generateWireJsonSchemas } from '../dist/eval-core/contracts/json-schema.js';
+import { generateWireJsonSchemas } from '../../dist/eval-core/contracts/json-schema.js';
 import {
   WIRE_SCHEMA_CATALOG,
   wireSchemaCatalogVersion,
-} from '../dist/eval-core/contracts/json-schema.js';
+} from '../../dist/eval-core/contracts/json-schema.js';
 
 const mode = process.argv[2];
 if (mode !== '--write' && mode !== '--check') {
-  throw new Error('Usage: node scripts/build-eval-core-schemas.mjs <--write|--check>');
+  throw new Error('Usage: node scripts/build/schemas-core.mjs <--write|--check>');
 }
 
 const schemaRoot = resolve('schemas/eval-core');

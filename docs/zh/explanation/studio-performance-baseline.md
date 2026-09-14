@@ -8,7 +8,7 @@
 yarn studio:baseline
 ```
 
-脚本（`scripts/studio-baseline.ts`）在临时目录合成满足 schema 校验的数据集，经真实 `createReportServer`（随机端口）测量并输出下表。数值只用于同机、同 commit 的前后对比，不做跨机绝对值对比。
+脚本（`scripts/bench/studio-baseline.ts`）在临时目录合成满足 schema 校验的数据集，经真实 `createReportServer`（随机端口）测量并输出下表。数值只用于同机、同 commit 的前后对比，不做跨机绝对值对比。
 
 ## 规模定义
 

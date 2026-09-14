@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { load } from 'js-yaml';
 // @ts-expect-error CI bootstrap runs as plain Node before dependency installation.
-import { classifyPaths, detectScope } from '../../scripts/ci-scope.mjs';
+import { classifyPaths, detectScope } from '../../scripts/ci/scope.mjs';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -26,7 +26,7 @@ describe('CI change scope', () => {
     [['docs/.vitepress/README.md'], 'full'],
     [['docs/public/logo.svg'], 'full'],
     [['.github/workflows/ci.yml'], 'full'],
-    [['scripts/ci-scope.mjs'], 'full'],
+    [['scripts/ci/scope.mjs'], 'full'],
     [['package.json', 'yarn.lock'], 'full'],
     [['unrecognized.md'], 'full'],
     [[], 'full'],

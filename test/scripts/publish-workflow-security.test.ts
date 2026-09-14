@@ -46,7 +46,7 @@ describe('npm 发布供应链', () => {
     assert.equal(setupNode?.with?.['node-version'], '24.x');
     assert.equal(setupNode?.with?.['package-manager-cache'], false, '发布构建不应复用包管理器缓存');
     assert.match(setupPackageManagers?.run ?? '', /npm@\^11\.5\.1/, 'Trusted Publishing 要求 npm >= 11.5.1');
-    assert.match(publish?.run ?? '', /release-package\.mjs publish/);
+    assert.match(publish?.run ?? '', /scripts\/release\/package\.mjs publish/);
     assert.doesNotMatch(publish?.run ?? '', /--provenance\b/, 'OIDC 发布会自动生成 provenance');
     assert.deepEqual(Object.keys(publish?.env ?? {}), ['NPM_DIST_TAG'], '发布步骤仅传递频道，不注入 npm token');
     assert.doesNotMatch(source, /NPM_TOKEN|NODE_AUTH_TOKEN/, '发布 workflow 不应引用长期 npm token');
