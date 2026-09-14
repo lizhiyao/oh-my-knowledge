@@ -1,4 +1,6 @@
 import type { Lang } from '../../shared/language.js';
+import type { DoctorGraphView } from '../application/doctor-format.js';
+import { projectDoctorGraph } from '../application/doctor-format.js';
 import type { KnowledgeQuery } from '../application/knowledge-query.js';
 import { assessHealth, observedToolFailureRate } from '../application/skill-health.js';
 import type { HealthAssessment } from '../view-models/health-assessment.js';
@@ -27,6 +29,12 @@ export type KnowledgePage =
     doctorRuns: DoctorRunSummary[];
     /** `?doctorRun=` 选中的历史轮次；null = 呈现 `row.doctor`（当前最新那次）。 */
     doctorRun: SkillDoctorSnapshot | null;
+    /**
+     * 最近一轮体检 graph sidecar 的结构投影；无 sidecar 时为 null。
+     * 只带呈现需要的事实：原始 `SkillGraphSnapshot` 里的 `sourceLocator`／`graphPath` 是用户本机
+     * 绝对路径，而 RSC 会把页面 props 序列化进 HTML 负载，因此不进页面模型。
+     */
+    graph: DoctorGraphView | null;
   };
 
 function toRunSummary(snapshot: SkillDoctorSnapshot): DoctorRunSummary {
@@ -73,5 +81,6 @@ export function loadKnowledgePage(
     toolFailureRate: entry.observe ? observedToolFailureRate(entry.observe) : null,
     doctorRuns: history.map(toRunSummary),
     doctorRun: selected ?? null,
+    graph: projectDoctorGraph(entry.graph),
   };
 }
