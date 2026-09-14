@@ -287,6 +287,15 @@ export type {
   CreateRubricJudgeKitInput,
   RubricJudgeKit,
 } from './judges/rubric-kit.js';
+export {
+  FORMULA_CALCULATOR_IDS,
+  createFormulaEvaluator,
+} from './evaluators/formula.js';
+export type {
+  FormulaCalculatorId,
+  FormulaEvaluator,
+  FormulaEvaluatorConfig,
+} from './evaluators/formula.js';
 
 // Host assembly SPI (formerly eval-runtime/advanced).
 export {
