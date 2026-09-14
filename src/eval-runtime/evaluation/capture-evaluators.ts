@@ -80,6 +80,73 @@ import {
   captureDataset,
 } from './capture-input.js';
 
+/** Resolves one JSON Pointer (RFC 6901) against a value; returns undefined when unresolvable. */
+function resolveJsonPointer(value: JsonValue, pointer: string): JsonValue | undefined {
+  if (pointer === '') return value;
+  const segments = pointer.slice(1).split('/').map((segment) => (
+    segment.replaceAll('~1', '/').replaceAll('~0', '~')
+  ));
+  let current: JsonValue | undefined = value;
+  for (const segment of segments) {
+    if (current === null || typeof current !== 'object') return undefined;
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      if (!Number.isInteger(index) || index < 0 || index >= current.length) return undefined;
+      current = current[index];
+    } else {
+      if (!(segment in current)) return undefined;
+      current = (current as Record<string, JsonValue>)[segment];
+    }
+  }
+  return current;
+}
+
+/** Validates that evaluator bindings can resolve against at least one sample's expected or evaluation-context. */
+function validateEvaluatorBindings(
+  dataset: Readonly<Dataset>,
+  evaluators: readonly Evaluator[],
+): void {
+  const failures: string[] = [];
+  for (const evaluator of evaluators) {
+    if (evaluator.evaluatorKind !== 'custom') continue;
+    for (const binding of evaluator.bindings) {
+      if (binding.sourceKind !== 'expected' && binding.sourceKind !== 'evaluation-context') continue;
+      const fieldName = binding.sourceKind === 'expected' ? 'expected' : 'evaluationContext';
+      const resolvable = dataset.samples.some((sample) => {
+        const source = sample[fieldName];
+        if (source === undefined) return false;
+        return resolveJsonPointer(source, binding.pointer) !== undefined;
+      });
+      if (!resolvable) {
+        failures.push(
+          `Evaluator "${evaluator.evaluatorId}" 的 binding "${binding.bindingId}" `
+          + `(sourceKind: ${binding.sourceKind}, pointer: "${binding.pointer}") `
+          + `在所有 Sample 的 ${fieldName} 字段中都无法解析到值。`,
+        );
+      }
+    }
+  }
+  for (const evaluator of evaluators) {
+    const needsExpected = evaluator.evaluatorKind === 'exact-match'
+      || (evaluator.evaluatorKind === 'custom'
+        && evaluator.bindings.some((binding) => binding.sourceKind === 'expected'));
+    if (!needsExpected) continue;
+    const hasExpected = dataset.samples.some((sample) => sample.expected !== undefined);
+    if (!hasExpected) {
+      failures.push(
+        `Evaluator "${evaluator.evaluatorId}" 需要标准答案（expected），`
+        + `但所有 Sample 都缺少 expected 字段。`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    return configurationFailure(
+      'EVAL_RUNTIME_EVALUATOR_INVALID',
+      `Evaluation 配置预检失败：\n${failures.map((failure) => `- ${failure}`).join('\n')}`,
+    );
+  }
+}
+
 function captureJudge(value: Readonly<Judge>) {
   if (typeof value?.invoke !== 'function') {
     return configurationFailure(
@@ -349,6 +416,7 @@ export function captureEvaluators(
       'Evaluation 至少需要一个 evaluator。',
     );
   }
+  validateEvaluatorBindings(dataset, values);
   const definitions: EvaluatorDefinition[] = [];
   const metrics: MetricDefinition[] = [];
   const measurementAggregations = new Map<string, MeasurementAggregationPlan>();
