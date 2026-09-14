@@ -6,6 +6,7 @@
 
 - Studio 应用页面统一向 Next.js 收敛；手写 HTML 渲染层已删除，新页面不再增加它。API、SSE 按各自职责维护，不为迁移页面而复制领域查询。
 - view-models 仅存放类型契约；泳道布局、证据引用与活动快照的运行时计算放在 application 中，HTTP 与 React 消费同一实现；application 不得依赖 http 或 web，view-models 不得反向依赖这些层或 application。
+- 客户端组件（`'use client'`）按值 import 的模块会进浏览器 chunk，因此其运行时依赖闭包不得触达 Node 宿主能力；只是取类型就用 `import type`，该边会被 TS 擦除、不算闭包成员。口径由 `test/architecture/studio-client-runtime-closure.test.ts` 钉住；`next build` 里的报错只是同一件事的下游后果，不能当防线用。
 - Knowledge 页面与 API 共用 application 查询入口。缓存由服务实例持有，目录按请求解析，返回值不得暴露缓存内部的可变引用。
 - 清理旧渲染器前检查实际调用者；仍服务于调试入口的实现不算死代码。具体迁移路由与剩余工作记录在 PR，不在本规则中维护易过期的路由清单。
 
