@@ -2,6 +2,7 @@ import { readConversationTurns } from '../../application/conversations/conversat
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
 import { STUDIO_SOURCE_UNAVAILABLE, JSON_HEADERS, writeJsonError } from '../errors.js';
+import { OBSERVE_INDEX_PATH } from '../page-paths.js';
 import type {
   LiveStreamRegistry,
   StudioRouteContext,
@@ -168,7 +169,7 @@ export function createConversationRoutes({
       pattern: '/',
       method: 'ANY',
       handler({ response, url }) {
-        response.writeHead(302, { Location: `/observe${url.search}` });
+        response.writeHead(302, { Location: `${OBSERVE_INDEX_PATH}${url.search}` });
         response.end();
       },
     },

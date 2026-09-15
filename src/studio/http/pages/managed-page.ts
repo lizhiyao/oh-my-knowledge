@@ -5,6 +5,7 @@ import {
   type ManagedListPresentation,
   type ManagedVersionSegment,
 } from '../../application/knowledge/managed-format.js';
+import { MANAGED_DETAIL_PREFIX, MANAGED_LIST_PATH } from '../page-paths.js';
 
 /**
  * 受管页面模型：只带呈现所需的最小投影。
@@ -29,12 +30,9 @@ type ManagedPageLoad =
   | { status: 'ok'; page: ManagedPage }
   | { status: 'record_not_found' };
 
-const LIST_PATH = '/knowledge/managed';
-const DETAIL_PREFIX = '/knowledge/managed/';
-
 /** 受管页面组是否属于本宿主；裁掉页面组的宿主不接管这些路径。 */
 export function isManagedPath(path: string): boolean {
-  return path === LIST_PATH || path.startsWith(DETAIL_PREFIX);
+  return path === MANAGED_LIST_PATH || path.startsWith(MANAGED_DETAIL_PREFIX);
 }
 
 /** 记录 id 是稳定身份（hash(kind, name)），单段身份；畸形或越段一律按缺页处理，不拿去拼路径。 */
@@ -48,13 +46,13 @@ function singleSegment(encoded: string): string | undefined {
 }
 
 export function loadManagedPage(managedRoot: string, path: string): ManagedPageLoad {
-  if (path === LIST_PATH) {
+  if (path === MANAGED_LIST_PATH) {
     return {
       status: 'ok',
       page: { pageKind: 'list', rows: listManagedRows(managedRoot).map(projectManagedListRow) },
     };
   }
-  const id = singleSegment(path.slice(DETAIL_PREFIX.length));
+  const id = singleSegment(path.slice(MANAGED_DETAIL_PREFIX.length));
   const record = id === undefined
     ? undefined
     : loadAllManagedRecords(managedRoot).find((item) => item.id === id);

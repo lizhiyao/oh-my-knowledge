@@ -10,6 +10,7 @@ import type {
   ManagedTone,
 } from '../../../application/knowledge/managed-format';
 import type { ManagedPage } from '../../../http/pages/managed-page';
+import { MANAGED_DETAIL_PREFIX, MANAGED_LIST_PATH } from '../../../http/page-paths';
 import { langSuffix, type Language } from '../layout/shell';
 import { runReportHref } from '../run-report-link';
 import { managedTagColor } from '../tag-color';
@@ -174,7 +175,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
             title: zh ? '名称' : 'Name',
             dataIndex: ['row', 'name'],
             ellipsis: { showTitle: false },
-            render: (name: string, item) => <Link href={`/knowledge/managed/${encodeURIComponent(item.row.id)}${langSuffix(lang)}`} title={name}>{name}</Link>,
+            render: (name: string, item) => <Link href={`${MANAGED_DETAIL_PREFIX}${encodeURIComponent(item.row.id)}${langSuffix(lang)}`} title={name}>{name}</Link>,
           },
           { title: zh ? '类型' : 'Kind', dataIndex: ['row', 'kind'], width: 110 },
           {
@@ -232,7 +233,7 @@ export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, 
     <KnowledgeSectionNav active="managed" lang={lang} />
     <div className="measure-heading">
       <div>
-        <Link href={`/knowledge/managed${langSuffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
+        <Link href={`${MANAGED_LIST_PATH}${langSuffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
         <h1 title={page.name}>{page.name}</h1>
         <p>{[page.artifactKind, page.sourceKind, shortHash(page.contentHash), `${zh ? '纳管于' : 'since'} ${displayTime(page.installedAt)}`].join(' · ')}</p>
       </div>

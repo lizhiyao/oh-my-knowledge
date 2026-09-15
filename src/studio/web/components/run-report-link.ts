@@ -1,3 +1,4 @@
+import { MEASURE_DETAIL_PREFIX } from '../../http/page-paths';
 import { langSuffix, type Language } from './layout/shell';
 
 /**
@@ -12,5 +13,5 @@ import { langSuffix, type Language } from './layout/shell';
  * 刻意不带 `lang`，好让宿主按当次偏好决定语言。
  */
 export function runReportHref(runId: string, lang: Language): string {
-  return `/measure/${encodeURIComponent(runId)}${langSuffix(lang)}`;
+  return `${MEASURE_DETAIL_PREFIX}${encodeURIComponent(runId)}${langSuffix(lang)}`;
 }

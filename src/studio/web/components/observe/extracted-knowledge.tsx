@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ExtractConversation } from './extract-conversation';
 import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
+import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input } from 'antd';
 import type { Language } from '../layout/shell';
@@ -37,6 +38,6 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
       <Button disabled={!workspace.trim()} loading={busy} onClick={() => void load()}>{zh ? '读取记录' : 'Load history'}</Button>
       {error && <Alert type="error" title={zh ? '无法读取，请检查保存目录。' : 'Could not load history. Check the folder.'}/>}
       {!busy && !error && runs.length === 0 && <Empty description={zh ? '当前目录尚无这个会话的提炼记录。' : 'No extractions for this conversation in this folder.'}/>}
-      {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{extractionRunStatusLabel(run.status, lang)} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>{run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><Link href={`/knowledge/candidates?${link}`}>{item.title}</Link> · {candidateDecisionLabel(item.choice, lang)}</p>; })}</section>)}
+      {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{extractionRunStatusLabel(run.status, lang)} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>{run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><Link href={`${KNOWLEDGE_CANDIDATES_PATH}?${link}`}>{item.title}</Link> · {candidateDecisionLabel(item.choice, lang)}</p>; })}</section>)}
     </Drawer></>;
 }

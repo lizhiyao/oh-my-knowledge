@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Empty, Input, Pagination } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
+import { OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import { type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
@@ -50,7 +51,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   }, [selected?.threadId, page.pageKind, router, lang]);
   function choose(next: string) {
     setNavigationOpen(false); setCurrent(1);
-    const target = `/observe?${new URLSearchParams({ view: next, lang })}`;
+    const target = `${OBSERVE_INDEX_PATH}?${new URLSearchParams({ view: next, lang })}`;
     if (selected) router.push(target);
     else { setView(next); window.history.replaceState(null, '', target); }
   }

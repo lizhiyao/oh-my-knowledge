@@ -6,6 +6,7 @@ import { assessHealth, observedToolFailureRate } from '../../application/knowled
 import type { HealthAssessment } from '../../view-models/knowledge/health-assessment.js';
 import type { Insight } from '../../view-models/knowledge/insight.js';
 import type { SkillDoctorSnapshot, SkillIndexEntry, SkillIndexSummary } from '../../view-models/knowledge/skill-index.js';
+import { KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX } from '../page-paths.js';
 
 export interface KnowledgeRow {
   skillName: string;
@@ -62,9 +63,9 @@ export function loadKnowledgePage(
     observe: entry.observe,
     insightCount: index.insightsBySkill.get(entry.skillName)?.length ?? 0,
   });
-  if (path === '/knowledge') return { pageKind: 'index', rows: index.entries.map(row), summary: index.summary };
+  if (path === KNOWLEDGE_INDEX_PATH) return { pageKind: 'index', rows: index.entries.map(row), summary: index.summary };
   let name: string;
-  const encoded = path.slice('/knowledge/skills/'.length);
+  const encoded = path.slice(KNOWLEDGE_SKILL_PREFIX.length);
   if (!encoded || encoded.includes('/')) return undefined;
   try { name = decodeURIComponent(encoded); } catch { return undefined; }
   const entry = index.entries.find((item) => item.skillName === name);

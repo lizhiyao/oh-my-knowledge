@@ -5,6 +5,7 @@ import { resolveKnowledgeWorkspace } from './workspace';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { langSuffix, type Language } from '../layout/shell';
+import { KNOWLEDGE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import { conversationPath } from '../conversation-link';
 import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
@@ -15,7 +16,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const t = (cn: string, en: string) => zh ? cn : en;
   const router = useRouter();
   /** 页头按钮与空状态引导去的是同一个地址，跳转动作只写一遍。 */
-  const chooseConversation = () => router.push(`/observe${langSuffix(lang)}`);
+  const chooseConversation = () => router.push(`${OBSERVE_INDEX_PATH}${langSuffix(lang)}`);
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
@@ -117,7 +118,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   return <section className="knowledge-candidates">
-    <header className="candidate-heading"><div><Link href={`/knowledge${langSuffix(lang)}`}>{t('知识载体', 'Knowledge artifacts')}</Link><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
+    <header className="candidate-heading"><div><Link href={`${KNOWLEDGE_INDEX_PATH}${langSuffix(lang)}`}>{t('知识载体', 'Knowledge artifacts')}</Link><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
       <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
         {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('从会话选择', 'Choose a conversation')}</Button>}

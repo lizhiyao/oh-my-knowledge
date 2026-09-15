@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { StudioUtilities } from './utilities';
 import type { ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
+import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { useStudioNavigation } from './navigation';
@@ -29,7 +30,7 @@ export function langSuffix(lang: Language): string {
 
 /** 宿主入口地址：挂了页面组的宿主从 `/` 进（HTTP adapter 302 到观测），只挂 `/measure` 的评测预览宿主没有兄弟路由，入口就是评测列表本身。 */
 export function studioEntryPath(hasNavigation: boolean): string {
-  return hasNavigation ? '/' : '/measure';
+  return hasNavigation ? '/' : MEASURE_INDEX_PATH;
 }
 
 function LanguageSwitch({ lang }: { lang: Language }) {
@@ -51,9 +52,9 @@ export function StudioShell({ lang, children, active, utilitiesInSidebar = false
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
     <div className="studio-app"><header className="studio-header"><Link className="studio-brand" href={`${studioEntryPath(navigation)}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
       {navigation ? <nav aria-label={lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}>
-        <Link href={`/observe${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</Link>
-        <Link href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</Link>
-        <Link href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</Link>
+        <Link href={`${OBSERVE_INDEX_PATH}${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</Link>
+        <Link href={`${MEASURE_INDEX_PATH}${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</Link>
+        <Link href={`${KNOWLEDGE_INDEX_PATH}${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</Link>
       </nav> : null}
       <div className="studio-global-actions">{navigation ? !utilitiesInSidebar && <StudioUtilities lang={lang} placement="bottomRight"/> : <LanguageSwitch lang={lang}/>}</div>
     </header><main className="studio-content">{children}</main></div>
