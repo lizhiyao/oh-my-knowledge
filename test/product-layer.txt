@@ -1,0 +1,40 @@
+# 产物层测试文件清单：这些文件依赖构建产物（dist/、dist-scripts/ 或 src/studio/web/.next），
+# 必须在 `yarn build` 之后运行。其余测试文件（源码层）不依赖构建产物，可直接对源码运行。
+#
+# 本清单由 issue #932 实测得出：构建后跑一遍全量、清空 dist 再跑一遍，取失败集合的差集（26 个
+# dist 依赖），加上经 src/studio/http/next-server.ts:39 核实依赖 .next/BUILD_ID 的 7 个 Next 文件。
+# 新增依赖构建产物的测试文件时必须加入本清单，否则它会在源码层因缺少产物而失败；
+# test/architecture/test-gate-coverage.test.ts 守住「没有任何测试文件落在所有 project 之外」。
+test/cli/eval-cancellation.test.ts
+test/cli/first-run-smoke.test.ts
+test/cli/init-scaffold-conformance.test.ts
+test/cli/init-skill-md.test.ts
+test/cli/observe-inbox-global.test.ts
+test/cli/oclif-dispatch.test.ts
+test/cli/oclif-doctor.test.ts
+test/cli/oclif-eval.test.ts
+test/cli/oclif-evolve.test.ts
+test/cli/oclif-init.test.ts
+test/cli/oclif-install.test.ts
+test/cli/oclif-observe.test.ts
+test/cli/oclif-sample.test.ts
+test/cli/oclif-startup.test.ts
+test/cli/oclif-studio.test.ts
+test/cli/removed-options.test.ts
+test/cli/studio-dev-spawn.test.ts
+test/cli/update-exit-latency.test.ts
+test/cli/update-worker.test.ts
+test/eval-core/embedded-package.test.ts
+test/eval-core/runtime-side-effects.test.ts
+test/eval-runtime/package-boundary.test.ts
+test/eval-runtime/public-api.test.ts
+test/eval-workflows/inputs/assertion-language.test.ts
+test/examples/codex-observe-router.test.ts
+test/scripts/build-docs.test.ts
+test/scripts/markdown-cmd-refs.test.ts
+test/studio/http/live-task-trajectory-server.test.ts
+test/studio/http/next-health.test.ts
+test/studio/http/next-inbox.test.ts
+test/studio/http/next-managed.test.ts
+test/studio/http/next-studio.test.ts
+test/studio/http/observe-next.test.ts
