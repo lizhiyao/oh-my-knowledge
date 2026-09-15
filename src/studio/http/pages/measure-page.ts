@@ -11,6 +11,11 @@ export type MeasurePage =
   | { pageKind: 'index'; runs: CoreStudioRunCard[] }
   | { pageKind: 'run'; detail: CoreStudioRunDetail };
 
+/** 地址识别属装载器（`src/studio/README.md`：`pages/` 的装载器「识别地址、装载证据、给出契约」），宿主只按路由组开关决定接不接管。 */
+export function isMeasurePath(path: string): boolean {
+  return path === MEASURE_INDEX_PATH || path.startsWith(MEASURE_DETAIL_PREFIX);
+}
+
 /** 运行 id 是单段稳定身份；畸形或越段一律按缺页处理，不拿去查数据源。 */
 function runIdOf(path: string): string | undefined {
   if (!path.startsWith(MEASURE_DETAIL_PREFIX)) return undefined;

@@ -109,6 +109,10 @@ function displayRepoPath(path: string): string {
   return relative(REPO_ROOT, path).split(sep).join('/');
 }
 
+function importedModules(path: string): string[] {
+  return parse(path).statements.filter(ts.isImportDeclaration).map((statement) => statement.moduleSpecifier.getText().slice(1, -1));
+}
+
 /**
  * 控制组：门禁自己也得证明能变红，且证明注释与 `/api/**` 不会误伤。
  *
@@ -129,6 +133,13 @@ export function Hardcoded(): JSX.Element {
  */
 export function load(): Promise<unknown> {
   return fetch('/api/knowledge/candidates', { method: 'POST' }).then((response) => response.json());
+}
+`,
+  // 判死：宿主绕过装载器，自己按地址常量匹配前缀。
+  'host-matches.ts': `import { MEASURE_DETAIL_PREFIX, MEASURE_INDEX_PATH } from './page-paths.js';
+
+export function taken(path: string): boolean {
+  return path === MEASURE_INDEX_PATH || path.startsWith(MEASURE_DETAIL_PREFIX);
 }
 `,
 };
@@ -195,5 +206,38 @@ describe('Studio 页面地址的单一 owner 守门', () => {
     expect(violations.map((entry) => `${entry.file}:${entry.line} ⇒ ${entry.text}`)).toEqual([
       'hardcoded.tsx:4 ⇒ /observe/inbox?lang=zh',
     ]);
+  });
+
+  /**
+   * 第二道边界：地址常量只有一个 owner 还不够，识别地址这件事也得只有一个地方做。
+   * `src/studio/README.md` 写明 `pages/` 的装载器负责「识别地址、装载证据、给出契约」，宿主只按
+   * 路由组开关决定接不接管。宿主自己抄一遍前缀匹配时，装载器改了识别口径宿主不会跟着改——
+   * 页面装载得到，请求却根本不被接管，用户拿到 HTTP adapter 的纯文本 404。
+   */
+  it('地址识别谓词在装载器里，宿主不自己匹配前缀', () => {
+    const host = join(STUDIO_DIR, 'http', 'next-server.ts');
+    const hostImports = importedModules(host);
+    expect(hostImports, '宿主里已经读不到装载器 import，判据失效').toContain('./pages/measure-page.js');
+    if (hostImports.includes('./page-paths.js')) {
+      throw new Error([
+        'src/studio/http/next-server.ts 又自己按地址常量匹配页面了。',
+        '',
+        '处理：识别地址属 pages/*-page.ts 的装载器（导出 is*Path 谓词），宿主只保留',
+        'studioPages／observationInbox 这类路由组开关。两处各匹配一遍时，改装载器不会让宿主跟着改。',
+      ].join('\n'));
+    }
+    const pagesDir = join(STUDIO_DIR, 'http', 'pages');
+    const loaders = readdirSync(pagesDir).filter((name) => name.endsWith('-page.ts')).sort();
+    expect(loaders, '装载器数量变了，这条门禁需要重新核对覆盖面').toEqual([
+      'health-page.ts', 'inbox-page.ts', 'knowledge-page.ts', 'managed-page.ts', 'measure-page.ts', 'observe-page.ts',
+    ]);
+    for (const loader of loaders) {
+      expect(readFileSync(join(pagesDir, loader), 'utf8'), `${loader} 没有导出地址识别谓词`).toMatch(/export function is\w+Path\(/u);
+    }
+  });
+
+  it('控制组：宿主重新按常量匹配地址时判死', () => {
+    expect(importedModules(join(fixtureRoot, 'host-matches.ts'))).toContain('./page-paths.js');
+    expect(importedModules(join(STUDIO_DIR, 'http', 'pages', 'measure-page.ts'))).toContain('../page-paths.js');
   });
 });

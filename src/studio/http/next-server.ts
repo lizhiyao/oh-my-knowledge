@@ -9,24 +9,14 @@ import { createReportServer } from './report-server.js';
 import { nextHealthContext, nextInboxContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
-import { loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
-import { loadObservePage, type ObservePage } from './pages/observe-page.js';
+import { isMeasurePath, loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
+import { isObservePath, loadObservePage, type ObservePage } from './pages/observe-page.js';
 
-import { loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
+import { isKnowledgeCandidatesPath, isKnowledgePath, loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
 import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-page.js';
-import { loadInboxPage, type InboxPage } from './pages/inbox-page.js';
+import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.js';
 import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
-import {
-  KNOWLEDGE_CANDIDATES_PATH,
-  KNOWLEDGE_INDEX_PATH,
-  KNOWLEDGE_SKILL_PREFIX,
-  MEASURE_DETAIL_PREFIX,
-  MEASURE_INDEX_PATH,
-  OBSERVE_CONVERSATION_PREFIX,
-  OBSERVE_INDEX_PATH,
-  OBSERVE_INBOX_PATH,
-} from './page-paths.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
 /** 语言只是偏好：设置文件读坏时退回内置默认，页面照常可用，错误留给 /api/settings 报告。 */
@@ -55,11 +45,13 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
     },
     async handle(request, response) {
       const path = (request.url ?? '/').split('?')[0];
-      const measure = path === MEASURE_INDEX_PATH || path.startsWith(MEASURE_DETAIL_PREFIX);
-      const inbox = inboxRoutes && path === OBSERVE_INBOX_PATH;
-      const observe = pageRoutes && (inbox || path === OBSERVE_INDEX_PATH || path.startsWith(OBSERVE_CONVERSATION_PREFIX));
-      const knowledge = pageRoutes && (path === KNOWLEDGE_INDEX_PATH || path.startsWith(KNOWLEDGE_SKILL_PREFIX));
-      const candidates = pageRoutes && path === KNOWLEDGE_CANDIDATES_PATH;
+      // 地址识别由各装载器给出，宿主只按开关决定接不接管这一组。measure 刻意不受 studioPages 影响：
+      // 评测预览宿主（`cli/lib/core-report-service.ts`）传的正是 studioPages: false，而它要服务的就是 /measure。
+      const measure = isMeasurePath(path);
+      const inbox = inboxRoutes && isInboxPath(path);
+      const observe = pageRoutes && (inbox || isObservePath(path));
+      const knowledge = pageRoutes && isKnowledgePath(path);
+      const candidates = pageRoutes && isKnowledgeCandidatesPath(path);
       const managed = pageRoutes && isManagedPath(path);
       const health = pageRoutes && isHealthPath(path);
       if (!measure && !observe && !knowledge && !candidates && !managed && !health && !path.startsWith('/_next/')) return false;

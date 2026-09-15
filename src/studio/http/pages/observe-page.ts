@@ -15,6 +15,11 @@ export type ObservePage =
   | { pageKind: 'conversation'; model: ConversationListItem; navigation: ConversationIndexViewModel; revision: string }
   | { pageKind: 'trajectory'; threadId: string; turnId: string; revision: string; status: ExperienceTurnStatus; live: boolean; replay: ReplayProjection; model: Omit<KnowledgeDebuggerViewModel, 'session'> };
 
+/** 地址识别属装载器；收件箱另由 `inbox-page.ts` 识别，宿主按 `observationInbox` 开关单独决定接不接管。 */
+export function isObservePath(path: string): boolean {
+  return path === OBSERVE_INDEX_PATH || path.startsWith(OBSERVE_CONVERSATION_PREFIX);
+}
+
 /** Project only the selected task window; do not serialize the full source session. */
 export async function loadObservePage(catalog: ConversationCatalog, path: string, lang: Lang): Promise<ObservePage | undefined> {
   if (path === OBSERVE_INDEX_PATH) {

@@ -1,9 +1,15 @@
 import { buildObservationInboxViewModel, type ObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
+import { OBSERVE_INBOX_PATH } from '../page-paths.js';
 
 export type InboxPage = {
   readonly pageKind: 'inbox';
   readonly model: ObservationInboxViewModel;
 };
+
+/** 地址识别属装载器；宿主只按 `observationInbox` 开关决定接不接管这一页。 */
+export function isInboxPath(path: string): boolean {
+  return path === OBSERVE_INBOX_PATH;
+}
 
 /**
  * 观测收件箱 Next 页面的数据桥接（#839 批次 1）。
