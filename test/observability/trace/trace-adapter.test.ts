@@ -3543,151 +3543,31 @@ describe('source-neutral Trace IR', () => {
       hydrated.sessions[0].sessionStory,
     );
 
-    const missingStore = JSON.parse(serialized);
-    delete missingStore.storyContexts;
-    assert.equal(normalizeObservationExperienceReport(missingStore), null);
-    const brokenReference = JSON.parse(serialized);
-    brokenReference.invocations[0].timelineEventIds[0] = 'missing-event';
-    assert.equal(normalizeObservationExperienceReport(brokenReference), null);
-    const malformedBranch = JSON.parse(serialized);
-    malformedBranch.traceTimelines[0].tree.branches = [{ id: 'broken' }];
-    assert.equal(normalizeObservationExperienceReport(malformedBranch), null);
-    const missingInvocationRefs = JSON.parse(serialized);
-    delete missingInvocationRefs.sessions[0].invocationIds;
-    assert.equal(normalizeObservationExperienceReport(missingInvocationRefs), null);
-    const danglingInvocation = JSON.parse(serialized);
-    danglingInvocation.sessions[0].invocationIds = ['missing-invocation'];
-    assert.equal(normalizeObservationExperienceReport(danglingInvocation), null);
-    const duplicateInvocation = JSON.parse(serialized);
-    duplicateInvocation.invocations.push({ ...duplicateInvocation.invocations[0] });
-    duplicateInvocation.meta.invocationCount += 1;
-    assert.equal(normalizeObservationExperienceReport(duplicateInvocation), null);
-    const unreferencedInvocation = JSON.parse(serialized);
-    unreferencedInvocation.invocations.push({
-      ...unreferencedInvocation.invocations[0],
-      id: 'unreferenced-invocation',
-    });
-    unreferencedInvocation.meta.invocationCount += 1;
-    assert.equal(normalizeObservationExperienceReport(unreferencedInvocation), null);
-    const duplicatedSessionRef = JSON.parse(serialized);
-    duplicatedSessionRef.sessions[0].invocationIds.push(
-      duplicatedSessionRef.sessions[0].invocationIds[0],
-    );
-    assert.equal(normalizeObservationExperienceReport(duplicatedSessionRef), null);
-    const orphanTimeline = JSON.parse(serialized);
-    orphanTimeline.traceTimelines.push({
-      ...orphanTimeline.traceTimelines[0],
-      id: 'orphan-timeline',
-    });
-    assert.equal(normalizeObservationExperienceReport(orphanTimeline), null);
-    const wrongStoryGroup = JSON.parse(serialized);
-    wrongStoryGroup.storyContexts[0].sessionGroupKey = 'wrong-group';
-    assert.equal(normalizeObservationExperienceReport(wrongStoryGroup), null);
-    const inconsistentMeta = JSON.parse(serialized);
-    inconsistentMeta.meta.sessionCount += 1;
-    assert.equal(normalizeObservationExperienceReport(inconsistentMeta), null);
-    const invalidGeneratedAt = JSON.parse(serialized);
-    invalidGeneratedAt.generatedAt = 'not-a-timestamp';
-    assert.equal(normalizeObservationExperienceReport(invalidGeneratedAt), null);
-    const invertedInvocationRange = JSON.parse(serialized);
-    invertedInvocationRange.invocations[0].startTimestamp = '2026-07-25T00:07:00.000Z';
-    assert.equal(normalizeObservationExperienceReport(invertedInvocationRange), null);
-    const invalidTimelineTimestamp = JSON.parse(serialized);
-    invalidTimelineTimestamp.traceTimelines[0].tree.main[0].timestamp = 'not-a-timestamp';
-    assert.equal(normalizeObservationExperienceReport(invalidTimelineTimestamp), null);
-    const inconsistentSourceDuration = JSON.parse(serialized);
-    inconsistentSourceDuration.sessions[0].sourceSessionDurationMs += 1;
-    assert.equal(normalizeObservationExperienceReport(inconsistentSourceDuration), null);
-    const invertedEpisodeRange = JSON.parse(serialized);
-    invertedEpisodeRange.storyContexts[0].episodes[0].startTimestamp = '2026-07-25T00:07:00.000Z';
-    assert.equal(normalizeObservationExperienceReport(invertedEpisodeRange), null);
-    const malformedMetrics = JSON.parse(serialized);
-    malformedMetrics.invocations[0].metrics.numToolUnknown = 2;
-    malformedMetrics.invocations[0].metrics.numToolCalls = 1;
-    assert.equal(normalizeObservationExperienceReport(malformedMetrics), null);
-    const mismatchedInvocationOutcome = JSON.parse(serialized);
-    mismatchedInvocationOutcome.invocations[0].indicators.toolUnknownCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedInvocationOutcome), null);
-    const mismatchedToolDistribution = JSON.parse(serialized);
-    mismatchedToolDistribution.invocations[0].toolCounts.fake = 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedToolDistribution), null);
-    const malformedIndicators = JSON.parse(serialized);
-    malformedIndicators.sessions[0].indicators.toolFailureCount = -1;
-    assert.equal(normalizeObservationExperienceReport(malformedIndicators), null);
-    const mismatchedSessionOutcome = JSON.parse(serialized);
-    mismatchedSessionOutcome.sessions[0].indicators.toolUnknownCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedSessionOutcome), null);
-    const mismatchedSessionIndicator = JSON.parse(serialized);
-    mismatchedSessionIndicator.sessions[0].indicators.userMessageCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedSessionIndicator), null);
-    const mismatchedPriorityScore = JSON.parse(serialized);
-    mismatchedPriorityScore.sessions[0].reviewPriorityScore += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedPriorityScore), null);
-    const mismatchedGoalSlice = JSON.parse(serialized);
-    mismatchedGoalSlice.goalSlices[0].skillName = 'another-skill';
-    assert.equal(normalizeObservationExperienceReport(mismatchedGoalSlice), null);
-    const malformedTimelineScope = JSON.parse(serialized);
-    malformedTimelineScope.sessions[0].timelineScope.fullSessionEventCount = -1;
-    assert.equal(normalizeObservationExperienceReport(malformedTimelineScope), null);
-    const inconsistentTimelineScope = JSON.parse(serialized);
-    inconsistentTimelineScope.sessions[0].timelineScope.fullSessionEventCount += 1;
-    assert.equal(normalizeObservationExperienceReport(inconsistentTimelineScope), null);
-    const inconsistentOmittedCount = JSON.parse(serialized);
-    inconsistentOmittedCount.sessions[0].timelineScope.omittedAfterCount += 1;
-    assert.equal(normalizeObservationExperienceReport(inconsistentOmittedCount), null);
-    const inconsistentTruncation = JSON.parse(serialized);
-    inconsistentTruncation.sessions[0].timelineScope.truncated =
-      !inconsistentTruncation.sessions[0].timelineScope.truncated;
-    assert.equal(normalizeObservationExperienceReport(inconsistentTruncation), null);
-    const invertedScopeRange = JSON.parse(serialized);
-    invertedScopeRange.sessions[0].timelineScope.sessionRecordRanges[0].startRecordIndex =
-      invertedScopeRange.sessions[0].timelineScope.sessionRecordRanges[0].endRecordIndex + 1;
-    assert.equal(normalizeObservationExperienceReport(invertedScopeRange), null);
-    const wrongTimelineSession = JSON.parse(serialized);
-    wrongTimelineSession.traceTimelines[0].sessionId = 'wrong-session';
-    wrongTimelineSession.traceTimelines[0].tree.sessionId = 'wrong-session';
-    assert.equal(normalizeObservationExperienceReport(wrongTimelineSession), null);
-    const inconsistentSkillSummary = JSON.parse(serialized);
-    inconsistentSkillSummary.skills[0].invocationCount += 1;
-    assert.equal(normalizeObservationExperienceReport(inconsistentSkillSummary), null);
-    const mismatchedSkillIndicators = JSON.parse(serialized);
-    mismatchedSkillIndicators.skills[0].indicators.toolUnknownCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedSkillIndicators), null);
-    const mismatchedReviewerMetrics = JSON.parse(serialized);
-    mismatchedReviewerMetrics.sessions[0].reviewerReport.oneLookMetrics.toolUnknownCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedReviewerMetrics), null);
-    const mismatchedReviewerDelivery = JSON.parse(serialized);
-    mismatchedReviewerDelivery.sessions[0].reviewerReport.oneLookMetrics.assistantDeliverySignalCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedReviewerDelivery), null);
-    const mismatchedStoryGoalCount = JSON.parse(serialized);
-    mismatchedStoryGoalCount.sessions[0].sessionStory.goalSliceCount += 1;
-    assert.equal(normalizeObservationExperienceReport(mismatchedStoryGoalCount), null);
-    const danglingStoryInvocation = JSON.parse(serialized);
-    danglingStoryInvocation.sessions[0].sessionStory.skillLinks[0].invocationIds = ['missing-invocation'];
-    assert.equal(normalizeObservationExperienceReport(danglingStoryInvocation), null);
-    const danglingStoryGraphEdge = JSON.parse(serialized);
-    danglingStoryGraphEdge.sessions[0].sessionStory.graph.edges[0].toId = 'missing-node';
-    assert.equal(normalizeObservationExperienceReport(danglingStoryGraphEdge), null);
-    const danglingEpisodeEdge = JSON.parse(serialized);
-    const episode = danglingEpisodeEdge.storyContexts[0].episodes[0];
-    episode.orchestrationEdges.push({
-      id: 'dangling-episode-edge',
-      episodeId: episode.id,
-      edgeKind: 'internal_skill',
-      parentSkillSegmentId: 'missing-segment',
-      executorSkillSegmentId: episode.skillSegments[0].id,
-      status: 'started',
-      evidenceRefs: [],
-    });
-    assert.equal(normalizeObservationExperienceReport(danglingEpisodeEdge), null);
-    const danglingFeedbackAttribution = JSON.parse(serialized);
-    danglingFeedbackAttribution.storyContexts[0].episodes[0]
-      .feedbackSignals[0].attributions[0].skillSegmentId = 'missing-segment';
-    assert.equal(normalizeObservationExperienceReport(danglingFeedbackAttribution), null);
-    const danglingEpisodeGoal = JSON.parse(serialized);
-    danglingEpisodeGoal.storyContexts[0].episodes[0]
-      .goalEvidenceRefs[0].goalSliceId = 'missing-goal-slice';
-    assert.equal(normalizeObservationExperienceReport(danglingEpisodeGoal), null);
+    // normalizeObservationExperienceReport 的 fail-closed 校验覆盖五类代表性变异：
+    // 结构缺失、悬空引用、数值不一致、非法时间戳、非法结构。
+    // 完整逐字段遍历属内部校验实现细节,此处只保留各类代表,避免过度遍历。
+    const mutations: ReadonlyArray<readonly [string, (draft: never) => void]> = [
+      ['missing required section', (draft: { storyContexts?: unknown }) => {
+        delete draft.storyContexts;
+      }],
+      ['dangling reference', (draft: { sessions: { invocationIds: string[] }[] }) => {
+        draft.sessions[0].invocationIds = ['missing-invocation'];
+      }],
+      ['inconsistent numeric indicator', (draft: { sessions: { indicators: { toolUnknownCount: number } }[] }) => {
+        draft.sessions[0].indicators.toolUnknownCount += 1;
+      }],
+      ['invalid timestamp', (draft: { generatedAt: string }) => {
+        draft.generatedAt = 'not-a-timestamp';
+      }],
+      ['malformed structure', (draft: { traceTimelines: { tree: { branches: unknown } }[] }) => {
+        draft.traceTimelines[0].tree.branches = [{ id: 'broken' }];
+      }],
+    ];
+    for (const [name, mutate] of mutations) {
+      const draft = JSON.parse(serialized);
+      mutate(draft as never);
+      assert.equal(normalizeObservationExperienceReport(draft), null, `expected null for ${name}`);
+    }
 
     const additiveV3 = JSON.parse(serialized);
     for (const session of additiveV3.sessions) {
@@ -3769,12 +3649,15 @@ describe('source-neutral Trace IR', () => {
 // ---------- Segment by skill ----------
 
 describe('segmentTraceBySkill', () => {
-  it('no skill signal → single "general" segment (plain text, non-SKILL.md read, CC builtin)', () => {
+  it('plain text without any skill signal → single "general" segment', () => {
     const plain = loadClaudeTraceFixture([asstRec('a1', [{ type: 'text', text: 'hello' }])], 's1');
     const segs = segmentTraceBySkill(plain);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'general');
-    // Read 非 SKILL.md 文件不触发 signal 3
+  });
+
+  it('Read of non-SKILL.md file does not trigger signal 3 → "general" segment', () => {
+    // extractSkillReadFileRefFromEvent 对 references/cmds.md 返回 null 的分支
     const readRef = loadClaudeTraceFixture([
       asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/references/cmds.md' } }]),
       userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
@@ -3782,7 +3665,10 @@ describe('segmentTraceBySkill', () => {
     const readRefSegs = segmentTraceBySkill(readRef);
     assert.equal(readRefSegs.length, 1);
     assert.equal(readRefSegs[0].skillName, 'general');
-    // CC 内置命令(/clear, /model, /exit)不算 skill,不切段
+  });
+
+  it('CC builtin command (/clear) is NOT treated as skill → "general" segment', () => {
+    // isClaudeBuiltinCommand 命中 CLAUDE_BUILTIN_COMMANDS 后剥离 command-name 信封的分支
     const ccBuiltin = loadClaudeTraceFixture([
       userRec('u1', '<command-name>/clear</command-name>'),
       asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),

@@ -51,7 +51,7 @@ describe('isMockHit', () => {
     assert.equal(isMockHit(m, 'Read', { file_path: '~/proj/tasks/foo/state.json' }), true);
   });
 
-  it('file_path_endswith enforces path-separator boundary, accepts backslash, rejects missing/non-string path', () => {
+  it('file_path_endswith enforces path-separator boundary', () => {
     const m: Mock = { tool: 'Read', match: { file_path_endswith: 'state.json' }, return: 'x' };
     // 完全相等 OK
     assert.equal(isMockHit(m, 'Read', { file_path: 'state.json' }), true);
@@ -60,10 +60,16 @@ describe('isMockHit', () => {
     // bad-state.json 不应该命中(没有路径分隔符边界)
     assert.equal(isMockHit(m, 'Read', { file_path: 'bad-state.json' }), false);
     assert.equal(isMockHit(m, 'Read', { file_path: '/abs/bad-state.json' }), false);
-    // Windows 反斜杠边界
+  });
+
+  it('file_path_endswith accepts Windows backslash separator', () => {
     const win: Mock = { tool: 'Read', match: { file_path_endswith: 'tasks/state.json' }, return: 'x' };
     assert.equal(isMockHit(win, 'Read', { file_path: 'C:\\proj\\tasks/state.json' }), true);
-    // 缺失或非字符串 path
+  });
+
+  it('file_path_endswith returns false when input.file_path is missing or non-string', () => {
+    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'state.json' }, return: 'x' };
+    // 命中 isMockHit 的前置 guard(typeof file_path !== 'string'),不进 matchesFilePathSuffix
     assert.equal(isMockHit(m, 'Read', {}), false);
     assert.equal(isMockHit(m, 'Read', { file_path: 123 }), false);
   });

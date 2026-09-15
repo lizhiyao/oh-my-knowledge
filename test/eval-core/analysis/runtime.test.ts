@@ -1170,42 +1170,34 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       }],
     });
 
-    const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
-      const record = draft.records[0];
-      if (record.analysisStatus !== 'completed'
-          || record.value === null
-          || Array.isArray(record.value)
-          || typeof record.value !== 'object') {
-        throw new Error('expected completed interval record');
-      }
-      record.value.resamples = 1_000;
-      record.value.confidenceLevel = 0.95;
-    });
-    expect(() => parseAnalysisBundle(
-      forged,
-      fixture.plan,
-      fixture.execution,
-      fixture.evaluation,
-      { schemaValidators: fixture.ports.schemaValidators },
-    )).toThrow(/sealed output schema/);
-
-    const forgedUnitCount = resealAnalysisBundle(fixture.analysis, (draft) => {
-      const record = draft.records[0];
-      if (record.analysisStatus !== 'completed'
-          || record.value === null
-          || Array.isArray(record.value)
-          || typeof record.value !== 'object') {
-        throw new Error('expected completed interval record');
-      }
-      record.value.unitCount = 999;
-    });
-    expect(() => parseAnalysisBundle(
-      forgedUnitCount,
-      fixture.plan,
-      fixture.execution,
-      fixture.evaluation,
-      { schemaValidators: fixture.ports.schemaValidators },
-    )).toThrow(/sealed output schema/);
+    // 篡改 sealed 事实字段(resamples/confidenceLevel/unitCount)后 parse 必须 fail-closed。
+    for (const tamper of [
+      (value: { resamples: number; confidenceLevel: number }) => {
+        value.resamples = 1_000;
+        value.confidenceLevel = 0.95;
+      },
+      (value: { unitCount: number }) => {
+        value.unitCount = 999;
+      },
+    ]) {
+      const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
+        const record = draft.records[0];
+        if (record.analysisStatus !== 'completed'
+            || record.value === null
+            || Array.isArray(record.value)
+            || typeof record.value !== 'object') {
+          throw new Error('expected completed interval record');
+        }
+        tamper(record.value as never);
+      });
+      expect(() => parseAnalysisBundle(
+        forged,
+        fixture.plan,
+        fixture.execution,
+        fixture.evaluation,
+        { schemaValidators: fixture.ports.schemaValidators },
+      )).toThrow(/sealed output schema/);
+    }
   });
 
   it('revalidates a transported simultaneous family against its exact upstream intervals', async () => {
