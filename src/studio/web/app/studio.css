@@ -14,7 +14,8 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 
 .studio-content>.measure-table{display:flex;flex-direction:column;overflow:hidden}.studio-content>.measure-table>.ant-spin{flex:1;min-height:0}.studio-content>.measure-table .ant-spin-container{height:100%;display:flex;flex-direction:column}.studio-content>.measure-table .ant-table{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}.studio-content>.measure-table .ant-pagination{flex-shrink:0;margin:8px 12px}
 
-.studio-brand:hover,.studio-brand:focus,.studio-brand:active{color:#657085;text-decoration:none}.measure-heading h1{font-size:18px;line-height:26px;margin-bottom:2px}.measure-heading p{font-size:12px;line-height:20px}
+.studio-brand:hover,.studio-brand:focus,.studio-brand:active{color:#657085;text-decoration:none}
+.studio-content :where(a:hover),.ant-modal-root :where(a:hover),.ant-drawer :where(a:hover){color:#4235b5;text-underline-offset:3px}.measure-heading h1{font-size:18px;line-height:26px;margin-bottom:2px}.measure-heading p{font-size:12px;line-height:20px}
 
 .knowledge-table .ant-table-tbody>tr>td{height:56px}.knowledge-table th{white-space:nowrap}.knowledge-summary{margin-bottom:12px}.knowledge-table td a{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 
@@ -180,7 +181,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .observe-projects>details>summary>span:last-child{flex-shrink:0;color:#8893a5;font-size:11px;font-weight:400;font-variant-numeric:tabular-nums}
 .observe-session-link{display:block;padding:7px 10px;margin:2px 0 2px 18px;border-radius:6px;text-decoration:none;color:#374158}
 .observe-session-link>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;line-height:20px}
-.observe-session-link small{display:block;color:#8893a5;font-size:11px;margin-top:2px}
+.observe-session-link small{display:block;color:#8893a5;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .observe-session-link.selected{background:#eceafb;color:#4235b5}
 .observe-session-link .studio-running-dot{display:inline-block;margin-right:6px}
 .observe-project-overview,.observe-sidebar-link{border:0;background:none;text-align:left;cursor:pointer;font:inherit;font-size:12px;color:#657085;padding:7px 10px;border-radius:6px}

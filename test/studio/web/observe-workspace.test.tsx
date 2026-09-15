@@ -72,8 +72,10 @@ const sidebarOf = (html: string): string => html.slice(html.indexOf('<aside'), h
 it('长标题与长路径单行省略后，完整内容仍可通过提示取得', () => {
   const longTitle = 'A'.repeat(120);
   const name = 'N'.repeat(80);
+  const longModel = 'M'.repeat(60);
   const html = renderIndex([conversation('thread/long', {
     title: longTitle,
+    model: longModel,
     project: { projectId: 'p', name, directory: '/very/long/project/directory' },
     cwd: '/very/long/working/directory',
     tasks: [{ title: 'latest request text' } as ConversationListItem['tasks'][number]],
@@ -85,6 +87,8 @@ it('长标题与长路径单行省略后，完整内容仍可通过提示取得'
   const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'));
   expect(summary).toContain(`title="${name}\n/very/long/project/directory"`);
   expect(summary).toContain('<span title="1 个会话">1</span>');
+  // 侧栏会话的归档／来源小字与列表页同类小字同一口径：单行省略，完整值走提示。
+  expect(sidebarOf(html)).toContain(`<small title="${longModel}">${longModel}</small>`);
 });
 
 it('独立对话超出侧栏视野时给出可达入口，不静默丢掉较早的对话', () => {
