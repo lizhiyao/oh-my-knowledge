@@ -52,36 +52,24 @@ function mkDoctor(passCount: number): NonNullable<SkillIndexEntry['doctor']> {
 }
 
 describe('assessHealth — Diagnosis-only skill', () => {
-  it('三大维度都没跑 + 有 high insight → 不健康/red,不再落灰色', () => {
-    const h = assessHealth(mkEntry(), [mkInsight('high')], 'zh');
-    assert.equal(h.label, '不健康');
-    assert.equal(h.band, 'red');
-    assert.equal(h.score, null);
-  });
-
-  it('三大维度都没跑 + 只有 medium insight → 待改进/yellow', () => {
-    const h = assessHealth(mkEntry(), [mkInsight('medium')], 'zh');
-    assert.equal(h.label, '待改进');
-    assert.equal(h.band, 'yellow');
-    assert.equal(h.score, null);
-  });
-
-  it('三大维度都没跑 + 只有 low insight → 仍然未评估', () => {
-    const h = assessHealth(mkEntry(), [mkInsight('low')], 'zh');
-    assert.equal(h.label, '未评估');
-    assert.equal(h.band, 'gray');
-  });
-
-  it('三大维度都没跑 + insights 完全为空 → 未评估', () => {
-    const h = assessHealth(mkEntry(), [], 'zh');
-    assert.equal(h.label, '未评估');
-    assert.equal(h.band, 'gray');
-  });
-
-  it('EN 文案也走对应分支', () => {
-    const h = assessHealth(mkEntry(), [mkInsight('high')], 'en');
-    assert.equal(h.label, 'Unhealthy');
-    assert.equal(h.band, 'red');
+  it('三大维度都没跑时按最高 insight 分级:high→red、medium→yellow、low/空→gray,EN 文案一致', () => {
+    const high = assessHealth(mkEntry(), [mkInsight('high')], 'zh');
+    assert.equal(high.label, '不健康');
+    assert.equal(high.band, 'red');
+    assert.equal(high.score, null);
+    const medium = assessHealth(mkEntry(), [mkInsight('medium')], 'zh');
+    assert.equal(medium.label, '待改进');
+    assert.equal(medium.band, 'yellow');
+    assert.equal(medium.score, null);
+    const low = assessHealth(mkEntry(), [mkInsight('low')], 'zh');
+    assert.equal(low.label, '未评估');
+    assert.equal(low.band, 'gray');
+    const empty = assessHealth(mkEntry(), [], 'zh');
+    assert.equal(empty.label, '未评估');
+    assert.equal(empty.band, 'gray');
+    const en = assessHealth(mkEntry(), [mkInsight('high')], 'en');
+    assert.equal(en.label, 'Unhealthy');
+    assert.equal(en.band, 'red');
   });
 });
 
