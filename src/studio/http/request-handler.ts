@@ -56,8 +56,6 @@ export function createStudioRequestHandler({
   });
   const observationRoutes = createObservationRoutes({
     observationsDir,
-    includeObserveCards,
-    includeDoctorCards,
     includeInbox: observationInbox,
   });
   const coreStudioRoute = coreStudioCatalog === undefined
@@ -137,7 +135,7 @@ export function createStudioRequestHandler({
         if (await candidateRoutes(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;
-        if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
+        if (await observationRoutes(routeContext)) return;
       }
 
       response.writeHead(404, TEXT_HEADERS);

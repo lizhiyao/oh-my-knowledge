@@ -9,7 +9,7 @@ import { type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
 import { ConversationReader } from './reader';
 import { StudioUtilities } from '../layout/utilities';
-import { displayTime } from '../display-time';
+import { displayTime } from '../../../application/display/format';
 import { conversationHref } from '../conversation-link';
 
 function conversationLabel(value: string): string {
@@ -93,7 +93,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个会话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开会话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
         <div className="observe-session-list">{rows.slice((visiblePage - 1) * 20, visiblePage * 20).map(item => <Link className="observe-session-row" key={item.threadId} href={conversationHref(item.threadId, lang)}>
           <div><strong title={conversationLabel(item.title)}>{conversationLabel(item.title)}</strong><p>{item.tasks.at(-1) ? `${t('最近请求：', 'Latest request: ')}${conversationLabel(item.tasks.at(-1)!.title)}` : t('打开后读取会话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
-          <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{(item.endTimestamp ?? item.startTimestamp)?.slice(5, 16).replace('T', ' ') ?? '—'}</time>{(item.toolFailureCount ?? 0) > 0 && <small title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
+          <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{displayTime(item.endTimestamp ?? item.startTimestamp, 'minute')}</time>{(item.toolFailureCount ?? 0) > 0 && <small title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
         </Link>)}{!rows.length && <Empty description={t('暂无匹配的会话。已有运行记录会自动出现在这里。', 'No matching conversations. Existing runtime records appear here automatically.')}/>}</div>
         <Pagination current={visiblePage} total={rows.length} pageSize={20} showSizeChanger={false} onChange={setCurrent}/>
       </>}

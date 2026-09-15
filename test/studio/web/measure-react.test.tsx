@@ -64,6 +64,9 @@ describe('measure react detail keeps every projected fact in the served document
   it('keeps timestamps machine-readable and colors only the budget verdict', () => {
     const html = runDetail(detail(), 'en');
     assert.ok(html.includes('<time dateTime="2026-08-31T12:00:00.000Z">'), 'created-at stays a <time> element');
+    // 可见文案必须来自 display/format 这个唯一 owner：时间不加引号包第二层、耗时走 formatDuration。
+    assert.ok(html.includes('2026-08-31 12:00:00 UTC'), 'created-at text is displayTime output, not a local formatter');
+    assert.ok(html.includes('>800ms<') && html.includes('>450ms<'), 'stage durations render formatDuration output');
     assert.ok(/<span class="ant-tag[^"]*ant-tag-success[^"]*">within-budget<\/span>/.test(html), 'budget summary carries its tone');
     assert.ok(html.includes('<code class="measure-code">invocations=2</code>'), 'budget counts stay plain facts');
   });

@@ -11,7 +11,7 @@ import { Swimlane } from './swimlane';
 import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
 import { langSuffix, type Language } from '../layout/shell';
-import { displayTime } from '../display-time';
+import { displayTime } from '../../../application/display/format';
 import { conversationHref } from '../conversation-link';
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 

@@ -4,7 +4,7 @@ import { Button, Descriptions, Drawer, Empty, Input, Space, Table, Tag, Typograp
 import type { ExperienceTimelineEvent } from '../../../../observability/contracts/experience';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import type { Language } from '../layout/shell';
-import { displayTime } from '../display-time';
+import { displayTime } from '../../../application/display/format';
 
 type RecordRow = { id: string; index: number; timestamp?: string; type: string; label: string; text: string; data: Record<string, unknown>; limited: boolean };
 export function EventRecords({events,lang}: {events:ExperienceTimelineEvent[];lang:Language}) {

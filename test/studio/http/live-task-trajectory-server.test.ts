@@ -142,6 +142,42 @@ describe('Live task trajectory server', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(cancelledBeforeReady, true);
   });
+  it('answers 501 on a host whose catalog is a static snapshot, and the page offers no live control', async () => {
+    // DSH 插件挂的 `createDshConversationCatalog()` 就是这种目录：推来的快照没有可跟随的实时源。
+    // 这里故意让它报 liveObservable: true，用来证明页面模型里的能力判断不是冗余的一半。
+    const staticCatalog: ConversationCatalog = {
+      async listConversations() {
+        return { conversations: [], totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 };
+      },
+      async getConversation() {
+        return undefined;
+      },
+      async loadTaskTrajectory() {
+        return { ...trajectory, liveObservable: true };
+      },
+    };
+    const staticServer = createNextStudioServer({
+      port: 0,
+      observationsDir: join(root, 'static-observations'),
+      conversationCatalog: staticCatalog,
+    });
+    const staticUrl = await staticServer.start();
+    try {
+      const threadId = encodeURIComponent(trajectory.session.threadId);
+      const turnId = encodeURIComponent(trajectory.session.turns.at(-1)!.turnId);
+      const response = await fetch(`${staticUrl}/api/conversations/${threadId}/tasks/${turnId}/live`);
+      assert.equal(response.status, 501);
+      assert.deepEqual(await response.json(), { error: 'live_task_trajectory_unavailable' });
+
+      const html = await (await fetch(`${staticUrl}/observe/conversations/${threadId}/tasks/${turnId}`)).text();
+      // 实时控件整体缺席才是「页面不提供实时能力」：`data-live-revision` 只是客户端探测新版本的标记，
+      // 静态宿主下同样渲染，用它证明不了任何事。
+      assert.doesNotMatch(html, /暂停跟随|跟随最新|正在连接|实时更新中|正在重连|更新失败/, '数据说自己可跟随也不能替宿主长出实时源');
+    } finally {
+      await staticServer.stop();
+    }
+  });
+
   it('closes an active SSE connection when the server stops', async () => {
     unsubscribed = false;
     const response = await fetch(`${baseUrl}/api/conversations/thread/tasks/live/live`);

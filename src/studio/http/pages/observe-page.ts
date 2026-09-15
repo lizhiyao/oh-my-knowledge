@@ -35,6 +35,8 @@ export async function loadObservePage(catalog: ConversationCatalog, path: string
   const view = buildKnowledgeDebuggerViewModel(
     trajectory.session, turnId, trajectory.ingestion, { ...trajectory.sourceRecords, records: [] },
   );
+  // 数据可跟随（liveObservable）与宿主有实时源（observeTaskTrajectory）是两个轴：DSH 的快照目录
+  // 只有前者，页面因此不给一个按下去跟不住任何事情的开关（#902 §四）。
   const live = trajectory.liveObservable && Boolean(catalog.observeTaskTrajectory);
   const replay = projectReplay(view, lang, { pendingToolResults: live });
   replay.axisTicks = visibleAxisTicks(replay);

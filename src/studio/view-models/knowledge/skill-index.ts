@@ -19,12 +19,19 @@ export interface SkillDoctorSnapshot {
   results: DoctorRuleResult[];
 }
 
+/**
+ * 综合健康档位：doctor／observe／insights 三方证据收敛出的**测量口径**，不是着色词表。
+ * 呈现投影见 `HealthAssessment.tone`（`view-models/display/tone.ts` 的 `StudioTone`）；
+ * gray = 两侧都没有可信证据，不等于「差」。`/api/skills` 按本词表原样交出 `band`。
+ */
+export type SkillHealthBand = 'green' | 'yellow' | 'red' | 'gray';
+
 export interface SkillObserveSnapshot {
   analysisId: string;
   generatedAt: string;
   healthBand: 'green' | 'yellow' | 'red';
   /** Read-time projection after applying observation confidence and tool sample guards. */
-  effectiveBand: SkillIndexEntry['band'];
+  effectiveBand: SkillHealthBand;
   failureRate: number;
   toolCallCount?: number;
   toolResolvedCount?: number;
@@ -87,7 +94,7 @@ export interface SkillIndexEntry {
   doctorHistory: SkillDoctorSnapshot[];
   /** 综合健康灯。doctor / observe 任一红 → red;任一黄 → yellow;
    *  全绿 → green;皆未跑 → gray。 */
-  band: 'green' | 'yellow' | 'red' | 'gray';
+  band: SkillHealthBand;
   /** doctor graph sidecar 的轻量 Studio 投影。 */
   graph?: SkillGraphSnapshot;
 }

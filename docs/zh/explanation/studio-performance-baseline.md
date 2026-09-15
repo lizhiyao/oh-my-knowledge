@@ -69,7 +69,7 @@ yarn studio:baseline
 
 ## 结论与决策
 
-1. **`querySkillTrend` 是实测确认的 O(N²) 热点——已修复。** 原实现先 listAnalyses 全量解析所有 observe-health 报告，再逐条 loadAnalysis 重新扫描目录各读一次。实测热请求：10.5 ms（small）/ 215 ms（medium）/ 2344 ms（large）。修复后单遍扫描、每份报告只解析一次，语义不变（live 优先、卡片按 id 去重、最旧在前）。同条件复测：3.7 / 9.6 / 44.2 ms，large 档提升 53 倍。这是基线证实为必要的唯一优化；它是算法修复，不是新增缓存层。这三个复测数值取自已退役的 `/observe/skill-trend/*` HTML 路由；修复本身在 `application/knowledge/knowledge-reports.ts` 的扫描层，与谁渲染无关，因此对 `/api/skill-trend/*` 仍然成立。
+1. **`querySkillTrend` 是实测确认的 O(N²) 热点——已修复。** 原实现先 listAnalyses 全量解析所有 observe-health 报告，再逐条 loadAnalysis 重新扫描目录各读一次。实测热请求：10.5 ms（small）/ 215 ms（medium）/ 2344 ms（large）。修复后单遍扫描、每份报告只解析一次，语义不变（live 优先、卡片按 id 去重、最旧在前）。同条件复测：3.7 / 9.6 / 44.2 ms，large 档提升 53 倍。这是基线证实为必要的唯一优化；它是算法修复，不是新增缓存层。这三个复测数值取自已退役的 `/observe/skill-trend/*` HTML 路由；修复本身在 `application/knowledge/knowledge-reports.ts` 的扫描层，与谁渲染无关，因此对现在读它的 Next 页面装载器（`http/pages/health-page.ts` → `querySkillTrend`）同样成立。
 2. **响应体积随规模线性增长；暂不引入服务端分页。** `/observe/inbox` 在三档下分别为 0.7 / 3.1 / 17 MB，`/api/skills` 为 24 KB / 633 KB / 5.9 MB。Studio 是本地单用户工具，这些体积下的传输已包含在上表热耗时内，因此记录取舍而不行动。旧 HTML inbox 页面已在 #839 收口批次退役：表中三行 `/observe/inbox` 是退役前的测量，`yarn studio:baseline` 不再采集该路由，因此与重跑结果不可比。React 收件箱的分页／可视区域渲染按它自己的真实入口另行决定，不沿用已退役页面的口径。
 3. **同步文件系统操作在该规模下可接受。** large 档 24 并发下事件循环 p99 ≤ 48.4 ms，冷索引构建 ≤ 11.5 ms。不引入异步 I/O 改写或 worker 卸载；若未来宿主改变并发模型，以本页数值为参照再评估。
 4. **缓存指纹成本有界且可接受。** `/api/skills` 热耗时包含逐请求的元数据指纹重算（约 10 / 80 / 260 次文件 stat）与对缓存索引的 `structuredClone`。100 skill 时 54.5 ms 热耗时不足以证明文件监听或增量失效机制；有界 keyed LRU（容量 8）仍是全部机制，不引入无界 `Map<fingerprint, entry>`。此项同时闭环缓存批次遗留的「先测量元数据扫描成本再决定失效机制」。

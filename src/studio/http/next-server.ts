@@ -6,10 +6,10 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextCatalogContext, nextHealthContext, nextInboxContext, nextManagedContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { nextHealthContext, nextInboxContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
-import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
+import { loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
 import { loadObservePage, type ObservePage } from './pages/observe-page.js';
 
 import { loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
@@ -138,26 +138,20 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           response.end('conversation_or_task_not_found'); return true;
         }
       }
-      let catalog = options.coreStudioCatalog;
-      // Resolve before Next starts streaming, retaining the HTTP status contract.
+      let measurePage: MeasurePage | undefined;
+      // 装载在 Next 开始流式输出之前完成，所以数据源故障仍是宿主的 503、缺页仍是宿主的 404；
+      // 页面只拿装载好的事实，不再自己判第二次「记录不存在」（#902 §三）。
       if (measure) {
         try {
-          if (!catalog) throw new Error('unavailable');
-          if (path === '/measure') {
-            const runs = await catalog.list();
-            catalog = { ...catalog, list: async () => runs };
-          } else {
-            const encoded = path.slice('/measure/'.length);
-            let runId: string | undefined;
-            try { runId = encoded && !encoded.includes('/') ? decodeURIComponent(encoded) : undefined; } catch { /* malformed identity is a missing route */ }
-            const detail = runId === undefined ? undefined : await catalog.get(runId);
-            if (!detail) { response.writeHead(404, TEXT_HEADERS); response.end('core_run_not_found'); return true; }
-            const source = catalog;
-            catalog = { ...catalog, get: async (id) => id === runId ? detail : source.get(id) };
-          }
+          if (!options.coreStudioCatalog) throw new Error('unavailable');
+          measurePage = await loadMeasurePage(options.coreStudioCatalog, path);
         } catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end(CORE_STUDIO_SOURCE_UNAVAILABLE); return true;
+        }
+        if (!measurePage) {
+          response.writeHead(404, TEXT_HEADERS);
+          response.end('core_run_not_found'); return true;
         }
       }
       if (!app) throw new Error('Studio UI is not started');
@@ -175,7 +169,9 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       else if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
       else if (managedPage) await nextManagedContext.run(managedPage, () => handler(request, response));
       else if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
-      else if (catalog) await nextCatalogContext.run(catalog as CoreStudioCatalog, () => handler(request, response));
+      else if (measurePage) await (measurePage.pageKind === 'index'
+        ? nextMeasureRunsContext.run(measurePage.runs, () => handler(request, response))
+        : nextMeasureRunContext.run(measurePage.detail, () => handler(request, response)));
       else await handler(request, response);
       return true;
     },

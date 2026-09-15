@@ -167,30 +167,18 @@ describe('Studio observation routes', () => {
     assert.equal(unsupported.headers.allow, 'DELETE, GET, POST');
   });
 
-  it('uses one resolved directory snapshot per diagnostics request', async () => {
-    let analysesResolutions = 0;
-    let doctorResolutions = 0;
-    const snapshotServer = createReportServer({
-      port: 0,
-      observationsDir,
-      analysesDir: () => {
-        analysesResolutions += 1;
-        return join(root, 'analyses');
-      },
-      doctorsDir: () => {
-        doctorResolutions += 1;
-        return join(root, 'doctors');
-      },
-    });
-    const snapshotUrl = await snapshotServer.start();
-    try {
-      const diagnostics = await request(`${snapshotUrl}/api/observe-inbox/diagnostics`);
-      assert.equal(diagnostics.status, 200);
-      assert.equal(analysesResolutions, 1);
-      assert.equal(doctorResolutions, 1);
-    } finally {
-      await snapshotServer.stop();
+  it('retires the inbox show and diagnostics JSON routes', async () => {
+    // #902 §一：渲染层收敛后这两条机读投影只剩测试读者，一律退出，不补重定向、不留兼容别名。
+    for (const path of ['/api/observe-inbox/show?id=x', '/api/observe-inbox/diagnostics']) {
+      const retired = await request(`${baseUrl}${path}`);
+      assert.equal(retired.status, 404, `${path} 已退出`);
+      assert.equal(retired.headers.location, undefined, `${path} 不留重定向`);
+      // 落到宿主统一的纯文本 404，而不是路由自己查不到对象时的 JSON 错误体。
+      assert.equal(retired.body, 'Not Found', `${path} 不再由路由应答`);
     }
+    // 收件箱本身仍有读者：列表与复核状态两条不受影响。
+    assert.equal((await request(`${baseUrl}/api/observe-inbox`)).status, 200);
+    assert.equal((await request(`${baseUrl}/api/observe-inbox/view`)).status, 200);
   });
 
   it('omits inbox routes when the host opts out, keeping the conversation group', async () => {
@@ -207,8 +195,6 @@ describe('Studio observation routes', () => {
         '/observe/inbox',
         '/api/observe-inbox',
         '/api/observe-inbox/view',
-        '/api/observe-inbox/show?id=x',
-        '/api/observe-inbox/diagnostics',
         '/api/observe-inbox/review-state',
       ]) {
         const res = await request(`${scopedUrl}${path}`);

@@ -26,6 +26,11 @@ export function langSuffix(lang: Language): string {
   return `?lang=${lang}`;
 }
 
+/** 宿主入口地址：挂了页面组的宿主从 `/` 进（HTTP adapter 302 到观测），只挂 `/measure` 的评测预览宿主没有兄弟路由，入口就是评测列表本身。 */
+export function studioEntryPath(hasNavigation: boolean): string {
+  return hasNavigation ? '/' : '/measure';
+}
+
 function LanguageSwitch({ lang }: { lang: Language }) {
   const route = useStudioRoute();
   if (!route) return null;
@@ -43,7 +48,7 @@ export function StudioShell({ lang, children, active, utilitiesInSidebar = false
   // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
   const navigation = useStudioNavigation();
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
-    <div className="studio-app"><header className="studio-header"><a className="studio-brand" href={`/${navigation ? '' : 'measure'}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></a>
+    <div className="studio-app"><header className="studio-header"><a className="studio-brand" href={`${studioEntryPath(navigation)}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></a>
       {navigation ? <nav aria-label={lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}>
         <a href={`/observe${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</a>
         <a href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</a>

@@ -39,7 +39,6 @@ export interface ObservationInboxViewModel extends EffectiveObservationReview {
   severitySkillCounts: Record<ObservationInboxItem['severity'], number>;
   skillCount: number;
   reportCount: number;
-  latestSeenLabel: string;
   reviewState: ObservationReviewState;
 
 }
@@ -106,14 +105,7 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     skillChain: skillChains[skillName],
     derivedStandards: skillDerivedStandards,
   })]));
-  const latestSeen = allItems
-    .filter((item) => (
-      item.timestampedOccurrences
-      ?? (item.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : item.occurrences)
-    ) > 0)
-    .reduce((latest, item) => item.lastSeen > latest ? item.lastSeen : latest, '');
   const reportCount = reports.length;
-  const latestSeenLabel = latestSeen ? latestSeen.slice(0, 19).replace('T', ' ') : '—';
   const effectiveReview = projectEffectiveObservationReview(experienceReports, reviewState, skillDerivedStandards);
 
   return {
@@ -134,7 +126,6 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     severitySkillCounts,
     skillCount,
     reportCount,
-    latestSeenLabel,
     reviewState,
     ...effectiveReview,
   };

@@ -11,24 +11,19 @@ import type {
   HealthIndexRow,
   HealthReportFacts,
   HealthSkillFacts,
-  HealthTone,
   HealthTrendFacts,
 } from '../../../application/observe/health-format';
+import type { StudioTone } from '../../../view-models/display/tone';
+import { displayTime, formatDuration, formatPercent } from '../../../application/display/format';
 import { langSuffix, type Language } from '../layout/shell';
 import { tagStatus } from '../tag-color';
 import { KnowledgeSectionNav } from '../knowledge/section-nav';
 
 const reportHref = (id: string, lang: Language) => `/observe/health/${encodeURIComponent(id)}${langSuffix(lang)}`;
 const trendHref = (skill: string, lang: Language) => `/observe/skill-trend/${encodeURIComponent(skill)}${langSuffix(lang)}`;
-const stamp = (iso: string) => iso.slice(0, 16).replace('T', ' ');
-const day = (iso: string) => iso.slice(0, 10);
-/** 比率取整到百分位是展示选择；判定阈值已在服务端投影成 tone。 */
-const pct = (ratio: number | null | undefined) => (ratio == null ? '—' : `${Math.round(ratio * 100)}%`);
 
-/** 色带填充色：neutral 表示样本不足，不给硬色。 */
-const TONE_BAR: Record<HealthTone, string> = {
-  success: '#1f9d63', warning: '#d97706', error: '#dc2626', neutral: '#b0b8c5',
-};
+/** 填充色只在 `web/app/studio.css` 的 `--tone-*-fill` 一处，组件按 tone 取变量名，不再抄十六进制。 */
+const toneFill = (tone: StudioTone) => `var(--tone-${tone}-fill)`;
 const SERIES_COLOR = { gap: '#f87171', weighted: '#fbbf24', failure: '#a78bfa', coverage: '#4ade80' } as const;
 
 const zhCopy = {
@@ -83,8 +78,8 @@ const zhCopy = {
   weightedGapLabel: '加权盲区',
   softSignals: '为软信号（建议复核）',
   mostlyHard: '以硬证据为主',
-  veryUnstable: (rate: number) => `失败率 ${rate}%，gap 可能是环境问题`,
-  unstable: (rate: number) => `失败率 ${rate}%，gap 可能含噪声`,
+  veryUnstable: (rate: string) => `失败率 ${rate}，gap 可能是环境问题`,
+  unstable: (rate: string) => `失败率 ${rate}，gap 可能含噪声`,
   cancelledOnly: '没有可比较结果，工具调用已取消',
   outcomesUnavailable: '工具结果状态不可测',
   outcomesComparable: (comparable: number, total: number, cancelled: number) => `${comparable}/${total} 次结果可比较${cancelled > 0 ? `，${cancelled} 次取消` : ''}`,
@@ -98,7 +93,7 @@ const zhCopy = {
   signalRepeatedFailure: '反复未命中',
   timesCancelled: (n: number) => `${n} 次取消`,
   timesUnknown: (n: number) => `${n} 次状态未知`,
-  failedOf: (failures: number, comparable: number, rate: number) => `${failures}/${comparable} 失败（${rate}%）`,
+  failedOf: (failures: number, comparable: number, rate: string) => `${failures}/${comparable} 失败（${rate}）`,
   cancelledSuffix: (n: number) => ` · ${n} 取消`,
   noToolCalls: '0 次工具调用',
   tokens: 'tokens',
@@ -198,8 +193,8 @@ const enCopy: typeof zhCopy = {
   weightedGapLabel: 'weighted gap',
   softSignals: 'soft signals (review)',
   mostlyHard: 'mostly hard evidence',
-  veryUnstable: (rate: number) => `failure rate ${rate}%, gap likely an env issue`,
-  unstable: (rate: number) => `failure rate ${rate}%, gap may be noisy`,
+  veryUnstable: (rate: string) => `failure rate ${rate}, gap likely an env issue`,
+  unstable: (rate: string) => `failure rate ${rate}, gap may be noisy`,
   cancelledOnly: 'no comparable outcomes; calls cancelled',
   outcomesUnavailable: 'tool outcomes unavailable',
   outcomesComparable: (comparable: number, total: number, cancelled: number) => `${comparable}/${total} outcomes comparable${cancelled > 0 ? `, ${cancelled} cancelled` : ''}`,
@@ -213,7 +208,7 @@ const enCopy: typeof zhCopy = {
   signalRepeatedFailure: 'Repeated miss',
   timesCancelled: (n: number) => `${n} cancelled`,
   timesUnknown: (n: number) => `${n} unknown outcomes`,
-  failedOf: (failures: number, comparable: number, rate: number) => `${failures}/${comparable} failed (${rate}%)`,
+  failedOf: (failures: number, comparable: number, rate: string) => `${failures}/${comparable} failed (${rate})`,
   cancelledSuffix: (n: number) => ` · ${n} cancelled`,
   noToolCalls: '0 tool calls',
   tokens: 'tokens',
@@ -270,7 +265,7 @@ const SIGNAL_LABEL_KEY = {
   repeated_failure: 'signalRepeatedFailure',
 } as const;
 
-function BandTag({ tone, label }: { tone: HealthTone; label: string }) {
+function BandTag({ tone, label }: { tone: StudioTone; label: string }) {
   return <Tag color={tagStatus(tone)}>{label}</Tag>;
 }
 
@@ -327,7 +322,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
           ellipsis: true,
           render: (_, row) => <Link href={reportHref(row.id, lang)} title={row.id}>{row.id}</Link>,
         },
-        { title: copy.colGenerated, width: 170, render: (_, row) => <span className="health-stamp">{stamp(row.generatedAt)}</span> },
+        { title: copy.colGenerated, width: 170, render: (_, row) => <span className="health-stamp">{displayTime(row.generatedAt, 'minute')}</span> },
         { title: copy.colHealth, width: 130, render: (_, row) => <BandTag tone={row.tone} label={bandLabel(row.healthBand, row.confidence, copy)}/> },
         { title: copy.colSessions, width: 90, align: 'right', dataIndex: 'sessionCount' },
         { title: copy.colSegments, width: 90, align: 'right', dataIndex: 'segmentCount' },
@@ -338,7 +333,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
 }
 
 /** 工具成败一句话与它的稳定性着色：折叠标题和面板体共用，避免同一 skill 在两处给出口径不同的读数。 */
-function failureFacts(skill: HealthSkillFacts, lang: Language): { label: string; tone: HealthTone } {
+function failureFacts(skill: HealthSkillFacts, lang: Language): { label: string; tone: StudioTone } {
   const copy = COPY[lang];
   const { tools } = skill;
   const label = tools.total > 0 && tools.comparable === 0
@@ -347,10 +342,10 @@ function failureFacts(skill: HealthSkillFacts, lang: Language): { label: string;
       : tools.cancelled > 0
         ? `${copy.timesCancelled(tools.cancelled)} · ${copy.timesUnknown(tools.unknown)}`
         : copy.timesUnknown(tools.total))
-    : tools.failureRatePercent === null
+    : tools.failureRate === null
       ? copy.noToolCalls
-      : `${copy.failedOf(tools.failures, tools.comparable, tools.failureRatePercent)}${tools.cancelled > 0 ? copy.cancelledSuffix(tools.cancelled) : ''}`;
-  const tone: HealthTone = tools.stability === 'very-unstable'
+      : `${copy.failedOf(tools.failures, tools.comparable, formatPercent(tools.failureRate))}${tools.cancelled > 0 ? copy.cancelledSuffix(tools.cancelled) : ''}`;
+  const tone: StudioTone = tools.stability === 'very-unstable'
     ? 'error'
     : tools.stability === 'unstable' ? 'warning' : 'neutral';
   return { label, tone };
@@ -359,10 +354,10 @@ function failureFacts(skill: HealthSkillFacts, lang: Language): { label: string;
 function SkillPanel({ skill, lang }: { skill: HealthSkillFacts; lang: Language }) {
   const copy = COPY[lang];
   const { gap, coverage, tools, usage } = skill;
-  const stabilityNote = tools.stability === 'very-unstable' && tools.failureRatePercent !== null
-    ? copy.veryUnstable(tools.failureRatePercent)
-    : tools.stability === 'unstable' && tools.failureRatePercent !== null
-      ? copy.unstable(tools.failureRatePercent)
+  const stabilityNote = tools.stability === 'very-unstable' && tools.failureRate !== null
+    ? copy.veryUnstable(formatPercent(tools.failureRate))
+    : tools.stability === 'unstable' && tools.failureRate !== null
+      ? copy.unstable(formatPercent(tools.failureRate))
       : tools.stability === 'unknown'
         ? (tools.cancelled > 0 ? copy.cancelledOnly : copy.outcomesUnavailable)
         : undefined;
@@ -377,19 +372,19 @@ function SkillPanel({ skill, lang }: { skill: HealthSkillFacts; lang: Language }
     ? (skill.confidence === 'underpowered' ? copy.skillConfidence(skill.segmentCount) : copy.skillConfidenceLow(skill.segmentCount))
     : undefined;
   const weightedHint = [
-    gap.softSharePercent >= 10
-      ? `${copy.weightedGapLabel} ${gap.weightedPercent}% · ${gap.softSharePercent}% ${copy.softSignals}`
-      : `${copy.weightedGapLabel} ${gap.weightedPercent}% · ${copy.mostlyHard}`,
+    gap.mostlySoft
+      ? `${copy.weightedGapLabel} ${formatPercent(gap.weightedRate)} · ${formatPercent(gap.softShareRate)} ${copy.softSignals}`
+      : `${copy.weightedGapLabel} ${formatPercent(gap.weightedRate)} · ${copy.mostlyHard}`,
     stabilityNote,
     outcomeNote,
     confidenceNote,
   ].filter((line): line is string => line !== undefined).join(' · ');
   const tokenText = usage.tokenCoverage > 0
-    ? `${(usage.billableTokens / 1000).toFixed(1)}k ${copy.tokens}${usage.cachedTokens > 0 ? ` + ${(usage.cachedTokens / 1000).toFixed(1)}k ${copy.cached}` : ''}${usage.tokenCoverage < 1 ? ` (${Math.round(usage.tokenCoverage * 100)}% ${copy.coverageWord})` : ''}`
+    ? `${(usage.billableTokens / 1000).toFixed(1)}k ${copy.tokens}${usage.cachedTokens > 0 ? ` + ${(usage.cachedTokens / 1000).toFixed(1)}k ${copy.cached}` : ''}${usage.tokenCoverage < 1 ? ` (${formatPercent(usage.tokenCoverage)} ${copy.coverageWord})` : ''}`
     : copy.tokensUnobserved;
   const usageLine = [
     tokenText,
-    `${(usage.durationMs / 1000).toFixed(1)}s (${copy.avg} ${(usage.avgDurationMsPerSegment / 1000).toFixed(1)}s/${copy.seg})`,
+    `${formatDuration(usage.durationMs)} (${copy.avg} ${formatDuration(usage.avgDurationMsPerSegment)}/${copy.seg})`,
     `${usage.numTurns} ${copy.turns}`,
   ].join(' · ');
   const failure = failureFacts(skill, lang);
@@ -401,17 +396,17 @@ function SkillPanel({ skill, lang }: { skill: HealthSkillFacts; lang: Language }
     <Typography.Text className="health-skill-usage" type="secondary">{usageLine}</Typography.Text>
     <div className="health-skill-metrics">
       <section className="health-metric">
-        <div className="health-metric-head"><span>{copy.knowledgeUsed}</span><Typography.Text className={`tone-${coverage?.tone ?? 'neutral'}`}>{coverage ? `${coverage.percent}%` : '—'}</Typography.Text></div>
+        <div className="health-metric-head"><span>{copy.knowledgeUsed}</span><Typography.Text className={`tone-${coverage?.tone ?? 'neutral'}`}>{formatPercent(coverage?.rate)}</Typography.Text></div>
         {coverage
           ? <>
-            <Progress percent={coverage.percent} showInfo={false} size="small" strokeColor={TONE_BAR[coverage.tone]} aria-label={copy.knowledgeUsed}/>
+            <Progress percent={coverage.rate * 100} showInfo={false} size="small" strokeColor={toneFill(coverage.tone)} aria-label={copy.knowledgeUsed}/>
             <Typography.Text type="secondary" className="health-metric-facts">{coverage.filesCovered} {copy.hit} · {coverage.filesMissed} {copy.miss} · {coverage.searches} {copy.searches}</Typography.Text>
           </>
           : <Typography.Text type="secondary">{copy.noCoverage}</Typography.Text>}
       </section>
       <section className="health-metric">
-        <div className="health-metric-head"><span>{copy.knowledgeGaps}</span><Typography.Text className={`tone-${gap.tone}`}>{gap.percent}%</Typography.Text></div>
-        <Progress percent={gap.percent} showInfo={false} size="small" strokeColor={TONE_BAR[gap.tone]} aria-label={copy.knowledgeGaps}/>
+        <div className="health-metric-head"><span>{copy.knowledgeGaps}</span><Typography.Text className={`tone-${gap.tone}`}>{formatPercent(gap.rate)}</Typography.Text></div>
+        <Progress percent={gap.rate * 100} showInfo={false} size="small" strokeColor={toneFill(gap.tone)} aria-label={copy.knowledgeGaps}/>
         <Typography.Text type="secondary" className="health-metric-facts">{gap.samplesWithGap}/{gap.sampleCount} {copy.segmentsWithSignals}</Typography.Text>
         <Typography.Text className="health-metric-hint">{weightedHint}</Typography.Text>
         <div className="health-signals">
@@ -443,7 +438,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
       <div className="observe-detail-meta">
         <span>{copy.reportKind}</span>
         <span>{copy.timeRangeLabel}{report.timeRange}</span>
-        <span>{copy.generatedAtLabel}{report.generatedAt}</span>
+        <span>{copy.generatedAtLabel}{displayTime(report.generatedAt, 'minute')}</span>
       </div>
     </header>
     <div className="health-scroll">
@@ -451,7 +446,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
         <div className="health-stat"><Typography.Text className="health-stat-value">{report.sessionCount}</Typography.Text><Typography.Text type="secondary" className="health-stat-label">{copy.sessions}</Typography.Text></div>
         <div className="health-stat"><Typography.Text className="health-stat-value">{report.segmentCount}</Typography.Text><Typography.Text type="secondary" className="health-stat-label">{copy.segments}</Typography.Text></div>
         <div className="health-stat"><Typography.Text className="health-stat-value">{report.toolCallCount}</Typography.Text><Typography.Text type="secondary" className="health-stat-label">{copy.toolCalls}</Typography.Text></div>
-        <div className="health-stat"><Typography.Text className={`health-stat-value tone-${report.weightedGapTone}`}>{report.weightedGapPercent}%</Typography.Text><Typography.Text type="secondary" className="health-stat-label">{copy.weightedGap}</Typography.Text></div>
+        <div className="health-stat"><Typography.Text className={`health-stat-value tone-${report.weightedGapTone}`}>{formatPercent(report.weightedGapRate)}</Typography.Text><Typography.Text type="secondary" className="health-stat-label">{copy.weightedGap}</Typography.Text></div>
       </div>
       {report.ingestion && <Alert
         type="warning"
@@ -487,7 +482,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
             forceRender: true,
             label: <span className="health-skill-label">
               <strong>{skill.skillName}</strong>
-              <Typography.Text type="secondary">{skill.segmentCount} {copy.segments} · {skill.gap.percent}% {copy.knowledgeGaps}</Typography.Text>
+              <Typography.Text type="secondary">{skill.segmentCount} {copy.segments} · {formatPercent(skill.gap.rate)} {copy.knowledgeGaps}</Typography.Text>
             </span>,
             children: <SkillPanel skill={skill} lang={lang}/>,
           }))}/>}
@@ -525,8 +520,8 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
       <div className="observe-detail-title"><h1 title={trend.skillName}>{copy.trendHeading} · {trend.skillName}</h1></div>
       {points.length > 0 && <div className="observe-detail-meta">
         <span>{points.length} {copy.dataPoints}</span>
-        <span>{copy.earliest} {day(points[0].generatedAt)}</span>
-        <span>{copy.latest} {day(points[points.length - 1].generatedAt)}</span>
+        <span>{copy.earliest} {displayTime(points[0].generatedAt, 'day')}</span>
+        <span>{copy.latest} {displayTime(points[points.length - 1].generatedAt, 'day')}</span>
       </div>}
     </header>
     {points.length === 0
@@ -559,21 +554,21 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
           pagination={false}
           dataSource={points}
           columns={[
-            { title: copy.colTimestamp, render: (_, point) => <Link className="health-stamp" href={reportHref(point.analysisId, lang)}>{stamp(point.generatedAt)}</Link> },
+            { title: copy.colTimestamp, render: (_, point) => <Link className="health-stamp" href={reportHref(point.analysisId, lang)}>{displayTime(point.generatedAt, 'minute')}</Link> },
             { title: copy.colSegs, width: 80, align: 'right', dataIndex: 'segmentCount' },
-            { title: copy.colGap, width: 80, align: 'right', render: (_, point) => pct(point.gapRate) },
-            { title: copy.colWeighted, width: 80, align: 'right', render: (_, point) => pct(point.weightedGapRate) },
+            { title: copy.colGap, width: 80, align: 'right', render: (_, point) => formatPercent(point.gapRate) },
+            { title: copy.colWeighted, width: 80, align: 'right', render: (_, point) => formatPercent(point.weightedGapRate) },
             {
               title: copy.colFailure,
               width: 140,
               align: 'right',
               render: (_, point) => point.failureRate === null
                 ? '—'
-                : <>{pct(point.failureRate)}{point.toolCallCount > 0 && <div className="health-cell-note">{point.toolComparableCount}/{point.toolCallCount} {copy.comparableOutcomes}{point.toolCancelledCount > 0 ? ` · ${point.toolCancelledCount} ${copy.cancelled}` : ''}</div>}</>,
+                : <>{formatPercent(point.failureRate)}{point.toolCallCount > 0 && <div className="health-cell-note">{point.toolComparableCount}/{point.toolCallCount} {copy.comparableOutcomes}{point.toolCancelledCount > 0 ? ` · ${point.toolCancelledCount} ${copy.cancelled}` : ''}</div>}</>,
             },
-            { title: copy.colCoverage, width: 90, align: 'right', render: (_, point) => pct(point.coverageRate) },
+            { title: copy.colCoverage, width: 90, align: 'right', render: (_, point) => formatPercent(point.coverageRate) },
             { title: copy.colTokens, width: 100, align: 'right', render: (_, point) => <span className="health-stamp" title={copy.tokensHint}>{(point.billableTokens / 1000).toFixed(1)}k</span> },
-            { title: copy.colDuration, width: 100, align: 'right', render: (_, point) => `${(point.durationMs / 1000).toFixed(1)}s` },
+            { title: copy.colDuration, width: 100, align: 'right', render: (_, point) => formatDuration(point.durationMs) },
           ]}
         />
       </div>}
@@ -597,8 +592,8 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
       ]}/>
       <div className="observe-detail-title"><h1>{copy.diffHeading}</h1></div>
       <div className="observe-detail-meta">
-        <span>{copy.diffFrom} <Link href={reportHref(diff.fromId, lang)}>{diff.fromId}</Link> {stamp(diff.fromAt)}</span>
-        <span>{copy.diffTo} <Link href={reportHref(diff.toId, lang)}>{diff.toId}</Link> {stamp(diff.toAt)}</span>
+        <span>{copy.diffFrom} <Link href={reportHref(diff.fromId, lang)}>{diff.fromId}</Link> {displayTime(diff.fromAt, 'minute')}</span>
+        <span>{copy.diffTo} <Link href={reportHref(diff.toId, lang)}>{diff.toId}</Link> {displayTime(diff.toAt, 'minute')}</span>
         <span>{copy.diffSortHint}</span>
       </div>
     </header>
@@ -618,9 +613,9 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
           render: (_, row) => <><Link href={trendHref(row.skillName, lang)} title={row.skillName}>{row.skillName}</Link>{row.presence === 'only-from' && <Tag color="success">{copy.diffTagRemoved}</Tag>}{row.presence === 'only-to' && <Tag color="processing">{copy.diffTagNew}</Tag>}</>,
         },
         column(copy.diffColSegments, (row) => <Pair from={row.fromSegments === undefined ? null : String(row.fromSegments)} to={row.toSegments === undefined ? null : String(row.toSegments)} delta={row.deltas.segments}/>),
-        column(copy.diffColWeightedGap, (row) => <Pair from={row.fromGap === undefined ? null : pct(row.fromGap)} to={row.toGap === undefined ? null : pct(row.toGap)} delta={row.deltas.gap}/>),
-        column(copy.diffColFailureRate, (row) => <Pair from={row.fromFailure === undefined ? null : pct(row.fromFailure)} to={row.toFailure === undefined ? null : pct(row.toFailure)} delta={row.deltas.failure}/>),
-        column(copy.diffColCoverage, (row) => <Pair from={row.fromCoverage === undefined ? null : pct(row.fromCoverage)} to={row.toCoverage === undefined ? null : pct(row.toCoverage)} delta={row.deltas.coverage}/>),
+        column(copy.diffColWeightedGap, (row) => <Pair from={formatPercent(row.fromGap)} to={formatPercent(row.toGap)} delta={row.deltas.gap}/>),
+        column(copy.diffColFailureRate, (row) => <Pair from={formatPercent(row.fromFailure)} to={formatPercent(row.toFailure)} delta={row.deltas.failure}/>),
+        column(copy.diffColCoverage, (row) => <Pair from={formatPercent(row.fromCoverage)} to={formatPercent(row.toCoverage)} delta={row.deltas.coverage}/>),
       ]}
     />
   </>;
@@ -628,7 +623,7 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
 
 type HealthDiffRowLike = HealthDiffFacts['rows'][number];
 
-function Pair({ from, to, delta }: { from: string | null; to: string | null; delta: { text: string; tone: HealthTone } | null }) {
+function Pair({ from, to, delta }: { from: string | null; to: string | null; delta: { text: string; tone: StudioTone } | null }) {
   return <span className="health-pair">
     <span>{from ?? '—'}</span>
     <span aria-hidden="true">→</span>

@@ -5,6 +5,7 @@ import type {
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
 } from '../../../../../observability/contracts/experience';
+import { displayTime } from '../../../../application/display/format';
 import type { Language } from '../../layout/shell';
 
 const KIND_COLOR: Record<string, string> = {
@@ -15,9 +16,10 @@ const KIND_COLOR: Record<string, string> = {
   observation: 'orange',
 };
 
+/** 事件在当日内的时刻：密集时间轴上日期是冗余的（整条轴属于同一会话），只读时刻。 */
 function eventTime(event: ExperienceTimelineEvent): string {
   const value = 'timestamp' in event && typeof event.timestamp === 'string' ? event.timestamp : '';
-  return value ? value.slice(11, 19) : '';
+  return displayTime(value, 'clock');
 }
 
 function eventTitle(event: ExperienceTimelineEvent): string {
@@ -39,7 +41,7 @@ export function TimelineView({
   const zh = lang === 'zh';
   const options = useMemo(() => sessions.map((session) => ({
     value: session.id,
-    label: `${session.skillName} · ${session.endTimestamp.slice(0, 19).replace('T', ' ')}`,
+    label: `${session.skillName} · ${displayTime(session.endTimestamp, 'minute')}`,
   })), [sessions]);
   const [selectedId, setSelectedId] = useState<string | undefined>(options[0]?.value);
   const selected = sessions.find((session) => session.id === selectedId);
