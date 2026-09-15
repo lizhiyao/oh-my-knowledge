@@ -294,17 +294,14 @@ describe('sanitizeGeneratedSamples', () => {
     assert.ok(stripped.some((s) => s.includes('difficulty')));
   });
 
-  it('strips capability when not string[]', () => {
-    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, capability: 'single' as unknown as string[] }];
-    const { stripped } = sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].capability, undefined);
+  it('strips capability when not string[] or array contains non-strings', () => {
+    const notArray: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, capability: 'single' as unknown as string[] }];
+    const { stripped } = sanitizeGeneratedSamples(notArray);
+    assert.equal(notArray[0].capability, undefined);
     assert.ok(stripped.some((s) => s.includes('capability')));
-  });
-
-  it('strips capability when array contains non-strings', () => {
-    const samples: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, capability: ['ok', 123] as unknown as string[] }];
-    sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].capability, undefined);
+    const badElem: Sample[] = [{ sample_id: 's1', input: { inputKind: 'text' as const, text: 'p' }, capability: ['ok', 123] as unknown as string[] }];
+    sanitizeGeneratedSamples(badElem);
+    assert.equal(badElem[0].capability, undefined);
   });
 
   it('preserves valid capability + difficulty + construct + provenance', () => {
@@ -319,10 +316,16 @@ describe('sanitizeGeneratedSamples', () => {
     assert.equal(stripped.length, 0);
   });
 
-  it('default sample_id when missing', () => {
-    const samples: Sample[] = [{ input: { inputKind: 'text' as const, text: 'p' } } as Sample];
-    sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].sample_id, 's001');
+  it('default sample_id when missing, non-string, or empty', () => {
+    const missing: Sample[] = [{ input: { inputKind: 'text' as const, text: 'p' } } as Sample];
+    sanitizeGeneratedSamples(missing);
+    assert.equal(missing[0].sample_id, 's001');
+    const nonString: Sample[] = [{ sample_id: 123 as unknown as string, input: { inputKind: 'text' as const, text: 'p' } }];
+    sanitizeGeneratedSamples(nonString);
+    assert.equal(nonString[0].sample_id, 's001', 'non-string sample_id should be replaced with default');
+    const empty: Sample[] = [{ sample_id: '', input: { inputKind: 'text' as const, text: 'p' } }];
+    sanitizeGeneratedSamples(empty);
+    assert.equal(empty[0].sample_id, 's001');
   });
 
   it('strips tools_not_called with empty values (noise assertion)', () => {
@@ -607,19 +610,7 @@ describe('sanitizeGeneratedSamples', () => {
     assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required input field/);
   });
 
-  it('default sample_id when type is non-string(LLM 返回 number)', () => {
-    // Bug #2:写盘后下游 loadSamples 会 reject 整文件 — generator boundary 应规范化
-    const samples: Sample[] = [{ sample_id: 123 as unknown as string, input: { inputKind: 'text' as const, text: 'p' } }];
-    sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].sample_id, 's001', 'non-string sample_id should be replaced with default');
   });
-
-  it('default sample_id when empty string', () => {
-    const samples: Sample[] = [{ sample_id: '', input: { inputKind: 'text' as const, text: 'p' } }];
-    sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].sample_id, 's001');
-  });
-});
 
 function textOf(sample: Sample): string {
   if (sample.input.inputKind !== 'text') throw new Error('Expected a text fixture.');

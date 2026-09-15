@@ -97,22 +97,16 @@ describe('statistical confidence guard', () => {
   const segs = (skill: string, n: number): SkillSegment[] =>
     Array.from({ length: n }, (_, i) => makeSegment(skill, i));
 
-  it('flags a tiny sample as underpowered (per-skill and overall)', () => {
-    const report = computeSkillHealthFromSegments(segs('audit', 2), [makeSession('s1')], '/tmp');
-    assert.equal(report.bySkill.audit.confidence, 'underpowered');
-    assert.equal(report.overall.confidence, 'underpowered');
-  });
-
-  it('flags a mid-size sample as low confidence', () => {
-    const report = computeSkillHealthFromSegments(segs('audit', 12), [makeSession('s1')], '/tmp');
-    assert.equal(report.bySkill.audit.confidence, 'low');
-    assert.equal(report.overall.confidence, 'low');
-  });
-
-  it('marks a sufficiently large sample as high confidence', () => {
-    const report = computeSkillHealthFromSegments(segs('audit', 25), [makeSession('s1')], '/tmp');
-    assert.equal(report.bySkill.audit.confidence, 'high');
-    assert.equal(report.overall.confidence, 'high');
+  it('maps sample size to confidence tier (underpowered → low → high)', () => {
+    const tiny = computeSkillHealthFromSegments(segs('audit', 2), [makeSession('s1')], '/tmp');
+    assert.equal(tiny.bySkill.audit.confidence, 'underpowered');
+    assert.equal(tiny.overall.confidence, 'underpowered');
+    const mid = computeSkillHealthFromSegments(segs('audit', 12), [makeSession('s1')], '/tmp');
+    assert.equal(mid.bySkill.audit.confidence, 'low');
+    assert.equal(mid.overall.confidence, 'low');
+    const large = computeSkillHealthFromSegments(segs('audit', 25), [makeSession('s1')], '/tmp');
+    assert.equal(large.bySkill.audit.confidence, 'high');
+    assert.equal(large.overall.confidence, 'high');
   });
 });
 

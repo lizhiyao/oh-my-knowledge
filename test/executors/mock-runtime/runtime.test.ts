@@ -51,7 +51,7 @@ describe('isMockHit', () => {
     assert.equal(isMockHit(m, 'Read', { file_path: '~/proj/tasks/foo/state.json' }), true);
   });
 
-  it('file_path_endswith requires path-separator boundary (state.json !== bad-state.json)', () => {
+  it('file_path_endswith enforces path-separator boundary, accepts backslash, rejects missing/non-string path', () => {
     const m: Mock = { tool: 'Read', match: { file_path_endswith: 'state.json' }, return: 'x' };
     // 完全相等 OK
     assert.equal(isMockHit(m, 'Read', { file_path: 'state.json' }), true);
@@ -60,15 +60,10 @@ describe('isMockHit', () => {
     // bad-state.json 不应该命中(没有路径分隔符边界)
     assert.equal(isMockHit(m, 'Read', { file_path: 'bad-state.json' }), false);
     assert.equal(isMockHit(m, 'Read', { file_path: '/abs/bad-state.json' }), false);
-  });
-
-  it('file_path_endswith accepts Windows backslash boundary', () => {
-    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'tasks/state.json' }, return: 'x' };
-    assert.equal(isMockHit(m, 'Read', { file_path: 'C:\\proj\\tasks/state.json' }), true);
-  });
-
-  it('file_path_endswith returns false when input.file_path missing or non-string', () => {
-    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'state.json' }, return: 'x' };
+    // Windows 反斜杠边界
+    const win: Mock = { tool: 'Read', match: { file_path_endswith: 'tasks/state.json' }, return: 'x' };
+    assert.equal(isMockHit(win, 'Read', { file_path: 'C:\\proj\\tasks/state.json' }), true);
+    // 缺失或非字符串 path
     assert.equal(isMockHit(m, 'Read', {}), false);
     assert.equal(isMockHit(m, 'Read', { file_path: 123 }), false);
   });
@@ -141,35 +136,23 @@ describe('isMockHit', () => {
     assert.equal(isMockHit(m, 'WebFetch', { url: 'https://x.com' }), true);
   });
 
-  it('input_contains matches substring in simple string field', () => {
+  it('input_contains scans string fields, nested objects, arrays; is case-insensitive; ignores non-strings', () => {
     const m: Mock = { tool: 'Bash', match: { input_contains: 'FinTradeBuySpi' }, return: 'ok' };
     assert.equal(isMockHit(m, 'Bash', { command: 'grep -r FinTradeBuySpi src/' }), true);
     assert.equal(isMockHit(m, 'Bash', { command: 'echo hello' }), false);
-  });
-
-  it('input_contains is case-insensitive', () => {
-    const m: Mock = { tool: 'Bash', match: { input_contains: 'fintradebuyspi' }, return: 'ok' };
-    assert.equal(isMockHit(m, 'Bash', { command: 'grep -r FinTradeBuySpi src/' }), true);
-    assert.equal(isMockHit(m, 'Bash', { command: 'FINTRADEBUYSPI' }), true);
-  });
-
-  it('input_contains scans nested object values recursively', () => {
-    const m: Mock = { tool: 'Read', match: { input_contains: 'target' }, return: 'ok' };
-    assert.equal(isMockHit(m, 'Read', { file_path: '/path/target.ts', options: { encoding: 'utf8' } }), true);
-    assert.equal(isMockHit(m, 'Read', { nested: { deep: { value: 'has target here' } } }), true);
-    assert.equal(isMockHit(m, 'Read', { file_path: '/other.ts' }), false);
-  });
-
-  it('input_contains scans array values', () => {
-    const m: Mock = { tool: 'X', match: { input_contains: 'needle' }, return: 'ok' };
-    assert.equal(isMockHit(m, 'X', { args: ['a', 'needle-in-haystack', 'c'] }), true);
-    assert.equal(isMockHit(m, 'X', { args: ['a', 'b', 'c'] }), false);
-  });
-
-  it('input_contains does not match non-string values', () => {
-    const m: Mock = { tool: 'X', match: { input_contains: '42' }, return: 'ok' };
-    assert.equal(isMockHit(m, 'X', { count: 42 }), false);
-    assert.equal(isMockHit(m, 'X', { count: '42' }), true);
+    const ci: Mock = { tool: 'Bash', match: { input_contains: 'fintradebuyspi' }, return: 'ok' };
+    assert.equal(isMockHit(ci, 'Bash', { command: 'grep -r FinTradeBuySpi src/' }), true);
+    assert.equal(isMockHit(ci, 'Bash', { command: 'FINTRADEBUYSPI' }), true);
+    const nested: Mock = { tool: 'Read', match: { input_contains: 'target' }, return: 'ok' };
+    assert.equal(isMockHit(nested, 'Read', { file_path: '/path/target.ts', options: { encoding: 'utf8' } }), true);
+    assert.equal(isMockHit(nested, 'Read', { nested: { deep: { value: 'has target here' } } }), true);
+    assert.equal(isMockHit(nested, 'Read', { file_path: '/other.ts' }), false);
+    const arr: Mock = { tool: 'X', match: { input_contains: 'needle' }, return: 'ok' };
+    assert.equal(isMockHit(arr, 'X', { args: ['a', 'needle-in-haystack', 'c'] }), true);
+    assert.equal(isMockHit(arr, 'X', { args: ['a', 'b', 'c'] }), false);
+    const num: Mock = { tool: 'X', match: { input_contains: '42' }, return: 'ok' };
+    assert.equal(isMockHit(num, 'X', { count: 42 }), false);
+    assert.equal(isMockHit(num, 'X', { count: '42' }), true);
   });
 
   it('tool: "*" + input_contains: intent-level mock matches any tool with keyword', () => {
