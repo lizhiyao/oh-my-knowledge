@@ -38,11 +38,17 @@ const EVENT_LABELS: Record<ManagedTimelineEvent['eventKind'], readonly [string, 
   observe: ['观测', 'Observe'],
 };
 
-/** observe 强弱四档：红 + 够力才是确诊生产盲区；yellow 不能读作健康；underpowered 优先于色带。 */
+/**
+ * observe 强弱四档：红 + 够力才是确诊生产盲区；yellow 不能读作健康；underpowered 优先于色带。
+ *
+ * 档位词与生产观察报告页（`observe/health.tsx` 的 `bandLabel`）同源：同一组 `healthBand` + `confidence`
+ * 在两页必须读成同一个词。「需关注」在报告页指 red，所以这里的 yellow 读「待观察」，underpowered 跟着
+ * 报告页与知识列表读「样本不足」。红档保留本页的「生产盲区」：它比「需关注」更可操作，并配套补样本提示。
+ */
 const OBSERVE_BADGES: Record<ManagedObserveBadge, { label: readonly [string, string]; tone: ManagedTone }> = {
   production_gap: { label: ['生产盲区', 'production gap'], tone: 'red' },
-  underpowered: { label: ['数据不足', 'underpowered'], tone: 'muted' },
-  elevated: { label: ['需关注', 'elevated'], tone: 'yellow' },
+  underpowered: { label: ['样本不足', 'underpowered'], tone: 'muted' },
+  elevated: { label: ['待观察', 'elevated'], tone: 'yellow' },
   healthy: { label: ['健康', 'healthy'], tone: 'green' },
 };
 
