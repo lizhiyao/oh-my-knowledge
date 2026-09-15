@@ -127,6 +127,9 @@ async function assemble(
     executablePath: fixture.executablePath,
     model: 'gpt-fixture',
     environment: fixture.env,
+    // 并行负载下 version probe 子进程启动会抖动；测试侧放宽 probe 超时，
+    // 不改 src 的 5s 生产默认值。
+    identityProbeTimeoutMs: 20_000,
     ...overrides,
   });
 }
@@ -197,6 +200,8 @@ describe('Codex CLI reference Executor', () => {
       sandbox: 'workspace-write',
       contentIdentityFiles: [{ facetId: 'codex-helper', path: helperPath }],
       fingerprintFacets: { deployment: 'platform-host' },
+      // probeTimeoutMs 是测量身份 facet 的一部分，本用例 pin 生产默认值。
+      identityProbeTimeoutMs: DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS,
     });
 
     expect(executor.executorId).toBe('vendor.codex-cli/reference');
@@ -767,10 +772,11 @@ describe('Codex reference default model and evaluator', () => {
 
   async function evaluator(fixture: VendorFixture, maxPromptBytes?: number) {
     return createCodexCliReferenceEvaluator({
-      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.'  }], judgeId: 'codex-judge',
+      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score', criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' }], judgeId: 'codex-judge',
       executablePath: fixture.executablePath, environment: fixture.env,
       model: 'gpt-fixture', maxPromptBytes,
-
+      // 与 assemble 相同：测试侧放宽并行负载下的 probe 超时。
+      identityProbeTimeoutMs: 20_000,
     });
   }
 
@@ -837,9 +843,9 @@ describe('Codex reference default model and evaluator', () => {
     const targetEnvironment = Object.fromEntries(Object.entries(target.env).filter(([key]) => key !== 'CODEX_SESSION_SECRET'));
     const executor = await assemble(target, { model: undefined, modelConfigPath, environment: targetEnvironment });
     const judge = await createCodexCliReferenceEvaluator({
-      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.'  }], judgeId: 'codex-judge',
+      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score', criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' }], judgeId: 'codex-judge',
       executablePath: scoring.executablePath, environment: scoring.env, modelConfigPath,
-
+      identityProbeTimeoutMs: 20_000,
     });
     await writeFile(modelConfigPath, 'model = "changed"');
     const result = await evaluate({
