@@ -16,6 +16,27 @@ import { ExtractedKnowledge } from './extracted-knowledge';
 
 type Turn = ConversationReaderPage['turns'][number];
 
+/**
+ * 空状态与单轮退路单独成组件：这两段文字与链接只有在 fetch 落地之后才会出现，
+ * 整组件的静态渲染永远停在「正在读取对话…」，拆出来才能让渲染测试断言用户真正读到的字。
+ */
+export function ReaderEmptyState({ lang, onRetry }: { lang: Language; onRetry: () => void }) {
+  const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
+  return <Empty description={t('没有可读取的对话轮次。来源可能尚未写入，或记录已不可读。', 'No conversation turns available. The source may not have been written yet, or its records are unreadable.')}>
+    <Button onClick={onRetry}>{t('重新读取', 'Read again')}</Button>
+  </Empty>;
+}
+
+export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId: string; lang: Language }) {
+  const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
+  const { messages } = turn;
+  const fallback = turnFallback(turn);
+  const href = taskHref(threadId, turn.task.sourceTurnId ?? turn.task.turnId, lang);
+  if (fallback === 'unreadable') return <Alert type="warning" title={t('这一轮的原始记录读不出来，其余轮次仍可阅读。', 'The raw record for this turn is unreadable. Other turns remain readable.')} action={<Link href={href}>{t('查看执行详情', 'Execution details')}</Link>}/>;
+  if (fallback === 'messages') return <>{messages.map((message, index) => <section className={`observe-reading-message ${message.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{message.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong><div className="observe-message-text">{message.text}</div></section>)}</>;
+  return <p>{t('这一轮没有对话消息。', 'No conversation messages in this turn.')}</p>;
+}
+
 /** Cursors identify turns, so appending new turns cannot shift the history window. */
 export function ConversationReader({ item, revision, lang, title, project }: { item: ConversationListItem; revision: string; lang: Language; title: string; project: string }) {
   const zh = lang === 'zh'; const t = (cn: string, en: string) => zh ? cn : en;
@@ -98,11 +119,9 @@ export function ConversationReader({ item, revision, lang, title, project }: { i
     }}>
       {hasOlder && <div className="observe-history-control"><Button type="text" loading={busy && lastMode.current === 'older'} onClick={() => void load('older')}>{t('加载更早的对话', 'Load earlier conversation')}</Button></div>}
       {failed && <Alert type="error" title={t('暂时无法读取更多对话，已加载内容仍可查看。', 'Cannot load more conversation. Loaded messages remain available.')} action={<Button onClick={() => { if (resetRequired) { current.current = []; follow.current = true; setResetRequired(false); void load('latest'); } else void load(lastMode.current); }}>{failureAction(resetRequired) === 'reload' ? t('重新读取会话', 'Reload conversation') : t('重试', 'Retry')}</Button>}/>}
-      {state === 'loading' ? <p role="status">{t('正在读取对话…', 'Reading conversation…')}</p> : state === 'empty' ? <Empty description={t('没有可读取的对话轮次。来源可能尚未写入，或记录已不可读。', 'No conversation turns available. The source may not have been written yet, or its records are unreadable.')}>
-        <Button onClick={() => void load('latest')}>{t('重新读取', 'Read again')}</Button>
-      </Empty> : turns.map(turn => { const { task, messages } = turn; const fallback = turnFallback(turn); return <article key={task.turnId} data-turn-id={task.turnId} className="observe-reading-turn">
+      {state === 'loading' ? <p role="status">{t('正在读取对话…', 'Reading conversation…')}</p> : state === 'empty' ? <ReaderEmptyState lang={lang} onRetry={() => void load('latest')}/> : turns.map(turn => { const { task } = turn; return <article key={task.turnId} data-turn-id={task.turnId} className="observe-reading-turn">
         <header><Space><Status status={task.status} lang={lang}/><time>{displayTime(task.startTimestamp)}</time></Space><Link href={taskHref(item.threadId, task.sourceTurnId ?? task.turnId, lang)}>{t('查看执行详情', 'Execution details')}</Link></header>
-        {fallback === 'unreadable' ? <Alert type="warning" title={t('这一轮的原始记录读不出来，其余轮次仍可阅读。', 'The raw record for this turn is unreadable. Other turns remain readable.')} action={<Link href={taskHref(item.threadId, task.sourceTurnId ?? task.turnId, lang)}>{t('查看执行详情', 'Execution details')}</Link>}/> : fallback === 'messages' ? messages.map((message, i) => <section className={`observe-reading-message ${message.role === 'user' ? 'human' : 'assistant'}`} key={i}><strong>{message.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong><div className="observe-message-text">{message.text}</div></section>) : <p>{t('这一轮没有对话消息。', 'No conversation messages in this turn.')}</p>}
+        <ReaderTurnBody turn={turn} threadId={item.threadId} lang={lang}/>
         {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
       </article>; })}
     </div>
