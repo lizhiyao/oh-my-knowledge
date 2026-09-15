@@ -207,6 +207,10 @@ Numeric 与 boolean custom Metric 必须显式声明 `higher-is-better` 或 `low
 
 `createCustomEvaluator(input)` 接受 `CreateCustomEvaluatorInput`：以指标 ID 为键的 `metrics`，每个 `CustomEvaluatorMetric` 将 Metric 字段与 `schema` 放在一起，省略时默认 `missingPolicyId: 'exclude/v1'`。无需再声明 `schemas.values`。Callback 返回 `CustomEvaluatorScores`，其中 completed 的 `results` 是按指标 ID 映射的 score／missing／invalid 对象，分数类型由对应 parser 推断，调用级 usage／failed 保持不变。构造器只校验声明，不调用执行器、parser 或评分 callback；展开后的 v2 声明使用相同 identity 派生，不改变测量或存储契约。构造器错误位置相对于输入；metrics 的位置使用映射键。
 
+`createRubricEvaluator` 接受 `CreateRubricEvaluatorInput`：标准 Rubric 声明去掉 `evaluatorKind`，并将 `rubrics` 改为以指标 ID 为键、值为 `Rubric` 的非空映射。每项显式提供 `criterionId`、`prompt`、`rubric`；不接受重复的 `metricId` 或未知字段。`judges`、模型身份与 `aggregation` 保持原契约，不推断评分标准或聚合策略。返回标准 `RubricJudgeEvaluator`，可直接传给 `evaluate`、`prepareEvaluation` 或 `debugEvaluator`，原始数组声明仍可直接使用。
+
+构造器复用正式声明与评委身份校验，不调用 provider，不修改 prompt 字节、identity、评分／存储协议或模型调用次数；正式执行仍在 prepare 阶段封存声明。构造失败抛出 `EvaluationConfigurationError`，`issues` 路径相对于输入，维度使用映射键，例如 `['rubrics', 'accuracy', 'rubric']`，成员仍使用数组下标。非法指标键只定位到 `['rubrics']`；未知字段只定位到父对象，拒绝值和宿主异常文本不进入诊断。
+
 `debugEvaluator(input, options?)` 接受 `DebugEvaluatorInput`：Custom 或 Rubric `evaluator`、单个 `sample`、单个 `variant`，以及可选 `seed`、`policy`、`infrastructure`；第二个参数为标准 `EvaluationRunOptions`。返回 `DebugEvaluatorResult`：`run` 是权威 `EvaluationResult`；Custom 的 `bindingInputs` 保留每次 parser 校验前的冻结快照，Rubric 的 `judgeInvocations` 保留实际 provider 调用的冻结记录。另一类调试数组为空。
 
 `DebugJudgeInvocation` 包含 `memberId`、从 0 开始的 `invocationIndex`、不含 signal 的实际 `request` 和 `DebugJudgeResponse`。索引表示本次调试中的调用开始顺序，不是 replicateIndex 或 Core attemptNumber；并发 replicate／重试的最终测量身份以 `run` 为准。`DebugJudgeResponse` 的 `responseStatus: 'completed'` 保留原始 `output`、使用正式解析器得到的 `DebugRubricReading` 数组 与合法用量事实。读数使用 `observationStatus: 'observed'`（value、reason、可选 reasoning）或 `'invalid'`（reasonCode）。Provider 返回失败、无效返回契约、抛异常、取消和未完成分别标为 `provider-failed`、`invalid-response`、`threw`、`cancelled`、`pending`；不复制异常文本或失败原因，只保留合法的 token／费用事实。重试用量逐调用展示，汇总只看 `run`，不要重复相加。

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
-import { debugEvaluator, evaluate } from 'oh-my-knowledge';
+import { createRubricEvaluator, debugEvaluator, evaluate } from 'oh-my-knowledge';
 
 const executor = {
   executorId: 'example.faas-target/v1',
@@ -123,8 +123,15 @@ const evaluator = {
   tracePolicy: 'none',
 };
 
+const { evaluatorKind: _evaluatorKind, rubrics: dimensions, ...panelInput } = evaluator;
+const built = createRubricEvaluator({
+  ...panelInput,
+  rubrics: Object.fromEntries(dimensions.map(({ metricId, ...criterion }) => [metricId, criterion])),
+});
+assert.deepEqual(built, evaluator);
+assert.equal(requests.length, 0);
 const originalInvoke = judge.invoke;
-const pending = evaluate({ ...base, evaluators: [evaluator] }, {
+const pending = evaluate({ ...base, evaluators: [built] }, {
   runId: 'embedded-faas-rubric',
 });
 judge.invoke = async () => {
@@ -186,7 +193,7 @@ assert.ok(!JSON.stringify(failureResult).includes('privateTenant'));
 assert.ok(!JSON.stringify(failureResult).includes('gateway-private-failure'));
 
 const debug = await debugEvaluator({
-  evaluator: { ...evaluator, judges: evaluator.judges.map((member) => ({ ...member, judge: { ...judge, invoke: originalInvoke } })) },
+  evaluator: { ...built, judges: built.judges.map((member) => ({ ...member, judge: { ...judge, invoke: originalInvoke } })) },
   sample: base.dataset.samples[0], variant: base.variants[0],
 });
 assert.equal(debug.run.status, 'completed');

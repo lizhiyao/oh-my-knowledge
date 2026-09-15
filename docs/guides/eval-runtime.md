@@ -609,42 +609,48 @@ A rubric is an explicit scoring guide. For open-ended answers with multiple vali
 This example uses one judge model, scores each actual output twice, averages those scores, and summarizes the candidate's mean. Replace `internalGateway` and `judge-model` with your real integration; judging adds model calls. Define each score band and calibrate against human-labeled examples before a formal evaluation.
 
 ```ts
+import { createRubricEvaluator, evaluate } from 'oh-my-knowledge';
+
+const rubricEvaluator = createRubricEvaluator({
+  evaluatorId: 'correctness-judge',
+  rubrics: {
+    'correctness-score': {
+      criterionId: 'correctness',
+      prompt: 'Assess factual correctness.', rubric: '5 = fully correct; 1 = incorrect.',
+    },
+    'completeness-score': {
+      criterionId: 'completeness',
+      prompt: 'Assess coverage of the request.', rubric: '5 = covers every requirement; 1 = misses them all.',
+    },
+  },
+  judges: [{
+    memberId: 'primary',
+    model: 'judge-model',
+    effort: 'low',
+    replicateCount: 2,
+    judge: {
+      judgeId: 'acme.model-gateway/v1',
+      version: '2026.09.04',
+      providerCost: { reporting: 'optional' },
+      fingerprintFacets: { deploymentRevision: 'sha256:...' },
+      async invoke(request) {
+        const response = await internalGateway.generate({
+          model: request.model,
+          system: request.system,
+          prompt: request.prompt,
+          signal: request.signal,
+        });
+        return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+      },
+    },
+  }],
+  aggregation: { method: 'mean', missing: 'require-complete' },
+});
+
 const result = await evaluate({
   dataset: input.dataset,
   variants,
-  evaluators: [{
-    evaluatorKind: 'rubric-judge',
-    evaluatorId: 'correctness-judge',
-    rubrics: [{
-      metricId: 'correctness-score', criterionId: 'correctness',
-      prompt: 'Assess factual correctness.', rubric: '5 = fully correct; 1 = incorrect.',
-    }, {
-      metricId: 'completeness-score', criterionId: 'completeness',
-      prompt: 'Assess coverage of the request.', rubric: '5 = covers every requirement; 1 = misses them all.',
-    }],
-    judges: [{
-      memberId: 'primary',
-      model: 'judge-model',
-      effort: 'low',
-      replicateCount: 2,
-      judge: {
-        judgeId: 'acme.model-gateway/v1',
-        version: '2026.09.04',
-        providerCost: { reporting: 'optional' },
-        fingerprintFacets: { deploymentRevision: 'sha256:...' },
-        async invoke(request) {
-          const response = await internalGateway.generate({
-            model: request.model,
-            system: request.system,
-            prompt: request.prompt,
-            signal: request.signal,
-          });
-          return { invocationStatus: 'completed', output: response.text, usage: response.usage };
-        },
-      },
-    }],
-    aggregation: { method: 'mean', missing: 'require-complete' },
-  }],
+  evaluators: [rubricEvaluator],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
     controlVariantId: 'prompt-v1',
@@ -662,6 +668,8 @@ const result = await evaluate({
   policy: {},
 });
 ```
+
+`createRubricEvaluator()` takes a `rubrics` map keyed by metric ID; each entry retains explicit `criterionId`, `prompt`, and `rubric`, without a repeated `metricId`. Construction validates without model calls and returns a standard declaration for the single-sample debugger below or a formal evaluation. `judges` and `aggregation` stay explicit. Read `EvaluationConfigurationError.issues` for paths such as `['rubrics', 'correctness-score', 'rubric']`; an invalid metric key points only to `rubrics`, without echoing its rejected value.
 
 Read the status, included observation count, and mean in `result.analysisResults['candidate-correctness']`. This summarizes `prompt-v2` only; declare a comparison analysis over the same metric to compare versions.
 

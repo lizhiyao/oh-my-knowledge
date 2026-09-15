@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { debugEvaluator, type DebugJudgeInvocation, type RubricJudgeEvaluator } from 'oh-my-knowledge';
-declare const debugRubric: RubricJudgeEvaluator;
+import { createRubricEvaluator, debugEvaluator, type CreateRubricEvaluatorInput, type DebugJudgeInvocation, type RubricJudgeEvaluator } from 'oh-my-knowledge';
+declare const rubricBuilderInput: CreateRubricEvaluatorInput;
+const debugRubric: RubricJudgeEvaluator = createRubricEvaluator(rubricBuilderInput);
 declare const debugSample: Parameters<typeof debugEvaluator>[0]['sample'];
 declare const debugVariant: Parameters<typeof debugEvaluator>[0]['variant'];
 const rubricDebugResult = debugEvaluator({ evaluator: debugRubric, sample: debugSample, variant: debugVariant });

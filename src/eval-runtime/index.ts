@@ -231,6 +231,8 @@ export type {
   Metric,
 } from './custom-evaluator.js';
 
+export { createRubricEvaluator } from './builders/rubric-evaluator.js';
+export type { CreateRubricEvaluatorInput } from './builders/rubric-evaluator.js';
 export { createCustomEvaluator } from './builders/custom-evaluator.js';
 export type {
   CustomEvaluatorMetric,
