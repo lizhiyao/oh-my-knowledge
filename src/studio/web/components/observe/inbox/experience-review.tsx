@@ -8,7 +8,8 @@ import {
   reviewStateKey,
 } from '../../../../../observability/inbox/review-semantics';
 import { ownRecordValue } from '../../../../../shared/record-count';
-import { langSuffix, type Language } from '../../layout/shell';
+import { type Language } from '../../layout/shell';
+import { conversationHref } from '../../conversation-link';
 import { tagStatus } from '../../tag-color';
 import { SessionReviewActions } from './review-actions';
 
@@ -20,10 +21,6 @@ function formatRange(start?: string, end?: string): string {
   const endLabel = fmt(end);
   if (!startLabel && !endLabel) return '—';
   return `${startLabel} → ${endLabel}`;
-}
-
-function conversationHref(threadId: string, lang: Language): string {
-  return `/observe/conversations/${encodeURIComponent(threadId)}${langSuffix(lang)}`;
 }
 
 /**

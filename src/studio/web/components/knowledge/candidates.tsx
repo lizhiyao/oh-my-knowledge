@@ -3,6 +3,7 @@ import { resolveKnowledgeWorkspace } from './workspace';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { langSuffix, type Language } from '../layout/shell';
+import { conversationPath } from '../conversation-link';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
@@ -117,7 +118,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
-    {detail?.origin && <a href={`/observe/conversations/${encodeURIComponent(detail.origin.threadId)}${detail.origin.turnId ? `/tasks/${encodeURIComponent(detail.origin.turnId)}` : ''}?${new URLSearchParams({ workspace, lang })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
+    {detail?.origin && <a href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace, lang })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
       onChoose={() => { window.location.assign(`/observe${langSuffix(lang)}`); }} onHistory={() => setShowRuns(true)}/>
