@@ -6,6 +6,7 @@ import {
   IdentifierSchema,
   JsonValueSchema,
   digestCanonicalJson,
+  deepFreezeCanonicalJson,
   type JsonValue,
   type UsageRecord,
 } from '../../../../eval-core/contracts/index.js';
@@ -48,9 +49,10 @@ import {
   type CodexKnowledgeArtifact,
 } from './resources.js';
 import { probeCodexCliVersion } from './version.js';
+import { resolveCodexReferenceModel } from './reference-model.js';
 
 /** Revision of this published reference implementation, independent from the vendor version. */
-export const CODEX_CLI_REFERENCE_ADAPTER_VERSION = '1.0.0' as const;
+export const CODEX_CLI_REFERENCE_ADAPTER_VERSION = '1.1.0' as const;
 
 /**
  * Lowest vendor CLI version whose `codex exec --json` event shape is frozen by this repository's
@@ -76,7 +78,9 @@ export interface CreateCodexCliReferenceExecutorInput {
   /** Absolute Codex executable. PATH lookup is intentionally unsupported. */
   readonly executablePath: string;
   /** Pinned at assembly time so every variant in one Run measures the same model. */
-  readonly model: string;
+  readonly model?: string;
+  /** Optional absolute config.toml path, read only when model is omitted. */
+  readonly modelConfigPath?: string;
   readonly effort?: (typeof CODEX_CLI_EFFORT_VALUES)[number];
   /** Defaults to `read-only`; `workspace-write` still stays inside the attempt-private directory. */
   readonly sandbox?: 'read-only' | 'workspace-write';
@@ -117,9 +121,8 @@ function captureConfiguration(
   if (!isAbsolute(input.executablePath) || input.executablePath.includes('\0')) {
     throw new TypeError('Codex CLI reference Executor requires an absolute executablePath.');
   }
-  if (typeof input.model !== 'string' || input.model.trim() === '') {
-    throw new TypeError('Codex CLI reference Executor requires a non-empty model.');
-  }
+  const environment = captureCodexEnvironment(input.environment);
+  const model = resolveCodexReferenceModel(input);
   if (input.sandbox !== undefined
       && input.sandbox !== 'read-only' && input.sandbox !== 'workspace-write') {
     throw new TypeError('Codex CLI reference Executor sandbox must be read-only or workspace-write.');
@@ -129,11 +132,10 @@ function captureConfiguration(
       'Codex CLI reference Executor effort must be low, medium, high, xhigh, or max.',
     );
   }
-  const environment = captureCodexEnvironment(input.environment);
   const effort = input.effort;
   return Object.freeze({
     executablePath: input.executablePath,
-    model: input.model,
+    model,
     ...(effort === undefined ? {} : { effort }),
     sandbox: input.sandbox ?? 'read-only',
     environment: environment.values,
@@ -195,6 +197,7 @@ function referenceFingerprintFacets(
     identityProbeTimeoutMs: number;
   }>,
   declared: Readonly<Record<string, JsonValue>>,
+  inputProjection?: JsonValue,
 ): JsonValue {
   return {
     ...declared,
@@ -233,7 +236,7 @@ function referenceFingerprintFacets(
         shellEnvironmentInheritance: 'none',
         workspaceRoot: 'attempt-private-temp-directory',
       },
-      'input-projection': {
+      'input-projection': inputProjection ?? {
         version: INPUT_PROJECTION_VERSION,
         promptSchemaVersion: CODEX_CLI_RESOURCE_PROFILE.promptSchemaVersion,
         artifact: 'content-string-only',
@@ -347,23 +350,10 @@ async function runAttempt(
   return parsed;
 }
 
-/**
- * Published reference Executor for the Codex CLI: configuration in, a canonical façade `Executor`
- * out. It reuses the shipped argument builder, JSONL protocol parser, classified environment and
- * content identity controls, and carries none of the sealed host-seam machinery, so capabilities
- * that need plan-bound resource leases fail closed instead of degrading to weaker isolation.
- *
- * Unsupported at this seam, each with a stable `OMK_CODEX_CLI_*` error code: trial workspace
- * overlays, native MCP configuration, pre-tool-call mock interception, per-trial tool allow-lists,
- * runtime context projection, and artifact carriers that are not a non-empty string
- * (`content === null`, such as a directory Skill). Retry, timeout and budget policy stay with the
- * Runtime through `invocation.signal`; vendor-side account and network isolation remain the host's
- * responsibility. Verify the supported surface with `checkExecutor` from
- * `oh-my-knowledge`.
- */
-export async function createCodexCliReferenceExecutor(
+export async function createCodexCliReferenceRuntime(
   input: Readonly<CreateCodexCliReferenceExecutorInput>,
-): Promise<Executor<JsonValue, undefined, string, JsonValue>> {
+  inputProjection?: JsonValue,
+) {
   const executorId = IdentifierSchema.safeParse(input.executorId);
   if (!executorId.success) {
     throw new TypeError('Codex CLI reference Executor requires a valid executorId.');
@@ -377,6 +367,7 @@ export async function createCodexCliReferenceExecutor(
   if (declaredFacets !== undefined && Object.hasOwn(declaredFacets, 'codexCli')) {
     throw new TypeError('Codex CLI reference Executor reserves the codexCli fingerprint facet.');
   }
+  const capturedFacets = declaredFacets === undefined ? {} : structuredClone(declaredFacets);
   const configuration = captureConfiguration(input);
   const identityProbeTimeoutMs = positiveInteger(
     input.identityProbeTimeoutMs,
@@ -410,57 +401,22 @@ export async function createCodexCliReferenceExecutor(
       + `${CODEX_CLI_MIN_SUPPORTED_VERSION}; upgrade the vendor CLI or select another Executor.`,
     );
   }
-  const capabilities: ExecutorCapabilities = Object.freeze({
-    determinism: 'stochastic' as const,
-    cancellation: 'best-effort' as const,
-    concurrency: Object.freeze({ safety: 'parallel-safe' as const }),
-    seedControl: 'unsupported' as const,
-    telemetry: Object.freeze({
-      trace: 'optional' as const,
-      usage: 'optional' as const,
-      providerCost: Object.freeze({ reporting: 'unsupported' as const }),
-    }),
-  });
-  const fingerprintFacets = referenceFingerprintFacets(
+  const fingerprintFacets = deepFreezeCanonicalJson(referenceFingerprintFacets(
     configuration,
     { files, identityProbeTimeoutMs },
-    declaredFacets === undefined ? {} : structuredClone(declaredFacets),
-  );
+    capturedFacets,
+    inputProjection,
+  ));
 
   return Object.freeze({
+    configuration,
     executorId: executorId.data,
     version: observedVersion,
-    schemas: Object.freeze({
-      input: Object.freeze({ parse: (value: unknown) => JsonValueSchema.parse(value) }),
-      output: Object.freeze({ parse: (value: unknown) => z.string().parse(value) as string }),
-      trace: Object.freeze({
-        parse: (value: unknown) => SourceNeutralTraceWithoutMocksSchema.parse(value) as JsonValue,
-      }),
-    }),
-    outputClassification: configuration.outputClassification,
-    traceClassification: configuration.outputClassification,
-    outputMediaType: 'text/plain',
-    traceMediaType: TRACE_MEDIA_TYPE,
-    capabilities,
     fingerprintFacets,
-    async execute(
-      invocation: Readonly<ExecutorInvocation<JsonValue, undefined>>,
-    ): Promise<ExecutorResult<string, JsonValue>> {
-      const { signal } = invocation;
-      if (signal.aborted) throw signal.reason;
-      if (invocation.workspace !== undefined || invocation.mcpConfig !== undefined
-          || invocation.mockInterception !== undefined) {
-        return { errorCode: 'OMK_CODEX_CLI_ISOLATION_UNSUPPORTED' };
-      }
-      if (invocation.allowedTools !== undefined) {
-        return { errorCode: 'OMK_CODEX_CLI_TOOL_POLICY_UNSUPPORTED' };
-      }
-      if (invocation.runtimeContext !== undefined) {
-        return { errorCode: 'OMK_CODEX_CLI_RUNTIME_CONTEXT_UNSUPPORTED' };
-      }
-      const projection = projectArtifact(invocation.artifact);
-      if (projection.errorCode !== undefined) {
-        return { errorCode: projection.errorCode };
+    async invokePrompt(prompt: string, signal: AbortSignal): Promise<ExecutorResult<string, JsonValue>> {
+      signal.throwIfAborted();
+      if (Buffer.byteLength(prompt, 'utf8') > configuration.maxPromptBytes) {
+        return { errorCode: 'OMK_CODEX_CLI_PROMPT_LIMIT_EXCEEDED' };
       }
       let workingDirectory: string;
       try {
@@ -469,25 +425,7 @@ export async function createCodexCliReferenceExecutor(
         return { errorCode: 'OMK_CODEX_CLI_WORKING_DIRECTORY_UNAVAILABLE' };
       }
       try {
-        const parsed = await runAttempt(
-          configuration,
-          files,
-          codexPromptEnvelopeText(
-            CODEX_CLI_RESOURCE_PROFILE,
-            {
-              ...(projection.knowledge === undefined
-                ? {}
-                : { knowledgeArtifact: projection.knowledge }),
-              ...(invocation.executionContext === undefined
-                ? {}
-                : { executionContext: invocation.executionContext }),
-              task: invocation.input,
-            },
-            configuration.maxPromptBytes,
-          ),
-          workingDirectory,
-          signal,
-        );
+        const parsed = await runAttempt(configuration, files, prompt, workingDirectory, signal);
         if (parsed.terminalStatus === 'failed') {
           return {
             errorCode: 'OMK_CODEX_CLI_TURN_FAILED',
@@ -510,6 +448,96 @@ export async function createCodexCliReferenceExecutor(
         return { errorCode: 'OMK_CODEX_CLI_SPAWN_FAILED' };
       } finally {
         await rm(workingDirectory, { recursive: true, force: true });
+      }
+    },
+  });
+}
+
+/**
+ * Published reference Executor for the Codex CLI: configuration in, a canonical façade `Executor`
+ * out. It reuses the shipped argument builder, JSONL protocol parser, classified environment and
+ * content identity controls, and carries none of the sealed host-seam machinery, so capabilities
+ * that need plan-bound resource leases fail closed instead of degrading to weaker isolation.
+ *
+ * Unsupported at this seam, each with a stable `OMK_CODEX_CLI_*` error code: trial workspace
+ * overlays, native MCP configuration, pre-tool-call mock interception, per-trial tool allow-lists,
+ * runtime context projection, and artifact carriers that are not a non-empty string
+ * (`content === null`, such as a directory Skill). Retry, timeout and budget policy stay with the
+ * Runtime through `invocation.signal`; vendor-side account and network isolation remain the host's
+ * responsibility. Verify the supported surface with `checkExecutor` from
+ * `oh-my-knowledge`.
+ */
+export async function createCodexCliReferenceExecutor(
+  input: Readonly<CreateCodexCliReferenceExecutorInput>,
+): Promise<Executor<JsonValue, undefined, string, JsonValue>> {
+  const runtime = await createCodexCliReferenceRuntime(input);
+  const { configuration } = runtime;
+  const capabilities: ExecutorCapabilities = Object.freeze({
+    determinism: 'stochastic' as const,
+    cancellation: 'best-effort' as const,
+    concurrency: Object.freeze({ safety: 'parallel-safe' as const }),
+    seedControl: 'unsupported' as const,
+    telemetry: Object.freeze({
+      trace: 'optional' as const,
+      usage: 'optional' as const,
+      providerCost: Object.freeze({ reporting: 'unsupported' as const }),
+    }),
+  });
+  return Object.freeze({
+    executorId: runtime.executorId,
+    version: runtime.version,
+    schemas: Object.freeze({
+      input: Object.freeze({ parse: (value: unknown) => JsonValueSchema.parse(value) }),
+      output: Object.freeze({ parse: (value: unknown) => z.string().parse(value) as string }),
+      trace: Object.freeze({
+        parse: (value: unknown) => SourceNeutralTraceWithoutMocksSchema.parse(value) as JsonValue,
+      }),
+    }),
+    outputClassification: configuration.outputClassification,
+    traceClassification: configuration.outputClassification,
+    outputMediaType: 'text/plain',
+    traceMediaType: TRACE_MEDIA_TYPE,
+    capabilities,
+    fingerprintFacets: runtime.fingerprintFacets,
+    async execute(
+      invocation: Readonly<ExecutorInvocation<JsonValue, undefined>>,
+    ): Promise<ExecutorResult<string, JsonValue>> {
+      const { signal } = invocation;
+      if (signal.aborted) throw signal.reason;
+      if (invocation.workspace !== undefined || invocation.mcpConfig !== undefined
+          || invocation.mockInterception !== undefined) {
+        return { errorCode: 'OMK_CODEX_CLI_ISOLATION_UNSUPPORTED' };
+      }
+      if (invocation.allowedTools !== undefined) {
+        return { errorCode: 'OMK_CODEX_CLI_TOOL_POLICY_UNSUPPORTED' };
+      }
+      if (invocation.runtimeContext !== undefined) {
+        return { errorCode: 'OMK_CODEX_CLI_RUNTIME_CONTEXT_UNSUPPORTED' };
+      }
+      const projection = projectArtifact(invocation.artifact);
+      if (projection.errorCode !== undefined) {
+        return { errorCode: projection.errorCode };
+      }
+      try {
+        return await runtime.invokePrompt(codexPromptEnvelopeText(
+          CODEX_CLI_RESOURCE_PROFILE,
+          {
+            ...(projection.knowledge === undefined
+              ? {}
+              : { knowledgeArtifact: projection.knowledge }),
+            ...(invocation.executionContext === undefined
+              ? {}
+              : { executionContext: invocation.executionContext }),
+            task: invocation.input,
+          },
+          configuration.maxPromptBytes,
+        ), signal);
+      } catch (error) {
+        if (signal.aborted) throw signal.reason;
+        if (error instanceof ExecutionPortFailure) {
+          return { errorCode: error.evaluationError.code };
+        }
+        throw error;
       }
     },
   });

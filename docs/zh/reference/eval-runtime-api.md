@@ -273,3 +273,59 @@ const abstention: AbstentionEvaluator = {
 预算 limit 现在位于显式 scope 下：将 `budget.maxInvocations` 改为 `budget.run.maxInvocations`。旧结构不会被读取或检测。
 
 自定义 analysis graph、分阶段重放、transported 自定义 comparability policy，或不符合上述 canonical 完整结果契约的 artifact admission，使用 `oh-my-knowledge/eval-core`。实现深路径不受支持。
+
+## 官方 Codex CLI 接入
+
+从包根导入 `createCodexCliReferenceExecutor` 和 `createCodexCliReferenceEvaluator`，分别得到标准 `Executor` 与可直接传给 `evaluate()` 的 `RubricJudgeEvaluator`。供应商实现属于外层宿主适配器；通用 Runtime 不依赖它们，不恢复 `eval-hosts` 子路径。
+
+输入类型为 `CreateCodexCliReferenceExecutorInput`、`CreateCodexCliReferenceEvaluatorInput`。两者共用 `executablePath`、`model`、`modelConfigPath`、`effort`、`environment`、`contentIdentityFiles`、输入／输出字节上限及版本探测超时。`CodexCliEnvironmentEntry` 描述显式环境的行为、凭证或位置身份；`CodexCliContentIdentityFile` 声明启动器之外需要验证的实现文件。子进程不继承 `process.env`；宿主必须提供认证、启动器所需的 PATH 等环境。身份中的凭证值会被排除，输出分类仍遵循环境 taint。
+
+省略 `model` 时，仅在创建阶段读取默认模型：显式 `modelConfigPath` 优先，否则查找显式环境的 `CODEX_HOME/config.toml` 或 `HOME/.codex/config.toml`；未声明这些环境时使用当前进程的 `CODEX_HOME`，再回落到用户主目录的 `.codex/config.toml`。支持该文件顶层 `model` 与顶层 `profile` 选择的 profile 模型；profile 未设置模型时沿用顶层模型。不加载项目／系统配置层，也不猜测供应商内置默认值。文件缺失、TOML 无效或无法确定模型时，创建失败，错误不包含配置内容或路径。显式 `model` 完全跳过配置读取。
+
+模型名在创建时固定并进入 Runtime fingerprint；修改配置文件只影响之后新建的实例。只有模型名会被读取：其他配置，包括 provider、effort、MCP、工具及指令，都不会自动继承。`effort` 需显式设置。若要执行与评分严格使用同一模型，可先创建评委，再将其固定模型传给执行器：
+
+```ts
+import {
+  createCodexCliReferenceExecutor,
+  createCodexCliReferenceEvaluator,
+} from 'oh-my-knowledge';
+
+const connection = {
+  executablePath: '/absolute/path/to/codex',
+  modelConfigPath: '/absolute/path/to/.codex/config.toml',
+  environment: {
+    PATH: {
+      value: '/absolute/path/to/node/bin:/usr/bin:/bin',
+      identity: { identityKind: 'behavior', value: '/absolute/path/to/node/bin:/usr/bin:/bin' },
+    },
+    CODEX_HOME: {
+      value: '/absolute/path/to/.codex',
+      identity: { identityKind: 'effect-locator' },
+    },
+  },
+} as const;
+const evaluator = await createCodexCliReferenceEvaluator({
+  ...connection,
+  judgeId: 'codex-judge',
+  evaluatorId: 'answer-quality',
+  metricId: 'quality-score',
+  rubric: {
+    criterionId: 'correctness',
+    prompt: 'Evaluate correctness against the rubric.',
+    rubric: '5 = fully correct; 1 = incorrect.',
+  },
+});
+const executor = await createCodexCliReferenceExecutor({
+  ...connection,
+  executorId: 'codex-target',
+  model: evaluator.judges[0].model,
+});
+// evaluate(): variants[i].execution = { executor }; evaluators = [evaluator].
+// experiment.sampling = { samplingKind: 'paired', seedCoupling: 'uncontrolled' }.
+```
+
+评委采用单成员、完整覆盖的均值聚合，沿用现有 rubric prompt、去偏选项、评分解析、缺失值及证据契约；不增加供应商专属评分规则。`judgeId` 标识调用实现，`evaluatorId` 与 `metricId` 标识评分声明和指标。评分始终使用只读 sandbox，并将系统文本按已版本化的前置文本协议传给 Codex；它不等于原生 system role。执行与评分各次调用均使用独立临时目录和 ephemeral 会话，成功、失败和取消后清理；两者不共享会话内容。
+
+执行器支持字符串知识内容和无知识 baseline；不支持目录 Skill、workspace overlay、原生 MCP、mock 拦截、逐 trial 工具 allow-list 或 runtime context。`executionContext` 是题设数据，不会物化为目录。声明不支持的能力会失败关闭。Codex 是随机执行器且不提供 seed control，配对评测必须显式采用 `seedCoupling: 'uncontrolled'`。模型别名背后的供应商版本仍可能变化；固定名称不承诺服务端完全可重放。
+
+`CODEX_CLI_MIN_SUPPORTED_VERSION` 是 fixture 验证的协议最低版本，不是所有后续版本的兼容保证。`DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS` 是创建阶段探测上限；执行超时、重试及预算由 Runtime policy 管理。`CODEX_CLI_REFERENCE_ADAPTER_VERSION` 随实现版本进入 fingerprint，本次为 1.1.0；与旧适配器运行的可比性须重新检查。Codex CLI 不报告 USD 成本，保持未报告状态，不记为零。

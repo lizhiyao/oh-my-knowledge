@@ -171,6 +171,7 @@ describe('published embedded Evaluation API', () => {
       join(projectRoot, 'runtime-conformance-host.mjs'),
     );
     copyFileSync(ADVANCED_RUNTIME_HOST_FIXTURE, join(projectRoot, 'advanced-runtime-host.mjs'));
+    copyFileSync(join(REPO_ROOT, 'test/eval-runtime/fixtures/codex-reference-host.mjs'), join(projectRoot, 'codex-reference-host.mjs'));
     copyFileSync(CODEX_VENDOR_STANDIN, join(projectRoot, 'vendor-codex.mjs'));
     chmodSync(join(projectRoot, 'vendor-codex.mjs'), 0o755);
     copyFileSync(PUBLIC_RUNTIME_EXAMPLE, join(projectRoot, 'public-runtime-example.mjs'));
@@ -334,6 +335,16 @@ const assert = require('node:assert/strict');
       stdout: result.stdout,
       stderr: result.stderr,
     }).toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
+  });
+
+  it('安装包宿主直接使用 Codex 默认模型完成执行和 rubric 评分', () => {
+    const result = spawnSync(process.execPath, [join(projectRoot, 'codex-reference-host.mjs')], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect({ status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr })
+      .toEqual({ status: 0, signal: null, stdout: '', stderr: '' });
   });
 
   it('独立 Node.js ESM 宿主通过包根 Runtime façade 完成双 Target 对比', () => {

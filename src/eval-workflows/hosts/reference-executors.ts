@@ -18,3 +18,8 @@ export type {
   CodexCliContentIdentityFile,
   CodexCliEnvironmentEntry,
 } from './adapters/codex/cli.js';
+
+export {
+  createCodexCliReferenceEvaluator,
+  type CreateCodexCliReferenceEvaluatorInput,
+} from './adapters/codex/reference-evaluator.js';

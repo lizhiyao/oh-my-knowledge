@@ -273,3 +273,59 @@ The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. T
 Budget limits now live under explicit scopes: replace `budget.maxInvocations` with `budget.run.maxInvocations`. The old form is neither read nor detected.
 
 Use `oh-my-knowledge/eval-core` for custom analysis graphs, staged replay, transported custom comparability policies, or artifact admission that does not fit the canonical complete-result contract above. Deep implementation imports are unsupported.
+
+## Official Codex CLI integration
+
+Import `createCodexCliReferenceExecutor` and `createCodexCliReferenceEvaluator` from the package root to obtain a standard `Executor` and a `RubricJudgeEvaluator` accepted directly by `evaluate()`. Provider implementations remain in the outer host adapter layer. The generic Runtime does not depend on them, and the `eval-hosts` subpath remains retired.
+
+The inputs are `CreateCodexCliReferenceExecutorInput` and `CreateCodexCliReferenceEvaluatorInput`. Both accept `executablePath`, `model`, `modelConfigPath`, `effort`, `environment`, `contentIdentityFiles`, prompt/output byte limits and a version-probe timeout. `CodexCliEnvironmentEntry` classifies explicit environment values as behavior, credentials or locators; `CodexCliContentIdentityFile` declares implementation files beyond the launcher. Children inherit no `process.env`; the host supplies authentication and any PATH required by the launcher. Credential values are excluded from identity while output classification retains environment taint.
+
+When `model` is omitted, assembly reads only the default model. An explicit `modelConfigPath` wins; otherwise the explicit environment selects `CODEX_HOME/config.toml` or `HOME/.codex/config.toml`. Without those declarations, lookup uses the current process CODEX_HOME, then `.codex/config.toml` under the user home. The selected file supports top-level `model` and the profile selected by top-level `profile`, falling back to the top-level model when that profile omits it. Project/system configuration layers and vendor built-in defaults are not resolved. Missing files, invalid TOML or an unresolved model fail assembly without disclosing configuration contents or paths. An explicit `model` bypasses file reads entirely.
+
+The resolved name is pinned at assembly and included in the Runtime fingerprint. Later edits affect only newly created instances. Only the model name is read: provider, effort, MCP, tools and instructions are not inherited. Set `effort` explicitly. To guarantee the same pinned model for execution and scoring, create the evaluator first and pass its resolved model into the executor:
+
+```ts
+import {
+  createCodexCliReferenceExecutor,
+  createCodexCliReferenceEvaluator,
+} from 'oh-my-knowledge';
+
+const connection = {
+  executablePath: '/absolute/path/to/codex',
+  modelConfigPath: '/absolute/path/to/.codex/config.toml',
+  environment: {
+    PATH: {
+      value: '/absolute/path/to/node/bin:/usr/bin:/bin',
+      identity: { identityKind: 'behavior', value: '/absolute/path/to/node/bin:/usr/bin:/bin' },
+    },
+    CODEX_HOME: {
+      value: '/absolute/path/to/.codex',
+      identity: { identityKind: 'effect-locator' },
+    },
+  },
+} as const;
+const evaluator = await createCodexCliReferenceEvaluator({
+  ...connection,
+  judgeId: 'codex-judge',
+  evaluatorId: 'answer-quality',
+  metricId: 'quality-score',
+  rubric: {
+    criterionId: 'correctness',
+    prompt: 'Evaluate correctness against the rubric.',
+    rubric: '5 = fully correct; 1 = incorrect.',
+  },
+});
+const executor = await createCodexCliReferenceExecutor({
+  ...connection,
+  executorId: 'codex-target',
+  model: evaluator.judges[0].model,
+});
+// evaluate(): variants[i].execution = { executor }; evaluators = [evaluator].
+// experiment.sampling = { samplingKind: 'paired', seedCoupling: 'uncontrolled' }.
+```
+
+The evaluator uses one judge with a require-complete mean aggregation and reuses existing rubric prompts, debias options, parsing, missing-value handling and evidence contracts. It defines no Codex-specific scoring rules. `judgeId` names the invocation implementation; `evaluatorId` and `metricId` name the evaluation declaration and metric. Scoring always uses a read-only sandbox and a versioned system-text prefix, not a native system role. Execution and scoring each use private temporary directories and ephemeral sessions, with cleanup after success, failure or cancellation; no conversation state is shared.
+
+The executor supports string knowledge content and a no-knowledge baseline. Directory Skills, workspace overlays, native MCP, mock interception, per-trial tool allow-lists and runtime context are unsupported and fail closed. `executionContext` is task data, not a materialized working directory. Codex is stochastic and offers no seed control: paired evaluation must explicitly select `seedCoupling: 'uncontrolled'`. Provider revisions behind a model alias may still change; pinning a name does not guarantee exact server-side replay.
+
+`CODEX_CLI_MIN_SUPPORTED_VERSION` is the fixture-verified protocol floor, not a compatibility promise for every later release. `DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS` bounds assembly-time probing; Runtime policy owns execution timeouts, retries and budgets. `CODEX_CLI_REFERENCE_ADAPTER_VERSION` participates in the fingerprint and is now 1.1.0, so comparability with older adapter runs must be reassessed. Codex CLI USD cost remains unreported, never zero.

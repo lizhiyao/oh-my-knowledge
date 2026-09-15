@@ -5946,6 +5946,7 @@ __metadata:
     npm-run-all2: "npm:^9.0.3"
     react: "npm:19"
     react-dom: "npm:19"
+    smol-toml: "npm:^1.8.0"
     typescript: "npm:^6.0.2"
     typescript-eslint: "npm:^8.58.0"
     vite: "npm:8.3.0"
@@ -6789,6 +6790,13 @@ __metadata:
   version: 4.1.0
   resolution: "signal-exit@npm:4.1.0"
   checksum: 10c0/41602dce540e46d599edba9d9860193398d135f7ff72cab629db5171516cfae628d21e7bfccde1bbfdf11c48726bc2a6d1a8fb8701125852fbfda7cf19c6aa83
+  languageName: node
+  linkType: hard
+
+"smol-toml@npm:^1.8.0":
+  version: 1.8.0
+  resolution: "smol-toml@npm:1.8.0"
+  checksum: 10c0/4e01dbfb7c7af142176b037ebedaccccafb8229cc873feaa47c184ee31073d86e30b4b1b0fe9a5a6d083ed3ce21615eda9e81d1f5d779ad8b2e2e9459b900aea
   languageName: node
   linkType: hard
 
