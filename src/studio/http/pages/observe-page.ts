@@ -8,6 +8,7 @@ import type { KnowledgeDebuggerViewModel } from '../../../observability/view-mod
 import type { ExperienceTurnStatus } from '../../../observability/contracts/experience.js';
 import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
+import { OBSERVE_CONVERSATION_PREFIX, OBSERVE_INDEX_PATH } from '../page-paths.js';
 
 export type ObservePage =
   | { pageKind: 'index'; model: ConversationIndexViewModel; revision: string }
@@ -16,11 +17,12 @@ export type ObservePage =
 
 /** Project only the selected task window; do not serialize the full source session. */
 export async function loadObservePage(catalog: ConversationCatalog, path: string, lang: Lang): Promise<ObservePage | undefined> {
-  if (path === '/observe') {
+  if (path === OBSERVE_INDEX_PATH) {
     const model = await catalog.listConversations();
     return { pageKind: 'index', model, revision: buildConversationActivitySnapshot(model).revision };
   }
-  const match = path.match(/^\/observe\/conversations\/([^/]+)(?:\/tasks\/([^/]+))?$/);
+  if (!path.startsWith(OBSERVE_CONVERSATION_PREFIX)) return undefined;
+  const match = path.slice(OBSERVE_CONVERSATION_PREFIX.length).match(/^([^/]+)(?:\/tasks\/([^/]+))?$/);
   if (!match) return undefined;
   let threadId: string;
   let turnId: string | undefined;

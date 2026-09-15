@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { MEASURE_INDEX_PATH } from '../../../http/page-paths';
 import { Alert, Collapse, Descriptions, Empty, Input, Table, Tabs, Tag, Typography } from 'antd';
 import type {
   CoreStudioAnalysisRecord,
@@ -332,7 +333,7 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
     </div>
   </div>;
   return <>
-    <div className="measure-heading"><div><Link href={`/measure${suffix}`}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
+    <div className="measure-heading"><div><Link href={`${MEASURE_INDEX_PATH}${suffix}`}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
     <Axes run={run} copy={copy} lang={lang}/>
     <Alert className="measure-hint" type="info" showIcon title={copy.hint}/>
     <section className="measure-section measure-decision"><h2>{copy.decision}</h2><DecisionPanel decision={detail.decision} copy={copy} lang={lang}/></section>

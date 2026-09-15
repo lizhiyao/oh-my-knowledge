@@ -9,6 +9,7 @@ import {
   type HealthReportFacts,
   type HealthTrendFacts,
 } from '../../application/observe/health-format.js';
+import { HEALTH_DIFF_PATH, HEALTH_INDEX_PATH, HEALTH_REPORT_PREFIX, SKILL_TREND_PREFIX } from '../page-paths.js';
 
 /**
  * 页面模型只带投影后的事实：口径（色带阈值、样本守护、差值方向、折线几何）在
@@ -34,14 +35,9 @@ interface HealthPageSource {
   readonly includeObserveCards: boolean;
 }
 
-const INDEX_PATH = '/observe/health';
-const DIFF_PATH = '/observe/health-diff';
-const REPORT_PREFIX = '/observe/health/';
-const TREND_PREFIX = '/observe/skill-trend/';
-
 /** 观测健康页面组是否属于本宿主；裁掉页面组的宿主不接管这些路径。 */
 export function isHealthPath(path: string): boolean {
-  return path === INDEX_PATH || path === DIFF_PATH || path.startsWith(REPORT_PREFIX) || path.startsWith(TREND_PREFIX);
+  return path === HEALTH_INDEX_PATH || path === HEALTH_DIFF_PATH || path.startsWith(HEALTH_REPORT_PREFIX) || path.startsWith(SKILL_TREND_PREFIX);
 }
 
 /**
@@ -59,21 +55,21 @@ function singleSegment(encoded: string): string | undefined {
 
 export function loadHealthPage(source: HealthPageSource, path: string, searchParams: URLSearchParams): HealthPageLoad {
   const { analysesDir, includeObserveCards } = source;
-  if (path === DIFF_PATH) {
+  if (path === HEALTH_DIFF_PATH) {
     const fromId = searchParams.get('from');
     const toId = searchParams.get('to');
     if (!fromId || !toId) return { status: 'missing_query_params' };
     const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
     return diff ? { status: 'ok', page: { pageKind: 'diff', diff: { ...diff, rows: projectDiff(diff.rows) } } } : { status: 'analysis_not_found' };
   }
-  if (path.startsWith(REPORT_PREFIX)) {
-    const analysisId = singleSegment(path.slice(REPORT_PREFIX.length));
+  if (path.startsWith(HEALTH_REPORT_PREFIX)) {
+    const analysisId = singleSegment(path.slice(HEALTH_REPORT_PREFIX.length));
     const report = analysisId === undefined ? null : loadAnalysis(analysesDir, analysisId, includeObserveCards);
     if (analysisId === undefined || report === null) return { status: 'analysis_not_found' };
     return { status: 'ok', page: { pageKind: 'report', report: projectReport(analysisId, report) } };
   }
-  if (path.startsWith(TREND_PREFIX)) {
-    const skillName = singleSegment(path.slice(TREND_PREFIX.length));
+  if (path.startsWith(SKILL_TREND_PREFIX)) {
+    const skillName = singleSegment(path.slice(SKILL_TREND_PREFIX.length));
     if (skillName === undefined) return { status: 'analysis_not_found' };
     return { status: 'ok', page: { pageKind: 'trend', trend: projectTrend(querySkillTrend(analysesDir, skillName, includeObserveCards)) } };
   }

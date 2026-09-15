@@ -1,3 +1,4 @@
+import { OBSERVE_CONVERSATION_PREFIX } from '../../http/page-paths';
 import { langSuffix, type Language } from './layout/shell';
 
 /**
@@ -10,7 +11,7 @@ import { langSuffix, type Language } from './layout/shell';
  */
 export function conversationPath(threadId: string, turnId?: string): string {
   const task = turnId ? `/tasks/${encodeURIComponent(turnId)}` : '';
-  return `/observe/conversations/${encodeURIComponent(threadId)}${task}`;
+  return `${OBSERVE_CONVERSATION_PREFIX}${encodeURIComponent(threadId)}${task}`;
 }
 
 export function conversationHref(threadId: string, lang: Language): string {

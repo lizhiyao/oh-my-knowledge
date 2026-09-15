@@ -17,6 +17,16 @@ import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-pa
 import { loadInboxPage, type InboxPage } from './pages/inbox-page.js';
 import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
+import {
+  KNOWLEDGE_CANDIDATES_PATH,
+  KNOWLEDGE_INDEX_PATH,
+  KNOWLEDGE_SKILL_PREFIX,
+  MEASURE_DETAIL_PREFIX,
+  MEASURE_INDEX_PATH,
+  OBSERVE_CONVERSATION_PREFIX,
+  OBSERVE_INDEX_PATH,
+  OBSERVE_INBOX_PATH,
+} from './page-paths.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
 /** 语言只是偏好：设置文件读坏时退回内置默认，页面照常可用，错误留给 /api/settings 报告。 */
@@ -45,11 +55,11 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
     },
     async handle(request, response) {
       const path = (request.url ?? '/').split('?')[0];
-      const measure = path === '/measure' || path.startsWith('/measure/');
-      const inbox = inboxRoutes && path === '/observe/inbox';
-      const observe = pageRoutes && (inbox || path === '/observe' || path.startsWith('/observe/conversations/'));
-      const knowledge = pageRoutes && (path === '/knowledge' || path.startsWith('/knowledge/skills/'));
-      const candidates = pageRoutes && path === '/knowledge/candidates';
+      const measure = path === MEASURE_INDEX_PATH || path.startsWith(MEASURE_DETAIL_PREFIX);
+      const inbox = inboxRoutes && path === OBSERVE_INBOX_PATH;
+      const observe = pageRoutes && (inbox || path === OBSERVE_INDEX_PATH || path.startsWith(OBSERVE_CONVERSATION_PREFIX));
+      const knowledge = pageRoutes && (path === KNOWLEDGE_INDEX_PATH || path.startsWith(KNOWLEDGE_SKILL_PREFIX));
+      const candidates = pageRoutes && path === KNOWLEDGE_CANDIDATES_PATH;
       const managed = pageRoutes && isManagedPath(path);
       const health = pageRoutes && isHealthPath(path);
       if (!measure && !observe && !knowledge && !candidates && !managed && !health && !path.startsWith('/_next/')) return false;

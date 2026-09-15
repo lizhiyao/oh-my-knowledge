@@ -5,6 +5,7 @@ import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Breadcrumb, Button, Collapse, Empty, Progress, Radio, Table, Tag, Typography } from 'antd';
 import type { HealthPage } from '../../../http/pages/health-page';
+import { HEALTH_DIFF_PATH, HEALTH_INDEX_PATH, HEALTH_REPORT_PREFIX, KNOWLEDGE_INDEX_PATH, SKILL_TREND_PREFIX } from '../../../http/page-paths';
 import type {
   HealthBand,
   HealthConfidence,
@@ -20,8 +21,16 @@ import { langSuffix, type Language } from '../layout/shell';
 import { tagStatus } from '../tag-color';
 import { KnowledgeSectionNav } from '../knowledge/section-nav';
 
-const reportHref = (id: string, lang: Language) => `/observe/health/${encodeURIComponent(id)}${langSuffix(lang)}`;
-const trendHref = (skill: string, lang: Language) => `/observe/skill-trend/${encodeURIComponent(skill)}${langSuffix(lang)}`;
+const reportHref = (id: string, lang: Language) => `${HEALTH_REPORT_PREFIX}${encodeURIComponent(id)}${langSuffix(lang)}`;
+const trendHref = (skill: string, lang: Language) => `${SKILL_TREND_PREFIX}${encodeURIComponent(skill)}${langSuffix(lang)}`;
+
+/** 报告、趋势、对比三页共用的前两级面包屑：地址与层级只写一遍，第三级由各自页面补。 */
+function healthCrumbs(copy: { knowledgeCrumb: string; listTitle: string }, lang: Language) {
+  return [
+    { title: <Link href={`${KNOWLEDGE_INDEX_PATH}${langSuffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
+    { title: <Link href={`${HEALTH_INDEX_PATH}${langSuffix(lang)}`}>{copy.listTitle}</Link> },
+  ];
+}
 
 /** 填充色只在 `web/app/studio.css` 的 `--tone-*-fill` 一处，组件按 tone 取变量名，不再抄十六进制。 */
 const toneFill = (tone: StudioTone) => `var(--tone-${tone}-fill)`;
@@ -289,7 +298,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
   const [to, setTo] = useState<string>();
   const ready = from !== undefined && to !== undefined && from !== to;
   const diffHref = ready
-    ? `/observe/health-diff?${new URLSearchParams({ from: from as string, to: to as string, lang })}`
+    ? `${HEALTH_DIFF_PATH}?${new URLSearchParams({ from: from as string, to: to as string, lang })}`
     : undefined;
   return <>
     <KnowledgeSectionNav active="health" lang={lang}/>
@@ -429,8 +438,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/knowledge${langSuffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
-        { title: <Link href={`/observe/health${langSuffix(lang)}`}>{copy.listTitle}</Link> },
+        ...healthCrumbs(copy, lang),
         { title: report.analysisId },
       ]}/>
       <div className="observe-detail-title">
@@ -515,8 +523,7 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/knowledge${langSuffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
-        { title: <Link href={`/observe/health${langSuffix(lang)}`}>{copy.listTitle}</Link> },
+        ...healthCrumbs(copy, lang),
         { title: copy.trendCrumb },
       ]}/>
       <div className="observe-detail-title"><h1 title={trend.skillName}>{copy.trendHeading} · {trend.skillName}</h1></div>
@@ -588,8 +595,7 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        { title: <Link href={`/knowledge${langSuffix(lang)}`}>{copy.knowledgeCrumb}</Link> },
-        { title: <Link href={`/observe/health${langSuffix(lang)}`}>{copy.listTitle}</Link> },
+        ...healthCrumbs(copy, lang),
         { title: copy.diffCrumb },
       ]}/>
       <div className="observe-detail-title"><h1>{copy.diffHeading}</h1></div>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Modal, Select, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
+import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 
 type Preview = { origin: NonNullable<KnowledgeCandidateSource['origin']>; sourceVersion: string; messages: KnowledgeCandidateSource['excerpts'] };
@@ -72,7 +73,7 @@ export function ExtractConversation({ threadId, turnId, lang, onFinished }: { th
       onFinished();
     } finally { if (controller.current === active) controller.current = null; }
   }
-  const link = (id: string) => `/knowledge/candidates?${new URLSearchParams({ workspace, id, lang })}`;
+  const link = (id: string) => `${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id, lang })}`;
   const scope = turnId ? t('当前这一轮', 'This turn') : t('当前会话', 'This conversation');
   return <><Button type="primary" onClick={() => void prepare()}>{t('提炼知识', 'Extract knowledge')}</Button>
     <Modal centered title={t('提炼知识', 'Extract knowledge')} open={open} width={640} closable={stage !== 'generating'} mask={{ closable: false }}

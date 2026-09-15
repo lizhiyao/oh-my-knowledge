@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { HEALTH_INDEX_PATH, KNOWLEDGE_INDEX_PATH, MANAGED_LIST_PATH } from '../../../http/page-paths';
 import { langSuffix, type Language } from '../layout/shell';
 
 
@@ -10,9 +11,9 @@ import { langSuffix, type Language } from '../layout/shell';
 export function KnowledgeSectionNav({ active, lang }: { active: 'skills' | 'managed' | 'health'; lang: Language }) {
   const zh = lang === 'zh';
   const items = [
-    { key: 'skills' as const, href: `/knowledge${langSuffix(lang)}`, label: zh ? '知识对象' : 'Knowledge artifacts' },
-    { key: 'health' as const, href: `/observe/health${langSuffix(lang)}`, label: zh ? 'Skill 健康度' : 'Skill health' },
-    { key: 'managed' as const, href: `/knowledge/managed${langSuffix(lang)}`, label: zh ? '受管决策史' : 'Managed history' },
+    { key: 'skills' as const, href: `${KNOWLEDGE_INDEX_PATH}${langSuffix(lang)}`, label: zh ? '知识对象' : 'Knowledge artifacts' },
+    { key: 'health' as const, href: `${HEALTH_INDEX_PATH}${langSuffix(lang)}`, label: zh ? 'Skill 健康度' : 'Skill health' },
+    { key: 'managed' as const, href: `${MANAGED_LIST_PATH}${langSuffix(lang)}`, label: zh ? '受管决策史' : 'Managed history' },
   ];
   return (
     <nav className="observe-section-nav" aria-label={zh ? '知识分区' : 'Knowledge sections'}>
