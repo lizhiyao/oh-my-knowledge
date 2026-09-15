@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { describe, it } from 'vitest';
+import { describe, it, vi } from 'vitest';
 import {
   projectDiff,
   projectIndexRows,
@@ -15,6 +15,8 @@ import type { HealthPage } from '../../../src/studio/http/pages/health-page.js';
 import { HealthView } from '../../../src/studio/web/components/observe/health';
 import { coverageOf, reportOf, skillOf, trendPointOf } from '../fixtures/health-report.js';
 import { reactText, visibleText } from '../../helpers/react-ssr.js';
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 
 /**
  * 渲染成可比对的字符串：剥掉 React 的文本定界注释后按可见顺序断言，

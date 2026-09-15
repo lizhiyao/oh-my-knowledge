@@ -1,4 +1,6 @@
 'use client';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { resolveKnowledgeWorkspace } from './workspace';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
@@ -9,6 +11,9 @@ import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidat
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
+  const router = useRouter();
+  /** 页头按钮与空状态引导去的是同一个地址，跳转动作只写一遍。 */
+  const chooseConversation = () => router.push(`/observe${langSuffix(lang)}`);
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
@@ -110,18 +115,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   return <section className="knowledge-candidates">
-    <header className="candidate-heading"><div><a href={`/knowledge${langSuffix(lang)}`}>{t('知识载体', 'Knowledge artifacts')}</a><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
+    <header className="candidate-heading"><div><Link href={`/knowledge${langSuffix(lang)}`}>{t('知识载体', 'Knowledge artifacts')}</Link><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
       <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
-        {rows.length > 0 && <Button type="primary" disabled={busy} href={`/observe${langSuffix(lang)}`}>{t('从会话选择', 'Choose a conversation')}</Button>}
+        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('从会话选择', 'Choose a conversation')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
         <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
-    {detail?.origin && <a href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace, lang })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</a>}
+    {detail?.origin && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace, lang })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={() => { window.location.assign(`/observe${langSuffix(lang)}`); }} onHistory={() => setShowRuns(true)}/>
+      onChoose={chooseConversation} onHistory={() => setShowRuns(true)}/>
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>

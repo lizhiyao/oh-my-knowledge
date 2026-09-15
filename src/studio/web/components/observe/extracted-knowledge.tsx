@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { ExtractConversation } from './extract-conversation';
 import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 import { useEffect, useRef, useState } from 'react';
@@ -35,6 +36,6 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
       <Button disabled={!workspace.trim()} loading={busy} onClick={() => void load()}>{zh ? '读取记录' : 'Load history'}</Button>
       {error && <Alert type="error" title={zh ? '无法读取，请检查保存目录。' : 'Could not load history. Check the folder.'}/>}
       {!busy && !error && runs.length === 0 && <Empty description={zh ? '当前目录尚无这个会话的提炼记录。' : 'No extractions for this conversation in this folder.'}/>}
-      {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{({ completed: zh ? '提炼完成' : 'Completed', failed: zh ? '提炼失败' : 'Failed', cancelled: zh ? '已取消' : 'Cancelled', generating: zh ? '提炼中' : 'Extracting', prepared: zh ? '待完成保存' : 'Ready to save' } as Record<string, string>)[run.status] ?? run.status} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>{run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><a href={`/knowledge/candidates?${link}`}>{item.title}</a> · {item.choice === 'retain' ? (zh ? '已保留' : 'Retained') : item.choice === 'discard' ? (zh ? '已舍弃' : 'Discarded') : (zh ? '待核对' : 'Awaiting review')}</p>; })}</section>)}
+      {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{({ completed: zh ? '提炼完成' : 'Completed', failed: zh ? '提炼失败' : 'Failed', cancelled: zh ? '已取消' : 'Cancelled', generating: zh ? '提炼中' : 'Extracting', prepared: zh ? '待完成保存' : 'Ready to save' } as Record<string, string>)[run.status] ?? run.status} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>{run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><Link href={`/knowledge/candidates?${link}`}>{item.title}</Link> · {item.choice === 'retain' ? (zh ? '已保留' : 'Retained') : item.choice === 'discard' ? (zh ? '已舍弃' : 'Discarded') : (zh ? '待核对' : 'Awaiting review')}</p>; })}</section>)}
     </Drawer></>;
 }

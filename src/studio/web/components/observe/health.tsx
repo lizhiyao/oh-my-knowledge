@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Alert, Breadcrumb, Button, Collapse, Empty, Progress, Radio, Table, Tag, Typography } from 'antd';
@@ -283,6 +284,7 @@ export function HealthView({ page, lang }: { page: HealthPage; lang: Language })
 
 function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language }) {
   const copy = COPY[lang];
+  const router = useRouter();
   const [from, setFrom] = useState<string>();
   const [to, setTo] = useState<string>();
   const ready = from !== undefined && to !== undefined && from !== to;
@@ -294,7 +296,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
     <div className="observe-toolbar">
       <Typography.Text type="secondary">{copy.compareHint}</Typography.Text>
       <div className="observe-toolbar-actions">
-        <Button type="primary" disabled={!ready} href={diffHref}>{copy.compareBtn}</Button>
+        <Button type="primary" disabled={!ready} onClick={() => { if (diffHref) router.push(diffHref); }}>{copy.compareBtn}</Button>
       </div>
     </div>
     <Table<HealthIndexRow>
