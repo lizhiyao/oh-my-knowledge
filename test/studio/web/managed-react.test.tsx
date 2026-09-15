@@ -208,22 +208,23 @@ describe('受管决策史呈现', () => {
     assert.match(renderHistory(OBSERVE_RECORD, 'zh'), /观测/);
   });
 
-  it('observe 四档强弱各读各的，yellow 不冒充健康、underpowered 优先于色带', () => {
+  it('observe 四档强弱各读各的，yellow 不冒充健康也不借 red 的词、underpowered 优先于色带', () => {
     const zh = renderHistory(OBSERVE_RECORD, 'zh');
     assert.match(zh, />生产盲区</);
-    assert.match(zh, />需关注</);
-    assert.match(zh, />数据不足</);
+    assert.match(zh, />待观察</);
+    assert.match(zh, />样本不足</);
     assert.match(zh, />健康</);
-    // 「需关注」这一档的事件节点走 yellow 变量（antd Steps 经 icon-dot-color 吃色）——yellow 的唯一生产者。
+    // 「待观察」这一档的事件节点走 yellow 变量（antd Steps 经 icon-dot-color 吃色）——yellow 的唯一生产者。
     assert.match(zh, /icon-dot-color:var\(--managed-tone-yellow\)/);
+    assert.doesNotMatch(zh, /需关注/, '「需关注」在生产观察报告页指 red 档，受管页不能用同一个词指 yellow');
     const en = renderHistory(OBSERVE_RECORD, 'en');
     for (const badge of ['production gap', 'elevated', 'underpowered', 'healthy']) {
       assert.ok(en.includes(badge), `en observe badge ${badge}`);
     }
-    // underpowered 那条本身是红带：只能读作「数据不足」，不得同时给出确诊盲区结论。
+    // underpowered 那条本身是红带：只能读作「样本不足」，不得同时给出确诊盲区结论。
     const weak = OBSERVE_RECORD.observations!.filter((item) => item.reportId === 'obs-weak');
     const onlyWeak = renderHistory({ ...OBSERVE_RECORD, observations: weak }, 'zh');
-    assert.match(onlyWeak, />数据不足</);
+    assert.match(onlyWeak, />样本不足</);
     assert.doesNotMatch(onlyWeak, />生产盲区</);
   });
 
