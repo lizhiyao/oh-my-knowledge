@@ -68,7 +68,15 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .health-stat-value{font-size:20px;font-weight:600;line-height:28px}
 .health-stat-label{font-size:11px}
 .health-stamp{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-.tone-success{color:#1f9d63}.tone-warning{color:#d97706}.tone-error{color:#dc2626}.tone-neutral{color:#8893a5}
+/*
+ * 语义色只在这里出现一次。ink 是文字色，fill 是色带／圆点／时间轴节点的填充色，组件按 tone
+ * 取 `var(--tone-<tone>-fill)`。neutral 刻意不同值：文字要可读（#8893a5），色带要「不给硬色」
+ * （#ccd2de）—— 原先 health.tsx 用 #b0b8c5、managed.tsx 用 #cbd2dd 各抄一份第三个灰。
+ * 受管生命周期是分类色板（ManagedTone），与语义 tone 正交：绿／黄／红复用同一批 fill，
+ * accent 是品牌紫，muted 复用 neutral 的填充色。
+ */
+:root{--tone-success-ink:#1f9d63;--tone-warning-ink:#d97706;--tone-error-ink:#dc2626;--tone-neutral-ink:#8893a5;--tone-success-fill:var(--tone-success-ink);--tone-warning-fill:var(--tone-warning-ink);--tone-error-fill:var(--tone-error-ink);--tone-neutral-fill:#ccd2de;--managed-tone-green:var(--tone-success-fill);--managed-tone-yellow:var(--tone-warning-fill);--managed-tone-red:var(--tone-error-fill);--managed-tone-accent:#5145cd;--managed-tone-muted:var(--tone-neutral-fill)}
+.tone-success{color:var(--tone-success-ink)}.tone-warning{color:var(--tone-warning-ink)}.tone-error{color:var(--tone-error-ink)}.tone-neutral{color:var(--tone-neutral-ink)}
 .health-section-title{font-size:14px;margin:4px 0 0}
 .health-section-hint{font-size:11px;font-weight:400;margin-left:6px}
 

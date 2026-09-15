@@ -315,7 +315,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(partial.observe?.healthBand, 'green');
     assert.equal(partial.band, 'gray');
     assert.equal(partial.observe?.effectiveBand, 'gray');
-    assert.equal(assessHealth(partial, [], 'zh').color, partial.observe?.effectiveBand);
+    assert.equal(assessHealth(partial, [], 'zh').band, partial.observe?.effectiveBand);
     const local = buildSkillIndex(proj, emptyDoctors, emptyObs).entries.find((entry) => entry.skillName === 'partial')!;
     assert.equal(local.observe?.effectiveBand, partial.observe?.effectiveBand);
   });
@@ -330,8 +330,9 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     const idx = buildSkillIndex(proj, emptyDoctors, emptyObs);
     const entry = idx.entries.find((item) => item.skillName === 'gap')!;
     const health = assessHealth(entry, idx.insightsBySkill.get('gap') ?? [], 'zh');
-    assert.equal(health.color, 'red');
-    assert.equal(entry.band, health.color);
+    assert.equal(health.band, 'red');
+    assert.equal(health.tone, 'error');
+    assert.equal(entry.band, health.band);
     assert.equal(idx.summary.red, 1);
     assert.equal(idx.summary.yellow, 0);
     assert.equal(health.score, 60);
@@ -393,7 +394,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(covered.observe?.healthBand, 'green');
     assert.equal(covered.band, 'green');
     assert.equal(covered.observe?.effectiveBand, 'green');
-    assert.equal(assessHealth(covered, [], 'zh').color, covered.observe?.effectiveBand);
+    assert.equal(assessHealth(covered, [], 'zh').band, covered.observe?.effectiveBand);
   });
 
   it('悬空卡片(真身从未存在)不进 buildSkillIndex:include=true 也不展示', () => {

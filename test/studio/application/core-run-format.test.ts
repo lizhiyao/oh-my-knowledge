@@ -17,7 +17,6 @@ import {
   formatAssumptionCheck,
   formatBudget,
   formatCoverage,
-  formatDuration,
   formatMeasurement,
   formatObservation,
   formatProvenance,
@@ -75,31 +74,8 @@ describe('状态取值的着色口径', () => {
   it('只表达事实的取值一律不着色，未列出的取值也不着色', () => {
     // 数据分级、缓存命中、`resolvable` 都只说明「是什么」，染成任何一档颜色都等于伪造结论。
     for (const value of ['public', 'sensitive', 'secret', 'gold', 'not-used', 'miss', 'replay', 'transparent-hit', 'resolvable', 'unknown-future-status', '']) {
-      assert.equal(statusTone(value), 'default', value);
+      assert.equal(statusTone(value), 'neutral', value);
     }
-  });
-});
-
-describe('时长文本化', () => {
-  it('按量级换单位，缺席按 0 处理', () => {
-    for (const [ms, text] of [
-      [0, '0ms'], [999, '999ms'], [1000, '1.0s'], [1500, '1.5s'],
-      [60_000, '1m'], [90_000, '1m30s'], [1_800_000, '30m'],
-    ] as const) {
-      assert.equal(formatDuration(ms), text, `${ms}ms`);
-    }
-    assert.equal(formatDuration(undefined), '0ms');
-    assert.equal(formatDuration(null), '0ms');
-  });
-
-  it('秒向分钟进位，不渲染出 "1m60s" 这种不存在的时刻', () => {
-    assert.equal(formatDuration(119_999), '2m');
-    assert.equal(formatDuration(1_799_999), '30m');
-  });
-
-  it('不引入小时档：一小时以上的运行仍以分钟计数，与预算读数同口径', () => {
-    assert.equal(formatDuration(3_600_000), '60m');
-    assert.equal(formatDuration(5_400_000), '90m');
   });
 });
 
@@ -153,7 +129,7 @@ describe('预算片段', () => {
       active: '1m30s',
       wall: '1m40s',
       limit: '1m',
-      overshoot: '40.0s',
+      overshoot: '40s',
       cost: '0.01 USD, 2 CNY',
       'unreported-cost': 3,
       termination: 'active-budget-exhausted:active-duration:active-budget-exhausted',

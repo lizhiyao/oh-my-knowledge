@@ -31,7 +31,7 @@ import type {
 import type { Diagnosis } from '../../../diagnosis/contracts.js';
 import type { DoctorReport } from '../../../knowledge-artifacts/doctor/contracts.js';
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../../evidence/graph/contracts.js';
-import { assessHealth } from './skill-health.js';
+import { healthBand } from './skill-health.js';
 import { detectInsights } from './skill-insights.js';
 
 interface SkillIndexCacheEntry {
@@ -387,7 +387,7 @@ export function buildSkillIndex(
       diagnostics: ownRecordValue(diagnosisBundle.bySkill, entry.skillName) ?? [],
     });
     insightsBySkill.set(entry.skillName, insights);
-    entry.band = assessHealth(entry, insights, 'zh').color;
+    entry.band = healthBand(entry, insights);
     const graph = doctorGraphForSkill(entry.skillName, entry.doctor?.reportId, graphPaths);
     if (graph !== undefined) entry.graph = graph;
   }

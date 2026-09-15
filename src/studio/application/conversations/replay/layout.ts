@@ -4,7 +4,7 @@ import type {
 import type { Lang } from '../../../../shared/language.js';
 import type { ReplayAxisTick, ReplayGap, ReplayLaneKind, ReplayMilestoneTone, ReplayProjection } from '../../../view-models/conversations/replay.js';
 import { inlineMarkdownText } from './inline-markdown.js';
-import { compactText, durationBetween, formatRelativeTimestamp, parseTimestamp } from './format.js';
+import { compactText, durationBetween, parseTimestamp, relativeClock } from './format.js';
 import { eventPreview, replayEventModel, resolveToolResultState, resultCardDetail, resultCardStatusLabel, resultTitle, STEP_LABELS, toolInputPreview, toolOperationTitle } from './summary.js';
 
 const REPLAY_CARD_WIDTH = 190;
@@ -65,7 +65,7 @@ function replayCardWidth(step: TaskReplayStep, lang: Lang, pendingToolResults: b
     const resultWidth = adaptiveCardWidth(
       resultCardStatusLabel(resultState, lang),
       resultTitle(step, [], lang, input, call?.toolName ?? step.title, resultState),
-      resultCardDetail(step, result, durationBetween(call?.timestamp, result?.timestamp, lang), lang),
+      resultCardDetail(step, result, durationBetween(call?.timestamp, result?.timestamp), lang),
     );
     return Math.max(actionWidth, resultWidth, step.knowledgeEvidenceIds.length > 0 ? REPLAY_CARD_WIDTH : 0);
   }
@@ -193,7 +193,7 @@ export function buildOperationLayout(
   const tickStride = Math.max(1, Math.ceil(steps.length / 9));
   const axisTickCandidates = steps.flatMap((step, index): ReplayAxisTick[] => (
     index === 0 || index === steps.length - 1 || index % tickStride === 0
-      ? [{ position: positions[index] ?? TRACK_START_PADDING, label: formatRelativeTimestamp(step.timestamp, startTimestamp) }]
+      ? [{ position: positions[index] ?? TRACK_START_PADDING, label: relativeClock(step.timestamp, startTimestamp) }]
       : []
   ));
   const axisTicks = axisTickCandidates.filter((tick, index) => index === 0 || tick.label !== axisTickCandidates[index - 1]?.label);

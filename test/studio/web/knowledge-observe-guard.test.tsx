@@ -12,8 +12,8 @@ import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page';
 import type { KnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query';
-import { KnowledgeView } from '../../../src/studio/web/components/knowledge/knowledge';
-import type { SkillIndex, SkillIndexEntry } from '../../../src/studio/view-models/knowledge/skill-index';
+import { KnowledgeView, observeGapText } from '../../../src/studio/web/components/knowledge/knowledge';
+import type { SkillIndex, SkillIndexEntry, SkillObserveSnapshot } from '../../../src/studio/view-models/knowledge/skill-index';
 import { reactText } from '../../helpers/react-ssr.js';
 
 function entryWith(observe: SkillIndexEntry['observe'], overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
@@ -46,8 +46,8 @@ function renderIndex(entries: SkillIndexEntry[]): string {
 describe('知识列表的 underpowered 口径', () => {
   it('标注样本不足，而不是给出稳定性或缺口率的硬结论', () => {
     const html = renderIndex([entryWith(underpowered)]);
-    assert.match(html, /样本不足/);
-    // gapRate=0 会渲染成「0.0% 缺口」——低段数时不能以测量结论的形式出现。
+    assert.match(html, /样本不足（2 段）/, '列表这一格要带上样本量，否则「样本不足」读起来没有依据');
+    // gapRate=0 会渲染成「0% 缺口」——低段数时不能以测量结论的形式出现。
     assert.doesNotMatch(html, /\d+(?:\.\d+)?%\s*(?:缺口|稳定)/);
   });
 
@@ -56,6 +56,24 @@ describe('知识列表的 underpowered 口径', () => {
     const html = renderIndex([entryWith(underpowered, { skillName: payload })]);
     assert.ok(!html.includes('<img src=x'), 'payload must not become markup');
     assert.ok(html.includes(reactText(payload)), 'payload must stay visible as data');
+  });
+});
+
+/**
+ * 详情面板落在 Tabs 的非激活页里，SSR 输出不到它，所以直接钉列表与详情共用的那个文本 owner：
+ * 只要两处都从这里取字，同一状态就不可能一处写「样本不足」一处出数字。
+ */
+describe('观测缺口读数只有一个 owner', () => {
+  it('样本不足时两处都不出数字，够力时两处出同一个比率', () => {
+    assert.equal(observeGapText(underpowered, true, true), '样本不足（2 段）');
+    assert.equal(observeGapText(underpowered, true, false), '样本不足');
+    assert.equal(observeGapText(underpowered, false, true), 'Underpowered (2 segments)');
+
+    const measured: SkillObserveSnapshot = { ...underpowered, confidence: 'high', segmentCount: 40, gapRate: 0.125 };
+    assert.equal(observeGapText(measured, true, true), '12.5%');
+    assert.equal(observeGapText(measured, true, false), '12.5%');
+    // 整数值不补 `.0`：比率与差值共用同一套字形。
+    assert.equal(observeGapText({ ...measured, gapRate: 0.4 }, true, true), '40%');
   });
 });
 
@@ -69,7 +87,7 @@ describe('知识详情的健康口径', () => {
   });
 
   it('区分缺失的工具结果与实测得到的 0% 失败率', () => {
-    const observeWith = (toolCallCount: number, toolResolvedCount: number, toolCancelledCount: number, stability: 'stable' | 'unknown') => ({
+    const observeWith = (toolCallCount: number, toolResolvedCount: number, toolCancelledCount: number, stability: 'stable' | 'unknown'): SkillObserveSnapshot => ({
       ...underpowered, confidence: 'high', effectiveBand: 'green', healthBand: 'green',
       segmentCount: 20, failureRate: 0, toolCallCount, toolResolvedCount, toolCancelledCount, stability,
     });

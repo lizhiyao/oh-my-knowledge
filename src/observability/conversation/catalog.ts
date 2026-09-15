@@ -71,7 +71,12 @@ export interface ConversationCatalog {
   loadTaskTrajectory(threadId: string, turnId: string, options?: { includeNextHumanMessage?: boolean }): Promise<ConversationTaskTrajectory | undefined>;
   /** Complete message records for extraction, before the page archive truncation. */
   loadTaskMessageRecords?(threadId: string, turnId: string): Promise<{ path: string; records: { recordIndex: number; raw: string }[] } | undefined>;
-  /** Optional live capability. Static catalogs do not need to implement it. */
+  /**
+   * 实时跟随是宿主能力而不是数据属性，因此保持可选：DSH 插件挂的 `createDshConversationCatalog()`
+   * 只持有推过来的快照，长不出可跟随的源。缺席时的两侧后果由 Studio 承担——`/api/conversations/:thread/tasks/:turn/live`
+   * 回 501 `live_task_trajectory_unavailable`，任务页也不渲染实时控件（口径见 #902 §四 与
+   * `live-task-trajectory-server.test.ts`）。
+   */
   observeTaskTrajectory?(
     threadId: string,
     turnId: string,

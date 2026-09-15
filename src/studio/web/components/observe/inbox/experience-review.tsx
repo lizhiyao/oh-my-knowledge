@@ -11,15 +11,16 @@ import { ownRecordValue } from '../../../../../shared/record-count';
 import { type Language } from '../../layout/shell';
 import { conversationHref } from '../../conversation-link';
 import { tagStatus } from '../../tag-color';
+import { displayTime } from '../../../../application/display/format';
 import { SessionReviewActions } from './review-actions';
 
 const PRIORITY_RANK: Record<string, number> = { review_first: 0, sample_review: 1 };
 
-function formatRange(start?: string, end?: string): string {
-  const fmt = (value?: string) => (value ? value.slice(0, 19).replace('T', ' ') : '');
-  const startLabel = fmt(start);
-  const endLabel = fmt(end);
-  if (!startLabel && !endLabel) return '—';
+/** 会话时间范围：两侧都是同一套分钟读数，缺哪侧就在那侧给 `—`。 */
+function formatRange(start: string | undefined, end: string | undefined): string {
+  const startLabel = displayTime(start, 'minute');
+  const endLabel = displayTime(end, 'minute');
+  if (startLabel === '—' && endLabel === '—') return '—';
   return `${startLabel} → ${endLabel}`;
 }
 

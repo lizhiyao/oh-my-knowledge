@@ -69,14 +69,41 @@ describe('Studio knowledge routes', () => {
     assert.equal(apiLegacy.status, 404);
     assert.equal(apiLegacy.headers.get('location'), null);
 
-    assert.equal((await fetch(`${baseUrl}/api/observe-health`)).status, 200, '页面已改由 http/pages loader 取数，这组 JSON API 仍供 bench 并发探针与外部机器读者使用');
+    // #902 §一：这四条 JSON 投影在渲染层收敛后只剩测试读者，一律退出，不补重定向、不留兼容别名。
+    for (const path of ['/api/observe-health/report-a', '/api/skill-trend/audit', '/api/analyses-diff?from=a&to=b', '/api/skills/audit/diagnostics']) {
+      const retired = await fetch(`${baseUrl}${path}`, { redirect: 'manual' });
+      assert.equal(retired.status, 404, `${path} 已退出`);
+      assert.equal(retired.headers.get('location'), null, `${path} 不留重定向`);
+      // 落到宿主统一的纯文本 404，而不是路由自己查不到对象时的 JSON 错误体。
+      assert.equal(await retired.text(), 'Not Found', `${path} 不再由路由应答`);
+    }
+
+    assert.equal((await fetch(`${baseUrl}/api/observe-health`)).status, 200, '列表仍是性能基线的并发探针，按机读面保留');
     assert.equal((await fetch(`${baseUrl}/static/chart.js`)).status, 404);
   });
 
-  it('answers analyses-diff without from/to as a stable 400 contract', async () => {
-    const response = await fetch(`${baseUrl}/api/analyses-diff`);
-    assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), { error: 'missing_query_params' });
-    assert.equal(response.headers.get('cache-control'), 'no-store');
+  it('uses one resolved directory snapshot per skill-index request', async () => {
+    let analysesResolutions = 0;
+    let doctorResolutions = 0;
+    const snapshotServer = createReportServer({
+      port: 0,
+      analysesDir: () => {
+        analysesResolutions += 1;
+        return join(root, 'analyses');
+      },
+      doctorsDir: () => {
+        doctorResolutions += 1;
+        return join(root, 'doctors');
+      },
+      observationsDir: join(root, 'observations'),
+    });
+    const url = await snapshotServer.start();
+    try {
+      assert.equal((await fetch(`${url}/api/skills`)).status, 200);
+      assert.equal(analysesResolutions, 1, '一条请求只解析一次目录快照，不在同一条请求里读两遍');
+      assert.equal(doctorResolutions, 1);
+    } finally {
+      await snapshotServer.stop();
+    }
   });
 });

@@ -6,16 +6,10 @@ import {
   signalRuleDescription,
   signalSeverityMeta,
   signalSourceMeta,
-  type SignalSeverityTone,
 } from '../../../../../observability/inbox/signal-semantics';
+import { displayTime } from '../../../../application/display/format';
+import { severityTagColor } from '../../tag-color';
 import type { Language } from '../../layout/shell';
-
-const SEVERITY_TAG_COLOR: Record<SignalSeverityTone, string> = {
-  error: 'error',
-  warning: 'warning',
-  info: 'processing',
-  neutral: 'default',
-};
 
 function evidenceQuote(item: ObservationInboxItem): string {
   const evidence = item.evidence;
@@ -69,7 +63,7 @@ export function SignalSection({ items, lang }: { items: ObservationInboxItem[]; 
       size="small"
       rowKey="id"
       dataSource={items}
-      pagination={{ pageSize: 20, showSizeChanger: false }}
+      pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
       scroll={{ x: 1100 }}
       expandable={{
         expandedRowRender: (item) => <SignalDetail item={item} lang={lang} />,
@@ -108,7 +102,7 @@ export function SignalSection({ items, lang }: { items: ObservationInboxItem[]; 
             const meta = signalSeverityMeta(item.severity, lang);
             return (
               <>
-                <Tag color={SEVERITY_TAG_COLOR[meta.tone]}>{meta.label}</Tag>
+                <Tag color={severityTagColor(meta.tone)}>{meta.label}</Tag>
                 <br />
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>{meta.decision}</Typography.Text>
               </>
@@ -156,6 +150,7 @@ export function SignalSection({ items, lang }: { items: ObservationInboxItem[]; 
           dataIndex: 'lastSeen',
           sorter: (a, b) => a.lastSeen.localeCompare(b.lastSeen),
           defaultSortOrder: 'descend',
+          render: (value: string) => <time dateTime={value}>{displayTime(value, 'minute')}</time>,
         },
       ]}
     />

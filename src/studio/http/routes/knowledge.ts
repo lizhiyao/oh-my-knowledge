@@ -1,7 +1,7 @@
 import { listManagedRows } from '../../../knowledge-artifacts/governance/index.js';
 import type { KnowledgeQuery } from '../../application/knowledge/knowledge-query.js';
-import { listAnalyses, loadAnalysis, querySkillDiff, querySkillTrend } from '../../application/knowledge/knowledge-reports.js';
-import { JSON_HEADERS, writeJsonError } from '../errors.js';
+import { listAnalyses } from '../../application/knowledge/knowledge-reports.js';
+import { JSON_HEADERS } from '../errors.js';
 import { resolveManagedRootOption } from '../managed-root.js';
 import type { StudioRouteContext } from './contracts.js';
 import { createStudioRouter, type StudioRouteDefinition } from './router.js';
@@ -47,43 +47,6 @@ export function createKnowledgeRoutes({
       },
     },
     {
-      pattern: '/api/observe-health/*id',
-      handler({ response: res, params, analysesDir }) {
-        const report = loadAnalysis(analysesDir, params.id, includeObserveCards);
-        if (!report) {
-          writeJsonError(res, 404, 'analysis_not_found');
-          return;
-        }
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify(report));
-      },
-    },
-    {
-      pattern: '/api/skill-trend/*skill',
-      handler({ response: res, params, analysesDir }) {
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify(querySkillTrend(analysesDir, params.skill, includeObserveCards)));
-      },
-    },
-    {
-      pattern: '/api/analyses-diff',
-      handler({ response: res, url, analysesDir }) {
-        const fromId = url.searchParams.get('from');
-        const toId = url.searchParams.get('to');
-        if (!fromId || !toId) {
-          writeJsonError(res, 400, 'missing_query_params');
-          return;
-        }
-        const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
-        if (!diff) {
-          writeJsonError(res, 404, 'analysis_not_found');
-          return;
-        }
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify(diff));
-      },
-    },
-    {
       pattern: '/api/skills',
       handler({ response: res, analysesDir, doctorsDir }) {
         const idx = query.read({ analysesDir, doctorsDir });
@@ -96,24 +59,6 @@ export function createKnowledgeRoutes({
           })),
           summary: idx.summary,
           diagnosisSummary: idx.diagnosisSummary,
-        }));
-      },
-    },
-    {
-      pattern: '/api/skills/*skill/diagnostics',
-      handler({ response: res, params, analysesDir, doctorsDir }) {
-        const skillName = params.skill;
-        const idx = query.read({ analysesDir, doctorsDir });
-        const diagnostics = idx.diagnosticsBySkill.get(skillName);
-        if (!diagnostics) {
-          writeJsonError(res, 404, 'skill_diagnostics_not_found');
-          return;
-        }
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({
-          skillName,
-          sourceCoverage: idx.diagnosisSummary.sourceCoverage,
-          diagnostics,
         }));
       },
     },

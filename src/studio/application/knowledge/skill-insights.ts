@@ -19,6 +19,7 @@ import type {
   DiagnosisType,
 } from '../../../diagnosis/contracts.js';
 import { isActiveDiagnosisLifecycle } from '../../../diagnosis/lifecycle.js';
+import { formatPercent } from '../display/format.js';
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
@@ -80,7 +81,7 @@ function detectProductionInstability(
   const evidence: InsightEvidence[] = [{
     perspective: 'observe',
     status: 'flagged',
-    message: `生产工具失败率为 ${(observe.failureRate * 100).toFixed(0)}％。`,
+    message: `生产工具失败率为 ${formatPercent(observe.failureRate)}。`,
   }];
   const dependency = doctor?.results.find((result) => (
     result.ruleId === 'dependencies_present' && result.status !== 'pass'
@@ -116,7 +117,7 @@ function detectCoverageGap(observe: SkillObserveSnapshot | null): Insight | null
   const evidence: InsightEvidence[] = [{
     perspective: 'observe',
     status: 'flagged',
-    message: `生产知识缺口率为 ${(observe.gapRate * 100).toFixed(0)}％。`,
+    message: `生产知识缺口率为 ${formatPercent(observe.gapRate)}。`,
   }];
   const caveat = underpoweredCaveat(observe);
   if (caveat !== null) evidence.push(caveat);

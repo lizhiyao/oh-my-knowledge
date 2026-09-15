@@ -73,7 +73,7 @@ describe('健康度事实投影守住口径', () => {
       s: skillOf('s', { segments: 40, toolCalls: 8, toolFailures: 0, toolCancelled: 6, toolResolved: 6 }),
     })).skills[0]!.tools;
     assert.deepEqual(
-      { comparable: cancelled.comparable, rate: cancelled.failureRatePercent, stability: cancelled.stability },
+      { comparable: cancelled.comparable, rate: cancelled.failureRate, stability: cancelled.stability },
       { comparable: 0, rate: null, stability: 'unknown' },
       '全部取消必须读成「不可测」，不是 0% 通过',
     );
@@ -82,8 +82,8 @@ describe('健康度事实投影守住口径', () => {
       s: skillOf('s', { segments: 40, toolCalls: 10, toolFailures: 4, legacyTools: true, stability: 'very-unstable' }),
     })).skills[0]!.tools;
     assert.deepEqual(
-      { comparable: legacy.comparable, rate: legacy.failureRatePercent, stability: legacy.stability },
-      { comparable: 10, rate: 40, stability: 'very-unstable' },
+      { comparable: legacy.comparable, rate: legacy.failureRate, stability: legacy.stability },
+      { comparable: 10, rate: 0.4, stability: 'very-unstable' },
       '旧报告按已记录调用都可判成败兜底',
     );
   });
@@ -99,9 +99,9 @@ describe('健康度事实投影守住口径', () => {
     };
     assert.deepEqual(projectDiff([row])[0]!.deltas, {
       segments: { text: '+10', tone: 'neutral' },
-      gap: { text: '-25.0%', tone: 'success' },
-      failure: { text: '-20.0%', tone: 'success' },
-      coverage: { text: '+60.0%', tone: 'success' },
+      gap: { text: '-25%', tone: 'success' },
+      failure: { text: '-20%', tone: 'success' },
+      coverage: { text: '+60%', tone: 'success' },
     });
 
     const [noise] = projectDiff([{ ...row, deltaSegments: 0, deltaGap: -0.005, deltaCoverage: 0.004 }]);
@@ -116,17 +116,18 @@ describe('健康度事实投影守住口径', () => {
   });
 
   it('趋势折线在取值缺席处断开，单点居中，越界取值不钳制', () => {
+    // gapRate 按契约恒为数字（生产侧 ?? 0 兜底），「取值缺席」只可能出现在可空的序列上，用 failureRate 钉断开几何。
     const chart = projectTrend({
       skillName: 'audit',
       points: [
-        trendPointOf({ analysisId: 'a1', gapRate: 0.2 }),
-        trendPointOf({ analysisId: 'a2', gapRate: null }),
-        trendPointOf({ analysisId: 'a3', gapRate: 0.4 }),
+        trendPointOf({ analysisId: 'a1', failureRate: 0.2 }),
+        trendPointOf({ analysisId: 'a2', failureRate: null }),
+        trendPointOf({ analysisId: 'a3', failureRate: 0.4 }),
       ],
     }).chart;
-    const gap = chart.series.find((series) => series.key === 'gap')!;
-    assert.equal((gap.line.match(/M/g) ?? []).length, 2, '缺口两侧各起一条折线，不跨缺口连线');
-    assert.equal(gap.dots.length, 2);
+    const failure = chart.series.find((series) => series.key === 'failure')!;
+    assert.equal((failure.line.match(/M/g) ?? []).length, 2, '缺席取值两侧各起一条折线，不跨缺口连线');
+    assert.equal(failure.dots.length, 2);
     assert.deepEqual(chart.grid.map((tick) => tick.label), ['0%', '50%', '100%']);
 
     const single = projectTrend({ skillName: 'audit', points: [trendPointOf({ analysisId: 'only', gapRate: 1.2 })] }).chart;
@@ -288,7 +289,7 @@ describe('观测健康 React 页面', () => {
     };
     const html = render({ pageKind: 'diff', diff }, 'zh');
     assert.ok(html.includes('href="/observe/skill-trend/both?lang=zh"'));
-    assert.match(html, /class="[^"]*health-delta tone-success[^"]*"[^>]*>-25\.0%/);
+    assert.match(html, /class="[^"]*health-delta tone-success[^"]*"[^>]*>-25%/);
     assert.match(html, /已消失/);
     assert.match(html, /新增/);
     assert.equal(html.match(/class="health-pair"/g)?.length, 12, '三行四栏都在文档里');

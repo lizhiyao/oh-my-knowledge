@@ -11,27 +11,21 @@ import type {
 import type { ManagedPage } from '../../../http/pages/managed-page';
 import { langSuffix, type Language } from '../layout/shell';
 import { runReportHref } from '../run-report-link';
-import { displayTime } from '../display-time';
+import { managedTagColor } from '../tag-color';
+import { displayTime } from '../../../application/display/format';
 import { KnowledgeSectionNav } from './section-nav';
 
 const { Text } = Typography;
 
 const shortHash = (hash: string): string => hash.slice(0, 12);
 
-const TONE_HEX: Record<ManagedTone, string> = {
-  green: '#1f9d63',
-  yellow: '#d97706',
-  red: '#dc2626',
-  accent: '#5145cd',
-  muted: '#cbd2dd',
-};
-
-const TONE_TAG_COLOR: Record<ManagedTone, string> = {
-  green: 'success',
-  yellow: 'warning',
-  red: 'error',
-  accent: 'processing',
-  muted: 'default',
+/** 色值只在 `web/app/studio.css` 的 `--managed-tone-*` 一处，组件按分类 tone 取变量名。 */
+const TONE_FILL: Record<ManagedTone, string> = {
+  green: 'var(--managed-tone-green)',
+  yellow: 'var(--managed-tone-yellow)',
+  red: 'var(--managed-tone-red)',
+  accent: 'var(--managed-tone-accent)',
+  muted: 'var(--managed-tone-muted)',
 };
 
 const EVENT_LABELS: Record<ManagedTimelineEvent['eventKind'], readonly [string, string]> = {
@@ -80,7 +74,7 @@ function stateMeta(state: string, zh: boolean): { label: string; tip: string } {
 }
 
 function Dot({ tone }: { tone: ManagedTone }) {
-  return <span className="managed-dot" style={{ background: TONE_HEX[tone] }} aria-hidden="true" />;
+  return <span className="managed-dot" style={{ background: TONE_FILL[tone] }} aria-hidden="true" />;
 }
 
 /** Core 决定策略拥有 verdict 词表；Studio 原样呈现已认证的值，不本地化、不重新解释。 */
@@ -115,7 +109,7 @@ function EventLine({ event, zh, lang }: { event: ManagedTimelineEvent; zh: boole
     <div className="managed-event-head">
       <Text strong>{EVENT_LABELS[event.eventKind][zh ? 0 : 1]}</Text>
       {event.eventKind === 'eval' && event.verdict && <VerdictTag verdict={event.verdict} />}
-      {badge && <Tag color={TONE_TAG_COLOR[badge.tone]}>{badge.label[zh ? 0 : 1]}</Tag>}
+      {badge && <Tag color={managedTagColor(badge.tone)}>{badge.label[zh ? 0 : 1]}</Tag>}
       {event.eventKind !== 'install' && event.overriddenBlocks && <OverrideTag zh={zh} blocks={event.overriddenBlocks} />}
       <Text type="secondary" className="managed-event-time">{displayTime(event.at)}</Text>
     </div>
@@ -223,7 +217,7 @@ export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, 
       </div>,
     }];
     return [...header, ...segment.events.map((event) => ({
-      color: TONE_HEX[eventTone(event)],
+      color: TONE_FILL[eventTone(event)],
       content: <EventLine event={event} zh={zh} lang={lang} />,
     }))];
   });

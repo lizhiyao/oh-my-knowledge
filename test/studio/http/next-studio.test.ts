@@ -66,8 +66,18 @@ describe('Next Studio production boundary', () => {
     assert.ok(asset);
     assert.equal((await fetch(new URL(asset.replaceAll('&amp;','&'),urlA))).status,200);
     assert.equal((await fetch(`${urlA}/api/reports`)).status,200);
-    assert.equal((await fetch(`${urlA}/measure/missing`)).status,404);
-    assert.equal((await fetch(`${urlA}/measure/%ZZ`)).status,404);
+    // 缺页只有一份用户可见结果（#902 §三），且两份都在 Next 开始流式输出之前定下来：
+    // 根 `loading.tsx` 一旦先刷出壳层，段内的 `notFound()` 就只改视图、改不掉状态码（实测 200 + Loading…），
+    // 所以带壳的 `not-found` 文档不能当服务端缺页用。地址有路由但记录不存在 → 宿主的专属码；
+    // 地址根本没有路由 → HTTP adapter 兜底，两种都是纯文本 404。
+    const missingRun = await fetch(`${urlA}/measure/missing?lang=en`);
+    assert.equal(missingRun.status, 404);
+    assert.equal(await missingRun.text(), 'core_run_not_found');
+    assert.equal((await fetch(`${urlA}/measure/%ZZ`)).status, 404, '畸形身份按缺页回答，不拿去查数据源');
+    assert.equal((await fetch(`${urlA}/measure/a/b`)).status, 404, '越段地址不冒充运行 id');
+    const noRoute = await fetch(`${urlA}/definitely-not-a-page?lang=en`);
+    assert.equal(noRoute.status, 404);
+    assert.equal(await noRoute.text(), 'Not Found');
     assert.equal((await fetch(`${urlA}/measure`,{method:'POST'})).status,405);
     const knowledge = await fetch(`${urlA}/knowledge`);
     const knowledgeHtml = await knowledge.text();

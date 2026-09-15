@@ -13,9 +13,9 @@ import { StudioNavigationProvider } from '../../../src/studio/web/components/lay
 import { StudioRouteProvider } from '../../../src/studio/web/components/layout/current-route.js';
 
 function render(lang: 'zh' | 'en', route: string, withNavigation = true): string {
-  const shell = createElement(StudioShell, { lang, active: withNavigation ? 'knowledge' : false }, '内容');
-  return renderToString(createElement(StudioRouteProvider, { value: route },
-    withNavigation ? shell : createElement(StudioNavigationProvider, { value: false }, shell)));
+  const shell = createElement(StudioShell, { lang, active: withNavigation ? 'knowledge' : false, children: '内容' });
+  return renderToString(createElement(StudioRouteProvider, { value: route,
+    children: withNavigation ? shell : createElement(StudioNavigationProvider, { value: false, children: shell }) }));
 }
 
 describe('languageSwitchHref', () => {

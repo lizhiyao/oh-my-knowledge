@@ -118,6 +118,12 @@ describe('受管列表呈现', () => {
     // 漂移与「源未核」是两个不同的未知：前者 ⚠️，后者 ?。
     assert.match(zh, /<span aria-hidden="true">⚠️<\/span>/);
     assert.match(zh, /<span class="managed-mark">\?<\/span>/);
+    // 状态圆点只引用 CSS 变量——色值在 studio.css 一处，组件里不再出现十六进制。
+    // yellow 不由生命周期状态产生（那是 observe 信号的档位色），在决策史用例里钉。
+    for (const tone of ['green', 'red', 'accent', 'muted']) {
+      assert.ok(zh.includes(`background:var(--managed-tone-${tone})`), `state dot uses --managed-tone-${tone}`);
+    }
+    assert.doesNotMatch(zh, /background:#[0-9a-fA-F]{3,6}/, '状态圆点不内联色值');
     const en = renderList([ROW({ state: 'promoted' }), ROW({ state: 'measurable' }), ROW({ state: 'installed' }), ROW({ state: 'stale' }), ROW({ state: 'discovered' })], 'en');
     for (const label of ['Promoted', 'Measurable', 'Installed', 'Drifted', 'Discovered']) {
       assert.ok(en.includes(label), `en state label ${label}`);
@@ -208,6 +214,8 @@ describe('受管决策史呈现', () => {
     assert.match(zh, />需关注</);
     assert.match(zh, />数据不足</);
     assert.match(zh, />健康</);
+    // 「需关注」这一档的事件节点走 yellow 变量（antd Steps 经 icon-dot-color 吃色）——yellow 的唯一生产者。
+    assert.match(zh, /icon-dot-color:var\(--managed-tone-yellow\)/);
     const en = renderHistory(OBSERVE_RECORD, 'en');
     for (const badge of ['production gap', 'elevated', 'underpowered', 'healthy']) {
       assert.ok(en.includes(badge), `en observe badge ${badge}`);

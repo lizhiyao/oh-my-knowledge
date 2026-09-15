@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
+import type { CoreStudioRunCard, CoreStudioRunDetail } from '../view-models/measure/core-runs.js';
 import type { HealthPage } from './pages/health-page.js';
 import type { InboxPage } from './pages/inbox-page.js';
 import type { KnowledgePage } from './pages/knowledge-page.js';
@@ -41,7 +41,8 @@ function defineStudioRequestContext<T>(name: string): StudioRequestContext<T> {
   };
 }
 
-export const nextCatalogContext = defineStudioRequestContext<CoreStudioCatalog>('catalog');
+export const nextMeasureRunsContext = defineStudioRequestContext<CoreStudioRunCard[]>('measureRuns');
+export const nextMeasureRunContext = defineStudioRequestContext<CoreStudioRunDetail>('measureRun');
 export const nextObserveContext = defineStudioRequestContext<ObservePage>('observe');
 export const nextKnowledgeContext = defineStudioRequestContext<KnowledgePage>('knowledge');
 export const nextInboxContext = defineStudioRequestContext<InboxPage>('inbox');

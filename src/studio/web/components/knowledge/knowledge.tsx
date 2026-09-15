@@ -7,14 +7,28 @@ import type { SkillDoctorSnapshot } from '../../../view-models/knowledge/skill-i
 import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/pages/knowledge-page';
 import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/contracts';
 import { projectObserveBadge } from '../../../application/knowledge/managed-format';
+import { displayTime, formatPercent } from '../../../application/display/format';
+import type { SkillObserveSnapshot } from '../../../view-models/knowledge/skill-index';
 import { langSuffix, type Language } from '../layout/shell';
-import { displayTime } from '../display-time';
+import { tagStatus } from '../tag-color';
 import { KnowledgeSectionNav } from './section-nav';
 
 const { Text } = Typography;
 function Health({ row }: { row: KnowledgeRow }) {
-  const color = { green: 'success', yellow: 'warning', red: 'error', gray: 'default' }[row.health.color];
-  return <Space size={4}><Tag color={color}>{row.health.label}</Tag>{row.health.score !== null && <Text>{row.health.score}</Text>}</Space>;
+  return <Space size={4}><Tag color={tagStatus(row.health.tone)}>{row.health.label}</Tag>{row.health.score !== null && <Text>{row.health.score}</Text>}</Space>;
+}
+
+/**
+ * 生产观测缺口的读数。「样本不足」的判定留在 `projectObserveBadge`（与受管页同一 owner），
+ * 列表列与详情行共用本函数：同一状态在两处一个写「样本不足」、一个照常用比率，等于给两个结论。
+ *
+ * `withSegmentCount` 只在列表侧为真 —— 列表里没有别的列交代样本量，而详情页的「片段数」
+ * 「可信度」就在同一组字段里，重复一次反而读成两个数。
+ */
+export function observeGapText(observe: SkillObserveSnapshot, zh: boolean, withSegmentCount: boolean): string {
+  if (projectObserveBadge(observe) !== 'underpowered') return formatPercent(observe.gapRate);
+  if (!withSegmentCount) return zh ? '样本不足' : 'Underpowered';
+  return zh ? `样本不足（${observe.segmentCount} 段）` : `Underpowered (${observe.segmentCount} segments)`;
 }
 
 const RULE_STATUS = {
@@ -224,7 +238,7 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
         { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <a href={`/knowledge/skills/${encodeURIComponent(name)}${suffix}`} title={name}>{name}</a> },
         { title: zh ? '健康' : 'Health', width: 140, render: (_, row) => <Health row={row}/> },
         { title: zh ? '健康体检' : 'Doctor', width: 140, render: (_, { doctor }) => doctor ? `${doctor.passCount}✓ ${doctor.warnCount}⚠ ${doctor.failCount}✗` : '—' },
-        { title: zh ? '生产观测' : 'Observe', width: 120, render: (_, { observe }) => !observe ? '—' : projectObserveBadge(observe) === 'underpowered' ? (zh ? '样本不足' : 'Underpowered') : `${(observe.gapRate * 100).toFixed(1)}% ${zh ? '缺口' : 'gap'}` },
+        { title: zh ? '观测缺口' : 'Observe gap', width: 140, render: (_, { observe }) => observe ? observeGapText(observe, zh, true) : '—' },
         { title: zh ? '问题' : 'Findings', dataIndex: 'insightCount', width: 72, align: 'right' },
         { title: zh ? '更新时间' : 'Updated', width: 200, ellipsis: true, render: (_, row) => displayTime([row.doctor?.timestamp, row.observe?.generatedAt].filter((value): value is string => Boolean(value)).sort().at(-1)) },
       ]}/>
@@ -251,8 +265,8 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
         />
       </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh ? '尚未运行体检。' : 'Not run yet.'}/> },
       { key: 'observe', label: zh ? '生产观测' : 'Observe', children: observe ? <Descriptions bordered size="small" column={2} items={[
-        { key: 'gap', label: zh ? '知识缺口' : 'Knowledge gap', children: `${(observe.gapRate * 100).toFixed(1)}%` },
-        { key: 'fail', label: zh ? '工具失败' : 'Tool failures', children: toolFailureRate === null ? (zh ? '未测得' : 'Not measured') : `${(toolFailureRate * 100).toFixed(1)}%` },
+        { key: 'gap', label: zh ? '知识缺口' : 'Knowledge gap', children: observeGapText(observe, zh, false) },
+        { key: 'fail', label: zh ? '工具失败' : 'Tool failures', children: toolFailureRate === null ? (zh ? '未测得' : 'Not measured') : formatPercent(toolFailureRate) },
         { key: 'segments', label: zh ? '片段数' : 'Segments', children: observe.segmentCount },
         { key: 'confidence', label: zh ? '可信度' : 'Confidence', children: observe.confidence === 'underpowered' ? (zh ? '样本不足，仅供参考' : 'Underpowered; indicative only') : observe.confidence },
       ]}/> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh ? '尚无生产观测。' : 'No production observations yet.'}/> },

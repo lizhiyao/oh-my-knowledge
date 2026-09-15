@@ -7,7 +7,8 @@ import { inlineMarkdownText } from './inline-markdown.js';
 import {
   trajectoryEvidenceRef
 } from '../trajectory-evidence.js';
-import { compactText, durationBetween, formatDisplayTimestamp, formatRelativeTimestamp, parseTimestamp, shortHash } from './format.js';
+import { displayTime } from '../../display/format.js';
+import { compactText, durationBetween, parseTimestamp, relativeClock, shortHash } from './format.js';
 import { adaptiveCardWidth, buildOperationLayout, milestonePosition, projectsAsOperation, projectsToSemanticTrajectory, TRACK_START_PADDING } from './layout.js';
 import { ACCESS_LABELS, attachmentSummary, eventPreview, evidenceForStep, evidenceTimestampForStep, inferToolActionLabel, knowledgeKindLabel, lifecycleEventLabel, lifecycleMilestoneTone, observableContextContent, reasoningContentSourceLabel, replayEventModel, resolveToolResultState, resultCardDetail, resultCardStatusLabel, resultCardTone, resultTitle, roleLabel, STEP_LABELS, toolInputPreview, toolOperationTitle, toolStatusLabel } from './summary.js';
 
@@ -79,7 +80,7 @@ export function projectReplay(
       const cardTitle = compactText(operationTitle, 72);
       const resultState = resolveToolResultState(step, options.pendingToolResults);
       const failed = resultState === 'failure';
-      const duration = durationBetween(call?.timestamp, result?.timestamp, lang);
+      const duration = durationBetween(call?.timestamp, result?.timestamp);
       const operationFacetIds = [
         registerFacet('tool', call?.toolName ?? step.title, call?.toolName ?? step.title),
         ...evidence.map((item) => registerFacet('knowledge', item.knowledgeKind, knowledgeKindLabel(item, lang))),
@@ -175,7 +176,7 @@ export function projectReplay(
         evidenceLabel: zh ? `${step.events.length} 条规范化事件` : `${step.events.length} normalized event${step.events.length === 1 ? '' : 's'}`,
         fields: [
           { label: 'Knowledge', value: evidence.map((item) => `${knowledgeKindLabel(item, lang)} · ${item.label}`).join('、') || step.title, detail: evidence.map((item) => item.sourceLocator ?? '').filter(Boolean).join('\n') || (zh ? '来源未记录' : 'Source not recorded') },
-          { label: zh ? '访问方式' : 'Access', value: first ? ACCESS_LABELS[first.accessKind][lang] : STEP_LABELS[step.stepKind][lang], detail: formatDisplayTimestamp(first?.firstSeen ?? step.timestamp, lang) },
+          { label: zh ? '访问方式' : 'Access', value: first ? ACCESS_LABELS[first.accessKind][lang] : STEP_LABELS[step.stepKind][lang], detail: displayTime(first?.firstSeen ?? step.timestamp) },
           {
             label: zh ? '上下文内容' : 'Context content',
             value: contextContent ? (zh ? '源日志已记录可见内容' : 'Observable content recorded') : (zh ? '源日志未记录上下文内容' : 'Context content not recorded by the source log'),
@@ -250,7 +251,7 @@ export function projectReplay(
               ? (zh ? '来源只提供加密内容；OMK 不解密，也不推断其含义。' : 'The source only provides encrypted content; OMK neither decrypts nor infers it.')
               : reasoningContentSourceLabel(event?.contentSource, lang),
           },
-          { label: zh ? '时间' : 'Time', value: formatRelativeTimestamp(step.timestamp, startTimestamp), detail: formatDisplayTimestamp(step.timestamp, lang) },
+          { label: zh ? '时间' : 'Time', value: relativeClock(step.timestamp, startTimestamp), detail: displayTime(step.timestamp) },
           ...(eventModel ? [{ label: zh ? '模型' : 'Model', value: eventModel, detail: zh ? '由 trace 明确记录的事件模型' : 'Event model explicitly recorded by the trace' }] : []),
           ...(opaqueModelActivity ? [] : [{
             label: zh ? '可见内容' : 'Visible content',
@@ -262,7 +263,7 @@ export function projectReplay(
         ]
         : [
           { label: zh ? '角色' : 'Role', value: roleLabel(event, lang), detail: event?.kind ?? step.stepKind },
-          { label: zh ? '时间' : 'Time', value: formatRelativeTimestamp(step.timestamp, startTimestamp), detail: formatDisplayTimestamp(step.timestamp, lang) },
+          { label: zh ? '时间' : 'Time', value: relativeClock(step.timestamp, startTimestamp), detail: displayTime(step.timestamp) },
           ...(eventModel ? [{ label: zh ? '模型' : 'Model', value: eventModel, detail: zh ? '由 trace 明确记录的事件模型' : 'Event model explicitly recorded by the trace' }] : []),
           ...(messageAttachments.length > 0 ? [{
             label: zh ? '附件' : 'Attachments',

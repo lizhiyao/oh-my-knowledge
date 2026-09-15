@@ -6,6 +6,7 @@ import type { IndicatorHelpKey } from '../../../../../observability/inbox/metric
 import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
 import type { Language } from '../../layout/shell';
 import { tagStatus } from '../../tag-color';
+import { displayTime } from '../../../../application/display/format';
 import { MetricBadge } from './metric-badge';
 
 const METRIC_KEYS: Record<keyof ObservationSkillRollup['metricCounts'], IndicatorHelpKey> = {
@@ -19,10 +20,6 @@ const METRIC_KEYS: Record<keyof ObservationSkillRollup['metricCounts'], Indicato
   toolLimit: 'toolLimit',
   toolFailure: 'toolFailure',
 };
-
-function formatTimestamp(value: string): string {
-  return value ? value.slice(0, 19).replace('T', ' ') : '—';
-}
 
 export function SkillBoard({
   model,
@@ -40,7 +37,7 @@ export function SkillBoard({
       size="small"
       rowKey="skillName"
       dataSource={rollups}
-      pagination={{ pageSize: 20, showSizeChanger: false }}
+      pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
       scroll={{ x: 1280 }}
       onRow={(row) => ({
         onClick: () => row.observationCount > 0 && onSelectSkill?.(row.skillName),
@@ -77,14 +74,14 @@ export function SkillBoard({
           title: zh ? '最近发现问题' : 'Last finding',
           dataIndex: 'lastProblemSeen',
           render: (value: string) => (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{formatTimestamp(value)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{displayTime(value)}</Typography.Text>
           ),
         },
         {
           title: zh ? '最近使用' : 'Last used',
           dataIndex: 'lastUsed',
           render: (value: string) => (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{formatTimestamp(value)}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{displayTime(value)}</Typography.Text>
           ),
         },
         {

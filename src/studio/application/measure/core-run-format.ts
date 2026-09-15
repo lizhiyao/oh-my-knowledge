@@ -1,3 +1,4 @@
+import type { StudioTone } from '../../view-models/display/tone.js';
 import type {
   CoreStudioBudget,
   CoreStudioEvaluationRecord,
@@ -6,41 +7,29 @@ import type {
   CoreStudioRuntimeIdentity,
   CoreStudioUsage,
 } from '../../view-models/measure/core-runs.js';
+import { formatDuration } from '../display/format.js';
 
 /**
- * Evaluation Core 运行记录的口径计算：状态着色、时长／预算／覆盖／运行时身份／来源的文本化。
+ * Evaluation Core 运行记录的口径计算：状态着色、预算／覆盖／运行时身份／来源的文本化。
  * 只产出结构与纯文本，不产出标记，页面由 Next 组件消费（见 src/studio/README.md）。
+ * 时长不在这里：它是跨域口径，owner 在 `application/display/format.ts`。
  */
 
-/** 与 antd Tag 的语义色一致；`default` 表示该取值本身不表达好坏，不得着色。 */
-type StatusTone = 'success' | 'warning' | 'error' | 'default';
-
-const TONES: Readonly<Record<Exclude<StatusTone, 'default'>, readonly string[]>> = {
+const TONES: Readonly<Record<Exclude<StudioTone, 'neutral'>, readonly string[]>> = {
   success: ['completed', 'complete', 'conclusive', 'within-budget', 'decided', 'observed', 'passed', 'self-contained'],
   warning: ['cancelled', 'budget-exhausted', 'exhausted', 'partial', 'inconclusive', 'not-evaluated', 'not-decided', 'missing', 'unverifiable', 'summary-only', 'budget-censored'],
   error: ['failed', 'unresolvable', 'invalid'],
 };
 
 /**
- * 状态取值的着色口径。未列出的取值一律不着色：数据分级（public／sensitive／secret／gold）、
+ * 状态取值的着色口径。未列出的取值一律归 `neutral`：数据分级（public／sensitive／secret／gold）、
  * 缓存命中与 `resolvable` 只表达事实，不表达好坏，误染成告警色等于伪造结论。
  */
-export function statusTone(value: string): StatusTone {
+export function statusTone(value: string): StudioTone {
   for (const tone of ['error', 'warning', 'success'] as const) {
     if (TONES[tone].includes(value)) return tone;
   }
-  return 'default';
-}
-
-export function formatDuration(ms: number | undefined | null): string {
-  const value = Number(ms || 0);
-  if (value < 1000) return `${value}ms`;
-  if (value < 60000) return `${(value / 1000).toFixed(1)}s`;
-  let minutes = Math.floor(value / 60000);
-  let seconds = Math.round((value % 60000) / 1000);
-  // 秒单独四舍五入会凑出 "1m60s" 这种不存在的时刻：满 60 秒要进到分钟。
-  if (seconds === 60) { minutes += 1; seconds = 0; }
-  return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
+  return 'neutral';
 }
 
 /** 用量只表达 executor 报回的事实：缺席的字段不补 0，也不把未上报折算成零成本。 */

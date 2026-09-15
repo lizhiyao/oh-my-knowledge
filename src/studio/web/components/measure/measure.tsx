@@ -19,7 +19,6 @@ import {
   formatAssumptionCheck,
   formatBudget,
   formatCoverage,
-  formatDuration,
   formatMeasurement,
   formatObservation,
   formatProvenance,
@@ -27,6 +26,8 @@ import {
   formatUsage,
   statusTone,
 } from '../../../application/measure/core-run-format';
+import { displayTime, formatDuration } from '../../../application/display/format';
+import { tagStatus } from '../tag-color';
 import { langSuffix, type Language } from '../layout/shell';
 import { runReportHref } from '../run-report-link';
 
@@ -99,8 +100,7 @@ const VALUE_LABELS: Record<string, string> = {
 };
 
 function Status({ value, lang }: { value: string; lang: Language }) {
-  const tone = statusTone(value);
-  return <Tag color={tone === 'default' ? undefined : tone}>{lang === 'zh' ? VALUE_LABELS[value] ?? value : value}</Tag>;
+  return <Tag color={tagStatus(statusTone(value))}>{lang === 'zh' ? VALUE_LABELS[value] ?? value : value}</Tag>;
 }
 
 function Code({ value }: { value: string | number }) {
@@ -142,7 +142,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
   return <>
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
-    <Table<CoreStudioRunCard> className="measure-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 15, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? copy.empty : copy.noMatch}/> }} columns={[
+    <Table<CoreStudioRunCard> className="measure-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? copy.empty : copy.noMatch}/> }} columns={[
       { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id, lang)} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
       { title: copy.evidenceStatus, width: 130, render: (_, run) => <Status value={run.status.evidenceStatus} lang={lang}/> },
@@ -151,7 +151,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
       { title: copy.classification, width: 130, render: (_, run) => <Status value={run.maximumCapturedClassification} lang={lang}/> },
       { title: copy.reportId, dataIndex: 'reportId', width: 180, ellipsis: true, render: (value: string) => <span title={value}>{value}</span> },
       { title: copy.artifactSetDigest, dataIndex: 'artifactSetDigest', width: 230, ellipsis: true, render: (value: string) => <code className="measure-code" title={value}>{value}</code> },
-      { title: copy.created, dataIndex: 'createdAt', width: 200, sorter: (a, b) => a.createdAt.localeCompare(b.createdAt), defaultSortOrder: 'descend', render: (value: string) => <time dateTime={value}>{value}</time> },
+      { title: copy.created, dataIndex: 'createdAt', width: 200, sorter: (a, b) => a.createdAt.localeCompare(b.createdAt), defaultSortOrder: 'descend', render: (value: string) => <time dateTime={value}>{displayTime(value)}</time> },
     ]}/>
   </>;
 }
@@ -332,7 +332,7 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
     </div>
   </div>;
   return <>
-    <div className="measure-heading"><div><Link href={`/measure${suffix}`}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{run.createdAt}</time></p></div></div>
+    <div className="measure-heading"><div><Link href={`/measure${suffix}`}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
     <Axes run={run} copy={copy} lang={lang}/>
     <Alert className="measure-hint" type="info" showIcon title={copy.hint}/>
     <section className="measure-section measure-decision"><h2>{copy.decision}</h2><DecisionPanel decision={detail.decision} copy={copy} lang={lang}/></section>

@@ -49,7 +49,7 @@ describe('卡片合并 include 开关(server 级)', () => {
       bySkill: { 'cg-skill': { skillName: 'cg-skill', segmentCount: 10, toolCallCount: 3, toolFailureCount: 0,
         toolFailureRate: 0, stability: 'stable', confidence: 'low', gap: { gapRate: 0, weightedGapRate: 0, signals: [] } } },
       overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'low' } };
-    // 同时写「真身文件」(供 loadAnalysis 按 card.path 回源,如 skill-trend 详情)+ 卡片。
+    // 同时写「真身文件」(loadAnalysis 按 card.path 回源,如观测健康详情页)+ 卡片。
     writeMeasurementReportBundle({
       rootDir: proj,
       measurementDomain: 'observe-health',
@@ -95,7 +95,7 @@ describe('卡片合并 include 开关(server 级)', () => {
     } finally { await srv.stop(); }
   });
 
-  it('include=true 且 live analyses 目录不存在:/api/observe-health 与 /api/skill-trend 仍合并卡片(不早退)', async () => {
+  it('include=true 且 live analyses 目录不存在:/api/observe-health 仍合并卡片(不早退)', async () => {
     // 默认机器级模式下当前项目还没 .omk/observe/health、全局也空 → 传给 server 的是不存在的目录。
     const missing = join(emptyAnalyses, 'does-not-exist');
     const srv = createReportServer({
@@ -107,8 +107,6 @@ describe('卡片合并 include 开关(server 级)', () => {
     try {
       const oh = await (await fetch(`${url}/api/observe-health`)).json();
       assert.deepEqual(oh.map((x: { id: string }) => x.id), ['cg-observe'], 'live 目录不存在也不早退,仍合 observe 卡片');
-      const trend = await (await fetch(`${url}/api/skill-trend/cg-skill`)).json();
-      assert.ok(trend.points.length >= 1, 'skill-trend 也依赖 listAnalyses,同样合并卡片(按 card.path 回源真身)');
     } finally { await srv.stop(); }
   });
 });
