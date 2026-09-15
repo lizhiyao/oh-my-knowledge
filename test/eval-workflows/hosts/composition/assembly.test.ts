@@ -1206,28 +1206,19 @@ describe('OMK Evaluation Runtime binding assembly', () => {
 
   it('reuses Core built-in analysis ports without host algorithm copies', () => {
     const builtins = createBuiltinOmkAnalysisBindingFactories();
-    expect(builtins.analysisNodesByImplementationId.has('bootstrap.mean-percentile/v1')).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
+    const expectedAnalysisNodes = [
+      'bootstrap.mean-percentile/v1',
       ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
       JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
       DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
       COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
       BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
-    expect(builtins.analysisNodesByImplementationId.has(
       AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
-    )).toBe(true);
+    ];
+    for (const implementationId of expectedAnalysisNodes) {
+      expect(builtins.analysisNodesByImplementationId.has(implementationId), implementationId).toBe(true);
+    }
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has(
