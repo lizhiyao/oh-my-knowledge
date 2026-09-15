@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
-  debugEvaluator, evaluate, prepareEvaluation, EvaluationConfigurationError,
+  createRubricEvaluator, debugEvaluator, evaluate, prepareEvaluation, EvaluationConfigurationError,
   type DebugEvaluatorInput, type DebugJudgeInvocation, type DebugJudgeResponse, type DebugRubricReading,
   type EvaluateInput, type Judge, type Executor, type RubricJudgeEvaluator,
 } from '../../src/eval-runtime/index.js';
@@ -44,7 +44,12 @@ describe('Rubric single-sample debugging', () => {
     const options = { runId: 'same-run', clock };
     const normal = await evaluate(direct(evaluator), options);
     const events: unknown[] = [];
-    const pending = debugEvaluator({ evaluator, sample, variant }, { ...options, onEvent: (event) => { events.push(event); } });
+    const built = createRubricEvaluator({
+      evaluatorId: evaluator.evaluatorId,
+      rubrics: Object.fromEntries(evaluator.rubrics.map(({ metricId, ...criterion }) => [metricId, criterion])),
+      judges: evaluator.judges, aggregation: evaluator.aggregation,
+    });
+    const pending = debugEvaluator({ evaluator: built, sample, variant }, { ...options, onEvent: (event) => { events.push(event); } });
     (evaluator.judges[0].judge as { version: string }).version = 'changed';
     const debug = await pending;
     expect(debug.run).toEqual(normal);

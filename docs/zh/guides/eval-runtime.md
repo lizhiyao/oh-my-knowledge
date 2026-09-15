@@ -605,42 +605,48 @@ Rubric 就是明确写出的评分标准。开放问答允许多种正确表述�
 下面使用一个评委模型，对每条实际输出评分两次，再取平均，并汇总候选版本的平均分。`internalGateway` 和 `judge-model` 需要替换为真实模型接入；评分会产生额外的模型调用。正式评测前应明确各分档的含义，并用人工标注样例校准标准。
 
 ```ts
+import { createRubricEvaluator, evaluate } from 'oh-my-knowledge';
+
+const rubricEvaluator = createRubricEvaluator({
+  evaluatorId: 'correctness-judge',
+  rubrics: {
+    'correctness-score': {
+      criterionId: 'correctness',
+      prompt: '判断答案的事实正确性。', rubric: '完全正确为 5 分，完全错误为 1 分。',
+    },
+    'completeness-score': {
+      criterionId: 'completeness',
+      prompt: '判断答案是否覆盖全部要求。', rubric: '全部覆盖为 5 分，全部遗漏为 1 分。',
+    },
+  },
+  judges: [{
+    memberId: 'primary',
+    model: 'judge-model',
+    effort: 'low',
+    replicateCount: 2,
+    judge: {
+      judgeId: 'acme.model-gateway/v1',
+      version: '2026.09.04',
+      providerCost: { reporting: 'optional' },
+      fingerprintFacets: { deploymentRevision: 'sha256:...' },
+      async invoke(request) {
+        const response = await internalGateway.generate({
+          model: request.model,
+          system: request.system,
+          prompt: request.prompt,
+          signal: request.signal,
+        });
+        return { invocationStatus: 'completed', output: response.text, usage: response.usage };
+      },
+    },
+  }],
+  aggregation: { method: 'mean', missing: 'require-complete' },
+});
+
 const result = await evaluate({
   dataset: input.dataset,
   variants,
-  evaluators: [{
-    evaluatorKind: 'rubric-judge',
-    evaluatorId: 'correctness-judge',
-    rubrics: [{
-      metricId: 'correctness-score', criterionId: 'correctness',
-      prompt: '判断答案的事实正确性。', rubric: '完全正确为 5 分，完全错误为 1 分。',
-    }, {
-      metricId: 'completeness-score', criterionId: 'completeness',
-      prompt: '判断答案是否覆盖全部要求。', rubric: '全部覆盖为 5 分，全部遗漏为 1 分。',
-    }],
-    judges: [{
-      memberId: 'primary',
-      model: 'judge-model',
-      effort: 'low',
-      replicateCount: 2,
-      judge: {
-        judgeId: 'acme.model-gateway/v1',
-        version: '2026.09.04',
-        providerCost: { reporting: 'optional' },
-        fingerprintFacets: { deploymentRevision: 'sha256:...' },
-        async invoke(request) {
-          const response = await internalGateway.generate({
-            model: request.model,
-            system: request.system,
-            prompt: request.prompt,
-            signal: request.signal,
-          });
-          return { invocationStatus: 'completed', output: response.text, usage: response.usage };
-        },
-      },
-    }],
-    aggregation: { method: 'mean', missing: 'require-complete' },
-  }],
+  evaluators: [rubricEvaluator],
   comparisons: [{
     comparisonId: 'prompt-v1-vs-v2',
     controlVariantId: 'prompt-v1',
@@ -658,6 +664,8 @@ const result = await evaluate({
   policy: {},
 });
 ```
+
+`createRubricEvaluator()` 的 `rubrics` 以指标 ID 为键，每项保留显式的 `criterionId`、`prompt` 和 `rubric`；不要再写 `metricId`。构造时即校验配置，不调用模型，返回的标准声明可直接用于下方单样本调试或正式评测。`judges` 和 `aggregation` 仍须显式填写。错误位于 `EvaluationConfigurationError.issues`，例如 `['rubrics', 'correctness-score', 'rubric']`；非法指标键只定位到 `rubrics`，不回显拒绝值。
 
 查看 `result.analysisResults['candidate-correctness']` 的状态、有效观测数和均值。这里只汇总 `prompt-v2`；要对比两个版本，应声明引用同一指标的比较分析。
 
