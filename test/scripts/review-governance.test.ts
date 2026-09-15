@@ -34,6 +34,8 @@ describe('autonomous review governance', () => {
     expect(playbook).toContain('`mktemp -d`');
     expect(playbook).toContain('只有所用工具实际需要写盘时');
     expect(playbook).toContain('不得用 `.gitignore` 掩盖工具写入');
+    expect(agents).toContain('PR 边界在开工划分工作时就确定');
+    expect(playbook).toContain('### 2. 实现中保持可审查');
   });
 
   it('keeps domain-specific review rules close to the code they govern', () => {
