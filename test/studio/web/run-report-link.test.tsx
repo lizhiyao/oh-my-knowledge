@@ -11,7 +11,7 @@
 import { expect, it } from 'vitest';
 import { runReportHref } from '../../../src/studio/web/components/run-report-link.js';
 
-it('逐段编码 runId，带路径字符的运行 ID 也能打开', () => {
+it('整体编码 runId，带路径字符的运行 ID 也能落到单段地址', () => {
   expect(runReportHref('run/a b', 'zh')).toBe('/measure/run%2Fa%20b?lang=zh');
 });
 
