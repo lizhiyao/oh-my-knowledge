@@ -4,8 +4,9 @@
  * 起因是 `application/observe/health-format.ts` 里的一句注释：它只服务服务端，React 页面只能
  * 按类型 import，「值导入会经 analyzer.ts 把 node:fs 拖进客户端 bundle」。口径成立却
  * 没人钉。把 `components/observe/health.tsx` 改成值导入做反向验证：健康页的 React 渲染
- * 用例、`yarn lint`、`yarn typecheck` 全绿（`src/studio/web` 甚至不在根 tsconfig 的
- * 类型检查集合里），既有检查里只有 `next build` 会报，它在打浏览器 chunk 时报
+ * 用例、`yarn lint`、`yarn typecheck` 全绿（类型检查只看类型，客户端边界要靠 webpack 判，
+ * 该子树被 `tsconfig.studio-web.json` 收进 `yarn typecheck` 之后这条仍然成立），既有检查里只有
+ * `next build` 会报，它在打浏览器 chunk 时报
  * `UnhandledSchemeError: Reading from "node:fs" is not handled by plugins`，且 webpack
  * 的 import trace 与本门禁给出的链路一致 —— 泄漏要等一整轮构建才看得见。
  *

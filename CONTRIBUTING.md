@@ -197,6 +197,7 @@ between unchanged checks; use clean builds when the tested boundary requires it.
 
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
+- `yarn typecheck` 跑两个 tsc 程序：根程序（Node16、不开 `--jsx`）收 `src`／`test`／`scripts` 下的 `.ts`；`tsconfig.studio-web.json` extends `src/studio/web/tsconfig.json`，收整个 Studio web 子树和 `test/studio/web` 的用例，`.ts` 与 `.tsx` 同权。归属由 `test/architecture/test-gate-coverage.test.ts` 守住，新增文件不必再靠文件名试探谁在检查它。
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI classifies the complete event diff on PRs and `main` pushes. The exact root rule files listed in `scripts/ci/scope.mjs` use governance tests and whitespace checks. Ordinary `docs/**/*.md` and root README changes additionally run runtime/document-contract checks and the documentation build, without Studio or the full test matrix.
 - Source, dependencies, CI/build/site configuration, skills, prompts, generated documentation and unknown paths run the complete Node 22/24 matrix. Missing history, empty diffs or classification errors select the full gate. Renames include both old and new paths; mixed changes use the strongest gate.
