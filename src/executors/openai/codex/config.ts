@@ -25,13 +25,12 @@ function resolveModel(value: unknown): CodexConfigModelResolution {
  * whether that fails closed or degrades.
  */
 export function resolveCodexConfigModel(configText: string): CodexConfigModelResolution {
-  let config: Record<string, unknown> | null;
+  let config: Record<string, unknown>;
   try {
-    config = asTable(parse(configText));
+    config = parse(configText);
   } catch {
     return { status: 'invalid' };
   }
-  if (config === null) return { status: 'invalid' };
 
   const profile = config.profile;
   if (profile === undefined) return resolveModel(config.model);
