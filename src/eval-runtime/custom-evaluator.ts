@@ -29,24 +29,32 @@ const CustomEvaluatorContentSchema = z.object({
   mediaType: z.string().min(1).optional(),
 }).strict();
 
-const CustomEvaluatorResultSchema = z.discriminatedUnion('resultKind', [
+const CustomMetricResultSchema = z.discriminatedUnion('resultKind', [
   z.object({
+    metricId: IdentifierSchema,
     resultKind: z.literal('score'),
     value: JsonValueSchema,
     evidence: CustomEvaluatorContentSchema.optional(),
-    usage: UsageRecordSchema.optional(),
   }).strict(),
   z.object({
+    metricId: IdentifierSchema,
     resultKind: z.literal('missing'),
     reasonCode: IdentifierSchema,
     evidence: CustomEvaluatorContentSchema.optional(),
-    usage: UsageRecordSchema.optional(),
   }).strict(),
   z.object({
+    metricId: IdentifierSchema,
     resultKind: z.literal('invalid'),
     reasonCode: IdentifierSchema,
     invalidValue: CustomEvaluatorContentSchema.optional(),
     evidence: CustomEvaluatorContentSchema.optional(),
+  }).strict(),
+]);
+
+const CustomEvaluatorResultSchema = z.discriminatedUnion('resultKind', [
+  z.object({
+    resultKind: z.literal('completed'),
+    results: z.array(CustomMetricResultSchema).min(1),
     usage: UsageRecordSchema.optional(),
   }).strict(),
   z.object({
@@ -134,24 +142,31 @@ export interface CustomEvaluatorContent {
   readonly mediaType?: string;
 }
 
-export type CustomEvaluatorResult =
+export type CustomMetricResult =
   | Readonly<{
+      metricId: string;
       resultKind: 'score';
       value: JsonValue;
       evidence?: CustomEvaluatorContent;
-      usage?: UsageRecord;
     }>
   | Readonly<{
+      metricId: string;
       resultKind: 'missing';
       reasonCode: string;
       evidence?: CustomEvaluatorContent;
-      usage?: UsageRecord;
     }>
   | Readonly<{
+      metricId: string;
       resultKind: 'invalid';
       reasonCode: string;
       invalidValue?: CustomEvaluatorContent;
       evidence?: CustomEvaluatorContent;
+    }>;
+
+export type CustomEvaluatorResult =
+  | Readonly<{
+      resultKind: 'completed';
+      results: readonly CustomMetricResult[];
       usage?: UsageRecord;
     }>
   | Readonly<{
@@ -189,7 +204,7 @@ export interface CustomEvaluator<
   readonly evaluatorKind: 'custom';
   readonly evaluatorId: string;
   readonly instrumentId: string;
-  readonly metric: Metric;
+  readonly metrics: readonly Metric[];
   readonly bindings: readonly CustomEvaluatorBinding[];
   readonly parameters?: Parameters;
   readonly implementation: Readonly<{
@@ -197,7 +212,7 @@ export interface CustomEvaluator<
     version: string;
     schemas: Readonly<{
       bindings: RuntimeValueParser<Bindings>;
-      value: RuntimeValueParser<JsonValue>;
+      values: Readonly<Record<string, RuntimeValueParser<JsonValue>>>;
       fingerprintFacets: JsonValue;
     }>;
     providerCost?: Readonly<{
@@ -211,7 +226,7 @@ export interface CustomEvaluator<
 
 export interface CapturedCustomEvaluator {
   readonly definition: EvaluatorDefinition;
-  readonly metric: MetricDefinition;
+  readonly metrics: readonly MetricDefinition[];
   readonly port: EvaluationEvaluator;
   readonly implementationId: string;
   readonly version: string;
@@ -260,15 +275,25 @@ export function captureCustomEvaluator(
         ))) {
       return invalidDeclaration();
     }
-    const metric = MetricDefinitionSchema.parse({
-      ...CustomMetricSchema.parse(structuredClone(value.metric)),
+    if ('metric' in value || 'value' in value.implementation.schemas) return invalidDeclaration();
+    const metrics = value.metrics.map((metric) => MetricDefinitionSchema.parse({
+      ...CustomMetricSchema.parse(structuredClone(metric)),
       scope: 'sample',
-    });
+    })).sort((left, right) => (
+      left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
+    ));
+    const metricIds = metrics.map((metric) => metric.metricId);
+    if (metrics.length === 0 || new Set(metricIds).size !== metrics.length
+        || canonicalizeJson(Object.keys(value.implementation.schemas.values).sort())
+          !== canonicalizeJson(metricIds)) return invalidDeclaration();
     const parameters = value.parameters === undefined
       ? undefined
       : deepFreezeCanonicalJson(JsonValueSchema.parse(structuredClone(value.parameters)));
     const bindingParser = captureParser(value.implementation.schemas.bindings);
-    const valueParser = captureParser(value.implementation.schemas.value);
+    const valueParsers = new Map(metrics.map((metric) => [
+      metric.metricId,
+      captureParser(value.implementation.schemas.values[metric.metricId]),
+    ]));
     if (typeof value.implementation.evaluate !== 'function') return invalidDeclaration();
     const schemaFingerprintFacets = deepFreezeCanonicalJson(JsonValueSchema.parse(
       structuredClone(value.implementation.schemas.fingerprintFacets),
@@ -281,7 +306,7 @@ export function captureCustomEvaluator(
       : deepFreezeCanonicalJson(structuredClone(value.implementation.providerCost));
     const capabilities = EvaluatorCapabilitiesSchema.parse({
       inputSourceKinds: [...new Set(bindings.map((binding) => binding.sourceKind))].sort(),
-      metricValueTypes: [metric.valueType],
+      metricValueTypes: [...new Set(metrics.map((metric) => metric.valueType))].sort(),
       schemas: [],
       ...(providerCost === undefined ? {} : { providerCost }),
     });
@@ -290,7 +315,7 @@ export function captureCustomEvaluator(
       version: value.implementation.version,
       capabilities,
       fingerprintFacets: {
-        facade: 'omk.eval-runtime.custom-evaluator/v1',
+        facade: 'omk.eval-runtime.custom-evaluator/v2',
         schemas: schemaFingerprintFacets,
         host: fingerprintFacets,
       },
@@ -307,14 +332,14 @@ export function captureCustomEvaluator(
         replicateGroupId: 'custom-primary',
         replicateIndex: 0,
       },
-      metricIds: [metric.metricId],
+      metricIds,
       inputs: bindings,
       ...(parameters === undefined ? {} : { config: parameters }),
     });
     const callback = value.implementation.evaluate;
     const port = createSameProcessEvaluatorAdapter({
       identity,
-      sessionIsolationKey: `omk.eval-runtime.custom-evaluator/v1:${definition.evaluatorId}`,
+      sessionIsolationKey: `omk.eval-runtime.custom-evaluator/v2:${definition.evaluatorId}`,
       resourceLeases: { forRun: () => undefined },
       implementation: {
         openRun: () => undefined,
@@ -333,12 +358,12 @@ export function captureCustomEvaluator(
             parsedBindings = deepFreezeCanonicalJson(parsedWire);
           } catch {
             return {
-              observations: [{
+              observations: metrics.map((metric) => ({
                 metricId: metric.metricId,
                 observationStatus: 'invalid',
                 valueType: metric.valueType,
                 reasonCode: 'custom-evaluator-bindings-invalid',
-              } satisfies EvaluatorObservation],
+              } satisfies EvaluatorObservation)),
             };
           }
           const rawResult = await Reflect.apply(callback, undefined, [Object.freeze({
@@ -351,14 +376,24 @@ export function captureCustomEvaluator(
             signal: attempt.signal,
           })]) as CustomEvaluatorResult;
           let result: z.infer<typeof CustomEvaluatorResultSchema>;
+          let reportedUsage: UsageRecord | undefined;
           try {
-            result = CustomEvaluatorResultSchema.parse(structuredClone(rawResult));
+            const capturedResult = structuredClone(rawResult);
+            const usage = UsageRecordSchema.safeParse(capturedResult?.usage);
+            if (usage.success) reportedUsage = usage.data;
+            result = CustomEvaluatorResultSchema.parse(capturedResult);
+            if (result.resultKind === 'completed') {
+              const returnedIds = result.results.map((item) => item.metricId).sort();
+              if (canonicalizeJson(returnedIds) !== canonicalizeJson(metricIds)) {
+                throw new TypeError('results must cover each declared Metric exactly once');
+              }
+            }
           } catch {
             throw new EvaluationPortFailure({
               code: 'custom-evaluator-result-invalid',
               stage: 'evaluation',
               message: 'Custom Evaluator returned an invalid result contract.',
-            });
+            }, reportedUsage);
           }
           if (result.resultKind === 'failed') {
             throw new EvaluationPortFailure({
@@ -367,56 +402,50 @@ export function captureCustomEvaluator(
               message: 'Custom Evaluator reported a stable failure.',
             }, result.usage);
           }
-          let observation: EvaluatorObservation;
-          if (result.resultKind === 'score') {
-            let parsedValue: JsonValue;
-            try {
-              parsedValue = JsonValueSchema.parse(valueParser.parse(structuredClone(result.value)));
-              if (canonicalizeJson(result.value) !== canonicalizeJson(parsedValue)
-                  || !customValueMatchesMetric(metric.valueType, parsedValue)) {
-                throw new TypeError('value parser rejected or transformed the score');
+          const resultsById = new Map(result.results.map((item) => [item.metricId, item]));
+          const observations = metrics.map((metric): EvaluatorObservation => {
+            const item = resultsById.get(metric.metricId)!;
+            const evidence = item.evidence === undefined ? {} : { evidence: item.evidence };
+            if (item.resultKind === 'score') {
+              let parsedValue: JsonValue;
+              try {
+                parsedValue = JsonValueSchema.parse(
+                  valueParsers.get(metric.metricId)!.parse(structuredClone(item.value)),
+                );
+                if (canonicalizeJson(item.value) !== canonicalizeJson(parsedValue)
+                    || !customValueMatchesMetric(metric.valueType, parsedValue)) {
+                  throw new TypeError('value parser rejected or transformed the score');
+                }
+              } catch {
+                return {
+                  metricId: metric.metricId,
+                  observationStatus: 'invalid',
+                  valueType: metric.valueType,
+                  reasonCode: 'custom-evaluator-value-invalid',
+                  invalidValue: { value: item.value, classification: 'gold' },
+                  ...evidence,
+                };
               }
-            } catch {
-              observation = {
-                metricId: metric.metricId,
-                observationStatus: 'invalid',
-                valueType: metric.valueType,
-                reasonCode: 'custom-evaluator-value-invalid',
-                invalidValue: { value: result.value, classification: 'gold' },
-                ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
-              };
               return {
-                observations: [observation],
-                ...(result.usage === undefined ? {} : { usage: result.usage }),
-              };
+                metricId: metric.metricId,
+                observationStatus: 'observed',
+                valueType: metric.valueType,
+                value: parsedValue,
+                ...evidence,
+              } as EvaluatorObservation;
             }
-            observation = {
+            return {
               metricId: metric.metricId,
-              observationStatus: 'observed',
+              observationStatus: item.resultKind,
               valueType: metric.valueType,
-              value: parsedValue,
-              ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
-            } as EvaluatorObservation;
-          } else if (result.resultKind === 'missing') {
-            observation = {
-              metricId: metric.metricId,
-              observationStatus: 'missing',
-              valueType: metric.valueType,
-              reasonCode: result.reasonCode,
-              ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
+              reasonCode: item.reasonCode,
+              ...(item.resultKind === 'invalid' && item.invalidValue !== undefined
+                ? { invalidValue: item.invalidValue } : {}),
+              ...evidence,
             };
-          } else {
-            observation = {
-              metricId: metric.metricId,
-              observationStatus: 'invalid',
-              valueType: metric.valueType,
-              reasonCode: result.reasonCode,
-              ...(result.invalidValue === undefined ? {} : { invalidValue: result.invalidValue }),
-              ...(result.evidence === undefined ? {} : { evidence: result.evidence }),
-            };
-          }
+          });
           return {
-            observations: [observation],
+            observations,
             ...(result.usage === undefined ? {} : { usage: result.usage }),
           };
         },
@@ -426,7 +455,7 @@ export function captureCustomEvaluator(
     });
     return Object.freeze({
       definition,
-      metric,
+      metrics: Object.freeze(metrics),
       port,
       implementationId: identity.implementationId,
       version: identity.version,

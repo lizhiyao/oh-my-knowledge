@@ -150,6 +150,7 @@ export const PUBLIC_API = {
       'CustomEvaluatorContent',
       'CustomEvaluatorInvocation',
       'CustomEvaluatorResult',
+      'CustomMetricResult',
       'Dataset',
       'Decision',
       'EvaluateInput',

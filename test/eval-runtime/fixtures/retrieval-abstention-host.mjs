@@ -43,12 +43,12 @@ const score = (ranking, forbidden = ['bad'], executionStatus = 'completed') => c
   bindings: { ranking, forbidden, execution: { terminal: { executionStatus } } },
   parameters: custom.parameters, signal: new AbortController().signal,
 });
-assert.deepEqual(score(['good', 'bad']), { resultKind: 'score', value: true });
-assert.deepEqual(score(['good', 'other', 'bad']), { resultKind: 'score', value: false });
-assert.deepEqual(score(['BAD']), { resultKind: 'score', value: false });
-assert.deepEqual(score([]), { resultKind: 'score', value: false });
-assert.equal(score([], []).resultKind, 'missing');
-assert.equal(score([], ['bad'], 'failed').resultKind, 'missing');
+assert.deepEqual(score(['good', 'bad']), { resultKind: 'completed', results: [{ metricId: 'forbidden-hit', resultKind: 'score', value: true }] });
+assert.deepEqual(score(['good', 'other', 'bad']), { resultKind: 'completed', results: [{ metricId: 'forbidden-hit', resultKind: 'score', value: false }] });
+assert.deepEqual(score(['BAD']), { resultKind: 'completed', results: [{ metricId: 'forbidden-hit', resultKind: 'score', value: false }] });
+assert.deepEqual(score([]), { resultKind: 'completed', results: [{ metricId: 'forbidden-hit', resultKind: 'score', value: false }] });
+assert.equal(score([], []).results[0].resultKind, 'missing');
+assert.equal(score([], ['bad'], 'failed').results[0].resultKind, 'missing');
 assert.throws(() => forbiddenIdEvaluator(0));
 
 // Failures in another population must not contaminate this metric's coverage.

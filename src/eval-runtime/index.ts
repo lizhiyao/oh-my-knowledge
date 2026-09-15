@@ -226,6 +226,7 @@ export type {
   CustomEvaluatorContent,
   CustomEvaluatorInvocation,
   CustomEvaluatorResult,
+  CustomMetricResult,
   Metric,
 } from './custom-evaluator.js';
 

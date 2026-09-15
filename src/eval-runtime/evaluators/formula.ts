@@ -12,6 +12,7 @@ import {
   type CustomEvaluatorBinding,
   type CustomEvaluatorInvocation,
   type CustomEvaluatorResult,
+  type CustomMetricResult,
 } from '../custom-evaluator.js';
 
 /** Built-in formula calculator identifiers. */
@@ -187,19 +188,20 @@ const ConfigSchema = z.object({
   }
 });
 
-function toResult(outcome: Outcome, scale: Scale | undefined): CustomEvaluatorResult {
-  if (outcome.outcomeKind === 'missing') return { resultKind: 'missing', reasonCode: outcome.reasonCode };
-  if (outcome.outcomeKind === 'invalid') return { resultKind: 'invalid', reasonCode: outcome.reasonCode };
+function toResult(outcome: Outcome, scale: Scale | undefined, metricId: string): CustomMetricResult {
+  if (outcome.outcomeKind === 'missing') return { metricId, resultKind: 'missing', reasonCode: outcome.reasonCode };
+  if (outcome.outcomeKind === 'invalid') return { metricId, resultKind: 'invalid', reasonCode: outcome.reasonCode };
   const belowScale = scale?.min !== undefined && outcome.value < scale.min;
   const aboveScale = scale?.max !== undefined && outcome.value > scale.max;
   if (belowScale || aboveScale) {
     return {
+      metricId,
       resultKind: 'invalid',
       reasonCode: `formula-value-${belowScale ? 'below' : 'above'}-scale`,
       invalidValue: { value: outcome.value, classification: 'gold' },
     };
   }
-  return { resultKind: 'score', value: outcome.value };
+  return { metricId, resultKind: 'score', value: outcome.value };
 }
 
 /** Creates a declarative formula evaluator from configuration. */
@@ -212,14 +214,14 @@ export function createFormulaEvaluator(
     evaluatorKind: 'custom',
     evaluatorId: value.evaluatorId,
     instrumentId: `formula-${value.calculatorId}-v1`,
-    metric: {
+    metrics: [{
       metricId: value.metric.metricId,
       valueType: 'numeric' as const,
       direction: value.metric.direction,
       missingPolicyId: value.metric.missingPolicyId,
       ...(value.metric.unit === undefined ? {} : { unit: value.metric.unit }),
       ...(value.metric.scale === undefined ? {} : { scale: value.metric.scale }),
-    },
+    }],
     bindings: Object.keys(value.bindings).sort().map((bindingId) => ({
       bindingId,
       sourceKind: value.bindings[bindingId].sourceKind,
@@ -230,17 +232,17 @@ export function createFormulaEvaluator(
       version: '1.0.0',
       schemas: {
         bindings: z.record(z.string(), JsonValueSchema),
-        value: z.number().finite(),
+        values: { [value.metric.metricId]: z.number().finite() },
         fingerprintFacets: { bindings: 'json-value-map/v1', value: 'finite-number/v1' },
       },
       fingerprintFacets: {
         calculatorId: value.calculatorId,
         protocol: CALCULATOR_PROTOCOL,
       },
-      evaluate: async (invocation: CustomEvaluatorInvocation): Promise<CustomEvaluatorResult> => toResult(
-        calculator(invocation.bindings),
-        value.metric.scale,
-      ),
+      evaluate: async (invocation: CustomEvaluatorInvocation): Promise<CustomEvaluatorResult> => ({
+        resultKind: 'completed',
+        results: [toResult(calculator(invocation.bindings), value.metric.scale, value.metric.metricId)],
+      }),
     },
   });
 }

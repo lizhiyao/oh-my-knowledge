@@ -121,7 +121,7 @@ export type EvaluatorRuntimeCheckInput<
 >;
 
 export type EvaluatorRuntimeCheckResult = Readonly<
-  RuntimeCheckResultEnvelope<'evaluator', 'omk.runtime-check.custom-evaluator/v1'>
+  RuntimeCheckResultEnvelope<'evaluator', 'omk.runtime-check.custom-evaluator/v2'>
   & EvaluatorConformanceResult
 >;
 
@@ -291,7 +291,7 @@ export async function checkRuntime(input: RuntimeCheckInput): Promise<RuntimeChe
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
     }).then((result) => envelope(
       'evaluator',
-      'omk.runtime-check.custom-evaluator/v1',
+      'omk.runtime-check.custom-evaluator/v2',
       requireConfigured(result, ['configuration'], 'Evaluator runtime check declaration 无效。'),
     ));
   }

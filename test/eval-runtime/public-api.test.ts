@@ -193,12 +193,12 @@ const publicCustomEvaluator = {
   evaluatorKind: 'custom',
   evaluatorId: 'public-length',
   instrumentId: 'public-length-v1',
-  metric: {
+  metrics: [{
     metricId: 'public-length-score',
     valueType: 'numeric',
     direction: 'lower-is-better',
     missingPolicyId: 'exclude/v1',
-  },
+  }],
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   parameters: { trim: true },
   implementation: {
@@ -206,14 +206,18 @@ const publicCustomEvaluator = {
     version: '1.0.0',
     schemas: {
       bindings: z.object({ actual: z.string() }).strict(),
-      value: z.number(),
+      values: { 'public-length-score': z.number() },
       fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
     },
     fingerprintFacets: { revision: 'test-one' },
     evaluate({ bindings, parameters }) {
       return {
-        resultKind: 'score',
-        value: (parameters?.trim ? bindings.actual.trim() : bindings.actual).length,
+        resultKind: 'completed',
+        results: [{
+          metricId: 'public-length-score',
+          resultKind: 'score',
+          value: (parameters?.trim ? bindings.actual.trim() : bindings.actual).length,
+        }],
       };
     },
   },

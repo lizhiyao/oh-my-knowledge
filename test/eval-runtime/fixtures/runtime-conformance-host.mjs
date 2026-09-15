@@ -125,12 +125,12 @@ const evaluator = {
   evaluatorKind: 'custom',
   evaluatorId: 'clean-room-runtime-check-evaluator',
   instrumentId: 'clean-room.runtime-check-evaluator/v1',
-  metric: {
+  metrics: [{
     metricId: 'clean-room-runtime-check-score',
     valueType: 'numeric',
     direction: 'higher-is-better',
     missingPolicyId: 'exclude/v1',
-  },
+  }],
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   implementation: {
     implementationId: 'clean-room.runtime-check-evaluator/v1',
@@ -141,7 +141,7 @@ const evaluator = {
           mode: z.enum(['score', 'missing', 'invalid', 'failure', 'cancellation']),
         }).strict(),
       }).strict(),
-      value: z.number(),
+      values: { 'clean-room-runtime-check-score': z.number() },
       fingerprintFacets: { bindings: 'actual/v1', value: 'number/v1' },
     },
     fingerprintFacets: { revision: 'clean-room-one' },
@@ -150,13 +150,30 @@ const evaluator = {
         return { resultKind: 'failed', errorCode: 'clean-room-evaluator-failure' };
       }
       if (bindings.actual.mode === 'missing') {
-        return { resultKind: 'missing', reasonCode: 'clean-room-evaluator-missing' };
+        return {
+          resultKind: 'completed',
+          results: [{
+            metricId: 'clean-room-runtime-check-score',
+            resultKind: 'missing',
+            reasonCode: 'clean-room-evaluator-missing',
+          }],
+        };
       }
       if (bindings.actual.mode === 'invalid') {
-        return { resultKind: 'invalid', reasonCode: 'clean-room-evaluator-invalid' };
+        return {
+          resultKind: 'completed',
+          results: [{
+            metricId: 'clean-room-runtime-check-score',
+            resultKind: 'invalid',
+            reasonCode: 'clean-room-evaluator-invalid',
+          }],
+        };
       }
       if (bindings.actual.mode === 'cancellation') await waitForAbort(signal);
-      return { resultKind: 'score', value: 4 };
+      return {
+        resultKind: 'completed',
+        results: [{ metricId: 'clean-room-runtime-check-score', resultKind: 'score', value: 4 }],
+      };
     },
   },
 };
@@ -164,9 +181,9 @@ assertPassed(await checkRuntime({
   runtimeKind: 'evaluator',
   evaluator,
   probeNamespace: 'clean-room-evaluator',
-  score: { output: { mode: 'score' }, expectedValue: 4 },
-  missing: { output: { mode: 'missing' }, expectedReasonCode: 'clean-room-evaluator-missing' },
-  invalid: { output: { mode: 'invalid' }, expectedReasonCode: 'clean-room-evaluator-invalid' },
+  score: { output: { mode: 'score' }, expectedValues: { 'clean-room-runtime-check-score': 4 } },
+  missing: { output: { mode: 'missing' }, expectedReasonCodes: { 'clean-room-runtime-check-score': 'clean-room-evaluator-missing' } },
+  invalid: { output: { mode: 'invalid' }, expectedReasonCodes: { 'clean-room-runtime-check-score': 'clean-room-evaluator-invalid' } },
   failure: { output: { mode: 'failure' }, expectedErrorCode: 'clean-room-evaluator-failure' },
   cancellation: { output: { mode: 'cancellation' } },
 }), 'evaluator');

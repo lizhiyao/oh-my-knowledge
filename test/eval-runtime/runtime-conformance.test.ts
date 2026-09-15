@@ -361,12 +361,17 @@ describe('eval-runtime unified conformance entry', () => {
       evaluatorKind: 'custom',
       evaluatorId: 'test-runtime-check-evaluator',
       instrumentId: 'test.runtime-check-evaluator/v1',
-      metric: {
+      metrics: [{
         metricId: 'test-runtime-check-score',
         valueType: 'numeric',
         direction: 'higher-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }, {
+        metricId: 'test-runtime-check-double',
+        valueType: 'numeric',
+        direction: 'higher-is-better',
+        missingPolicyId: 'exclude/v1',
+      }],
       bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
       implementation: {
         implementationId: 'test.runtime-check-evaluator/v1',
@@ -378,7 +383,7 @@ describe('eval-runtime unified conformance entry', () => {
               value: z.number().optional(),
             }).strict(),
           }).strict(),
-          value: z.number(),
+          values: { 'test-runtime-check-score': z.number(), 'test-runtime-check-double': z.number() },
           fingerprintFacets: { bindings: 'actual/v1', value: 'number/v1' },
         },
         fingerprintFacets: { revision: 'evaluator-one' },
@@ -387,10 +392,38 @@ describe('eval-runtime unified conformance entry', () => {
             return { resultKind: 'failed', errorCode: 'expected-evaluator-failure' };
           }
           if (bindings.actual.mode === 'missing') {
-            return { resultKind: 'missing', reasonCode: 'expected-evaluator-missing' };
+            return {
+              resultKind: 'completed',
+              results: [
+                {
+                  metricId: 'test-runtime-check-score',
+                  resultKind: 'missing',
+                  reasonCode: 'expected-evaluator-missing',
+                },
+                {
+                  metricId: 'test-runtime-check-double',
+                  resultKind: 'missing',
+                  reasonCode: 'expected-evaluator-missing',
+                },
+              ],
+            };
           }
           if (bindings.actual.mode === 'invalid') {
-            return { resultKind: 'invalid', reasonCode: 'expected-evaluator-invalid' };
+            return {
+              resultKind: 'completed',
+              results: [
+                {
+                  metricId: 'test-runtime-check-score',
+                  resultKind: 'invalid',
+                  reasonCode: 'expected-evaluator-invalid',
+                },
+                {
+                  metricId: 'test-runtime-check-double',
+                  resultKind: 'invalid',
+                  reasonCode: 'expected-evaluator-invalid',
+                },
+              ],
+            };
           }
           if (bindings.actual.mode === 'cancellation') {
             await new Promise((_resolve, reject) => {
@@ -408,8 +441,19 @@ describe('eval-runtime unified conformance entry', () => {
             }
           }
           return {
-            resultKind: 'score',
-            value: bindings.actual.value ?? 0,
+            resultKind: 'completed',
+            results: [
+              {
+                metricId: 'test-runtime-check-score',
+                resultKind: 'score',
+                value: bindings.actual.value ?? 0,
+              },
+              {
+                metricId: 'test-runtime-check-double',
+                resultKind: 'score',
+                value: (bindings.actual.value ?? 0) * 2,
+              },
+            ],
             usage: { totalTokens: 1 },
           };
         },
@@ -422,15 +466,15 @@ describe('eval-runtime unified conformance entry', () => {
       probeNamespace: 'test-custom-evaluator',
       score: {
         output: { mode: 'score', value: 3 },
-        expectedValue: 3,
+        expectedValues: { 'test-runtime-check-score': 3, 'test-runtime-check-double': 6 },
       },
       missing: {
         output: { mode: 'missing' },
-        expectedReasonCode: 'expected-evaluator-missing',
+        expectedReasonCodes: { 'test-runtime-check-score': 'expected-evaluator-missing', 'test-runtime-check-double': 'expected-evaluator-missing' },
       },
       invalid: {
         output: { mode: 'invalid' },
-        expectedReasonCode: 'expected-evaluator-invalid',
+        expectedReasonCodes: { 'test-runtime-check-score': 'expected-evaluator-invalid', 'test-runtime-check-double': 'expected-evaluator-invalid' },
       },
       failure: {
         output: { mode: 'failure' },
@@ -447,14 +491,14 @@ describe('eval-runtime unified conformance entry', () => {
       runtimeKind: 'evaluator',
       evaluator,
       probeNamespace: 'test-custom-evaluator-concurrency-failure',
-      score: { output: { mode: 'score', value: 3 }, expectedValue: 3 },
+      score: { output: { mode: 'score', value: 3 }, expectedValues: { 'test-runtime-check-score': 3, 'test-runtime-check-double': 6 } },
       missing: {
         output: { mode: 'missing' },
-        expectedReasonCode: 'expected-evaluator-missing',
+        expectedReasonCodes: { 'test-runtime-check-score': 'expected-evaluator-missing', 'test-runtime-check-double': 'expected-evaluator-missing' },
       },
       invalid: {
         output: { mode: 'invalid' },
-        expectedReasonCode: 'expected-evaluator-invalid',
+        expectedReasonCodes: { 'test-runtime-check-score': 'expected-evaluator-invalid', 'test-runtime-check-double': 'expected-evaluator-invalid' },
       },
       failure: {
         output: { mode: 'failure' },
@@ -478,19 +522,19 @@ describe('eval-runtime unified conformance entry', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'test-runtime-check-invalid-evaluator',
         instrumentId: 'test.runtime-check-invalid-evaluator/v1',
-        metric: {
+        metrics: [{
           metricId: 'test-runtime-check-invalid-score',
           valueType: 'numeric',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: {
           implementationId: 'test.runtime-check-invalid-evaluator/v1',
           version: '1.0.0',
           schemas: {
             bindings: z.object({ actual: z.number() }).strict(),
-            value: z.number(),
+            values: { 'test-runtime-check-invalid-score': z.number() },
             fingerprintFacets: { bindings: 'actual-number/v1', value: 'number/v1' },
           },
           fingerprintFacets: { revision: 'invalid-probe-test' },
@@ -498,9 +542,9 @@ describe('eval-runtime unified conformance entry', () => {
         },
       },
       probeNamespace: 'test-invalid-later-evaluator-probe',
-      score: { output: 1, expectedValue: 1 },
-      missing: { output: 1, expectedReasonCode: 'expected-missing' },
-      invalid: { output: 1, expectedReasonCode: 'expected-invalid' },
+      score: { output: 1, expectedValues: { 'test-runtime-check-invalid-score': 1 } },
+      missing: { output: 1, expectedReasonCodes: { 'test-runtime-check-invalid-score': 'expected-missing' } },
+      invalid: { output: 1, expectedReasonCodes: { 'test-runtime-check-invalid-score': 'expected-invalid' } },
       failure: { output: 1, expectedErrorCode: 'expected-failure' },
       cancellation: { output: undefined },
     } as unknown as RuntimeCheckInput;
@@ -518,28 +562,42 @@ describe('eval-runtime unified conformance entry', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'test-runtime-check-ignores-cancellation',
         instrumentId: 'test.runtime-check-ignores-cancellation/v1',
-        metric: {
+        metrics: [{
           metricId: 'test-runtime-check-cancellation-score',
           valueType: 'numeric',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: {
           implementationId: 'test.runtime-check-ignores-cancellation/v1',
           version: '1.0.0',
           schemas: {
             bindings: z.object({ actual: z.string() }).strict(),
-            value: z.number(),
+            values: { 'test-runtime-check-cancellation-score': z.number() },
             fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
           },
           fingerprintFacets: { revision: 'ignores-cancellation' },
           async evaluate({ bindings, signal }) {
             if (bindings.actual === 'missing') {
-              return { resultKind: 'missing', reasonCode: 'expected-missing' };
+              return {
+                resultKind: 'completed',
+                results: [{
+                  metricId: 'test-runtime-check-cancellation-score',
+                  resultKind: 'missing',
+                  reasonCode: 'expected-missing',
+                }],
+              };
             }
             if (bindings.actual === 'invalid') {
-              return { resultKind: 'invalid', reasonCode: 'expected-invalid' };
+              return {
+                resultKind: 'completed',
+                results: [{
+                  metricId: 'test-runtime-check-cancellation-score',
+                  resultKind: 'invalid',
+                  reasonCode: 'expected-invalid',
+                }],
+              };
             }
             if (bindings.actual === 'failure') {
               return { resultKind: 'failed', errorCode: 'expected-failure' };
@@ -550,14 +608,17 @@ describe('eval-runtime unified conformance entry', () => {
                 else signal.addEventListener('abort', () => resolve(), { once: true });
               });
             }
-            return { resultKind: 'score', value: 3 };
+            return {
+              resultKind: 'completed',
+              results: [{ metricId: 'test-runtime-check-cancellation-score', resultKind: 'score', value: 3 }],
+            };
           },
         },
       },
       probeNamespace: 'test-evaluator-ignores-cancellation',
-      score: { output: 'score', expectedValue: 3 },
-      missing: { output: 'missing', expectedReasonCode: 'expected-missing' },
-      invalid: { output: 'invalid', expectedReasonCode: 'expected-invalid' },
+      score: { output: 'score', expectedValues: { 'test-runtime-check-cancellation-score': 3 } },
+      missing: { output: 'missing', expectedReasonCodes: { 'test-runtime-check-cancellation-score': 'expected-missing' } },
+      invalid: { output: 'invalid', expectedReasonCodes: { 'test-runtime-check-cancellation-score': 'expected-invalid' } },
       failure: { output: 'failure', expectedErrorCode: 'expected-failure' },
       cancellation: { output: 'cancellation' },
     });
