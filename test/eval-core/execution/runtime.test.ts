@@ -953,64 +953,32 @@ describe('Evaluation Core Execution runtime', () => {
     expect(cache.puts).toBe(3);
   });
 
-  it('fails closed when a cached record claims a different randomization slot', async () => {
-    const cache = new MemoryCache();
-    const plan = await makePlan((definition, policy) => {
-      definition.targets = [definition.targets[0]];
-      definition.comparisons = [];
-      policy.cache.executionMode = 'transparent-deterministic';
-    });
-    const seeded = portsFor(plan, undefined, { cache });
-    await executeRunPlan(plan, seeded.ports, {
-      runId: 'run-cache-slot-seed',
-      bundleId: 'bundle-cache-slot-seed',
-    });
-    const entry = cache.entries.values().next().value;
-    if (entry === undefined) throw new Error('missing cache entry');
-    entry.record.randomizationSlotId = 'slot-forged';
-    entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+  it('fails closed on tampered cache records (different slot or sealed retry policy), never executing executor', async () => {
+    const replay = async (poisonSlot: boolean, runId: string, bundleId: string) => {
+      const cache = new MemoryCache();
+      const plan = await makePlan((definition, policy) => {
+        definition.targets = [definition.targets[0]];
+        definition.comparisons = [];
+        policy.cache.executionMode = 'transparent-deterministic';
+      });
+      const seeded = portsFor(plan, undefined, { cache });
+      await executeRunPlan(plan, seeded.ports, { runId: `${runId}-seed`, bundleId: `${bundleId}-seed` });
+      const entry = cache.entries.values().next().value;
+      if (entry === undefined) throw new Error('missing cache entry');
+      if (poisonSlot) entry.record.randomizationSlotId = 'slot-forged';
+      else entry.record.attempts[0].attemptNumber = 2;
+      entry.sourceRecordDigest = digestCanonicalJson(entry.record);
 
-    const replayed = portsFor(plan, undefined, { cache });
-    const bundle = await executeRunPlan(plan, replayed.ports, {
-      runId: 'run-cache-slot-replay',
-      bundleId: 'bundle-cache-slot-replay',
-    });
-
-    expect(bundle).toMatchObject({
-      executionBundleStatus: 'failed',
-      terminationReasonCode: 'execution-cache-read-failed',
-    });
-    expect(replayed.state.attempts).toBe(0);
-  });
-
-  it('fails closed on a cached attempt chain that violates the sealed retry policy', async () => {
-    const cache = new MemoryCache();
-    const plan = await makePlan((definition, policy) => {
-      definition.targets = [definition.targets[0]];
-      definition.comparisons = [];
-      policy.cache.executionMode = 'transparent-deterministic';
-    });
-    const seeded = portsFor(plan, undefined, { cache });
-    await executeRunPlan(plan, seeded.ports, {
-      runId: 'run-cache-attempt-seed',
-      bundleId: 'bundle-cache-attempt-seed',
-    });
-    const entry = cache.entries.values().next().value;
-    if (entry === undefined) throw new Error('missing cache entry');
-    entry.record.attempts[0].attemptNumber = 2;
-    entry.sourceRecordDigest = digestCanonicalJson(entry.record);
-
-    const replayed = portsFor(plan, undefined, { cache });
-    const bundle = await executeRunPlan(plan, replayed.ports, {
-      runId: 'run-cache-attempt-replay',
-      bundleId: 'bundle-cache-attempt-replay',
-    });
-
-    expect(bundle).toMatchObject({
-      executionBundleStatus: 'failed',
-      terminationReasonCode: 'execution-cache-read-failed',
-    });
-    expect(replayed.state.attempts).toBe(0);
+      const replayed = portsFor(plan, undefined, { cache });
+      const bundle = await executeRunPlan(plan, replayed.ports, { runId, bundleId });
+      expect(bundle).toMatchObject({
+        executionBundleStatus: 'failed',
+        terminationReasonCode: 'execution-cache-read-failed',
+      });
+      expect(replayed.state.attempts).toBe(0);
+    };
+    await replay(true, 'run-cache-slot-replay', 'bundle-cache-slot-replay');
+    await replay(false, 'run-cache-attempt-replay', 'bundle-cache-attempt-replay');
   });
 
   it.each(['missing', 'currency', 'exhausted'] as const)(

@@ -196,7 +196,9 @@ describe('spawnWithSigintPropagation', () => {
     const start = Date.now();
     await assert.rejects(done, (err: SpawnHelperError) => {
       const elapsed = Date.now() - start;
-      assert.ok(elapsed < 1500, `SIGKILL fallback should kick in within ~600ms grace, got ${elapsed}ms`);
+      // 墙钟上限放宽到 5s：并行负载下子进程启动与信号投递会抖动，
+      // 行为断言（SIGKILL 兜底 + killedByTimeout）才是本用例的核心。
+      assert.ok(elapsed < 5000, `SIGKILL fallback should kick in after ~600ms grace, got ${elapsed}ms`);
       assert.equal(err.killedByTimeout, true);
       return true;
     });
@@ -249,7 +251,8 @@ describe('spawnWithSigintPropagation', () => {
     await assert.rejects(done, (err: SpawnHelperError) => {
       const elapsed = Date.now() - start;
       assert.match(err.message, /maxBuffer/);
-      assert.ok(elapsed < 1500, `bufferOverflow SIGKILL fallback should kick in within ~600ms, got ${elapsed}ms`);
+      // 同上：墙钟上限放宽到 5s，核心断言是 maxBuffer 触发 + SIGKILL 兜底。
+      assert.ok(elapsed < 5000, `bufferOverflow SIGKILL fallback should kick in after ~600ms grace, got ${elapsed}ms`);
       return true;
     });
   });

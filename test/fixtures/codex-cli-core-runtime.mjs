@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { appendFile, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 
 const args = process.argv.slice(2);
+let captureSequence = 0;
 
 if (args.length === 1 && args[0] === '--version') {
   process.stdout.write(`${process.env.OMK_TEST_VERSION_OUTPUT ?? 'codex-cli 0.146.0'}\n`);
@@ -15,13 +16,25 @@ if (process.env.OMK_TEST_INVOCATIONS) {
 
 if (process.env.OMK_TEST_CAPTURE) {
   const separator = args.lastIndexOf('--');
-  await writeFile(process.env.OMK_TEST_CAPTURE, JSON.stringify({
+  const payload = JSON.stringify({
     args,
     cwd: process.cwd(),
     prompt: separator < 0 ? null : args[separator + 1],
     inheritedHome: process.env.HOME ?? null,
     explicit: process.env.OMK_TEST_EXPLICIT ?? null,
-  }));
+  });
+  // 并发调用共享同一 capture 目标时（evaluate() 默认 maxConcurrency=4），
+  // 直接 O_TRUNC 写同一文件会让读者看到交错写出的截断/拼接 JSON。
+  // 约定：OMK_TEST_CAPTURE 指向已存在的目录时按调用写唯一文件
+  // （capture-<pid>-<seq>-<random>.json，先写临时文件再原子 rename），
+  // 由断言侧聚合；指向普通路径时保持单文件语义（先写临时文件再原子 rename）。
+  const captureTarget = process.env.OMK_TEST_CAPTURE;
+  const unique = `${process.pid}-${captureSequence++}-${Math.random().toString(36).slice(2)}`;
+  const isDirectory = await stat(captureTarget).then((info) => info.isDirectory(), () => false);
+  const finalPath = isDirectory ? `${captureTarget}/capture-${unique}.json` : captureTarget;
+  const staging = `${finalPath}.${unique}.tmp`;
+  await writeFile(staging, payload);
+  await rename(staging, finalPath);
 }
 
 let stdin = '';
