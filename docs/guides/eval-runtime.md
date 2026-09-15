@@ -507,24 +507,20 @@ The example counts JavaScript string length after trimming (UTF-16 code units; s
 
 ```ts
 import { z } from 'zod';
-import { evaluate, type CustomEvaluator } from 'oh-my-knowledge';
+import { createCustomEvaluator, debugEvaluator, evaluate } from 'oh-my-knowledge';
 
-const outputLength = {
-  evaluatorKind: 'custom',
+const outputLength = createCustomEvaluator({
   evaluatorId: 'output-length',
   instrumentId: 'output-length-v1',
-  metrics: [{
-    metricId: 'output-length-chars',
-    valueType: 'numeric',
-    unit: 'characters',
-    direction: 'lower-is-better',
-    missingPolicyId: 'exclude/v1',
-  }, {
-    metricId: 'output-nonempty',
-    valueType: 'boolean',
-    direction: 'higher-is-better',
-    missingPolicyId: 'exclude/v1',
-  }],
+  metrics: {
+    'output-length-chars': {
+      valueType: 'numeric', unit: 'characters', direction: 'lower-is-better',
+      schema: z.number().int().nonnegative(),
+    },
+    'output-nonempty': {
+      valueType: 'boolean', direction: 'higher-is-better', schema: z.boolean(),
+    },
+  },
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   parameters: { trim: true },
   implementation: {
@@ -532,10 +528,6 @@ const outputLength = {
     version: '1.0.0',
     schemas: {
       bindings: z.object({ actual: z.string() }).strict(),
-      values: {
-        'output-length-chars': z.number().int().nonnegative(),
-        'output-nonempty': z.boolean(),
-      },
       fingerprintFacets: { bindings: 'actual-string/v1', values: 'length-and-nonempty/v1' },
     },
     fingerprintFacets: { sourceRevision: 'sha256:...' },
@@ -544,14 +536,14 @@ const outputLength = {
       const actual = parameters?.trim ? bindings.actual.trim() : bindings.actual;
       return {
         resultKind: 'completed',
-        results: [
-          { metricId: 'output-length-chars', resultKind: 'score', value: actual.length },
-          { metricId: 'output-nonempty', resultKind: 'score', value: actual.length > 0 },
-        ],
+        results: {
+          'output-length-chars': { resultKind: 'score', value: actual.length },
+          'output-nonempty': { resultKind: 'score', value: actual.length > 0 },
+        },
       };
     },
   },
-} satisfies CustomEvaluator<{ actual: string }, { trim: boolean }>;
+});
 
 const result = await evaluate({
   dataset: input.dataset,
@@ -575,11 +567,30 @@ const result = await evaluate({
 });
 ```
 
+Try one sample with the same evaluator first. This calls the selected Variant's real executor and scoring callback:
+
+```ts
+const debug = await debugEvaluator({
+  evaluator: outputLength,
+  sample: input.dataset.samples[0],
+  variant: variants[0],
+  policy: { evaluation: { timeoutMs: 5_000 } },
+});
+// Raw inputs may include gold/secret data. Inspect only in a trusted local environment.
+console.dir(debug.bindingInputs, { depth: null });
+console.dir(debug.run.artifacts?.evaluation?.records, { depth: null });
+```
+
+`createCustomEvaluator()` infers bindings and score types from schemas, requires results for every metric, and defaults `missingPolicyId` to `exclude/v1`. It returns a standard v2 `CustomEvaluator`; existing array declarations remain supported. `debugEvaluator()` runs one Sample × Variant × Trial with the same budgets, retries, cancellation, and accounting as a normal run. It declares no comparisons, summary analyses, or release decision. `bindingInputs` contains one entry per parser call, including retries and schema rejection; it may be empty for unavailable sources or evaluation cache hits. Debug data stays in the returned in-memory value, without automatic logging or event delivery; collection stops when the call settles.
+
+For declaration failures, inspect `EvaluationConfigurationError.issues`, for example `path: ['evaluators', 0, 'bindings', 0, 'pointer']` with `reasonCode: 'invalid-value'`. Rejected values and host parser exception text are omitted. Runtime schema rejection, missing metric results, and timeouts remain stable reason codes in the metric observations or invocation record within `debug.run`.
+
+
 Read the status, included observation count, and mean in `result.analysisResults['candidate-output-length']`. This summarizes `prompt-v2` only; declare a comparison analysis over the same metric to compare versions.
 
 Bindings are a least-authority allowlist. Declare `expected` or `evaluation-context` only when the evaluator actually needs gold data; undeclared sample fields are not passed to the callback. JSON Pointer narrows each source before delivery. The `execution-facts` source is the exception: its pointer must be empty so the callback consumes the complete canonical, already-redacted facts projection rather than inventing a second projection identity. Binding and value schemas may validate and narrow but must not coerce, add defaults, or remove fields.
 
-The callback returns `{ resultKind: 'completed', results, usage? }`. Each result identifies its `metricId` and is a `score`, `missing`, or `invalid` value; every declared metric must appear exactly once, in any order. `schemas.values` must have exactly the declared metric IDs, with one value parser for each. A rejected score invalidates only that metric. Missing evidence must be reported with an explicit `missing` result and reason. Unknown, duplicate, or omitted IDs fail the entire invocation. A stable `{ resultKind: 'failed', errorCode, usage? }` result fails the whole invocation. Keep `usage` on the outer result so tokens and provider cost are counted once. Retries repeat the whole callback; progress, concurrency slots, timeouts, and invocation budgets count evaluator calls, while coverage and summaries remain per metric. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
+The builder callback uses keyed results, expanding them to the underlying v2 array and generating `schemas.values`. The underlying `CustomEvaluator` callback returns `{ resultKind: 'completed', results, usage? }`. Each result identifies its `metricId` and is a `score`, `missing`, or `invalid` value; every declared metric must appear exactly once, in any order. `schemas.values` must have exactly the declared metric IDs, with one value parser for each. A rejected score invalidates only that metric. Missing evidence must be reported with an explicit `missing` result and reason. Unknown, duplicate, or omitted IDs fail the entire invocation. A stable `{ resultKind: 'failed', errorCode, usage? }` result fails the whole invocation. Keep `usage` on the outer result so tokens and provider cost are counted once. Retries repeat the whole callback; progress, concurrency slots, timeouts, and invocation budgets count evaluator calls, while coverage and summaries remain per metric. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
 
 Keep `scale` and `unit` distinct in your head. Before any cross-metric composition, OMK linearly normalizes each component onto its declared `scale` into `[0, 1]` and orients it by `direction`, so comparability is carried by `valueType`, `scale`, and `direction` — the quantity dimension cancels at that step, which is exactly why a numeric composite component must be bounded. `unit` is a human-facing quantity label for display and manual review: it takes part in no numeric decision, and is never used to convert a value or to excuse an out-of-range one, because conversion must be declared explicitly. Since it carries no computation semantics, only `numeric` Metrics may declare `unit`, under the same tightening rule as `scale`.
 

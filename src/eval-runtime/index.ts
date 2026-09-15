@@ -230,6 +230,16 @@ export type {
   Metric,
 } from './custom-evaluator.js';
 
+export { createCustomEvaluator } from './builders/custom-evaluator.js';
+export type {
+  CustomEvaluatorMetric,
+  CustomEvaluatorScores,
+  CreateCustomEvaluatorInput,
+} from './builders/custom-evaluator.js';
+export { debugEvaluator } from './debug-evaluator.js';
+export type { DebugEvaluatorInput, DebugEvaluatorResult } from './debug-evaluator.js';
+export type { EvaluationConfigurationIssue } from './evaluation/errors.js';
+
 // Imperative builders for assembling Definitions, Policies, and Evaluators directly.
 export { createExactMatchDefinition } from './builders/exact-match.js';
 export type {

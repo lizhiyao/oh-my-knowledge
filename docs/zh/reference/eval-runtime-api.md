@@ -32,8 +32,10 @@
 | `checkContentStore` | 验证宿主 ContentStore／ContentResolver 的 descriptor 完整性与稳定性、幂等写入，以及回读 value、classification 和 media type；宿主异常只会归约为稳定 reason code。 |
 | `checkExecutor` | 通过成功、失败、取消、清理和测量探针检查 Executor 行为。 |
 | `RUNTIME_CHECK_RESULT_SCHEMA_VERSION` | 全部可序列化 `checkRuntime` result envelope 共享的版本标记。 |
-| `EvaluationConfigurationError` | 稳定的调用方配置错误；只包含公开 code，不保留被拒绝 payload。当边界转述另一个失败时，`cause` 只携带其脱敏来源。 |
+| `EvaluationConfigurationError` | 稳定的调用方配置错误；包含公开 code 和字段诊断 `issues`，不保留被拒绝 payload。当边界转述另一个失败时，`cause` 只携带其脱敏来源。 |
 | `EvaluationEventConsumptionError` | 稳定且脱敏的观察器／event stream 错误；可用时保留终态 `EvaluationResult`。 |
+| `createCustomEvaluator` | 将指标定义与 parser 放在一起，推断回调类型并展开为标准 v2 Custom Evaluator。 |
+| `debugEvaluator` | 运行单条真实样本，返回校验前的 bindings 快照与权威执行结果。 |
 | `createExactMatchDefinition` | 构造 exact-match 配对 Core Definition。 |
 | `createPairedComparisonDefinition` | 构造单指标配对 Core Definition。 |
 | `createMeasurementPolicy` | 物化 Core Policy 默认值，包括显式 EventWriter 投递模式。 |
@@ -190,6 +192,12 @@ const variant: Variant<string, undefined, string> = {
 Numeric 与 boolean custom Metric 必须显式声明 `higher-is-better` 或 `lower-is-better` direction；categorical、text 与 ranking Metric 不得声明 scale 或 direction。Canonical `progress/v2` Decision 目前只接受 `higher-is-better`，因为把它的正向效应规则静默用于 lower-is-better 量表会反转 verdict。
 
 `implementation.version`、schema `fingerprintFacets` 与 implementation `fingerprintFacets` 是必填 identity 声明。OMK 不会对 `Function#toString()` 做指纹；callback 代码、依赖、schema 或 provider 配置一旦改变测量行为，调用方必须更新至少一个 identity facet。Binding 与 value schema 只能校验，不能 coercion、补默认值或删除字段。`CustomEvaluatorContent` 为 evidence 或 invalid value 显式携带 classification；未声明的 source value 永远不会传入 callback。
+
+`createCustomEvaluator(input)` 接受 `CreateCustomEvaluatorInput`：以指标 ID 为键的 `metrics`，每个 `CustomEvaluatorMetric` 将 Metric 字段与 `schema` 放在一起，省略时默认 `missingPolicyId: 'exclude/v1'`。无需再声明 `schemas.values`。Callback 返回 `CustomEvaluatorScores`，其中 completed 的 `results` 是按指标 ID 映射的 score／missing／invalid 对象，分数类型由对应 parser 推断，调用级 usage／failed 保持不变。构造器只校验声明，不调用执行器、parser 或评分 callback；展开后的 v2 声明使用相同 identity 派生，不改变测量或存储契约。构造器错误位置相对于输入；metrics 的位置使用映射键。
+
+`debugEvaluator(input, options?)` 接受 `DebugEvaluatorInput`（`evaluator`、单个 `sample`、单个 `variant`，以及可选 `seed`、`policy`、`infrastructure`）和标准 `EvaluationRunOptions`。返回 `DebugEvaluatorResult`：`run` 是权威 `EvaluationResult`，`bindingInputs` 是每次绑定 parser 校验前输入的冻结快照，可能包含 gold／secret。只在内存中收集，不加入事件或报告；调用结束后停止收集。缺失源、未开始的尝试或评分缓存命中不会产生快照。固定使用一个 trial 的 solo sampling、空 comparisons／analyses，不声明 Decision；默认 seed 与 datasetId 为 `omk-debug-evaluator`。这是真实执行，重试、超时、取消与预算遵循传入 policy；单条调试结果不能代表全量质量结论。
+
+`EvaluationConfigurationIssue` 的 `path` 为字符串／数字路径，`reasonCode` 为 `invalid-value`、`duplicate-id`、`metric-set-mismatch`、`parser-required` 或 `unsupported-field`。`EvaluationConfigurationError.issues` 对 Custom Evaluator 声明提供字段诊断，其他配置错误可为空数组；经 `evaluate`／`prepareEvaluation` 调用时路径以 `evaluators` 和下标开头。诊断不包含拒绝值或宿主异常文本；运行期失败继续保留在 Core records 中。
 
 **Custom Evaluator v2 迁移。** <a id="custom-evaluator-v2-migration"></a>
 

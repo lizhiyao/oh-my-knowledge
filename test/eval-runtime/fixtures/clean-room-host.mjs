@@ -11,6 +11,8 @@ import {
   checkContentStore,
   checkExecutor,
   evaluate,
+  createCustomEvaluator,
+  debugEvaluator,
   prepareEvaluation,
 } from 'oh-my-knowledge';
 
@@ -377,43 +379,39 @@ assert.equal(withRetry.status, 'completed');
 assert.deepEqual(retryAttempts, [1, 2, 1, 2]);
 assert.ok(withRetry.artifacts.execution.records.every((record) => record.attempts.length === 2));
 
-const lengthEvaluator = {
-  evaluatorKind: 'custom',
+const lengthEvaluator = createCustomEvaluator({
   evaluatorId: 'clean-room-length',
   instrumentId: 'clean-room-length-v1',
-  metrics: [{
-    metricId: 'output-length',
-    valueType: 'numeric',
-    scale: { min: 0, max: 20 },
-    direction: 'lower-is-better',
-    missingPolicyId: 'exclude/v1',
-  }, {
-    metricId: 'output-nonempty',
-    valueType: 'boolean',
-    direction: 'higher-is-better',
-    missingPolicyId: 'exclude/v1',
-  }],
+  metrics: {
+    'output-length': { valueType: 'numeric', scale: { min: 0, max: 20 }, direction: 'lower-is-better', schema: z.number() },
+    'output-nonempty': { valueType: 'boolean', direction: 'higher-is-better', schema: z.boolean() },
+  },
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   implementation: {
     implementationId: 'clean-room.length/v1',
     version: '1.0.0',
     schemas: {
       bindings: z.object({ actual: z.string() }).strict(),
-      values: { 'output-length': z.number(), 'output-nonempty': z.boolean() },
       fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
     },
     fingerprintFacets: { revision: 'clean-room-one' },
     evaluate({ bindings }) {
       return {
         resultKind: 'completed',
-        results: [
-          { metricId: 'output-length', resultKind: 'score', value: bindings.actual.length },
-          { metricId: 'output-nonempty', resultKind: 'score', value: bindings.actual.length > 0 },
-        ],
+        results: {
+          'output-length': { resultKind: 'score', value: bindings.actual.length },
+          'output-nonempty': { resultKind: 'score', value: bindings.actual.length > 0 },
+        },
       };
     },
   },
-};
+});
+
+const debugLength = await debugEvaluator({
+  evaluator: lengthEvaluator, sample: { sampleId: 'debug-length', input: 'success' }, variant,
+});
+assert.deepEqual(debugLength.bindingInputs, [{ actual: 'expected' }]);
+assert.equal(debugLength.run.artifacts.evaluation.records[0].observations.length, 2);
 
 const customEvaluation = await evaluation({
   dataset: {

@@ -22,6 +22,7 @@ import {
 import { createSameProcessEvaluatorAdapter } from './adapters/same-process.js';
 import type { RuntimeValueParser } from './adapters/json-executor.js';
 import { createRuntimeIdentity } from './identity.js';
+import type { EvaluationConfigurationIssue } from './evaluation/errors.js';
 
 const CustomEvaluatorContentSchema = z.object({
   value: JsonValueSchema,
@@ -70,18 +71,21 @@ const CustomMetricSchema = MetricDefinitionSchema.omit({ scope: true }).superRef
     if (quantitative && (metric.direction === undefined || metric.direction === 'target-is-best')) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
+        path: ['direction'],
         message: 'A quantitative custom Metric requires a monotonic direction.',
       });
     }
     if (metric.valueType !== 'numeric' && metric.scale !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
+        path: ['scale'],
         message: 'Only a numeric custom Metric can declare scale.',
       });
     }
     if (metric.scale?.target !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
+        path: ['scale', 'target'],
         message: 'The canonical custom Metric does not support target-is-best scale.',
       });
     }
@@ -89,12 +93,14 @@ const CustomMetricSchema = MetricDefinitionSchema.omit({ scope: true }).superRef
         && metric.scale.min > metric.scale.max) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
+        path: ['scale'],
         message: 'A custom Metric scale requires min to be less than or equal to max.',
       });
     }
     if (!quantitative && metric.direction !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
+        path: ['direction'],
         message: 'A qualitative custom Metric cannot declare direction.',
       });
     }
@@ -233,18 +239,48 @@ export interface CapturedCustomEvaluator {
 }
 
 export class CustomEvaluatorDeclarationError extends TypeError {
-  constructor() {
+  constructor(readonly issues: readonly EvaluationConfigurationIssue[] = []) {
     super('Custom Evaluator declaration is invalid.');
     this.name = 'CustomEvaluatorDeclarationError';
   }
 }
 
-function invalidDeclaration(): never {
-  throw new CustomEvaluatorDeclarationError();
+function invalidDeclaration(
+  path: readonly (string | number)[] = [],
+  reasonCode: EvaluationConfigurationIssue['reasonCode'] = 'invalid-value',
+): never {
+  throw new CustomEvaluatorDeclarationError([{ path, reasonCode }]);
 }
 
-function captureParser<Value>(parser: Readonly<RuntimeValueParser<Value>> | undefined) {
-  if (parser === undefined || typeof parser.parse !== 'function') invalidDeclaration();
+// Only OMK-owned schema field names may extend a diagnostic path. Host errors are opaque.
+const diagnosticFields = new Set([
+  'bindingId', 'sourceKind', 'pointer', 'metricId', 'valueType', 'direction', 'unit',
+  'scale', 'min', 'max', 'target', 'missingPolicyId', 'reporting', 'trustedUpperBound',
+  'amount', 'currency',
+]);
+
+function at<Value>(path: readonly (string | number)[], read: () => Value): Value {
+  try {
+    return read();
+  } catch (error) {
+    if (error instanceof CustomEvaluatorDeclarationError) throw error;
+    if (error instanceof z.ZodError) {
+      throw new CustomEvaluatorDeclarationError(error.issues.map((issue) => ({
+        path: [...path, ...issue.path.filter((part): part is string | number => (
+          typeof part === 'number' || (typeof part === 'string' && diagnosticFields.has(part))
+        ))],
+        reasonCode: 'invalid-value',
+      })));
+    }
+    return invalidDeclaration(path);
+  }
+}
+
+function captureParser<Value>(
+  parser: Readonly<RuntimeValueParser<Value>> | undefined,
+  path: readonly (string | number)[],
+) {
+  if (parser == null || typeof parser.parse !== 'function') invalidDeclaration(path, 'parser-required');
   const parse = parser.parse;
   return Object.freeze({
     parse: (value: unknown): Value => Reflect.apply(parse, parser, [value]) as Value,
@@ -263,71 +299,96 @@ export function captureCustomEvaluator(
   value: Readonly<CustomEvaluator>,
 ): Readonly<CapturedCustomEvaluator> {
   try {
-    const bindings = value.bindings.map((binding) => (
-      EvaluatorInputBindingSchema.parse(structuredClone(binding))
-    )).sort((left, right) => (
-      left.bindingId < right.bindingId ? -1 : left.bindingId > right.bindingId ? 1 : 0
+    if (!Array.isArray(value.bindings) || value.bindings.length === 0) invalidDeclaration(['bindings']);
+    const bindings = value.bindings.map((binding, index) => (
+      at(['bindings', index], () => EvaluatorInputBindingSchema.parse(structuredClone(binding)))
     ));
-    if (bindings.length === 0
-        || new Set(bindings.map((binding) => binding.bindingId)).size !== bindings.length
-        || bindings.some((binding) => (
-          binding.sourceKind === 'execution-facts' && binding.pointer !== ''
-        ))) {
-      return invalidDeclaration();
-    }
-    if ('metric' in value || 'value' in value.implementation.schemas) return invalidDeclaration();
-    const metrics = value.metrics.map((metric) => MetricDefinitionSchema.parse({
-      ...CustomMetricSchema.parse(structuredClone(metric)),
-      scope: 'sample',
-    })).sort((left, right) => (
-      left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
-    ));
+    const seenBindings = new Set<string>();
+    bindings.forEach((binding, index) => {
+      if (seenBindings.has(binding.bindingId)) invalidDeclaration(['bindings', index, 'bindingId'], 'duplicate-id');
+      seenBindings.add(binding.bindingId);
+      if (binding.sourceKind === 'execution-facts' && binding.pointer !== '') {
+        invalidDeclaration(['bindings', index, 'pointer']);
+      }
+    });
+    bindings.sort((left, right) => left.bindingId < right.bindingId ? -1 : left.bindingId > right.bindingId ? 1 : 0);
+    if ('metric' in value) invalidDeclaration(['metric'], 'unsupported-field');
+    const implementation = at(['implementation'], () => {
+      if (value.implementation == null) invalidDeclaration(['implementation']);
+      return value.implementation;
+    });
+    const schemas = at(['implementation', 'schemas'], () => {
+      if (implementation.schemas == null) invalidDeclaration(['implementation', 'schemas']);
+      return implementation.schemas;
+    });
+    if ('value' in schemas) invalidDeclaration(['implementation', 'schemas', 'value'], 'unsupported-field');
+    if (!Array.isArray(value.metrics) || value.metrics.length === 0) invalidDeclaration(['metrics']);
+    const seenMetrics = new Set<string>();
+    const metrics = value.metrics.map((metric, index) => {
+      const parsed = at(['metrics', index], () => MetricDefinitionSchema.parse({
+        ...CustomMetricSchema.parse(structuredClone(metric)), scope: 'sample',
+      }));
+      if (seenMetrics.has(parsed.metricId)) invalidDeclaration(['metrics', index, 'metricId'], 'duplicate-id');
+      seenMetrics.add(parsed.metricId);
+      return parsed;
+    }).sort((left, right) => left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0);
     const metricIds = metrics.map((metric) => metric.metricId);
-    if (metrics.length === 0 || new Set(metricIds).size !== metrics.length
-        || canonicalizeJson(Object.keys(value.implementation.schemas.values).sort())
-          !== canonicalizeJson(metricIds)) return invalidDeclaration();
-    const parameters = value.parameters === undefined
-      ? undefined
-      : deepFreezeCanonicalJson(JsonValueSchema.parse(structuredClone(value.parameters)));
-    const bindingParser = captureParser(value.implementation.schemas.bindings);
+    at(['implementation', 'schemas', 'values'], () => {
+      if (schemas.values == null || Array.isArray(schemas.values)
+          || canonicalizeJson(Object.keys(schemas.values).sort()) !== canonicalizeJson(metricIds)) {
+        invalidDeclaration(['implementation', 'schemas', 'values'], 'metric-set-mismatch');
+      }
+    });
+    const parameters = value.parameters === undefined ? undefined : at(['parameters'], () => (
+      deepFreezeCanonicalJson(JsonValueSchema.parse(structuredClone(value.parameters)))
+    ));
+    const bindingParser = at(['implementation', 'schemas', 'bindings'], () => (
+      captureParser(schemas.bindings, ['implementation', 'schemas', 'bindings'])
+    ));
     const valueParsers = new Map(metrics.map((metric) => [
       metric.metricId,
-      captureParser(value.implementation.schemas.values[metric.metricId]),
+      at(['implementation', 'schemas', 'values', metric.metricId], () => (
+        captureParser(schemas.values[metric.metricId], ['implementation', 'schemas', 'values', metric.metricId])
+      )),
     ]));
-    if (typeof value.implementation.evaluate !== 'function') return invalidDeclaration();
-    const schemaFingerprintFacets = deepFreezeCanonicalJson(JsonValueSchema.parse(
-      structuredClone(value.implementation.schemas.fingerprintFacets),
+    if (typeof implementation.evaluate !== 'function') invalidDeclaration(['implementation', 'evaluate']);
+    const schemaFingerprintFacets = at(['implementation', 'schemas', 'fingerprintFacets'], () => (
+      deepFreezeCanonicalJson(JsonValueSchema.parse(structuredClone(schemas.fingerprintFacets)))
     ));
-    const fingerprintFacets = deepFreezeCanonicalJson(JsonValueSchema.parse(
-      structuredClone(value.implementation.fingerprintFacets),
+    const fingerprintFacets = at(['implementation', 'fingerprintFacets'], () => (
+      deepFreezeCanonicalJson(JsonValueSchema.parse(structuredClone(implementation.fingerprintFacets)))
     ));
-    const providerCost = value.implementation.providerCost === undefined
-      ? undefined
-      : deepFreezeCanonicalJson(structuredClone(value.implementation.providerCost));
-    const capabilities = EvaluatorCapabilitiesSchema.parse({
+    const providerCost = implementation.providerCost === undefined ? undefined : at(['implementation', 'providerCost'], () => (
+      deepFreezeCanonicalJson(structuredClone(implementation.providerCost))
+    ));
+    const capabilities = at(['implementation', 'providerCost'], () => EvaluatorCapabilitiesSchema.parse({
       inputSourceKinds: [...new Set(bindings.map((binding) => binding.sourceKind))].sort(),
       metricValueTypes: [...new Set(metrics.map((metric) => metric.valueType))].sort(),
       schemas: [],
       ...(providerCost === undefined ? {} : { providerCost }),
-    });
-    const identity = createRuntimeIdentity({
-      implementationId: value.implementation.implementationId,
-      version: value.implementation.version,
+    }));
+    const implementationId = at(['implementation', 'implementationId'], () => IdentifierSchema.parse(implementation.implementationId));
+    const version = at(['implementation', 'version'], () => z.string().min(1).parse(implementation.version));
+    const identity = at(['implementation'], () => createRuntimeIdentity({
+      implementationId,
+      version,
       capabilities,
       fingerprintFacets: {
         facade: 'omk.eval-runtime.custom-evaluator/v2',
         schemas: schemaFingerprintFacets,
         host: fingerprintFacets,
       },
-    });
-    if (identity.version === undefined) return invalidDeclaration();
+    }));
+    if (identity.version === undefined) return invalidDeclaration(['implementation', 'version']);
+    const evaluatorId = at(['evaluatorId'], () => IdentifierSchema.parse(value.evaluatorId));
+    const instrumentId = at(['instrumentId'], () => IdentifierSchema.parse(value.instrumentId));
     const definition = EvaluatorDefinitionSchema.parse({
-      evaluatorId: value.evaluatorId,
+      evaluatorId,
       evaluatorKind: 'custom',
       implementationId: identity.implementationId,
       versionConstraint: identity.version,
       measurement: {
-        instrumentId: value.instrumentId,
+        instrumentId,
         ensembleMemberId: 'custom-local',
         replicateGroupId: 'custom-primary',
         replicateIndex: 0,
