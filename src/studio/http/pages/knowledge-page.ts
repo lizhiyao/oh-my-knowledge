@@ -6,7 +6,7 @@ import { assessHealth, observedToolFailureRate } from '../../application/knowled
 import type { HealthAssessment } from '../../view-models/knowledge/health-assessment.js';
 import type { Insight } from '../../view-models/knowledge/insight.js';
 import type { SkillDoctorSnapshot, SkillIndexEntry, SkillIndexSummary } from '../../view-models/knowledge/skill-index.js';
-import { KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX } from '../page-paths.js';
+import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX } from '../page-paths.js';
 
 export interface KnowledgeRow {
   skillName: string;
@@ -47,6 +47,15 @@ function toRunSummary(snapshot: SkillDoctorSnapshot): DoctorRunSummary {
     warnCount: snapshot.warnCount,
     failCount: snapshot.failCount,
   };
+}
+
+/** 地址识别属装载器；候选知识页只需宿主接管，页面模型由客户端按 `/api/*` 自取，所以这里没有对应的 load。 */
+export function isKnowledgePath(path: string): boolean {
+  return path === KNOWLEDGE_INDEX_PATH || path.startsWith(KNOWLEDGE_SKILL_PREFIX);
+}
+
+export function isKnowledgeCandidatesPath(path: string): boolean {
+  return path === KNOWLEDGE_CANDIDATES_PATH;
 }
 
 export function loadKnowledgePage(
