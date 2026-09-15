@@ -50,7 +50,6 @@ export function StudioShell({ lang, children, active, utilitiesInSidebar = false
   const navigation = useStudioNavigation();
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
     <div className="studio-app"><header className="studio-header"><Link className="studio-brand" href={`${studioEntryPath(navigation)}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
-      {/* 壳层常驻：站内跳转一律走 next/link，原生 <a> 会让每次切区整文档重载、连带丢掉各页的客户端状态。 */}
       {navigation ? <nav aria-label={lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}>
         <Link href={`/observe${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</Link>
         <Link href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</Link>
