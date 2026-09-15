@@ -59,3 +59,67 @@ it('separates standalone conversations from project conversations while keeping 
     for (const title of ['Standalone example', 'Directory example', 'Issue #375']) expect(overview).toContain(title);
   }
 });
+
+const conversation = (threadId: string, extra: Partial<ConversationListItem> = {}): ConversationListItem => ({
+  threadId, sourceThreadId: threadId, sourceKind: 'codex', title: threadId, relatedSkillNames: [], tasks: [], ...extra,
+});
+const renderIndex = (conversations: ConversationListItem[], lang: 'zh' | 'en' = 'zh'): string => renderToStaticMarkup(createElement(ObserveWorkspace, {
+  lang,
+  page: { pageKind: 'index', model: { conversations, totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 }, revision: 'test' },
+}));
+const sidebarOf = (html: string): string => html.slice(html.indexOf('<aside'), html.indexOf('</aside>'));
+
+it('长标题与长路径单行省略后，完整内容仍可通过提示取得', () => {
+  const longTitle = 'A'.repeat(120);
+  const name = 'N'.repeat(80);
+  const html = renderIndex([conversation('thread/long', {
+    title: longTitle,
+    project: { projectId: 'p', name, directory: '/very/long/project/directory' },
+    cwd: '/very/long/working/directory',
+    tasks: [{ title: 'latest request text' } as ConversationListItem['tasks'][number]],
+  })]);
+  expect(html).toContain(`<strong title="${longTitle}">`);
+  expect(html).toContain('<p title="latest request text">最近请求：latest request text</p>');
+  expect(html).toContain('<small title="/very/long/working/directory">');
+  // 项目名的提示同时给出完整名称与完整目录：只给目录时，被省略掉的名称就没有别的读法。
+  const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'));
+  expect(summary).toContain(`title="${name}\n/very/long/project/directory"`);
+  expect(summary).toContain('<span title="1 个会话">1</span>');
+});
+
+it('独立对话超出侧栏视野时给出可达入口，不静默丢掉较早的对话', () => {
+  const conversations = Array.from({ length: 18 }, (_, index) => conversation(`solo-${index}`, { title: `独立 ${index}` }));
+  const sidebar = sidebarOf(renderIndex(conversations));
+  expect(sidebar).toContain('还有 3 个独立对话，在全部对话中查看');
+  expect(sidebar.match(/observe-session-link/g)).toHaveLength(15);
+  expect(sidebarOf(renderIndex(conversations, 'en'))).toContain('3 more standalone conversations in All conversations');
+});
+
+it('项目超出侧栏视野时保留展开入口，较早的项目不会彻底失联', () => {
+  const conversations = Array.from({ length: 8 }, (_, index) => conversation(`t-${index}`, {
+    title: `会话 ${index}`, project: { projectId: `p-${index}`, name: `项目 ${index}`, directory: `/p/${index}` },
+  }));
+  const sidebar = sidebarOf(renderIndex(conversations));
+  expect(sidebar).toContain('查看全部项目');
+  expect(sidebar).toContain('项目 5');
+  expect(sidebar).not.toContain('项目 6');
+});
+
+it('项目内会话超出视野时给出该项目全部会话的入口', () => {
+  const conversations = Array.from({ length: 13 }, (_, index) => conversation(`t-${index}`, {
+    title: `会话 ${index}`, project: { projectId: 'p', name: '同一个项目', directory: '/p' },
+  }));
+  expect(sidebarOf(renderIndex(conversations))).toContain('查看全部 13 个会话');
+});
+
+it('完全没有记录时说明记录从哪里来，而不是只说一句暂无', () => {
+  const html = renderIndex([]);
+  expect(html).toContain('暂无会话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。');
+  expect(sidebarOf(html)).toContain('暂无独立对话。有项目归属的会话显示在上方项目下。');
+});
+
+it('进行中的入口与标题使用同一个名字', () => {
+  const html = renderIndex([item]);
+  expect(html).toContain('进行中的对话');
+  expect(html).not.toContain('进行中的会话');
+});

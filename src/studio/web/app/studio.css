@@ -189,7 +189,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .observe-recents{margin-top:20px;padding-top:16px;border-top:1px solid #e2e6ee}
 .observe-recents header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
 .observe-recents h2{margin-bottom:0}.observe-recents .observe-session-link{margin-left:0}
-.observe-independent-empty{font-size:12px;color:#8893a5;margin:8px 10px 12px}
+.observe-sidebar-empty{font-size:12px;color:#8893a5;margin:8px 10px 12px}
 .studio-utilities{flex-shrink:0}.observe-sidebar>.studio-utilities{padding-top:10px;border-top:1px solid #e2e6ee}
 .studio-utilities-trigger{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:6px;background:transparent;color:#526076;padding:10px 8px;font:inherit;font-size:13px;text-align:left;cursor:pointer}
 .studio-utilities-trigger:hover,.studio-utilities-trigger[aria-expanded=true]{background:#eef0f6;color:#192236}
@@ -201,7 +201,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .observe-session-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
 .observe-session-row{display:flex;gap:24px;justify-content:space-between;padding:12px 8px;border-bottom:1px solid #e9ecf2;text-decoration:none;color:#293348}
 .observe-session-row:hover{background:#f0f1f8}.observe-session-row>div:first-child{min-width:0;flex:1}
-.observe-session-row strong,.observe-session-row p{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.observe-session-row strong,.observe-session-row p,.observe-session-row>div:first-child small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .observe-session-row strong{font-size:14px;font-weight:500}.observe-session-row p{color:#657085;font-size:12px;margin:4px 0}.observe-session-row small{color:#8893a5;font-size:11px}
 .observe-session-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;font-size:11px;color:#8893a5}.observe-workspace-main>.ant-pagination{flex-shrink:0;padding:10px 0}
 .observe-reader-header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:8px 0 20px;border-bottom:1px solid #e2e6ee;flex-shrink:0}.observe-reader-header>div:first-child{min-width:0}.observe-reader-header h1{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.observe-reader-header p{font-size:12px;color:#657085;margin:0 0 6px}.observe-reader-header small{font-size:12px;color:#657085}.observe-reader-header .conversation-knowledge-actions{flex-shrink:0}
