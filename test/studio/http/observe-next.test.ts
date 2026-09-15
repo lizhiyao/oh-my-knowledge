@@ -47,7 +47,7 @@ describe('Observe Next production routes', () => {
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       // 标签标题按页面与对象给出：会话详情带上 threadId，列表只给页面名。
       assert.ok(html.includes(path === '/observe' ? '<title>OMK · 会话列表</title>' : '<title>OMK · 会话详情 · thread</title>'), `title of ${path}`);
-      assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
+      assert.match(html,/<a(?=[^>]*href="\/observe\?lang=zh")(?=[^>]*aria-current="page")/u);
       if(path==='/observe') {
         assert.match(html,/项目与会话/);
         assert.match(html,/全部对话/);
@@ -104,12 +104,12 @@ describe('Observe Next production routes', () => {
       assert.equal(bare.status,302);
       assert.equal(bare.headers.get('location'),'/observe?lang=en');
       const english=await (await fetch(`${url}/observe?lang=en`,{redirect:'manual'})).text();
-      assert.match(english,/href="\/observe\?lang=en" aria-current="page"/);
+      assert.match(english,/<a(?=[^>]*href="\/observe\?lang=en")(?=[^>]*aria-current="page")/u);
       // 显式中文是单次选择：偏好不得改写它，页面里的链接也不得把它丢回裸地址。
       const chinese=await fetch(`${url}/observe?lang=zh`,{redirect:'manual'});
       assert.equal(chinese.status,200);
       const html=await chinese.text();
-      assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
+      assert.match(html,/<a(?=[^>]*href="\/observe\?lang=zh")(?=[^>]*aria-current="page")/u);
       assert.match(html,/href="\/observe\/conversations\/thread\?lang=zh"/);
       // 偏好只接管页面地址：JSON 接口一旦被重定向，浏览器的 POST 会退化成 GET。
       assert.notEqual((await fetch(`${url}/api/settings`,{redirect:'manual'})).status,302,'JSON 接口不参与页面语言重定向');
@@ -133,7 +133,7 @@ describe('Observe Next production routes', () => {
       // 语言只是偏好：读不到就按内置默认渲染，不能让整个 Studio 变成 500（诊断入口也在同一个页面壳里）。
       const page=await fetch(`${url}/observe`,{redirect:'manual'});
       assert.equal(page.status,200);
-      assert.match(await page.text(),/href="\/observe\?lang=zh" aria-current="page"/);
+      assert.match(await page.text(),/<a(?=[^>]*href="\/observe\?lang=zh")(?=[^>]*aria-current="page")/u);
       const api=await fetch(`${url}/api/settings`);
       assert.equal(api.status,400);
       assert.equal((await api.json() as {error?:string}).error,'settings_unavailable');
