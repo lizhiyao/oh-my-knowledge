@@ -1,16 +1,25 @@
 import assert from 'node:assert/strict';
-import { writeFile, readFile, access } from 'node:fs/promises';
+import { mkdir, readdir, writeFile, readFile, access } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createCodexCliReferenceExecutor, createCodexCliReferenceEvaluator, evaluate } from 'oh-my-knowledge';
 
 const root = process.cwd();
 const modelConfigPath = join(root, 'codex-reference-config.toml');
 await writeFile(modelConfigPath, 'model = "fixture-default"');
+// 捕获按角色建目录：同一角色的并发调用各自写唯一文件，断言侧聚合，
+// 不共享 O_TRUNC 目标（issue #921）。
 const environment = (mode, role) => ({
   PATH: { value: dirname(process.execPath), identity: { identityKind: 'behavior', value: dirname(process.execPath) } },
   OMK_TEST_MODE: { value: mode, identity: { identityKind: 'behavior', value: mode } },
-  OMK_TEST_CAPTURE: { value: join(root, `${role}.json`), identity: { identityKind: 'effect-locator' } },
+  OMK_TEST_CAPTURE: { value: join(root, `${role}-captures`), identity: { identityKind: 'effect-locator' } },
 });
+for (const role of ['target', 'judge']) await mkdir(join(root, `${role}-captures`));
+const readCaptures = async (role) => {
+  const directory = join(root, `${role}-captures`);
+  const files = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort();
+  assert.ok(files.length > 0, `expected at least one ${role} capture`);
+  return Promise.all(files.map((name) => readFile(join(directory, name), 'utf8').then(JSON.parse)));
+};
 const connection = { executablePath: join(root, 'vendor-codex.mjs'), modelConfigPath };
 const evaluator = await createCodexCliReferenceEvaluator({
   ...connection, environment: environment('judge', 'judge'),
@@ -39,12 +48,23 @@ assert.equal(result.status, 'completed');
 const observations = result.artifacts.evaluation.records.flatMap((record) => record.evaluationStatus === 'completed' ? record.observations : []);
 assert.equal(observations.length, 4);
 assert.ok(observations.every((observation) => observation.observationStatus === 'observed' && observation.value === 4));
-const target = JSON.parse(await readFile(join(root, 'target.json'), 'utf8'));
-const judge = JSON.parse(await readFile(join(root, 'judge.json'), 'utf8'));
-assert.ok(target.args.includes('fixture-default'));
-assert.ok(judge.args.includes('fixture-default'));
-assert.ok(!target.prompt.includes('4 means correct.'));
-assert.ok(judge.prompt.includes('4 means correct.'));
-assert.notEqual(target.cwd, judge.cwd);
-await assert.rejects(access(target.cwd));
-await assert.rejects(access(judge.cwd));
+// 2 samples × 2 variants = 4 次 target 调用、4 次 judge 调用；逐次断言保持原有口径。
+const targets = await readCaptures('target');
+const judges = await readCaptures('judge');
+assert.equal(targets.length, 4);
+assert.equal(judges.length, 4);
+for (const target of targets) {
+  assert.ok(target.args.includes('fixture-default'));
+  assert.ok(!target.prompt.includes('4 means correct.'));
+  await assert.rejects(access(target.cwd));
+}
+for (const judge of judges) {
+  assert.ok(judge.args.includes('fixture-default'));
+  assert.ok(judge.prompt.includes('4 means correct.'));
+  await assert.rejects(access(judge.cwd));
+}
+const targetCwds = new Set(targets.map((capture) => capture.cwd));
+const judgeCwds = new Set(judges.map((capture) => capture.cwd));
+assert.equal(targetCwds.size, 4);
+assert.equal(judgeCwds.size, 4);
+assert.ok([...targetCwds].every((cwd) => !judgeCwds.has(cwd)));

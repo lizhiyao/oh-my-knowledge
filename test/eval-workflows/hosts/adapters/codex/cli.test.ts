@@ -253,6 +253,9 @@ async function createAdapter(
         PATH: dirname(process.execPath),
         ...values,
       }),
+      // 并行负载下 version probe 子进程启动会抖动；测试侧放宽 probe 超时，
+      // 不改 src 的 5s 生产默认值。
+      identityProbeTimeoutMs: 20_000,
       ...command,
     },
     sessionIsolationKey: 'codex-session-a',

@@ -29,20 +29,12 @@ describe('buildCodexArgs flag schema', () => {
     ]);
   });
 
-  it('does not include the removed --ask-for-approval flag', () => {
+  it('drops --ask-for-approval, passes approval_policy via -c, keeps isolation flags', () => {
     const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt: 'hi' });
     assert.equal(args.includes('--ask-for-approval'), false);
-  });
-
-  it('passes approval_policy="never" via -c config override', () => {
-    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt: 'hi' });
     const cIndex = args.indexOf('-c');
     assert.notEqual(cIndex, -1, '-c flag missing');
     assert.equal(args[cIndex + 1], 'approval_policy="never"');
-  });
-
-  it('keeps essential isolation flags', () => {
-    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt: 'hi' });
     assert.ok(args.includes('--json'));
     assert.ok(args.includes('--ephemeral'));
     assert.ok(args.includes('--ignore-user-config'));

@@ -479,69 +479,44 @@ describe('computeGapReport', () => {
     assert.equal(byType.hedging, 0.5);
   });
 
-  it('weightedGapRate 按用例最强信号聚合', () => {
+  it('weightedGapRate 按用例最强信号聚合(不累加),弱信号拉低加权,空输入归零', () => {
     // 3 个用例:1 个 failed_search(强,权重 1.0)、1 个 hedging(弱,权重 0.5)、1 个无信号
-    // gapRate = 2/3 ≈ 0.6667
-    // weightedGapRate = (1.0 + 0.5 + 0) / 3 ≈ 0.5000
-    const results: AnalysisEntry[] = [
-      {
-        sampleId: 's001',
-        variants: { v1: vr({ turns: [turn('assistant', '', [tc('Grep', { pattern: 'x' }, '', false)])] }) },
-      },
-      {
-        sampleId: 's002',
-        variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) },
-      },
-      {
-        sampleId: 's003',
-        variants: { v1: vr({ turns: [turn('assistant', 'clean', [])] }) },
-      },
+    // gapRate = 2/3 ≈ 0.6667; weightedGapRate = (1.0 + 0.5 + 0) / 3 ≈ 0.5000
+    const mixed: AnalysisEntry[] = [
+      { sampleId: 's001', variants: { v1: vr({ turns: [turn('assistant', '', [tc('Grep', { pattern: 'x' }, '', false)])] }) } },
+      { sampleId: 's002', variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) } },
+      { sampleId: 's003', variants: { v1: vr({ turns: [turn('assistant', 'clean', [])] }) } },
     ];
-    const report = computeGapReport(results, 'v1');
-    assert.equal(report.gapRate, 0.6667);
-    assert.equal(report.weightedGapRate, 0.5);
+    const mixedReport = computeGapReport(mixed, 'v1');
+    assert.equal(mixedReport.gapRate, 0.6667);
+    assert.equal(mixedReport.weightedGapRate, 0.5);
     // 永远 weighted ≤ raw(软信号只会拉低 weight)
-    assert.ok(report.weightedGapRate <= report.gapRate);
-  });
+    assert.ok(mixedReport.weightedGapRate <= mixedReport.gapRate);
 
-  it('同一用例多信号时取最强权重(不是累加)', () => {
-    // 一个用例同时有 hedging(0.5) + failed_search(1.0) → sample weight = 1.0 而不是 1.5
-    const results: AnalysisEntry[] = [
+    // 同一用例多信号时取最强权重(不是累加)
+    const multi: AnalysisEntry[] = [
       {
         sampleId: 's001',
         variants: {
           v1: vr({
-            turns: [
-              turn('assistant', '我不确定这个数据来自哪里', [
-                tc('Grep', { pattern: 'missing' }, '', false),
-              ]),
-            ],
+            turns: [turn('assistant', '我不确定这个数据来自哪里', [tc('Grep', { pattern: 'missing' }, '', false)])],
           }),
         },
       },
     ];
-    const report = computeGapReport(results, 'v1');
-    // 用例内聚合取 max(1.0, 0.5) = 1.0
-    assert.equal(report.weightedGapRate, 1.0);
-  });
+    assert.equal(computeGapReport(multi, 'v1').weightedGapRate, 1.0);
 
-  it('全弱信号时 weightedGapRate 显著低于 gapRate', () => {
-    // 4 个用例全是 hedging(弱,0.5)
-    // gapRate = 4/4 = 1.0 (100% 触发信号)
-    // weightedGapRate = 4*0.5 / 4 = 0.5 (加权严重度只到 50%)
-    // 读者据此判断:100% 触发率但加权只到一半,大概率是软信号噪声,该复核
-    const results: AnalysisEntry[] = Array.from({ length: 4 }, (_, i) => ({
+    // 全弱信号时 weightedGapRate 显著低于 gapRate(4 个 hedging: gap 1.0, weighted 0.5)
+    const weak: AnalysisEntry[] = Array.from({ length: 4 }, (_, i) => ({
       sampleId: `s${i + 1}`,
       variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) },
     }));
-    const report = computeGapReport(results, 'v1');
-    assert.equal(report.gapRate, 1.0);
-    assert.equal(report.weightedGapRate, 0.5);
-  });
+    const weakReport = computeGapReport(weak, 'v1');
+    assert.equal(weakReport.gapRate, 1.0);
+    assert.equal(weakReport.weightedGapRate, 0.5);
 
-  it('空 report 时 weightedGapRate === 0 不崩', () => {
-    const report = computeGapReport([], 'v1');
-    assert.equal(report.weightedGapRate, 0);
+    // 空 report 时 weightedGapRate === 0 不崩
+    assert.equal(computeGapReport([], 'v1').weightedGapRate, 0);
   });
 });
 

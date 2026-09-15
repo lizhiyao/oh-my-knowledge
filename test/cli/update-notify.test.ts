@@ -196,26 +196,14 @@ describe('planUpdateActions', () => {
 });
 
 describe('visualWidth / padToWidth', () => {
-  it('counts ASCII as width 1', () => {
+  it('counts visual width across ASCII, CJK, arrows, mixed, surrogate; pads; leaves over-wide untouched', () => {
     expect(visualWidth('abc')).toBe(3);
-  });
-  it('counts CJK as width 2', () => {
     expect(visualWidth('中文')).toBe(4);
-  });
-  it('counts arrows ↑ → as width 1', () => {
     expect(visualWidth('↑→')).toBe(2);
-  });
-  it('handles mixed CJK + ASCII', () => {
     expect(visualWidth('omk 升级')).toBe(4 /* omk_ */ + 4 /* 升级 */);
-  });
-  it('is surrogate-pair safe', () => {
     expect(visualWidth('a😀b')).toBe(3); // emoji outside wide ranges → 1
-  });
-  it('pads to the target visual width', () => {
     expect(visualWidth(padToWidth('中', 6))).toBe(6);
     expect(visualWidth(padToWidth('abc', 6))).toBe(6);
-  });
-  it('leaves over-wide strings untouched', () => {
     expect(padToWidth('中文', 2)).toBe('中文');
   });
 });
