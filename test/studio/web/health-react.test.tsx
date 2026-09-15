@@ -183,7 +183,7 @@ describe('观测健康 React 页面', () => {
     assert.equal(html.match(/class="ant-collapse-item/g)?.length, 4);
     assert.equal(html.match(/class="health-skill"/g)?.length, 4, '折叠面板未展开时也必须已在文档里');
     assert.equal((html.match(/查看趋势 →/g) ?? []).length, 4);
-    assert.ok(html.includes('href="/observe/skill-trend/skill-0"'), '趋势链接指向单 skill 趋势页');
+    assert.ok(html.includes('href="/observe/skill-trend/skill-0?lang=zh"'), '趋势链接指向单 skill 趋势页');
     assert.ok(!html.includes('localhost') && !html.includes('127.0.0.1'), '页面地址不携带宿主');
   });
 
@@ -216,8 +216,10 @@ describe('观测健康 React 页面', () => {
       { id: 'obs-2', generatedAt: '2026-09-01T08:00:00Z', sessionCount: 1, segmentCount: 3, skillCount: 1, healthBand: 'red', confidence: 'underpowered' },
     ]);
     const html = render({ pageKind: 'index', rows }, 'zh');
-    assert.match(html, /<a[^>]*aria-current="page" href="\/observe\/health">/);
-    assert.ok(html.includes('href="/observe/health/obs-1"') && html.includes('href="/observe/health/obs-2"'));
+    assert.match(html, /<a[^>]*aria-current="page" href="\/observe\/health\?lang=zh">/);
+    assert.ok(html.includes('href="/observe/health/obs-1?lang=zh"') && html.includes('href="/observe/health/obs-2?lang=zh"'));
+    assert.match(html, /aria-label="知识分区"/);
+    assert.doesNotMatch(html, /aria-label="观测分区"/);
     assert.match(html, /需关注/);
     assert.match(html, /样本不足/);
     assert.ok(html.includes('2026-09-02 08:30'), '时间戳截到分钟');
@@ -237,13 +239,13 @@ describe('观测健康 React 页面', () => {
     assert.match(html, /暂无 Skill 健康度日报/);
   });
 
-  it('空列表与详情页都按当前语言给出返回观测入口', () => {
+  it('空列表与详情页都按当前语言给出返回知识入口', () => {
     const report = projectReport('a', reportOf({ s: skillOf('s', { segments: 40 }) }));
     const trend = projectTrend({ skillName: 's', points: [] });
     const diff = { fromId: 'a', toId: 'b', fromAt: '2026-09-01T08:30:00Z', toAt: '2026-09-02T08:30:00Z', rows: projectDiff([]) };
     const row = { id: 'a', generatedAt: '2026-09-02T08:30:00Z', sessionCount: 1, segmentCount: 40, skillCount: 1, healthBand: 'green' as const, confidence: 'high' as const };
     for (const lang of ['zh', 'en'] as const) {
-      const href = `href="/observe${lang === 'en' ? '?lang=en' : ''}"`;
+      const href = `href="/knowledge?lang=${lang}"`;
       for (const page of [
         { pageKind: 'report' as const, report },
         { pageKind: 'trend' as const, trend },
@@ -251,7 +253,7 @@ describe('观测健康 React 页面', () => {
         { pageKind: 'index' as const, rows: [] },
         { pageKind: 'index' as const, rows: projectIndexRows([row]) },
       ]) {
-        assert.ok(render(page, lang).includes(href), `${page.pageKind} 的 ${lang} 回观测入口不能丢`);
+        assert.ok(render(page, lang).includes(href), `${page.pageKind} 的 ${lang} 回知识入口不能丢`);
       }
     }
   });
@@ -265,7 +267,7 @@ describe('观测健康 React 页面', () => {
       ],
     });
     const html = render({ pageKind: 'trend', trend }, 'zh');
-    assert.ok(html.includes('href="/observe/health/obs%2F1"'), '身份编码后进链接，不拼出越段路径');
+    assert.ok(html.includes('href="/observe/health/obs%2F1?lang=zh"'), '身份编码后进链接，不拼出越段路径');
     assert.match(html, /6\/8 结果可比较 · 2 取消/);
     assert.match(html, /2 个时间点/);
     assert.ok(/<path d="M[^"]*"[^>]*stroke="#f87171"/.test(html), '折线以 gap 序列色绘制，与图例同色');
@@ -285,12 +287,12 @@ describe('观测健康 React 页面', () => {
       ]),
     };
     const html = render({ pageKind: 'diff', diff }, 'zh');
-    assert.ok(html.includes('href="/observe/skill-trend/both"'));
+    assert.ok(html.includes('href="/observe/skill-trend/both?lang=zh"'));
     assert.match(html, /class="[^"]*health-delta tone-success[^"]*"[^>]*>-25\.0%/);
     assert.match(html, /已消失/);
     assert.match(html, /新增/);
     assert.equal(html.match(/class="health-pair"/g)?.length, 12, '三行四栏都在文档里');
-    assert.ok(html.includes('href="/observe/health/obs-1"') && html.includes('href="/observe/health/obs-2"'));
+    assert.ok(html.includes('href="/observe/health/obs-1?lang=zh"') && html.includes('href="/observe/health/obs-2?lang=zh"'));
     assert.match(html, /按 gap 变化量排序/);
   });
 

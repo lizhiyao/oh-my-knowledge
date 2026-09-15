@@ -214,7 +214,11 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
   if (page.pageKind === 'index') {
     const rows = page.rows.filter((row) => row.skillName.toLowerCase().includes(query.toLowerCase()));
     return <>
+
       <KnowledgeSectionNav active="skills" lang={lang}/>
+
+      <div><a href={`/knowledge/candidates${suffix}`}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</a></div>
+
       <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识对象' : 'Search knowledge'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识对象' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
       <Table<KnowledgeRow> className="measure-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 960 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh ? '尚无体检或生产观测数据。' : 'No doctor or observe data yet.'}/> }} columns={[
         { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <a href={`/knowledge/skills/${encodeURIComponent(name)}${suffix}`} title={name}>{name}</a> },

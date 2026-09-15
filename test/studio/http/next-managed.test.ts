@@ -100,14 +100,14 @@ describe('Next-hosted managed decision history', () => {
     assert.match(html, /<title>OMK · 受管决策史<\/title>/);
 
     const body = section(html, /<tbody[\s\S]*?<\/tbody>/u, 'managed table body');
-    assert.match(body, /href="\/knowledge\/managed\/[0-9a-f]{12}"[^>]*>review</);
+    assert.match(body, /href="\/knowledge\/managed\/[0-9a-f]{12}\?lang=zh"[^>]*>review</);
     assert.match(body, /已采用/);
     assert.match(body, /https:\/\/example\.com\/r/);
 
     // 分区导航标出本页，知识对象页仍可达 —— 这两页此前没有任何一级入口。
     const nav = section(html, /<nav class="observe-section-nav"[\s\S]*?<\/nav>/u, 'knowledge section nav');
-    assert.match(nav, /aria-current="page" href="\/knowledge\/managed"/);
-    assert.match(nav, /href="\/knowledge"/);
+    assert.match(nav, /aria-current="page" href="\/knowledge\/managed\?lang=zh"/);
+    assert.match(nav, /href="\/knowledge\?lang=zh"/);
   }, 20000);
 
   it('honours the lang query parameter on both pages', async () => {
@@ -142,7 +142,7 @@ describe('Next-hosted managed decision history', () => {
     assert.match(timeline, /安装纳管/);
     assert.match(timeline, /已人工复核/);
     assert.match(timeline, /决定人 alice/);
-    assert.match(timeline, /href="\/measure\/core-run-1"/);
+    assert.match(timeline, /href="\/measure\/core-run-1\?lang=zh"/);
     assertAbsent(html, /\/measure\/core-run-1\.report/, 'Core reportId');
     // 记录里的 source.locator / url 是用户机器与远端的定位符，页面模型不带它们，故不进 RSC 负载。
     assertAbsent(html, /git\+https:\/\/example\.com\/r@abc123/, 'source locator');

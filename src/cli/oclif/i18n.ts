@@ -52,8 +52,8 @@ export function bilingual(text: BiText): string {
 
 export const LANG_FLAG = Flags.string({
   description: bilingual({
-    zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
-    en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
+    zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。',
+    en: 'Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.',
   }),
   default: 'zh',
 });

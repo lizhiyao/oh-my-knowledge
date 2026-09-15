@@ -64,13 +64,17 @@ omk observe show <inbox_id>
 
 ## 查看一次任务
 
-直接启动 `omk studio` 即可，不需要先运行 `observe ingest`。Studio 会读取本机 Codex 会话索引，在首页按「对话(Thread) → 任务(Turn)」组织 Codex rollout：
+直接启动 `omk studio` 即可，不需要先运行 `observe ingest`。Studio 会读取本机 Codex 会话索引，按「项目 → 会话 → 对话内容」组织 Codex rollout：
 
 ```bash
 omk studio
 ```
 
-先从对话总览选择一段对话，再选择其中一次任务进入「任务轨迹」。对话总览支持按标题或工作目录搜索，并区分进行中、未归档与已归档对话。当前首页直接索引本机 Codex 会话；Claude Code、OpenClaw 和 markdown trace 仍通过 `omk observe` 进入观测报告。
+左侧分为「项目」和「独立对话」，支持搜索和仅查看进行中的对话。侧栏使用一个滚动区域，底部固定「设置与帮助」菜单。Skill 健康度从知识区进入。打开会话后按时间顺序连续阅读用户与助手的完整消息，默认定位到最新内容；向上滚动自动加载更早对话，也可点击「加载更早的对话」。读取历史时保持当前位置，新内容到来时提示「有新消息」，点击后回到最新位置。工具调用和原始依据按需进入「执行详情」，会话详情可直接发起知识提炼。
+
+项目归组复用本地 Git 仓库的 common directory 关系，因此同一仓库的子目录和 worktree 归到一起；无法确认仓库关系时按目录独立展示，没有工作目录且无项目归属的会话放入「独立对话」。不会仅凭目录同名或远端地址合并项目。浏览器记住上次打开的会话；点击「查看全部对话」可回到总览。归组与阅读不调用模型、不改写原始日志，工具报错次数不代表最终任务失败。
+
+当前首页直接索引本机 Codex 会话；Claude Code、OpenClaw 和 markdown trace 仍通过 `omk observe` 进入观测报告。
 
 任务边界优先使用来源明确提供的 `turnId`，其次使用 `turn_started` / `turn_completed` 等生命周期事件；只有来源没有原生 Turn 边界时，才退化为按用户消息切分。Skill 归因只解释选定任务与哪些知识载体有关，不参与划定任务范围。
 
@@ -125,3 +129,5 @@ omk sample --from-traces
 - [三阶段](../explanation/three-stage-workflow) —— observe 在闭环里的位置
 - [知识缺口信号规范](../specs/knowledge-gap-signal-spec) —— gap 信号是什么、怎么打分
 - [CLI 参考：`omk observe`](../reference/cli) —— 每个 flag 和子命令
+
+- [从日志提炼候选知识](./extract-knowledge)

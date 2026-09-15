@@ -14,6 +14,8 @@ import { dirname } from 'node:path';
 const LOCK_SLEEP = new Int32Array(new SharedArrayBuffer(4));
 
 export interface FileLockOptions {
+  /** Disable stale recovery when ownership cannot safely be re-established. */
+  recoverStale?: boolean;
   timeoutMs?: number;
   staleMs?: number;
   retryMs?: number;
@@ -70,7 +72,7 @@ export function withFileLock<T>(
       }
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'EEXIST') throw error;
-      if (isRecoverableStaleLock(lockPath, staleMs)) {
+      if (options.recoverStale !== false && isRecoverableStaleLock(lockPath, staleMs)) {
         try {
           unlinkSync(lockPath);
         } catch (unlinkError) {

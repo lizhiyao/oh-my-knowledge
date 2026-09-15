@@ -47,15 +47,26 @@ describe('Observe Next production routes', () => {
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       // 标签标题按页面与对象给出：会话详情带上 threadId，列表只给页面名。
       assert.ok(html.includes(path === '/observe' ? '<title>OMK · 会话列表</title>' : '<title>OMK · 会话详情 · thread</title>'), `title of ${path}`);
-      assert.match(html,/href="\/observe" aria-current="page"/);
+      assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
       if(path==='/observe') {
-        assert.match(html,/任务轨迹/);
-        assert.ok(html.includes(`href="/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}">查看最近轨迹</a>`));
-        assert.ok(html.includes('href="/observe/conversations/live-thread/tasks/source%2Flive">查看实时轨迹</a>'));
-        assert.match(html,/暂无轨迹/);
-        assert.doesNotMatch(html,/href="\/observe\/conversations\/empty-thread\/tasks\//);
+        assert.match(html,/项目与会话/);
+        assert.match(html,/全部对话/);
+        assert.match(html,/未归属项目/);
+        // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定。
+        assert.match(html,/href="\/observe\/conversations\/empty-thread\?lang=zh"/);
+        assert.doesNotMatch(html,/查看最近轨迹|查看实时轨迹/);
       }
     }
+    for (const query of ['offset=-1', 'limit=11', 'offset=1.5', 'before=a&after=b', 'before=']) {
+      const invalid = await fetch(`${url}/api/conversations/thread/messages?${query}`);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'invalid_pagination' });
+    }
+    assert.equal((await fetch(`${url}/api/conversations/missing/messages`)).status, 404);
+    assert.equal((await fetch(`${url}/api/conversations/thread/messages?before=missing`)).status, 409);
+    const messages = await fetch(`${url}/api/conversations/thread/messages`);
+    assert.equal(messages.status, 200);
+    assert.doesNotMatch(await messages.text(), /private-session-locator-must-not-be-serialized/);
     const task=`/observe/conversations/thread/tasks/${encodeURIComponent(turnId)}`;
     const response=await fetch(url+task);assert.equal(response.status,200);
     const html=await response.text();assert.match(html,/语义轨迹/);assert.match(html,/知识访问/);
@@ -75,4 +86,60 @@ describe('Observe Next production routes', () => {
       const response=await fetch(url+path);assert.equal(response.status,503);assert.equal(await response.text(),'studio_source_unavailable');
     }
   },15000);
+  it('本机语言偏好只接管没有 lang 的地址，单次显式选择不被偏好覆盖',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'omk-observe-lang-'));roots.push(root);
+    const conversation={threadId:'thread',sourceThreadId:'thread',sourceKind:'codex' as const,title:'语言偏好样例',relatedSkillNames:[],tasks:[]};
+    const catalog:ConversationCatalog={
+      async listConversations(){return {conversations:[conversation],totalTurnCount:0,totalToolCallCount:0,totalToolFailureCount:0};},
+      async getConversation(id){return id==='thread'?conversation:undefined;},
+      async loadTaskTrajectory(){return undefined;},
+    };
+    const server=createNextStudioServer({port:0,observationsDir:root,conversationCatalog:catalog});servers.push(server);
+    const url=await server.start();
+    const previous=process.env.OMK_LANG;
+    try{
+      process.env.OMK_LANG='en';
+      // 裸地址按本机偏好走，一次跳转就把偏好写进地址，之后的页面内链接都显式带着它。
+      const bare=await fetch(`${url}/observe`,{redirect:'manual'});
+      assert.equal(bare.status,302);
+      assert.equal(bare.headers.get('location'),'/observe?lang=en');
+      const english=await (await fetch(`${url}/observe?lang=en`,{redirect:'manual'})).text();
+      assert.match(english,/href="\/observe\?lang=en" aria-current="page"/);
+      // 显式中文是单次选择：偏好不得改写它，页面里的链接也不得把它丢回裸地址。
+      const chinese=await fetch(`${url}/observe?lang=zh`,{redirect:'manual'});
+      assert.equal(chinese.status,200);
+      const html=await chinese.text();
+      assert.match(html,/href="\/observe\?lang=zh" aria-current="page"/);
+      assert.match(html,/href="\/observe\/conversations\/thread\?lang=zh"/);
+      // 偏好只接管页面地址：JSON 接口一旦被重定向，浏览器的 POST 会退化成 GET。
+      assert.notEqual((await fetch(`${url}/api/settings`,{redirect:'manual'})).status,302,'JSON 接口不参与页面语言重定向');
+    }finally{
+      if(previous===undefined)delete process.env.OMK_LANG;else process.env.OMK_LANG=previous;
+    }
+  },20000);
+  it('设置文件损坏时页面退回内置语言默认，损坏由设置接口报告',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'omk-observe-broken-settings-'));roots.push(root);
+    const home=await mkdtemp(join(tmpdir(),'omk-home-broken-'));roots.push(home);
+    await writeFile(join(home,'settings.json'),'{"schemaVersion":1,');
+    const server=createNextStudioServer({port:0,observationsDir:root,conversationCatalog:{
+      async listConversations(){return {conversations:[],totalTurnCount:0,totalToolCallCount:0,totalToolFailureCount:0};},
+      async getConversation(){return undefined;},async loadTaskTrajectory(){return undefined;},
+    }});servers.push(server);
+    const url=await server.start();
+    const previousHome=process.env.OMK_HOME;
+    const previousLang=process.env.OMK_LANG;
+    try{
+      process.env.OMK_HOME=home;delete process.env.OMK_LANG;
+      // 语言只是偏好：读不到就按内置默认渲染，不能让整个 Studio 变成 500（诊断入口也在同一个页面壳里）。
+      const page=await fetch(`${url}/observe`,{redirect:'manual'});
+      assert.equal(page.status,200);
+      assert.match(await page.text(),/href="\/observe\?lang=zh" aria-current="page"/);
+      const api=await fetch(`${url}/api/settings`);
+      assert.equal(api.status,400);
+      assert.equal((await api.json() as {error?:string}).error,'settings_unavailable');
+    }finally{
+      if(previousHome===undefined)delete process.env.OMK_HOME;else process.env.OMK_HOME=previousHome;
+      if(previousLang===undefined)delete process.env.OMK_LANG;else process.env.OMK_LANG=previousLang;
+    }
+  },20000);
 });

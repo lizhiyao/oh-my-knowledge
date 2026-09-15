@@ -1,3 +1,4 @@
+import { readConversationTurns } from '../../application/conversations/conversation-reader.js';
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
 import { STUDIO_SOURCE_UNAVAILABLE, JSON_HEADERS, writeJsonError } from '../errors.js';
@@ -17,6 +18,31 @@ export function createConversationRoutes({
   liveStreams,
 }: ConversationRoutesOptions): (context: StudioRouteContext) => Promise<boolean> {
   const routes: StudioRouteDefinition<StudioRouteContext>[] = [
+    {
+      pattern: '/api/conversations/:thread/messages',
+      async handler({ response, params, url }) {
+        const offset = Number(url.searchParams.get('offset') ?? 0);
+        const limit = Number(url.searchParams.get('limit') ?? 5);
+        if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 10) {
+          writeJsonError(response, 400, 'invalid_pagination'); return;
+        }
+        const before = url.searchParams.get('before') ?? undefined;
+        const after = url.searchParams.get('after') ?? undefined;
+        if (before !== undefined && after !== undefined || before === '' || after === '') {
+          writeJsonError(response, 400, 'invalid_pagination'); return;
+        }
+        let page;
+        try { page = params.thread ? await readConversationTurns(catalog, params.thread, offset, limit, { before, after }) : undefined; }
+        catch (error) {
+          if (error instanceof Error && error.message === 'conversation_cursor_unavailable') {
+            writeJsonError(response, 409, 'conversation_cursor_unavailable'); return;
+          }
+          throw error;
+        }
+        if (!page) { writeJsonError(response, 404, 'conversation_not_found'); return; }
+        response.writeHead(200, JSON_HEADERS); response.end(JSON.stringify(page));
+      },
+    },
     {
       pattern: '/api/conversations/activity',
       async handler({ request, response }) {

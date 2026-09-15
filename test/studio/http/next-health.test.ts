@@ -103,8 +103,8 @@ describe('Next 宿主的观测健康页面组', () => {
     assert.match(list.headers.get('cache-control') ?? '', /no-store/);
     const listHtml = await htmlOf(list);
     // 分区导航必须标出当前页，否则健康度页与会话页在界面上断开。
-    assert.match(listHtml, /aria-current="page" href="\/observe\/health"/);
-    for (const id of ['obs-a', 'obs-b']) assert.ok(listHtml.includes(`href="/observe/health/${id}"`), `${id} 没有入口`);
+    assert.match(listHtml, /aria-current="page" href="\/observe\/health\?lang=zh"/);
+    for (const id of ['obs-a', 'obs-b']) assert.ok(listHtml.includes(`href="/observe/health/${id}?lang=zh"`), `${id} 没有入口`);
     assert.ok(listHtml.includes('2026-09-02 08:30'), '列表按生成时间展示，最新在前');
     assert.doesNotMatch(listHtml, /<script>alert/, '报告里的外部文本不能成为标记');
     // 标签标题带页面名，详情与趋势再带上对象身份：多标签同开时不必点开才知道读的是哪一份。
@@ -121,7 +121,7 @@ describe('Next 宿主的观测健康页面组', () => {
     const detailHtml = await htmlOf(detail);
     assert.match(detailHtml, /各 skill 健康度/);
     assert.match(detailHtml, /2\/4 失败（50%）/, '工具失败读数与 CLI 同口径');
-    assert.ok(detailHtml.includes('href="/observe"'), '详情页面包屑回观测');
+    assert.ok(detailHtml.includes('href="/knowledge?lang=zh"'), '详情页面包屑回知识');
     assert.match(detailHtml, /&lt;script&gt;alert/, 'skill 名以转义文本可见，而不是被静默丢弃');
     assert.doesNotMatch(detailHtml, /<script>alert/);
     assert.match(detailHtml, /<title>OMK · Skill 健康度日报 · obs-a<\/title>/);
@@ -130,7 +130,7 @@ describe('Next 宿主的观测健康页面组', () => {
     assert.equal(trend.status, 200);
     const trendHtml = await htmlOf(trend);
     assert.match(trendHtml, /2 个时间点/);
-    assert.ok(trendHtml.includes('href="/observe/health/obs-a"'), '每个时间点链回它的报告');
+    assert.ok(trendHtml.includes('href="/observe/health/obs-a?lang=zh"'), '每个时间点链回它的报告');
     assert.match(trendHtml, /<title>OMK · Skill 趋势 · audit<\/title>/);
     const emptyTrend = await fetch(`${url}/observe/skill-trend/never-seen`);
     assert.equal(emptyTrend.status, 200);
@@ -163,7 +163,7 @@ describe('Next 宿主的观测健康页面组', () => {
     assert.equal(post.headers.get('allow'), 'GET');
   }, 30000);
 
-  it('会话页给出健康度入口，收件箱开关不影响健康页可达', async () => {
+  it('健康度入口归知识区，收件箱开关不影响健康页可达', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-next-health-nav-')); roots.push(root);
     const analysesDir = join(root, 'analyses');
     writeReport({ root: analysesDir, recordId: 'obs-a', generatedAt: '2026-09-01T08:30:00Z', segments: [segmentOf('audit', 0)] });
@@ -175,7 +175,9 @@ describe('Next 宿主的观测健康页面组', () => {
     });
     const observe = await fetch(`${url}/observe`);
     assert.equal(observe.status, 200);
-    assert.match(await observe.text(), /aria-current="page" href="\/observe"/);
+    assert.doesNotMatch(await observe.text(), /Skill 健康度/);
+    const knowledge = await fetch(`${url}/knowledge`);
+    assert.match(await knowledge.text(), /href="\/observe\/health\?lang=zh"[^>]*>Skill 健康度/);
 
     // 健康页只挂在 studioPages 上：DSH 这类裁掉收件箱的宿主仍要能看，否则迁移等于把页面弄丢。
     assert.equal((await fetch(`${url}/observe/health`)).status, 200);

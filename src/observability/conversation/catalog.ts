@@ -1,3 +1,4 @@
+import { conversationProject } from './project.js';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
@@ -67,7 +68,9 @@ export interface ConversationTaskTrajectorySubscriptionOptions {
 export interface ConversationCatalog {
   listConversations(): Promise<ConversationIndexViewModel>;
   getConversation(threadId: string): Promise<ConversationListItem | undefined>;
-  loadTaskTrajectory(threadId: string, turnId: string): Promise<ConversationTaskTrajectory | undefined>;
+  loadTaskTrajectory(threadId: string, turnId: string, options?: { includeNextHumanMessage?: boolean }): Promise<ConversationTaskTrajectory | undefined>;
+  /** Complete message records for extraction, before the page archive truncation. */
+  loadTaskMessageRecords?(threadId: string, turnId: string): Promise<{ path: string; records: { recordIndex: number; raw: string }[] } | undefined>;
   /** Optional live capability. Static catalogs do not need to implement it. */
   observeTaskTrajectory?(
     threadId: string,
@@ -160,17 +163,34 @@ class CodexConversationCatalog implements ConversationCatalog {
   async loadTaskTrajectory(
     threadId: string,
     turnId: string,
+    options: { includeNextHumanMessage?: boolean } = {},
   ): Promise<ConversationTaskTrajectory | undefined> {
-    const key = `${threadId}\u0000${turnId}`;
+    const key = `${threadId}\u0000${turnId}\u0000${options.includeNextHumanMessage !== false}`;
     const existing = this.trajectoryPromises.get(key);
     if (existing) return existing;
-    const pending = this.loadTaskTrajectoryUncached(threadId, turnId);
+    const pending = this.loadTaskTrajectoryUncached(threadId, turnId, options.includeNextHumanMessage !== false);
     this.trajectoryPromises.set(key, pending);
     try {
       return await pending;
     } finally {
       this.trajectoryPromises.delete(key);
     }
+  }
+
+  async loadTaskMessageRecords(threadId: string, turnId: string) {
+    const row = this.findThreadRow(threadId);
+    if (!row || !existsSync(row.rolloutPath)) return undefined;
+    const index = await this.currentIndexFor(row);
+    const task = index.tasks.find(item => item.turnId === turnId);
+    if (!task) return undefined;
+    const selected = readCodexTaskRecords(index, task, { includeNextHumanMessage: false });
+    if (selected.malformedRecordCount) throw new Error('Conversation source incomplete.');
+    const session = parseCodexSessionFile(row.rolloutPath, selected.records);
+    const indexes = new Set(session.events.filter(event => event.eventKind === 'message'
+      && 'role' in event && ['user', 'assistant'].includes(event.role)).map(event => event.sourceIndex));
+    const records = selected.lines.filter(line => indexes.has(line.line)).map(line => ({ recordIndex: line.line, raw: line.text }));
+    if (records.reduce((sum, record) => sum + Buffer.byteLength(record.raw), 0) > 16 * 1024 * 1024) throw new Error('Conversation exceeds capacity.');
+    return { path: row.rolloutPath, records };
   }
 
   async observeTaskTrajectory(
@@ -199,6 +219,7 @@ class CodexConversationCatalog implements ConversationCatalog {
   private async loadTaskTrajectoryUncached(
     threadId: string,
     turnId: string,
+    includeNextHumanMessage: boolean,
   ): Promise<ConversationTaskTrajectory | undefined> {
     const row = this.findThreadRow(threadId);
     if (!row || !existsSync(row.rolloutPath)) return undefined;
@@ -210,18 +231,19 @@ class CodexConversationCatalog implements ConversationCatalog {
       indexedTask = index.tasks.find((task) => task.turnId === turnId);
     }
     if (!indexedTask) return undefined;
-    return this.trajectoryFromIndex(row, index, indexedTask);
+    return this.trajectoryFromIndex(row, index, indexedTask, includeNextHumanMessage);
   }
 
   private trajectoryFromIndex(
     row: CodexThreadRow,
     index: CodexRolloutIndex,
     indexedTask: CodexIndexedTask,
+    includeNextHumanMessage = true,
   ): ConversationTaskTrajectory {
     const threadId = row.id;
     const turnId = indexedTask.turnId;
     const selected = readCodexTaskRecords(index, indexedTask, {
-      includeNextHumanMessage: true,
+      includeNextHumanMessage,
     });
     const traceSession = parseCodexSessionFile(row.rolloutPath, selected.records);
     const fullSessionTimeline = projectTraceSessionTimeline(traceSession);
@@ -317,6 +339,7 @@ class CodexConversationCatalog implements ConversationCatalog {
       sourceThreadId: row.id,
       sourceKind: 'codex',
       title: conversationTitle(row),
+      project: conversationProject(row.cwd),
       preview: row.preview,
       cwd: row.cwd,
       model: row.model,

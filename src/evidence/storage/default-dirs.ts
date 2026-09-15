@@ -19,6 +19,7 @@ const GLOBAL_LAYOUT = globalLayout();
  * 让 cli/ 与 server/ 两个交付层都能合法 import 同一个常量,而不必让 server 反向 import cli
  * (那是 #242 清掉的分层倒挂)。
  */
+export const DEFAULT_KNOWLEDGE_DIR: string = GLOBAL_LAYOUT.knowledgeDir;
 export const DEFAULT_REPORTS_DIR: string = GLOBAL_LAYOUT.evalDir;
 export const DEFAULT_OBSERVE_HEALTH_DIR: string = GLOBAL_LAYOUT.observeHealthDir;
 export const DEFAULT_DOCTORS_DIR: string = GLOBAL_LAYOUT.doctorDir;

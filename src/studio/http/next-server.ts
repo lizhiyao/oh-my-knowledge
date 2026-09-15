@@ -1,3 +1,4 @@
+import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,11 @@ import { loadInboxPage, type InboxPage } from './pages/inbox-page.js';
 import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
+
+/** 语言只是偏好：设置文件读坏时退回内置默认，页面照常可用，错误留给 /api/settings 报告。 */
+function preferredLanguage(): 'zh' | 'en' {
+  try { return new UserSettingsStore().resolve().language; } catch { return 'zh'; }
+}
 
 /** Next owns every Studio page; JSON APIs and SSE keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
@@ -43,14 +49,18 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const inbox = inboxRoutes && path === '/observe/inbox';
       const observe = pageRoutes && (inbox || path === '/observe' || path.startsWith('/observe/conversations/'));
       const knowledge = pageRoutes && (path === '/knowledge' || path.startsWith('/knowledge/skills/'));
+      const candidates = pageRoutes && path === '/knowledge/candidates';
       const managed = pageRoutes && isManagedPath(path);
       const health = pageRoutes && isHealthPath(path);
-      if (!measure && !observe && !knowledge && !managed && !health && !path.startsWith('/_next/')) return false;
-      if ((measure || observe || knowledge || managed || health) && (request.method ?? 'GET') !== 'GET') {
+      if (!measure && !observe && !knowledge && !candidates && !managed && !health && !path.startsWith('/_next/')) return false;
+      if ((measure || observe || knowledge || candidates || managed || health) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }
       const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
+      if (!path.startsWith('/_next/') && !searchParams.has('lang') && preferredLanguage() === 'en') {
+        searchParams.set('lang', 'en'); response.writeHead(302, { Location: `${path}?${searchParams}` }); response.end(); return true;
+      }
       let healthPage: HealthPage | undefined;
       if (health) {
         try {

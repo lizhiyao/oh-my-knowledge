@@ -1,0 +1,30 @@
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { createReportServer } from '../../../src/studio/http/report-server.js';
+import { UserSettingsStore } from '../../../src/evidence/storage/user-settings.js';
+const root = mkdtempSync(join(tmpdir(), 'omk-settings-api-'));
+let server: ReturnType<typeof createReportServer>;
+let url: string;
+beforeAll(async () => {
+  vi.stubEnv('OMK_HOME', root);
+  server = createReportServer({ port: 0, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
+  url = await server.start();
+});
+afterAll(async () => { await server?.stop(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
+const post = (body: unknown, origin?: string) => fetch(`${url}/api/settings`, { method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body) });
+it('shares persisted settings with the local host and rejects stale or untrusted writes', async () => {
+  const initial = await (await fetch(`${url}/api/settings`)).json();
+  expect(initial.revision).toBe('missing');
+  expect(existsSync(join(root, 'settings.json'))).toBe(false);
+  const input = { revision: initial.revision, settings: { schemaVersion: 1, language: 'en', knowledge: { workspace: join(root, 'chosen'), executor: 'codex', model: 'test-model' } } };
+  expect((await post(input, 'https://untrusted.example')).status).toBe(403);
+  expect(existsSync(join(root, 'settings.json'))).toBe(false);
+  expect((await post(input)).status).toBe(200);
+  expect(new UserSettingsStore(root).read().settings).toEqual(input.settings);
+  expect((await post(input)).status).toBe(409);
+  const current = await (await fetch(`${url}/api/settings`)).json();
+  expect((await post({ revision: current.revision, settings: { ...input.settings, apiKey: 'never-store' } })).status).toBe(400);
+  expect(JSON.stringify(await (await fetch(`${url}/api/settings`)).json())).not.toContain('never-store');
+});

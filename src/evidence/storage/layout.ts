@@ -6,6 +6,7 @@ export const OMK_HOME: string = process.env.OMK_HOME || join(homedir(), '.oh-my-
 export interface OmkLayout {
   readonly root: string;
   readonly evalDir: string;
+  readonly knowledgeDir: string;
   readonly doctorDir: string;
   readonly observeDir: string;
   readonly observeHealthDir: string;
@@ -47,6 +48,7 @@ function layout(root: string): OmkLayout {
   return Object.freeze({
     root,
     evalDir: join(root, 'eval'),
+    knowledgeDir: join(root, 'knowledge'),
     doctorDir: join(root, 'doctor'),
     observeDir,
     observeHealthDir: join(observeDir, 'health'),

@@ -64,13 +64,17 @@ The first version is offline-only and does not follow a session that is still be
 
 ## Inspect one task
 
-Start `omk studio` directly; `observe ingest` is not required. Studio reads the local Codex conversation index and organizes Codex rollouts as **Thread → Turn**:
+Start `omk studio` directly; `observe ingest` is not required. Studio reads the local Codex conversation index and organizes Codex rollouts as **Project → Conversation → Messages**:
 
 ```bash
 omk studio
 ```
 
-Select a conversation from the overview, then choose one task to open **Task Trajectory**. The overview supports title and workspace search and separates running, unarchived, and archived conversations. The homepage currently indexes local Codex sessions directly; Claude Code, OpenClaw, and markdown traces still enter observation reports through `omk observe`.
+The sidebar separates Projects from Standalone conversations, with search and a running-only filter. The sidebar has one scroll area and a fixed Settings and help menu at its bottom. Skill health is accessed from Knowledge. Conversations display complete user and assistant messages in chronological order, initially positioned at the latest content. Scroll up or select Load earlier conversation to read history without losing your place. Updates show a New messages button while you read history; select it to return to the latest content. Execution details contains tool calls and raw evidence. Knowledge extraction starts directly from the conversation.
+
+Project grouping follows local Git common-directory relationships, including repository subdirectories and linked worktrees. Uncertain directories remain separate; conversations without a directory or project appear under Standalone conversations. Matching names or remote URLs alone never merge projects. The browser remembers the last conversation; View all conversations returns to the overview. Grouping and reading do not call a model or rewrite source logs. Tool error counts do not determine the final outcome.
+
+ The homepage currently indexes local Codex sessions directly; Claude Code, OpenClaw, and markdown traces still enter observation reports through `omk observe`.
 
 Task boundaries prefer a source-native `turnId`, then lifecycle events such as `turn_started` / `turn_completed`. Only sources without native turn boundaries fall back to user-message segmentation. Skill attribution annotates knowledge related to the selected turn; it never defines the task boundary.
 
@@ -125,3 +129,5 @@ It writes `.omk/observe/drafts/sample-drafts.json`. Treat the file as a review q
 - [The three stages](../explanation/three-stage-workflow) — observe's place in the loop
 - [Knowledge-gap signal spec](../specs/knowledge-gap-signal-spec) — what a gap signal is and how it's scored
 - [CLI reference: `omk observe`](../reference/cli) — every flag and subcommand
+
+- [Extract candidate knowledge from logs](./extract-knowledge)

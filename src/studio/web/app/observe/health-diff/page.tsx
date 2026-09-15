@@ -9,5 +9,5 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 }
 export default async function Page({ searchParams }: { searchParams: Promise<{lang?: string}> }) {
   const lang = studioLang(await searchParams);
-  return <StudioShell lang={lang} active="observe"><HealthView page={requestHealthPage()} lang={lang}/></StudioShell>;
+  return <StudioShell lang={lang} active="knowledge"><HealthView page={requestHealthPage()} lang={lang}/></StudioShell>;
 }

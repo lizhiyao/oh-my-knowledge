@@ -1,3 +1,4 @@
+import { createSettingsRoutes } from './routes/settings.js';
 import { existsSync, mkdirSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
@@ -10,6 +11,7 @@ import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS,
 import { RequestBodyError } from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
+import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
 
@@ -38,9 +40,12 @@ export function createStudioRequestHandler({
   studioPages = true,
 }: RequestHandlerOptions): StudioRequestHandler {
   const liveStreamClosers = new Set<() => void>();
+  const catalog = conversationCatalog ?? createCodexConversationCatalog();
+  const settingsRoutes = createSettingsRoutes();
+  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
-    catalog: conversationCatalog ?? createCodexConversationCatalog(),
+    catalog,
     liveStreams: liveStreamClosers,
   });
   const query = knowledgeQuery ?? createKnowledgeQuery({ analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards });
@@ -128,6 +133,8 @@ export function createStudioRequestHandler({
       if (await hostRoutes(routeContext)) return;
       // 页面渲染全部归 Next 宿主；这里剩下的只有 /health、/api/shutdown 与各 /api/* 的 JSON 投影与 SSE。
       if (studioPages) {
+        if (await settingsRoutes(routeContext)) return;
+        if (await candidateRoutes(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;
         if (await observationRoutes({ ...routeContext, analysesDir, doctorsDir })) return;

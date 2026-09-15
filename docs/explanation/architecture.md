@@ -62,6 +62,8 @@ Each stage retains its own artifacts. Reusing existing artifacts through staged 
 
 ## Source dependency model
 
+`knowledge/` owns reusable knowledge content contracts and pure admission validation, separately from carrier lifecycle in `knowledge-artifacts/`. CLI and Studio share these rules; outer application flows and adapters own source reads, extraction calls, and persistence. Reference checks establish structural and source-location integrity, not support for a claim. This domain is under implementation; complete user entry points still require acceptance verification.
+
 Directories under `src` express domain ownership rather than one mechanical repository-wide layering scheme. Three dependency kinds are reviewed separately:
 
 - **Runtime implementation edges** must remain acyclic. A domain implementation may depend on facts it consumes or lower-level capabilities, but it may not create a reverse dependency through a facade, dynamic import, or utility module. The graph retains value imports into `contracts`; an audited cycle is registered by its complete domain and intra-cycle edge topology, so any new return path invalidates the registration. Non-literal dynamic imports across TypeScript and executable JavaScript sources are likewise fail-closed unless their importer, expression, and canonical source digest are explicitly registered.
