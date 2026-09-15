@@ -33,7 +33,7 @@ omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback
 
 ### 在 Codex / 支持 MCP 的客户端中
 
-Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `doctor` / `sample` / `evolve`，以及 `omk observe inbox --llm-enhanced-review`，会自动选择 `codex`，从 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 读取顶层 `model`，默认评委沿用同一个 Codex 模型；不要额外回落到 Claude。
+Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `doctor` / `sample` / `evolve`，以及 `omk observe inbox --llm-enhanced-review`，会自动选择 `codex`，从 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 解析模型（顶层 `profile` 指向某个 profile 时取该 profile 的 `model`，否则取顶层 `model`），默认评委沿用同一个 Codex 模型；不要额外回落到 Claude。
 
 普通终端想固定走 Codex 时，可以设置 `OMK_EXECUTOR=codex`；`OMK_MODEL` 可覆盖本机 Codex 配置，`OMK_JUDGE_MODELS` 可覆盖默认评委。逐次覆盖仍可使用 `--executor` / `--model` / `--judge-models`。Codex 不需要 Claude Code 风格的 `/omk` slash command，直接执行 CLI。
 

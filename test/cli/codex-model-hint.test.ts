@@ -28,6 +28,37 @@ describe('codex model hint', () => {
     assert.ok(codexModelHint('zh', env).includes('model=gpt-5.5'));
   });
 
+  it('resolves the model of the profile selected by top-level profile', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-codex-home-profile-'));
+    await writeFile(join(dir, 'config.toml'), [
+      'model = "base"',
+      'profile = "evaluation"',
+      '',
+      '[profiles.evaluation]',
+      'model = "profile-model"',
+    ].join('\n'));
+
+    const env = { CODEX_HOME: dir };
+
+    assert.deepEqual(getCodexModelSuggestion(env), {
+      model: 'profile-model',
+      fromConfig: true,
+      configPath: join(dir, 'config.toml'),
+    });
+    assert.equal(codexExecutorFlags(env), '--executor codex --model profile-model');
+  });
+
+  it.each([
+    ['a profile the config does not declare', 'profile = "missing"\nmodel = "base"'],
+    ['malformed TOML', 'model = "gpt-5.5'],
+  ])('falls back to the placeholder instead of guessing: %s', async (_label, config) => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-codex-home-unresolved-'));
+    await writeFile(join(dir, 'config.toml'), config);
+
+    assert.equal(getCodexModelSuggestion({ CODEX_HOME: dir }).fromConfig, false);
+    assert.equal(codexExecutorFlags({ CODEX_HOME: dir }), '--executor codex --model <codex-model>');
+  });
+
   it('falls back to a placeholder when no local Codex model is configured', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-empty-codex-home-'));
     await mkdir(join(dir, 'nested'), { recursive: true });

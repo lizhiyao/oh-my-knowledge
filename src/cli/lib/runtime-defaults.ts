@@ -94,8 +94,8 @@ export function resolveCliModel(
 
   const lang = options.lang ?? 'zh';
   throw new Errors.CLIError(lang === 'zh'
-    ? `Codex 执行器需要明确模型。请用 --model <model>、设置 OMK_MODEL，或在 ${suggestion.configPath} 配置顶层 model。`
-    : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure a top-level model in ${suggestion.configPath}.`, { exit: 2 });
+    ? `Codex 执行器需要明确模型。请用 --model <model>、设置 OMK_MODEL，或在 ${suggestion.configPath} 配置 model 与 profile。`
+    : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure model and profile in ${suggestion.configPath}.`, { exit: 2 });
 }
 
 export function defaultJudgeModel(executor: string, taskModel: string): string {

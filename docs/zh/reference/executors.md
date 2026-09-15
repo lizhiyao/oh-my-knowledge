@@ -45,7 +45,7 @@ CLI、`eval.yaml` 和环境变量的优先级是：显式 CLI flag → `eval.yam
 - ChatGPT desktop 的 Codex 任务内自动选择 `codex`。
 - 普通终端只有 Codex CLI 可用时选择 `codex`。
 - 普通终端同时装有 Claude 和 Codex 时保留 `claude` 默认，避免升级后无提示切换历史测量 runtime。
-- 显式选择 Codex 而没有传 `--model` 时，读取 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 的顶层 `model`。
+- 显式选择 Codex 而没有传 `--model` 时，从 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 解析模型：顶层 `profile` 指向某个 profile 时取该 profile 的 `model`（该 profile 未声明模型时沿用顶层 `model`），否则取顶层 `model`。
 - 默认评委跟随所选执行器：Claude 使用 `claude:haiku`；Codex 使用与被测任务相同的模型，不会回落到 Claude。
 - `eval`、`doctor`、`sample`、`evolve` 和 `observe inbox --llm-enhanced-review` 共用这套解析逻辑。
 
@@ -64,7 +64,7 @@ export OMK_EXECUTOR=codex
 **Codex construct-validity 说明：**
 
 - **runtime 打指纹**：`codex` 用 `PATH` 上的 `codex` binary，`codex-sdk` 用 `@openai/codex-sdk` 解析到的自带 binary。Core artifact 会封存 executor 与 evaluator Runtime identity，包括宿主能取得的本机 binary 或 SDK 证据。除非在 `eval.yaml` 显式提供 `judgeModels[].deploymentRevision`，远端评委部署会保持 `opaque/unknown`；即使提供，也只是 `self-reported/declared`。Runtime identity 不同时，结果要视为 runtime 对比，而不只是 prompt/template 行为。详见[统计严谨性](../explanation/statistical-rigor#三评委去偏与-prompt-identity)。
-- **配置与会话隔离**：omk 只在启动前读取 Codex 配置里的顶层 `model`，然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。
+- **配置与会话隔离**：omk 只在启动前解析 Codex 配置里的模型（顶层 `profile` 选中时取该 profile 的模型），然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。
 - **SDK execpolicy 限制**：当前 `@openai/codex-sdk` API 没有暴露 CLI 的 `--ignore-rules`。显式工作目录中的项目 execpolicy 仍可能影响 `codex-sdk`。需要隔离项目规则时优先使用 `codex`；否则必须固定执行器和 runtime context 后再比较结果。
 
 ## DeepSeek Harness：优先使用宿主插件

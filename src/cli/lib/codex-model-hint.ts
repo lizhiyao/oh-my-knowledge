@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { resolveCodexConfigModel } from '../../executors/openai/codex/config.js';
 
 export interface CodexModelSuggestion {
   model: string;
@@ -10,23 +11,15 @@ export interface CodexModelSuggestion {
 
 const CODEX_MODEL_PLACEHOLDER = '<codex-model>';
 
-function parseTopLevelCodexModel(configText: string): string | null {
-  for (const line of configText.split(/\r?\n/)) {
-    if (/^\s*\[/.test(line)) return null;
-    const match = line.match(/^\s*model\s*=\s*(?:"([^"]+)"|'([^']+)')\s*(?:#.*)?$/);
-    const model = match?.[1] ?? match?.[2];
-    if (model) return model;
-  }
-  return null;
-}
-
 export function getCodexModelSuggestion(env: NodeJS.ProcessEnv = process.env): CodexModelSuggestion {
   const codexHome = env.CODEX_HOME || join(homedir(), '.codex');
   const configPath = join(codexHome, 'config.toml');
   if (existsSync(configPath)) {
     try {
-      const model = parseTopLevelCodexModel(readFileSync(configPath, 'utf-8'));
-      if (model) return { model, fromConfig: true, configPath };
+      const resolution = resolveCodexConfigModel(readFileSync(configPath, 'utf-8'));
+      if (resolution.status === 'resolved') {
+        return { model: resolution.model, fromConfig: true, configPath };
+      }
     } catch { /* best-effort hint only */ }
   }
   return { model: CODEX_MODEL_PLACEHOLDER, fromConfig: false, configPath };
