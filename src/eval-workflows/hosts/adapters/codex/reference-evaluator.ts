@@ -16,13 +16,12 @@ export interface CreateCodexCliReferenceEvaluatorInput
 export async function createCodexCliReferenceEvaluator(
   input: Readonly<CreateCodexCliReferenceEvaluatorInput>,
 ): Promise<RubricJudgeEvaluator> {
-  const { judgeId, evaluatorId, metricId, rubric, lengthDebias, tracePolicy,
+  const { judgeId, evaluatorId, rubrics, lengthDebias, tracePolicy,
     actualPointer, tracePointer, classification, ...configuration } = input;
   const evaluator = deepFreezeCanonicalJson({
     evaluatorKind: 'rubric-judge' as const,
     evaluatorId,
-    metricId,
-    rubric: { ...rubric },
+    rubrics: rubrics.map((rubric) => ({ ...rubric })),
     aggregation: { method: 'mean' as const, missing: 'require-complete' as const },
     ...(lengthDebias === undefined ? {} : { lengthDebias }),
     ...(tracePolicy === undefined ? {} : { tracePolicy }),
@@ -33,7 +32,7 @@ export async function createCodexCliReferenceEvaluator(
   const runtime = await createCodexCliReferenceRuntime({
     ...configuration, executorId: judgeId, sandbox: 'read-only',
   }, {
-    version: 'omk.codex-cli-rubric-prepended/v1',
+    version: 'omk.codex-cli-rubric-prepended/v2',
     system: 'prepended-with-separator',
     task: 'rubric-prompt-verbatim',
   });

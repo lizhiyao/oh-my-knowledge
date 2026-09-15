@@ -495,6 +495,7 @@ const rubricRuntime = createRubricJudgeRuntimeConfig({
   instrument: rubricInstrument,
 });
 const rubricCriterion = createRubricJudgeCriterion({
+  metricId: 'quality-score',
   criterionId: 'quality',
   prompt: 'Answer.',
   rubric: 'Be correct.',
@@ -502,10 +503,10 @@ const rubricCriterion = createRubricJudgeCriterion({
 const rubricMetric = createRubricJudgeMetricDefinition('quality-score');
 const rubricDefinition = createRubricJudgeEvaluatorDefinition({
   evaluatorId: 'quality-judge',
-  metricId: rubricMetric.metricId,
+  metricIds: [rubricMetric.metricId],
   instrument: rubricInstrument,
   runtime: rubricRuntime,
-  criterionPointer: '/quality',
+  criteriaPointer: '/quality',
 });
 const rubricEvaluator = createRubricJudgeEvaluator({
   instrument: rubricInstrument,
@@ -520,29 +521,30 @@ const rubricRegistration = createRubricJudgeEvaluatorRegistration([{
 }]);
 const rubricKit = createRubricJudgeKit({
   evaluatorId: 'quality-kit-judge',
-  metricId: 'quality-kit-score',
+  metricIds: ['quality-kit-score'],
   model: 'judge-model',
   invocation: judgeInvocation,
 });
 const rubricKitCriterion = rubricKit.createCriterion({
+  metricId: 'quality-kit-score',
   criterionId: 'quality',
   prompt: 'Answer.',
   rubric: 'Be correct.',
 });
 // @ts-expect-error A Rubric criterion requires explicit rubric text.
-rubricKit.createCriterion({ criterionId: 'invalid', prompt: 'Answer.' });
+rubricKit.createCriterion({ metricId: 'quality-kit-score', criterionId: 'invalid', prompt: 'Answer.' });
 const rubricKitDefinition = createPairedComparisonDefinition({
   datasetId: 'typescript-rubric-kit',
   seed: 'typescript-rubric-kit-seed',
   samples: [{
     sampleId: 'one',
     input: 'question',
-    evaluationContext: rubricKit.createEvaluationContext(rubricKitCriterion),
+    evaluationContext: rubricKit.createEvaluationContext([rubricKitCriterion]),
   }],
   control: { targetId: 'control', executorId: executor.identity.implementationId },
   treatment: { targetId: 'treatment', executorId: executor.identity.implementationId },
   evaluator: rubricKit.evaluatorDefinition,
-  metric: rubricKit.metricDefinition,
+  metric: rubricKit.metricDefinitions[0],
 });
 const combinedRubricRegistration = createRubricJudgeRegistration([rubricKit]);
 void rubricCriterion;

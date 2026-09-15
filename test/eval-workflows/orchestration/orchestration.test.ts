@@ -1,3 +1,5 @@
+import { buildProductionMeasurementDesign } from '../../../src/eval-workflows/orchestration/measurement-design.js';
+import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 import { executeProductEvaluation } from '../../../src/eval-workflows/orchestration/evaluation-service.js';
 import { parseCliEvaluationRequest } from '../../../src/eval-workflows/input-compilation/index.js';
 import { prepareRuntimeSeries } from '../../../src/eval-runtime/provider.js';
@@ -341,4 +343,40 @@ describe('production independent Series orchestration', () => {
     expect((await runStore.get('host-cleanup-repeat-0'))?.report).toEqual(fixtures[0].report);
     expect((await runStore.get('host-cleanup-repeat-1'))?.report).toEqual(fixtures[1].report);
   });
+});
+
+
+it('groups product Rubric calls by actual sample dimension sets and retains per-dimension weights', () => {
+  const request = parseCliEvaluationRequest({
+    explicitCliFlags: { control: 'baseline', treatment: 'fixture' },
+    defaults: {
+      samplesLocator: 'samples.json', skillDirectoryLocator: 'skills',
+      targetRuntime: { executorId: 'fixture', model: 'fixture', effort: 'low' },
+      judgeMembers: [{ executorId: 'fixture-judge', model: 'fixture-judge' }],
+      presentation: { projectOutputDirectoryLocator: '.omk/eval', globalOutputDirectoryLocator: '.omk/eval', language: 'zh', languageDefaultSource: 'derived' },
+    },
+  });
+  const sample = (sample_id: string, rubric: Sample['rubric']): Sample => ({ sample_id, input: { inputKind: 'text', text: sample_id }, rubric });
+  const sources = [
+    sample('a', { correct: { criterion: 'Correct.', weight: 0.25 }, clear: { criterion: 'Clear.', weight: 0.75 } }),
+    sample('b', { clear: { criterion: 'Clear.', weight: 0.75 }, correct: { criterion: 'Correct.', weight: 0.25 } }),
+    sample('c', { correct: { criterion: 'Correct.', weight: 1 } }),
+  ];
+  const design = buildProductionMeasurementDesign(request, sources);
+  const groups = design.evaluatorTemplates.filter((t) => t.evaluatorKind === 'llm-rubric');
+  expect(groups).toHaveLength(2);
+  expect(groups.find((g) => g.metricIds.length === 2)?.applicableSampleIds).toEqual(['a', 'b']);
+  expect(groups.find((g) => g.metricIds.length === 1)?.applicableSampleIds).toEqual(['c']);
+  expect(design.metrics).toHaveLength(2);
+  for (const item of design.dataset.samples) {
+    const context = item.evaluationContext as { rubricJudgeJoint: Array<{ metricId: string }> };
+    const group = groups.find((g) => g.applicableSampleIds?.includes(item.sampleId));
+    expect(context.rubricJudgeJoint.map((r) => r.metricId)).toEqual(group?.metricIds);
+  }
+  expect(buildProductionMeasurementDesign(request, [...sources].reverse())).toEqual(design);
+  const dimension = design.analysisGraph.nodes.find((n) => n.nodeId === 'dimension-table');
+  expect(dimension?.parameters).toMatchObject({ dimensions: expect.arrayContaining([
+    expect.objectContaining({ sampleWeights: [{ sampleId: 'a', weight: 0.75 }, { sampleId: 'b', weight: 0.75 }] }),
+    expect.objectContaining({ sampleWeights: [{ sampleId: 'a', weight: 0.25 }, { sampleId: 'b', weight: 0.25 }, { sampleId: 'c', weight: 1 }] }),
+  ]) });
 });

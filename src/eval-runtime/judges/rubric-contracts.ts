@@ -7,16 +7,16 @@ import {
 import type { OmkLlmJudgeEffort } from './invocation.js';
 
 export const RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID =
-  'omk.rubric-judge/v1' as const;
+  'omk.rubric-judge/v2' as const;
 export const RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION =
-  'omk.rubric-judge-instrument/v1' as const;
+  'omk.rubric-judge-instrument/v2' as const;
 export const RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION =
-  'omk.rubric-judge-context/v1' as const;
+  'omk.rubric-judge-context/v2' as const;
 export const RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION =
-  'omk.rubric-judge-evidence/v1' as const;
+  'omk.rubric-judge-evidence/v2' as const;
 export const RUBRIC_JUDGE_BINDINGS = Object.freeze({
   actual: 'actual',
-  criterion: 'criterion',
+  criteria: 'criteria',
   trace: 'trace',
 });
 
@@ -50,6 +50,7 @@ export type RubricJudgeConfig = JsonObject & {
 
 export type RubricJudgeCriterion = JsonObject & {
   readonly schemaVersion: typeof RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION;
+  readonly metricId: string;
   readonly criterionId: string;
   readonly prompt: string;
   readonly rubric: string;
@@ -57,7 +58,7 @@ export type RubricJudgeCriterion = JsonObject & {
 
 const INSTRUMENT_SCHEMA_DOCUMENT: JsonValue = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'urn:omk:rubric-judge-instrument:v1',
+  $id: 'urn:omk:rubric-judge-instrument:v2',
   type: 'object',
   additionalProperties: false,
   required: ['schemaVersion', 'promptId', 'promptHash', 'lengthDebias', 'tracePolicy'],
@@ -72,25 +73,30 @@ const INSTRUMENT_SCHEMA_DOCUMENT: JsonValue = {
 
 const CONTEXT_SCHEMA_DOCUMENT: JsonValue = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'urn:omk:rubric-judge-context:v1',
-  type: 'object',
-  additionalProperties: false,
-  required: ['schemaVersion', 'criterionId', 'prompt', 'rubric'],
-  properties: {
-    schemaVersion: { const: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION },
-    criterionId: { type: 'string', minLength: 1, maxLength: 256 },
-    prompt: { type: 'string' },
-    rubric: { type: 'string', minLength: 1 },
+  $id: 'urn:omk:rubric-judge-context:v2',
+  type: 'array',
+  minItems: 1,
+  items: {
+    type: 'object', additionalProperties: false,
+    required: ['schemaVersion', 'metricId', 'criterionId', 'prompt', 'rubric'],
+    properties: {
+      schemaVersion: { const: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION },
+      metricId: { type: 'string', minLength: 1, maxLength: 256 },
+      criterionId: { type: 'string', minLength: 1, maxLength: 256 },
+      prompt: { type: 'string' },
+      rubric: { type: 'string', minLength: 1 },
+    },
   },
 };
 
 const EVIDENCE_SCHEMA_DOCUMENT: JsonValue = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'urn:omk:rubric-judge-evidence:v1',
+  $id: 'urn:omk:rubric-judge-evidence:v2',
   type: 'object',
   additionalProperties: false,
   required: [
     'schemaVersion',
+    'metricId',
     'criterionId',
     'promptId',
     'promptHash',
@@ -101,6 +107,7 @@ const EVIDENCE_SCHEMA_DOCUMENT: JsonValue = {
   ],
   properties: {
     schemaVersion: { const: RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION },
+    metricId: { type: 'string' },
     criterionId: { type: 'string' },
     promptId: { type: 'string' },
     promptHash: { type: 'string' },
@@ -126,16 +133,16 @@ function schemaIdentity(
 
 export const RUBRIC_JUDGE_INSTRUMENT_SCHEMA = schemaIdentity(
   RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION,
-  'urn:omk:rubric-judge-instrument:v1',
+  'urn:omk:rubric-judge-instrument:v2',
   INSTRUMENT_SCHEMA_DOCUMENT,
 );
 export const RUBRIC_JUDGE_CONTEXT_SCHEMA = schemaIdentity(
   RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
-  'urn:omk:rubric-judge-context:v1',
+  'urn:omk:rubric-judge-context:v2',
   CONTEXT_SCHEMA_DOCUMENT,
 );
 export const RUBRIC_JUDGE_EVIDENCE_SCHEMA = schemaIdentity(
   RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION,
-  'urn:omk:rubric-judge-evidence:v1',
+  'urn:omk:rubric-judge-evidence:v2',
   EVIDENCE_SCHEMA_DOCUMENT,
 );

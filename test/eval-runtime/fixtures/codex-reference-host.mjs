@@ -14,8 +14,8 @@ const environment = (mode, role) => ({
 const connection = { executablePath: join(root, 'vendor-codex.mjs'), modelConfigPath };
 const evaluator = await createCodexCliReferenceEvaluator({
   ...connection, environment: environment('judge', 'judge'),
-  judgeId: 'codex-judge', evaluatorId: 'quality', metricId: 'quality-score',
-  rubric: { criterionId: 'quality', prompt: 'Judge correctness.', rubric: '4 means correct.' },
+  judgeId: 'codex-judge', evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge correctness.', rubric: '4 means correct.'  }],
+
 });
 const executor = await createCodexCliReferenceExecutor({
   ...connection, environment: environment('success', 'target'), executorId: 'codex-target',

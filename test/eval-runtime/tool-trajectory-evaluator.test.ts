@@ -329,14 +329,13 @@ describe('canonical tool trajectory evaluator', () => {
       fingerprintFacets: { revision: 'one' },
       invoke: async () => ({
         invocationStatus: 'completed' as const,
-        output: '{"score":5,"reason":"complete"}',
+        output: '{"scores":[{"metricId":"answer-quality-score","score":5,"reason":"complete"}]}',
       }),
     };
     const rubric = {
       evaluatorKind: 'rubric-judge',
       evaluatorId: 'answer-quality',
-      metricId: 'answer-quality-score',
-      rubric: { criterionId: 'quality', prompt: 'Judge the answer.', rubric: '5 is best.' },
+      rubrics: [{ metricId: 'answer-quality-score', criterionId: 'quality', prompt: 'Judge the answer.', rubric: '5 is best.' }],
       judges: [{ memberId: 'judge-one', model: 'judge-model', judge }],
       aggregation: { method: 'mean', missing: 'require-complete' },
     } satisfies RubricJudgeEvaluator;

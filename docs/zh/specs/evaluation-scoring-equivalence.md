@@ -62,7 +62,7 @@ Core 永不导入 `PROMPT_REGISTRY`。组合根解析冻结的 prompt，并把�
 
 `[1, 5]` 内的严格整数读数和非空解释会生成已观测的布尔阈值结果。非 JSON、畸形 JSON、畸形分数、越界分数和缺失解释分别生成不同的无效观测。提供方失败生成带脱敏稳定代码的失败 Evaluation 记录。Core 超时和取消仍是尝试状态，准入失败仍是预算截尾。未知用量或提供方成本保持缺失。这是 [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) 负责的有意 `BREAKING-COMPARABILITY` 修正；不提供兼容模式或旧读取器。
 
-Rubric 评委使用 `omk.rubric-judge/v1` 和同一个宿主拥有的单次调用提供方端口。每个测量坐标只发出一个数值型原始读数；重复测量和集成聚合仍属于 AnalysisGraph。工具把现有的启用或关闭去偏注册表身份，与显式的 `none` 或 `source-neutral` trace 策略一起密封。启用 trace 的评测只绑定 `omk.source-neutral-trace/v2`，其摘要塑形算法和 schema 进入 Runtime 指纹。有效响应是一个包含 `[1, 5]` 范围内整数分数和非空理由的 JSON 对象；推理过程是可选证据。协议失败使用与 LLM assertion 相同的不同无效状态，提供方失败仍为失败记录。Core 有意拒绝旧 rubric 解析器对畸形 JSON 的挽救、数字字符串和小数强制转换、越界读数、空理由及分数零失败哨兵。这项由 [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) 负责的 `BREAKING-COMPARABILITY` 修正没有兼容模式，也不改变冻结的 rubric prompt 字节或哈希。
+Rubric 评委使用 `omk.rubric-judge/v2` 和同一个宿主拥有的单次调用提供方端口。每个测量坐标只发出一个数值型原始读数；重复测量和集成聚合仍属于 AnalysisGraph。工具把现有的启用或关闭去偏注册表身份，与显式的 `none` 或 `source-neutral` trace 策略一起密封。启用 trace 的评测只绑定 `omk.source-neutral-trace/v2`，其摘要塑形算法和 schema 进入 Runtime 指纹。有效响应是一个包含 `[1, 5]` 范围内整数分数和非空理由的 JSON 对象；推理过程是可选证据。协议失败使用与 LLM assertion 相同的不同无效状态，提供方失败仍为失败记录。Core 有意拒绝旧 rubric 解析器对畸形 JSON 的挽救、数字字符串和小数强制转换、越界读数、空理由及分数零失败哨兵。这项由 [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) 负责的 `BREAKING-COMPARABILITY` 修正没有兼容模式，也不改变冻结的 rubric prompt 字节或哈希。
 
 确定性 assertion 被拆成两个独立标识的家族。仅输出家族只绑定输出和评测上下文。感知执行家族递归计算每棵 assertion 树的最小权限来源并集，然后只绑定所需的输出、Core 拥有的 `execution-facts`、来源中立 trace 和评测上下文。依赖签名不同的准则属于不同 Evaluator 组，因此 trace 不可用时不能压制只依赖事实的指标。
 

@@ -1757,14 +1757,14 @@ describe('canonical eval-runtime API', () => {
       version: '1.0.0',
       providerCost: { reporting: 'optional' as const },
       async invoke() {
-        return { invocationStatus: 'completed' as const, output: '{"score":4,"reason":"ok"}' };
+        return { invocationStatus: 'completed' as const, output: '{"scores":[{"metricId":"family-quality","score":4,"reason":"ok"}]}' };
       },
     };
     const panel = {
       evaluatorKind: 'rubric-judge',
       evaluatorId: 'family-panel',
-      metricId: 'family-quality',
-      rubric: { criterionId: 'quality', prompt: 'Judge quality.', rubric: '5 is best.' },
+      rubrics: [{ metricId: 'family-quality',  criterionId: 'quality', prompt: 'Judge quality.', rubric: '5 is best.'  }],
+
       judges: [
         { memberId: 'judge-a', model: 'judge-a', judge, replicateCount: 2 },
         { memberId: 'judge-b', model: 'judge-b', judge, replicateCount: 1 },
@@ -3420,12 +3420,12 @@ describe('canonical eval-runtime API', () => {
         {
           evaluatorKind: 'rubric-judge',
           evaluatorId: 'quality-judge',
-          metricId: 'quality-score',
-          rubric: {
+          rubrics: [{ metricId: 'quality-score',
             criterionId: 'quality',
             prompt: 'Judge answer quality.',
             rubric: '5 is correct; 1 is incorrect.',
-          },
+           }],
+
           judges: [{
             memberId: 'primary',
             model: 'judge-model',
@@ -3437,7 +3437,7 @@ describe('canonical eval-runtime API', () => {
                 judgeCalls.push(request.promptId);
                 return {
                   invocationStatus: 'completed',
-                  output: '{"score":5,"reason":"correct"}',
+                  output: '{"scores":[{"metricId":"quality-score","score":5,"reason":"correct"}]}',
                 };
               },
             },
@@ -3532,20 +3532,20 @@ describe('canonical eval-runtime API', () => {
         return {
           invocationStatus: 'completed' as const,
           output: request.model === 'judge-a'
-            ? '{"score":1,"reason":"a"}'
-            : '{"score":5,"reason":"b"}',
+            ? '{"scores":[{"metricId":"quality-score","score":1,"reason":"a"}]}'
+            : '{"scores":[{"metricId":"quality-score","score":5,"reason":"b"}]}',
         };
       },
     };
     const panel = {
       evaluatorKind: 'rubric-judge',
       evaluatorId: 'quality-panel',
-      metricId: 'quality-score',
-      rubric: {
+      rubrics: [{ metricId: 'quality-score',
         criterionId: 'quality',
         prompt: 'Judge quality.',
         rubric: '5 is best; 1 is worst.',
-      },
+       }],
+
       judges: [
         { memberId: 'judge-a', model: 'judge-a', judge, replicateCount: 2 },
         { memberId: 'judge-b', model: 'judge-b', judge, replicateCount: 1 },
@@ -3645,8 +3645,8 @@ describe('canonical eval-runtime API', () => {
       evaluators: [{
         evaluatorKind: 'rubric-judge',
         evaluatorId: 'invalid-panel',
-        metricId: 'quality-score',
-        rubric: { criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.' },
+        rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.'  }],
+
         judges: [{
           memberId: 'judge-a',
           model: 'judge-a',
@@ -3655,7 +3655,7 @@ describe('canonical eval-runtime API', () => {
             version: '1.0.0',
             providerCost: { reporting: 'optional' },
             async invoke() {
-              return { invocationStatus: 'completed', output: '{"score":5,"reason":"ok"}' };
+              return { invocationStatus: 'completed', output: '{"scores":[{"metricId":"quality-score","score":5,"reason":"ok"}]}' };
             },
           },
         }],
@@ -3683,7 +3683,7 @@ describe('canonical eval-runtime API', () => {
       version: '1.0.0',
       providerCost: { reporting: 'optional' as const },
       async invoke() {
-        return { invocationStatus: 'completed' as const, output: '{"score":5,"reason":"ok"}' };
+        return { invocationStatus: 'completed' as const, output: '{"scores":[{"metricId":"quality-score","score":5,"reason":"ok"}]}' };
       },
     };
     const base = {
@@ -3697,8 +3697,8 @@ describe('canonical eval-runtime API', () => {
     const panel = {
       evaluatorKind: 'rubric-judge',
       evaluatorId: 'validation-panel',
-      metricId: 'quality-score',
-      rubric: { criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.' },
+      rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.'  }],
+
       aggregation: { method: 'mean', missing: 'require-complete' },
     } as const;
 
@@ -3724,10 +3724,10 @@ describe('canonical eval-runtime API', () => {
       evaluators: [{
         evaluatorKind: 'rubric-judge',
         evaluatorId: 'singular-judge',
-        metricId: 'quality-score',
+        rubrics: panel.rubrics,
         model: 'old-model',
         judge,
-        rubric: panel.rubric,
+
       } as unknown as Evaluator],
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
     expect(executeTarget).not.toHaveBeenCalled();
@@ -3740,7 +3740,7 @@ describe('canonical eval-runtime API', () => {
       version: '1.0.0',
       providerCost: { reporting: 'optional' as const },
       async invoke() {
-        return { invocationStatus: 'completed' as const, output: '{"score":3,"reason":"ok"}' };
+        return { invocationStatus: 'completed' as const, output: '{"scores":[{"metricId":"quality-score","score":3,"reason":"ok"}]}' };
       },
     };
     const members = [
@@ -3769,8 +3769,8 @@ describe('canonical eval-runtime API', () => {
     const evaluator = (judges: RubricJudgeEvaluator['judges']): RubricJudgeEvaluator => ({
       evaluatorKind: 'rubric-judge',
       evaluatorId: 'order-panel',
-      metricId: 'quality-score',
-      rubric: { criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.' },
+      rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge.', rubric: 'Score it.'  }],
+
       judges,
       aggregation: { method: 'mean', missing: 'require-complete' },
     });
@@ -4158,20 +4158,20 @@ describe('canonical eval-runtime API', () => {
       fingerprintFacets: { deploymentRevision: 'judge-one' },
       async invoke(this: { fingerprintFacets?: { deploymentRevision?: string; }; }) {
         seenRevisions.push(this.fingerprintFacets?.deploymentRevision ?? 'missing');
-        return { invocationStatus: 'completed' as const, output: '{"score":5,"reason":"ok"}' };
+        return { invocationStatus: 'completed' as const, output: '{"scores":[{"metricId":"captured-score","score":5,"reason":"ok"}]}' };
       },
     };
     const pending = evaluate({
       ...pairedInput(),
       evaluators: [{
         evaluatorKind: 'rubric-judge', evaluatorId: 'captured-judge',
-        metricId: 'captured-score',
-        judges: [{ memberId: 'primary', model: 'judge-model', judge: mutableJudge }],
-        aggregation: { method: 'mean', missing: 'require-complete' },
-        rubric: {
+        rubrics: [{ metricId: 'captured-score',
           criterionId: 'correctness', prompt: 'Judge correctness.',
           rubric: '5 is correct; 1 is incorrect.',
-        },
+         }],
+        judges: [{ memberId: 'primary', model: 'judge-model', judge: mutableJudge }],
+        aggregation: { method: 'mean', missing: 'require-complete' },
+
       }],
       comparisons: [{
         comparisonId: 'baseline-vs-candidate',
@@ -4189,6 +4189,10 @@ describe('canonical eval-runtime API', () => {
     const result = await pending;
     expect(result.status, JSON.stringify(result)).toBe('completed');
     expect(seenRevisions).toEqual(['judge-one', 'judge-one', 'judge-one', 'judge-one']);
+    expect(result.artifacts?.evaluation?.records.every((record) => (
+      record.evaluationStatus === 'completed'
+      && record.observations.every((observation) => observation.observationStatus === 'observed')
+    ))).toBe(true);
   });
 
   it('keeps structured Executor failures stable and provider-private throws redacted', async () => {

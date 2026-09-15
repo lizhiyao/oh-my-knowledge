@@ -1,3 +1,4 @@
+import type { RubricJudgeCriterion } from './rubric-contracts.js';
 import { createHash } from 'node:crypto';
 
 // These bytes are a measurement invariant. Any edit requires an explicit
@@ -20,14 +21,13 @@ export const RUBRIC_PRESENTATION_NEUTRALITY_INSTRUCTION = [
   '研究显示 LLM 评委容易隐性偏向排版精致、语气自信的回答，请在打分前先警觉这两点。',
 ].join('\n');
 
-const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v5-cot-toolargs-fmt';
-const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v5-cot-toolargs-fmt-len';
+const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v6-multi-cot-toolargs-fmt';
+const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v6-multi-cot-toolargs-fmt-len';
 
 export const JUDGE_SYSTEM_PROMPT = '你是一个严格的 AI 输出质量评审员。先逐条对照评分标准做推理，再给最终分数。只返回 JSON，不要其他内容。';
 
 export function buildJudgePrompt(
-  prompt: string,
-  rubric: string,
+  criteria: readonly RubricJudgeCriterion[],
   output: string,
   traceSummary: string | null,
   lengthDebias = true,
@@ -40,13 +40,10 @@ export function buildJudgePrompt(
   const debiasSection = lengthDebias ? ['', RUBRIC_LENGTH_DEBIAS_INSTRUCTION] : [];
 
   return [
-    `请对以下 AI 输出进行质量评分（template ${version}）。`,
+    `请按每个维度分别对以下 AI 输出进行质量评分（template ${version}）。`,
     '',
-    '## 原始任务',
-    prompt,
-    '',
-    '## 评分标准',
-    rubric,
+    '## 逐维任务与评分标准',
+    JSON.stringify(criteria.map(({ metricId, criterionId, prompt, rubric }) => ({ metricId, criterionId, prompt, rubric }))),
     '',
     '## AI 输出',
     output,
@@ -55,11 +52,12 @@ export function buildJudgePrompt(
     ...debiasSection,
     '',
     '## 评分流程',
+    '每个 metricId 必须恰好返回一次；维度间独立评分，不用一个维度的优点弥补另一个维度的缺点。',
     '1. 逐条对照评分标准，先做推理（reasoning）：列出 AI 输出哪些点对应哪条标准，哪些缺失，哪些有歧义。',
-    '2. 基于推理给出最终分数（1-5 的整数）和简短理由。',
+    '2. 为每个 metricId 基于其标准与推理给出最终分数（1-5 的整数）和简短理由。',
     '',
     '请返回 JSON（不要包含 markdown 代码块标记）：',
-    '{"reasoning": "<对照标准的逐条推理>", "score": <1-5的整数>, "reason": "<最终结论的简短理由>"}',
+    '{"scores":[{"metricId":"<指标ID>","reasoning":"<对照该维度标准的推理>","score":<1-5的整数>,"reason":"<该维度的简短理由>"}]}',
     '',
     '评分标准：1=完全不达标, 2=部分涉及, 3=基本达标, 4=较好, 5=优秀',
   ].join('\n');
@@ -67,6 +65,6 @@ export function buildJudgePrompt(
 
 export function getJudgePromptHash(lengthDebias = true): string {
   const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
-  const sample = buildJudgePrompt('<P>', '<R>', '<O>', '<T>', lengthDebias);
+  const sample = buildJudgePrompt([{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: '<M>', criterionId: '<C>', prompt: '<P>', rubric: '<R>' }], '<O>', '<T>', lengthDebias);
   return createHash('sha256').update(version + '\n' + sample).digest('hex').slice(0, 12);
 }

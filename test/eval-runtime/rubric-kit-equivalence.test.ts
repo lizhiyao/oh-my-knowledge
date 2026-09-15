@@ -79,7 +79,7 @@ function fixture(mode: 'manual' | 'kit', providerFailure = false) {
       }
       return {
         invocationStatus: 'completed',
-        output: '{"reasoning":"same","score":5,"reason":"correct"}',
+        output: '{"scores":[{"metricId":"correctness-score","reasoning":"same","score":5,"reason":"correct"}]}',
         usage: {
           inputTokens: 8,
           outputTokens: 4,
@@ -96,14 +96,14 @@ function fixture(mode: 'manual' | 'kit', providerFailure = false) {
     effort: 'low',
     instrument,
   });
-  const manualCriterion = createRubricJudgeCriterion({
+  const manualCriterion = createRubricJudgeCriterion({ metricId: 'correctness-score',
     criterionId: 'correctness',
     prompt: 'Capital of France?',
     rubric: 'The output must state Paris.',
   });
   const kit = createRubricJudgeKit({
     evaluatorId: 'correctness-judge',
-    metricId: 'correctness-score',
+    metricIds: ['correctness-score'],
     model: 'judge-model',
     effort: 'low',
     invocation,
@@ -111,24 +111,24 @@ function fixture(mode: 'manual' | 'kit', providerFailure = false) {
   });
   const evaluator = mode === 'kit' ? kit.evaluatorDefinition : createRubricJudgeEvaluatorDefinition({
     evaluatorId: 'correctness-judge',
-    metricId: 'correctness-score',
+    metricIds: ['correctness-score'],
     instrument,
     runtime: judgeRuntime,
-    criterionPointer: '/rubricJudge/correctness-judge',
+    criteriaPointer: '/rubricJudge/correctness-judge',
   });
   const metric = mode === 'kit'
-    ? kit.metricDefinition
+    ? kit.metricDefinitions[0]
     : createRubricJudgeMetricDefinition('correctness-score');
   const criterion = mode === 'kit'
-    ? kit.createCriterion({
+    ? kit.createCriterion({ metricId: 'correctness-score',
       criterionId: 'correctness',
       prompt: 'Capital of France?',
       rubric: 'The output must state Paris.',
     })
     : manualCriterion;
   const evaluationContext = mode === 'kit'
-    ? kit.createEvaluationContext(criterion)
-    : { rubricJudge: { 'correctness-judge': criterion } };
+    ? kit.createEvaluationContext([criterion])
+    : { rubricJudge: { 'correctness-judge': [criterion] } };
   const registration = mode === 'kit'
     ? kit.evaluatorRegistration
     : createRubricJudgeEvaluatorRegistration([{
@@ -230,7 +230,7 @@ describe('Rubric Judge kit equivalence', () => {
     };
     const traceJudge = createRubricJudgeKit({
       evaluatorId: 'cancel-judge',
-      metricId: 'cancel-score',
+      metricIds: ['cancel-score'],
       model: 'judge-model',
       invocation,
       tracePolicy: 'source-neutral',
@@ -243,11 +243,11 @@ describe('Rubric Judge kit equivalence', () => {
 
     const cancelJudge = createRubricJudgeKit({
       evaluatorId: 'cancel-judge',
-      metricId: 'cancel-score',
+      metricIds: ['cancel-score'],
       model: 'judge-model',
       invocation,
     });
-    const criterion = cancelJudge.createCriterion({
+    const criterion = cancelJudge.createCriterion({ metricId: 'cancel-score',
       criterionId: 'correctness',
       prompt: 'Capital of France?',
       rubric: 'The output must state Paris.',
@@ -260,12 +260,12 @@ describe('Rubric Judge kit equivalence', () => {
         sampleId,
         input: { prompt: sampleId },
         expected: 'Paris',
-        evaluationContext: cancelJudge.createEvaluationContext(criterion),
+        evaluationContext: cancelJudge.createEvaluationContext([criterion]),
       })),
       control: { targetId: 'control', executorId: target.implementationId },
       treatment: { targetId: 'treatment', executorId: target.implementationId },
       evaluator: cancelJudge.evaluatorDefinition,
-      metric: cancelJudge.metricDefinition,
+      metric: cancelJudge.metricDefinitions[0],
       bootstrap: { resamples: 100 },
     });
     const runtime = createEvaluationRuntime({

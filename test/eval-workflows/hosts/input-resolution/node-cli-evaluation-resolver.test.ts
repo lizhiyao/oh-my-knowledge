@@ -372,7 +372,7 @@ describe('resolveNodeCliEvaluationRequest', () => {
         'omk.assertions.output/v1',
         'omk.assertions.execution/v1',
         'omk.llm-assertions/v2',
-        'omk.rubric-judge/v1',
+        'omk.rubric-judge/v2',
       ]),
     );
     expect(compiled.definition.analysisGraph.nodes.map((node) => node.implementationId)).toEqual(
@@ -853,14 +853,14 @@ describe('resolveNodeCliEvaluationRequest', () => {
       .filter((evaluator) => evaluator.applicableSampleIds !== undefined)
       .map((evaluator) => evaluator.applicableSampleIds);
 
-    expect(applicability).toHaveLength(4);
+    expect(applicability).toHaveLength(3);
     expect(applicability).toEqual(expect.arrayContaining([
-      ['sample-a'], ['sample-a'], ['sample-a'], ['sample-b'],
+      ['sample-a'], ['sample-a'], ['sample-b'],
     ]));
     const rubricEvaluators = compiled.definition.evaluators.filter((evaluator) => (
-      evaluator.implementationId === 'omk.rubric-judge/v1'
+      evaluator.implementationId === 'omk.rubric-judge/v2'
     ));
-    expect(rubricEvaluators).toHaveLength(3);
+    expect(rubricEvaluators).toHaveLength(2);
     expect(compiled.definition.decisionPolicy?.parameters).toMatchObject({
       sources: {
         judgeEnsembles: expect.arrayContaining([

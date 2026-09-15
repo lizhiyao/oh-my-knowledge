@@ -615,12 +615,13 @@ const result = await evaluate({
   evaluators: [{
     evaluatorKind: 'rubric-judge',
     evaluatorId: 'correctness-judge',
-    metricId: 'correctness-score',
-    rubric: {
-      criterionId: 'correctness',
-      prompt: 'Judge whether the answer is factually correct.',
-      rubric: '5 is fully correct; 1 is fully incorrect.',
-    },
+    rubrics: [{
+      metricId: 'correctness-score', criterionId: 'correctness',
+      prompt: 'Assess factual correctness.', rubric: '5 = fully correct; 1 = incorrect.',
+    }, {
+      metricId: 'completeness-score', criterionId: 'completeness',
+      prompt: 'Assess coverage of the request.', rubric: '5 = covers every requirement; 1 = misses them all.',
+    }],
     judges: [{
       memberId: 'primary',
       model: 'judge-model',
@@ -664,7 +665,9 @@ const result = await evaluate({
 
 Read the status, included observation count, and mean in `result.analysisResults['candidate-correctness']`. This summarizes `prompt-v2` only; declare a comparison analysis over the same metric to compare versions.
 
-The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes the whole Target × Sample × Trial panel reading if any planned coordinate is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge`.
+One invocation returns both scores and separate reasons; `replicateCount: 2` therefore makes two calls per sample/variant. Every dimension remains a 1–5 Metric with independent evidence, coverage and optional analyses. To summarize completeness, add an analysis for `completeness-score`. Malformed individual readings affect only their metric; missing/duplicate/unknown metric IDs invalidate the entire response. See [the v2 migration](../reference/eval-runtime-api.md#rubric-judge-v2-migration) for API, identity and comparability changes. Product CLI rubrics use the same joint protocol without changing sample-file format.
+
+The Judge callback performs exactly one provider invocation and must not retry. `replicateCount` repeats only evaluation, not Target execution or the Bootstrap sample count. With multiple members, `mean` gives every member equal weight after its replicates are averaged; `weighted-mean` requires an explicit positive weight for every `memberId`, summing to one. `require-complete` excludes a metric’s Target × Sample × Trial panel reading if any of its planned coordinates is unavailable. Provider failures retain valid accounting facts while removing provider-private reasons and usage details. Use `tracePolicy: 'source-neutral'` only when every Executor returns the versioned trace contract from `oh-my-knowledge`.
 
 </details>
 

@@ -91,6 +91,7 @@ export type {
   Rubric,
   RubricJudgeAggregation,
   RubricJudgeEvaluator,
+  RubricJudgeDimension,
   RubricJudgeMember,
   RuntimeConformanceCheck,
   RuntimeContext,
