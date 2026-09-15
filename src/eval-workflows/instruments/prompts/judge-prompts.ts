@@ -24,7 +24,7 @@ export {
  * frozen hashes in `test/measurement-governance/prompt-registry-freeze.test.ts`) whenever the template's bytes
  * change — that change is BREAKING-COMPARABILITY.
  *
- * Naming: a single main version (`v5`) + a `-feature` suffix per debias/context capability.
+ * Naming: a single main version (`v6`) + a `-feature` suffix per debias/context capability.
  * The only asymmetry between the two strings is the `-len` suffix, gated by the
  * `--no-debias-length` toggle; every other feature is always-on and appears in both.
  */
@@ -39,6 +39,8 @@ export {
 //                          偏向更长的回答,还隐性偏向排版精致(标题 / 列表 / 加粗)与语气自信 / 自我
 //                          表扬(谄媚 / 权威偏置)的回答;显式指令要求评委只对照评分标准核内容。
 //                          同时借此把命名统一成单一主序号(v5)+ feature 后缀,`-len` 仍是开关那条。
+//   v6-multi-cot-toolargs-fmt(off) / v6-multi-cot-toolargs-fmt-len(on)
+//                        : 一次调用读取有序维度列表，返回逐 metricId 的 scores 数组。
 // ===========================================================================
 // 语义相似度评委 prompt（semantic_similarity 断言）
 // ===========================================================================

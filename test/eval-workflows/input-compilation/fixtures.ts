@@ -256,7 +256,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         evaluatorId: 'rubric',
         evaluatorKind: 'llm-rubric',
         runtimeBindingKind: 'judge',
-        implementationId: 'omk.rubric-judge/v1',
+        implementationId: 'omk.rubric-judge/v2',
         instrumentId: 'rubric-correctness-v1',
         runtimePromptVariant: 'rubric-length-debias-on/v1',
         replicateGroupId: 'rubric-primary',

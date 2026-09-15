@@ -724,10 +724,10 @@ describe('Codex reference default model and evaluator', () => {
 
   async function evaluator(fixture: VendorFixture, maxPromptBytes?: number) {
     return createCodexCliReferenceEvaluator({
-      evaluatorId: 'quality', metricId: 'quality-score', judgeId: 'codex-judge',
+      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.'  }], judgeId: 'codex-judge',
       executablePath: fixture.executablePath, environment: fixture.env,
       model: 'gpt-fixture', maxPromptBytes,
-      rubric: { criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' },
+
     });
   }
 
@@ -741,7 +741,7 @@ describe('Codex reference default model and evaluator', () => {
       signal: new AbortController().signal,
     };
     const result = await member.judge.invoke(request);
-    expect(result).toMatchObject({ invocationStatus: 'completed', output: '{"score":4,"reason":"fixture rubric matched"}' });
+    expect(result).toMatchObject({ invocationStatus: 'completed', output: '{"scores":[{"metricId":"quality-score","score":4,"reason":"fixture rubric matched"}]}' });
     const capture = await capturedCall(fixture);
     expect(capture.prompt).toBe('system bytes\n\n---\n\nrubric bytes');
     expect(existsSync(capture.cwd)).toBe(false);
@@ -750,7 +750,7 @@ describe('Codex reference default model and evaluator', () => {
     await expect(member.judge.invoke({ ...request, model: 'different' }))
       .resolves.toMatchObject({ invocationStatus: 'failed', reasonCode: 'OMK_CODEX_CLI_JUDGE_BINDING_MISMATCH' });
     expect((await readFile(fixture.invocationLog, 'utf8')).trim()).toBe('exec');
-    expect(Object.isFrozen(declaration.rubric)).toBe(true);
+    expect(Object.isFrozen(declaration.rubrics)).toBe(true);
   });
 
   it.each(['exit', 'invalid', 'oversized', 'failed'])('retains a failed judge invocation and cleans up: %s', async (mode) => {
@@ -792,9 +792,9 @@ describe('Codex reference default model and evaluator', () => {
     const targetEnvironment = Object.fromEntries(Object.entries(target.env).filter(([key]) => key !== 'CODEX_SESSION_SECRET'));
     const executor = await assemble(target, { model: undefined, modelConfigPath, environment: targetEnvironment });
     const judge = await createCodexCliReferenceEvaluator({
-      evaluatorId: 'quality', metricId: 'quality-score', judgeId: 'codex-judge',
+      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.'  }], judgeId: 'codex-judge',
       executablePath: scoring.executablePath, environment: scoring.env, modelConfigPath,
-      rubric: { criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' },
+
     });
     await writeFile(modelConfigPath, 'model = "changed"');
     const result = await evaluate({

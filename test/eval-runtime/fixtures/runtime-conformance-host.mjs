@@ -201,7 +201,7 @@ const judge = {
     if (request.prompt.includes('CHECK_CANCELLATION')) await waitForAbort(request.signal);
     return {
       invocationStatus: 'completed',
-      output: '{"score":5,"reason":"controlled clean-room probe"}',
+      output: '{"scores":[{"metricId":"runtime-check-judge-score","score":5,"reason":"controlled clean-room probe"}]}',
       usage: {
         totalTokens: 2,
         providerCost: { amount: 0.001, currency: 'USD', reportedByProvider: true },

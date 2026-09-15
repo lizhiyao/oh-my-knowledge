@@ -338,6 +338,22 @@ describe('Compiler definition validation', () => {
     await expectCode(unknown, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
   });
 
+  it('allows shared measurement coordinates only across disjoint sample scopes', async () => {
+    const definition = validDefinition();
+    definition.dataset.samples.push({ ...structuredClone(definition.dataset.samples[0]), sampleId: 'sample-2' });
+    const first = definition.evaluators[0];
+    first.applicableSampleIds = ['sample-1'];
+    definition.evaluators.push({ ...structuredClone(first), evaluatorId: 'other-scope', applicableSampleIds: ['sample-2'] });
+    const plan = await prepareEvaluationPlan(definition, validPolicy(), testRuntime());
+    const coordinates = derivePlannedEvaluationCoordinates(plan);
+    expect(coordinates).toHaveLength(4);
+    expect(new Set(coordinates.map((coordinate) => coordinate.evaluationId)).size).toBe(4);
+    definition.evaluators[1].applicableSampleIds = ['sample-1', 'sample-2'];
+    await expectCode(definition, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+    delete definition.evaluators[1].applicableSampleIds;
+    await expectCode(definition, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+  });
+
   it('rejects ambiguous or unknown sample execution-control overrides', async () => {
     const duplicate = validDefinition();
     duplicate.targets[0].executionControls.sampleOverrides = [

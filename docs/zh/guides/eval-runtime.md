@@ -611,12 +611,13 @@ const result = await evaluate({
   evaluators: [{
     evaluatorKind: 'rubric-judge',
     evaluatorId: 'correctness-judge',
-    metricId: 'correctness-score',
-    rubric: {
-      criterionId: 'correctness',
-      prompt: '判断答案在事实层面是否正确。',
-      rubric: '完全正确为 5 分，完全错误为 1 分。',
-    },
+    rubrics: [{
+      metricId: 'correctness-score', criterionId: 'correctness',
+      prompt: '判断答案的事实正确性。', rubric: '完全正确为 5 分，完全错误为 1 分。',
+    }, {
+      metricId: 'completeness-score', criterionId: 'completeness',
+      prompt: '判断答案是否覆盖全部要求。', rubric: '全部覆盖为 5 分，全部遗漏为 1 分。',
+    }],
     judges: [{
       memberId: 'primary',
       model: 'judge-model',
@@ -660,7 +661,9 @@ const result = await evaluate({
 
 查看 `result.analysisResults['candidate-correctness']` 的状态、有效观测数和均值。这里只汇总 `prompt-v2`；要对比两个版本，应声明引用同一指标的比较分析。
 
-评委 callback 只执行一次 provider 调用，不得自行重试。`replicateCount` 只重复评测，不重复 Target 执行，也不增加 Bootstrap 样本量。存在多个成员时，`mean` 会在各成员的 replicate 先求均值后赋予成员等权；`weighted-mean` 要求为每个 `memberId` 显式提供正权重，且总和为 1。`require-complete` 会在任一计划坐标不可用时排除整个 Target × Sample × Trial panel 读数。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
+一次调用同时返回正确性和完整性分数及各自理由；因此 `replicateCount: 2` 对每个样本／版本调用两次。每个维度仍是独立的 1～5 分指标，保留各自证据、覆盖率与按需声明的分析。需要汇总完整性时，增加引用 `completeness-score` 的 analysis。单个读数不合法只影响该指标；遗漏、重复或未知指标 ID 会使整组响应无效。API、identity 与可比性变化见 [v2 迁移说明](../reference/eval-runtime-api.md#rubric-judge-v2-migration)。产品 CLI 的 rubric 使用同一联合协议，样本文件格式不变。
+
+评委 callback 只执行一次 provider 调用，不得自行重试。`replicateCount` 只重复评测，不重复 Target 执行，也不增加 Bootstrap 样本量。存在多个成员时，`mean` 会在各成员的 replicate 先求均值后赋予成员等权；`weighted-mean` 要求为每个 `memberId` 显式提供正权重，且总和为 1。`require-complete` 会在某指标的任一计划坐标不可用时排除该指标对应的 Target × Sample × Trial panel 读数。Provider failure 会保留合法的计量事实，并移除 provider 私有原因与 usage details。只有当所有 Executor 都返回 `oh-my-knowledge` 中的版本化 trace 契约时，才使用 `tracePolicy: 'source-neutral'`。
 
 </details>
 

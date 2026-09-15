@@ -21,6 +21,7 @@ export {
   type ToolTrajectoryEvaluator,
   type Judge,
   type Rubric,
+  type RubricJudgeDimension,
   type RubricJudgeMember,
   type RubricJudgeAggregation,
   type RubricJudgeEvaluator,

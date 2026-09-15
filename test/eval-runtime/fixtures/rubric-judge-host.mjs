@@ -39,7 +39,7 @@ const judge = {
     request.signal.throwIfAborted();
     return {
       invocationStatus: 'completed',
-      output: '{"reasoning":"matched rubric","score":5,"reason":"Paris is stated"}',
+      output: '{"scores":[{"metricId":"rubric-score","reasoning":"matched rubric","score":5,"reason":"Paris is stated"},{"metricId":"completeness-score","score":5,"reason":"all requirements covered"}]}',
       usage: {
         inputTokens: 10,
         outputTokens: 5,
@@ -97,7 +97,11 @@ const base = {
 const evaluator = {
   evaluatorKind: 'rubric-judge',
   evaluatorId: 'rubric-judge',
-  metricId: 'rubric-score',
+  rubrics: [{ metricId: 'rubric-score',
+    criterionId: 'correctness',
+    prompt: 'What is the capital of France?',
+    rubric: 'The output must state Paris.',
+  }, { metricId: 'completeness-score', criterionId: 'completeness', prompt: 'Answer fully.', rubric: 'Cover all requirements.' }],
   judges: [{
     memberId: 'primary',
     model: 'internal-judge-model',
@@ -114,11 +118,7 @@ const evaluator = {
     missing: 'require-complete',
     weights: { primary: 0.75, secondary: 0.25 },
   },
-  rubric: {
-    criterionId: 'correctness',
-    prompt: 'What is the capital of France?',
-    rubric: 'The output must state Paris.',
-  },
+
   lengthDebias: true,
   tracePolicy: 'none',
 };
@@ -132,7 +132,7 @@ judge.invoke = async () => {
 const result = await pending;
 
 assert.equal(result.status, 'completed', JSON.stringify(result));
-assert.equal(result.definition.metrics[0].metricId, 'rubric-score');
+assert.deepEqual(result.definition.metrics.map((metric) => metric.metricId), ['completeness-score', 'rubric-score']);
 assert.equal(requests.length, 6);
 assert.equal(requests[0].model, 'internal-judge-model');
 assert.equal(requests.filter((request) => request.model === 'internal-judge-model').length, 4);
@@ -144,7 +144,7 @@ assert.ok(requests.every((request) => request.promptHash === requests[0].promptH
 const observations = result.artifacts.evaluation.records.flatMap((record) => (
   record.evaluationStatus === 'completed' ? record.observations : []
 ));
-assert.equal(observations.length, 6);
+assert.equal(observations.length, 12);
 assert.ok(observations.every((observation) => (
   observation.observationStatus === 'observed' && observation.value === 5
 )));

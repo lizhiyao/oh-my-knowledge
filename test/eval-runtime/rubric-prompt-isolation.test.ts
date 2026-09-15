@@ -53,24 +53,24 @@ describe('buildJudgePrompt — sample metadata isolation', () => {
   }
 
   it('default (lengthDebias=true) judge prompt contains no sample-metadata tokens', () => {
-    const p = buildJudgePrompt('用户问题', '评分标准', 'AI 回答', null, true);
+    const p = buildJudgePrompt([{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: 'score', criterionId: 'criterion', prompt: '用户问题', rubric: '评分标准' }], 'AI 回答', null, true);
     assertNoForbiddenTokens(p);
   });
 
   it('lengthDebias=false (debias-off prompt variant) also clean', () => {
-    const p = buildJudgePrompt('用户问题', '评分标准', 'AI 回答', null, false);
+    const p = buildJudgePrompt([{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: 'score', criterionId: 'criterion', prompt: '用户问题', rubric: '评分标准' }], 'AI 回答', null, false);
     assertNoForbiddenTokens(p);
   });
 
   it('with traceSummary present, still clean', () => {
-    const p = buildJudgePrompt('q', 'r', 'o', '一些工具调用记录', true);
+    const p = buildJudgePrompt([{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: 'score', criterionId: 'criterion', prompt: 'q', rubric: 'r' }], 'o', '一些工具调用记录', true);
     assertNoForbiddenTokens(p);
   });
 
   it('even when prompt itself contains the words "capability" or "difficulty", judge prompt does not introduce metadata tokens', () => {
     // 用户的 prompt 里出现 "capability" 是合法的(用户写的题面),judge prompt 不应额外加 metadata 字段名
     const userPrompt = 'Discuss the capability of this system on hard difficulty levels';
-    const p = buildJudgePrompt(userPrompt, 'rubric', 'output', null, true);
+    const p = buildJudgePrompt([{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: 'score', criterionId: 'criterion', prompt: userPrompt, rubric: 'rubric' }], 'output', null, true);
     // userPrompt 字面会被引入 judge prompt(因为是输入),但 metadata 字段名不应出现
     assert.ok(p.includes('capability'), 'user prompt verbatim should be in judge prompt');
     // 但不应有 "capability:" 这种字段-赋值格式(那是 metadata 字段格式标志)

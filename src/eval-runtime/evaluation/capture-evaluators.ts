@@ -6,6 +6,7 @@ import {
   type ToolTrajectoryEvaluator,
   type Evaluator,
   type RubricJudgeMember,
+  type RubricJudgeDimension,
 } from './contracts.js';
 import {
   configurationFailure,
@@ -65,6 +66,7 @@ import {
 } from '../judges/rubric-kit.js';
 import {
   type RubricJudgeCriterion,
+  RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
 } from '../judges/rubric-contracts.js';
 import {
   createAbstentionEvaluatorBinding,
@@ -74,6 +76,7 @@ import {
   captureCustomEvaluator,
   CustomEvaluatorDeclarationError,
 } from '../custom-evaluator.js';
+import { captureRubricJudgeCriteria } from '../judges/rubric-judge.js';
 import {
   compareStrings,
 } from './ordering.js';
@@ -103,7 +106,7 @@ function captureJudge(value: Readonly<Judge>) {
         providerCost,
       },
       fingerprintFacets: {
-        facade: 'omk.eval-runtime.rubric-judge/v1',
+        facade: 'omk.eval-runtime.rubric-judge/v2',
         ...(fingerprintFacets === undefined
           ? {}
           : { host: fingerprintFacets }),
@@ -359,7 +362,7 @@ export function captureEvaluators(
   const toolTrajectoryPorts = new Map<string, EvaluationEvaluator>();
   const rubricEntries: Array<Readonly<{
     kit: Readonly<RubricJudgeKit>;
-    criterion: Readonly<RubricJudgeCriterion>;
+    criteria: readonly RubricJudgeCriterion[];
   }>> = [];
   const customEntries: Array<Readonly<{
     evaluatorId: string;
@@ -449,9 +452,16 @@ export function captureEvaluators(
         );
       }
       const panelId = IdentifierSchema.parse(value.evaluatorId);
-      const metricId = IdentifierSchema.parse(value.metricId);
+      const rubrics = captureRubricJudgeCriteria(value.rubrics?.map((rubric: RubricJudgeDimension) => {
+        if (rubric === null || typeof rubric !== 'object'
+            || !hasOnlyKeys(rubric, ['metricId', 'criterionId', 'prompt', 'rubric'])) {
+          return configurationFailure('EVAL_RUNTIME_EVALUATOR_INVALID', 'Rubric 维度配置无效。');
+        }
+        return { ...rubric, schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION };
+      }));
+      const metricIds = rubrics.map((rubric) => rubric.metricId);
       if (!hasOnlyKeys(value, [
-        'evaluatorKind', 'evaluatorId', 'metricId', 'judges', 'aggregation', 'rubric',
+        'evaluatorKind', 'evaluatorId', 'rubrics', 'judges', 'aggregation',
         'lengthDebias', 'tracePolicy', 'actualPointer', 'tracePointer', 'classification',
       ])
           || !Array.isArray(value.judges) || value.judges.length === 0
@@ -518,7 +528,7 @@ export function captureEvaluators(
         }
       }
       const aggregationMembers: MeasurementAggregationPlan['members'][number][] = [];
-      let metric: MetricDefinition | undefined;
+      let panelMetrics: readonly MetricDefinition[] = [];
       for (const [memberIndex, member] of panelJudges.entries()) {
         const memberId = memberIds[memberIndex];
         const replicateCount = replicateCounts[memberIndex];
@@ -528,7 +538,7 @@ export function captureEvaluators(
           const evaluatorId = panelEvaluatorId(panelId, memberId, replicateIndex);
           const kit = createRubricJudgeKit({
             evaluatorId,
-            metricId,
+            metricIds,
             model: member.model,
             invocation,
             ...(member.effort === undefined ? {} : { effort: member.effort }),
@@ -542,13 +552,10 @@ export function captureEvaluators(
             replicateIndex,
           });
           definitions.push(kit.evaluatorDefinition);
-          metric ??= kit.metricDefinition;
+          panelMetrics = kit.metricDefinitions;
           rubricEntries.push({
             kit,
-            criterion: {
-              schemaVersion: 'omk.rubric-judge-context/v1',
-              ...value.rubric,
-            },
+            criteria: rubrics,
           });
           replicates.push({
             evaluatorId,
@@ -562,14 +569,14 @@ export function captureEvaluators(
           replicates,
         });
       }
-      if (metric === undefined) {
+      if (panelMetrics.length === 0) {
         return configurationFailure(
           'EVAL_RUNTIME_EVALUATOR_INVALID',
           'Rubric 评委 panel 未产生 Metric。',
         );
       }
-      metrics.push(metric);
-      measurementAggregations.set(metricId, {
+      metrics.push(...panelMetrics);
+      for (const metricId of metricIds) measurementAggregations.set(metricId, {
         method: value.aggregation.method,
         missing: 'require-complete',
         replicateGroupId: panelId,

@@ -15,6 +15,7 @@ import type {
 import { captureLlmJudgeInvocationPort } from './invocation.js';
 import {
   createRubricJudgeCriterion,
+  captureRubricJudgeCriteria,
   createRubricJudgeEvaluatorDefinition,
   createRubricJudgeEvaluatorRegistration,
   createRubricJudgeInstrument,
@@ -29,7 +30,7 @@ import {
 
 export interface CreateRubricJudgeKitInput {
   readonly evaluatorId: string;
-  readonly metricId: string;
+  readonly metricIds: readonly string[];
   readonly evaluatorVersionConstraint?: string;
   readonly satisfiesEvaluatorVersionConstraint?: (constraint: string) => boolean;
   readonly model: string;
@@ -50,7 +51,7 @@ export interface RubricJudgeKit {
   readonly instrument: RubricJudgeInstrument;
   readonly runtime: RubricJudgeRuntimeConfig;
   readonly evaluatorDefinition: EvaluatorDefinition;
-  readonly metricDefinition: MetricDefinition;
+  readonly metricDefinitions: readonly MetricDefinition[];
   /** Ready-to-use registration for the common single-evaluator case. */
   readonly evaluatorRegistration: RuntimePortRegistration<
     EvaluationEvaluator,
@@ -58,13 +59,14 @@ export interface RubricJudgeKit {
   >;
   createCriterion(
     input: Readonly<{
+      metricId: string;
       criterionId: string;
       prompt: string;
       rubric: string;
     }>,
   ): RubricJudgeCriterion;
   createEvaluationContext(
-    criterion: Readonly<RubricJudgeCriterion>,
+    criteria: readonly RubricJudgeCriterion[],
     base?: Readonly<{ [key: string]: JsonValue }>,
   ): JsonValue;
 }
@@ -81,18 +83,10 @@ function pointerToken(value: string): string {
   return value.replaceAll('~', '~0').replaceAll('/', '~1');
 }
 
-function capturedCriterion(criterion: Readonly<RubricJudgeCriterion>): RubricJudgeCriterion {
-  return createRubricJudgeCriterion({
-    criterionId: criterion.criterionId,
-    prompt: criterion.prompt,
-    rubric: criterion.rubric,
-  });
-}
-
 function evaluationContext(
   entries: readonly Readonly<{
     evaluatorId: string;
-    criterion: Readonly<RubricJudgeCriterion>;
+    criteria: readonly RubricJudgeCriterion[];
   }>[],
   base: Readonly<{ [key: string]: JsonValue }>,
 ): JsonValue {
@@ -108,7 +102,7 @@ function evaluationContext(
     if (criteria.has(entry.evaluatorId)) {
       throw new TypeError(`Rubric judge evaluatorId is duplicated: "${entry.evaluatorId}".`);
     }
-    criteria.set(entry.evaluatorId, capturedCriterion(entry.criterion));
+    criteria.set(entry.evaluatorId, [...captureRubricJudgeCriteria(entry.criteria)]);
   }
   return deepFreezeCanonicalJson({
     ...capturedBase,
@@ -149,14 +143,14 @@ export function createRubricJudgeKit(
   });
   const evaluatorDefinition = createRubricJudgeEvaluatorDefinition({
     evaluatorId,
-    metricId: input.metricId,
+    metricIds: input.metricIds,
     ...(input.evaluatorVersionConstraint === undefined
       ? {}
       : { versionConstraint: input.evaluatorVersionConstraint }),
     instrument,
     runtime,
     ...(input.actualPointer === undefined ? {} : { actualPointer: input.actualPointer }),
-    criterionPointer: `/rubricJudge/${pointerToken(evaluatorId)}`,
+    criteriaPointer: `/rubricJudge/${pointerToken(evaluatorId)}`,
     ...(input.tracePointer === undefined ? {} : { tracePointer: input.tracePointer }),
     ...(input.applicableSampleIds === undefined
       ? {}
@@ -170,7 +164,7 @@ export function createRubricJudgeKit(
     ...(input.replicateIndex === undefined ? {} : { replicateIndex: input.replicateIndex }),
     ...(input.classification === undefined ? {} : { classification: input.classification }),
   });
-  const metricDefinition = createRubricJudgeMetricDefinition(input.metricId);
+  const metricDefinitions = Object.freeze(evaluatorDefinition.metricIds.map(createRubricJudgeMetricDefinition));
   const evaluatorBinding: Readonly<RubricJudgeEvaluatorBinding> = Object.freeze({
     evaluatorId,
     instrument,
@@ -186,14 +180,14 @@ export function createRubricJudgeKit(
     instrument,
     runtime,
     evaluatorDefinition,
-    metricDefinition,
+    metricDefinitions,
     evaluatorRegistration,
     createCriterion: createRubricJudgeCriterion,
     createEvaluationContext: (
-      criterion: Readonly<RubricJudgeCriterion>,
+      criteria: readonly RubricJudgeCriterion[],
       base?: Readonly<{ [key: string]: JsonValue }>,
     ) => (
-      evaluationContext([{ evaluatorId, criterion }], base ?? {})
+      evaluationContext([{ evaluatorId, criteria }], base ?? {})
     ),
   });
   kitBindings.set(kit, {
@@ -210,7 +204,7 @@ export function createRubricJudgeKit(
 export function createRubricJudgeEvaluationContext(
   entries: readonly Readonly<{
     kit: Readonly<RubricJudgeKit>;
-    criterion: Readonly<RubricJudgeCriterion>;
+    criteria: readonly RubricJudgeCriterion[];
   }>[],
   base: Readonly<{ [key: string]: JsonValue }> = {},
 ): JsonValue {
@@ -222,7 +216,7 @@ export function createRubricJudgeEvaluationContext(
     if (binding === undefined) {
       throw new TypeError('Rubric judge evaluation context only accepts kits from this package.');
     }
-    return { evaluatorId: binding.evaluatorId, criterion: entry.criterion };
+    return { evaluatorId: binding.evaluatorId, criteria: entry.criteria };
   });
   return evaluationContext(capturedEntries, base);
 }

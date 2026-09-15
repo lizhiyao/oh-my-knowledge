@@ -429,39 +429,53 @@ export function buildProductionMeasurementDesign(
         };
         rubricDimensions.set(dimensionName, design);
         design.sampleWeights.set(sample.sample_id, rubric.weight);
-        const contextKey = `rubricJudge_${design.metricId.replaceAll('-', '_')}`;
-        contextFor(sample.sample_id)[contextKey] = {
+        const context = contextFor(sample.sample_id);
+        const rubrics = (context.rubricJudgeJoint ??= []) as JsonValue[];
+        rubrics.push({
           schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+          metricId: design.metricId,
           criterionId: design.dimensionId,
           prompt: judgeQuestion(sample),
           rubric: rubric.criterion,
-        };
+        });
       }
     }
   }
   const orderedRubricDimensions = [...rubricDimensions.values()].sort((left, right) => (
     left.dimensionId < right.dimensionId ? -1 : left.dimensionId > right.dimensionId ? 1 : 0
   ));
-  for (const design of orderedRubricDimensions) {
-    metrics.push(metric(design.metricId, 'numeric'));
-    const contextKey = `rubricJudge_${design.metricId.replaceAll('-', '_')}`;
+  for (const design of orderedRubricDimensions) metrics.push(metric(design.metricId, 'numeric'));
+  // Joint calls share only dimensions actually present on that sample. Per-dimension
+  // sampleWeights below still own analysis scope; absent dimensions are never fabricated.
+  const rubricGroups = new Map<string, { metricIds: string[]; sampleIds: string[] }>();
+  for (const sample of sortedSamples) {
+    const rubrics = contextFor(sample.sample_id).rubricJudgeJoint;
+    if (!Array.isArray(rubrics) || rubrics.length === 0) continue;
+    rubrics.sort((a, b) => {
+      const left = (a as { metricId: string }).metricId;
+      const right = (b as { metricId: string }).metricId;
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+    const metricIds = rubrics.map((rubric) => (rubric as { metricId: string }).metricId);
+    const groupId = digestId('rubric-group', { metricIds });
+    const group = rubricGroups.get(groupId) ?? { metricIds, sampleIds: [] };
+    group.sampleIds.push(sample.sample_id);
+    rubricGroups.set(groupId, group);
+  }
+  for (const [groupId, group] of [...rubricGroups].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
     templates.push({
-      evaluatorId: `rubric-${design.dimensionId}`,
+      evaluatorId: groupId,
       evaluatorKind: 'llm-rubric',
       runtimeBindingKind: 'judge',
       implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
-      applicableSampleIds: [...design.sampleWeights.keys()].sort(),
+      applicableSampleIds: group.sampleIds.sort(),
       instrumentId: rubricInstrumentId,
       runtimePromptVariant: rubricInstrument.promptId,
-      replicateGroupId: `rubric-${design.dimensionId}`,
-      metricIds: [design.metricId],
+      replicateGroupId: 'rubric-joint',
+      metricIds: group.metricIds,
       inputs: [
         { bindingId: RUBRIC_JUDGE_BINDINGS.actual, sourceKind: 'output', pointer: '' },
-        {
-          bindingId: RUBRIC_JUDGE_BINDINGS.criterion,
-          sourceKind: 'evaluation-context',
-          pointer: `/${contextKey}`,
-        },
+        { bindingId: RUBRIC_JUDGE_BINDINGS.criteria, sourceKind: 'evaluation-context', pointer: '/rubricJudgeJoint' },
         { bindingId: RUBRIC_JUDGE_BINDINGS.trace, sourceKind: 'trace', pointer: '' },
       ],
       config: { classification: 'public', value: rubricInstrument as unknown as JsonValue },
@@ -642,7 +656,7 @@ export function buildProductionMeasurementDesign(
               analysisResultId: `judge-ensemble-${judge.metricId}`,
               metricId: judge.metricId,
               instrumentId: rubricInstrumentId,
-              replicateGroupId: `rubric-${judge.dimensionId}`,
+              replicateGroupId: 'rubric-joint',
               applicableSampleIds: [...judge.sampleWeights.keys()].sort(),
             })),
           }),

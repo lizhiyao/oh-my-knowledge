@@ -155,12 +155,12 @@ function evaluationInput(
     evaluators: [{
       evaluatorKind: 'rubric-judge' as const,
       evaluatorId: 'runtime-check-judge',
-      metricId: 'runtime-check-judge-score',
-      rubric: {
+      rubrics: [{ metricId: 'runtime-check-judge-score',
         criterionId: `runtime-check-${phase}`,
         prompt: `OMK Runtime Judge behavioral probe: ${phase}.`,
         rubric: 'Return a numeric score from 1 through 5 using the required JSON shape.',
-      },
+       }],
+
       judges: [{ memberId: 'primary', model, judge }],
       aggregation: { method: 'mean' as const, missing: 'require-complete' as const },
     }],

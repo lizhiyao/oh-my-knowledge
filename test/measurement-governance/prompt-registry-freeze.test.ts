@@ -18,8 +18,8 @@ import { PROMPT_REGISTRY } from './prompt-registry.js';
 //
 // 确需 bump 某条:改对应 prompt 的版本串 / 模板,再来更新此处冻结值(评分类 = BREAKING-COMPARABILITY)。
 const FROZEN: Record<string, string> = {
-  'rubric-judge-debias-on': 'bb393197cd41',  // v5-cot-toolargs-fmt-len
-  'rubric-judge-debias-off': '74be4a6a2439', // v5-cot-toolargs-fmt
+  'rubric-judge-debias-on': 'bb8da28af3ba',  // v6-multi-cot-toolargs-fmt-len
+  'rubric-judge-debias-off': 'b2a9ced9ad04', // v6-multi-cot-toolargs-fmt
   'semantic-similarity': 'e0d0931c6ee6',
   'rag-faithfulness': 'f1d37fd8e3d6',
   'rag-answer-relevancy': 'f776a5d12b5c',

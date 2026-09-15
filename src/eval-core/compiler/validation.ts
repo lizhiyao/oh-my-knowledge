@@ -1018,12 +1018,17 @@ export function validateDefinitionSemantics(
       }
     }
   }
-  const measurementCoordinates = definition.evaluators.map((evaluator) => canonicalizeJson({
+  // Disjoint sample scopes may share an instrument/member/replicate coordinate.
+  // Only coordinates that can produce two readings on the same sample conflict.
+  const measurementCoordinates = definition.evaluators.flatMap((evaluator) => (
+    evaluator.applicableSampleIds ?? definition.dataset.samples.map((sample) => sample.sampleId)
+  ).map((sampleId) => canonicalizeJson({
+    sampleId,
     instrumentId: evaluator.measurement.instrumentId,
     ensembleMemberId: evaluator.measurement.ensembleMemberId,
     replicateGroupId: evaluator.measurement.replicateGroupId,
     replicateIndex: evaluator.measurement.replicateIndex,
-  }));
+  })));
   assertUnique(measurementCoordinates, 'evaluator-measurement-coordinate');
   for (const comparison of definition.comparisons) {
     assertReference(

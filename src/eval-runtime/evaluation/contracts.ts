@@ -373,13 +373,16 @@ export type RubricJudgeAggregation =
       weights: Readonly<Record<string, number>>;
     }>;
 
+export interface RubricJudgeDimension extends Rubric {
+  readonly metricId: string;
+}
+
 export interface RubricJudgeEvaluator {
   readonly evaluatorKind: 'rubric-judge';
   readonly evaluatorId: string;
-  readonly metricId: string;
+  readonly rubrics: readonly RubricJudgeDimension[];
   readonly judges: readonly RubricJudgeMember[];
   readonly aggregation: RubricJudgeAggregation;
-  readonly rubric: Rubric;
   readonly lengthDebias?: boolean;
   readonly tracePolicy?: RubricJudgeTracePolicy;
   readonly actualPointer?: string;

@@ -300,6 +300,7 @@ export const PUBLIC_API = {
       'RubricJudgeEvaluatorDefinitionBuilderInput',
       'RubricJudgeInstrument',
       'RubricJudgeKit',
+      'RubricJudgeDimension',
       'RubricJudgeMember',
       'RubricJudgeRuntimeConfig',
       'RubricJudgeTracePolicy',

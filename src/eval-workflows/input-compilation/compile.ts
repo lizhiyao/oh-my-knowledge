@@ -677,9 +677,11 @@ function makeEvaluator(
 
 function compileEvaluators(input: ResolvedCliEvaluationInput): EvaluatorDefinition[] {
   assertUnique(input.evaluatorTemplates.map((template) => template.evaluatorId), 'evaluatorTemplates[].evaluatorId');
-  assertUnique(input.evaluatorTemplates.map((template) => (
-    `${template.instrumentId}\u0000${template.replicateGroupId}`
-  )), 'evaluatorTemplates[].measurementIdentity');
+  assertUnique(input.evaluatorTemplates.flatMap((template) => (
+    template.applicableSampleIds ?? input.dataset.samples.map((sample) => sample.sampleId)
+  ).map((sampleId) => (
+    `${template.instrumentId}\u0000${template.replicateGroupId}\u0000${sampleId}`
+  ))), 'evaluatorTemplates[].measurementIdentity');
   assertUnique(input.judges.members.map((member) => member.ensembleMemberId), 'judges.members[].ensembleMemberId');
   if (!Number.isInteger(input.judges.replicateCount) || input.judges.replicateCount < 1) fail({
     code: 'CLI_INPUT_INVALID',

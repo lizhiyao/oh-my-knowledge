@@ -68,7 +68,7 @@ describe('production Runtime registry', () => {
     expect(factories.evaluatorsByImplementationId.has('omk.assertions.output/v1')).toBe(false);
     expect(factories.evaluatorsByImplementationId.has('omk.assertions.execution/v1')).toBe(false);
     expect(factories.evaluatorsByImplementationId.has('omk.llm-assertions/v2')).toBe(true);
-    expect(factories.evaluatorsByImplementationId.has('omk.rubric-judge/v1')).toBe(true);
+    expect(factories.evaluatorsByImplementationId.has('omk.rubric-judge/v2')).toBe(true);
     expect(factories.analysisNodesByImplementationId.size).toBe(0);
     expect(factories.decisionPoliciesByImplementationId.size).toBe(0);
     expect(resolveJudgeInvocation).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe('production Runtime registry', () => {
       ]),
     });
     expect(factories.evaluatorsByImplementationId.has('omk.llm-assertions/v2')).toBe(false);
-    expect(factories.evaluatorsByImplementationId.has('omk.rubric-judge/v1')).toBe(false);
+    expect(factories.evaluatorsByImplementationId.has('omk.rubric-judge/v2')).toBe(false);
   });
 
   it('captures immutable registry membership before any lazy factory is used', () => {

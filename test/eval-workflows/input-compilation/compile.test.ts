@@ -199,7 +199,7 @@ describe('compileCliEvaluationInput', () => {
     ]);
     const judgeBindings = result.runtimeBinding.bindings.filter((binding) => (
       binding.runtimeKind === 'evaluator'
-      && binding.implementationId === 'omk.rubric-judge/v1'
+      && binding.implementationId === 'omk.rubric-judge/v2'
     ));
     expect(judgeBindings).toHaveLength(4);
   });
@@ -562,7 +562,7 @@ describe('compileCliEvaluationInput', () => {
     });
     const judgeBinding = result.runtimeBinding.bindings.find((binding) => (
       binding.runtimeKind === 'evaluator'
-      && binding.implementationId === 'omk.rubric-judge/v1'
+      && binding.implementationId === 'omk.rubric-judge/v2'
       && binding.measurement.ensembleMemberId === 'judge-a'
     ));
     expect(judgeBinding).toMatchObject({

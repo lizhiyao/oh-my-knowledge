@@ -89,15 +89,14 @@ interface RubricJudgeReading {
 
 interface RecordState {
   readonly actual: string;
-  readonly criterion: RubricJudgeCriterion;
+  readonly criteria: readonly RubricJudgeCriterion[];
   readonly instrument: RubricJudgeInstrument;
   readonly runtime: RubricJudgeRuntimeConfig;
   readonly trace?: SourceNeutralTrace;
-  readonly metricId: string;
   readonly evidenceClassification: EvaluatorBindingValue['classification'];
 }
 
-const ALGORITHM_VERSION = 'omk.rubric-judge-reading/v1' as const;
+const ALGORITHM_VERSION = 'omk.rubric-judge-reading/v2' as const;
 const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
 
 function mostRestrictedEvaluatorClassification(
@@ -236,8 +235,9 @@ export function parseRubricJudgeConfig(value: unknown): RubricJudgeConfig {
 
 function parseCriterion(value: unknown): RubricJudgeCriterion {
   if (!isRecord(value)
-      || !exactKeys(value, ['schemaVersion', 'criterionId', 'prompt', 'rubric'])
+      || !exactKeys(value, ['schemaVersion', 'metricId', 'criterionId', 'prompt', 'rubric'])
       || value.schemaVersion !== RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION
+      || !IdentifierSchema.safeParse(value.metricId).success
       || typeof value.criterionId !== 'string'
       || !IdentifierSchema.safeParse(value.criterionId).success
       || typeof value.prompt !== 'string'
@@ -250,10 +250,23 @@ function parseCriterion(value: unknown): RubricJudgeCriterion {
   }
   return Object.freeze({
     schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+    metricId: value.metricId as string,
     criterionId: value.criterionId,
     prompt: value.prompt,
     rubric: value.rubric,
   });
+}
+
+export function captureRubricJudgeCriteria(value: unknown): readonly RubricJudgeCriterion[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return failure('omk-rubric-judge-criteria-invalid', 'Rubric judge requires a nonempty criteria array.');
+  }
+  const criteria = value.map(parseCriterion).sort((a, b) => a.metricId < b.metricId ? -1 : a.metricId > b.metricId ? 1 : 0);
+  if (new Set(criteria.map((item) => item.metricId)).size !== criteria.length
+      || new Set(criteria.map((item) => item.criterionId)).size !== criteria.length) {
+    return failure('omk-rubric-judge-criteria-invalid', 'Rubric judge metric and criterion IDs must be unique.');
+  }
+  return Object.freeze(criteria);
 }
 
 function binding(
@@ -282,16 +295,8 @@ function invalidObservation(metricId: string, reasonCode: string): EvaluatorObse
 
 function parseReading(
   metricId: string,
-  output: string,
+  value: unknown,
 ): RubricJudgeReading | EvaluatorObservation {
-  const json = output.trim();
-  if (!json.includes('{')) return invalidObservation(metricId, 'judge-response-non-json');
-  let value: unknown;
-  try {
-    value = JSON.parse(json);
-  } catch {
-    return invalidObservation(metricId, 'judge-response-malformed-json');
-  }
   if (!isRecord(value) || typeof value.score !== 'number' || !Number.isInteger(value.score)) {
     return invalidObservation(metricId, 'judge-score-malformed');
   }
@@ -310,16 +315,42 @@ function parseReading(
   };
 }
 
-function observed(state: RecordState, reading: RubricJudgeReading): EvaluatorObservation {
+function parseReadings(state: RecordState, output: string): EvaluatorObservation[] {
+  const invalidAll = (reason: string) => state.criteria.map((item) => invalidObservation(item.metricId, reason));
+  const json = output.trim();
+  if (!json.includes('{')) return invalidAll('judge-response-non-json');
+  let value: unknown;
+  try { value = JSON.parse(json); } catch { return invalidAll('judge-response-malformed-json'); }
+  if (!isRecord(value) || !exactKeys(value, ['scores']) || !Array.isArray(value.scores)) {
+    return invalidAll('judge-response-metric-set-invalid');
+  }
+  const byId = new Map<string, unknown>();
+  for (const item of value.scores) {
+    if (!isRecord(item) || typeof item.metricId !== 'string' || byId.has(item.metricId)) {
+      return invalidAll('judge-response-metric-set-invalid');
+    }
+    byId.set(item.metricId, item);
+  }
+  if (byId.size !== state.criteria.length || state.criteria.some((item) => !byId.has(item.metricId))) {
+    return invalidAll('judge-response-metric-set-invalid');
+  }
+  return state.criteria.map((criterion) => {
+    const reading = parseReading(criterion.metricId, byId.get(criterion.metricId));
+    return 'observationStatus' in reading ? reading : observed(state, criterion, reading);
+  });
+}
+
+function observed(state: RecordState, criterion: RubricJudgeCriterion, reading: RubricJudgeReading): EvaluatorObservation {
   return {
-    metricId: state.metricId,
+    metricId: criterion.metricId,
     observationStatus: 'observed',
     valueType: 'numeric',
     value: reading.score,
     evidence: {
       value: {
         schemaVersion: RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION,
-        criterionId: state.criterion.criterionId,
+        metricId: criterion.metricId,
+        criterionId: criterion.criterionId,
         promptId: state.instrument.promptId,
         promptHash: state.instrument.promptHash,
         lengthDebias: state.instrument.lengthDebias,
@@ -360,7 +391,7 @@ export function createRubricJudgeEvaluatorIdentity(input: Readonly<{
   const declaredCapabilities = capabilities(input.instrument, invocation);
   return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
     implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
-    version: '1.0.0',
+    version: '2.0.0',
     fingerprint: digestCanonicalJson({
       implementationId: RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID,
       runtimeProvenanceCompositionVersion: 'omk.runtime-provenance-composition/v2',
@@ -426,10 +457,10 @@ export function createRubricJudgeEvaluatorImplementation<ResourceLease = undefin
       const actual = binding(record.bindings, RUBRIC_JUDGE_BINDINGS.actual, 'output');
       const criterionBinding = binding(
         record.bindings,
-        RUBRIC_JUDGE_BINDINGS.criterion,
+        RUBRIC_JUDGE_BINDINGS.criteria,
         'evaluation-context',
       );
-      const criterion = parseCriterion(criterionBinding.value);
+      const criteria = captureRubricJudgeCriteria(criterionBinding.value);
       let traceBinding: EvaluatorBindingValue | undefined;
       let trace: SourceNeutralTrace | undefined;
       if (config.evaluator.value.tracePolicy === 'source-neutral') {
@@ -443,15 +474,15 @@ export function createRubricJudgeEvaluatorImplementation<ResourceLease = undefin
         }
         trace = parsed.data;
       }
-      const metric = record.metrics[0];
       if (typeof actual.value !== 'string'
           || record.measurement.instrumentId !== rubricJudgeInstrumentId(config.evaluator.value)
-          || record.metrics.length !== 1
+          || record.metrics.length !== criteria.length
+          || record.metrics.some((metric) => !criteria.some((item) => item.metricId === metric.metricId)
           || metric.valueType !== 'numeric'
           || metric.direction !== 'higher-is-better'
           || metric.scale?.min !== 1
           || metric.scale.max !== 5
-          || metric.scale.target !== undefined) {
+          || metric.scale.target !== undefined)) {
         return failure(
           'omk-rubric-judge-contract-mismatch',
           'Rubric judge record differs from its 1–5 numeric Metric contract.',
@@ -459,11 +490,10 @@ export function createRubricJudgeEvaluatorImplementation<ResourceLease = undefin
       }
       return Object.freeze({
         actual: actual.value,
-        criterion,
+        criteria,
         instrument: config.evaluator.value,
         runtime: config.runtime,
         ...(trace === undefined ? {} : { trace }),
-        metricId: metric.metricId,
         evidenceClassification: mostRestrictedEvaluatorClassification(
           actual.classification,
           criterionBinding.classification,
@@ -480,8 +510,7 @@ export function createRubricJudgeEvaluatorImplementation<ResourceLease = undefin
           recordState.trace.toolCalls as unknown as readonly ToolCallInfo[],
         );
       const prompt = buildJudgePrompt(
-        recordState.criterion.prompt,
-        recordState.criterion.rubric,
+        recordState.criteria,
         recordState.actual,
         traceSummary,
         recordState.instrument.lengthDebias,
@@ -517,9 +546,8 @@ export function createRubricJudgeEvaluatorImplementation<ResourceLease = undefin
         );
       }
       const measuredUsage = parseLlmJudgeUsage(result.usage);
-      const reading = parseReading(recordState.metricId, result.output);
       return {
-        observations: ['observationStatus' in reading ? reading : observed(recordState, reading)],
+        observations: parseReadings(recordState, result.output),
         ...(measuredUsage === undefined ? {} : { usage: measuredUsage }),
       };
     },
@@ -549,6 +577,7 @@ export const createRubricJudgeInstrument = rubricJudgeInstrument;
 
 export function createRubricJudgeCriterion(
   input: Readonly<{
+    metricId: string;
     criterionId: string;
     prompt: string;
     rubric: string;
@@ -556,6 +585,7 @@ export function createRubricJudgeCriterion(
 ): RubricJudgeCriterion {
   return deepFreezeCanonicalJson(parseCriterion({
     schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
+    metricId: input.metricId,
     criterionId: input.criterionId,
     prompt: input.prompt,
     rubric: input.rubric,
@@ -615,7 +645,7 @@ export function createRubricJudgeEvaluator<ResourceLease = undefined>(
   }
   return createSameProcessEvaluatorAdapter({
     identity: createRubricJudgeEvaluatorIdentity({ instrument, runtime, invocation }),
-    sessionIsolationKey: input.sessionIsolationKey ?? 'omk.rubric-judge/v1',
+    sessionIsolationKey: input.sessionIsolationKey ?? 'omk.rubric-judge/v2',
     resourceLeases: input.resourceLeases ?? { forRun: () => undefined as ResourceLease },
     implementation: createRubricJudgeEvaluatorImplementation(invocation, { instrument, runtime }),
   });
@@ -663,12 +693,12 @@ export function createRubricJudgeEvaluatorRegistration<ResourceLease = undefined
 
 export interface RubricJudgeEvaluatorDefinitionBuilderInput {
   readonly evaluatorId: string;
-  readonly metricId: string;
+  readonly metricIds: readonly string[];
   readonly versionConstraint?: string;
   readonly instrument: RubricJudgeInstrument;
   readonly runtime: RubricJudgeRuntimeConfig;
   readonly actualPointer?: string;
-  readonly criterionPointer: string;
+  readonly criteriaPointer: string;
   readonly tracePointer?: string;
   readonly applicableSampleIds?: readonly string[];
   readonly ensembleMemberId?: string;
@@ -703,10 +733,10 @@ export function createRubricJudgeEvaluatorDefinition(
     measurement: {
       instrumentId: rubricJudgeInstrumentId(instrument),
       ensembleMemberId: input.ensembleMemberId ?? `judge-${memberDigest}`,
-      replicateGroupId: input.replicateGroupId ?? `rubric-${input.metricId}`,
+      replicateGroupId: input.replicateGroupId ?? `rubric-${digestCanonicalJson([...input.metricIds].sort()).slice(7, 23)}`,
       replicateIndex: input.replicateIndex ?? 0,
     },
-    metricIds: [input.metricId],
+    metricIds: [...input.metricIds].sort(),
     inputs: [
       {
         bindingId: RUBRIC_JUDGE_BINDINGS.actual,
@@ -714,9 +744,9 @@ export function createRubricJudgeEvaluatorDefinition(
         pointer: input.actualPointer ?? '',
       },
       {
-        bindingId: RUBRIC_JUDGE_BINDINGS.criterion,
+        bindingId: RUBRIC_JUDGE_BINDINGS.criteria,
         sourceKind: 'evaluation-context',
-        pointer: input.criterionPointer,
+        pointer: input.criteriaPointer,
       },
       ...(instrument.tracePolicy === 'source-neutral' ? [{
         bindingId: RUBRIC_JUDGE_BINDINGS.trace,

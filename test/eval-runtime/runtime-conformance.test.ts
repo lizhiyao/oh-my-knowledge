@@ -664,7 +664,7 @@ describe('eval-runtime unified conformance entry', () => {
         }
         return {
           invocationStatus: 'completed',
-          output: '{"score":4,"reason":"controlled probe"}',
+          output: '{"scores":[{"metricId":"runtime-check-judge-score","score":4,"reason":"controlled probe"}]}',
           usage: {
             totalTokens: 3,
             providerCost: { amount: 0.01, currency: 'USD', reportedByProvider: true },
@@ -725,7 +725,7 @@ describe('eval-runtime unified conformance entry', () => {
   it('does not invoke a Judge without explicit external-call consent', async () => {
     const invoke = vi.fn(async () => ({
       invocationStatus: 'completed' as const,
-      output: '{"score":4,"reason":"unused"}',
+      output: '{"scores":[{"metricId":"runtime-check-judge-score","score":4,"reason":"unused"}]}',
     }));
     const unsafeInput = {
       runtimeKind: 'judge',
@@ -771,7 +771,7 @@ describe('eval-runtime unified conformance entry', () => {
               else request.signal.addEventListener('abort', () => resolve(), { once: true });
             });
           }
-          return { invocationStatus: 'completed', output: '{"score":4,"reason":"probe"}' };
+          return { invocationStatus: 'completed', output: '{"scores":[{"metricId":"runtime-check-judge-score","score":4,"reason":"probe"}]}' };
         },
       },
       model: 'test-judge-model',
@@ -797,7 +797,7 @@ describe('eval-runtime unified conformance entry', () => {
   it('rejects an invalid later Judge probe before making a paid call', async () => {
     const invoke = vi.fn(async () => ({
       invocationStatus: 'completed' as const,
-      output: '{"score":4,"reason":"unused"}',
+      output: '{"scores":[{"metricId":"runtime-check-judge-score","score":4,"reason":"unused"}]}',
     }));
     const invalidInput = {
       runtimeKind: 'judge',

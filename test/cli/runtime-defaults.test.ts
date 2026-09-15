@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it, vi } from 'vitest';
@@ -146,7 +147,7 @@ describe('Codex-first CLI runtime defaults', () => {
 
 
 describe('API runtime model wiring', () => {
-  it.each(['openai-api', 'anthropic-api'])('%s carries the selected model into target and judge HTTP requests', async (executor) => {
+  it.each(['openai-api', 'anthropic-api'])('%s preserves the model and jointly scores sparse Rubric dimensions through the CLI', async (executor) => {
     const root = mkdtempSync(join(tmpdir(), 'omk-api-model-wiring-'));
     tempDirs.push(root);
     const samples = join(root, 'eval-samples.json');
@@ -154,15 +155,26 @@ describe('API runtime model wiring', () => {
     writeFileSync(skill, '# Review\nGive an accurate answer.\n');
     writeFileSync(samples, JSON.stringify({
       schemaVersion: 'omk.eval-sample-set/v3',
-      samples: [
-{ sampleId: 'model-check', input: { inputKind: 'text', text: 'Say Paris.' }, evaluationContext: { rubric: { accuracy: { criterion: 'Paris is stated.', weight: 1 } } } }
-],
+      samples: ['a', 'b', 'c'].map((sampleId) => ({
+        sampleId, input: { inputKind: 'text', text: 'Say Paris.' },
+        evaluationContext: { rubric: sampleId === 'c'
+          ? { accuracy: { criterion: 'Paris is stated.', weight: 1 } }
+          : { accuracy: { criterion: 'Paris is stated.', weight: 0.25 }, clarity: { criterion: 'Answer is clear.', weight: 0.75 } } },
+      })),
     }));
     const requests: Array<{ model: string }> = [];
     vi.stubGlobal('fetch', async (_url: unknown, init: RequestInit) => {
       const request = JSON.parse(String(init.body)) as { model: string };
       requests.push(request);
-      const text = '{"reasoning":"Paris is stated","score":5,"reason":"correct"}';
+      const strings: string[] = [];
+      JSON.stringify(request, (_key, value: unknown) => {
+        if (typeof value === 'string') strings.push(value);
+        return value;
+      });
+      const metricIds = [...new Set([...strings.join('\n').matchAll(/"metricId":"(judge-[^"]+)"/g)].map((match) => match[1]))];
+      const text = metricIds.length === 0 ? 'Paris.' : JSON.stringify({
+        scores: metricIds.map((metricId) => ({ metricId, score: 5, reason: 'Correct and clear.' })),
+      });
       return new Response(JSON.stringify(executor === 'openai-api' && String(_url).endsWith('/chat/completions') ? {
         id: 'chat_fixture', model: request.model, choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -185,10 +197,18 @@ describe('API runtime model wiring', () => {
       OPENAI_API_KEY: 'fixture-key', ANTHROPIC_API_KEY: 'fixture-key',
       OMK_JUDGE_MODELS: '', OMK_MODEL: '',
     } }).catch((error: { stderr: string }) => { throw new Error(error.stderr); });
-    const output = JSON.parse(result.stdout) as { status: { runStatus: string; evidenceStatus: string } };
+    const output = JSON.parse(result.stdout) as { runId: string; status: { runStatus: string; evidenceStatus: string } };
     assert.equal(output.status.runStatus, 'completed', result.stderr);
     assert.equal(output.status.evidenceStatus, 'complete', result.stderr);
-    assert.ok(requests.length >= 4, 'two target executions plus their rubric judge requests');
+    assert.equal(requests.length, 12, 'six target executions plus six joint rubric calls');
     assert.deepEqual([...new Set(requests.map((request) => request.model))], ['selected-model']);
+    const runDirectory = `run-${createHash('sha256').update(output.runId).digest('hex')}`;
+    const evaluation = JSON.parse(readFileSync(join(root, '.omk', 'eval', runDirectory, 'evaluation-bundle.json'), 'utf8'));
+    assert.equal(evaluation.records.length, 6);
+    const observations = evaluation.records.flatMap((record: { observations: Array<{ observationStatus: string; value: number }> }) => record.observations);
+    assert.equal(observations.length, 10);
+    assert.ok(observations.every((observation: { observationStatus: string; value: number }) => observation.observationStatus === 'observed' && observation.value === 5));
+    const analysis = JSON.parse(readFileSync(join(root, '.omk', 'eval', runDirectory, 'analysis-bundle.json'), 'utf8'));
+    assert.ok(analysis.records.every((record: { analysisStatus: string }) => record.analysisStatus === 'completed'));
   });
 });

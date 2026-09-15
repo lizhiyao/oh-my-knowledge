@@ -161,12 +161,13 @@ function definition(input: {
   const tracePolicy = input.tracePolicy ?? 'none';
   const value = validDefinition();
   value.dataset.samples[0].evaluationContext = {
-    rubricJudge: {
+    rubricJudge: [{
+      metricId: METRIC_ID,
       schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
       criterionId: 'correctness',
       prompt: 'Answer the question.',
       rubric: 'The answer must be correct and concise.',
-    },
+    }],
   };
   const instrument = rubricJudgeInstrument({ lengthDebias, tracePolicy });
   value.evaluators = [{
@@ -183,7 +184,7 @@ function definition(input: {
     inputs: [
       { bindingId: RUBRIC_JUDGE_BINDINGS.actual, sourceKind: 'output', pointer: '/answer' },
       {
-        bindingId: RUBRIC_JUDGE_BINDINGS.criterion,
+        bindingId: RUBRIC_JUDGE_BINDINGS.criteria,
         sourceKind: 'evaluation-context',
         pointer: '/rubricJudge',
       },
@@ -437,8 +438,8 @@ const COMPLETE_USAGE: UsageRecord = {
 
 describe('provider-neutral rubric raw-reading Evaluator', () => {
   it.each([
-    [true, 'rubric-judge-debias-on', getJudgePromptHash(true), 'v5-cot-toolargs-fmt-len'],
-    [false, 'rubric-judge-debias-off', getJudgePromptHash(false), 'v5-cot-toolargs-fmt'],
+    [true, 'rubric-judge-debias-on', getJudgePromptHash(true), 'v6-multi-cot-toolargs-fmt-len'],
+    [false, 'rubric-judge-debias-off', getJudgePromptHash(false), 'v6-multi-cot-toolargs-fmt'],
   ] as const)('uses the frozen lengthDebias=%s instrument', async (
     lengthDebias,
     promptId,
@@ -452,7 +453,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
         requests.push(request);
         return {
           invocationStatus: 'completed',
-          output: '{"reasoning":"checked rubric","score":4,"reason":"valid reading"}',
+          output: '{"scores":[{"metricId":"rubric-score","reasoning":"checked rubric","score":4,"reason":"valid reading"}]}',
           usage: COMPLETE_USAGE,
         };
       },
@@ -470,8 +471,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
     expect(requests[0].prompt).toContain('The answer must be correct and concise.');
     expect(requests[0].system).toBe(JUDGE_SYSTEM_PROMPT);
     expect(requests[0].prompt).toBe(buildJudgePrompt(
-      'Answer the question.',
-      'The answer must be correct and concise.',
+      [{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: METRIC_ID, criterionId: 'correctness', prompt: 'Answer the question.', rubric: 'The answer must be correct and concise.' }],
       'Actual answer',
       null,
       lengthDebias,
@@ -509,7 +509,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
         requests.push(request);
         return {
           invocationStatus: 'completed',
-          output: '{"score":5,"reason":"trace supports answer"}',
+          output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"trace supports answer"}]}',
         };
       },
     });
@@ -528,8 +528,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
       }],
     );
     expect(requests[0].prompt).toBe(buildJudgePrompt(
-      'Answer the question.',
-      'The answer must be correct and concise.',
+      [{ schemaVersion: 'omk.rubric-judge-context/v2', metricId: METRIC_ID, criterionId: 'correctness', prompt: 'Answer the question.', rubric: 'The answer must be correct and concise.' }],
       'Actual answer',
       expectedTrace,
       true,
@@ -550,12 +549,12 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
     ['plain text', 'judge-response-non-json'],
     ['prefix {bad json} suffix', 'judge-response-malformed-json'],
     ['prefix {"score":4,"reason":"embedded"} suffix', 'judge-response-malformed-json'],
-    ['{"score":"4","reason":"wrong type"}', 'judge-score-malformed'],
-    ['{"score":4.5,"reason":"fractional"}', 'judge-score-malformed'],
-    ['{"score":0,"reason":"out of range"}', 'judge-score-out-of-range'],
-    ['{"score":6,"reason":"out of range"}', 'judge-score-out-of-range'],
-    ['{"score":4}', 'judge-reason-missing'],
-    ['{"score":4,"reason":"  "}', 'judge-reason-missing'],
+    ['{"scores":[{"metricId":"rubric-score","score":"4","reason":"wrong type"}]}', 'judge-score-malformed'],
+    ['{"scores":[{"metricId":"rubric-score","score":4.5,"reason":"fractional"}]}', 'judge-score-malformed'],
+    ['{"scores":[{"metricId":"rubric-score","score":0,"reason":"out of range"}]}', 'judge-score-out-of-range'],
+    ['{"scores":[{"metricId":"rubric-score","score":6,"reason":"out of range"}]}', 'judge-score-out-of-range'],
+    ['{"scores":[{"metricId":"rubric-score","score":4}]}', 'judge-reason-missing'],
+    ['{"scores":[{"metricId":"rubric-score","score":4,"reason":"  "}]}', 'judge-reason-missing'],
   ])('returns invalid, not a zero reading, for %s', async (output, reasonCode) => {
     const result = await runCore({
       handler: async () => ({ invocationStatus: 'completed', output }),
@@ -599,7 +598,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
     const result = await runCore({
       handler: async () => ({
         invocationStatus: 'completed',
-        output: '{"score":5,"reason":"valid"}',
+        output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"valid"}]}',
       }),
       reporting: 'unsupported',
     });
@@ -617,7 +616,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
         calls += 1;
         return calls <= 2
           ? { invocationStatus: 'failed', reasonCode: 'provider-unavailable' }
-          : { invocationStatus: 'completed', output: '{"score":5,"reason":"recovered"}' };
+          : { invocationStatus: 'completed', output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"recovered"}]}' };
       },
       policy: policy({ retryProviderFailure: true }),
     });
@@ -645,7 +644,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
         calls += 1;
         return {
           invocationStatus: 'completed',
-          output: '{"score":5,"reason":"cacheable"}',
+          output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"cacheable"}]}',
         };
       },
       policy: cachedPolicy,
@@ -718,7 +717,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
         calls += 1;
         return {
           invocationStatus: 'completed',
-          output: '{"score":5,"reason":"valid"}',
+          output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"valid"}]}',
         };
       },
       policy: policy({ evaluationInvocations: 1 }),
@@ -731,7 +730,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
   it('fingerprints prompt variant, trace policy, model, and provider Runtime identity', () => {
     const handler: InvocationHandler = async () => ({
       invocationStatus: 'completed',
-      output: '{"score":5,"reason":"valid"}',
+      output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"valid"}]}',
     });
     const basePort = invocationPort(handler);
     const base = evaluatorIdentity({ lengthDebias: true, tracePolicy: 'none' }, basePort);
@@ -766,7 +765,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
       { lengthDebias: true, tracePolicy: 'none' },
       invocationPort(async () => ({
         invocationStatus: 'completed',
-        output: '{"score":5,"reason":"valid"}',
+        output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"valid"}]}',
       }), 'optional', opaqueProvider),
     );
 
@@ -789,7 +788,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
         expect(this.identity).toEqual(initialIdentity);
         return {
           invocationStatus: 'completed' as const,
-          output: '{"score":5,"reason":"captured"}',
+          output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"captured"}]}',
         };
       },
     };
@@ -817,7 +816,7 @@ describe('provider-neutral rubric raw-reading Evaluator', () => {
     const definitionValue = definition();
     const provider = invocationPort(async () => ({
       invocationStatus: 'completed',
-      output: '{"score":5,"reason":"valid"}',
+      output: '{"scores":[{"metricId":"rubric-score","score":5,"reason":"valid"}]}',
     }));
     const factory = createRubricJudgeEvaluatorBindingFactory(async () => ({
       port: provider,
