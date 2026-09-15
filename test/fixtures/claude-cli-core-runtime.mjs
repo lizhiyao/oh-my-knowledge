@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+
+let captureSequence = 0;
 
 if (process.argv.includes('--version')) {
   process.stdout.write('2.1.226 (Claude Code)\n');
@@ -77,7 +79,15 @@ if (process.env.OMK_TEST_CAPTURE || process.env.OMK_TEST_CAPTURE_LOG) {
     secretVisible: process.env.OMK_TEST_SECRET ? true : false,
   };
   if (process.env.OMK_TEST_CAPTURE) {
-    writeFileSync(process.env.OMK_TEST_CAPTURE, JSON.stringify(capture));
+    // 与 codex fixture 相同约定：OMK_TEST_CAPTURE 指向已存在的目录时按调用写唯一文件，
+    // 否则保持单文件语义；一律先写临时文件再原子 rename，避免读者看到交错内容。
+    const captureTarget = process.env.OMK_TEST_CAPTURE;
+    const unique = `${process.pid}-${captureSequence++}-${Math.random().toString(36).slice(2)}`;
+    const isDirectory = existsSync(captureTarget) && statSync(captureTarget).isDirectory();
+    const finalPath = isDirectory ? `${captureTarget}/capture-${unique}.json` : captureTarget;
+    const staging = `${finalPath}.${unique}.tmp`;
+    writeFileSync(staging, JSON.stringify(capture));
+    renameSync(staging, finalPath);
   }
   if (process.env.OMK_TEST_CAPTURE_LOG) {
     appendFileSync(process.env.OMK_TEST_CAPTURE_LOG, `${JSON.stringify(capture)}\n`);

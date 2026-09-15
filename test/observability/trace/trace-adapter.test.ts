@@ -3769,13 +3769,28 @@ describe('source-neutral Trace IR', () => {
 // ---------- Segment by skill ----------
 
 describe('segmentTraceBySkill', () => {
-  it('no skill signal → single "general" segment', () => {
-    const s = loadClaudeTraceFixture([
-      asstRec('a1', [{ type: 'text', text: 'hello' }]),
-    ], 's1');
-    const segs = segmentTraceBySkill(s);
+  it('no skill signal → single "general" segment (plain text, non-SKILL.md read, CC builtin)', () => {
+    const plain = loadClaudeTraceFixture([asstRec('a1', [{ type: 'text', text: 'hello' }])], 's1');
+    const segs = segmentTraceBySkill(plain);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'general');
+    // Read 非 SKILL.md 文件不触发 signal 3
+    const readRef = loadClaudeTraceFixture([
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/references/cmds.md' } }]),
+      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const readRefSegs = segmentTraceBySkill(readRef);
+    assert.equal(readRefSegs.length, 1);
+    assert.equal(readRefSegs[0].skillName, 'general');
+    // CC 内置命令(/clear, /model, /exit)不算 skill,不切段
+    const ccBuiltin = loadClaudeTraceFixture([
+      userRec('u1', '<command-name>/clear</command-name>'),
+      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+    ], 's1');
+    const ccSegs = segmentTraceBySkill(ccBuiltin);
+    assert.equal(ccSegs.length, 1);
+    assert.equal(ccSegs[0].skillName, 'general', '/clear 是 cc 内置命令, 不切段');
   });
 
   it('slash-command signal cuts new segment', () => {
@@ -4406,27 +4421,6 @@ describe('segmentTraceBySkill', () => {
     const segs = segmentTraceBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'review');
-  });
-
-  it('Read non-SKILL.md file does not trigger signal 3', () => {
-    const s = loadClaudeTraceFixture([
-      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/references/cmds.md' } }]),
-      userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-    ], 's1');
-    const segs = segmentTraceBySkill(s);
-    assert.equal(segs.length, 1);
-    assert.equal(segs[0].skillName, 'general');
-  });
-
-  it('CC builtin command (/clear, /model, /exit) is NOT treated as skill', () => {
-    const s = loadClaudeTraceFixture([
-      userRec('u1', '<command-name>/clear</command-name>'),
-      asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
-      userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
-    ], 's1');
-    const segs = segmentTraceBySkill(s);
-    assert.equal(segs.length, 1);
-    assert.equal(segs[0].skillName, 'general', '/clear 是 cc 内置命令, 不切段');
   });
 
   it('does not leak Claude builtin command names into source-neutral skill identity', () => {

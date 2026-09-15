@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { chmod, copyFile, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import process from 'node:process';
@@ -87,13 +87,19 @@ interface VendorFixture {
 
 async function vendor(
   overrides: Readonly<Record<string, string>> = {},
+  options: Readonly<{ captureDirectory?: boolean }> = {},
 ): Promise<VendorFixture> {
   const root = await mkdtemp(join(tmpdir(), 'omk-codex-reference-test-'));
   createdRoots.push(root);
   const executablePath = join(root, 'codex');
   await copyFile(FIXTURE, executablePath);
   await chmod(executablePath, 0o755);
-  const capturePath = join(root, 'capture.json');
+  // 并发调用共享同一 capture 目标时改用目录模式：fixture 按调用写唯一文件，
+  // 断言侧聚合（issue #921）；单调用场景保持 capture.json 单文件语义。
+  const capturePath = options.captureDirectory === true
+    ? join(root, 'captures')
+    : join(root, 'capture.json');
+  if (options.captureDirectory === true) await mkdir(capturePath);
   const invocationLog = join(root, 'invocations.log');
   return {
     root,
@@ -121,6 +127,9 @@ async function assemble(
     executablePath: fixture.executablePath,
     model: 'gpt-fixture',
     environment: fixture.env,
+    // 并行负载下 version probe 子进程启动会抖动；测试侧放宽 probe 超时，
+    // 不改 src 的 5s 生产默认值。
+    identityProbeTimeoutMs: 20_000,
     ...overrides,
   });
 }
@@ -155,6 +164,16 @@ async function capturedCall(fixture: VendorFixture): Promise<CapturedVendorCall>
   return JSON.parse(await readFile(fixture.capturePath, 'utf8')) as CapturedVendorCall;
 }
 
+/** 目录模式：聚合全部按调用捕获的文件，按文件名排序保证确定性。 */
+async function capturedCalls(fixture: VendorFixture): Promise<readonly CapturedVendorCall[]> {
+  const names = (await readdir(fixture.capturePath)).filter((name) => name.endsWith('.json')).sort();
+  return Promise.all(names.map((name) => (
+    readFile(join(fixture.capturePath, name), 'utf8').then((content) => (
+      JSON.parse(content) as CapturedVendorCall
+    ))
+  )));
+}
+
 function digestOf(path: string): Promise<string> {
   return readFile(path).then((content) => (
     `sha256:${createHash('sha256').update(content).digest('hex')}`
@@ -181,6 +200,8 @@ describe('Codex CLI reference Executor', () => {
       sandbox: 'workspace-write',
       contentIdentityFiles: [{ facetId: 'codex-helper', path: helperPath }],
       fingerprintFacets: { deployment: 'platform-host' },
+      // probeTimeoutMs 是测量身份 facet 的一部分，本用例 pin 生产默认值。
+      identityProbeTimeoutMs: DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS,
     });
 
     expect(executor.executorId).toBe('vendor.codex-cli/reference');
@@ -339,6 +360,33 @@ describe('Codex CLI reference Executor', () => {
 
     expect(first).toMatchObject({ output: 'clean' });
     expect(second).toMatchObject({ output: 'clean' });
+  });
+
+  it('captures every concurrent invocation without interleaved writes (issue #921)', async () => {
+    // 显式并行：同一 executor 的 8 次并发调用共享同一捕获目录，
+    // 每次调用必须产出一份独立、可解析、内容完整的捕获文件。
+    const fixture = await vendor({ OMK_TEST_MODE: 'conformance' }, { captureDirectory: true });
+    const executor = await assemble(fixture);
+
+    const results = await Promise.all(Array.from({ length: 8 }, (_, index) => (
+      executor.execute(invocation({
+        input: { prompt: `prompt-${index}` },
+        sampleId: `sample-${index}`,
+        trialIndex: index,
+      }))
+    )));
+    expect(results.every((result) => result.errorCode === undefined)).toBe(true);
+
+    const captures = await capturedCalls(fixture);
+    expect(captures).toHaveLength(8);
+    const prompts = new Set(captures.map((capture) => capture.prompt));
+    expect(prompts.size).toBe(8);
+    for (const capture of captures) {
+      // 每次调用的 prompt 完整包含自己的输入，不混入其他调用的字节。
+      expect(capture.prompt).toContain('"task"');
+      expect(capture.args).toContain('gpt-fixture');
+      expect(existsSync(capture.cwd)).toBe(false);
+    }
   });
 
   it('projects only the carriers this seam can hand to the vendor', async () => {
@@ -724,10 +772,11 @@ describe('Codex reference default model and evaluator', () => {
 
   async function evaluator(fixture: VendorFixture, maxPromptBytes?: number) {
     return createCodexCliReferenceEvaluator({
-      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.'  }], judgeId: 'codex-judge',
+      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score', criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' }], judgeId: 'codex-judge',
       executablePath: fixture.executablePath, environment: fixture.env,
       model: 'gpt-fixture', maxPromptBytes,
-
+      // 与 assemble 相同：测试侧放宽并行负载下的 probe 超时。
+      identityProbeTimeoutMs: 20_000,
     });
   }
 
@@ -785,16 +834,18 @@ describe('Codex reference default model and evaluator', () => {
   });
 
   it('completes execution and rubric scoring through the public evaluate API', async () => {
-    const target = await vendor();
-    const scoring = await vendor({ OMK_TEST_MODE: 'judge' });
+    // evaluate() 默认 maxConcurrency=4：2 samples × 2 variants 的 target 调用会并发，
+    // 捕获走目录模式按调用唯一（issue #921）。
+    const target = await vendor({}, { captureDirectory: true });
+    const scoring = await vendor({ OMK_TEST_MODE: 'judge' }, { captureDirectory: true });
     const modelConfigPath = join(target.root, 'config.toml');
     await writeFile(modelConfigPath, 'model = "gpt-local"');
     const targetEnvironment = Object.fromEntries(Object.entries(target.env).filter(([key]) => key !== 'CODEX_SESSION_SECRET'));
     const executor = await assemble(target, { model: undefined, modelConfigPath, environment: targetEnvironment });
     const judge = await createCodexCliReferenceEvaluator({
-      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score',  criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.'  }], judgeId: 'codex-judge',
+      evaluatorId: 'quality', rubrics: [{ metricId: 'quality-score', criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' }], judgeId: 'codex-judge',
       executablePath: scoring.executablePath, environment: scoring.env, modelConfigPath,
-
+      identityProbeTimeoutMs: 20_000,
     });
     await writeFile(modelConfigPath, 'model = "changed"');
     const result = await evaluate({
@@ -819,14 +870,24 @@ describe('Codex reference default model and evaluator', () => {
     ));
     expect(observations).toHaveLength(4);
     expect(observations?.every((observation) => observation.observationStatus === 'observed' && observation.value === 4)).toBe(true);
-    const execution = await capturedCall(target);
-    const evaluation = await capturedCall(scoring);
-    expect(execution.args).toContain('gpt-local');
-    expect(evaluation.args).toContain('gpt-local');
-    expect(execution.cwd).not.toBe(evaluation.cwd);
-    expect(execution.prompt).not.toContain('4 means correct.');
-    expect(evaluation.prompt).toContain('4 means correct.');
-    expect(existsSync(execution.cwd)).toBe(false);
-    expect(existsSync(evaluation.cwd)).toBe(false);
+    const executions = await capturedCalls(target);
+    const evaluations = await capturedCalls(scoring);
+    expect(executions).toHaveLength(4);
+    expect(evaluations).toHaveLength(4);
+    for (const execution of executions) {
+      expect(execution.args).toContain('gpt-local');
+      expect(execution.prompt).not.toContain('4 means correct.');
+      expect(existsSync(execution.cwd)).toBe(false);
+    }
+    for (const evaluation of evaluations) {
+      expect(evaluation.args).toContain('gpt-local');
+      expect(evaluation.prompt).toContain('4 means correct.');
+      expect(existsSync(evaluation.cwd)).toBe(false);
+    }
+    const executionCwds = new Set(executions.map((capture) => capture.cwd));
+    const evaluationCwds = new Set(evaluations.map((capture) => capture.cwd));
+    expect(executionCwds.size).toBe(4);
+    expect(evaluationCwds.size).toBe(4);
+    expect([...executionCwds].every((cwd) => !evaluationCwds.has(cwd))).toBe(true);
   });
 });

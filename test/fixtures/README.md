@@ -12,29 +12,14 @@
 最基础的 A/B fixture：`skills/v1.md`（单行最小审查 prompt）vs `skills/v2.md`（多维审查 prompt），都是扁平 `.md`。
 
 消费方与 load-bearing 值：
-- `test/runner.test.ts`：dry-run 断言 `totalTasks === 10`（**5 样本 × 2 变体**）+ 一条**逐条列出 5 个 sample_id 的 interleaved 调度顺序** deepEqual。增删样本会同时打破这两处。
-- `test/cli.test.ts` 的 `eval --dry-run`：依赖 **N=5 落在「N 5–19 中度欠检验力（非 exploration-only）」这一档**的功率警告文案（`只能识别很大的效果`）。**样本数降到 5 以下会跨进「N<5 仅探索」档、改变警告文案**——所以 5 条是刻意保留的，不是冗余。
-- `test/runner.test.ts` 的 `git:` 系列：`loadSkills` 用 `git:v1` / `git:HEAD:v1` 从 **HEAD** 读 `v1.md`，所以这些文件必须已 commit 才过。
-- `test/eval-workflows/inputs/skill-loader.test.ts` / `test/knowledge-artifacts/doctor/*` / `test/cli/{effort-flag,reports-output-dir,judge-models-validation,doctor,doctor-eval-embed,strict-unknown-options}.test.ts`：用它当可解析的 skill-dir（`v1` / `v2` / `baseline`）。
+- `test/cli/{doctor,doctor-eval-embed,judge-models-validation,oclif-eval,removed-options}.test.ts` 与 `test/knowledge-artifacts/{doctor,sources}/*`：用它当可解析的 skill-dir（`v1` / `v2`）与样本文件（`eval-samples.json`，5 条样本）。
 - `test/eval-workflows/inputs/yaml-parser.test.ts`：只校验 JSON 结构（数组、非空、有 `sample_id`），不 pin 计数/断言值。
-
-## agent-eval/
-
-agent / 工具调用 + 控制实验 fixture。`skills/v1.md`、`skills/v2.md` + `control-experiments/` 下三份样本。
-
-消费方与 load-bearing 值（`test/runner.test.ts` dry-run）：
-- `env-isolation.eval-samples.json`：2 样本 → 配 3 变体断言 `totalTasks === 6`。
-- `artifact-injection.eval-samples.json`：2 样本 → 配 2 变体断言 `totalTasks === 4`、`experimentType === 'artifact-injection'`。
-- `assertion-discrimination.eval-samples.json`：2 样本 → 配 3 变体断言 `totalTasks === 6`、每个 task `hasAssertions`。
-- 样本里的 `tool_output_contains: Read:OMK_RUNTIME_CODE_REVIEW_7F3D` 等是控制实验断言形态，改动需同步看上述断言。
 
 ## custom-executor/
 
-离线执行器 fixture：`fixture-executor.sh` 从 stdin 消费请求并返回固定 JSON 输出。`skills/v1.md` + 2 样本。脚本只负责为 runner / CLI 集成测试提供确定性结果；自定义 executor 的输入透传与协议解析由 `test/executor.test.ts` 单独覆盖。
+离线执行器 fixture：`core-fixture-executor.sh` 从 stdin 消费请求并返回固定 JSON 输出，为 CLI 集成测试提供确定性结果；自定义 executor 的输入透传与协议解析由 `test/executor.test.ts` 单独覆盖。
 
-load-bearing 值：
-- `test/runner.test.ts` 的「no-judge 确定性断言分」：断言 `results[0]`（即 `s001`）`assertions.total === 1`、`passed === 0`、`score === 1`。**s001 必须恰好 1 条断言，且该断言对固定输出 `fixture output` 不通过**。改断言时要保持这个关系。
-- `test/cli.test.ts`：用 echo 跑 **非 dry-run** eval / batch（`--no-judge`），靠整体低分得出 verdict → 退出码 1；不 pin 具体分数。
+消费方：`test/cli/{oclif-eval,removed-options,first-run-smoke,doctor-eval-embed}.test.ts` 与 `test/cli/lib/evaluation-application.test.ts`（样本与 skill 由各测试自建临时文件，不依赖本目录的样本/skill）。
 
 ## mcp-observation/
 
