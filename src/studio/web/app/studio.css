@@ -15,7 +15,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .studio-content>.measure-table{display:flex;flex-direction:column;overflow:hidden}.studio-content>.measure-table>.ant-spin{flex:1;min-height:0}.studio-content>.measure-table .ant-spin-container{height:100%;display:flex;flex-direction:column}.studio-content>.measure-table .ant-table{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}.studio-content>.measure-table .ant-pagination{flex-shrink:0;margin:8px 12px}
 
 .studio-brand:hover,.studio-brand:focus,.studio-brand:active{color:#657085;text-decoration:none}
-.studio-content a:not([class]):hover,.ant-modal-root a:not([class]):hover,.ant-drawer a:not([class]):hover{color:#4235b5;text-underline-offset:3px}.measure-heading h1{font-size:18px;line-height:26px;margin-bottom:2px}.measure-heading p{font-size:12px;line-height:20px}
+.studio-content :where(a:hover),.ant-modal-root :where(a:hover),.ant-drawer :where(a:hover){color:#4235b5;text-underline-offset:3px}.measure-heading h1{font-size:18px;line-height:26px;margin-bottom:2px}.measure-heading p{font-size:12px;line-height:20px}
 
 .knowledge-table .ant-table-tbody>tr>td{height:56px}.knowledge-table th{white-space:nowrap}.knowledge-summary{margin-bottom:12px}.knowledge-table td a{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 
