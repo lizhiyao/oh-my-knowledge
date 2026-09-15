@@ -3,6 +3,10 @@ import type { JsonValue } from '../../src/eval-core/contracts/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   evaluate,
+  createCustomEvaluator,
+  debugEvaluator,
+  type CustomEvaluatorScores,
+  type CustomEvaluatorMetric,
   prepareEvaluation,
   type CustomEvaluator,
   type CustomEvaluatorResult,
@@ -248,7 +252,7 @@ describe('multi-Metric Custom Evaluator', () => {
     ];
     for (const evaluator of invalid) {
       await expect(prepareEvaluation({ ...input(base), evaluators: [evaluator as CustomEvaluator] }))
-        .rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
+        .rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID', issues: expect.arrayContaining([expect.objectContaining({ path: expect.arrayContaining(['evaluators', 0]) })]) });
     }
     expect(callback).not.toHaveBeenCalled();
   });
@@ -314,5 +318,197 @@ describe('multi-Metric Custom Evaluator', () => {
     for (const metricId of metricIds) {
       expect(timedOut.analysisResults[`${metricId}-mean`].coverage).toMatchObject({ included: 0 });
     }
+  });
+});
+
+
+function concise() {
+  return createCustomEvaluator({
+    evaluatorId: 'concise', instrumentId: 'concise-v1',
+    metrics: {
+      HIT: { valueType: 'numeric', direction: 'higher-is-better', schema: z.number().min(0) },
+      PRESENT: { valueType: 'boolean', direction: 'higher-is-better', schema: z.boolean() },
+    },
+    bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
+    parameters: { offset: 1 },
+    implementation: {
+      implementationId: 'test.concise/v1', version: '1.0.0',
+      schemas: {
+        bindings: z.object({ actual: z.number() }).strict(),
+        fingerprintFacets: { bindings: 'actual-number/v1', values: 'number-boolean/v1' },
+      },
+      fingerprintFacets: { revision: 'one' },
+      evaluate: ({ bindings, parameters, signal }) => {
+        signal.throwIfAborted();
+        // Inference includes both the parser output and parameters; no generic annotations.
+        const actual: number = bindings.actual;
+        const offset: number | undefined = parameters?.offset;
+        return {
+          resultKind: 'completed',
+          results: {
+            HIT: { resultKind: 'score', value: actual + (offset ?? 0) },
+            PRESENT: { resultKind: 'score', value: actual >= 0 },
+          },
+          usage: { totalTokens: 3 },
+        };
+      },
+    },
+  });
+}
+
+describe('Custom Evaluator onboarding', () => {
+  it('infers keyed score types and preserves the canonical v2 identity and results', async () => {
+    type Scores = CustomEvaluatorScores<{
+      number: { valueType: 'numeric'; direction: 'higher-is-better'; schema: ReturnType<typeof z.number> };
+      flag: { valueType: 'boolean'; direction: 'higher-is-better'; schema: ReturnType<typeof z.boolean> };
+    }>;
+    // @ts-expect-error Every declared metric must be returned.
+    const missing: Scores = { resultKind: 'completed', results: { number: { resultKind: 'score', value: 1 } } };
+    // @ts-expect-error Value type comes from the metric's parser.
+    const wrong: Scores = { resultKind: 'completed', results: { number: { resultKind: 'score', value: '1' }, flag: { resultKind: 'score', value: true } } };
+    // @ts-expect-error The parser must match the metric's valueType.
+    const mismatched: CustomEvaluatorMetric = { valueType: 'numeric', direction: 'higher-is-better', schema: z.boolean() };
+    void missing; void wrong; void mismatched;
+    const evaluator = concise();
+    const base = input(evaluator);
+    const canonical: CustomEvaluator = {
+      ...evaluator,
+      metrics: [
+        { metricId: 'HIT', valueType: 'numeric', direction: 'higher-is-better', missingPolicyId: 'exclude/v1' },
+        { metricId: 'PRESENT', valueType: 'boolean', direction: 'higher-is-better', missingPolicyId: 'exclude/v1' },
+      ],
+      implementation: {
+        ...evaluator.implementation,
+        schemas: { ...evaluator.implementation.schemas, values: { HIT: z.number().min(0), PRESENT: z.boolean() } },
+        evaluate: () => ({ resultKind: 'completed', results: [
+          { metricId: 'HIT', resultKind: 'score', value: 1 },
+          { metricId: 'PRESENT', resultKind: 'score', value: true },
+        ], usage: { totalTokens: 3 } }),
+      },
+    };
+    const [left, right] = await Promise.all([
+      prepareEvaluation(base), prepareEvaluation({ ...base, evaluators: [canonical] }),
+    ]);
+    expect(left.planDigest).toBe(right.planDigest);
+    const debug = await debugEvaluator({ evaluator, sample: base.dataset.samples[0], variant: base.variants[0] });
+    expect(debug.bindingInputs).toEqual([{ actual: 0 }]);
+    expect(Object.isFrozen(debug.bindingInputs[0])).toBe(true);
+    expect(debug.run.artifacts?.evaluation?.records[0]).toMatchObject({
+      evaluationStatus: 'completed', usage: { totalTokens: 3 }, observations: [
+        { metricId: 'HIT', observationStatus: 'observed', value: 1 },
+        { metricId: 'PRESENT', observationStatus: 'observed', value: true },
+      ],
+    });
+    expect(debug.run.analysisResults).toEqual({});
+  });
+
+  it('reports keyed builder fields and preserves usage for malformed keyed results', async () => {
+    const base = concise();
+    const declaration = {
+      ...base,
+      metrics: { HIT: { valueType: 'numeric' as const, direction: 'higher-is-better' as const, schema: z.number() } },
+      implementation: {
+        ...base.implementation,
+        evaluate: () => ({ resultKind: 'completed' as const, results: { HIT: { resultKind: 'score' as const, value: 1 } } }),
+      },
+    };
+    expect(() => createCustomEvaluator({
+      ...declaration, metrics: { HIT: { ...declaration.metrics.HIT, scale: { min: 2, max: 1 } } },
+    })).toThrow(expect.objectContaining({ issues: [{ path: ['metrics', 'HIT', 'scale'], reasonCode: 'invalid-value' }] }));
+    const malformed = [
+      {},
+      { HIT: { resultKind: 'score', value: 1 }, UNKNOWN: { resultKind: 'score', value: 2 } },
+      [{ metricId: 'HIT', resultKind: 'score', value: 1 }],
+      { HIT: { metricId: 'HIT', resultKind: 'score', value: 1 } },
+    ];
+    for (const results of malformed) {
+      const evaluator = createCustomEvaluator({
+        ...declaration,
+        implementation: { ...declaration.implementation, evaluate: () => ({
+          resultKind: 'completed', results, usage: { totalTokens: 4 },
+        } as unknown as ReturnType<typeof declaration.implementation.evaluate>) },
+      });
+      const run = await evaluate(input(evaluator));
+      expect(run.artifacts?.evaluation?.records[0]).toMatchObject({
+        evaluationStatus: 'failed', error: { code: 'custom-evaluator-result-invalid' }, usage: { totalTokens: 4 },
+      });
+    }
+  });
+
+  it('locates invalid pointers, scales, duplicates and parsers without rejected values', async () => {
+    const base = custom(() => scores());
+    const cases: Array<[unknown, (string | number)[]]> = [
+      [{ ...base, bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: 'private-token' }] }, ['bindings', 0, 'pointer']],
+      [{ ...base, metrics: [{ ...base.metrics[0], scale: { min: 2, max: 1 } }] }, ['metrics', 0, 'scale']],
+      [{ ...base, bindings: [base.bindings[0], base.bindings[0]] }, ['bindings', 1, 'bindingId']],
+      [{ ...base, implementation: { ...base.implementation, schemas: { ...base.implementation.schemas, bindings: null } } }, ['implementation', 'schemas', 'bindings']],
+    ];
+    for (const [evaluator, path] of cases) {
+      let failure: unknown;
+      try { await prepareEvaluation(input(evaluator as CustomEvaluator)); } catch (error) { failure = error; }
+      expect(failure).toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID', issues: [{ path: ['evaluators', 0, ...path] }] });
+      expect(JSON.stringify(failure)).not.toContain('private-token');
+    }
+  });
+
+  it('shows raw binding input on schema rejection and preserves partial metric failure', async () => {
+    const original = concise();
+    const base = input(original);
+    const evaluator: CustomEvaluator = {
+      ...original,
+      implementation: { ...original.implementation, schemas: {
+        ...original.implementation.schemas,
+        bindings: { parse() { throw new Error('private-validation-detail'); } },
+      } },
+    };
+    const rejected = await debugEvaluator({ evaluator, sample: base.dataset.samples[0], variant: base.variants[0] });
+    expect(rejected.bindingInputs).toEqual([{ actual: 0 }]);
+    expect(JSON.stringify(rejected.run)).not.toContain('private-validation-detail');
+    expect(rejected.run.artifacts?.evaluation?.records[0]).toMatchObject({
+      observations: [
+        { metricId: 'HIT', observationStatus: 'invalid', reasonCode: 'custom-evaluator-bindings-invalid' },
+        { metricId: 'PRESENT', observationStatus: 'invalid', reasonCode: 'custom-evaluator-bindings-invalid' },
+      ],
+    });
+    const hostile = { ...original, implementation: { ...original.implementation, schemas: {
+      ...original.implementation.schemas,
+      get bindings(): never { throw new Error('private-getter-detail'); },
+    } } };
+    await expect(debugEvaluator({ evaluator: hostile, sample: base.dataset.samples[0], variant: base.variants[0] }))
+      .rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID', message: 'Custom Evaluator 调试声明不可读取。' });
+    const partial = await debugEvaluator({ evaluator: original, sample: { sampleId: 'negative', input: -2 }, variant: base.variants[0] });
+    expect(partial.run.artifacts?.evaluation?.records[0]).toMatchObject({ observations: [
+      { metricId: 'HIT', observationStatus: 'invalid', reasonCode: 'custom-evaluator-value-invalid' },
+      { metricId: 'PRESENT', observationStatus: 'observed', value: false },
+    ] });
+    const unavailable = await debugEvaluator({
+      evaluator: { ...original, bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '/absent' }] },
+      sample: base.dataset.samples[0], variant: base.variants[0],
+    });
+    expect(unavailable.bindingInputs).toEqual([]);
+    expect(unavailable.run.artifacts?.evaluation?.records[0]?.evaluationStatus).toBe('not-evaluated');
+  });
+
+  it('retains retry accounting and honors cancellation through the single-sample entry', async () => {
+    const base = input(custom(({ attemptNumber }) => attemptNumber === 1
+      ? { resultKind: 'failed', errorCode: 'temporary', usage: { totalTokens: 2 } } : scores()));
+    const debug = await debugEvaluator({
+      evaluator: base.evaluators[0] as CustomEvaluator,
+      sample: base.dataset.samples[0], variant: base.variants[0],
+      policy: { evaluation: { retry: { maxAttempts: 2, retryableErrorCodes: ['temporary'], backoff: { backoffKind: 'none' } } } },
+    });
+    expect(debug.bindingInputs).toHaveLength(2);
+    expect(debug.run.artifacts?.evaluation?.records[0]).toMatchObject({ evaluationStatus: 'completed', usage: { totalTokens: 9 } });
+    let aborted = false;
+    const slow = custom(async ({ signal }) => {
+      await new Promise<void>((_resolve, reject) => {
+        const abort = () => { aborted = true; reject(signal.reason); };
+        if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true });
+      });
+      return scores();
+    });
+    const cancelled = await debugEvaluator({ evaluator: slow, sample: base.dataset.samples[0], variant: base.variants[0], policy: { evaluation: { timeoutMs: 10 } } });
+    expect(aborted).toBe(true);
+    expect(cancelled.run.artifacts?.evaluation?.records[0]).toMatchObject({ evaluationStatus: 'failed', error: { code: 'timeout' } });
   });
 });

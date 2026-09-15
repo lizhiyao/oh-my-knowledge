@@ -39,6 +39,12 @@ export type EvaluationFailureOrigin = Readonly<{
 /** Shape gate for a stable, host-data-free error code that a facade may re-publish. */
 export const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 
+/** Safe declaration location; never contains rejected values or host exception text. */
+export interface EvaluationConfigurationIssue {
+  readonly path: readonly (string | number)[];
+  readonly reasonCode: 'invalid-value' | 'duplicate-id' | 'metric-set-mismatch' | 'parser-required' | 'unsupported-field';
+}
+
 export class EvaluationConfigurationError extends TypeError {
   readonly code:
     | 'EVAL_RUNTIME_INPUT_INVALID'
@@ -48,6 +54,7 @@ export class EvaluationConfigurationError extends TypeError {
     | 'EVAL_RUNTIME_COMPARABILITY_INVALID'
     | 'EVAL_RUNTIME_REUSE_INVALID'
     | 'EVAL_RUNTIME_SERIES_INVALID';
+  readonly issues: readonly EvaluationConfigurationIssue[];
   /** Set only when a boundary wraps another failure; absent on a direct rejection. */
   declare readonly cause: EvaluationFailureOrigin | undefined;
 
@@ -55,10 +62,14 @@ export class EvaluationConfigurationError extends TypeError {
     code: EvaluationConfigurationError['code'],
     message: string,
     origin?: EvaluationFailureOrigin,
+    issues: readonly EvaluationConfigurationIssue[] = [],
   ) {
     super(message, origin === undefined ? undefined : { cause: origin });
     this.name = 'EvaluationConfigurationError';
     this.code = code;
+    this.issues = Object.freeze(issues.map((issue) => Object.freeze({
+      path: Object.freeze([...issue.path]), reasonCode: issue.reasonCode,
+    })));
   }
 }
 

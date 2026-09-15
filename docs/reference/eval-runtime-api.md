@@ -32,8 +32,10 @@ The canonical API for application developers:
 | `checkContentStore` | Exercise a host ContentStore／ContentResolver pair for descriptor integrity and stability, idempotent writes, and round-trip value, classification, and media type; host exceptions are reduced to stable reason codes. |
 | `checkExecutor` | Exercise an Executor through success, failure, cancellation, cleanup, and measurement checks. |
 | `RUNTIME_CHECK_RESULT_SCHEMA_VERSION` | Version tag shared by all serializable `checkRuntime` result envelopes. |
-| `EvaluationConfigurationError` | Stable caller-configuration failure with a public code and no rejected payload; when a boundary re-reports another failure, `cause` carries only its redacted origin. |
+| `EvaluationConfigurationError` | Stable caller-configuration failure with a public code, field diagnostics in `issues`, and no rejected payload; when a boundary re-reports another failure, `cause` carries only its redacted origin. |
 | `EvaluationEventConsumptionError` | Stable, redacted observer／event-stream failure that retains the terminal `EvaluationResult` when available. |
+| `createCustomEvaluator` | Colocate metric definitions and parsers, infer callback types, and expand to a standard v2 Custom Evaluator. |
+| `debugEvaluator` | Run one real sample and return pre-validation binding snapshots plus the authoritative run result. |
 | `createExactMatchDefinition` | Build an exact-match paired Core Definition. |
 | `createPairedComparisonDefinition` | Build a one-metric paired Core Definition. |
 | `createMeasurementPolicy` | Materialize Core Policy defaults, including explicit EventWriter delivery mode. |
@@ -190,6 +192,12 @@ A `CustomEvaluator` declares a nonempty `metrics: Metric[]`, explicit input `bin
 Numeric and boolean custom Metrics require an explicit `higher-is-better` or `lower-is-better` direction. Categorical, text, and ranking Metrics cannot declare a scale or direction. The canonical `progress/v2` Decision currently accepts only `higher-is-better`, because silently applying its positive-effect rule to a lower-is-better scale would reverse the verdict.
 
 `implementation.version`, schema `fingerprintFacets`, and implementation `fingerprintFacets` are mandatory identity declarations. OMK never fingerprints `Function#toString()`. Callers must change one of these facets whenever callback code, dependencies, schemas, or provider configuration changes measurement behavior. Binding and value schemas validate without coercion, defaults, or field removal. `CustomEvaluatorContent` carries an explicit classification for evidence or invalid values; undeclared source values are never passed to the callback.
+
+`createCustomEvaluator(input)` accepts `CreateCustomEvaluatorInput`: `metrics` is keyed by metric ID and each `CustomEvaluatorMetric` colocates the Metric fields with its `schema`. Omitted `missingPolicyId` defaults to `exclude/v1`; `schemas.values` is unnecessary. The callback returns `CustomEvaluatorScores`, with completed `results` keyed by metric ID and score/missing/invalid items. Score types are inferred from their parsers; invocation-level usage and failed results are unchanged. Construction validates declarations without invoking executors, parsers, or scoring callbacks. The expanded v2 declaration uses the same identity derivation and measurement/storage contracts. Builder error paths are relative to its input, with map keys for metrics.
+
+`debugEvaluator(input, options?)` accepts `DebugEvaluatorInput` (`evaluator`, one `sample`, one `variant`, optional `seed`, `policy`, and `infrastructure`) and standard `EvaluationRunOptions`. `DebugEvaluatorResult` contains the authoritative `run: EvaluationResult` and frozen `bindingInputs` snapshots taken before each binding parser call. Snapshots can contain gold/secret data; they are collected in memory only, excluded from events/reports, and collection stops when the call settles. Unavailable sources, unstarted attempts, and evaluation cache hits produce no snapshots. Sampling is solo with one trial and empty comparisons/analyses, with no declared Decision. The default seed and datasetId are `omk-debug-evaluator`. This is a real execution honoring policy retries, timeouts, cancellation, and budgets; one debug sample does not establish overall quality.
+
+`EvaluationConfigurationIssue` has a string/number `path` and a `reasonCode` of `invalid-value`, `duplicate-id`, `metric-set-mismatch`, `parser-required`, or `unsupported-field`. `EvaluationConfigurationError.issues` provides field diagnostics for Custom Evaluator declarations; other configuration errors can have an empty array. Through `evaluate`/`prepareEvaluation`, paths start with `evaluators` and its array index. Diagnostics exclude rejected values and host exception text; runtime failures remain in Core records.
 
 **Custom Evaluator v2 migration.** <a id="custom-evaluator-v2-migration"></a>
 

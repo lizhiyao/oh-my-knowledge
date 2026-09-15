@@ -72,6 +72,7 @@ import {
 } from '../evaluators/abstention.js';
 import {
   captureCustomEvaluator,
+  CustomEvaluatorDeclarationError,
 } from '../custom-evaluator.js';
 import {
   compareStrings,
@@ -421,10 +422,14 @@ export function captureEvaluators(
         let captured;
         try {
           captured = captureCustomEvaluator(value);
-        } catch {
-          return configurationFailure(
+        } catch (error) {
+          throw new EvaluationConfigurationError(
             'EVAL_RUNTIME_EVALUATOR_INVALID',
-            'Custom Evaluator 配置无效。',
+            'Custom Evaluator 配置无效。请查看 issues 中的字段位置。',
+            undefined,
+            error instanceof CustomEvaluatorDeclarationError
+              ? error.issues.map((issue) => ({ ...issue, path: ['evaluators', values.indexOf(value), ...issue.path] }))
+              : [],
           );
         }
         definitions.push(captured.definition);

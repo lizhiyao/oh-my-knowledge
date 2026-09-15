@@ -504,24 +504,20 @@ const sample = {
 
 ```ts
 import { z } from 'zod';
-import { evaluate, type CustomEvaluator } from 'oh-my-knowledge';
+import { createCustomEvaluator, debugEvaluator, evaluate } from 'oh-my-knowledge';
 
-const outputLength = {
-  evaluatorKind: 'custom',
+const outputLength = createCustomEvaluator({
   evaluatorId: 'output-length',
   instrumentId: 'output-length-v1',
-  metrics: [{
-    metricId: 'output-length-chars',
-    valueType: 'numeric',
-    unit: 'characters',
-    direction: 'lower-is-better',
-    missingPolicyId: 'exclude/v1',
-  }, {
-    metricId: 'output-nonempty',
-    valueType: 'boolean',
-    direction: 'higher-is-better',
-    missingPolicyId: 'exclude/v1',
-  }],
+  metrics: {
+    'output-length-chars': {
+      valueType: 'numeric', unit: 'characters', direction: 'lower-is-better',
+      schema: z.number().int().nonnegative(),
+    },
+    'output-nonempty': {
+      valueType: 'boolean', direction: 'higher-is-better', schema: z.boolean(),
+    },
+  },
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   parameters: { trim: true },
   implementation: {
@@ -529,10 +525,6 @@ const outputLength = {
     version: '1.0.0',
     schemas: {
       bindings: z.object({ actual: z.string() }).strict(),
-      values: {
-        'output-length-chars': z.number().int().nonnegative(),
-        'output-nonempty': z.boolean(),
-      },
       fingerprintFacets: { bindings: 'actual-string/v1', values: 'length-and-nonempty/v1' },
     },
     fingerprintFacets: { sourceRevision: 'sha256:...' },
@@ -541,14 +533,14 @@ const outputLength = {
       const actual = parameters?.trim ? bindings.actual.trim() : bindings.actual;
       return {
         resultKind: 'completed',
-        results: [
-          { metricId: 'output-length-chars', resultKind: 'score', value: actual.length },
-          { metricId: 'output-nonempty', resultKind: 'score', value: actual.length > 0 },
-        ],
+        results: {
+          'output-length-chars': { resultKind: 'score', value: actual.length },
+          'output-nonempty': { resultKind: 'score', value: actual.length > 0 },
+        },
       };
     },
   },
-} satisfies CustomEvaluator<{ actual: string }, { trim: boolean }>;
+});
 
 const result = await evaluate({
   dataset: input.dataset,
@@ -572,11 +564,29 @@ const result = await evaluate({
 });
 ```
 
+先用同一个评分器调试一条样本；这会真实调用所选 Variant 的执行器和评分回调：
+
+```ts
+const debug = await debugEvaluator({
+  evaluator: outputLength,
+  sample: input.dataset.samples[0],
+  variant: variants[0],
+  policy: { evaluation: { timeoutMs: 5_000 } },
+});
+// 包含校验前的实际输入，可能含 gold／secret 数据，只在可信本地环境查看。
+console.dir(debug.bindingInputs, { depth: null });
+console.dir(debug.run.artifacts?.evaluation?.records, { depth: null });
+```
+
+`createCustomEvaluator()` 从 schema 推断 bindings 和各指标分数类型，检查结果是否覆盖所有指标，并默认使用 `missingPolicyId: 'exclude/v1'`。它返回标准 v2 `CustomEvaluator`；现有数组形式仍可直接使用。`debugEvaluator()` 只运行一个 Sample × Variant × Trial，保留正式执行的预算、重试、取消与用量记录。它不生成比较、汇总分析或发布决定。`bindingInputs` 每次 parser 调用记录一项，包括重试与 schema 拒绝；源值缺失或命中评分缓存时可能为空。调试数据只在返回值内存中保留，不自动写日志或发送到事件观察器；取消后的返回值也不继续收集后台输入。
+
+配置失败时，捕获 `EvaluationConfigurationError` 并查看 `issues`：例如 `path: ['evaluators', 0, 'bindings', 0, 'pointer']`、`reasonCode: 'invalid-value'`。这里不包含被拒绝的值或用户 parser 的异常文本。运行期的 schema 拒绝、漏指标、超时等仍在 `debug.run` 的逐指标 observation 或整次 record 中以稳定原因码报告。
+
 查看 `result.analysisResults['candidate-output-length']` 的状态、有效观测数和均值。这里只汇总 `prompt-v2`；要对比两个版本，应声明引用同一指标的比较分析。
 
 Bindings 是最小权限 allowlist。只有 evaluator 确实需要 gold data 时才声明 `expected` 或 `evaluation-context`；callback 无法读取未声明的 sample 字段。JSON Pointer 会在投递前进一步收窄 source。`execution-facts` 是例外：它的 pointer 必须为空，让 callback 消费完整、已经脱敏的 canonical facts projection，避免产生第二套 projection identity。Binding 与 value schema 只能校验和收窄，不能 coercion、补默认值或删除字段。
 
-Callback 返回 `{ resultKind: 'completed', results, usage? }`。每项结果带 `metricId`，状态为 `score`、`missing` 或 `invalid`；所有声明的指标必须恰好返回一次，顺序不限。`schemas.values` 必须按指标 ID 为每个指标提供一个 value parser，不能遗漏或多配。分数未通过校验时只将对应指标记为无效；证据不足时显式返回带原因的 `missing`。未知、重复或遗漏的指标 ID 会使整次调用失败。稳定失败使用 `{ resultKind: 'failed', errorCode, usage? }`，作用于整次调用。`usage` 放在外层，token 和费用只计一次。重试会重跑整个 callback；进度、并发槽、超时和调用预算按 evaluator 调用计算，覆盖率与汇总仍逐指标保留。Score 会作为 measurement data 直接持久化，不是带 classification 的 source content；text、category 与 ranking schema 必须把它约束在安全的测量词表内，绝不能回显 answer、trace、secret 或评委解释。这类支撑材料应放入显式声明 classification 的 `CustomEvaluatorContent` evidence。Invalid value 同样使用 `CustomEvaluatorContent`；普通异常会被脱敏。不要在 callback 内自行重试或实现超时：Core 会执行已封存的并发、超时、预算、取消、计量与失败策略。Callback 必须无状态、可安全并行且协作响应 `signal`；需要有状态资源时使用 advanced 生命周期 SPI。
+构造器 callback 使用按指标 ID 映射的结果，自动展开为底层 v2 数组并生成 `schemas.values`。底层 `CustomEvaluator` callback 返回 `{ resultKind: 'completed', results, usage? }`。每项结果带 `metricId`，状态为 `score`、`missing` 或 `invalid`；所有声明的指标必须恰好返回一次，顺序不限。`schemas.values` 必须按指标 ID 为每个指标提供一个 value parser，不能遗漏或多配。分数未通过校验时只将对应指标记为无效；证据不足时显式返回带原因的 `missing`。未知、重复或遗漏的指标 ID 会使整次调用失败。稳定失败使用 `{ resultKind: 'failed', errorCode, usage? }`，作用于整次调用。`usage` 放在外层，token 和费用只计一次。重试会重跑整个 callback；进度、并发槽、超时和调用预算按 evaluator 调用计算，覆盖率与汇总仍逐指标保留。Score 会作为 measurement data 直接持久化，不是带 classification 的 source content；text、category 与 ranking schema 必须把它约束在安全的测量词表内，绝不能回显 answer、trace、secret 或评委解释。这类支撑材料应放入显式声明 classification 的 `CustomEvaluatorContent` evidence。Invalid value 同样使用 `CustomEvaluatorContent`；普通异常会被脱敏。不要在 callback 内自行重试或实现超时：Core 会执行已封存的并发、超时、预算、取消、计量与失败策略。Callback 必须无状态、可安全并行且协作响应 `signal`；需要有状态资源时使用 advanced 生命周期 SPI。
 
 `scale` 与 `unit` 的分工必须分清。跨指标合成前，OMK 先按每个 component 声明的 `scale` 线性归一化到 `[0, 1]`，再按 `direction` 定向，因此可比性由 `valueType`、`scale`、`direction` 承载，量纲在这一步已经被消掉；这也是 composite 要求 numeric component 必须有界的原因。`unit` 只是给人看的量纲标注，用于展示与人工核对，不参与任何数值判定，也不会被用来自动换算或纠正越界值——换算必须由配置显式表达，不省略。因为它不承载计算语义，只允许 `numeric` Metric 声明 `unit`，与 `scale` 使用同一条收紧规则。
 
