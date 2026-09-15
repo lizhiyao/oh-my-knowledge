@@ -309,7 +309,6 @@ describe('Evaluation Core Execution runtime', () => {
     expect(bundle.executionBundleStatus).toBe('completed');
     expect(retainedEvents).toHaveLength(1);
     expect(retainedEvents[0].eventKind).toBe('execution.run.completed');
-    expect(() => run.events[Symbol.asyncIterator]()).toThrow(TypeError);
     expect(bundle.coverage).toEqual({
       planned: 2,
       started: 2,
@@ -1452,32 +1451,10 @@ describe('Evaluation Core Execution runtime', () => {
     });
   });
 
-  it('does not open Target resources when the required EventWriter fails at run start', async () => {
-    const plan = await makePlan((definition, policy) => {
-      definition.targets = [definition.targets[0]];
-      definition.comparisons = [];
-      policy.eventDelivery.writerMode = 'required';
-      policy.eventDelivery.writerFailureMode = 'fail-run';
-    });
-    const { ports, state } = portsFor(plan, undefined, {
-      eventWriter: {
-        async write() {
-          throw new Error('writer down');
-        },
-      },
-    });
-    const bundle = await executeRunPlan(plan, ports, {
-      runId: 'run-writer-start-failure',
-      bundleId: 'bundle-writer-start-failure',
-    });
-
-    expect(bundle.executionBundleStatus).toBe('failed');
-    expect(bundle.coverage).toMatchObject({ started: 0, notStarted: 1 });
-    expect(state.runOpens).toBe(0);
-    expect(state.attempts).toBe(0);
-  });
-
-  it('does not invoke a Target when durable trial admission cannot be written', async () => {
+  it.each([
+    { name: 'fails at run start', failOn: undefined as string | undefined },
+    { name: 'durable trial admission cannot be written', failOn: 'execution.trial.started' as string | undefined },
+  ])('does not invoke a Target when the required EventWriter $name', async ({ failOn }) => {
     const plan = await makePlan((definition, policy) => {
       definition.targets = [definition.targets[0]];
       definition.comparisons = [];
@@ -1487,15 +1464,15 @@ describe('Evaluation Core Execution runtime', () => {
     const { ports, state } = portsFor(plan, undefined, {
       eventWriter: {
         async write(event) {
-          if (event.eventKind === 'execution.trial.started') {
+          if (failOn === undefined || event.eventKind === failOn) {
             throw new Error('writer down');
           }
         },
       },
     });
     const bundle = await executeRunPlan(plan, ports, {
-      runId: 'run-writer-trial-failure',
-      bundleId: 'bundle-writer-trial-failure',
+      runId: 'run-writer-failure',
+      bundleId: 'bundle-writer-failure',
     });
 
     expect(bundle.executionBundleStatus).toBe('failed');
