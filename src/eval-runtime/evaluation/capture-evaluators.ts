@@ -1,3 +1,4 @@
+import { captureRubricDeclaration, rubricAt } from './rubric-declaration.js';
 import {
   type Judge,
   type Dataset,
@@ -5,8 +6,6 @@ import {
   type RetrievalEvaluator,
   type ToolTrajectoryEvaluator,
   type Evaluator,
-  type RubricJudgeMember,
-  type RubricJudgeDimension,
 } from './contracts.js';
 import {
   configurationFailure,
@@ -45,7 +44,6 @@ import {
 import {
   RetrievalEvaluatorInputSchema,
   ToolTrajectoryEvaluatorInputSchema,
-  MAX_RUBRIC_PANEL_COORDINATES,
 } from './schemas.js';
 import {
   RETRIEVAL_EVALUATOR_IMPLEMENTATION_ID,
@@ -66,7 +64,6 @@ import {
 } from '../judges/rubric-kit.js';
 import {
   type RubricJudgeCriterion,
-  RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION,
 } from '../judges/rubric-contracts.js';
 import {
   createAbstentionEvaluatorBinding,
@@ -76,7 +73,6 @@ import {
   captureCustomEvaluator,
   CustomEvaluatorDeclarationError,
 } from '../custom-evaluator.js';
-import { captureRubricJudgeCriteria } from '../judges/rubric-judge.js';
 import {
   compareStrings,
 } from './ordering.js';
@@ -172,11 +168,6 @@ function panelEvaluatorId(panelId: string, memberId: string, replicateIndex: num
         memberId,
         replicateIndex,
       }).slice('sha256:'.length)}`;
-}
-
-function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
-  const keys = new Set(allowed);
-  return Object.keys(value).every((key) => keys.has(key));
 }
 
 function exactMatchDefinition(input: Readonly<ExactMatchEvaluator>): Readonly<{
@@ -451,88 +442,14 @@ export function captureEvaluators(
           'Evaluation evaluatorKind 不受支持。',
         );
       }
-      const panelId = IdentifierSchema.parse(value.evaluatorId);
-      const rubrics = captureRubricJudgeCriteria(value.rubrics?.map((rubric: RubricJudgeDimension) => {
-        if (rubric === null || typeof rubric !== 'object'
-            || !hasOnlyKeys(rubric, ['metricId', 'criterionId', 'prompt', 'rubric'])) {
-          return configurationFailure('EVAL_RUNTIME_EVALUATOR_INVALID', 'Rubric 维度配置无效。');
-        }
-        return { ...rubric, schemaVersion: RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION };
-      }));
-      const metricIds = rubrics.map((rubric) => rubric.metricId);
-      if (!hasOnlyKeys(value, [
-        'evaluatorKind', 'evaluatorId', 'rubrics', 'judges', 'aggregation',
-        'lengthDebias', 'tracePolicy', 'actualPointer', 'tracePointer', 'classification',
-      ])
-          || !Array.isArray(value.judges) || value.judges.length === 0
-          || value.judges.length > MAX_RUBRIC_PANEL_COORDINATES
-          || value.aggregation === null || typeof value.aggregation !== 'object'
-          || (value.aggregation.method !== 'mean'
-            && value.aggregation.method !== 'weighted-mean')
-          || value.aggregation.missing !== 'require-complete'
-          || !hasOnlyKeys(
-            value.aggregation,
-            value.aggregation.method === 'weighted-mean'
-              ? ['method', 'missing', 'weights']
-              : ['method', 'missing'],
-          )) {
-        return configurationFailure(
-          'EVAL_RUNTIME_EVALUATOR_INVALID',
-          'Rubric 评委 panel 配置无效。',
-        );
-      }
-      const panelJudges = value.judges as readonly RubricJudgeMember[];
-      if (panelJudges.some((member) => (
-        member === null || typeof member !== 'object'
-        || !hasOnlyKeys(member, ['memberId', 'model', 'judge', 'effort', 'replicateCount'])
-      ))) {
-        return configurationFailure(
-          'EVAL_RUNTIME_EVALUATOR_INVALID',
-          'Rubric 评委 member 配置无效。',
-        );
-      }
-      const memberIds = panelJudges.map((member) => IdentifierSchema.parse(member.memberId));
-      if (new Set(memberIds).size !== memberIds.length) {
-        return configurationFailure(
-          'EVAL_RUNTIME_EVALUATOR_INVALID',
-          'Rubric 评委 memberId 必须唯一。',
-        );
-      }
-      const replicateCounts = panelJudges.map((member) => member.replicateCount ?? 1);
-      if (replicateCounts.some((count) => !Number.isSafeInteger(count) || count < 1)
-          || replicateCounts.reduce((sum, count) => sum + count, 0)
-            > MAX_RUBRIC_PANEL_COORDINATES) {
-        return configurationFailure(
-          'EVAL_RUNTIME_EVALUATOR_INVALID',
-          `Rubric 评委 panel 最多包含 ${MAX_RUBRIC_PANEL_COORDINATES} 个测量坐标。`,
-        );
-      }
-      const weights = value.aggregation.method === 'weighted-mean'
-        ? value.aggregation.weights
-        : undefined;
-      if (weights !== undefined) {
-        if (weights === null || Array.isArray(weights) || typeof weights !== 'object'
-            || Object.keys(weights).sort(compareStrings).join('\u0000')
-              !== [...memberIds].sort(compareStrings).join('\u0000')
-            || memberIds.some((memberId) => (
-              typeof weights[memberId] !== 'number'
-              || !Number.isFinite(weights[memberId])
-              || weights[memberId] <= 0
-            ))
-            || Math.abs(memberIds.reduce((sum, memberId) => sum + weights[memberId], 0) - 1)
-              > 1e-12) {
-          return configurationFailure(
-            'EVAL_RUNTIME_EVALUATOR_INVALID',
-            'Rubric 评委权重必须完整覆盖 member、为正数且总和为 1。',
-          );
-        }
-      }
+      const evaluatorIndex = values.indexOf(value);
+      const { panelId, rubrics, metricIds, panelJudges, memberIds, replicateCounts, weights } = captureRubricDeclaration(value, evaluatorIndex);
       const aggregationMembers: MeasurementAggregationPlan['members'][number][] = [];
       let panelMetrics: readonly MetricDefinition[] = [];
       for (const [memberIndex, member] of panelJudges.entries()) {
         const memberId = memberIds[memberIndex];
         const replicateCount = replicateCounts[memberIndex];
-        const invocation = captureJudge(member.judge);
+        const invocation = rubricAt(evaluatorIndex, ['judges', memberIndex, 'judge'], () => captureJudge(member.judge));
         const replicates: MeasurementAggregationPlan['members'][number]['replicates'][number][] = [];
         for (let replicateIndex = 0; replicateIndex < replicateCount; replicateIndex += 1) {
           const evaluatorId = panelEvaluatorId(panelId, memberId, replicateIndex);

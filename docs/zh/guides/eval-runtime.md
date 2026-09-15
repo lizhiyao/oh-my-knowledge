@@ -667,6 +667,28 @@ const result = await evaluate({
 
 </details>
 
+### 先调试一条 Rubric 样本
+
+把已配置的 Rubric Evaluator、样本和版本传给同一调试入口：
+
+```ts
+import { debugEvaluator } from 'oh-my-knowledge';
+
+const debug = await debugEvaluator({
+  evaluator: rubricEvaluator,
+  sample: dataset.samples[0],
+  variant: variants[0],
+});
+const call = debug.judgeInvocations[0];
+if (call?.response.responseStatus === 'completed') {
+  const { prompt } = call.request;
+  const { output, readings, usage } = call.response;
+  // 在本地调试器中查看实际 prompt、原始响应、逐维读数和用量。
+}
+```
+
+调试会真实运行一个 Sample × Variant × Trial；多评委、replicate 和 retry 仍可能产生多次调用。`judgeInvocations` 按调用开始顺序排列，`run` 保留正式运行的评分、稳定失败码与总用量。原始响应仅在返回值内存中保留，不自动写入日志或事件。维度遗漏／重复会显示 `judge-response-metric-set-invalid`；非法分数只使对应读数无效。配置错误可读取 `EvaluationConfigurationError.issues`，例如 `evaluators[0].rubrics[1].metricId`。完整状态与隐私边界见 [API 参考](../reference/eval-runtime-api.md)。
+
 ### 重复评测与结果复用
 
 <a id="prepare-plan"></a>

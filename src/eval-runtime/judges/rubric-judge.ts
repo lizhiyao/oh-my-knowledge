@@ -1,3 +1,4 @@
+import { decodeRubricReadings, type RubricReading } from './rubric-readings.js';
 import {
   IdentifierSchema,
   EvaluatorDefinitionSchema,
@@ -80,12 +81,6 @@ export type {
   RubricJudgeRuntimeConfig,
   RubricJudgeTracePolicy,
 } from './rubric-contracts.js';
-
-interface RubricJudgeReading {
-  readonly score: number;
-  readonly reason: string;
-  readonly reasoning?: string;
-}
 
 interface RecordState {
   readonly actual: string;
@@ -284,68 +279,19 @@ function binding(
   return candidates[0];
 }
 
-function invalidObservation(metricId: string, reasonCode: string): EvaluatorObservation {
-  return {
-    metricId,
-    observationStatus: 'invalid',
-    valueType: 'numeric',
-    reasonCode,
-  };
-}
-
-function parseReading(
-  metricId: string,
-  value: unknown,
-): RubricJudgeReading | EvaluatorObservation {
-  if (!isRecord(value) || typeof value.score !== 'number' || !Number.isInteger(value.score)) {
-    return invalidObservation(metricId, 'judge-score-malformed');
-  }
-  if (value.score < 1 || value.score > 5) {
-    return invalidObservation(metricId, 'judge-score-out-of-range');
-  }
-  if (typeof value.reason !== 'string' || value.reason.trim() === '') {
-    return invalidObservation(metricId, 'judge-reason-missing');
-  }
-  return {
-    score: value.score,
-    reason: value.reason,
-    ...(typeof value.reasoning === 'string' && value.reasoning.trim() !== ''
-      ? { reasoning: value.reasoning }
-      : {}),
-  };
-}
-
 function parseReadings(state: RecordState, output: string): EvaluatorObservation[] {
-  const invalidAll = (reason: string) => state.criteria.map((item) => invalidObservation(item.metricId, reason));
-  const json = output.trim();
-  if (!json.includes('{')) return invalidAll('judge-response-non-json');
-  let value: unknown;
-  try { value = JSON.parse(json); } catch { return invalidAll('judge-response-malformed-json'); }
-  if (!isRecord(value) || !exactKeys(value, ['scores']) || !Array.isArray(value.scores)) {
-    return invalidAll('judge-response-metric-set-invalid');
-  }
-  const byId = new Map<string, unknown>();
-  for (const item of value.scores) {
-    if (!isRecord(item) || typeof item.metricId !== 'string' || byId.has(item.metricId)) {
-      return invalidAll('judge-response-metric-set-invalid');
-    }
-    byId.set(item.metricId, item);
-  }
-  if (byId.size !== state.criteria.length || state.criteria.some((item) => !byId.has(item.metricId))) {
-    return invalidAll('judge-response-metric-set-invalid');
-  }
-  return state.criteria.map((criterion) => {
-    const reading = parseReading(criterion.metricId, byId.get(criterion.metricId));
-    return 'observationStatus' in reading ? reading : observed(state, criterion, reading);
-  });
+  return decodeRubricReadings(state.criteria.map((criterion) => criterion.metricId), output)
+    .map((reading, index) => reading.observationStatus === 'invalid'
+      ? { ...reading, valueType: 'numeric' as const }
+      : observed(state, state.criteria[index], reading));
 }
 
-function observed(state: RecordState, criterion: RubricJudgeCriterion, reading: RubricJudgeReading): EvaluatorObservation {
+function observed(state: RecordState, criterion: RubricJudgeCriterion, reading: Extract<RubricReading, { observationStatus: 'observed' }>): EvaluatorObservation {
   return {
     metricId: criterion.metricId,
     observationStatus: 'observed',
     valueType: 'numeric',
-    value: reading.score,
+    value: reading.value,
     evidence: {
       value: {
         schemaVersion: RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION,
@@ -355,7 +301,7 @@ function observed(state: RecordState, criterion: RubricJudgeCriterion, reading: 
         promptHash: state.instrument.promptHash,
         lengthDebias: state.instrument.lengthDebias,
         tracePolicy: state.instrument.tracePolicy,
-        score: reading.score,
+        score: reading.value,
         reason: reading.reason,
         ...(reading.reasoning === undefined ? {} : { reasoning: reading.reasoning }),
       },

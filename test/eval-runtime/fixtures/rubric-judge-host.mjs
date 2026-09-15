@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
-import { evaluate } from 'oh-my-knowledge';
+import { debugEvaluator, evaluate } from 'oh-my-knowledge';
 
 const executor = {
   executorId: 'example.faas-target/v1',
@@ -123,6 +123,7 @@ const evaluator = {
   tracePolicy: 'none',
 };
 
+const originalInvoke = judge.invoke;
 const pending = evaluate({ ...base, evaluators: [evaluator] }, {
   runId: 'embedded-faas-rubric',
 });
@@ -183,3 +184,16 @@ assert.ok(failureResult.artifacts.evaluation.records.every((record) => (
 )));
 assert.ok(!JSON.stringify(failureResult).includes('privateTenant'));
 assert.ok(!JSON.stringify(failureResult).includes('gateway-private-failure'));
+
+const debug = await debugEvaluator({
+  evaluator: { ...evaluator, judges: evaluator.judges.map((member) => ({ ...member, judge: { ...judge, invoke: originalInvoke } })) },
+  sample: base.dataset.samples[0], variant: base.variants[0],
+});
+assert.equal(debug.run.status, 'completed');
+assert.equal(debug.judgeInvocations.length, 3);
+assert.ok(debug.judgeInvocations.every((call) => (
+  call.response.responseStatus === 'completed'
+  && call.response.readings.length === 2
+  && call.response.readings.every((reading) => reading.observationStatus === 'observed')
+)));
+assert.ok(Object.isFrozen(debug.judgeInvocations));
