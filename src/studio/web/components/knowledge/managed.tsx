@@ -10,6 +10,7 @@ import type {
 } from '../../../application/knowledge/managed-format';
 import type { ManagedPage } from '../../../http/pages/managed-page';
 import { langSuffix, type Language } from '../layout/shell';
+import { runReportHref } from '../run-report-link';
 import { displayTime } from '../display-time';
 import { KnowledgeSectionNav } from './section-nav';
 
@@ -127,7 +128,7 @@ function EventLine({ event, zh, lang }: { event: ManagedTimelineEvent; zh: boole
       {event.observeBadge === 'production_gap' && (
         <span className="managed-event-hint">{zh ? '建议补对应用例后重跑 omk eval' : 'add matching samples, then re-run omk eval'}</span>
       )}
-      {event.runId && <a href={`/measure/${encodeURIComponent(event.runId)}${langSuffix(lang)}`}>{zh ? '查看报告 →' : 'report →'}</a>}
+      {event.runId && <a href={runReportHref(event.runId, lang)}>{zh ? '查看报告 →' : 'report →'}</a>}
       {event.reason && <em>{zh ? `「${event.reason}」` : `"${event.reason}"`}</em>}
     </div>
   </div>;

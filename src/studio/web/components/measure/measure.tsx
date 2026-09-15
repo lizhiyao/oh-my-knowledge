@@ -28,6 +28,7 @@ import {
   statusTone,
 } from '../../../application/measure/core-run-format';
 import { langSuffix, type Language } from '../layout/shell';
+import { runReportHref } from '../run-report-link';
 
 const COPY = {
   zh: {
@@ -138,12 +139,11 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
   const [query, setQuery] = useState('');
   const copy = COPY[lang];
   const filtered = useMemo(() => runs.filter((run) => `${run.runId} ${run.reportId}`.toLowerCase().includes(query.toLowerCase())), [runs, query]);
-  const suffix = langSuffix(lang);
   return <>
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
     <Table<CoreStudioRunCard> className="measure-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 15, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? copy.empty : copy.noMatch}/> }} columns={[
-      { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={`/measure/${encodeURIComponent(id)}${suffix}`} className="measure-id" title={id}>{id}</Link> },
+      { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id, lang)} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
       { title: copy.evidenceStatus, width: 130, render: (_, run) => <Status value={run.status.evidenceStatus} lang={lang}/> },
       { title: copy.conclusionStatus, width: 140, render: (_, run) => <Status value={run.status.conclusionStatus} lang={lang}/> },
