@@ -858,24 +858,8 @@ describe('Evaluation Core Execution runtime', () => {
     expect(second.records[0].executionStatus).toBe('completed');
     if (second.records[0].executionStatus === 'budget-censored') throw new Error('unexpected');
     expect(second.records[0].cache.cacheStatus).toBe('transparent-hit');
-    const sourceRecordDigest = second.records[0].cache.sourceRecordDigest;
-    if (sourceRecordDigest === undefined) throw new Error('missing cache receipt');
-    expect(verifyExecutionBundle(second, plan).planVerification).toMatchObject({
-      cacheReceiptStatus: 'indeterminate',
-      minimumTargetInvocations: 0,
-      maximumTargetInvocations: 1,
-      unverifiedCacheRecordDigests: [sourceRecordDigest],
-    });
-    expect(verifyExecutionBundle(second, plan, {
-      verifiedCacheRecordDigests: new Set<Sha256Digest>([
-        sourceRecordDigest as Sha256Digest,
-      ]),
-    }).planVerification).toMatchObject({
-      cacheReceiptStatus: 'verified',
-      minimumTargetInvocations: 0,
-      maximumTargetInvocations: 0,
-      unverifiedCacheRecordDigests: [],
-    });
+    // verify 侧的 indeterminate→verified 翻转属 compiler 层契约,
+    // 已由 test/eval-core/compiler/execution-bundle.test.ts 覆盖,此处不重复。
     expect(state.attempts).toBe(1);
     expect(cache.puts).toBe(1);
     expect(cache.gets).toBe(2);

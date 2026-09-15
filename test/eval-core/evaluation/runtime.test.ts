@@ -1931,103 +1931,63 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
   });
 
-  it('rejects cache records that violate the sealed metric contract', async () => {
+  it.each([
+    {
+      name: 'violates the sealed metric contract',
+      configure: undefined as undefined | ((policy: never) => void),
+      seedUsage: undefined as undefined | Record<string, unknown>,
+      poison: (entry: { record: { observations: { metricId: string }[]; cachedRecordDigest?: string } & Record<string, unknown> }) => {
+        entry.record.observations[0].metricId = 'wrong-metric';
+      },
+    },
+    {
+      name: 'aggregate usage differs from its attempts',
+      configure: undefined as undefined | ((policy: never) => void),
+      seedUsage: { totalTokens: 1 },
+      poison: (entry: { record: { usage?: Record<string, unknown> } }) => {
+        if (entry.record.usage === undefined) throw new Error('missing cache usage');
+        entry.record.usage = { ...entry.record.usage, totalTokens: 999 };
+      },
+    },
+    {
+      name: 'could not pass the sealed provider-cost audit',
+      configure: (policy: { budget: { stages: { evaluation: { maxProviderCost?: unknown } } } }) => {
+        policy.budget.stages.evaluation.maxProviderCost = { amount: 10, currency: 'USD' };
+      },
+      seedUsage: { providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true } },
+      poison: (entry: { record: { attempts: { usage?: unknown }[]; usage?: unknown } }) => {
+        delete entry.record.attempts[0].usage;
+        delete entry.record.usage;
+      },
+    },
+  ])('rejects a poisoned cache record that $name', async ({ configure, seedUsage, poison }) => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
+      if (configure !== undefined) (configure as (p: typeof policy) => void)(policy);
     });
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
-    const first = evaluator(plan);
+    const first = evaluator(plan, seedUsage === undefined ? undefined : () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: seedUsage,
+    }));
     await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
       runId: 'poison-cache-seed',
       bundleId: 'poison-cache-seed-bundle',
     });
     const entry = cache.entries.values().next().value;
     if (entry === undefined) throw new Error('missing cache entry');
-    entry.record.observations[0].metricId = 'wrong-metric';
+    poison(entry as never);
     entry.cachedRecordDigest = digestCanonicalJson(entry.record);
     const second = evaluator(plan);
     const bundle = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
       runId: 'poison-cache-run',
       bundleId: 'poison-cache-bundle',
-    });
-
-    expect(bundle).toMatchObject({
-      evaluationBundleStatus: 'failed',
-      terminationReasonCode: 'evaluation-cache-read-failed',
-    });
-    expect(second.state.attempts).toBe(0);
-  });
-
-  it('rejects a cache record whose aggregate usage differs from its attempts', async () => {
-    const plan = await makePlan((_definition, policy) => {
-      policy.cache.evaluationMode = 'reuse';
-    });
-    const source = await sourceBundle(plan);
-    const cache = new MemoryCache();
-    const first = evaluator(plan, () => ({
-      observations: [{
-        metricId: 'correct',
-        observationStatus: 'observed',
-        valueType: 'boolean',
-        value: true,
-      }],
-      usage: { totalTokens: 1 },
-    }));
-    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
-      runId: 'poison-usage-seed-run',
-      bundleId: 'poison-usage-seed-bundle',
-    });
-    const entry = cache.entries.values().next().value;
-    if (entry === undefined || entry.record.usage === undefined) {
-      throw new Error('missing cache usage');
-    }
-    entry.record.usage = { ...entry.record.usage, totalTokens: 999 };
-    entry.cachedRecordDigest = digestCanonicalJson(entry.record);
-    const second = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
-      runId: 'poison-usage-run',
-      bundleId: 'poison-usage-bundle',
-    });
-
-    expect(bundle).toMatchObject({
-      evaluationBundleStatus: 'failed',
-      terminationReasonCode: 'evaluation-cache-read-failed',
-    });
-    expect(second.state.attempts).toBe(0);
-  });
-
-  it('rejects a cache record that could not pass the sealed provider-cost audit', async () => {
-    const plan = await makePlan((_definition, policy) => {
-      policy.cache.evaluationMode = 'reuse';
-      policy.budget.stages.evaluation.maxProviderCost = { amount: 10, currency: 'USD' };
-    });
-    const source = await sourceBundle(plan);
-    const cache = new MemoryCache();
-    const first = evaluator(plan, () => ({
-      observations: [{
-        metricId: 'correct',
-        observationStatus: 'observed',
-        valueType: 'boolean',
-        value: true,
-      }],
-      usage: {
-        providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
-      },
-    }));
-    await evaluateExecutionBundle(plan, source, ports(first.port, { cache }), {
-      runId: 'poison-cost-seed-run',
-      bundleId: 'poison-cost-seed-bundle',
-    });
-    const entry = cache.entries.values().next().value;
-    if (entry === undefined) throw new Error('missing cache entry');
-    delete entry.record.attempts[0].usage;
-    delete entry.record.usage;
-    entry.cachedRecordDigest = digestCanonicalJson(entry.record);
-    const second = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(second.port, { cache }), {
-      runId: 'poison-cost-run',
-      bundleId: 'poison-cost-bundle',
     });
 
     expect(bundle).toMatchObject({
