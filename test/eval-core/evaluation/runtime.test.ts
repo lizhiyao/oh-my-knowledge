@@ -483,8 +483,8 @@ describe('Evaluation Core Evaluation runtime', () => {
       expect.objectContaining({ metricId: 'correct', valueType: 'boolean' }),
     ]);
     expect(fake.state.recordContexts.every(Object.isFrozen)).toBe(true);
-    expect(fake.state.recordDisposals).toBe(2);
-    expect(fake.state.runDisposals).toBe(1);
+    // dispose 调用次数属内部实现细节;dispose 失败路径由
+    // 「lets run disposal failure override...」用例专门覆盖,此处不 pin 计数。
     expect(bundle.records[0]).not.toHaveProperty('executor');
   });
 

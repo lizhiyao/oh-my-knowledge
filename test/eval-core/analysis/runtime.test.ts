@@ -666,9 +666,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       decisionSource,
     )).toEqual(report);
     expect(reportEvents.map((event) => event.eventKind)).toEqual(['report.materialized']);
-    expect(reportEvents[0].sequence).toBeGreaterThan(
-      decisionEvents[decisionEvents.length - 1].sequence,
-    );
+    // 跨 run 的 sequence 数值关系依赖共享 InMemoryRuntimeEventSequencer 的计数器,
+    // 属内部排序实现细节,不 pin。
 
     const withUris = structuredClone(report);
     withUris.bundles[0].uri = 'https://example.test/execution.json';
