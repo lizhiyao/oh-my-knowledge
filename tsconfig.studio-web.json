@@ -1,0 +1,21 @@
+{
+  "extends": "./src/studio/web/tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "noEmit": true,
+    "tsBuildInfoFile": "node_modules/.cache/omk/typecheck-studio-web.tsbuildinfo"
+  },
+  "include": [
+    "src/studio/web/**/*.ts",
+    "src/studio/web/**/*.tsx",
+    "test/studio/web/**/*.ts",
+    "test/studio/web/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/studio/web/.next",
+    // Next 生成的 next-env.d.ts 会引用 .next/types 下的生成类型；typecheck 排在 next build 之前，
+    // 干净检出时那些文件还不存在，收进来就是必红门禁。它不属于本程序的归属。
+    "src/studio/web/next-env.d.ts"
+  ]
+}

@@ -43,13 +43,6 @@ describe('bootstrapMeanCI', () => {
     assert.equal(ci.samples, 0);
   });
 
-  it('seeded calls are deterministic across runs', () => {
-    const scores = [3, 4, 5, 4, 3];
-    const a = bootstrapMeanCI(scores, 0.05, 500, 12345);
-    const b = bootstrapMeanCI(scores, 0.05, 500, 12345);
-    assert.deepEqual(a, b, 'same seed should give identical CI');
-  });
-
   it('未传 seed 也确定:默认退 DEFAULT_BOOTSTRAP_SEED(同一 eval 两跑 CI 相同,非 Math.random)', () => {
     const scores = [3, 4, 5, 4, 3, 2, 5, 4];
     const a = bootstrapMeanCI(scores, 0.05, 500);
@@ -57,6 +50,10 @@ describe('bootstrapMeanCI', () => {
     assert.deepEqual(a, b, '无 seed 两跑应逐字节相同(默认确定性)');
     const explicit = bootstrapMeanCI(scores, 0.05, 500, DEFAULT_BOOTSTRAP_SEED);
     assert.deepEqual(a, explicit, '默认种子等价于显式传 DEFAULT_BOOTSTRAP_SEED');
+    // 任意显式 seed 两跑也确定(显式 seed 确定性是默认路径的子集)
+    const x = bootstrapMeanCI(scores, 0.05, 500, 12345);
+    const y = bootstrapMeanCI(scores, 0.05, 500, 12345);
+    assert.deepEqual(x, y, 'same seed should give identical CI');
   });
 
   it('N=1000 samples completes well under 1 second', () => {
@@ -107,12 +104,10 @@ describe('bootstrapDiffCI', () => {
     const a = bootstrapDiffCI([3, 4, 5, 4], [4, 5, 6, 5], 0.05, 500);
     const b = bootstrapDiffCI([3, 4, 5, 4], [4, 5, 6, 5], 0.05, 500);
     assert.deepEqual(a, b, '无 seed diff CI 两跑相同 → significant 确定 → verdict 不翻');
-  });
-
-  it('seeded diff CI is deterministic', () => {
-    const a = bootstrapDiffCI([3, 4, 5], [4, 5, 6], 0.05, 500, 555);
-    const b = bootstrapDiffCI([3, 4, 5], [4, 5, 6], 0.05, 500, 555);
-    assert.deepEqual(a, b);
+    // 显式 seed 确定性是默认路径的子集
+    const x = bootstrapDiffCI([3, 4, 5], [4, 5, 6], 0.05, 500, 555);
+    const y = bootstrapDiffCI([3, 4, 5], [4, 5, 6], 0.05, 500, 555);
+    assert.deepEqual(x, y);
   });
 });
 
