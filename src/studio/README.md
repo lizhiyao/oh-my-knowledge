@@ -81,4 +81,6 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 旧外壳的 `#lang-toggle` 已回到 Next 壳层（`web/components/layout/shell`）：它渲染成真实链接，切换地址由宿主按请求注入的 `x-omk-studio-route` 生成，保留当前 path 与其余 query（含 `?doctorRun=` 下钻，切语言不会换掉所见证据），两种语言都显式写 `lang`；页面内静态链接走同一口径的 `langSuffix`。省略参数就等于把这次选择交回全局偏好，下一跳会被 302 改写成英文。完整 Studio 页面把语言收进设置抽屉，只有宿主裁掉一级导航（只挂 `/measure`）时壳层才渲染独立的 `studio-lang` 链接。与旧控件的两处显式减法：不再把选择写进 `localStorage`（偏好落在本机设置文件里，不在浏览器里），也不保留 URL fragment（站内页面无锚点跳转）。壳层没有走 Next 的 `useSearchParams`：它会把整棵子树降级为纯客户端渲染，SSR 里就没有这条链接。
 
+三张壳层回退页（`web/app/not-found.tsx`／`loading.tsx`／`error.tsx`）不自己声明语言。`error.tsx` 必须是客户端组件、拿不到 `headers()`，所以 `web/app/layout.tsx` 把按请求读到的 `x-omk-studio-lang` 经 `web/components/layout/language` 的上下文发下去，另两页跟随同一机制：读取点只有一个，取不到上下文时按内置默认 `zh` 渲染。宿主目前对所有页面地址的缺页都在进入 Next 之前给出纯文本 404（两份 404 契约的收口留在 issue #902 §三），因此这三页在当前装配下没有可被 HTTP 断言的渲染路径，它们的语言由 `test/studio/web/fallback-language.test.tsx` 在渲染层钉住。
+
 页面标题按路由给出，补回 HTML 外壳时代 `<title>OMK · <页面名></title>` 提供的能力：`web/app/layout.tsx` 的 `metadata.title` 只留 `OMK Studio` 兜底与 `OMK · %s` 模板，15 个页面各自用 `generateMetadata` 从 `web/components/layout/page-titles.ts` 取标签，语言随 `?lang=` 切换。词条一律取自页面已有的可见措辞（面包屑、分区导航、`<h1>`），不另起第二套命名。详情页再拼上对象身份（运行 ID、skill 名、报告 ID、受管记录 ID），它取自**地址**而不是页面模型：标题只需要区分对象，不必为此起一次数据装载，也就不会把本机定位符带进标题。skill 名这类外部文本进标题仍只是转义后的文字，由知识详情页的宿主用例钉住。
