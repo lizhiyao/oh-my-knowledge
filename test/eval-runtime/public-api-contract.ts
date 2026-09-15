@@ -340,6 +340,22 @@ export const PUBLIC_API = {
       'WorkspaceProviderRuntimeCheckResult',
     ],
   },
+  'codex-reference': {
+    entry: '../eval-workflows/hosts/reference-executors',
+    values: [
+      'CODEX_CLI_MIN_SUPPORTED_VERSION',
+      'CODEX_CLI_REFERENCE_ADAPTER_VERSION',
+      'DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS',
+      'createCodexCliReferenceExecutor',
+      'createCodexCliReferenceEvaluator',
+    ],
+    types: [
+      'CreateCodexCliReferenceExecutorInput',
+      'CreateCodexCliReferenceEvaluatorInput',
+      'CodexCliContentIdentityFile',
+      'CodexCliEnvironmentEntry',
+    ],
+  },
 } as const;
 
 export type PublicApiSubpath = keyof typeof PUBLIC_API;

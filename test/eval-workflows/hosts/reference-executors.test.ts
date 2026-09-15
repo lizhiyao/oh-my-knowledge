@@ -13,9 +13,10 @@ import {
   CODEX_CLI_REFERENCE_ADAPTER_VERSION,
   DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS,
   createCodexCliReferenceExecutor,
+  createCodexCliReferenceEvaluator,
   type CodexCliEnvironmentEntry,
   type CreateCodexCliReferenceExecutorInput,
-} from '../../../src/eval-workflows/hosts/reference-executors.js';
+} from '../../../src/index.js';
 import {
   DEFAULT_CODEX_CLI_MAX_PROMPT_BYTES,
 } from '../../../src/eval-workflows/hosts/adapters/codex/cli.js';
@@ -25,6 +26,7 @@ import {
 } from '../../../src/eval-workflows/hosts/adapters/codex/resources.js';
 import {
   checkExecutor,
+  evaluate,
   type Artifact,
   type Executor,
   type ExecutorInvocation,
@@ -661,5 +663,170 @@ describe('Codex CLI reference Executor', () => {
     expect(result.conformant, JSON.stringify(result.checks)).toBe(true);
     expect(JSON.stringify(result.checks)).not.toContain('sensitive');
     expect(JSON.stringify(result.checks)).not.toContain(CREDENTIAL);
+  });
+});
+
+
+describe('Codex reference default model and evaluator', () => {
+  it('pins a TOML model once and explicit model bypasses local config', async () => {
+    const fixture = await vendor();
+    const modelConfigPath = join(fixture.root, 'config.toml');
+    await writeFile(modelConfigPath, 'model = "gpt-local" # default\n[mcp_servers.private]\ncommand = "never-inherit"');
+    const executor = await assemble(fixture, { model: undefined, modelConfigPath });
+    await writeFile(modelConfigPath, 'model = "gpt-changed"');
+    await executor.execute(invocation());
+    expect((await capturedCall(fixture)).args).toContain('gpt-local');
+    expect((await capturedCall(fixture)).args).not.toContain('never-inherit');
+    expect(codexFacet(executor).runtime).toMatchObject({ model: 'gpt-local' });
+    expect(Reflect.set(codexFacet(executor).runtime as object, 'model', 'spoofed')).toBe(false);
+    const changed = await assemble(fixture, { model: undefined, modelConfigPath });
+    expect(codexFacet(changed).runtime).toMatchObject({ model: 'gpt-changed' });
+    const explicit = await assemble(fixture, { modelConfigPath: join(fixture.root, 'absent') });
+    expect(codexFacet(explicit).runtime).toMatchObject({ model: 'gpt-fixture' });
+    expect(JSON.stringify(executor.fingerprintFacets)).not.toContain(modelConfigPath);
+  });
+
+  it('uses classified CODEX_HOME and resolves a selected profile without inheriting it', async () => {
+    const fixture = await vendor();
+    await writeFile(join(fixture.root, 'config.toml'), 'model = "base"\nprofile = "evaluation"\n[profiles.evaluation]\nmodel = "profile-model"');
+    const executor = await assemble(fixture, {
+      model: undefined,
+      environment: { ...fixture.env, ...environment({ CODEX_HOME: fixture.root }) },
+    });
+    expect(codexFacet(executor).runtime).toMatchObject({ model: 'profile-model', effort: null });
+    await executor.execute(invocation());
+    expect((await capturedCall(fixture)).args).toContain('--ignore-user-config');
+  });
+
+  it.each([
+    'model = 123', 'model = "  "', '[profiles.other]\nmodel = "wrong"',
+    'model = "first"\nmodel = "second"', 'model = "unterminated-secret',
+    'profile = "missing"\nmodel = "wrong"',
+  ])('fails closed on unresolved or malformed configuration: %s', async (config) => {
+    const fixture = await vendor();
+    const modelConfigPath = join(fixture.root, 'config.toml');
+    await writeFile(modelConfigPath, config);
+    const error: unknown = await assemble(fixture, { model: undefined, modelConfigPath })
+      .catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(TypeError);
+    expect((error as Error).message).not.toContain('unterminated-secret');
+    expect((error as Error).message).not.toContain(modelConfigPath);
+    expect(existsSync(fixture.invocationLog)).toBe(false);
+  });
+
+  it('reports absent or relative default config and never silently chooses a model', async () => {
+    const fixture = await vendor();
+    await expect(assemble(fixture, { model: undefined, modelConfigPath: join(fixture.root, 'missing') }))
+      .rejects.toThrow(/Cannot resolve Codex default model/);
+    await expect(assemble(fixture, { model: undefined, modelConfigPath: 'config.toml' }))
+      .rejects.toThrow(/absolute/);
+  });
+
+  async function evaluator(fixture: VendorFixture, maxPromptBytes?: number) {
+    return createCodexCliReferenceEvaluator({
+      evaluatorId: 'quality', metricId: 'quality-score', judgeId: 'codex-judge',
+      executablePath: fixture.executablePath, environment: fixture.env,
+      model: 'gpt-fixture', maxPromptBytes,
+      rubric: { criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' },
+    });
+  }
+
+  it('uses the fixed binding and preserves rubric prompt bytes in a private invocation', async () => {
+    const fixture = await vendor({ OMK_TEST_MODE: 'judge' });
+    const declaration = await evaluator(fixture);
+    const member = declaration.judges[0];
+    const request = {
+      executorId: member.judge.judgeId, model: member.model,
+      system: 'system bytes', prompt: 'rubric bytes', promptId: 'test', promptHash: 'test',
+      signal: new AbortController().signal,
+    };
+    const result = await member.judge.invoke(request);
+    expect(result).toMatchObject({ invocationStatus: 'completed', output: '{"score":4,"reason":"fixture rubric matched"}' });
+    const capture = await capturedCall(fixture);
+    expect(capture.prompt).toBe('system bytes\n\n---\n\nrubric bytes');
+    expect(existsSync(capture.cwd)).toBe(false);
+    expect(capture.args).toContain('read-only');
+    expect(member.judge.providerCost.reporting).toBe('unsupported');
+    await expect(member.judge.invoke({ ...request, model: 'different' }))
+      .resolves.toMatchObject({ invocationStatus: 'failed', reasonCode: 'OMK_CODEX_CLI_JUDGE_BINDING_MISMATCH' });
+    expect((await readFile(fixture.invocationLog, 'utf8')).trim()).toBe('exec');
+    expect(Object.isFrozen(declaration.rubric)).toBe(true);
+  });
+
+  it.each(['exit', 'invalid', 'oversized', 'failed'])('retains a failed judge invocation and cleans up: %s', async (mode) => {
+    const fixture = await vendor({ OMK_TEST_MODE: mode });
+    const declaration = await evaluator(fixture);
+    const member = declaration.judges[0];
+    const result = await member.judge.invoke({
+      executorId: member.judge.judgeId, model: member.model,
+      system: 'system', prompt: 'prompt', promptId: 'test', promptHash: 'test',
+      signal: new AbortController().signal,
+    });
+    expect(result.invocationStatus).toBe('failed');
+    expect(existsSync((await capturedCall(fixture)).cwd)).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(CREDENTIAL);
+  });
+
+  it('rejects oversized judge input before spawning and propagates cancellation', async () => {
+    const fixture = await vendor({ OMK_TEST_MODE: 'judge' });
+    const member = (await evaluator(fixture, 3)).judges[0];
+    const request = {
+      executorId: member.judge.judgeId, model: member.model,
+      system: 'system', prompt: 'prompt', promptId: 'test', promptHash: 'test',
+      signal: new AbortController().signal,
+    };
+    await expect(member.judge.invoke(request)).resolves.toMatchObject({
+      invocationStatus: 'failed', reasonCode: 'OMK_CODEX_CLI_PROMPT_LIMIT_EXCEEDED',
+    });
+    const controller = new AbortController();
+    controller.abort(new Error('cancelled'));
+    await expect(member.judge.invoke({ ...request, signal: controller.signal })).rejects.toThrow('cancelled');
+    expect(existsSync(fixture.invocationLog)).toBe(false);
+  });
+
+  it('completes execution and rubric scoring through the public evaluate API', async () => {
+    const target = await vendor();
+    const scoring = await vendor({ OMK_TEST_MODE: 'judge' });
+    const modelConfigPath = join(target.root, 'config.toml');
+    await writeFile(modelConfigPath, 'model = "gpt-local"');
+    const targetEnvironment = Object.fromEntries(Object.entries(target.env).filter(([key]) => key !== 'CODEX_SESSION_SECRET'));
+    const executor = await assemble(target, { model: undefined, modelConfigPath, environment: targetEnvironment });
+    const judge = await createCodexCliReferenceEvaluator({
+      evaluatorId: 'quality', metricId: 'quality-score', judgeId: 'codex-judge',
+      executablePath: scoring.executablePath, environment: scoring.env, modelConfigPath,
+      rubric: { criterionId: 'quality', prompt: 'Judge the answer.', rubric: '4 means correct.' },
+    });
+    await writeFile(modelConfigPath, 'model = "changed"');
+    const result = await evaluate({
+      dataset: { datasetId: 'codex-reference', samples: [
+        { sampleId: 'one', input: 'answer', expected: 'fixture answer' },
+        { sampleId: 'two', input: 'answer', expected: 'fixture answer' },
+      ] },
+      variants: [
+        { variantId: 'baseline', artifact: artifact({ name: 'baseline', kind: 'baseline', source: 'baseline', content: null }), execution: { executor } },
+        { variantId: 'candidate', artifact: artifact(), execution: { executor } },
+      ],
+      evaluators: [judge],
+      comparisons: [{ comparisonId: 'comparison', controlVariantId: 'baseline', treatmentVariantIds: ['candidate'], metricIds: ['quality-score'] }],
+      analyses: [{ analysisId: 'interval', analysisKind: 'comparison-interval', statistic: 'mean-difference', comparisonId: 'comparison', treatmentVariantId: 'candidate', metricId: 'quality-score', confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 100 } }],
+      decision: { decisionKind: 'analysis', analysisId: 'interval' },
+      experiment: { seed: 'fixed', sampling: { samplingKind: 'paired', seedCoupling: 'uncontrolled' } },
+      policy: {},
+    }, { runId: 'codex-reference-run' });
+    expect(result.status).toBe('completed');
+    const observations = result.artifacts?.evaluation?.records.flatMap((record) => (
+      record.evaluationStatus === 'completed' ? record.observations : []
+    ));
+    expect(observations).toHaveLength(4);
+    expect(observations?.every((observation) => observation.observationStatus === 'observed' && observation.value === 4)).toBe(true);
+    const execution = await capturedCall(target);
+    const evaluation = await capturedCall(scoring);
+    expect(execution.args).toContain('gpt-local');
+    expect(evaluation.args).toContain('gpt-local');
+    expect(execution.cwd).not.toBe(evaluation.cwd);
+    expect(execution.prompt).not.toContain('4 means correct.');
+    expect(evaluation.prompt).toContain('4 means correct.');
+    expect(existsSync(execution.cwd)).toBe(false);
+    expect(existsSync(evaluation.cwd)).toBe(false);
   });
 });

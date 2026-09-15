@@ -32,7 +32,7 @@ if (stdin !== '') {
 }
 
 const mode = process.env.OMK_TEST_MODE ?? 'success';
-let answer = 'fixture answer';
+let answer = mode === 'judge' ? '{"score":4,"reason":"fixture rubric matched"}' : 'fixture answer';
 if (mode === 'upgrade-required' || mode === 'upgrade-decoy') {
   const message = "The 'private-model' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.";
   process.stdout.write(JSON.stringify(mode === 'upgrade-required'

@@ -154,6 +154,7 @@
     "next": "16.3.4",
     "react": "19",
     "react-dom": "19",
+    "smol-toml": "^1.8.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {

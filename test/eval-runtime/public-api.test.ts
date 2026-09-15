@@ -225,14 +225,14 @@ describe('published eval-runtime API allowlist', () => {
     expect(publicCustomEvaluator.evaluatorKind).toBe('custom');
   });
 
-  it('makes the package root an exact runtime façade alias', async () => {
+  it('exposes the runtime façade and official Codex adapters from the package root', async () => {
     const rootEntry = '../../dist/index.js';
     const runtimeEntry = '../../dist/eval-runtime/index.js';
     const root = await import(rootEntry);
     const runtime = await import(runtimeEntry);
-    expect(Object.keys(root).sort()).toEqual(Object.keys(runtime).sort());
+    for (const name of Object.keys(runtime)) expect(root[name]).toBe(runtime[name]);
     expect(Object.keys(root).sort()).toEqual([
-      ...PUBLIC_API['eval-runtime'].values,
+      ...Object.values(PUBLIC_API).flatMap((contract) => [...contract.values]),
     ].sort());
     expect(readFileSync(resolve('dist/index.d.ts'), 'utf8')).toContain(
       "export * from './eval-runtime/index.js';",
@@ -241,7 +241,8 @@ describe('published eval-runtime API allowlist', () => {
 
   for (const [subpath, contract] of Object.entries(PUBLIC_API)) {
     it(`locks values and types for ${subpath}`, async () => {
-      const runtime = await import(`../../dist/eval-runtime/${contract.entry}.js`);
+      const entryUrl = new URL(`../../dist/eval-runtime/${contract.entry}.js`, import.meta.url).href;
+      const runtime = await import(entryUrl);
       expect(Object.keys(runtime).sort()).toEqual([...contract.values].sort());
       expect(declarationExports(contract.entry)).toEqual({
         values: [...contract.values].sort(),
