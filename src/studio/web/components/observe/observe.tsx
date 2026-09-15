@@ -12,8 +12,7 @@ import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
 import { langSuffix, type Language } from '../layout/shell';
 import { displayTime } from '../display-time';
-
-const conversationHref = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${langSuffix(lang)}`;
+import { conversationHref } from '../conversation-link';
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
 export function ObserveView({page, lang}: {page: ObservePage; lang: Language}) {

@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Button, Empty, Input, Pagination } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
-import { langSuffix, type Language } from '../layout/shell';
+import { type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
 import { ConversationReader } from './reader';
 import { StudioUtilities } from '../layout/utilities';
 import { displayTime } from '../display-time';
+import { conversationHref } from '../conversation-link';
 
 function conversationLabel(value: string): string {
   return value.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -20,7 +21,6 @@ const running = (item: ConversationListItem) => item.tasks.some(task => task.sta
 const hasProject = (item: ConversationListItem) => Boolean(item.project || item.cwd);
 const projectId = (item: ConversationListItem) => item.project?.projectId ?? item.cwd ?? 'unassigned';
 const projectName = (item: ConversationListItem, zh: boolean) => item.project?.name ?? item.cwd?.split('/').filter(Boolean).at(-1) ?? (zh ? '未归属项目' : 'Unassigned');
-const href = (id: string, lang: Language) => `/observe/conversations/${encodeURIComponent(id)}${langSuffix(lang)}`;
 
 export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { pageKind: 'trajectory' }>; lang: Language }) {
   const zh = lang === 'zh'; const router = useRouter();
@@ -40,7 +40,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
       if (selected) localStorage.setItem('omk.observe.lastConversation', selected.threadId);
       else if (!params.has('view')) {
         const last = localStorage.getItem('omk.observe.lastConversation');
-        if (last && index.conversations.some(item => item.threadId === last)) router.replace(href(last, lang));
+        if (last && index.conversations.some(item => item.threadId === last)) router.replace(conversationHref(last, lang));
       }
     } catch { /* Navigation still works when browser storage is disabled. */ }
   }, [selected?.threadId, page.pageKind, router, lang]);
@@ -72,14 +72,14 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         return <details key={id} open={selected ? projectId(selected) === id : view === id}>
           <summary><span title={items[0].project?.directory ?? items[0].cwd}>{name}</span><span>{items.length}</span></summary>
           <button className="observe-project-overview" onClick={() => choose(id)}>{t('查看项目会话', 'View project conversations')}</button>
-          {shown.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small>{item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind}</small></Link>)}
+          {shown.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationHref(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small>{item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind}</small></Link>)}
           {visible.length > 12 && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个会话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
       })}{query && !index.conversations.some(matches) && <p>{t('没有匹配的项目或会话', 'No matching projects or conversations')}</p>}</div>
       {groups.size > 6 && !query && <button className="observe-sidebar-link" onClick={() => setAllProjects(value => !value)}>{allProjects ? t('收起项目', 'Show fewer projects') : t('查看全部项目', 'View all projects')}</button>}
       <section className="observe-recents" aria-label={t('独立对话', 'Standalone conversations')}>
         <header><h2>{t('独立对话', 'Standalone conversations')}</h2></header>
-        <div className="observe-recent-links">{shownIndependent.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={href(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
+        <div className="observe-recent-links">{shownIndependent.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationHref(item.threadId, lang)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
         {!independent.length && <p className="observe-independent-empty">{query ? t('没有匹配的独立对话', 'No matching standalone conversations') : t('暂无独立对话', 'No standalone conversations yet')}</p>}
       </section>
       <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
@@ -91,7 +91,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
       <div className="observe-workspace-tools"><Button className="observe-navigation-toggle" size="small" onClick={() => setNavigationOpen(value => !value)}>{t('项目与会话', 'Projects and conversations')}</Button><ActivityNotice activity={activity} lang={lang}/></div>
       {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang} title={conversationLabel(selected.title)} project={projectName(selected, zh)}/> : <>
         <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个会话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开会话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
-        <div className="observe-session-list">{rows.slice((visiblePage - 1) * 20, visiblePage * 20).map(item => <Link className="observe-session-row" key={item.threadId} href={href(item.threadId, lang)}>
+        <div className="observe-session-list">{rows.slice((visiblePage - 1) * 20, visiblePage * 20).map(item => <Link className="observe-session-row" key={item.threadId} href={conversationHref(item.threadId, lang)}>
           <div><strong title={conversationLabel(item.title)}>{conversationLabel(item.title)}</strong><p>{item.tasks.at(-1) ? `${t('最近请求：', 'Latest request: ')}${conversationLabel(item.tasks.at(-1)!.title)}` : t('打开后读取会话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
           <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{(item.endTimestamp ?? item.startTimestamp)?.slice(5, 16).replace('T', ' ') ?? '—'}</time>{(item.toolFailureCount ?? 0) > 0 && <small title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
         </Link>)}{!rows.length && <Empty description={t('暂无匹配的会话。已有运行记录会自动出现在这里。', 'No matching conversations. Existing runtime records appear here automatically.')}/>}</div>

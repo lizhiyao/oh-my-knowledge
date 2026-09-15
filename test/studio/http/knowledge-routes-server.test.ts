@@ -69,7 +69,7 @@ describe('Studio knowledge routes', () => {
     assert.equal(apiLegacy.status, 404);
     assert.equal(apiLegacy.headers.get('location'), null);
 
-    assert.equal((await fetch(`${baseUrl}/api/observe-health`)).status, 200, 'Next 页面与外部消费者仍以这组 JSON API 为数据源');
+    assert.equal((await fetch(`${baseUrl}/api/observe-health`)).status, 200, '页面已改由 http/pages loader 取数，这组 JSON API 仍供 bench 并发探针与外部机器读者使用');
     assert.equal((await fetch(`${baseUrl}/static/chart.js`)).status, 404);
   });
 
