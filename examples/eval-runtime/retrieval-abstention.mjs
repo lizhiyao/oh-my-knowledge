@@ -77,7 +77,7 @@ export function forbiddenIdEvaluator(cutoff) {
   z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(cutoff);
   return {
     evaluatorKind: 'custom', evaluatorId: 'forbidden-hit', instrumentId: 'example.forbidden-hit/v1',
-    metric: { metricId: 'forbidden-hit', valueType: 'boolean', direction: 'lower-is-better', missingPolicyId: 'exclude/v1' },
+    metrics: [{ metricId: 'forbidden-hit', valueType: 'boolean', direction: 'lower-is-better', missingPolicyId: 'exclude/v1' }],
     bindings: [
       { bindingId: 'ranking', sourceKind: 'output', pointer: '/solutionIds' },
       { bindingId: 'forbidden', sourceKind: 'expected', pointer: '/forbiddenDocumentIds' },
@@ -88,16 +88,26 @@ export function forbiddenIdEvaluator(cutoff) {
       implementationId: 'example.forbidden-id-hit/v1', version: '1.0.0',
       schemas: {
         bindings: z.object({ ranking: ids, forbidden: ids, execution: z.object({ terminal: z.object({ executionStatus: z.string() }).passthrough() }).passthrough() }).strict(),
-        value: z.boolean(), fingerprintFacets: { protocol: 'unique-string-ids/v1' },
+        values: { 'forbidden-hit': z.boolean() }, fingerprintFacets: { protocol: 'unique-string-ids/v1' },
       },
       fingerprintFacets: { comparison: 'case-sensitive', emptyForbidden: 'not-applicable' },
       evaluate({ bindings, parameters, signal }) {
         signal.throwIfAborted();
-        if (bindings.execution.terminal.executionStatus !== 'completed') return { resultKind: 'missing', reasonCode: 'execution-not-completed' };
-        if (bindings.forbidden.length === 0) return { resultKind: 'missing', reasonCode: 'no-forbidden-annotation' };
+        if (bindings.execution.terminal.executionStatus !== 'completed') return {
+          resultKind: 'completed',
+          results: [{ metricId: 'forbidden-hit', resultKind: 'missing', reasonCode: 'execution-not-completed' }],
+        };
+        if (bindings.forbidden.length === 0) return {
+          resultKind: 'completed',
+          results: [{ metricId: 'forbidden-hit', resultKind: 'missing', reasonCode: 'no-forbidden-annotation' }],
+        };
         return {
-          resultKind: 'score',
-          value: bindings.ranking.slice(0, parameters.cutoff).some((id) => bindings.forbidden.includes(id)),
+          resultKind: 'completed',
+          results: [{
+            metricId: 'forbidden-hit',
+            resultKind: 'score',
+            value: bindings.ranking.slice(0, parameters.cutoff).some((id) => bindings.forbidden.includes(id)),
+          }],
         };
       },
     },

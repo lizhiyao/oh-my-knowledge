@@ -53,31 +53,32 @@ function evaluator(): CustomEvaluator<{ actual: string }> {
     evaluatorKind: 'custom',
     evaluatorId: 'content-evaluator',
     instrumentId: 'content-evaluator-v1',
-    metric: {
+    metrics: [{
       metricId: 'content-score',
       valueType: 'numeric',
       scale: { min: 0, max: 1 },
       direction: 'higher-is-better',
       missingPolicyId: 'exclude/v1',
-    },
+    }],
     bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
     implementation: {
       implementationId: 'test.content-evaluator/v1',
       version: '1.0.0',
       schemas: {
         bindings: z.object({ actual: z.string() }).strict(),
-        value: z.number(),
+        values: { 'content-score': z.number() },
         fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
       },
       fingerprintFacets: { revision: 'one' },
       evaluate({ bindings }) {
         return {
-          resultKind: 'score',
-          value: bindings.actual === 'answer' ? 1 : 0,
-          evidence: {
-            value: { explanation: 'resolved-output-matched' },
-            classification: 'sensitive',
-          },
+          resultKind: 'completed',
+          results: [{
+            metricId: 'content-score',
+            resultKind: 'score',
+            value: bindings.actual === 'answer' ? 1 : 0,
+            evidence: { value: { explanation: 'resolved-output-matched' }, classification: 'sensitive' },
+          }],
         };
       },
     },

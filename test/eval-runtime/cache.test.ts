@@ -163,25 +163,36 @@ describe('canonical eval-runtime cache façade', () => {
       evaluatorKind: 'custom',
       evaluatorId: 'cache-counting-evaluator',
       instrumentId: 'cache-counting-evaluator-v1',
-      metric: {
+      metrics: [{
         metricId: 'cache-correct',
         valueType: 'boolean',
         direction: 'higher-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }, {
+        metricId: 'cache-length',
+        valueType: 'numeric',
+        direction: 'lower-is-better',
+        missingPolicyId: 'exclude/v1',
+      }],
       bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
       implementation: {
         implementationId: 'test.cache-counting-evaluator/v1',
         version: '1.0.0',
         schemas: {
           bindings: z.object({ actual: z.string() }).strict(),
-          value: z.boolean(),
+          values: { 'cache-correct': z.boolean(), 'cache-length': z.number() },
           fingerprintFacets: { bindings: 'actual-string/v1', value: 'boolean/v1' },
         },
         fingerprintFacets: { revision: 'cache-test-one' },
         async evaluate({ bindings }) {
           evaluatorCalls += 1;
-          return { resultKind: 'score', value: bindings.actual === 'A' };
+          return {
+            resultKind: 'completed',
+            results: [
+              { metricId: 'cache-correct', resultKind: 'score', value: bindings.actual === 'A' },
+              { metricId: 'cache-length', resultKind: 'score', value: bindings.actual.length },
+            ],
+          };
         },
       },
     };
@@ -198,6 +209,7 @@ describe('canonical eval-runtime cache façade', () => {
     const firstRecord = first.artifacts.evaluation.records[0];
     expect(firstRecord?.evaluationStatus).toBe('completed');
     if (firstRecord?.evaluationStatus !== 'completed') throw new Error('missing completed record');
+    expect(firstRecord.observations).toHaveLength(2);
     expect(firstRecord.cache.cacheStatus).toBe('miss');
     expect(evaluationCache.entries.size).toBe(1);
     expect(evaluatorCalls).toBe(1);
@@ -211,6 +223,7 @@ describe('canonical eval-runtime cache façade', () => {
     expect(secondRecord?.evaluationStatus).toBe('completed');
     if (secondRecord?.evaluationStatus !== 'completed') throw new Error('missing completed record');
     expect(secondRecord.cache.cacheStatus).toBe('transparent-hit');
+    expect(secondRecord.observations.map(({ metricId }) => metricId)).toEqual(['cache-correct', 'cache-length']);
   });
 
   it('fails cache wiring before any Target call', async () => {

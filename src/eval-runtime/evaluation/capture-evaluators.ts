@@ -428,7 +428,7 @@ export function captureEvaluators(
           );
         }
         definitions.push(captured.definition);
-        metrics.push(captured.metric);
+        metrics.push(...captured.metrics);
         customEntries.push({
           evaluatorId: captured.definition.evaluatorId,
           implementationId: captured.implementationId,

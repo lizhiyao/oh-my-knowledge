@@ -178,7 +178,10 @@ function countedScoreInput(
 ) {
   const custom = numericCustomEvaluator('staged-score', () => {
     scoreCalls();
-    return { resultKind: 'score', value: 1 };
+    return {
+      resultKind: 'completed',
+      results: [{ metricId: 'staged-score-score', resultKind: 'score', value: 1 }],
+    };
   });
   const base = pairedInput(declaration);
   return {
@@ -207,19 +210,19 @@ function numericCustomEvaluator(
     evaluatorKind: 'custom',
     evaluatorId,
     instrumentId: `${evaluatorId}-v1`,
-    metric: {
+    metrics: [{
       metricId: `${evaluatorId}-score`,
       valueType: 'numeric',
       direction: 'higher-is-better',
       missingPolicyId: 'exclude/v1',
-    },
+    }],
     bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
     implementation: {
       implementationId: `test.${evaluatorId}/v1`,
       version: '1.0.0',
       schemas: {
         bindings: z.object({ actual: z.string() }).strict(),
-        value: z.number(),
+        values: { [`${evaluatorId}-score`]: z.number() },
         fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
       },
       fingerprintFacets: { revision },
@@ -238,14 +241,14 @@ function qualitativeCustomEvaluator(
     evaluatorKind: 'custom',
     evaluatorId,
     instrumentId: `${evaluatorId}-v1`,
-    metric: { metricId: `${evaluatorId}-value`, valueType, missingPolicyId: 'exclude/v1' },
+    metrics: [{ metricId: `${evaluatorId}-value`, valueType, missingPolicyId: 'exclude/v1' }],
     bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
     implementation: {
       implementationId: `test.${evaluatorId}/v1`,
       version: '1.0.0',
       schemas: {
         bindings: z.object({ actual: z.string() }).strict(),
-        value: valueParser,
+        values: { [`${evaluatorId}-value`]: valueParser },
         fingerprintFacets: { bindings: 'actual-string/v1', value: `${valueType}/v1` },
       },
       fingerprintFacets: { revision: 'test-one' },
@@ -381,7 +384,10 @@ describe('canonical eval-runtime API', () => {
     });
     const custom = numericCustomEvaluator('length', ({ bindings }) => {
       evaluatorInvocations();
-      return { resultKind: 'score', value: bindings.actual.length };
+      return {
+        resultKind: 'completed',
+        results: [{ metricId: 'length-score', resultKind: 'score', value: bindings.actual.length }],
+      };
     });
     const sourceBase = pairedInput(declaration);
     const sourceInput = {
@@ -842,7 +848,10 @@ describe('canonical eval-runtime API', () => {
     const evaluatorInvocations = vi.fn();
     const custom = numericCustomEvaluator('observed-length', ({ bindings }) => {
       evaluatorInvocations();
-      return { resultKind: 'score', value: bindings.actual.length };
+      return {
+        resultKind: 'completed',
+        results: [{ metricId: 'observed-length-score', resultKind: 'score', value: bindings.actual.length }],
+      };
     });
     const base = pairedInput();
     const input = {
@@ -1119,18 +1128,18 @@ describe('canonical eval-runtime API', () => {
   it('materializes one sealed composite Metric for quality and paired comparison analyses', async () => {
     const input = pairedInput();
     const baseLength = numericCustomEvaluator('response-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{ metricId: 'response-length-score', resultKind: 'score', value: bindings.actual.length }],
     }));
     const length: CustomEvaluator<{ actual: string }> = {
       ...baseLength,
-      metric: {
+      metrics: [{
         metricId: 'response-length-score',
         valueType: 'numeric',
         scale: { min: 0, max: 5 },
         direction: 'lower-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }],
     };
     const components = [
       { metricId: 'correct', weight: 0.5 },
@@ -1324,8 +1333,8 @@ describe('canonical eval-runtime API', () => {
       return { output: config.answers[sample.prompt] };
     }));
     const unbounded = numericCustomEvaluator('unbounded-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{ metricId: 'unbounded-length-score', resultKind: 'score', value: bindings.actual.length }],
     }));
     const analysis = {
       analysisId: 'invalid-composite',
@@ -1348,13 +1357,13 @@ describe('canonical eval-runtime API', () => {
 
     const bounded: CustomEvaluator<{ actual: string }> = {
       ...unbounded,
-      metric: {
+      metrics: [{
         metricId: 'unbounded-length-score',
         valueType: 'numeric',
         scale: { min: 0, max: 5 },
         direction: 'lower-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }],
     };
     await expect(prepareEvaluation({
       ...input,
@@ -1374,18 +1383,18 @@ describe('canonical eval-runtime API', () => {
   it('does not expose a derived composite Metric as direct observation evidence', async () => {
     const input = pairedInput();
     const baseLength = numericCustomEvaluator('derived-boundary-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{ metricId: 'derived-boundary-length-score', resultKind: 'score', value: bindings.actual.length }],
     }));
     const length: CustomEvaluator<{ actual: string }> = {
       ...baseLength,
-      metric: {
+      metrics: [{
         metricId: 'derived-boundary-length-score',
         valueType: 'numeric',
         scale: { min: 0, max: 5 },
         direction: 'lower-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }],
     };
     const composite = {
       analysisId: 'candidate-derived-quality',
@@ -1429,8 +1438,8 @@ describe('canonical eval-runtime API', () => {
   it('preregisters a Bonferroni simultaneous interval family without inventing p-values', async () => {
     const input = pairedInput();
     const length = numericCustomEvaluator('family-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{ metricId: 'family-length-score', resultKind: 'score', value: bindings.actual.length }],
     }));
     const family = {
       analysisId: 'release-family',
@@ -1669,8 +1678,12 @@ describe('canonical eval-runtime API', () => {
   it('uses independent arm resampling for every member of an independent family', async () => {
     const input = pairedInput();
     const length = numericCustomEvaluator('independent-family-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{
+        metricId: 'independent-family-length-score',
+        resultKind: 'score',
+        value: bindings.actual.length,
+      }],
     }));
     const result = await evaluate({
       ...input,
@@ -1814,8 +1827,14 @@ describe('canonical eval-runtime API', () => {
     const incomplete = numericCustomEvaluator(
       'incomplete-family',
       ({ sampleId, bindings }) => sampleId === 'two'
-        ? { resultKind: 'missing', reasonCode: 'not-available' }
-        : { resultKind: 'score', value: bindings.actual.length },
+        ? {
+          resultKind: 'completed',
+          results: [{ metricId: 'incomplete-family-score', resultKind: 'missing', reasonCode: 'not-available' }],
+        }
+        : {
+          resultKind: 'completed',
+          results: [{ metricId: 'incomplete-family-score', resultKind: 'score', value: bindings.actual.length }],
+        },
     );
     const result = await evaluate({
       ...input,
@@ -1895,18 +1914,18 @@ describe('canonical eval-runtime API', () => {
     });
     const input = pairedInput(declaration);
     const baseLength = numericCustomEvaluator('independent-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{ metricId: 'independent-length-score', resultKind: 'score', value: bindings.actual.length }],
     }));
     const length: CustomEvaluator<{ actual: string }> = {
       ...baseLength,
-      metric: {
+      metrics: [{
         metricId: 'independent-length-score',
         valueType: 'numeric',
         scale: { min: 0, max: 5 },
         direction: 'lower-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }],
     };
     const result = await evaluate({
       ...input,
@@ -2007,12 +2026,12 @@ describe('canonical eval-runtime API', () => {
       evaluatorKind: 'custom',
       evaluatorId: 'output-length',
       instrumentId: 'output-length-v1',
-      metric: {
+      metrics: [{
         metricId: 'length',
         valueType: 'numeric',
         direction: 'lower-is-better',
         missingPolicyId: 'exclude/v1',
-      },
+      }],
       bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
       parameters: { offset: 1 },
       implementation: {
@@ -2020,7 +2039,7 @@ describe('canonical eval-runtime API', () => {
         version: '1.0.0',
         schemas: {
           bindings: z.object({ actual: z.string() }).strict(),
-          value: z.number(),
+          values: { 'length': z.number() },
           fingerprintFacets: { bindings: 'actual-string/v1', value: 'finite-number/v1' },
         },
         fingerprintFacets: { revision: 'test-one' },
@@ -2032,9 +2051,13 @@ describe('canonical eval-runtime API', () => {
             attemptNumber: invocation.attemptNumber,
           });
           return {
-            resultKind: 'score',
-            value: invocation.bindings.actual.length + 1,
-            evidence: { value: { rule: 'length-plus-offset' }, classification: 'public' },
+            resultKind: 'completed',
+            results: [{
+              metricId: 'length',
+              resultKind: 'score',
+              value: invocation.bindings.actual.length + 1,
+              evidence: { value: { rule: 'length-plus-offset' }, classification: 'public' },
+            }],
             usage: { totalTokens: 1 },
           };
         },
@@ -2094,24 +2117,27 @@ describe('canonical eval-runtime API', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'strict-number',
         instrumentId: 'strict-number-v1',
-        metric: {
+        metrics: [{
           metricId: 'strict-score',
           valueType: 'numeric',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: {
           implementationId: 'test.strict-number/v1',
           version: '1.0.0',
           schemas: {
             bindings: z.object({ actual: z.string() }).strict(),
-            value: z.number(),
+            values: { 'strict-score': z.number() },
             fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
           },
           fingerprintFacets: { revision: 'test-one' },
           async evaluate() {
-            return { resultKind: 'score', value: 'not-a-number' };
+            return {
+              resultKind: 'completed',
+              results: [{ metricId: 'strict-score', resultKind: 'score', value: 'not-a-number' }],
+            };
           },
         },
       }],
@@ -2142,7 +2168,10 @@ describe('canonical eval-runtime API', () => {
     let transformedBindingCalls = 0;
     const transformedBindings = numericCustomEvaluator('transformed-bindings', () => {
       transformedBindingCalls += 1;
-      return { resultKind: 'score', value: 1 };
+      return {
+        resultKind: 'completed',
+        results: [{ metricId: 'transformed-bindings-score', resultKind: 'score', value: 1 }],
+      };
     });
     const transformedResult = await evaluate({
       ...input,
@@ -2213,12 +2242,12 @@ describe('canonical eval-runtime API', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'all-bindings',
         instrumentId: 'all-bindings-v1',
-        metric: {
+        metrics: [{
           metricId: 'all-bindings-valid',
           valueType: 'boolean',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [
           { bindingId: 'actual', sourceKind: 'output', pointer: '' },
           { bindingId: 'facts', sourceKind: 'execution-facts', pointer: '' },
@@ -2237,19 +2266,23 @@ describe('canonical eval-runtime API', () => {
               expected: z.string(),
               step: z.string(),
             }).strict(),
-            value: z.boolean(),
+            values: { 'all-bindings-valid': z.boolean() },
             fingerprintFacets: { bindings: 'all-sources/v1', value: 'boolean/v1' },
           },
           fingerprintFacets: { revision: 'test-one' },
           evaluate({ bindings }) {
             seen.push(bindings);
             return {
-              resultKind: 'score',
-              value: bindings.facts.attemptCount === 1
-                && bindings.domain === 'qa'
-                && bindings.step === 'generated'
-                && typeof bindings.actual === 'string'
-                && typeof bindings.expected === 'string',
+              resultKind: 'completed',
+              results: [{
+                metricId: 'all-bindings-valid',
+                resultKind: 'score',
+                value: bindings.facts.attemptCount === 1
+                    && bindings.domain === 'qa'
+                    && bindings.step === 'generated'
+                    && typeof bindings.actual === 'string'
+                    && typeof bindings.expected === 'string',
+              }],
             };
           },
         },
@@ -2280,15 +2313,33 @@ describe('canonical eval-runtime API', () => {
       ...input,
       evaluators: [
         qualitativeCustomEvaluator('answer-category', 'categorical', z.string(), ({ sampleId, bindings }) => sampleId === 'two'
-          ? { resultKind: 'missing', reasonCode: 'label-not-available' }
-          : { resultKind: 'score', value: bindings.actual }),
+          ? {
+            resultKind: 'completed',
+            results: [{
+              metricId: 'answer-category-value',
+              resultKind: 'missing',
+              reasonCode: 'label-not-available',
+            }],
+          }
+          : {
+            resultKind: 'completed',
+            results: [{ metricId: 'answer-category-value', resultKind: 'score', value: bindings.actual }],
+          }),
         qualitativeCustomEvaluator('answer-text', 'text', z.enum(['empty', 'non-empty']), ({ bindings }) => ({
-          resultKind: 'score',
-          value: bindings.actual === '' ? 'empty' : 'non-empty',
+          resultKind: 'completed',
+          results: [{
+            metricId: 'answer-text-value',
+            resultKind: 'score',
+            value: bindings.actual === '' ? 'empty' : 'non-empty',
+          }],
         })),
         qualitativeCustomEvaluator('answer-ranking', 'ranking', z.array(z.enum(['empty', 'non-empty', 'fallback'])).min(1), ({ bindings }) => ({
-          resultKind: 'score',
-          value: bindings.actual === '' ? ['empty'] : ['non-empty', 'fallback'],
+          resultKind: 'completed',
+          results: [{
+            metricId: 'answer-ranking-value',
+            resultKind: 'score',
+            value: bindings.actual === '' ? ['empty'] : ['non-empty', 'fallback'],
+          }],
         })),
       ],
       comparisons: [{
@@ -2326,13 +2377,17 @@ describe('canonical eval-runtime API', () => {
       version: '1.0.0',
       schemas: {
         bindings: z.object({ actual: z.string() }).strict(),
-        value: z.number(),
+        values: { [`shared-${suffix}-score`]: z.number() },
         fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
       },
       fingerprintFacets: { revision: 'test-one', suffix },
       evaluate: ({ bindings }) => ({
-        resultKind: 'score' as const,
-        value: suffix === 'length' ? bindings.actual.length : Number(bindings.actual === 'A'),
+        resultKind: 'completed',
+        results: [{
+          metricId: `shared-${suffix}-score`,
+          resultKind: 'score' as const,
+          value: suffix === 'length' ? bindings.actual.length : Number(bindings.actual === 'A'),
+        }],
       }),
     } satisfies CustomEvaluator<{ actual: string; }>['implementation']);
     const result = await evaluate({
@@ -2341,24 +2396,24 @@ describe('canonical eval-runtime API', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'shared-length',
         instrumentId: 'shared-length-v1',
-        metric: {
+        metrics: [{
           metricId: 'shared-length-score',
           valueType: 'numeric',
           direction: 'lower-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: implementation('length'),
       }, {
         evaluatorKind: 'custom',
         evaluatorId: 'shared-is-a',
         instrumentId: 'shared-is-a-v1',
-        metric: {
+        metrics: [{
           metricId: 'shared-is-a-score',
           valueType: 'numeric',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: implementation('is-a'),
       }],
@@ -2392,19 +2447,19 @@ describe('canonical eval-runtime API', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'throwing-custom',
         instrumentId: 'throwing-custom-v1',
-        metric: {
+        metrics: [{
           metricId: 'throwing-score',
           valueType: 'numeric',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: {
           implementationId: 'test.throwing-custom/v1',
           version: '1.0.0',
           schemas: {
             bindings: z.object({ actual: z.string() }).strict(),
-            value: z.number(),
+            values: { 'throwing-score': z.number() },
             fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
           },
           fingerprintFacets: { revision: 'test-one' },
@@ -2436,19 +2491,19 @@ describe('canonical eval-runtime API', () => {
         evaluatorKind: 'custom',
         evaluatorId: 'slow-custom',
         instrumentId: 'slow-custom-v1',
-        metric: {
+        metrics: [{
           metricId: 'slow-score',
           valueType: 'numeric',
           direction: 'higher-is-better',
           missingPolicyId: 'exclude/v1',
-        },
+        }],
         bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
         implementation: {
           implementationId: 'test.slow-custom/v1',
           version: '1.0.0',
           schemas: {
             bindings: z.object({ actual: z.string() }).strict(),
-            value: z.number(),
+            values: { 'slow-score': z.number() },
             fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
           },
           fingerprintFacets: { revision: 'test-one' },
@@ -2463,7 +2518,10 @@ describe('canonical eval-runtime API', () => {
               else
                 signal.addEventListener('abort', abort, { once: true });
             });
-            return { resultKind: 'score', value: 1 };
+            return {
+              resultKind: 'completed',
+              results: [{ metricId: 'slow-score', resultKind: 'score', value: 1 }],
+            };
           },
         },
       }],
@@ -2517,7 +2575,10 @@ describe('canonical eval-runtime API', () => {
       ...input,
       evaluators: [numericCustomEvaluator('budgeted', () => {
         calls += 1;
-        return { resultKind: 'score', value: 1 };
+        return {
+          resultKind: 'completed',
+          results: [{ metricId: 'budgeted-score', resultKind: 'score', value: 1 }],
+        };
       })],
       comparisons: [{ ...input.comparisons[0], metricIds: ['budgeted-score'] }],
       analyses: comparisonAnalysis('budgeted-score'),
@@ -2922,7 +2983,10 @@ describe('canonical eval-runtime API', () => {
         evaluationAttempts.push(attemptNumber);
         return attemptNumber === 1
           ? { resultKind: 'failed', errorCode: 'temporary-evaluator-failure' }
-          : { resultKind: 'score', value: 1 };
+          : {
+            resultKind: 'completed',
+            results: [{ metricId: 'retrying-evaluator-score', resultKind: 'score', value: 1 }],
+          };
       },
     );
     const evaluationResult = await evaluate({
@@ -3060,7 +3124,10 @@ describe('canonical eval-runtime API', () => {
     const input = pairedInput();
     const custom = numericCustomEvaluator(
       'captured-callback',
-      () => ({ resultKind: 'score', value: 1 }),
+      () => ({
+        resultKind: 'completed',
+        results: [{ metricId: 'captured-callback-score', resultKind: 'score', value: 1 }],
+      }),
       'revision-one',
     );
     const pending = evaluate({
@@ -3075,11 +3142,17 @@ describe('canonical eval-runtime API', () => {
     });
     (custom.implementation as {
       evaluate: CustomEvaluator<{ actual: string; }>['implementation']['evaluate'];
-    }).evaluate = () => ({ resultKind: 'score', value: 99 });
+    }).evaluate = () => ({
+      resultKind: 'completed',
+      results: [{ metricId: 'captured-callback-score', resultKind: 'score', value: 99 }],
+    });
     const first = await pending;
     const second = await evaluate({
       ...input,
-      evaluators: [numericCustomEvaluator('captured-callback', () => ({ resultKind: 'score', value: 1 }), 'revision-two')],
+      evaluators: [numericCustomEvaluator('captured-callback', () => ({
+        resultKind: 'completed',
+        results: [{ metricId: 'captured-callback-score', resultKind: 'score', value: 1 }],
+      }), 'revision-two')],
       comparisons: [{ ...input.comparisons[0], metricIds: ['captured-callback-score'] }],
       analyses: comparisonAnalysis('captured-callback-score'),
       decision: undefined
@@ -3150,8 +3223,8 @@ describe('canonical eval-runtime API', () => {
     const declaration = executor();
     const input = pairedInput(declaration);
     const length = numericCustomEvaluator('summary-length', ({ bindings }) => ({
-      resultKind: 'score',
-      value: bindings.actual.length,
+      resultKind: 'completed',
+      results: [{ metricId: 'summary-length-score', resultKind: 'score', value: bindings.actual.length }],
     }));
     const result = await evaluate({
       ...input,
@@ -3372,8 +3445,8 @@ describe('canonical eval-runtime API', () => {
           aggregation: { method: 'mean', missing: 'require-complete' },
         },
         numericCustomEvaluator('length', ({ bindings }) => ({
-          resultKind: 'score',
-          value: bindings.actual.length,
+          resultKind: 'completed',
+          results: [{ metricId: 'length-score', resultKind: 'score', value: bindings.actual.length }],
         })),
       ],
       comparisons: [{
@@ -4377,13 +4450,16 @@ describe('canonical eval-runtime API', () => {
 
     const custom = numericCustomEvaluator(
       'invalid-custom-config',
-      () => ({ resultKind: 'score', value: 1 }),
+      () => ({
+        resultKind: 'completed',
+        results: [{ metricId: 'invalid-custom-config-score', resultKind: 'score', value: 1 }],
+      }),
     );
     await expect(evaluate({
       ...pairedInput(declaration),
       evaluators: [{
         ...custom,
-        metric: { ...custom.metric, scope: 'run' },
+        metrics: [{ ...custom.metrics[0], scope: 'run' }],
       } as never],
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
 
@@ -4418,28 +4494,35 @@ describe('canonical eval-runtime API', () => {
       evaluators: [custom, {
         ...custom,
         evaluatorId: 'invalid-custom-config-two',
-        metric: { ...custom.metric, metricId: 'invalid-custom-config-two-score' },
-        implementation: { ...custom.implementation, version: '2.0.0' },
+        metrics: [{ ...custom.metrics[0], metricId: 'invalid-custom-config-two-score' }],
+        implementation: {
+          ...custom.implementation,
+          version: '2.0.0',
+          schemas: {
+            ...custom.implementation.schemas,
+            values: { 'invalid-custom-config-two-score': z.number() },
+          },
+        },
       }],
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_EVALUATOR_INVALID' });
 
     const lowerIsBetter = {
       ...custom,
-      metric: {
-        metricId: custom.metric.metricId,
+      metrics: [{
+        metricId: custom.metrics[0].metricId,
         valueType: 'numeric' as const,
         direction: 'lower-is-better' as const,
         missingPolicyId: 'exclude/v1' as const,
-      },
+      }],
     };
     await expect(evaluate({
       ...pairedInput(declaration),
       evaluators: [lowerIsBetter],
       comparisons: [{
         ...pairedInput(declaration).comparisons[0],
-        metricIds: [lowerIsBetter.metric.metricId],
+        metricIds: [lowerIsBetter.metrics[0].metricId],
       }],
-      analyses: comparisonAnalysis(lowerIsBetter.metric.metricId, 'lower-is-better'),
+      analyses: comparisonAnalysis(lowerIsBetter.metrics[0].metricId, 'lower-is-better'),
       decision: {
         decisionKind: 'analysis',
         analysisId: 'lower-is-better',
@@ -4648,7 +4731,10 @@ describe('canonical eval-runtime API', () => {
 
     const decisionLength = numericCustomEvaluator(
       'decision-family-length',
-      ({ bindings }) => ({ resultKind: 'score', value: bindings.actual.length }),
+      ({ bindings }) => ({
+        resultKind: 'completed',
+        results: [{ metricId: 'decision-family-length-score', resultKind: 'score', value: bindings.actual.length }],
+      }),
     );
     await expect(evaluate({
       ...common,

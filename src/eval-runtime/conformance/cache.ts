@@ -142,12 +142,12 @@ function evaluator(onCall: () => void): CustomEvaluator<{ actual: string; expect
     evaluatorKind: 'custom',
     evaluatorId: 'omk-runtime-check-cache-evaluator',
     instrumentId: 'omk.runtime-check.cache-evaluator/v1',
-    metric: {
+    metrics: [{
       metricId: 'omk-runtime-check-cache-match',
       valueType: 'boolean',
       direction: 'higher-is-better',
       missingPolicyId: 'exclude/v1',
-    },
+    }],
     bindings: [
       { bindingId: 'actual', sourceKind: 'output', pointer: '' },
       { bindingId: 'expected', sourceKind: 'expected', pointer: '' },
@@ -157,13 +157,20 @@ function evaluator(onCall: () => void): CustomEvaluator<{ actual: string; expect
       version: '1.0.0',
       schemas: {
         bindings: z.object({ actual: z.string(), expected: z.string() }).strict(),
-        value: z.boolean(),
+        values: { 'omk-runtime-check-cache-match': z.boolean() },
         fingerprintFacets: { bindings: 'two-strings/v1', value: 'boolean/v1' },
       },
       fingerprintFacets: { probe: 'omk.runtime-check.cache/v1' },
       async evaluate({ bindings }) {
         onCall();
-        return { resultKind: 'score', value: bindings.actual === bindings.expected };
+        return {
+          resultKind: 'completed',
+          results: [{
+            metricId: 'omk-runtime-check-cache-match',
+            resultKind: 'score',
+            value: bindings.actual === bindings.expected,
+          }],
+        };
       },
     },
   };

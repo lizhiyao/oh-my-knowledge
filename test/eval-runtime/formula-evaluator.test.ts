@@ -36,7 +36,13 @@ async function score(config: FormulaEvaluatorConfig, bindings: Record<string, Js
     attemptNumber: 1,
     signal: new AbortController().signal,
   };
-  return evaluator.implementation.evaluate(invocation);
+  const result = await evaluator.implementation.evaluate(invocation);
+  expect(result.resultKind).toBe('completed');
+  if (result.resultKind !== 'completed') throw new Error('formula invocation failed');
+  expect(result.results).toHaveLength(1);
+  const { metricId, ...outcome } = result.results[0];
+  expect(metricId).toBe(config.metric.metricId);
+  return outcome;
 }
 
 describe('declarative formula evaluator contract', () => {
@@ -72,7 +78,7 @@ describe('declarative formula evaluator contract', () => {
       },
     }));
     expect(reversed.bindings.map((binding) => binding.bindingId)).toEqual(['denominator', 'numerator']);
-    expect(reversed.metric).toMatchObject({ valueType: 'numeric', metricId: 'ratio' });
+    expect(reversed.metrics[0]).toMatchObject({ valueType: 'numeric', metricId: 'ratio' });
   });
 
   it('reports an unusable binding instead of a fabricated zero score', async () => {

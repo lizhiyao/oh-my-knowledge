@@ -29,9 +29,15 @@ export interface EvaluatorConformanceProbeInput<
   Parameters extends JsonValue | undefined = JsonValue | undefined,
 > {
   readonly evaluator: CustomEvaluator<Bindings, Parameters>;
-  readonly score: EvaluatorConformanceProbeSources & { readonly expectedValue: JsonValue };
-  readonly missing: EvaluatorConformanceProbeSources & { readonly expectedReasonCode: string };
-  readonly invalid: EvaluatorConformanceProbeSources & { readonly expectedReasonCode: string };
+  readonly score: EvaluatorConformanceProbeSources & {
+    readonly expectedValues: Readonly<Record<string, JsonValue>>;
+  };
+  readonly missing: EvaluatorConformanceProbeSources & {
+    readonly expectedReasonCodes: Readonly<Record<string, string>>;
+  };
+  readonly invalid: EvaluatorConformanceProbeSources & {
+    readonly expectedReasonCodes: Readonly<Record<string, string>>;
+  };
   readonly failure: EvaluatorConformanceProbeSources & {
     readonly expectedErrorCode: string;
   };
@@ -207,14 +213,27 @@ export async function runEvaluatorConformance<
     return result([check('configuration', false, 'runtime-evaluator-configuration-invalid')]);
   }
   const callback = input.evaluator?.implementation?.evaluate;
+  const metricIds = Array.isArray(input.evaluator?.metrics)
+    ? input.evaluator.metrics.map((metric) => metric?.metricId).sort()
+    : [];
+  const coversMetrics = (values: unknown): boolean => (
+    values !== null && typeof values === 'object' && !Array.isArray(values)
+      && metricIds.length > 0
+      && new Set(metricIds).size === metricIds.length
+      && canonicalizeJson(Object.keys(values).sort()) === canonicalizeJson(metricIds)
+  );
   if (typeof callback !== 'function'
+      || metricIds.some((metricId) => !IdentifierSchema.safeParse(metricId).success)
       || !IdentifierSchema.safeParse(input.probeNamespace).success
       || !validSources(input.score)
-      || !JsonValueSchema.safeParse(input.score.expectedValue).success
+      || !z.record(IdentifierSchema, JsonValueSchema).safeParse(input.score.expectedValues).success
+      || !coversMetrics(input.score.expectedValues)
       || !validSources(input.missing)
-      || !IdentifierSchema.safeParse(input.missing.expectedReasonCode).success
+      || !z.record(IdentifierSchema, IdentifierSchema).safeParse(input.missing.expectedReasonCodes).success
+      || !coversMetrics(input.missing.expectedReasonCodes)
       || !validSources(input.invalid)
-      || !IdentifierSchema.safeParse(input.invalid.expectedReasonCode).success
+      || !z.record(IdentifierSchema, IdentifierSchema).safeParse(input.invalid.expectedReasonCodes).success
+      || !coversMetrics(input.invalid.expectedReasonCodes)
       || !validSources(input.failure)
       || !IdentifierSchema.safeParse(input.failure.expectedErrorCode).success
       || !validSources(input.cancellation)) {
@@ -353,26 +372,32 @@ export async function runEvaluatorConformance<
     check(
       'score-contract',
       scoreRecord?.evaluationStatus === 'completed'
-        && scoreRecord.observations.length === 1
-        && scoreRecord.observations[0]?.observationStatus === 'observed'
-        && canonicalizeJson(scoreRecord.observations[0].value)
-          === canonicalizeJson(input.score.expectedValue),
+        && scoreRecord.observations.length === metricIds.length
+        && scoreRecord.observations.every((observation) => (
+          observation.observationStatus === 'observed'
+            && canonicalizeJson(observation.value)
+              === canonicalizeJson(input.score.expectedValues[observation.metricId])
+        )),
       'runtime-evaluator-score-contract-invalid',
     ),
     check(
       'missing-contract',
       missingRecord?.evaluationStatus === 'completed'
-        && missingRecord.observations.length === 1
-        && missingRecord.observations[0]?.observationStatus === 'missing'
-        && missingRecord.observations[0].reasonCode === input.missing.expectedReasonCode,
+        && missingRecord.observations.length === metricIds.length
+        && missingRecord.observations.every((observation) => (
+          observation.observationStatus === 'missing'
+            && observation.reasonCode === input.missing.expectedReasonCodes[observation.metricId]
+        )),
       'runtime-evaluator-missing-contract-invalid',
     ),
     check(
       'invalid-contract',
       invalidRecord?.evaluationStatus === 'completed'
-        && invalidRecord.observations.length === 1
-        && invalidRecord.observations[0]?.observationStatus === 'invalid'
-        && invalidRecord.observations[0].reasonCode === input.invalid.expectedReasonCode,
+        && invalidRecord.observations.length === metricIds.length
+        && invalidRecord.observations.every((observation) => (
+          observation.observationStatus === 'invalid'
+            && observation.reasonCode === input.invalid.expectedReasonCodes[observation.metricId]
+        )),
       'runtime-evaluator-invalid-contract-invalid',
     ),
     check(
@@ -396,10 +421,12 @@ export async function runEvaluatorConformance<
         && maximumEvaluatorInvocationsInFlight >= 2
         && concurrentRun.artifacts.evaluation.records.every((record) => (
           record.evaluationStatus === 'completed'
-            && record.observations.length === 1
-            && record.observations[0]?.observationStatus === 'observed'
-            && canonicalizeJson(record.observations[0].value)
-              === canonicalizeJson(input.score.expectedValue)
+            && record.observations.length === metricIds.length
+            && record.observations.every((observation) => (
+              observation.observationStatus === 'observed'
+                && canonicalizeJson(observation.value)
+                  === canonicalizeJson(input.score.expectedValues[observation.metricId])
+            ))
         )),
       'runtime-evaluator-concurrency-invalid',
     ),

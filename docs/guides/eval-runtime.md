@@ -501,9 +501,9 @@ The modes are intentionally named from actual trajectory to expected trajectory:
 <details>
 <summary>Write your own scoring rule</summary>
 
-Use `CustomEvaluator` when a built-in scorer cannot express a business rule, such as forbidden IDs, field formats, or output length. Each custom evaluator produces one metric.
+Use `CustomEvaluator` when a built-in scorer cannot express a business rule, such as forbidden IDs, field formats, or output length. Each custom evaluator declares one or more metrics and computes them together in one callback per Sample × Variant × Trial attempt.
 
-The example counts JavaScript string length after trimming (UTF-16 code units; some emoji occupy two or more), then summarizes the candidate's mean. Its lower-is-better direction demonstrates configuration, not overall answer quality. Replace the callback, metric declaration, and input schema with your own rule:
+The example counts JavaScript string length after trimming (UTF-16 code units; some emoji occupy two or more), also records whether the output is nonempty, then summarizes the candidate's mean length. Its lower-is-better direction demonstrates configuration, not overall answer quality. Replace the callback, metric declaration, and input schema with your own rule:
 
 ```ts
 import { z } from 'zod';
@@ -513,13 +513,18 @@ const outputLength = {
   evaluatorKind: 'custom',
   evaluatorId: 'output-length',
   instrumentId: 'output-length-v1',
-  metric: {
+  metrics: [{
     metricId: 'output-length-chars',
     valueType: 'numeric',
     unit: 'characters',
     direction: 'lower-is-better',
     missingPolicyId: 'exclude/v1',
-  },
+  }, {
+    metricId: 'output-nonempty',
+    valueType: 'boolean',
+    direction: 'higher-is-better',
+    missingPolicyId: 'exclude/v1',
+  }],
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   parameters: { trim: true },
   implementation: {
@@ -527,14 +532,23 @@ const outputLength = {
     version: '1.0.0',
     schemas: {
       bindings: z.object({ actual: z.string() }).strict(),
-      value: z.number().int().nonnegative(),
-      fingerprintFacets: { bindings: 'actual-string/v1', value: 'nonnegative-integer/v1' },
+      values: {
+        'output-length-chars': z.number().int().nonnegative(),
+        'output-nonempty': z.boolean(),
+      },
+      fingerprintFacets: { bindings: 'actual-string/v1', values: 'length-and-nonempty/v1' },
     },
     fingerprintFacets: { sourceRevision: 'sha256:...' },
     evaluate({ bindings, parameters, signal }) {
       signal.throwIfAborted();
       const actual = parameters?.trim ? bindings.actual.trim() : bindings.actual;
-      return { resultKind: 'score', value: actual.length };
+      return {
+        resultKind: 'completed',
+        results: [
+          { metricId: 'output-length-chars', resultKind: 'score', value: actual.length },
+          { metricId: 'output-nonempty', resultKind: 'score', value: actual.length > 0 },
+        ],
+      };
     },
   },
 } satisfies CustomEvaluator<{ actual: string }, { trim: boolean }>;
@@ -565,11 +579,11 @@ Read the status, included observation count, and mean in `result.analysisResults
 
 Bindings are a least-authority allowlist. Declare `expected` or `evaluation-context` only when the evaluator actually needs gold data; undeclared sample fields are not passed to the callback. JSON Pointer narrows each source before delivery. The `execution-facts` source is the exception: its pointer must be empty so the callback consumes the complete canonical, already-redacted facts projection rather than inventing a second projection identity. Binding and value schemas may validate and narrow but must not coerce, add defaults, or remove fields.
 
-The callback may return `score`, `missing`, `invalid`, or `failed`. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
+The callback returns `{ resultKind: 'completed', results, usage? }`. Each result identifies its `metricId` and is a `score`, `missing`, or `invalid` value; every declared metric must appear exactly once, in any order. `schemas.values` must have exactly the declared metric IDs, with one value parser for each. A rejected score invalidates only that metric. Missing evidence must be reported with an explicit `missing` result and reason. Unknown, duplicate, or omitted IDs fail the entire invocation. A stable `{ resultKind: 'failed', errorCode, usage? }` result fails the whole invocation. Keep `usage` on the outer result so tokens and provider cost are counted once. Retries repeat the whole callback; progress, concurrency slots, timeouts, and invocation budgets count evaluator calls, while coverage and summaries remain per metric. A score is persisted as measurement data, not classified source content: text, category, and ranking schemas must constrain it to a safe measurement vocabulary and must never echo an answer, trace, secret, or judge explanation. Put such supporting material in classified `CustomEvaluatorContent` evidence instead. Invalid values also use `CustomEvaluatorContent`; an ordinary thrown error is redacted. Do not retry or implement timeouts inside the callback: Core applies the sealed concurrency, timeout, budget, cancellation, accounting, and failure policy. The callback must be stateless, safe to run in parallel, and cooperate with `signal`; use the advanced lifecycle SPI for stateful resources.
 
 Keep `scale` and `unit` distinct in your head. Before any cross-metric composition, OMK linearly normalizes each component onto its declared `scale` into `[0, 1]` and orients it by `direction`, so comparability is carried by `valueType`, `scale`, and `direction` — the quantity dimension cancels at that step, which is exactly why a numeric composite component must be bounded. `unit` is a human-facing quantity label for display and manual review: it takes part in no numeric decision, and is never used to convert a value or to excuse an out-of-range one, because conversion must be declared explicitly. Since it carries no computation semantics, only `numeric` Metrics may declare `unit`, under the same tightening rule as `scale`.
 
-Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. One custom evaluator cannot emit multiple Metrics or represent an ensemble member. Numeric and boolean Metrics require a monotonic direction. They become analysis results only when the caller declares a compatible named summary or interval; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The single-analysis progress Decision accepts only `higher-is-better`; use an explicit comparison-family criterion when each raw signed effect has its own release boundary.
+Identity is explicit because OMK does not derive provenance from `Function#toString()`. Change `version`, schema `fingerprintFacets`, or implementation `fingerprintFacets` whenever code, dependencies, schemas, or provider configuration changes measurement behavior. A custom evaluator may emit multiple Metrics but cannot represent an ensemble member. Grouping formerly separate model calls changes the measurement instrument; do not assume the scores or latency are equivalent solely because the metric IDs are unchanged. See the [v2 migration notes](../reference/eval-runtime-api.md#custom-evaluator-v2-migration). Numeric and boolean Metrics require a monotonic direction. They become analysis results only when the caller declares a compatible named summary or interval; categorical, text, and ranking Metrics remain evaluation evidence until a compatible estimator is explicitly selected through the advanced API. Comparison estimates are raw treatment-minus-control differences. The single-analysis progress Decision accepts only `higher-is-better`; use an explicit comparison-family criterion when each raw signed effect has its own release boundary.
 
 </details>
 

@@ -381,25 +381,36 @@ const lengthEvaluator = {
   evaluatorKind: 'custom',
   evaluatorId: 'clean-room-length',
   instrumentId: 'clean-room-length-v1',
-  metric: {
+  metrics: [{
     metricId: 'output-length',
     valueType: 'numeric',
     scale: { min: 0, max: 20 },
     direction: 'lower-is-better',
     missingPolicyId: 'exclude/v1',
-  },
+  }, {
+    metricId: 'output-nonempty',
+    valueType: 'boolean',
+    direction: 'higher-is-better',
+    missingPolicyId: 'exclude/v1',
+  }],
   bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
   implementation: {
     implementationId: 'clean-room.length/v1',
     version: '1.0.0',
     schemas: {
       bindings: z.object({ actual: z.string() }).strict(),
-      value: z.number(),
+      values: { 'output-length': z.number(), 'output-nonempty': z.boolean() },
       fingerprintFacets: { bindings: 'actual-string/v1', value: 'number/v1' },
     },
     fingerprintFacets: { revision: 'clean-room-one' },
     evaluate({ bindings }) {
-      return { resultKind: 'score', value: bindings.actual.length };
+      return {
+        resultKind: 'completed',
+        results: [
+          { metricId: 'output-length', resultKind: 'score', value: bindings.actual.length },
+          { metricId: 'output-nonempty', resultKind: 'score', value: bindings.actual.length > 0 },
+        ],
+      };
     },
   },
 };
@@ -498,6 +509,12 @@ const customEvaluation = await evaluation({
   },
 }, { runId: 'clean-room-custom-evaluator' });
 assert.equal(customEvaluation.status, 'completed');
+assert.ok(customEvaluation.artifacts.evaluation.records
+  .filter((record) => record.evaluatorId === 'clean-room-length')
+  .every((record) => record.evaluationStatus === 'completed'
+    && record.observations.length === 2
+    && record.observations.some((item) => item.metricId === 'output-nonempty' && item.value === true)));
+
 assert.equal(customEvaluation.artifacts.analysis.records.length, 9);
 assert.equal(customEvaluation.analysisResults['baseline-mean-length'].value, 8);
 assert.equal(customEvaluation.analysisResults['prompt-v2-mean-length'].value, 8);
