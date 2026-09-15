@@ -236,7 +236,7 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
       <div><Link href={`${KNOWLEDGE_CANDIDATES_PATH}${suffix}`}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</Link></div>
 
       <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识对象' : 'Search knowledge'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识对象' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
-      <Table<KnowledgeRow> className="measure-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 960 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh ? '尚无体检或生产观测数据。' : 'No doctor or observe data yet.'}/> }} columns={[
+      <Table<KnowledgeRow> className="measure-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 960 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无体检或生产观测数据。运行 ' : 'No doctor or observe data yet. Run '}<code>omk doctor</code>{zh ? ' 体检知识载体，或 ' : ' to audit an artifact, or '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 采集生产表现。' : ' to collect production evidence.'}</span>}/> }} columns={[
         { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}${suffix}`} title={name}>{name}</Link> },
         { title: zh ? '健康' : 'Health', width: 140, render: (_, row) => <Health row={row}/> },
         { title: zh ? '健康体检' : 'Doctor', width: 140, render: (_, { doctor }) => doctor ? `${doctor.passCount}✓ ${doctor.warnCount}⚠ ${doctor.failCount}✗` : '—' },
@@ -265,13 +265,13 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
           zh={zh}
           suffix={suffix}
         />
-      </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh ? '尚未运行体检。' : 'Not run yet.'}/> },
+      </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚未运行体检。运行 ' : 'Not run yet. Run '}<code>{'omk doctor <skill-path>'}</code>{zh ? ' 生成。' : ' to generate one.'}</span>}/> },
       { key: 'observe', label: zh ? '生产观测' : 'Observe', children: observe ? <Descriptions bordered size="small" column={2} items={[
         { key: 'gap', label: zh ? '知识缺口' : 'Knowledge gap', children: observeGapText(observe, zh, false) },
         { key: 'fail', label: zh ? '工具失败' : 'Tool failures', children: toolFailureRate === null ? (zh ? '未测得' : 'Not measured') : formatPercent(toolFailureRate) },
         { key: 'segments', label: zh ? '片段数' : 'Segments', children: observe.segmentCount },
         { key: 'confidence', label: zh ? '可信度' : 'Confidence', children: observe.confidence === 'underpowered' ? (zh ? '样本不足，仅供参考' : 'Underpowered; indicative only') : observe.confidence },
-      ]}/> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh ? '尚无生产观测。' : 'No production observations yet.'}/> },
+      ]}/> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无生产观测。运行 ' : 'No production observations yet. Run '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 生成。' : ' to generate one.'}</span>}/> },
       { key: 'findings', label: `${zh ? '待优化项' : 'Findings'} (${insights.length})`, children: <Table size="small" rowKey="id" pagination={false} dataSource={insights} locale={{ emptyText: zh ? '当前没有活跃问题。' : 'No active findings.' }} columns={[{ title: zh ? '问题' : 'Finding', dataIndex: 'title', width: 240 }, { title: zh ? '说明' : 'Description', dataIndex: 'description' }, { title: zh ? '受众' : 'Audience', dataIndex: 'audience', width: 100 }, { title: zh ? '严重度' : 'Severity', dataIndex: 'severity', width: 100, render: (value: string) => <Tag color={value === 'high' ? 'error' : value === 'medium' ? 'warning' : 'default'}>{value}</Tag> }]}/> },
     ]}/>
   </>;

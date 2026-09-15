@@ -241,9 +241,11 @@ describe('体检历史与下钻', () => {
     assert.match(detailPage([OLDER, CURRENT], 'en', 'doctor-older'), /← back to current run/);
   });
 
-  it('未运行体检时给出空态而不是报错', () => {
+  it('未运行体检时给出空态而不是报错，并说明怎么产出这份数据', () => {
     const html = detailPage([], 'zh');
     assert.match(html, /尚未运行体检/);
+    assert.match(html, /omk doctor (?:&lt;|<)skill-path/, '空态要给出产出体检数据的命令');
+    assert.match(detailPage([], 'en'), /omk doctor (?:&lt;|<)skill-path/);
   });
 });
 
