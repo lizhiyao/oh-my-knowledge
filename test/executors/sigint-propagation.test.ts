@@ -156,27 +156,24 @@ describe('spawnWithSigintPropagation', () => {
     await rejected;
   });
 
-  it('maxBuffer:stdout 超限时 reject + kill', async () => {
-    // 写 200KB 到 stdout,maxBuffer 设 10KB
-    const { done } = spawnWithSigintPropagation(
+  it('maxBuffer:stdout/stderr 超限时都 reject + kill', async () => {
+    // 写 200KB 到 stdout/stderr,maxBuffer 设 10KB
+    const out = spawnWithSigintPropagation(
       'node',
       ['-e', 'process.stdout.write("x".repeat(200000))'],
       { maxBuffer: 10 * 1024 },
     );
-    await assert.rejects(done, (err: SpawnHelperError) => {
+    await assert.rejects(out.done, (err: SpawnHelperError) => {
       assert.match(err.message, /stdout maxBuffer/);
       return true;
     });
-  });
-
-  it('maxBuffer:stderr 超限时也 reject + kill', async () => {
-    const { done } = spawnWithSigintPropagation(
+    const err = spawnWithSigintPropagation(
       'node',
       ['-e', 'process.stderr.write("x".repeat(200000))'],
       { maxBuffer: 10 * 1024 },
     );
-    await assert.rejects(done, (err: SpawnHelperError) => {
-      assert.match(err.message, /stderr maxBuffer/);
+    await assert.rejects(err.done, (e: SpawnHelperError) => {
+      assert.match(e.message, /stderr maxBuffer/);
       return true;
     });
   });
