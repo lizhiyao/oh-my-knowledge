@@ -142,6 +142,20 @@ describe('measure react list keeps the three status axes orthogonal', () => {
   });
 
   /**
+   * 空列表要给出产出数据的那条命令；「搜索无匹配」是另一回事，不得混进同一句。
+   * 命令里的尖括号会被 renderToString 转义，所以只钉到参数名为止。
+   */
+  it('names the command that produces data when there are no runs at all', () => {
+    const zh = renderToString(createElement(RunList, { runs: [], lang: 'zh' }));
+    assert.ok(zh.includes('尚无评测记录'), 'empty state explains itself');
+    assert.ok(zh.includes('omk eval --control'), 'and names the command that produces data');
+    assert.ok(!zh.includes('没有匹配的记录'), 'a search miss is a different state');
+    const en = renderToString(createElement(RunList, { runs: [], lang: 'en' }));
+    assert.ok(en.includes('No evaluations yet'));
+    assert.ok(en.includes('omk eval --control'), 'English names the same command');
+  });
+
+  /**
    * 只表达事实的取值（数据分级）不参与配色，否则「敏感」会被读成一次失败，
    * 而状态色只用于表达结论的取值。
    */

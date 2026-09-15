@@ -35,7 +35,7 @@ import { runReportHref } from '../run-report-link';
 const COPY = {
   zh: {
     listTitle: '评测记录', listDescription: '查看版本差异的测量结果和证据，判断知识改动是否有效。',
-    empty: '尚无评测记录。完成一次评测后，结果会显示在这里。', noMatch: '没有匹配的记录',
+    emptyBefore: '尚无评测记录。运行 ', emptyCommand: 'omk eval --control <baseline> --treatment <candidate>', emptyAfter: ' 完成一次评测，结果会显示在这里。', noMatch: '没有匹配的记录',
     search: '搜索运行或报告 ID', back: '返回评测记录', runId: '运行 ID', created: '创建时间',
     runStatus: '运行状态', evidenceStatus: '证据状态', conclusionStatus: '结论状态', status: '状态',
     replayability: '可重放性', execution: '执行', evaluation: '评价', analysis: '分析',
@@ -60,7 +60,7 @@ const COPY = {
   },
   en: {
     listTitle: 'Evaluations', listDescription: 'Review measurements and evidence to assess whether knowledge changes are effective.',
-    empty: 'No evaluations yet. Completed evaluation results will appear here.', noMatch: 'No matching evaluations',
+    emptyBefore: 'No evaluations yet. Run ', emptyCommand: 'omk eval --control <baseline> --treatment <candidate>', emptyAfter: ' to complete an evaluation; results will appear here.', noMatch: 'No matching evaluations',
     search: 'Search run or report ID', back: 'Back to evaluations', runId: 'Run ID', created: 'Created',
     runStatus: 'Run status', evidenceStatus: 'Evidence status', conclusionStatus: 'Conclusion status', status: 'Status',
     replayability: 'Replayability', execution: 'Execution', evaluation: 'Evaluation', analysis: 'Analysis',
@@ -143,7 +143,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
   return <>
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
-    <Table<CoreStudioRunCard> className="measure-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? copy.empty : copy.noMatch}/> }} columns={[
+    <Table<CoreStudioRunCard> className="measure-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? <span>{copy.emptyBefore}<Code value={copy.emptyCommand}/>{copy.emptyAfter}</span> : copy.noMatch}/> }} columns={[
       { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id, lang)} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
       { title: copy.evidenceStatus, width: 130, render: (_, run) => <Status value={run.status.evidenceStatus} lang={lang}/> },
