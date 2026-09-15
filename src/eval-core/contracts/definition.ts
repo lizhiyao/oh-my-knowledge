@@ -121,6 +121,11 @@ export const MetricDefinitionSchema = z.object({
     max: z.number().optional(),
     target: z.number().optional(),
   }).strict().optional(),
+  /**
+   * Display-only quantity label. Comparability comes from `valueType`, `scale` and `direction`:
+   * composition normalizes each component by its declared `scale`, so units cancel by
+   * construction and no conversion is ever inferred from this string.
+   */
   unit: NonEmptyStringSchema.optional(),
   direction: z.enum([
     'higher-is-better',
