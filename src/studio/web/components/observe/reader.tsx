@@ -7,7 +7,9 @@ import type { ConversationReaderPage } from '../../../view-models/conversations/
 import { type Language } from '../layout/shell';
 import { displayTime } from '../../../application/display/format';
 import { FOLLOW_THRESHOLD, HISTORY_THRESHOLD, READER_PAGE_LIMIT, isFollowing, mergeTurns, readingAnchor, resolveAnchorTop, shouldLoadOlder, turnsChanged } from '../../../application/conversations/reader-viewport';
+import type { ReadingAnchor, ReadingFrame } from '../../../application/conversations/reader-viewport';
 import { failureAction, readerState, turnFallback } from '../../../application/conversations/reader-states';
+import type { ReaderState } from '../../../application/conversations/reader-states';
 import { taskHref } from '../conversation-link';
 import { Status } from './activity';
 import { ExtractedKnowledge } from './extracted-knowledge';
@@ -31,7 +33,7 @@ export function ConversationReader({ item, revision, lang, title, project }: { i
   const request = useRef<AbortController | null>(null);
   const pendingRefresh = useRef(false);
   const mounted = useRef(true);
-  const scroll = useRef<ReturnType<typeof readingAnchor>>(null);
+  const scroll = useRef<ReadingAnchor | null>(null);
   const lastMode = useRef<'older' | 'latest'>('latest');
 
   const load = useCallback(async (mode: 'older' | 'latest') => {
@@ -84,12 +86,12 @@ export function ConversationReader({ item, revision, lang, title, project }: { i
     follow.current = true; setNewMessages(false);
     if (pane.current) pane.current.scrollTop = pane.current.scrollHeight;
   }
-  const state = readerState({ loaded, failed, turnCount: turns.length });
+  const state: ReaderState = readerState({ loaded, failed, turnCount: turns.length });
   return <>
     <header className="observe-reader-header"><div><p title={item.cwd}>{project}</p><h1 title={title}>{title}</h1><small>{item.model ?? item.sourceKind} · {t(`${item.turnCount ?? item.tasks.length} 轮对话`, `${item.turnCount ?? item.tasks.length} turns`)}</small></div><ExtractedKnowledge threadId={item.threadId} lang={lang}/></header>
     <div className="observe-conversation-reader" ref={pane} aria-label={t('对话内容', 'Conversation content')} onScroll={() => {
       const element = pane.current; if (!element) return;
-      const frame = { scrollHeight: element.scrollHeight, scrollTop: element.scrollTop, clientHeight: element.clientHeight };
+      const frame: ReadingFrame = { scrollHeight: element.scrollHeight, scrollTop: element.scrollTop, clientHeight: element.clientHeight };
       follow.current = isFollowing(frame, FOLLOW_THRESHOLD);
       if (follow.current) setNewMessages(false);
       if (shouldLoadOlder(frame, { hasOlder, busy: request.current !== null, failed }, HISTORY_THRESHOLD)) void load('older');
