@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { langSuffix, type Language } from '../layout/shell';
 import { conversationPath } from '../conversation-link';
+import { displayTime } from '../../../application/display/format';
+import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
@@ -130,11 +132,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
-          <strong title={row.title}>{row.title}</strong><span>{row.choice === 'retain' ? t('已保留', 'Retained') : row.choice === 'discard' ? t('已舍弃', 'Discarded') : t('待处理', 'Unreviewed')} · {t('待复核', 'Pending review')}</span></button>) : <Empty description={t('打开工作区或选择一份日志开始。', 'Open a workspace or select a log to begin.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
+          <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('打开工作区或选择一份日志开始。', 'Open a workspace or select a log to begin.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </aside>
       <article className="candidate-content">
         {!detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
-          <div className="candidate-scroll"><h2>{detail.revision.title}</h2><Tag>{t('待复核', 'Pending review')}</Tag><Typography.Paragraph type="secondary">{t('保留表示愿意维护，不等于内容已得到证实。', 'Retaining means choosing to maintain this content, not verifying its truth.')}</Typography.Paragraph>
+          <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
             <Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/>
             <h3>{organization?.knowledgeKind === 'case' ? t('案例', 'Case') : organization?.knowledgeKind === 'method' ? t('方法', 'Method') : t('事实', 'Fact')}</h3>
             {organization?.knowledgeKind === 'case' && <><p>{organization.situation}</p><p>{t('案例缺口', 'Case gaps')}：{organization.gaps.join('；') || t('未列出', 'None listed')}</p></>}
@@ -159,7 +161,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
           </div>
           <footer className="candidate-actions"><Input aria-label={t('处理理由', 'Decision reason')} placeholder={t('记录保留、舍弃或修订的理由', 'Reason for retaining, discarding, or editing')} value={reason} onChange={(event) => setReason(event.target.value)}/><Space wrap>
             <Button disabled={busy} onClick={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}>{t('修订', 'Edit')}</Button>
-            {(['retain', 'discard'] as const).map((choice) => <Button key={choice} type={choice === 'retain' ? 'primary' : 'default'} disabled={busy || !reason.trim()} onClick={() => void work(async () => { await api('maintain', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, choice, reason }); await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId); })}>{choice === 'retain' ? t('保留', 'Retain') : t('舍弃', 'Discard')}</Button>)}</Space></footer>
+            {(['retain', 'discard'] as const).map((choice) => <Button key={choice} type={choice === 'retain' ? 'primary' : 'default'} disabled={busy || !reason.trim()} onClick={() => void work(async () => { await api('maintain', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, choice, reason }); await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
+              setNotice(choice === 'retain'
+                ? t('已记录保留决定与理由。', 'Recorded your decision to retain, with the reason.')
+                : t('已记录舍弃决定与理由；该修订仍在历史中。', 'Recorded your decision to discard, with the reason; the revision stays in its history.')); })}>{choice === 'retain' ? t('保留', 'Retain') : t('舍弃', 'Discard')}</Button>)}</Space></footer>
         </>}
       </article>
       <aside className="candidate-evidence"><h2>{t('原始依据', 'Source evidence')}</h2>
@@ -201,8 +206,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
           <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
-    <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} size={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId); })}>{t('保存新修订', 'Save new revision')}</Button>}>
-      <p>{t('修改标题、陈述与上下文。来源及实体身份保持绑定；新修订重新等待复核。', 'Edit the title, statements, and context. Sources and entity identities remain bound; the new revision awaits review.')}</p>
+    <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} size={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId);
+      setNotice(t('已保存新修订，需要重新决定保留或舍弃。', 'Saved a new revision. Decide again whether to retain or discard it.')); })}>{t('保存新修订', 'Save new revision')}</Button>}>
+      <p>{t('修改标题、陈述与上下文。来源及实体身份保持绑定；保存后是一条新修订，原先的保留或舍弃决定不会带过来。', 'Edit the title, statements, and context. Sources and entity identities remain bound; saving creates a new revision, and the previous retain or discard decision does not carry over.')}</p>
       <Input aria-label={t('修订理由', 'Revision reason')} value={reason} placeholder={t('修订理由', 'Revision reason')} onChange={(event) => setReason(event.target.value)}/>
       {editableDraft && <div className="candidate-form">
         <label>{t('标题', 'Title')}<Input value={editableDraft.title} onChange={(event) => updateDraft((value) => { value.title = event.target.value; })}/></label>
@@ -218,17 +224,29 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       </div>}
     </Drawer>
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size={620}>
-      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
+      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
 }
 
-function extractionStatusLabel(status: string, lang: Language): string {
-  const labels: Record<string, [string, string]> = {
-    completed: ['提炼完成', 'Completed'], generating: ['提炼中', 'Extracting'],
-    prepared: ['待完成保存', 'Ready to save'], failed: ['提炼失败', 'Failed'], cancelled: ['已取消', 'Cancelled'],
-  };
-  return labels[status]?.[lang === 'zh' ? 0 : 1] ?? status;
+/** 列表行只报用户做过的决定；恒定的复核维度在详情头说明一次，不逐行重复。 */
+export function CandidateRowStatus({ choice, lang }: { choice: CandidateChoice; lang: Language }) {
+  return <span>{candidateDecisionLabel(choice, lang)}</span>;
+}
+
+/** 决定必须留下理由，理由就要看得见：标签只报维护决定，已做决定时回显理由、决定人与时间。 */
+export function CandidateDecisionHeader({ title, maintenance, lang }: {
+  title: string; maintenance: KnowledgeCandidateDetail['maintenance']; lang: Language;
+}) {
+  const zh = lang === 'zh';
+  const t = (cn: string, en: string) => zh ? cn : en;
+  return <>
+    <h2>{title}</h2><Tag>{candidateDecisionLabel(maintenance?.choice ?? null, lang)}</Tag>
+    {maintenance && <p className="candidate-help">{zh
+      ? `决定理由：「${maintenance.reason}」 · 决定人 ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`
+      : `Decision reason: "${maintenance.reason}" · by ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`}</p>}
+    <Typography.Paragraph type="secondary">{t('保留表示愿意维护，不等于内容已得到证实。', 'Retaining means choosing to maintain this content, not verifying its truth.')}</Typography.Paragraph>
+  </>;
 }
 
 export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, latest, failedToLoad, onChoose, onHistory }: {
@@ -256,7 +274,7 @@ export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, lat
       <ul><li>{t('项目的明确事实与约束', 'Explicit project facts and constraints')}</li><li>{t('你对助手做出的具体纠正', 'A specific correction you gave the assistant')}</li><li>{t('问题处理经过，以及成功或失败的结果', 'How a problem was handled and what happened')}</li></ul>
       <div className="candidate-last-run" role="status">
         {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <p>{t('暂时无法读取已有记录。请检查保存位置。', 'Could not load existing records. Check the save location.')}</p> : latest ? <>
-          <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionStatusLabel(latest.status, lang)}`)}</strong>
+          <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionRunStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionRunStatusLabel(latest.status, lang)}`)}</strong>
           <p>{emptyResult ? (latest.rejections.length ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
           <Button type="link" disabled={busy} onClick={onHistory}>{t('查看提炼记录', 'View extraction history')}</Button>
         </> : <p>{t('还没有提炼记录，从左侧选择一份工作记录开始。', 'No extractions yet. Choose a work log to begin.')}</p>}
