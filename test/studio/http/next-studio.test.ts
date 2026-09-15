@@ -83,7 +83,7 @@ describe('Next Studio production boundary', () => {
     const knowledgeHtml = await knowledge.text();
     assert.equal(knowledge.status, 200);
     // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
-    assert.match(knowledgeHtml, /href="\/knowledge\?lang=zh" aria-current="page"/);
+    assert.match(knowledgeHtml, /<a(?=[^>]*href="\/knowledge\?lang=zh")(?=[^>]*aria-current="page")/u);
     assert.match(knowledgeHtml, /knowledge-table/);
     assert.match(knowledgeHtml, /audit\/&lt;script&gt;/);
     assert.doesNotMatch(knowledgeHtml, /<script>alert\(1\)<\/script>/);
@@ -137,7 +137,7 @@ describe('Next Studio production boundary', () => {
     for (const href of ['href="/observe?lang=en"', 'href="/measure?lang=en"', 'href="/knowledge?lang=en"']) {
       assert.ok(measureShell.includes(href), `primary navigation links ${href}`);
     }
-    assert.match(htmlA, /href="\/measure\?lang=en" aria-current="page"/);
+    assert.match(htmlA, /<a(?=[^>]*href="\/measure\?lang=en")(?=[^>]*aria-current="page")/u);
     for (const path of ['/knowledge/skills/missing','/knowledge/skills/%ZZ']) assert.equal((await fetch(urlA+path)).status,404);
     assert.equal((await fetch(`${urlA}/knowledge`,{method:'POST'})).status,405);
     await a.stop();

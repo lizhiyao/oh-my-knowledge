@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { StudioShell, studioEntryPath, langSuffix } from '../components/layout/shell';
 import { useStudioNavigation } from '../components/layout/navigation';
 import { useStudioLanguage } from '../components/layout/language';
@@ -16,6 +17,6 @@ export default function NotFound() {
   return <StudioShell lang={lang} active={false}><section>
     <h1>{zh ? '页面不存在' : 'Page not found'}</h1>
     <p>{zh ? '这个地址在本机宿主上没有对应的页面或记录。' : 'This address has no page or record on this host.'}</p>
-    <a href={entry}>{zh ? '返回 Studio 首页' : 'Back to Studio'}</a>
+    <Link href={entry}>{zh ? '返回 Studio 首页' : 'Back to Studio'}</Link>
   </section></StudioShell>;
 }

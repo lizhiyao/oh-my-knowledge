@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { Empty, Table, Tag, Timeline, Tooltip, Typography } from 'antd';
 import type { ManagedLifecycleLabel } from '../../../../knowledge-artifacts/governance/contracts';
 import type {
@@ -122,7 +123,7 @@ function EventLine({ event, zh, lang }: { event: ManagedTimelineEvent; zh: boole
       {event.observeBadge === 'production_gap' && (
         <span className="managed-event-hint">{zh ? '建议补对应用例后重跑 omk eval' : 'add matching samples, then re-run omk eval'}</span>
       )}
-      {event.runId && <a href={runReportHref(event.runId, lang)}>{zh ? '查看报告 →' : 'report →'}</a>}
+      {event.runId && <Link href={runReportHref(event.runId, lang)}>{zh ? '查看报告 →' : 'report →'}</Link>}
       {event.reason && <em>{zh ? `「${event.reason}」` : `"${event.reason}"`}</em>}
     </div>
   </div>;
@@ -167,7 +168,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
             title: zh ? '名称' : 'Name',
             dataIndex: ['row', 'name'],
             ellipsis: { showTitle: false },
-            render: (name: string, item) => <a href={`/knowledge/managed/${encodeURIComponent(item.row.id)}${langSuffix(lang)}`} title={name}>{name}</a>,
+            render: (name: string, item) => <Link href={`/knowledge/managed/${encodeURIComponent(item.row.id)}${langSuffix(lang)}`} title={name}>{name}</Link>,
           },
           { title: zh ? '类型' : 'Kind', dataIndex: ['row', 'kind'], width: 110 },
           {
@@ -225,7 +226,7 @@ export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, 
     <KnowledgeSectionNav active="managed" lang={lang} />
     <div className="measure-heading">
       <div>
-        <a href={`/knowledge/managed${langSuffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</a>
+        <Link href={`/knowledge/managed${langSuffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
         <h1 title={page.name}>{page.name}</h1>
         <p>{[page.artifactKind, page.sourceKind, shortHash(page.contentHash), `${zh ? '纳管于' : 'since'} ${displayTime(page.installedAt)}`].join(' · ')}</p>
       </div>

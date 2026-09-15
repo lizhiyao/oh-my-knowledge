@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useMemo } from 'react';
 import { Empty, Listy, Space, Tag, Typography } from 'antd';
 import type { ExperienceSessionSummary } from '../../../../../observability/contracts/experience';
@@ -67,9 +68,9 @@ export function ExperienceReviewSection({
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {session.sourceKind}
               </Typography.Text>
-              <Typography.Link href={conversationHref(session.threadId, lang)} style={{ fontSize: 12 }}>
+              <Link href={conversationHref(session.threadId, lang)} style={{ fontSize: 12 }}>
                 {zh ? '查看对话任务' : 'Conversation tasks'}
-              </Typography.Link>
+              </Link>
             </Space>
             {session.sessionStory?.summary ? (
               <Typography.Paragraph style={{ fontSize: 13, marginBottom: 8 }}>

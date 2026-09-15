@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { StudioUtilities } from './utilities';
 import type { ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
@@ -35,12 +36,12 @@ function LanguageSwitch({ lang }: { lang: Language }) {
   const route = useStudioRoute();
   if (!route) return null;
   const href = languageSwitchHref(route, lang === 'zh' ? 'en' : 'zh');
-  return <a
+  return <Link
     className="studio-lang"
     href={href}
     aria-label={lang === 'zh' ? '切换到英文界面' : 'Switch to the Chinese interface'}
     title={lang === 'zh' ? '当前语言：中文' : 'Current language: English'}
-  >{lang === 'zh' ? '英文' : '中文'}</a>;
+  >{lang === 'zh' ? '英文' : '中文'}</Link>;
 }
 
 export function StudioShell({ lang, children, active, utilitiesInSidebar = false }: { utilitiesInSidebar?: boolean; lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | false }) {
@@ -48,11 +49,11 @@ export function StudioShell({ lang, children, active, utilitiesInSidebar = false
   // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
   const navigation = useStudioNavigation();
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
-    <div className="studio-app"><header className="studio-header"><a className="studio-brand" href={`${studioEntryPath(navigation)}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></a>
+    <div className="studio-app"><header className="studio-header"><Link className="studio-brand" href={`${studioEntryPath(navigation)}${suffix}`} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
       {navigation ? <nav aria-label={lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}>
-        <a href={`/observe${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</a>
-        <a href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</a>
-        <a href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</a>
+        <Link href={`/observe${suffix}`} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</Link>
+        <Link href={`/measure${suffix}`} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</Link>
+        <Link href={`/knowledge${suffix}`} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</Link>
       </nav> : null}
       <div className="studio-global-actions">{navigation ? !utilitiesInSidebar && <StudioUtilities lang={lang} placement="bottomRight"/> : <LanguageSwitch lang={lang}/>}</div>
     </header><main className="studio-content">{children}</main></div>

@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Modal, Select, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
@@ -104,7 +105,7 @@ export function ExtractConversation({ threadId, turnId, lang, onFinished }: { th
         {stage === 'result' && run && <><Alert type={run.status === 'completed' ? 'success' : 'warning'} title={run.status === 'completed' ? t(`提炼完成，${run.committed.length} 条候选知识`, `Completed: ${run.committed.length} candidates`) : t('提炼未完成，请查看提炼记录。', 'Extraction incomplete. Check extraction history.')}/>
           {run.status === 'completed' && !run.committed.length && <p>{t('这次没有找到可保存的知识，可以换一段包含明确事实或处理结果的对话。', 'No knowledge was found to save. Try a conversation with explicit facts or outcomes.')}</p>}
           {run.rejections.length > 0 && <p>{t(`${run.rejections.length} 条输出未通过引用或格式校验。`, `${run.rejections.length} outputs failed citation or format validation.`)}</p>}
-          {run.committed.map(item => <p key={item.knowledgeId}><a href={link(item.knowledgeId)}>{titles[item.knowledgeId] || t('查看候选知识', 'Review candidate')}</a></p>)}
+          {run.committed.map(item => <p key={item.knowledgeId}><Link href={link(item.knowledgeId)}>{titles[item.knowledgeId] || t('查看候选知识', 'Review candidate')}</Link></p>)}
         </>}
       </div>
     </Modal></>;

@@ -207,12 +207,12 @@ describe('Next-hosted observation inbox route', () => {
     assert.doesNotMatch(zhHtml, /aria-label="Studio 一级导航"/);
     assert.doesNotMatch(zhHtml, /href="\/observe/);
     // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
-    assert.match(zhHtml, /<a class="studio-brand" href="\/measure\?lang=zh"/);
+    assert.match(zhHtml, /<a(?=[^>]*class="studio-brand")(?=[^>]*href="\/measure\?lang=zh")/u);
 
     const enPage = await fetch(`${url}/measure?lang=en`);
     assert.equal(enPage.status, 200);
     const enHtml = await enPage.text();
     assert.doesNotMatch(enHtml, /aria-label="Studio primary navigation"/);
-    assert.match(enHtml, /<a class="studio-brand" href="\/measure\?lang=en"/);
+    assert.match(enHtml, /<a(?=[^>]*class="studio-brand")(?=[^>]*href="\/measure\?lang=en")/u);
   }, 20000);
 });
