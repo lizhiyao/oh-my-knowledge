@@ -60,6 +60,48 @@ async function expectCode(
 }
 
 describe('Compiler definition validation', () => {
+  it('seals Metric value domains and rejects quantity labels on non-numeric Metrics', () => {
+    const numeric = () => {
+      const definition = validDefinition();
+      const metric = definition.metrics[0];
+      if (metric === undefined) throw new Error('Expected one Metric.');
+      metric.valueType = 'numeric';
+      metric.direction = 'target-is-best';
+      return definition;
+    };
+    const rejects = (
+      definition: ReturnType<typeof validDefinition>,
+      message: string,
+    ): void => {
+      expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+        expect.objectContaining({
+          code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          message,
+        }),
+      );
+    };
+
+    const accepted = numeric();
+    accepted.metrics[0].scale = { min: 0, max: 1, target: 0.8 };
+    accepted.metrics[0].unit = 'ratio';
+    expect(() => validateDefinitionSemantics(accepted, validPolicy())).not.toThrow();
+
+    const labelledBoolean = validDefinition();
+    labelledBoolean.metrics[0].unit = 'count';
+    rejects(labelledBoolean, '只有 numeric Metric 可以声明 unit。');
+
+    const invertedScale = numeric();
+    invertedScale.metrics[0].scale = { min: 1, max: 0 };
+    rejects(invertedScale, 'Metric scale 的 min 不能大于 max。');
+
+    const missingTarget = numeric();
+    rejects(missingTarget, 'target-is-best Metric 必须声明 scale.target。');
+
+    const targetOutOfRange = numeric();
+    targetOutOfRange.metrics[0].scale = { min: 0, max: 1, target: 1.5 };
+    rejects(targetOutOfRange, 'Metric scale.target 必须位于声明的 scale 范围内。');
+  });
+
   it('does not let arbitrary estimators impersonate a composite comparison', () => {
     const definition = validDefinition();
     const node = definition.analysisGraph.nodes[0];

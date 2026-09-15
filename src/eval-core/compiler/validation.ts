@@ -238,6 +238,13 @@ function validateMetric(metric: MetricDefinition): void {
       { metricId: metric.metricId },
     );
   }
+  if (metric.valueType !== 'numeric' && metric.unit !== undefined) {
+    throw definitionError(
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+      '只有 numeric Metric 可以声明 unit。',
+      { metricId: metric.metricId },
+    );
+  }
   if (metric.scale?.min !== undefined && metric.scale.max !== undefined
       && metric.scale.min > metric.scale.max) {
     throw definitionError(

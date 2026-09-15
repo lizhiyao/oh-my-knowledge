@@ -564,6 +564,8 @@ Bindings 是最小权限 allowlist。只有 evaluator 确实需要 gold data 时
 
 Callback 可返回 `score`、`missing`、`invalid` 或 `failed`。Score 会作为 measurement data 直接持久化，不是带 classification 的 source content；text、category 与 ranking schema 必须把它约束在安全的测量词表内，绝不能回显 answer、trace、secret 或评委解释。这类支撑材料应放入显式声明 classification 的 `CustomEvaluatorContent` evidence。Invalid value 同样使用 `CustomEvaluatorContent`；普通异常会被脱敏。不要在 callback 内自行重试或实现超时：Core 会执行已封存的并发、超时、预算、取消、计量与失败策略。Callback 必须无状态、可安全并行且协作响应 `signal`；需要有状态资源时使用 advanced 生命周期 SPI。
 
+`scale` 与 `unit` 的分工必须分清。跨指标合成前，OMK 先按每个 component 声明的 `scale` 线性归一化到 `[0, 1]`，再按 `direction` 定向，因此可比性由 `valueType`、`scale`、`direction` 承载，量纲在这一步已经被消掉；这也是 composite 要求 numeric component 必须有界的原因。`unit` 只是给人看的量纲标注，用于展示与人工核对，不参与任何数值判定，也不会被用来自动换算或纠正越界值——换算必须由配置显式表达，不省略。因为它不承载计算语义，只允许 `numeric` Metric 声明 `unit`，与 `scale` 使用同一条收紧规则。
+
 OMK 不会根据 `Function#toString()` 推导 provenance，因此 identity 必须显式声明。当代码、依赖、schema 或 provider 配置改变测量行为时，必须更新 `version`、schema `fingerprintFacets` 或 implementation `fingerprintFacets`。单个 custom evaluator 不得产出多个 Metric，也不代表 ensemble member。Numeric 与 boolean Metric 必须声明单调 direction；只有调用方声明兼容的具名 summary 或 interval 后，它们才会成为 analysis result。Categorical、text 与 ranking Metric 在通过 advanced API 明确选择兼容 estimator 前只保留为 evaluation evidence。比较估计值保持原始 treatment-minus-control 差值。单 analysis progress Decision 只接受 `higher-is-better`；需要分别约束不同原始有符号 effect 时，应使用显式 comparison-family criterion。
 
 </details>
