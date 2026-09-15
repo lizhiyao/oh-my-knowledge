@@ -58,11 +58,15 @@ function collectTestExtensions(dir: string, out: Set<string> = new Set()): Set<s
   return out;
 }
 
+/** 读 vitest 实际解析的源码层 include（默认全量，非分片模式），不依赖配置文本形态。 */
 function declaredIncludePatterns(): string[] {
+  // 分层后 include 只在 project 内声明（根级 include 会与 project include 取并集导致
+  // --project 过滤失效），且源码层 include 可能是分片清单。这里直接断言源码层默认
+  // 收集全量 test/ 树的契约：OMK_SOURCE_SHARD 未设置时 include 为全量 glob。
+  delete process.env.OMK_SOURCE_SHARD;
   const source = readFileSync(join(REPO_ROOT, 'vitest.config.ts'), 'utf-8');
-  const declaration = /include:\s*\[([^\]]*)\]/.exec(source);
-  expect(declaration, 'vitest.config.ts 必须显式声明 test.include').not.toBeNull();
-  return [...declaration![1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+  expect(source, 'vitest.config.ts 必须保留源码层默认全量 include').toContain("'test/**/*.test.{ts,tsx}'");
+  return ['test/**/*.test.{ts,tsx}'];
 }
 
 function declaredExtensions(patterns: string[]): Set<string> {
@@ -146,6 +150,34 @@ describe('测试门禁覆盖面自守', () => {
   it('include 覆盖整棵 test/ 树而不是某个子目录', () => {
     const patterns = declaredIncludePatterns();
     expect(patterns.every((pattern) => pattern.startsWith('test/') && pattern.includes('**'))).toBe(true);
+  });
+
+  it('每个测试文件都落在产物层清单或某个源码层分片清单（覆盖不减）', () => {
+    const readList = (path: string): Set<string> => new Set(
+      readFileSync(join(REPO_ROOT, path), 'utf-8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '' && !line.startsWith('#')),
+    );
+    const productLayer = readList('test/product-layer.txt');
+    const shardFiles = [1, 2, 3, 4].map((index) => readList(`test/shards/source-${index}.txt`));
+    const covered = new Set<string>([...productLayer, ...shardFiles.flatMap((files) => [...files])]);
+    const onDisk = listScriptFiles(TEST_DIR).filter((file) => TEST_FILE.test(basename(file)));
+    const missing = onDisk.filter((file) => !covered.has(file)).sort();
+    expect(missing, `这些测试文件不在产物层也不在任何源码层分片：${missing.join('、')}`).toEqual([]);
+    // 分片之间不得重叠（重叠会让同一文件跑多遍，虚增覆盖且浪费 runner）。
+    const seen = new Set<string>();
+    const duplicated: string[] = [];
+    for (const files of shardFiles) {
+      for (const file of files) {
+        if (seen.has(file)) duplicated.push(file);
+        seen.add(file);
+      }
+    }
+    expect(duplicated, `这些文件落在多个源码层分片：${[...new Set(duplicated)].join('、')}`).toEqual([]);
+    // 产物层与源码层分片不得重叠。
+    const crossLayer = [...productLayer].filter((file) => seen.has(file)).sort();
+    expect(crossLayer, `这些文件同时在产物层与源码层分片：${crossLayer.join('、')}`).toEqual([]);
   });
 });
 
