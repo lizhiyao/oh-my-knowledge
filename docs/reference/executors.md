@@ -45,7 +45,7 @@ Precedence is: explicit CLI flag → `eval.yaml` → `OMK_*` environment prefere
 - Inside a Codex task in the ChatGPT desktop app, omk selects `codex`.
 - In a regular terminal where only the Codex CLI is available, omk selects `codex`.
 - When both Claude and Codex are installed outside a Codex task, omk keeps the legacy `claude` default to avoid silently switching the measurement runtime after an upgrade.
-- When Codex is selected without `--model`, omk reads the top-level `model` from `$CODEX_HOME/config.toml` or `~/.codex/config.toml`.
+- When Codex is selected without `--model`, omk resolves the model from `$CODEX_HOME/config.toml` or `~/.codex/config.toml`: the `model` of the profile named by top-level `profile` (falling back to the top-level `model` when that profile omits it), otherwise the top-level `model`.
 - The default judge follows the selected executor: Claude uses `claude:haiku`; Codex uses the same model as the evaluated task and never falls back to Claude.
 - The same resolver covers `eval`, `doctor`, `sample`, `evolve`, and `observe inbox --llm-enhanced-review`.
 
@@ -64,7 +64,7 @@ Without the optional variables, the model comes from Codex config and the judge 
 **Codex construct-validity notes:**
 
 - **Runtime fingerprinting**: `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Core artifacts seal executor and evaluator Runtime identities, including the local binary or SDK evidence available to the host. A remote judge deployment remains `opaque/unknown` unless `eval.yaml` explicitly supplies `judgeModels[].deploymentRevision`; a supplied revision is only `self-reported/declared`. If Runtime identities differ, read the result as a runtime comparison, not just prompt/template behavior. See [Statistical rigor](../explanation/statistical-rigor#3-judge-debiasing-and-prompt-identity).
-- **Config and session isolation**: before launch, omk reads only the top-level Codex `model` and passes it explicitly. `codex` passes `--ephemeral` + `--ignore-user-config` + `--ignore-rules`. `codex-sdk` redirects `$CODEX_HOME` to a fresh tmp dir for every execution, copies `auth.json`, and removes the directory after the child exits; user config and prior SDK sessions therefore do not leak into the run.
+- **Config and session isolation**: before launch, omk resolves only the model from the local Codex config (the profile model when top-level `profile` selects one) and passes it explicitly. `codex` passes `--ephemeral` + `--ignore-user-config` + `--ignore-rules`. `codex-sdk` redirects `$CODEX_HOME` to a fresh tmp dir for every execution, copies `auth.json`, and removes the directory after the child exits; user config and prior SDK sessions therefore do not leak into the run.
 - **SDK execpolicy limitation**: the current `@openai/codex-sdk` API does not expose the CLI's `--ignore-rules` switch. Project execpolicy discovered from an explicitly selected working directory can therefore still affect `codex-sdk`. Keep the executor and runtime context fixed, or prefer `codex` when project-rule isolation is required.
 
 ## DeepSeek Harness: prefer the host plugin
