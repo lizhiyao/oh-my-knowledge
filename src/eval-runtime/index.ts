@@ -238,7 +238,7 @@ export type {
   CreateCustomEvaluatorInput,
 } from './builders/custom-evaluator.js';
 export { debugEvaluator } from './debug-evaluator.js';
-export type { DebugEvaluatorInput, DebugEvaluatorResult } from './debug-evaluator.js';
+export type { DebugEvaluatorInput, DebugEvaluatorResult, DebugJudgeInvocation, DebugJudgeResponse, DebugRubricReading } from './debug-evaluator.js';
 export type { EvaluationConfigurationIssue } from './evaluation/errors.js';
 
 // Imperative builders for assembling Definitions, Policies, and Evaluators directly.

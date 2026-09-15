@@ -207,9 +207,13 @@ Numeric 与 boolean custom Metric 必须显式声明 `higher-is-better` 或 `low
 
 `createCustomEvaluator(input)` 接受 `CreateCustomEvaluatorInput`：以指标 ID 为键的 `metrics`，每个 `CustomEvaluatorMetric` 将 Metric 字段与 `schema` 放在一起，省略时默认 `missingPolicyId: 'exclude/v1'`。无需再声明 `schemas.values`。Callback 返回 `CustomEvaluatorScores`，其中 completed 的 `results` 是按指标 ID 映射的 score／missing／invalid 对象，分数类型由对应 parser 推断，调用级 usage／failed 保持不变。构造器只校验声明，不调用执行器、parser 或评分 callback；展开后的 v2 声明使用相同 identity 派生，不改变测量或存储契约。构造器错误位置相对于输入；metrics 的位置使用映射键。
 
-`debugEvaluator(input, options?)` 接受 `DebugEvaluatorInput`（`evaluator`、单个 `sample`、单个 `variant`，以及可选 `seed`、`policy`、`infrastructure`）和标准 `EvaluationRunOptions`。返回 `DebugEvaluatorResult`：`run` 是权威 `EvaluationResult`，`bindingInputs` 是每次绑定 parser 校验前输入的冻结快照，可能包含 gold／secret。只在内存中收集，不加入事件或报告；调用结束后停止收集。缺失源、未开始的尝试或评分缓存命中不会产生快照。固定使用一个 trial 的 solo sampling、空 comparisons／analyses，不声明 Decision；默认 seed 与 datasetId 为 `omk-debug-evaluator`。这是真实执行，重试、超时、取消与预算遵循传入 policy；单条调试结果不能代表全量质量结论。
+`debugEvaluator(input, options?)` 接受 `DebugEvaluatorInput`：Custom 或 Rubric `evaluator`、单个 `sample`、单个 `variant`，以及可选 `seed`、`policy`、`infrastructure`；第二个参数为标准 `EvaluationRunOptions`。返回 `DebugEvaluatorResult`：`run` 是权威 `EvaluationResult`；Custom 的 `bindingInputs` 保留每次 parser 校验前的冻结快照，Rubric 的 `judgeInvocations` 保留实际 provider 调用的冻结记录。另一类调试数组为空。
 
-`EvaluationConfigurationIssue` 的 `path` 为字符串／数字路径，`reasonCode` 为 `invalid-value`、`duplicate-id`、`metric-set-mismatch`、`parser-required` 或 `unsupported-field`。`EvaluationConfigurationError.issues` 对 Custom Evaluator 声明提供字段诊断，其他配置错误可为空数组；经 `evaluate`／`prepareEvaluation` 调用时路径以 `evaluators` 和下标开头。诊断不包含拒绝值或宿主异常文本；运行期失败继续保留在 Core records 中。
+`DebugJudgeInvocation` 包含 `memberId`、从 0 开始的 `invocationIndex`、不含 signal 的实际 `request` 和 `DebugJudgeResponse`。索引表示本次调试中的调用开始顺序，不是 replicateIndex 或 Core attemptNumber；并发 replicate／重试的最终测量身份以 `run` 为准。`DebugJudgeResponse` 的 `responseStatus: 'completed'` 保留原始 `output`、使用正式解析器得到的 `DebugRubricReading` 数组 与合法用量事实。读数使用 `observationStatus: 'observed'`（value、reason、可选 reasoning）或 `'invalid'`（reasonCode）。Provider 返回失败、无效返回契约、抛异常、取消和未完成分别标为 `provider-failed`、`invalid-response`、`threw`、`cancelled`、`pending`；不复制异常文本或失败原因，只保留合法的 token／费用事实。重试用量逐调用展示，汇总只看 `run`，不要重复相加。
+
+附加调试原文可能含敏感信息，仅在返回值内存中收集，不加入事件或报告；正式运行的证据仍遵循已有 evidence policy。返回后停止收集并移除 abort 监听，迟到的响应不改写结果。缺失源、未开始的尝试或评分缓存命中不会产生对应调用记录。固定使用一个 trial 的 solo sampling、空 comparisons／analyses，不声明 Decision；默认 seed 与 datasetId 为 `omk-debug-evaluator`。这是真实执行，仍遵循预算、超时、重试和取消；不修改 prompt 字节、Runtime identity 或评分口径，单条结果不代表全量质量。
+
+`EvaluationConfigurationIssue` 的 `path` 为字符串／数字路径，`reasonCode` 为 `invalid-value`、`duplicate-id`、`metric-set-mismatch`、`parser-required` 或 `unsupported-field`。`EvaluationConfigurationError.issues` 对 Custom 与 Rubric Evaluator 声明提供字段诊断；Rubric 覆盖 rubrics、judges、aggregation 和指针等字段。例如重复指标指向 `['evaluators', 0, 'rubrics', 1, 'metricId']`。未知字段只定位到父对象，不泄露未知键名。其他配置错误仍可为空数组；运行期失败保留在 Core records 中。诊断不包含拒绝值或宿主异常文本。
 
 **Custom Evaluator v2 迁移。** <a id="custom-evaluator-v2-migration"></a>
 

@@ -671,6 +671,28 @@ The Judge callback performs exactly one provider invocation and must not retry. 
 
 </details>
 
+### Debug one Rubric sample first
+
+Pass your configured Rubric evaluator, sample, and variant to the same debug entry:
+
+```ts
+import { debugEvaluator } from 'oh-my-knowledge';
+
+const debug = await debugEvaluator({
+  evaluator: rubricEvaluator,
+  sample: dataset.samples[0],
+  variant: variants[0],
+});
+const call = debug.judgeInvocations[0];
+if (call?.response.responseStatus === 'completed') {
+  const { prompt } = call.request;
+  const { output, readings, usage } = call.response;
+  // Inspect the actual prompt, raw response, per-metric readings, and usage locally.
+}
+```
+
+This really executes one Sample × Variant × Trial; multiple judges, replicates, and retries can still make multiple calls. `judgeInvocations` uses call start order; `run` retains production scores, stable failure codes, and aggregate usage. Raw responses remain in returned memory without automatic logging or event delivery. Missing/duplicate IDs show `judge-response-metric-set-invalid`; an invalid score affects only that reading. Configuration failures expose `EvaluationConfigurationError.issues`, such as `evaluators[0].rubrics[1].metricId`. See the [API reference](../reference/eval-runtime-api.md) for response states and privacy boundaries.
+
 ### Repeat evaluations and reuse results
 
 <a id="prepare-plan"></a>
