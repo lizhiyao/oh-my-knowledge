@@ -147,6 +147,30 @@ describe('测试门禁覆盖面自守', () => {
     const patterns = declaredIncludePatterns();
     expect(patterns.every((pattern) => pattern.startsWith('test/') && pattern.includes('**'))).toBe(true);
   });
+
+  it('每个测试文件都落在某个 CI 分片清单（覆盖不减），分片间不重叠', () => {
+    const readList = (path: string): Set<string> => new Set(
+      readFileSync(join(REPO_ROOT, path), 'utf-8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '' && !line.startsWith('#')),
+    );
+    const shardFiles = [1, 2, 3, 4].map((index) => readList(`test/shards/source-${index}.txt`));
+    const covered = new Set<string>(shardFiles.flatMap((files) => [...files]));
+    const onDisk = listScriptFiles(TEST_DIR).filter((file) => TEST_FILE.test(basename(file)));
+    const missing = onDisk.filter((file) => !covered.has(file)).sort();
+    expect(missing, `这些测试文件不在任何 CI 分片清单：${missing.join('、')}`).toEqual([]);
+    // 分片之间不得重叠（重叠会让同一文件跑多遍，虚增覆盖且浪费 runner）。
+    const seen = new Set<string>();
+    const duplicated: string[] = [];
+    for (const files of shardFiles) {
+      for (const file of files) {
+        if (seen.has(file)) duplicated.push(file);
+        seen.add(file);
+      }
+    }
+    expect(duplicated, `这些文件落在多个分片：${[...new Set(duplicated)].join('、')}`).toEqual([]);
+  });
 });
 
 describe('tsc 程序归属自守', () => {
