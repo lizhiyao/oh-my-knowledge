@@ -80,4 +80,5 @@ test/studio/http/settings.test.ts
 test/studio/web/knowledge-doctor-tab.test.tsx
 test/studio/web/managed-react.test.tsx
 test/studio/web/observe-reader-states.test.tsx
+test/studio/web/observe-swimlane-lane.test.tsx
 test/studio/web/shell-language-switch.test.tsx
