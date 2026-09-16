@@ -14,7 +14,7 @@
  * 拼。把 `tab` 塞进去会违反它自己写的边界，所以另起一个叶子。
  *
  * 本模块零 import，和 `page-paths.ts` 同一理由：`'use client'` 组件按值取用它，任何反向依赖都会把
- * Node 宿主能力拖进浏览器 chunk。
+ * Node 宿主能力拖进浏览器 chunk（口径见 `test/architecture/studio-client-runtime-closure.test.ts`）。
  */
 
 export const TAB_PARAM = 'tab';

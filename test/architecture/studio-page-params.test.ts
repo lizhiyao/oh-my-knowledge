@@ -27,18 +27,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, sep } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import {
-  DEFAULT_OBSERVE_INBOX_TAB,
-  DEFAULT_TRAJECTORY_TAB,
-  OBSERVE_INBOX_TABS,
-  TAB_PARAM,
-  TRAJECTORY_TABS,
-} from '../../src/studio/http/page-params.js';
+import { OBSERVE_INBOX_TABS, TAB_PARAM, TRAJECTORY_TABS } from '../../src/studio/http/page-params.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const STUDIO_DIR = join(REPO_ROOT, 'src', 'studio');
@@ -52,7 +46,6 @@ const TAB_SURFACES = [
     tabsName: 'OBSERVE_INBOX_TABS',
     fallbackName: 'DEFAULT_OBSERVE_INBOX_TAB',
     owner: OBSERVE_INBOX_TABS,
-    fallback: DEFAULT_OBSERVE_INBOX_TAB,
   },
   {
     file: join(STUDIO_DIR, 'web', 'components', 'observe', 'observe.tsx'),
@@ -60,13 +53,12 @@ const TAB_SURFACES = [
     tabsName: 'TRAJECTORY_TABS',
     fallbackName: 'DEFAULT_TRAJECTORY_TAB',
     owner: TRAJECTORY_TABS,
-    fallback: DEFAULT_TRAJECTORY_TAB,
   },
 ] as const;
 
-function parse(path: string, text?: string): ts.SourceFile {
+function parse(path: string): ts.SourceFile {
   const kind = path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  return ts.createSourceFile(path, text ?? readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, kind);
+  return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, kind);
 }
 
 function stringValue(node: ts.Expression | undefined): string | undefined {
@@ -74,8 +66,8 @@ function stringValue(node: ts.Expression | undefined): string | undefined {
 }
 
 /** 文件里每个 `Tabs` 元素 `items` 数组的直接对象项 `key`，按出现顺序。 */
-function declaredTabKeys(path: string, text?: string): string[][] {
-  const source = parse(path, text);
+function declaredTabKeys(path: string): string[][] {
+  const source = parse(path);
   const groups: string[][] = [];
   const visit = (node: ts.Node): void => {
     if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node))
@@ -156,10 +148,10 @@ function passesInitialTab(path: string): boolean {
   }).length > 0;
 }
 
-/** owner 之外直接用字面量操作 `tab` 这个 query 参数的位置。 */
-function rawTabParamWrites(): string[] {
+/** `dir` 下绕过 owner、直接用字面量操作 `tab` 这个 query 参数的文件（绝对路径，排序便于断言）。 */
+function rawTabParamWrites(dir: string): string[] {
   const offenders: string[] = [];
-  for (const file of scriptFiles(STUDIO_DIR)) {
+  for (const file of scriptFiles(dir)) {
     if (file === OWNER_FILE) continue;
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
@@ -167,38 +159,27 @@ function rawTabParamWrites(): string[] {
         && node.expression.expression.name.text === 'searchParams'
         && ['set', 'get', 'delete', 'has'].includes(node.expression.name.text)
         && stringValue(node.arguments[0]) === TAB_PARAM) {
-        offenders.push(relative(REPO_ROOT, file).split(sep).join('/'));
+        offenders.push(file);
       }
       ts.forEachChild(node, visit);
     };
     visit(parse(file));
   }
-  return offenders;
+  return offenders.sort();
 }
 
-/** 正向对照：同一套 AST 判据在「确实抄了字面量」的样本上必须命中。 */
-function positiveControlWritesTab(): boolean {
-  const source = parse('control.tsx', `export function f(url: URL) { url.searchParams.set('tab', 'x'); }`);
-  let hit = false;
-  const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && ts.isPropertyAccessExpression(node.expression.expression)
-      && node.expression.expression.name.text === 'searchParams'
-      && node.expression.name.text === 'set'
-      && stringValue(node.arguments[0]) === TAB_PARAM) hit = true;
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return hit;
+function displayRepoPath(path: string): string {
+  return relative(REPO_ROOT, path).split(sep).join('/');
 }
 
 /**
- * 控制组：collector 必须只认 `Tabs items` 的直接对象项。
+ * 控制组：collector 必须只认 `Tabs items` 的直接对象项，扫描器必须真的能判死绕过 owner 的写法。
  *
  * 写成测试期落盘的临时文件，理由同 `studio-page-paths.test.ts`：`test/fixtures/` 在 eslint
  * ignores 里，显式传入会报「File ignored」并挂掉 `--max-warnings 0`。
  */
-const FIXTURE = `import { Tabs } from 'antd';
+const FIXTURES: Record<string, string> = {
+  'panel.tsx': `import { Tabs } from 'antd';
 export function Panel() {
   return <Tabs items={[
     { key: 'alpha', label: 'A', children: <Tabs items={[{ key: 'nested', label: 'N' }]} /> },
@@ -206,15 +187,28 @@ export function Panel() {
     { label: 'no key', children: <button onClick={() => changeTab('phantom')} /> },
   ]} />;
 }
-`;
+`,
+  // 判死：绕过 owner，在组件里抄字面量操作 tab 参数。
+  'bypass.ts': `export function select(url: URL): void {
+  url.searchParams.set('tab', 'source');
+}
+`,
+  // 判活：经 TAB_PARAM 取参数名，或操作的是还没收进 owner 的别的参数。
+  'allowed.ts': `import { TAB_PARAM } from './page-params.js';
+export function select(url: URL): void {
+  url.searchParams.set(TAB_PARAM, 'source');
+  url.searchParams.delete('view');
+}
+`,
+};
 
 let fixtureRoot = '';
 
 beforeAll(() => {
   fixtureRoot = mkdtempSync(join(tmpdir(), 'omk-studio-page-params-'));
-  const target = join(fixtureRoot, 'panel.tsx');
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, FIXTURE);
+  for (const [name, content] of Object.entries(FIXTURES)) {
+    writeFileSync(join(fixtureRoot, name), content);
+  }
 });
 
 afterAll(() => {
@@ -226,19 +220,13 @@ describe('Studio 地址参数 ?tab= 的单一 owner 守门', () => {
     for (const surface of TAB_SURFACES) {
       const groups = declaredTabKeys(surface.file);
       expect(groups.length, `${surface.file} 里读不到 Tabs 定义，判据失效`).toBe(1);
-      expect(groups[0], `面板键与 owner 不一致：${relative(REPO_ROOT, surface.file)}`).toEqual([...surface.owner]);
-      expect(surface.owner).toContain(surface.fallback);
+      expect(groups[0], `面板键与 owner 不一致：${displayRepoPath(surface.file)}`).toEqual([...surface.owner]);
     }
-  });
-
-  it('owner 是零 import 叶子，客户端组件才能按值取用', () => {
-    const imports = parse(OWNER_FILE).statements.filter(ts.isImportDeclaration);
-    expect(imports.map((statement) => statement.moduleSpecifier.getText())).toEqual([]);
   });
 
   it('读侧接在 owner 上：路由页把地址值过给 parseTab 并带上本页的取值集合', () => {
     for (const surface of TAB_SURFACES) {
-      const display = relative(REPO_ROOT, surface.page).split(sep).join('/');
+      const display = displayRepoPath(surface.page);
       expect(passesInitialTab(surface.page), `${display} 没有把面板过给组件`).toBe(true);
       expect(parseTabArgs(surface.page), `${display} 不是从地址校验出面板`).toEqual([
         { tabs: surface.tabsName, fallback: surface.fallbackName },
@@ -248,7 +236,7 @@ describe('Studio 地址参数 ?tab= 的单一 owner 守门', () => {
 
   it('写侧接在 owner 上：面板状态只有一个写入口，且它会镜像地址', () => {
     for (const surface of TAB_SURFACES) {
-      const display = relative(REPO_ROOT, surface.file).split(sep).join('/');
+      const display = displayRepoPath(surface.file);
       expect(mirroredDefaults(surface.file), `${display} 没有把当前面板写回地址`).toEqual([surface.fallbackName]);
       // 绕过 changeTab 直接 setState 的切换不会写地址：地址停在被跳走的面板上，用户刷新就回到
       // 另一个界面，分享出去的链接也是错的，所以只允许一个写入口。
@@ -258,12 +246,14 @@ describe('Studio 地址参数 ?tab= 的单一 owner 守门', () => {
 
   it('写地址的一侧通过 TAB_PARAM 取参数名', () => {
     expect(TAB_PARAM).toBe('tab');
-    const offenders = rawTabParamWrites();
+    // 扫描退化会让这条门禁变成永真断言：Studio 源码必须真的被扫到。
+    expect(scriptFiles(STUDIO_DIR).length).toBeGreaterThan(50);
+    const offenders = rawTabParamWrites(STUDIO_DIR).map(displayRepoPath);
     expect(offenders, `这些文件绕过 owner 直接用字面量操作 tab 参数：${offenders.join('、')}`).toEqual([]);
   });
 
-  it('控制组：抄字面量操作 tab 会被这条判据认出来', () => {
-    expect(positiveControlWritesTab()).toBe(true);
+  it('控制组：抄字面量操作 tab 判死，经 TAB_PARAM 或别的参数判活', () => {
+    expect(rawTabParamWrites(fixtureRoot).map((file) => basename(file))).toEqual(['bypass.ts']);
   });
 
   it('控制组：一个 Tabs 出一组键，嵌套的面板自成一档，React key 与回调实参不掺进来', () => {

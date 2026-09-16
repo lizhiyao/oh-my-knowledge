@@ -24,10 +24,10 @@ function write(href: string, tab: string, defaultTab: string): URL {
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('非默认面板写进参数，其余 query 与路径原样保留', () => {
-  const url = write('http://127.0.0.1:7799/observe/inbox?lang=zh&doctorRun=run%2F1', 'skill-board', DEFAULT_OBSERVE_INBOX_TAB);
-  expect(url.pathname).toBe('/observe/inbox');
-  expect(url.searchParams.get(TAB_PARAM)).toBe('skill-board');
+it('换面板是覆盖同一个参数，路径与其余 query 原样保留', () => {
+  const url = write('http://127.0.0.1:7799/observe/conversations/a/tasks/b?tab=replay&lang=zh&doctorRun=run%2F1', 'source', DEFAULT_TRAJECTORY_TAB);
+  expect(url.pathname).toBe('/observe/conversations/a/tasks/b');
+  expect(url.searchParams.getAll(TAB_PARAM)).toEqual(['source']);
   expect(url.searchParams.get('lang')).toBe('zh');
   expect(url.searchParams.get('doctorRun')).toBe('run/1');
 });
@@ -36,10 +36,4 @@ it('默认面板不占参数：已有值被删掉，而不是留着或写两遍'
   const url = write('http://127.0.0.1:7799/observe/inbox?lang=en&tab=metrics', DEFAULT_OBSERVE_INBOX_TAB, DEFAULT_OBSERVE_INBOX_TAB);
   expect(url.searchParams.getAll(TAB_PARAM)).toEqual([]);
   expect(url.searchParams.get('lang')).toBe('en');
-});
-
-it('换面板是覆盖同一个参数，不追加第二个', () => {
-  const url = write('http://127.0.0.1:7799/observe/conversations/a/tasks/b?tab=replay&lang=zh', 'source', DEFAULT_TRAJECTORY_TAB);
-  expect(url.searchParams.getAll(TAB_PARAM)).toEqual(['source']);
-  expect(url.searchParams.get('lang')).toBe('zh');
 });

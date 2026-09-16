@@ -34,8 +34,8 @@ it('地址里的面板既是高亮的那个，也是渲染出来的那个', () =
   const timeline = render('timeline');
   expect(activeTabKey(timeline)).toBe('timeline');
   expect(timeline).not.toContain('这些指标只解释');
-});
 
-it('默认面板是信号：地址不带参数时第一屏就是它', () => {
-  expect(activeTabKey(render(DEFAULT_OBSERVE_INBOX_TAB))).toBe('signals');
+  // 收件箱的默认面板是产品决定：`initialTab` 是必填属性，组件没有兜底分支可测，所以只钉常量本身。
+  // 轨迹页那条兜底（`?? DEFAULT_TRAJECTORY_TAB`）由 observe-trajectory-page.test.tsx 按渲染钉。
+  expect(DEFAULT_OBSERVE_INBOX_TAB).toBe('signals');
 });
