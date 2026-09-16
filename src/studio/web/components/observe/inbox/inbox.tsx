@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { Button, Space, Tabs, Tag, Typography } from 'antd';
 import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
 import { OBSERVE_INBOX_PATH } from '../../../../http/page-paths';
+import { DEFAULT_OBSERVE_INBOX_TAB, type ObserveInboxTab } from '../../../../http/page-params';
 import { langSuffix, type Language } from '../../layout/shell';
+import { mirrorTabToUrl } from '../../tab-url';
 import { SignalSection } from './signals';
 import { SkillBoard } from './skill-board';
 import { ExperienceReviewSection } from './experience-review';
@@ -15,12 +17,25 @@ import { ReviewActionsPanel } from './review-actions-panel';
 
 /**
  * 观测收件箱页面外壳（#839 收口后的唯一实现）：子视图只呈现 observability/inbox 投影，
- * skill 筛选与子视图切换是本地状态，复核 mutation 走 /api/observe-inbox/review-state。
+ * skill 筛选是本地状态，子视图切换由地址承载（#903 D3：初始值来自路由页校验过的 `?tab=`，
+ * 之后每次切换浅写回地址，分享与刷新都能回到所见面板），复核 mutation 走 /api/observe-inbox/review-state。
  */
-export function InboxView({ model, lang }: { model: ObservationInboxViewModel; lang: Language }) {
+export function InboxView({
+  model,
+  lang,
+  initialTab,
+}: {
+  model: ObservationInboxViewModel;
+  lang: Language;
+  initialTab: ObserveInboxTab;
+}) {
   const zh = lang === 'zh';
-  const [activeTab, setActiveTab] = useState('signals');
+  const [activeTab, setActiveTab] = useState<ObserveInboxTab>(initialTab);
   const [skillFilter, setSkillFilter] = useState<string | undefined>(undefined);
+  function changeTab(next: ObserveInboxTab) {
+    setActiveTab(next);
+    mirrorTabToUrl(next, DEFAULT_OBSERVE_INBOX_TAB);
+  }
   const filteredItems = skillFilter ? model.items.filter((item) => item.skillName === skillFilter) : model.items;
   return (
     <>
@@ -44,7 +59,9 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
       </div>
       <Tabs
         activeKey={activeTab}
-        onChange={setActiveTab}
+        // antd 回填的是 string，取值只可能来自下面 items 里出现过的键；键集合与本模块的一致性由
+        // test/architecture/studio-page-params.test.ts 钉住。
+        onChange={(next) => changeTab(next as ObserveInboxTab)}
         items={[
           {
             key: 'signals',
@@ -69,7 +86,7 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
                 lang={lang}
                 onSelectSkill={(skillName) => {
                   setSkillFilter(skillName);
-                  setActiveTab('signals');
+                  changeTab('signals');
                 }}
               />
             ),
@@ -110,7 +127,7 @@ export function InboxView({ model, lang }: { model: ObservationInboxViewModel; l
                 lang={lang}
                 onSelectSkill={(skillName) => {
                   setSkillFilter(skillName);
-                  setActiveTab('signals');
+                  changeTab('signals');
                 }}
               />
             ),

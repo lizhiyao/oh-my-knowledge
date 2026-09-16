@@ -2,6 +2,7 @@ test/architecture/eval-workflows-executors-layout.test.ts
 test/architecture/knowledge-artifacts-layout.test.ts
 test/architecture/retired-evaluation-layout.test.ts
 test/architecture/studio-internal-navigation.test.ts
+test/architecture/studio-page-params.test.ts
 test/architecture/studio-page-paths.test.ts
 test/architecture/subprocess-bounded-exec.test.ts
 test/cli-i18n.test.ts
@@ -168,11 +169,14 @@ test/studio/http/live-task-trajectory-server.test.ts
 test/studio/http/next-context.test.ts
 test/studio/http/next-studio.test.ts
 test/studio/http/observation-routes-boundary.test.ts
+test/studio/http/page-params.test.ts
 test/studio/http/router.test.ts
 test/studio/web/conversation-link.test.tsx
 test/studio/web/knowledge-candidates-start.test.tsx
 test/studio/web/knowledge-observe-guard.test.tsx
 test/studio/web/knowledge-workspace.test.ts
+test/studio/web/observe-inbox-tabs.test.tsx
 test/studio/web/observe-trajectory-page.test.tsx
 test/studio/web/observe-workspace.test.tsx
 test/studio/web/run-report-link.test.tsx
+test/studio/web/tab-url.test.ts

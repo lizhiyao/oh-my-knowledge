@@ -6,20 +6,26 @@ import { useRouter } from 'next/navigation';
 import { Alert, Breadcrumb, Button, Popover, Space, Table, Tabs, Tag } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
 import { OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { DEFAULT_TRAJECTORY_TAB, type TrajectoryTab } from '../../../http/page-params';
 import { EventRecords, RawRecords } from './records';
 import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
 import { Swimlane } from './swimlane';
 import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
 import { langSuffix, type Language } from '../layout/shell';
+import { mirrorTabToUrl } from '../tab-url';
 import { displayTime } from '../../../application/display/format';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { conversationHref } from '../conversation-link';
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
-export function ObserveView({page, lang}: {page: ObservePage; lang: Language}) {
+/**
+ * `initialTab` 只有 trajectory 分支用得上：本组件同时服务会话列表、会话详情与任务轨迹三条路由，
+ * 前两条渲染工作区（其视图切换是另一件事），没有面板可言，所以它是可选的而不是占位参数。
+ */
+export function ObserveView({page, lang, initialTab}: {page: ObservePage; lang: Language; initialTab?: TrajectoryTab}) {
   if (page.pageKind !== 'trajectory') return <ObserveWorkspace page={page} lang={lang}/>;
-  return <Trajectory page={page} lang={lang}/>;
+  return <Trajectory page={page} lang={lang} initialTab={initialTab ?? DEFAULT_TRAJECTORY_TAB}/>;
 }
 function SourceRecords({endpoint,lang}: {endpoint:string;lang:Language}) {
   const [value,setValue]=useState<ObservationSourceRecordArchiveView>(); const [failed,setFailed]=useState(false);
@@ -30,13 +36,14 @@ function SourceRecords({endpoint,lang}: {endpoint:string;lang:Language}) {
   if(failed)return <Alert type="error" title={lang==='zh'?'原始记录暂时无法读取，请重新打开此标签。':'Source records are unavailable. Reopen this tab to retry.'}/>;
   return value===undefined?<p role="status">{lang==='zh'?'正在读取原始记录…':'Loading source records…'}</p>:<RawRecords archive={value} lang={lang}/>;
 }
-function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory'}>;lang:Language}) {
+function Trajectory({page,lang,initialTab}: {page:Extract<ObservePage,{pageKind:'trajectory'}>;lang:Language;initialTab:TrajectoryTab}) {
   const zh=lang==='zh'; const router=useRouter();
   const api=`/api/conversations/${encodeURIComponent(page.threadId)}/tasks/${encodeURIComponent(page.turnId)}`;
   const [connection,setConnection]=useState('connecting'); const [retry,setRetry]=useState(0);
   const [follow,setFollow]=useState(true);
-  const [activeTab,setActiveTab]=useState('replay');
+  const [activeTab,setActiveTab]=useState<TrajectoryTab>(initialTab);
   const [integrityOpen,setIntegrityOpen]=useState(false);
+  function changeTab(next:TrajectoryTab){ setActiveTab(next); mirrorTabToUrl(next, DEFAULT_TRAJECTORY_TAB); }
   useEffect(()=>{
     if(!page.live)return;
     const source=new EventSource(`${api}/live`); let timer:ReturnType<typeof setTimeout>|undefined;
@@ -73,11 +80,11 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
     <div className="observe-detail-meta"><span>{displayTime(model.summary.observedStartTimestamp)}</span><span>{model.summary.observedModels.join(', ')}</span><span>{model.summary.toolCallCount} {zh?'次工具调用':'tool calls'}</span><span className={model.summary.toolFailureCount>0?'observe-failure':undefined}>{model.summary.toolFailureCount} {zh?'次工具失败':'tool failures'}</span>
       {model.integrity.status==='partial'&&<Popover trigger="click" placement="bottomRight" open={integrityOpen} onOpenChange={setIntegrityOpen} styles={{container:{padding:16},title:{marginBottom:8,fontSize:14,lineHeight:'20px'},content:{fontSize:13,lineHeight:'20px'}}} title={onlyUnknown?(zh?'部分事件未解析':'Some events are unparsed'):(zh?'轨迹展示受限':'Trajectory limitations')} content={<div className="observe-integrity-detail">
         {onlyUnknown?<p>{zh?`${unknownCount} 条原始事件未能归入当前轨迹视图，可能影响展示完整性。这不等于原始记录丢失。`:`${unknownCount} raw events could not be mapped into this view, which may affect its completeness. This does not mean the raw records are missing.`}</p>:<><p>{zh?'以下问题可能影响轨迹展示，请核对原始记录。':'These issues may affect the trajectory view. Check the source records.'}</p><ul>{model.integrity.notices.map(notice=><li key={notice.code}>{noticeLabels[notice.code]??notice.code}：{notice.count}</li>)}</ul></>}
-        <Button type="link" size="small" onClick={()=>{setActiveTab('source');setIntegrityOpen(false);}}>{zh?'查看原始记录':'View source records'}</Button>
+        <Button type="link" size="small" onClick={()=>{changeTab('source');setIntegrityOpen(false);}}>{zh?'查看原始记录':'View source records'}</Button>
       </div>}><button type="button" className="observe-evidence-status" aria-expanded={integrityOpen}>{onlyUnknown?(zh?`部分事件未解析 · ${unknownCount}`:`Unparsed events · ${unknownCount}`):(zh?'轨迹展示受限 · 查看原因':'Trajectory limitations · Details')}</button></Popover>}
     </div>
     </header>
-    <Tabs className="trajectory-tabs" activeKey={activeTab} onChange={setActiveTab} destroyOnHidden items={[
+    <Tabs className="trajectory-tabs" activeKey={activeTab} onChange={(next)=>changeTab(next as TrajectoryTab)} destroyOnHidden items={[
       {key:'replay',label:zh?'语义轨迹':'Semantic trajectory',children:<Swimlane projection={page.replay} lang={lang} revision={page.revision} follow={follow} onPause={()=>setFollow(false)}/>},
       {key:'knowledge',label:zh?'知识访问':'Knowledge access',children:<><Alert type="info" title={zh?'访问记录说明知识曾被读取或注入，不代表它导致了结果。':'Access records show reads or injections; they do not establish causation.'}/><Table rowKey="id" size="small" tableLayout="auto" dataSource={model.knowledgeEvidence} scroll={{x:'max-content'}} columns={[{title:zh?'知识':'Knowledge',dataIndex:'label',width:220},{title:zh?'方式':'Access',dataIndex:'accessKind',width:140},{title:zh?'次数':'Count',dataIndex:'accessCount',width:80,align:'right'},{title:zh?'来源':'Source',dataIndex:'sourceLocator'}]} expandable={{expandedRowRender:item=><Evidence value={item}/>}}/></>},
       {key:'events',label:zh?'标准化事件':'Normalized events',children:<EventRecords events={model.normalizedEvents} lang={lang}/>},
