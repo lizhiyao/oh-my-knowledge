@@ -119,8 +119,9 @@ jobs:
       # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
       # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
-      # 字面 pattern 而跑全量）。maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers。
-      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
+      # 字面 pattern 而跑全量）。maxWorkers=1：装箱把重活分散到各 shard，默认 workers（2 核 runner
+      # 可能 2 workers）会叠加两个重文件的子进程内存峰值导致 runner SIGKILL（实测 shard 3/4 被杀）。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -154,8 +155,9 @@ jobs:
       - run: yarn install --immutable
       - run: yarn build
       # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
-      # 字面 pattern 而跑全量）。maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers。
-      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
+      # 字面 pattern 而跑全量）。maxWorkers=1：装箱把重活分散到各 shard，默认 workers（2 核 runner
+      # 可能 2 workers）会叠加两个重文件的子进程内存峰值导致 runner SIGKILL（实测 shard 3/4 被杀）。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
