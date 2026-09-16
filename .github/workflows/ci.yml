@@ -121,16 +121,16 @@ jobs:
           include-hidden-files: true
 
   test_22_shard:
-    needs: changes
+    needs: [changes, build]
     if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test shard (22, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    # 源码层分片不再付构建费；实测成功作业最长约 2.5 分钟。
-    timeout-minutes: 8
+    # 实测成功作业最长约 4.1 分钟；不给超时则失联的 runner 会把作业占满到平台默认上限。
+    timeout-minutes: 12
     strategy:
       fail-fast: false
-      # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），
-      # 替代 vitest --shard 的下标切片（重活集中在字母序前段导致 105s/27s 倾斜）。
+      # vitest 按排序后的文件下标切片，而慢测试集中在字母序靠前处，所以加分片只缩短最慢作业、
+      # 不抹平倾斜（4 片仍为 105s／91s／27s／34s 的串行和）。取 4 是把最慢作业从 196s 降到 105s。
       matrix:
         shard: [1, 2, 3, 4]
     steps:
@@ -141,10 +141,16 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --immutable
-      # 源码层不依赖构建产物，跳过 yarn build 直接分片并行；maxWorkers 70%（vitest.config.ts 实测注释）。
-      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 420000 yarn test --project source
-        env:
-          OMK_SOURCE_SHARD: ${{ matrix.shard }}
+      # 下载 build job 的产物替代重复 build（issue #932：8 个 job 各跑一次 46-62s build 是主成本）。
+      - uses: actions/download-artifact@v7
+        with:
+          name: omk-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .
+      # 进程超时早于作业超时，保留测试进度、资源采样与退出分类。
+      # 预算：720s 作业上限 − 约 30s checkout/install/download − 30s kill 宽限 ⇒ 660s，取整到 540s。
+      # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
+      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -159,11 +165,11 @@ jobs:
           retention-days: 14
 
   test_24_shard:
-    needs: changes
+    needs: [changes, build]
     if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test shard (24, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
@@ -176,43 +182,12 @@ jobs:
           node-version: 24
           cache: yarn
       - run: yarn install --immutable
-      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 420000 yarn test --project source
-        env:
-          OMK_SOURCE_SHARD: ${{ matrix.shard }}
-      - name: Summarize diagnostics
-        if: ${{ always() }}
-        env:
-          CI_JOB_STATUS: ${{ job.status }}
-        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
-      - name: Save diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/ci-diagnostics
-          retention-days: 14
-
-  # 产物层：依赖 dist/、dist-scripts/、src/studio/web/.next 的 33 个文件（test/product-layer.txt），
-  # 下载 build artifact 后单 worker 跑（Next/打包/真 CLI 子进程叠加的内存峰值是 runner SIGKILL 主因）。
-  test_product:
-    needs: [changes, build]
-    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
-    name: test product (22)
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v7
-      - run: corepack enable
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: yarn
-      - run: yarn install --immutable
       - uses: actions/download-artifact@v7
         with:
           name: omk-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: .
-      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 420000 yarn test --project product
+      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -230,7 +205,7 @@ jobs:
   test_22:
     name: test (22)
     if: ${{ always() }}
-    needs: [changes, lightweight, quality, test_22_shard, test_product]
+    needs: [changes, lightweight, quality, test_22_shard]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -241,23 +216,20 @@ jobs:
           LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_22_shard.result }}
-          PRODUCT_RESULT: ${{ needs.test_product.result }}
         run: |
           if [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
             test "$LIGHT_RESULT" = success
             test "$QUALITY_RESULT" = skipped
             test "$SHARD_RESULT" = skipped
-            test "$PRODUCT_RESULT" = skipped
           else
             test "$QUALITY_RESULT" = success
             test "$SHARD_RESULT" = success
-            test "$PRODUCT_RESULT" = success
           fi
 
   test_24:
     name: test (24)
     if: ${{ always() }}
-    needs: [changes, lightweight, quality, test_24_shard, test_product]
+    needs: [changes, lightweight, quality, test_24_shard]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -268,15 +240,12 @@ jobs:
           LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_24_shard.result }}
-          PRODUCT_RESULT: ${{ needs.test_product.result }}
         run: |
           if [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
             test "$LIGHT_RESULT" = success
             test "$QUALITY_RESULT" = skipped
             test "$SHARD_RESULT" = skipped
-            test "$PRODUCT_RESULT" = skipped
           else
             test "$QUALITY_RESULT" = success
             test "$SHARD_RESULT" = success
-            test "$PRODUCT_RESULT" = success
           fi

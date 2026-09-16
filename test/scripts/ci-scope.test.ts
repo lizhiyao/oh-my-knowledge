@@ -61,8 +61,12 @@ const workflow = load(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
 describe('required CI checks', () => {
   it('always emits both protected names and falls back to full jobs on missing classification', () => {
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch', 'push', 'pull_request']);
+    // quality 只依赖 changes；test shard 额外依赖 build 的 artifact（issue #932 构建只做一次）。
+    expect(workflow.jobs.quality.needs).toBe('changes');
+    for (const job of ['test_22_shard', 'test_24_shard']) {
+      expect(workflow.jobs[job].needs).toEqual(['changes', 'build']);
+    }
     for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
-      expect(workflow.jobs[job].needs).toBe('changes');
       expect(workflow.jobs[job].if).toContain("needs.changes.result != 'success'");
       expect(workflow.jobs[job].if).toContain("needs.changes.outputs.scope != 'rules'");
       expect(workflow.jobs[job].if).toContain("needs.changes.outputs.scope != 'docs'");
@@ -71,9 +75,8 @@ describe('required CI checks', () => {
       const job = workflow.jobs[`test_${version}`];
       expect(job.name).toBe(`test (${version})`);
       expect(job.if).toBe('${{ always() }}');
-      expect(job.needs).toEqual(['changes', 'lightweight', 'quality', `test_${version}_shard`, 'test_product']);
+      expect(job.needs).toEqual(['changes', 'lightweight', 'quality', `test_${version}_shard`]);
       expect(job.steps[0].env?.SHARD_RESULT).toContain(`needs.test_${version}_shard.result`);
-      expect(job.steps[0].env?.PRODUCT_RESULT).toContain('needs.test_product.result');
     }
   });
 
@@ -83,7 +86,7 @@ describe('required CI checks', () => {
       const script = workflow.jobs[`test_${version}`].steps[0].run!;
       const run = (env: Record<string, string>) => spawnSync('bash', ['-e', '-c', script], {
         env: { PATH: process.env.PATH, CHANGE_RESULT: 'success', SCOPE: 'rules', LIGHT_RESULT: 'success',
-          QUALITY_RESULT: 'skipped', SHARD_RESULT: 'skipped', PRODUCT_RESULT: 'skipped', ...env }, encoding: 'utf8',
+          QUALITY_RESULT: 'skipped', SHARD_RESULT: 'skipped', ...env }, encoding: 'utf8',
       }).status;
       for (const scope of ['rules', 'docs']) {
         expect(run({ SCOPE: scope })).toBe(0);
@@ -91,18 +94,16 @@ describe('required CI checks', () => {
           expect(run({ SCOPE: scope, LIGHT_RESULT: result })).not.toBe(0);
         }
         expect(run({ SCOPE: scope, SHARD_RESULT: 'failure' })).not.toBe(0);
-        expect(run({ SCOPE: scope, PRODUCT_RESULT: 'failure' })).not.toBe(0);
       }
       for (const scope of ['full', '', 'unknown']) {
-        expect(run({ SCOPE: scope, QUALITY_RESULT: 'success', SHARD_RESULT: 'success', PRODUCT_RESULT: 'success' })).toBe(0);
+        expect(run({ SCOPE: scope, QUALITY_RESULT: 'success', SHARD_RESULT: 'success' })).toBe(0);
         for (const result of ['failure', 'cancelled', 'skipped', '']) {
-          expect(run({ SCOPE: scope, QUALITY_RESULT: result, SHARD_RESULT: 'success', PRODUCT_RESULT: 'success' })).not.toBe(0);
-          expect(run({ SCOPE: scope, QUALITY_RESULT: 'success', SHARD_RESULT: result, PRODUCT_RESULT: 'success' })).not.toBe(0);
-          expect(run({ SCOPE: scope, QUALITY_RESULT: 'success', SHARD_RESULT: 'success', PRODUCT_RESULT: result })).not.toBe(0);
+          expect(run({ SCOPE: scope, QUALITY_RESULT: result, SHARD_RESULT: 'success' })).not.toBe(0);
+          expect(run({ SCOPE: scope, QUALITY_RESULT: 'success', SHARD_RESULT: result })).not.toBe(0);
         }
       }
       expect(run({ CHANGE_RESULT: 'failure' })).not.toBe(0);
-      expect(run({ CHANGE_RESULT: 'failure', QUALITY_RESULT: 'success', SHARD_RESULT: 'success', PRODUCT_RESULT: 'success' })).toBe(0);
+      expect(run({ CHANGE_RESULT: 'failure', QUALITY_RESULT: 'success', SHARD_RESULT: 'success' })).toBe(0);
     });
   }
 });
