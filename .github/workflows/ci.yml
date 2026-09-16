@@ -152,8 +152,9 @@ jobs:
       # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），替代 vitest --shard
       # 的下标切片（重活集中字母序前段导致 105s/27s 倾斜）。xargs 把清单文件转成 vitest 位置参数
       # （放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当字面 pattern 而跑全量）。
-      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1
+      # maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers，与显式 maxWorkers=1 行为一致；
+      # 若 runner 内存峰值复现 SIGKILL，需恢复显式单 worker 枷锁。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -192,8 +193,9 @@ jobs:
       # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），替代 vitest --shard
       # 的下标切片（重活集中字母序前段导致 105s/27s 倾斜）。xargs 把清单文件转成 vitest 位置参数
       # （放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当字面 pattern 而跑全量）。
-      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1
+      # maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers，与显式 maxWorkers=1 行为一致；
+      # 若 runner 内存峰值复现 SIGKILL，需恢复显式单 worker 枷锁。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
