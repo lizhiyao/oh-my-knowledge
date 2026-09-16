@@ -148,6 +148,7 @@ test/shared/shell-quote.test.ts
 test/shared/timestamp.test.ts
 test/studio/application/assess-health.test.ts
 test/studio/application/candidate-status.test.ts
+test/studio/application/conversation-label.test.ts
 test/studio/application/core-run-format.test.ts
 test/studio/application/display-format.test.ts
 test/studio/application/doctor-format.test.ts
@@ -172,5 +173,6 @@ test/studio/web/conversation-link.test.tsx
 test/studio/web/knowledge-candidates-start.test.tsx
 test/studio/web/knowledge-observe-guard.test.tsx
 test/studio/web/knowledge-workspace.test.ts
+test/studio/web/observe-trajectory-page.test.tsx
 test/studio/web/observe-workspace.test.tsx
 test/studio/web/run-report-link.test.tsx

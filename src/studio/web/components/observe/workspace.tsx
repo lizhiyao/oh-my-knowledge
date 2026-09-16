@@ -11,17 +11,13 @@ import { ActivityNotice, useActivity } from './activity';
 import { ConversationReader } from './reader';
 import { StudioUtilities } from '../layout/utilities';
 import { displayTime } from '../../../application/display/format';
+import { conversationLabel } from '../../../application/display/conversation-label';
 import { INDEPENDENT_LIMIT, LIST_PAGE_SIZE, PROJECT_LIMIT, PROJECT_SESSION_LIMIT, keepSelectedVisible, listPage, visibleProjectIds } from '../../../application/conversations/sidebar-window';
 import type { ProjectWindow } from '../../../application/conversations/sidebar-window';
 import { listEmptyState } from '../../../application/conversations/list-states';
 import type { ListEmptyState } from '../../../application/conversations/list-states';
 import { conversationHref } from '../conversation-link';
 
-function conversationLabel(value: string): string {
-  return value.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(issues|pull)\/(\d+)/g, (_, type, number) => `${type === 'pull' ? 'PR' : 'Issue'} #${number}`)
-    .replace(/\*\*/g, '').trim();
-}
 const running = (item: ConversationListItem) => item.tasks.some(task => task.status === 'open');
 const hasProject = (item: ConversationListItem) => Boolean(item.project || item.cwd);
 const projectId = (item: ConversationListItem) => item.project?.projectId ?? item.cwd ?? 'unassigned';
@@ -118,7 +114,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
           const latest = lastTask ? conversationLabel(lastTask.title) : undefined;
           return <Link className="observe-session-row" key={item.threadId} href={conversationHref(item.threadId, lang)}>
           <div><strong title={label}>{label}</strong><p title={latest}>{latest ? `${t('最近请求：', 'Latest request: ')}${latest}` : t('打开后读取会话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
-          <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{displayTime(item.endTimestamp ?? item.startTimestamp, 'minute')}</time>{(item.toolFailureCount ?? 0) > 0 && <small title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
+          <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{displayTime(item.endTimestamp ?? item.startTimestamp, 'minute')}</time>{(item.toolFailureCount ?? 0) > 0 && <small className="observe-session-error" title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
         </Link>;
         })}{!rows.length && <Empty description={emptyCopy[emptyState].description}>
           {emptyCopy[emptyState].action ? <Button onClick={() => { if (emptyState === 'no-match') clearSearch(); else choose('recent'); }}>{emptyCopy[emptyState].action}</Button> : null}

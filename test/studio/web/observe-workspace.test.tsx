@@ -41,6 +41,13 @@ it('opens a reader with in-place extraction and retains project navigation', () 
 });
 
 
+it('工具报错计数带自己的强调类，与同层的来源标注区分开', () => {
+  const failed = { ...item, toolFailureCount: 3 };
+  const html = renderToStaticMarkup(createElement(ObserveWorkspace, { lang: 'zh', page: { pageKind: 'index', model: { ...index, conversations: [failed] }, revision: 'test' } }));
+  expect(html).toContain('<small class="observe-session-error" title="曾发生工具报错，不代表最终工作失败。">3 次工具报错</small>');
+});
+
+
 it('separates standalone conversations from project conversations while keeping all in the overview', () => {
   const standalone = { ...item, threadId: 'standalone', title: 'Standalone example', project: undefined };
   const directory = { ...item, threadId: 'directory', title: 'Directory example', project: undefined, cwd: '/example/directory' };

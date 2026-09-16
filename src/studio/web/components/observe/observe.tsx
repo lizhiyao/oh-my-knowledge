@@ -13,6 +13,7 @@ import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
 import { langSuffix, type Language } from '../layout/shell';
 import { displayTime } from '../../../application/display/format';
+import { conversationLabel } from '../../../application/display/conversation-label';
 import { conversationHref } from '../conversation-link';
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
@@ -65,7 +66,7 @@ function Trajectory({page,lang}: {page:Extract<ObservePage,{pageKind:'trajectory
       <Breadcrumb items={[{title:<Link href={`${OBSERVE_INDEX_PATH}${langSuffix(lang)}`}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationHref(page.threadId,lang)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
     <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
-        <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal??(zh?'任务轨迹':'Task trajectory')}</button></h1>
+        <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal?conversationLabel(model.summary.userGoal):(zh?'任务轨迹':'Task trajectory')}</button></h1>
       </Popover>
       <Space className="trajectory-controls" size="small" wrap><ExtractedKnowledge threadId={page.threadId} turnId={page.turnId} lang={lang}/><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
     </div>
