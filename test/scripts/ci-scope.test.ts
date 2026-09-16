@@ -61,10 +61,8 @@ const workflow = load(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
 describe('required CI checks', () => {
   it('always emits both protected names and falls back to full jobs on missing classification', () => {
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch', 'push', 'pull_request']);
-    // quality 只依赖 changes；test shard 额外依赖 build 的 artifact（issue #932 构建只做一次）。
-    expect(workflow.jobs.quality.needs).toBe('changes');
-    for (const job of ['test_22_shard', 'test_24_shard']) {
-      expect(workflow.jobs[job].needs).toEqual(['changes', 'build']);
+    for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
+      expect(workflow.jobs[job].needs).toBe('changes');
     }
     for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
       expect(workflow.jobs[job].if).toContain("needs.changes.result != 'success'");

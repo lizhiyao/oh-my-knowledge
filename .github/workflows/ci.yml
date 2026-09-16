@@ -93,35 +93,8 @@ jobs:
           path: ${{ runner.temp }}/ci-diagnostics
           retention-days: 14
 
-  # 构建一次，产物以 artifact 分给产物层 job；源码层分片完全跳过 build（issue #932）。
-  build:
-    needs: changes
-    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v7
-      - run: corepack enable
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: yarn
-      - run: yarn install --immutable
-      - run: yarn build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: omk-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            dist/
-            dist-scripts/
-            src/studio/web/.next/
-          retention-days: 1
-          if-no-files-found: error
-          # .next 是隐藏目录，默认被排除；必须显式包含否则产物层 Next 测试缺 BUILD_ID。
-          include-hidden-files: true
-
   test_22_shard:
-    needs: [changes, build]
+    needs: changes
     if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test shard (22, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
@@ -129,8 +102,8 @@ jobs:
     timeout-minutes: 12
     strategy:
       fail-fast: false
-      # vitest 按排序后的文件下标切片，而慢测试集中在字母序靠前处，所以加分片只缩短最慢作业、
-      # 不抹平倾斜（4 片仍为 105s／91s／27s／34s 的串行和）。取 4 是把最慢作业从 196s 降到 105s。
+      # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），替代 vitest --shard
+      # 的下标切片（重活集中字母序前段导致 105s/27s 倾斜）。
       matrix:
         shard: [1, 2, 3, 4]
     steps:
@@ -141,19 +114,12 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --immutable
-      # 下载 build job 的产物替代重复 build（issue #932：8 个 job 各跑一次 46-62s build 是主成本）。
-      - uses: actions/download-artifact@v7
-        with:
-          name: omk-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .
+      - run: yarn build
       # 进程超时早于作业超时，保留测试进度、资源采样与退出分类。
-      # 预算：720s 作业上限 − 约 30s checkout/install/download − 30s kill 宽限 ⇒ 660s，取整到 540s。
+      # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
-      # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），替代 vitest --shard
-      # 的下标切片（重活集中字母序前段导致 105s/27s 倾斜）。xargs 把清单文件转成 vitest 位置参数
-      # （放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当字面 pattern 而跑全量）。
-      # maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers，与显式 maxWorkers=1 行为一致；
-      # 若 runner 内存峰值复现 SIGKILL，需恢复显式单 worker 枷锁。
+      # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
+      # 字面 pattern 而跑全量）。maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers。
       - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
       - name: Summarize diagnostics
         if: ${{ always() }}
@@ -169,7 +135,7 @@ jobs:
           retention-days: 14
 
   test_24_shard:
-    needs: [changes, build]
+    needs: changes
     if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test shard (24, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
@@ -186,15 +152,9 @@ jobs:
           node-version: 24
           cache: yarn
       - run: yarn install --immutable
-      - uses: actions/download-artifact@v7
-        with:
-          name: omk-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .
-      # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），替代 vitest --shard
-      # 的下标切片（重活集中字母序前段导致 105s/27s 倾斜）。xargs 把清单文件转成 vitest 位置参数
-      # （放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当字面 pattern 而跑全量）。
-      # maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers，与显式 maxWorkers=1 行为一致；
-      # 若 runner 内存峰值复现 SIGKILL，需恢复显式单 worker 枷锁。
+      - run: yarn build
+      # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
+      # 字面 pattern 而跑全量）。maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers。
       - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
       - name: Summarize diagnostics
         if: ${{ always() }}
