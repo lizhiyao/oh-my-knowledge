@@ -41,7 +41,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist dist-scripts node_modules/.cache/omk",
-    "build": "run-s build:runtime build:studio",
+    "build": "run-p build:runtime build:studio",
     "build:src": "tsc -p tsconfig.build.json",
     "build:scripts": "tsc -p tsconfig.scripts.json",
     "build:schemas": "run-s build:src schemas:write",
@@ -63,7 +63,7 @@
     "test": "node scripts/ci/test.mjs",
     "test:profile": "yarn build && node dist-scripts/bench/test-profile.js",
     "studio:baseline": "yarn build:src && yarn build:scripts && node dist-scripts/bench/studio-baseline.js",
-    "ci:quality": "run-s lint typecheck build build:docs:check docs:build",
+    "ci:quality": "run-p lint typecheck && run-s build && run-p build:docs:check docs:build",
     "ci": "run-s ci:quality test",
     "prepublishOnly": "run-s clean build",
     "prepare": "husky",
