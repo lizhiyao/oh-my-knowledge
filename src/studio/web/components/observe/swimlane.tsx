@@ -49,6 +49,15 @@ function connections(projection: ReplayProjection, laneHeight: number) {
   }
   return result;
 }
+/** 16px padding + 21px title + 4px gap + two 15px caption lines: below this the label block spills into the neighbouring lane. */
+const laneLabelMinHeight = 72;
+export function SwimlaneLane({lane,lang,top,laneHeight,hasCards}:{lane:typeof lanes[number];lang:Language;top:number;laneHeight:number;hasCards:boolean}) {
+  const zh=lang==='zh';
+  return <section data-lane={lane} className="swimlane-lane" aria-label={labels[lane][lang][0]} style={{top,height:laneHeight}}>
+    <div className="swimlane-label" data-density={laneHeight<laneLabelMinHeight?'short':'normal'}><strong>{labels[lane][lang][0]}</strong><span>{labels[lane][lang][1]}</span></div>
+    {!hasCards&&<span className="swimlane-empty">{zh?'未观测到记录':'No records observed'}</span>}
+  </section>;
+}
 export function Swimlane({projection,lang,revision,follow,onPause}: {projection:ReplayProjection;lang:Language;revision:string;follow:boolean;onPause:()=>void}) {
   const zh=lang==='zh'; const scroll=useRef<HTMLDivElement>(null);
   const [selected,setSelected]=useState<string>(); const [facet,setFacet]=useState<string>();
@@ -76,7 +85,7 @@ export function Swimlane({projection,lang,revision,follow,onPause}: {projection:
         {projection.gaps.map((gap,index)=><div key={`gap-${index}`} className="swimlane-gap" style={{left:labelWidth+gap.position,width:gap.width,top:axisHeight,height:height-axisHeight}}/>)}
         {projection.axisTicks.map((tick,index)=><div key={`guide-${index}`} className="swimlane-guide" style={{left:labelWidth+tick.position,top:axisHeight,height:height-axisHeight}}/>)}
         {projection.milestones.map((milestone,index)=><div className={`swimlane-milestone is-${milestone.tone}`} key={`milestone-${index}`} style={{left:labelWidth+milestone.position,height}}><span>{milestone.label}</span></div>)}
-        {lanes.map((lane,index)=><section key={lane} data-lane={lane} className="swimlane-lane" aria-label={labels[lane][lang][0]} style={{top:axisHeight+index*laneHeight,height:laneHeight}}><div className="swimlane-label"><strong>{labels[lane][lang][0]}</strong><span>{labels[lane][lang][1]}</span></div>{!projection.cards.some(card=>card.lane===lane)&&<span className="swimlane-empty">{zh?'未观测到记录':'No records observed'}</span>}</section>)}
+        {lanes.map((lane,index)=><SwimlaneLane key={lane} lane={lane} lang={lang} top={axisHeight+index*laneHeight} laneHeight={laneHeight} hasCards={projection.cards.some(card=>card.lane===lane)}/>)}
         <svg className="swimlane-links" width="100%" height={height} aria-hidden="true"><defs><marker id={arrowId} markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#8a96a8"/></marker></defs>{links.map(link=><path key={link.id} d={link.d} data-connection={link.linkKind} className={`swimlane-link is-${link.linkKind}${selected&&link.operations.includes(selected)?' is-active':''}`} markerEnd={link.linkKind==='knowledge'?undefined:`url(#${arrowId})`}/>)}</svg>
         {projection.cards.map(card=>{const box=rect(card,laneHeight);return <button key={card.id} type="button" data-operation={card.operationId} data-density={box.bottom-box.top<42?'tiny':box.bottom-box.top<56?'short':'normal'} className={`swimlane-card is-${card.tone}${card.compact?' is-compact':''}${highlighted(card)?'':' is-dimmed'}${selected===card.operationId?' is-selected':''}`} style={{left:box.left,top:box.top,width:card.width,height:box.bottom-box.top}} aria-label={[relativeClock(card.timestamp,projection.startTimestamp),card.kindLabel,card.title].join(' · ')} aria-pressed={selected===card.operationId} title={card.title} onClick={()=>{onPause();setSelected(card.operationId);}}>{!card.compact&&<><span className="swimlane-card-meta"><time>{relativeClock(card.timestamp,projection.startTimestamp)}</time> {card.kindLabel} {card.model}</span><strong>{card.title}</strong><span className="swimlane-card-detail">{card.detail}</span></>}</button>;})}
       </div>
