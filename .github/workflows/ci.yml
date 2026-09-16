@@ -95,7 +95,10 @@ jobs:
 
   test_22_shard:
     needs: changes
-    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
+    # PR 只跑 24（与主要开发环境一致，本地反馈环一致）；22 由 main/release/publish 与
+    # dependabot PR（依赖更新是版本相关破坏高发场景）保留。issue #932 实测近 40 轮
+    # 22 与 24 无一次真正的测试结论分歧，22 的「下限守卫」近期未拦到任何问题。
+    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'dependencies')) }}
     name: test shard (22, ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     # 实测成功作业最长约 4.1 分钟；不给超时则失联的 runner 会把作业占满到平台默认上限。
@@ -186,8 +189,13 @@ jobs:
           LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_22_shard.result }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          IS_DEPENDABOT: ${{ contains(github.event.pull_request.labels.*.name, 'dependencies') }}
         run: |
-          if [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
+          # PR 非 dependabot 时 test_22_shard 跳过（PR 只跑 24），门禁接受 skipped。
+          if [ "$IS_PR" = "true" ] && [ "$IS_DEPENDABOT" != "true" ]; then
+            test "$SHARD_RESULT" = skipped
+          elif [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
             test "$LIGHT_RESULT" = success
             test "$QUALITY_RESULT" = skipped
             test "$SHARD_RESULT" = skipped

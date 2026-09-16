@@ -69,6 +69,9 @@ describe('required CI checks', () => {
       expect(workflow.jobs[job].if).toContain("needs.changes.outputs.scope != 'rules'");
       expect(workflow.jobs[job].if).toContain("needs.changes.outputs.scope != 'docs'");
     }
+    // PR 非 dependabot 时 test_22_shard 跳过（PR 只跑 24）；main/release/dependabot 保留。
+    expect(workflow.jobs.test_22_shard.if).toContain("github.event_name != 'pull_request'");
+    expect(workflow.jobs.test_22_shard.if).toContain("dependencies");
     for (const version of ['22', '24']) {
       const job = workflow.jobs[`test_${version}`];
       expect(job.name).toBe(`test (${version})`);
@@ -84,8 +87,12 @@ describe('required CI checks', () => {
       const script = workflow.jobs[`test_${version}`].steps[0].run!;
       const run = (env: Record<string, string>) => spawnSync('bash', ['-e', '-c', script], {
         env: { PATH: process.env.PATH, CHANGE_RESULT: 'success', SCOPE: 'rules', LIGHT_RESULT: 'success',
-          QUALITY_RESULT: 'skipped', SHARD_RESULT: 'skipped', ...env }, encoding: 'utf8',
+          QUALITY_RESULT: 'skipped', SHARD_RESULT: 'skipped', IS_PR: 'false', IS_DEPENDABOT: 'false', ...env }, encoding: 'utf8',
       }).status;
+      // PR 非 dependabot：test_22_shard 跳过，门禁接受 skipped。
+      expect(run({ IS_PR: 'true', IS_DEPENDABOT: 'false', SHARD_RESULT: 'skipped' })).toBe(0);
+      expect(run({ IS_PR: 'true', IS_DEPENDABOT: 'false', SHARD_RESULT: 'success' })).not.toBe(0);
+      // PR dependabot 或非 PR：走原有门禁。
       for (const scope of ['rules', 'docs']) {
         expect(run({ SCOPE: scope })).toBe(0);
         for (const result of ['failure', 'cancelled', 'skipped', '']) {
