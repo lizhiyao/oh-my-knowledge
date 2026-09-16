@@ -117,6 +117,8 @@ jobs:
             src/studio/web/.next/
           retention-days: 1
           if-no-files-found: error
+          # .next 是隐藏目录，默认被排除；必须显式包含否则产物层 Next 测试缺 BUILD_ID。
+          include-hidden-files: true
 
   test_22_shard:
     needs: changes

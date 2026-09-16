@@ -21,7 +21,6 @@ test/cli/update-check.test.ts
 test/cli/update-notify.test.ts
 test/dsh-plugin/core-adapter.test.ts
 test/dsh-plugin/judge-runtime-identity.test.ts
-test/dsh-plugin/observe.test.ts
 test/eval-core/compiler/compiler.test.ts
 test/eval-core/compiler/digests.test.ts
 test/eval-core/compiler/execution-bundle.test.ts

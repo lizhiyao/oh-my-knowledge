@@ -24,6 +24,7 @@ test/cli/removed-options.test.ts
 test/cli/studio-dev-spawn.test.ts
 test/cli/update-exit-latency.test.ts
 test/cli/update-worker.test.ts
+test/dsh-plugin/observe.test.ts
 test/eval-core/embedded-package.test.ts
 test/eval-core/runtime-side-effects.test.ts
 test/eval-runtime/package-boundary.test.ts
