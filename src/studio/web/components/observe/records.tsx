@@ -24,7 +24,7 @@ function RecordBrowser({rows,lang,raw=false,notice}: {rows:RecordRow[];lang:Lang
   return <section className="record-browser">
     <div className="observe-toolbar"><Input allowClear aria-label={zh?'搜索记录':'Search records'} placeholder={zh?'搜索类型、时间或内容':'Search type, time or content'} value={query} onChange={event=>setQuery(event.target.value)}/><Space><Typography.Text type="secondary">{filtered.length} / {rows.length} {zh?'条记录':'records'}</Typography.Text>{notice&&<Tag color="warning" title={notice}>{zh?'部分记录受限':'Limited records'}</Tag>}</Space></div>
     {notice&&<p className="record-notice">{notice}</p>}
-    <Table<RecordRow> className="measure-table" size="small" rowKey="id" dataSource={filtered} scroll={{x:'max-content'}} pagination={{pageSize:20,showSizeChanger:false,hideOnSinglePage:true}} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh?'没有匹配的记录':'No matching records'}/>}} columns={[
+    <Table<RecordRow> className="studio-table" size="small" rowKey="id" dataSource={filtered} scroll={{x:'max-content'}} pagination={{pageSize:20,showSizeChanger:false,hideOnSinglePage:true}} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={zh?'没有匹配的记录':'No matching records'}/>}} columns={[
       {title:zh?'序号':'Index',dataIndex:'index',width:80,align:'right'},
       {title:zh?'时间':'Time',dataIndex:'timestamp',width:210,render:(value:string|undefined)=>displayTime(value)},
       {title:zh?'类型':'Type',dataIndex:'type',width:200},
