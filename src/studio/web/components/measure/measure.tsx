@@ -143,7 +143,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
   return <>
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
-    <Table<CoreStudioRunCard> className="measure-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? <span>{copy.emptyBefore}<Code value={copy.emptyCommand}/>{copy.emptyAfter}</span> : copy.noMatch}/> }} columns={[
+    <Table<CoreStudioRunCard> className="studio-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? <span>{copy.emptyBefore}<Code value={copy.emptyCommand}/>{copy.emptyAfter}</span> : copy.noMatch}/> }} columns={[
       { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id, lang)} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
       { title: copy.evidenceStatus, width: 130, render: (_, run) => <Status value={run.status.evidenceStatus} lang={lang}/> },
@@ -192,20 +192,20 @@ function Plan({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) {
       { key: 'dataset', label: copy.dataset, children: <span><Code value={detail.dataset.datasetId}/> <Code value={detail.dataset.datasetRevisionDigest}/></span> },
       { key: 'samples', label: copy.samples, children: detail.dataset.sampleCount },
     ]}/>
-    <TableBlock label={copy.targets}><Table className="measure-table" size="small" rowKey="targetId" pagination={false} scroll={{ x: 620 }} dataSource={[...detail.targets]} locale={{ emptyText }} columns={[
+    <TableBlock label={copy.targets}><Table className="studio-table" size="small" rowKey="targetId" pagination={false} scroll={{ x: 620 }} dataSource={[...detail.targets]} locale={{ emptyText }} columns={[
       { title: 'ID', dataIndex: 'targetId', width: 200 },
       { title: copy.kind, dataIndex: 'targetKind', width: 140 },
       { title: copy.protocol, dataIndex: 'protocolId', width: 150 },
       { title: copy.executor, dataIndex: 'executorId', width: 130 },
     ]}/></TableBlock>
-    <TableBlock label={copy.evaluators}><Table className="measure-table" size="small" rowKey="evaluatorId" pagination={false} scroll={{ x: 820 }} dataSource={[...detail.evaluators]} locale={{ emptyText }} columns={[
+    <TableBlock label={copy.evaluators}><Table className="studio-table" size="small" rowKey="evaluatorId" pagination={false} scroll={{ x: 820 }} dataSource={[...detail.evaluators]} locale={{ emptyText }} columns={[
       { title: 'ID', dataIndex: 'evaluatorId', width: 190 },
       { title: copy.kind, dataIndex: 'evaluatorKind', width: 130 },
       { title: copy.implementation, dataIndex: 'implementationId', width: 190, ellipsis: true },
       { title: copy.metrics, dataIndex: 'metricIds', render: (values: readonly string[]) => <Fragments parts={values}/> },
       { title: copy.measurement, width: 250, render: (_, evaluator) => <Code value={formatMeasurement(evaluator.measurement)}/> },
     ]}/></TableBlock>
-    <TableBlock label={copy.metrics}><Table className="measure-table" size="small" rowKey="metricId" pagination={false} scroll={{ x: 760 }} dataSource={[...detail.metrics]} locale={{ emptyText }} columns={[
+    <TableBlock label={copy.metrics}><Table className="studio-table" size="small" rowKey="metricId" pagination={false} scroll={{ x: 760 }} dataSource={[...detail.metrics]} locale={{ emptyText }} columns={[
       { title: 'ID', dataIndex: 'metricId', width: 180 },
       { title: copy.valueType, dataIndex: 'valueType', width: 110 },
       { title: copy.scope, dataIndex: 'scope', width: 110 },
@@ -255,7 +255,7 @@ function DecisionPanel({ decision, copy, lang }: { decision: CoreStudioDecision 
 
 function ExecutionRecords({ records, copy, lang }: { records: readonly CoreStudioExecutionRecord[]; copy: Copy; lang: Language }) {
   const emptyText = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/>;
-  return <Table className="measure-table" size="small" rowKey="trialId" pagination={false} scroll={{ x: 1620 }} dataSource={[...records]} locale={{ emptyText }} columns={[
+  return <Table className="studio-table" size="small" rowKey="trialId" pagination={false} scroll={{ x: 1620 }} dataSource={[...records]} locale={{ emptyText }} columns={[
     { title: copy.target, dataIndex: 'targetId', width: 140, ellipsis: true },
     { title: copy.sample, dataIndex: 'sampleId', width: 140, ellipsis: true },
     { title: copy.trial, dataIndex: 'trialIndex', width: 70 },
@@ -272,7 +272,7 @@ function ExecutionRecords({ records, copy, lang }: { records: readonly CoreStudi
 
 function EvaluationRecords({ records, copy, lang }: { records: readonly CoreStudioEvaluationRecord[]; copy: Copy; lang: Language }) {
   const emptyText = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/>;
-  return <Table className="measure-table" size="small" rowKey="evaluationId" pagination={false} scroll={{ x: 1960 }} dataSource={[...records]} locale={{ emptyText }} columns={[
+  return <Table className="studio-table" size="small" rowKey="evaluationId" pagination={false} scroll={{ x: 1960 }} dataSource={[...records]} locale={{ emptyText }} columns={[
     { title: copy.evaluationId, dataIndex: 'evaluationId', width: 180, ellipsis: true },
     { title: copy.target, dataIndex: 'targetId', width: 140, ellipsis: true },
     { title: copy.sample, dataIndex: 'sampleId', width: 140, ellipsis: true },
@@ -293,7 +293,7 @@ function EvaluationRecords({ records, copy, lang }: { records: readonly CoreStud
 
 function AnalysisRecords({ records, copy, lang }: { records: readonly CoreStudioAnalysisRecord[]; copy: Copy; lang: Language }) {
   const emptyText = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/>;
-  return <Table className="measure-table" size="small" rowKey="resultId" pagination={false} scroll={{ x: 1680 }} dataSource={[...records]} locale={{ emptyText }} columns={[
+  return <Table className="studio-table" size="small" rowKey="resultId" pagination={false} scroll={{ x: 1680 }} dataSource={[...records]} locale={{ emptyText }} columns={[
     { title: copy.resultId, dataIndex: 'resultId', width: 170, ellipsis: true },
     { title: copy.node, dataIndex: 'nodeId', width: 160, ellipsis: true },
     { title: copy.kind, dataIndex: 'analysisNodeKind', width: 110 },
@@ -311,7 +311,7 @@ function AnalysisRecords({ records, copy, lang }: { records: readonly CoreStudio
 }
 
 function Lineage({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) {
-  return <Table className="measure-table" size="small" rowKey={(entry) => `${entry.documentKind}-${entry.identityDigest}`} pagination={false} scroll={{ x: 780 }} dataSource={[...detail.lineage]} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/> }} columns={[
+  return <Table className="studio-table" size="small" rowKey={(entry) => `${entry.documentKind}-${entry.identityDigest}`} pagination={false} scroll={{ x: 780 }} dataSource={[...detail.lineage]} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/> }} columns={[
     { title: copy.document, dataIndex: 'documentKind', width: 170 },
     { title: copy.schema, dataIndex: 'schemaVersion', width: 130 },
     { title: copy.identityDigest, dataIndex: 'identityDigest', render: (value: string) => <code className="measure-code" title={value}>{value}</code> },

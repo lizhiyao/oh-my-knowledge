@@ -309,7 +309,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
       </div>
     </div>
     <Table<HealthIndexRow>
-      className="measure-table health-table"
+      className="studio-table health-table"
       size="small"
       rowKey="id"
       tableLayout="fixed"
@@ -555,7 +555,7 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
           {legend.map((item) => <span key={item.key} style={{ color: SERIES_COLOR[item.key] }}>● {item.label}</span>)}
         </div>
         <Table
-          className="measure-table health-trend-table"
+          className="studio-table health-trend-table"
           size="small"
           rowKey="analysisId"
           tableLayout="auto"
@@ -606,7 +606,7 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
       </div>
     </header>
     <Table
-      className="measure-table health-diff-table"
+      className="studio-table health-diff-table"
       size="small"
       rowKey="skillName"
       tableLayout="fixed"

@@ -151,7 +151,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
       description={<span>{zh ? '暂无受管 skill，运行 ' : 'No managed skills yet — run '}<code>omk install &lt;skill&gt;</code>{zh ? ' 开始纳管。' : ' to start.'}</span>}
     /> : <>
       <Table<ManagedListPresentation>
-        className="measure-table managed-table"
+        className="studio-table managed-table"
         size="small"
         rowKey={(item) => item.row.id}
         tableLayout="fixed"
