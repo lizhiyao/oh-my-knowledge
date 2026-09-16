@@ -102,8 +102,8 @@ jobs:
     timeout-minutes: 12
     strategy:
       fail-fast: false
-      # vitest 按排序后的文件下标切片，而慢测试集中在字母序靠前处，所以加分片只缩短最慢作业、
-      # 不抹平倾斜（4 片仍为 105s／91s／27s／34s 的串行和）。取 4 是把最慢作业从 196s 降到 105s。
+      # 分片按 `yarn test:profile` 实测时长贪心装箱（test/shards/source-*.txt），替代 vitest --shard
+      # 的下标切片（重活集中字母序前段导致 105s/27s 倾斜）。
       matrix:
         shard: [1, 2, 3, 4]
     steps:
@@ -118,8 +118,9 @@ jobs:
       # 进程超时早于作业超时，保留测试进度、资源采样与退出分类。
       # 预算：720s 作业上限 − 约 80s checkout/install/build − 30s kill 宽限 ⇒ 610s，取整到 540s。
       # hermetic 后置快照在 yarn test 内部，已经被 540s 覆盖。余量是最慢分片实测墙钟的数倍。
-      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
+      # 字面 pattern 而跑全量）。maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -152,8 +153,9 @@ jobs:
           cache: yarn
       - run: yarn install --immutable
       - run: yarn build
-      # 分片已跨 runner 并行；每台只运行一个 worker，避免 Next/打包测试叠加内存峰值。
-      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1 --shard=${{ matrix.shard }}/4
+      # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
+      # 字面 pattern 而跑全量）。maxWorkers 不显式配置：2 核 runner 默认即 1-2 workers。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:

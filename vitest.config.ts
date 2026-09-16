@@ -7,15 +7,9 @@ export default defineConfig({
     // Studio React 页面的测试是 .tsx；只收 .ts 会让它们被静默跳过而 CI 仍然全绿。
     include: ['test/**/*.test.{ts,tsx}'],
     testTimeout: 30000,
-    // Git/Node subprocesses become I/O-bound under full CPU parallelism.
-    // Keep proportional headroom while allowing larger hosts to scale.
-    // Measured on an 11-core host: raising 55% → 70% (~7 workers) shortens the
-    // suite from ~122s to ~80s with isolate kept on (which the vi.mock-based
-    // tests require). 80% (~9 workers) was tried and reverted: under memory
-    // pressure workers were SIGKILLed mid-file, and higher process-level
-    // parallelism amplified a pre-existing capture-file race in the CLI
-    // fixtures (fixed separately with atomic rename writes).
-    maxWorkers: '70%',
+    // maxWorkers 不显式配置：vitest 按 CPU 核数自动决定。本地 11 核默认 ~10 workers，
+    // 历史上 80%（~9 workers）曾在内存压力下被 SIGKILL；若默认配置在本机复现 SIGKILL，
+    // 需恢复显式护栏（曾用 70%，~7 workers，实测 122s→80s 且全绿）。
     // OMK_HOME 一处重定向,把整棵默认产物树(reports / doctors / observe-health / state 下的
     // cache / trees / jobs / artifact-index)全部移到临时目录,从根上隔离 —— 任何从深层调用点写全局默认
     // 目录的写路径(如 persistReport 间接写产物索引卡片、materialize 写隔离副本)都自动落 temp,不再需要

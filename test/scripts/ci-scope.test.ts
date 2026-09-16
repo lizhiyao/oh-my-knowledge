@@ -63,6 +63,8 @@ describe('required CI checks', () => {
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch', 'push', 'pull_request']);
     for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
       expect(workflow.jobs[job].needs).toBe('changes');
+    }
+    for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
       expect(workflow.jobs[job].if).toContain("needs.changes.result != 'success'");
       expect(workflow.jobs[job].if).toContain("needs.changes.outputs.scope != 'rules'");
       expect(workflow.jobs[job].if).toContain("needs.changes.outputs.scope != 'docs'");
