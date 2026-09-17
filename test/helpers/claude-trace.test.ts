@@ -59,22 +59,28 @@ describe('claudeTrace builder 控制组', () => {
       .assistantToolUses([
         { id: 't1', name: 'Grep', input: { pattern: 'a' } },
         { id: 't2', name: 'Read', input: { file_path: '/b' } },
+        { id: 't3', name: 'Bash', input: { command: 'ls' } },
       ])
       .userToolResults([
-        { toolUseId: 't1', content: 'miss' },
+        { toolUseId: 't1', content: 'miss', isError: false },
         { toolUseId: 't2', content: 'boom', isError: true },
+        { toolUseId: 't3', content: 'opaque' },
       ])
       .build();
     const toolUse = records[0].message as { content: Array<Record<string, unknown>> };
     assert.deepEqual(toolUse.content.map((b) => [b.type, b.id, b.name]), [
       ['tool_use', 't1', 'Grep'],
       ['tool_use', 't2', 'Read'],
+      ['tool_use', 't3', 'Bash'],
     ]);
     const toolResult = records[1].message as { content: Array<Record<string, unknown>> };
+    // isError 三态：显式 false／true 写字段；不传则不写（缺省解析是被测变体）。
     assert.deepEqual(toolResult.content.map((b) => [b.tool_use_id, b.is_error]), [
       ['t1', false],
       ['t2', true],
+      ['t3', undefined],
     ]);
+    assert.equal('is_error' in toolResult.content[2], false);
   });
 
   it('event() 透传畸形形态（type=user 配 role=assistant），自带字段不被骨架覆盖', () => {
@@ -100,6 +106,21 @@ describe('claudeTrace builder 控制组', () => {
     });
     // event() 的自带 uuid 进入链：下一个事件挂到 u4。
     assert.equal(records[2].parentUuid, 'u4');
+  });
+
+  it('event() 的链外事件（无 uuid）不补 uuid/cwd，也不打断挂链', () => {
+    const records = claudeTrace('s1')
+      .userText('before')
+      .event({ type: 'system', message: '[assistant turn failed]' })
+      .assistantText('after')
+      .build();
+    assert.deepEqual(records[1], {
+      type: 'system',
+      message: '[assistant turn failed]',
+      sessionId: 's1',
+      timestamp: '2026-05-01T00:00:01.000Z',
+    });
+    assert.equal(records[2].parentUuid, 'u1', '链外事件不更新链尾');
   });
 
   it('每条记录都带 sessionId，且能被 loadClaudeTraceFixture 装成 TraceSession', () => {

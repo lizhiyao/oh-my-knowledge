@@ -12,41 +12,22 @@ import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
 } from '../../../src/observability/inbox/review-state.js';
+import { claudeTrace } from '../../helpers/claude-trace.js';
+
+/** records → jsonl 文件内容。 */
+function toJsonl(records: ReadonlyArray<Record<string, unknown>>): string {
+  return records.map((record) => JSON.stringify(record)).join('\n');
+}
 
 describe('observe inbox - experience report', () => {
   it('fails closed instead of throwing when persisted aggregates overflow', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-overflow-'));
     for (const [index, sessionId] of ['overflow-a', 'overflow-b'].entries()) {
-      const records = [
-        {
-          type: 'user',
-          uuid: `u-${index}`,
-          parentUuid: null,
-          sessionId,
-          timestamp: `2026-05-0${index + 1}T00:00:00.000Z`,
-          cwd: '/repo-a',
-          message: {
-            role: 'user',
-            content: '<command-name>/audit</command-name>\nInspect it.',
-          },
-        },
-        {
-          type: 'assistant',
-          uuid: `a-${index}`,
-          parentUuid: `u-${index}`,
-          sessionId,
-          timestamp: `2026-05-0${index + 1}T00:00:01.000Z`,
-          cwd: '/repo-a',
-          message: {
-            role: 'assistant',
-            content: [{ type: 'text', text: 'Done.' }],
-          },
-        },
-      ];
-      writeFileSync(
-        join(dir, `${sessionId}.jsonl`),
-        records.map((record) => JSON.stringify(record)).join('\n'),
-      );
+      const records = claudeTrace(sessionId, { startAt: `2026-05-0${index + 1}T00:00:00.000Z` })
+        .userCommand('audit', 'Inspect it.')
+        .assistantText('Done.')
+        .build();
+      writeFileSync(join(dir, `${sessionId}.jsonl`), toJsonl(records));
     }
 
     const experience = buildObservationInboxReport(dir).experience;
@@ -71,60 +52,14 @@ describe('observe inbox - experience report', () => {
   it('links a late tool result back to the originating invocation timeline', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-late-result-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u-audit',
-        parentUuid: null,
-        sessionId: 's-late',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nInspect it.' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-call',
-        parentUuid: 'u-audit',
-        sessionId: 's-late',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'late-call', name: 'Read', input: { file_path: '/repo-a/a.ts' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u-review',
-        parentUuid: 'a-call',
-        sessionId: 's-late',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/review</command-name>\nReview it.' },
-      },
-      {
-        type: 'user',
-        uuid: 'u-result',
-        parentUuid: 'u-review',
-        sessionId: 's-late',
-        timestamp: '2026-05-01T00:00:03.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 'late-call', content: 'failed', is_error: true }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-review',
-        parentUuid: 'u-result',
-        sessionId: 's-late',
-        timestamp: '2026-05-01T00:00:04.000Z',
-        cwd: '/repo-a',
-        message: { role: 'assistant', content: [{ type: 'text', text: 'Review complete.' }] },
-      },
-    ];
-    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+    const records = claudeTrace('s-late')
+      .userCommand('audit', 'Inspect it.')
+      .assistantToolUse('late-call', 'Read', { file_path: '/repo-a/a.ts' })
+      .userCommand('review', 'Review it.')
+      .userToolResult('late-call', 'failed', { isError: true })
+      .assistantText('Review complete.')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const experience = buildObservationInboxReport(file).experience;
     assert.ok(experience);
@@ -284,95 +219,47 @@ describe('observe inbox - experience report', () => {
   it('builds evidence-only experience report for 2.0 skill review', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
+    // u3 的 uuid 被下方 reviewState 断言引用，显式保留；其余 uuid 交给 builder。
+    const records = claudeTrace('s1')
+      .event({
         type: 'user',
         uuid: 'u-runtime',
         parentUuid: null,
         promptId: 'p1',
-        sessionId: 's1',
         timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
         entrypoint: 'sdk-ts',
         message: {
           role: 'user',
           content: [{ type: 'text', text: '进入新增模板流程。当前页面已经完成本地工作区恢复，请直接命中 gui-workflow route。若设计工具链因为登录态失败且存在 token，则改走回退，必须不要误判 token。' }],
         },
-      },
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: 'u-runtime',
-        sessionId: 's1',
+      })
+      .userCommand('audit', 'Find revenue schema', {
         timestamp: '2026-05-01T00:00:00.500Z',
-        cwd: '/repo-a',
-        entrypoint: 'cli',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-            { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/repo-a/schema.ts' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: 'opaque runtime response' },
-          ],
-        },
-      },
-      {
+        extra: { entrypoint: 'cli' },
+      })
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+        { id: 't2', name: 'Read', input: { file_path: '/repo-a/schema.ts' } },
+      ], { timestamp: '2026-05-01T00:00:01.000Z' })
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: 'opaque runtime response' },
+      ], { timestamp: '2026-05-01T00:00:02.000Z' })
+      .event({
         type: 'user',
         uuid: 'u-meta',
-        parentUuid: 'u2',
-        sessionId: 's1',
         timestamp: '2026-05-01T00:00:02.500Z',
-        cwd: '/repo-a',
         isMeta: true,
         sourceToolUseID: 'skill-tool-1',
         message: {
           role: 'user',
           content: [{ type: 'text', text: 'Base directory for this skill: /repo-a/.claude/skills/audit\n\n# audit\n\n不对，这里是 skill 文档里的规则，不是用户说的话。' }],
         },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'u-meta',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:03.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '不对，必须直接找到 schema 定义，不要猜。' },
-      },
-      {
-        type: 'user',
-        uuid: 'u4',
-        parentUuid: 'u3',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:04.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '[Request interrupted by user]' },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+      })
+      .userText('不对，必须直接找到 schema 定义，不要猜。', { uuid: 'u3', timestamp: '2026-05-01T00:00:03.000Z' })
+      .userText('[Request interrupted by user]', { uuid: 'u4', timestamp: '2026-05-01T00:00:04.000Z' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const experience = report.experience;
@@ -513,42 +400,12 @@ describe('observe inbox - experience report', () => {
   it('counts tool_result JSON error payloads as tool failures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-tool-error-json-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: dir,
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'node check.js' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: dir,
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: dir })
+      .userCommand('audit', '检查示例配置')
+      .assistantToolUse('t1', 'Bash', { command: 'node check.js' })
+      .userToolResult('t1', '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -561,47 +418,12 @@ describe('observe inbox - experience report', () => {
   it('does not override an explicit successful tool status from error-like payload text', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-explicit-tool-success-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: dir,
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'errors.json' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: dir,
-        message: {
-          role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: 't1',
-            content: '{"error":"synthetic failure"}',
-            is_error: false,
-          }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+    const records = claudeTrace('s1', { cwd: dir })
+      .userCommand('audit', '检查示例配置')
+      .assistantToolUse('t1', 'Read', { file_path: 'errors.json' })
+      .userToolResult('t1', '{"error":"synthetic failure"}', { isError: false })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -613,36 +435,12 @@ describe('observe inbox - experience report', () => {
   it('emits session_interrupted finding for assistant turn failures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-session-interrupted-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: dir,
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'README.md' } }],
-        },
-      },
-      {
-        type: 'system',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        message: '[assistant turn failed]',
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: dir })
+      .userCommand('audit', '检查示例配置')
+      .assistantToolUse('t1', 'Read', { file_path: 'README.md' })
+      .event({ type: 'system', message: '[assistant turn failed]' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -655,32 +453,13 @@ describe('observe inbox - experience report', () => {
   it('emits session_interrupted finding for ended then started session switches', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-session-switch-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: dir,
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'README.md' } }],
-        },
-      },
-      { type: 'session.ended', sessionId: 's1', timestamp: '2026-05-01T00:00:02.000Z' },
-      { type: 'session.started', sessionId: 's1', timestamp: '2026-05-01T00:00:03.000Z' },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: dir })
+      .userCommand('audit', '检查示例配置')
+      .assistantToolUse('t1', 'Read', { file_path: 'README.md' })
+      .event({ type: 'session.ended' })
+      .event({ type: 'session.started' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -692,27 +471,11 @@ describe('observe inbox - experience report', () => {
   it('keeps user feedback unknown until positive feedback is observed', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-feedback-unknown-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: dir,
-        message: { role: 'assistant', content: [{ type: 'text', text: '已完成，结果如下：示例配置正常。' }] },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: dir })
+      .userCommand('audit', '检查示例配置')
+      .assistantText('已完成，结果如下：示例配置正常。')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const feedbackStep = report.experience!.sessions[0].reviewerReport?.chainSteps.find((step) => step.label === '用户反馈');
@@ -736,30 +499,11 @@ expected_tools:
 # yuque
 `);
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/yuque</command-name>\n读取示例文档' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: dir,
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'echo noop' } }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: dir })
+      .userCommand('yuque', '读取示例文档')
+      .assistantToolUse('t1', 'Bash', { command: 'echo noop' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const executionStep = report.experience!.sessions[0].reviewerReport?.chainSteps.find((step) => step.label === '执行流程');
@@ -771,93 +515,42 @@ expected_tools:
   it('keeps skill timeline open through skill context until the next skill starts', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
+    const records = claudeTrace('s1')
+      .userText('画一个给老板汇报的时序图。步骤简单一点', {
         timestamp: '2026-05-09T06:02:08.236Z',
-        cwd: '/repo-a',
-        entrypoint: 'cli',
-        message: { role: 'user', content: '画一个给老板汇报的时序图。步骤简单一点' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
+        extra: { entrypoint: 'cli' },
+      })
+      .assistantToolUse('skill-tool-1', 'Skill', { skill: 'my-diagram', args: '画时序图' }, {
         timestamp: '2026-05-09T06:02:15.646Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'skill-tool-1', name: 'Skill', input: { skill: 'my-diagram', args: '画时序图' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
+      })
+      .userToolResult('skill-tool-1', 'Launching skill: my-diagram', {
         timestamp: '2026-05-09T06:02:16.500Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 'skill-tool-1', content: 'Launching skill: my-diagram' }],
-        },
-      },
-      {
+      })
+      .event({
         type: 'user',
         uuid: 'u3',
-        parentUuid: 'u2',
-        sessionId: 's1',
         timestamp: '2026-05-09T06:02:16.115Z',
-        cwd: '/repo-a',
         isMeta: true,
         sourceToolUseID: 'skill-tool-1',
         message: { role: 'user', content: 'Base directory for this skill: /repo-a/.claude/skills/my-diagram\n# my-diagram\n画图流程说明' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'u3',
-        sessionId: 's1',
+      })
+      .assistantText('内容、类型、格式都已明确，直接生成 Mermaid 时序图。', {
         timestamp: '2026-05-09T06:02:24.003Z',
-        cwd: '/repo-a',
-        message: { role: 'assistant', content: [{ type: 'text', text: '内容、类型、格式都已明确，直接生成 Mermaid 时序图。' }] },
-      },
-      {
-        type: 'user',
+      })
+      .userText('把这个时序图的系统-工具改为 agent，做一个diff图', {
         uuid: 'u4',
-        parentUuid: 'a2',
-        sessionId: 's1',
         timestamp: '2026-05-09T06:03:28.380Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '把这个时序图的系统-工具改为 agent，做一个diff图' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a3',
-        parentUuid: 'u4',
-        sessionId: 's1',
+      })
+      .assistantText('Diff 需要红色标注，推荐用 PlantUML。', {
         timestamp: '2026-05-09T06:03:46.528Z',
-        cwd: '/repo-a',
-        message: { role: 'assistant', content: [{ type: 'text', text: 'Diff 需要红色标注，推荐用 PlantUML。' }] },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a4',
+      })
+      // a4 与 a3 同挂 u4（分叉）：显式 parentUuid，不挂到 a3。
+      .assistantToolUse('skill-tool-2', 'Skill', { skill: 'excalidraw-diagram', args: 'before after' }, {
         parentUuid: 'u4',
-        sessionId: 's1',
         timestamp: '2026-05-09T06:07:23.444Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'skill-tool-2', name: 'Skill', input: { skill: 'excalidraw-diagram', args: 'before after' } }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+      })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const myDiagramSession = report.experience?.sessions.find((session) => session.skillName === 'my-diagram');
@@ -877,90 +570,19 @@ expected_tools:
     mkdirSync(subagentsDir, { recursive: true });
     const mainFile = join(sessionDir, 'main.jsonl');
     const childFile = join(subagentsDir, 'child.jsonl');
-    const mainRecords = [
-      {
-        type: 'user',
-        uuid: 'u-main-1',
-        parentUuid: null,
-        sessionId: 'sessionA',
-        timestamp: '2026-05-11T02:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我咨询 PRD 方案。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-main-1',
-        parentUuid: 'u-main-1',
-        sessionId: 'sessionA',
-        timestamp: '2026-05-11T02:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '根据 TOOLS.md 规则，功能咨询类需求走 `aiprd-task-runner` skill 的 `/consult` 流程。' }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-main-2',
-        parentUuid: 'a-main-1',
-        sessionId: 'sessionA',
-        timestamp: '2026-05-11T02:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'task1', name: 'Task', input: { prompt: '启动子 Claude 到 AIPRDWorkSpace 执行 /consult' } }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-main-3',
-        parentUuid: 'a-main-2',
-        sessionId: 'sessionA',
-        timestamp: '2026-05-11T02:00:03.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。' }],
-        },
-      },
-    ];
-    const childRecords = [
-      {
-        type: 'user',
-        uuid: 'u-child-1',
-        parentUuid: null,
-        sessionId: 'child-1',
-        timestamp: '2026-05-11T02:00:04.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> /consult PRD 方案' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-child-1',
-        parentUuid: 'u-child-1',
-        sessionId: 'child-1',
-        timestamp: '2026-05-11T02:00:05.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/repo-a/prd.md' } }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-child-2',
-        parentUuid: 'a-child-1',
-        sessionId: 'child-1',
-        timestamp: '2026-05-11T02:00:06.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '最终报告如下：PRD 方案建议分为目标、范围、验收标准三部分。' }],
-        },
-      },
-    ];
-    writeFileSync(mainFile, mainRecords.map((r) => JSON.stringify(r)).join('\n'));
-    writeFileSync(childFile, childRecords.map((r) => JSON.stringify(r)).join('\n'));
+    const mainRecords = claudeTrace('sessionA', { startAt: '2026-05-11T02:00:00.000Z' })
+      .userCommand('apply-cc', '帮我咨询 PRD 方案。')
+      .assistantText('根据 TOOLS.md 规则，功能咨询类需求走 `aiprd-task-runner` skill 的 `/consult` 流程。')
+      .assistantToolUse('task1', 'Task', { prompt: '启动子 Claude 到 AIPRDWorkSpace 执行 /consult' })
+      .assistantText('已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。')
+      .build();
+    const childRecords = claudeTrace('child-1', { startAt: '2026-05-11T02:00:04.000Z' })
+      .userCommand('aiprd-task-runner', '/consult PRD 方案')
+      .assistantToolUse('read1', 'Read', { file_path: '/repo-a/prd.md' })
+      .assistantText('最终报告如下：PRD 方案建议分为目标、范围、验收标准三部分。')
+      .build();
+    writeFileSync(mainFile, toJsonl(mainRecords));
+    writeFileSync(childFile, toJsonl(childRecords));
 
     const report = buildObservationInboxReport(sessionDir);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
@@ -1010,61 +632,15 @@ expected_tools:
     mkdirSync(subagentsDir, { recursive: true });
     const mainFile = join(sessionDir, 'main.jsonl');
     const childFile = join(subagentsDir, 'child.jsonl');
-    writeFileSync(mainFile, [
-      {
-        type: 'user',
-        uuid: 'u-main',
-        parentUuid: null,
-        sessionId: 'sessionA',
-        timestamp: '2026-05-11T03:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name> 主代理先检查。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-main',
-        parentUuid: 'u-main',
-        sessionId: 'sessionA',
-        timestamp: '2026-05-11T03:00:08.000Z',
-        cwd: '/repo-a',
-        message: { role: 'assistant', content: [{ type: 'text', text: '主代理检查完成。' }] },
-      },
-    ].map((record) => JSON.stringify(record)).join('\n'));
-    writeFileSync(childFile, [
-      {
-        type: 'user',
-        uuid: 'u-child',
-        parentUuid: null,
-        sessionId: 'child-1',
-        timestamp: '2026-05-11T03:00:03.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name> 子代理并行检查。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a-child',
-        parentUuid: 'u-child',
-        sessionId: 'child-1',
-        timestamp: '2026-05-11T03:00:04.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'grep-child', name: 'Grep', input: { pattern: 'audit_rule', path: '/repo-a' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'r-child',
-        parentUuid: 'a-child',
-        sessionId: 'child-1',
-        timestamp: '2026-05-11T03:00:05.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 'grep-child', content: 'No files found', is_error: true }],
-        },
-      },
-    ].map((record) => JSON.stringify(record)).join('\n'));
+    writeFileSync(mainFile, toJsonl(claudeTrace('sessionA', { startAt: '2026-05-11T03:00:00.000Z' })
+      .userCommand('audit', '主代理先检查。')
+      .assistantText('主代理检查完成。', { timestamp: '2026-05-11T03:00:08.000Z' })
+      .build()));
+    writeFileSync(childFile, toJsonl(claudeTrace('child-1', { startAt: '2026-05-11T03:00:03.000Z' })
+      .userCommand('audit', '子代理并行检查。')
+      .assistantToolUse('grep-child', 'Grep', { pattern: 'audit_rule', path: '/repo-a' })
+      .userToolResult('grep-child', 'No files found', { isError: true })
+      .build()));
 
     const report = buildObservationInboxReport(sessionDir);
     assert.equal(report.items.length, 1);
@@ -1082,60 +658,14 @@ expected_tools:
   it('attributes feedback by target object instead of the current skill window', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-object-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/damai-daily</command-name> 生成日报。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'node run-damai.js' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:02.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '[文件: omk-reviewer.zip]' },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:03.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/omk-reviewer</command-name> 看下这个 skill 的执行流程。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'u3',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:04.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'tool2', name: 'Read', input: { file_path: '/repo-a/omk-reviewer/SKILL.md' } }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
+      .userCommand('damai-daily', '生成日报。')
+      .assistantToolUse('tool1', 'Bash', { command: 'node run-damai.js' })
+      .userText('[文件: omk-reviewer.zip]')
+      .userCommand('omk-reviewer', '看下这个 skill 的执行流程。')
+      .assistantToolUse('tool2', 'Read', { file_path: '/repo-a/omk-reviewer/SKILL.md' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const damaiSession = report.experience?.sessions.find((session) => session.skillName === 'damai-daily');
@@ -1157,60 +687,14 @@ expected_tools:
   it('keeps apply-cc promise follow-up separate from unrelated preview feedback', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-promise-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 让子 Claude 分析项目。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已启动子 Claude，完成后我会同步结果。session: claude-test123' }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:02.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '怎么样了' },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:03.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/ai-worker-webtools</command-name> 用可预览的链接发给我' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'u3',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:04.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'python3 -m http.server 8899' } }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
+      .userCommand('apply-cc', '让子 Claude 分析项目。')
+      .assistantText('已启动子 Claude，完成后我会同步结果。session: claude-test123')
+      .userText('怎么样了')
+      .userCommand('ai-worker-webtools', '用可预览的链接发给我')
+      .assistantToolUse('tool1', 'Bash', { command: 'python3 -m http.server 8899' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
@@ -1236,39 +720,12 @@ expected_tools:
   it('does not classify neutral how-to questions with should as user correction', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-howto-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我看一下服务器上的文件。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '可以，我先确认文件位置。' }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:02.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '我现在能够ssh到你的服务器，我应该怎么把这个文件发送到我本地' },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
+      .userCommand('apply-cc', '帮我看一下服务器上的文件。')
+      .assistantText('可以，我先确认文件位置。')
+      .userText('我现在能够ssh到你的服务器，我应该怎么把这个文件发送到我本地')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
@@ -1283,67 +740,16 @@ expected_tools:
   it('backs downstream feedback up to router skills without hiding executor ownership', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-router-downstream-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> 功能咨询：新版确认页是什么逻辑，有开关控制吗' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{
-            type: 'tool_use',
-            id: 'runner1',
-            name: 'Bash',
-            input: {
-              command: 'node ~/.openclaw/workspace-main/skills/apply-cc/scripts/runner.js ~/code/project "功能咨询" "/consult 功能咨询：新版确认页是什么逻辑，有开关控制吗"',
-            },
-          }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已启动功能咨询，session: claude-router-test，有结果我会直接同步给你。' }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a2',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:30:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '进度' },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:40:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '为什么信息没返回' },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
+      .userCommand('aiprd-task-runner', '功能咨询：新版确认页是什么逻辑，有开关控制吗')
+      .assistantToolUse('runner1', 'Bash', {
+        command: 'node ~/.openclaw/workspace-main/skills/apply-cc/scripts/runner.js ~/code/project "功能咨询" "/consult 功能咨询：新版确认页是什么逻辑，有开关控制吗"',
+      })
+      .assistantText('已启动功能咨询，session: claude-router-test，有结果我会直接同步给你。')
+      .userText('进度', { timestamp: '2026-05-11T02:30:00.000Z' })
+      .userText('为什么信息没返回', { timestamp: '2026-05-11T02:40:00.000Z' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const routerSession = report.experience?.sessions.find((session) => session.skillName === 'aiprd-task-runner');
@@ -1387,51 +793,13 @@ expected_tools:
   it('cuts previous skill segment before next user command in the same trace', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-segment-switch-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我咨询 PRD 方案。' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '根据 TOOLS.md 规则，功能咨询类需求走 aiprd-task-runner skill。' }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:02.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> /consult PRD 方案' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-11T02:00:03.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/repo-a/prd.md' } }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
+      .userCommand('apply-cc', '帮我咨询 PRD 方案。')
+      .assistantText('根据 TOOLS.md 规则，功能咨询类需求走 aiprd-task-runner skill。')
+      .userCommand('aiprd-task-runner', '/consult PRD 方案')
+      .assistantToolUse('read1', 'Read', { file_path: '/repo-a/prd.md' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');

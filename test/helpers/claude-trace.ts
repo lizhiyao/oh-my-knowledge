@@ -77,7 +77,10 @@ export class ClaudeTraceBuilder {
     return this.userToolResults([{ toolUseId, content, isError: options.isError }], options);
   }
 
-  /** user 消息：多个 tool_result 合并成一条（多 tool_use 的对应形态）。 */
+  /**
+   * user 消息：多个 tool_result 合并成一条（多 tool_use 的对应形态）。
+   * isError 三态：true／false 显式写字段；不传则不写 is_error（缺省解析是被测变体）。
+   */
   userToolResults(
     results: Array<{ toolUseId: string; content: unknown; isError?: boolean }>,
     overrides: ClaudeEventOverrides = {},
@@ -88,7 +91,7 @@ export class ClaudeTraceBuilder {
         type: 'tool_result',
         tool_use_id: toolUseId,
         content,
-        is_error: isError ?? false,
+        ...(isError === undefined ? {} : { is_error: isError }),
       })),
     }, overrides);
   }
@@ -121,18 +124,32 @@ export class ClaudeTraceBuilder {
 
   /**
    * 逃生舱：稀有形态原样透传（如 type=user 配 role=assistant 的畸形记录、
-   * system／summary 等非对话事件），只补结构字段。record 里的 uuid／parentUuid／
-   * timestamp／cwd 优先于自动值。
+   * system／session.ended 等链外事件）。只补 sessionId 与（缺省时的）timestamp；
+   * record 声明了 uuid 才参与挂链——缺省 parentUuid 挂到上一个事件、缺省 cwd 用
+   * 构造值、并更新链尾；不声明 uuid 的链外事件不碰这些字段。
    */
-  event(record: Record<string, unknown> & { type: string }, overrides: ClaudeEventOverrides = {}): this {
-    const skeleton = this.skeleton(String(record.type), overrides);
-    const merged = { ...skeleton, ...record, sessionId: this.sessionId };
+  event(record: Record<string, unknown> & { type: string }): this {
+    this.sequence += 1;
+    const merged: Record<string, unknown> = { ...record };
+    merged.sessionId = this.sessionId;
+    if (!('timestamp' in merged)) {
+      merged.timestamp = new Date(Date.parse(this.startAt) + (this.sequence - 1) * 1000).toISOString();
+    }
+    if ('uuid' in merged) {
+      if (!('parentUuid' in merged)) merged.parentUuid = this.lastUuid;
+      if (!('cwd' in merged)) merged.cwd = this.cwd;
+      this.lastUuid = merged.uuid as string;
+    }
     this.records.push(merged);
-    this.lastUuid = merged.uuid as string;
     return this;
   }
 
   build(): Array<Record<string, unknown>> {
+    const uuids = this.records.map((record) => record.uuid).filter((uuid) => uuid !== undefined);
+    const duplicated = uuids.filter((uuid, index) => uuids.indexOf(uuid) !== index);
+    if (duplicated.length > 0) {
+      throw new Error(`claudeTrace(${this.sessionId}) 生成了重复 uuid：${[...new Set(duplicated)].join(', ')}——显式 uuid 与自动序号撞了，给相关事件全部显式命名`);
+    }
     return this.records.map((record) => ({ ...record }));
   }
 
