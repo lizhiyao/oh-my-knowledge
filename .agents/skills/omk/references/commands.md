@@ -4,6 +4,45 @@
 <!-- 此段由 scripts/build/docs.ts 从 src/cli/commands/ 自动生成。
      改 CLI 后跑 `yarn build:docs` 同步,CI `yarn build:docs:check` 会拦截 drift。-->
 
+## omk agents
+
+识别本机已安装的 Agent，采集其日志并映射成统一格式，再提炼候选知识。
+
+**用法:**
+
+```bash
+omk agents <operation> [flags]
+```
+
+**参数:**
+
+- `operation`(必填):操作：list 识别安装情况，collect 采集日志并映射成统一 Trace IR，extract 从已采集日志提炼候选知识。
+
+**Flags:**
+
+- `--dir` `option`:清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
+- `--executor` `option`:extract：生成执行器，沿用 OMK 运行配置。
+- `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
+- `--knowledge` `option`:extract：知识工作区，默认全局知识目录。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
+- `--limit` `option`:collect 单轮处理的会话文件上限。
+- `--model` `option`:extract：生成模型，沿用已配置模型。
+- `--session` `option`:extract：采集报告里的 runId。
+
+**示例:**
+
+```bash
+omk agents list
+```
+
+```bash
+omk agents collect --limit 50
+```
+
+```bash
+omk agents extract --session <runId> --executor codex --model <model>
+```
+
 ## omk doctor
 
 体检 omk 工作目录：先跑静态规则，再对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。
@@ -504,7 +543,7 @@ omk observe knowledge <operation> [flags]
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
 - `--snapshot` `option`:generate／source／delete-source：归档身份。
-- `--source` `option`:capture：一份 Codex JSONL 文件。
+- `--source` `option`:capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。
 - `--start-record` `option`:从零开始的非空记录序号，包含。
 - `--workspace` `option`:本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。
 

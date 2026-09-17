@@ -356,7 +356,39 @@ omk observe show <inbox_id>
 + `messageWindow`：前 3 条 / 触发点 / 后 3 条 message 上下文 + `resolutionAfter`（后续是否解决）
 + `evidence.{messageIndex,messageUuid,toolUseId}`：可反向回到原始 jsonl 的锚点
 
-支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
+支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、Qoder session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
+
+## `omk agents`
+
+```bash
+omk agents list                          # 识别本机装了哪些编码 Agent
+omk agents list --json                   # 给脚本消费的完整清单报告
+omk agents collect --limit 40            # 把它们的会话日志映射成统一 Trace IR
+omk agents extract --session <runId>     # 从一份已采集会话提炼候选知识
+```
+
+<!-- omk:cli:agents:flags:start -->
+
+**Flags:**
+
+```text
+  --dir <value>        清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
+  --executor <value>   extract：生成执行器，沿用 OMK 运行配置。
+  --json               输出完整 JSON；默认输出可读摘要。
+  --knowledge <value>  extract：知识工作区，默认全局知识目录。
+  --lang <value>       输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。
+  --limit <value>      collect 单轮处理的会话文件上限。
+  --model <value>      extract：生成模型，沿用已配置模型。
+  --session <value>    extract：采集报告里的 runId。
+```
+
+完整描述见 `omk agents --help`。
+
+<!-- omk:cli:agents:flags:end -->
+
+`list` 按 Agent 登记表（Codex、Claude Code、CodeFuse、Qoder、OpenClaw 等）核对 `PATH` 与主目录，写出 `inventory.json`。`collect` 遍历每个已安装 Agent 声明的日志根，把会话日志解析成与 `observe` 同源的 Trace IR，每个会话落一份归一化产物到 `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`，并写出 `collection.json` 说明发现、采集、跳过与失败各多少。采集是增量的：摘要与修改时间已出现在上一轮报告里的文件会被跳过，因此第二轮通常零新增。`extract` 把一份已采集会话归档成证据快照，再让配置的执行器提炼候选知识，走的是与 `omk observe knowledge` 相同的 `entities`／`evidence` 契约。
+
+两点是刻意设计。探测不执行被探测的二进制——安装情况只由文件系统和 `PATH` 推断，一次清单运行不可能触发第三方代码。采集不移动、不截断、不删除你自己的日志：原始文件留在原地继续作为证据，派生内容一律写在 OMK 侧。单轮容量上限（文件数、字节数、单文件字节数）是硬约束而不是建议；命中上限时本轮干净收尾，并在 `limitations` 里说明截断了什么，被截断的计数不会被当作全量。
 
 ## `omk evolve`
 
