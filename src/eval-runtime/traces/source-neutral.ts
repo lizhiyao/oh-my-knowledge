@@ -8,7 +8,7 @@ import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js'
 const TOOL_STATUSES = new Set(['success', 'failure', 'cancelled', 'unknown']);
 const TOOL_STATUS_SOURCES = new Set(['runtime', 'tool-output', 'inferred', 'unknown']);
 const TRACE_ROLES = new Set(['standalone', 'main', 'subagent']);
-const TRACE_SOURCES = new Set(['claude', 'codex', 'dsh', 'openclaw', 'markdown_log', 'unknown']);
+const TRACE_SOURCES = new Set(['claude', 'codex', 'dsh', 'openclaw', 'qoder', 'markdown_log', 'unknown']);
 const TURN_ROLES = new Set(['user', 'assistant', 'tool']);
 const RFC3339_TIMESTAMP_RE =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/i;

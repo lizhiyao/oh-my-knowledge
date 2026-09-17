@@ -1,5 +1,5 @@
 import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
-import { projectCodexEvidence } from '../../../observability/knowledge-extraction/adapters/codex-evidence.js';
+import { projectTraceEvidence } from '../../../observability/knowledge-extraction/adapters/trace-evidence.js';
 import type { EvidenceWindow } from '../../../observability/knowledge-extraction/evidence.js';
 
 /** Resolve the current scope through Observe. Never trust browser paths or message text. */
@@ -25,7 +25,7 @@ export async function conversationExtractionSource(catalog: ConversationCatalog,
     if (path && path !== source.path) throw new Error('Conversation source conflict.');
     path = source.path;
     if (!source.records.length) continue;
-    const task = projectCodexEvidence(source, signal);
+    const task = projectTraceEvidence(source, signal);
     const indexes = new Set(task.excerpts.filter(entry => entry.eventKind === 'message' && ['user', 'assistant'].includes(entry.role ?? '')).map(entry => entry.recordIndex));
     for (const record of task.records.filter(record => indexes.has(record.recordIndex))) {
       const previous = records.get(record.recordIndex);
@@ -36,7 +36,7 @@ export async function conversationExtractionSource(catalog: ConversationCatalog,
     }
   }
   if (!path || !records.size) throw new Error('Conversation has no available messages.');
-  const window = projectCodexEvidence({ path, records: [...records.values()].sort((a, b) => a.recordIndex - b.recordIndex),
+  const window = projectTraceEvidence({ path, records: [...records.values()].sort((a, b) => a.recordIndex - b.recordIndex),
     origin: { threadId, ...(turnId ? { turnId } : {}), title: conversation.title, ...(conversation.cwd ? { cwd: conversation.cwd } : {}) } }, signal);
   const messages = window.excerpts.filter(entry => entry.eventKind === 'message' && ['user', 'assistant'].includes(entry.role ?? ''));
   if (messages.length > 1000) throw new Error('Conversation exceeds message capacity. Choose one task.');

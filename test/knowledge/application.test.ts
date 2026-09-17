@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeApplication, type ExtractionModel } from '../../src/observability/knowledge-extraction/application.js';
-import { CodexEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/codex-evidence.js';
+import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
@@ -19,7 +19,7 @@ function setup() {
   writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'test');
   const runs = new FileExtractionRunStore(join(root, 'runs'));
-  const evidence = new CodexEvidenceStore(join(root, 'sources'));
+  const evidence = new TraceEvidenceStore(join(root, 'sources'));
   const ports = {
     evidence, knowledge, runs, id: randomUUID, now: () => '2026-09-14T00:00:00Z',
     hash: (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex'),

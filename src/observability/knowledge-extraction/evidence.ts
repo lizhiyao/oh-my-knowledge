@@ -1,11 +1,15 @@
 import { z } from 'zod';
+import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
+
+/** v1 只登记过 Codex 来源；读侧继续接受，写侧统一升级到 v2。 */
+export const EVIDENCE_PROJECTION_VERSION = 'knowledge-window-v2' as const;
 
 export const EvidenceWindowSchema = z.strictObject({
   snapshotId: z.string().uuid(),
-  sourceKind: z.literal('codex'),
+  sourceKind: TraceSourceKindSchema,
   sourcePath: z.string().min(1),
   sourceVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  projectionVersion: z.literal('knowledge-window-v1'),
+  projectionVersion: z.union([z.literal('knowledge-window-v1'), z.literal(EVIDENCE_PROJECTION_VERSION)]),
   capturedAt: z.iso.datetime({ offset: true }),
   startRecord: z.number().int().nonnegative(),
   endRecord: z.number().int().nonnegative(),

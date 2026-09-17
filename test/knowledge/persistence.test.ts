@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CodexEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/codex-evidence.js';
+import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import type { KnowledgeWrite } from '../../src/knowledge/store.js';
 import { draft, proposal } from './fixtures.js';
@@ -97,7 +97,7 @@ describe('selected Codex evidence snapshots', () => {
   }
   it('keeps exact selected records and provenance without following later source changes', () => {
     const root = temp(); const path = source(root);
-    const store = new CodexEvidenceStore(join(root, 'evidence'));
+    const store = new TraceEvidenceStore(join(root, 'evidence'));
     const captured = store.capture({ path, startRecord: 1, endRecord: 1 });
     expect(captured.records.map((record) => record.recordIndex)).toEqual([1]);
     expect(captured.excerpts.some((excerpt) => excerpt.text === 'Alpha 使用 Beta')).toBe(true);
@@ -112,14 +112,14 @@ describe('selected Codex evidence snapshots', () => {
   it('keeps unknown raw envelopes local instead of exposing them as generation excerpts', () => {
     const root = temp(); const path = source(root);
     writeFileSync(path, readFileSync(path, 'utf8') + '\n' + JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'must-stay-local' } }));
-    const captured = new CodexEvidenceStore(join(root, 'evidence')).capture({ path });
+    const captured = new TraceEvidenceStore(join(root, 'evidence')).capture({ path });
     expect(JSON.stringify(captured.records)).toContain('must-stay-local');
     expect(JSON.stringify(captured.excerpts)).not.toContain('must-stay-local');
     expect(captured.excerpts.some((entry) => entry.text === 'Alpha 使用 Beta')).toBe(true);
   });
   it('detects corruption and cancels without snapshot pollution', () => {
     const root = temp(); const path = source(root); const evidenceRoot = join(root, 'evidence');
-    const store = new CodexEvidenceStore(evidenceRoot);
+    const store = new TraceEvidenceStore(evidenceRoot);
     expect(() => store.capture({ path }, AbortSignal.abort())).toThrow();
     const captured = store.capture({ path });
     writeFileSync(join(evidenceRoot, `${captured.snapshotId}.json`), '{}');
