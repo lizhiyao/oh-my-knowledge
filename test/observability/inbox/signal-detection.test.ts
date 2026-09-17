@@ -36,6 +36,12 @@ import {
   observationReviewStateKey,
 } from '../../../src/observability/inbox/review-state.js';
 import { businessActionTag, checklistItem } from './_helpers.js';
+import { claudeTrace } from '../../helpers/claude-trace.js';
+
+/** records → jsonl 文件内容。 */
+function toJsonl(records: ReadonlyArray<Record<string, unknown>>): string {
+  return records.map((record) => JSON.stringify(record)).join('\n');
+}
 
 describe('observe inbox - signal detection', () => {
   it('does not count embedded words as user correction signals', () => {
@@ -208,51 +214,27 @@ describe('observe inbox - signal detection', () => {
   it('keeps runtime wrapper prompts and progress updates out of experience review signals', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/apply-cc</command-name>\n功能咨询：示例组件有什么功能' },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'u1',
-        sessionId: 's1',
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
+      .userCommand('apply-cc', '功能咨询：示例组件有什么功能')
+      .userText('你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。', {
         timestamp: '2026-05-10T00:00:10.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。' },
-      },
-      {
+      })
+      // 畸形形态是被测输入：type=user 配 role=assistant 的进展消息。
+      .event({
         type: 'user',
         uuid: 'u4',
-        parentUuid: 'u2',
-        sessionId: 's1',
         timestamp: '2026-05-10T00:00:12.000Z',
-        cwd: '/repo-a',
         message: {
           role: 'assistant',
           content: [{ type: 'text', text: '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。' }],
         },
-      },
-      {
-        type: 'assistant',
+      })
+      .assistantText('已完成，结果如下：示例组件支持列表展示和排序。', {
         uuid: 'a2',
-        parentUuid: 'u4',
-        sessionId: 's1',
         timestamp: '2026-05-10T00:00:20.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已完成，结果如下：示例组件支持列表展示和排序。' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+      })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const indicators = report.experience?.invocations[0].indicators;
@@ -266,42 +248,12 @@ describe('observe inbox - signal detection', () => {
   it('counts completed assistant task with worker context as delivery, not progress', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-aiprd-delivery-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name>\n生成系分文档' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '系分任务已启动 ✅ 子 Claude 正在分析需求，后台任务会继续执行。' }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '系分任务已完成 ✅ 方案路径: /tmp/design.md。子 Claude 已退出。' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
+      .userCommand('aiprd-task-runner', '生成系分文档')
+      .assistantText('系分任务已启动 ✅ 子 Claude 正在分析需求，后台任务会继续执行。')
+      .assistantText('系分任务已完成 ✅ 方案路径: /tmp/design.md。子 Claude 已退出。')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -337,68 +289,23 @@ describe('observe inbox - signal detection', () => {
   it('does not count delivery words from tool_result or skill context as assistant delivery', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-delivery-kind-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'skill-tool-1', name: 'Skill', input: { skill: 'audit' } }],
-        },
-      },
-      {
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
+      .userCommand('audit', '检查示例配置')
+      .assistantToolUse('skill-tool-1', 'Skill', { skill: 'audit' })
+      .event({
         type: 'user',
         uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:02.000Z',
-        cwd: '/repo-a',
         isMeta: true,
         sourceToolUseID: 'skill-tool-1',
         message: {
           role: 'user',
           content: [{ type: 'text', text: 'Base directory for this skill: /repo-a/.claude/skills/audit\n# audit\n已完成时需要输出结果如下。' }],
         },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:03.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'echo ok' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'a2',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:04.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '已完成，结果如下：tool result payload' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+      })
+      .assistantToolUse('t1', 'Bash', { command: 'echo ok' })
+      .userToolResult('t1', '已完成，结果如下：tool result payload', { uuid: 'u3' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions.find((item) => item.skillName === 'audit');
@@ -412,36 +319,12 @@ describe('observe inbox - signal detection', () => {
   it('excludes assistant heartbeat protocol replies from final assistant delivery context', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-assistant-heartbeat-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: dir,
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:01.000Z',
-        cwd: dir,
-        message: { role: 'assistant', content: [{ type: 'text', text: '已完成，结果如下：示例配置正常。' }] },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:02.000Z',
-        cwd: dir,
-        message: { role: 'assistant', content: [{ type: 'text', text: 'HEARTBEAT_OK' }] },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z', cwd: dir })
+      .userCommand('audit', '检查示例配置')
+      .assistantText('已完成，结果如下：示例配置正常。')
+      .assistantText('HEARTBEAT_OK')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -453,77 +336,24 @@ describe('observe inbox - signal detection', () => {
   it('does not count retry JSON fields or SKILL.md text as repeated execution', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-retry-noise-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/yuque</command-name>\n读取示例文档' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 'skill-tool-1', name: 'Skill', input: { skill: 'yuque' } }],
-        },
-      },
-      {
+    const records = claudeTrace('s1')
+      .userCommand('yuque', '读取示例文档')
+      .assistantToolUse('skill-tool-1', 'Skill', { skill: 'yuque' })
+      .event({
         type: 'user',
         uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
         isMeta: true,
         sourceToolUseID: 'skill-tool-1',
         message: {
           role: 'user',
           content: [{ type: 'text', text: 'Base directory for this skill: /repo-a/.claude/skills/yuque\n# yuque\n失败时不要重新执行，不要重新拉起授权。' }],
         },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a2',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:03.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'yuque read doc' } }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'a2',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:04.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"retryable":false,"retry_count":0,"status":"ok"}' }],
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a3',
-        parentUuid: 'u3',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:05.000Z',
-        cwd: '/repo-a',
-        message: { role: 'assistant', content: [{ type: 'text', text: '工具返回：retryable=false, retry_count=0。' }] },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+      })
+      .assistantToolUse('t1', 'Bash', { command: 'yuque read doc' })
+      .userToolResult('t1', '{"retryable":false,"retry_count":0,"status":"ok"}', { uuid: 'u3' })
+      .assistantText('工具返回：retryable=false, retry_count=0。')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions.find((item) => item.skillName === 'yuque');
@@ -535,33 +365,11 @@ describe('observe inbox - signal detection', () => {
   it('keeps cron prompts as user messages while excluding interaction metrics', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '<command-name>/daily-report</command-name>\n[cron:example daily-report-yesterday] 使用 daily-report skill 生成前一天运行数据。要求：只生成前一天数据。执行完成后不需要发送消息。',
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:05.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已完成，结果如下：日报已生成。' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
+      .userCommand('daily-report', '[cron:example daily-report-yesterday] 使用 daily-report skill 生成前一天运行数据。要求：只生成前一天数据。执行完成后不需要发送消息。')
+      .assistantText('已完成，结果如下：日报已生成。', { timestamp: '2026-05-10T00:00:05.000Z' })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const indicators = report.experience?.invocations[0].indicators;
@@ -576,45 +384,12 @@ describe('observe inbox - signal detection', () => {
   it('excludes runtime protocol prompts from user message counts', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-runtime-protocol-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '<command-name>/apply-cc</command-name>\n请咨询这个方案',
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。',
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已发送进展：后台任务仍在执行。' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
+      .userCommand('apply-cc', '请咨询这个方案')
+      .userText('你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。')
+      .assistantText('已发送进展：后台任务仍在执行。')
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const session = report.experience?.sessions.find((item) => item.skillName === 'apply-cc');
@@ -630,69 +405,28 @@ describe('observe inbox - signal detection', () => {
   it('excludes synthetic user artifacts and goal shifts from follow-up metrics', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '<command-name>/prd-create</command-name>\n请生成 PRD',
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'u1',
-        sessionId: 's1',
+    const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
+      .userCommand('prd-create', '请生成 PRD')
+      .userText('【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。必须严格保留。', {
         timestamp: '2026-05-10T00:00:03.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。必须严格保留。',
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u3',
-        parentUuid: 'u2',
-        sessionId: 's1',
-        timestamp: '2026-05-10T00:00:06.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '换个方向，先根据这个 PRD 生成 Demo。',
-        },
-      },
-      {
+      })
+      .userText('换个方向，先根据这个 PRD 生成 Demo。', { timestamp: '2026-05-10T00:00:06.000Z' })
+      // 畸形形态是被测输入：type=assistant 配 role=user 的合成消息。
+      .event({
         type: 'assistant',
         uuid: 'a1',
-        parentUuid: 'u3',
-        sessionId: 's1',
         timestamp: '2026-05-10T00:00:08.000Z',
-        cwd: '/repo-a',
         message: {
           role: 'user',
           content: businessActionTag('生成页面', '请根据以上需求生成可交互页面'),
         },
-      },
-      {
-        type: 'assistant',
+      })
+      .assistantText('已完成，结果如下：Demo 已生成。', {
         uuid: 'a2',
-        parentUuid: 'a1',
-        sessionId: 's1',
         timestamp: '2026-05-10T00:00:10.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: '已完成，结果如下：Demo 已生成。' }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+      })
+      .build();
+    writeFileSync(file, toJsonl(records));
 
     const report = buildObservationInboxReport(file);
     const indicators = report.experience?.invocations[0].indicators;
