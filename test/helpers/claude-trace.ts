@@ -153,6 +153,11 @@ export class ClaudeTraceBuilder {
     return this.records.map((record) => ({ ...record }));
   }
 
+  /** build() + 序列化为 jsonl 文件内容（配合 writeFileSync 落盘）。 */
+  toJsonl(): string {
+    return this.build().map((record) => JSON.stringify(record)).join('\n');
+  }
+
   private push(
     type: 'user' | 'assistant',
     message: Record<string, unknown>,

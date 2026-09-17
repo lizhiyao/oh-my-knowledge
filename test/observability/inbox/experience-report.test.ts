@@ -14,20 +14,14 @@ import {
 } from '../../../src/observability/inbox/review-state.js';
 import { claudeTrace } from '../../helpers/claude-trace.js';
 
-/** records → jsonl 文件内容。 */
-function toJsonl(records: ReadonlyArray<Record<string, unknown>>): string {
-  return records.map((record) => JSON.stringify(record)).join('\n');
-}
-
 describe('observe inbox - experience report', () => {
   it('fails closed instead of throwing when persisted aggregates overflow', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-overflow-'));
     for (const [index, sessionId] of ['overflow-a', 'overflow-b'].entries()) {
       const records = claudeTrace(sessionId, { startAt: `2026-05-0${index + 1}T00:00:00.000Z` })
         .userCommand('audit', 'Inspect it.')
-        .assistantText('Done.')
-        .build();
-      writeFileSync(join(dir, `${sessionId}.jsonl`), toJsonl(records));
+        .assistantText('Done.');
+      writeFileSync(join(dir, `${sessionId}.jsonl`), records.toJsonl());
     }
 
     const experience = buildObservationInboxReport(dir).experience;
@@ -57,9 +51,8 @@ describe('observe inbox - experience report', () => {
       .assistantToolUse('late-call', 'Read', { file_path: '/repo-a/a.ts' })
       .userCommand('review', 'Review it.')
       .userToolResult('late-call', 'failed', { isError: true })
-      .assistantText('Review complete.')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('Review complete.');
+    writeFileSync(file, records.toJsonl());
 
     const experience = buildObservationInboxReport(file).experience;
     assert.ok(experience);
@@ -257,9 +250,8 @@ describe('observe inbox - experience report', () => {
         },
       })
       .userText('不对，必须直接找到 schema 定义，不要猜。', { uuid: 'u3', timestamp: '2026-05-01T00:00:03.000Z' })
-      .userText('[Request interrupted by user]', { uuid: 'u4', timestamp: '2026-05-01T00:00:04.000Z' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userText('[Request interrupted by user]', { uuid: 'u4', timestamp: '2026-05-01T00:00:04.000Z' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const experience = report.experience;
@@ -403,9 +395,8 @@ describe('observe inbox - experience report', () => {
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
       .assistantToolUse('t1', 'Bash', { command: 'node check.js' })
-      .userToolResult('t1', '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -421,9 +412,8 @@ describe('observe inbox - experience report', () => {
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
       .assistantToolUse('t1', 'Read', { file_path: 'errors.json' })
-      .userToolResult('t1', '{"error":"synthetic failure"}', { isError: false })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', '{"error":"synthetic failure"}', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -438,9 +428,8 @@ describe('observe inbox - experience report', () => {
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
       .assistantToolUse('t1', 'Read', { file_path: 'README.md' })
-      .event({ type: 'system', message: '[assistant turn failed]' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .event({ type: 'system', message: '[assistant turn failed]' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -457,9 +446,8 @@ describe('observe inbox - experience report', () => {
       .userCommand('audit', '检查示例配置')
       .assistantToolUse('t1', 'Read', { file_path: 'README.md' })
       .event({ type: 'session.ended' })
-      .event({ type: 'session.started' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .event({ type: 'session.started' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -473,9 +461,8 @@ describe('observe inbox - experience report', () => {
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
-      .assistantText('已完成，结果如下：示例配置正常。')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('已完成，结果如下：示例配置正常。');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const feedbackStep = report.experience!.sessions[0].reviewerReport?.chainSteps.find((step) => step.label === '用户反馈');
@@ -501,9 +488,8 @@ expected_tools:
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('yuque', '读取示例文档')
-      .assistantToolUse('t1', 'Bash', { command: 'echo noop' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantToolUse('t1', 'Bash', { command: 'echo noop' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const executionStep = report.experience!.sessions[0].reviewerReport?.chainSteps.find((step) => step.label === '执行流程');
@@ -548,9 +534,8 @@ expected_tools:
       .assistantToolUse('skill-tool-2', 'Skill', { skill: 'excalidraw-diagram', args: 'before after' }, {
         parentUuid: 'u4',
         timestamp: '2026-05-09T06:07:23.444Z',
-      })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const myDiagramSession = report.experience?.sessions.find((session) => session.skillName === 'my-diagram');
@@ -574,15 +559,13 @@ expected_tools:
       .userCommand('apply-cc', '帮我咨询 PRD 方案。')
       .assistantText('根据 TOOLS.md 规则，功能咨询类需求走 `aiprd-task-runner` skill 的 `/consult` 流程。')
       .assistantToolUse('task1', 'Task', { prompt: '启动子 Claude 到 AIPRDWorkSpace 执行 /consult' })
-      .assistantText('已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。')
-      .build();
+      .assistantText('已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。');
     const childRecords = claudeTrace('child-1', { startAt: '2026-05-11T02:00:04.000Z' })
       .userCommand('aiprd-task-runner', '/consult PRD 方案')
       .assistantToolUse('read1', 'Read', { file_path: '/repo-a/prd.md' })
-      .assistantText('最终报告如下：PRD 方案建议分为目标、范围、验收标准三部分。')
-      .build();
-    writeFileSync(mainFile, toJsonl(mainRecords));
-    writeFileSync(childFile, toJsonl(childRecords));
+      .assistantText('最终报告如下：PRD 方案建议分为目标、范围、验收标准三部分。');
+    writeFileSync(mainFile, mainRecords.toJsonl());
+    writeFileSync(childFile, childRecords.toJsonl());
 
     const report = buildObservationInboxReport(sessionDir);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
@@ -632,15 +615,15 @@ expected_tools:
     mkdirSync(subagentsDir, { recursive: true });
     const mainFile = join(sessionDir, 'main.jsonl');
     const childFile = join(subagentsDir, 'child.jsonl');
-    writeFileSync(mainFile, toJsonl(claudeTrace('sessionA', { startAt: '2026-05-11T03:00:00.000Z' })
+    writeFileSync(mainFile, claudeTrace('sessionA', { startAt: '2026-05-11T03:00:00.000Z' })
       .userCommand('audit', '主代理先检查。')
       .assistantText('主代理检查完成。', { timestamp: '2026-05-11T03:00:08.000Z' })
-      .build()));
-    writeFileSync(childFile, toJsonl(claudeTrace('child-1', { startAt: '2026-05-11T03:00:03.000Z' })
+      .toJsonl());
+    writeFileSync(childFile, claudeTrace('child-1', { startAt: '2026-05-11T03:00:03.000Z' })
       .userCommand('audit', '子代理并行检查。')
       .assistantToolUse('grep-child', 'Grep', { pattern: 'audit_rule', path: '/repo-a' })
       .userToolResult('grep-child', 'No files found', { isError: true })
-      .build()));
+      .toJsonl());
 
     const report = buildObservationInboxReport(sessionDir);
     assert.equal(report.items.length, 1);
@@ -663,9 +646,8 @@ expected_tools:
       .assistantToolUse('tool1', 'Bash', { command: 'node run-damai.js' })
       .userText('[文件: omk-reviewer.zip]')
       .userCommand('omk-reviewer', '看下这个 skill 的执行流程。')
-      .assistantToolUse('tool2', 'Read', { file_path: '/repo-a/omk-reviewer/SKILL.md' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantToolUse('tool2', 'Read', { file_path: '/repo-a/omk-reviewer/SKILL.md' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const damaiSession = report.experience?.sessions.find((session) => session.skillName === 'damai-daily');
@@ -692,9 +674,8 @@ expected_tools:
       .assistantText('已启动子 Claude，完成后我会同步结果。session: claude-test123')
       .userText('怎么样了')
       .userCommand('ai-worker-webtools', '用可预览的链接发给我')
-      .assistantToolUse('tool1', 'Bash', { command: 'python3 -m http.server 8899' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantToolUse('tool1', 'Bash', { command: 'python3 -m http.server 8899' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
@@ -723,9 +704,8 @@ expected_tools:
     const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
       .userCommand('apply-cc', '帮我看一下服务器上的文件。')
       .assistantText('可以，我先确认文件位置。')
-      .userText('我现在能够ssh到你的服务器，我应该怎么把这个文件发送到我本地')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userText('我现在能够ssh到你的服务器，我应该怎么把这个文件发送到我本地');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
@@ -747,9 +727,8 @@ expected_tools:
       })
       .assistantText('已启动功能咨询，session: claude-router-test，有结果我会直接同步给你。')
       .userText('进度', { timestamp: '2026-05-11T02:30:00.000Z' })
-      .userText('为什么信息没返回', { timestamp: '2026-05-11T02:40:00.000Z' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userText('为什么信息没返回', { timestamp: '2026-05-11T02:40:00.000Z' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const routerSession = report.experience?.sessions.find((session) => session.skillName === 'aiprd-task-runner');
@@ -797,9 +776,8 @@ expected_tools:
       .userCommand('apply-cc', '帮我咨询 PRD 方案。')
       .assistantText('根据 TOOLS.md 规则，功能咨询类需求走 aiprd-task-runner skill。')
       .userCommand('aiprd-task-runner', '/consult PRD 方案')
-      .assistantToolUse('read1', 'Read', { file_path: '/repo-a/prd.md' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantToolUse('read1', 'Read', { file_path: '/repo-a/prd.md' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');

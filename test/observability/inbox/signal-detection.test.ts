@@ -38,11 +38,6 @@ import {
 import { businessActionTag, checklistItem } from './_helpers.js';
 import { claudeTrace } from '../../helpers/claude-trace.js';
 
-/** records → jsonl 文件内容。 */
-function toJsonl(records: ReadonlyArray<Record<string, unknown>>): string {
-  return records.map((record) => JSON.stringify(record)).join('\n');
-}
-
 describe('observe inbox - signal detection', () => {
   it('does not count embedded words as user correction signals', () => {
     assert.equal(hasUserCorrectionSignal('这里的拆解不对称，是不是需要换一种图形？'), false);
@@ -232,9 +227,8 @@ describe('observe inbox - signal detection', () => {
       .assistantText('已完成，结果如下：示例组件支持列表展示和排序。', {
         uuid: 'a2',
         timestamp: '2026-05-10T00:00:20.000Z',
-      })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const indicators = report.experience?.invocations[0].indicators;
@@ -251,9 +245,8 @@ describe('observe inbox - signal detection', () => {
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('aiprd-task-runner', '生成系分文档')
       .assistantText('系分任务已启动 ✅ 子 Claude 正在分析需求，后台任务会继续执行。')
-      .assistantText('系分任务已完成 ✅ 方案路径: /tmp/design.md。子 Claude 已退出。')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('系分任务已完成 ✅ 方案路径: /tmp/design.md。子 Claude 已退出。');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -303,9 +296,8 @@ describe('observe inbox - signal detection', () => {
         },
       })
       .assistantToolUse('t1', 'Bash', { command: 'echo ok' })
-      .userToolResult('t1', '已完成，结果如下：tool result payload', { uuid: 'u3' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', '已完成，结果如下：tool result payload', { uuid: 'u3' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions.find((item) => item.skillName === 'audit');
@@ -322,9 +314,8 @@ describe('observe inbox - signal detection', () => {
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z', cwd: dir })
       .userCommand('audit', '检查示例配置')
       .assistantText('已完成，结果如下：示例配置正常。')
-      .assistantText('HEARTBEAT_OK')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('HEARTBEAT_OK');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions[0];
@@ -351,9 +342,8 @@ describe('observe inbox - signal detection', () => {
       })
       .assistantToolUse('t1', 'Bash', { command: 'yuque read doc' })
       .userToolResult('t1', '{"retryable":false,"retry_count":0,"status":"ok"}', { uuid: 'u3' })
-      .assistantText('工具返回：retryable=false, retry_count=0。')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('工具返回：retryable=false, retry_count=0。');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience!.sessions.find((item) => item.skillName === 'yuque');
@@ -367,9 +357,8 @@ describe('observe inbox - signal detection', () => {
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('daily-report', '[cron:example daily-report-yesterday] 使用 daily-report skill 生成前一天运行数据。要求：只生成前一天数据。执行完成后不需要发送消息。')
-      .assistantText('已完成，结果如下：日报已生成。', { timestamp: '2026-05-10T00:00:05.000Z' })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('已完成，结果如下：日报已生成。', { timestamp: '2026-05-10T00:00:05.000Z' });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const indicators = report.experience?.invocations[0].indicators;
@@ -387,9 +376,8 @@ describe('observe inbox - signal detection', () => {
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('apply-cc', '请咨询这个方案')
       .userText('你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。')
-      .assistantText('已发送进展：后台任务仍在执行。')
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .assistantText('已发送进展：后台任务仍在执行。');
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const session = report.experience?.sessions.find((item) => item.skillName === 'apply-cc');
@@ -424,9 +412,8 @@ describe('observe inbox - signal detection', () => {
       .assistantText('已完成，结果如下：Demo 已生成。', {
         uuid: 'a2',
         timestamp: '2026-05-10T00:00:10.000Z',
-      })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const indicators = report.experience?.invocations[0].indicators;

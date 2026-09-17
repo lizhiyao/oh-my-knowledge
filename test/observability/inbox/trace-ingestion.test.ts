@@ -13,11 +13,6 @@ import {
 import { baseItem, businessActionTag, businessChannel } from './_helpers.js';
 import { claudeTrace } from '../../helpers/claude-trace.js';
 
-/** records → jsonl 文件内容。 */
-function toJsonl(records: ReadonlyArray<Record<string, unknown>>): string {
-  return records.map((record) => JSON.stringify(record)).join('\n');
-}
-
 describe('observe inbox - trace ingestion', () => {
   it('skips unsupported experience reports without changing files or hiding current inbox v2', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-experience-version-'));
@@ -48,9 +43,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s1')
       .userCommand('audit', 'Find revenue schema', { extra: { entrypoint: 'cli' } })
       .assistantToolUse('t1', 'Grep', { pattern: 'revenue_schema', path: '/repo-a' })
-      .userToolResult('t1', 'No matches found', { isError: false })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', 'No matches found', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.kind, 'observe-inbox');
@@ -83,9 +77,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s-general-prefix')
       .userText('Please inspect the audit workflow.')
       .assistantToolUse('read-skill', 'Read', { file_path: '/repo-a/.agents/skills/audit/SKILL.md' })
-      .userToolResult('read-skill', '# Audit', { isError: false })
-      .build();
-    writeFileSync(trace, toJsonl(records));
+      .userToolResult('read-skill', '# Audit', { isError: false });
+    writeFileSync(trace, records.toJsonl());
 
     const report = buildObservationInboxReport(trace);
     assert.equal(report.meta.segmentCount, 1);
@@ -272,10 +265,9 @@ describe('observe inbox - trace ingestion', () => {
       claudeTrace('reused-session-id', { startAt: `2026-05-01T00:${minute}:00.000Z` })
         .userCommand('audit', '检查示例字段')
         .assistantToolUse(`t-${suffix}`, 'Grep', { pattern: 'example_field', path: '/repo-a' })
-        .userToolResult(`t-${suffix}`, 'No matches found', { isError: false })
-        .build();
-    writeFileSync(join(dir, 'first.jsonl'), toJsonl(makeRecords('first', '00')));
-    writeFileSync(join(dir, 'second.jsonl'), toJsonl(makeRecords('second', '10')));
+        .userToolResult(`t-${suffix}`, 'No matches found', { isError: false });
+    writeFileSync(join(dir, 'first.jsonl'), makeRecords('first', '00').toJsonl());
+    writeFileSync(join(dir, 'second.jsonl'), makeRecords('second', '10').toJsonl());
 
     const report = buildObservationInboxReport(dir);
     const experience = report.experience;
@@ -305,9 +297,8 @@ describe('observe inbox - trace ingestion', () => {
         { toolUseId: 't1', content: 'No matches found', isError: false },
         { toolUseId: 't2', content: 'No matches found', isError: false },
         { toolUseId: 't3', content: 'No matches found', isError: false },
-      ])
-      .build();
-    writeFileSync(file, toJsonl(records));
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const repeated = report.items.find((item) => item.signalType === 'repeated_failure');
@@ -323,9 +314,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s1')
       .userCommand('audit', 'Find routes')
       .assistantToolUse('t1', 'Bash', { command })
-      .userToolResult('t1', 'No matches found', { isError: false })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', 'No matches found', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'bash_probe');
@@ -355,9 +345,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s1')
       .userCommand('audit', 'Find config')
       .assistantToolUse('t1', 'Bash', { command: 'ls /repo/config 2>/dev/null' })
-      .userToolResult('t1', '', { isError: false })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', '', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'bash_probe');
@@ -376,9 +365,8 @@ describe('observe inbox - trace ingestion', () => {
       .userToolResults([
         { toolUseId: 't1', content: 'No matches found', isError: false },
         { toolUseId: 't2', content: 'src/auth/router.ts:1: auth_router', isError: false },
-      ])
-      .build();
-    writeFileSync(file, toJsonl(records));
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const revenue = report.items.find((item) => item.evidence.query === 'revenue_schema');
@@ -399,9 +387,8 @@ describe('observe inbox - trace ingestion', () => {
       .userToolResults([
         { toolUseId: 't1', content: 'No matches found', isError: false },
         { toolUseId: 't2', content: 'export const auth = true;', isError: false },
-      ])
-      .build();
-    writeFileSync(file, toJsonl(records));
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const revenue = report.items.find((item) => item.evidence.query === 'revenue_schema');
@@ -422,9 +409,8 @@ describe('observe inbox - trace ingestion', () => {
       .userToolResults([
         { toolUseId: 't1', content: 'No matches found', isError: false },
         { toolUseId: 't2', content: 'export const auth = true;', isError: false },
-      ])
-      .build();
-    writeFileSync(file, toJsonl(records));
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const payment = report.items.find((item) => item.evidence.query === 'payment');
@@ -448,9 +434,8 @@ describe('observe inbox - trace ingestion', () => {
       .userToolResults([
         { toolUseId: 't1', content: 'No matches found', isError: false },
         { toolUseId: 't2', content: '/repos/payment-app/src/auth.ts', isError: false },
-      ])
-      .build();
-    writeFileSync(file, toJsonl(records));
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const payment = report.items.find((item) => item.evidence.query === 'payment');
@@ -590,9 +575,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s1')
       .userCommand('audit', 'Use skill asset')
       .assistantToolUse('t1', 'Read', { file_path: '/repo-a/.claude/skills/audit/examples/schema.md' })
-      .userToolResult('t1', 'Error: ENOENT no such file or directory', { isError: true })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', 'Error: ENOENT no such file or directory', { isError: true });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'skill_asset_read_failed');
@@ -606,9 +590,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s1')
       .userCommand('audit', 'Find routes')
       .assistantToolUse('t1', 'Bash', { command: 'ls /repo/config 2>/dev/null' })
-      .userToolResult('t1', '', { isError: false })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', '', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const output = formatObservationShow(report.items[0]);
@@ -623,9 +606,8 @@ describe('observe inbox - trace ingestion', () => {
     const records = claudeTrace('s1')
       .userCommand('audit', 'Find routes')
       .assistantToolUse('t1', 'Bash', { command: 'find . -name routes.ts' })
-      .userToolResult('t1', 'No matches found', { isError: false })
-      .build();
-    writeFileSync(file, toJsonl(records));
+      .userToolResult('t1', 'No matches found', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'hard_miss');

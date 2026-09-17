@@ -16,11 +16,6 @@ import {
 import { baseItem, businessActionTag } from './_helpers.js';
 import { claudeTrace } from '../../helpers/claude-trace.js';
 
-/** records → jsonl 文件内容。 */
-function toJsonl(records: ReadonlyArray<Record<string, unknown>>): string {
-  return records.map((record) => JSON.stringify(record)).join('\n');
-}
-
 describe('observe inbox - aggregation', () => {
   it('normalizes dedup key input conservatively', () => {
     const cases: Array<[unknown, string]> = [
@@ -44,13 +39,13 @@ describe('observe inbox - aggregation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-session-range-'));
     const claudeFile = join(dir, 'claude-session.jsonl');
     const openClawFile = join(dir, 'openclaw-session.jsonl');
-    writeFileSync(claudeFile, toJsonl(claudeTrace('claude-session-a', {
+    writeFileSync(claudeFile, claudeTrace('claude-session-a', {
       startAt: '2026-05-12T12:08:09.000Z',
       cwd: '/repo/demo',
     })
       .userCommand('demo-skill')
       .assistantText('done', { timestamp: '2026-05-12T12:10:00.000Z' })
-      .build()));
+      .toJsonl());
     writeFileSync(openClawFile, [
       { type: 'session', version: 3, id: 'openclaw-session-a', timestamp: '2026-05-13T01:00:00.000Z', cwd: '/repo/openclaw-demo' },
       {
@@ -376,11 +371,11 @@ describe('observe inbox - aggregation', () => {
   it('rejects inbox reports whose references or aggregates contradict experience', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-consistency-'));
     const trace = join(dir, 'session.jsonl');
-    writeFileSync(trace, toJsonl(claudeTrace('s1')
+    writeFileSync(trace, claudeTrace('s1')
       .userCommand('audit', 'Find revenue schema')
       .assistantToolUse('t1', 'Grep', { pattern: 'revenue_schema', path: '/repo-a' })
       .userToolResult('t1', 'No matches found', { isError: false })
-      .build()));
+      .toJsonl());
 
     const path = saveObservationInboxReport(buildObservationInboxReport(trace), dir);
     const persisted = JSON.parse(readFileSync(path, 'utf8'));
@@ -424,9 +419,8 @@ describe('observe inbox - aggregation', () => {
       .userToolResults([
         { toolUseId: 't1', content: 'No matches found', isError: false },
         { toolUseId: 't2', content: 'No matches found', isError: false },
-      ])
-      .build();
-    writeFileSync(file, toJsonl(records));
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items.length, 1);
@@ -437,10 +431,10 @@ describe('observe inbox - aggregation', () => {
   it('persists compact experience evidence and hydrates it on load', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-wire-'));
     const trace = join(dir, 'session.jsonl');
-    writeFileSync(trace, toJsonl(claudeTrace('s1')
+    writeFileSync(trace, claudeTrace('s1')
       .userCommand('audit', 'Inspect the implementation.')
       .assistantText('Inspection complete.')
-      .build()));
+      .toJsonl());
 
     const report = buildObservationInboxReport(trace);
     const originalTimelineIds = report.experience!.invocations[0].timeline.map((event) => event.id);
