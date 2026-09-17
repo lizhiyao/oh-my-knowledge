@@ -5,13 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Command, Config } from '@oclif/core';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
 import EvolveCommand from '../../src/cli/commands/evolve.js';
-import { runCommand } from '../helpers/run-command.js';
-
-interface ExecError extends Error {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+import { runCommand, type CommandRunError } from '../helpers/run-command.js';
 
 /**
  * `--judge-models` 参数错误(空 / 缺 executor / 缺 model / 重复 entry)在 CLI
@@ -45,7 +39,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     await assert.rejects(
       () => runCommand(command, [...argv, '--judge-models', 'claude:haiku,claude:haiku']),
       (err: unknown) => {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.equal(e.code, 2, `expected exit 2, got ${e.code}; stderr: ${e.stderr.slice(0, 300)}`);
         assert.ok(
           e.stderr.startsWith('error:'),
@@ -74,7 +68,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
         '--judge-models', 'claude:haiku,claude:sonnet',
       ]),
       (err: unknown) => {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.equal(e.code, 2);
         assert.ok(
           e.stderr.includes('omk evolve'),
@@ -93,7 +87,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     await assert.rejects(
       () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', ':haiku']),
       (err: unknown) => {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.equal(e.code, 2);
         assert.ok(e.stderr.startsWith('error:'));
         assert.ok(e.stderr.includes(`'executor:model'`));
@@ -106,7 +100,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     await assert.rejects(
       () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', '']),
       (err: unknown) => {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.equal(e.code, 2);
         assert.ok(e.stderr.startsWith('error:'));
         assert.ok(e.stderr.includes('cannot be empty'));

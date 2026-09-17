@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import DoctorCommand from '../../src/cli/commands/doctor.js';
-import { runCommand } from '../helpers/run-command.js';
+import { runCommand, type CommandRunError } from '../helpers/run-command.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -33,12 +33,6 @@ async function runDoctorCommand(
     ...options,
     cwd: options.cwd ?? isolatedCwd,
   });
-}
-
-interface ExecError extends Error {
-  code: number;
-  stdout: string;
-  stderr: string;
 }
 
 describe('omk doctor command', () => {
@@ -91,7 +85,7 @@ describe('omk doctor command', () => {
     await assert.rejects(
       () => runDoctorCommand(['/tmp/__nonexistent_doctor_target__', '--gate']),
       (err: unknown) => {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.equal(e.code, 1);
         return true;
       },
@@ -120,7 +114,7 @@ describe('omk doctor command', () => {
           env: { ...process.env, OMK_DOCTOR_FIXTURE_OUTCOME: 'fail' },
         }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'));
           assert.ok(e.stderr.includes('修复清单'), e.stderr);

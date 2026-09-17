@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import InstallCommand from '../../src/cli/commands/install.js';
-import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
 
 
 async function runInstallCommand(
@@ -17,12 +17,6 @@ async function runInstallCommand(
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   return runCommand(InstallCommand, args, options);
-}
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
 }
 
 function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
@@ -41,7 +35,7 @@ describe('oclif install', () => {
       const obstruction = join(root, '.omk', 'governance');
       await writeFile(obstruction, 'blocked');
       const args = [source, '--dest', dest];
-      await assert.rejects(() => runInstallCommand(args, { cwd: root }), (error: ExecError) => {
+      await assert.rejects(() => runInstallCommand(args, { cwd: root }), (error: CommandRunError) => {
         assert.equal(error.code, 1);
         assert.match(error.stderr, /治理登记失败/);
         assert.match(error.stderr, /--force/);
@@ -124,7 +118,7 @@ describe('oclif install', () => {
         });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('未检测到本机支持的 agent skill 目录'));
       }
@@ -191,7 +185,7 @@ describe('oclif install', () => {
       await runInstallCommand(['omk-agent-skill', '--to', 'gemini']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.notEqual(e.code, 0);
       assert.ok((e.stdout + e.stderr).includes('未知安装目标'), 'error should mention unknown install target');
     }
@@ -203,7 +197,7 @@ describe('oclif install', () => {
         await runInstallCommand(['omk-agent-skill', '--to', to]);
         assert.fail(`expected non-zero exit for --to ${to}`);
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         const out = e.stdout + e.stderr;
         assert.ok(out.includes('安装目标组合不合法'), `missing invalid combo message for ${to}:\n${out}`);
@@ -222,7 +216,7 @@ describe('oclif install', () => {
         });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         const out = e.stdout + e.stderr;
         assert.ok(out.includes('未检测到本机支持的 agent skill 目录'), `missing detected-target hint:\n${out}`);
@@ -244,7 +238,7 @@ describe('oclif install', () => {
         await runInstallCommand(['omk-agent-skill', '--dest', dest]);
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
       }
@@ -267,7 +261,7 @@ describe('oclif install', () => {
         });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
       }
@@ -312,7 +306,7 @@ describe('oclif install', () => {
       await runInstallCommand(['other-skill']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.notEqual(e.code, 0);
       assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'error should mention supported builtin id');
     }
@@ -484,7 +478,7 @@ describe('oclif install', () => {
         await runInstallCommand(['skills/review/review', '--dest', 'skills', '--force'], { cwd: dir, env: cliEnv() });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
       }
       assert.ok(existsSync(join(skillRoot, 'SKILL.md')), '源 skill 绝不能被删');
@@ -502,7 +496,7 @@ describe('oclif install', () => {
         await runInstallCommand(['omk-agnt-skill'], { cwd: dir, env: cliEnv() });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'should fall back to unknown_input');
       }
@@ -539,7 +533,7 @@ describe('oclif install', () => {
         });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('skill'), 'error should mention skill-only support');
       }
@@ -647,7 +641,7 @@ describe('oclif install', () => {
         await runInstallCommand(['git:HEAD:review'], { cwd: dir, env: cliEnv() });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('git'), 'error should mention git repo');
       }
