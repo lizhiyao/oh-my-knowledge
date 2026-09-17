@@ -9,13 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import InitCommand from '../../src/cli/commands/init.js';
 import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
-import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
+import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
 
 
 describe('oclif init', () => {
@@ -230,7 +224,7 @@ describe('oclif init', () => {
       await runCommand(InitCommand, ['--', '--weird']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected non-zero exit, got ${e.code}`);
       const out = e.stdout + e.stderr;
       assert.ok(/不能以 -- 开头/.test(out), `expected zh footgun msg, got:\n${out.slice(0, 200)}`);
@@ -243,14 +237,14 @@ describe('oclif init', () => {
       await runCommand(InitCommand, ['--', '--weird', '--lang', 'en']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2);
       const out = e.stdout + e.stderr;
       assert.ok(/cannot start with --/.test(out), `expected en footgun msg, got:\n${out.slice(0, 200)}`);
     }
   });
   it.each(['', '   '])('rejects empty directory %j with argument exit code 2', async (directory) => {
-    await assert.rejects(() => runCommand(InitCommand, [directory]), (error: ExecError) => {
+    await assert.rejects(() => runCommand(InitCommand, [directory]), (error: CommandRunError) => {
       assert.equal(error.code, 2);
       return true;
     });

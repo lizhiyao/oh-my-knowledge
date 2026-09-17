@@ -32,7 +32,7 @@ type Config = { answers: Record<string, string>; };
 
 function executor(
   execute?: Executor<Input, Config, string>['execute'],
-  input: Readonly<{ executorId?: string; revision?: string; stochastic?: boolean; }> = {},
+  input: Readonly<{ executorId?: string; revision?: string; }> = {},
 ): Executor<Input, Config, string> {
   return {
     executorId: input.executorId ?? 'test.answer-executor/v1',
@@ -44,7 +44,7 @@ function executor(
     },
     outputClassification: 'public',
     capabilities: {
-      determinism: input.stochastic === true ? 'stochastic' : 'deterministic',
+      determinism: 'deterministic',
       cancellation: 'cooperative',
       concurrency: { safety: 'parallel-safe' },
       seedControl: 'unsupported',

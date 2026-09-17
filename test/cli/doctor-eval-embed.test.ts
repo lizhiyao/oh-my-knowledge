@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
-import { runCommand } from '../helpers/run-command.js';
+import { runCommand, type CommandRunError } from '../helpers/run-command.js';
 
 const PROJECT_ROOT = process.cwd();
 const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
@@ -16,12 +16,6 @@ const CUSTOM_EXECUTOR = join(
   'custom-executor',
   'core-fixture-executor.sh',
 );
-
-interface ExecError extends Error {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
 
 /** 准备一个 broken skill 目录(skill 内容过短,会被 doctor 的 skill_readable 卡掉) */
 function setupBrokenSkillDir(): string {
@@ -82,7 +76,7 @@ describe('omk eval doctor preflight embedding', () => {
           '--dry-run',
         ], { cwd: broken }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `stderr should include 'doctor failed:': ${e.stderr.slice(0, 500)}`);
           assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `stderr should explain the pre-ship gate: ${e.stderr.slice(0, 800)}`);
@@ -114,7 +108,7 @@ describe('omk eval doctor preflight embedding', () => {
           '--lang', 'en',
         ], { cwd: broken }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('pre-ship doctor gate failed'), `stderr should explain the pre-ship gate: ${e.stderr.slice(0, 800)}`);
           assert.ok(e.stderr.includes('re-run `omk eval`'), `stderr should tell users what to do next: ${e.stderr.slice(0, 800)}`);
@@ -162,7 +156,7 @@ describe('omk eval doctor preflight embedding', () => {
           '--skip-connectivity',
         ], { cwd: broken }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `doctor should still gate: ${e.stderr.slice(0, 400)}`);
           assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `doctor gate should stay actionable: ${e.stderr.slice(0, 800)}`);
@@ -188,7 +182,7 @@ describe('omk eval doctor preflight embedding', () => {
           '--no-judge',
         ], { cwd: tmp }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `batch dry-run should gate on doctor: ${e.stderr.slice(0, 500)}`);
           assert.ok(e.stderr.includes('Core Batch：broken') && e.stderr.includes('[broken]'),
