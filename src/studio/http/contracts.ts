@@ -14,6 +14,11 @@ export interface ReportServerOptions {
   /** 体检报告目录，或一个按请求动态解析它的函数。 */
   doctorsDir?: string | (() => string);
   observationsDir?: string;
+  /**
+   * 本机 Agent 识别报告与日志采集报告的存放根目录（inventory.json／collection.json／traces）。
+   * 默认取全局布局 ~/.oh-my-knowledge/observe/agents，与 `omk agents` 的默认写入位置同源。
+   */
+  agentsDir?: string;
   /** 受管目录，或一个按请求动态解析它的函数。 */
   managedDir?: string | (() => string);
   /** Source-neutral conversation inventory. Defaults to the local Codex catalog. */

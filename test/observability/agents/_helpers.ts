@@ -134,7 +134,7 @@ export class FakeFileSystem {
       if (parentOf(entryPath) !== parent) continue;
       entries.push({
         name: baseOf(entryPath),
-        kind: node.kind === 'directory' ? 'directory' : node.kind === 'file' ? 'file' : 'symlink',
+        entryKind: node.kind === 'directory' ? 'directory' : node.kind === 'file' ? 'file' : 'symlink',
       });
     }
     return entries;

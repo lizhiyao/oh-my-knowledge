@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { CoreStudioRunCard, CoreStudioRunDetail } from '../view-models/measure/core-runs.js';
+import type { AgentsPage } from './pages/agents-page.js';
 import type { HealthPage } from './pages/health-page.js';
 import type { InboxPage } from './pages/inbox-page.js';
 import type { KnowledgePage } from './pages/knowledge-page.js';
@@ -48,3 +49,4 @@ export const nextKnowledgeContext = defineStudioRequestContext<KnowledgePage>('k
 export const nextInboxContext = defineStudioRequestContext<InboxPage>('inbox');
 export const nextHealthContext = defineStudioRequestContext<HealthPage>('health');
 export const nextManagedContext = defineStudioRequestContext<ManagedPage>('managed');
+export const nextAgentsContext = defineStudioRequestContext<AgentsPage>('agents');

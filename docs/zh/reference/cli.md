@@ -390,6 +390,8 @@ omk agents extract --session <runId>     # 从一份已采集会话提炼候选�
 
 两点是刻意设计。探测不执行被探测的二进制——安装情况只由文件系统和 `PATH` 推断，一次清单运行不可能触发第三方代码。采集不移动、不截断、不删除你自己的日志：原始文件留在原地继续作为证据，派生内容一律写在 OMK 侧。单轮容量上限（文件数、字节数、单文件字节数）是硬约束而不是建议；命中上限时本轮干净收尾，并在 `limitations` 里说明截断了什么，被截断的计数不会被当作全量。
 
+`omk studio` 的 Agents 页（`/agents`）读的就是这两份报告：装了哪些 Agent、它们的日志落在哪个目录、采集了多少会话与事件，以及哪些计数被容量上限截断。页面不重新扫描这台机器，也没有采集或提炼按钮——那两步仍是你在终端里执行的命令，刷新页面改变不了证据。
+
 ## `omk evolve`
 
 ```bash
@@ -481,6 +483,7 @@ omk studio --no-open
 **Flags:**
 
 ```text
+  --agents-dir <value>        本机 Agent 识别／采集报告目录（可选，默认全局 ~/.oh-my-knowledge/observe/agents，即 `omk agents` 的落点）
   --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe/health，空则全局兜底）
   --dev                       dev 模式：子进程启动 + 热更新
   --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）

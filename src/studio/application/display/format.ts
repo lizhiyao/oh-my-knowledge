@@ -90,3 +90,23 @@ export function formatDuration(ms: number | null | undefined): string {
   }
   return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
 }
+
+/**
+ * 字节数的展示文本：二进制单位（KiB／MiB／GiB），整数不补 `.0`，其余一位小数。
+ * 单位是技术写法，中英文同一串；缺值与 0 都出 `0 B`，不把「没测到」读成一个体积。
+ */
+export function displayBytes(bytes: number | null | undefined): string {
+  const value = Number(bytes ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+  let size = value;
+  let unit = 'B';
+  for (const next of units) {
+    if (size < 1024) break;
+    size /= 1024;
+    unit = next;
+  }
+  if (unit === 'B') return `${Math.round(size)} B`;
+  const tenths = Math.round(size * 10) / 10;
+  return `${Number.isInteger(tenths) ? tenths : tenths.toFixed(1)} ${unit}`;
+}

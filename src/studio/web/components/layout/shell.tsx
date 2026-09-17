@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { StudioUtilities } from './utilities';
 import { useState, type ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
-import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { AGENTS_INDEX_PATH, KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { useStudioNavigation } from './navigation';
@@ -35,7 +35,7 @@ function LanguageSwitch({ lang }: { lang: Language }) {
   >{zh ? '英文' : '中文'}</button>;
 }
 
-export function StudioShell({ lang, children, active, utilitiesInSidebar = false }: { utilitiesInSidebar?: boolean; lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | false }) {
+export function StudioShell({ lang, children, active, utilitiesInSidebar = false }: { utilitiesInSidebar?: boolean; lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | 'agents' | false }) {
   // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
   const navigation = useStudioNavigation();
   return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
@@ -44,6 +44,7 @@ export function StudioShell({ lang, children, active, utilitiesInSidebar = false
         <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</Link>
         <Link href={MEASURE_INDEX_PATH} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</Link>
         <Link href={KNOWLEDGE_INDEX_PATH} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</Link>
+        <Link href={AGENTS_INDEX_PATH} aria-current={active === 'agents' ? 'page' : undefined}>{lang === 'zh' ? 'Agent' : 'Agents'}</Link>
       </nav> : null}
       <div className="studio-global-actions">{navigation ? !utilitiesInSidebar && <StudioUtilities lang={lang} placement="bottomRight"/> : <LanguageSwitch lang={lang}/>}</div>
     </header><main className="studio-content">{children}</main></div>

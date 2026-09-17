@@ -390,6 +390,8 @@ For full descriptions: `omk agents --help`.
 
 Two properties are deliberate. Detection never executes a detected binary — installation is inferred from the filesystem and `PATH` only, so an inventory run cannot trigger third-party code. Collection never moves, truncates or deletes a log you own: originals stay where they are and remain the evidence, while every derived artifact is written on the OMK side. Capacity ceilings (files per run, bytes per run, bytes per file) are enforced rather than guessed at; when a ceiling cuts a run short, the run stops cleanly and says so in `limitations`, so a truncated count is never presented as complete.
 
+The Agents page in `omk studio` (`/agents`) renders exactly these two reports: which agents are installed, where their logs live, how many sessions and events were collected, and which counts were cut short by a capacity ceiling. The page never rescans your machine and offers no collect or extract buttons — those stay commands you run, so refreshing a page cannot change the evidence.
+
 ## `omk evolve`
 
 ```bash
@@ -481,6 +483,7 @@ omk studio --no-open
 **Flags:**
 
 ```text
+  --agents-dir <value>        Agent inventory / collection reports dir (optional, default global ~/.oh-my-knowledge/observe/agents, where `omk agents` writes)
   --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe/health, falls back to global)
   --dev                       Dev mode: child process with hot reload
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctor, falls back to global)

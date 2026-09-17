@@ -1,6 +1,7 @@
 import 'server-only';
-import { nextHealthContext, nextInboxContext, nextKnowledgeContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext } from '../http/next-context';
+import { nextAgentsContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext } from '../http/next-context';
 import type { CoreStudioRunCard, CoreStudioRunDetail } from '../view-models/measure/core-runs';
+import type { AgentsPage } from '../http/pages/agents-page';
 import type { HealthPage } from '../http/pages/health-page';
 import type { InboxPage } from '../http/pages/inbox-page';
 import type { KnowledgePage } from '../http/pages/knowledge-page';
@@ -37,4 +38,8 @@ export function requestHealthPage(): HealthPage {
 
 export function requestManagedPage(): ManagedPage {
   return nextManagedContext.get();
+}
+
+export function requestAgentsPage(): AgentsPage {
+  return nextAgentsContext.get();
 }

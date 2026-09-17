@@ -42,6 +42,7 @@ export {
   agentStorageLayout,
   collectAgentLogs,
   loadAgentCollectionReport,
+  loadAgentInventoryReport,
   saveAgentCollectionReport,
   saveAgentInventoryReport,
 } from './collect.js';

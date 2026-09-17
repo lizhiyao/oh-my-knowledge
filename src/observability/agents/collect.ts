@@ -23,6 +23,7 @@ import type { TraceSession, TraceSourceKind } from '../trace/trace-ir.js';
 import {
   AGENT_COLLECTION_VERSION,
   AgentCollectionReportSchema,
+  AgentInventoryReportSchema,
   type AgentCollectionEntry,
   type AgentCollectionReport,
   type AgentInventoryReport,
@@ -533,6 +534,18 @@ export function agentStorageLayout(dir: string): AgentStorageLayout {
     observeAgentsInventoryPath: join(root, 'inventory.json'),
     observeAgentsTracesDir: join(root, 'traces'),
   });
+}
+
+/**
+ * 读取上一次的识别报告：文件不存在返回 undefined，存在但无法解析则抛错。
+ * 两者语义不同——「还没识别过」与「记录读不动」必须由调用方分开呈现，不能合并成一个空页。
+ */
+export function loadAgentInventoryReport(
+  dirOrLayout: string | AgentStorageLayout = globalLayout(),
+): AgentInventoryReport | undefined {
+  const layout = typeof dirOrLayout === 'string' ? agentStorageLayout(dirOrLayout) : dirOrLayout;
+  if (!existsSync(layout.observeAgentsInventoryPath)) return undefined;
+  return AgentInventoryReportSchema.parse(JSON.parse(readFileSync(layout.observeAgentsInventoryPath, 'utf-8')));
 }
 
 /**

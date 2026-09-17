@@ -14,6 +14,7 @@ import {
   isMissingPathError,
   isWithinRoot,
   REAL_AGENT_FS_PORTS,
+  type AgentDirectoryEntry,
   type AgentFsPorts,
 } from './fs-ports.js';
 
@@ -101,7 +102,7 @@ function scanExistingRoot(options: AgentLogRootScanOptions & {
       const resolved = resolveEntryKind(ports, entry, entryPath, scanRoot);
       if (resolved === undefined) continue;
 
-      if (resolved.kind === 'file') {
+      if (resolved.entryKind === 'file') {
         if (!hasTraceExtension(entry.name, extensions)) continue;
         if (resolved.realPath !== undefined) {
           if (visitedFiles.has(resolved.realPath)) continue;
@@ -116,7 +117,7 @@ function scanExistingRoot(options: AgentLogRootScanOptions & {
           sizeBytes: resolved.stat?.size ?? 0,
           modifiedAt: toIso(resolved.stat?.mtimeMs ?? 0),
         });
-      } else if (resolved.kind === 'directory' && root.recursive) {
+      } else if (resolved.entryKind === 'directory' && root.recursive) {
         if (resolved.realPath === undefined || !visitedDirs.has(resolved.realPath)) {
           if (resolved.realPath !== undefined) visitedDirs.add(resolved.realPath);
           queue.push(entryPath);
@@ -146,7 +147,7 @@ function scanExistingRoot(options: AgentLogRootScanOptions & {
 }
 
 interface ResolvedEntry {
-  kind: 'file' | 'directory' | 'other';
+  entryKind: 'file' | 'directory' | 'other';
   /** 仅符号链接与非符号链接目录需要真实路径；普通文件按名判定扩展即可。 */
   realPath?: string;
   stat?: ReturnType<AgentFsPorts['stat']>;
@@ -154,19 +155,19 @@ interface ResolvedEntry {
 
 function resolveEntryKind(
   ports: AgentFsPorts,
-  entry: { name: string; kind: string },
+  entry: AgentDirectoryEntry,
   entryPath: string,
   scanRoot: string,
 ): ResolvedEntry | undefined {
-  if (entry.kind !== 'symlink') {
-    if (entry.kind === 'directory') {
+  if (entry.entryKind !== 'symlink') {
+    if (entry.entryKind === 'directory') {
       const realPath = ports.realpath(entryPath);
-      return { kind: 'directory', realPath };
+      return { entryKind: 'directory', realPath };
     }
-    if (entry.kind === 'file') {
-      return { kind: 'file', stat: ports.stat(entryPath) };
+    if (entry.entryKind === 'file') {
+      return { entryKind: 'file', stat: ports.stat(entryPath) };
     }
-    return { kind: 'other' };
+    return { entryKind: 'other' };
   }
   // 软链接：目标越出日志根就忽略，断链同样忽略；两者都不算「这个根不可读」。
   let realPath: string;
@@ -179,7 +180,7 @@ function resolveEntryKind(
   }
   if (!isWithinRoot(scanRoot, realPath)) return undefined;
   return {
-    kind: stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other',
+    entryKind: stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other',
     realPath,
     stat,
   };

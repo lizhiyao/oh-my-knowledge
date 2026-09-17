@@ -155,6 +155,7 @@ test/shared/keyed-mutex.test.ts
 test/shared/record-count.test.ts
 test/shared/shell-quote.test.ts
 test/shared/timestamp.test.ts
+test/studio/application/agents-view.test.ts
 test/studio/application/assess-health.test.ts
 test/studio/application/candidate-status.test.ts
 test/studio/application/conversation-label.test.ts

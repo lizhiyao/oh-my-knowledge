@@ -23,13 +23,13 @@ export type AgentDirectoryEntryKind = 'file' | 'directory' | 'symlink' | 'other'
 
 export interface AgentDirectoryEntry {
   name: string;
-  kind: AgentDirectoryEntryKind;
+  entryKind: AgentDirectoryEntryKind;
 }
 
 export interface AgentFsPorts {
   /** 跟随符号链接：目标是断链时抛错，由调用方按降级路径处理。 */
   stat(path: string): AgentFsStat;
-  /** 不解析符号链接：`kind === 'symlink'` 是越界判断的入口。 */
+  /** 不解析符号链接：`entryKind === 'symlink'` 是越界判断的入口。 */
   readdir(path: string): AgentDirectoryEntry[];
   /** 真实路径；符号链接是否留在根内、是否越出主目录，都以此判定。 */
   realpath(path: string): string;
@@ -50,7 +50,7 @@ export const REAL_AGENT_FS_PORTS: AgentFsPorts = Object.freeze({
   readdir(path: string): AgentDirectoryEntry[] {
     return readdirSync(path, { withFileTypes: true }).map((entry) => ({
       name: entry.name,
-      kind: entry.isSymbolicLink()
+      entryKind: entry.isSymbolicLink()
         ? 'symlink'
         : entry.isDirectory()
           ? 'directory'

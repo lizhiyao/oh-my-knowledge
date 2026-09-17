@@ -724,6 +724,7 @@ omk studio [flags]
 
 **Flags:**
 
+- `--agents-dir` `option`:本机 Agent 识别／采集报告目录（可选，默认全局 ~/.oh-my-knowledge/observe/agents，即 `omk agents` 的落点）
 - `--analyses-dir` `option`:观测健康报告目录（可选，默认项目级 .omk/observe/health，空则全局兜底）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）

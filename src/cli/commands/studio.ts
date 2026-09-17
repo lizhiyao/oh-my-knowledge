@@ -61,6 +61,9 @@ export async function runStudio(
     if (flags['observations-dir']) {
       childArgs.push('--observations-dir', flags['observations-dir']);
     }
+    if (flags['agents-dir']) {
+      childArgs.push('--agents-dir', flags['agents-dir']);
+    }
     if (flags.global) {
       childArgs.push('--global');
     }
@@ -133,6 +136,8 @@ export async function runStudio(
       : flags.global
         ? { observationsDir: DEFAULT_GLOBAL_OBSERVATIONS_DIR }
         : {}),
+    // Agent 报告按机器级全局存放；显式 --agents-dir 才指向其它采集根目录，否则由宿主用同一份全局布局兜底。
+    ...(flags['agents-dir'] ? { agentsDir: resolve(flags['agents-dir']) } : {}),
     // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
     // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
     managedDir: (): string => resolveManagedDir(managedDir()),
@@ -214,6 +219,12 @@ export default class Studio extends BaseCommand {
       description: bilingual({
         zh: '观测收件箱数据目录（可选，默认 .omk/observe/inbox）',
         en: 'Observe-inbox data dir (optional, default .omk/observe/inbox)',
+      }),
+    }),
+    'agents-dir': Flags.string({
+      description: bilingual({
+        zh: '本机 Agent 识别／采集报告目录（可选，默认全局 ~/.oh-my-knowledge/observe/agents，即 `omk agents` 的落点）',
+        en: 'Agent inventory / collection reports dir (optional, default global ~/.oh-my-knowledge/observe/agents, where `omk agents` writes)',
       }),
     }),
     global: Flags.boolean({
