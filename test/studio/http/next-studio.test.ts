@@ -48,19 +48,19 @@ describe('Next Studio production boundary', () => {
     const b = createNextStudioServer({port:0,doctorsDir:join(root,'empty-doctors'),analysesDir,observationsDir:join(root,'b'),coreStudioCatalog:{...catalog,list:async()=>[]}});
     servers.push(a,b);
     const [urlA,urlB] = await Promise.all([a.start(),b.start()]);
-    const [pageA,pageB] = await Promise.all([fetch(`${urlA}/measure?lang=en`),fetch(`${urlB}/measure?lang=en`)]);
+    const [pageA,pageB] = await Promise.all([fetch(`${urlA}/measure`),fetch(`${urlB}/measure`)]);
     const [htmlA,htmlB] = await Promise.all([pageA.text(),pageB.text()]);
     assert.equal(pageA.status,200);
-    assert.match(htmlA, /<html lang="en"/);
+    assert.match(htmlA, /<html lang="zh-CN"/);
     assert.match(htmlA,/next-real-run/);
     assert.doesNotMatch(htmlB,/next-real-run/);
-    for (const label of ['Run status','Evidence status','Conclusion status']) assert.ok(htmlA.includes(label));
+    for (const label of ['运行状态','证据状态','结论状态']) assert.ok(htmlA.includes(label));
     const detail = await fetch(`${urlA}/measure/next-real-run`);
     assert.equal(detail.status,200);
     const detailHtml=await detail.text();
     for(const label of ['评测范围','分析结果','证据与定义']) assert.ok(detailHtml.includes(label));
     // 标签标题按页面与对象给出：同开几个评测页时要分得清读的是哪一次运行。
-    assert.match(htmlA, /<title>OMK · Evaluations<\/title>/);
+    assert.match(htmlA, /<title>OMK · 评测记录<\/title>/);
     assert.match(detailHtml, /<title>OMK · 运行 · next-real-run<\/title>/);
     const asset = htmlA.match(/src="([^\"]*\/_next\/[^\"]+\.js[^\"]*)"/)?.[1];
     assert.ok(asset);
@@ -70,20 +70,20 @@ describe('Next Studio production boundary', () => {
     // 根 `loading.tsx` 一旦先刷出壳层，段内的 `notFound()` 就只改视图、改不掉状态码（实测 200 + Loading…），
     // 所以带壳的 `not-found` 文档不能当服务端缺页用。地址有路由但记录不存在 → 宿主的专属码；
     // 地址根本没有路由 → HTTP adapter 兜底，两种都是纯文本 404。
-    const missingRun = await fetch(`${urlA}/measure/missing?lang=en`);
+    const missingRun = await fetch(`${urlA}/measure/missing`);
     assert.equal(missingRun.status, 404);
     assert.equal(await missingRun.text(), 'core_run_not_found');
     assert.equal((await fetch(`${urlA}/measure/%ZZ`)).status, 404, '畸形身份按缺页回答，不拿去查数据源');
     assert.equal((await fetch(`${urlA}/measure/a/b`)).status, 404, '越段地址不冒充运行 id');
-    const noRoute = await fetch(`${urlA}/definitely-not-a-page?lang=en`);
+    const noRoute = await fetch(`${urlA}/definitely-not-a-page`);
     assert.equal(noRoute.status, 404);
     assert.equal(await noRoute.text(), 'Not Found');
     assert.equal((await fetch(`${urlA}/measure`,{method:'POST'})).status,405);
     const knowledge = await fetch(`${urlA}/knowledge`);
     const knowledgeHtml = await knowledge.text();
     assert.equal(knowledge.status, 200);
-    // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
-    assert.match(knowledgeHtml, /<a(?=[^>]*href="\/knowledge\?lang=zh")(?=[^>]*aria-current="page")/u);
+    // 语言不进地址：站内链接一律不带 lang，渲染语言由本机设置决定。
+    assert.match(knowledgeHtml, /<a(?=[^>]*href="\/knowledge")(?=[^>]*aria-current="page")/u);
     assert.match(knowledgeHtml, /knowledge-table/);
     assert.match(knowledgeHtml, /audit\/&lt;script&gt;/);
     assert.doesNotMatch(knowledgeHtml, /<script>alert\(1\)<\/script>/);
@@ -123,21 +123,31 @@ describe('Next Studio production boundary', () => {
     assert.equal(drilled.status, 200);
     assert.match(await drilled.text(), /studio-utilities-trigger/);
     assert.doesNotMatch(await (await fetch(`${urlB}/knowledge`)).text(), /audit\/&lt;script&gt;/);
-    const knowledgeZh = await (await fetch(`${urlA}/knowledge`)).text();
-    assert.match(knowledgeZh, /studio-utilities-trigger/);
-    assert.doesNotMatch(knowledgeZh, /class="studio-lang"/);
-    // 所有完整 Studio 页面共用全局设置入口。
-    const knowledgeEn = await (await fetch(`${urlA}/knowledge?lang=en`)).text();
-    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0]
-      .replace(/<a class="studio-lang"[\s\S]*?<\/a>/u, '<lang-switch/>')
-      .replaceAll(' aria-current="page"', '');
-    const measureShell = shellOf(htmlA);
-    assert.equal(measureShell, shellOf(knowledgeEn));
-    assert.match(knowledgeEn, /studio-utilities-trigger/);
-    for (const href of ['href="/observe?lang=en"', 'href="/measure?lang=en"', 'href="/knowledge?lang=en"']) {
-      assert.ok(measureShell.includes(href), `primary navigation links ${href}`);
+    const knowledgeBare = await (await fetch(`${urlA}/knowledge`)).text();
+    assert.match(knowledgeBare, /studio-utilities-trigger/);
+    assert.doesNotMatch(knowledgeBare, /class="studio-lang"/);
+    // 所有完整 Studio 页面共用全局设置入口；英文渲染由本机设置驱动（OMK_LANG 等同设置文件）。
+    const previousLang = process.env.OMK_LANG;
+    let knowledgeEn = '';
+    let measureEn = '';
+    try {
+      process.env.OMK_LANG = 'en';
+      knowledgeEn = await (await fetch(`${urlA}/knowledge`)).text();
+      measureEn = await (await fetch(`${urlA}/measure`)).text();
+    } finally {
+      if (previousLang === undefined) delete process.env.OMK_LANG; else process.env.OMK_LANG = previousLang;
     }
-    assert.match(htmlA, /<a(?=[^>]*href="\/measure\?lang=en")(?=[^>]*aria-current="page")/u);
+    assert.match(knowledgeEn, /<html lang="en"/);
+    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0]
+      .replace(/<button[^>]*class="studio-lang"[\s\S]*?<\/button>/u, '<lang-switch/>')
+      .replaceAll(' aria-current="page"', '');
+    assert.equal(shellOf(measureEn), shellOf(knowledgeEn));
+    assert.match(knowledgeEn, /studio-utilities-trigger/);
+    for (const href of ['href="/observe"', 'href="/measure"', 'href="/knowledge"']) {
+      assert.ok(shellOf(measureEn).includes(href), `primary navigation links ${href}`);
+    }
+    assert.doesNotMatch(measureEn, /href="[^"]*[?&]lang=/, '英文页面链接同样不带语言参数');
+    assert.match(measureEn, /<a(?=[^>]*href="\/measure")(?=[^>]*aria-current="page")/u);
     for (const path of ['/knowledge/skills/missing','/knowledge/skills/%ZZ']) assert.equal((await fetch(urlA+path)).status,404);
     assert.equal((await fetch(`${urlA}/knowledge`,{method:'POST'})).status,405);
     await a.stop();

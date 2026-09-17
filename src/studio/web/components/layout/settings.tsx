@@ -37,9 +37,8 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
     try {
       const response = await fetch('/api/settings', { method: 'POST', signal: active.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revision: data.revision, settings: { schemaVersion: 1, language, knowledge: { workspace: workspace.trim(), executor, ...(model.trim() ? { model: model.trim() } : {}) } } }) });
       if (!response.ok) throw new Error(response.status === 409 ? 'conflict' : 'save');
-      const value = await response.json() as StudioSettings;
-      const url = new URL(window.location.href); url.searchParams.set('lang', value.effective.language);
-      window.location.assign(url.toString());
+      // 语言由设置决定、不进地址：保存后重载当前页即可生效，地址与其余查询参数原样保留。
+      window.location.reload();
     } catch (cause) { if (!active.signal.aborted) setError(cause instanceof Error && cause.message === 'conflict' ? (zh ? '设置已被其他窗口修改。请重新读取后再保存。' : 'Settings changed elsewhere. Reload before saving.') : (zh ? '保存失败，请检查目录是否为完整路径及输入格式。' : 'Save failed. Check the absolute folder path and input.')); }
     finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }

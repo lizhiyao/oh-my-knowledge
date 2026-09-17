@@ -64,11 +64,21 @@ describe('Next-hosted observation inbox route', () => {
     assert.match(html, /0 条信号（共 0 条）/);
   }, 20000);
 
-  it('honours the lang query parameter', async () => {
+  it('renders language from local settings, ignoring any lang parameter', async () => {
     const url = await startInboxHost(observationsDir());
-    const html = await (await fetch(`${url}/observe/inbox?lang=en`)).text();
-    assert.match(html, /<h1>Observation inbox<\/h1>/);
-    assert.match(html, /0 signals \(0 total\)/);
+    const previous = process.env.OMK_LANG;
+    try {
+      process.env.OMK_LANG = 'en';
+      // 地址里的 lang 不生效也不重定向：设置为英文时，?lang=zh 的地址仍渲染英文。
+      const response = await fetch(`${url}/observe/inbox?lang=zh`, { redirect: 'manual' });
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      assert.match(html, /<h1>Observation inbox<\/h1>/);
+      assert.match(html, /0 signals \(0 total\)/);
+      assert.doesNotMatch(html, /href="[^"]*[?&]lang=/, '页面链接不带语言参数');
+    } finally {
+      if (previous === undefined) delete process.env.OMK_LANG; else process.env.OMK_LANG = previous;
+    }
   }, 20000);
 
   it('rejects non-GET requests', async () => {
@@ -206,13 +216,19 @@ describe('Next-hosted observation inbox route', () => {
     const zhHtml = await zhPage.text();
     assert.doesNotMatch(zhHtml, /aria-label="Studio 一级导航"/);
     assert.doesNotMatch(zhHtml, /href="\/observe/);
-    // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定，省略参数等于把本次选择交回偏好。
-    assert.match(zhHtml, /<a(?=[^>]*class="studio-brand")(?=[^>]*href="\/measure\?lang=zh")/u);
+    // 语言不进地址：品牌位指向裸入口；没有导航的宿主仍给写设置的独立语言切换。
+    assert.match(zhHtml, /<a(?=[^>]*class="studio-brand")(?=[^>]*href="\/measure")/u);
+    assert.match(zhHtml, /<button[^>]*class="studio-lang"/u);
 
-    const enPage = await fetch(`${url}/measure?lang=en`);
-    assert.equal(enPage.status, 200);
-    const enHtml = await enPage.text();
+    const previousLang = process.env.OMK_LANG;
+    let enHtml = '';
+    try {
+      process.env.OMK_LANG = 'en';
+      enHtml = await (await fetch(`${url}/measure`)).text();
+    } finally {
+      if (previousLang === undefined) delete process.env.OMK_LANG; else process.env.OMK_LANG = previousLang;
+    }
     assert.doesNotMatch(enHtml, /aria-label="Studio primary navigation"/);
-    assert.match(enHtml, /<a(?=[^>]*class="studio-brand")(?=[^>]*href="\/measure\?lang=en")/u);
+    assert.match(enHtml, /<a(?=[^>]*class="studio-brand")(?=[^>]*href="\/measure")/u);
   }, 20000);
 });

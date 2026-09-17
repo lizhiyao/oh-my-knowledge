@@ -125,7 +125,7 @@ describe('measure react list keeps the three status axes orthogonal', () => {
     for (const value of ['已完成', '已取消', '预算耗尽', '失败', '完整', '部分缺失', '无法解析', '可形成结论', '证据不足', '未评估']) {
       assert.ok(html.includes(value), `missing status label: ${value}`);
     }
-    assert.ok(html.includes('href="/measure/core-run-1?lang=zh"'));
+    assert.ok(html.includes('href="/measure/core-run-1"'));
     for (const host of ['localhost', '127.0.0.1', ':7799']) {
       assert.ok(!html.includes(host), `navigation must not embed a host or port: ${host}`);
     }
@@ -137,7 +137,7 @@ describe('measure react list keeps the three status axes orthogonal', () => {
       assert.ok(html.includes(value), `missing status: ${value}`);
     }
     for (const runId of ['cancelled', 'exhausted', 'failed']) {
-      assert.ok(html.includes(`href="/measure/${runId}?lang=en"`));
+      assert.ok(html.includes(`href="/measure/${runId}"`));
     }
   });
 

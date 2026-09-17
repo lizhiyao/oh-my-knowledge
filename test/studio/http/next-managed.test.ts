@@ -100,33 +100,42 @@ describe('Next-hosted managed decision history', () => {
     assert.match(html, /<title>OMK · 受管决策史<\/title>/);
 
     const body = section(html, /<tbody[\s\S]*?<\/tbody>/u, 'managed table body');
-    assert.match(body, /href="\/knowledge\/managed\/[0-9a-f]{12}\?lang=zh"[^>]*>review</);
+    assert.match(body, /href="\/knowledge\/managed\/[0-9a-f]{12}"[^>]*>review</);
     assert.match(body, /已采用/);
     assert.match(body, /https:\/\/example\.com\/r/);
 
     // 分区导航标出本页，知识对象页仍可达 —— 这两页此前没有任何一级入口。
     const nav = section(html, /<nav class="observe-section-nav"[\s\S]*?<\/nav>/u, 'knowledge section nav');
-    assert.match(nav, /aria-current="page" href="\/knowledge\/managed\?lang=zh"/);
-    assert.match(nav, /href="\/knowledge\?lang=zh"/);
+    assert.match(nav, /aria-current="page" href="\/knowledge\/managed"/);
+    assert.match(nav, /href="\/knowledge"/);
   }, 20000);
 
-  it('honours the lang query parameter on both pages', async () => {
+  it('renders both pages in the language from local settings, without language in addresses', async () => {
     const record = managedRecord();
     const url = await startHost({ managedDir: managedDirWith(record) });
-    const list = await (await fetch(`${url}/knowledge/managed?lang=en`)).text();
+    const previousLang = process.env.OMK_LANG;
+    let list = '';
+    let detail = '';
+    try {
+      process.env.OMK_LANG = 'en';
+      list = await (await fetch(`${url}/knowledge/managed`)).text();
+      detail = await (await fetch(`${url}/knowledge/managed/${record.id}`)).text();
+    } finally {
+      if (previousLang === undefined) delete process.env.OMK_LANG; else process.env.OMK_LANG = previousLang;
+    }
     assert.match(section(list, /<h1>[\s\S]*?<\/h1>/u, 'page heading'), /Managed skill decision history/);
     // 标题跟着语言走。
     assert.match(list, /<title>OMK · Managed history<\/title>/);
-    // 页内跳转必须继承 lang，否则点一次详情就掉回默认中文。
+    // 页内跳转不带 lang：语言由本机设置决定，翻页不丢。
     assert.match(
       section(list, /<tbody[\s\S]*?<\/tbody>/u, 'managed table body'),
-      /href="\/knowledge\/managed\/[0-9a-f]{12}\?lang=en"/,
+      /href="\/knowledge\/managed\/[0-9a-f]{12}"/,
     );
-    const detail = await (await fetch(`${url}/knowledge/managed/${record.id}?lang=en`)).text();
+    assert.doesNotMatch(list, /href="[^"]*[?&]lang=/, '列表链接不带语言参数');
     // 详情页标题带记录身份：同开几条决策史时不必点开才知道是哪一条。
     assert.ok(detail.includes(`<title>OMK · Managed history · ${record.id}</title>`), 'history title carries the record id');
     const backLink = section(detail, /<a[^>]*>← Managed skills<\/a>/u, 'back link');
-    assert.match(backLink, /href="\/knowledge\/managed\?lang=en"/);
+    assert.match(backLink, /href="\/knowledge\/managed"/);
     assert.match(section(detail, TIMELINE, 'decision timeline'), /Promote/);
   }, 20000);
 
@@ -142,7 +151,7 @@ describe('Next-hosted managed decision history', () => {
     assert.match(timeline, /安装纳管/);
     assert.match(timeline, /已人工复核/);
     assert.match(timeline, /决定人 alice/);
-    assert.match(timeline, /href="\/measure\/core-run-1\?lang=zh"/);
+    assert.match(timeline, /href="\/measure\/core-run-1"/);
     assertAbsent(html, /\/measure\/core-run-1\.report/, 'Core reportId');
     // 记录里的 source.locator / url 是用户机器与远端的定位符，页面模型不带它们，故不进 RSC 负载。
     assertAbsent(html, /git\+https:\/\/example\.com\/r@abc123/, 'source locator');

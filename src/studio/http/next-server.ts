@@ -59,10 +59,10 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }
+      // 语言不进地址：渲染语言只看本机设置（经 x-omk-studio-lang 注入），地址里的 lang 参数既不生效也不清理。
+      // 一次请求只读一次：装载器与注入头用同一个值，设置文件在请求中途被改也不会半新半旧。
       const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
-      if (!path.startsWith('/_next/') && !searchParams.has('lang') && preferredLanguage() === 'en') {
-        searchParams.set('lang', 'en'); response.writeHead(302, { Location: `${path}?${searchParams}` }); response.end(); return true;
-      }
+      const studioLanguage = preferredLanguage();
       let healthPage: HealthPage | undefined;
       if (health) {
         try {
@@ -87,7 +87,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       }
       let knowledgePage: KnowledgePage | undefined;
       if (knowledge) {
-        try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, searchParams.get('lang') === 'en' ? 'en' : 'zh', searchParams.get('doctorRun')); }
+        try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, studioLanguage, searchParams.get('doctorRun')); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
@@ -130,7 +130,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       }
       let observePage: ObservePage | undefined;
       if (observe && !inbox) {
-        try { observePage = await loadObservePage(conversationCatalog, path, searchParams.get('lang') === 'en' ? 'en' : 'zh'); }
+        try { observePage = await loadObservePage(conversationCatalog, path, studioLanguage); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
@@ -157,14 +157,9 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         }
       }
       if (!app) throw new Error('Studio UI is not started');
-      request.headers['x-omk-studio-lang'] = searchParams.get('lang') === 'en' ? 'en' : 'zh';
+      request.headers['x-omk-studio-lang'] = studioLanguage;
       // 一级导航与页面组同源：裁掉兄弟路由的宿主不提供导航，否则链接指向自己没挂的页面。
       request.headers['x-omk-studio-navigation'] = pageRoutes ? 'full' : 'none';
-      // 语言切换要保留当前页的其余查询参数（如 ?doctorRun=），而 Next 侧 useSearchParams
-      // 会把整棵子树降级为纯客户端渲染、SSR 里没有地址，所以路径由宿主按请求注入。
-      const requestUrl = request.url ?? '/';
-      const queryIndex = requestUrl.indexOf('?');
-      request.headers['x-omk-studio-route'] = queryIndex < 0 ? requestUrl : `${requestUrl.slice(0, queryIndex)}?${requestUrl.slice(queryIndex + 1)}`;
       const handler = app.getRequestHandler();
       if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
       else if (healthPage) await nextHealthContext.run(healthPage, () => handler(request, response));

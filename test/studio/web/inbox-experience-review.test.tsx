@@ -34,14 +34,14 @@ describe('经验复盘卡片渲染契约', () => {
     );
     // reviewer 看到结论却回不到证据，等于这条复盘没有出口。
     // 中文同样要带上：裸地址的语言由本机全局设置决定，省略参数会让下一次跳转被改写成英文偏好。
-    assert.ok(zh.includes(`href="${href}?lang=zh"`), `复盘卡片必须深链到 ${href}`);
+    assert.ok(zh.includes(`href="${href}"`), `复盘卡片必须深链到 ${href}`);
     assert.ok(zh.includes('查看对话任务'));
     assert.ok(zh.includes('建议优先复盘'));
 
     const en = renderToString(
       <ExperienceReviewSection sessions={sessions()} reviewState={emptyReviewState} lang="en" />,
     );
-    assert.ok(en.includes(`href="${href}?lang=en"`), '英文页面的深链必须带上 lang 参数');
+    assert.ok(en.includes(`href="${href}"`), '英文页面的深链一致，语言不进地址');
     assert.ok(en.includes('Conversation tasks'));
   });
 

@@ -62,14 +62,14 @@ describe('知识列表的列顺序', () => {
 });
 
 describe('知识详情到观测区的跨区边', () => {
-  it('中文给出通往该 Skill 趋势页的链接，地址带上语言', () => {
-    const html = renderToString(createElement(ObservePanel, { observe, toolFailureRate: null, skillName: 'demo-skill', zh: true, suffix: '?lang=zh' }));
-    expect(html).toMatch(/<a href="\/observe\/skill-trend\/demo-skill\?lang=zh"[^>]*>查看该 Skill 的趋势 →<\/a>/);
+  it('中文给出通往该 Skill 趋势页的链接，地址不带语言参数', () => {
+    const html = renderToString(createElement(ObservePanel, { observe, toolFailureRate: null, skillName: 'demo-skill', zh: true }));
+    expect(html).toMatch(/<a href="\/observe\/skill-trend\/demo-skill"[^>]*>查看该 Skill 的趋势 →<\/a>/);
   });
 
   it('英文沿用同一目的地，skill 名按地址片段编码', () => {
-    const html = renderToString(createElement(ObservePanel, { observe, toolFailureRate: 0, skillName: 'my skill/x', zh: false, suffix: '?lang=en' }));
-    expect(html).toMatch(/<a href="\/observe\/skill-trend\/my%20skill%2Fx\?lang=en"[^>]*>Trend for this skill →<\/a>/);
+    const html = renderToString(createElement(ObservePanel, { observe, toolFailureRate: 0, skillName: 'my skill/x', zh: false }));
+    expect(html).toMatch(/<a href="\/observe\/skill-trend\/my%20skill%2Fx"[^>]*>Trend for this skill →<\/a>/);
     expect(html).toMatch(/Knowledge gap/);
     expect(html).toMatch(/12\.5%/);
   });

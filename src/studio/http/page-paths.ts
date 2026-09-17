@@ -11,8 +11,8 @@
  * （口径见 `test/architecture/studio-client-runtime-closure.test.ts`）。所以地址不能从装载器
  * 再导出一次，只能放在这个叶子上。
  *
- * 这里只放地址本身，不放语言参数：`lang` 由地址决定，拼链接时在调用点用 `langSuffix`
- * （见 `src/studio/README.md`），本模块保持零依赖。
+ * 这里只放地址本身：语言不进地址（渲染语言只看本机设置，见 `src/studio/README.md`），
+ * 本模块保持零依赖。
  *
  * 每个常量都对应 `src/studio/web/app` 下真实存在的路由目录，由
  * `test/architecture/studio-page-paths.test.ts` 钉住；同一批字面量不得在 `src/studio` 其他
