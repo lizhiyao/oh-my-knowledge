@@ -11,8 +11,6 @@
  */
 import { beforeAll, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import {
   copyFileSync,
   mkdirSync,
@@ -24,16 +22,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Config } from '@oclif/core';
 import yaml from 'js-yaml';
 // 从 build-docs.ts 复用 getTopLevelIds 派生函数(单一来源是 oclif Command 文件目录,
 // 不再 hardcode 常量),让 cli.md codegen 跟 SKILL.md frontmatter gate 共用同一份真值。
 import { getTopLevelIds } from '../../scripts/build/docs.js';
+import { PROJECT_ROOT, runCli, runCliFailing } from '../helpers/cli-process.js';
 
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMANDS_MD = join(PROJECT_ROOT, '.agents/skills/omk/references/commands.md');
 const CLI_EN = join(PROJECT_ROOT, 'docs/reference/cli.md');
 const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/reference/cli.md');
@@ -69,12 +64,6 @@ function readFlagsBlock(content: string, id: string): string {
   const e = content.indexOf(end);
   assert.ok(s !== -1 && e !== -1 && e > s, `marker pair for ${id} not found`);
   return content.slice(s + start.length, e);
-}
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
 }
 
 function readMarkerBody(content: string): string {
@@ -154,11 +143,7 @@ describe('scripts/build-docs codegen', () => {
   });
 
   it('--check mode passes on current committed state', async () => {
-    const { stdout } = await execFileAsync(
-      'node',
-      [BUILD_DOCS, '--check'],
-      { cwd: PROJECT_ROOT },
-    );
+    const { stdout } = await runCli(['--check'], { entry: BUILD_DOCS, cwd: PROJECT_ROOT });
     assert.ok(stdout.includes('in sync'), `expected in-sync message: ${stdout}`);
   }, 30000);
 
@@ -172,15 +157,8 @@ describe('scripts/build-docs codegen', () => {
         original.replace(MARKER_START, `${MARKER_START}\n<!-- DRIFT INJECTED FOR TEST -->`),
         'utf8',
       );
-      await assert.rejects(
-        () => execFileAsync('node', [BUILD_DOCS, '--check'], { cwd: fixtureRoot }),
-        (err: unknown) => {
-          const e = err as ExecError;
-          assert.equal(e.code, 1, `expected exit 1 on drift, got ${e.code}`);
-          assert.ok(e.stderr.includes('drifted'), `stderr should mention drift: ${e.stderr.slice(0, 200)}`);
-          return true;
-        },
-      );
+      const { stderr } = await runCliFailing(['--check'], 1, { entry: BUILD_DOCS, cwd: fixtureRoot });
+      assert.ok(stderr.includes('drifted'), `stderr should mention drift: ${stderr.slice(0, 200)}`);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

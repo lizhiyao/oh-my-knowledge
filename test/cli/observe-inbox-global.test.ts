@@ -8,12 +8,9 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { isReportFileName } from '../../src/evidence/storage/file-names.js';
 import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
 import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
@@ -22,13 +19,7 @@ import {
   saveObservationInboxReport,
 } from '../../src/observability/inbox/index.js';
 import { runCommand } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error { code?: number; stdout: string; stderr: string; }
+import { runCli, runCliFailing } from '../helpers/cli-process.js';
 
 /** 造一个 trace 目录,产出一条 hard_miss item(skillName = `skill`),让 global / project 内容可区分。 */
 function makeTrace(dir: string, skill: string): string {
@@ -68,7 +59,7 @@ const globalInbox = (home: string): string => join(home, 'observe', 'inbox');
 const projectInbox = (project: string): string => join(project, '.omk', 'observe', 'inbox');
 
 async function cli(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
-  const { stdout } = await execFileAsync('node', [CLI, ...args], { cwd, env });
+  const { stdout } = await runCli(args, { cwd, env });
   return stdout;
 }
 function skillNames(jsonStdout: string): string[] {
@@ -112,12 +103,8 @@ describe('observe-inbox --global', () => {
       assert.ok(gid, '从 inbox --global 拿到全局那条的 id');
       assert.ok((await cli(['observe', 'show', gid, '--global'], s.project, s.env)).length > 0, 'show --global 读到全局详情');
 
-      try {
-        await cli(['observe', 'show', gid], s.project, s.env);
-        assert.fail('预期默认 show 找不到全局 id 而非零退出');
-      } catch (err) {
-        assert.equal((err as ExecError).code, 1, '默认 show 找不到 → exit 1');
-      }
+      // 默认 show 找不到全局 id → exit 1
+      await runCliFailing(['observe', 'show', gid], 1, { cwd: s.project, env: s.env });
     } finally { s.cleanup(); }
   });
 

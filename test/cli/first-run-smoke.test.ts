@@ -1,18 +1,11 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+import { join } from 'node:path';
+import { PROJECT_ROOT, runCli } from '../helpers/cli-process.js';
 
 function parseFirstJsonObject(output: string): unknown {
   const start = output.indexOf('{');
@@ -51,7 +44,7 @@ describe('first-run smoke path', () => {
     const machineRoot = join(root, 'machine');
     const env = { ...process.env, OMK_HOME: machineRoot };
     try {
-      const init = await execFileAsync('node', [CLI, 'init', project, '--lang', 'zh'], { env });
+      const init = await runCli(['init', project, '--lang', 'zh'], { env });
       assert.match(init.stdout, /直接跑通/);
       assert.match(init.stdout, /看报告里的 verdict/);
 
@@ -73,7 +66,7 @@ describe('first-run smoke path', () => {
         '--lang', 'zh',
       ];
 
-      const dryRun = await execFileAsync('node', [CLI, ...baseArgs, '--dry-run'], { cwd: project, env });
+      const dryRun = await runCli([...baseArgs, '--dry-run'], { cwd: project, env });
       const dryRunReport = parseFirstJsonObject(dryRun.stdout) as {
         projectionKind?: string;
         dataset?: { sampleCount?: number };
@@ -83,8 +76,7 @@ describe('first-run smoke path', () => {
       assert.equal(dryRunReport.dataset?.sampleCount, 3);
       assert.deepEqual(dryRunReport.targets?.map((target) => target.targetId), ['code-review-v1', 'code-review-v2']);
 
-      await execFileAsync('node', [
-        CLI,
+      await runCli([
         'eval',
         '--control', 'baseline',
         '--treatment', 'code-review-v2',
@@ -95,8 +87,7 @@ describe('first-run smoke path', () => {
         '--lang', 'zh',
       ], { cwd: project, env });
 
-      const run = await execFileAsync('node', [
-        CLI,
+      const run = await runCli([
         ...baseArgs,
         '--no-judge',
         '--no-diagnostic',
@@ -166,8 +157,7 @@ describe('first-run smoke path', () => {
     const root = await mkdtemp(join(tmpdir(), 'omk-first-run-full-'));
     const project = join(root, 'demo');
     try {
-      const init = await execFileAsync('node', [
-        CLI,
+      const init = await runCli([
         'init', project,
         '--samples', '20',
         '--lang', 'en',
@@ -182,8 +172,7 @@ describe('first-run smoke path', () => {
         'custom-executor',
         'core-fixture-executor.sh',
       );
-      const dryRun = await execFileAsync('node', [
-        CLI,
+      const dryRun = await runCli([
         'eval',
         '--control', 'code-review-v1',
         '--treatment', 'code-review-v2',

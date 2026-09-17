@@ -4,27 +4,14 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
 import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import ObserveShow from '../../src/cli/commands/observe/show.js';
-import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
+import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
+import { runCli } from '../helpers/cli-process.js';
 
 function makeIngestTrace(dir: string): string {
   mkdirSync(dir, { recursive: true });
@@ -133,12 +120,13 @@ describe('oclif observe', () => {
     it(`observe inbox ${kind} preserves empty results in a v1 JSON envelope`, async () => {
       const root = mkdtempSync(join(tmpdir(), 'omk-inbox-envelope-'));
       try {
-        const { stdout, stderr } = await execFileAsync(process.execPath, [
-          CLI, 'observe', 'inbox', '--input-dir', root, '--json', ...mode,
-        ], {
-          cwd: root,
-          env: { ...process.env, HOME: root, OMK_HOME: root, OMK_SKIP_UPDATE_CHECK: '1' },
-        });
+        const { stdout, stderr } = await runCli(
+          ['observe', 'inbox', '--input-dir', root, '--json', ...mode],
+          {
+            cwd: root,
+            env: { ...process.env, HOME: root, OMK_HOME: root, OMK_SKIP_UPDATE_CHECK: '1' },
+          },
+        );
         const parsed = JSON.parse(stdout);
         assert.equal(parsed.schemaVersion, 1);
         assert.equal(parsed.kind, kind);
@@ -156,7 +144,7 @@ describe('oclif observe', () => {
       await runCommand(ObserveShow, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
     }
   });
@@ -166,7 +154,7 @@ describe('oclif observe', () => {
       await runCommand(ObserveInbox, ['--limit', '0']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.match(e.stderr, /--limit(?=[\s\S]*整数)(?=[\s\S]*1)/, `stderr missing zh parser error:\n${e.stderr}`);
     }
@@ -186,7 +174,7 @@ describe('oclif observe', () => {
         await runCommand(ObserveIngest, [traceDir, '--output-dir', ''], { cwd: cwdDir });
         assert.fail('expected non-zero exit');
       } catch (err) {
-        const e = err as ExecError;
+        const e = err as CommandRunError;
         assert.equal(e.code, 2, `expected exit 2 on empty --output-dir, got ${e.code}:\n${e.stderr}`);
         assert.ok(/--output-dir/.test(e.stderr), `stderr should mention --output-dir: ${e.stderr}`);
         assert.ok(/不能为空|must not be/.test(e.stderr), `stderr should explain empty restriction: ${e.stderr}`);
