@@ -4,23 +4,8 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { renderCommandHelp } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
-
+import { runCliFailing } from '../helpers/cli-process.js';
 
 describe('oclif studio', () => {
   it('--help 默认 zh', async () => {
@@ -37,13 +22,7 @@ describe('oclif studio', () => {
   });
 
   it('非法 --port → exit 2 + 中文 parser 错误', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'studio', '--port', '70000']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /--port(?=[\s\S]*整数)(?=[\s\S]*0)(?=[\s\S]*65535)/, `stderr missing zh parser error:\n${e.stderr}`);
-    }
+    const { stderr } = await runCliFailing(['studio', '--port', '70000'], 2);
+    assert.match(stderr, /--port(?=[\s\S]*整数)(?=[\s\S]*0)(?=[\s\S]*65535)/, `stderr missing zh parser error:\n${stderr}`);
   });
 });

@@ -8,18 +8,12 @@
  */
 import { describe, it, beforeAll, afterAll } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { createServer, type Server, type Socket } from 'node:net';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CLI = join(__dirname, '..', '..', 'dist', 'cli', 'index.js');
+import { runCliFailing } from '../helpers/cli-process.js';
 
 const EXIT_BUDGET_MS = 2500; // 远低于 worker 的 3000ms abort;命令本身快速失败,余量挡掉退出被拖的回归
 
@@ -67,12 +61,8 @@ describe('update check background refresh must not delay CLI exit', () => {
 
     const previousConnections = acceptedConnections;
     const t0 = Date.now();
-    try {
-      // doctor 指向不存在的 skill,快速失败(exit 1);execFileAsync 因非零退出 reject,计时照常
-      await execFileAsync('node', [CLI, 'doctor', join(home, 'no-such-skill')], { env });
-    } catch {
-      /* 预期非零退出,忽略 */
-    }
+    // doctor 指向不存在的 skill,快速失败(exit 1);runCliFailing 断掉退出码,计时照常
+    await runCliFailing(['doctor', join(home, 'no-such-skill')], 1, { env });
     const ms = Date.now() - t0;
     // Prove the worker actually attempted the request; a skipped update check is
     // not evidence that detaching avoids holding the parent alive.

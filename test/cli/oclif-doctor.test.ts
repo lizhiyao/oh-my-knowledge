@@ -6,25 +6,12 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile, spawn } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { renderCommandHelp } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
-
+import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
 
 describe('oclif doctor', () => {
   it('--help 默认 zh 含中文 description', async () => {
@@ -42,19 +29,13 @@ describe('oclif doctor', () => {
   });
 
   it('OMK_LANG=en env 同效切到英文', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: { ...process.env, OMK_LANG: 'en' } });
+    const { stdout } = await runCli(['doctor', '--help'], { env: { ...process.env, OMK_LANG: 'en' } });
     assert.ok(stdout.includes('Preflight health checks'), 'OMK_LANG=en should switch help to en');
   });
 
   it('非法采样参数 → exit code 2, 不进入 LLM 体检', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'doctor', '--repeat', 'abc', '--lang', 'en']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /--repeat[\s\S]*integer[\s\S]*1[\s\S]*10/, `stderr missing parser range:\n${e.stderr}`);
-    }
+    const { stderr } = await runCliFailing(['doctor', '--repeat', 'abc', '--lang', 'en'], 2);
+    assert.match(stderr, /--repeat[\s\S]*integer[\s\S]*1[\s\S]*10/, `stderr missing parser range:\n${stderr}`);
   });
   it('flushes a large failed JSON report to a slow pipe before exiting through oclif', async () => {
     // Real process boundary: in-process console capture cannot detect truncated pipe writes.
@@ -65,7 +46,7 @@ describe('oclif doctor', () => {
         await mkdir(skill, { recursive: true });
         await writeFile(join(skill, 'SKILL.md'), '---\nname: [\n---\n# Broken\n');
       }
-      const child = spawn(process.execPath, [CLI, 'doctor', '--static-only', '--json'], {
+      const child = spawn(process.execPath, [CLI_ENTRY, 'doctor', '--static-only', '--json'], {
         cwd: root, stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, HOME: root, OMK_HOME: join(root, 'home'), OMK_SKIP_UPDATE_CHECK: '1' },
       });

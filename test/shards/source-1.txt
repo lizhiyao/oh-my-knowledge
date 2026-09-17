@@ -1,3 +1,4 @@
+test/architecture/cli-process-owner.test.ts
 test/architecture/eval-workflows-executors-layout.test.ts
 test/architecture/knowledge-artifacts-layout.test.ts
 test/architecture/retired-evaluation-layout.test.ts

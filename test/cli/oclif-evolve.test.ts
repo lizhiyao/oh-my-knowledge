@@ -3,24 +3,9 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import EvolveCommand from '../../src/cli/commands/evolve.js';
-import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
-
+import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
+import { runCliFailing } from '../helpers/cli-process.js';
 
 describe('oclif evolve', () => {
   it('--help 默认 zh', async () => {
@@ -44,21 +29,15 @@ describe('oclif evolve', () => {
       await runCommand(EvolveCommand, ['skills/demo/SKILL.md', '--rounds', 'nope']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.match(e.stderr, /--rounds(?=[\s\S]*整数)(?=[\s\S]*1)/, `stderr missing zh parser error:\n${e.stderr}`);
     }
   });
 
   it('非法 --effort --lang en → exit 2 + English parser error', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'evolve', 'skills/demo/SKILL.md', '--effort', 'turbo', '--lang', 'en']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /--effort[\s\S]*low[\s\S]*medium[\s\S]*high[\s\S]*xhigh[\s\S]*max/, `stderr missing en parser error:\n${e.stderr}`);
-    }
+    const { stderr } = await runCliFailing(['evolve', 'skills/demo/SKILL.md', '--effort', 'turbo', '--lang', 'en'], 2);
+    assert.match(stderr, /--effort[\s\S]*low[\s\S]*medium[\s\S]*high[\s\S]*xhigh[\s\S]*max/, `stderr missing en parser error:\n${stderr}`);
   });
 
   it('缺 skillPath positional → exit 2(oclif required-args)', async () => {
@@ -66,7 +45,7 @@ describe('oclif evolve', () => {
       await runCommand(EvolveCommand, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
     }
   });

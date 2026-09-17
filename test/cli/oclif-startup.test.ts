@@ -5,26 +5,14 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import DoctorCommand from '../../src/cli/commands/doctor.js';
 import InitCommand from '../../src/cli/commands/init.js';
-import { runCommand } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
+import { runCommand, type CommandRunError } from '../helpers/run-command.js';
+import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
 
 /**
  * 用一个保证不可达的 registry 模拟最坏情况。短路径不该触发 update check:
@@ -49,7 +37,7 @@ function hostileEnv(home: string): NodeJS.ProcessEnv {
 async function runShortPath(args: string[]): Promise<string> {
   const home = mkdtempSync(join(tmpdir(), 'omk-startup-short-'));
   try {
-    const { stdout } = await execFileAsync('node', [CLI, ...args], {
+    const { stdout } = await runCli(args, {
       env: hostileEnv(home),
       timeout: SHORT_PATH_TIMEOUT_MS,
     });
@@ -84,7 +72,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // legacy getCliLang 对不支持的 OMK_LANG 值 fallback to zh,oclif lang flag
     // 不应该把 env / 显式 flag 当 enum 校验。回归 PR #120 引入的 env+options 写法。
     const env = { ...process.env, OMK_LANG: 'en_US' };
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env });
+    const { stdout } = await runCli(['doctor', '--help'], { env });
     assert.ok(stdout.includes('\nUSAGE\n'), 'doctor --help should succeed under OMK_LANG=en_US, got: ' + stdout.slice(0, 200));
   });
 
@@ -110,7 +98,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
       await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       const out = e.stdout + e.stderr;
       assert.ok(/Doctor could not complete:/.test(out), `OMK_LANG=en should yield English error, got:\n${out.slice(0, 300)}`);
       assert.ok(!/健康检查未完成：/.test(out), `OMK_LANG=en should not leak zh error:\n${out.slice(0, 300)}`);
@@ -123,30 +111,25 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
       await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test', '--lang', 'zh'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       const out = e.stdout + e.stderr;
       assert.ok(/健康检查未完成：/.test(out), `--lang zh should override OMK_LANG=en, got:\n${out.slice(0, 300)}`);
     }
   });
 
   it(`[BREAKING-CLI] 顶层 --lang 不再 dispatch 到 subcommand(normalizeArgv 已删)`, async () => {
-    // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command。
+    // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command(exit 1)。
     // legacy `omk --lang en doctor /tmp/x` 形态需改 `omk doctor --lang en /tmp/x`。
-    try {
-      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      const out = e.stdout + e.stderr;
-      assert.ok(/command --lang not found/.test(out), `expected oclif unknown command on top-level --lang, got:\n${out.slice(0, 300)}`);
-    }
+    const { stdout, stderr } = await runCliFailing(['--lang', 'en', 'doctor', '/tmp/no-such-skill'], 1);
+    const out = stdout + stderr;
+    assert.ok(/command --lang not found/.test(out), `expected oclif unknown command on top-level --lang, got:\n${out.slice(0, 300)}`);
   });
 
   it(`[BREAKING-CLI] 顶层 --lang en <cmd> --help 退化到 root help`, async () => {
     // 等价 case:`omk --lang en doctor --help` 之前(normalizeArgv 存在时)走
     // doctor 英文 help;PR #124 删后 oclif 拿 --lang 作 unknown command,
     // 走 root help fallback(oclif 默认行为)。锁住这条 BREAKING,防新人以为是 bug。
-    const { stdout } = await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '--help']);
+    const { stdout } = await runCli(['--lang', 'en', 'doctor', '--help']);
     assert.ok(/OMK — Observe\. Measure\. Know\./.test(stdout), `expected root help fallback, got:\n${stdout.slice(0, 300)}`);
     // root help USAGE 是 `$ omk [COMMAND]`,doctor --help 的 USAGE 是 `$ omk doctor [TARGET]`;
     // root help 还有 COMMANDS section 列所有 cmd,doctor --help 没有。用 USAGE 特征区分。
@@ -158,7 +141,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     const home = mkdtempSync(join(tmpdir(), 'omk-startup-diagnostic-'));
     const flag = `--${'x'.repeat(90_000)}DIAGNOSTIC_END`;
     try {
-      const child = spawn(process.execPath, [CLI, 'eval', flag, '--lang', 'en'], {
+      const child = spawn(process.execPath, [CLI_ENTRY, 'eval', flag, '--lang', 'en'], {
         cwd: home,
         env: { ...hostileEnv(home), OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1', NO_COLOR: '1' },
         stdio: ['ignore', 'ignore', 'pipe'],

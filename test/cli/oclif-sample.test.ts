@@ -9,27 +9,13 @@ import { describe, it, vi, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import SampleCommand from '../../src/cli/commands/sample.js';
-import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
+import { runCliFailing } from '../helpers/cli-process.js';
 
 const generateSamples = vi.hoisted(() => vi.fn());
 vi.mock('../../src/eval-workflows/sample-generation/generator.js', () => ({ generateSamples }));
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
-
 
 describe('oclif sample', () => {
   it('命令参数接入共享生成用例并保存到 skill 私有样本路径', async () => {
@@ -95,7 +81,7 @@ describe('oclif sample', () => {
       await runCommand(SampleCommand, ['--lang', 'zh']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.ok(
         e.stderr.includes('请指定 skill 文件路径'),
@@ -109,7 +95,7 @@ describe('oclif sample', () => {
       await runCommand(SampleCommand, ['--batch', '--append']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.ok(
         e.stderr.includes('--append') && e.stderr.includes('单 skill'),
@@ -123,7 +109,7 @@ describe('oclif sample', () => {
       await runCommand(SampleCommand, ['skills/demo/SKILL.md', '--skill', 'audit']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.ok(
         e.stderr.includes('--skill') && e.stderr.includes('--from-traces'),
@@ -133,15 +119,9 @@ describe('oclif sample', () => {
   });
 
   it('非法 --count --lang en → exit 2 + English parser error', async () => {
-    try {
-      // flag 的双语解析文案在模块加载时绑定，必须用新进程验证启动 argv。
-      await execFileAsync(process.execPath, [CLI, 'sample', 'skills/demo/SKILL.md', '--count', 'abc', '--lang', 'en'], { timeout: 10000 });
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /--count[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${e.stderr}`);
-    }
+    // flag 的双语解析文案在模块加载时绑定，必须用新进程验证启动 argv。
+    const { stderr } = await runCliFailing(['sample', 'skills/demo/SKILL.md', '--count', 'abc', '--lang', 'en'], 2, { timeout: 10000 });
+    assert.match(stderr, /--count[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${stderr}`);
   });
 
   it('--batch + 不存在的 skill-dir → exit 1', async () => {
@@ -149,7 +129,7 @@ describe('oclif sample', () => {
       await runCommand(SampleCommand, ['--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 1, `expected exit 1, got ${e.code}:\n${e.stderr}`);
     }
   });

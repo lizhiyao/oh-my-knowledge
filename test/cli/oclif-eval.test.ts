@@ -4,24 +4,18 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
 import EvalGold from '../../src/cli/commands/eval/gold/index.js';
 import EvalGoldCompare from '../../src/cli/commands/eval/gold/compare.js';
 import EvalGoldInit from '../../src/cli/commands/eval/gold/init.js';
 import EvalGoldValidate from '../../src/cli/commands/eval/gold/validate.js';
-import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
+import { PROJECT_ROOT, runCliFailing } from '../helpers/cli-process.js';
 
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
 const CUSTOM_EXECUTOR = join(
   PROJECT_ROOT,
@@ -30,13 +24,6 @@ const CUSTOM_EXECUTOR = join(
   'custom-executor',
   'core-fixture-executor.sh',
 );
-
-interface ExecError extends Error {
-  code?: number;
-  stdout: string;
-  stderr: string;
-}
-
 
 function assertHelpLanguage(output: string, description: string, language: 'zh' | 'en'): void {
   const [zh, en] = description.split('\n');
@@ -49,7 +36,7 @@ function assertHelpLanguage(output: string, description: string, language: 'zh' 
 describe('oclif eval', () => {
   it('rejects the removed --no-cache option before execution', async () => {
     await assert.rejects(() => runCommand(EvalCommand, ['--no-cache']), (error: unknown) => {
-      const err = error as ExecError;
+      const err = error as CommandRunError;
       assert.equal(err.code, 2);
       assert.match(err.stderr, /no-cache/);
       return true;
@@ -116,7 +103,7 @@ describe('oclif eval', () => {
       await runCommand(EvalGoldValidate, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}`);
     }
   });
@@ -131,7 +118,7 @@ describe('oclif eval', () => {
         await assert.rejects(
           () => runCommand(EvalGoldValidate, [dir, '--lang', lang]),
           (err: unknown) => {
-            const e = err as ExecError;
+            const e = err as CommandRunError;
             assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
             assert.ok(e.stderr.includes(expected), e.stderr);
             return true;
@@ -147,7 +134,7 @@ describe('oclif eval', () => {
     await assert.rejects(
       () => runCommand(EvalGoldCompare, ['missing-run']),
       (err: unknown) => {
-        const error = err as ExecError;
+        const error = err as CommandRunError;
         assert.equal(error.code, 2);
         assert.match(error.stderr, /gold-dir/);
         return true;
@@ -178,7 +165,7 @@ describe('oclif eval', () => {
             '--lang', lang,
           ]),
           (err: unknown) => {
-            const e = err as ExecError;
+            const e = err as CommandRunError;
             assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
             assert.ok(e.stderr.includes(expected), e.stderr);
             assert.doesNotMatch(e.stderr, /旧|legacy/i);
@@ -192,14 +179,8 @@ describe('oclif eval', () => {
   });
 
   it('eval 非法 --repeat --lang en → exit 2 + English parser error', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'eval', '--repeat', 'abc', '--lang', 'en']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /--repeat[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${e.stderr}`);
-    }
+    const { stderr } = await runCliFailing(['eval', '--repeat', 'abc', '--lang', 'en'], 2);
+    assert.match(stderr, /--repeat[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${stderr}`);
   });
 
   it('管道中的大 Series JSON 在发布门禁退出前完整写出', async () => {
@@ -210,19 +191,18 @@ describe('oclif eval', () => {
         await mkdir(join(dir, 'skills', name), { recursive: true });
         await writeFile(join(dir, 'skills', name, 'SKILL.md'), `# ${name}\nAnswer directly.\n`);
       }
-      const result = await execFileAsync(process.execPath, [
-        CLI, 'eval', '--samples', EXAMPLE_SAMPLES, '--skill-dir', join(dir, 'skills'),
+      const { stdout } = await runCliFailing([
+        'eval', '--samples', EXAMPLE_SAMPLES, '--skill-dir', join(dir, 'skills'),
         '--control', 'control', '--treatment', 'treatment', '--executor', CUSTOM_EXECUTOR, '--model', 'fixture-model',
         '--no-judge', '--repeat', '2', '--bootstrap-samples', '100',
         '--skip-doctor', '--skip-connectivity', '--no-serve',
         '--output-dir', join(dir, 'reports'), '--lang', 'zh',
-      ], {
+      ], 1, {
         cwd: dir, maxBuffer: 4 * 1024 * 1024,
         env: { ...process.env, HOME: dir, OMK_HOME: join(dir, 'omk-home') },
-      }).then((value) => ({ ...value, code: 0 }), (error: ExecError) => error);
-      assert.equal(result.code, 1);
-      assert.ok(result.stdout.length > 65_536);
-      const output = JSON.parse(result.stdout);
+      });
+      assert.ok(stdout.length > 65_536);
+      const output = JSON.parse(stdout);
       assert.equal(output.projectionKind, 'core-cli-series-outcome');
       assert.equal(output.coverage.completed, 2);
       assert.equal(output.coverage.failed, 0);
@@ -249,7 +229,7 @@ describe('oclif eval', () => {
           '--lang', 'zh',
         ], { cwd: dir }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
           assert.ok(e.stderr.includes('未找到评测用例'), e.stderr);
           assert.ok(e.stderr.includes('下一步'), e.stderr);
@@ -287,7 +267,7 @@ describe('oclif eval', () => {
           '--lang', 'zh',
         ], { cwd: dir, env: { OMK_TREES_DIR: blockedTreesPath } }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
           assert.ok(e.stderr.includes('knowledge artifact 的评测隔离副本'), e.stderr);
           assert.ok(e.stderr.includes('EEXIST'), e.stderr);
@@ -322,7 +302,7 @@ describe('oclif eval', () => {
           '--lang', 'zh',
         ], { cwd: dir }),
         (err: unknown) => {
-          const e = err as ExecError;
+          const e = err as CommandRunError;
           assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
           assert.ok(e.stderr.includes('<skill>/.omk/eval-samples.json'), e.stderr);
           assert.ok(e.stderr.includes('omk sample skills/review'), e.stderr);
@@ -340,7 +320,7 @@ describe('oclif eval', () => {
       await runCommand(EvalGoldCompare, ['report-1', '--bootstrap-samples', '10']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.match(e.stderr, /--bootstrap-samples(?=[\s\S]*整数)(?=[\s\S]*100)/, `stderr missing zh parser error:\n${e.stderr}`);
     }
@@ -351,7 +331,7 @@ describe('oclif eval', () => {
       await runCommand(EvalGoldCompare, ['report-1', '--minimum-alpha', '1.1']);
       assert.fail('expected non-zero exit');
     } catch (err) {
-      const e = err as ExecError;
+      const e = err as CommandRunError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.match(
         e.stderr,
@@ -362,18 +342,12 @@ describe('oclif eval', () => {
   });
 
   it('bare eval gold exits 1 and renders the selected language with subcommands', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'eval', 'gold', '--lang', 'en']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
-      const out = e.stdout + e.stderr;
-      assertHelpLanguage(out, EvalGold.description, 'en');
-      assert.ok(
-        /eval gold (init|validate|compare)/i.test(out),
-        `expected usage hint listing sub-sub commands, got:\n${out.slice(0, 200)}`,
-      );
-    }
+    const { stdout, stderr } = await runCliFailing(['eval', 'gold', '--lang', 'en'], 1);
+    const out = stdout + stderr;
+    assertHelpLanguage(out, EvalGold.description, 'en');
+    assert.ok(
+      /eval gold (init|validate|compare)/i.test(out),
+      `expected usage hint listing sub-sub commands, got:\n${out.slice(0, 200)}`,
+    );
   });
 });

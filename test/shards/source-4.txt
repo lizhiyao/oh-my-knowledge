@@ -49,6 +49,7 @@ test/examples/catalog.test.ts
 test/executor.test.ts
 test/executors/codex-cli-args.test.ts
 test/executors/preflight/dependencies.test.ts
+test/helpers/cli-process.test.ts
 test/helpers/run-command.test.ts
 test/knowledge-artifacts/authoring/core-evolver-snapshot.test.ts
 test/knowledge-artifacts/doctor/index.test.ts

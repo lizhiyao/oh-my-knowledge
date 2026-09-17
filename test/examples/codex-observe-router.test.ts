@@ -1,23 +1,19 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
+import { join } from 'node:path';
 import { describe, it } from 'vitest';
+import { CLI_ENTRY, PROJECT_ROOT, runCli } from '../helpers/cli-process.js';
 
-const execFileAsync = promisify(execFile);
-const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
-const verifyScript = join(projectRoot, 'examples/codex-observe-router/verify.mjs');
-const cli = join(projectRoot, 'dist/cli/index.js');
+const verifyScript = join(PROJECT_ROOT, 'examples/codex-observe-router/verify.mjs');
 
 describe('Codex observe router reproducible case', () => {
   it('round-trips a sanitized parent/subagent rollout through the inbox', async () => {
-    const { stdout } = await execFileAsync(process.execPath, [verifyScript], {
-      cwd: projectRoot,
+    const { stdout } = await runCli([], {
+      entry: verifyScript,
+      cwd: PROJECT_ROOT,
       env: {
         ...process.env,
-        OMK_BIN: cli,
-        OMK_PACKAGE_ROOT: projectRoot,
+        OMK_BIN: CLI_ENTRY,
+        OMK_PACKAGE_ROOT: PROJECT_ROOT,
       },
     });
     const summary = JSON.parse(stdout) as {
