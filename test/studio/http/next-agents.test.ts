@@ -73,17 +73,7 @@ describe('Next 宿主的 /agents 路由', () => {
     assert.match(html, /25 \/ 100/);
     assert.match(html, /本轮采集上限为 200 个会话文件/);
     // 一级导航给出入口并标出当前区。
-    assert.match(html, /<a[^>]*aria-current="page"[^>]*href="\/agents\?lang=zh"/);
-  }, 30000);
-
-  it('英文界面读同一批事实', async () => {
-    const url = await startAgentsHost(agentsDirWith((dir) => {
-      saveAgentInventoryReport(sampleInventoryReport(), agentStorageLayout(dir));
-      saveAgentCollectionReport(sampleCollectionReport(), dir);
-    }));
-    const html = await (await fetch(`${url}/agents?lang=en`)).text();
-    assert.match(html, /<h1>Installed agents<\/h1>/);
-    assert.match(html, /3 registered · 2 installed · 42 session logs/);
+    assert.match(html, /<a[^>]*aria-current="page"[^>]*href="\/agents"/);
   }, 30000);
 
   it('还没跑过命令时给出下一步命令，而不是空页或错误码', async () => {

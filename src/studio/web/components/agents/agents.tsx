@@ -11,7 +11,7 @@ import type {
 import type { AgentsPage } from '../../../http/pages/agents-page';
 import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { displayBytes, displayTime } from '../../../application/display/format';
-import { langSuffix, type Language } from '../layout/shell';
+import type { Language } from '../layout/shell';
 
 const COPY = {
   zh: {
@@ -313,7 +313,7 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
           <li key={entry.command}><Typography.Text code>{entry.command}</Typography.Text> {entry.text}</li>
         ))}
       </ul>
-      <Link href={`${KNOWLEDGE_CANDIDATES_PATH}${langSuffix(lang)}`}>{c.candidatesLink}</Link>
+      <Link href={KNOWLEDGE_CANDIDATES_PATH}>{c.candidatesLink}</Link>
     </div>
   );
 }
