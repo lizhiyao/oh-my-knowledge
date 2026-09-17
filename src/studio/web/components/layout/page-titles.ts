@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import type { Metadata } from 'next';
 import type { Language } from './shell';
 
@@ -23,8 +24,12 @@ const TITLES = {
 
 type StudioPageTitle = keyof typeof TITLES;
 
-export function studioLang(searchParams: { lang?: string }): Language {
-  return searchParams.lang === 'en' ? 'en' : 'zh';
+/**
+ * 请求语言的唯一读取点：语言是本机设置（宿主按请求注入 `x-omk-studio-lang`），不进地址。
+ * 取不到注入（如脱离宿主的直接渲染）按内置默认 zh，与宿主的损坏降级同侧。
+ */
+export async function requestStudioLang(): Promise<Language> {
+  return (await headers()).get('x-omk-studio-lang') === 'en' ? 'en' : 'zh';
 }
 
 /**

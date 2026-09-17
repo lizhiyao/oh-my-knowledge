@@ -209,6 +209,32 @@ describe('Studio 页面地址的单一 owner 守门', () => {
   });
 
   /**
+   * 语言不进地址：渲染语言只看本机设置（`src/studio/README.md`），任何 `?lang=` 字面量或把 `lang`
+   * 塞进 `URLSearchParams` 都是旧口径回潮。文本级扫描故意连注释一起扫：注释里的写法示例同样会
+   * 被后来者复制。
+   */
+  it('页面地址不携带语言参数', () => {
+    const hits: string[] = [];
+    for (const file of listSourceFiles(STUDIO_DIR)) {
+      const text = readFileSync(file, 'utf8');
+      const lines = text.split('\n');
+      lines.forEach((line, index) => {
+        if (/[?&]lang=/.test(line) || /URLSearchParams\(\{[^}]*\blang\b/.test(line)) {
+          hits.push(`  ${displayRepoPath(file)}:${index + 1} ⇒ ${line.trim().slice(0, 80)}`);
+        }
+      });
+    }
+    if (hits.length > 0) {
+      throw new Error([
+        `语言参数出现在地址构造里（共 ${hits.length} 处）：`,
+        ...hits,
+        '',
+        '处理：语言由本机设置决定（requestStudioLang / x-omk-studio-lang），链接与重定向一律不带 lang。',
+      ].join('\n'));
+    }
+  });
+
+  /**
    * 第二道边界：地址常量只有一个 owner 还不够，识别地址这件事也得只有一个地方做。
    * `src/studio/README.md` 写明 `pages/` 的装载器负责「识别地址、装载证据、给出契约」，宿主只按
    * 路由组开关决定接不接管。宿主自己抄一遍前缀匹配时，装载器改了识别口径宿主不会跟着改——

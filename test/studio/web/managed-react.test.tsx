@@ -199,7 +199,7 @@ describe('受管决策史呈现', () => {
       decisions: [{ decisionKind: 'promote', actor: 'alice', decidedAt: '2026-03-06T00:00:00.000Z', contentHash: V2, runId: 'core-run-route' }],
     };
     const html = renderHistory(record, 'zh');
-    assert.match(html, /href="\/measure\/core-run-route\?lang=zh"/);
+    assert.match(html, /href="\/measure\/core-run-route"/);
     assert.doesNotMatch(html, /\/measure\/core-run-route\.report/);
   });
 

@@ -30,15 +30,15 @@ function render(tree: ReactElement, lang?: Language): string {
 const errorPage = createElement(ErrorPage, { reset: () => {} });
 
 describe('壳层回退页的语言', () => {
-  it('not-found 页在英文上下文里给出英文壳层、文案与带回语言参数的返回链接', () => {
+  it('not-found 页在英文上下文里给出英文壳层、文案与返回链接（地址不带语言参数）', () => {
     const en = render(createElement(NotFound), 'en');
     assert.ok(en.includes('Page not found'), en.slice(0, 300));
-    assert.ok(en.includes('href="/?lang=en">Back to Studio<'), en.slice(0, 300));
+    assert.ok(en.includes('href="/">Back to Studio<'), en.slice(0, 300));
     assert.ok(en.includes('aria-label="Studio primary navigation"'), '壳层语言必须一起切换');
     assert.ok(!en.includes('页面不存在') && !en.includes('返回 Studio 首页'), en.slice(0, 300));
 
     const zh = render(createElement(NotFound), 'zh');
-    assert.ok(zh.includes('href="/?lang=zh">返回 Studio 首页<'), zh.slice(0, 300));
+    assert.ok(zh.includes('href="/">返回 Studio 首页<'), zh.slice(0, 300));
     assert.ok(zh.includes('aria-label="Studio 一级导航"'));
     assert.ok(!zh.includes('Page not found') && !zh.includes('Back to Studio'));
   });
@@ -48,8 +48,8 @@ describe('壳层回退页的语言', () => {
       StudioNavigationProvider,
       { value: false, children: createElement(StudioLanguageProvider, { value: 'zh', children: createElement(NotFound) }) },
     ));
-    assert.ok(measureOnly.includes('href="/measure?lang=zh">返回 Studio 首页<'), measureOnly.slice(0, 400));
-    assert.ok(!measureOnly.includes('href="/?lang=zh"'), '不给裁掉页面组的宿主指回 /');
+    assert.ok(measureOnly.includes('href="/measure">返回 Studio 首页<'), measureOnly.slice(0, 400));
+    assert.ok(!measureOnly.includes('href="/"'), '不给裁掉页面组的宿主指回 /');
     assert.ok(!measureOnly.includes('aria-label="Studio 一级导航"'), '同一份宿主开关也不渲染导航');
   });
 

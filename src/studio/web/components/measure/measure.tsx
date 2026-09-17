@@ -29,7 +29,7 @@ import {
 } from '../../../application/measure/core-run-format';
 import { displayTime, formatDuration } from '../../../application/display/format';
 import { tagStatus } from '../tag-color';
-import { langSuffix, type Language } from '../layout/shell';
+import { type Language } from '../layout/shell';
 import { runReportHref } from '../run-report-link';
 
 const COPY = {
@@ -144,7 +144,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
     <Table<CoreStudioRunCard> className="studio-table" size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? <span>{copy.emptyBefore}<Code value={copy.emptyCommand}/>{copy.emptyAfter}</span> : copy.noMatch}/> }} columns={[
-      { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id, lang)} className="measure-id" title={id}>{id}</Link> },
+      { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id)} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
       { title: copy.evidenceStatus, width: 130, render: (_, run) => <Status value={run.status.evidenceStatus} lang={lang}/> },
       { title: copy.conclusionStatus, width: 140, render: (_, run) => <Status value={run.status.conclusionStatus} lang={lang}/> },
@@ -321,7 +321,6 @@ function Lineage({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) 
 
 export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang: Language }) {
   const copy = COPY[lang];
-  const suffix = langSuffix(lang);
   const { run, stages } = detail;
   // Tabs／Collapse 默认只服务端渲染展开的那一块，证据必须整份在文档里，不靠点开才拉。
   const scopePanel = <div className="measure-tab">
@@ -333,7 +332,7 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
     </div>
   </div>;
   return <>
-    <div className="measure-heading"><div><Link href={`${MEASURE_INDEX_PATH}${suffix}`}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
+    <div className="measure-heading"><div><Link href={MEASURE_INDEX_PATH}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
     <Axes run={run} copy={copy} lang={lang}/>
     <Alert className="measure-hint" type="info" showIcon title={copy.hint}/>
     <section className="measure-section measure-decision"><h2>{copy.decision}</h2><DecisionPanel decision={detail.decision} copy={copy} lang={lang}/></section>

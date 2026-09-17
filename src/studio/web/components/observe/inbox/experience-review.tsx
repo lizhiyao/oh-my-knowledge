@@ -10,7 +10,7 @@ import {
 } from '../../../../../observability/inbox/review-semantics';
 import { ownRecordValue } from '../../../../../shared/record-count';
 import { type Language } from '../../layout/shell';
-import { conversationHref } from '../../conversation-link';
+import { conversationPath } from '../../conversation-link';
 import { tagStatus } from '../../tag-color';
 import { displayTime } from '../../../../application/display/format';
 import { SessionReviewActions } from './review-actions';
@@ -68,7 +68,7 @@ export function ExperienceReviewSection({
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {session.sourceKind}
               </Typography.Text>
-              <Link href={conversationHref(session.threadId, lang)} style={{ fontSize: 12 }}>
+              <Link href={conversationPath(session.threadId)} style={{ fontSize: 12 }}>
                 {zh ? '查看对话任务' : 'Conversation tasks'}
               </Link>
             </Space>

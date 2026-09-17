@@ -47,13 +47,13 @@ describe('Observe Next production routes', () => {
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       // 标签标题按页面与对象给出：会话详情带上 threadId，列表只给页面名。
       assert.ok(html.includes(path === '/observe' ? '<title>OMK · 会话列表</title>' : '<title>OMK · 会话详情 · thread</title>'), `title of ${path}`);
-      assert.match(html,/<a(?=[^>]*href="\/observe\?lang=zh")(?=[^>]*aria-current="page")/u);
+      assert.match(html,/<a(?=[^>]*href="\/observe")(?=[^>]*aria-current="page")/u);
       if(path==='/observe') {
         assert.match(html,/项目与会话/);
         assert.match(html,/全部对话/);
         assert.match(html,/未归属项目/);
-        // 静态链接显式带当前语言：裸地址的语言由本机全局设置决定。
-        assert.match(html,/href="\/observe\/conversations\/empty-thread\?lang=zh"/);
+        // 语言不进地址：站内链接一律不带 lang，渲染语言由本机设置决定。
+        assert.match(html,/href="\/observe\/conversations\/empty-thread"/);
         assert.doesNotMatch(html,/查看最近轨迹|查看实时轨迹/);
       }
     }
@@ -86,7 +86,7 @@ describe('Observe Next production routes', () => {
       const response=await fetch(url+path);assert.equal(response.status,503);assert.equal(await response.text(),'studio_source_unavailable');
     }
   },15000);
-  it('本机语言偏好只接管没有 lang 的地址，单次显式选择不被偏好覆盖',async()=>{
+  it('语言只看本机设置：地址里的 lang 不生效，页面链接不带语言参数',async()=>{
     const root=await mkdtemp(join(tmpdir(),'omk-observe-lang-'));roots.push(root);
     const conversation={threadId:'thread',sourceThreadId:'thread',sourceKind:'codex' as const,title:'语言偏好样例',relatedSkillNames:[],tasks:[]};
     const catalog:ConversationCatalog={
@@ -99,22 +99,50 @@ describe('Observe Next production routes', () => {
     const previous=process.env.OMK_LANG;
     try{
       process.env.OMK_LANG='en';
-      // 裸地址按本机偏好走，一次跳转就把偏好写进地址，之后的页面内链接都显式带着它。
+      // 裸地址直接按本机偏好渲染。
       const bare=await fetch(`${url}/observe`,{redirect:'manual'});
-      assert.equal(bare.status,302);
-      assert.equal(bare.headers.get('location'),'/observe?lang=en');
-      const english=await (await fetch(`${url}/observe?lang=en`,{redirect:'manual'})).text();
-      assert.match(english,/<a(?=[^>]*href="\/observe\?lang=en")(?=[^>]*aria-current="page")/u);
-      // 显式中文是单次选择：偏好不得改写它，页面里的链接也不得把它丢回裸地址。
-      const chinese=await fetch(`${url}/observe?lang=zh`,{redirect:'manual'});
-      assert.equal(chinese.status,200);
-      const html=await chinese.text();
-      assert.match(html,/<a(?=[^>]*href="\/observe\?lang=zh")(?=[^>]*aria-current="page")/u);
-      assert.match(html,/href="\/observe\/conversations\/thread\?lang=zh"/);
-      // 偏好只接管页面地址：JSON 接口一旦被重定向，浏览器的 POST 会退化成 GET。
-      assert.notEqual((await fetch(`${url}/api/settings`,{redirect:'manual'})).status,302,'JSON 接口不参与页面语言重定向');
+      assert.equal(bare.status,200);
+      const english=await bare.text();
+      assert.match(english,/<html lang="en"/);
+      assert.match(english,/<a(?=[^>]*href="\/observe")(?=[^>]*aria-current="page")/u);
+      assert.doesNotMatch(english,/href="[^"]*[?&]lang=/,'页面内链接不带语言参数');
+      // 地址里的 lang 既不生效也不被清理：不重定向，页面仍按本机设置渲染。
+      const legacy=await fetch(`${url}/observe?lang=zh&view=recent`,{redirect:'manual'});
+      assert.equal(legacy.status,200);
+      assert.match(await legacy.text(),/<html lang="en"/);
+      // JSON 接口同样不受语言参数影响。
+      assert.equal((await fetch(`${url}/api/settings?lang=en`,{redirect:'manual'})).status,200,'JSON 接口不受语言参数影响');
     }finally{
       if(previous===undefined)delete process.env.OMK_LANG;else process.env.OMK_LANG=previous;
+    }
+  },20000);
+  it('切换语言 = 写设置文件，之后页面按新设置渲染，地址不含语言参数',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'omk-observe-switch-'));roots.push(root);
+    const home=await mkdtemp(join(tmpdir(),'omk-home-switch-'));roots.push(home);
+    const conversation={threadId:'thread',sourceThreadId:'thread',sourceKind:'codex' as const,title:'语言切换样例',relatedSkillNames:[],tasks:[]};
+    const catalog:ConversationCatalog={
+      async listConversations(){return {conversations:[conversation],totalTurnCount:0,totalToolCallCount:0,totalToolFailureCount:0};},
+      async getConversation(id){return id==='thread'?conversation:undefined;},
+      async loadTaskTrajectory(){return undefined;},
+    };
+    const server=createNextStudioServer({port:0,observationsDir:root,conversationCatalog:catalog});servers.push(server);
+    const url=await server.start();
+    const previousHome=process.env.OMK_HOME;
+    const previousLang=process.env.OMK_LANG;
+    try{
+      process.env.OMK_HOME=home;delete process.env.OMK_LANG;
+      assert.match(await (await fetch(`${url}/observe`)).text(),/<html lang="zh-CN"/);
+      const current=await (await fetch(`${url}/api/settings`)).json() as {revision:string;settings:Record<string,unknown>};
+      const saved=await fetch(`${url}/api/settings`,{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({revision:current.revision,settings:{...current.settings,language:'en'}})});
+      assert.equal(saved.status,200);
+      const english=await (await fetch(`${url}/observe`)).text();
+      assert.match(english,/<html lang="en"/);
+      assert.match(english,/Conversations/);
+      assert.doesNotMatch(english,/href="[^"]*[?&]lang=/,'切换后页面链接仍不带语言参数');
+    }finally{
+      if(previousHome===undefined)delete process.env.OMK_HOME;else process.env.OMK_HOME=previousHome;
+      if(previousLang===undefined)delete process.env.OMK_LANG;else process.env.OMK_LANG=previousLang;
     }
   },20000);
   it('设置文件损坏时页面退回内置语言默认，损坏由设置接口报告',async()=>{
@@ -133,7 +161,7 @@ describe('Observe Next production routes', () => {
       // 语言只是偏好：读不到就按内置默认渲染，不能让整个 Studio 变成 500（诊断入口也在同一个页面壳里）。
       const page=await fetch(`${url}/observe`,{redirect:'manual'});
       assert.equal(page.status,200);
-      assert.match(await page.text(),/<a(?=[^>]*href="\/observe\?lang=zh")(?=[^>]*aria-current="page")/u);
+      assert.match(await page.text(),/<a(?=[^>]*href="\/observe")(?=[^>]*aria-current="page")/u);
       const api=await fetch(`${url}/api/settings`);
       assert.equal(api.status,400);
       assert.equal((await api.json() as {error?:string}).error,'settings_unavailable');

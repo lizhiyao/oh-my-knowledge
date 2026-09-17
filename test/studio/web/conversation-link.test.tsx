@@ -1,13 +1,12 @@
 import { expect, it } from 'vitest';
-import { conversationHref, conversationPath, taskHref } from '../../../src/studio/web/components/conversation-link.js';
+import { conversationPath } from '../../../src/studio/web/components/conversation-link.js';
 
 it('encodes every identifier segment so a thread id with a slash still opens', () => {
-  expect(conversationHref('thread/a b', 'zh')).toBe('/observe/conversations/thread%2Fa%20b?lang=zh');
-  expect(taskHref('thread/a', 'turn?b', 'en')).toBe('/observe/conversations/thread%2Fa/tasks/turn%3Fb?lang=en');
+  expect(conversationPath('thread/a b')).toBe('/observe/conversations/thread%2Fa%20b');
+  expect(conversationPath('thread/a', 'turn?b')).toBe('/observe/conversations/thread%2Fa/tasks/turn%3Fb');
 });
 
-it('always carries an explicit language, because a bare address follows the local preference', () => {
-  expect(conversationHref('thread', 'en')).toBe('/observe/conversations/thread?lang=en');
+it('never carries a language parameter, because language comes from local settings', () => {
   expect(conversationPath('thread')).toBe('/observe/conversations/thread');
 });
 

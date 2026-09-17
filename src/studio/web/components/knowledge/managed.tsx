@@ -11,7 +11,7 @@ import type {
 } from '../../../application/knowledge/managed-format';
 import type { ManagedPage } from '../../../http/pages/managed-page';
 import { MANAGED_DETAIL_PREFIX, MANAGED_LIST_PATH } from '../../../http/page-paths';
-import { langSuffix, type Language } from '../layout/shell';
+import { type Language } from '../layout/shell';
 import { runReportHref } from '../run-report-link';
 import { managedTagColor } from '../tag-color';
 import { displayTime } from '../../../application/display/format';
@@ -110,7 +110,7 @@ function gapAreaText(areas: { signalType: ManagedGapSignalType }[], zh: boolean)
   return areas.map((area) => GAP_SIGNAL_LABELS[area.signalType][zh ? 0 : 1]).join(zh ? '、' : ', ');
 }
 
-function EventLine({ event, zh, lang }: { event: ManagedTimelineEvent; zh: boolean; lang: Language }) {
+function EventLine({ event, zh }: { event: ManagedTimelineEvent; zh: boolean }) {
   const badge = event.eventKind === 'observe' ? OBSERVE_BADGES[event.observeBadge ?? 'healthy'] : undefined;
   const gapAreas = event.gapAreas ?? [];
   return <div className="managed-event">
@@ -130,7 +130,7 @@ function EventLine({ event, zh, lang }: { event: ManagedTimelineEvent; zh: boole
       {event.observeBadge === 'production_gap' && (
         <span className="managed-event-hint">{zh ? '建议补对应用例后重跑 omk eval' : 'add matching samples, then re-run omk eval'}</span>
       )}
-      {event.runId && <Link href={runReportHref(event.runId, lang)}>{zh ? '查看报告 →' : 'report →'}</Link>}
+      {event.runId && <Link href={runReportHref(event.runId)}>{zh ? '查看报告 →' : 'report →'}</Link>}
       {event.reason && <em>{zh ? `「${event.reason}」` : `"${event.reason}"`}</em>}
     </div>
   </div>;
@@ -175,7 +175,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
             title: zh ? '名称' : 'Name',
             dataIndex: ['row', 'name'],
             ellipsis: { showTitle: false },
-            render: (name: string, item) => <Link href={`${MANAGED_DETAIL_PREFIX}${encodeURIComponent(item.row.id)}${langSuffix(lang)}`} title={name}>{name}</Link>,
+            render: (name: string, item) => <Link href={`${MANAGED_DETAIL_PREFIX}${encodeURIComponent(item.row.id)}`} title={name}>{name}</Link>,
           },
           { title: zh ? '类型' : 'Kind', dataIndex: ['row', 'kind'], width: 110 },
           {
@@ -226,14 +226,14 @@ export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, 
     }];
     return [...header, ...segment.events.map((event) => ({
       color: TONE_FILL[eventTone(event)],
-      content: <EventLine event={event} zh={zh} lang={lang} />,
+      content: <EventLine event={event} zh={zh} />,
     }))];
   });
   return <>
     <KnowledgeSectionNav active="managed" lang={lang} />
     <div className="measure-heading">
       <div>
-        <Link href={`${MANAGED_LIST_PATH}${langSuffix(lang)}`}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
+        <Link href={MANAGED_LIST_PATH}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
         <h1 title={page.name}>{page.name}</h1>
         <p>{[page.artifactKind, page.sourceKind, shortHash(page.contentHash), `${zh ? '纳管于' : 'since'} ${displayTime(page.installedAt)}`].join(' · ')}</p>
       </div>

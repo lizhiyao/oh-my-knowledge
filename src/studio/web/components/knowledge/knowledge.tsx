@@ -11,7 +11,7 @@ import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/co
 import { projectObserveBadge } from '../../../application/knowledge/managed-format';
 import { displayTime, formatPercent } from '../../../application/display/format';
 import type { SkillObserveSnapshot } from '../../../view-models/knowledge/skill-index';
-import { langSuffix, type Language } from '../layout/shell';
+import { type Language } from '../layout/shell';
 import { tagStatus } from '../tag-color';
 import { KnowledgeSectionNav } from './section-nav';
 
@@ -181,7 +181,7 @@ function GraphStructure({ graph, run, zh }: { graph: DoctorGraphView; run: Skill
   </div>;
 }
 
-function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, graph, zh, suffix }: {
+function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, graph, zh }: {
   run: SkillDoctorSnapshot;
   skillName: string;
   isCurrent: boolean;
@@ -190,9 +190,8 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
   sampling: DoctorSamplingView | null;
   graph: DoctorGraphView | null;
   zh: boolean;
-  suffix: string;
 }) {
-  const detailHref = `${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(skillName)}${suffix}`;
+  const detailHref = `${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(skillName)}`;
   return <>
     {sampling && <SamplingAlert sampling={sampling} zh={zh}/>}
     <Space className="knowledge-summary" wrap>
@@ -214,7 +213,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
           return <li key={item.reportId}>
             {item.reportId === run.reportId
               ? <Text>{displayTime(item.timestamp)}</Text>
-              : <Link href={`${detailHref}${detailHref.includes('?') ? '&' : '?'}doctorRun=${encodeURIComponent(item.reportId)}`}>{displayTime(item.timestamp)}</Link>}
+              : <Link href={`${detailHref}?doctorRun=${encodeURIComponent(item.reportId)}`}>{displayTime(item.timestamp)}</Link>}
             {counts}
           </li>;
         })}
@@ -227,12 +226,11 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
  * 生产观测面板。导出只为可测：Tabs 的 SSR 只输出激活面板，而观测是第二个面板，不单独渲染就
  * 断言不到里面的跨区链接（与 `observeGapText` 导出的原因相同）。
  */
-export function ObservePanel({ observe, toolFailureRate, skillName, zh, suffix }: {
+export function ObservePanel({ observe, toolFailureRate, skillName, zh }: {
   observe: SkillObserveSnapshot;
   toolFailureRate: number | null;
   skillName: string;
   zh: boolean;
-  suffix: string;
 }) {
   return <>
     <Descriptions bordered size="small" column={2} items={[
@@ -241,13 +239,12 @@ export function ObservePanel({ observe, toolFailureRate, skillName, zh, suffix }
       { key: 'segments', label: zh ? '片段数' : 'Segments', children: observe.segmentCount },
       { key: 'confidence', label: zh ? '可信度' : 'Confidence', children: observe.confidence === 'underpowered' ? (zh ? '样本不足，仅供参考' : 'Underpowered; indicative only') : observe.confidence },
     ]}/>
-    <div className="knowledge-observe-link"><Link href={`${SKILL_TREND_PREFIX}${encodeURIComponent(skillName)}${suffix}`}>{zh ? '查看该 Skill 的趋势 →' : 'Trend for this skill →'}</Link></div>
+    <div className="knowledge-observe-link"><Link href={`${SKILL_TREND_PREFIX}${encodeURIComponent(skillName)}`}>{zh ? '查看该 Skill 的趋势 →' : 'Trend for this skill →'}</Link></div>
   </>;
 }
 
 export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Language }) {
   const zh = lang === 'zh';
-  const suffix = langSuffix(lang);
   const [query, setQuery] = useState('');
   if (page.pageKind === 'index') {
     const rows = page.rows.filter((row) => row.skillName.toLowerCase().includes(query.toLowerCase()));
@@ -255,11 +252,11 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
 
       <KnowledgeSectionNav active="skills" lang={lang}/>
 
-      <div><Link href={`${KNOWLEDGE_CANDIDATES_PATH}${suffix}`}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</Link></div>
+      <div><Link href={KNOWLEDGE_CANDIDATES_PATH}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</Link></div>
 
       <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识对象' : 'Search knowledge'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识对象' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
       <Table<KnowledgeRow> className="studio-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 1000 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无体检或生产观测数据。运行 ' : 'No doctor or observe data yet. Run '}<code>omk doctor</code>{zh ? ' 体检知识载体，或 ' : ' to audit an artifact, or '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 采集生产表现。' : ' to collect production evidence.'}</span>}/> }} columns={[
-        { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}${suffix}`} title={name}>{name}</Link> },
+        { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}`} title={name}>{name}</Link> },
         { title: zh ? '健康' : 'Health', width: 140, render: (_, row) => <Health row={row}/> },
         { title: zh ? '健康体检' : 'Doctor', width: 140, render: (_, { doctor }) => doctor ? `${doctor.passCount}✓ ${doctor.warnCount}⚠ ${doctor.failCount}✗` : '—' },
         { title: zh ? '观测缺口' : 'Observe gap', width: 192, render: (_, { observe }) => observe ? observeGapText(observe, zh, true) : '—' },
@@ -273,7 +270,7 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
   const activeDoctor = doctorRun ?? doctor;
   return <>
     <KnowledgeSectionNav active="skills" lang={lang}/>
-    <div className="measure-heading"><div><Link href={`${KNOWLEDGE_INDEX_PATH}${suffix}`}>{zh ? '返回知识列表' : 'Back to knowledge'}</Link><h1 title={row.skillName}>{row.skillName}</h1></div><Health row={row}/></div>
+    <div className="measure-heading"><div><Link href={KNOWLEDGE_INDEX_PATH}>{zh ? '返回知识列表' : 'Back to knowledge'}</Link><h1 title={row.skillName}>{row.skillName}</h1></div><Health row={row}/></div>
     <Tabs className="studio-detail-tabs" items={[
       { key: 'doctor', label: zh ? '健康体检' : 'Doctor', children: activeDoctor ? <>
         <DoctorPanel
@@ -285,11 +282,10 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
           sampling={projectDoctorSampling(activeDoctor.results)}
           graph={graph}
           zh={zh}
-          suffix={suffix}
         />
       </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚未运行体检。运行 ' : 'Not run yet. Run '}<code>{'omk doctor <skill-path>'}</code>{zh ? ' 生成。' : ' to generate one.'}</span>}/> },
       { key: 'observe', label: zh ? '生产观测' : 'Observe', children: observe
-        ? <ObservePanel observe={observe} toolFailureRate={toolFailureRate} skillName={row.skillName} zh={zh} suffix={suffix}/>
+        ? <ObservePanel observe={observe} toolFailureRate={toolFailureRate} skillName={row.skillName} zh={zh}/>
         : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无生产观测。运行 ' : 'No production observations yet. Run '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 生成。' : ' to generate one.'}</span>}/> },
       { key: 'findings', label: `${zh ? '待优化项' : 'Findings'} (${insights.length})`, children: <Table size="small" rowKey="id" pagination={false} dataSource={insights} locale={{ emptyText: zh ? '当前没有活跃问题。' : 'No active findings.' }} columns={[{ title: zh ? '问题' : 'Finding', dataIndex: 'title', width: 240 }, { title: zh ? '说明' : 'Description', dataIndex: 'description' }, { title: zh ? '受众' : 'Audience', dataIndex: 'audience', width: 100 }, { title: zh ? '严重度' : 'Severity', dataIndex: 'severity', width: 100, render: (value: string) => <Tag color={value === 'high' ? 'error' : value === 'medium' ? 'warning' : 'default'}>{value}</Tag> }]}/> },
     ]}/>

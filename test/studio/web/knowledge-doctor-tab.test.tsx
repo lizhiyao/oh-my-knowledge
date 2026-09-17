@@ -214,7 +214,7 @@ describe('体检详情的逐条规则', () => {
 });
 
 describe('体检历史与下钻', () => {
-  it('当前一次留作文本，其余给 `?doctorRun=` 链接并保留 lang', () => {
+  it('当前一次留作文本，其余给 `?doctorRun=` 链接（地址不含语言参数）', () => {
     const zh = detailPage([OLDER, CURRENT], 'zh');
     assert.match(zh, /体检历史/);
     assert.equal((zh.match(/doctorRun=doctor-older/g) ?? []).length, 1);
@@ -223,7 +223,7 @@ describe('体检历史与下钻', () => {
 
     const en = detailPage([OLDER, CURRENT], 'en');
     assert.match(en, /Doctor history/);
-    assert.match(en, /\?lang=en&amp;doctorRun=doctor-older/);
+    assert.match(en, /\?doctorRun=doctor-older/);
   });
 
   it('只有一轮体检时不给出历史区', () => {

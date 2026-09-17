@@ -5,7 +5,7 @@ import { Button, Space, Tabs, Tag, Typography } from 'antd';
 import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
 import { OBSERVE_INBOX_PATH } from '../../../../http/page-paths';
 import { DEFAULT_OBSERVE_INBOX_TAB, type ObserveInboxTab } from '../../../../http/page-params';
-import { langSuffix, type Language } from '../../layout/shell';
+import { type Language } from '../../layout/shell';
 import { mirrorTabToUrl } from '../../tab-url';
 import { SignalSection } from './signals';
 import { SkillBoard } from './skill-board';
@@ -50,7 +50,7 @@ export function InboxView({
           {model.activeSkill ? (
             <>
               <Tag color="processing">{`${zh ? '已按 Skill 过滤' : 'Filtered by skill'}: ${model.activeSkill}`}</Tag>
-              <Link href={`${OBSERVE_INBOX_PATH}${langSuffix(lang)}`} style={{ fontSize: 12 }}>
+              <Link href={OBSERVE_INBOX_PATH} style={{ fontSize: 12 }}>
                 {zh ? '查看全量' : 'View all'}
               </Link>
             </>

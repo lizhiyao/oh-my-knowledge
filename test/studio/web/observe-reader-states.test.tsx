@@ -43,12 +43,12 @@ describe('单轮退路', () => {
     const html = body(turn({ sourceTurnId: 'src/9' }, { unavailable: true }));
     assert.match(html, /这一轮的原始记录读不出来，其余轮次仍可阅读。/);
     assert.match(html, />查看执行详情</);
-    assert.match(html, /href="\/observe\/conversations\/thread%2Fa\/tasks\/src%2F9\?lang=zh"/);
+    assert.match(html, /href="\/observe\/conversations\/thread%2Fa\/tasks\/src%2F9"/);
     assert.doesNotMatch(html, /没有对话消息/);
   });
 
   it('没有来源轮次时退回用本轮定位，深链不因为缺字段而指向别处', () => {
-    assert.match(body(turn({}, { unavailable: true })), /href="\/observe\/conversations\/thread%2Fa\/tasks\/turn%2F1\?lang=zh"/);
+    assert.match(body(turn({}, { unavailable: true })), /href="\/observe\/conversations\/thread%2Fa\/tasks\/turn%2F1"/);
   });
 
   it('按角色渲染消息，外部文本保持转义', () => {
