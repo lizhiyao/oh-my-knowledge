@@ -115,8 +115,13 @@ test/knowledge-artifacts/sources/artifact-resolution.test.ts
 test/knowledge-artifacts/sources/content-hash.test.ts
 test/knowledge/application.test.ts
 test/knowledge/persistence.test.ts
+test/knowledge/trace-evidence-formats.test.ts
 test/mcp/principal.test.ts
 test/measurement-governance/prompt-registry-freeze.test.ts
+test/observability/agents/collect.test.ts
+test/observability/agents/detect.test.ts
+test/observability/agents/registry.test.ts
+test/observability/agents/smoke.test.ts
 test/observability/analysis/hedging-classifier.test.ts
 test/observability/inbox/experience-report.test.ts
 test/observability/inbox/metric-semantics.test.ts
@@ -135,6 +140,7 @@ test/observability/skill-health/report.test.ts
 test/observability/soft-standards.test.ts
 test/observability/trace/ingestion.test.ts
 test/observability/trace/message-classification.test.ts
+test/observability/trace/qoder-adapter.test.ts
 test/observability/trace/session-index.test.ts
 test/observability/trace/tool-search.test.ts
 test/omk-layout/observation-layout.test.ts
@@ -149,6 +155,7 @@ test/shared/keyed-mutex.test.ts
 test/shared/record-count.test.ts
 test/shared/shell-quote.test.ts
 test/shared/timestamp.test.ts
+test/studio/application/agents-view.test.ts
 test/studio/application/assess-health.test.ts
 test/studio/application/candidate-status.test.ts
 test/studio/application/conversation-label.test.ts
@@ -173,6 +180,7 @@ test/studio/http/next-studio.test.ts
 test/studio/http/observation-routes-boundary.test.ts
 test/studio/http/page-params.test.ts
 test/studio/http/router.test.ts
+test/studio/web/agents-view-render.test.tsx
 test/studio/web/conversation-link.test.tsx
 test/studio/web/knowledge-candidates-start.test.tsx
 test/studio/web/knowledge-display.test.tsx

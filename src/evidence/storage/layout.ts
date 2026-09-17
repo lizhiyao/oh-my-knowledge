@@ -16,6 +16,9 @@ export interface OmkLayout {
   readonly observeReviewStatePath: string;
   readonly observeDraftsDir: string;
   readonly observeArchiveDir: string;
+  readonly observeAgentsDir: string;
+  readonly observeAgentsInventoryPath: string;
+  readonly observeAgentsTracesDir: string;
   readonly governanceDir: string;
   readonly managedDir: string;
   readonly backupsDir: string;
@@ -58,6 +61,9 @@ function layout(root: string): OmkLayout {
     observeReviewStatePath: join(observeInboxDir, 'review-state.json'),
     observeDraftsDir: join(observeDir, 'drafts'),
     observeArchiveDir: join(observeDir, 'archive'),
+    observeAgentsDir: join(observeDir, 'agents'),
+    observeAgentsInventoryPath: join(observeDir, 'agents', 'inventory.json'),
+    observeAgentsTracesDir: join(observeDir, 'agents', 'traces'),
     governanceDir,
     managedDir: join(governanceDir, 'managed'),
     backupsDir,

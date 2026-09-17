@@ -1,4 +1,4 @@
-/** Trace source loading and parsing for Claude / Codex / OpenClaw JSONL and generic markdown logs. */
+/** Trace source loading and parsing for Claude / Codex / Qoder / OpenClaw JSONL and generic markdown logs. */
 
 import { createHash } from 'node:crypto';
 import {
@@ -17,6 +17,10 @@ import {
   isCodexJsonl,
   parseCodexSessionFile,
 } from './adapters/codex/trace.js';
+import {
+  isQoderJsonl,
+  parseQoderSessionFile,
+} from './adapters/qoder/trace.js';
 import {
   extractMarkdownLogSkill,
   isClaudeBuiltinCommand,
@@ -233,8 +237,16 @@ const JSONL_TRACE_ADAPTERS: readonly JsonlTraceAdapter[] = [
     parse: parseOpenClawSessionFile,
   },
   {
+    // Qoder transcripts reuse the Claude Code record vocabulary (`user` /
+    // `assistant` + `sessionId` + `message`), so this entry has to win the
+    // tie, and the Claude entry below has to give Qoder up.
+    sourceKind: 'qoder',
+    matches: isQoderJsonl,
+    parse: parseQoderSessionFile,
+  },
+  {
     sourceKind: 'claude',
-    matches: isClaudeJsonl,
+    matches: (records) => !isQoderJsonl(records) && isClaudeJsonl(records),
     parse: parseClaudeSessionFile,
   },
 ];
@@ -248,6 +260,25 @@ function parseTraceFile(filePath: string): ParsedTraceFile {
     sessions: [],
     ingestion: emptyTraceIngestionSummary(),
   };
+}
+
+export interface DetectedJsonlTrace {
+  sourceKind: JsonlTraceAdapter['sourceKind'];
+  session: TraceSession;
+}
+
+/**
+ * 用与文件加载完全同源的判定归因一批内存中的 JSONL 记录。
+ * 零个或多个适配器命中时返回 undefined：身份有歧义就不能静默归给某个来源。
+ */
+export function detectJsonlTraceSource(
+  filePath: string,
+  records: Array<CcRecord | undefined>,
+): DetectedJsonlTrace | undefined {
+  const parsed = records.filter((record): record is CcRecord => Boolean(record));
+  const matching = JSONL_TRACE_ADAPTERS.filter((adapter) => adapter.matches(parsed));
+  if (matching.length !== 1) return undefined;
+  return { sourceKind: matching[0].sourceKind, session: matching[0].parse(filePath, records) };
 }
 
 function withStandaloneTraceMetadata(session: TraceSession): TraceSession {

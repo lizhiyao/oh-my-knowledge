@@ -32,7 +32,7 @@ const OWNER_FILE = join(STUDIO_DIR, 'http', 'page-paths.ts');
 const APP_DIR = join(STUDIO_DIR, 'web', 'app');
 const SKIPPED_DIRS = new Set(['.next', 'node_modules', 'dist', 'coverage']);
 /** 页面根之外的地址（`/api/**`、`/`）由各自的机制拥有，不在本门禁里。 */
-const PAGE_ROOTS = ['observe', 'measure', 'knowledge'] as const;
+const PAGE_ROOTS = ['observe', 'measure', 'knowledge', 'agents'] as const;
 const PAGE_ADDRESS = new RegExp(`^/(?:${PAGE_ROOTS.join('|')})(?:/.*)?$`);
 
 interface Literal {
@@ -255,7 +255,7 @@ describe('Studio 页面地址的单一 owner 守门', () => {
     const pagesDir = join(STUDIO_DIR, 'http', 'pages');
     const loaders = readdirSync(pagesDir).filter((name) => name.endsWith('-page.ts')).sort();
     expect(loaders, '装载器数量变了，这条门禁需要重新核对覆盖面').toEqual([
-      'health-page.ts', 'inbox-page.ts', 'knowledge-page.ts', 'managed-page.ts', 'measure-page.ts', 'observe-page.ts',
+      'agents-page.ts', 'health-page.ts', 'inbox-page.ts', 'knowledge-page.ts', 'managed-page.ts', 'measure-page.ts', 'observe-page.ts',
     ]);
     for (const loader of loaders) {
       expect(readFileSync(join(pagesDir, loader), 'utf8'), `${loader} 没有导出地址识别谓词`).toMatch(/export function is\w+Path\(/u);

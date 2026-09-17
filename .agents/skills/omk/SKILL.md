@@ -4,7 +4,7 @@ description: |
   OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。观测真实表现，受控测量 prompt / RAG / skill / agent / workflow 的版本差异，判断改动是否有效、版本能否发布，并支持自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"知识反馈"、"feedback"、"omk"。
 user-invocable: true
-argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
+argument-hint: "<agents|doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
 ---
 
 # OMK — Observe. Measure. Know.

@@ -67,6 +67,16 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 补回其中任何一项都要先确定它在七个子视图里的归属，不把旧页面的筛选栏原样搬到新信息架构上。
 
+## 本机 Agent 页面盘点（React）
+
+`GET /agents` 由 Next 渲染（`web/app/agents/page.tsx`，`force-dynamic`），组件在 `web/components/agents/`，数据由 `application/agents/agents-view.ts` 从 `omk agents` 落盘的两份报告读出：`inventory.json`（识别了哪些 Agent、它们的日志根与容量截断）与 `collection.json`（采集了哪些会话、归一化产物、事件数与未识别数、`limitations[]`）。默认读机器级 `~/.oh-my-knowledge/observe/agents`，`agentsDir` 可指向其它采集根目录。
+
+三条边界：
+
+- 页面只读盘上的报告，**不在装载时重新扫描这台机器**——识别与采集都由 CLI 显式触发，刷新页面不改变证据，也不会把用户主目录再遍历一遍。
+- 「从未跑过命令」与「报告读不动」是两种状态，分别呈现为可执行的下一步与坏的落盘路径；两者都不降级成空表格，也不投射成 503。空表格会被读成「本机没装任何 Agent」，那是假事实。
+- 页面不提供写操作：没有采集按钮，也没有提炼按钮。第 3 项的产物（实体与候选知识）仍落在知识存储里，由 `/knowledge/candidates` 呈现，本页只给到它的链接。
+
 ## 知识分区页面盘点（React）
 
 `/knowledge` 顶部分区导航（`web/components/knowledge/section-nav.tsx`）给三个入口：知识对象（体检 + 生产观测的聚合）、Skill 健康度与受管决策史。知识对象与受管决策史此前都是没有入边的孤岛，只能手打地址访问；补真实入口之后才删除对应的 HTML 渲染层，避免出现「旧渲染层已删、入口仍缺失」的悬空窗口。观测健康四页共用这条导航，页面地址仍留在 `/observe/health` 下——入口按信息归属合并，已发布的深链与收藏不跟着搬家。收件箱刻意不进任何分区导航：它受宿主开关控制，在 DSH 上是 404，静态链接会承诺宿主未必提供的能力。

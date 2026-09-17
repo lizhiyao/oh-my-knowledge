@@ -1,0 +1,570 @@
+import { afterEach, describe, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
+import { globalLayout, type GlobalOmkLayout } from '../../../src/evidence/storage/layout.js';
+import {
+  AGENT_TRACE_ARTIFACT_VERSION,
+  agentCollectionReportPath,
+  collectAgentLogs,
+  loadAgentCollectionReport,
+  type AgentTraceArtifact,
+  type CollectAgentLogsOptions,
+} from '../../../src/observability/agents/collect.js';
+import { detectAgentInventory, type DetectAgentInventoryOptions } from '../../../src/observability/agents/detect.js';
+import type {
+  AgentCollectionReport,
+  AgentInventoryReport,
+  CollectedSession,
+} from '../../../src/observability/agents/contracts.js';
+import { claudeTrace } from '../../helpers/claude-trace.js';
+
+/**
+ * 采集用例走真实 fs + 显式临时目录：既有 trace 解析器（loadTraceCorpus）只接受路径，
+ * 注入假端口会让「发现」与「解析」看到两个世界。因此这里全部用临时主目录与临时
+ * OMK 根，绝不允许用例写到 ~/.omk。
+ */
+
+const tempRoots: string[] = [];
+/** 被用例 chmod 000 的目录：清理前必须恢复权限，否则临时目录删不掉。 */
+const lockedDirs: string[] = [];
+
+interface Harness {
+  readonly root: string;
+  readonly home: string;
+  readonly binDir: string;
+  readonly layout: GlobalOmkLayout;
+  readonly detectOptions: DetectAgentInventoryOptions;
+  /** 往主目录里写一个会话文件；mtime 可控，用于「最新优先」与增量用例。 */
+  session(relativePath: string, content: string, mtimeMs?: number): string;
+}
+
+afterEach(() => {
+  // 成功与失败都要清干净：先恢复权限再删，被锁住的临时目录否则删不掉。
+  for (const dir of lockedDirs.splice(0, lockedDirs.length)) {
+    try {
+      chmodSync(dir, 0o755);
+    } catch {
+      // 目录已随临时根一起消失，没有需要恢复的东西。
+    }
+  }
+  for (const root of tempRoots.splice(0, tempRoots.length)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * 把一个目录变成读不了的日志根。以 root 身份跑用例时权限位不生效，
+ * 调用方必须先用 canLockDir() 判据跳过，否则断言的是内核而不是本模块。
+ */
+function lockDir(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  lockedDirs.push(dir);
+  chmodSync(dir, 0o000);
+  return dir;
+}
+
+function canLockDir(): boolean {
+  return typeof process.getuid === 'function' && process.getuid() !== 0;
+}
+
+function createHarness(): Harness {
+  const root = mkdtempSync(join(tmpdir(), 'omk-agents-collect-'));
+  tempRoots.push(root);
+  const home = join(root, 'home');
+  const binDir = join(root, 'bin');
+  mkdirSync(home, { recursive: true });
+  mkdirSync(binDir, { recursive: true });
+  const harness: Harness = {
+    root,
+    home,
+    binDir,
+    layout: globalLayout(join(root, 'omk')),
+    detectOptions: { homeDirectory: home, platform: 'darwin', pathDirectories: [binDir] },
+    session(relativePath: string, content: string, mtimeMs?: number) {
+      const path = join(home, relativePath);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+      if (mtimeMs !== undefined) utimesSync(path, new Date(mtimeMs), new Date(mtimeMs));
+      return path;
+    },
+  };
+  // 安装状态目录：detect 只 stat，不执行任何东西。
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  mkdirSync(join(home, '.codex'), { recursive: true });
+  return harness;
+}
+
+function collect(
+  harness: Harness,
+  options: Omit<CollectAgentLogsOptions, 'layout' | 'detect'> & { report?: AgentInventoryReport } = {},
+): AgentCollectionReport {
+  const { report, ...rest } = options;
+  return collectAgentLogs(report, {
+    ...rest,
+    layout: harness.layout,
+    detect: report === undefined ? harness.detectOptions : undefined,
+  });
+}
+
+function claudeSession(sessionId: string, prompt: string): string {
+  return claudeTrace(sessionId)
+    .userText(prompt)
+    .assistantText('已经看完，结论在下面。')
+    .toJsonl();
+}
+
+/** 一条最小可被判定的 codex rollout：首条 session_meta 是 codex 适配器的入口判据。 */
+function codexSession(sessionId: string): string {
+  return [
+    {
+      type: 'session_meta',
+      payload: { id: sessionId, session_id: sessionId, timestamp: '2026-05-18T09:00:00.000Z', cwd: '/repo-a' },
+    },
+    {
+      type: 'response_item',
+      payload: { type: 'function_call', name: 'shell', arguments: '{"command":"ls"}', call_id: 'c1' },
+    },
+    {
+      type: 'response_item',
+      payload: { type: 'function_call_output', call_id: 'c1', output: 'AGENTS.md\nsrc\n' },
+    },
+  ].map((record) => JSON.stringify(record)).join('\n');
+}
+
+function agentOf(report: AgentCollectionReport, agentId: string) {
+  const entry = report.agents.find((candidate) => candidate.agentId === agentId);
+  assert.ok(entry, `报告里应当有 ${agentId}`);
+  return entry;
+}
+
+function sessionFor(report: AgentCollectionReport, sourcePath: string): CollectedSession {
+  const session = report.sessions.find((entry) => entry.sourcePath === sourcePath);
+  assert.ok(session, `报告里应当有 ${sourcePath} 的会话条目`);
+  return session;
+}
+
+function digestOf(path: string): string {
+  return `sha256:${createHash('sha256').update(readFileSync(path)).digest('hex')}`;
+}
+
+function artifactFile(harness: Harness, session: CollectedSession): string {
+  assert.ok(session.artifactPath.startsWith('traces/'), 'artifactPath 必须是 OMK 侧相对路径');
+  return join(harness.layout.observeAgentsDir, session.artifactPath);
+}
+
+function listFiles(root: string): string[] {
+  if (!existsSync(root)) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(root)) {
+    const path = join(root, name);
+    if (statSync(path).isDirectory()) out.push(...listFiles(path));
+    else out.push(path);
+  }
+  return out.sort();
+}
+
+function seedClaudeAndCodex(harness: Harness): { claudeA: string; claudeB: string; codexA: string } {
+  const claudeA = harness.session(
+    '.claude/projects/-repo-a/session-a.jsonl',
+    claudeSession('sess-a', '解释这个仓库的分层'),
+    Date.parse('2026-05-18T09:00:00.000Z'),
+  );
+  const claudeB = harness.session(
+    '.claude/projects/-repo-b/session-b.jsonl',
+    claudeSession('sess-b', '帮我修一个测试'),
+    Date.parse('2026-05-18T10:00:00.000Z'),
+  );
+  const codexA = harness.session(
+    '.codex/sessions/2026-05-18/rollout-a.jsonl',
+    codexSession('cx-a'),
+    Date.parse('2026-05-17T09:00:00.000Z'),
+  );
+  return { claudeA, claudeB, codexA };
+}
+
+describe('collectAgentLogs 产物投影', () => {
+  it('把已支持格式的日志写成归一化 Trace IR 产物，并保留原始路径', () => {
+    const harness = createHarness();
+    const { claudeA, claudeB, codexA } = seedClaudeAndCodex(harness);
+    const report = collect(harness);
+
+    assert.equal(report.schemaVersion, 'agent-collection-v1');
+    assert.equal(report.outputDir, harness.layout.observeAgentsDir);
+    assert.deepEqual(report.limitations, [], '干净场景不应编造 limitations');
+    assert.equal(report.summary.discoveredCount, 3);
+    assert.equal(report.summary.collectedCount, 3);
+    assert.equal(report.summary.skippedCount, 0);
+    assert.equal(report.summary.failedCount, 0);
+    assert.equal(report.sessions.length, 3);
+    assert.deepEqual(agentOf(report, 'claude-code').logRoots.map((root) => [
+      root.rootId, root.discoveredCount, root.collectedCount,
+    ]), [['claude-projects', 2, 2]]);
+    assert.deepEqual(agentOf(report, 'codex').logRoots.map((root) => root.rootId), ['codex-sessions', 'codex-archived-sessions']);
+
+    for (const [sourcePath, kind, runId] of [
+      [claudeA, 'claude', 'sess-a'],
+      [claudeB, 'claude', 'sess-b'],
+      [codexA, 'codex', 'cx-a'],
+    ] as const) {
+      const session = sessionFor(report, sourcePath);
+      assert.equal(session.sourceKind, kind);
+      assert.equal(session.runId, runId);
+      assert.ok(session.traceId.startsWith('trace:'));
+      assert.equal(session.contentDigest, digestOf(sourcePath), '摘要必须是文件内容的 sha256');
+      assert.ok(session.eventCount > 0);
+      assert.match(artifactFile(harness, session), /trace_[0-9a-f]{32}\.json$/);
+
+      const artifact = JSON.parse(readFileSync(artifactFile(harness, session), 'utf-8')) as AgentTraceArtifact;
+      assert.equal(artifact.schemaVersion, AGENT_TRACE_ARTIFACT_VERSION);
+      assert.equal(artifact.sourcePath, sourcePath, '产物必须保留原始日志绝对路径');
+      assert.equal(artifact.contentDigest, session.contentDigest);
+      assert.equal(artifact.sourceKind, kind);
+      assert.equal(artifact.session.traceId, session.traceId);
+      assert.equal(artifact.session.sourcePath, sourcePath);
+      assert.ok(artifact.session.events.length === session.eventCount);
+    }
+
+    // 展示用标题只取第一条人类提问，不参与任何测量语义。
+    assert.equal(sessionFor(report, claudeA).title, '解释这个仓库的分层');
+
+    // 两份报告都落在 OMK 侧，且能被 load 回来。
+    assert.equal(existsSync(harness.layout.observeAgentsInventoryPath), true);
+    assert.equal(existsSync(agentCollectionReportPath(harness.layout.observeAgentsDir)), true);
+    assert.deepEqual(loadAgentCollectionReport(harness.layout.observeAgentsDir), report);
+    const inventory = JSON.parse(readFileSync(harness.layout.observeAgentsInventoryPath, 'utf-8')) as AgentInventoryReport;
+    assert.deepEqual(
+      inventory.agents.filter((agent) => agent.installed).map((agent) => agent.agentId).sort(),
+      ['claude-code', 'codex'],
+    );
+    assert.equal(report.inventoryGeneratedAt, inventory.generatedAt);
+    assert.equal(loadAgentCollectionReport(join(harness.root, 'nowhere')), undefined);
+  });
+
+  it('外部传入清单时按传入的清单采集，不重复探测', () => {
+    const harness = createHarness();
+    const { claudeA, claudeB, codexA } = seedClaudeAndCodex(harness);
+    const inventory = detectAgentInventory({ ...harness.detectOptions, now: () => '2026-05-18T00:00:00.000Z' });
+    // 清单之后现场又变了：codex 目录整体消失，采集只能照清单办事并如实说明。
+    rmSync(join(harness.home, '.codex'), { recursive: true, force: true });
+
+    const report = collect(harness, { report: inventory });
+    assert.equal(report.inventoryGeneratedAt, '2026-05-18T00:00:00.000Z');
+    assert.deepEqual(report.sessions.map((session) => session.sourcePath), [claudeA, claudeB]);
+    assert.equal(existsSync(codexA), false);
+    assert.deepEqual(
+      agentOf(report, 'codex').logRoots.map((root) => [root.rootId, root.discoveredCount]),
+      [['codex-sessions', 0], ['codex-archived-sessions', 0]],
+      '根不存在要如实记 0，但不编造成「扫描受限」',
+    );
+    assert.deepEqual(report.limitations, []);
+    assert.equal(loadAgentCollectionReport(harness.layout.observeAgentsDir)?.summary.collectedCount, 2);
+  });
+
+  it('第二次运行同一批日志采集 0 个新文件，删掉产物后又能补回', () => {
+    const harness = createHarness();
+    seedClaudeAndCodex(harness);
+    const first = collect(harness, { now: () => '2026-05-18T11:00:00.000Z' });
+    const artifactPaths = first.sessions.map((session) => artifactFile(harness, session));
+    const artifactBytes = artifactPaths.map((path) => readFileSync(path));
+
+    const second = collect(harness, { now: () => '2026-05-18T12:00:00.000Z' });
+    assert.equal(second.summary.collectedCount, 0, '增量运行不得重新解析未变化的文件');
+    assert.equal(second.summary.skippedCount, 3);
+    assert.equal(second.summary.failedCount, 0);
+    assert.deepEqual(second.sessions, first.sessions, '沿用条目必须与上一轮逐字相同');
+    assert.deepEqual(
+      artifactPaths.map((path) => readFileSync(path)),
+      artifactBytes,
+      '跳过时不得改写已产出的归一化产物',
+    );
+    assert.equal(second.generatedAt, '2026-05-18T12:00:00.000Z');
+    assert.deepEqual(second.limitations, []);
+
+    // 产物被删掉：mtime/size 未变也不能谎报「已采集」。
+    rmSync(artifactPaths[0], { force: true });
+    const third = collect(harness, { now: () => '2026-05-18T13:00:00.000Z' });
+    assert.equal(third.summary.collectedCount, 1);
+    assert.equal(third.summary.skippedCount, 2);
+    assert.equal(existsSync(artifactPaths[0]), true);
+    assert.deepEqual(third.sessions.map((session) => session.traceId).sort(), first.sessions.map((session) => session.traceId).sort());
+  });
+
+  it('源文件变化后按 mtime+size 增量重采，内容没变只刷新时间戳', () => {
+    const harness = createHarness();
+    const { claudeA } = seedClaudeAndCodex(harness);
+    const first = collect(harness);
+    const firstEntry = sessionFor(first, claudeA);
+
+    // mtime 变、size 也变：必须重采并换摘要。
+    writeFileSync(claudeA, `${readFileSync(claudeA, 'utf-8')}\n${JSON.stringify({
+      type: 'assistant',
+      uuid: 'a9',
+      parentUuid: 'a1',
+      sessionId: 'sess-a',
+      timestamp: '2026-05-18T11:11:11.000Z',
+      cwd: '/repo-a',
+      message: { role: 'assistant', content: [{ type: 'text', text: '补一段结论' }] },
+    })}`);
+    const second = collect(harness, { now: () => '2026-05-19T09:00:00.000Z' });
+    const secondEntry = sessionFor(second, claudeA);
+    assert.equal(second.summary.collectedCount, 1);
+    assert.equal(second.summary.skippedCount, 2);
+    assert.notEqual(secondEntry.contentDigest, firstEntry.contentDigest);
+    assert.equal(secondEntry.contentDigest, digestOf(claudeA));
+    assert.equal(secondEntry.sizeBytes, statSync(claudeA).size);
+
+    // 只碰 mtime、内容不变：沿用产物，但索引里的时间戳刷新到本轮口径。
+    const untouched = digestOf(claudeA);
+    utimesSync(claudeA, new Date(0), new Date(0));
+    const third = collect(harness, { now: () => '2026-05-20T09:00:00.000Z' });
+    assert.equal(third.summary.collectedCount, 0, '内容未变时不得重复解析');
+    assert.equal(third.summary.skippedCount, 3);
+    const thirdEntry = sessionFor(third, claudeA);
+    assert.equal(thirdEntry.contentDigest, untouched);
+    assert.equal(thirdEntry.modifiedAt, new Date(0).toISOString());
+  });
+
+  it('persist:false 只算不写，用于预览与自检', () => {
+    const harness = createHarness();
+    seedClaudeAndCodex(harness);
+    const report = collect(harness, { persist: false });
+    assert.equal(report.summary.collectedCount, 3);
+    assert.deepEqual(listFiles(harness.layout.root), [], '预览不得写出任何产物');
+  });
+});
+
+describe('collectAgentLogs 容量与失败口径', () => {
+  it('命中本轮文件上限时按最新优先摄取，并如实说明剩余', () => {
+    const harness = createHarness();
+    harness.session('.claude/projects/-repo-a/old.jsonl', claudeSession('old', '老问题'), Date.parse('2026-05-01T00:00:00.000Z'));
+    harness.session('.claude/projects/-repo-a/mid.jsonl', claudeSession('mid', '中等问题'), Date.parse('2026-05-02T00:00:00.000Z'));
+    const newest = harness.session('.claude/projects/-repo-a/new.jsonl', claudeSession('new', '最新问题'), Date.parse('2026-05-03T00:00:00.000Z'));
+
+    const first = collect(harness, { limits: { maxFilesPerRun: 1 } });
+    assert.equal(first.summary.discoveredCount, 3);
+    assert.equal(first.summary.collectedCount, 1);
+    assert.deepEqual(first.sessions.map((session) => session.sourcePath), [newest], '容量受限时要先拿到最近的证据');
+    assert.equal(
+      first.limitations.find((text) => text.includes('本轮采集上限')),
+      '本轮采集上限为 1 个会话文件、512 MiB，剩余 2 个待采文件留到后续增量运行。',
+    );
+
+    const second = collect(harness, { limits: { maxFilesPerRun: 5 } });
+    assert.equal(second.summary.collectedCount, 2, '后续运行继续补齐被推迟的文件');
+    assert.equal(second.summary.skippedCount, 1);
+    assert.equal(second.sessions.length, 3);
+    assert.deepEqual(second.limitations, []);
+  });
+
+  it('单个文件超过字节上限时本轮不碰它，单独记录而不是算作失败', () => {
+    const harness = createHarness();
+    const big = harness.session(
+      '.claude/projects/-repo-a/big.jsonl',
+      claudeSession('big', '很长的会话内容'.repeat(60)),
+      Date.parse('2026-05-03T00:00:00.000Z'),
+    );
+    const small = harness.session('.claude/projects/-repo-a/small.jsonl', claudeSession('small', '很小'), Date.parse('2026-05-02T00:00:00.000Z'));
+    const smallBytes = statSync(small).size;
+    assert.ok(statSync(big).size > smallBytes, '用例前提：big 必须明显大于 small');
+
+    const report = collect(harness, { limits: { maxFileBytes: smallBytes } });
+    assert.equal(report.summary.discoveredCount, 2);
+    assert.equal(report.summary.collectedCount, 1);
+    assert.equal(report.summary.failedCount, 0, '留到以后采集不算失败');
+    assert.deepEqual(report.sessions.map((session) => session.sourcePath), [small]);
+    assert.match(
+      report.limitations.join('\n'),
+      /1 个会话文件超过单文件上限 \d+ (?:字节|KiB|MiB)，本轮未采集。/,
+    );
+  });
+
+  it('命中单根扫描上限时计数只到上限为止，并声明不是全量', () => {
+    const harness = createHarness();
+    const kept: string[] = [];
+    for (const name of ['a', 'b', 'c']) {
+      const path = harness.session(
+        `.claude/projects/-repo-a/${name}.jsonl`,
+        claudeSession(name, `会话 ${name}`),
+        Date.parse('2026-05-03T00:00:00.000Z'),
+      );
+      if (name !== 'c') kept.push(path);
+    }
+
+    const report = collect(harness, { limits: { maxSessionFilesPerRoot: 2 } });
+    assert.equal(report.summary.discoveredCount, 2, '截断后的计数不得被当成全量');
+    assert.equal(agentOf(report, 'claude-code').logRoots[0].discoveredCount, 2);
+    assert.equal(report.summary.collectedCount, 2);
+    assert.deepEqual(report.sessions.map((session) => session.sourcePath), kept);
+    assert.equal(
+      report.limitations.find((text) => text.includes('命中单根扫描上限')),
+      '1 个日志根命中单根扫描上限（每根最多 2 个文件），报告里的计数是截断结果，不是全量。',
+    );
+  });
+
+  it.skipIf(!canLockDir())('日志根存在但读不了：计数归零并交代原因，不给半份数字', () => {
+    const harness = createHarness();
+    harness.session('.claude/projects/-repo-a/main.jsonl', claudeSession('main', '问题'), Date.parse('2026-05-03T00:00:00.000Z'));
+    const root = join(harness.home, '.claude/projects');
+    lockDir(root);
+
+    const report = collect(harness);
+    assert.equal(report.summary.discoveredCount, 0);
+    assert.equal(report.summary.collectedCount, 0);
+    assert.deepEqual(report.sessions, []);
+    assert.match(report.limitations.join('\n'), /个日志根存在但无法完整扫描/);
+    assert.deepEqual(agentOf(report, 'claude-code').logRoots.map((entry) => entry.discoveredCount), [0]);
+
+    const inventory = JSON.parse(readFileSync(harness.layout.observeAgentsInventoryPath, 'utf-8')) as AgentInventoryReport;
+    const claude = inventory.agents.find((agent) => agent.agentId === 'claude-code');
+    assert.ok(claude);
+    assert.deepEqual(claude.logRoots.map((entry) => [entry.exists, entry.readable, entry.sessionFileCount]), [[true, false, 0]]);
+  });
+
+  it('单个文件解析不出会话不中断整轮，失败进 limitations', () => {
+    const harness = createHarness();
+    const broken = harness.session('.claude/projects/-repo-a/broken.jsonl', '这不是 jsonl\n{{{ 半截 JSON', Date.parse('2026-05-03T00:00:00.000Z'));
+    const good = harness.session('.claude/projects/-repo-a/good.jsonl', claudeSession('good', '正常的会话'), Date.parse('2026-05-02T00:00:00.000Z'));
+
+    const report = collect(harness);
+    assert.equal(report.summary.collectedCount, 1);
+    assert.equal(report.summary.failedCount, 1);
+    assert.equal(sessionFor(report, good).sourceKind, 'claude');
+    assert.equal(report.sessions.some((session) => session.sourcePath === broken), false);
+    assert.match(report.limitations.join('\n'), /个会话文件解析后没有产生任何会话/);
+    assert.ok(report.limitations.join('\n').includes(broken), 'limitations 要能指回具体文件');
+    // 失败也被登记进 per-root 口径，Studio 侧才看得到「发现了但没拿到」。
+    assert.deepEqual(agentOf(report, 'claude-code').logRoots[0].failedCount, 1);
+  });
+
+  it('无法归类的 jsonl 按 unknown 归档，而不是被静默丢弃', () => {
+    const harness = createHarness();
+    const odd = harness.session(
+      '.claude/projects/-repo-a/odd.jsonl',
+      JSON.stringify({ type: 'custom_event', id: 'e-1', timestamp: '2026-05-18T09:00:00.000Z' }),
+      Date.parse('2026-05-03T00:00:00.000Z'),
+    );
+
+    const report = collect(harness);
+    const session = sessionFor(report, odd);
+    assert.equal(session.sourceKind, 'unknown');
+    assert.equal(session.unknownEventCount, 1);
+    assert.equal(session.eventCount, 1);
+    assert.equal(report.summary.collectedCount, 1);
+    assert.match(report.limitations.join('\n'), /按 unknown 格式归档/);
+  });
+
+  it('实际解析格式与日志根登记格式不一致时，按实际结果记录', () => {
+    const harness = createHarness();
+    const mislabeled = harness.session(
+      '.claude/projects/-repo-a/codex-shaped.jsonl',
+      codexSession('cx-mismatch'),
+      Date.parse('2026-05-03T00:00:00.000Z'),
+    );
+
+    const report = collect(harness);
+    const session = sessionFor(report, mislabeled);
+    assert.equal(session.sourceKind, 'codex', 'sourceKind 要说真话，不能跟着登记表写');
+    assert.equal(session.rootId, 'claude-projects', '产品与根归属仍然保留');
+    assert.match(report.limitations.join('\n'), /与日志根登记格式不一致/);
+    const artifact = JSON.parse(readFileSync(artifactFile(harness, session), 'utf-8')) as AgentTraceArtifact;
+    assert.equal(artifact.sourceKind, 'codex');
+  });
+
+  it('上一轮 collection.json 损坏时按全量重采并说明原因', () => {
+    const harness = createHarness();
+    seedClaudeAndCodex(harness);
+    assert.equal(collect(harness).summary.collectedCount, 3);
+
+    writeFileSync(agentCollectionReportPath(harness.layout.observeAgentsDir), '{ 坏掉的 json');
+    const report = collect(harness);
+    assert.equal(report.summary.collectedCount, 3, '索引读不了就退回全量，不能谎报跳过');
+    assert.equal(report.summary.skippedCount, 0);
+    assert.match(report.limitations.join('\n'), /无法解析，本轮按全量重新采集/);
+  });
+
+  it('历史条目对应的日志已被用户删掉时移出索引，但产物不删', () => {
+    const harness = createHarness();
+    const { claudeA, claudeB, codexA } = seedClaudeAndCodex(harness);
+    const first = collect(harness);
+    const kept = artifactFile(harness, sessionFor(first, claudeA));
+    rmSync(claudeB, { force: true });
+    rmSync(codexA, { force: true });
+
+    const second = collect(harness);
+    assert.deepEqual(second.sessions.map((session) => session.sourcePath), [claudeA]);
+    assert.equal(kept.startsWith(harness.layout.observeAgentsTracesDir), true);
+    assert.equal(existsSync(kept), true, '派生产物不随源文件删除而消失');
+    assert.equal(existsSync(artifactFile(harness, sessionFor(first, claudeB))), true, '不得删除既有证据');
+    assert.equal(
+      second.limitations.find((text) => text.includes('个历史条目对应的原始日志已不在本轮扫描结果里')),
+      '2 个历史条目对应的原始日志已不在本轮扫描结果里，已从索引移除；已产出的归一化产物不删除。',
+    );
+  });
+});
+
+describe('collectAgentLogs 证据边界', () => {
+  it('只读用户日志：采集前后主目录内容逐字节不变', () => {
+    const harness = createHarness();
+    seedClaudeAndCodex(harness);
+    const beforeHome = listFiles(harness.home).map((path) => ({
+      path,
+      bytes: readFileSync(path),
+      mtimeMs: statSync(path).mtimeMs,
+      size: statSync(path).size,
+    }));
+    const beforeOmk = listFiles(harness.layout.root);
+
+    const report = collect(harness);
+
+    const afterHome = listFiles(harness.home).map((path) => ({
+      path,
+      bytes: readFileSync(path),
+      mtimeMs: statSync(path).mtimeMs,
+      size: statSync(path).size,
+    }));
+    assert.deepEqual(afterHome, beforeHome, '原始日志必须一个字节、一个时间戳都不变');
+    assert.deepEqual(listFiles(harness.home).map((path) => relative(harness.home, path)).sort(), beforeHome.map((entry) => relative(harness.home, entry.path)).sort());
+    assert.deepEqual(listFiles(harness.root).filter((path) => !path.startsWith(harness.layout.root)), beforeHome.map((entry) => entry.path).sort());
+    assert.equal(beforeOmk.length, 0);
+
+    // 产物只进 OMK 侧目录，且原子写入不留临时文件。
+    const produced = listFiles(harness.layout.root);
+    assert.ok(produced.length >= 5);
+    for (const path of produced) {
+      assert.equal(path.startsWith(harness.layout.observeAgentsDir), true, `产物只能落在 ${harness.layout.observeAgentsDir}`);
+      assert.equal(path.endsWith('.tmp'), false, `原子写入不得残留临时文件：${path}`);
+      assert.match(path, /(?:collection|inventory)\.json$|\.json$/, `不应产生非 JSON 文件：${path}`);
+    }
+    assert.equal(report.sessions.length, 3);
+    for (const session of report.sessions) {
+      assert.equal(listFiles(harness.home).includes(session.sourcePath), true, session.sourcePath);
+    }
+  });
+
+  it('会话正文之外的东西一律不读：非会话扩展名与 node_modules 都不进产物', () => {
+    const harness = createHarness();
+    const kept = harness.session('.claude/projects/-repo-a/main.jsonl', claudeSession('main', '正经会话'), Date.parse('2026-05-03T00:00:00.000Z'));
+    harness.session('.claude/projects/-repo-a/notes.md', '# 这不是会话');
+    harness.session('.claude/projects/-repo-a/node_modules/pkg/vendor.jsonl', claudeSession('vendor', '依赖里的日志'));
+    harness.session('.claude/projects/-repo-a/.git/hooks.jsonl', claudeSession('hook', 'git 目录里的日志'));
+
+    const report = collect(harness);
+    assert.deepEqual(report.sessions.map((session) => session.sourcePath), [kept]);
+    assert.equal(report.summary.discoveredCount, 1);
+    assert.deepEqual(report.limitations, []);
+  });
+});

@@ -5,6 +5,7 @@ export const TraceSourceKindSchema = z.enum([
   'codex',
   'dsh',
   'openclaw',
+  'qoder',
   'markdown_log',
   'unknown',
 ]);

@@ -76,6 +76,7 @@ test/shared/file-lock.test.ts
 test/studio/application/cross-project-doctor-observe.test.ts
 test/studio/application/managed-format.test.ts
 test/studio/http/knowledge-candidates.test.ts
+test/studio/http/next-agents.test.ts
 test/studio/http/next-health.test.ts
 test/studio/http/next-inbox.test.ts
 test/studio/http/settings.test.ts

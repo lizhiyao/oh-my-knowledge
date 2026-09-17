@@ -36,3 +36,6 @@ export const MANAGED_DETAIL_PREFIX = '/knowledge/managed/';
 
 export const MEASURE_INDEX_PATH = '/measure';
 export const MEASURE_DETAIL_PREFIX = '/measure/';
+
+/** 本机 Agent 清单与日志采集报告（`omk agents` 的产物）的呈现页。 */
+export const AGENTS_INDEX_PATH = '/agents';

@@ -356,7 +356,41 @@ Every observation carries:
 - `messageWindow` — 3 messages before / trigger / 3 messages after, plus `resolutionAfter` (whether the agent recovered)
 - `evidence.{messageIndex,messageUuid,toolUseId}` — anchors for round-tripping back to the original jsonl
 
-Supported trace formats: Codex rollout JSONL (`.jsonl`), Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
+Supported trace formats: Codex rollout JSONL (`.jsonl`), Claude Code session JSONL (`.jsonl`), Qoder session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
+
+## `omk agents`
+
+```bash
+omk agents list                          # which coding agents are installed on this machine
+omk agents list --json                   # full inventory report for scripts
+omk agents collect --limit 40            # map their session logs into unified Trace IR
+omk agents extract --session <runId>     # draft candidate knowledge from one collected session
+```
+
+<!-- omk:cli:agents:flags:start -->
+
+**Flags:**
+
+```text
+  --dir <value>        Inventory and collection dir; defaults to the global ~/.oh-my-knowledge/observe/agents.
+  --executor <value>   extract: generation executor, using OMK runtime configuration.
+  --json               Print complete JSON instead of a readable summary.
+  --knowledge <value>  extract: knowledge workspace; defaults to the global knowledge dir.
+  --lang <value>       Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --limit <value>      Per-run session file cap for collect.
+  --model <value>      extract: generation model, using the configured model.
+  --session <value>    extract: a runId from the collection report.
+```
+
+For full descriptions: `omk agents --help`.
+
+<!-- omk:cli:agents:flags:end -->
+
+`list` reads the agent registry (Codex, Claude Code, CodeFuse, Qoder, OpenClaw, …) against your `PATH` and home directory and writes `inventory.json`. `collect` walks each installed agent's declared log roots, parses every session log into the same Trace IR that `observe` uses, and writes one normalized artifact per session under `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`, plus `collection.json` describing what was found, collected, skipped and failed. It is incremental: a file whose digest and mtime already appear in the previous report is skipped, so a second run normally collects nothing new. `extract` archives one collected session as an evidence snapshot and asks the configured executor for candidate knowledge — the same `entities` / `evidence` contract as `omk observe knowledge`.
+
+Two properties are deliberate. Detection never executes a detected binary — installation is inferred from the filesystem and `PATH` only, so an inventory run cannot trigger third-party code. Collection never moves, truncates or deletes a log you own: originals stay where they are and remain the evidence, while every derived artifact is written on the OMK side. Capacity ceilings (files per run, bytes per run, bytes per file) are enforced rather than guessed at; when a ceiling cuts a run short, the run stops cleanly and says so in `limitations`, so a truncated count is never presented as complete.
+
+The Agents page in `omk studio` (`/agents`) renders exactly these two reports: which agents are installed, where their logs live, how many sessions and events were collected, and which counts were cut short by a capacity ceiling. The page never rescans your machine and offers no collect or extract buttons — those stay commands you run, so refreshing a page cannot change the evidence.
 
 ## `omk evolve`
 
@@ -449,6 +483,7 @@ omk studio --no-open
 **Flags:**
 
 ```text
+  --agents-dir <value>        Agent inventory / collection reports dir (optional, default global ~/.oh-my-knowledge/observe/agents, where `omk agents` writes)
   --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe/health, falls back to global)
   --dev                       Dev mode: child process with hot reload
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctor, falls back to global)

@@ -1,4 +1,5 @@
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
+import { globalLayout } from '../../evidence/storage/layout.js';
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -6,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextHealthContext, nextInboxContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { nextAgentsContext, nextHealthContext, nextInboxContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
 import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { isMeasurePath, loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
@@ -16,6 +17,7 @@ import { isKnowledgeCandidatesPath, isKnowledgePath, loadKnowledgePage, type Kno
 import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-page.js';
 import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.js';
 import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
+import { isAgentsPath, loadAgentsPage, type AgentsPage } from './pages/agents-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
@@ -33,6 +35,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
   const inboxRoutes = (options.studioPages ?? true) && (options.observationInbox ?? true);
   const pageRoutes = options.studioPages ?? true;
   const resolveManagedRoot = resolveManagedRootOption(options.managedDir);
+  // Agent 清单与采集报告按机器级全局存放（`omk agents` 的默认落点），不随项目 cwd 分叉。
+  const agentsDir = options.agentsDir ?? globalLayout().observeAgentsDir;
   return createReportServer({ ...options, conversationCatalog, knowledgeQuery }, {
     async prepare() {
       const dir = fileURLToPath(new URL('../web/', import.meta.url));
@@ -54,8 +58,9 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const candidates = pageRoutes && isKnowledgeCandidatesPath(path);
       const managed = pageRoutes && isManagedPath(path);
       const health = pageRoutes && isHealthPath(path);
-      if (!measure && !observe && !knowledge && !candidates && !managed && !health && !path.startsWith('/_next/')) return false;
-      if ((measure || observe || knowledge || candidates || managed || health) && (request.method ?? 'GET') !== 'GET') {
+      const agents = pageRoutes && isAgentsPath(path);
+      if (!measure && !observe && !knowledge && !candidates && !managed && !health && !agents && !path.startsWith('/_next/')) return false;
+      if ((measure || observe || knowledge || candidates || managed || health || agents) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }
@@ -140,6 +145,10 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           response.end('conversation_or_task_not_found'); return true;
         }
       }
+      let agentsPage: AgentsPage | undefined;
+      // 与其它页面组不同：缺文件与坏文件在投影里就是两种可呈现的状态，不抛错也不降级成 503——
+      // 「还没跑过 omk agents」不是数据源故障，页面要给出下一步命令而不是纯文本错误。
+      if (agents) agentsPage = loadAgentsPage(agentsDir);
       let measurePage: MeasurePage | undefined;
       // 装载在 Next 开始流式输出之前完成，所以数据源故障仍是宿主的 503、缺页仍是宿主的 404；
       // 页面只拿装载好的事实，不再自己判第二次「记录不存在」（#902 §三）。
@@ -166,6 +175,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       else if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
       else if (managedPage) await nextManagedContext.run(managedPage, () => handler(request, response));
       else if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
+      else if (agentsPage) await nextAgentsContext.run(agentsPage, () => handler(request, response));
       else if (measurePage) await (measurePage.pageKind === 'index'
         ? nextMeasureRunsContext.run(measurePage.runs, () => handler(request, response))
         : nextMeasureRunContext.run(measurePage.detail, () => handler(request, response)));
