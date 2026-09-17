@@ -11,6 +11,7 @@ import {
   saveObservationInboxReport,
 } from '../../../src/observability/inbox/index.js';
 import { baseItem, businessActionTag, businessChannel } from './_helpers.js';
+import { claudeTrace } from '../../helpers/claude-trace.js';
 
 describe('observe inbox - trace ingestion', () => {
   it('skips unsupported experience reports without changing files or hiding current inbox v2', () => {
@@ -39,45 +40,11 @@ describe('observe inbox - trace ingestion', () => {
   it('builds hard_miss inbox item from Claude Code JSONL', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        entrypoint: 'cli',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find revenue schema', { extra: { entrypoint: 'cli' } })
+      .assistantToolUse('t1', 'Grep', { pattern: 'revenue_schema', path: '/repo-a' })
+      .userToolResult('t1', 'No matches found', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.kind, 'observe-inbox');
@@ -107,52 +74,11 @@ describe('observe inbox - trace ingestion', () => {
   it('persists and reloads a report when an unattributed prefix precedes the skill', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-general-prefix-'));
     const trace = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's-general-prefix',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: 'Please inspect the audit workflow.' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's-general-prefix',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{
-            type: 'tool_use',
-            id: 'read-skill',
-            name: 'Read',
-            input: { file_path: '/repo-a/.agents/skills/audit/SKILL.md' },
-          }],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's-general-prefix',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: 'read-skill',
-            content: '# Audit',
-            is_error: false,
-          }],
-        },
-      },
-    ];
-    writeFileSync(trace, records.map((record) => JSON.stringify(record)).join('\n'));
+    const records = claudeTrace('s-general-prefix')
+      .userText('Please inspect the audit workflow.')
+      .assistantToolUse('read-skill', 'Read', { file_path: '/repo-a/.agents/skills/audit/SKILL.md' })
+      .userToolResult('read-skill', '# Audit', { isError: false });
+    writeFileSync(trace, records.toJsonl());
 
     const report = buildObservationInboxReport(trace);
     assert.equal(report.meta.segmentCount, 1);
@@ -335,45 +261,13 @@ describe('observe inbox - trace ingestion', () => {
 
   it('keeps same skill split by concrete standalone trace sessions', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
-    const makeRecords = (suffix: string, minute: string): object[] => [
-      {
-        type: 'user',
-        uuid: `u-${suffix}`,
-        parentUuid: null,
-        sessionId: 'reused-session-id',
-        timestamp: `2026-05-01T00:${minute}:00.000Z`,
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例字段' },
-      },
-      {
-        type: 'assistant',
-        uuid: `a-${suffix}`,
-        parentUuid: `u-${suffix}`,
-        sessionId: 'reused-session-id',
-        timestamp: `2026-05-01T00:${minute}:01.000Z`,
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: `t-${suffix}`, name: 'Grep', input: { pattern: 'example_field', path: '/repo-a' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: `r-${suffix}`,
-        parentUuid: `a-${suffix}`,
-        sessionId: 'reused-session-id',
-        timestamp: `2026-05-01T00:${minute}:02.000Z`,
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: `t-${suffix}`, content: 'No matches found', is_error: false }],
-        },
-      },
-    ];
-    writeFileSync(join(dir, 'first.jsonl'), makeRecords('first', '00').map((r) => JSON.stringify(r)).join('\n'));
-    writeFileSync(join(dir, 'second.jsonl'), makeRecords('second', '10').map((r) => JSON.stringify(r)).join('\n'));
+    const makeRecords = (suffix: string, minute: string) =>
+      claudeTrace('reused-session-id', { startAt: `2026-05-01T00:${minute}:00.000Z` })
+        .userCommand('audit', '检查示例字段')
+        .assistantToolUse(`t-${suffix}`, 'Grep', { pattern: 'example_field', path: '/repo-a' })
+        .userToolResult(`t-${suffix}`, 'No matches found', { isError: false });
+    writeFileSync(join(dir, 'first.jsonl'), makeRecords('first', '00').toJsonl());
+    writeFileSync(join(dir, 'second.jsonl'), makeRecords('second', '10').toJsonl());
 
     const report = buildObservationInboxReport(dir);
     const experience = report.experience;
@@ -392,50 +286,19 @@ describe('observe inbox - trace ingestion', () => {
   it('keeps repeated_failure stronger than a single hard_miss', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-            { type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: 'revenue_table', path: '/repo-a' } },
-            { type: 'tool_use', id: 't3', name: 'Grep', input: { pattern: 'revenue_column', path: '/repo-a' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't3', content: 'No matches found', is_error: false },
-          ],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find revenue schema')
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+        { id: 't2', name: 'Grep', input: { pattern: 'revenue_table', path: '/repo-a' } },
+        { id: 't3', name: 'Grep', input: { pattern: 'revenue_column', path: '/repo-a' } },
+      ])
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: 'No matches found', isError: false },
+        { toolUseId: 't3', content: 'No matches found', isError: false },
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const repeated = report.items.find((item) => item.signalType === 'repeated_failure');
@@ -448,44 +311,11 @@ describe('observe inbox - trace ingestion', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
     const command = 'ls /repo/config/ 2>/dev/null; find /repo -maxdepth 2 -name "routes*" 2>/dev/null | grep -v node_modules';
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind routes' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Bash', input: { command } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find routes')
+      .assistantToolUse('t1', 'Bash', { command })
+      .userToolResult('t1', 'No matches found', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'bash_probe');
@@ -512,44 +342,11 @@ describe('observe inbox - trace ingestion', () => {
   it('classifies pure ls probes as bash_probe when they use explicit tolerant markers', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind config' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls /repo/config 2>/dev/null' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '', is_error: false }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find config')
+      .assistantToolUse('t1', 'Bash', { command: 'ls /repo/config 2>/dev/null' })
+      .userToolResult('t1', '', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'bash_probe');
@@ -559,48 +356,17 @@ describe('observe inbox - trace ingestion', () => {
   it('keeps hard_miss when a later successful search is unrelated', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-            { type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: 'auth_router', path: '/repo-a' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: 'src/auth/router.ts:1: auth_router', is_error: false },
-          ],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find revenue schema')
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+        { id: 't2', name: 'Grep', input: { pattern: 'auth_router', path: '/repo-a' } },
+      ])
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: 'src/auth/router.ts:1: auth_router', isError: false },
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const revenue = report.items.find((item) => item.evidence.query === 'revenue_schema');
@@ -612,48 +378,17 @@ describe('observe inbox - trace ingestion', () => {
   it('keeps query hard_miss when a later successful Read only shares cwd path tokens', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-            { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/repo-a/src/auth.ts' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: 'export const auth = true;', is_error: false },
-          ],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find revenue schema')
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+        { id: 't2', name: 'Read', input: { file_path: '/repo-a/src/auth.ts' } },
+      ])
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: 'export const auth = true;', isError: false },
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const revenue = report.items.find((item) => item.evidence.query === 'revenue_schema');
@@ -665,48 +400,17 @@ describe('observe inbox - trace ingestion', () => {
   it('keeps query hard_miss when query token appears only in repository directory name', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repos/payment-app',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind payment config' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repos/payment-app',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'payment', path: '/repos/payment-app' } },
-            { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/repos/payment-app/src/auth.ts' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repos/payment-app',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: 'export const auth = true;', is_error: false },
-          ],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: '/repos/payment-app' })
+      .userCommand('audit', 'Find payment config')
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'payment', path: '/repos/payment-app' } },
+        { id: 't2', name: 'Read', input: { file_path: '/repos/payment-app/src/auth.ts' } },
+      ])
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: 'export const auth = true;', isError: false },
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const payment = report.items.find((item) => item.evidence.query === 'payment');
@@ -721,48 +425,17 @@ describe('observe inbox - trace ingestion', () => {
     // exploratory_miss。新结构化解析里 Bash ls 走 path-only 不污染 query 维度。
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repos/payment-app',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind payment config' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repos/payment-app',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'payment', path: '/repos/payment-app' } },
-            { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'ls /repos/payment-app/src/auth.ts' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repos/payment-app',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: '/repos/payment-app/src/auth.ts', is_error: false },
-          ],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1', { cwd: '/repos/payment-app' })
+      .userCommand('audit', 'Find payment config')
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'payment', path: '/repos/payment-app' } },
+        { id: 't2', name: 'Bash', input: { command: 'ls /repos/payment-app/src/auth.ts' } },
+      ])
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: '/repos/payment-app/src/auth.ts', isError: false },
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const payment = report.items.find((item) => item.evidence.query === 'payment');
@@ -822,6 +495,7 @@ describe('observe inbox - trace ingestion', () => {
   it('rejects persisted inbox timestamps and aggregates that contradict source facts', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-strict-'));
     const trace = join(dir, 'session.jsonl');
+    // 刻意手搓：缺省 parentUuid／cwd 的容错解析是被测变体，builder 的默认补齐会吞掉它。
     writeFileSync(trace, [
       {
         type: 'user',
@@ -898,44 +572,11 @@ describe('observe inbox - trace ingestion', () => {
   it('uses a dedicated reason code for skill asset read failures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nUse skill asset' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/repo-a/.claude/skills/audit/examples/schema.md' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Error: ENOENT no such file or directory', is_error: true }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Use skill asset')
+      .assistantToolUse('t1', 'Read', { file_path: '/repo-a/.claude/skills/audit/examples/schema.md' })
+      .userToolResult('t1', 'Error: ENOENT no such file or directory', { isError: true });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'skill_asset_read_failed');
@@ -946,44 +587,11 @@ describe('observe inbox - trace ingestion', () => {
   it('formats observation show output with message window context', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind routes' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls /repo/config 2>/dev/null' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '', is_error: false }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find routes')
+      .assistantToolUse('t1', 'Bash', { command: 'ls /repo/config 2>/dev/null' })
+      .userToolResult('t1', '', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     const output = formatObservationShow(report.items[0]);
@@ -995,44 +603,11 @@ describe('observe inbox - trace ingestion', () => {
   it('does not degrade plain Bash find misses without explicit probe markers', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind routes' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'find . -name routes.ts' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find routes')
+      .assistantToolUse('t1', 'Bash', { command: 'find . -name routes.ts' })
+      .userToolResult('t1', 'No matches found', { isError: false });
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items[0].signalSubtype, 'hard_miss');

@@ -14,6 +14,7 @@ import {
   selectExploreInboxItems,
 } from '../../../src/observability/inbox/index.js';
 import { baseItem, businessActionTag } from './_helpers.js';
+import { claudeTrace } from '../../helpers/claude-trace.js';
 
 describe('observe inbox - aggregation', () => {
   it('normalizes dedup key input conservatively', () => {
@@ -38,26 +39,13 @@ describe('observe inbox - aggregation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-session-range-'));
     const claudeFile = join(dir, 'claude-session.jsonl');
     const openClawFile = join(dir, 'openclaw-session.jsonl');
-    writeFileSync(claudeFile, [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 'claude-session-a',
-        timestamp: '2026-05-12T12:08:09.000Z',
-        cwd: '/repo/demo',
-        message: { role: 'user', content: '<command-name>/demo-skill</command-name>' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 'claude-session-a',
-        timestamp: '2026-05-12T12:10:00.000Z',
-        cwd: '/repo/demo',
-        message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
-      },
-    ].map((record) => JSON.stringify(record)).join('\n'));
+    writeFileSync(claudeFile, claudeTrace('claude-session-a', {
+      startAt: '2026-05-12T12:08:09.000Z',
+      cwd: '/repo/demo',
+    })
+      .userCommand('demo-skill')
+      .assistantText('done', { timestamp: '2026-05-12T12:10:00.000Z' })
+      .toJsonl());
     writeFileSync(openClawFile, [
       { type: 'session', version: 3, id: 'openclaw-session-a', timestamp: '2026-05-13T01:00:00.000Z', cwd: '/repo/openclaw-demo' },
       {
@@ -111,6 +99,7 @@ describe('observe inbox - aggregation', () => {
   it('keeps missing source timestamps explicit through inbox and experience aggregation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-no-timestamps-'));
     const trace = join(dir, 'session.jsonl');
+    // 刻意手搓：缺省 timestamp 是被测变体，builder 的默认时间戳会吞掉它。
     const records = [
       {
         type: 'user',
@@ -382,43 +371,11 @@ describe('observe inbox - aggregation', () => {
   it('rejects inbox reports whose references or aggregates contradict experience', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-consistency-'));
     const trace = join(dir, 'session.jsonl');
-    writeFileSync(trace, [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
-        },
-      },
-    ].map((record) => JSON.stringify(record)).join('\n'));
+    writeFileSync(trace, claudeTrace('s1')
+      .userCommand('audit', 'Find revenue schema')
+      .assistantToolUse('t1', 'Grep', { pattern: 'revenue_schema', path: '/repo-a' })
+      .userToolResult('t1', 'No matches found', { isError: false })
+      .toJsonl());
 
     const path = saveObservationInboxReport(buildObservationInboxReport(trace), dir);
     const persisted = JSON.parse(readFileSync(path, 'utf8'));
@@ -453,49 +410,17 @@ describe('observe inbox - aggregation', () => {
   it('keeps streaming report aggregation equivalent to direct aggregation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
-    const records = [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        entrypoint: 'cli',
-        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
-            { type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: ' revenue_schema ', path: '/repo-a' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        uuid: 'u2',
-        parentUuid: 'a1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:02.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
-            { type: 'tool_result', tool_use_id: 't2', content: 'No matches found', is_error: false },
-          ],
-        },
-      },
-    ];
-    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+    const records = claudeTrace('s1')
+      .userCommand('audit', 'Find revenue schema', { extra: { entrypoint: 'cli' } })
+      .assistantToolUses([
+        { id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+        { id: 't2', name: 'Grep', input: { pattern: ' revenue_schema ', path: '/repo-a' } },
+      ])
+      .userToolResults([
+        { toolUseId: 't1', content: 'No matches found', isError: false },
+        { toolUseId: 't2', content: 'No matches found', isError: false },
+      ]);
+    writeFileSync(file, records.toJsonl());
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.items.length, 1);
@@ -506,32 +431,10 @@ describe('observe inbox - aggregation', () => {
   it('persists compact experience evidence and hydrates it on load', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-wire-'));
     const trace = join(dir, 'session.jsonl');
-    writeFileSync(trace, [
-      {
-        type: 'user',
-        uuid: 'u1',
-        parentUuid: null,
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:00.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'user',
-          content: '<command-name>/audit</command-name>\nInspect the implementation.',
-        },
-      },
-      {
-        type: 'assistant',
-        uuid: 'a1',
-        parentUuid: 'u1',
-        sessionId: 's1',
-        timestamp: '2026-05-01T00:00:01.000Z',
-        cwd: '/repo-a',
-        message: {
-          role: 'assistant',
-          content: [{ type: 'text', text: 'Inspection complete.' }],
-        },
-      },
-    ].map((record) => JSON.stringify(record)).join('\n'));
+    writeFileSync(trace, claudeTrace('s1')
+      .userCommand('audit', 'Inspect the implementation.')
+      .assistantText('Inspection complete.')
+      .toJsonl());
 
     const report = buildObservationInboxReport(trace);
     const originalTimelineIds = report.experience!.invocations[0].timeline.map((event) => event.id);
