@@ -751,6 +751,27 @@ function claudeRecordToTraceEvents(
           input: isRecordObject(part.input) ? part.input : {},
           model,
         });
+        return;
+      }
+      // 同族宿主复用 Claude 的落盘目录，但工具块是 AI SDK 命名：tool-call + toolCallId/toolName。
+      if (
+        isRecordObject(part)
+        && part.type === 'tool-call'
+        && typeof part.toolCallId === 'string'
+        && typeof part.toolName === 'string'
+      ) {
+        events.push({
+          eventKind: 'tool_call',
+          eventId: eventId(`tool-call-${partIndex}`),
+          sourceEventId,
+          sourceIndex,
+          sourceType,
+          timestamp,
+          callId: part.toolCallId,
+          tool: normalizeToolIdentity({ sourceName: part.toolName }),
+          input: isRecordObject(part.input) ? part.input : {},
+          model,
+        });
       }
     });
     if (isRecordObject(raw.message.usage)) {
@@ -773,6 +794,41 @@ function claudeRecordToTraceEvents(
       });
     }
     return events;
+  }
+
+  // 同族宿主把工具结果写成独立记录（type:"tool"），而不是 user 记录里的 tool_result 块。
+  if (sourceType === 'tool' && isRecordObject(raw.message)) {
+    const parts = Array.isArray(raw.message.content) ? raw.message.content : [];
+    const events: TraceEvent[] = [];
+    let partIndex = 0;
+    for (const part of parts) {
+      if (
+        isRecordObject(part)
+        && part.type === 'tool-result'
+        && typeof part.toolCallId === 'string'
+      ) {
+        const output = claudeToolResultOutput(part.output);
+        const explicit = typeof part.isError === 'boolean';
+        const inferredFailure = !explicit && isToolResultFailureText(output);
+        events.push({
+          eventKind: 'tool_result',
+          eventId: eventId(`tool-result-${partIndex}`),
+          sourceEventId,
+          sourceIndex,
+          sourceType,
+          timestamp,
+          callId: part.toolCallId,
+          output,
+          status: explicit
+            ? part.isError === true ? 'failure' : 'success'
+            : inferredFailure ? 'failure' : 'unknown',
+          statusSource: explicit ? 'runtime' : inferredFailure ? 'inferred' : 'unknown',
+        });
+      }
+      partIndex += 1;
+    }
+    // 一块都没配上就退回 unknown 统计，别让新分支静默吞掉未知形态。
+    if (events.length > 0) return events;
   }
 
   if (sourceType === 'system') {
@@ -839,6 +895,13 @@ function isKnownClaudeRecordType(value: unknown): boolean {
     || value === 'system'
     || value === 'file-history-snapshot'
     || value === 'queue-operation';
+}
+
+/** 同族宿主的 tool-result.output 实测只有字符串与 `{type,value}` 两种包装；其余形态保留为 JSON，不静默丢证据。 */
+function claudeToolResultOutput(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (isRecordObject(value) && typeof value.value === 'string') return value.value;
+  return value === undefined ? '' : JSON.stringify(value);
 }
 
 function claudeSystemRecordText(record: Record<string, unknown>): string {

@@ -1236,6 +1236,128 @@ describe('loadTraceSessions', () => {
     assert.equal(segment.metrics.numToolUnknown, 1);
   });
 
+  it('maps a Claude-family sibling host AI-SDK tool block into a correlated call/result pair', () => {
+    const path = writeSession(tmpDir, 'claude-family-tool-blocks.jsonl', [
+      asstRec('a1', [{
+        type: 'tool-call',
+        toolCallId: 'fc-read',
+        toolName: 'Read',
+        input: { file_path: '/repo/.agents/skills/audit/SKILL.md', encoding: 'utf8' },
+      }]),
+      {
+        type: 'tool',
+        uuid: 't1',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-04-19T10:00:01.000Z',
+        cwd: '/tmp/p',
+        mode: 'code',
+        message: {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'fc-read',
+            toolName: 'Read',
+            output: { type: 'text', value: '# audit' },
+          }],
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const call = session.events.find((event) =>
+      event.eventKind === 'tool_call' && event.callId === 'fc-read',
+    );
+    assert.ok(call?.eventKind === 'tool_call');
+    assert.equal(call.tool.name, 'Read');
+    assert.equal((call.input as { file_path?: string }).file_path, '/repo/.agents/skills/audit/SKILL.md');
+    const result = session.events.find((event) =>
+      event.eventKind === 'tool_result' && event.callId === 'fc-read',
+    );
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.output, '# audit');
+    // 同族宿主不写显式成败字段：状态只能保持未知，不能凭输出文本冒充运行时结论。
+    assert.equal(result.status, 'unknown');
+    assert.equal(result.statusSource, 'unknown');
+    const [segment] = segmentTraceBySkill(session);
+    assert.equal(segment.metrics.numToolCalls, 1);
+    assert.equal(segment.metrics.numToolUnknown, 1);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('reads a Claude-family sibling host isError as the runtime tool failure signal', () => {
+    const path = writeSession(tmpDir, 'claude-family-tool-error.jsonl', [
+      asstRec('a1', [{ type: 'text', text: '跑一下看看' }]),
+      {
+        type: 'tool',
+        uuid: 't1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-04-19T10:00:01.000Z',
+        message: {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'fc-bash',
+            toolName: 'Bash',
+            isError: true,
+            output: { type: 'error-text', value: 'command not found: foo' },
+          }],
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.status, 'failure');
+    assert.equal(result.statusSource, 'runtime');
+  });
+
+  it('keeps a non-text Claude-family sibling tool output as JSON instead of dropping evidence', () => {
+    const path = writeSession(tmpDir, 'claude-family-json-tool-output.jsonl', [
+      asstRec('a1', [{ type: 'text', text: '搜索一下' }]),
+      {
+        type: 'tool',
+        uuid: 't1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-04-19T10:00:01.000Z',
+        message: {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'fc-search',
+            toolName: 'Grep',
+            output: { type: 'content', value: [{ file: 'src/a.ts' }] },
+          }],
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.match(result.output, /src\/a\.ts/);
+  });
+
+  it('still counts a Claude-family sibling tool record without recognizable blocks as unknown', () => {
+    const path = writeSession(tmpDir, 'claude-family-empty-tool-record.jsonl', [
+      asstRec('a1', [{ type: 'text', text: '看一下目录' }]),
+      {
+        type: 'tool',
+        uuid: 't1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-04-19T10:00:01.000Z',
+        message: { role: 'tool', content: [{ type: 'something-new', id: 'x' }] },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 1);
+  });
+
   it('normalizes Claude MCP calls into the shared provider identity', () => {
     const path = writeSession(tmpDir, 'claude-mcp-tool.jsonl', [
       asstRec('a1', [{
