@@ -158,7 +158,16 @@ export interface CodexExecResultView {
   commands: string[];
   exitCode?: number;
   durationMs?: number;
-  status?: string;
+}
+
+/** 归属到同一次调用上的结果视图聚合：只填不会二义的量。 */
+export interface CodexExecResultAggregate {
+  /** 组内退出码只有一个取值时才是结论；多值时留空，不替整次调用编一个成败。 */
+  exitCode?: number;
+  /** 组内每条视图都有时长时才求和；缺任何一条就留空，避免给出偏小的时长。 */
+  durationMs?: number;
+  /** 组内结果视图的原生 id，按日志顺序。 */
+  ids: string[];
 }
 
 /**
@@ -206,21 +215,31 @@ function recordPayload(value: unknown): Record<string, unknown> | undefined {
   return isObject(value) && isObject(value.payload) ? value.payload : undefined;
 }
 
+interface CodexExecCall {
+  index: number;
+  callId: string;
+  commands: string[];
+  key: string;
+}
+
 /**
  * shell 命令的结果侧视图：Codex Desktop 的 exec 桥接把命令写成 JS 源，`response_item` 的
  * 调用与输出记录已映射成工具事件对，`item_completed` 则是同一次执行的结果视图，只多带
- * `exit_code`、时长与逐条状态。两侧不共享 id，只能按「命令字面量集合完全相等」归属，
- * 归属不到的记录继续留作待映射证据。
+ * `exit_code`、时长与逐条状态。两侧不共享 id，只能按命令字面量归属。
  *
- * 归属在解析主循环之前一次算完：真实日志里结果视图既可能写在输出记录之后、也可能写在之前
- * （同一命令在不同宿主版本里有 4 行和 136 行两种间距），边解析边消费会让「已并入的记录」
- * 因为先后顺序漏进未知档。
+ * 归属分两级，都不猜：
+ * 1. 命令集合完全相等，按调用出现序 1∶1 消费；
+ * 2. 一次桥接跑多条命令时，每个子集视图在「只被唯一一次调用包含」时归到那次调用上
+ *    （实测一次调用最多跑出 15 个结果视图）。被两次以上调用同时包含的视图不归属。
+ *
+ * 必须一次算完再进主循环：真实日志里结果视图既可能写在输出记录之后（实测间隔 4 行），
+ * 也可能写在之前（间隔 136 行），边解析边消费会让已并入的记录因为先后顺序漏进未知档。
  */
 export function indexCodexExecResultViews(records: unknown[]): {
-  mergedByCallId: Map<string, CodexExecResultView[]>;
+  mergedByCallId: Map<string, CodexExecResultAggregate[]>;
   consumedSourceIndexes: Set<number>;
 } {
-  const byCommandSet = new Map<string, CodexExecResultView[]>();
+  const views: CodexExecResultView[] = [];
   records.forEach((value, sourceIndex) => {
     const payload = recordPayload(value);
     if (!payload || payload.type !== 'item_completed') return;
@@ -232,38 +251,95 @@ export function indexCodexExecResultViews(records: unknown[]): {
       .map((entry) => (isObject(entry) ? stringValue(entry.cmd) : undefined))
       .filter((entry): entry is string => entry !== undefined);
     if (commands.length === 0) return;
-    const view: CodexExecResultView = {
+    views.push({
       sourceIndex,
       id,
       commands,
       exitCode: numberValue(item.exit_code),
       durationMs: codexItemViewDurationMs(payload) ?? codexItemStructuredDurationMs(item.duration),
-      status: stringValue(item.status),
-    };
-    const key = codexCommandSetKey(commands);
-    byCommandSet.set(key, [...(byCommandSet.get(key) ?? []), view]);
+    });
   });
 
-  // 按 callId 分组保存归属结果：主循环消费输出记录时按同一顺序取用，不依赖两侧的
-  // 出现序计数是否一致（调用没有输出记录时那两个计数就会错开）。
-  const mergedByCallId = new Map<string, CodexExecResultView[]>();
-  const consumedSourceIndexes = new Set<number>();
+  const calls: CodexExecCall[] = [];
   records.forEach((value, sourceIndex) => {
     if (recordType(value) !== 'response_item') return;
     const payload = recordPayload(value);
     const payloadType = payload ? stringValue(payload.type) : undefined;
     if (payloadType !== 'function_call' && payloadType !== 'custom_tool_call') return;
-    const callId = stringValue(payload?.call_id) ?? stringValue(payload?.id) ?? `codex-call-${sourceIndex}`;
     const commands = codexCallCommandsFromPayload(payload!);
     if (commands.length === 0) return;
-    const view = (byCommandSet.get(codexCommandSetKey(commands)) ?? [])
-      .find((candidate) => !consumedSourceIndexes.has(candidate.sourceIndex));
-    if (!view) return;
-    consumedSourceIndexes.add(view.sourceIndex);
-    mergedByCallId.set(callId, [...(mergedByCallId.get(callId) ?? []), view]);
+    calls.push({
+      index: sourceIndex,
+      callId: stringValue(payload!.call_id) ?? stringValue(payload!.id) ?? `codex-call-${sourceIndex}`,
+      commands,
+      key: codexCommandSetKey(commands),
+    });
   });
 
+  // 1) 命令集合完全相等：按调用出现序 1∶1 消费。
+  const viewsByKey = new Map<string, number[]>();
+  views.forEach((view, position) => {
+    const key = codexCommandSetKey(view.commands);
+    viewsByKey.set(key, [...(viewsByKey.get(key) ?? []), position]);
+  });
+  const assigned = new Map<number, number[]>();
+  const claimedViews = new Set<number>();
+  calls.forEach((call, callPosition) => {
+    const queue = viewsByKey.get(call.key);
+    if (!queue) return;
+    while (queue.length > 0) {
+      const position = queue.shift()!;
+      if (claimedViews.has(position)) continue;
+      claimedViews.add(position);
+      assigned.set(callPosition, [...(assigned.get(callPosition) ?? []), position]);
+      break;
+    }
+  });
+
+  // 2) 子集归属：只认「唯一包含它的调用」，被两次以上包含就不归。
+  const callSets = calls.map((call) => new Set(call.commands));
+  views.forEach((view, position) => {
+    if (claimedViews.has(position)) return;
+    const containing = calls
+      .map((call, callPosition) => ({ call, callPosition }))
+      .filter(({ call, callPosition }) => call.commands.length > view.commands.length
+        && view.commands.every((command) => callSets[callPosition].has(command)));
+    if (containing.length !== 1) return;
+    claimedViews.add(position);
+    const target = containing[0].callPosition;
+    assigned.set(target, [...(assigned.get(target) ?? []), position]);
+  });
+
+  const consumedSourceIndexes = new Set<number>();
+  const mergedByCallId = new Map<string, CodexExecResultAggregate[]>();
+  for (const [callPosition, viewPositions] of [...assigned.entries()].sort((a, b) => a[0] - b[0])) {
+    const ordered = [...viewPositions].sort((a, b) => views[a].sourceIndex - views[b].sourceIndex);
+    const group = ordered.map((position) => {
+      consumedSourceIndexes.add(views[position].sourceIndex);
+      return views[position];
+    });
+    const aggregate = aggregateExecResultViews(group);
+    const callId = calls[callPosition].callId;
+    mergedByCallId.set(callId, [...(mergedByCallId.get(callId) ?? []), aggregate]);
+  }
+
   return { mergedByCallId, consumedSourceIndexes };
+}
+
+function aggregateExecResultViews(group: CodexExecResultView[]): CodexExecResultAggregate {
+  const exitCodes = group.map((view) => view.exitCode);
+  const durations = group.map((view) => view.durationMs);
+  const unique = new Set(exitCodes);
+  return {
+    // 组内每条都报告了退出码、且取值唯一，才算得出这一次调用的退出码；缺一条就不填。
+    ...(exitCodes.every((code) => code !== undefined) && unique.size === 1
+      ? { exitCode: exitCodes[0] as number }
+      : {}),
+    ...(durations.every((value) => value !== undefined)
+      ? { durationMs: durations.reduce((total, value) => total + (value ?? 0), 0) }
+      : {}),
+    ids: group.map((view) => view.id),
+  };
 }
 
 /** 命令集合的身份键：顺序无关，重复命令折叠。 */

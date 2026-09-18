@@ -58,7 +58,7 @@ const assistantMessage = (id: string) => mapped({ eventKind: 'message', role: 'a
 
 describe('countUnknownEventDispositions', () => {
   it('口径表有版本号，桶归属变化必须让旧报告计数失效', () => {
-    assert.equal(UNKNOWN_DISPOSITION_RULES_VERSION, 'unknown-disposition-v2');
+    assert.equal(UNKNOWN_DISPOSITION_RULES_VERSION, 'unknown-disposition-v3');
   });
 
   it('没有未识别事件时三档都是 0', () => {

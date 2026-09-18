@@ -545,7 +545,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string, cwd?: string)
           ? {
             exitCode: execView.exitCode,
             durationMs: execView.durationMs,
-            sourceIds: [...new Set([...codexPayloadIds(payload), execView.id])].filter(Boolean),
+            sourceIds: [...new Set([...codexPayloadIds(payload), ...execView.ids])].filter(Boolean),
           }
           : {}),
       });
