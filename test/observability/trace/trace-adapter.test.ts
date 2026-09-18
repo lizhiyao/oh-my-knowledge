@@ -3402,7 +3402,182 @@ describe('source-neutral Trace IR', () => {
     assert.equal(segment.metrics.numToolFailures, 1);
   });
 
-  it('keeps non-MCP item_completed views unknown until their mapping is decided', () => {
+  it('maps a sole-carrier item_completed WebSearch into a tool pair', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-web-search.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-web-search', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'WebSearch',
+            id: 'exec-search-1',
+            query: 'degit subdirectory syntax',
+            action: { type: 'search', query: 'degit subdirectory syntax', queries: ['degit subdirectory syntax'] },
+            results: [{ type: 'text_result', title: 'degit - npm', url: 'https://npmjs.com/package/degit' }],
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const call = session.events.find((event) =>
+      event.eventKind === 'tool_call' && event.callId === 'exec-search-1',
+    );
+    const result = session.events.find((event) =>
+      event.eventKind === 'tool_result' && event.callId === 'exec-search-1',
+    );
+    assert.ok(call?.eventKind === 'tool_call');
+    assert.equal(call.tool.name, 'WebSearch');
+    assert.deepEqual(call.input, {
+      type: 'search',
+      query: 'degit subdirectory syntax',
+      queries: ['degit subdirectory syntax'],
+    });
+    assert.equal(call.sourceType, 'event_msg:item_completed');
+    assert.ok(result?.eventKind === 'tool_result');
+    // 没有显式成败字段：带结果的完成记录只能推断成功，不能冒充运行时结论。
+    assert.match(result.output, /https:\/\/npmjs\.com\/package\/degit/);
+    assert.equal(result.status, 'success');
+    assert.equal(result.statusSource, 'inferred');
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('counts each item_completed WebSearch duplicate view once', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-web-search-duplicates.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-web-search-duplicates', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          id: 'ws-exact',
+          status: 'failed',
+          action: { type: 'search', query: 'exact id twin' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'WebSearch',
+            id: 'ws-exact',
+            query: 'exact id twin',
+            action: { type: 'search', query: 'exact id twin' },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          id: 'ws-adjacent',
+          status: 'completed',
+          action: { type: 'search', query: 'adjacent query twin' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'WebSearch',
+            id: 'ws-renamed',
+            query: 'adjacent query twin',
+            action: { type: 'search', query: 'adjacent query twin' },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'call-search',
+          namespace: 'web',
+          name: 'run',
+          arguments: '{"search_query":[{"q":"tool call twin"}]}',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:06.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'call-search', output: 'No results.' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:07.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'WebSearch',
+            id: 'call-search',
+            query: 'a query only the item view carries',
+            action: { type: 'search', query: 'a query only the item view carries' },
+            results: [{ type: 'text_result', title: 'No results', url: 'https://example.com' }],
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const calls = session.events.filter((event) => event.eventKind === 'tool_call');
+    assert.deepEqual(calls.map((event) => event.callId), ['ws-exact', 'ws-adjacent', 'call-search']);
+    assert.equal(calls.length, new Set(calls.map((event) => event.callId)).size);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+    const exactResult = session.events.find((event) =>
+      event.eventKind === 'tool_result' && event.callId === 'ws-exact',
+    );
+    assert.ok(exactResult?.eventKind === 'tool_result');
+    // 重复视图不产出第二组事件，但原视图的运行时状态仍然有效。
+    assert.equal(exactResult.status, 'failure');
+    assert.equal(exactResult.statusSource, 'runtime');
+  });
+
+  it('keeps a sole-carrier WebSearch without results statusless', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-web-search-empty.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-web-search-empty', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'WebSearch',
+            id: 'ws-no-results',
+            query: 'pruned history search',
+            action: { type: 'search', query: 'pruned history search' },
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.output, '');
+    assert.equal(result.status, 'unknown');
+    assert.equal(result.statusSource, 'unknown');
+  });
+
+  it('keeps item_completed views whose mapping semantics are undecided unknown', () => {
     const path = writeSession(tmpDir, 'codex-item-completed-other-views.jsonl', [
       {
         timestamp: '2026-07-25T00:00:00.000Z',
@@ -3431,10 +3606,44 @@ describe('source-neutral Trace IR', () => {
           },
         },
       },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'CommandExecution',
+            id: 'exec-runtime-4',
+            process_id: '26210',
+            command: ['/bin/zsh', '-lc', 'ls'],
+            cwd: 'file:///repo',
+            source: 'unified_exec_startup',
+            status: 'completed',
+            aggregated_output: 'a.ts\n',
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'Extension',
+            kind: 'web.search',
+            id: 'exec-runtime-5',
+            query: 'vitest v4 migration',
+            action: { type: 'search', query: 'vitest v4 migration' },
+            results: [{ type: 'text_result', title: 'Migration Guide', url: 'https://vitest.dev/guide/migration.html' }],
+          },
+        },
+      },
     ]);
 
+    // 这些族要么记录观察到的结果而不是模型发起的调用，要么与已映射视图存在内容级重叠，
+    // 口径未定之前保留原始证据，不产出可能双计的工具事件。
     const [session] = loadTraceSessions(path);
-    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 2);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 4);
   });
 
   it('uses Codex call namespace when an MCP end event is absent', () => {

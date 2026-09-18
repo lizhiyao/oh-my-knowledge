@@ -65,6 +65,26 @@ interface McpCallEndIndex {
   bySourceIndex: Map<number, McpCallEnd>;
 }
 
+interface WebSearchItemEnd {
+  callId: string;
+  sourceIndex: number;
+  sourceEventId?: string;
+  sourceType: string;
+  timestamp?: string;
+  input: Record<string, unknown>;
+  output: string;
+  status?: string;
+  hasResults: boolean;
+  turnId?: string;
+  model?: string;
+}
+
+interface WebSearchItemIndex {
+  ordered: WebSearchItemEnd[];
+  bySourceIndex: Map<number, WebSearchItemEnd>;
+  duplicateSourceIndexes: Set<number>;
+}
+
 interface PatchApplyEnd {
   callId: string;
   occurrence: number;
@@ -163,6 +183,7 @@ export function parseCodexSessionFile(filePath: string, rawRecords: unknown[]): 
 function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[] {
   const events: TraceEvent[] = [];
   const mcpEnds = indexMcpCallEnds(rawRecords);
+  const webSearchItems = indexWebSearchItemViews(rawRecords);
   const patchEnds = indexPatchApplyEnds(rawRecords);
   const externalEnds = indexExternalToolEnds(rawRecords);
   const callOccurrences = new Map<string, number>();
@@ -725,13 +746,22 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
     if (payloadType === 'item_completed') {
-      // 只有被登记为 MCP 调用端的 item 才是可直接映射的记录；其余 item 视图仍按 unknown 保留证据。
+      // item_completed 里只有两种记录可直接映射：登记为 MCP 调用端的 item，以及
+      // WebSearch 视图（重复视图消费掉，唯一载体等综合成工具事件）。其余 item 仍按
+      // unknown 保留原始证据，等各自口径确定。
       const end = mcpEnds.bySourceIndex.get(sourceIndex);
       if (end) {
         end.turnId = activeTurnId;
         end.model = activeModel;
         return;
       }
+      const webSearch = webSearchItems.bySourceIndex.get(sourceIndex);
+      if (webSearch) {
+        webSearch.turnId = activeTurnId;
+        webSearch.model = activeModel;
+        return;
+      }
+      if (webSearchItems.duplicateSourceIndexes.has(sourceIndex)) return;
     }
     if (payloadType === 'patch_apply_end') {
       const end = patchEnds.bySourceIndex.get(sourceIndex);
@@ -782,6 +812,41 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       status: outcome.status,
       statusSource: outcome.present ? 'runtime' : 'unknown',
     });
+  }
+
+  for (const end of webSearchItems.ordered) {
+    const explicitStatus = codexToolStatusFromValue(end.status);
+    const status: TraceToolStatus = explicitStatus !== 'unknown'
+      ? explicitStatus
+      : end.hasResults ? 'success' : 'unknown';
+    events.push(toolCallEvent(
+      `${runId}:${end.sourceIndex}:web-search-call`,
+      {
+        sourceEventId: end.sourceEventId,
+        sourceIndex: end.sourceIndex,
+        sourceType: end.sourceType,
+        timestamp: end.timestamp,
+        turnId: end.turnId,
+      },
+      end.callId,
+      normalizeToolIdentity({ sourceName: 'web_search' }),
+      end.input,
+      end.model,
+    ));
+    events.push(toolResultEvent(
+      `${runId}:${end.sourceIndex}:web-search-result`,
+      {
+        sourceEventId: end.sourceEventId,
+        sourceIndex: end.sourceIndex,
+        sourceType: end.sourceType,
+        timestamp: end.timestamp,
+        turnId: end.turnId,
+      },
+      end.callId,
+      end.output,
+      status,
+      explicitStatus !== 'unknown' ? 'runtime' : end.hasResults ? 'inferred' : 'unknown',
+    ));
   }
 
   for (const end of patchEnds.ordered) {
@@ -945,6 +1010,80 @@ function indexMcpCallEnds(records: unknown[]): McpCallEndIndex {
   });
 
   return { ordered, byOccurrence, bySourceIndex };
+}
+
+/**
+ * WebSearch 的 item_completed 视图有两种身份：与 `response_item` 同一次调用的第二次写入，
+ * 或该次搜索唯一的记录。只有身份对得上才算重复视图，其余按一次真实搜索综合工具事件。
+ */
+function indexWebSearchItemViews(records: unknown[]): WebSearchItemIndex {
+  const ordered: WebSearchItemEnd[] = [];
+  const bySourceIndex = new Map<number, WebSearchItemEnd>();
+  const duplicateSourceIndexes = new Set<number>();
+  const mappedCallIds = new Set<string>();
+  const responseViews: { sourceIndex: number; query: string }[] = [];
+
+  records.forEach((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    if (record?.type !== 'response_item') return;
+    const payload = isObject(record.payload) ? record.payload : {};
+    const payloadType = stringValue(payload.type);
+    if (payloadType === 'web_search_call') {
+      const id = stringValue(payload.id);
+      if (id) mappedCallIds.add(id);
+      const action = isObject(payload.action) ? payload.action : {};
+      responseViews.push({
+        sourceIndex,
+        query: stringValue(action.query) ?? stringValue(payload.query) ?? '',
+      });
+      return;
+    }
+    if (payloadType === 'function_call' || payloadType === 'custom_tool_call' || payloadType === 'tool_search_call') {
+      const id = stringValue(payload.call_id) ?? stringValue(payload.id);
+      if (id) mappedCallIds.add(id);
+    }
+  });
+
+  const synthesizedCallIds = new Set<string>();
+  records.forEach((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    const payload = isObject(record?.payload) ? record.payload : {};
+    if (payload.type !== 'item_completed') return;
+    const item = isObject(payload.item) ? payload.item : undefined;
+    if (!item || item.type !== 'WebSearch') return;
+    const id = stringValue(item.id);
+    const action = isObject(item.action) ? item.action : {};
+    const query = stringValue(action.query) ?? stringValue(item.query) ?? '';
+    const isAdjacentTwin = query !== '' && responseViews.some((view) => (
+      view.query === query && Math.abs(view.sourceIndex - sourceIndex) <= 2
+    ));
+    if ((id !== undefined && (mappedCallIds.has(id) || synthesizedCallIds.has(id)))
+      || isAdjacentTwin) {
+      duplicateSourceIndexes.add(sourceIndex);
+      return;
+    }
+    if (id) synthesizedCallIds.add(id);
+    const results = Array.isArray(item.results) ? item.results : undefined;
+    const status = stringValue(item.status);
+    const outputPayload: Record<string, unknown> = {};
+    if (status) outputPayload.status = status;
+    if (results) outputPayload.results = results;
+    const end: WebSearchItemEnd = {
+      callId: id ?? `codex-web-search-${sourceIndex}`,
+      sourceIndex,
+      sourceEventId: id,
+      sourceType: `${String(record?.type ?? 'unknown')}:item_completed`,
+      timestamp: normalizeTraceTimestamp(record?.timestamp),
+      input: action,
+      output: Object.keys(outputPayload).length ? JSON.stringify(outputPayload) : '',
+      status,
+      hasResults: results !== undefined,
+    };
+    ordered.push(end);
+    bySourceIndex.set(sourceIndex, end);
+  });
+
+  return { ordered, bySourceIndex, duplicateSourceIndexes };
 }
 
 function indexPatchApplyEnds(records: unknown[]): PatchApplyEndIndex {
