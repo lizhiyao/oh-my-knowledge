@@ -8,6 +8,7 @@
 
 import {
   agentStorageLayout,
+  AgentCollectionReportOutdatedError,
   loadAgentCollectionReport,
   loadAgentInventoryReport,
 } from '../../../observability/agents/index.js';
@@ -17,11 +18,15 @@ import type {
   AgentStorageLayout,
 } from '../../../observability/agents/index.js';
 
-/** 单份报告的可读状态。`unreadable` 只说读不动，不猜原因，也不拿旧数据顶替。 */
+/**
+ * 单份报告的可读状态。`unreadable` 只说读不动，不猜原因，也不拿旧数据顶替；
+ * `outdated` 是文件读得懂、但口径已被取代，用户只需要重新采集。
+ */
 type AgentsReportState<T> =
   | { readonly status: 'ready'; readonly report: T }
   | { readonly status: 'missing' }
-  | { readonly status: 'unreadable' };
+  | { readonly status: 'unreadable' }
+  | { readonly status: 'outdated'; readonly foundVersion: string };
 
 export interface AgentsPageModel {
   readonly layout: AgentStorageLayout;
@@ -33,7 +38,10 @@ function readReport<T>(load: () => T | undefined): AgentsReportState<T> {
   let report: T | undefined;
   try {
     report = load();
-  } catch {
+  } catch (cause) {
+    if (cause instanceof AgentCollectionReportOutdatedError) {
+      return { status: 'outdated', foundVersion: cause.foundVersion };
+    }
     return { status: 'unreadable' };
   }
   return report === undefined ? { status: 'missing' } : { status: 'ready', report };

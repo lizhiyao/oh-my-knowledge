@@ -3,6 +3,8 @@
  * 不从内部模块借用私有助手——页面读取的是落盘契约，夹具就必须按同一份契约写盘。
  */
 
+import { AGENT_COLLECTION_VERSION } from '../../src/observability/agents/index.js';
+import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
 import type {
   AgentCollectionReport,
   AgentInventoryReport,
@@ -79,7 +81,8 @@ export function sampleInventoryReport(overrides: Partial<AgentInventoryReport> =
 
 export function sampleCollectionReport(overrides: Partial<AgentCollectionReport> = {}): AgentCollectionReport {
   return {
-    schemaVersion: 'agent-collection-v1',
+    schemaVersion: AGENT_COLLECTION_VERSION,
+    unknownDispositionRulesVersion: UNKNOWN_DISPOSITION_RULES_VERSION,
     generatedAt: '2026-09-11T15:00:00.000Z',
     outputDir: '/Users/tester/.oh-my-knowledge/observe/agents',
     inventoryGeneratedAt: '2026-09-11T14:54:30.000Z',
@@ -109,7 +112,9 @@ export function sampleCollectionReport(overrides: Partial<AgentCollectionReport>
         modifiedAt: '2026-09-11T14:54:30.000Z',
         contentDigest: 'sha256:aaaa',
         eventCount: 100,
-        unknownEventCount: 25,
+        unknownEventCount: 3,
+        duplicateViewCount: 20,
+        unmappedEvidenceCount: 2,
         title: '修复登录态丢失',
       },
       {
@@ -125,6 +130,8 @@ export function sampleCollectionReport(overrides: Partial<AgentCollectionReport>
         contentDigest: 'sha256:bbbb',
         eventCount: 12,
         unknownEventCount: 0,
+        duplicateViewCount: 0,
+        unmappedEvidenceCount: 0,
       },
     ],
     limitations: ['本轮采集上限为 200 个会话文件、512 MiB，剩余 0 个待采文件留到后续增量运行。'],
@@ -135,7 +142,9 @@ export function sampleCollectionReport(overrides: Partial<AgentCollectionReport>
       skippedCount: 40,
       failedCount: 0,
       eventCount: 112,
-      unknownEventCount: 25,
+      unknownEventCount: 3,
+      duplicateViewCount: 20,
+      unmappedEvidenceCount: 2,
       totalBytes: 1_050_624,
     },
     ...overrides,

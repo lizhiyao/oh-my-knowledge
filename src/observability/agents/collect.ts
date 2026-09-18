@@ -19,11 +19,16 @@ import { globalLayout } from '../../evidence/storage/layout.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
 import { loadTraceCorpus } from '../trace/source.js';
+import {
+  countUnknownEventDispositions,
+  UNKNOWN_DISPOSITION_RULES_VERSION,
+} from '../trace/unknown-disposition.js';
 import type { TraceSession, TraceSourceKind } from '../trace/trace-ir.js';
 import {
   AGENT_COLLECTION_VERSION,
   AgentCollectionReportSchema,
   AgentInventoryReportSchema,
+  SUPERSEDED_AGENT_COLLECTION_VERSIONS,
   type AgentCollectionEntry,
   type AgentCollectionReport,
   type AgentDescriptor,
@@ -141,9 +146,11 @@ export function collectAgentLogs(
   const persist = options.persist !== false;
   const limitations: string[] = [];
 
-  const { index: previous, invalid } = readPreviousCollection(layout);
+  const { index: previous, invalid, outdatedVersion } = readPreviousCollection(layout);
   if (invalid) {
     limitations.push('上一次的 collection.json 无法解析，本轮按全量重新采集。');
+  } else if (outdatedVersion !== undefined) {
+    limitations.push(`上一轮报告是 ${outdatedVersion} 口径，未识别事件的计数无法沿用，本轮按全量重新采集。`);
   }
 
   const { works, unreadableRoots, truncatedRoots, missingCatalogAgents, missingCatalogRoots, rootlessAgents }
@@ -269,6 +276,7 @@ export function collectAgentLogs(
   const orderedSessions = sessions.sort((a, b) => compareSessionOrder(a, b));
   const collectionReport = AgentCollectionReportSchema.parse({
     schemaVersion: AGENT_COLLECTION_VERSION,
+    unknownDispositionRulesVersion: UNKNOWN_DISPOSITION_RULES_VERSION,
     generatedAt: collectedAt,
     outputDir: layout.observeAgentsDir,
     inventoryGeneratedAt: inventory.generatedAt,
@@ -452,6 +460,7 @@ function buildCollectedSession(input: {
 }): CollectedSession {
   const { work, file, session } = input;
   const title = sessionTitle(session);
+  const dispositions = countUnknownEventDispositions(session);
   return {
     agentId: work.agentId,
     rootId: work.rootId,
@@ -464,7 +473,9 @@ function buildCollectedSession(input: {
     modifiedAt: file.modifiedAt,
     contentDigest: input.contentDigest,
     eventCount: session.events.length,
-    unknownEventCount: session.events.filter((event) => event.eventKind === 'unknown').length,
+    unknownEventCount: dispositions.unsupported,
+    duplicateViewCount: dispositions.duplicateView,
+    unmappedEvidenceCount: dispositions.unmappedEvidence,
     ...(session.startTimestamp === undefined ? {} : { startTimestamp: session.startTimestamp }),
     ...(session.endTimestamp === undefined ? {} : { endTimestamp: session.endTimestamp }),
     ...(title === undefined ? {} : { title }),
@@ -521,6 +532,8 @@ function summarize(
     failedCount: works.reduce((sum, work) => sum + work.failedFiles, 0),
     eventCount: sessions.reduce((sum, session) => sum + session.eventCount, 0),
     unknownEventCount: sessions.reduce((sum, session) => sum + session.unknownEventCount, 0),
+    duplicateViewCount: sessions.reduce((sum, session) => sum + session.duplicateViewCount, 0),
+    unmappedEvidenceCount: sessions.reduce((sum, session) => sum + session.unmappedEvidenceCount, 0),
     totalBytes: bytes,
   };
 }
@@ -588,6 +601,7 @@ export function saveAgentInventoryReport(
 function readPreviousCollection(layout: AgentStorageLayout): {
   index: Map<string, CollectedSession>;
   invalid: boolean;
+  outdatedVersion?: string;
 } {
   const path = agentCollectionReportPath(layout.observeAgentsDir);
   const index = new Map<string, CollectedSession>();
@@ -595,8 +609,10 @@ function readPreviousCollection(layout: AgentStorageLayout): {
   let report: AgentCollectionReport;
   try {
     report = parseCollectionReport(path);
-  } catch {
-    return { index, invalid: true };
+  } catch (cause) {
+    return cause instanceof AgentCollectionReportOutdatedError
+      ? { index, invalid: false, outdatedVersion: cause.foundVersion }
+      : { index, invalid: true };
   }
   for (const session of report.sessions) {
     index.set(session.sourcePath, session);
@@ -605,7 +621,42 @@ function readPreviousCollection(layout: AgentStorageLayout): {
 }
 
 function parseCollectionReport(path: string): AgentCollectionReport {
-  return AgentCollectionReportSchema.parse(JSON.parse(readFileSync(path, 'utf-8')));
+  const raw = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+  const foundVersion = isObjectLike(raw) && typeof raw.schemaVersion === 'string'
+    ? raw.schemaVersion
+    : undefined;
+  if (foundVersion !== undefined
+    && (SUPERSEDED_AGENT_COLLECTION_VERSIONS as readonly string[]).includes(foundVersion)) {
+    throw new AgentCollectionReportOutdatedError(foundVersion, path, '未识别事件还没有分桶，计数与当前口径不可同比');
+  }
+  const report = AgentCollectionReportSchema.parse(raw);
+  if (report.unknownDispositionRulesVersion !== UNKNOWN_DISPOSITION_RULES_VERSION) {
+    throw new AgentCollectionReportOutdatedError(
+      report.unknownDispositionRulesVersion,
+      path,
+      '未识别事件的分桶规则已更新，旧计数不可沿用',
+    );
+  }
+  return report;
+}
+
+/**
+ * 报告读得懂但属于已被取代的口径：与「文件损坏」必须分开，前者只需要重新采集，
+ * 后者说明落盘内容本身有问题。
+ */
+export class AgentCollectionReportOutdatedError extends Error {
+  constructor(
+    readonly foundVersion: string,
+    readonly reportPath: string,
+    readonly reason: string,
+  ) {
+    super(`采集报告 ${reportPath} 已过期：${foundVersion}，${reason}。运行 omk agents collect 会按当前口径重新采集。`);
+    this.name = 'AgentCollectionReportOutdatedError';
+  }
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 // ---------- 小工具 ----------

@@ -1,8 +1,9 @@
 /**
- * 本机 Agent 页面投影：把盘上的两份报告读成三种状态，并且互不牵连。
+ * 本机 Agent 页面投影：把盘上的两份报告读成四种状态，并且互不牵连。
  *
- * 立在这里的理由是用户在页面上读到的「没有记录」与「记录读不动」必须是两件事：
- * 前者说明还没跑过命令，后者说明报告本身坏了——把后者降级成空列表等于谎报本机什么都没装。
+ * 立在这里的理由是用户在页面上读到的「没有记录」「记录读不动」「记录是旧口径」必须是三件事：
+ * 前者说明还没跑过命令，中者说明报告本身坏了，后者说明报告读得懂但计数口径已被取代、只需要
+ * 重新采集——把后两者降级成空列表等于谎报本机什么都没装。
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -62,5 +63,25 @@ describe('本机 Agent 页面投影', () => {
     const model = buildAgentsPageModel(dir);
     assert.equal(model.inventory.status, 'ready');
     assert.equal(model.collection.status, 'unreadable');
+  });
+
+  it('报告读得懂但口径已被取代时判为过期，页面给「重新采集」而不是「文件坏了」', () => {
+    saveAgentInventoryReport(sampleInventoryReport(), agentStorageLayout(dir));
+    const legacy = { ...sampleCollectionReport(), schemaVersion: 'agent-collection-v1' };
+    delete (legacy as Record<string, unknown>).unknownDispositionRulesVersion;
+    writeFileSync(join(dir, 'collection.json'), JSON.stringify(legacy));
+
+    const outdated = buildAgentsPageModel(dir);
+    assert.equal(outdated.inventory.status, 'ready');
+    assert.deepEqual(outdated.collection, { status: 'outdated', foundVersion: 'agent-collection-v1' });
+
+    writeFileSync(
+      join(dir, 'collection.json'),
+      JSON.stringify({ ...sampleCollectionReport(), unknownDispositionRulesVersion: 'unknown-disposition-v0' }),
+    );
+    assert.deepEqual(buildAgentsPageModel(dir).collection, {
+      status: 'outdated',
+      foundVersion: 'unknown-disposition-v0',
+    }, '分桶口径表更新后旧计数同样不可信');
   });
 });

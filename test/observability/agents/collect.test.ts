@@ -19,6 +19,7 @@ import { globalLayout, type GlobalOmkLayout } from '../../../src/evidence/storag
 import {
   AGENT_TRACE_ARTIFACT_VERSION,
   agentCollectionReportPath,
+  AgentCollectionReportOutdatedError,
   collectAgentLogs,
   loadAgentCollectionReport,
   type AgentTraceArtifact,
@@ -26,7 +27,11 @@ import {
 } from '../../../src/observability/agents/collect.js';
 import { detectAgentInventory, type DetectAgentInventoryOptions } from '../../../src/observability/agents/detect.js';
 import { resolveAgentCatalog } from '../../../src/observability/agents/local-catalog.js';
-import { AGENT_CATALOG_VERSION } from '../../../src/observability/agents/contracts.js';
+import {
+  AGENT_CATALOG_VERSION,
+  AGENT_COLLECTION_VERSION,
+} from '../../../src/observability/agents/contracts.js';
+import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../../src/observability/trace/unknown-disposition.js';
 import type {
   AgentCollectionReport,
   AgentDescriptor,
@@ -148,6 +153,32 @@ function codexSession(sessionId: string): string {
   ].map((record) => JSON.stringify(record)).join('\n');
 }
 
+/**
+ * 一份同时踩到三个未识别桶的 codex rollout：可映射的 reasoning 原件、它的两条 item_completed
+ * 视图（第二条超出「同类已映射事件」上界）、累计 token 快照、待映射的命令执行证据，以及一条
+ * 适配器完全读不出语义的记录。
+ */
+function codexSessionWithUnknownViews(): string {
+  return [
+    {
+      type: 'session_meta',
+      payload: { id: 'cx-views', session_id: 'cx-views', timestamp: '2026-05-18T09:00:00.000Z', cwd: '/repo-a' },
+    },
+    {
+      type: 'response_item',
+      payload: { type: 'reasoning', id: 'rs_1', summary: [{ type: 'summary_text', text: '先看目录结构' }] },
+    },
+    { type: 'event_msg', payload: { type: 'item_completed', item: { type: 'Reasoning', id: 'item-1' } } },
+    { type: 'event_msg', payload: { type: 'item_completed', item: { type: 'Reasoning', id: 'item-2' } } },
+    { type: 'token_usage_record', payload: { usage: { input_tokens: 10, output_tokens: 2 } } },
+    {
+      type: 'event_msg',
+      payload: { type: 'item_completed', item: { type: 'CommandExecution', id: 'exec-1', status: 'completed' } },
+    },
+    { type: 'mystery_record', payload: { type: 'also_mystery' } },
+  ].map((record) => JSON.stringify(record)).join('\n');
+}
+
 function agentOf(report: AgentCollectionReport, agentId: string) {
   const entry = report.agents.find((candidate) => candidate.agentId === agentId);
   assert.ok(entry, `报告里应当有 ${agentId}`);
@@ -167,6 +198,12 @@ function digestOf(path: string): string {
 function artifactFile(harness: Harness, session: CollectedSession): string {
   assert.ok(session.artifactPath.startsWith('traces/'), 'artifactPath 必须是 OMK 侧相对路径');
   return join(harness.layout.observeAgentsDir, session.artifactPath);
+}
+
+/** 分桶是对产物里 unknown 事件的再分类：口径要能对上原始计数。 */
+function artifactOfUnknownTotal(harness: Harness, session: CollectedSession): number {
+  const artifact = JSON.parse(readFileSync(artifactFile(harness, session), 'utf-8')) as AgentTraceArtifact;
+  return artifact.session.events.filter((event) => event.eventKind === 'unknown').length;
 }
 
 function listFiles(root: string): string[] {
@@ -205,13 +242,19 @@ describe('collectAgentLogs 产物投影', () => {
     const { claudeA, claudeB, codexA } = seedClaudeAndCodex(harness);
     const report = collect(harness);
 
-    assert.equal(report.schemaVersion, 'agent-collection-v1');
+    assert.equal(report.schemaVersion, AGENT_COLLECTION_VERSION);
+    assert.equal(report.unknownDispositionRulesVersion, UNKNOWN_DISPOSITION_RULES_VERSION);
     assert.equal(report.outputDir, harness.layout.observeAgentsDir);
     assert.deepEqual(report.limitations, [], '干净场景不应编造 limitations');
     assert.equal(report.summary.discoveredCount, 3);
     assert.equal(report.summary.collectedCount, 3);
     assert.equal(report.summary.skippedCount, 0);
     assert.equal(report.summary.failedCount, 0);
+    assert.deepEqual([
+      report.summary.unknownEventCount,
+      report.summary.duplicateViewCount,
+      report.summary.unmappedEvidenceCount,
+    ], [0, 0, 0], '干净场景下三个未识别桶都应当是 0');
     assert.equal(report.sessions.length, 3);
     assert.deepEqual(agentOf(report, 'claude-code').logRoots.map((root) => [
       root.rootId, root.discoveredCount, root.collectedCount,
@@ -229,6 +272,11 @@ describe('collectAgentLogs 产物投影', () => {
       assert.ok(session.traceId.startsWith('trace:'));
       assert.equal(session.contentDigest, digestOf(sourcePath), '摘要必须是文件内容的 sha256');
       assert.ok(session.eventCount > 0);
+      assert.deepEqual(
+        [session.unknownEventCount, session.duplicateViewCount, session.unmappedEvidenceCount],
+        [0, 0, 0],
+        '最小样例不应产生任何未识别记录',
+      );
       assert.match(artifactFile(harness, session), /trace_[0-9a-f]{32}\.json$/);
 
       const artifact = JSON.parse(readFileSync(artifactFile(harness, session), 'utf-8')) as AgentTraceArtifact;
@@ -464,10 +512,38 @@ describe('collectAgentLogs 容量与失败口径', () => {
     const report = collect(harness);
     const session = sessionFor(report, odd);
     assert.equal(session.sourceKind, 'unknown');
-    assert.equal(session.unknownEventCount, 1);
+    assert.equal(session.unknownEventCount, 1, '读不出格式的记录算未支持缺口');
+    assert.equal(session.duplicateViewCount, 0);
+    assert.equal(session.unmappedEvidenceCount, 0);
     assert.equal(session.eventCount, 1);
     assert.equal(report.summary.collectedCount, 1);
     assert.match(report.limitations.join('\n'), /按 unknown 格式归档/);
+  });
+
+  it('未识别记录分档为未支持格式、重复视图、待映射证据', () => {
+    const harness = createHarness();
+    const mixed = harness.session(
+      '.codex/sessions/2026-05-16/rollout-views.jsonl',
+      codexSessionWithUnknownViews(),
+      Date.parse('2026-05-16T09:00:00.000Z'),
+    );
+
+    const report = collect(harness);
+    const session = sessionFor(report, mixed);
+    assert.equal(session.sourceKind, 'codex');
+    assert.equal(session.unknownEventCount, 1, '只有适配器完全读不出的记录才是支持缺口');
+    assert.equal(session.duplicateViewCount, 2, '与原件同一事实的 item 视图和累计快照不映射，也不计入缺口');
+    assert.equal(session.unmappedEvidenceCount, 2, '超出同类上界的视图与待映射证据不能冒充重复视图');
+    assert.equal(
+      session.unknownEventCount + session.duplicateViewCount + session.unmappedEvidenceCount,
+      artifactOfUnknownTotal(harness, session),
+      '三档之和必须等于产物里的 unknown 事件总数，一档都不许丢',
+    );
+    assert.deepEqual([
+      report.summary.unknownEventCount,
+      report.summary.duplicateViewCount,
+      report.summary.unmappedEvidenceCount,
+    ], [1, 2, 2]);
   });
 
   it('实际解析格式与日志根登记格式不一致时，按实际结果记录', () => {
@@ -497,6 +573,52 @@ describe('collectAgentLogs 容量与失败口径', () => {
     assert.equal(report.summary.collectedCount, 3, '索引读不了就退回全量，不能谎报跳过');
     assert.equal(report.summary.skippedCount, 0);
     assert.match(report.limitations.join('\n'), /无法解析，本轮按全量重新采集/);
+  });
+
+  it('上一轮报告是旧口径时按全量重采，并把报告改写成当前版本', () => {
+    const harness = createHarness();
+    const { claudeA } = seedClaudeAndCodex(harness);
+    const first = collect(harness);
+    const reportPath = agentCollectionReportPath(harness.layout.observeAgentsDir);
+    // 旧报告只被取代、不被改写：这里模拟磁盘上留着一份 agent-collection-v1。
+    const legacy = { ...(first as unknown as Record<string, unknown>) };
+    delete legacy.unknownDispositionRulesVersion;
+    legacy.schemaVersion = 'agent-collection-v1';
+    writeFileSync(reportPath, JSON.stringify(legacy));
+
+    assert.throws(
+      () => loadAgentCollectionReport(harness.layout.observeAgentsDir),
+      (error: unknown) => error instanceof AgentCollectionReportOutdatedError
+        && error.foundVersion === 'agent-collection-v1',
+      '旧口径与文件损坏必须区分，页面才给得出「重新采集」而不是「读不动」',
+    );
+
+    const second = collect(harness);
+    assert.equal(second.schemaVersion, AGENT_COLLECTION_VERSION, '本轮按当前口径重写');
+    assert.equal(second.summary.collectedCount, 3, '旧计数不可沿用，全部重采');
+    assert.equal(second.summary.skippedCount, 0);
+    assert.match(
+      second.limitations.join('\n'),
+      /上一轮报告是 agent-collection-v1 口径，未识别事件的计数无法沿用/,
+    );
+    assert.equal(sessionFor(second, claudeA).eventCount, sessionFor(first, claudeA).eventCount);
+    assert.deepEqual(loadAgentCollectionReport(harness.layout.observeAgentsDir), second);
+  });
+
+  it('分桶口径表更新后，旧报告的计数同样不可复用', () => {
+    const harness = createHarness();
+    seedClaudeAndCodex(harness);
+    const first = collect(harness);
+    const reportPath = agentCollectionReportPath(harness.layout.observeAgentsDir);
+    writeFileSync(
+      reportPath,
+      JSON.stringify({ ...first, unknownDispositionRulesVersion: 'unknown-disposition-v0' }),
+    );
+
+    const second = collect(harness);
+    assert.equal(second.summary.collectedCount, 3);
+    assert.match(second.limitations.join('\n'), /unknown-disposition-v0 口径/);
+    assert.equal(second.unknownDispositionRulesVersion, UNKNOWN_DISPOSITION_RULES_VERSION);
   });
 
   it('历史条目对应的日志已被用户删掉时移出索引，但产物不删', () => {
