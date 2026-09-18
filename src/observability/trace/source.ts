@@ -753,7 +753,7 @@ function claudeRecordToTraceEvents(
         });
         return;
       }
-      // CodeFuse 复用 Claude 的落盘目录，但工具块是 AI SDK 命名：tool-call + toolCallId/toolName。
+      // 同族宿主复用 Claude 的落盘目录，但工具块是 AI SDK 命名：tool-call + toolCallId/toolName。
       if (
         isRecordObject(part)
         && part.type === 'tool-call'
@@ -796,7 +796,7 @@ function claudeRecordToTraceEvents(
     return events;
   }
 
-  // CodeFuse 把工具结果写成独立记录（type:"tool"），而不是 user 记录里的 tool_result 块。
+  // 同族宿主把工具结果写成独立记录（type:"tool"），而不是 user 记录里的 tool_result 块。
   if (sourceType === 'tool' && isRecordObject(raw.message)) {
     const parts = Array.isArray(raw.message.content) ? raw.message.content : [];
     const events: TraceEvent[] = [];
@@ -897,7 +897,7 @@ function isKnownClaudeRecordType(value: unknown): boolean {
     || value === 'queue-operation';
 }
 
-/** CodeFuse 的 tool-result.output 实测只有字符串与 `{type,value}` 两种包装；其余形态保留为 JSON，不静默丢证据。 */
+/** 同族宿主的 tool-result.output 实测只有字符串与 `{type,value}` 两种包装；其余形态保留为 JSON，不静默丢证据。 */
 function claudeToolResultOutput(value: unknown): string {
   if (typeof value === 'string') return value;
   if (isRecordObject(value) && typeof value.value === 'string') return value.value;

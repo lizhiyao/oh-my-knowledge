@@ -1236,8 +1236,8 @@ describe('loadTraceSessions', () => {
     assert.equal(segment.metrics.numToolUnknown, 1);
   });
 
-  it('maps CodeFuse AI-SDK tool blocks into a correlated call/result pair', () => {
-    const path = writeSession(tmpDir, 'codefuse-tool-blocks.jsonl', [
+  it('maps a Claude-family sibling host AI-SDK tool block into a correlated call/result pair', () => {
+    const path = writeSession(tmpDir, 'claude-family-tool-blocks.jsonl', [
       asstRec('a1', [{
         type: 'tool-call',
         toolCallId: 'fc-read',
@@ -1276,7 +1276,7 @@ describe('loadTraceSessions', () => {
     );
     assert.ok(result?.eventKind === 'tool_result');
     assert.equal(result.output, '# audit');
-    // CodeFuse 不写显式成败字段：状态只能保持未知，不能凭输出文本冒充运行时结论。
+    // 同族宿主不写显式成败字段：状态只能保持未知，不能凭输出文本冒充运行时结论。
     assert.equal(result.status, 'unknown');
     assert.equal(result.statusSource, 'unknown');
     const [segment] = segmentTraceBySkill(session);
@@ -1285,8 +1285,8 @@ describe('loadTraceSessions', () => {
     assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
   });
 
-  it('reads CodeFuse isError as the runtime tool failure signal', () => {
-    const path = writeSession(tmpDir, 'codefuse-tool-error.jsonl', [
+  it('reads a Claude-family sibling host isError as the runtime tool failure signal', () => {
+    const path = writeSession(tmpDir, 'claude-family-tool-error.jsonl', [
       asstRec('a1', [{ type: 'text', text: '跑一下看看' }]),
       {
         type: 'tool',
@@ -1314,8 +1314,8 @@ describe('loadTraceSessions', () => {
     assert.equal(result.statusSource, 'runtime');
   });
 
-  it('keeps a non-text CodeFuse tool output as JSON instead of dropping evidence', () => {
-    const path = writeSession(tmpDir, 'codefuse-json-tool-output.jsonl', [
+  it('keeps a non-text Claude-family sibling tool output as JSON instead of dropping evidence', () => {
+    const path = writeSession(tmpDir, 'claude-family-json-tool-output.jsonl', [
       asstRec('a1', [{ type: 'text', text: '搜索一下' }]),
       {
         type: 'tool',
@@ -1341,8 +1341,8 @@ describe('loadTraceSessions', () => {
     assert.match(result.output, /src\/a\.ts/);
   });
 
-  it('still counts a CodeFuse tool record without recognizable blocks as unknown', () => {
-    const path = writeSession(tmpDir, 'codefuse-empty-tool-record.jsonl', [
+  it('still counts a Claude-family sibling tool record without recognizable blocks as unknown', () => {
+    const path = writeSession(tmpDir, 'claude-family-empty-tool-record.jsonl', [
       asstRec('a1', [{ type: 'text', text: '看一下目录' }]),
       {
         type: 'tool',
