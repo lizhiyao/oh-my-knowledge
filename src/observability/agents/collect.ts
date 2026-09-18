@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
@@ -61,6 +61,8 @@ export const AGENT_TRACE_ARTIFACT_VERSION = 'agent-trace-v2' as const;
 export const DEFAULT_MAX_SESSION_FILES_PER_RUN = 200;
 export const DEFAULT_MAX_BYTES_PER_RUN = 512 * 1024 * 1024;
 export const DEFAULT_MAX_SESSION_FILE_BYTES = 32 * 1024 * 1024;
+/** 内容摘要的读取块大小：与 trace 读取层一致，避免为大文件保留全文 Buffer。 */
+const TRACE_DIGEST_CHUNK_BYTES = 1024 * 1024;
 const MAX_ENUMERATED_PATHS = 5;
 
 /** 只声明采集真正需要的三个产物路径，避免与具体 layout 工厂耦合。 */
@@ -402,13 +404,12 @@ interface CollectOneFileResult {
 /** 读不了／解析失败／零会话都在内部计入 failedFiles 并返回空列表，单文件失败不中断整轮。 */
 function collectOneFile(input: CollectOneFileInput): CollectOneFileResult {
   const { work, file } = input.candidate;
-  const bytes = readFileBytes(file.path);
-  if (bytes === undefined) {
+  const contentDigest = digestFile(file.path);
+  if (contentDigest === undefined) {
     work.failedFiles += 1;
     input.readFailures.push(file.path);
     return { sessions: [], duplicates: 0 };
   }
-  const contentDigest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
   let sessions: TraceSession[];
   try {
     sessions = loadTraceCorpus(file.path).sessions;
@@ -693,18 +694,31 @@ function artifactStillPresent(
   return existsSync(join(layout.observeAgentsDir, ...segments));
 }
 
-function readFileBytes(path: string): Buffer | undefined {
+/**
+ * 边读边摘要。整份文件的 Buffer 一旦在解析期间被持有，超限会话的内存峰值就会与文件大小
+ * 线性相关（实测 1.35 GiB 日志的峰值驻留里有约 2.7 GiB 来自这类全文读取）。
+ */
+function digestFile(path: string): string | undefined {
+  let fd: number;
   try {
-    return readFileSync(path);
+    fd = openSync(path, 'r');
   } catch {
     return undefined;
   }
-}
-
-function digestFile(path: string): string | undefined {
-  const bytes = readFileBytes(path);
-  if (bytes === undefined) return undefined;
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  const hash = createHash('sha256');
+  const buffer = Buffer.allocUnsafe(TRACE_DIGEST_CHUNK_BYTES);
+  try {
+    for (;;) {
+      const read = readSync(fd, buffer, 0, buffer.length, null);
+      if (read === 0) break;
+      hash.update(buffer.subarray(0, read));
+    }
+  } catch {
+    return undefined;
+  } finally {
+    closeSync(fd);
+  }
+  return `sha256:${hash.digest('hex')}`;
 }
 
 function positive(value: number | undefined, fallback: number): number {

@@ -354,6 +354,34 @@ describe('collectAgentLogs 产物投影', () => {
     assert.deepEqual(third.sessions.map((session) => session.traceId).sort(), first.sessions.map((session) => session.traceId).sort());
   });
 
+  it('内容摘要按块流式计算，超过读取块大小的文件与整文件摘要逐字等值', () => {
+    const harness = createHarness();
+    const path = harness.session(
+      '.codex/sessions/2026-05-16/rollout-big.jsonl',
+      // 填充到 1 MiB 摘要块之上：分块边界算错的话，下面的逐字节摘要断言会直接失配。
+      [
+        codexSession('cx-big'),
+        ...Array.from({ length: 6_000 }, (_unused, index) => JSON.stringify({
+          type: 'token_usage_record',
+          payload: { usage: { input_tokens: index, cached_input_tokens: 0 }, note: 'x'.repeat(200) },
+        })),
+      ].join('\n'),
+      Date.parse('2026-05-16T09:00:00.000Z'),
+    );
+    assert.ok(readFileSync(path).length > 1024 * 1024, '样本必须超过单个摘要块');
+
+    const report = collect(harness);
+    const session = sessionFor(report, path);
+    assert.equal(
+      session.contentDigest,
+      `sha256:${createHash('sha256').update(readFileSync(path)).digest('hex')}`,
+      '流式摘要必须与整文件摘要逐字节相同，否则增量复用会误判成文件变化',
+    );
+
+    const second = collect(harness);
+    assert.equal(second.summary.collectedCount, 0, '摘要一致时不得重新解析');
+  });
+
   it('源文件变化后按 mtime+size 增量重采，内容没变只刷新时间戳', () => {
     const harness = createHarness();
     const { claudeA } = seedClaudeAndCodex(harness);
