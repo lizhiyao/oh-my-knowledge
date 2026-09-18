@@ -1,4 +1,4 @@
-import { describe, it, afterEach } from 'vitest';
+import { describe, it, afterEach, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,6 +6,16 @@ import { join } from 'node:path';
 import { loadTraceCorpus } from '../../../src/observability/trace/index.js';
 import { parseCodexSessionFile } from '../../../src/observability/trace/adapters/codex/trace.js';
 import { openStreamedJsonlRecords } from '../../../src/observability/trace/streamed-records.js';
+
+/**
+ * 惰性视图与整档解析产出逐字相同，因此「路由有没有被走到」无法用行为断言抓到——把阈值写错
+ * （例如误改成 >2 GiB）会让内存悄悄退回 2.7 倍而全部用例照绿。这里透传真实实现，只留一个调用
+ * 计数用于断言阈值确实生效。
+ */
+vi.mock('../../../src/observability/trace/streamed-records.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/observability/trace/streamed-records.js')>();
+  return { ...actual, openStreamedJsonlRecords: vi.fn(actual.openStreamedJsonlRecords) };
+});
 
 /**
  * 惰性记录视图必须与整档解析产出同一份结果：这两条用例是「只换记录来源、不换映射语义」的
@@ -212,6 +222,26 @@ describe('streamed trace records', () => {
     assert.equal(stats.malformedRecordCount, 1);
     assert.equal(stats.ignoredValueCount, 1);
     assert.equal(stats.parsedRecordCount, 965);
+  });
+
+  it('达到索引阈值的文件才交给惰性视图，阈值写错会被这条抓住', () => {
+    const dir = tempDir('omk-streamed-threshold-');
+    const opened = vi.mocked(openStreamedJsonlRecords);
+
+    const big = join(dir, 'rollout-cx-big.jsonl');
+    writeFileSync(big, codexLog(transcriptLines()));
+    assert.ok(readFileSync(big).length > 16 * 1024 * 1024, '用例前提：必须达到启用阈值');
+    opened.mockClear();
+    loadTraceCorpus(big);
+    assert.ok(opened.mock.calls.length >= 1, '超过阈值的会话日志必须走惰性视图，否则内存退回整档常驻');
+
+    const small = join(dir, 'rollout-cx-small.jsonl');
+    writeFileSync(small, codexLog(transcriptLines().slice(0, 3)));
+    assert.ok(readFileSync(small).length < 16 * 1024 * 1024, '用例前提：必须低于启用阈值');
+    opened.mockClear();
+    const parsed = loadTraceCorpus(small);
+    assert.equal(opened.mock.calls.length, 0, '未达阈值不该开惰性视图：小文件没有常驻问题，却要付重解析成本');
+    assert.equal(parsed.sessions.length, 1);
   });
 
   it('建立索引期间失败时不留下已打开的 fd', () => {
