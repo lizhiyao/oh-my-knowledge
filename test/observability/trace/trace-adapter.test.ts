@@ -1358,6 +1358,58 @@ describe('loadTraceSessions', () => {
     assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 1);
   });
 
+  it('keeps a Claude thinking block as plaintext model reasoning without leaking it into the reply', () => {
+    const path = writeSession(tmpDir, 'claude-thinking.jsonl', [
+      asstRec('a1', [
+        { type: 'thinking', thinking: '  先确认需求范围，再决定读哪个文件。  ', signature: 'EpAJCmMIDhgCKkDw' },
+        { type: 'text', text: '我先看一下目录。' },
+      ]),
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const activity = session.events.find((event) => event.eventKind === 'model_activity');
+    assert.ok(activity?.eventKind === 'model_activity');
+    assert.equal(activity.activityKind, 'reasoning');
+    assert.equal(activity.contentVisibility, 'plaintext');
+    assert.equal(activity.text, '先确认需求范围，再决定读哪个文件。');
+    assert.equal(activity.contentSource, 'text');
+    const message = session.events.find((event) => event.eventKind === 'message');
+    assert.ok(message?.eventKind === 'message');
+    assert.equal(message.text, '我先看一下目录。');
+  });
+
+  it('records a redacted Claude thinking chain as opaque reasoning instead of inventing text', () => {
+    const path = writeSession(tmpDir, 'claude-thinking-signature-only.jsonl', [
+      asstRec('a1', [{ type: 'thinking', thinking: '', signature: 'EpAJCmMIDhgCKkDw' }]),
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const [activity] = session.events.filter((event) => event.eventKind === 'model_activity');
+    assert.ok(activity?.eventKind === 'model_activity');
+    assert.equal(activity.contentVisibility, 'opaque');
+    assert.equal(activity.text, undefined);
+    assert.equal(session.events.filter((event) => event.eventKind === 'message').length, 0);
+  });
+
+  it('maps the AI-SDK sibling host reasoning block beside the tool block of the same record', () => {
+    const path = writeSession(tmpDir, 'claude-family-reasoning.jsonl', [
+      asstRec('a1', [
+        { type: 'reasoning', text: '用户想知道当前仓库列表。' },
+        { type: 'tool-call', toolCallId: 'fc-ls', toolName: 'Bash', input: { command: 'ls' } },
+      ]),
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const activity = session.events.find((event) => event.eventKind === 'model_activity');
+    assert.ok(activity?.eventKind === 'model_activity');
+    assert.equal(activity.contentVisibility, 'plaintext');
+    assert.equal(activity.text, '用户想知道当前仓库列表。');
+    const call = session.events.find((event) => event.eventKind === 'tool_call');
+    assert.ok(call?.eventKind === 'tool_call');
+    assert.equal(call.callId, 'fc-ls');
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
   it('normalizes Claude MCP calls into the shared provider identity', () => {
     const path = writeSession(tmpDir, 'claude-mcp-tool.jsonl', [
       asstRec('a1', [{

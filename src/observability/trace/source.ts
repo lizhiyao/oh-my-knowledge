@@ -61,8 +61,10 @@ const MAX_MARKDOWN_LOG_BYTES = 64 * 1024 * 1024;
 // ---------- Claude Code JSONL compatibility schema (v0.18 subset) ----------
 
 export interface CcAssistantContent {
-  type: 'thinking' | 'text' | 'tool_use';
+  type: 'thinking' | 'text' | 'tool_use' | 'reasoning';
   thinking?: string;
+  /** Claude 的推理链签名；明文被脱敏时它是「这块确实存在」的唯一证据。 */
+  signature?: string;
   text?: string;
   id?: string;
   name?: string;
@@ -733,6 +735,43 @@ function claudeRecordToTraceEvents(
       });
     }
     content.forEach((part, partIndex) => {
+      if (isRecordObject(part) && (part.type === 'thinking' || part.type === 'reasoning')) {
+        // 两个来源的推理块字段名不同：Claude 是 thinking，AI SDK 族宿主是 reasoning + text。
+        const reasoning = typeof part.thinking === 'string'
+          ? part.thinking.trim()
+          : typeof part.text === 'string'
+            ? part.text.trim()
+            : '';
+        if (reasoning) {
+          events.push({
+            eventKind: 'model_activity',
+            eventId: eventId(`model-activity-${partIndex}`),
+            sourceEventId,
+            sourceIndex,
+            sourceType,
+            timestamp,
+            activityKind: 'reasoning',
+            contentVisibility: 'plaintext',
+            text: reasoning,
+            contentSource: 'text',
+            model,
+          });
+        } else if (typeof part.signature === 'string' && part.signature.trim()) {
+          // 推理被脱敏成签名时只登记边界，不编造推理文本。
+          events.push({
+            eventKind: 'model_activity',
+            eventId: eventId(`model-activity-${partIndex}`),
+            sourceEventId,
+            sourceIndex,
+            sourceType,
+            timestamp,
+            activityKind: 'reasoning',
+            contentVisibility: 'opaque',
+            model,
+          });
+        }
+        return;
+      }
       if (
         isRecordObject(part)
         && part.type === 'tool_use'
