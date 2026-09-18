@@ -66,6 +66,7 @@ test/observability/inbox/trace-ingestion.test.ts
 test/observability/knowledge-debugger.test.ts
 test/observability/skill-health/skill-chain.test.ts
 test/observability/task-window.test.ts
+test/observability/trace/streamed-records.test.ts
 test/observability/trace/trace-adapter.test.ts
 test/observability/trace/unknown-disposition.test.ts
 test/scripts/build-docs.test.ts

@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { openStreamedJsonlRecords, streamedJsonlBytes } from './streamed-records.js';
 import {
   isCodexGuardianRollout,
   isCodexJsonl,
@@ -57,6 +58,8 @@ import {
 
 const TRACE_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_JSONL_RECORD_CHARS = 32 * 1024 * 1024;
+/** 达到该大小的 Codex 日志走惰性记录视图；小文件按原路径整档解析更快。 */
+const CODEX_STREAMED_MIN_BYTES = 16 * 1024 * 1024;
 const MAX_MARKDOWN_LOG_BYTES = 64 * 1024 * 1024;
 
 // ---------- Claude Code JSONL compatibility schema (v0.18 subset) ----------
@@ -435,6 +438,8 @@ function traceLabelFor(filePath: string, groupRoot: string, role: 'main' | 'suba
 }
 
 function parseJsonlSessionFile(filePath: string): ParsedTraceFile {
+  const streamed = parseStreamedCodexSessionFile(filePath);
+  if (streamed) return streamed;
   const records: CcRecord[] = [];
   const indexedRecords: Array<CcRecord | undefined> = [];
   let sourceRecordCount = 0;
@@ -568,6 +573,56 @@ function isClaudeJsonl(records: CcRecord[]): boolean {
     isKnownClaudeRecordType(record.type)
     && typeof record.sessionId === 'string'
   );
+}
+
+/**
+ * Codex 的大会话日志走「按字节偏移索引的惰性记录」：适配器逻辑一行不改，只是记录对象不再
+ * 整档常驻，实测 1.3 GiB 档的采集峰值从 3.6 GiB 降到 1.5 GiB。其余宿主、小文件、以及格式
+ * 判定不唯一的文件一律返回 undefined，由调用方走原有的整档解析路径。
+ *
+ * 代价：判定格式要把四个 `matches` 各跑一遍，而不匹配的谓词是「全文件找一条同格式记录」，
+ * 在惰性视图上每次都是一整轮重新解析（实测 1.3 GiB 档约 1.3 s/轮）。这是刻意的——换成按
+ * 前若干条判定会改变「格式不唯一就不解析」的语义，属于 #974 follow-up 里要跟记录来源一起
+ * 重新设计的一段。
+ */
+function parseStreamedCodexSessionFile(filePath: string): ParsedTraceFile | undefined {
+  if (streamedJsonlBytes(filePath) < CODEX_STREAMED_MIN_BYTES) return undefined;
+  const view = openStreamedJsonlRecords<CcRecord>(filePath);
+  try {
+    const matching = JSONL_TRACE_ADAPTERS.filter((adapter) => adapter.matches(view.values));
+    if (matching.length !== 1 || matching[0].sourceKind !== 'codex') return undefined;
+    const adapter = matching[0];
+    if (adapter.shouldFilter?.(view.values)) {
+      return { sessions: [], ingestion: streamedIngestion(view, 1) };
+    }
+    const session = adapter.parse(filePath, view.values);
+    const ingestion = streamedIngestion(view, 0);
+    return {
+      sessions: [session],
+      ingestion: {
+        ...ingestion,
+        unknownEventCount: session.events.filter((event) => event.eventKind === 'unknown').length,
+      },
+    };
+  } finally {
+    view.close();
+  }
+}
+
+function streamedIngestion(
+  view: { stats: () => { sourceRecordCount: number; malformedRecordCount: number; ignoredValueCount: number } },
+  filteredSessionCount: number,
+): TraceIngestionSummary {
+  const stats = view.stats();
+  return {
+    fileCount: 1,
+    sourceRecordCount: stats.sourceRecordCount,
+    parsedRecordCount: stats.sourceRecordCount - stats.malformedRecordCount - stats.ignoredValueCount,
+    malformedRecordCount: stats.malformedRecordCount,
+    ignoredValueCount: stats.ignoredValueCount,
+    unknownEventCount: 0,
+    filteredSessionCount,
+  };
 }
 
 function parseUnknownJsonlSession(
