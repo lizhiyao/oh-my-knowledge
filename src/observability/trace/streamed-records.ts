@@ -13,10 +13,11 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
  * 下来的事件（全部事件序列化合计 138 MiB），也不是遍历遍数——同一份文件只跑一遍「取完就丢」的
  * 遍历，maximum resident 就到 1 512 MiB，再跑 12 遍只多 8%。按「每行做什么」把它拆开量（同一份
  * 1 357 MiB 日志、83 182 行，读缓冲复用）：纯字节扫 55 MiB、只把行解码成 JS 字符串 133 MiB、加上
- * `JSON.parse` 才 1 400 MiB——撑住驻留的是逐条建出的对象图（≈文件大小的 0.9 倍），且这些页 V8 不
- * 还给系统（old space 限到 64 MiB 后 heapUsed 只剩 16 MiB，maximum resident 仍是 1 155 MiB，所以
- * 「子进程＋小堆」救不了）。要再往下压得让读取层不逐条建对象图：在字节缓冲上按需取出真正进 IR 的
- * 字段。见 #974 的复核记录。
+ * `JSON.parse` 才 1 400 MiB——撑住驻留的是逐条建出的对象图（比只解码那一档多 1 267 MiB，≈文件大小
+ * 的 0.9 倍），且这些页 V8 不还给系统（old space 限到 64 MiB 后 heapUsed 只剩 16 MiB，maximum
+ * resident 仍是 1 155 MiB，所以「子进程＋小堆」救不了；把完整 GC 提到每 200 条一次、再叠加堆上限
+ * 与半空间也只降到 920 MiB（heapUsed 5 MiB）——调回收节奏改的是系数，不是斜率。要再往下压得让
+ * 读取层不逐条建对象图：在字节缓冲上按需取出真正进 IR 的字段。见 #974 的复核记录。
  *
  * 使用约定：视图只支持按下标与 `length` 取用（含 `forEach`／`some`／`find` 等只读数组方法，
  * 写方法一律抛错），不要对它做 `Object.keys`／`JSON.stringify`／扩展运算——那些走的是自身属性，
