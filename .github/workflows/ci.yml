@@ -79,7 +79,8 @@ jobs:
           node-version: 22
           cache: yarn
       - run: yarn install --immutable
-      - run: node scripts/ci/diagnostics.mjs run quality "$RUNNER_TEMP/ci-diagnostics" 600000 yarn ci:quality
+      # unknown_signal（进程被杀但无 OOM 证据）允许整体重试一次，时限跨尝试共享，不超包络。
+      - run: node scripts/ci/diagnostics.mjs run quality "$RUNNER_TEMP/ci-diagnostics" 600000 --retry-on=unknown_signal yarn ci:quality
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -124,7 +125,11 @@ jobs:
       # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
       # 字面 pattern 而跑全量）。maxWorkers=1：装箱把重活分散到各 shard，默认 workers（2 核 runner
       # 可能 2 workers）会叠加两个重文件的子进程内存峰值导致 runner SIGKILL（实测 shard 3/4 被杀）。
-      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1
+      # unknown_signal（进程被杀但无 OOM 证据）整体重试一次，时限跨尝试共享（540s 包络不变，重试
+      # 只拿剩余预算）；CI_DIAGNOSTICS_DIR 挂上进度 reporter，崩溃时最后一个未配对 start 即现场。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 --retry-on=unknown_signal yarn test --maxWorkers=1
+        env:
+          CI_DIAGNOSTICS_DIR: ${{ runner.temp }}/ci-diagnostics
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
@@ -160,7 +165,11 @@ jobs:
       # xargs 把清单文件转成 vitest 位置参数（放在命令末尾，不带 `--`；`--` 会让 vitest 把文件当
       # 字面 pattern 而跑全量）。maxWorkers=1：装箱把重活分散到各 shard，默认 workers（2 核 runner
       # 可能 2 workers）会叠加两个重文件的子进程内存峰值导致 runner SIGKILL（实测 shard 3/4 被杀）。
-      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 yarn test --maxWorkers=1
+      # unknown_signal（进程被杀但无 OOM 证据）整体重试一次，时限跨尝试共享（540s 包络不变，重试
+      # 只拿剩余预算）；CI_DIAGNOSTICS_DIR 挂上进度 reporter，崩溃时最后一个未配对 start 即现场。
+      - run: xargs -a test/shards/source-${{ matrix.shard }}.txt node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 540000 --retry-on=unknown_signal yarn test --maxWorkers=1
+        env:
+          CI_DIAGNOSTICS_DIR: ${{ runner.temp }}/ci-diagnostics
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:

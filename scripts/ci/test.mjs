@@ -70,7 +70,12 @@ function changedPaths(before, after) {
 }
 
 const before = workspaceSnapshot();
-const result = spawnSync(process.execPath, [VITEST, 'run', ...process.argv.slice(2)], {
+// CI 诊断目录存在时挂上进度 reporter：进程被信号杀死时，tests-progress.log 里最后一个
+// 没有配对 end 的 start 就是死亡现场。本地不设置该变量，行为不变。
+const reporters = process.env.CI_DIAGNOSTICS_DIR
+  ? ['--reporter=default', `--reporter=${join(PROJECT_ROOT, 'scripts', 'ci', 'progress-reporter.mjs')}`]
+  : [];
+const result = spawnSync(process.execPath, [VITEST, 'run', ...reporters, ...process.argv.slice(2)], {
   cwd: PROJECT_ROOT,
   env: process.env,
   stdio: 'inherit',
