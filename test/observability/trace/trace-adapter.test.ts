@@ -1242,7 +1242,7 @@ describe('loadTraceSessions', () => {
         type: 'tool-call',
         toolCallId: 'fc-read',
         toolName: 'Read',
-        input: { path: '/repo/.agents/skills/audit/SKILL.md' },
+        input: { file_path: '/repo/.agents/skills/audit/SKILL.md', encoding: 'utf8' },
       }]),
       {
         type: 'tool',
@@ -1270,7 +1270,7 @@ describe('loadTraceSessions', () => {
     );
     assert.ok(call?.eventKind === 'tool_call');
     assert.equal(call.tool.name, 'Read');
-    assert.equal((call.input as { path?: string }).path, '/repo/.agents/skills/audit/SKILL.md');
+    assert.equal((call.input as { file_path?: string }).file_path, '/repo/.agents/skills/audit/SKILL.md');
     const result = session.events.find((event) =>
       event.eventKind === 'tool_result' && event.callId === 'fc-read',
     );
@@ -1301,7 +1301,7 @@ describe('loadTraceSessions', () => {
             toolCallId: 'fc-bash',
             toolName: 'Bash',
             isError: true,
-            output: { type: 'text', value: 'command not found: foo' },
+            output: { type: 'error-text', value: 'command not found: foo' },
           }],
         },
       },
@@ -1329,7 +1329,7 @@ describe('loadTraceSessions', () => {
             type: 'tool-result',
             toolCallId: 'fc-search',
             toolName: 'Grep',
-            output: { type: 'json', value: { hits: ['src/a.ts'] } },
+            output: { type: 'content', value: [{ file: 'src/a.ts' }] },
           }],
         },
       },
