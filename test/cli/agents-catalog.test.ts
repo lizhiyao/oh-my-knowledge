@@ -9,12 +9,17 @@
 
 import { afterEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli, runCliFailing } from '../helpers/cli-process.js';
-import { AGENT_CATALOG_VERSION } from '../../src/observability/agents/contracts.js';
-import type { AgentInventoryReport } from '../../src/observability/agents/contracts.js';
+import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
+import {
+  AGENT_CATALOG_VERSION,
+  AGENT_COLLECTION_VERSION,
+  type AgentCollectionReport,
+  type AgentInventoryReport,
+} from '../../src/observability/agents/contracts.js';
 
 const tempRoots: string[] = [];
 
@@ -93,6 +98,74 @@ describe('omk agents 与本机登记表扩展', () => {
     assert.equal(sibling.sessionFileCount, 1);
     assert.deepEqual(sibling.logRoots.map((root) => [root.rootId, root.sessionFileCount]), [['sibling-projects', 1]]);
     assert.equal(report.summary.knownAgentCount, report.agents.length);
+  });
+
+  it('collect 的三档计数在落盘报告与人读摘要里是同一批数字', async () => {
+    const sandbox = createSandbox(catalogJson([SIBLING]));
+
+    const chinese = await runCli(['agents', 'collect', '--dir', sandbox.outDir], {
+      env: sandbox.env,
+      cwd: sandbox.home,
+    });
+    const report = JSON.parse(readFileSync(join(sandbox.outDir, 'collection.json'), 'utf-8')) as AgentCollectionReport;
+    assert.equal(report.schemaVersion, AGENT_COLLECTION_VERSION);
+    assert.equal(report.unknownDispositionRulesVersion, UNKNOWN_DISPOSITION_RULES_VERSION);
+    const { unknownEventCount, duplicateViewCount, unmappedEvidenceCount } = report.summary;
+    assert.ok(
+      unknownEventCount + duplicateViewCount + unmappedEvidenceCount > 0,
+      '读不出的日志格式必须落在某一档，不能静默归零',
+    );
+    assert.equal(
+      unknownEventCount > 0,
+      true,
+      '登记表说得出格式、适配器读不出时算支持缺口，不冒充「刻意不映射」',
+    );
+    const summary = `${chinese.stdout}${chinese.stderr}`;
+    assert.match(
+      summary,
+      new RegExp(`未支持格式 ${unknownEventCount} · 重复视图 ${duplicateViewCount} · 待映射证据 ${unmappedEvidenceCount}`),
+      summary,
+    );
+
+    // 增量沿用旧条目时三档计数要跟着一起留下。
+    const english = await runCli(['agents', 'collect', '--lang', 'en', '--dir', sandbox.outDir], {
+      env: sandbox.env,
+      cwd: sandbox.home,
+    });
+    assert.match(
+      `${english.stdout}${english.stderr}`,
+      new RegExp(`${unknownEventCount} unsupported format · ${duplicateViewCount} duplicate views · ${unmappedEvidenceCount} unmapped evidence`),
+    );
+    const reread = JSON.parse(readFileSync(join(sandbox.outDir, 'collection.json'), 'utf-8')) as AgentCollectionReport;
+    assert.equal(reread.summary.collectedCount, 0, '第二轮应当走增量');
+    assert.deepEqual(
+      [
+        reread.summary.unknownEventCount,
+        reread.summary.duplicateViewCount,
+        reread.summary.unmappedEvidenceCount,
+      ],
+      [unknownEventCount, duplicateViewCount, unmappedEvidenceCount],
+      '沿用旧条目时分桶计数必须原样保留',
+    );
+  });
+
+  it('extract 遇到已被取代的采集报告时停在「重新采集」，不走到执行器', async () => {
+    const sandbox = createSandbox(catalogJson([SIBLING]));
+    mkdirSync(sandbox.outDir, { recursive: true });
+    writeFileSync(join(sandbox.outDir, 'collection.json'), JSON.stringify({ schemaVersion: 'agent-collection-v1' }));
+
+    const chinese = await runCliFailing(['agents', 'extract', '--session', 'trace-1', '--dir', sandbox.outDir], 1, {
+      env: sandbox.env,
+      cwd: sandbox.home,
+    });
+    assert.match(`${chinese.stdout}${chinese.stderr}`, /采集报告是 agent-collection-v1 口径/);
+
+    const english = await runCliFailing(
+      ['agents', 'extract', '--session', 'trace-1', '--lang', 'en', '--dir', sandbox.outDir],
+      1,
+      { env: sandbox.env, cwd: sandbox.home },
+    );
+    assert.match(`${english.stdout}${english.stderr}`, /superseded agent-collection-v1 scheme/);
   });
 
   it('扩展文件不合法时以业务失败退出，并点名要修的文件', async () => {

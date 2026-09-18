@@ -80,6 +80,7 @@ export default class AgentsCommand extends BaseCommand {
     const lang = this.lang;
     const {
       agentStorageLayout: layoutOf,
+      AgentCollectionReportOutdatedError,
       collectAgentLogs,
       detectAgentInventory,
       loadAgentCollectionReport,
@@ -145,8 +146,8 @@ export default class AgentsCommand extends BaseCommand {
             this.log(formatEntryLine(entry, lang));
           }
           this.log(lang === 'zh'
-            ? `采集：发现 ${report.summary.discoveredCount} · 新增 ${report.summary.collectedCount} · 跳过 ${report.summary.skippedCount} · 失败 ${report.summary.failedCount} · 事件 ${report.summary.eventCount}（无法解读 ${report.summary.unknownEventCount}）`
-            : `Collected: ${report.summary.discoveredCount} found · ${report.summary.collectedCount} new · ${report.summary.skippedCount} skipped · ${report.summary.failedCount} failed · ${report.summary.eventCount} events (${report.summary.unknownEventCount} uninterpreted)`);
+            ? `采集：发现 ${report.summary.discoveredCount} · 新增 ${report.summary.collectedCount} · 跳过 ${report.summary.skippedCount} · 失败 ${report.summary.failedCount} · 事件 ${report.summary.eventCount}（未支持格式 ${report.summary.unknownEventCount} · 重复视图 ${report.summary.duplicateViewCount} · 待映射证据 ${report.summary.unmappedEvidenceCount}）`
+            : `Collected: ${report.summary.discoveredCount} found · ${report.summary.collectedCount} new · ${report.summary.skippedCount} skipped · ${report.summary.failedCount} failed · ${report.summary.eventCount} events (${report.summary.unknownEventCount} unsupported format · ${report.summary.duplicateViewCount} duplicate views · ${report.summary.unmappedEvidenceCount} unmapped evidence)`);
         }
         for (const limitation of report.limitations) {
           this.logToStderr(lang === 'zh' ? `限制：${limitation}` : `Limitation: ${limitation}`);
@@ -163,7 +164,17 @@ export default class AgentsCommand extends BaseCommand {
       if (!runId?.trim()) {
         this.error(`--session ${lang === 'zh' ? '不能为空' : 'is required'}`, { exit: 2 });
       }
-      const collection = loadAgentCollectionReport(layout.observeAgentsDir);
+      let collection: ReturnType<typeof loadAgentCollectionReport>;
+      try {
+        collection = loadAgentCollectionReport(layout.observeAgentsDir);
+      } catch (cause) {
+        if (cause instanceof AgentCollectionReportOutdatedError) {
+          this.error(lang === 'zh'
+            ? `采集报告是 ${cause.foundVersion} 口径，未识别事件的分桶计数无法沿用。先运行 omk agents collect 重新采集。`
+            : `The collection report uses the superseded ${cause.foundVersion} scheme, whose unrecognized-event buckets cannot be carried over. Run omk agents collect to recollect.`, { exit: 1 });
+        }
+        throw cause;
+      }
       if (!collection) {
         this.error(lang === 'zh'
           ? '还没有采集报告，先运行 omk agents collect。'

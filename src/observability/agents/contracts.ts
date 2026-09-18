@@ -9,7 +9,13 @@ import { z } from 'zod';
 import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
 
 export const AGENT_INVENTORY_VERSION = 'agent-inventory-v1' as const;
-export const AGENT_COLLECTION_VERSION = 'agent-collection-v1' as const;
+/**
+ * v2 起 `unknownEventCount` 只统计「未支持的记录」，同一事实的重复／累计视图与尚未映射的
+ * 唯一证据各自成档。v1 里这个字段是全部未识别事件的总数，两者不可同比，因此不自动改写
+ * 用户磁盘上的旧报告，只把它识别为旧口径并提示重新采集。
+ */
+export const AGENT_COLLECTION_VERSION = 'agent-collection-v2' as const;
+export const SUPERSEDED_AGENT_COLLECTION_VERSIONS = ['agent-collection-v1'] as const;
 export const AGENT_CATALOG_VERSION = 'agent-catalog-v1' as const;
 
 const agentIdSchema = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/);
@@ -105,7 +111,12 @@ export const CollectedSessionSchema = z.strictObject({
   modifiedAt: z.string().min(1),
   contentDigest: z.string().min(1),
   eventCount: z.number().int().nonnegative(),
+  /** 未支持的记录：适配器读不出语义，属于真正的能力缺口。 */
   unknownEventCount: z.number().int().nonnegative(),
+  /** 同一事实的重复写入或累计快照：映射成事件会变成双计，刻意不映射。 */
+  duplicateViewCount: z.number().int().nonnegative(),
+  /** 已识别但尚未决定映射口径的唯一证据。 */
+  unmappedEvidenceCount: z.number().int().nonnegative(),
   startTimestamp: z.string().optional(),
   endTimestamp: z.string().optional(),
   title: z.string().optional(),
@@ -127,6 +138,8 @@ export const AgentCollectionEntrySchema = z.strictObject({
 
 export const AgentCollectionReportSchema = z.strictObject({
   schemaVersion: z.literal(AGENT_COLLECTION_VERSION),
+  /** 桶归属的推导口径版本；与采集时不一致时旧计数不可复用，必须重算。 */
+  unknownDispositionRulesVersion: z.string().min(1),
   generatedAt: z.string().min(1),
   outputDir: z.string().min(1),
   inventoryGeneratedAt: z.string().min(1),
@@ -140,7 +153,10 @@ export const AgentCollectionReportSchema = z.strictObject({
     skippedCount: z.number().int().nonnegative(),
     failedCount: z.number().int().nonnegative(),
     eventCount: z.number().int().nonnegative(),
+    /** 未支持的记录总数（能力缺口），不含另外两档。 */
     unknownEventCount: z.number().int().nonnegative(),
+    duplicateViewCount: z.number().int().nonnegative(),
+    unmappedEvidenceCount: z.number().int().nonnegative(),
     totalBytes: z.number().int().nonnegative(),
   }),
 });

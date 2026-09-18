@@ -386,13 +386,15 @@ omk agents extract --session <runId>     # 从一份已采集会话提炼候选�
 
 <!-- omk:cli:agents:flags:end -->
 
-`list` 按 Agent 登记表核对 `PATH` 与主目录，写出 `inventory.json`。登记表是内置条目与本机扩展文件 `~/.oh-my-knowledge/agents.json`（契约 `agent-catalog-v1`）合并的结果：你在扩展文件里声明自己宿主的安装目录与日志根，就能被识别和采集，不需要改动代码；同身份时扩展条目整条替换内置条目。内置表覆盖 Codex、Claude Code、Qoder、OpenClaw 等公开产品。`collect` 遍历每个已安装 Agent 声明的日志根，把会话日志解析成与 `observe` 同源的 Trace IR，每个会话落一份归一化产物到 `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`，并写出 `collection.json` 说明发现、采集、跳过与失败各多少。采集是增量的：摘要与修改时间已出现在上一轮报告里的文件会被跳过，因此第二轮通常零新增。`extract` 把一份已采集会话归档成证据快照，再让配置的执行器提炼候选知识，走的是与 `omk observe knowledge` 相同的 `entities`／`evidence` 契约。
+`list` 按 Agent 登记表核对 `PATH` 与主目录，写出 `inventory.json`。登记表是内置条目与本机扩展文件 `~/.oh-my-knowledge/agents.json`（契约 `agent-catalog-v1`）合并的结果：你在扩展文件里声明自己宿主的安装目录与日志根，就能被识别和采集，不需要改动代码；同身份时扩展条目整条替换内置条目。内置表覆盖 Codex、Claude Code、Qoder、OpenClaw 等公开产品。`collect` 遍历每个已安装 Agent 声明的日志根，把会话日志解析成与 `observe` 同源的 Trace IR，每个会话落一份归一化产物到 `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`，并写出 `collection.json`（契约 `agent-collection-v2`）说明发现、采集、跳过与失败各多少。采集是增量的：摘要与修改时间已出现在上一轮报告里的文件会被跳过，因此第二轮通常零新增。`extract` 把一份已采集会话归档成证据快照，再让配置的执行器提炼候选知识，走的是与 `omk observe knowledge` 相同的 `entities`／`evidence` 契约。
+
+读不出的记录不再只有一个计数。`collection.json` 按会话把它们分成三档：`unknownEventCount` 是未支持格式，适配器完全读不出语义，属于真正的能力缺口；`duplicateViewCount` 是重复视图已忽略，同一条事实已被另一个视图映射过、或者它本身是累计快照，再映射一遍会变成双计，因此刻意不产出事件；`unmappedEvidenceCount` 是待映射证据，记录族已经识别但还没决定映射成什么事件，原始记录仍留在产物里。三档互不重叠，相加等于改动前那个未识别总数；把缺口和刻意不映射混成一个数，会让人误以为已经看过了全部事实。分桶是采集期推导的结论，口径版本记在 `unknownDispositionRulesVersion`；上一轮报告是旧口径（例如 `agent-collection-v1`）时，旧计数不再沿用，本轮按全量重新采集并如实写进 `limitations`，磁盘上的旧文件被整份覆盖而不是逐字段迁移，`extract` 也会直接拒绝旧口径报告，不拿旧计数继续提炼。
 
 两点是刻意设计。探测不执行被探测的二进制——安装情况只由文件系统和 `PATH` 推断，一次清单运行不可能触发第三方代码。采集不移动、不截断、不删除你自己的日志：原始文件留在原地继续作为证据，派生内容一律写在 OMK 侧。单轮容量上限（文件数、字节数、单文件字节数）是硬约束而不是建议；命中上限时本轮干净收尾，并在 `limitations` 里说明截断了什么，被截断的计数不会被当作全量。
 
 登记表扩展文件的边界与内置表一致：字段只有产品名与相对主目录的路径，没有绝对路径字段，也没有任何执行能力；文件不存在就是「没有扩展条目」，但存在却读不动、JSON 畸形或路径越出主目录都会直接报错退出。半份登记表会让清单静默少一个宿主，因此这里选择失败而不是继续。
 
-`omk studio` 的 Agents 页（`/agents`）读的就是这两份报告：装了哪些 Agent、它们的日志落在哪个目录、采集了多少会话与事件，以及哪些计数被容量上限截断。页面不重新扫描这台机器，也没有采集或提炼按钮——那两步仍是你在终端里执行的命令，刷新页面改变不了证据。
+`omk studio` 的 Agents 页（`/agents`）读的就是这两份报告：装了哪些 Agent、它们的日志落在哪个目录、采集了多少会话与事件、未识别记录分成哪三档，以及哪些计数被容量上限截断。页面不重新扫描这台机器，也没有采集或提炼按钮——那两步仍是你在终端里执行的命令，刷新页面改变不了证据。
 
 ## `omk evolve`
 

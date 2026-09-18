@@ -38,10 +38,17 @@ const COPY = {
     unreadable: '不可读',
     truncated: '已截断',
     detectedSummary: (known: number, installed: number, files: number) => `登记表 ${known} 个 · 已安装 ${installed} 个 · 会话日志 ${files} 份`,
-    collectedSummary: (collected: number, events: number, unknown: number) => `采集 ${collected} 份会话 · 事件 ${events} 条 · 未识别 ${unknown} 条`,
+    collectedSummary: (collected: number, events: number) => `采集 ${collected} 份会话 · 事件 ${events} 条`,
     sessionTitle: '会话',
     events: '事件',
     unknownEvents: '未识别事件',
+    bucketUnsupported: '未支持格式',
+    bucketDuplicateView: '重复视图已忽略',
+    bucketUnmappedEvidence: '待映射证据',
+    bucketUnsupportedShort: '未支持',
+    bucketDuplicateViewShort: '重复视图',
+    bucketUnmappedEvidenceShort: '待映射',
+    bucketLegend: '未支持格式：适配器读不出语义的记录，属于真正的能力缺口。重复视图已忽略：同一条事实已被别的视图映射过，或它是累计快照，再映射会变成双计，因此刻意不产出事件。待映射证据：记录族已经识别，但映射成什么事件还没决定，原始证据仍保留在日志里。',
     size: '体积',
     modifiedAt: '日志更新',
     artifact: '归一化产物',
@@ -49,9 +56,10 @@ const COPY = {
     inventoryUnreadable: '识别报告读不动，页面不猜它原本写了什么。重新运行 omk agents list 会覆盖它。',
     collectionMissing: '还没有采集过日志。先运行 omk agents list，再运行 omk agents collect。',
     collectionUnreadable: '采集报告读不动，页面不拿上一次的产物充数。重新运行 omk agents collect。',
+    collectionOutdated: (version: string) => `采集报告是 ${version} 口径，未识别事件的分桶计数无法沿用。运行 omk agents collect 会按当前口径重新采集并覆盖它。`,
     truncatedWarning: '有日志根被容量上限截断，上面的计数是已扫描部分，不是全量。',
     limitationsHeading: '本次采集的限制',
-    unknownRatioWarning: (percent: string) => `归一化后有 ${percent} 的事件没能识别，只保留原始记录。未识别不等于无影响，需要看原始日志再判断。`,
+    unknownRatioWarning: (percent: string) => `归一化后的事件里有 ${percent} 属于未支持的格式，只保留了原始记录。未识别不等于无影响，需要看原始日志再判断。`,
     nextList: [
       { command: 'omk agents list', text: '重新识别本机 Agent 与它们的日志根。' },
       { command: 'omk agents collect', text: '增量采集会话日志并映射成统一 Trace IR 产物。' },
@@ -83,10 +91,17 @@ const COPY = {
     unreadable: 'Unreadable',
     truncated: 'Truncated',
     detectedSummary: (known: number, installed: number, files: number) => `${known} registered · ${installed} installed · ${files} session logs`,
-    collectedSummary: (collected: number, events: number, unknown: number) => `${collected} sessions · ${events} events · ${unknown} unrecognized`,
+    collectedSummary: (collected: number, events: number) => `${collected} sessions · ${events} events`,
     sessionTitle: 'Session',
     events: 'Events',
     unknownEvents: 'Unrecognized',
+    bucketUnsupported: 'Unsupported format',
+    bucketDuplicateView: 'Duplicate view ignored',
+    bucketUnmappedEvidence: 'Evidence pending mapping',
+    bucketUnsupportedShort: 'unsupported',
+    bucketDuplicateViewShort: 'duplicate view',
+    bucketUnmappedEvidenceShort: 'unmapped',
+    bucketLegend: 'Unsupported format: the adapter cannot read the record, which is a real capability gap. Duplicate view ignored: another view already carried this fact, or the record is a cumulative snapshot, so mapping it again would double count — no event is produced on purpose. Evidence pending mapping: the record family is recognized, but what event it should become is undecided; the raw evidence stays in the log.',
     size: 'Size',
     modifiedAt: 'Log updated',
     artifact: 'Normalized artifact',
@@ -94,9 +109,10 @@ const COPY = {
     inventoryUnreadable: 'The inventory report cannot be read, and the page does not guess what it said. Re-run omk agents list to overwrite it.',
     collectionMissing: 'No logs collected yet. Run omk agents list first, then omk agents collect.',
     collectionUnreadable: 'The collection report cannot be read, and the page does not reuse older artifacts as a substitute. Re-run omk agents collect.',
+    collectionOutdated: (version: string) => `The collection report is written in the ${version} scheme, whose unrecognized-event buckets cannot be carried over. Run omk agents collect to recollect under the current scheme, which rewrites it.`,
     truncatedWarning: 'Some log roots hit a capacity ceiling, so these counts cover what was scanned, not everything.',
     limitationsHeading: 'Limitations of this collection',
-    unknownRatioWarning: (percent: string) => `${percent} of the normalized events were not recognized and remain only as raw records. Unrecognized is not the same as harmless — read the source log before judging.`,
+    unknownRatioWarning: (percent: string) => `${percent} of the normalized records are in an unsupported format and survive only as raw records. Unrecognized is not the same as harmless — read the source log before judging.`,
     nextList: [
       { command: 'omk agents list', text: 'Detect installed agents and their log roots again.' },
       { command: 'omk agents collect', text: 'Collect session logs incrementally into normalized Trace IR artifacts.' },
@@ -198,6 +214,18 @@ function DetectedTable({ report, lang }: { report: AgentInventoryReport; lang: L
   );
 }
 
+type BucketLabelCopy = {
+  readonly bucketUnsupportedShort: string;
+  readonly bucketDuplicateViewShort: string;
+  readonly bucketUnmappedEvidenceShort: string;
+};
+
+function unknownBucketBreakdown(session: CollectedSession, c: BucketLabelCopy): string {
+  return `${c.bucketUnsupportedShort} ${session.unknownEventCount}`
+    + ` · ${c.bucketDuplicateViewShort} ${session.duplicateViewCount}`
+    + ` · ${c.bucketUnmappedEvidenceShort} ${session.unmappedEvidenceCount}`;
+}
+
 function SessionTable({ report, lang }: { report: AgentCollectionReport; lang: Language }) {
   const c = COPY[lang];
   return (
@@ -206,7 +234,7 @@ function SessionTable({ report, lang }: { report: AgentCollectionReport; lang: L
       rowKey={(session) => session.traceId}
       pagination={{ pageSize: 20, hideOnSinglePage: true }}
       tableLayout="fixed"
-      scroll={{ x: 1360 }}
+      scroll={{ x: 1470 }}
       dataSource={[...report.sessions]}
       columns={[
         { title: c.agent, dataIndex: 'agentId', key: 'agentId', width: 140 },
@@ -224,12 +252,20 @@ function SessionTable({ report, lang }: { report: AgentCollectionReport; lang: L
         { title: c.events, dataIndex: 'eventCount', key: 'eventCount', width: 90 },
         {
           title: c.unknownEvents,
-          dataIndex: 'unknownEventCount',
-          key: 'unknownEventCount',
-          width: 130,
-          render: (unknown: number, session) => (unknown === 0
-            ? '0'
-            : <Tag color="orange">{`${unknown} / ${session.eventCount}`}</Tag>),
+          key: 'unknownEvents',
+          width: 240,
+          render: (_, session) => {
+            const total = session.unknownEventCount + session.duplicateViewCount + session.unmappedEvidenceCount;
+            if (total === 0) return '0';
+            return (
+              <>
+                <Tag color={session.unknownEventCount > 0 ? 'red' : 'orange'} title={c.bucketLegend}>
+                  {`${total} / ${session.eventCount}`}
+                </Tag>
+                <Typography.Text type="secondary">{unknownBucketBreakdown(session, c)}</Typography.Text>
+              </>
+            );
+          },
         },
         { title: c.size, dataIndex: 'sizeBytes', key: 'sizeBytes', width: 100, render: (bytes: number) => displayBytes(bytes) },
         { title: c.modifiedAt, dataIndex: 'modifiedAt', key: 'modifiedAt', width: 170, render: (at: string) => displayTime(at, 'minute') },
@@ -260,6 +296,11 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
   const unknownRatio = collectionReport && collectionReport.summary.eventCount > 0
     ? `${((collectionReport.summary.unknownEventCount / collectionReport.summary.eventCount) * 100).toFixed(1)}%`
     : undefined;
+  const unknownTotal = collectionReport
+    ? collectionReport.summary.unknownEventCount
+      + collectionReport.summary.duplicateViewCount
+      + collectionReport.summary.unmappedEvidenceCount
+    : 0;
 
   return (
     <div className="agents-page">
@@ -286,13 +327,20 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
       <h2>{c.collectedHeading}</h2>
       {collection.status === 'missing' ? <Alert type="info" showIcon title={c.collectionMissing} /> : null}
       {collection.status === 'unreadable' ? <Alert type="error" showIcon title={c.collectionUnreadable} description={<Typography.Text code>{layout.observeAgentsDir}</Typography.Text>} /> : null}
+      {collection.status === 'outdated' ? <Alert type="warning" showIcon title={c.collectionOutdated(collection.foundVersion)} description={<Typography.Text code>{layout.observeAgentsDir}</Typography.Text>} /> : null}
       {collectionReport ? (
         <>
           <Typography.Paragraph type="secondary">
-            {c.collectedSummary(collectionReport.summary.collectedCount, collectionReport.summary.eventCount, collectionReport.summary.unknownEventCount)}
+            {c.collectedSummary(collectionReport.summary.collectedCount, collectionReport.summary.eventCount)}
             {' · '}
             {displayTime(collectionReport.generatedAt, 'minute')}
           </Typography.Paragraph>
+          <Typography.Paragraph type="secondary">
+            {`${c.bucketUnsupported} ${collectionReport.summary.unknownEventCount}`
+              + ` · ${c.bucketDuplicateView} ${collectionReport.summary.duplicateViewCount}`
+              + ` · ${c.bucketUnmappedEvidence} ${collectionReport.summary.unmappedEvidenceCount}`}
+          </Typography.Paragraph>
+          {unknownTotal > 0 ? <Typography.Paragraph type="secondary">{c.bucketLegend}</Typography.Paragraph> : null}
           {unknownRatio && collectionReport.summary.unknownEventCount > 0 ? <Alert type="warning" showIcon title={c.unknownRatioWarning(unknownRatio)} /> : null}
           {collectionReport.limitations.length > 0 ? (
             <Alert

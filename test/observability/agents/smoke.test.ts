@@ -52,7 +52,9 @@ function describeCollection(report: AgentCollectionReport): string {
     `skipped=${report.summary.skippedCount}`,
     `failed=${report.summary.failedCount}`,
     `events=${report.summary.eventCount}`,
-    `unknownEvents=${report.summary.unknownEventCount}`,
+    `unsupported=${report.summary.unknownEventCount}`,
+    `duplicateViews=${report.summary.duplicateViewCount}`,
+    `unmappedEvidence=${report.summary.unmappedEvidenceCount}`,
     `bytes=${Math.round(report.summary.totalBytes / (1024 * 1024))}MiB`,
     `limitations=${report.limitations.length}`,
   ].join(' ');

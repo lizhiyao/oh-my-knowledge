@@ -30,6 +30,7 @@ export {
   AgentLogRootStatusSchema,
   CollectedSessionSchema,
   DetectedAgentSchema,
+  SUPERSEDED_AGENT_COLLECTION_VERSIONS,
 } from './contracts.js';
 export { KNOWN_AGENTS, findAgentDescriptor } from './registry.js';
 export type { LocalAgentCatalog, LocalAgentCatalogOptions } from './local-catalog.js';
@@ -43,6 +44,7 @@ export { detectAgentInventory, pathDirectoriesFromEnv } from './detect.js';
 export type { DetectAgentInventoryOptions } from './detect.js';
 export {
   AGENT_TRACE_ARTIFACT_VERSION,
+  AgentCollectionReportOutdatedError,
   COLLECTION_REPORT_FILE_NAME,
   DEFAULT_MAX_BYTES_PER_RUN,
   DEFAULT_MAX_SESSION_FILE_BYTES,
