@@ -83,13 +83,29 @@ export default class AgentsCommand extends BaseCommand {
       collectAgentLogs,
       detectAgentInventory,
       loadAgentCollectionReport,
+      LocalAgentCatalogError,
+      resolveAgentCatalog,
       saveAgentCollectionReport,
       saveAgentInventoryReport,
     } = await import('../../observability/agents/index.js');
     const layout = layoutOf(flags.dir ?? globalLayout().observeAgentsDir);
+    // 登记表是内置表与本机扩展文件的合并结果；扩展文件读不动时按业务失败处理，
+    // 因为拿半份表探测会让清单静默少一个宿主，比直接报错更难发现。
+    const readCatalog = (): ReturnType<typeof resolveAgentCatalog> => {
+      try {
+        return resolveAgentCatalog();
+      } catch (cause) {
+        if (cause instanceof LocalAgentCatalogError) {
+          this.error(lang === 'zh'
+            ? `本机 Agent 登记表扩展不可用：${cause.message}`
+            : `Local agent catalog extension is unusable: ${cause.message}`, { exit: 1 });
+        }
+        throw cause;
+      }
+    };
     await this.runWithCancellation(async (signal) => {
       if (args.operation === 'list') {
-        const report = detectAgentInventory();
+        const report = detectAgentInventory({ descriptors: readCatalog() });
         const written = saveAgentInventoryReport(report, layout);
         if (flags.json) {
           this.log(JSON.stringify(report, null, 2));
@@ -118,6 +134,7 @@ export default class AgentsCommand extends BaseCommand {
       if (args.operation === 'collect') {
         const report = collectAgentLogs(undefined, {
           layout,
+          detect: { descriptors: readCatalog() },
           ...(flags.limit === undefined ? {} : { limits: { maxFilesPerRun: flags.limit } }),
         });
         const written = saveAgentCollectionReport(report, layout);

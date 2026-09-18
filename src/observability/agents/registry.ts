@@ -14,6 +14,10 @@
  *
  * 未建模的例外：`CODEX_HOME` 之类的环境变量会改变日志根位置，登记表按默认路径登记，
  * 这类用户的环境覆盖留待 CLI 入口显式传路径时处理。
+ *
+ * 本表只是内置部分：登记条目的匹配键本身就是产品名，因此不便公开产品的宿主无法靠改名进入本表。
+ * 这类条目由本机扩展文件 `<OMK_HOME>/agents.json` 声明（口径见 local-catalog.ts），
+ * 检测与采集拿到的永远是「内置表 + 本机扩展」合并后的登记表。
  */
 
 import { z } from 'zod';
@@ -65,25 +69,6 @@ const CATALOG_SOURCE: readonly AgentDescriptorSource[] = [
         matchExtensions: ['.jsonl'],
         recursive: true,
         note: '每个项目一个 slug 目录，主会话与 subagents/*.jsonl 同层递归。',
-      },
-    ],
-  },
-  {
-    agentId: 'codefuse',
-    displayName: 'CodeFuse CLI',
-    vendor: 'Ant Group',
-    // CodeFuse 落的是 Claude 同族日志：产品身份与格式归属故意分开。
-    traceSourceKind: 'claude',
-    binaries: ['cfuse'],
-    installDirs: ['.codefuse', '.local/share/codefuse-cli'],
-    logRoots: [
-      {
-        rootId: 'codefuse-projects',
-        relativePath: '.codefuse/projects',
-        traceSourceKind: 'claude',
-        matchExtensions: ['.jsonl'],
-        recursive: true,
-        note: '主会话与 agent_<uuid>.jsonl 子代理会话同目录；不猜测其它命名形态。',
       },
     ],
   },
@@ -173,11 +158,19 @@ const CATALOG_SOURCE: readonly AgentDescriptorSource[] = [
   },
 ];
 
+/**
+ * 一条登记里的所有路径都必须留在用户主目录：内置表与本机扩展文件共用这条判据，
+ * 两处各写一份的话，先漂移的一定是安全性。
+ */
+export function assertSafeDescriptorPaths(descriptor: AgentDescriptor): void {
+  for (const installDir of descriptor.installDirs) assertSafeHomeRelativePath(installDir);
+  for (const root of descriptor.logRoots) assertSafeHomeRelativePath(root.relativePath);
+}
+
 function parseCatalogEntry(entry: AgentDescriptorSource, index: number): AgentDescriptor {
   const descriptor = AgentDescriptorSchema.parse(entry);
   try {
-    for (const installDir of descriptor.installDirs) assertSafeHomeRelativePath(installDir);
-    for (const root of descriptor.logRoots) assertSafeHomeRelativePath(root.relativePath);
+    assertSafeDescriptorPaths(descriptor);
   } catch (cause) {
     throw new Error(`Agent 登记表第 ${index + 1} 条（${descriptor.agentId}）路径不合法`, { cause });
   }
@@ -189,6 +182,10 @@ export const KNOWN_AGENTS: readonly AgentDescriptor[] = Object.freeze(
   CATALOG_SOURCE.map((entry, index) => parseCatalogEntry(entry, index)),
 );
 
-export function findAgentDescriptor(agentId: string): AgentDescriptor | undefined {
-  return KNOWN_AGENTS.find((descriptor) => descriptor.agentId === agentId);
+/** 在给定登记表里按身份取条目：调用方传合并后的登记表，不隐式绑定内置表。 */
+export function findAgentDescriptor(
+  descriptors: readonly AgentDescriptor[],
+  agentId: string,
+): AgentDescriptor | undefined {
+  return descriptors.find((descriptor) => descriptor.agentId === agentId);
 }

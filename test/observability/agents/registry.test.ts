@@ -54,21 +54,19 @@ describe('agent registry', () => {
 
   it('登记项锚定本机已核实的会话日志位置', () => {
     const rootPaths = (agentId: string): string[] => {
-      const descriptor = findAgentDescriptor(agentId) as AgentDescriptor;
+      const descriptor = findAgentDescriptor(KNOWN_AGENTS, agentId) as AgentDescriptor;
       return descriptor.logRoots.map((root) => root.relativePath);
     };
     assert.deepEqual(rootPaths('codex'), ['.codex/sessions', '.codex/archived_sessions']);
     assert.deepEqual(rootPaths('claude-code'), ['.claude/projects']);
-    assert.deepEqual(rootPaths('codefuse'), ['.codefuse/projects']);
     assert.deepEqual(rootPaths('qoder'), ['.qoder/projects']);
     assert.deepEqual(rootPaths('qoder-cn'), ['.qoder-cn/projects']);
-    // CodeFuse 落 Claude 同族日志：产品身份与格式归属必须分开。
-    assert.equal(findAgentDescriptor('codefuse')?.traceSourceKind, 'claude');
-    assert.equal(findAgentDescriptor('claude-code')?.traceSourceKind, 'claude');
+    // 产品身份与格式归属分开：登记的是「装了哪个产品」，格式由 traceSourceKind 单独表达。
+    assert.equal(findAgentDescriptor(KNOWN_AGENTS, 'claude-code')?.traceSourceKind, 'claude');
   });
 
   it('findAgentDescriptor 未登记的身份返回 undefined，不猜格式', () => {
-    assert.equal(findAgentDescriptor('definitely-not-an-agent'), undefined);
-    assert.equal(findAgentDescriptor('codex')?.displayName, 'Codex CLI');
+    assert.equal(findAgentDescriptor(KNOWN_AGENTS, 'definitely-not-an-agent'), undefined);
+    assert.equal(findAgentDescriptor(KNOWN_AGENTS, 'codex')?.displayName, 'Codex CLI');
   });
 });

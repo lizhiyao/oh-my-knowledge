@@ -25,8 +25,11 @@ import {
   type CollectAgentLogsOptions,
 } from '../../../src/observability/agents/collect.js';
 import { detectAgentInventory, type DetectAgentInventoryOptions } from '../../../src/observability/agents/detect.js';
+import { resolveAgentCatalog } from '../../../src/observability/agents/local-catalog.js';
+import { AGENT_CATALOG_VERSION } from '../../../src/observability/agents/contracts.js';
 import type {
   AgentCollectionReport,
+  AgentDescriptor,
   AgentInventoryReport,
   CollectedSession,
 } from '../../../src/observability/agents/contracts.js';
@@ -566,5 +569,70 @@ describe('collectAgentLogs 证据边界', () => {
     assert.deepEqual(report.sessions.map((session) => session.sourcePath), [kept]);
     assert.equal(report.summary.discoveredCount, 1);
     assert.deepEqual(report.limitations, []);
+  });
+});
+
+describe('collectAgentLogs 本机登记表扩展', () => {
+  const SIBLING: AgentDescriptor = {
+    agentId: 'sibling-host',
+    displayName: 'Sibling Host',
+    vendor: 'unknown',
+    // 与内置宿主一样走 Claude 落盘格式：身份与格式归属分开。
+    traceSourceKind: 'claude',
+    binaries: [],
+    installDirs: ['.sibling-host'],
+    logRoots: [
+      {
+        rootId: 'sibling-projects',
+        relativePath: '.sibling-host/projects',
+        traceSourceKind: 'claude',
+        matchExtensions: ['.jsonl'],
+        recursive: true,
+      },
+    ],
+  };
+
+  function seedSiblingCatalog(harness: Harness): AgentDescriptor[] {
+    writeFileSync(
+      join(harness.root, 'agents.json'),
+      JSON.stringify({ schemaVersion: AGENT_CATALOG_VERSION, agents: [SIBLING] }),
+    );
+    mkdirSync(join(harness.home, '.sibling-host'), { recursive: true });
+    harness.session(
+      '.sibling-host/projects/-repo-a/session-c.jsonl',
+      claudeSession('sess-c', '扩展登记表里的宿主也要能采到'),
+      Date.parse('2026-05-18T11:00:00.000Z'),
+    );
+    return resolveAgentCatalog({ catalogPath: join(harness.root, 'agents.json') });
+  }
+
+  it('传入合并后的登记表时，只由扩展文件声明的宿主既进清单也进产物', () => {
+    const harness = createHarness();
+    const catalog = seedSiblingCatalog(harness);
+
+    const report = collectAgentLogs(undefined, {
+      layout: harness.layout,
+      detect: { ...harness.detectOptions, descriptors: catalog },
+    });
+    const sibling = report.sessions.find((session) => session.agentId === 'sibling-host');
+    assert.ok(sibling, `采集结果里应当有扩展条目：${JSON.stringify(report.agents)}`);
+    assert.equal(sibling.rootId, 'sibling-projects');
+    assert.equal(sibling.sourceKind, 'claude');
+    assert.equal(existsSync(join(harness.layout.observeAgentsDir, sibling.artifactPath)), true);
+    assert.equal(agentOf(report, 'sibling-host').logRoots[0]?.discoveredCount, 1);
+  });
+
+  it('清单用了扩展条目而根查找没拿到同一份表时，如实说明有多少 Agent 不在登记表内', () => {
+    const harness = createHarness();
+    const catalog = seedSiblingCatalog(harness);
+    const inventory = detectAgentInventory({ ...harness.detectOptions, descriptors: catalog });
+
+    // 只传清单、不传登记表：采集不得静默跳过这台机器上真实存在的宿主。
+    const report = collectAgentLogs(inventory, { layout: harness.layout });
+    assert.ok(
+      report.limitations.some((line) => line.includes('不在当前登记表内')),
+      JSON.stringify(report.limitations),
+    );
+    assert.equal(report.sessions.some((session) => session.agentId === 'sibling-host'), false);
   });
 });

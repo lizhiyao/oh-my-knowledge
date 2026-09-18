@@ -2,7 +2,7 @@
  * 本机 Agent 清单与日志采集的数据契约。
  *
  * agentId 表达「装了哪个产品」，traceSourceKind 表达「日志属于哪种 omk 已支持的格式」，
- * 两者故意不合并：CodeFuse 落的是 Claude 同族日志，产品身份仍需在报告里单独保留。
+ * 两者故意不合并：落 Claude 同族日志的产品，其身份仍需在报告里单独保留。
  */
 
 import { z } from 'zod';
@@ -10,6 +10,7 @@ import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-sc
 
 export const AGENT_INVENTORY_VERSION = 'agent-inventory-v1' as const;
 export const AGENT_COLLECTION_VERSION = 'agent-collection-v1' as const;
+export const AGENT_CATALOG_VERSION = 'agent-catalog-v1' as const;
 
 const agentIdSchema = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/);
 const relativePathSchema = z.string().min(1);
@@ -34,6 +35,15 @@ export const AgentDescriptorSchema = z.strictObject({
   binaries: z.array(z.string().min(1)),
   installDirs: z.array(relativePathSchema).min(1),
   logRoots: z.array(AgentLogRootSchema),
+});
+
+/**
+ * 用户级登记表扩展文件（`<OMK_HOME>/agents.json`）的契约：只能声明与内置登记表同形态的条目。
+ * strictObject 是有意的——文件里没有执行能力、没有绝对路径字段，任何多余键都当作畸形失效处理。
+ */
+export const AgentCatalogFileSchema = z.strictObject({
+  schemaVersion: z.literal(AGENT_CATALOG_VERSION),
+  agents: z.array(AgentDescriptorSchema),
 });
 
 export const AgentInstallEvidenceSchema = z.strictObject({

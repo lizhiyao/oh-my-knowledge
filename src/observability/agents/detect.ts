@@ -41,7 +41,10 @@ export interface DetectAgentInventoryOptions {
   pathDirectories?: readonly string[];
   /** 只读文件系统端口；默认走真实 fs。 */
   fsPorts?: AgentFsPorts;
-  /** 登记表；默认 `KNOWN_AGENTS`，留出给用例与自定义目录使用。 */
+  /**
+   * 登记表；默认只用内置表。要包含本机扩展条目，由调用方传 `resolveAgentCatalog()` 的结果——
+   * 探测本身不读用户目录里的配置文件，用例与调用方因此都能掌控输入。
+   */
   descriptors?: readonly AgentDescriptor[];
   /** 单个日志根最多统计多少个会话文件；命中即 `truncated: true`。 */
   maxSessionFilesPerRoot?: number;

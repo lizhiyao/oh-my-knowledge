@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { globalLayout } from '../../../src/evidence/storage/layout.js';
 import { collectAgentLogs } from '../../../src/observability/agents/collect.js';
 import { detectAgentInventory } from '../../../src/observability/agents/detect.js';
+import { resolveAgentCatalog } from '../../../src/observability/agents/local-catalog.js';
 import { KNOWN_AGENTS } from '../../../src/observability/agents/registry.js';
 import type { AgentCollectionReport, AgentInventoryReport } from '../../../src/observability/agents/contracts.js';
 
@@ -70,21 +71,31 @@ function listFiles(root: string): string[] {
 
 describe.skipIf(!ENABLED)('本机 Agent 探测与采集 smoke（OMK_AGENT_SMOKE=1）', () => {
   it('真实主目录探测：登记表内的产品按事实分类，会话计数可信', () => {
-    const report = detectAgentInventory();
+    const catalog = resolveAgentCatalog();
+    const extensionIds = catalog
+      .filter((descriptor) => !KNOWN_AGENTS.some((entry) => entry.agentId === descriptor.agentId))
+      .map((descriptor) => descriptor.agentId);
+    const report = detectAgentInventory({ descriptors: catalog });
     console.info('[omk agents] 探测口径', {
       home: report.homeDirectory,
       platform: report.platform,
+      extensionIds,
       summary: report.summary,
     });
     console.info('[omk agents] 逐产品:\n  ' + describeInventory(report));
 
     assert.equal(report.homeDirectory, resolve(homedir()), '默认主目录必须来自 os.homedir()');
-    assert.equal(report.agents.length, KNOWN_AGENTS.length);
-    assert.equal(report.summary.knownAgentCount, KNOWN_AGENTS.length);
+    assert.equal(report.agents.length, catalog.length);
+    assert.equal(report.summary.knownAgentCount, catalog.length);
+    // 扩展文件只能增补或整条替换同身份条目，不能让内置条目从清单里消失。
+    for (const descriptor of KNOWN_AGENTS) {
+      assert.ok(report.agents.some((agent) => agent.agentId === descriptor.agentId),
+        `内置条目 ${descriptor.agentId} 不在探测结果里`);
+    }
     assert.ok(report.summary.installedAgentCount > 0, '这台机器上至少要有已安装的 Agent');
 
-    // 四个真正在用的产品：安装事实 + 非零会话计数。
-    for (const agentId of ['codex', 'claude-code', 'codefuse', 'qoder-cn']) {
+    // 内置表里本机真正在用的产品：安装事实 + 非零会话计数。
+    for (const agentId of ['codex', 'claude-code', 'qoder-cn']) {
       const agent = agentOf(report, agentId);
       assert.equal(agent.installed, true, `${agentId} 应当被判为已安装：${JSON.stringify(agent.evidence)}`);
       assert.ok(agent.evidence.length > 0);
@@ -120,9 +131,14 @@ describe.skipIf(!ENABLED)('本机 Agent 探测与采集 smoke（OMK_AGENT_SMOKE=
     const root = mkdtempSync(join(tmpdir(), 'omk-agents-smoke-'));
     tempRoots.push(root);
     const layout = globalLayout(join(root, 'omk'));
-    const inventory = detectAgentInventory();
+    const catalog = resolveAgentCatalog();
+    const inventory = detectAgentInventory({ descriptors: catalog });
 
-    const first = collectAgentLogs(inventory, { layout, now: () => '2026-05-18T00:00:00.000Z' });
+    const first = collectAgentLogs(inventory, {
+      layout,
+      detect: { descriptors: catalog },
+      now: () => '2026-05-18T00:00:00.000Z',
+    });
     console.info('[omk agents] 首轮采集', describeCollection(first));
     console.info('[omk agents] limitations:', first.limitations);
     assert.ok(first.summary.collectedCount > 0, '本轮至少要采到会话');
@@ -159,7 +175,11 @@ describe.skipIf(!ENABLED)('本机 Agent 探测与采集 smoke（OMK_AGENT_SMOKE=
       return stats.size === session.sizeBytes && stats.mtime.toISOString() === session.modifiedAt;
     });
 
-    const second = collectAgentLogs(inventory, { layout, now: () => '2026-05-18T01:00:00.000Z' });
+    const second = collectAgentLogs(inventory, {
+      layout,
+      detect: { descriptors: catalog },
+      now: () => '2026-05-18T01:00:00.000Z',
+    });
     console.info('[omk agents] 复跑采集', describeCollection(second), '未变源文件 =', unchanged.length);
     assert.ok(
       second.summary.skippedCount >= unchanged.length,

@@ -4,6 +4,7 @@ test/architecture/src-root-layout.test.ts
 test/architecture/studio-export-consumers.test.ts
 test/architecture/studio-react-rendering.test.ts
 test/architecture/test-gate-coverage.test.ts
+test/cli/agents-catalog.test.ts
 test/cli/eval-output.test.ts
 test/cli/first-run-smoke.test.ts
 test/cli/lib/evaluation-composition.test.ts
