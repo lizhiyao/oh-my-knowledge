@@ -157,9 +157,10 @@ describe('loadTraceSessions', () => {
   it('rejects an oversized complete JSONL record even when it ends with a newline', () => {
     const path = join(tmpDir, 'oversized-complete-record.jsonl');
     writeFileSync(path, `${'x'.repeat(32 * 1024 * 1024 + 1)}\n`);
+    // 文案不带单位：整档按字符判，≥16 MiB 的 Codex 档走惰性视图同样按字符拒绝。
     assert.throws(
       () => loadTraceSessions(path),
-      /trace JSONL 单条记录超过 33554432 字符上限/,
+      /trace JSONL 单条记录超过 33554432 上限/,
     );
   });
 

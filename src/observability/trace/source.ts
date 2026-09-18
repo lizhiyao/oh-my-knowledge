@@ -548,8 +548,9 @@ export function forEachNonEmptyUtf8Line(
     consumeCompleteLines();
     const trimmed = pending.trim();
     if (trimmed.length > MAX_JSONL_RECORD_CHARS) {
+      // 文案不写单位：整档按字符判，惰性视图按字节判，同一个数值两条路径都要能报出同一句话。
       throw new Error(
-        `trace JSONL 单条记录超过 ${MAX_JSONL_RECORD_CHARS} 字符上限：${filePath}`,
+        `trace JSONL 单条记录超过 ${MAX_JSONL_RECORD_CHARS} 上限：${filePath}`,
       );
     }
     if (trimmed) visit(trimmed);
@@ -564,14 +565,16 @@ export function forEachNonEmptyUtf8Line(
   }
 }
 
+// 两个谓词都可能拿到带空洞的记录数组：整档路径传的是紧凑数组，惰性视图里畸形与非对象下标是
+// undefined。判定语义保持一致——空洞不是任何格式的证据。
 function isClaudeJsonl(records: CcRecord[]): boolean {
   return records.some((record) =>
-    (record.type === 'assistant' || record.type === 'user')
+    (record?.type === 'assistant' || record?.type === 'user')
     && typeof record.sessionId === 'string'
     && isRecordObject(record.message)
   ) || records.some((record) =>
-    isKnownClaudeRecordType(record.type)
-    && typeof record.sessionId === 'string'
+    isKnownClaudeRecordType(record?.type)
+    && typeof record?.sessionId === 'string'
   );
 }
 
@@ -1090,8 +1093,8 @@ function isRuntimeInjectedMessage(text: string): boolean {
 }
 
 function isOpenClawJsonl(records: CcRecord[]): boolean {
-  return records.some((record) => record.type === 'session' && typeof (record as { id?: unknown }).id === 'string')
-    && records.some((record) => record.type === 'message' && isRecordObject((record as { message?: unknown }).message));
+  return records.some((record) => record?.type === 'session' && typeof record.id === 'string')
+    && records.some((record) => record?.type === 'message' && isRecordObject((record as { message?: unknown }).message));
 }
 
 function parseOpenClawSessionFile(filePath: string, rawRecords: Array<CcRecord | undefined>): TraceSession {

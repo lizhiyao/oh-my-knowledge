@@ -184,21 +184,29 @@ describe('streamed trace records', () => {
     }
   });
 
-  it('惰性视图的解析结果计数不靠整档预解析也保持同一口径', () => {
+  it('惰性视图里畸形与非对象记录只是空洞，计数与整档解析同一口径', () => {
     const dir = tempDir('omk-streamed-stats-');
     const path = join(dir, 'rollout-cx-stats.jsonl');
     writeFileSync(path, codexLog([
-      ...transcriptLines().slice(0, 60),
+      ...transcriptLines(),
       { raw: '{"type":"response_item","payload":{' },
       { raw: '[1,2,3]' },
       { raw: '   ' },
     ]));
+    assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走惰性视图');
 
-    const stats = loadTraceCorpus(path).ingestion;
-    // 1 条 session_meta ＋ 60 条正文 ＋ 1 条畸形 ＋ 1 条非对象；纯空白行不计数。
-    assert.equal(stats.sourceRecordCount, 63);
+    // 谓词与适配器都可能拿到带空洞的记录数组：整档路径把畸形行挡在数组外，惰性路径留空洞。
+    // 少一处判空就会让一整份大会话日志变成解析失败，所以这里既比会话内容，也比三档计数。
+    const streamed = loadTraceCorpus(path);
+    // 整档路径交给适配器的是与源行号对齐、含空洞的数组，这里逐字复刻同一份输入。
+    const eager = parseCodexSessionFile(path, eagerRecords(path));
+    assert.equal(streamed.sessions.length, 1);
+    assert.deepEqual(streamed.sessions[0], eager);
+    const stats = streamed.ingestion;
+    // session_meta 1 条 ＋ transcriptLines() 的 964 条正文／调用／结果／推理 ＋ 1 条畸形 ＋ 1 条非对象；纯空白行不计数。
+    assert.equal(stats.sourceRecordCount, 967);
     assert.equal(stats.malformedRecordCount, 1);
     assert.equal(stats.ignoredValueCount, 1);
-    assert.equal(stats.parsedRecordCount, 61);
+    assert.equal(stats.parsedRecordCount, 965);
   });
 });
