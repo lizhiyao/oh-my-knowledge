@@ -7,8 +7,11 @@ import type { TraceEvent, TraceSession } from './trace-ir.js';
  * v2 相对 v1 的变化：Codex 的观测效果／状态族改为映射成事件（不再留在未知里），并且
  * 同一事实的第二次写入现在可以按原生 id 精确判定（映射事件会把两侧 id 都登记在
  * `sourceIds`），不再只靠「同类已映射事件数」的上界近似。
+ * v3 纳入 shell 结果视图的 1∶N 子集归属：一批原本留在「待映射证据」的视图改由既有工具
+ * 结果承载，同一份日志的三档计数与 v2 不可同比。版本号守卫的是「同一份报告里不许混两代
+ * 计数」，因此改变映射面（哪些记录会成为未识别）与改变分桶表同等对待。
  */
-export const UNKNOWN_DISPOSITION_RULES_VERSION = 'unknown-disposition-v2' as const;
+export const UNKNOWN_DISPOSITION_RULES_VERSION = 'unknown-disposition-v3' as const;
 
 export interface UnknownEventDispositionCounts {
   /** 适配器读不出语义的记录：真正的支持缺口，需要修适配器。 */

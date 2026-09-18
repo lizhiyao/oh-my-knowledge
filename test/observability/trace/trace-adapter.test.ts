@@ -3830,6 +3830,155 @@ describe('source-neutral Trace IR', () => {
     assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
   });
 
+  function shellFanoutRecords(sessionId: string, calls: Array<{ callId: string; commands: string[] }>, views: Array<{ id: string; commands: string[]; exitCode?: number; durationMs?: number }>): unknown[] {
+    let clock = 1_700_000_000_000;
+    const next = (offset: number) => {
+      clock += offset;
+      return clock;
+    };
+    const records: unknown[] = [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: sessionId, cwd: '/repo', model_provider: 'openai' },
+      },
+    ];
+    for (const call of calls) {
+      const started = next(1_000);
+      records.push(
+        {
+          timestamp: new Date(started).toISOString(),
+          type: 'response_item',
+          payload: {
+            type: 'custom_tool_call',
+            call_id: call.callId,
+            id: `ctc-${call.callId}`,
+            name: 'exec',
+            input: call.commands.map((command) => `await tools.exec_command(${JSON.stringify({ cmd: command })});`).join('\n'),
+          },
+        },
+        {
+          timestamp: new Date(next(1_000)).toISOString(),
+          type: 'response_item',
+          payload: { type: 'custom_tool_call_output', call_id: call.callId, output: 'ok' },
+        },
+      );
+    }
+    for (const view of views) {
+      const started = next(1_000);
+      records.push({
+        timestamp: new Date(started).toISOString(),
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          ...(view.durationMs === undefined ? {} : { started_at_ms: started, completed_at_ms: started + view.durationMs }),
+          item: {
+            type: 'CommandExecution',
+            id: view.id,
+            parsed_cmd: view.commands.map((command) => ({ type: 'command', cmd: command })),
+            ...(view.exitCode === undefined ? {} : { exit_code: view.exitCode }),
+            status: 'completed',
+          },
+        },
+      });
+    }
+    return records;
+  }
+
+  it('同组里有条目没报告退出码时不填聚合值', () => {
+    const path = writeSession(tmpDir, 'codex-shell-fanout-partial-exit.jsonl', shellFanoutRecords(
+      'codex-shell-fanout-partial-exit',
+      [{ callId: 'call-partial-exit', commands: ['x', 'y'] }],
+      [
+        { id: 'exec-pe1', commands: ['x'], exitCode: 0, durationMs: 30 },
+        { id: 'exec-pe2', commands: ['y'], durationMs: 40 },
+      ],
+    ));
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.exitCode, undefined, '缺一条就没资格说这次调用的退出码是多少');
+    assert.equal(result.durationMs, 70);
+  });
+
+  it('一次桥接调用跑多条命令时，逐条结果视图归入那次调用', () => {
+    const path = writeSession(tmpDir, 'codex-shell-fanout.jsonl', shellFanoutRecords(
+      'codex-shell-fanout',
+      [{ callId: 'call-multi', commands: ['git status', 'git diff', 'ls'] }],
+      [
+        { id: 'exec-f1', commands: ['git status'], exitCode: 0, durationMs: 100 },
+        { id: 'exec-f2', commands: ['git diff'], exitCode: 0, durationMs: 200 },
+        { id: 'exec-f3', commands: ['ls'], exitCode: 0, durationMs: 50 },
+      ],
+    ));
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.exitCode, 0, '同组退出码取值唯一，才能当作这次调用的退出码');
+    assert.equal(result.durationMs, 350, '时长可加：同组求和');
+    assert.deepEqual(result.sourceIds, ['call-multi', 'exec-f1', 'exec-f2', 'exec-f3']);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('同组退出码不一致时不替整次调用编一个成败结论', () => {
+    const path = writeSession(tmpDir, 'codex-shell-fanout-mixed.jsonl', shellFanoutRecords(
+      'codex-shell-fanout-mixed',
+      [{ callId: 'call-mixed', commands: ['make', 'make test'] }],
+      [
+        { id: 'exec-m1', commands: ['make'], exitCode: 0, durationMs: 900 },
+        { id: 'exec-m2', commands: ['make test'], exitCode: 2, durationMs: 100 },
+      ],
+    ));
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.exitCode, undefined, '两个不同的退出码不属于同一次调用能给出的结论');
+    assert.equal(result.durationMs, 1_000);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('子集视图被两次以上调用包含时不归属，避免把结果安错调用', () => {
+    const path = writeSession(tmpDir, 'codex-shell-fanout-ambiguous.jsonl', shellFanoutRecords(
+      'codex-shell-fanout-ambiguous',
+      [
+        { callId: 'call-a', commands: ['pwd', 'ls'] },
+        { callId: 'call-b', commands: ['pwd', 'cat x'] },
+      ],
+      [{ id: 'exec-amb', commands: ['pwd'], exitCode: 0, durationMs: 10 }],
+    ));
+
+    const [session] = loadTraceSessions(path);
+    const results = session.events.filter((event) => event.eventKind === 'tool_result');
+    for (const result of results) {
+      assert.equal(result.exitCode, undefined);
+      assert.equal(result.durationMs, undefined);
+    }
+    const [unknown] = session.events.filter((event) => event.eventKind === 'unknown');
+    assert.ok(unknown?.eventKind === 'unknown', '有歧义就留在待映射证据里，等更硬的证据');
+    assert.equal(unknown.recordId, 'exec-amb');
+  });
+
+  it('同组缺任何一条时长时不求和，避免给出偏小的时长', () => {
+    const path = writeSession(tmpDir, 'codex-shell-fanout-partial.jsonl', shellFanoutRecords(
+      'codex-shell-fanout-partial',
+      [{ callId: 'call-partial', commands: ['a', 'b'] }],
+      [
+        { id: 'exec-p1', commands: ['a'], exitCode: 0, durationMs: 40 },
+        { id: 'exec-p2', commands: ['b'], exitCode: 0 },
+      ],
+    ));
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.durationMs, undefined);
+    assert.equal(result.exitCode, 0);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
   it('归属不到唯一调用的 shell 视图不猜执行属性，继续留作证据', () => {
     const path = writeSession(tmpDir, 'codex-shell-result-view-unmatched.jsonl', [
       {

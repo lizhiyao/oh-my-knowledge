@@ -639,7 +639,7 @@ function parseCollectionReport(path: string): AgentCollectionReport {
     throw new AgentCollectionReportOutdatedError(
       report.unknownDispositionRulesVersion,
       path,
-      '未识别事件的分桶规则已更新，旧计数不可沿用',
+      '未识别事件的分桶与归属口径已更新，旧计数不可沿用',
     );
   }
   return report;
