@@ -34,6 +34,21 @@ function itemCompleted(itemType: string, id: string): unknown {
   return { type: 'event_msg', payload: { type: 'item_completed', item: { type: itemType, id } } };
 }
 
+/** 原始记录超限后被摘要掉：只剩族名与身份位，分桶口径必须照常工作。 */
+function truncatedUnknown(recordFamily: string, recordId: string): TraceEvent {
+  return {
+    eventKind: 'unknown',
+    eventId: `e:${recordId}`,
+    sourceIndex: 0,
+    sourceType: 'test',
+    recordFamily,
+    recordId,
+    rawBytes: 1_900_000,
+    rawDigest: 'deadbeefdeadbeef',
+    rawTruncated: true,
+  };
+}
+
 function tally(events: TraceEvent[], sourceKind: TraceSession['sourceKind']) {
   return countUnknownEventDispositions({ sourceKind, events });
 }
@@ -43,7 +58,7 @@ const assistantMessage = (id: string) => mapped({ eventKind: 'message', role: 'a
 
 describe('countUnknownEventDispositions', () => {
   it('口径表有版本号，桶归属变化必须让旧报告计数失效', () => {
-    assert.equal(UNKNOWN_DISPOSITION_RULES_VERSION, 'unknown-disposition-v1');
+    assert.equal(UNKNOWN_DISPOSITION_RULES_VERSION, 'unknown-disposition-v2');
   });
 
   it('没有未识别事件时三档都是 0', () => {
@@ -117,5 +132,44 @@ describe('countUnknownEventDispositions', () => {
       unknown(itemCompleted('AgentMessage', 'item-3')),
     ], 'codex');
     assert.deepEqual(counts, { unsupported: 0, duplicateView: 2, unmappedEvidence: 1 });
+  });
+
+  it('映射事件登记了同一原生 id 时按身份判重复，不再吃同类事件上界', () => {
+    const toolResult = mapped({
+      eventKind: 'tool_result',
+      callId: 'call-1',
+      output: '',
+      status: 'success',
+      statusSource: 'runtime',
+      sourceIds: ['call-1', 'exec-9'],
+    }, 'r1');
+    const counts = tally([
+      toolResult,
+      unknown(itemCompleted('CommandExecution', 'call-1')),
+      unknown(itemCompleted('DynamicToolCall', 'exec-9')),
+    ], 'codex');
+    assert.deepEqual(
+      counts,
+      { unsupported: 0, duplicateView: 2, unmappedEvidence: 0 },
+      '身份命中即重复视图：一个 shell 结果视图与一次工具调用同 id，与同类事件有多少条无关',
+    );
+  });
+
+  it('原始记录被摘要掉后仍按族名与身份分桶，不降级成未支持格式', () => {
+    const pending = tally([truncatedUnknown('Extension', 'exec-1')], 'codex');
+    assert.deepEqual(pending, { unsupported: 0, duplicateView: 0, unmappedEvidence: 1 });
+
+    const duplicate = tally([
+      mapped({
+        eventKind: 'tool_result',
+        callId: 'call-2',
+        output: '',
+        status: 'success',
+        statusSource: 'runtime',
+        sourceIds: ['call-2'],
+      }, 'r2'),
+      truncatedUnknown('CollabAgentToolCall', 'call-2'),
+    ], 'codex');
+    assert.deepEqual(duplicate, { unsupported: 0, duplicateView: 1, unmappedEvidence: 0 });
   });
 });

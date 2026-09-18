@@ -47,6 +47,7 @@ import {
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
+  unknownTraceEvent,
 } from './trace-ir.js';
 import { nonNegativeMetric, tokenCount } from '../../executors/core/token-usage.js';
 import {
@@ -589,15 +590,16 @@ function parseUnknownJsonlSession(
       : typeof rawRecord.id === 'string'
         ? rawRecord.id
         : undefined;
-    return [{
-      eventKind: 'unknown' as const,
-      eventId: `${runId}:${sourceIndex}:unknown`,
-      sourceEventId,
-      sourceIndex,
-      sourceType,
-      timestamp: normalizeTraceTimestamp(record.timestamp),
-      raw: record,
-    }];
+    return [unknownTraceEvent(
+      {
+        sourceEventId,
+        sourceIndex,
+        sourceType,
+        timestamp: normalizeTraceTimestamp(record.timestamp),
+      },
+      `${runId}:${sourceIndex}:unknown`,
+      record,
+    )];
   });
   const bounds = traceTimestampBounds(events.map((event) => event.timestamp));
   return {
@@ -822,15 +824,11 @@ function claudeRecordToTraceEvents(
         timestamp,
         model,
       );
-      events.push(usageEvent ?? {
-        eventKind: 'unknown',
-        eventId: eventId('invalid-usage'),
-        sourceEventId,
-        sourceIndex,
-        sourceType,
-        timestamp,
+      events.push(usageEvent ?? unknownTraceEvent(
+        { sourceEventId, sourceIndex, sourceType, timestamp },
+        eventId('invalid-usage'),
         raw,
-      });
+      ));
     }
     return events;
   }
@@ -903,15 +901,11 @@ function claudeRecordToTraceEvents(
   const lifecycle = lifecycleEventFromLegacy(raw, runId, sourceIndex, sourceType, timestamp);
   if (lifecycle) return [lifecycle];
   if (isKnownClaudeRecordType(sourceType)) return [];
-  return [{
-    eventKind: 'unknown',
-    eventId: eventId('unknown'),
-    sourceEventId,
-    sourceIndex,
-    sourceType,
-    timestamp,
+  return [unknownTraceEvent(
+    { sourceEventId, sourceIndex, sourceType, timestamp },
+    eventId('unknown'),
     raw,
-  }];
+  )];
 }
 
 function stripClaudeBuiltinCommandEnvelope(text: string): string {
@@ -1176,15 +1170,11 @@ function openClawRecordToTraceEvents(
   if (lifecycle) return [lifecycle];
   if (isKnownOpenClawMetadataRecord(raw)) return [];
   if (raw.type !== 'message') {
-    return [{
-      eventKind: 'unknown',
-      eventId: eventId('unknown'),
-      sourceEventId,
-      sourceIndex,
-      sourceType,
-      timestamp,
+    return [unknownTraceEvent(
+      { sourceEventId, sourceIndex, sourceType, timestamp },
+      eventId('unknown'),
       raw,
-    }];
+    )];
   }
 
   const messageRecord = raw as {
@@ -1205,15 +1195,11 @@ function openClawRecordToTraceEvents(
   };
   const message = messageRecord.message;
   if (!message || typeof message.role !== 'string') {
-    return [{
-      eventKind: 'unknown',
-      eventId: eventId('unknown-message'),
-      sourceEventId,
-      sourceIndex,
-      sourceType,
-      timestamp,
+    return [unknownTraceEvent(
+      { sourceEventId, sourceIndex, sourceType, timestamp },
+      eventId('unknown-message'),
       raw,
-    }];
+    )];
   }
 
   if (message.role === 'user') {
@@ -1306,15 +1292,11 @@ function openClawRecordToTraceEvents(
           cacheCreationTokens: tokenCount(cacheCreationTokens),
         });
       } else {
-        events.push({
-          eventKind: 'unknown',
-          eventId: eventId('invalid-usage'),
-          sourceEventId,
-          sourceIndex,
-          sourceType,
-          timestamp,
+        events.push(unknownTraceEvent(
+          { sourceEventId, sourceIndex, sourceType, timestamp },
+          eventId('invalid-usage'),
           raw,
-        });
+        ));
       }
     }
     return events;
@@ -1323,15 +1305,11 @@ function openClawRecordToTraceEvents(
   if (message.role === 'toolResult') {
     const toolUseId = typeof message.toolCallId === 'string' ? message.toolCallId : undefined;
     if (!toolUseId) {
-      return [{
-        eventKind: 'unknown',
-        eventId: eventId('orphan-tool-result'),
-        sourceEventId,
-        sourceIndex,
-        sourceType,
-        timestamp,
+      return [unknownTraceEvent(
+        { sourceEventId, sourceIndex, sourceType, timestamp },
+        eventId('orphan-tool-result'),
         raw,
-      }];
+      )];
     }
     const content = openClawToolResultText(message.content);
     const hasRuntimeStatus = typeof message.isError === 'boolean';
@@ -1352,15 +1330,11 @@ function openClawRecordToTraceEvents(
     }];
   }
 
-  return [{
-    eventKind: 'unknown',
-    eventId: eventId('unknown-role'),
-    sourceEventId,
-    sourceIndex,
-    sourceType,
-    timestamp,
+  return [unknownTraceEvent(
+    { sourceEventId, sourceIndex, sourceType, timestamp },
+    eventId('unknown-role'),
     raw,
-  }];
+  )];
 }
 
 function isKnownOpenClawMetadataRecord(raw: CcRecord): boolean {

@@ -12,6 +12,7 @@ import {
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
+  unknownTraceEvent,
 } from '../../trace-ir.js';
 import type { TraceSourceMetadata } from '../../../contracts/trace.js';
 import {
@@ -22,6 +23,13 @@ import {
 } from '../../../../executors/core/token-usage.js';
 import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
 import { extractCodexExecCommands } from './exec-command.js';
+import {
+  indexCodexExecResultViews,
+  isCodexWebSearchItemView,
+  projectCodexAgentLifecycle,
+  projectCodexObservedEffect,
+  projectCodexReviewPhase,
+} from './item-views.js';
 import {
   codexUserAttachments,
   codexUserDisplayText,
@@ -154,7 +162,7 @@ export function parseCodexSessionFile(filePath: string, rawRecords: unknown[]): 
   const role = parentRunId || metaPayload.thread_source === 'subagent' || subagentKind
     ? 'subagent'
     : 'main';
-  const events = correlateTraceToolEvents(convertCodexRecords(rawRecords, runId));
+  const events = correlateTraceToolEvents(convertCodexRecords(rawRecords, runId, cwd));
   const bounds = traceTimestampBounds([
     ...events.map((event) => event.timestamp),
     meta?.timestamp,
@@ -180,12 +188,16 @@ export function parseCodexSessionFile(filePath: string, rawRecords: unknown[]): 
   };
 }
 
-function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[] {
+function convertCodexRecords(rawRecords: unknown[], runId: string, cwd?: string): TraceEvent[] {
   const events: TraceEvent[] = [];
   const mcpEnds = indexMcpCallEnds(rawRecords);
   const webSearchItems = indexWebSearchItemViews(rawRecords);
   const patchEnds = indexPatchApplyEnds(rawRecords);
   const externalEnds = indexExternalToolEnds(rawRecords);
+  // shell 结果视图与调用侧的归属在解析前一次算完，主循环只按 callId 顺序取用，
+  // 避免受记录先后顺序与两侧出现序计数错开的影响。
+  const execResults = indexCodexExecResultViews(rawRecords);
+  const execMergeCursor = new Map<string, number>();
   const callOccurrences = new Map<string, number>();
   const resultOccurrences = new Map<string, number>();
   const externalCallOccurrences = new Map<string, number>();
@@ -478,7 +490,11 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         mcpEnd,
         stringValue(payload.namespace),
       );
-      events.push(toolCallEvent(eventId('tool-call'), base, callId, normalized.tool, normalized.input, activeModel));
+      const callIds = codexPayloadIds(payload);
+      events.push({
+        ...toolCallEvent(eventId('tool-call'), base, callId, normalized.tool, normalized.input, activeModel),
+        ...(callIds.length > 0 ? { sourceIds: callIds } : {}),
+      });
       return;
     }
 
@@ -510,16 +526,29 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       const inferredStatus = inferredFailure
         ? 'failure'
         : inferredSuccess || completedExternalCall ? 'success' : 'unknown';
-      events.push(toolResultEvent(
-        eventId('tool-result'),
-        base,
-        callId,
-        output,
-        hasRuntimeStatus ? explicitStatus : inferredStatus,
-        hasRuntimeStatus
-          ? 'runtime'
-          : inferredStatus === 'unknown' ? 'unknown' : 'inferred',
-      ));
+      const execQueue = execResults.mergedByCallId.get(callId);
+      const execCursor = execMergeCursor.get(callId) ?? 0;
+      const execView = execQueue?.[execCursor];
+      if (execQueue && execCursor < execQueue.length) execMergeCursor.set(callId, execCursor + 1);
+      events.push({
+        ...toolResultEvent(
+          eventId('tool-result'),
+          base,
+          callId,
+          output,
+          hasRuntimeStatus ? explicitStatus : inferredStatus,
+          hasRuntimeStatus
+            ? 'runtime'
+            : inferredStatus === 'unknown' ? 'unknown' : 'inferred',
+        ),
+        ...(execView
+          ? {
+            exitCode: execView.exitCode,
+            durationMs: execView.durationMs,
+            sourceIds: [...new Set([...codexPayloadIds(payload), execView.id])].filter(Boolean),
+          }
+          : {}),
+      });
       return;
     }
 
@@ -532,23 +561,13 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       // event or reporting a known protocol shape as unknown.
       if (!usage && payload.info == null && isObject(payload.rate_limits)) return;
       if (!isValidCodexTokenUsage(usage)) {
-        events.push({
-          ...base,
-          eventKind: 'unknown',
-          eventId: eventId('invalid-usage'),
-          raw: value,
-        });
+        events.push(unknownTraceEvent(base, eventId('invalid-usage'), value));
         return;
       }
       const totalUsage = isObject(info.total_token_usage) ? info.total_token_usage : undefined;
       const fingerprint = tokenUsageFingerprint(totalUsage);
       if (totalUsage && !fingerprint) {
-        events.push({
-          ...base,
-          eventKind: 'unknown',
-          eventId: eventId('invalid-total-usage'),
-          raw: value,
-        });
+        events.push(unknownTraceEvent(base, eventId('invalid-total-usage'), value));
       }
       if (fingerprint && fingerprint === previousTotalUsageFingerprint) return;
       const normalized = normalizeCodexTokenUsage(usage);
@@ -746,9 +765,9 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
     if (payloadType === 'item_completed') {
-      // 可直接映射的 item_completed 只有两类：登记为 MCP 调用端的 item，以及 WebSearch
-      // 视图——与 response_item 属同一调用的按重复视图消费，唯一载体综合成工具事件对。
-      // 其余 item 视图仍按 unknown 保留原始证据，等各自的映射口径确定。
+      // item_completed 里可直接映射的视图分四类：登记为 MCP 调用端的 item、WebSearch（含
+      // 改由 Extension 承载的新形态）、已把执行属性并回工具结果的 shell 结果视图，以及
+      // 不作为工具调用成立的观测效果／状态记录。其余 item 视图仍按 unknown 保留原始证据。
       const end = mcpEnds.bySourceIndex.get(sourceIndex);
       if (end) {
         end.turnId = activeTurnId;
@@ -762,6 +781,18 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         return;
       }
       if (webSearchItems.duplicateSourceIndexes.has(sourceIndex)) return;
+      if (execResults.consumedSourceIndexes.has(sourceIndex)) return;
+      const item = isObject(payload.item) ? payload.item : undefined;
+      if (item) {
+        const context = { base, eventId, cwd };
+        const projected = projectCodexObservedEffect(item, payload, context)
+          ?? projectCodexAgentLifecycle(item, context)
+          ?? projectCodexReviewPhase(item, payload, context);
+        if (projected) {
+          events.push(projected);
+          return;
+        }
+      }
     }
     if (payloadType === 'patch_apply_end') {
       const end = patchEnds.bySourceIndex.get(sourceIndex);
@@ -772,12 +803,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
     if (isCodexRecordConsumedWithoutDirectEvent(record.type, payloadType)) return;
-    events.push({
-      ...base,
-      eventKind: 'unknown',
-      eventId: eventId('unknown'),
-      raw: value,
-    });
+    events.push(unknownTraceEvent(base, eventId('unknown'), value));
   });
 
   for (const end of mcpEnds.ordered) {
@@ -883,6 +909,14 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
 
   events.sort((a, b) => a.sourceIndex - b.sourceIndex);
   return events;
+}
+
+/** 一条记录里可用来做跨视图身份判定的原生 id。 */
+function codexPayloadIds(payload: Record<string, unknown>): string[] {
+  return [...new Set(
+    ['call_id', 'id'].map((key) => (typeof payload[key] === 'string' ? payload[key] as string : undefined))
+      .filter((id): id is string => id !== undefined),
+  )];
 }
 
 function mcpToolRefFromEnd(end: McpCallEnd): TraceToolRef {
@@ -1050,7 +1084,7 @@ function indexWebSearchItemViews(records: unknown[]): WebSearchItemIndex {
     const payload = isObject(record?.payload) ? record.payload : {};
     if (payload.type !== 'item_completed') return;
     const item = isObject(payload.item) ? payload.item : undefined;
-    if (!item || item.type !== 'WebSearch') return;
+    if (!item || !isCodexWebSearchItemView(item)) return;
     const id = stringValue(item.id);
     const action = isObject(item.action) ? item.action : {};
     const query = stringValue(action.query) ?? stringValue(item.query) ?? '';
