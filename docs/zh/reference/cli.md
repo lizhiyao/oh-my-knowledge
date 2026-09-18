@@ -356,6 +356,8 @@ omk observe show <inbox_id>
 + `messageWindow`：前 3 条 / 触发点 / 后 3 条 message 上下文 + `resolutionAfter`（后续是否解决）
 + `evidence.{messageIndex,messageUuid,toolUseId}`：可反向回到原始 jsonl 的锚点
 
+落盘观察报告的口径版本是 `schemaVersion: 4`：时间线证据档新增 `observed_effect`——运行时观察到的文件变更独立成行，不并入触发它的工具调用，因为多数变更是命令的副作用而非模型发起的编辑。旧口径（如 `3`）的报告不再被读取：对它重跑一次 `omk observe` 即可刷新。人工评审状态独立存储、时间线行的 id 由证据内容派生，因此重跑后评审结果会接回同一批证据，不需要为旧报告保留双读分支。
+
 支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、Qoder session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
 
 ## `omk agents`

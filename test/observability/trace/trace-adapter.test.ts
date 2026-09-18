@@ -3704,6 +3704,53 @@ describe('source-neutral Trace IR', () => {
     );
   });
 
+  it('观测到的文件变更进时间线，并让既有行的 id 保持稳定', () => {
+    const withoutEffect = [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-effect-row', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'assistant', content: '先把入口改掉' },
+      },
+    ];
+    const effectRecord = {
+      timestamp: '2026-07-25T00:00:02.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'item_completed',
+        item: {
+          type: 'FileChange',
+          id: 'exec-eff-1',
+          status: 'completed',
+          changes: { '/repo/src/a.ts': { type: 'update', unified_diff: '--- a\n+++ b\n+x' } },
+        },
+      },
+    };
+
+    const session = loadTraceSessions(writeSession(tmpDir, 'codex-effect-row.jsonl', [...withoutEffect, effectRecord]))[0];
+    // 同一条 trace 上比较「有／无观测效果行」两条时间线：换文件会让 traceId 一起变，测不出漂移。
+    const rows = projectTraceSessionTimeline(session);
+    const baseRows = projectTraceSessionTimeline({
+      ...session,
+      events: session.events.filter((event) => event.eventKind !== 'observed_effect'),
+    });
+
+    const effect = rows.find((entry) => entry.kind === 'observed_effect');
+    assert.ok(effect, '文件变更要出现在时间线里');
+    assert.equal(effect.label, 'observed file change');
+    assert.match(effect.snippet ?? '', /src\/a\.ts/, '路径按会话 cwd 相对化');
+    assert.match(effect.fullText ?? '', /"changeCount":1/);
+
+    const baseIds = baseRows.map((entry) => entry.id);
+    const keptIds = rows.filter((entry) => entry.kind !== 'observed_effect').map((entry) => entry.id);
+    assert.deepEqual(keptIds, baseIds, '新增一档不得让已有行的证据 id 漂移，否则已保存的评审会指向别处');
+
+  });
+
   it('子代理状态变化以 lifecycle 呈现，不冒充代理间通信', () => {
     const path = writeSession(tmpDir, 'codex-agent-lifecycle-label.jsonl', [
       {
@@ -4491,7 +4538,7 @@ describe('source-neutral Trace IR', () => {
     assert.ok(invocation.indicators.userCorrectionCount >= 1);
 
     const compact = compactObservationExperienceReport(experience);
-    assert.equal(compact.schemaVersion, 3);
+    assert.equal(compact.schemaVersion, 4);
     assert.equal(compact.traceTimelines.length, 1);
     assert.equal(compact.storyContexts.length, 1);
     assert.equal(typeof compact.sessions[0].sourceSessionDurationMs, 'number');

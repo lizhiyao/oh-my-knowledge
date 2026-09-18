@@ -762,7 +762,10 @@ export const ExperienceSkillSummaryWireSchema = ExperienceSkillSummarySchema.ext
 
 export const ObservationExperienceReportSchema = z.object({
   kind: z.literal('observe-experience'),
-  schemaVersion: z.literal(3),
+  // v4 起时间线证据档包含 `observed_effect`（运行时观察到的效果）。v3 报告不含该档，
+  // 也不会在 v4 读侧被接受：观察报告是可重算的派生视图，原始日志与采集产物才是证据本体，
+  // 因此旧报告按「重新观测一次」处理，不保留双读分支。
+  schemaVersion: z.literal(4),
   scope: z.literal('evidence-only'),
   generatedAt: z.string(),
   meta: ExperienceMetaSchema,
