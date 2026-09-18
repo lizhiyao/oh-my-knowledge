@@ -12,6 +12,7 @@ import {
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
+  unknownTraceEvent,
 } from '../../trace-ir.js';
 import type { TraceSourceMetadata } from '../../../contracts/trace.js';
 import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
@@ -212,12 +213,7 @@ function qoderRecordToTraceEvents(
   if (raw.type === 'user' || raw.type === 'assistant') {
     const messageParts = qoderMessageParts(raw);
     if (!messageParts) {
-      return [{
-        ...base,
-        eventKind: 'unknown',
-        eventId: eventId('unprojectable-message-record'),
-        raw,
-      }];
+      return [unknownTraceEvent(base, eventId('unprojectable-message-record'), raw)];
     }
     return raw.type === 'user'
       ? qoderUserRecordEvents(raw, base, eventId, messageParts)
@@ -236,7 +232,7 @@ function qoderRecordToTraceEvents(
   const lifecycle = qoderLifecycleEvent(raw, base, eventId, sourceType);
   if (lifecycle) return [lifecycle];
   if (isKnownQoderMetadataRecordType(sourceType)) return [];
-  return [{ ...base, eventKind: 'unknown', eventId: eventId('unknown'), raw }];
+  return [unknownTraceEvent(base, eventId('unknown'), raw)];
 }
 
 /**
@@ -389,7 +385,7 @@ function qoderAssistantRecordEvents(
       base,
       model,
     );
-    events.push(usageEvent ?? { ...base, eventKind: 'unknown', eventId: eventId('invalid-usage'), raw });
+    events.push(usageEvent ?? unknownTraceEvent(base, eventId('invalid-usage'), raw));
   }
   const failure = qoderApiFailureEvent(raw, base, eventId);
   if (failure) events.push(failure);
@@ -429,7 +425,7 @@ function qoderSystemRecordEvents(
       text,
     }];
   }
-  return [{ ...base, eventKind: 'unknown', eventId: eventId('unknown-system-record'), raw }];
+  return [unknownTraceEvent(base, eventId('unknown-system-record'), raw)];
 }
 
 /**

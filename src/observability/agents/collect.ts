@@ -45,7 +45,12 @@ import {
 } from './scan.js';
 
 export const COLLECTION_REPORT_FILE_NAME = 'collection.json';
-export const AGENT_TRACE_ARTIFACT_VERSION = 'agent-trace-v1' as const;
+/**
+ * v2 起产物里的 Trace IR 多了「观测到的效果」这一档事件、工具结果的执行属性（退出码／时长）、
+ * 以及跨视图的原生身份位（`sourceIds`／`recordFamily`／`recordId`）。旧产物仍可读，只是不含
+ * 这些证据；新产物一律按 v2 声明。
+ */
+export const AGENT_TRACE_ARTIFACT_VERSION = 'agent-trace-v2' as const;
 
 /**
  * 单轮默认上限：本机日志体量在 GiB 级、共 2.4k+ 文件，首轮只摄取最近的若干个文件。

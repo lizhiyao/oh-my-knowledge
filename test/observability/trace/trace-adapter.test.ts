@@ -19,6 +19,7 @@ import {
   normalizeObservationExperienceReport,
   projectTraceSessionTimeline,
 } from '../../../src/observability/experience.js';
+import { countUnknownEventDispositions } from '../../../src/observability/trace/unknown-disposition.js';
 import { isInstalledSkillAssetPath } from '../../../src/observability/trace/attribution.js';
 import { reconstructExperienceTurns } from '../../../src/observability/conversation/turn-index.js';
 
@@ -143,21 +144,14 @@ describe('loadTraceSessions', () => {
 
   it('streams JSONL without corrupting multi-byte UTF-8 across read chunks', () => {
     const text = '你'.repeat(30_000);
-    const path = writeSession(tmpDir, 'chunked-utf8.jsonl', [{
-      type: 'future-record',
-      sessionId: 'chunked-utf8',
-      payload: text,
-    }]);
+    const path = writeSession(tmpDir, 'chunked-utf8.jsonl', [
+      asstRec('utf8-chunked', [{ type: 'text', text }], { sessionId: 'chunked-utf8' }),
+    ]);
 
     const corpus = loadTraceCorpus(path);
-    const [event] = corpus.sessions[0].events;
-    assert.equal(event.eventKind, 'unknown');
-    assert.equal(
-      event.eventKind === 'unknown'
-        ? (event.raw as { payload?: unknown }).payload
-        : undefined,
-      text,
-    );
+    const message = corpus.sessions[0].events.find((event) => event.eventKind === 'message');
+    assert.ok(message?.eventKind === 'message');
+    assert.ok(message.text.includes(text), '跨读块边界的多字节字符必须整字复原');
   });
 
   it('rejects an oversized complete JSONL record even when it ends with a newline', () => {
@@ -3577,19 +3571,30 @@ describe('source-neutral Trace IR', () => {
     assert.equal(result.statusSource, 'unknown');
   });
 
-  it('keeps item_completed views whose mapping semantics are undecided unknown', () => {
-    const path = writeSession(tmpDir, 'codex-item-completed-other-views.jsonl', [
+  it('按族映射已定论的 Codex item 视图，口径未定的继续留证据', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-family-mapping.jsonl', [
       {
         timestamp: '2026-07-25T00:00:00.000Z',
         type: 'session_meta',
-        payload: { id: 'codex-item-completed-other-views', cwd: '/repo', model_provider: 'openai' },
+        payload: { id: 'codex-item-completed-family-mapping', cwd: '/repo', model_provider: 'openai' },
       },
       {
         timestamp: '2026-07-25T00:00:01.000Z',
         type: 'event_msg',
         payload: {
           type: 'item_completed',
-          item: { type: 'Reasoning', id: 'item-3', summary_text: ['thinking'], raw_content: [] },
+          started_at_ms: 1_700_000_000_000,
+          completed_at_ms: 1_700_000_002_500,
+          item: {
+            type: 'FileChange',
+            id: 'exec-runtime-3',
+            status: 'completed',
+            changes: {
+              '/repo/a.ts': { type: 'update', unified_diff: '--- a/a.ts\n+++ b/a.ts\n+x\n+y\n-z' },
+              '/repo/nested/b.ts': { type: 'add', unified_diff: '--- /dev/null\n+++ b/nested/b.ts\n+w' },
+              '/outside/c.ts': { type: 'delete', unified_diff: '--- a/c.ts\n+++ /dev/null\n-c' },
+            },
+          },
         },
       },
       {
@@ -3598,11 +3603,11 @@ describe('source-neutral Trace IR', () => {
         payload: {
           type: 'item_completed',
           item: {
-            type: 'FileChange',
-            id: 'exec-runtime-3',
-            changes: { '/repo/a.ts': { type: 'add', content: 'export const a = 1;' } },
-            status: 'completed',
-            stdout: '',
+            type: 'SubAgentActivity',
+            id: 'exec-runtime-4',
+            kind: 'started',
+            agent_thread_id: 'thread-child',
+            agent_path: 'main/researcher',
           },
         },
       },
@@ -3612,14 +3617,10 @@ describe('source-neutral Trace IR', () => {
         payload: {
           type: 'item_completed',
           item: {
-            type: 'CommandExecution',
-            id: 'exec-runtime-4',
-            process_id: '26210',
-            command: ['/bin/zsh', '-lc', 'ls'],
-            cwd: 'file:///repo',
-            source: 'unified_exec_startup',
-            status: 'completed',
-            aggregated_output: 'a.ts\n',
+            type: 'EnteredReviewMode',
+            id: 'item-5',
+            target: { type: 'base_branch', branch: 'main' },
+            user_facing_hint: 'Reviewing the diff against main',
           },
         },
       },
@@ -3629,21 +3630,292 @@ describe('source-neutral Trace IR', () => {
         payload: {
           type: 'item_completed',
           item: {
+            type: 'ExitedReviewMode',
+            id: 'item-6',
+            review_output: { findings: [{ title: 'Off-by-one', body: 'loop ends early', priority: 2 }] },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'event_msg',
+        payload: { type: 'item_completed', item: { type: 'ImageView', id: 'exec-runtime-7', path: '/repo/shot.png' } },
+      },
+      {
+        timestamp: '2026-07-25T00:00:06.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
             type: 'Extension',
             kind: 'web.search',
-            id: 'exec-runtime-5',
-            query: 'vitest v4 migration',
+            id: 'exec-runtime-8',
             action: { type: 'search', query: 'vitest v4 migration' },
-            results: [{ type: 'text_result', title: 'Migration Guide', url: 'https://vitest.dev/guide/migration.html' }],
+            results: [{ type: 'text_result', title: 'Migration Guide', url: 'https://example.test/guide' }],
           },
         },
       },
     ]);
 
-    // 这些族要么记录观察到的结果而不是模型发起的调用，要么与已映射视图存在内容级重叠，
-    // 口径未定之前保留原始证据，不产出可能双计的工具事件。
     const [session] = loadTraceSessions(path);
-    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 4);
+    const effect = session.events.find((event) => event.eventKind === 'observed_effect');
+    assert.ok(effect?.eventKind === 'observed_effect');
+    assert.equal(effect.effectKind, 'file_change');
+    assert.equal(effect.changeCount, 3, '一条记录覆盖三个文件，变更数按记录里的条目计');
+    assert.deepEqual(effect.paths, ['a.ts', 'nested/b.ts'], '绝对路径只留在原始日志里，会话外的路径不投影');
+    assert.equal(effect.addedLines, 3);
+    assert.equal(effect.deletedLines, 2);
+    assert.equal(effect.status, 'success');
+    assert.equal(effect.statusSource, 'runtime');
+    assert.equal(effect.durationMs, 2_500);
+    assert.deepEqual(effect.sourceIds, ['exec-runtime-3']);
+
+    const agent = session.events.find((event) => event.eventKind === 'agent_activity');
+    assert.ok(agent?.eventKind === 'agent_activity');
+    assert.equal(agent.activityKind, 'lifecycle');
+    assert.equal(agent.agentId, 'thread-child');
+    assert.equal(agent.agentPath, 'main/researcher');
+    assert.equal(agent.activity, 'started');
+
+    const review = session.events.find(
+      (event) => event.eventKind === 'lifecycle' && event.phase === 'review_started',
+    );
+    assert.ok(review, '进入评审只是模式切换，映射成 lifecycle');
+
+    const searchCall = session.events.find(
+      (event) => event.eventKind === 'tool_call' && event.tool.name === 'WebSearch',
+    );
+    assert.ok(searchCall?.eventKind === 'tool_call', 'Extension 承载的搜索按 WebSearch 同一口径映射');
+    assert.deepEqual(searchCall.input, { type: 'search', query: 'vitest v4 migration' });
+    const searchResult = session.events.find(
+      (event) => event.eventKind === 'tool_result' && event.callId === searchCall.callId,
+    );
+    assert.ok(searchResult?.eventKind === 'tool_result');
+    assert.match(searchResult.output, /example\.test\/guide/);
+
+    const unknownFamilies = session.events
+      .filter((event) => event.eventKind === 'unknown')
+      .map((event) => event.recordFamily)
+      .sort();
+    assert.deepEqual(
+      unknownFamilies,
+      ['ExitedReviewMode', 'ImageView'],
+      '评审结论与图片查看的口径未定，保留原始证据而不是硬塞进现有档位',
+    );
+  });
+
+  it('子代理状态变化以 lifecycle 呈现，不冒充代理间通信', () => {
+    const path = writeSession(tmpDir, 'codex-agent-lifecycle-label.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-agent-lifecycle-label', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: { type: 'SubAgentActivity', id: 'exec-a', kind: 'finished', agent_thread_id: 't-1', agent_path: 'main/x' },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const timeline = projectTraceSessionTimeline(session);
+    const row = timeline.find((entry) => entry.kind === 'agent_activity');
+    assert.ok(row, '子代理状态要出现在时间线里');
+    assert.equal(row.label, 'agent lifecycle');
+    assert.match(row.fullText ?? '', /"activityKind":"lifecycle"/);
+  });
+
+  it('把 shell 结果视图的执行属性并回同一次调用的工具结果', () => {
+    const path = writeSession(tmpDir, 'codex-shell-result-view-merge.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-shell-result-view-merge', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'call-ls',
+          id: 'ctc-ls',
+          name: 'exec',
+          input: 'const r = await tools.exec_command({"cmd": "ls -la"});',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'call-ls', output: 'a.ts\nb.ts' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          started_at_ms: 1_700_000_000_000,
+          completed_at_ms: 1_700_000_001_500,
+          item: {
+            type: 'CommandExecution',
+            id: 'exec-shell-1',
+            command: ['/bin/zsh', '-lc', 'ls -la'],
+            parsed_cmd: [{ type: 'command', cmd: 'ls -la' }],
+            exit_code: 2,
+            status: 'completed',
+            aggregated_output: 'a.ts\nb.ts',
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.exitCode, 2, '退出码来自运行时记录的结果视图，不再从输出文本正则猜');
+    assert.equal(result.durationMs, 1_500);
+    assert.deepEqual(result.sourceIds, ['call-ls', 'exec-shell-1'], '两侧原生 id 都登记，跨视图去重才有身份可用');
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('结果视图写在输出记录之前时也只归属一次，不重复产出未知事件', () => {
+    const path = writeSession(tmpDir, 'codex-shell-result-view-first.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-shell-result-view-first', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'call-early',
+          id: 'ctc-early',
+          name: 'exec',
+          input: 'const r = await tools.exec_command({"cmd": "pwd"});',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          started_at_ms: 1_700_000_000_000,
+          completed_at_ms: 1_700_000_000_400,
+          item: {
+            type: 'CommandExecution',
+            id: 'exec-early-1',
+            parsed_cmd: [{ type: 'command', cmd: 'pwd' }],
+            exit_code: 0,
+            status: 'completed',
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'call-early', output: '/repo' },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.durationMs, 400);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('归属不到唯一调用的 shell 视图不猜执行属性，继续留作证据', () => {
+    const path = writeSession(tmpDir, 'codex-shell-result-view-unmatched.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-shell-result-view-unmatched', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'call-git',
+          name: 'exec',
+          input: 'const r = await tools.exec_command({"cmd": "git status"});',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'call-git', output: 'clean' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'CommandExecution',
+            id: 'exec-shell-9',
+            parsed_cmd: [{ type: 'command', cmd: 'mystery --flag' }],
+            exit_code: 7,
+            status: 'completed',
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.exitCode, undefined, '命令集合对不上就不能把别的退出码安到这次调用上');
+    const [unknown] = session.events.filter((event) => event.eventKind === 'unknown');
+    assert.ok(unknown?.eventKind === 'unknown');
+    assert.equal(unknown.recordFamily, 'CommandExecution');
+    assert.equal(unknown.recordId, 'exec-shell-9');
+  });
+
+  it('超过上限的原始记录只留摘要与身份，整条记录仍可按族分桶', () => {
+    const path = writeSession(tmpDir, 'codex-unknown-raw-truncated.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-unknown-raw-truncated', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'Extension',
+            kind: 'image_gen.generation',
+            id: 'exec-image-1',
+            status: 'completed',
+            savedPath: '/repo/out.png',
+            result: 'x'.repeat(20_000),
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const [unknown] = session.events.filter((event) => event.eventKind === 'unknown');
+    assert.ok(unknown?.eventKind === 'unknown');
+    assert.equal(unknown.raw, undefined, 'MB 级 base64 不进派生层，回指位置由 sourceIndex 与 sourcePath 提供');
+    assert.equal(unknown.rawTruncated, true);
+    assert.ok((unknown.rawBytes ?? 0) > 8 * 1024);
+    assert.match(String(unknown.rawDigest), /^[0-9a-f]{16}$/);
+    assert.equal(unknown.recordFamily, 'Extension');
+    assert.equal(unknown.recordId, 'exec-image-1');
+    assert.deepEqual(
+      countUnknownEventDispositions(session),
+      { unsupported: 0, duplicateView: 0, unmappedEvidence: 1 },
+      '被摘要掉的记录不能因此降级成未支持格式',
+    );
   });
 
   it('uses Codex call namespace when an MCP end event is absent', () => {

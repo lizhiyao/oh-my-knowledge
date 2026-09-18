@@ -8,6 +8,7 @@ import {
   type TraceEvent,
   type TraceMessageEvent,
   type TraceSession,
+  unknownTraceEventText,
 } from '../trace/trace-ir.js';
 import type { SkillSegment } from '../trace/segmentation.js';
 import {
@@ -398,7 +399,9 @@ export function timelineEventsFromTraceEvent(
         agentPath: event.agentPath,
         text: event.text,
       })),
-      label: event.activityKind === 'communication' ? 'agent communication' : 'agent status',
+      label: event.activityKind === 'communication'
+        ? 'agent communication'
+        : event.activityKind === 'lifecycle' ? 'agent lifecycle' : 'agent status',
     })];
   }
   if (event.eventKind === 'usage') {
@@ -423,7 +426,8 @@ export function timelineEventsFromTraceEvent(
     })];
   }
   if (event.eventKind === 'unknown') {
-    const rawText = safeRecordText(event.raw);
+    // 超限记录只剩节选：文本匹配退回节选，而不是因为 raw 缺席就把这条失败信号吞掉。
+    const rawText = unknownTraceEventText(event);
     if (!hasAssistantTurnFailedText(rawText)) return [];
     return [timelineEvent({
       ...base,

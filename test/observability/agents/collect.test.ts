@@ -546,6 +546,103 @@ describe('collectAgentLogs 容量与失败口径', () => {
     ], [1, 2, 2]);
   });
 
+  it('已定论的族写进产物时带上观测效果与执行属性，大记录只留摘要', () => {
+    const harness = createHarness();
+    const decided = harness.session(
+      '.codex/sessions/2026-05-16/rollout-decided.jsonl',
+      [
+        {
+          type: 'session_meta',
+          payload: { id: 'cx-decided', session_id: 'cx-decided', timestamp: '2026-05-18T09:00:00.000Z', cwd: '/repo-a' },
+        },
+        {
+          type: 'response_item',
+          payload: {
+            type: 'custom_tool_call',
+            call_id: 'call-1',
+            id: 'ctc-1',
+            name: 'exec',
+            input: 'const r = await tools.exec_command({"cmd": "npm test"});',
+          },
+        },
+        {
+          type: 'event_msg',
+          payload: {
+            type: 'item_completed',
+            started_at_ms: 1_700_000_000_000,
+            completed_at_ms: 1_700_000_004_000,
+            item: {
+              type: 'CommandExecution',
+              id: 'exec-1',
+              parsed_cmd: [{ type: 'command', cmd: 'npm test' }],
+              exit_code: 3,
+              status: 'completed',
+            },
+          },
+        },
+        {
+          type: 'response_item',
+          payload: { type: 'custom_tool_call_output', call_id: 'call-1', output: '1 test failed' },
+        },
+        {
+          type: 'event_msg',
+          payload: {
+            type: 'item_completed',
+            item: {
+              type: 'FileChange',
+              id: 'exec-2',
+              status: 'completed',
+              changes: { '/repo-a/src/a.ts': { type: 'update', unified_diff: '--- a\n+++ b\n+x\n-y' } },
+            },
+          },
+        },
+        {
+          type: 'event_msg',
+          payload: {
+            type: 'item_completed',
+            item: { type: 'SubAgentActivity', id: 'exec-3', kind: 'started', agent_thread_id: 't-child', agent_path: 'main/a' },
+          },
+        },
+        {
+          type: 'event_msg',
+          payload: { type: 'item_completed', item: { type: 'EnteredReviewMode', id: 'item-4', user_facing_hint: 'review main' } },
+        },
+        {
+          type: 'event_msg',
+          payload: {
+            type: 'item_completed',
+            item: { type: 'ExitedReviewMode', id: 'item-5', review_output: { findings: [{ body: 'x'.repeat(20_000) }] } },
+          },
+        },
+      ].map((record) => JSON.stringify(record)).join('\n'),
+      Date.parse('2026-05-16T09:00:00.000Z'),
+    );
+
+    const report = collect(harness);
+    const session = sessionFor(report, decided);
+    assert.deepEqual(
+      [session.unknownEventCount, session.duplicateViewCount, session.unmappedEvidenceCount],
+      [0, 0, 1],
+      '只有评审结论这一条还没定论，其余都按各自口径成了事件',
+    );
+
+    const artifact = JSON.parse(readFileSync(artifactFile(harness, session), 'utf-8')) as AgentTraceArtifact;
+    assert.equal(artifact.schemaVersion, 'agent-trace-v2', '产物声明的 IR 版本要随新增事件档一起升');
+    const result = artifact.session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result && result.eventKind === 'tool_result');
+    assert.equal(result.exitCode, 3, '退出码来自运行时结果视图，不再从输出文本猜');
+    assert.equal(result.durationMs, 4_000);
+    assert.deepEqual(result.sourceIds, ['call-1', 'exec-1']);
+    const effect = artifact.session.events.find((event) => event.eventKind === 'observed_effect');
+    assert.ok(effect && effect.eventKind === 'observed_effect');
+    assert.deepEqual(effect.paths, ['src/a.ts'], '绝对路径不进派生层');
+    const pending = artifact.session.events.find((event) => event.eventKind === 'unknown');
+    assert.ok(pending && pending.eventKind === 'unknown');
+    assert.equal(pending.rawTruncated, true, 'MB 级结论只留摘要与节选');
+    assert.equal(pending.recordFamily, 'ExitedReviewMode', '摘要之后仍要认得出这是哪一族');
+    assert.equal(pending.recordId, 'item-5');
+  });
+
   it('实际解析格式与日志根登记格式不一致时，按实际结果记录', () => {
     const harness = createHarness();
     const mislabeled = harness.session(

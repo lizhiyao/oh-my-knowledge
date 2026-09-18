@@ -4,6 +4,7 @@ import {
   correlateTraceToolEvents,
   createTraceId,
   traceTimestampBounds,
+  unknownTraceEvent,
   type TraceEvent,
   type TraceMessageOrigin,
   type TraceSession,
@@ -617,11 +618,8 @@ export function adaptDshSession(
     }
     if (event.ignorable === true) {
       unknownEventCount += 1;
-      events.push({
-        ...base('unknown'),
-        eventKind: 'unknown',
-        raw: event,
-      });
+      const unknownBase = base('unknown');
+      events.push(unknownTraceEvent(unknownBase, unknownBase.eventId, event));
       return;
     }
     throw new DshTraceUnsupportedEventError(event.type, event.seq);

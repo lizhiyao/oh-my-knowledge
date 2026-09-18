@@ -271,6 +271,6 @@ flowchart LR
     S --> R["health · inbox · experience"]
 ```
 
-Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle` 与 `unknown` event。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入指令、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，结果统一为 `success`、`failure`、`cancelled` 与 `unknown`；无法确定时必须保持 unknown。
+Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle`、`agent_activity`、`observed_effect` 与 `unknown` event。`observed_effect` 记录运行时观察到的效果（例如一次命令执行改动了哪些文件）：它不是模型发起的调用，因此不混进工具计数。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入指令、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，结果统一为 `success`、`failure`、`cancelled` 与 `unknown`；无法确定时必须保持 unknown。
 
 不同 identifier 各司其职：`rootRunId` 聚合任务树，`runId` 标识具体任务，`traceId` 标识 evidence stream，segment 再生成独立 sample ID。每次加载还会保存 ingestion summary，确保损坏、未识别、被过滤或不完整的 source data 不能冒充完整 observation coverage。
