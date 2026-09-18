@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadTraceCorpus } from '../../../src/observability/trace/index.js';
@@ -192,6 +192,10 @@ describe('streamed trace records', () => {
       { raw: '{"type":"response_item","payload":{' },
       { raw: '[1,2,3]' },
       { raw: '   ' },
+      // VT／FF 独占整行：整档路径按 `String.prototype.trim` 判空跳过，惰性路径也必须跳过。
+      // 少认一种空白，这一行就会被索引并计入畸形记录，两条路的三档计数就此分叉。
+      { raw: '\x0b' },
+      { raw: '\x0c' },
     ]));
     assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走惰性视图');
 
@@ -209,4 +213,18 @@ describe('streamed trace records', () => {
     assert.equal(stats.ignoredValueCount, 1);
     assert.equal(stats.parsedRecordCount, 965);
   });
+
+  it('建立索引期间失败时不留下已打开的 fd', () => {
+    const dir = tempDir('omk-streamed-fd-');
+    // 目录的 fd 能打开，随后按文件读会失败——这正是「open 成功、索引期间抛错」的形状。
+    // 一轮采集要开上千家日志，这里漏一个 fd 就会先把进程推到 EMFILE，而不是报清晰的错。
+    const before = openFdCount();
+    assert.throws(() => openStreamedJsonlRecords(dir));
+    assert.equal(openFdCount(), before, '索引期间抛错必须把已经打开的 fd 还掉');
+  });
 });
+
+/** 当前进程打开着的 fd 数量（macOS 与 Linux 都提供 /dev/fd）。 */
+function openFdCount(): number {
+  return readdirSync('/dev/fd').filter((name) => /^\d+$/.test(name)).length;
+}

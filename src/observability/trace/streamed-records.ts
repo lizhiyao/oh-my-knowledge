@@ -4,8 +4,8 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
  * 按字节偏移索引的惰性 JSONL 记录视图。
  *
  * 会话日志的解析原本一次性把整份文件的记录对象留在内存里，采集一份 1 GiB 级日志的峰值驻留
- * 会到 3.6 GiB——文件越大就越采不动。这里只留每行的字节偏移（每条 8 字节）与一次性的解析
- * 结果标记，记录对象在离开当前下标后即可回收：适配器看到的仍是「有 length、可 forEach／
+ * 会到 3.6 GiB——文件越大就越采不动。这里只留每行的起止字节位置（每条记录约 16 字节）与一次性的
+ * 解析结果标记，记录对象在离开当前下标后即可回收：适配器看到的仍是「有 length、可 forEach／
  * some／find 访问的数组」，映射逻辑与顺序完全不变。
  *
  * 每次访问都会读并解析该行，因此顺序扫描越多越费 CPU（实测 1.3 GiB 档 wall 从 21 s 涨到 29 s）。
@@ -55,8 +55,9 @@ function recordTooLarge(filePath: string): Error {
   return new Error(`trace JSONL 单条记录超过 ${MAX_RECORD_CHARS} 上限：${filePath}`);
 }
 
-function scanLineOffsets(fd: number, size: number): { offsets: number[]; maxLineBytes: number } {
+function scanLineOffsets(fd: number, size: number): { offsets: number[]; ends: number[]; maxLineBytes: number } {
   const offsets: number[] = [];
+  const ends: number[] = [];
   const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES);
   let filePosition = 0;
   let lineStartInFile = 0;
@@ -72,20 +73,31 @@ function scanLineOffsets(fd: number, size: number): { offsets: number[]; maxLine
         const lineEnd = filePosition - read + index + 1;
         if (pendingHasContent) {
           offsets.push(lineStartInFile);
+          // 每条记录存自己的行尾，而不是「下一个索引」：被跳过的空白行必须留在切片之外，否则
+          // 空白字节会挂在上一条记录尾部——VT/FF 都不是 JSON 合法空白，整条记录会因此解析失败。
+          ends.push(lineEnd);
           maxLineBytes = Math.max(maxLineBytes, lineEnd - lineStartInFile);
         }
         lineStartInFile = lineEnd;
         pendingHasContent = false;
         continue;
       }
-      if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) pendingHasContent = true;
+      // 与整档路径同一条「整行是空白就跳过」的口径：那边用 `String.prototype.trim` 判空，
+      // 所以 VT(0x0b) 与 FF(0x0c) 也算空白——漏掉它们会让一行 \v 在惰性路径上被索引并计入畸形
+      // 记录，两条路的三档计数就此分叉。trim 还会去掉 NBSP／ZWNBSP／U+2028 这类多字节空白，
+      // 这里按单字节匹配不了；本机 2 432 份日志共 6 553 MiB 实测零命中，故留作已知边界而非
+      // 在热路径上补 UTF-8 序列匹配。
+      if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d && byte !== 0x0b && byte !== 0x0c) {
+        pendingHasContent = true;
+      }
     }
   }
   if (pendingHasContent) {
     offsets.push(lineStartInFile);
+    ends.push(size);
     maxLineBytes = Math.max(maxLineBytes, size - lineStartInFile);
   }
-  return { offsets, maxLineBytes };
+  return { offsets, ends, maxLineBytes };
 }
 
 /**
@@ -95,14 +107,26 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
   close: () => void;
 } {
   const fd = openSync(filePath, 'r');
-  const size = fstatSync(fd).size;
-  const { offsets, maxLineBytes } = scanLineOffsets(fd, size);
+  // 建立索引期间的任何失败都要还掉这个 fd：一轮要开上千家日志，泄漏会先把进程推到 EMFILE。
+  let size: number;
+  let offsets: number[];
+  let ends: number[];
+  let scratch: Buffer;
+  try {
+    size = fstatSync(fd).size;
+    const scanned = scanLineOffsets(fd, size);
+    offsets = scanned.offsets;
+    ends = scanned.ends;
+    // 读缓冲区按实测最长行分配，而不是按文件大小或上限预留：整档扫描一次就已经知道最长行。
+    scratch = Buffer.allocUnsafe(Math.min(Math.max(scanned.maxLineBytes, 1), MAX_LINE_BYTES));
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
   const outcomes = new Uint8Array(offsets.length);
   let malformed = 0;
   let ignored = 0;
   let closed = false;
-  // 读缓冲区按实测最长行分配，而不是按文件大小或上限预留：整档扫描一次就已经知道最长行。
-  const scratch = Buffer.allocUnsafe(Math.min(Math.max(maxLineBytes, 1), MAX_LINE_BYTES));
 
   const parseAt = (position: number): T | undefined => {
     if (closed) throw new Error(`流式 trace 记录已关闭：${filePath}`);
@@ -129,8 +153,7 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
 
   const readAndParse = (position: number): unknown | undefined => {
     const start = offsets[position];
-    const end = position + 1 < offsets.length ? offsets[position + 1] : size;
-    const length = end - start;
+    const length = ends[position] - start;
     if (length > MAX_LINE_BYTES) throw recordTooLarge(filePath);
     const read = readSync(fd, scratch, 0, length, start);
     // 行切片自带结尾换行；JSON.parse 会跳过首尾空白，只有判超限时才取一次无尾空白的长度。
