@@ -746,9 +746,9 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
     if (payloadType === 'item_completed') {
-      // item_completed 里只有两种记录可直接映射：登记为 MCP 调用端的 item，以及
-      // WebSearch 视图（重复视图消费掉，唯一载体等综合成工具事件）。其余 item 仍按
-      // unknown 保留原始证据，等各自口径确定。
+      // 可直接映射的 item_completed 只有两类：登记为 MCP 调用端的 item，以及 WebSearch
+      // 视图——与 response_item 属同一调用的按重复视图消费，唯一载体综合成工具事件对。
+      // 其余 item 视图仍按 unknown 保留原始证据，等各自的映射口径确定。
       const end = mcpEnds.bySourceIndex.get(sourceIndex);
       if (end) {
         end.turnId = activeTurnId;
