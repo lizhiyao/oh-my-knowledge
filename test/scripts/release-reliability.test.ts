@@ -106,6 +106,67 @@ describe('bounded command diagnostics', () => {
     expect(result.status).toBe(0);
     expect(JSON.parse(readFileSync(join(directory, 'summary.json'), 'utf8')).counts).toEqual({ command_failure: 1 });
   });
+  it('retries unknown_signal once and succeeds, keeping the crashed attempt on record', async () => {
+    const directory = temp();
+    const marker = join(directory, 'first-run');
+    const script = `const fs=require('fs');if(!fs.existsSync(${JSON.stringify(marker)})){fs.writeFileSync(${JSON.stringify(marker)},'1');process.kill(process.pid,'SIGKILL')}else{console.log('second attempt ok')}`;
+    const code = await runBounded({ name: 'flaky-signal', directory, timeoutMs: 30000, sampleMs: 100000,
+      command: [process.execPath, '-e', script], retryOn: ['unknown_signal'] });
+    expect(code).toBe(0);
+    const record = JSON.parse(readFileSync(join(directory, 'flaky-signal.json'), 'utf8'));
+    expect(record).toMatchObject({ category: 'success', attempts: 2 });
+    expect(record.attemptLog).toHaveLength(2);
+    expect(record.attemptLog[0]).toMatchObject({ category: 'unknown_signal', signal: 'SIGKILL' });
+    expect(record.attemptLog[1]).toMatchObject({ category: 'success' });
+    // 崩溃尝试留现场，最终成功不覆盖第一次的证据。
+    const postmortem = readFileSync(join(directory, 'flaky-signal-postmortem.txt'), 'utf8');
+    expect(postmortem).toContain('attempt 1');
+    expect(postmortem).toContain('/proc/pressure/memory');
+    expect(postmortem).not.toContain('attempt 2');
+    expect(readFileSync(join(directory, 'flaky-signal.log'), 'utf8')).toContain('===== attempt 2 =====');
+  });
+  it('does not retry assertion failures or let a retried crash pretend to pass', async () => {
+    const directory = temp();
+    expect(await runBounded({ name: 'no-retry', directory, timeoutMs: 30000, sampleMs: 100000,
+      command: [process.execPath, '-e', 'process.exit(7)'], retryOn: ['unknown_signal'] })).toBe(7);
+    expect(JSON.parse(readFileSync(join(directory, 'no-retry.json'), 'utf8'))).toMatchObject({ category: 'command_failure', attempts: 1 });
+    // 重试预算耗尽仍是失败：两次都被 SIGKILL 时按第二次如实报告，attemptLog 两条都在。
+    const always = `process.kill(process.pid,'SIGKILL')`;
+    const code = await runBounded({ name: 'always-killed', directory, timeoutMs: 30000, sampleMs: 100000,
+      command: [process.execPath, '-e', always], retryOn: ['unknown_signal'] });
+    expect(code).not.toBe(0);
+    const record = JSON.parse(readFileSync(join(directory, 'always-killed.json'), 'utf8'));
+    expect(record).toMatchObject({ category: 'unknown_signal', attempts: 2, signal: 'SIGKILL' });
+    expect(record.attemptLog).toHaveLength(2);
+    const postmortem = readFileSync(join(directory, 'always-killed-postmortem.txt'), 'utf8');
+    expect(postmortem).toContain('attempt 1');
+    expect(postmortem).toContain('attempt 2');
+  });
+});
+
+describe('test progress reporter', () => {
+  // @ts-expect-error Standalone Node script.
+  const loadReporter = async () => (await import('../../scripts/ci/progress-reporter.mjs')).default;
+  it('marks module start and end into the diagnostics directory, and stays inert without it', async () => {
+    const Reporter = await loadReporter();
+    const directory = temp();
+    const previous = process.env.CI_DIAGNOSTICS_DIR;
+    try {
+      process.env.CI_DIAGNOSTICS_DIR = directory;
+      const reporter = new Reporter();
+      reporter.onTestModuleStart({ moduleId: '/repo/test/a.test.ts' });
+      reporter.onTestModuleEnd({ moduleId: '/repo/test/a.test.ts' });
+      const log = readFileSync(join(directory, 'tests-progress.log'), 'utf8');
+      expect(log).toMatch(/start \/repo\/test\/a\.test\.ts/);
+      expect(log).toMatch(/end\s+\/repo\/test\/a\.test\.ts/);
+      delete process.env.CI_DIAGNOSTICS_DIR;
+      const inert = new Reporter();
+      inert.onTestModuleStart({ moduleId: '/repo/test/b.test.ts' });
+      expect(readFileSync(join(directory, 'tests-progress.log'), 'utf8')).not.toContain('b.test.ts');
+    } finally {
+      if (previous === undefined) delete process.env.CI_DIAGNOSTICS_DIR; else process.env.CI_DIAGNOSTICS_DIR = previous;
+    }
+  });
 });
 
 function bundle() {
