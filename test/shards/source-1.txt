@@ -120,6 +120,7 @@ test/mcp/principal.test.ts
 test/measurement-governance/prompt-registry-freeze.test.ts
 test/observability/agents/collect.test.ts
 test/observability/agents/detect.test.ts
+test/observability/agents/local-catalog.test.ts
 test/observability/agents/registry.test.ts
 test/observability/agents/smoke.test.ts
 test/observability/analysis/hedging-classifier.test.ts

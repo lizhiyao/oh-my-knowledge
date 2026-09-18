@@ -40,6 +40,8 @@ export interface GlobalOmkLayout extends OmkLayout {
   readonly resolvedInputsDir: string;
   readonly artifactIndexDir: string;
   readonly resourceLeasesDir: string;
+  /** 用户级 Agent 登记表扩展文件；只属于全局根，项目级不覆盖。 */
+  readonly agentCatalogPath: string;
 }
 
 function layout(root: string): OmkLayout {
@@ -85,6 +87,7 @@ export function globalLayout(root: string = OMK_HOME): GlobalOmkLayout {
   const tmpDir = base.tmpDir;
   return Object.freeze({
     ...base,
+    agentCatalogPath: join(root, 'agents.json'),
     cacheDir: join(base.stateDir, 'cache'),
     toolsDir: join(base.stateDir, 'tools'),
     tunnelsDir: join(base.stateDir, 'tunnels'),

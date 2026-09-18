@@ -26,11 +26,12 @@ import {
   AgentInventoryReportSchema,
   type AgentCollectionEntry,
   type AgentCollectionReport,
+  type AgentDescriptor,
   type AgentInventoryReport,
   type CollectedSession,
 } from './contracts.js';
 import { detectAgentInventory, type DetectAgentInventoryOptions } from './detect.js';
-import { findAgentDescriptor } from './registry.js';
+import { findAgentDescriptor, KNOWN_AGENTS } from './registry.js';
 import {
   DEFAULT_MAX_DIRECTORIES_PER_ROOT,
   DEFAULT_MAX_SESSION_FILES_PER_ROOT,
@@ -73,7 +74,10 @@ export interface AgentCollectionLimits {
 export interface CollectAgentLogsOptions {
   layout?: AgentStorageLayout;
   limits?: Partial<AgentCollectionLimits>;
-  /** 未传入清单时用于现场探测的选项。 */
+  /**
+   * 未传入清单时用于现场探测的选项。
+   * 其中 `descriptors` 同时决定根查找用哪份登记表：默认内置表，含本机扩展条目时传 `resolveAgentCatalog()` 的结果。
+   */
   detect?: DetectAgentInventoryOptions;
   now?: () => string;
   /** 默认 true；false 时只计算不写盘（预览／自检用）。 */
@@ -131,7 +135,9 @@ export function collectAgentLogs(
   };
   const now = options.now ?? (() => new Date().toISOString());
   const collectedAt = now();
-  const inventory = report ?? detectAgentInventory(options.detect);
+  // 探测与根查找共用同一份登记表：两阶段各拿一份表时，只在扩展文件里声明的宿主会被当成未登记。
+  const catalog = options.detect?.descriptors ?? KNOWN_AGENTS;
+  const inventory = report ?? detectAgentInventory({ ...options.detect, descriptors: catalog });
   const persist = options.persist !== false;
   const limitations: string[] = [];
 
@@ -141,7 +147,7 @@ export function collectAgentLogs(
   }
 
   const { works, unreadableRoots, truncatedRoots, missingCatalogAgents, missingCatalogRoots, rootlessAgents }
-    = discoverRoots(inventory, limits);
+    = discoverRoots(inventory, catalog, limits);
   if (unreadableRoots > 0) {
     limitations.push(`${unreadableRoots} 个日志根存在但无法完整扫描（权限不足或读取失败），其会话计数按 0 记录，未计入本轮采集。`);
   }
@@ -283,6 +289,7 @@ export function collectAgentLogs(
 
 function discoverRoots(
   inventory: AgentInventoryReport,
+  catalog: readonly AgentDescriptor[],
   limits: AgentCollectionLimits,
 ): {
   works: RootWork[];
@@ -301,7 +308,7 @@ function discoverRoots(
 
   for (const agent of inventory.agents) {
     if (!agent.installed) continue;
-    const descriptor = findAgentDescriptor(agent.agentId);
+    const descriptor = findAgentDescriptor(catalog, agent.agentId);
     if (descriptor === undefined) {
       missingCatalogAgents += 1;
       continue;

@@ -17,8 +17,10 @@ export type {
   DetectedAgent,
 } from './contracts.js';
 export {
+  AGENT_CATALOG_VERSION,
   AGENT_COLLECTION_VERSION,
   AGENT_INVENTORY_VERSION,
+  AgentCatalogFileSchema,
   AgentCollectionEntrySchema,
   AgentCollectionReportSchema,
   AgentDescriptorSchema,
@@ -30,6 +32,13 @@ export {
   DetectedAgentSchema,
 } from './contracts.js';
 export { KNOWN_AGENTS, findAgentDescriptor } from './registry.js';
+export type { LocalAgentCatalog, LocalAgentCatalogOptions } from './local-catalog.js';
+export {
+  LocalAgentCatalogError,
+  loadLocalAgentCatalog,
+  mergeAgentCatalog,
+  resolveAgentCatalog,
+} from './local-catalog.js';
 export { detectAgentInventory, pathDirectoriesFromEnv } from './detect.js';
 export type { DetectAgentInventoryOptions } from './detect.js';
 export {
