@@ -724,6 +724,15 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       }
       return;
     }
+    if (payloadType === 'item_completed') {
+      // 只有被登记为 MCP 调用端的 item 才是可直接映射的记录；其余 item 视图仍按 unknown 保留证据。
+      const end = mcpEnds.bySourceIndex.get(sourceIndex);
+      if (end) {
+        end.turnId = activeTurnId;
+        end.model = activeModel;
+        return;
+      }
+    }
     if (payloadType === 'patch_apply_end') {
       const end = patchEnds.bySourceIndex.get(sourceIndex);
       if (end) {
@@ -899,6 +908,42 @@ function indexMcpCallEnds(records: unknown[]): McpCallEndIndex {
     byOccurrence.set(mcpCallOccurrenceKey(callId, occurrence), end);
     bySourceIndex.set(sourceIndex, end);
   });
+
+  // 较新的 Codex 版本不再写 mcp_tool_call_end，改由 item_completed 单独承载 MCP 调用与结果。
+  // 同一 call_id 已有运行时结尾记录时不再重复登记，避免一次调用产生两组工具事件。
+  const indexedCallIds = new Set(ordered.map((end) => end.callId));
+  records.forEach((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    const payload = isObject(record?.payload) ? record.payload : {};
+    if (payload.type !== 'item_completed') return;
+    const item = isObject(payload.item) ? payload.item : undefined;
+    if (!item || item.type !== 'McpToolCall') return;
+    const callId = stringValue(item.id) ?? stringValue(item.call_id);
+    if (!callId || indexedCallIds.has(callId)) return;
+    indexedCallIds.add(callId);
+    const occurrence = takeOccurrence(occurrences, callId);
+    const result = item.result;
+    const end: McpCallEnd = {
+      callId,
+      occurrence,
+      sourceIndex,
+      sourceEventId: callId,
+      sourceType: `${String(record?.type ?? 'unknown')}:item_completed`,
+      timestamp: normalizeTraceTimestamp(record?.timestamp),
+      isError: booleanValue(item.isError)
+        ?? booleanValue(item.is_error)
+        ?? (isObject(result) ? booleanValue(result.isError) ?? booleanValue(result.is_error) : undefined),
+      status: stringValue(item.status) ?? (isObject(result) ? stringValue(result.status) : undefined),
+      tool: stringValue(item.tool),
+      server: stringValue(item.server),
+      input: parseToolInput(item.arguments ?? item.input),
+      output: codexContentText(isObject(result) ? result.content ?? result : result ?? item.output),
+    };
+    ordered.push(end);
+    byOccurrence.set(mcpCallOccurrenceKey(callId, occurrence), end);
+    bySourceIndex.set(sourceIndex, end);
+  });
+
   return { ordered, byOccurrence, bySourceIndex };
 }
 

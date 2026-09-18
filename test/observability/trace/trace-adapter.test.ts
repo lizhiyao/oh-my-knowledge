@@ -3259,6 +3259,184 @@ describe('source-neutral Trace IR', () => {
     assert.equal(result.statusSource, 'runtime');
   });
 
+  it('maps a Codex item_completed MCP tool call into a correlated call/result pair', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-mcp.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-mcp', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'exec-runtime-1',
+            server: 'node_repl',
+            tool: 'js',
+            arguments: { code: 'return 1' },
+            status: 'completed',
+            result: { content: [{ type: 'text', text: 'done' }] },
+            duration: 0.42,
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const call = session.events.find((event) =>
+      event.eventKind === 'tool_call' && event.callId === 'exec-runtime-1',
+    );
+    const result = session.events.find((event) =>
+      event.eventKind === 'tool_result' && event.callId === 'exec-runtime-1',
+    );
+    assert.ok(call?.eventKind === 'tool_call');
+    assert.equal(call.tool.name, 'node_repl.js');
+    assert.equal(call.tool.provider, 'node_repl');
+    assert.deepEqual(call.input, { code: 'return 1' });
+    assert.equal(call.sourceType, 'event_msg:item_completed');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.output, 'done');
+    assert.equal(result.status, 'success');
+    assert.equal(result.statusSource, 'runtime');
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('counts a Codex MCP call once when item_completed repeats the response item view', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-mcp-duplicate.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-mcp-duplicate', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          id: 'fc-dup',
+          call_id: 'call-dup',
+          name: 'js',
+          namespace: 'mcp__node_repl',
+          arguments: JSON.stringify({ code: 'return 2' }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          id: 'fco-dup',
+          call_id: 'call-dup',
+          output: 'tool returned an error',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'call-dup',
+            server: 'node_repl',
+            tool: 'js',
+            arguments: { code: 'return 2' },
+            status: 'failed',
+            result: { content: [{ type: 'text', text: 'tool returned an error' }] },
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    assert.equal(session.events.filter((event) =>
+      event.eventKind === 'tool_call' && event.callId === 'call-dup',
+    ).length, 1);
+    const results = session.events.filter((event) =>
+      event.eventKind === 'tool_result' && event.callId === 'call-dup',
+    );
+    assert.equal(results.length, 1);
+    // 同一调用只留一份证据，但事件视图的权威状态仍要生效。
+    const [result] = results;
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.status, 'failure');
+    assert.equal(result.statusSource, 'runtime');
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 0);
+  });
+
+  it('reads an item_completed MCP failure as a runtime tool failure', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-mcp-failed.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-mcp-failed', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'McpToolCall',
+            id: 'exec-runtime-2',
+            server: 'node_repl',
+            tool: 'js',
+            arguments: { code: 'throw new Error("boom")' },
+            status: 'failed',
+            result: { content: [{ type: 'text', text: 'boom' }] },
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    const result = session.events.find((event) => event.eventKind === 'tool_result');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.status, 'failure');
+    assert.equal(result.statusSource, 'runtime');
+    const [segment] = segmentTraceBySkill(session);
+    assert.equal(segment.metrics.numToolCalls, 1);
+    assert.equal(segment.metrics.numToolFailures, 1);
+  });
+
+  it('keeps non-MCP item_completed views unknown until their mapping is decided', () => {
+    const path = writeSession(tmpDir, 'codex-item-completed-other-views.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-item-completed-other-views', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: { type: 'Reasoning', id: 'item-3', summary_text: ['thinking'], raw_content: [] },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          item: {
+            type: 'FileChange',
+            id: 'exec-runtime-3',
+            changes: { '/repo/a.ts': { type: 'add', content: 'export const a = 1;' } },
+            status: 'completed',
+            stdout: '',
+          },
+        },
+      },
+    ]);
+
+    const [session] = loadTraceSessions(path);
+    assert.equal(session.events.filter((event) => event.eventKind === 'unknown').length, 2);
+  });
+
   it('uses Codex call namespace when an MCP end event is absent', () => {
     const path = writeSession(tmpDir, 'codex-mcp-namespace-only.jsonl', [
       {
