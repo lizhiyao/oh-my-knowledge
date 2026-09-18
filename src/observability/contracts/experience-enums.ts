@@ -23,6 +23,7 @@ export const ExperienceEvidenceKindSchema = z.enum([
   'skill_context',
   'runtime_context',
   'lifecycle',
+  'observed_effect',
   'observation',
 ]);
 

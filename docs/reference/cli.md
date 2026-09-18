@@ -356,6 +356,8 @@ Every observation carries:
 - `messageWindow` — 3 messages before / trigger / 3 messages after, plus `resolutionAfter` (whether the agent recovered)
 - `evidence.{messageIndex,messageUuid,toolUseId}` — anchors for round-tripping back to the original jsonl
 
+Persisted experience reports use `schemaVersion: 4`: the timeline evidence kinds gain `observed_effect` — a file change the runtime observed, shown as its own row rather than folded into the tool call that triggered it, because most such changes are command side effects instead of model-initiated edits. Reports written in an older scheme such as `3` are no longer read: re-run `omk observe` on them to refresh. Review state is stored separately and timeline row ids derive from the evidence itself, so re-running re-attaches reviews to the same evidence and no dual-read branch is kept.
+
 Supported trace formats: Codex rollout JSONL (`.jsonl`), Claude Code session JSONL (`.jsonl`), Qoder session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
 
 ## `omk agents`

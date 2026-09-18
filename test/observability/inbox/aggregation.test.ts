@@ -440,7 +440,7 @@ describe('observe inbox - aggregation', () => {
     const originalTimelineIds = report.experience!.invocations[0].timeline.map((event) => event.id);
     const path = saveObservationInboxReport(report, dir);
     const persisted = JSON.parse(readFileSync(path, 'utf8'));
-    assert.equal(persisted.experience.schemaVersion, 3);
+    assert.equal(persisted.experience.schemaVersion, 4);
     assert.equal(persisted.experience.traceTimelines.length, 1);
     assert.equal('timeline' in persisted.experience.invocations[0], false);
     assert.equal('fullSessionTimeline' in persisted.experience.sessions[0], false);

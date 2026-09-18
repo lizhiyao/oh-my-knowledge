@@ -23,6 +23,7 @@ const cases = [
     'skill_context',
     'runtime_context',
     'lifecycle',
+    'observed_effect',
     'observation',
   ]],
   ['ExperienceAssistiveInferenceCode', enums.ExperienceAssistiveInferenceCodeSchema, [

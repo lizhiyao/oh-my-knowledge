@@ -425,6 +425,28 @@ export function timelineEventsFromTraceEvent(
       label: 'token usage',
     })];
   }
+  if (event.eventKind === 'observed_effect') {
+    // 观测到的效果独立成行：它不是模型发起的调用，并入触发它的工具调用会把副作用读成编辑决定。
+    const visible = `${event.changeCount ?? 0} changed · ${(event.paths ?? []).slice(0, 8).join(' · ')}`;
+    return [timelineEvent({
+      ...base,
+      kind: 'observed_effect',
+      role: 'other',
+      order,
+      snippet: snippet(visible, 700),
+      fullText: fullText(JSON.stringify({
+        effectKind: event.effectKind,
+        paths: event.paths,
+        changeCount: event.changeCount,
+        addedLines: event.addedLines,
+        deletedLines: event.deletedLines,
+        status: event.status,
+        statusSource: event.statusSource,
+        durationMs: event.durationMs,
+      })),
+      label: 'observed file change',
+    })];
+  }
   if (event.eventKind === 'unknown') {
     // 超限记录只剩节选：文本匹配退回节选，而不是因为 raw 缺席就把这条失败信号吞掉。
     const rawText = unknownTraceEventText(event);

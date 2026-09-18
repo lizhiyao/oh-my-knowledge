@@ -29,9 +29,9 @@ describe('observe inbox - trace ingestion', () => {
       const loaded = loadObservationInboxReports(root);
       assert.equal(loaded.length, 1);
       assert.equal(loaded[0].schemaVersion, 2);
-      assert.equal(loaded[0].experience?.schemaVersion, 3);
+      assert.equal(loaded[0].experience?.schemaVersion, 4);
       assert.equal(readFileSync(old, 'utf8'), before);
-      assert.equal(JSON.parse(readFileSync(current, 'utf8')).experience.schemaVersion, 3);
+      assert.equal(JSON.parse(readFileSync(current, 'utf8')).experience.schemaVersion, 4);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
