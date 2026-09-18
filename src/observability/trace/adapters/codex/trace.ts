@@ -150,7 +150,14 @@ export function isCodexGuardianRollout(records: unknown[]): boolean {
 }
 
 export function parseCodexSessionFile(filePath: string, rawRecords: unknown[]): TraceSession {
-  const meta = rawRecords.map(asCodexRecord).find((record) => record?.type === 'session_meta');
+  // 逐条取，不 map：记录视图可能是按偏移惰性解析的，map 会把整份文件的解析结果一次留住。
+  let meta: CodexRecord | undefined;
+  for (let index = 0; index < rawRecords.length; index++) {
+    const record = asCodexRecord(rawRecords[index]);
+    if (record?.type !== 'session_meta') continue;
+    meta = record;
+    break;
+  }
   const metaPayload = isObject(meta?.payload) ? meta.payload : {};
   const runId = stringValue(metaPayload.id)
     ?? stringValue(metaPayload.session_id)

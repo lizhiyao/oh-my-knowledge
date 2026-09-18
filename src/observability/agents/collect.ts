@@ -12,9 +12,19 @@
  *   发现阶段与解析阶段看到两个不同的世界。用例因此使用显式临时目录。
  */
 
-import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
@@ -54,13 +64,13 @@ export const AGENT_TRACE_ARTIFACT_VERSION = 'agent-trace-v2' as const;
 
 /**
  * 单轮默认上限：本机日志体量在 GiB 级、共 2.4k+ 文件，首轮只摄取最近的若干个文件。
- * 文件逐个读、逐个解析，所以字节上限约束的是总耗时而不是常驻内存；单文件上限
- * 才负责挡住超大文件。因此把文件数作为主限制、字节数留足余量，避免 64 MiB 这种
- * 过小预算被最近几个大文件一口气吃光、一轮只拿到 10 个文件。
+ * 解析与写盘都不再一次持有整份文件，单文件上限因此不再是内存护栏，只挡住异常大的
+ * 单个文件（本机最大的一份会话日志 1.4 GB，采集峰值实测约 1.5 GiB）。字节预算与单文件上限
+ * 同级，避免一份大文件独占整轮、把其余待采文件挤到下一轮；文件数仍是主限制。
  */
 export const DEFAULT_MAX_SESSION_FILES_PER_RUN = 200;
-export const DEFAULT_MAX_BYTES_PER_RUN = 512 * 1024 * 1024;
-export const DEFAULT_MAX_SESSION_FILE_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_MAX_BYTES_PER_RUN = 2 * 1024 * 1024 * 1024;
+export const DEFAULT_MAX_SESSION_FILE_BYTES = 2 * 1024 * 1024 * 1024;
 /** 内容摘要的读取块大小：与 trace 读取层一致，避免为大文件保留全文 Buffer。 */
 const TRACE_DIGEST_CHUNK_BYTES = 1024 * 1024;
 const MAX_ENUMERATED_PATHS = 5;
@@ -672,8 +682,96 @@ function resolveRootPath(inventoryPath: string): string {
   return resolve(inventoryPath);
 }
 
+/**
+ * 会话产物逐事件落盘。整篇 `JSON.stringify(artifact, null, 2)` 会在一整场事件之外再复制
+ * 一份同量级的字符串（实测 1.35 GiB 日志的采集峰值里约 940 MiB 来自这一次调用），等于把
+ * 驻留重新绑回事件总量。这里按键序逐段写出，任意时刻只有单个事件被序列化；产物字节与
+ * `writeJsonFileAtomic` 完全一致，并沿用临时文件 + rename 的原子发布语义。
+ */
 function writeArtifact(artifactFile: string, artifact: AgentTraceArtifact, persist: boolean): void {
-  if (persist) writeJsonFileAtomic(artifactFile, artifact);
+  if (!persist) return;
+  mkdirSync(dirname(artifactFile), { recursive: true });
+  const tempPath = `${artifactFile}.${process.pid}.${randomUUID()}.tmp`;
+  const fd = openSync(tempPath, 'w');
+  let closed = false;
+  try {
+    const betweenFields = makeFieldSeparator();
+    writeAll(fd, '{\n');
+    for (const [key, value] of Object.entries(artifact)) {
+      if (key === 'session') writeSessionField(fd, artifact.session, betweenFields);
+      else writeAll(fd, betweenFields() + jsonField(key, value, 1));
+    }
+    writeAll(fd, '\n}');
+    closeSync(fd);
+    closed = true;
+    renameSync(tempPath, artifactFile);
+  } finally {
+    if (!closed) closeSync(fd);
+    rmSync(tempPath, { force: true });
+  }
+}
+
+function writeSessionField(fd: number, session: TraceSession, betweenFields: () => string): void {
+  const betweenSessionFields = makeFieldSeparator();
+  writeAll(fd, `${betweenFields()}${indent(1)}"session": {\n`);
+  const fields: [string, unknown][] = Object.entries(session);
+  for (const [key, value] of fields) {
+    if (value === undefined) continue; // 与 JSON.stringify 一致：值为 undefined 的键整行省略
+    if (key === 'events') {
+      const events = session.events;
+      writeAll(fd, `${betweenSessionFields()}${jsonEventKey(events.length)}`);
+      events.forEach((event, index) => {
+        writeAll(fd, `\n${jsonAtDepth(event, 3)}${index === events.length - 1 ? '' : ','}`);
+      });
+      writeAll(fd, events.length === 0 ? '' : `\n${indent(2)}]`);
+    } else {
+      writeAll(fd, betweenSessionFields() + jsonField(key, value, 2));
+    }
+  }
+  writeAll(fd, `\n${indent(1)}}`);
+}
+
+/** `"events": ` 的键行：空数组直接收成 `[]`，否则留一个未闭合的 `[` 等逐事件写入。 */
+function jsonEventKey(eventCount: number): string {
+  return eventCount === 0 ? `${indent(2)}"events": []` : `${indent(2)}"events": [`;
+}
+
+/** `writeSync` 允许短写，按未落盘的字节续写；位置传 null 才能沿文件游标推进。 */
+function writeAll(fd: number, chunk: string): void {
+  const buffer = Buffer.from(chunk);
+  let offset = 0;
+  while (offset < buffer.length) {
+    offset += writeSync(fd, buffer, offset, buffer.length - offset, null);
+  }
+}
+
+function makeFieldSeparator(): () => string {
+  let pending = false;
+  return () => {
+    const text = pending ? ',\n' : '';
+    pending = true;
+    return text;
+  };
+}
+
+function indent(depth: number): string {
+  return ' '.repeat(depth * 2);
+}
+
+/** 与 `JSON.stringify(value, null, 2)` 逐字一致，只是整体下沉 `depth` 层缩进。 */
+function jsonAtDepth(value: unknown, depth: number): string {
+  const text = JSON.stringify(value, null, 2);
+  if (!text.includes('\n')) return text;
+  const pad = indent(depth);
+  return text.split('\n').map((line) => `${pad}${line}`).join('\n');
+}
+
+/** 单个字段的输出片段：键落在 `depth` 层缩进上，值内部的行为 `depth + 1` 层。 */
+function jsonField(key: string, value: unknown, depth: number): string {
+  // 包装对象本身是根，键自带一层缩进，因此整体只下沉 `depth - 1` 层。
+  const text = jsonAtDepth({ [key]: value }, depth - 1);
+  const bound = indent(depth - 1).length + 2; // 前后各去掉 `缩进 + 花括号 + 换行`
+  return text.slice(bound, text.length - bound);
 }
 
 function artifactRelativePath(agentId: string, traceId: string): string {
@@ -738,6 +836,7 @@ function enumerate(paths: readonly string[]): string {
 }
 
 function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${Math.round(bytes / (1024 * 1024 * 1024))} GiB`;
   if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MiB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KiB`;
   return `${bytes} 字节`;

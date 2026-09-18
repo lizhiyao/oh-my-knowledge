@@ -325,6 +325,21 @@ describe('collectAgentLogs 产物投影', () => {
     assert.equal(loadAgentCollectionReport(harness.layout.observeAgentsDir)?.summary.collectedCount, 2);
   });
 
+  it('产物逐事件流式写盘后，与整篇 JSON.stringify 的结果逐字节相同', () => {
+    const harness = createHarness();
+    seedClaudeAndCodex(harness);
+    const report = collect(harness);
+    assert.ok(report.sessions.length >= 3, '样本要覆盖多种宿主的产物形态');
+    for (const session of report.sessions) {
+      const text = readFileSync(artifactFile(harness, session), 'utf-8');
+      assert.equal(
+        text,
+        JSON.stringify(JSON.parse(text), null, 2),
+        `${session.sourcePath} 的产物与标准 2 空格缩进不一致`,
+      );
+    }
+  });
+
   it('第二次运行同一批日志采集 0 个新文件，删掉产物后又能补回', () => {
     const harness = createHarness();
     seedClaudeAndCodex(harness);
@@ -439,7 +454,7 @@ describe('collectAgentLogs 容量与失败口径', () => {
     assert.deepEqual(first.sessions.map((session) => session.sourcePath), [newest], '容量受限时要先拿到最近的证据');
     assert.equal(
       first.limitations.find((text) => text.includes('本轮采集上限')),
-      '本轮采集上限为 1 个会话文件、512 MiB，剩余 2 个待采文件留到后续增量运行。',
+      '本轮采集上限为 1 个会话文件、2 GiB，剩余 2 个待采文件留到后续增量运行。',
     );
 
     const second = collect(harness, { limits: { maxFilesPerRun: 5 } });
