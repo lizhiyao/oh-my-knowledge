@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../../analysis/bootstrap.js';
+} from '../../../eval-core/analysis/bootstrap.js';
 import {
   computeAgreementEvidence,
   computeKrippendorffAlpha,

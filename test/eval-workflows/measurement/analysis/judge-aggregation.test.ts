@@ -36,7 +36,7 @@ import {
   createBuiltinMissingPolicies,
   resolveBuiltinAnalysisRuntime,
 } from '../../../../src/eval-core/analysis/index.js';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-workflows/analysis/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-core/analysis/bootstrap.js';
 import {
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,

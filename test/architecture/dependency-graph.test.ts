@@ -389,7 +389,7 @@ describe('src 依赖图', () => {
     expect(moduleDomain('eval-workflows/inputs/load-samples.ts')).toBe('eval-workflows/inputs');
     expect(moduleDomain('eval-workflows/instruments/prompts/judge-prompts.ts')).toBe('eval-workflows/instruments');
     expect(moduleDomain('eval-workflows/gold/human.ts')).toBe('eval-workflows/gold');
-    expect(moduleDomain('eval-workflows/analysis/bootstrap.ts')).toBe('eval-workflows/analysis');
+    expect(moduleDomain('eval-workflows/analysis/sample-size.ts')).toBe('eval-workflows/analysis');
     expect(moduleDomain('eval-workflows/artifact-store/node-run-store.ts')).toBe('eval-workflows/artifact-store');
     expect(moduleDomain('eval-workflows/assertions/layers.ts')).toBe('eval-workflows/assertions');
     expect(moduleDomain('eval-workflows/input-compilation/compile.ts')).toBe('eval-workflows/input-compilation');

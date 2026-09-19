@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../analysis/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/analysis/bootstrap.js';
 import {
   DEFAULT_EVALUATION_TIMEOUT_MS,
   DEFAULT_MINIMUM_COMPARISON_UNITS,

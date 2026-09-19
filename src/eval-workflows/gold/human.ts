@@ -33,7 +33,7 @@
 import {
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../analysis/bootstrap.js';
+} from '../../eval-core/analysis/bootstrap.js';
 
 export interface RatingPair {
   /** Per-sample identifier; used only for diagnostics. */

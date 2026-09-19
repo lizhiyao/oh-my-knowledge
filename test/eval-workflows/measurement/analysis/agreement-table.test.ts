@@ -3,7 +3,7 @@ import {
   bootstrapWithMetric,
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../../../../src/eval-workflows/analysis/bootstrap.js';
+} from '../../../../src/eval-core/analysis/bootstrap.js';
 import {
   computeKrippendorffAlpha,
 } from '../../../../src/eval-workflows/gold/human.js';

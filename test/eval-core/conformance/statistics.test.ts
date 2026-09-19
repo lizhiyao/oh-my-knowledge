@@ -9,7 +9,7 @@ import {
   bootstrapMeanCI,
   bootstrapPairedDiffCI,
   bootstrapDiffCI,
-} from '../../../src/eval-workflows/analysis/bootstrap.js';
+} from '../../../src/eval-core/analysis/bootstrap.js';
 
 const ANALYSIS_NODES = createBuiltinAnalysisNodes();
 

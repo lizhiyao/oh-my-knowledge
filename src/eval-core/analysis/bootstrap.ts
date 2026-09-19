@@ -1,3 +1,11 @@
+import {
+  arithmeticMean,
+  bootstrapDistribution,
+  mulberry32,
+  percentileBounds,
+  type BootstrapGroup,
+} from './bootstrap-kernel.js';
+
 /**
  * Bootstrap confidence intervals — replaces / supplements t-test for LLM eval.
  *
@@ -27,11 +35,11 @@
  * main `omk eval` deliberately exposes no seed knob — a fixed default also prevents
  * seed-shopping for significance.
  *
- * Scope: this is the frozen product random stream used by the versioned
- * omk.bootstrap-family-table nodes. Core bootstrap.* /v1 is a separate estimator
- * profile with plan-derived SHA draws, unrounded bounds, and explicit sampling
- * strata. They share estimands, not byte-identical intervals. Do not substitute
- * either profile for the other without a new measurement identity; the paired
+ * Scope: this Core API configures the shared bootstrap kernel for the frozen
+ * product profile used by omk.bootstrap-family-table nodes. Core bootstrap.* /v1
+ * configures that same kernel with plan-derived SHA draws, unrounded bounds, and
+ * explicit sampling strata. Profiles share the implementation and estimands, not
+ * byte-identical intervals. Changing profiles requires a new measurement identity; the paired
  * reference vectors in test/eval-core/conformance/statistics.test.ts guard this
  * boundary. See docs/specs/evaluation-scoring-equivalence.md.
  */
@@ -83,50 +91,18 @@ export const DEFAULT_BOOTSTRAP_ALPHA = 0.05;
  */
 export const DEFAULT_BOOTSTRAP_SEED = 20260616;
 
-/** Mulberry32 PRNG — seedable, deterministic for tests. */
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return function () {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 function makeRng(seed?: number): () => number {
   // 默认确定性:无显式 seed 时退 DEFAULT_BOOTSTRAP_SEED(而非 Math.random)——否则同一 eval 两跑会得到
   // 不同 CI,临界点 significant 翻转 → verdict 不可复现。见模块头 Reproducibility。
   return mulberry32(seed ?? DEFAULT_BOOTSTRAP_SEED);
 }
 
-/** Sample n indices with replacement from [0, length) using the given PRNG. */
-function resampleIndices(length: number, n: number, rng: () => number): number[] {
-  const indices: number[] = new Array(n);
-  for (let i = 0; i < n; i++) {
-    indices[i] = Math.floor(rng() * length);
-  }
-  return indices;
+function productGroup(values: readonly number[], rng: () => number): BootstrapGroup {
+  return { values, indexFor: () => Math.floor(rng() * values.length) };
 }
 
-function mean(arr: readonly number[]): number {
-  if (arr.length === 0) return 0;
-  let sum = 0;
-  for (const x of arr) sum += x;
-  return sum / arr.length;
-}
-
-/** Quantile of a sorted array using linear interpolation. */
-function sortedQuantile(sorted: number[], q: number): number {
-  if (sorted.length === 0) return 0;
-  if (sorted.length === 1) return sorted[0];
-  const pos = q * (sorted.length - 1);
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  if (lo === hi) return sorted[lo];
-  const frac = pos - lo;
-  return sorted[lo] * (1 - frac) + sorted[hi] * frac;
+function mean(values: readonly number[]): number {
+  return values.length === 0 ? 0 : arithmeticMean(values);
 }
 
 /**
@@ -150,21 +126,8 @@ export function bootstrapMeanCI(
   if (scores.length === 1) {
     return { low: scores[0], high: scores[0], estimate: scores[0], samples: 0 };
   }
-  const rng = makeRng(seed);
-  const resampleMeans: number[] = new Array(samples);
-  for (let b = 0; b < samples; b++) {
-    const idx = resampleIndices(scores.length, scores.length, rng);
-    let sum = 0;
-    for (const i of idx) sum += scores[i];
-    resampleMeans[b] = sum / scores.length;
-  }
-  resampleMeans.sort((a, b) => a - b);
-  return {
-    low: round4(sortedQuantile(resampleMeans, alpha / 2)),
-    high: round4(sortedQuantile(resampleMeans, 1 - alpha / 2)),
-    estimate: round4(mean(scores)),
-    samples,
-  };
+  const distribution = drawBootstrapMetric(scores, mean, samples, seed);
+  return summarizeBootstrapMetric(distribution.estimate, distribution.draws, alpha, samples);
 }
 
 /**
@@ -193,10 +156,9 @@ export function bootstrapDiffCI(
     return { low: 0, high: 0, estimate: 0, samples: 0, significant: false };
   }
   const distribution = drawBootstrapIndependentDifferences(scoresA, scoresB, samples, seed);
-  const diffMeans = distribution.draws;
-  diffMeans.sort((a, b) => a - b);
-  const low = round4(sortedQuantile(diffMeans, alpha / 2));
-  const high = round4(sortedQuantile(diffMeans, 1 - alpha / 2));
+  const bounds = percentileBounds(distribution.draws, alpha);
+  const low = round4(bounds.lower);
+  const high = round4(bounds.upper);
   return {
     low,
     high,
@@ -242,10 +204,9 @@ export function bootstrapPairedDiffCI(
     return { low: 0, high: 0, estimate: 0, samples: 0, significant: false };
   }
   const distribution = drawBootstrapPairedDifferences(pairs, samples, seed);
-  const resampleDiffMeans = distribution.draws;
-  resampleDiffMeans.sort((a, b) => a - b);
-  const low = round4(sortedQuantile(resampleDiffMeans, alpha / 2));
-  const high = round4(sortedQuantile(resampleDiffMeans, 1 - alpha / 2));
+  const bounds = percentileBounds(distribution.draws, alpha);
+  const low = round4(bounds.lower);
+  const high = round4(bounds.upper);
   return {
     low,
     high,
@@ -267,16 +228,11 @@ export function drawBootstrapIndependentDifferences(
     return { estimate: 0, draws: [], exactSign: null };
   }
   const rng = makeRng(seed);
-  const draws: number[] = new Array(samples);
-  for (let iteration = 0; iteration < samples; iteration++) {
-    const indicesA = resampleIndices(scoresA.length, scoresA.length, rng);
-    const indicesB = resampleIndices(scoresB.length, scoresB.length, rng);
-    let sumA = 0;
-    let sumB = 0;
-    for (const index of indicesA) sumA += scoresA[index];
-    for (const index of indicesB) sumB += scoresB[index];
-    draws[iteration] = sumB / scoresB.length - sumA / scoresA.length;
-  }
+  const draws = bootstrapDistribution(
+    [productGroup(scoresA, rng), productGroup(scoresB, rng)],
+    samples,
+    ([control, treatment]) => arithmeticMean(treatment) - arithmeticMean(control),
+  );
   let minimumA = Number.POSITIVE_INFINITY;
   let maximumA = Number.NEGATIVE_INFINITY;
   let minimumB = Number.POSITIVE_INFINITY;
@@ -309,13 +265,9 @@ export function drawBootstrapPairedDifferences(
   if (pairs.length === 0) return { estimate: 0, draws: [], exactSign: null };
   const differences = pairs.map((pair) => pair.b - pair.a);
   const rng = makeRng(seed);
-  const draws: number[] = new Array(samples);
-  for (let iteration = 0; iteration < samples; iteration++) {
-    const indices = resampleIndices(differences.length, differences.length, rng);
-    let sum = 0;
-    for (const index of indices) sum += differences[index];
-    draws[iteration] = sum / differences.length;
-  }
+  const draws = bootstrapDistribution(
+    [productGroup(differences, rng)], samples, ([sample]) => arithmeticMean(sample),
+  );
   return {
     estimate: mean(differences),
     draws,
@@ -364,12 +316,9 @@ export function drawBootstrapMetric(
 ): BootstrapMetricDraws {
   if (scores.length === 0) return { estimate: metricFn([]), draws: [] };
   const rng = makeRng(seed);
-  const metricValues: number[] = new Array(samples);
-  for (let b = 0; b < samples; b++) {
-    const idx = resampleIndices(scores.length, scores.length, rng);
-    const resampled = idx.map((i) => scores[i]);
-    metricValues[b] = metricFn(resampled);
-  }
+  const metricValues = bootstrapDistribution(
+    [productGroup(scores, rng)], samples, ([sample]) => metricFn(sample),
+  );
   return { estimate: metricFn(scores), draws: metricValues };
 }
 
@@ -380,10 +329,10 @@ export function summarizeBootstrapMetric(
   alpha = DEFAULT_BOOTSTRAP_ALPHA,
   samples = draws.length,
 ): BootstrapCI {
-  const metricValues = [...draws].sort((a, b) => a - b);
+  const bounds = percentileBounds(draws, alpha);
   return {
-    low: round4(sortedQuantile(metricValues, alpha / 2)),
-    high: round4(sortedQuantile(metricValues, 1 - alpha / 2)),
+    low: round4(bounds.lower),
+    high: round4(bounds.upper),
     estimate: round4(estimate),
     samples,
   };

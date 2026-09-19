@@ -128,21 +128,26 @@ The exact migration standards are distinct from similarly named generic Core bui
 
 ### Bootstrap implementation ownership
 
-The two bootstrap implementations are intentional versioned profiles, not interchangeable
-implementations of one frozen random stream. `eval-core/analysis/builtins.ts` owns generic
-`bootstrap.* /v1`: its seed includes the root seed, AnalysisPlan digest, node and implementation
-identities, and comparison identities; SHA-derived draws preserve declared strata and the
-result retains unrounded bounds. `eval-workflows/analysis/bootstrap.ts` owns the product
-Mulberry32 stream consumed by `omk.bootstrap-family-table/v1` and `/v2`, including
-four-decimal descriptive intervals. Product v2's decision evidence is defined separately below.
+Core owns the only bootstrap implementation. `eval-core/analysis/bootstrap-kernel.ts`
+provides resampling, arithmetic means, linear quantiles and percentile bounds.
+`eval-core/analysis/bootstrap.ts` exposes the frozen product profile; workflows import
+it directly and own only product table assembly and contracts. Runtime executes the
+registered Core analysis nodes rather than implementing statistics itself.
 
-`test/eval-core/conformance/statistics.test.ts` compares both profiles on the same mean,
-paired-difference and independent-difference observations at alpha `0.1` with `256` draws.
-It pins equal point estimates and each profile's exact endpoints: interval equality is not
-promised across identities. The product table tests additionally verify the adapter path and
-v1/v2 decision contracts. A refactor must preserve these vectors, seed derivations, draw order,
-sampling units, degenerate-input handling and rounding. Unifying the random streams requires
-a new measurement identity and an explicit comparability migration, not a helper substitution.
+The shared kernel accepts explicit sampling groups and index strategies.
+`bootstrap.* /v1` derives SHA draws from sealed plan/node/comparison identities,
+preserves declared strata and returns unrounded bounds. The product profile retains
+the Mulberry32 stream and four-decimal descriptive intervals consumed by
+`omk.bootstrap-family-table/v1` and `/v2`. These are versioned configuration differences,
+not independent resampling or percentile algorithms. Product v2's decision evidence
+is defined separately below.
+
+`test/eval-core/conformance/statistics.test.ts` pins both profiles' mean, paired and
+independent reference vectors. `test/eval-core/analysis/bootstrap.test.ts` additionally
+pins 320 combinations of observations, alpha, draw count and seed against pre-refactor
+outputs, including complete raw draws. Product table and runtime tests cover the real
+call paths. Seed derivation, draw order, sampling units, degenerate inputs and rounding
+remain unchanged; changing these requires an explicit comparability migration.
 
 ### Product bootstrap profiles
 
