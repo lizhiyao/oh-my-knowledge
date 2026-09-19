@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assembleRecord, type RecordSchemaNode } from '../../../src/observability/trace/jsonl-record-schema.js';
-import { reescapeJsonString } from '../../../src/observability/trace/evidence-text.js';
+import { isJsonTextSpan, reescapeJsonString, type JsonTextSpan } from '../../../src/observability/trace/evidence-text.js';
 
 /**
  * 装配读取器的全部风险都在「声明的字段有没有被如实取出」与「没声明的大字段有没有被顺手解掉」，
@@ -56,35 +56,48 @@ const LOG = JSON.stringify({
   },
 });
 
+/** 测试侧读装配产物的窄化：只用于按键取值断言，不做任何形状转换。 */
+function field(source: unknown, ...path: string[]): unknown {
+  let current: unknown = source;
+  for (const key of path) current = (current as Record<string, unknown>)[key];
+  return current;
+}
+
+/** 断言这个装配结果确实是字节窗口：形状不对就是读取层的 bug，不让它退化成 undefined 通过用例。 */
+function spanOf(value: unknown): JsonTextSpan {
+  if (!isJsonTextSpan(value)) throw new Error('用例前提：该字段应装配成字节窗口');
+  return value;
+}
+
 describe('按声明装配一条记录', () => {
   it('声明到的字段与整条 JSON.parse 逐项相等，未声明的键读不到就抛错', () => {
     const { result } = record(LOG);
     expect(result.outcome).toBe('record');
-    const assembled = result.record as Record<string, any>;
-    const parsed = JSON.parse(LOG) as Record<string, any>;
-    expect(assembled.type).toBe(parsed.type);
-    expect(assembled.timestamp).toBe(parsed.timestamp);
-    expect(assembled.missingAtTop).toBeUndefined();
-    expect(assembled.payload.type).toBe(parsed.payload.type);
-    expect(assembled.payload.callId).toBe(parsed.payload.callId);
-    expect(assembled.payload.count).toBe(2);
-    expect(assembled.payload.flag).toBe(true);
-    expect(assembled.payload.nothing).toBeNull();
-    expect(assembled.payload.nested).toEqual(parsed.payload.nested);
-    expect(assembled.payload.list).toEqual(parsed.payload.list);
-    expect(() => (assembled.payload as Record<string, unknown>).undeclared).toThrow(/未声明/);
+    const assembled = result.record;
+    const parsed = JSON.parse(LOG) as unknown;
+    expect(field(assembled, 'type')).toBe(field(parsed, 'type'));
+    expect(field(assembled, 'timestamp')).toBe(field(parsed, 'timestamp'));
+    expect(field(assembled, 'missingAtTop')).toBeUndefined();
+    expect(field(assembled, 'payload', 'type')).toBe(field(parsed, 'payload', 'type'));
+    expect(field(assembled, 'payload', 'callId')).toBe(field(parsed, 'payload', 'callId'));
+    expect(field(assembled, 'payload', 'count')).toBe(2);
+    expect(field(assembled, 'payload', 'flag')).toBe(true);
+    expect(field(assembled, 'payload', 'nothing')).toBeNull();
+    expect(field(assembled, 'payload', 'nested')).toEqual(field(parsed, 'payload', 'nested'));
+    expect(field(assembled, 'payload', 'list')).toEqual(field(parsed, 'payload', 'list'));
+    expect(() => ((assembled as Record<string, unknown>).payload as Record<string, unknown>).undeclared).toThrow(/未声明/);
     expect(() => (assembled as Record<string, unknown>).other).toThrow(/未声明/);
   });
 
   it('span 字段不解值：窗口字节再解析回原值，且大字段一个字节都不进解码', () => {
     const { buffer, result } = record(LOG);
-    const parsed = JSON.parse(LOG) as Record<string, any>;
-    const assembled = result.record as Record<string, any>;
+    const parsed = JSON.parse(LOG) as unknown;
+    const assembled = result.record;
     for (const key of ['output', 'big']) {
-      const span = assembled.payload[key];
+      const span = spanOf(field(assembled, 'payload', key));
       expect(span.sourcePath).toBe('/source.jsonl');
       expect(span.valueKind).toBe('string');
-      expect(JSON.parse(buffer.toString('utf8', span.begin, span.end))).toBe(parsed.payload[key]);
+      expect(JSON.parse(buffer.toString('utf8', span.begin, span.end) as string)).toBe(field(parsed, 'payload', key));
     }
     // 声明成 span 的字段不得被解成 JS 字符串：整段 4 KiB 的 `big` 也不该出现解码痕迹。
     const realToString = Buffer.prototype.toString;
@@ -107,11 +120,11 @@ describe('按声明装配一条记录', () => {
       read: 'object',
       members: { type: VALUE, payload: { read: 'object', members: { k: VALUE } } },
     };
-    const assembled = (assembleRecord(Buffer.from(text, 'utf8'), '/s.jsonl', schema).record) as Record<string, any>;
+    const assembled = assembleRecord(Buffer.from(text, 'utf8'), '/s.jsonl', schema).record as Record<string, unknown>;
     expect(assembled.type).toBe('b');
     expect(Object.keys(assembled)).toEqual(['type', 'payload']);
-    expect(assembled.payload.k).toEqual([2]);
-    expect(Object.keys(assembled.payload)).toEqual(['k']);
+    expect(field(assembled, 'payload', 'k')).toEqual([2]);
+    expect(Object.keys(assembled.payload as Record<string, unknown>)).toEqual(['k']);
   });
 
   it('声明形状与实际不符时给真实值，不把合法记录判成畸形', () => {
@@ -147,11 +160,10 @@ describe('按声明装配一条记录', () => {
 
   it('写出侧：span 经重转义后与「解析再序列化」逐字节相同', () => {
     const { buffer, result } = record(LOG);
-    const assembled = result.record as Record<string, any>;
-    const parsed = JSON.parse(LOG) as Record<string, any>;
+    const span = spanOf(field(result.record, 'payload', 'output'));
     const collected: Buffer[] = [];
-    reescapeJsonString(buffer, assembled.payload.output.begin, assembled.payload.output.end, (bytes) => collected.push(bytes));
-    expect(Buffer.concat(collected).toString('utf8')).toBe(JSON.stringify(parsed.payload.output));
-    expect(assembled.payload.output.begin).toBeLessThan(assembled.payload.output.end);
+    reescapeJsonString(buffer, span.begin, span.end, (bytes) => collected.push(bytes));
+    expect(Buffer.concat(collected).toString('utf8')).toBe(JSON.stringify(field(JSON.parse(LOG) as unknown, 'payload', 'output')));
+    expect(span.begin).toBeLessThan(span.end);
   });
 });
