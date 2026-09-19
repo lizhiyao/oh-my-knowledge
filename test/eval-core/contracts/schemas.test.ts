@@ -109,6 +109,11 @@ describe('Evaluation Core wire schemas', () => {
     )).toContain('"const": "omk.series-analysis-bundle/v1"');
   });
 
+  it('文件名不在 catalog 里时拒绝给出位置，而不是悄悄回落到某个版本目录', () => {
+    const unknown = 'not-a-wire-schema.schema.json' as EvaluationCoreJsonSchemaFile;
+    expect(() => evaluationCoreJsonSchemaLocation(unknown)).toThrow(/不在 catalog 里/);
+  });
+
   it('keeps opaque Runtime fingerprints distinct from OMK content digests', () => {
     expect(RuntimeIdentitySchema.parse({
       implementationId: 'remote-model',

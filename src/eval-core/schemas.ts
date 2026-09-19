@@ -1,3 +1,5 @@
+import { wireSchemaLocation } from './contracts/json-schema.js';
+
 export const EVALUATION_CORE_JSON_SCHEMA_FILES = Object.freeze([
   'analysis-bundle.schema.json',
   'analysis-plan.schema.json',
@@ -28,20 +30,5 @@ export type EvaluationCoreJsonSchemaFile =
 export function evaluationCoreJsonSchemaLocation(
   fileName: EvaluationCoreJsonSchemaFile,
 ): `v${number}/${EvaluationCoreJsonSchemaFile}` {
-  if (fileName === 'evaluation-definition.schema.json'
-    || fileName === 'run-plan.schema.json') {
-    return `v5/${fileName}`;
-  }
-  if (fileName === 'execution-plan.schema.json') {
-    return `v4/${fileName}`;
-  }
-  if (fileName === 'analysis-plan.schema.json') {
-    return `v3/${fileName}`;
-  }
-  return fileName === 'analysis-bundle.schema.json'
-    || fileName === 'comparability-assessment.schema.json'
-    || fileName === 'evaluation-report.schema.json'
-    || fileName === 'series-analysis-bundle.schema.json'
-    ? `v2/${fileName}`
-    : `v1/${fileName}`;
+  return wireSchemaLocation(fileName) as `v${number}/${EvaluationCoreJsonSchemaFile}`;
 }
