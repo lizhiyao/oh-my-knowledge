@@ -171,7 +171,10 @@ yarn ci
 
 `yarn test` forwards Vitest arguments through the hermetic wrapper, which fails
 if tests mutate repository-owned content. Use that entry point for targeted
-runs too. `ci:quick` requires existing `.test.ts` / `.test.tsx` files under `test/`;
+runs too. The default is capped at two workers because CLI and package tests
+spawn additional processes; a higher worker count can cause SIGKILL under memory
+pressure. Explicit Vitest flags remain available for controlled experiments.
+`ci:quick` requires existing `.test.ts` / `.test.tsx` files under `test/`;
 no arguments, directories, missing files, or Vitest flags exit with code 2 before
 checks run. It does not infer affected tests or build artifacts. Every failed
 stage stops the command; passing it does not imply full CI coverage.

@@ -7,9 +7,9 @@ export default defineConfig({
     // Studio React 页面的测试是 .tsx；只收 .ts 会让它们被静默跳过而 CI 仍然全绿。
     include: ['test/**/*.test.{ts,tsx}'],
     testTimeout: 30000,
-    // maxWorkers 不显式配置：vitest 按 CPU 核数自动决定。本地 11 核默认 ~10 workers，
-    // 历史上 80%（~9 workers）曾在内存压力下被 SIGKILL；若默认配置在本机复现 SIGKILL，
-    // 需恢复显式护栏（曾用 70%，~7 workers，实测 122s→80s 且全绿）。
+    // CLI、打包与 provider fixture 会在 worker 内派生进程；只按 CPU 数启动会耗尽资源。
+    // 2026-09-19 全量验证中默认并发及 4 workers 均出现 SIGKILL，显式限制并发峰值。
+    maxWorkers: 2,
     // OMK_HOME 一处重定向,把整棵默认产物树(reports / doctors / observe-health / state 下的
     // cache / trees / jobs / artifact-index)全部移到临时目录,从根上隔离 —— 任何从深层调用点写全局默认
     // 目录的写路径(如 persistReport 间接写产物索引卡片、materialize 写隔离副本)都自动落 temp,不再需要
