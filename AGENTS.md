@@ -46,7 +46,7 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 - eval-core 保持宿主无关和确定性，不反向依赖 CLI、文件系统、网络、环境变量、具体执行器或 Studio。Core 只表达纯契约与确定性变换，副作用放在 eval-workflows 或对应 adapter。
 - 保留来源、时间、关联身份与原始证据；派生视图不覆盖原始证据，观测信号不冒充因果结论。
 - 测试使用显式临时根和环境隔离，覆盖失败／中断后的 cleanup 路径；生产写入只落到公开存储契约允许的位置，不擅自写用户目录或全局状态。
-- 新建或可安全改名的判别字段使用 eventKind、runtimeKind 等限定名；裸 kind 默认保留给 Artifact.kind。已发布、落盘或对外暴露的 public schema 既有 kind 不顺手改名；必要改名单独迁移并保持旧文件可读。细节见 docs/specs/terminology-spec.md §5.4。
+- 新建或可安全改名的判别字段使用 eventKind、runtimeKind 等限定名；裸 kind 默认保留给 Artifact.kind。已发布、落盘或对外暴露的 public schema 既有 kind 不顺手改名；必要改名单独版本化并显式声明不兼容，不为旧版本保留兼容 reader——Resolver 只认当前版本，旧文档读不回是既定策略。细节见 docs/specs/terminology-spec.md §5.4。
 - 用户可见服务 URL 使用 server.start() 返回的实际地址，不硬编码端口。
 - .agents/skills/omk/ 是官方 Skill 单一来源，.claude/skills/omk 保持软链，不复制第二份；本文件不重复 Skill 用户教程。
 
