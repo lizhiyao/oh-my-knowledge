@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { z } from 'zod';
 import {
   IdentifierSchema,
@@ -22,7 +23,6 @@ import type {
 import {
   analysisJsonSchema,
   analysisSchemaIdentity,
-  compareStrings,
   createAnalysisSchemaValidator,
   createStatelessAnalysisImplementation,
   round,

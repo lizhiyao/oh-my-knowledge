@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { computeJudgeAgreement } from './judge-agreement.js';
 import type {
   AnalysisDecisionPolicy,
@@ -51,7 +52,7 @@ import {
   parseReleaseDecisionParametersV1,
   type AnyReleaseDecisionParameters,
 } from './release-decision-parameters.js';
-import { compareStrings, round } from './analysis-support.js';
+import { round } from './analysis-support.js';
 
 export const RELEASE_DECISION_POLICY_V1_IMPLEMENTATION_ID = 'omk.release-decision/v1' as const;
 export const RELEASE_DECISION_POLICY_V2_IMPLEMENTATION_ID = 'omk.release-decision/v2' as const;

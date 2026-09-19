@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import type {
   AnalysisNodeCapabilities,
 } from './types.js';
@@ -48,27 +50,8 @@ function assertReference(
   );
 }
 
-function decodePointerToken(token: string): string {
-  return token.replaceAll('~1', '/').replaceAll('~0', '~');
-}
-
 function resolvesPointer(value: unknown, pointer: string): boolean {
-  if (pointer === '') return true;
-  let current = value;
-  for (const encodedToken of pointer.slice(1).split('/')) {
-    const token = decodePointerToken(encodedToken);
-    if (current === null || typeof current !== 'object') return false;
-    if (Array.isArray(current)) {
-      if (!/^(?:0|[1-9]\d*)$/.test(token)) return false;
-      const index = Number(token);
-      if (index >= current.length) return false;
-      current = current[index];
-      continue;
-    }
-    if (!Object.prototype.hasOwnProperty.call(current, token)) return false;
-    current = (current as Record<string, unknown>)[token];
-  }
-  return true;
+  return resolveJsonPointer(value, pointer).resolved;
 }
 
 function validateDesignPointers(definition: EvaluationDefinition): void {
@@ -305,9 +288,7 @@ function validateSamplingDesign(definition: EvaluationDefinition): void {
   const canonicalSlots = [...experiment.randomizationSlots].sort((left, right) => (
     left.randomizationSlotId < right.randomizationSlotId ? -1
       : left.randomizationSlotId > right.randomizationSlotId ? 1
-        : left.targetId < right.targetId ? -1
-          : left.targetId > right.targetId ? 1
-            : 0
+        : compareStrings(left.targetId, right.targetId)
   ));
   if (canonicalizeJson(canonicalSlots) !== canonicalizeJson(experiment.randomizationSlots)) {
     throw definitionError(

@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import {
   ExecutionBundleSchema,
   type ExecutionBundle,
@@ -54,12 +56,6 @@ export class ExecutionBundleValidationError extends TypeError {
     this.name = 'ExecutionBundleValidationError';
     this.code = code;
   }
-}
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function compareRecordCoordinates(left: ExecutionRecord, right: ExecutionRecord): number {
@@ -527,8 +523,6 @@ export function effectiveExecutionBundleTrust(
   }
   return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
 }
-
-const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
 
 function minimumTrust(
   ...values: readonly Provenance['trust'][]

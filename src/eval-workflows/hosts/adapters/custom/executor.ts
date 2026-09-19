@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { openNodeTrialWorkspace } from '../shared/trial-workspace.js';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -380,7 +381,7 @@ async function captureIdentityFiles(
   files: readonly CustomExecutorContentIdentityFile[],
 ): Promise<readonly CapturedIdentityFile[]> {
   const sorted = [...files].sort((left, right) => (
-    left.facetId < right.facetId ? -1 : left.facetId > right.facetId ? 1 : 0
+    compareStrings(left.facetId, right.facetId)
   ));
   if (new Set(sorted.map((file) => file.facetId)).size !== sorted.length) {
     throw new TypeError('Custom executor content identity facetIds must be unique.');
@@ -796,7 +797,7 @@ async function captureRunState(
   }
   const resources = [...lease.resourcesByResourceId.entries()]
     .sort(([left], [right]) => (
-      left < right ? -1 : left > right ? 1 : 0
+      compareStrings(left, right)
     ))
     .map(([resourceId, resource]) => {
       if (resourceId !== resource.resourceId) {

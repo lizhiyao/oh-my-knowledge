@@ -1,6 +1,7 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { z } from 'zod';
 import { IdentifierSchema, SamplingUnitIdsSchema, Sha256DigestSchema, canonicalizeJson, digestCanonicalJson, type JsonValue } from '../../../eval-core/contracts/index.js';
-import { analysisJsonSchema, analysisSchemaIdentity, compareStrings, round } from './analysis-support.js';
+import { analysisJsonSchema, analysisSchemaIdentity, round } from './analysis-support.js';
 import { assertStableBinding } from './dimension-binding.js';
 
 export const DIMENSION_TABLE_SCHEMA_VERSION = 'omk.dimension-table/v1' as const;

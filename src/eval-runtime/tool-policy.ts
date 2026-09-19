@@ -1,3 +1,4 @@
+import { compareStrings } from '../eval-core/primitives/ordering.js';
 import {
   NonEmptyStringSchema,
   canonicalizeJson,
@@ -18,9 +19,6 @@ export interface CapturedAllowedToolsPlan {
   readonly bySampleId: Readonly<Record<string, readonly string[] | null>>;
 }
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function captureAllowedTools(value: unknown): readonly string[] {
   if (!Array.isArray(value)) {

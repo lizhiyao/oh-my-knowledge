@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import { z } from 'zod';
 import {
   AssumptionCheckSchema,
@@ -306,14 +308,6 @@ function snapshotSeriesRuntimePorts(
     clock: Object.freeze({ timestamp: ports.clock.timestamp.bind(ports.clock) }),
   });
 }
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
-const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
 
 function minimumTrust(
   values: readonly ('untrusted' | 'unknown' | 'declared' | 'verified')[],

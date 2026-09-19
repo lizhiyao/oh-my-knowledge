@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { readonlyMapSnapshot } from '../shared/readonly-map-snapshot.js';
 import { openNodeTrialWorkspace } from '../shared/trial-workspace.js';
 import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -291,10 +292,10 @@ export function captureClaudeCliTarget(
     ...expectedRequirements.values(),
     ...helperRequirements,
   ].sort((left, right) => (
-    left.resourceId < right.resourceId ? -1 : left.resourceId > right.resourceId ? 1 : 0
+    compareStrings(left.resourceId, right.resourceId)
   ));
   const actualRequirementList = [...binding.resourceLeaseRequirements].sort((left, right) => (
-    left.resourceId < right.resourceId ? -1 : left.resourceId > right.resourceId ? 1 : 0
+    compareStrings(left.resourceId, right.resourceId)
   ));
   if (canonicalizeJson(expectedRequirementList) !== canonicalizeJson(actualRequirementList)) {
     throw new TypeError(`${profile.adapterLabel} Runtime binding has inconsistent resource requirements.`);
@@ -383,7 +384,7 @@ async function directoryFiles(
   }
   const paths: string[] = [];
   for (const entry of entries.sort((left, right) => (
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    compareStrings(left.name, right.name)
   ))) {
     const path = join(current, entry.name);
     if (entry.isDirectory()) paths.push(...await directoryFiles(profile, path));
@@ -425,7 +426,7 @@ async function projectArtifact(
     path: relative(resource.snapshotPath, path).replaceAll('\\', '/'),
     content: await readTextFile(profile, path, 'ARTIFACT_INVALID', 'artifact'),
   })))).sort((left, right) => (
-    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+    compareStrings(left.path, right.path)
   ));
   const entrypoint = sections.find((section) => section.path === 'SKILL.md');
   if (entrypoint === undefined) {

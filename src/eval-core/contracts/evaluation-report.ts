@@ -1,3 +1,4 @@
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import {
   DecisionResultSchema,
   EvaluationReportSchema,
@@ -133,7 +134,7 @@ export function effectiveDecisionResultTrust(
     source.planVerification.analysisSourceTrust,
     source.planVerification.policyExecutionStatus === 'verified' ? 'verified' : 'unknown',
   ];
-  return values.sort((left, right) => trustLevel(left) - trustLevel(right))[0];
+  return values.sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
 }
 
 export function assertDecisionResultSourceChain(
@@ -187,10 +188,6 @@ function assertBundleReferences(
       'EvaluationReport must reference the exact canonical source Bundle set.',
     );
   }
-}
-
-function trustLevel(trust: Provenance['trust']): number {
-  return { untrusted: 0, unknown: 1, declared: 2, verified: 3 }[trust];
 }
 
 export function deriveEvaluationStatus(input: {
@@ -440,11 +437,11 @@ export function parseEvaluationReport(
     : [effectiveDecisionResultTrust(decisionSource)];
   if (canonicalizeJson(report.provenance.parentDigests)
       !== canonicalizeJson(parentDigests)
-      || trustLevel(report.provenance.trust) > Math.min(
-        trustLevel(effectiveExecutionBundleTrust(executionSource)),
-        trustLevel(effectiveEvaluationBundleTrust(evaluationSource)),
-        trustLevel(effectiveAnalysisBundleTrust(analysisSource)),
-        ...decisionTrust.map(trustLevel),
+      || TRUST_LEVEL[report.provenance.trust] > Math.min(
+        TRUST_LEVEL[effectiveExecutionBundleTrust(executionSource)],
+        TRUST_LEVEL[effectiveEvaluationBundleTrust(evaluationSource)],
+        TRUST_LEVEL[effectiveAnalysisBundleTrust(analysisSource)],
+        ...decisionTrust.map((trust) => TRUST_LEVEL[trust]),
       )) {
     throw new EvaluationReportValidationError(
       'EVALUATION_REPORT_PROVENANCE_INVALID',

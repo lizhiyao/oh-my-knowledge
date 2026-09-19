@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { z } from 'zod';
 import { DEFAULT_BOOTSTRAP_SEED } from '../../../eval-core/analysis/bootstrap.js';
 import {
@@ -9,7 +10,6 @@ import {
 import {
   analysisJsonSchema,
   analysisSchemaIdentity,
-  compareStrings,
   createAnalysisSchemaValidator,
 } from './analysis-support.js';
 

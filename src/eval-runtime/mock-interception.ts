@@ -1,3 +1,4 @@
+import { compareStrings } from '../eval-core/primitives/ordering.js';
 import {
   ExecutionResourceDescriptorSchema,
   IdentifierSchema,
@@ -154,7 +155,7 @@ export function captureMockInterceptionPlan(
   }
   const overrides: Array<readonly [string, MockInterceptionDescriptor | null]> = [];
   for (const [sampleId, descriptorValue] of Object.entries(plan.bySampleId ?? {})
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
+    .sort(([left], [right]) => compareStrings(left, right))) {
     if (!sampleIds.has(sampleId)) {
       throw new TypeError('Mock interception plan references an unknown sample.');
     }

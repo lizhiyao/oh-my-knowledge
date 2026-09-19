@@ -1,3 +1,4 @@
+import { TRUST_LEVEL } from '../../eval-core/primitives/provenance.js';
 import {
   EvaluationReportValidationError,
   digestCanonicalJson,
@@ -32,12 +33,6 @@ import {
   type RejectedCoreResumeSource,
 } from './contracts.js';
 
-const TRUST_RANK: Record<Provenance['trust'], number> = {
-  untrusted: 0,
-  unknown: 1,
-  declared: 2,
-  verified: 3,
-};
 
 export interface CreateCoreResumeAdmissionAdapterOptions {
   readonly artifactStore: CoreRunArtifactStore;
@@ -46,7 +41,7 @@ export interface CreateCoreResumeAdmissionAdapterOptions {
 
 function minimumTrust(values: readonly Provenance['trust'][]): Provenance['trust'] {
   return values.reduce((minimum, value) => (
-    TRUST_RANK[value] < TRUST_RANK[minimum] ? value : minimum
+    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
   ), 'verified');
 }
 
@@ -251,8 +246,8 @@ export function createCoreResumeAdmissionAdapter(
       effectiveAnalysisBundleTrust(analysisSource),
       artifacts.report.provenance.trust,
     ]);
-    if (TRUST_RANK[upstreamSourceTrust]
-        < TRUST_RANK[policy.minimumSourceTrust]) {
+    if (TRUST_LEVEL[upstreamSourceTrust]
+        < TRUST_LEVEL[policy.minimumSourceTrust]) {
       return reject(
         sourceRunId,
         policy,
@@ -303,8 +298,8 @@ export function createCoreResumeAdmissionAdapter(
       upstreamSourceTrust,
       ...(decisionSource === undefined ? [] : [effectiveDecisionResultTrust(decisionSource)]),
     ]);
-    if (TRUST_RANK[effectiveSourceTrust]
-        < TRUST_RANK[policy.minimumSourceTrust]) {
+    if (TRUST_LEVEL[effectiveSourceTrust]
+        < TRUST_LEVEL[policy.minimumSourceTrust]) {
       return reject(
         sourceRunId,
         policy,

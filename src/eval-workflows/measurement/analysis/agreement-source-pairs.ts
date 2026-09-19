@@ -1,30 +1,12 @@
+import { resolveJsonPointer } from '../../../eval-core/primitives/json-pointer.js';
 import type { AnalysisNodeExecutionContext } from '../../../eval-core/analysis/index.js';
 import type { AgreementParameters } from './agreement-parameters.js';
 import type { AgreementPair } from './agreement-table.js';
 
-function decodePointerToken(token: string): string {
-  return token.replaceAll('~1', '/').replaceAll('~0', '~');
-}
 
 function resolvePointer(value: unknown, pointer: string): unknown {
-  if (pointer === '') return value;
-  let current: unknown = value;
-  for (const rawToken of pointer.slice(1).split('/')) {
-    const token = decodePointerToken(rawToken);
-    if (Array.isArray(current)) {
-      if (!/^(?:0|[1-9]\d*)$/.test(token)) return undefined;
-      current = current[Number(token)];
-    } else if (current !== null && typeof current === 'object') {
-      const record = current as Readonly<Record<string, unknown>>;
-      current = Object.prototype.hasOwnProperty.call(current, token)
-        ? record[token]
-        : undefined;
-    } else {
-      return undefined;
-    }
-    if (current === undefined) return undefined;
-  }
-  return current;
+  const result = resolveJsonPointer(value, pointer);
+  return result.resolved ? result.value : undefined;
 }
 
 function goldRating(

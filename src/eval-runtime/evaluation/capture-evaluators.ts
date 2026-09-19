@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import { captureJudge } from './capture-judge.js';
 import { captureRubricDeclaration, rubricAt } from './rubric-declaration.js';
 import {
@@ -65,9 +66,7 @@ import {
   captureCustomEvaluator,
   CustomEvaluatorDeclarationError,
 } from '../custom-evaluator.js';
-import {
-  compareStrings,
-} from './ordering.js';
+
 import {
   captureDataset,
 } from './capture-input.js';
@@ -588,10 +587,10 @@ export function captureEvaluators(
   return Object.freeze({
     dataset: preparedDataset,
     definitions: Object.freeze([...definitions].sort((left, right) => (
-      left.evaluatorId < right.evaluatorId ? -1 : left.evaluatorId > right.evaluatorId ? 1 : 0
+      compareStrings(left.evaluatorId, right.evaluatorId)
     ))),
     metrics: Object.freeze([...metrics].sort((left, right) => (
-      left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
+      compareStrings(left.metricId, right.metricId)
     ))),
     measurementAggregations,
     registrations: Object.freeze(registrations),

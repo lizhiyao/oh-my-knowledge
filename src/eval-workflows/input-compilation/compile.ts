@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION,
@@ -39,9 +40,6 @@ import {
   type RuntimeBindingRequest,
 } from './types.js';
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function fail(input: ConstructorParameters<typeof CliEvaluationInputError>[0]): never {
   throw new CliEvaluationInputError(input);

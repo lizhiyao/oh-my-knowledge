@@ -1,3 +1,4 @@
+import { compareStrings } from '../primitives/ordering.js';
 import { z } from 'zod';
 import { arithmeticMean, bootstrapDistribution, linearQuantile, percentileBounds, type BootstrapGroup } from './bootstrap-kernel.js';
 import {
@@ -510,7 +511,7 @@ function nodeCapabilities(input: {
   inputDomains.sort((left, right) => {
     const leftCanonical = canonicalizeJson(left);
     const rightCanonical = canonicalizeJson(right);
-    return leftCanonical < rightCanonical ? -1 : leftCanonical > rightCanonical ? 1 : 0;
+    return compareStrings(leftCanonical, rightCanonical);
   });
   return {
     capabilityKind: 'analysis-node',
@@ -1863,9 +1864,7 @@ function executeBonferroni(context: AnalysisNodeExecutionContext): AnalysisNodeE
       familySize,
       alpha,
       hypotheses: raw.sort((left, right) => (
-        left.hypothesisId < right.hypothesisId
-          ? -1
-          : left.hypothesisId > right.hypothesisId ? 1 : 0
+        compareStrings(left.hypothesisId, right.hypothesisId)
       )).map((entry) => ({
         hypothesisId: entry.hypothesisId,
         rawPValue: entry.pValue,
@@ -1908,9 +1907,7 @@ function buildSimultaneousIntervalFamilyValue(
     }
     return { analysisResultId: input.referenceId, interval };
   }).sort((left, right) => (
-    left.analysisResultId < right.analysisResultId
-      ? -1
-      : left.analysisResultId > right.analysisResultId ? 1 : 0
+    compareStrings(left.analysisResultId, right.analysisResultId)
   ));
   return SimultaneousIntervalFamilyEnvelopeSchema.parse({
     resultType: 'table',
@@ -2656,7 +2653,7 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
         return {
           ...parsed,
           components: [...parsed.components].sort((left, right) => (
-            left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0
+            compareStrings(left.metricId, right.metricId)
           )),
         };
       },
@@ -2676,8 +2673,7 @@ export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, Cor
         return {
           ...parsed,
           criteria: [...parsed.criteria].sort((left, right) => (
-            left.analysisResultId < right.analysisResultId ? -1
-              : left.analysisResultId > right.analysisResultId ? 1 : 0
+            compareStrings(left.analysisResultId, right.analysisResultId)
           )),
         };
       },

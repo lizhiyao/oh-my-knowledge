@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import {
   RuntimeIdentitySchema,
   canonicalizeJson,
@@ -38,7 +39,6 @@ import {
   type JudgeEnsembleGroup,
 } from './judge-aggregation.js';
 import {
-  compareStrings,
   createStatelessAnalysisImplementation,
 } from './analysis-support.js';
 

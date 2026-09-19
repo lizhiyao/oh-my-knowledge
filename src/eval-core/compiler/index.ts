@@ -1,3 +1,4 @@
+import { compareStrings } from '../primitives/ordering.js';
 import { z } from 'zod';
 import {
   ANALYSIS_PLAN_SCHEMA_VERSION,
@@ -123,12 +124,6 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'writerFailureMode', 'extensions', 'schemaUri', 'schemaDigest', 'data',
   'seriesMembership', 'seriesDesignDigest', 'memberId',
 ]);
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 function safeSchemaDetails(error: z.ZodError): {
   issues: Array<{ code: string; path: Array<string | number> }>;

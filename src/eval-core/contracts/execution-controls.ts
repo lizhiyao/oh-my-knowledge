@@ -1,3 +1,4 @@
+import { compareStrings } from '../primitives/ordering.js';
 import { z } from 'zod';
 import {
   ContentClassificationSchema,
@@ -101,10 +102,6 @@ type DeepReadonly<Value> = Value extends readonly (infer Item)[]
     ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]> }
     : Value;
 export type ReadonlyTargetExecutionControls = DeepReadonly<TargetExecutionControls>;
-
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function normalizeTools(control: DeepReadonly<ToolExecutionControl>): ToolExecutionControl {
   return control.toolPolicyKind === 'runtime-default'

@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { openNodeTrialWorkspace, type NodeTrialWorkspace } from '../shared/trial-workspace.js';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -185,7 +186,7 @@ async function directoryFiles(
   const entries = await readdir(current, { withFileTypes: true });
   const paths: string[] = [];
   for (const entry of entries.sort((left, right) => (
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    compareStrings(left.name, right.name)
   ))) {
     const path = join(current, entry.name);
     if (entry.isDirectory()) paths.push(...await directoryFiles(path, profile));
@@ -241,7 +242,7 @@ async function projectArtifact(
     path: relative(resource.snapshotPath, path).replaceAll('\\', '/'),
     text: await readTextFile(path, profile),
   })))).sort((left, right) => (
-    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+    compareStrings(left.path, right.path)
   ));
   const entrypoint = sections.find((section) => section.path === 'SKILL.md');
   if (entrypoint === undefined) {

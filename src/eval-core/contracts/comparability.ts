@@ -1,3 +1,4 @@
+import { compareStrings } from '../primitives/ordering.js';
 import { z } from 'zod';
 import {
   IdentifierSchema,
@@ -81,12 +82,6 @@ export const ComparabilitySubjectSchema = z.object({
   leftTargetId: IdentifierSchema,
   rightTargetId: IdentifierSchema,
 }).strict();
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 function compareSubjects(
   left: z.infer<typeof ComparabilitySubjectSchema>,

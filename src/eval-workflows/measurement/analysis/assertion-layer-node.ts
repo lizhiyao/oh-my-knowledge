@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import {
   RuntimeIdentitySchema,
   canonicalizeJson,
@@ -35,7 +36,6 @@ import {
   type AssertionLayerTableValue,
 } from './assertion-layer.js';
 import {
-  compareStrings,
   createStatelessAnalysisImplementation,
 } from './analysis-support.js';
 

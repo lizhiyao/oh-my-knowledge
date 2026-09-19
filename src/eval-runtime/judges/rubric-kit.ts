@@ -1,3 +1,4 @@
+import { encodePointerToken } from '../../eval-core/primitives/json-pointer.js';
 import {
   JsonValueSchema,
   deepFreezeCanonicalJson,
@@ -79,9 +80,6 @@ interface RubricJudgeKitBinding {
 
 const kitBindings = new WeakMap<object, RubricJudgeKitBinding>();
 
-function pointerToken(value: string): string {
-  return value.replaceAll('~', '~0').replaceAll('/', '~1');
-}
 
 function evaluationContext(
   entries: readonly Readonly<{
@@ -150,7 +148,7 @@ export function createRubricJudgeKit(
     instrument,
     runtime,
     ...(input.actualPointer === undefined ? {} : { actualPointer: input.actualPointer }),
-    criteriaPointer: `/rubricJudge/${pointerToken(evaluatorId)}`,
+    criteriaPointer: `/rubricJudge/${encodePointerToken(evaluatorId)}`,
     ...(input.tracePointer === undefined ? {} : { tracePointer: input.tracePointer }),
     ...(input.applicableSampleIds === undefined
       ? {}

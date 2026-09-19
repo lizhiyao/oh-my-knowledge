@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { z } from 'zod';
 import {
   bootstrapDiffCI,
@@ -17,7 +18,6 @@ import {
 import {
   analysisJsonSchema,
   analysisSchemaIdentity,
-  compareStrings,
   createAnalysisSchemaValidator,
   round,
 } from './analysis-support.js';

@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
@@ -58,7 +59,7 @@ export async function captureIdentityFiles(
   adapterLabel: string,
 ): Promise<readonly CapturedIdentityFile[]> {
   const requested = [...structuredClone(files)].sort((left, right) => (
-    left.facetId < right.facetId ? -1 : left.facetId > right.facetId ? 1 : 0
+    compareStrings(left.facetId, right.facetId)
   ));
   if (new Set(requested.map((file) => file.facetId)).size !== requested.length) {
     throw new TypeError(`${adapterLabel} content identity facetIds must be unique.`);

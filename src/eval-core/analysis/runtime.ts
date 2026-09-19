@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import {
   ANALYSIS_BUNDLE_SCHEMA_VERSION,
   AnalysisBundleSchema,
@@ -77,8 +79,6 @@ interface StopState {
   error?: EvaluationError;
 }
 
-const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
-
 class AnalysisCancelledError extends Error {
   constructor() {
     super('Analysis run was cancelled.');
@@ -88,12 +88,6 @@ class AnalysisCancelledError extends Error {
 
 function configurationError(code: string, message: string): never {
   throw new AnalysisRuntimeConfigurationError(code, message);
-}
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function validateOptions(options: AnalysisRunOptions): void {

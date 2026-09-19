@@ -14,9 +14,6 @@ import type {
   AnalysisNodeImplementation,
 } from '../../../eval-core/analysis/index.js';
 
-export function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 export function round(value: number, decimals: number): number {
   return Number(value.toFixed(decimals));

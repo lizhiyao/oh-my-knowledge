@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -116,7 +117,7 @@ async function identityFilesInDirectory(
   }
   const files: ContentIdentityFile[] = [];
   for (const entry of entries.sort((left, right) => (
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    compareStrings(left.name, right.name)
   ))) {
     if (current === root && entry.name === 'node_modules' && entry.isDirectory()) continue;
     const path = join(current, entry.name);
