@@ -15,14 +15,11 @@ import {
   type EvaluationSeriesMemberSource,
   createEvaluationSeriesMemberSource,
   type ExecutionBundleSource,
-  assertExecutionBundleSourceMatchesPlan,
-  assertEvaluationBundleSourceMatchesPlan,
-  assertAnalysisBundleSourceMatchesPlan,
   type ComparisonScope,
   createComparabilityPolicy,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
-  assessComparability as assessCoreComparability,
 } from '../../eval-core/contracts/index.js';
+import { assessComparability as assessCoreComparability } from '../../eval-core/verify/index.js';
 import {
   corePreparedEvaluations,
   attachDefinition,
@@ -49,6 +46,11 @@ import {
   runSuffixStages,
   type ReusableStagePrefix,
 } from './stage-session.js';
+import {
+  assertAnalysisBundleSourceMatchesPlan,
+  assertEvaluationBundleSourceMatchesPlan,
+  assertExecutionBundleSourceMatchesPlan,
+} from '../../eval-core/contracts/index.js';
 
 /** @internal Re-admits one serialized result against an exact prepared contract. */
 export function restorePreparedEvaluationResult(

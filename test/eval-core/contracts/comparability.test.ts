@@ -4,12 +4,10 @@ import {
   COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
   ComparabilityPolicySchema,
-  assessComparability,
   createComparabilityPolicy,
   computeRuntimeIdentityDigest,
   digestArtifactPayload,
   digestCanonicalJson,
-  parseComparabilityAssessment,
   parseComparabilityAssessmentDocument,
   parseComparabilityPolicyDocument,
   parseEvaluationBundle,
@@ -20,6 +18,10 @@ import {
   type ExecutionBundle,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {
+  assessComparability,
+  parseComparabilityAssessment,
+} from '../../../src/eval-core/verify/index.js';
 import {
   prepareEvaluationPlan,
   type SealedRunPlan,
