@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadTraceCorpus, loadTraceSessions } from '../../../src/observability/trace/index.js';
-import { isQoderJsonl } from '../../../src/observability/trace/adapters/qoder/trace.js';
+import { qoderFormatEvidence } from '../../../src/observability/trace/adapters/qoder/trace.js';
 import type {
   TraceContextCompactionEvent,
   TraceEvent,
@@ -194,7 +194,7 @@ describe('qoder trace source adapter', () => {
       { type: 'file-history-snapshot', messageId: 'u1', snapshot: { a: 1 } },
     ];
 
-    assert.equal(isQoderJsonl(claudeRecords), false);
+    assert.equal(claudeRecords.some(qoderFormatEvidence), false);
     const session = sessionFor(tmpDir, 'claude.jsonl', claudeRecords);
     assert.equal(session.sourceKind, 'claude');
     assert.equal(eventsOf(session, 'unknown').length, 0);
@@ -204,9 +204,11 @@ describe('qoder trace source adapter', () => {
     // Real Qoder subagent transcripts hold none of the bookkeeping record types.
     const withHumanInput = [qoderUser('继续', { humanInput: { text: '继续', mode: 'prompt' } })];
     const withRequestSetId = [qoderAssistant([{ type: 'text', text: 'ok' }], { requestSetId: 'r1' })];
-    assert.equal(isQoderJsonl(withHumanInput), true);
-    assert.equal(isQoderJsonl(withRequestSetId), true);
-    assert.equal(isQoderJsonl([qoderUser('继续', { requestSetId: undefined })]), false);
+    // The predicate is per record: "does the file hold such a record" is composed by the
+    // single-pass scan in source.ts, so these assertions replay that existence check with `some`.
+    assert.equal(withHumanInput.some(qoderFormatEvidence), true);
+    assert.equal(withRequestSetId.some(qoderFormatEvidence), true);
+    assert.equal([qoderUser('继续', { requestSetId: undefined })].some(qoderFormatEvidence), false);
 
     const session = sessionFor(tmpDir, 'sidechain-less.jsonl', withHumanInput);
     assert.equal(session.sourceKind, 'qoder');
