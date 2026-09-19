@@ -2,6 +2,7 @@ import { topologicalOrder } from '../primitives/graph.js';
 import { compareStrings } from '../primitives/ordering.js';
 import { minimumTrust } from '../primitives/provenance.js';
 import { z } from 'zod';
+import { assessComparability } from '../verify/index.js';
 import {
   AssumptionCheckSchema,
   EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
@@ -15,7 +16,6 @@ import {
   assertEvaluationSeriesMemberSource,
   canonicalizeJson,
   createComparabilityPolicy,
-  assessComparability,
   deepFreezeCanonicalJson,
   deriveSeriesMemberCoverage,
   digestCanonicalJson,

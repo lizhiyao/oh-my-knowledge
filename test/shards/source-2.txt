@@ -1,5 +1,6 @@
 test/architecture/architecture-docs.test.ts
 test/architecture/domain-contract-ownership.test.ts
+test/architecture/eval-core-contract-layers.test.ts
 test/architecture/import-boundaries.test.ts
 test/architecture/src-root-layout.test.ts
 test/architecture/studio-export-consumers.test.ts

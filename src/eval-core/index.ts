@@ -20,7 +20,6 @@ export {
   COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
   COMPARABILITY_REASON_CODES,
-  assessComparability,
   createComparabilityPolicy,
   effectiveAnalysisBundleTrust,
   effectiveDecisionResultTrust,
@@ -28,7 +27,6 @@ export {
   effectiveExecutionBundleTrust,
   parseAnalysisBundle,
   parseAnalysisBundleDocument,
-  parseComparabilityAssessment,
   parseComparabilityAssessmentDocument,
   parseComparabilityPolicyDocument,
   parseDecisionResultDocument,
@@ -43,6 +41,10 @@ export {
   verifyEvaluationBundle,
   verifyExecutionBundle,
 } from './contracts/index.js';
+export {
+  assessComparability,
+  parseComparabilityAssessment,
+} from './verify/index.js';
 export type {
   AnalysisBundlePlanVerification,
   AnalysisBundleSource,
