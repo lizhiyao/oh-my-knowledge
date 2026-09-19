@@ -1,4 +1,6 @@
 import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
+import { trimmedCharLength } from './jsonl-record-window.js';
+import { type WindowedRecord, windowedRecord } from './jsonl-lazy-record.js';
 
 /**
  * 按字节偏移索引的惰性 JSONL 记录视图。
@@ -137,42 +139,42 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
   let ignored = 0;
   let closed = false;
 
+  const readRecord = (position: number): WindowedRecord => {
+    const start = offsets[position];
+    const length = ends[position] - start;
+    if (length > MAX_LINE_BYTES) throw recordTooLarge(filePath);
+    const read = readSync(fd, scratch, 0, length, start);
+    // 单条上限的口径与整档路径同一条：解成字符串后去掉结尾空白的字符数。差别在于这里在字节缓冲上
+    // 数同一个数——整档那句 `text.trimEnd().length` 要为判长度先把整行解成字符串，那正是
+    // 「只解码不解析也要 129～134 MiB」那一层地板的成因。
+    if (trimmedCharLength(scratch, 0, read) > MAX_RECORD_CHARS) throw recordTooLarge(filePath);
+    // 视图必须活得过下一次读取，所以给它一份行字节副本；scratch 随即被下一条记录复用。
+    return windowedRecord(Buffer.from(scratch.subarray(0, read)));
+  };
+
   const parseAt = (position: number): T | undefined => {
     if (closed) throw new Error(`流式 trace 记录已关闭：${filePath}`);
     if (outcomes[position] === OUTCOME_MALFORMED) return undefined;
     if (outcomes[position] === OUTCOME_IGNORED) return undefined;
     if (outcomes[position] === OUTCOME_RECORD) {
-      // 记录对象不常驻：同一序号被多次访问时重新解析，返回新的等值对象。
-      return readAndParse(position) as T;
+      // 记录不常驻：同一序号被多次访问时重新读、重新按需取值，返回等值的新视图。重读后不再
+      // 是记录（文件在采集期间被改写）时按空洞处理，与改前「重解析失败返回 undefined」同口径。
+      const again = readRecord(position);
+      return again.viewKind === 'record' ? (again.record as T) : undefined;
     }
-    const parsed = readAndParse(position);
-    if (parsed === undefined) {
+    const windowed = readRecord(position);
+    if (windowed.viewKind === 'malformed') {
       outcomes[position] = OUTCOME_MALFORMED;
       malformed += 1;
       return undefined;
     }
-    if (!isRecordObject(parsed)) {
+    if (windowed.viewKind === 'ignored') {
       outcomes[position] = OUTCOME_IGNORED;
       ignored += 1;
       return undefined;
     }
     outcomes[position] = OUTCOME_RECORD;
-    return parsed as T;
-  };
-
-  const readAndParse = (position: number): unknown | undefined => {
-    const start = offsets[position];
-    const length = ends[position] - start;
-    if (length > MAX_LINE_BYTES) throw recordTooLarge(filePath);
-    const read = readSync(fd, scratch, 0, length, start);
-    // 行切片自带结尾换行；JSON.parse 会跳过首尾空白，只有判超限时才取一次无尾空白的长度。
-    const text = scratch.toString('utf8', 0, read);
-    if (text.trimEnd().length > MAX_RECORD_CHARS) throw recordTooLarge(filePath);
-    try {
-      return JSON.parse(text);
-    } catch {
-      return undefined;
-    }
+    return windowed.record as T;
   };
 
   /** 让三档计数覆盖到没被任何一遍访问过的下标：整档路径是每条都解析的，口径不能靠调用顺序凑齐。 */
@@ -235,8 +237,4 @@ export function streamedJsonlBytes(filePath: string): number {
   } catch {
     return 0;
   }
-}
-
-function isRecordObject(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

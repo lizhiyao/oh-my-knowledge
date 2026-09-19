@@ -12,9 +12,32 @@ import { openStreamedJsonlRecords } from '../../../src/observability/trace/strea
  * （例如误改成 >2 GiB）会让内存悄悄退回 2.7 倍而全部用例照绿。这里透传真实实现，只留一个调用
  * 计数用于断言阈值确实生效。
  */
+/** 记录被取用的次数：`readRecord` 每取用一条记录就读一次该行，所以它就是「整档被走过几趟」。 */
+const recordReads = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    readSync: vi.fn((...args: Parameters<typeof actual.readSync>) => {
+      const result = (actual.readSync as (...a: unknown[]) => number)(...args);
+      recordReads.count += 1;
+      return result;
+    }),
+  };
+});
+
 vi.mock('../../../src/observability/trace/streamed-records.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/observability/trace/streamed-records.js')>();
-  return { ...actual, openStreamedJsonlRecords: vi.fn(actual.openStreamedJsonlRecords) };
+  return {
+    ...actual,
+    openStreamedJsonlRecords: vi.fn((filePath: string) => {
+      const view = actual.openStreamedJsonlRecords(filePath);
+      // 建立索引本身要按块读文件；归零之后剩下的读数才全是逐条记录的取用。
+      recordReads.count = 0;
+      return view;
+    }),
+  };
 });
 
 /**
@@ -250,10 +273,10 @@ describe('streamed trace records', () => {
     writeFileSync(path, codexLog(transcriptLines()));
     assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走惰性视图');
 
-    // 惰性视图每次访问都重新解析，所以「判定走了几趟整档」可以直接数 JSON.parse 的次数。
-    // 同一份文件的映射开销是固定的：两次计数之差就是格式判定的开销——只判结果相同的那条用例
-    // 抓不到「六趟变一趟」，只比 wall 又会被机器负载淹没。
-    const mappingOnly = countParses(() => {
+    // 「判定走了几趟整档」＝记录被取用的次数减去映射本身的次数，一趟整档恰好等于记录条数。
+    // 这里不能用 `JSON.parse` 次数当量：按需取值之后一条记录只解真被读到的字段，那个数不再
+    // 是趟数的代理（#983 正是把整条解析换掉的）。同一份文件的映射开销两侧相同，差值即判定开销。
+    const mappingOnly = countRecordReads(() => {
       const view = openStreamedJsonlRecords<unknown>(path);
       try {
         parseCodexSessionFile(path, view.values);
@@ -261,7 +284,7 @@ describe('streamed trace records', () => {
         view.close();
       }
     });
-    const wholeLoad = countParses(() => loadTraceCorpus(path));
+    const wholeLoad = countRecordReads(() => loadTraceCorpus(path));
     const view = openStreamedJsonlRecords<unknown>(path);
     let records = 0;
     try {
@@ -274,7 +297,7 @@ describe('streamed trace records', () => {
     // 引擎退回「逐格式各扫一遍」时的 6 趟——那条断言只有成本差，结果与合并后完全相同。
     assert.ok(
       detected > 0 && detected <= records * 2,
-      `格式判定额外解析了 ${(detected / records).toFixed(1)} 趟整档记录，阈值 2 趟：`
+      `格式判定额外取用了 ${(detected / records).toFixed(1)} 趟整档记录，阈值 2 趟：`
         + '判定退回逐格式各扫一遍时，大文件档的 wall 会重新被判定主导',
     );
   });
@@ -294,18 +317,13 @@ function openFdCount(): number {
   return readdirSync('/dev/fd').filter((name) => /^\d+$/.test(name)).length;
 }
 
-/** 在 `run` 期间数 `JSON.parse` 的调用次数；无论成功与否都把全局实现还原。 */
-function countParses(run: () => unknown): number {
-  const realParse = JSON.parse;
-  let count = 0;
-  JSON.parse = ((text: string, reviver?: (this: unknown, key: string, value: unknown) => unknown) => {
-    count += 1;
-    return realParse(text, reviver);
-  }) as typeof JSON.parse;
+/** 在 `run` 期间数「记录被取用」的次数；建索引的块读已在视图打开后归零，故差值就是趟数。 */
+function countRecordReads(run: () => unknown): number {
+  recordReads.count = 0;
   try {
     run();
+    return recordReads.count;
   } finally {
-    JSON.parse = realParse;
+    recordReads.count = 0;
   }
-  return count;
 }
