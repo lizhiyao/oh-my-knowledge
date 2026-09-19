@@ -25,14 +25,6 @@ export async function runStudio(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
-  // reports 读取目录：显式 --reports-dir 固定该目录；--global 钉全局；默认聚合
-  // 当前项目与全局 Core run。
-  const reportsDirOpt = flags['reports-dir']
-    ? resolve(flags['reports-dir'])
-    : flags.global
-      ? globalReportsDir()
-      : undefined;
-
   if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
@@ -94,53 +86,38 @@ export async function runStudio(
     return;
   }
 
+  // 目录口径（显式 flag｜--global｜项目优先→全局兜底）与 Core 产物库三态只在
+  // studio/application/directory-sources.ts 表述一次，宿主只负责提供候选根目录。
   const { createNextStudioServer } = await import('../../studio/http/next-server.js');
-  const {
-    createNodeCoreContentStore,
-    createNodeCoreRunArtifactStore,
-    createOverlayCoreRunArtifactStore,
-  } = await import('../../eval-workflows/artifact-store/index.js');
-  const { createCoreStudioCatalog } = await import('../../studio/application/measure/core-run-catalog.js');
-  const coreStoreFor = (directory: string) => createNodeCoreRunArtifactStore(directory, {
-    contentResolver: createNodeCoreContentStore(resolve(directory, 'content')),
-  });
-  const coreStore = flags['reports-dir']
-    ? coreStoreFor(reportsDirOpt!)
-    : flags.global
-      ? coreStoreFor(globalReportsDir())
-      : createOverlayCoreRunArtifactStore(
-        coreStoreFor(projectReportsDir()),
-        [coreStoreFor(globalReportsDir())],
-      );
+  const { createStudioDirectorySources } = await import('../../studio/application/directory-sources.js');
   const server: ReportServer = createNextStudioServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
-    coreStudioCatalog: createCoreStudioCatalog(coreStore),
-    // 测量产物(observe-health / doctors)默认按请求项目优先→全局兜底(同 managed);
-    // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
-    analysesDir: flags['analyses-dir']
-      ? resolve(flags['analyses-dir'])
-      : (flags.global
-          ? globalObserveHealthDir
-          : (): string => resolveObserveHealthDir(projectObserveHealthDir())),
-    doctorsDir: flags['doctors-dir']
-      ? resolve(flags['doctors-dir'])
-      : (flags.global ? globalDoctorsDir : (): string => resolveDoctorsDir(projectDoctorsDir())),
-    // observe / doctor 仍可通过各自的索引卡片发现别项目产物；--global 或显式目录只看固定目录。
-    includeObserveCards: !flags.global && !flags['analyses-dir'],
-    includeDoctorCards: !flags.global && !flags['doctors-dir'],
-    // observe-inbox 缺省按请求项目优先→全局兜底(report-server 默认即此);显式 --observations-dir 固定该目录;
-    // --global 钉全局(与 observe-health / doctors 的 --global 一致)。
-    ...(flags['observations-dir']
-      ? { observationsDir: resolve(flags['observations-dir']) }
-      : flags.global
-        ? { observationsDir: DEFAULT_GLOBAL_OBSERVATIONS_DIR }
-        : {}),
-    // Agent 报告按机器级全局存放；显式 --agents-dir 才指向其它采集根目录，否则由宿主用同一份全局布局兜底。
-    ...(flags['agents-dir'] ? { agentsDir: resolve(flags['agents-dir']) } : {}),
-    // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
-    // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
-    managedDir: (): string => resolveManagedDir(managedDir()),
+    ...createStudioDirectorySources(
+      {
+        reports: { global: globalReportsDir, project: projectReportsDir },
+        observeHealth: {
+          global: globalObserveHealthDir,
+          projectDefault: (): string => resolveObserveHealthDir(projectObserveHealthDir()),
+        },
+        doctors: {
+          global: globalDoctorsDir,
+          projectDefault: (): string => resolveDoctorsDir(projectDoctorsDir()),
+        },
+        observations: { global: DEFAULT_GLOBAL_OBSERVATIONS_DIR },
+        // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
+        // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
+        managed: () => resolveManagedDir(managedDir()),
+      },
+      {
+        global: flags.global,
+        reportsDir: flags['reports-dir'],
+        analysesDir: flags['analyses-dir'],
+        doctorsDir: flags['doctors-dir'],
+        observationsDir: flags['observations-dir'],
+        agentsDir: flags['agents-dir'],
+      },
+    ),
   });
 
   try {
