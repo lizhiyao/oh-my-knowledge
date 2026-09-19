@@ -69,6 +69,16 @@ export interface WireSchemaCatalogEntry {
 
 export type WireSchemaCatalogVersion = `v${number}`;
 
+/** 按 catalog 查 wire schema 的落盘位置（`${版本}/${文件名}`）：版本只从条目的 schemaVersion 解析，
+ * 不再另有一份「文件名 → 目录」表。文件名不在 catalog 里直接抛错，不回落到默认目录。 */
+export function wireSchemaLocation(fileName: string): string {
+  const entry = WIRE_SCHEMA_CATALOG.find((item) => item.fileName === fileName);
+  if (entry === undefined) {
+    throw new Error(`Wire schema 文件不在 catalog 里：${fileName}`);
+  }
+  return `${wireSchemaCatalogVersion(entry)}/${entry.fileName}`;
+}
+
 export function wireSchemaCatalogVersion(
   entry: Pick<WireSchemaCatalogEntry, 'schemaVersion'>,
 ): WireSchemaCatalogVersion {
