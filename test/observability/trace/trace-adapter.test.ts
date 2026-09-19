@@ -23,6 +23,7 @@ import {
   openClawSessionEvidence,
   type JsonlTraceAdapter,
 } from '../../../src/observability/trace/source.js';
+import { CODEX_RECORD_SCHEMA } from '../../../src/observability/trace/codex-record-schema.js';
 import { openStreamedJsonlRecords } from '../../../src/observability/trace/streamed-records.js';
 import { codexFormatEvidence, codexGuardianEvidence } from '../../../src/observability/trace/adapters/codex/trace.js';
 import { qoderFormatEvidence } from '../../../src/observability/trace/adapters/qoder/trace.js';
@@ -3042,7 +3043,7 @@ describe('JSONL 格式判定的单遍合并', () => {
         `${testCase.name}：合并扫描必须与逐格式 some 组合同结果`,
       );
       assert.deepEqual(kindsOf(holeless), expected, `${testCase.name}：空洞不是证据，去掉后结论不变`);
-      const view = openStreamedJsonlRecords<CcRecord>(path);
+      const view = openStreamedJsonlRecords<CcRecord>(path, CODEX_RECORD_SCHEMA);
       try {
         assert.deepEqual(kindsOf(view.values), expected, `${testCase.name}：惰性视图必须同结果`);
       } finally {

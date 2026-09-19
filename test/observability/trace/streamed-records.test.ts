@@ -5,23 +5,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadTraceCorpus } from '../../../src/observability/trace/index.js';
 import { parseCodexSessionFile } from '../../../src/observability/trace/adapters/codex/trace.js';
+import { CODEX_RECORD_SCHEMA } from '../../../src/observability/trace/codex-record-schema.js';
 import { openStreamedJsonlRecords } from '../../../src/observability/trace/streamed-records.js';
 
 /**
- * 惰性视图与整档解析产出逐字相同，因此「路由有没有被走到」无法用行为断言抓到——把阈值写错
- * （例如误改成 >2 GiB）会让内存悄悄退回 2.7 倍而全部用例照绿。这里透传真实实现，只留一个调用
+ * 装配视图与整档解析产出逐字相同，因此「路由有没有被走到」无法用行为断言抓到——把阈值写错
+ * （例如误改成 >2 GiB）会让内存悄悄退回整档常驻而全部用例照绿。这里透传真实实现，只留一个调用
  * 计数用于断言阈值确实生效。
  */
-/** 「整档被走过几趟」＝记录被从视图里取出多少次：每次取出都做一次顶层语法校验，所以数 `scanJsonValue`。 */
+/** 一条记录被「装配」一次＝读层把该行字节解成对象一次。数它就是数整档被走过的趟数。 */
 const recordReads = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock('../../../src/observability/trace/jsonl-record-window.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/observability/trace/jsonl-record-window.js')>();
+vi.mock('../../../src/observability/trace/jsonl-record-schema.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/observability/trace/jsonl-record-schema.js')>();
   return {
     ...actual,
-    scanJsonValue: vi.fn((...args: Parameters<typeof actual.scanJsonValue>) => {
+    assembleRecord: vi.fn((...args: Parameters<typeof actual.assembleRecord>) => {
       recordReads.count += 1;
-      return actual.scanJsonValue(...args);
+      return actual.assembleRecord(...args);
     }),
   };
 });
@@ -30,9 +31,9 @@ vi.mock('../../../src/observability/trace/streamed-records.js', async (importOri
   const actual = await importOriginal<typeof import('../../../src/observability/trace/streamed-records.js')>();
   return {
     ...actual,
-    openStreamedJsonlRecords: vi.fn((filePath: string) => {
-      const view = actual.openStreamedJsonlRecords(filePath);
-      // 建立索引本身要按块读文件；归零之后剩下的读数才全是逐条记录的取用。
+    openStreamedJsonlRecords: vi.fn((filePath: string, schema) => {
+      const view = actual.openStreamedJsonlRecords(filePath, schema);
+      // 建立索引不装配记录；归零之后每次装配都是读取层真的取用了那条记录。
       recordReads.count = 0;
       return view;
     }),
@@ -207,9 +208,19 @@ describe('streamed trace records', () => {
       '用例前提：样本要真的留下归属不到的证据',
     );
 
-    const view = openStreamedJsonlRecords<unknown>(path);
+    const view = openStreamedJsonlRecords<unknown>(path, CODEX_RECORD_SCHEMA);
     try {
-      assert.notEqual(view.values[2], view.values[2], '用例前提：记录对象不常驻，同一序号两次访问不是同一对象');
+      // 用例前提：这份样本同时走到两条取用路径——装配分支的记录取用即命中投影（同一个对象，
+      // 后续整档遍历不再回文件），没进装配分支的记录整条解析、用完即弃（等值但不是同一个对象）。
+      const cached = view.values.some((record, index) => record !== undefined && view.values[index] === record);
+      const ephemeral = view.values.some((record, index) => record !== undefined && view.values[index] !== record);
+      assert.ok(cached, '用例前提：要有按声明装配并留在投影里的记录');
+      assert.ok(ephemeral, '用例前提：要有整条解析、用完即弃的记录（否则大记录会被投影常驻拖回 2 倍内存）');
+      assert.deepEqual(
+        [...view.values].filter(Boolean).map((record) => Object.keys(record).sort()),
+        [...view.values].filter(Boolean).map((record) => Object.keys(record).sort()),
+        '重复取用必须给出同样的读面，否则多趟遍历的归属会随第几趟而变',
+      );
       assert.deepEqual(parseCodexSessionFile(path, view.values), eager, '记录来源改变不得改变任何归属与执行属性');
     } finally {
       view.close();
@@ -266,39 +277,32 @@ describe('streamed trace records', () => {
     assert.equal(parsed.sessions.length, 1);
   });
 
-  it('格式判定只多走一趟记录，不再为每个格式各自重扫整档', () => {
+  it('装配过的记录不再重读：判定与映射共用同一份投影', () => {
     const dir = tempDir('omk-streamed-detect-');
     const path = join(dir, 'rollout-cx-detect.jsonl');
     writeFileSync(path, codexLog(transcriptLines()));
-    assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走惰性视图');
+    assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走装配视图');
 
-    // 「判定走了几趟整档」＝记录被取用的次数减去映射本身的次数，一趟整档恰好等于记录条数。
-    // 也不能数 readSync：按需取值下一条记录会按字段定位读多次，那是「读了多少段」不是「取了多少条」。：按需取值之后一条记录只解真被读到的字段，那个数不再
-    // 是趟数的代理（#983 正是把整条解析换掉的）。同一份文件的映射开销两侧相同，差值即判定开销。
-    const mappingOnly = countRecordReads(() => {
-      const view = openStreamedJsonlRecords<unknown>(path);
-      try {
-        parseCodexSessionFile(path, view.values);
-      } finally {
-        view.close();
-      }
-    });
-    const wholeLoad = countRecordReads(() => loadTraceCorpus(path));
-    const view = openStreamedJsonlRecords<unknown>(path);
     let records = 0;
+    const counting = openStreamedJsonlRecords<unknown>(path, CODEX_RECORD_SCHEMA);
     try {
-      records = view.stats().sourceRecordCount;
+      records = counting.stats().sourceRecordCount;
     } finally {
-      view.close();
+      counting.close();
     }
-    const detected = wholeLoad - mappingOnly;
-    // 合并后判定实测正好一趟整档记录（把阈值收到 1 趟也过）；留到 2 趟的余量，但远低于把
-    // 引擎退回「逐格式各扫一遍」时的 6 趟——那条断言只有成本差，结果与合并后完全相同。
+    assert.ok(records > 0, '用例前提：样本要有可装配的记录');
+    const wholeLoad = countRecordReads(() => loadTraceCorpus(path));
+    // 一趟装配是这条读取层的成本下界：判定先取用的记录留在投影里给映射复用，之后 13 趟整档遍历读的是
+    // 内存。退回「每次访问重读重解析」时这个数按整档遍历的趟数翻倍（改前实测约 13 趟），所以这条断言
+    // 同时挡住两件事：读取层退回逐次解析，以及判定退回逐格式各扫一遍。
+    // 只对装配分支成立——没进分支表的记录（大输出、重复视图那族）故意用完即弃，它们留在投影里
+    // 会把峰值顶回文件大小的两倍，实测见 #974 判据②。
     assert.ok(
-      detected > 0 && detected <= records * 2,
-      `格式判定额外取用了 ${(detected / records).toFixed(1)} 趟整档记录，阈值 2 趟：`
-        + '判定退回逐格式各扫一遍时，大文件档的 wall 会重新被判定主导',
+      wholeLoad <= records * 1.2,
+      `一份会话把记录装配了 ${(wholeLoad / records).toFixed(1)} 趟，阈值 1.2 趟：`
+        + '记录应当装配一次、由后续遍历共用同一份投影',
     );
+    assert.ok(wholeLoad >= records, '用例前提：判定这一趟要看到每条记录，否则三档计数口径会漏');
   });
 
   it('建立索引期间失败时不留下已打开的 fd', () => {
@@ -306,7 +310,7 @@ describe('streamed trace records', () => {
     // 目录的 fd 能打开，随后按文件读会失败——这正是「open 成功、索引期间抛错」的形状。
     // 一轮采集要开上千家日志，这里漏一个 fd 就会先把进程推到 EMFILE，而不是报清晰的错。
     const before = openFdCount();
-    assert.throws(() => openStreamedJsonlRecords(dir));
+    assert.throws(() => openStreamedJsonlRecords(dir, CODEX_RECORD_SCHEMA));
     assert.equal(openFdCount(), before, '索引期间抛错必须把已经打开的 fd 还掉');
   });
 });

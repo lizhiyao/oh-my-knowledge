@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { CODEX_RECORD_SCHEMA } from './codex-record-schema.js';
 import { openStreamedJsonlRecords, streamedJsonlBytes } from './streamed-records.js';
 import {
   codexFormatEvidence,
@@ -634,9 +635,9 @@ export function claudeMetadataEvidence(value: unknown): boolean {
 }
 
 /**
- * Codex 的大会话日志走「按字节偏移索引的惰性记录」：适配器逻辑一行不改，只是记录对象不再
- * 整档常驻，实测 1.3 GiB 档的采集峰值从 3.6 GiB 降到 1.5 GiB。其余宿主、小文件、以及格式
- * 判定不唯一的文件一律返回 undefined，由调用方走原有的整档解析路径。
+ * Codex 的大会话日志走「偏移索引 ＋ 按声明装配一次」的记录读取层：适配器逻辑一行不改，只是每条
+ * 记录只解它真正被消费的字段。其余宿主、小文件、以及格式判定不唯一的文件一律返回 undefined，
+ * 由调用方走原有的整档解析路径。
  *
  * 判定这一趟只把整档扫一遍：`detectJsonlFormats` 把四个格式与丢弃条件合成一次遍历，每条记录
  * 只解析一次。合并前不匹配的谓词各自要把整档重扫一遍，在惰性视图上那就是一整轮重新解析，
@@ -644,7 +645,7 @@ export function claudeMetadataEvidence(value: unknown): boolean {
  */
 function parseStreamedCodexSessionFile(filePath: string): ParsedTraceFile | undefined {
   if (streamedJsonlBytes(filePath) < CODEX_STREAMED_MIN_BYTES) return undefined;
-  const view = openStreamedJsonlRecords<CcRecord>(filePath);
+  const view = openStreamedJsonlRecords<CcRecord>(filePath, CODEX_RECORD_SCHEMA);
   try {
     const { matching, satisfied } = detectJsonlFormats(view.values);
     if (matching.length !== 1 || matching[0].sourceKind !== 'codex') return undefined;

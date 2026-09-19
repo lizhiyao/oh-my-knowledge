@@ -31,14 +31,33 @@ const DOT = 0x2e;
 const ZERO = 0x30;
 const NINE = 0x39;
 
+/** 一段字节在缓冲里的位置与它的 JSON 值类型。 */
+interface ValueWindow {
+  readonly valueKind: JsonValueKind;
+  readonly begin: number;
+  readonly end: number;
+}
+
+/** 装配到没进分支表的记录时向上冒泡的哨兵：调用方据此退回整条 `JSON.parse`。 */
+const WHOLE = Symbol('record-whole');
+/** 分支身份键在本层不存在（与「存在但不是字符串」分开：前者走 `-` 分支）。 */
+const ABSENT = Symbol('branch-absent');
+const INVALID = Symbol('branch-invalid');
+
 export type RecordSchemaNode =
   | { readonly read: 'value' }
   | { readonly read: 'span' }
   | { readonly read: 'object'; readonly members: Readonly<Record<string, RecordSchemaNode>> }
-  | { readonly read: 'array'; readonly element: RecordSchemaNode };
+  | { readonly read: 'array'; readonly element: RecordSchemaNode }
+  | { readonly read: 'branch'; readonly on: string; readonly cases: Readonly<Record<string, RecordSchemaNode | undefined>> };
 
 export interface AssembleResult {
-  readonly outcome: 'record' | 'malformed' | 'ignored';
+  /**
+   * `whole` 表示「这条记录不按声明装配」：分支没进表（新的记录族、或会产出 unknown 事件的族），
+   * 调用方要退回整条 `JSON.parse`。unknown 事件的 `rawBytes`／`rawDigest` 按整条记录的序列化算，
+   * 少装一个键就会改变产物数字，所以这类记录不能走装配。
+   */
+  readonly outcome: 'record' | 'malformed' | 'ignored' | 'whole';
   readonly record?: object;
 }
 
@@ -50,6 +69,7 @@ class Reader {
     private readonly buffer: Buffer,
     private readonly limit: number,
     private readonly sourcePath: string,
+    private readonly origin: number,
   ) {}
 
   skipBlank(): void {
@@ -68,6 +88,22 @@ class Reader {
     return index < this.limit ? this.buffer[index] : undefined;
   }
 
+  /**
+   * 装配整条记录。根节点是分支声明时（按记录自身的身份键分派），产物的可读写入面由被选中的
+   * 分支声明决定，守卫在 {@link Reader.materialize} 里已经加过；根节点是对象声明时补根层守卫。
+   */
+  materializeRoot(root: RecordSchemaNode): Record<string, unknown> | 'ignored' | undefined | typeof WHOLE {
+    const top = this.readWindow();
+    if (!top) return undefined;
+    if (top.valueKind !== 'object') return 'ignored';
+    this.cursor = top.begin;
+    const produced = this.materialize(top, root, '$');
+    if (produced === WHOLE) return WHOLE;
+    if (typeof produced !== 'object' || produced === null || Array.isArray(produced)) return undefined;
+    const object = produced as Record<string, unknown>;
+    return root.read === 'object' ? guarded(object, root.members, '$') : object;
+  }
+
   /** 值之后只能跟空白：整档路径在这里会抛，本层也必须判失败。 */
   finishTop(): boolean {
     this.skipBlank();
@@ -75,7 +111,7 @@ class Reader {
   }
 
   /** 跳过一个值并返回其窗口，同时逐项校验语法（含转义形状与数字字面量）。 */
-  readWindow(): { valueKind: JsonValueKind; begin: number; end: number } | undefined {
+  readWindow(): ValueWindow | undefined {
     this.skipBlank();
     const begin = this.cursor;
     const lead = this.byteAt(begin);
@@ -105,15 +141,21 @@ class Reader {
   }
 
   /** 值的文本 → 真实 JS 值：交给 `JSON.parse` 吃这段字节，逐字等价由构造保证。 */
-  decode(window: { valueKind: JsonValueKind; begin: number; end: number }): unknown {
+  decode(window: ValueWindow): unknown {
     if (window.valueKind !== 'string') return JSON.parse(this.text(window.begin, window.end));
     const inner = { begin: window.begin + 1, end: window.end - 1 };
     if (this.isPlainString(inner.begin, inner.end)) return this.buffer.toString('utf8', inner.begin, inner.end);
     return JSON.parse(this.text(window.begin, window.end)) as unknown;
   }
 
-  span(window: { valueKind: JsonValueKind; begin: number; end: number }): JsonTextSpan {
-    return { sourcePath: this.sourcePath, begin: window.begin, end: window.end, valueKind: window.valueKind };
+  /** 字节窗口以传入切片为原点；加上切片在文件里的绝对起点才是可对账的文件偏移。 */
+  span(window: ValueWindow): JsonTextSpan {
+    return {
+      sourcePath: this.sourcePath,
+      begin: window.begin + this.origin,
+      end: window.end + this.origin,
+      valueKind: window.valueKind,
+    };
   }
 
   private text(begin: number, end: number): string {
@@ -238,7 +280,10 @@ class Reader {
    * 装配一个对象层：一次走完这层字节，声明过的键取真实值／取字节窗口／继续下钻，未声明的值只跳语法。
    * 进入时游标停在 `{` 上，结束时停在 `}` 之后。语法或结构不合法返回 undefined（＝整条记录畸形）。
    */
-  assemble(members: Readonly<Record<string, RecordSchemaNode>>, path: string): Record<string, unknown> | undefined {
+  assemble(
+    members: Readonly<Record<string, RecordSchemaNode>>,
+    path: string,
+  ): Record<string, unknown> | undefined | typeof WHOLE {
     const produced: Record<string, unknown> = {};
     this.cursor += 1;
     this.skipBlank();
@@ -259,8 +304,10 @@ class Reader {
       const window = this.readWindow();
       if (!window) return undefined;
       if (node) {
+        const value = this.materialize(window, node, `${path}.${name}`);
+        if (value === WHOLE) return WHOLE;
         // 重复键：赋值天然就是 `JSON.parse` 的语义——键序停在首次出现位置，值取最后一次。
-        produced[name] = this.materialize(window, node, `${path}.${name}`);
+        produced[name] = value;
       }
       this.skipBlank();
       const closer = this.byteAt(this.cursor);
@@ -273,7 +320,10 @@ class Reader {
     }
   }
 
-  private assembleArray(element: RecordSchemaNode, path: string): unknown[] | undefined {
+  private assembleArray(
+    element: RecordSchemaNode,
+    path: string,
+  ): unknown[] | undefined | typeof WHOLE {
     const produced: unknown[] = [];
     this.cursor += 1;
     this.skipBlank();
@@ -284,7 +334,9 @@ class Reader {
     for (;;) {
       const window = this.readWindow();
       if (!window) return undefined;
-      produced.push(this.materialize(window, element, `${path}[${produced.length}]`));
+      const value = this.materialize(window, element, `${path}[${produced.length}]`);
+      if (value === WHOLE) return WHOLE;
+      produced.push(value);
       this.skipBlank();
       const closer = this.byteAt(this.cursor);
       if (closer === RBRACKET) {
@@ -300,13 +352,15 @@ class Reader {
    * 按声明取出字段的值。声明的形状与记录里的实际形状不符时**按真实值给出**而不是判畸形：
    * 记录本身是合法 JSON，把声明写错不该改变三档计数的口径。
    */
-  private materialize(window: { valueKind: JsonValueKind; begin: number; end: number }, node: RecordSchemaNode, path: string): unknown {
+  private materialize(window: ValueWindow, node: RecordSchemaNode, path: string): unknown {
     if (node.read === 'span') return this.span(window);
     if (node.read === 'value') return this.decode(window);
+    if (node.read === 'branch') return this.followBranch(window, node, path);
     if (window.valueKind === 'array' && node.read === 'array') {
       const saved = this.cursor;
       this.cursor = window.begin;
       const produced = this.assembleArray(node.element, path);
+      if (produced === WHOLE) return WHOLE;
       if (produced === undefined) {
         this.cursor = saved;
         return this.decode(window);
@@ -317,6 +371,7 @@ class Reader {
       const saved = this.cursor;
       this.cursor = window.begin;
       const produced = this.assemble(node.members, path);
+      if (produced === WHOLE) return WHOLE;
       if (produced === undefined) {
         this.cursor = saved;
         return this.decode(window);
@@ -324,6 +379,69 @@ class Reader {
       return guarded(produced, node.members, path);
     }
     return this.decode(window);
+  }
+
+  /**
+   * 分支节点：先看 `on` 键取到分支身份，再按该分支的声明装配同一个窗口。找不到身份、身份不是
+   * 字符串、或该分支没进表，一律交回 {@link WHOLE}——调用方因此对没覆盖到的记录族保持原有语义。
+   */
+  private followBranch(window: ValueWindow, node: Extract<RecordSchemaNode, { read: 'branch' }>, path: string): unknown {
+    if (window.valueKind !== 'object') return WHOLE;
+    const saved = this.cursor;
+    this.cursor = window.begin;
+    const identity = this.branchKey(node.on);
+    if (identity === INVALID) {
+      this.cursor = saved;
+      return WHOLE;
+    }
+    const target = node.cases[identity === ABSENT ? '-' : (identity as string)];
+    if (!target) {
+      this.cursor = saved;
+      return WHOLE;
+    }
+    this.cursor = window.begin;
+    const produced = this.materialize(window, target, `${path}.${node.on}`);
+    // 无论分支内部走到哪，本层的结束位置由窗口给定：外层还要接着按 `,`／`}` 判定记录是否完整。
+    this.cursor = produced === WHOLE ? saved : window.end;
+    return produced;
+  }
+
+  /** 在本层成员里找分支身份键的值：只接受字符串，扫完整层没找到按 `undefined`（＝没有该键）。 */
+  private branchKey(on: string): string | typeof ABSENT | typeof INVALID {
+    this.cursor += 1;
+    this.skipBlank();
+    if (this.byteAt(this.cursor) === RBRACE) {
+      this.cursor += 1;
+      return ABSENT;
+    }
+    for (;;) {
+      this.skipBlank();
+      if (this.byteAt(this.cursor) !== QUOTE) return INVALID;
+      const keyBegin = this.cursor;
+      if (this.scanString() < 0) return INVALID;
+      const name = this.decode({ valueKind: 'string', begin: keyBegin, end: this.cursor }) as string;
+      this.skipBlank();
+      if (this.byteAt(this.cursor) !== COLON) return INVALID;
+      this.cursor += 1;
+      const window = this.readWindow();
+      if (!window) return INVALID;
+      if (name === on) {
+        // 身份键本身按声明给出：先确认结构合法（后面必须跟 , 或 }），再取值。
+        this.skipBlank();
+        const next = this.byteAt(this.cursor);
+        if (next !== RBRACE && next !== COMMA) return INVALID;
+        if (window.valueKind !== 'string') return INVALID;
+        return this.decode(window) as string;
+      }
+      this.skipBlank();
+      const closer = this.byteAt(this.cursor);
+      if (closer === RBRACE) {
+        this.cursor += 1;
+        return ABSENT;
+      }
+      if (closer !== COMMA) return INVALID;
+      this.cursor += 1;
+    }
   }
 
   private nextBlank(from: number): number {
@@ -353,7 +471,11 @@ function isHex(byte: number | undefined): boolean {
 const PROTOCOL_KEYS = new Set(['toJSON', 'then', 'catch', 'finally', 'inspect']);
 
 /** 守卫：装配出来的对象只允许读声明过的键，取到没声明的键当场抛错而不是悄悄给 `undefined`。 */
-function guarded(object: Record<string, unknown>, declared: Readonly<Record<string, RecordSchemaNode>>, path: string): object {
+function guarded(
+  object: Record<string, unknown>,
+  declared: Readonly<Record<string, RecordSchemaNode>>,
+  path: string,
+): Record<string, unknown> {
   const names = new Set(Object.keys(declared));
   return new Proxy(object, {
     get(target, property) {
@@ -369,16 +491,18 @@ function guarded(object: Record<string, unknown>, declared: Readonly<Record<stri
  * 按 schema 装配一行记录。`malformed` 与整档路径的「`JSON.parse` 抛错」同判，`ignored` 对应
  * 「不是对象」的值——三档计数（源记录／畸形／非对象）不能因为走哪条路而分叉。
  */
-export function assembleRecord(buffer: Buffer, sourcePath: string, root: RecordSchemaNode): AssembleResult {
-  if (root.read !== 'object') return { outcome: 'malformed' };
-  const reader = new Reader(buffer, buffer.length, sourcePath);
-  const top = reader.readWindow();
-  if (!top) return { outcome: 'malformed' };
-  if (top.valueKind !== 'object') return { outcome: 'ignored' };
-  reader.setCursor(top.begin);
-  const produced = reader.assemble(root.members, '$');
+export function assembleRecord(
+  buffer: Buffer,
+  sourcePath: string,
+  root: RecordSchemaNode,
+  origin = 0,
+): AssembleResult {
+  const reader = new Reader(buffer, buffer.length, sourcePath, origin);
+  const produced = reader.materializeRoot(root);
+  if (produced === WHOLE) return { outcome: 'whole' };
+  if (produced === 'ignored') return { outcome: 'ignored' };
   if (!produced) return { outcome: 'malformed' };
   if (!reader.finishTop()) return { outcome: 'malformed' };
-  return { outcome: 'record', record: guarded(produced, root.members, '$') };
+  return { outcome: 'record', record: produced };
 }
 

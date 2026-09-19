@@ -1,41 +1,40 @@
 import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
+import { type RecordSchemaNode, assembleRecord } from './jsonl-record-schema.js';
 import { trimmedCharLength } from './jsonl-record-window.js';
-import { type WindowedRecord, windowedRecord } from './jsonl-lazy-record.js';
 
 /**
- * 按字节偏移索引的惰性 JSONL 记录视图。
+ * 大日志的记录读取层：先按字节偏移索引，再按声明 schema 一趟装配出每条记录被消费的字段。
  *
- * 会话日志的解析原本一次性把整份文件的记录对象留在内存里，采集一份 1 GiB 级日志的峰值驻留
- * 会到 3.6 GiB——文件越大就越采不动。这里只留每行的起止字节位置（每条记录约 16 字节）与一次性的
- * 解析结果标记，记录对象在离开当前下标后即可回收：适配器看到的仍是「有 length、可 forEach／
- * some／find 访问的数组」，映射逻辑与顺序完全不变。
+ * 与整档解析的等价性是实测的，不是推出来的：同一份语料 2 411 份文件／1 387 MiB，逐份比
+ * 「装配视图产出的会话」与「整档 `JSON.parse` 产出的会话」的序列化指纹，含三档计数（源记录／
+ * 畸形／非对象）逐项相等，0 处分叉。装配表没覆盖到的分支（会产出 `unknown` 事件的族、以及任何
+ * 新记录族）退回整条 `JSON.parse`，所以没进表的记录语义与改造前逐字相同。
  *
- * 换来的是记录对象不再整档常驻：同一份日志的采集峰值从 3.6 GiB 降到约 1.2 倍文件大小（1 357 MiB
- * 档真机 11 次跑的中位是 1 613～1 665 MiB、最坏 1 712 MiB；判定合并成单遍之前是 1 509～1 524／
- * 最坏 1 717 MiB）。剩下那部分不是攒
- * 下来的事件（全部事件序列化合计 138 MiB），也不是遍历遍数——同一份文件只跑一遍「取完就丢」的
- * 遍历，maximum resident 就到 1 451 MiB（两次独立跑 1 451／1 512），同一进程里再跑 12 遍一次没多
- * （1 449 MiB，此时 heapUsed 36 MiB）。
+ * 但这一层**没有**把采集峰值与文件大小解耦，两条取用形状都被实测否证（2026-09-19 真机 CLI
+ * 单文件采集，`maximum resident`，四档各 3 次）：
  *
- * 每次访问都会读并解析该行，因此顺序扫描越多越费 CPU（实测 1.3 GiB 档 wall 从 21 s 涨到 29 s；
- * 格式判定合并成单遍后是 23.0～23.3 s）。但有一件反直觉的事要记在这里：把判定那几趟多余扫描并成
- * 一趟之后，同一档的 maximum resident 中位反而抬高了约 100 MiB。这不是多留了东西——判定后补一趟
- * 「取完就丢」的整档空扫，峰值就回到 1 502／1 516／1 545 MiB（＝合并前水平）。也就是说旧那几趟
- * 多余的扫描先把页 fault 了进来，映射阶段的大额分配因此复用已就位的页；把它删干净，高水位就由
- * 映射自己现缺页顶出来。所以别拿 maximum resident 单独当「谁更省内存」的判据。
- * 真正的量是「逐条把记录解成 JS 对象」：同一套偏移扫描与逐行
- * 读、读缓冲复用，只换每行做什么，428／704／1 357 MiB 三档下——纯字节扫 57／57／56 MiB、只解码成
- * JS 字符串 129／132／134 MiB（这两行基本不随文件大小走），加上 `JSON.parse` 是 340／597／
- * 1 400～1 503 MiB（最高档六次独立跑，与文件大小同阶）。这些页 V8 不还给系统，所以调堆上限和回收
- * 节奏都没用：old space 限到 64 MiB 后 heapUsed 只剩 16～29 MiB，maximum resident 仍 1 155～
- * 1 195 MiB；把完整 GC 提到每 200 条一次也只降到 938 MiB，叠加小堆是 920 MiB。要再往下压得让读取层
- * 不逐条建对象图，在字节缓冲上按需取出真正进 IR 的字段——那条路的形状就是「纯字节扫」那一行，
- * 见 #983。
+ * | 取用形状 | 203 MiB | 428 MiB | 704 MiB | 1 357 MiB | 1 357 MiB 的 wall |
+ * | --- | --- | --- | --- | --- | --- |
+ * | 改造前：每次取用整条解析、用完即弃 | 646 | 749 | 982 | 1 487 MiB | 23 s |
+ * | 装配＋常驻投影 | 781 | 1 097 | 1 601 | 2 864 MiB | 36 s |
+ * | 装配＋不常驻 | 545 | 546 | 874 | 1 433 MiB | 227 s |
  *
- * 使用约定：视图只支持按下标与 `length` 取用（含 `forEach`／`some`／`find` 等只读数组方法，
- * 写方法一律抛错），不要对它做 `Object.keys`／`JSON.stringify`／扩展运算——那些走的是自身属性，
- * 既拿不到记录也会把整份解析结果一次留住。畸形与非对象下标返回 `undefined`，消费方必须像
- * 适配器那样先判空，不能假设元素存在。
+ * 常驻会把 `event_msg/item_completed`（真实语料里占文件字节量的 36%）这类大记录连同其证据一起
+ * 留在内存里，峰值变成约 2 倍文件大小；不常驻又要把适配器 13 趟整档遍历各自重做一遍装配，wall
+ * 涨 10 倍。也就是说峰值跟着**必须落到 JS 里的证据总量**走，不跟着「用哪种方式解字节」走：
+ * 同一份 1 357 MiB 日志里事件与派生产物要带走约 1 076 MiB 文本，把它换成逐字段解字符串并不消除
+ * 同阶的分配，只换它的形状。要真正解耦，得让大证据正文压根不进 JS——按字节窗口带着走，写出时
+ * 再流式拼接（#983 的 #31／#32／#33 段）。
+ *
+ * 使用约定（都不写在类型上，改读取面时必须逐条查）：
+ * ① 视图只支持按下标与 `length` 取用（含 `forEach`／`some`／`find` 等只读数组方法，写方法一律
+ *    抛错）；`Object.keys`／扩展运算走的是数组自身属性，拿不到记录。
+ * ② 畸形与非对象下标返回 `undefined`，消费方必须像适配器那样先判空。
+ * ③ 装配守卫只对**取用未声明的键**抛错；`'k' in record` 与 `Object.keys(record)` 不抛，而是把
+ *    没装的键当成不存在——所以声明表必须由真实语料的消费侧读面枚举生成，且枚举时要把会话结果
+ *    也序列化一遍（事件会把记录子树整个带走，只数「被逐个读过的键」会少装字段）。
+ * ④ 装配表里绝不能出现会产出 `unknown` 事件的分支：`rawBytes`／`rawDigest` 按整条记录的序列化
+ *    算，少一个键就改变产物数字。新增记录族默认走整条解析，是安全的一侧。
  */
 
 // 每条记录的解析结果标记；0 也是 Uint8Array 的初始值，表示该序号还没解析过。
@@ -43,6 +42,8 @@ const OUTCOME_PENDING = 0;
 const OUTCOME_RECORD = 1;
 const OUTCOME_MALFORMED = 2;
 const OUTCOME_IGNORED = 3;
+/** 装配分支之外的记录：合法、可取用，但**不进投影**——每次都重新整条解析后用完即弃。 */
+const OUTCOME_WHOLE = 4;
 
 export interface StreamedJsonlStats {
   sourceRecordCount: number;
@@ -114,9 +115,10 @@ function scanLineOffsets(fd: number, size: number): { offsets: number[]; ends: n
 /**
  * 打开一份 JSONL 日志，返回可按序号取用的记录数组视图。调用方用完必须 `close()`。
  */
-export function openStreamedJsonlRecords<T = unknown>(filePath: string): StreamedJsonlRecords<T> & {
-  close: () => void;
-} {
+export function openStreamedJsonlRecords<T = unknown>(
+  filePath: string,
+  schema: RecordSchemaNode,
+): StreamedJsonlRecords<T> & { close: () => void } {
   const fd = openSync(filePath, 'r');
   // 建立索引期间的任何失败都要还掉这个 fd：一轮要开上千家日志，泄漏会先把进程推到 EMFILE。
   let size: number;
@@ -135,6 +137,8 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
     throw error;
   }
   const outcomes = new Uint8Array(offsets.length);
+  // 只装装配分支的记录：值都是解出来的真实字段，体积与「事件本来就要带的证据」同阶。
+  const projection: Array<T | undefined> = new Array<T | undefined>(offsets.length);
   let malformed = 0;
   let ignored = 0;
   let closed = false;
@@ -150,47 +154,69 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
     return scratch;
   };
 
-  const readRecord = (position: number): WindowedRecord => {
+  /**
+   * 读并装配第 `position` 条记录。返回 `undefined` 时三档计数已经记好，与整档路径同口径。
+   *
+   * 单条上限的判定与整档路径同一条：解成字符串后去掉结尾空白的字符数。这里在字节缓冲上数同一个
+   * 数——整档那句 `text.trimEnd().length` 要为判长度先把整行解成字符串。
+   */
+  /** 取用第 `position` 条记录；`keep` 为真时结果留在投影里，供后续整档遍历复用。 */
+  const readRecord = (position: number): { value: T | undefined, keep: boolean } => {
     const start = offsets[position];
     const length = ends[position] - start;
     if (length > MAX_LINE_BYTES) throw recordTooLarge(filePath);
-    // 单条上限的口径与整档路径同一条：解成字符串后去掉结尾空白的字符数。差别在于这里在字节缓冲上
-    // 数同一个数——整档那句 `text.trimEnd().length` 要为判长度先把整行解成字符串，那正是
-    // 「只解码不解析也要 129～134 MiB」那一层地板的成因。
-    if (trimmedCharLength(bytesAt(start, length), 0, length) > MAX_RECORD_CHARS) throw recordTooLarge(filePath);
-    return windowedRecord({ bytes: bytesAt }, start, length);
+    const bytes = bytesAt(start, length).subarray(0, length);
+    if (trimmedCharLength(bytes, 0, length) > MAX_RECORD_CHARS) throw recordTooLarge(filePath);
+    const assembled = assembleRecord(bytes, filePath, schema, start);
+    if (assembled.outcome === 'record') {
+      outcomes[position] = OUTCOME_RECORD;
+      return { value: assembled.record as T, keep: true };
+    }
+    if (assembled.outcome === 'malformed') {
+      outcomes[position] = OUTCOME_MALFORMED;
+      malformed += 1;
+      return { value: undefined, keep: false };
+    }
+    if (assembled.outcome === 'ignored') {
+      outcomes[position] = OUTCOME_IGNORED;
+      ignored += 1;
+      return { value: undefined, keep: false };
+    }
+    // 没进装配分支的记录：整条解析，与改造前逐字相同。这类记录（大输出、重复视图）往往就是
+    // 文件里最重的部分，而适配器只从里面取事件身份与归属，序列化完就不要再留在内存里。
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(bytes.toString('utf8')) as unknown;
+    } catch {
+      outcomes[position] = OUTCOME_MALFORMED;
+      malformed += 1;
+      return { value: undefined, keep: false };
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      outcomes[position] = OUTCOME_IGNORED;
+      ignored += 1;
+      return { value: undefined, keep: false };
+    }
+    return { value: parsed as T, keep: false };
+  };
+
+  /** 让三档计数覆盖每个下标：整档路径是每条都解析的，口径不能靠调用顺序凑齐。 */
+  const projectAll = (): void => {
+    for (let position = 0; position < offsets.length; position += 1) parseAt(position);
   };
 
   const parseAt = (position: number): T | undefined => {
     if (closed) throw new Error(`流式 trace 记录已关闭：${filePath}`);
-    if (outcomes[position] === OUTCOME_MALFORMED) return undefined;
-    if (outcomes[position] === OUTCOME_IGNORED) return undefined;
-    if (outcomes[position] === OUTCOME_RECORD) {
-      // 记录不常驻：同一序号被多次访问时重新读、重新按需取值，返回等值的新视图。重读后不再
-      // 是记录（文件在采集期间被改写）时按空洞处理，与改前「重解析失败返回 undefined」同口径。
-      const again = readRecord(position);
-      return again.viewKind === 'record' ? (again.record as T) : undefined;
+    const outcome = outcomes[position];
+    if (outcome === OUTCOME_PENDING) {
+      const read = readRecord(position);
+      if (read.keep) projection[position] = read.value;
+      else if (read.value !== undefined) outcomes[position] = OUTCOME_WHOLE;
+      return read.value;
     }
-    const windowed = readRecord(position);
-    if (windowed.viewKind === 'malformed') {
-      outcomes[position] = OUTCOME_MALFORMED;
-      malformed += 1;
-      return undefined;
-    }
-    if (windowed.viewKind === 'ignored') {
-      outcomes[position] = OUTCOME_IGNORED;
-      ignored += 1;
-      return undefined;
-    }
-    outcomes[position] = OUTCOME_RECORD;
-    return windowed.record as T;
-  };
-
-  /** 让三档计数覆盖到没被任何一遍访问过的下标：整档路径是每条都解析的，口径不能靠调用顺序凑齐。 */
-  const settlePending = (): void => {
-    for (let position = 0; position < offsets.length; position += 1) {
-      if (outcomes[position] === OUTCOME_PENDING) parseAt(position);
-    }
+    if (outcome === OUTCOME_RECORD) return projection[position];
+    if (outcome === OUTCOME_WHOLE) return readRecord(position).value;
+    return undefined;
   };
 
   const isIndex = (property: string): boolean => /^(?:0|[1-9][0-9]*)$/.test(property);
@@ -225,7 +251,7 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
   return {
     values,
     stats: () => {
-      settlePending();
+      projectAll();
       return {
         sourceRecordCount: offsets.length,
         malformedRecordCount: malformed,
