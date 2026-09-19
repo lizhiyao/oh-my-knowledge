@@ -126,6 +126,23 @@ Rubric 评委使用 `omk.rubric-judge/v2` 和同一个宿主拥有的单次调�
 | Krippendorff alpha | 新的区间距离 Analysis 标准 | 现有公式不是 Core 内置项，未定义情形必须成为不确定 |
 | 发布结论 | 新的 OMK 发布 DecisionPolicy | Core `progress/v1` 是单效应三向策略，不是旧六级契约 |
 
+### Bootstrap 实现归属
+
+两套 bootstrap 实现对应有意区分的版本化标准，不能作为同一个冻结随机流互换。
+`eval-core/analysis/builtins.ts` 拥有通用的 `bootstrap.* /v1`：种子包含根种子、
+AnalysisPlan 摘要、节点与实现身份及比较身份，SHA 派生抽样保持声明的分层，结果保留
+未舍入边界。`eval-workflows/analysis/bootstrap.ts` 拥有产品 Mulberry32 随机流，
+由 `omk.bootstrap-family-table/v1` 和 `/v2` 消费，描述性区间保留四位小数。
+产品 v2 的判定证据在下文单独定义。
+
+`test/eval-core/conformance/statistics.test.ts` 使用相同的均值、配对差和独立差观测，
+在 alpha `0.1`、`256` 次抽样下对照两套标准，锁定相同的点估计及各自精确的区间端点；
+不同 identity 之间不承诺区间相等。产品表测试另行验证适配路径和 v1／v2 判定契约。
+重构必须保留这些向量、种子派生、抽样顺序、采样单元、退化输入处理与舍入方式。
+统一随机流需要新的测量 identity 和明确的可比性迁移，不能作为辅助函数替换静默进行。
+
+### 产品 Bootstrap 标准
+
 旧版等价 bootstrap 标准重采样已声明的实验单元、保持配对、使用冻结随机流，并公开点估计、舍入后的边界、重采样次数、alpha，以及从舍入边界派生的显著性。它绝不能回退到非配对估计量。该行为冻结在 `omk.bootstrap-family-table/v1` 中用于重放，但不再作为生产判定标准。
 
 退化输入属于标准的一部分，而不是实现偶然。仅一个观测的旧均值区间是 `samples=0` 的点区间；仅一个完整配对的配对差仍执行请求数量的重采样，并返回恒定差值。空输入映射为权威 Core 的不确定结果，历史全零对象只允许出现在旧投影中。统计实现落地前，这些情形分别拥有黄金向量。

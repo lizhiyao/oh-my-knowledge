@@ -126,6 +126,26 @@ The exact migration standards are distinct from similarly named generic Core bui
 | Krippendorff alpha | new interval-distance Analysis standard | Existing formula is not a Core built-in and undefined cases must become inconclusive |
 | release verdict | new OMK release DecisionPolicy | Core `progress/v1` is a single-effect three-way policy, not the six-tier legacy contract |
 
+### Bootstrap implementation ownership
+
+The two bootstrap implementations are intentional versioned profiles, not interchangeable
+implementations of one frozen random stream. `eval-core/analysis/builtins.ts` owns generic
+`bootstrap.* /v1`: its seed includes the root seed, AnalysisPlan digest, node and implementation
+identities, and comparison identities; SHA-derived draws preserve declared strata and the
+result retains unrounded bounds. `eval-workflows/analysis/bootstrap.ts` owns the product
+Mulberry32 stream consumed by `omk.bootstrap-family-table/v1` and `/v2`, including
+four-decimal descriptive intervals. Product v2's decision evidence is defined separately below.
+
+`test/eval-core/conformance/statistics.test.ts` compares both profiles on the same mean,
+paired-difference and independent-difference observations at alpha `0.1` with `256` draws.
+It pins equal point estimates and each profile's exact endpoints: interval equality is not
+promised across identities. The product table tests additionally verify the adapter path and
+v1/v2 decision contracts. A refactor must preserve these vectors, seed derivations, draw order,
+sampling units, degenerate-input handling and rounding. Unifying the random streams requires
+a new measurement identity and an explicit comparability migration, not a helper substitution.
+
+### Product bootstrap profiles
+
 The legacy-equivalence bootstrap standard resamples the declared experimental unit, preserves pairing, uses the frozen random stream, and exposes point estimate, rounded bounds, resample count, alpha, and significance derived from the rounded bounds. It must never fall back to an unpaired estimator. That behavior remains frozen in `omk.bootstrap-family-table/v1` for replay, but is not the production decision standard.
 
 Degenerate inputs are part of the standard rather than implementation accidents. A legacy mean interval over one observation is the point interval with `samples=0`; a paired difference over one complete pair performs the requested resamples and returns the constant difference. Empty inputs map to an inconclusive authoritative Core result, with the historical all-zero object allowed only in the legacy projection. These cases receive separate golden vectors before the statistical implementation lands.
