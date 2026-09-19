@@ -9,18 +9,14 @@ import {
   EvaluationErrorSchema,
   IdentifierSchema,
   SchemaIdentitySchema,
-  assertEvaluationBundleSourceMatchesPlan,
-  analysisRuntimeDependencyTrusts,
   canonicalizeJson,
   countAnalysisResamplingUnits,
   derivePlannedEvaluationCoordinates,
   derivePlannedExecutionCoordinates,
   digestArtifactPayload,
   digestCanonicalJson,
-  effectiveEvaluationBundleTrust,
   parseWireDocument,
   schemaIdentityKey,
-  verifyAnalysisBundle,
   type AnalysisBundle,
   type AnalysisBundleSource,
   type CoreSchemaValidator,
@@ -37,9 +33,16 @@ import {
   type SchemaIdentity,
   type Sha256Digest,
 } from '../contracts/index.js';
+import {  analysisRuntimeDependencyTrusts,
+  verifyAnalysisBundle,
+} from '../verify/index.js';
+import {  assertEvaluationBundleSourceMatchesPlan,
+  effectiveEvaluationBundleTrust,
+} from '../verify/index.js';
 import { analysisComparisonAppliesToMetricInput } from '../contracts/analysis-input-matching.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
-import type { SealedRunPlan } from '../compiler/index.js';
+import type {
+  SealedRunPlan,} from '../compiler/index.js';
 import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
 import {

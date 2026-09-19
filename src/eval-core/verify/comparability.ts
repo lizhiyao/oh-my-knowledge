@@ -71,24 +71,23 @@ import type {
   ComparabilityStage,
   ComparabilityVerificationContext,
   ComparisonScope,
-  RuntimeQualificationFact,
-} from '../contracts/comparability.js';
+  RuntimeQualificationFact,} from '../contracts/comparability.js';
 import {
   assertAnalysisBundleSourceMatchesPlan,
   effectiveAnalysisBundleTrust,
-} from '../contracts/analysis-bundle.js';
+} from './analysis-bundle.js';
 import {
   assertEvaluationBundleSourceMatchesPlan,
   effectiveEvaluationBundleTrust,
-} from '../contracts/evaluation-bundle.js';
+} from './evaluation-bundle.js';
 import {
   assertExecutionBundleSourceMatchesPlan,
   effectiveExecutionBundleTrust,
-} from '../contracts/execution-bundle.js';
+} from './execution-bundle.js';
 import {
   assertDecisionResultSourceChain,
   effectiveDecisionResultTrust,
-} from '../contracts/evaluation-report.js';
+} from './evaluation-report.js';
 
 function equalJson(left: unknown, right: unknown): boolean {
   return canonicalizeJson(left) === canonicalizeJson(right);

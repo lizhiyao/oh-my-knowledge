@@ -1,9 +1,9 @@
-import {
-  prepareEvaluationSeriesPlan,
-  type EvaluationSeriesDefinition,
-  type EvaluationSeriesMemberSource,
-  type EvaluationSeriesPlan,
-} from '../eval-core/contracts/index.js';
+import type {
+  EvaluationSeriesDefinition,
+  EvaluationSeriesMemberSource,
+  EvaluationSeriesPlan,} from '../eval-core/contracts/index.js';
+import {  prepareEvaluationSeriesPlan,
+} from '../eval-core/verify/index.js';
 import {
   runEvaluationSeries,
   type EvaluationSeriesRuntimePorts,

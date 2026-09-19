@@ -8,12 +8,13 @@ import {
   canonicalizeJsonBytes,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
-  parseExecutionBundleDocument,
   type CapturedContent,
   type ExecutionBundle,
   type JsonValue,
   type Sha256Digest,
 } from '../eval-core/contracts/index.js';
+import {  parseExecutionBundleDocument,
+} from '../eval-core/verify/index.js';
 import {
   executedEvaluations,
 } from './evaluation/result-state.js';

@@ -2,18 +2,22 @@ import { TRUST_LEVEL, minimumTrust } from '../../eval-core/primitives/provenance
 import {
   EvaluationReportValidationError,
   digestCanonicalJson,
-  effectiveAnalysisBundleTrust,
-  effectiveDecisionResultTrust,
-  effectiveEvaluationBundleTrust,
-  effectiveExecutionBundleTrust,
-  parseEvaluationReport,
   parseWireDocument,
-  verifyAnalysisBundle,
-  verifyDecisionResult,
-  verifyEvaluationBundle,
-  verifyExecutionBundle,
   type CoreSchemaValidator,
 } from '../../eval-core/contracts/index.js';
+import {  effectiveAnalysisBundleTrust,
+  verifyAnalysisBundle,
+} from '../../eval-core/verify/index.js';
+import {  effectiveEvaluationBundleTrust,
+  verifyEvaluationBundle,
+} from '../../eval-core/verify/index.js';
+import {  effectiveDecisionResultTrust,
+  parseEvaluationReport,
+  verifyDecisionResult,
+} from '../../eval-core/verify/index.js';
+import {  effectiveExecutionBundleTrust,
+  verifyExecutionBundle,
+} from '../../eval-core/verify/index.js';
 import { assertSealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
   CoreRunArtifactStoreError,

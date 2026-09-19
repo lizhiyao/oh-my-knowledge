@@ -5,18 +5,25 @@ import {
   RuntimeIdentitySchema,
   Sha256DigestSchema,
 } from './common.js';
-import { type AnalysisBundleSource } from './analysis-bundle.js';
-import { type EvaluationBundleSource } from './evaluation-bundle.js';
-import { type ExecutionBundleSource } from './execution-bundle.js';
-import { type DecisionResultSource } from './evaluation-report.js';
+import type {
+  AnalysisBundleSource,} from './analysis-bundle.js';
+import type {
+  EvaluationBundleSource,} from './evaluation-bundle.js';
+import type {
+  ExecutionBundleSource,} from './execution-bundle.js';
+import type {
+  DecisionResultSource,} from './evaluation-report.js';
 import {
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
   type Sha256Digest,
 } from './json.js';
-import { PlanDigestsSchema } from './plans.js';
-import { type SealedRunPlan } from './sealed-run-plan.js';
+import {
+  PlanDigestsSchema,
+} from './plans.js';
+import type {
+  SealedRunPlan,} from './sealed-run-plan.js';
 
 export type ComparabilityRunPlan = SealedRunPlan;
 

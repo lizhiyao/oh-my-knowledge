@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { canonicalizeJson, JsonValueSchema, type JsonValue } from './json.js';
+import {
+  canonicalizeJson,
+  JsonValueSchema,
+  type JsonValue,
+} from './json.js';
 
 export const NonEmptyStringSchema = z.string().min(1);
 export const IdentifierSchema = z.string().min(1).max(256);

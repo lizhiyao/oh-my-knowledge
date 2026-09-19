@@ -1,12 +1,13 @@
 import {
   canonicalizeJson,
-  parseEvaluationSeriesPlan,
-  parseEvaluationSeriesReportDocument,
-  parseSeriesAnalysisBundleDocument,
   type EvaluationSeriesPlan,
   type EvaluationSeriesReport,
   type SeriesAnalysisBundle,
 } from '../../eval-core/contracts/index.js';
+import {  parseEvaluationSeriesPlan,
+  parseEvaluationSeriesReportDocument,
+  parseSeriesAnalysisBundleDocument,
+} from '../../eval-core/verify/index.js';
 import {
   CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION,
   CoreDownstreamProjectionError,

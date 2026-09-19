@@ -72,7 +72,7 @@ flowchart TD
 
 `shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
-`eval-core/verify` 统一拥有符合性判定：给定契约声明的形状与观测事实，判断现实是否满足计划。`contracts` 只保留 schema、身份与摘要计算，且不得引用 `verify`；分层守卫把契约层里仍然超长的函数登记为债务，只允许缩小。
+`eval-core/verify` 统一拥有符合性判定：给定契约声明的形状与观测事实，判断现实是否满足计划。`contracts` 只保留 schema、身份与摘要计算，且不得引用 `verify`；分层守卫目前只登记仍留在契约层的规范化与摘要函数，这份债务只允许缩小。
 
 `eval-core/primitives` 统一拥有规范排序、来源信任顺序和 JSON Pointer 遍历。它是 contracts 下方的无依赖基础层；契约、Core 各阶段、Runtime 和 workflows 直接复用，不各自维护平行实现。
 

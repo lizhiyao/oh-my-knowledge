@@ -4,7 +4,10 @@ import {
   Sha256DigestSchema,
   TimestampSchema,
 } from './common.js';
-import { canonicalizeJson, digestCanonicalJson } from './json.js';
+import {
+  canonicalizeJson,
+  digestCanonicalJson,
+} from './json.js';
 const LedgerProviderCostSchema = z.object({
   amount: z.number().nonnegative(),
   currency: z.string().regex(/^[A-Z]{3}$/),

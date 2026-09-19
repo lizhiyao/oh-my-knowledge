@@ -5,12 +5,13 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveAttemptId,
   digestCanonicalJson,
-  parseExecutionBundleDocument,
-  verifyExecutionBundle,
   type EvaluationEvent,
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {  parseExecutionBundleDocument,
+  verifyExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
 import { prepareEvaluationPlan } from '../../../src/eval-core/compiler/index.js';
 import {
   ExecutionPortFailure,

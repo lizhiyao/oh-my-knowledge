@@ -9,11 +9,12 @@ import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
-  prepareEvaluationSeriesPlan,
   schemaIdentityKey,
   type CoreSchemaValidator,
   type JsonValue,
 } from '../../../eval-core/contracts/index.js';
+import {  prepareEvaluationSeriesPlan,
+} from '../../../eval-core/verify/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../../eval-core/analysis/index.js';
 import { createJudgeAggregationSchemaValidators } from '../../measurement/analysis/judge-aggregation.js';
 import { createAssertionLayerParameterSchemaValidators } from '../../measurement/analysis/assertion-layer-parameters.js';

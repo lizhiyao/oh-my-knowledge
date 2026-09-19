@@ -4,20 +4,12 @@ import {
   DecisionResultSchema,
   EvaluationReportSchema,
   IdentifierSchema,
-  assertAnalysisBundleSourceMatchesPlan,
   canonicalizeJson,
   computeDecisionPolicyDigest,
-  deriveEvaluationStatus,
   digestArtifactPayload,
   digestCanonicalJson,
-  effectiveAnalysisBundleTrust,
-  effectiveDecisionResultTrust,
-  effectiveEvaluationBundleTrust,
-  effectiveExecutionBundleTrust,
   parseDecisionResultDocument,
-  parseEvaluationReport,
   parseWireDocument,
-  verifyDecisionResult,
   type AnalysisBundle,
   type AnalysisBundleSource,
   type AnalysisRecord,
@@ -31,8 +23,21 @@ import {
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../contracts/index.js';
+import {  assertAnalysisBundleSourceMatchesPlan,
+  effectiveAnalysisBundleTrust,
+} from '../verify/index.js';
+import {  effectiveEvaluationBundleTrust,
+} from '../verify/index.js';
+import {  deriveEvaluationStatus,
+  effectiveDecisionResultTrust,
+  parseEvaluationReport,
+  verifyDecisionResult,
+} from '../verify/index.js';
+import {  effectiveExecutionBundleTrust,
+} from '../verify/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
-import type { SealedRunPlan } from '../compiler/index.js';
+import type {
+  SealedRunPlan,} from '../compiler/index.js';
 import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
 import {

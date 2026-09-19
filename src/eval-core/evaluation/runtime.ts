@@ -12,22 +12,15 @@ import {
   IdentifierSchema,
   MetricObservationSchema,
   UsageRecordSchema,
-  aggregateEvaluationAttemptUsage,
   canonicalizeJson,
   deriveEvaluationAttemptId,
   deriveMetricObservationId,
   derivePlannedEvaluationCoordinates,
   digestArtifactPayload,
   digestCanonicalJson,
-  evaluationRecordMatchesEvidencePolicy,
-  evaluationRecordSatisfiesCacheCostPolicy,
-  evaluationRecordUsageMatchesAttempts,
   mostRestrictiveProviderCostLimit,
-  assertExecutionBundleSourceMatchesPlan,
-  effectiveExecutionBundleTrust,
   parseWireDocument,
   projectExecutionFacts,
-  verifyEvaluationBundle,
   type CapturedContent,
   type EvaluationAttempt,
   type EvaluationBundle,
@@ -44,8 +37,18 @@ import {
   type Sha256Digest,
   type UsageRecord,
 } from '../contracts/index.js';
+import {  aggregateEvaluationAttemptUsage,
+  evaluationRecordMatchesEvidencePolicy,
+  evaluationRecordSatisfiesCacheCostPolicy,
+  evaluationRecordUsageMatchesAttempts,
+  verifyEvaluationBundle,
+} from '../verify/index.js';
+import {  assertExecutionBundleSourceMatchesPlan,
+  effectiveExecutionBundleTrust,
+} from '../verify/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
-import type { SealedRunPlan } from '../compiler/index.js';
+import type {
+  SealedRunPlan,} from '../compiler/index.js';
 import { EvaluatorCapabilitiesSchema } from '../compiler/index.js';
 import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';

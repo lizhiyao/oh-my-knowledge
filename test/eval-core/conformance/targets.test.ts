@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseEvaluationReport,
-  effectiveAnalysisBundleTrust,
-  effectiveDecisionResultTrust,
-  effectiveEvaluationBundleTrust,
-  effectiveExecutionBundleTrust,
+import type {
+  Sha256Digest,} from '../../../src/eval-core/contracts/index.js';
+import {  effectiveAnalysisBundleTrust,
   verifyAnalysisBundle,
-  verifyDecisionResult,
+} from '../../../src/eval-core/verify/index.js';
+import {  effectiveEvaluationBundleTrust,
   verifyEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseEvaluationReport,
+  effectiveDecisionResultTrust,
+  verifyDecisionResult,
+} from '../../../src/eval-core/verify/index.js';
+import {  effectiveExecutionBundleTrust,
   verifyExecutionBundle,
-  type Sha256Digest,
-} from '../../../src/eval-core/contracts/index.js';
+} from '../../../src/eval-core/verify/index.js';
 import {
   createBuiltinAnalysisSchemaValidators,
   materializeEvaluationReport,

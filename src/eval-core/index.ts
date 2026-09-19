@@ -8,8 +8,7 @@ export type {
   AdvancedEvaluationEngine,
   AdvancedPreparedEvaluation,
   EvaluationStageSessionErrorCode,
-  PreparedEvaluationStageSession,
-} from './engine/index.js';
+  PreparedEvaluationStageSession,} from './engine/index.js';
 
 export {
   AnalysisBundleValidationError,
@@ -21,29 +20,32 @@ export {
   COMPARABILITY_POLICY_SCHEMA_VERSION,
   COMPARABILITY_REASON_CODES,
   createComparabilityPolicy,
+  parseComparabilityAssessmentDocument,
+  parseComparabilityPolicyDocument,
+  parseDecisionResultDocument,
+} from './contracts/index.js';
+export {
+  createEvaluationSeriesMemberSource,
   effectiveAnalysisBundleTrust,
   effectiveDecisionResultTrust,
   effectiveEvaluationBundleTrust,
   effectiveExecutionBundleTrust,
   parseAnalysisBundle,
   parseAnalysisBundleDocument,
-  parseComparabilityAssessmentDocument,
-  parseComparabilityPolicyDocument,
-  parseDecisionResultDocument,
   parseEvaluationBundle,
   parseEvaluationBundleDocument,
   parseEvaluationReport,
   parseEvaluationReportDocument,
+  parseEvaluationSeriesPlan,
+  parseEvaluationSeriesReportDocument,
   parseExecutionBundle,
   parseExecutionBundleDocument,
+  parseSeriesAnalysisBundleDocument,
+  prepareEvaluationSeriesPlan,
   verifyAnalysisBundle,
   verifyDecisionResult,
   verifyEvaluationBundle,
   verifyExecutionBundle,
-} from './contracts/index.js';
-export {
-  assessComparability,
-  parseComparabilityAssessment,
 } from './verify/index.js';
 export type {
   AnalysisBundlePlanVerification,
@@ -92,11 +94,6 @@ export {
   EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
   SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
   createEvaluationSeriesDefinition,
-  createEvaluationSeriesMemberSource,
-  parseEvaluationSeriesPlan,
-  parseEvaluationSeriesReportDocument,
-  parseSeriesAnalysisBundleDocument,
-  prepareEvaluationSeriesPlan,
 } from './contracts/index.js';
 export type {
   EvaluationSeriesDefinition,
@@ -139,19 +136,20 @@ export type {
   SeriesDecisionRun,
   SeriesDecisionRunContext,
   SeriesDecisionRuntime,
-  RunStabilityValue,
-} from './series/index.js';
+  RunStabilityValue,} from './series/index.js';
 
-export type { ExecutionRun as ExecutionStageRun } from './execution/index.js';
-export type { EvaluationRun as EvaluationStageRun } from './evaluation/index.js';
+export type {
+  ExecutionRun as ExecutionStageRun,} from './execution/index.js';
+export type {
+  EvaluationRun as EvaluationStageRun,} from './evaluation/index.js';
 export type {
   AnalysisRun as AnalysisStageRun,
   DecisionRun as DecisionStageRun,
-  EvaluationReportRun,
-} from './analysis/index.js';
+  EvaluationReportRun,} from './analysis/index.js';
 
 export {
   EVALUATION_CORE_JSON_SCHEMA_FILES,
   resolveEvaluationCoreJsonSchema,
 } from './schema-url.js';
-export type { EvaluationCoreJsonSchemaFile } from './schema-url.js';
+export type {
+  EvaluationCoreJsonSchemaFile,} from './schema-url.js';

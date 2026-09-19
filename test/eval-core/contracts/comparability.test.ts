@@ -10,16 +10,17 @@ import {
   digestCanonicalJson,
   parseComparabilityAssessmentDocument,
   parseComparabilityPolicyDocument,
-  parseEvaluationBundle,
-  parseExecutionBundle,
   type ComparabilityPolicy,
   type ComparabilityRuntimeAttestation,
   type ComparabilitySourcePrefix,
   type ExecutionBundle,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
-import {
-  assessComparability,
+import {  parseEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  assessComparability,
   parseComparabilityAssessment,
 } from '../../../src/eval-core/verify/index.js';
 import {

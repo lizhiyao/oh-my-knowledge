@@ -1,6 +1,6 @@
 import { compareStrings } from '../primitives/ordering.js';
 import { resolveJsonPointer } from '../primitives/json-pointer.js';
-import type {
+import {
   AnalysisGraphDefinition,
   ComparisonDefinition,
   DecisionPolicyDefinition,
@@ -27,7 +27,11 @@ import {
   type PlanDigests,
   type ResolvedRuntime,
 } from './plans.js';
-import type { Extensions, RuntimeIdentity, SchemaIdentity } from './common.js';
+import {
+  Extensions,
+  RuntimeIdentity,
+  SchemaIdentity,
+} from './common.js';
 import {
   assertCanonicalJson,
   canonicalizeJson,
@@ -35,7 +39,9 @@ import {
   type JsonValue,
   type Sha256Digest,
 } from './json.js';
-import { deriveSchedulingTargetGroups } from './execution-identities.js';
+import {
+  deriveSchedulingTargetGroups,
+} from './execution-identities.js';
 
 export interface DatasetDigests {
   datasetRevisionDigest: Sha256Digest;

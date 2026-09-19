@@ -10,7 +10,11 @@ import {
   resolveEffectiveExecutionControl,
   type EffectiveExecutionControl,
 } from './execution-controls.js';
-import type { ExecutionPlan, ExecutionPlanPolicy, ResolvedRuntime } from './plans.js';
+import {
+  ExecutionPlan,
+  ExecutionPlanPolicy,
+  ResolvedRuntime,
+} from './plans.js';
 
 type DeepReadonly<Value> = Value extends readonly (infer Item)[]
   ? readonly DeepReadonly<Item>[]

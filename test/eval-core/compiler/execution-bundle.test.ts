@@ -6,14 +6,15 @@ import {
   deriveTrialId,
   digestArtifactPayload,
   digestCanonicalJson,
-  parseExecutionBundle,
-  parseExecutionBundleDocument,
-  verifyExecutionBundle,
   type ExecutionBundle,
   type ExecutionRecord,
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {  parseExecutionBundle,
+  parseExecutionBundleDocument,
+  verifyExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
 import { prepareEvaluationPlan } from '../../../src/eval-core/compiler/index.js';
 import {
   createRunBudgetSource,

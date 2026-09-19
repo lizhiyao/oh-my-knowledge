@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { IdentifierSchema, SchemaIdentitySchema } from './common.js';
+import {
+  IdentifierSchema,
+  SchemaIdentitySchema,
+} from './common.js';
 
 export const EXECUTOR_CAPABILITIES_SCHEMA_VERSION =
   'omk.executor-capabilities/v1' as const;

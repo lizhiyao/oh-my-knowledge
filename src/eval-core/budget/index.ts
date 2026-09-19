@@ -13,7 +13,8 @@ import {
   type UsageRecord,
 } from '../contracts/index.js';
 import { snapshotJson } from '../compiler/immutability.js';
-import type { SealedRunPlan } from '../compiler/index.js';
+import type {
+  SealedRunPlan,} from '../compiler/index.js';
 
 export type BudgetStage = 'execution' | 'evaluation';
 
