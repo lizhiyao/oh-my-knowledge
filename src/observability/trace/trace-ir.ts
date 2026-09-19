@@ -371,36 +371,48 @@ export function traceTimestampBounds(values: Iterable<unknown>): {
  * Correlate one concrete call occurrence with its result without treating a
  * source-native callId as globally unique. FIFO is the only source-neutral
  * assumption available when a runtime reuses call IDs.
+ *
+ * 挂起队列只存调用侧的实例身份，不存事件本身：配对时唯一要读的字段就是 `callInstanceId`，
+ * 而把整条调用事件留在手里会连它的 `input` 一起钉住——采集大日志时那正是内存的主要占用者。
+ * 采集路径按事件逐条 push 同一个归约器，因此跨视图归属的语义只有一份实现。
  */
+export interface TraceToolCallCorrelator {
+  push(event: TraceEvent): TraceEvent;
+}
+
+export function createTraceToolEventCorrelator(): TraceToolCallCorrelator {
+  const pending = new Map<string, string[]>();
+  return {
+    push(event: TraceEvent): TraceEvent {
+      if (event.eventKind === 'tool_call') {
+        const callInstanceId = event.callInstanceId ?? event.eventId;
+        const queue = pending.get(event.callId) ?? [];
+        queue.push(callInstanceId);
+        pending.set(event.callId, queue);
+        return { ...event, callInstanceId };
+      }
+      if (event.eventKind === 'tool_result') {
+        const queue = pending.get(event.callId);
+        const matchingIndex = event.callInstanceId
+          ? queue?.findIndex((candidate) => candidate === event.callInstanceId)
+          : undefined;
+        const callInstanceId = matchingIndex !== undefined && matchingIndex >= 0
+          ? queue?.splice(matchingIndex, 1)[0]
+          : event.callInstanceId
+            ? undefined
+            : queue?.shift();
+        if (queue?.length === 0) pending.delete(event.callId);
+        return {
+          ...event,
+          callInstanceId: event.callInstanceId ?? callInstanceId ?? `orphan:${event.eventId}`,
+        };
+      }
+      return event;
+    },
+  };
+}
+
 export function correlateTraceToolEvents(events: TraceEvent[]): TraceEvent[] {
-  const pending = new Map<string, TraceToolCallEvent[]>();
-  return events.map((event) => {
-    if (event.eventKind === 'tool_call') {
-      const callInstanceId = event.callInstanceId ?? event.eventId;
-      const correlated = { ...event, callInstanceId };
-      const queue = pending.get(event.callId) ?? [];
-      queue.push(correlated);
-      pending.set(event.callId, queue);
-      return correlated;
-    }
-    if (event.eventKind === 'tool_result') {
-      const queue = pending.get(event.callId);
-      const matchingIndex = event.callInstanceId
-        ? queue?.findIndex((candidate) => candidate.callInstanceId === event.callInstanceId)
-        : undefined;
-      const call = matchingIndex !== undefined && matchingIndex >= 0
-        ? queue?.splice(matchingIndex, 1)[0]
-        : event.callInstanceId
-          ? undefined
-          : queue?.shift();
-      if (queue?.length === 0) pending.delete(event.callId);
-      return {
-        ...event,
-        callInstanceId: event.callInstanceId
-          ?? call?.callInstanceId
-          ?? `orphan:${event.eventId}`,
-      };
-    }
-    return event;
-  });
+  const correlator = createTraceToolEventCorrelator();
+  return events.map((event) => correlator.push(event));
 }
