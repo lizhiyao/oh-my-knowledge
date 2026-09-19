@@ -1,3 +1,4 @@
+import { REGISTERED_RUNTIME_CYCLES, REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS, MUTUAL_BOUNDARY_VALIDATORS } from './dependency-exceptions.js';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, normalize, relative, resolve, sep } from 'node:path';
@@ -5,20 +6,16 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC_DIR = resolve('src');
+const SCRIPTS_DIR = resolve('scripts');
+const SOURCE_ROOTS = [SRC_DIR, SCRIPTS_DIR];
 const COMPOSITION_ROOT_PREFIXES = [
+  'scripts/',
   'cli/',
   'dsh-plugin/',
   'eval-workflows/hosts/',
   'mcp/',
   'studio/',
 ] as const;
-const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
-  'observability/experience.ts',
-  'observability/inbox/index.ts',
-  'observability/inbox/problem-patterns.ts',
-  'observability/skill-health/advisories.ts',
-  'observability/skill-health/skill-chain.ts',
-]);
 const EVAL_WORKFLOW_SUBDOMAINS = new Set([
   'analysis',
   'artifact-store',
@@ -54,50 +51,13 @@ interface DependencyGraph {
   nonLiteralDynamicImports: NonLiteralDynamicImport[];
 }
 
-const REGISTERED_RUNTIME_CYCLES = [
-  {
-    domains: ['diagnosis', 'observability'],
-    edges: [
-      'diagnosis/observe-producer.ts → observability/skill-health/advisories.ts',
-      'diagnosis/observe-producer.ts → observability/skill-health/skill-chain.ts',
-      'observability/inbox/index.ts → diagnosis/contracts/parser.ts',
-    ],
-    rationale: 'Diagnosis produces Observability projections while Observability parses the stable Diagnosis wire contract.',
-  },
-] as const;
-
-const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
-  {
-    importer: 'executors/anthropic/claude/sdk.ts',
-    expression: 'CLAUDE_AGENT_SDK_PACKAGE',
-    sourceSha256: 'c4d92bdfa7385281fba50233c15f365ba3a6020eab5a4609b829577c70214b4a',
-    rationale: 'Loads the fixed optional Claude SDK package; the source hash seals its binding.',
-  },
-  {
-    importer: 'executors/openai/codex/sdk.ts',
-    expression: 'CODEX_SDK_PACKAGE',
-    sourceSha256: 'd38e53693dda6414841f2d62d6f393c9e40d98608a420a35aff23839533f9921',
-    rationale: 'Loads the fixed optional Codex SDK package; the source hash seals its binding.',
-  },
-  {
-    importer: 'eval-workflows/hosts/adapters/claude/sdk-runtime.ts',
-    expression: 'sdkModuleUrl.href',
-    sourceSha256: '2860df51b00b50847fe45fbef352826d4c18b247ab6da11ce6de3842a8fda650',
-    rationale: 'Loads the resolved optional Claude SDK entrypoint with a per-runtime file URL.',
-  },
-  {
-    importer: 'eval-workflows/hosts/adapters/codex/sdk-runtime.ts',
-    expression: 'sdkModuleUrl.href',
-    sourceSha256: '695b5e16f09f32a6e8f705dc39ad69548aaa21a2608a2b93cf2a98583694d257',
-    rationale: 'Loads the resolved optional Codex SDK entrypoint with a per-runtime file URL.',
-  },
-] as const;
-
 const SOURCE_FILE_PATTERN = /\.(?:[cm]?ts|tsx|[cm]?js|jsx)$/;
 const DECLARATION_FILE_PATTERN = /\.d\.(?:[cm]?ts|tsx)$/;
 
 function listSourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
+    // Next 产物和安装依赖不是仓库源码，不能把其 loader 登记成产品例外。
+    if (entry === '.next' || entry === 'node_modules') continue;
     const path = join(dir, entry);
     const stat = statSync(path);
     if (stat.isDirectory()) listSourceFiles(path, out);
@@ -107,7 +67,8 @@ function listSourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 function sourceRelative(path: string): string {
-  return relative(SRC_DIR, path).split(sep).join('/');
+  const root = path.startsWith(`${SRC_DIR}${sep}`) ? SRC_DIR : resolve('.');
+  return relative(root, path).split(sep).join('/');
 }
 
 function scriptKind(path: string): ts.ScriptKind {
@@ -187,12 +148,13 @@ function exportIsTypeOnly(node: ts.ExportDeclaration): boolean {
     && node.exportClause.elements.every((element) => element.isTypeOnly);
 }
 
-function dynamicImportSpecifiers(source: ts.SourceFile): ts.Expression[] {
+function runtimeImportSpecifiers(source: ts.SourceFile): ts.Expression[] {
   const specifiers: ts.Expression[] = [];
   const visit = (node: ts.Node): void => {
     if (
       ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+        || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
       && node.arguments.length >= 1
     ) specifiers.push(node.arguments[0]);
     ts.forEachChild(node, visit);
@@ -206,12 +168,12 @@ function collectDependencyGraph(): DependencyGraph {
   const nonLiteralDynamicImports: NonLiteralDynamicImport[] = [];
   const add = (importer: string, specifier: string, typeOnly: boolean): void => {
     const target = resolveLocalModule(importer, specifier);
-    if (!target || !target.startsWith(`${SRC_DIR}${sep}`)) return;
+    if (!target || !SOURCE_ROOTS.some((root) => target.startsWith(`${root}${sep}`))) return;
     const importerRelative = sourceRelative(importer);
     const targetRelative = sourceRelative(target);
     const importerDomain = moduleDomain(importerRelative);
     const targetDomain = moduleDomain(targetRelative);
-    if (importerDomain === targetDomain || !importerRelative.includes('/')) return;
+    if (importerDomain === targetDomain) return;
     edges.push({
       importer: importerRelative,
       target: targetRelative,
@@ -221,7 +183,7 @@ function collectDependencyGraph(): DependencyGraph {
     });
   };
 
-  for (const file of listSourceFiles(SRC_DIR)) {
+  for (const file of SOURCE_ROOTS.flatMap((root) => listSourceFiles(root))) {
     const sourceText = readFileSync(file, 'utf8');
     const canonicalSource = sourceText.replaceAll('\r\n', '\n');
     const sourceSha256 = createHash('sha256').update(canonicalSource).digest('hex');
@@ -243,7 +205,7 @@ function collectDependencyGraph(): DependencyGraph {
         add(file, statement.moduleSpecifier.text, exportIsTypeOnly(statement));
       }
     }
-    for (const specifier of dynamicImportSpecifiers(source)) {
+    for (const specifier of runtimeImportSpecifiers(source)) {
       if (ts.isStringLiteralLike(specifier)) {
         add(file, specifier.text, false);
       } else {
@@ -299,7 +261,8 @@ function runtimeCycles(edges: ModuleEdge[]): RuntimeCycle[] {
 }
 
 function isCompositionRootModule(path: string): boolean {
-  return COMPOSITION_ROOT_PREFIXES.some((prefix) => path.startsWith(prefix));
+  return path === 'index.ts'
+    || COMPOSITION_ROOT_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 function stronglyConnectedComponents(edges: ModuleEdge[]): string[][] {
@@ -347,36 +310,7 @@ function stronglyConnectedComponents(edges: ModuleEdge[]): string[][] {
   return components.filter((component) => component.length > 1);
 }
 
-const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: ModuleEdge) => boolean> = {
-  [domainPair('evidence/graph', 'knowledge-artifacts/doctor')]: (edge) => {
-    // Doctor owns report persistence; the graph producer consumes only its wire types.
-    // This is not a runtime back-edge, and no other doctor/graph imports are admitted.
-    if (edge.importerDomain === 'knowledge-artifacts/doctor') {
-      return edge.importer === 'knowledge-artifacts/doctor/persistence.ts'
-        && edge.target === 'evidence/graph/doctor.ts';
-    }
-    return edge.importer === 'evidence/graph/doctor.ts'
-      && edge.typeOnly
-      && edge.target === 'knowledge-artifacts/doctor/contracts.ts';
-  },
-  [domainPair('evidence/storage', 'knowledge-artifacts/doctor')]: (edge) => {
-    if (edge.importerDomain === 'knowledge-artifacts/doctor') {
-      return edge.targetDomain === 'evidence/storage';
-    }
-    return edge.importer === 'evidence/storage/discovery-index.ts'
-      && edge.typeOnly
-      && edge.target === 'knowledge-artifacts/doctor/contracts.ts';
-  },
-  [domainPair('diagnosis', 'observability')]: (edge) => {
-    if (edge.importerDomain === 'observability') {
-      return edge.target.startsWith('diagnosis/contracts');
-    }
-    return edge.importer === 'diagnosis/observe-producer.ts'
-      && DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS.has(edge.target);
-  },
-};
-
-describe('src 依赖图', () => {
+describe('src 与 scripts 依赖图', () => {
   const { edges, nonLiteralDynamicImports } = collectDependencyGraph();
 
   it('按稳定子域而非粗粒度物理顶层分析聚合领域依赖', () => {
@@ -401,6 +335,18 @@ describe('src 依赖图', () => {
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
     expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
+  });
+
+  it('根公开入口和维护脚本都进入检查范围', () => {
+    expect(edges.some((edge) => edge.importer === 'index.ts')).toBe(true);
+    expect(nonLiteralDynamicImports.map((item) => item.importer)).toContain('scripts/build/docs.ts');
+    expect(nonLiteralDynamicImports.map((item) => item.importer)).toContain('scripts/bench/studio-baseline.ts');
+    expect(SOURCE_ROOTS.flatMap((root) => listSourceFiles(root))
+      .some((path) => path.includes(`${sep}.next${sep}`))).toBe(false);
+    const target = resolveLocalModule(resolve('scripts/build/fixture.cjs'), '../../src/cli/index.js');
+    expect(target).toBe(resolve('src/cli/index.ts'));
+    expect(isCompositionRootModule('scripts/build/fixture.cjs')).toBe(true);
+    expect(isCompositionRootModule('index.ts')).toBe(true);
   });
 
   it('delivery composition root 只装配领域，不被领域反向依赖', () => {
@@ -501,7 +447,7 @@ describe('src 依赖图', () => {
     expect(runtimeCycles(expandedFixture)).not.toEqual(runtimeCycles(fixture));
   });
 
-  it('非字面量 dynamic import 必须按调用点、表达式与完整来源约束完成审计登记', () => {
+  it('非字面量 dynamic import／require 必须按调用点、表达式与完整来源约束完成审计登记', () => {
     const expected = REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS.map((registered) =>
       dynamicImportKey(registered)).sort();
     expect(nonLiteralDynamicImports.map(dynamicImportKey).sort()).toEqual(expected);
@@ -514,7 +460,7 @@ describe('src 依赖图', () => {
       .not.toBe(dynamicImportKey(registered));
   });
 
-  it('所有受支持的 TypeScript 与可执行 JavaScript 源类型都解析 dynamic import', () => {
+  it('所有受支持的源码类型都解析动态加载和 CommonJS require', () => {
     const fixtures: ReadonlyArray<readonly [string, ts.ScriptKind]> = [
       ['fixture.ts', ts.ScriptKind.TS],
       ['fixture.tsx', ts.ScriptKind.TSX],
@@ -530,13 +476,13 @@ describe('src 依赖图', () => {
       expect(scriptKind(file), file).toBe(expectedScriptKind);
       const source = ts.createSourceFile(
         file,
-        "void import(process.env.SDK_TARGET, { with: { type: 'json' } });",
+        "void import(process.env.SDK_TARGET, { with: { type: 'json' } }); require('../../src/cli/index.js');",
         ts.ScriptTarget.Latest,
         true,
         scriptKind(file),
       );
-      expect(dynamicImportSpecifiers(source).map((specifier) =>
-        specifier.getText(source)), file).toEqual(['process.env.SDK_TARGET']);
+      expect(runtimeImportSpecifiers(source).map((specifier) =>
+        specifier.getText(source)), file).toEqual(['process.env.SDK_TARGET', "'../../src/cli/index.js'"]);
     }
   });
 
