@@ -1,9 +1,11 @@
-import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
+import {
+  type ConversationCatalog,
+  createLocalKnowledgeApplication,
+  configuredExtractionModel,
+  type KnowledgeApplication,
+} from '../../../observability/application.js';
 import { conversationExtractionSource } from '../conversations/conversation-extraction.js';
 import { z } from 'zod';
-import { createLocalKnowledgeApplication } from '../../../observability/knowledge-extraction/local.js';
-import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
-import type { KnowledgeApplication } from '../../../observability/knowledge-extraction/application.js';
 
 const text = z.string().trim().min(1);
 const common = { workspace: text };

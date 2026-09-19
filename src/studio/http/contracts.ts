@@ -1,5 +1,5 @@
 import type { KnowledgeQuery } from '../application/knowledge/knowledge-query.js';
-import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../observability/application.js';
 import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
 
 export interface ReportServerOptions {

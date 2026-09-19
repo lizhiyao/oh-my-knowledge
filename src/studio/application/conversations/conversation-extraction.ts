@@ -1,6 +1,8 @@
-import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
-import { projectTraceEvidence } from '../../../observability/knowledge-extraction/adapters/trace-evidence.js';
-import type { EvidenceWindow } from '../../../observability/knowledge-extraction/evidence.js';
+import {
+  type ConversationCatalog,
+  projectTraceEvidence,
+  type EvidenceWindow,
+} from '../../../observability/application.js';
 
 /** Resolve the current scope through Observe. Never trust browser paths or message text. */
 export async function conversationExtractionSource(catalog: ConversationCatalog, threadId: string, turnId?: string, signal?: AbortSignal) {

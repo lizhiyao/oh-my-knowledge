@@ -1,4 +1,4 @@
-import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../../observability/application.js';
 import type { ConversationReaderPage } from '../../view-models/conversations/conversation-reader.js';
 import { conversationExtractionSource } from './conversation-extraction.js';
 

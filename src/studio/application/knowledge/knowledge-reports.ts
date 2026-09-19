@@ -1,8 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { listLiveObserveCards, listObserveCards } from '../../../evidence/storage/discovery-index.js';
 import { listMeasurementReportPaths, measurementRecordIdFromReportPath } from '../../../evidence/storage/report-bundle.js';
-import { confidenceOf, measuredToolFailureRate, toolStabilityOf, type SkillHealth, type SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
-import { parseSkillHealthReport } from '../../../observability/skill-health/report.js';
+import {
+  confidenceOf,
+  measuredToolFailureRate,
+  toolStabilityOf,
+  type SkillHealth,
+  type SkillHealthReport,
+  parseSkillHealthReport,
+} from '../../../observability/application.js';
+
 import { ownRecordValue } from '../../../shared/record-count.js';
 import type { AnalysisListItem, SkillTrendPoint, SkillTrendResult, SkillDiffRow, SkillDiffResult } from '../../view-models/knowledge/knowledge-reports.js';
 

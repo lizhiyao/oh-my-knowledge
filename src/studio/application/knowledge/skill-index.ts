@@ -12,10 +12,18 @@ import {
   listLiveDoctorCards,
   listLiveObserveCards,
 } from '../../../evidence/storage/discovery-index.js';
-import { confidenceOf, effectiveObserveBand, toolStabilityOf, type SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
-import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../../observability/inbox/index.js';
-import { observationReportsDir, resolveObservationsDir } from '../../../observability/inbox/paths.js';
-import { parseSkillHealthReport } from '../../../observability/skill-health/report.js';
+import {
+  confidenceOf,
+  effectiveObserveBand,
+  toolStabilityOf,
+  type SkillHealthReport,
+  DEFAULT_OBSERVATIONS_DIR,
+  loadLatestObservationInboxReports,
+  observationReportsDir,
+  resolveObservationsDir,
+  parseSkillHealthReport,
+} from '../../../observability/application.js';
+
 import { parseArtifactGraphDocument } from '../../../evidence/graph/schema.js';
 import { parseDoctorReport } from '../../../knowledge-artifacts/doctor/report-parser.js';
 import { ownRecordValue } from '../../../shared/record-count.js';

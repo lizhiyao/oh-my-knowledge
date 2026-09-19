@@ -1,4 +1,4 @@
-import { buildObservationInboxViewModel, type ObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
+import { buildObservationInboxViewModel, type ObservationInboxViewModel } from '../../../observability/application.js';
 import { OBSERVE_INBOX_PATH } from '../page-paths.js';
 
 export type InboxPage = {

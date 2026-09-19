@@ -110,6 +110,7 @@ eval-workflows/
 ├── inputs/             # 评测配置、sample 与 schema
 ├── instruments/        # evaluator 配置与冻结 prompt 资产
 ├── projections/        # 基于认证 Core 产物的下游视图
+├── sample-generation/  # 评测用例生成、约束与输入素材
 ├── resume-admission/   # 持久化 run 完整性与 resume 准入
 ├── measurement/        # 产品评分、analysis node 与 evaluator 实现
 └── orchestration/      # 产品编排、持久化与注入的 Runtime 消费
@@ -191,7 +192,7 @@ Runtime；生成、修复及辅助分析可以直接使用 `ExecutorFn`；观测
 Studio。这些路径用途不同，共用机制须按契约提取。用户 façade 的事件消费与产品运行租约也不能
 仅因都调用 Core 就认定为重复调度。
 
-当前保留共用宿主，是因为 CLI 与 DSH 实际复用其绑定、注册和资源装配；入口专属策略已经归入口。内部实现测试按宿主适配、Runtime、产品测量和投影分别归属。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，应依据公开引用与证据读取需求决定保留或迁移。知识内容领域仍为设计稿，不以本轮整理补占位实现。
+当前保留共用宿主，是因为 CLI 与 DSH 实际复用其绑定、注册和资源装配；入口专属策略已经归入口。内部实现测试按宿主适配、Runtime、产品测量和投影分别归属。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，应依据公开引用与证据读取需求决定保留或迁移。知识内容领域已由 `knowledge/contracts.ts`、`admission.ts`、`history.ts` 和 `store.ts` 实现；文件系统适配和提炼编排仍归外层。
 
 ### 样本输入准入
 
@@ -230,19 +231,31 @@ Diagnosis 与 Observability 是一个显式建模的边界：Observability 产�
 
 ## Observability 子域
 
-`src/observability` 根目录只保留稳定的 `experience.ts` facade，私有实现按垂直子域归属：
+`src/observability` 根目录提供 `experience.ts`、服务端 `application.ts` 与浏览器可用的
+`presentation.ts` 三个稳定入口。Studio 通过这些领域入口消费查询、复核与展示语义；
+本机 Agent 清单继续使用 `agents/index.ts`，类型契约通过 `contracts/` 与 `view-models/` 消费。
+私有实现按垂直子域归属：
 
 ```text
 observability/
-├── contracts/
-├── trace/           # source-neutral IR、来源分类、ingestion、adapter
-├── inbox/           # 观测收件箱、复核与反馈投影
-├── conversation/    # 对话目录、窗口与调试投影
-├── experience/      # 体验事实、报告派生与文本信号
-├── skill-health/    # Skill chain、健康检查与建议
-├── soft-standards/
-└── view-models/     # 稳定的呈现 facade
+├── agents/  # 本机 Agent 发现、登记与日志采集
+├── analysis/  # 覆盖、缺口与观测分析
+├── contracts/  # 稳定事实与数据契约
+├── conversation/  # 对话目录、窗口与调试投影
+├── experience/  # 体验事实、报告派生与文本信号
+├── inbox/  # 观测收件箱、复核与反馈投影
+├── knowledge-extraction/  # 知识提炼编排、证据选择与适配
+├── prompts/  # 冻结的复盘 prompt 与文档加载
+├── skill-health/  # Skill chain、健康检查与建议
+├── soft-standards/  # 衍生标准提取、存储与执行
+├── trace/  # 来源解析、source-neutral IR 与归因
+└── view-models/  # 仅类型的投影契约
 ```
+
+`test/architecture/import-boundaries.test.ts` 使用入口白名单阻止 Studio 穿透私有子域，
+覆盖 `.js` 和 Next 无扩展名 import、再导出及字面量模块加载。私有子域不能反向导入根应用／展示入口。
+客户端运行时闭包守卫另行保证展示入口不引入 Node 能力；`view-models/` 只提供类型。
+`test/architecture/architecture-docs.test.ts` 对账本节两种语言的 Workflow 与 Observability 子域清单。
 
 Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Experience 的 `text-signals.ts` 才判断硬规则、进展与交付信号。因此 adapter 不会反向依赖其下游的体验投影。旧根路径不保留 re-export 或兼容 shim。
 
@@ -258,14 +271,13 @@ Missing、invalid、failed、unavailable 与 not-started observation 都不是�
 
 ## 观测链路：source-neutral Trace IR
 
-`omk observe` 不把 Codex、Claude Code 或 OpenClaw 的日志互相伪装成对方格式。每个来源先由独立 adapter 转换为同一套 Trace IR，再进入归因、分段和指标计算：
+`omk observe` 不把 Codex、Claude Code 或 OpenClaw 的日志互相伪装成对方格式。`trace/source.ts` 负责格式识别与加载，Claude、OpenClaw 和 Markdown 解析仍在该模块内；Codex 与 Qoder 使用独立 adapter。它们转换为同一套 Trace IR，再进入归因、分段和指标计算：
 
 ```mermaid
 flowchart LR
-    C["Claude adapter"] --> IR["Trace IR"]
-    X["Codex adapter"] --> IR
-    O["OpenClaw adapter"] --> IR
-    M["Markdown adapter"] --> IR
+    S0["trace/source.ts<br/>Claude · OpenClaw · Markdown"] --> IR["Trace IR"]
+    S0 --> X["adapters/codex"] --> IR
+    S0 --> Q["adapters/qoder"] --> IR
     IR --> A["生命周期关联与 skill 归因"]
     A --> S["segment"]
     S --> R["health · inbox · experience"]

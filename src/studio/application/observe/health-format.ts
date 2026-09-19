@@ -1,7 +1,11 @@
-import type { CoverageReport } from '../../../observability/analysis/coverage-analyzer.js';
-import type { GapSignalRef } from '../../../observability/analysis/contracts.js';
-import type { SkillHealth, SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
-import { confidenceOf, measuredToolFailureRate, toolStabilityOf } from '../../../observability/skill-health/analyzer.js';
+import type {
+  CoverageReport,
+  GapSignalRef,
+  SkillHealth,
+  SkillHealthReport,
+} from '../../../observability/view-models/index.js';
+
+import { confidenceOf, measuredToolFailureRate, toolStabilityOf } from '../../../observability/application.js';
 import type { StudioTone } from '../../view-models/display/tone.js';
 import type { AnalysisListItem, SkillDiffRow, SkillTrendPoint, SkillTrendResult } from '../../view-models/knowledge/knowledge-reports.js';
 import { displayTime, formatPercent, formatPercentDelta } from '../display/format.js';

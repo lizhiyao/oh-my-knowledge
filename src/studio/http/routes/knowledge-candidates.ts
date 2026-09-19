@@ -1,4 +1,4 @@
-import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../../observability/application.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { JSON_HEADERS } from '../errors.js';
 import { readJsonObjectBody } from '../request-errors.js';

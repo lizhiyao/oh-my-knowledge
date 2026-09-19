@@ -11,11 +11,9 @@ import {
   AgentCollectionReportOutdatedError,
   loadAgentCollectionReport,
   loadAgentInventoryReport,
-} from '../../../observability/agents/index.js';
-import type {
-  AgentCollectionReport,
-  AgentInventoryReport,
-  AgentStorageLayout,
+  type AgentCollectionReport,
+  type AgentInventoryReport,
+  type AgentStorageLayout,
 } from '../../../observability/agents/index.js';
 
 /**

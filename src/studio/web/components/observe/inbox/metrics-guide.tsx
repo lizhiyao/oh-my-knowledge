@@ -5,7 +5,7 @@ import {
   indicatorHelp,
   indicatorLabel,
   type IndicatorHelpKey,
-} from '../../../../../observability/inbox/metric-semantics';
+} from '../../../../../observability/presentation';
 import type { Language } from '../../layout/shell';
 
 /** 指标含义与评判标准面板（#839 批次 4）：逐项列出指标口径。 */
