@@ -70,7 +70,7 @@ flowchart TD
 - **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的回边才成立，架构测试会同时拒绝新增双向关系和失效登记；
 - **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/hosts` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
 
-`shared` 是跨领域叶子，只依赖自身。`eval-core` 是宿主无关的测量内核。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
+`shared` 是跨领域叶子，只依赖自身。`eval-core` 是 Node 侧的确定性测量内核：宿主无关指它不依赖 CLI、文件系统、网络、环境变量、具体执行器与 Studio，Node 运行时本身（含 `node:crypto` 的规范化摘要）属于既定依赖，不做哈希注入化。`eval-runtime` 是轻量服务宿主接入层：canonical façade 将普通 `evaluate()` 输入编译为既有 Core contract，foundation 则装配显式 port 与 Core 内建能力；两者都不持有产品 workflow 或基础设施。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
 
 `eval-core/verify` 统一拥有符合性判定：给定契约声明的形状与观测事实，判断现实是否满足计划。`contracts` 只保留 schema、身份与摘要计算，且不得引用 `verify`；分层守卫目前只登记仍留在契约层的规范化与摘要函数，这份债务只允许缩小。
 
