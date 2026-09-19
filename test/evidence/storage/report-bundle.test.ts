@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
@@ -83,5 +83,36 @@ describe('measurement report bundle', () => {
       createdAt: '2026-09-02T00:00:00.000Z',
       report: {},
     }), /Invalid measurement record id/);
+  });
+
+  it('拒绝空 reportId 与非 RFC3339 时间戳，且不留半截 bundle', () => {
+    for (const [label, patch] of [
+      ['空 reportId', { reportId: '' }],
+      ['非 RFC3339 createdAt', { createdAt: '2026-09-02' }],
+    ] as const) {
+      const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-identity-'));
+      assert.throws(() => writeMeasurementReportBundle({
+        rootDir,
+        measurementDomain: 'doctor',
+        recordId: 'review-doctor-1',
+        reportId: 'doctor-1',
+        createdAt: '2026-09-02T00:00:00.000Z',
+        report: { kind: 'doctor' },
+        ...patch,
+      }), /Invalid measurement bundle identity/, label);
+      assert.equal(existsSync(join(rootDir, 'review-doctor-1')), false, `${label}: 校验失败不得留下 bundle 目录`);
+      assert.deepEqual(readdirSync(rootDir), [], `${label}: 校验失败不得写入任何产物`);
+    }
+  });
+
+  it('拒绝穿越式与空派生产物文件名', () => {
+    const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-derived-'));
+    for (const fileName of ['graph.json/../../escape', '/abs/graph.json', '', 'a\\b.json']) {
+      assert.throws(
+        () => listMeasurementDerivedPaths(rootDir, 'doctor', fileName),
+        /Invalid derived file name/,
+        JSON.stringify(fileName),
+      );
+    }
   });
 });
