@@ -646,8 +646,20 @@ assert.equal(executionSchemaUrl.pathname.endsWith('/execution-bundle.schema.json
 const comparabilitySchemaUrl = resolveEvaluationCoreJsonSchema(
   'comparability-assessment.schema.json',
 );
+// 只锁版本目录这一段，不锁它在 dist 里的父路径：资产根换了布局也不该改测试。
 assert.equal(
-  comparabilitySchemaUrl.pathname.endsWith('/schemas/v2/comparability-assessment.schema.json'),
+  comparabilitySchemaUrl.pathname.endsWith('/v2/comparability-assessment.schema.json'),
   true,
 );
+{
+  const { readFileSync } = await import('node:fs');
+  const published = await import(
+    'oh-my-knowledge/eval-core/schemas/v2/comparability-assessment.schema.json',
+    { with: { type: 'json' } },
+  );
+  assert.equal(
+    JSON.parse(readFileSync(comparabilitySchemaUrl, 'utf8')).$id,
+    published.default.$id,
+  );
+}
 assert.throws(() => resolveEvaluationCoreJsonSchema('../package.json'));
