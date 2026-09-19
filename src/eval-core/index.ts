@@ -25,6 +25,7 @@ export {
   parseDecisionResultDocument,
 } from './contracts/index.js';
 export {
+  assessComparability,
   createEvaluationSeriesMemberSource,
   effectiveAnalysisBundleTrust,
   effectiveDecisionResultTrust,
@@ -32,6 +33,7 @@ export {
   effectiveExecutionBundleTrust,
   parseAnalysisBundle,
   parseAnalysisBundleDocument,
+  parseComparabilityAssessment,
   parseEvaluationBundle,
   parseEvaluationBundleDocument,
   parseEvaluationReport,
