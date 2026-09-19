@@ -1,5 +1,7 @@
 import type { EvaluationEvent } from '../contracts/index.js';
 
+export const DEFAULT_EVENT_BUFFER_CAPACITY = 256;
+
 interface WaitingConsumer {
   resolve(result: IteratorResult<EvaluationEvent>): void;
 }

@@ -1,5 +1,6 @@
+import { topologicalOrder } from '../primitives/graph.js';
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust } from '../primitives/provenance.js';
 import {
   ANALYSIS_BUNDLE_SCHEMA_VERSION,
   AnalysisBundleSchema,
@@ -39,7 +40,7 @@ import {
 import { analysisComparisonAppliesToMetricInput } from '../contracts/analysis-input-matching.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import type { SealedRunPlan } from '../compiler/index.js';
-import { BoundedEventStream } from '../runtime/event-stream.js';
+import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
 import {
   AnalysisPortFailure,
@@ -339,28 +340,7 @@ function topologicalNodeIds(plan: SealedRunPlan): string[] {
     }));
     dependencies.set(node.nodeId, dependencyIds);
   }
-  const ready = plan.analysis.analysisGraph.nodes
-    .filter((node) => (dependencies.get(node.nodeId)?.size ?? 0) === 0)
-    .map((node) => node.nodeId)
-    .sort(compareStrings);
-  const ordered: string[] = [];
-  const remaining = new Set(plan.analysis.analysisGraph.nodes.map((node) => node.nodeId));
-  while (ready.length > 0) {
-    const nodeId = ready.shift();
-    if (nodeId === undefined || !remaining.delete(nodeId)) continue;
-    for (const [candidate, candidateDependencies] of dependencies) {
-      candidateDependencies.delete(nodeId);
-      if (remaining.has(candidate) && candidateDependencies.size === 0) {
-        ready.push(candidate);
-        ready.sort(compareStrings);
-      }
-    }
-    ordered.push(nodeId);
-  }
-  if (ordered.length !== plan.analysis.analysisGraph.nodes.length) {
-    throw new TypeError('AnalysisGraph is cyclic.');
-  }
-  return ordered;
+  return topologicalOrder(dependencies, 'ready-node', 'AnalysisGraph is cyclic.');
 }
 
 function orderedBindings(
@@ -681,9 +661,7 @@ function deriveTrust(
   source: Provenance['trust'],
 ): Provenance['trust'] {
   const trusts = analysisRuntimeDependencyTrusts(plan, records);
-  return [source, ...trusts].sort(
-    (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
-  )[0];
+  return minimumTrust([source, ...trusts], 'verified');
 }
 
 function makeBundle(
@@ -1224,7 +1202,7 @@ export function startAnalysis(
     ports,
     options,
   );
-  const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const stream = new BoundedEventStream(options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY);
   const source = runAnalysis(plan, ports, options, prepared, stream);
   let result: Promise<AnalysisBundle> | undefined;
   return {

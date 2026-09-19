@@ -1,4 +1,4 @@
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust, TRUST_LEVEL } from '../primitives/provenance.js';
 import {
   DecisionResultSchema,
   EvaluationReportSchema,
@@ -134,7 +134,7 @@ export function effectiveDecisionResultTrust(
     source.planVerification.analysisSourceTrust,
     source.planVerification.policyExecutionStatus === 'verified' ? 'verified' : 'unknown',
   ];
-  return values.sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
+  return minimumTrust(values, 'verified');
 }
 
 export function assertDecisionResultSourceChain(

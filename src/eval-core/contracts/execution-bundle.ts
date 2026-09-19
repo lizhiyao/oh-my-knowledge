@@ -1,5 +1,6 @@
+import { expectedBudgetOutcome } from '../primitives/budget-outcome.js';
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { TRUST_LEVEL, minimumTrust } from '../primitives/provenance.js';
 import {
   ExecutionBundleSchema,
   type ExecutionBundle,
@@ -191,11 +192,6 @@ function assertSchedulingBlockAtomicity(records: readonly ExecutionRecord[]): vo
   }
 }
 
-function expectedBudgetOutcome(attempt: ExecutionAttempt): 'completed' | 'failed' | 'cancelled' | 'attempt-timeout' {
-  if (attempt.attemptStatus === 'completed') return 'completed';
-  if (attempt.attemptStatus === 'cancelled') return 'cancelled';
-  return attempt.error.code === 'timeout' ? 'attempt-timeout' : 'failed';
-}
 
 function assertBudgetLedgerMatchesRecords(bundle: ExecutionBundle): void {
   const entries = new Map(bundle.budgetSummary.entries.map((entry) => [entry.attemptId, entry]));
@@ -524,13 +520,6 @@ export function effectiveExecutionBundleTrust(
   return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
 }
 
-function minimumTrust(
-  ...values: readonly Provenance['trust'][]
-): Provenance['trust'] {
-  return values.reduce((minimum, value) => (
-    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
-  ), 'verified');
-}
 
 function assertTrustAtMost(
   actual: Provenance['trust'],
@@ -915,7 +904,7 @@ export function assertExecutionBundleMatchesPlan(
   }
   assertTrustAtMost(
     bundle.provenance.trust,
-    minimumTrust(...bundle.records.map((record) => record.provenance.trust)),
+    minimumTrust([...bundle.records.map((record) => record.provenance.trust)], 'verified'),
     'ExecutionBundle trust exceeds its record provenance.',
   );
   const invocationLimits = [

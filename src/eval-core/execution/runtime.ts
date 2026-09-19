@@ -1,5 +1,8 @@
+import { durationMs } from '../runtime/clock.js';
+import { RunResourceSessions } from '../runtime/run-resources.js';
+import { linkAbortSignal } from '../runtime/abort.js';
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust } from '../primitives/provenance.js';
 import {
   EXECUTION_BUNDLE_SCHEMA_VERSION,
   CompletedExecutionRecordSchema,
@@ -29,7 +32,6 @@ import {
   type ExecutionRecord,
   type JsonValue,
   type PlannedExecutionCoordinate,
-  type Provenance,
   type RuntimeIdentity,
   type Sha256Digest,
   type UsageRecord,
@@ -41,7 +43,7 @@ import {
 } from '../compiler/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
-import { BoundedEventStream } from '../runtime/event-stream.js';
+import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import {
   assertRunBudgetSource,
   createRunBudgetSource,
@@ -73,15 +75,6 @@ type ActiveExecutionRecord = Exclude<ExecutionRecord, { executionStatus: 'budget
 type CompletedExecutionRecord = Extract<ExecutionRecord, { executionStatus: 'completed' }>;
 type ResolvedExecutionRunOptions = ExecutionRunOptions & { budgetSource: RunBudgetSource };
 
-function minimumProvenanceTrust(
-  records: readonly ExecutionRecord[],
-): Provenance['trust'] {
-  return records.reduce<Provenance['trust']>((minimum, record) => (
-    TRUST_LEVEL[record.provenance.trust] < TRUST_LEVEL[minimum]
-      ? record.provenance.trust
-      : minimum
-  ), 'verified');
-}
 
 interface TargetRuntimeBinding {
   target: SealedRunPlan['execution']['targets'][number];
@@ -335,52 +328,7 @@ function safeError(error: unknown): EvaluationError {
   };
 }
 
-function durationMs(started: number, completed: number): number {
-  return Math.max(0, completed - started);
-}
 
-class RunSessions {
-  readonly #options: ExecutionRunOptions;
-  readonly #plan: SealedRunPlan;
-  readonly #sessions = new Map<string, Promise<ExecutionExecutorRun>>();
-
-  constructor(
-    plan: SealedRunPlan,
-    options: ExecutionRunOptions,
-  ) {
-    this.#plan = plan;
-    this.#options = options;
-  }
-
-  get(targetId: string, executor: ExecutionExecutor): Promise<ExecutionExecutorRun> {
-    const current = this.#sessions.get(targetId);
-    if (current !== undefined) return current;
-    const context = deepFreeze(snapshotJson({
-      runId: this.#options.runId,
-      executionPlanDigest: this.#plan.execution.executionPlanDigest as Sha256Digest,
-    }));
-    const session = Promise.resolve(executor.openRun(context));
-    this.#sessions.set(targetId, session);
-    return session;
-  }
-
-  async dispose(): Promise<EvaluationError[]> {
-    const errors: EvaluationError[] = [];
-    for (const sessionPromise of this.#sessions.values()) {
-      try {
-        const session = await sessionPromise;
-        await session.dispose();
-      } catch {
-        errors.push({
-          code: 'executor-run-dispose-failed',
-          stage: 'infrastructure',
-          message: 'Executor run resource disposal failed.',
-        });
-      }
-    }
-    return errors;
-  }
-}
 
 type ExecutionTerminalEventKind =
   | 'execution.run.completed'
@@ -394,16 +342,6 @@ type EventEmitter = RuntimeEventEmitter<
   ExecutionTerminalEventKind
 >;
 
-function linkAbortSignal(parent: AbortSignal | undefined, controller: AbortController): () => void {
-  if (parent === undefined) return () => undefined;
-  if (parent.aborted) {
-    controller.abort(parent.reason);
-    return () => undefined;
-  }
-  const onAbort = () => controller.abort(parent.reason);
-  parent.addEventListener('abort', onAbort, { once: true });
-  return () => parent.removeEventListener('abort', onAbort);
-}
 
 async function executeWithTimeout(
   trial: ExecutionExecutorTrial,
@@ -663,7 +601,7 @@ async function executeCoordinate(
   plan: SealedRunPlan,
   ports: ExecutionRuntimePorts,
   prepared: PreparedRuntime,
-  sessions: RunSessions,
+  sessions: RunResourceSessions<TargetRuntimeBinding, ExecutionExecutorRun>,
   events: EventEmitter,
   budget: RunBudgetController,
   coordinate: PreparedCoordinate,
@@ -720,7 +658,7 @@ async function executeCoordinate(
       },
     );
     if (!trialEventDelivered || runSignal.aborted) return { failed: false };
-    const runSession = await sessions.get(binding.target.targetId, binding.executor);
+    const runSession = await sessions.get(binding);
     trial = await runSession.openTrial(trialContext(
       plan,
       binding,
@@ -1235,7 +1173,7 @@ function makeBundle(
     records: sortedRecords,
     provenance: {
       provenanceKind: 'native',
-      trust: minimumProvenanceTrust(sortedRecords),
+      trust: minimumTrust(sortedRecords.map((record) => record.provenance.trust), 'verified'),
       parentDigests: [
         plan.digests.runContractDigest,
         plan.digests.executionPlanDigest,
@@ -1332,7 +1270,13 @@ async function runExecution(
     stream,
     (reason: string, error: EvaluationError) => setStop('failed', reason, error),
   );
-  const sessions = new RunSessions(plan, options);
+  const sessions = new RunResourceSessions<TargetRuntimeBinding, ExecutionExecutorRun>(
+    (binding) => binding.target.targetId,
+    (binding) => binding.executor.openRun(deepFreeze(snapshotJson({
+      runId: options.runId,
+      executionPlanDigest: plan.execution.executionPlanDigest as Sha256Digest,
+    }))),
+  );
   const records = new Map<string, ExecutionRecord>();
   const pendingCacheEntries = new Map<Sha256Digest, ExecutionCacheEntry>();
   const verifiedCacheRecordDigests = new Set<Sha256Digest>();
@@ -1439,11 +1383,15 @@ async function runExecution(
       wallClockController.abort();
       await wallClockTimer;
       options.signal?.removeEventListener('abort', onExternalAbort);
-      const disposeErrors = await sessions.dispose();
-      if (disposeErrors.length > 0) {
-        setStop('failed', 'executor-run-dispose-failed', disposeErrors[0]);
+      const disposalFailures = await sessions.dispose();
+      if (disposalFailures > 0) {
+        setStop('failed', 'executor-run-dispose-failed', {
+          code: 'executor-run-dispose-failed',
+          stage: 'infrastructure',
+          message: 'Executor run resource disposal failed.',
+        });
       }
-      if (disposeErrors.length === 0 && stop.stopKind === undefined) {
+      if (disposalFailures === 0 && stop.stopKind === undefined) {
         for (const entry of [...pendingCacheEntries.values()].sort((left, right) => (
           compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
         ))) {
@@ -1528,7 +1476,7 @@ export function startExecution(
     : { ...options, budgetSource: options.budgetSource };
   assertRunBudgetSource(runtimeOptions.budgetSource, plan, runtimeOptions.runId);
   const prepared = prepareRuntime(plan, ports, runtimeOptions);
-  const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const stream = new BoundedEventStream(options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY);
   const source = runExecution(plan, ports, runtimeOptions, prepared, stream);
   let result: Promise<ExecutionBundle> | undefined;
   return {

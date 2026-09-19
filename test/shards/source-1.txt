@@ -37,6 +37,7 @@ test/eval-core/contracts/evaluator-measurement-identities.test.ts
 test/eval-core/contracts/execution-bundle.test.ts
 test/eval-core/contracts/execution-identities.test.ts
 test/eval-core/contracts/json.test.ts
+test/eval-core/primitives.test.ts
 test/eval-core/evaluation/runtime.test.ts
 test/eval-core/runtime-side-effects.test.ts
 test/eval-runtime/foundation.test.ts

@@ -1,5 +1,6 @@
+import { topologicalOrder } from '../primitives/graph.js';
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust } from '../primitives/provenance.js';
 import { z } from 'zod';
 import {
   AssumptionCheckSchema,
@@ -39,14 +40,13 @@ import {
   type SeriesDecisionResult,
   type Sha256Digest,
 } from '../contracts/index.js';
-import { BoundedEventStream } from '../runtime/event-stream.js';
+import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import {
   InMemoryRuntimeEventSequencer,
   RuntimeEventEmitter,
 } from '../runtime/events.js';
 import { snapshotSchemaValidators } from '../runtime/snapshot.js';
 
-const DEFAULT_EVENT_BUFFER_CAPACITY = 256;
 
 type SeriesEventKind =
   | 'series.run.started'
@@ -309,12 +309,6 @@ function snapshotSeriesRuntimePorts(
   });
 }
 
-function minimumTrust(
-  values: readonly ('untrusted' | 'unknown' | 'declared' | 'verified')[],
-): 'untrusted' | 'unknown' | 'declared' | 'verified' {
-  return [...values].sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0]
-    ?? 'unknown';
-}
 
 function memberSourcePrefix(
   member: EvaluationSeriesMemberSource,
@@ -437,24 +431,17 @@ function topologicalSeriesNodes(
     node.nodeId,
   ]));
   const nodeById = new Map(plan.definition.analysisGraph.nodes.map((node) => [node.nodeId, node]));
-  const remaining = new Set(nodeById.keys());
-  const ordered: EvaluationSeriesPlan['definition']['analysisGraph']['nodes'][number][] = [];
-  while (remaining.size > 0) {
-    const ready = [...remaining].filter((nodeId) => {
-      const node = nodeById.get(nodeId);
-      if (node === undefined) return false;
-      return node.inputs.every((input) => input.seriesInputKind === 'members'
-        || !remaining.has(producerByResult.get(input.referenceId) ?? ''));
-    }).sort(compareStrings);
-    if (ready.length === 0) throw new TypeError('Series analysis graph must be acyclic.');
-    for (const nodeId of ready) {
+  const dependencies = new Map(plan.definition.analysisGraph.nodes.map((node) => [
+    node.nodeId,
+    new Set(node.inputs.flatMap((input) => input.seriesInputKind === 'members'
+      ? [] : [producerByResult.get(input.referenceId) ?? ''])),
+  ]));
+  return topologicalOrder(dependencies, 'ready-frontier', 'Series analysis graph must be acyclic.')
+    .map((nodeId) => {
       const node = nodeById.get(nodeId);
       if (node === undefined) throw new TypeError('Series analysis node is missing.');
-      ordered.push(node);
-      remaining.delete(nodeId);
-    }
-  }
-  return ordered;
+      return node;
+    });
 }
 
 async function runAnalysisNodes(
@@ -733,7 +720,7 @@ function makeBundle(
     ...records
       .filter((record) => record.runtimeExecutionStatus === 'executed')
       .map((record) => record.implementation.assuranceLevel),
-  ]);
+  ], 'unknown');
   const payload = {
     schemaVersion: SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
     bundleId,
@@ -980,7 +967,7 @@ async function executeEvaluationSeries(
           ...(decision?.policyExecutionStatus === 'executed'
             ? [decision.implementation.assuranceLevel]
             : []),
-        ]),
+        ], 'unknown'),
         parentDigests: [
           analysis.bundleDigest,
           ...(decision === undefined ? [] : [decision.decisionDigest]),

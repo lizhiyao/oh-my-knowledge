@@ -74,6 +74,8 @@ flowchart TD
 
 `eval-core/primitives` 统一拥有规范排序、来源信任顺序和 JSON Pointer 遍历。它是 contracts 下方的无依赖基础层；契约、Core 各阶段、Runtime 和 workflows 直接复用，不各自维护平行实现。
 
+Core 各阶段通过 `eval-core/runtime` 共享运行资源的打开与清理、取消信号传递、时长投影和默认事件缓冲。预算结果投影、最低信任与拓扑排序属于共享不变量。Analysis 每次调度一个就绪节点，Series 每次调度一层就绪节点；显式顺序策略保持既有事件顺序。Execution 和 Evaluation 分别拥有自己的记录、缓存身份、超时结果与 Bundle 契约。
+
 ```text
 eval-core ← eval-runtime ← 产品编排
                 ↑             ↑

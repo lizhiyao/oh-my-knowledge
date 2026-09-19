@@ -1,5 +1,6 @@
+import { expectedBudgetOutcome } from '../primitives/budget-outcome.js';
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { TRUST_LEVEL, minimumTrust } from '../primitives/provenance.js';
 import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import {
   EvaluationBundleSchema,
@@ -120,11 +121,6 @@ function assertCanonicalRecordOrder(records: readonly EvaluationRecord[]): void 
   }
 }
 
-function expectedBudgetOutcome(attempt: EvaluationAttempt): 'completed' | 'failed' | 'cancelled' | 'attempt-timeout' {
-  if (attempt.attemptStatus === 'completed') return 'completed';
-  if (attempt.attemptStatus === 'cancelled') return 'cancelled';
-  return attempt.error.code === 'timeout' ? 'attempt-timeout' : 'failed';
-}
 
 function assertEvaluationBudgetLedgerMatchesRecords(
   bundle: EvaluationBundle,
@@ -539,11 +535,11 @@ export function effectiveEvaluationBundleTrust(
   source: EvaluationBundleSource,
 ): Provenance['trust'] {
   assertEvaluationBundleSource(source);
-  return minimumTrust(
+  return minimumTrust([
     source.bundle.provenance.trust,
     source.planVerification.executionSourceTrust,
     source.planVerification.provenanceTrustStatus === 'verified' ? 'verified' : 'unknown',
-  );
+  ], 'verified');
 }
 
 export function aggregateEvaluationAttemptUsage(
@@ -678,13 +674,6 @@ function runtimeTrust(
   return runtime.assuranceLevel;
 }
 
-function minimumTrust(
-  ...values: readonly ('verified' | 'declared' | 'untrusted' | 'unknown')[]
-): 'verified' | 'declared' | 'untrusted' | 'unknown' {
-  return values.reduce((minimum, value) => (
-    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
-  ), 'verified');
-}
 
 function assertTrustAtMost(
   actual: 'verified' | 'declared' | 'untrusted' | 'unknown',
@@ -751,7 +740,7 @@ function bindingClosure(
     } else if (input.sourceKind === 'execution-facts') {
       const facts = projectExecutionFacts(
         executionRecord,
-        minimumTrust(sourceTrust, executionRecord.provenance.trust),
+        minimumTrust([sourceTrust, executionRecord.provenance.trust], 'verified'),
       );
       const resolved = resolveJsonPointer(facts.value, input.pointer);
       binding = resolved.resolved
@@ -815,8 +804,8 @@ function assertCachePolicy(
     }
     return false;
   }
-  const effectiveSourceTrust = minimumTrust(sourceTrust, executionRecordTrust);
-  const expectedTrust = minimumTrust(effectiveSourceTrust, runtimeTrust(runtime));
+  const effectiveSourceTrust = minimumTrust([sourceTrust, executionRecordTrust], 'verified');
+  const expectedTrust = minimumTrust([effectiveSourceTrust, runtimeTrust(runtime)], 'verified');
   const expectedNativeProvenance = {
     provenanceKind: 'native' as const,
     trust: expectedTrust,
@@ -901,11 +890,7 @@ function assertRecordAgainstPlan(
   if (evaluator === undefined) planMismatch('EvaluationRecord refers to an unknown Evaluator.');
   assertTrustAtMost(
     record.provenance.trust,
-    minimumTrust(
-      sourceTrust,
-      executionRecord.provenance.trust,
-      runtimeTrust(runtime),
-    ),
+    minimumTrust([sourceTrust, executionRecord.provenance.trust, runtimeTrust(runtime)], 'verified'),
     'EvaluationRecord trust exceeds its source or sealed Runtime assurance.',
   );
   if (executionRecord.executionStatus === 'budget-censored') {
@@ -1125,7 +1110,7 @@ export function assertEvaluationBundleMatchesPlan(
       }
       assertTrustAtMost(
         record.provenance.trust,
-        minimumTrust(sourceTrust, runtimeTrust(runtime)),
+        minimumTrust([sourceTrust, runtimeTrust(runtime)], 'verified'),
         'Source-less EvaluationRecord trust exceeds its source or sealed Runtime assurance.',
       );
       continue;
@@ -1267,10 +1252,7 @@ export function assertEvaluationBundleMatchesPlan(
   }
   assertTrustAtMost(
     bundle.provenance.trust,
-    minimumTrust(
-      sourceTrust,
-      ...bundle.records.map((record) => record.provenance.trust),
-    ),
+    minimumTrust([sourceTrust, ...bundle.records.map((record) => record.provenance.trust)], 'verified'),
     'EvaluationBundle trust exceeds its source or record provenance.',
   );
   const runProviderCostBudgetVerified = runProviderCostLimit === undefined

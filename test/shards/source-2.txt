@@ -24,6 +24,7 @@ test/eval-core/conformance/targets.test.ts
 test/eval-core/contracts/execution-controls.test.ts
 test/eval-core/contracts/execution-facts.test.ts
 test/eval-core/runtime-events.test.ts
+test/eval-core/runtime-resources.test.ts
 test/eval-core/series/runtime.test.ts
 test/eval-runtime/adapters/same-process.test.ts
 test/eval-runtime/content-infrastructure.test.ts
