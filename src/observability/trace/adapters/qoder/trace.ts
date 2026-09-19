@@ -92,20 +92,22 @@ const QODER_ORIGIN_KIND_TO_MESSAGE_ORIGIN: Readonly<Record<string, TraceMessageO
 /** An unrecognized `origin.kind` is still a source claim that it is not human. */
 const QODER_UNRECOGNIZED_ORIGIN_KIND_MESSAGE_ORIGIN: TraceMessageOrigin = 'runtime';
 
-export function isQoderJsonl(records: unknown[]): boolean {
-  return records.some((value) => {
-    const record = asQoderRecord(value);
-    if (!record) return false;
-    if (typeof record.type === 'string' && QODER_BOOKKEEPING_RECORD_TYPES.has(record.type)) {
-      return true;
-    }
-    if (record.type !== 'user' && record.type !== 'assistant') return false;
-    if (typeof record.sessionId !== 'string') return false;
-    // Qoder-only transcript fields. `humanInput` is the echoed prompt the CLI
-    // attached to a user turn, and `requestSetId` groups one request's records;
-    // neither exists in Claude Code output.
-    return typeof record.requestSetId === 'string' || isObject(record.humanInput);
-  });
+/**
+ * 格式判定的最小单位：单条记录是否构成 Qoder 格式的证据。「文件里是否存在这样一条记录」
+ * 由 `source.ts` 的单遍扫描合成——判定不再每个格式各自把整档重解析一遍。
+ */
+export function qoderFormatEvidence(value: unknown): boolean {
+  const record = asQoderRecord(value);
+  if (!record) return false;
+  if (typeof record.type === 'string' && QODER_BOOKKEEPING_RECORD_TYPES.has(record.type)) {
+    return true;
+  }
+  if (record.type !== 'user' && record.type !== 'assistant') return false;
+  if (typeof record.sessionId !== 'string') return false;
+  // Qoder-only transcript fields. `humanInput` is the echoed prompt the CLI
+  // attached to a user turn, and `requestSetId` groups one request's records;
+  // neither exists in Claude Code output.
+  return typeof record.requestSetId === 'string' || isObject(record.humanInput);
 }
 
 export function parseQoderSessionFile(filePath: string, rawRecords: unknown[]): TraceSession {

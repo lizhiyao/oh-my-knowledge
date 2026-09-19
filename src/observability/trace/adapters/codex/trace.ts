@@ -116,37 +116,37 @@ interface ExternalToolEndIndex {
   byOccurrence: Set<string>;
 }
 
-export function isCodexJsonl(records: unknown[]): boolean {
-  return records.some((record) => {
-    const raw = asCodexRecord(record);
-    if (!isObject(raw?.payload)) return false;
-    const payloadType = stringValue(raw.payload.type);
-    if (raw.type === 'session_meta') {
-      return stringValue(raw.payload.id) !== undefined
-        || stringValue(raw.payload.session_id) !== undefined;
-    }
-    if (raw.type === 'turn_context') {
-      return stringValue(raw.payload.turn_id) !== undefined
-        || stringValue(raw.payload.model) !== undefined;
-    }
-    if (raw.type === 'response_item') {
-      return isCodexResponseItemType(payloadType);
-    }
-    return raw.type === 'event_msg'
-      && isCodexEventMessageType(payloadType);
-  });
+/**
+ * 格式判定的最小单位：单条记录是否构成 Codex 格式的证据。「文件里是否存在这样一条记录」
+ * 由 `source.ts` 的单遍扫描合成——判定不再每个格式各自把整档重解析一遍。
+ */
+export function codexFormatEvidence(value: unknown): boolean {
+  const raw = asCodexRecord(value);
+  if (!isObject(raw?.payload)) return false;
+  const payloadType = stringValue(raw.payload.type);
+  if (raw.type === 'session_meta') {
+    return stringValue(raw.payload.id) !== undefined
+      || stringValue(raw.payload.session_id) !== undefined;
+  }
+  if (raw.type === 'turn_context') {
+    return stringValue(raw.payload.turn_id) !== undefined
+      || stringValue(raw.payload.model) !== undefined;
+  }
+  if (raw.type === 'response_item') {
+    return isCodexResponseItemType(payloadType);
+  }
+  return raw.type === 'event_msg'
+    && isCodexEventMessageType(payloadType);
 }
 
-export function isCodexGuardianRollout(records: unknown[]): boolean {
-  return records.some((record) => {
-    const raw = asCodexRecord(record);
-    if (raw?.type !== 'session_meta') return false;
-    const payload = isObject(raw.payload) ? raw.payload : {};
-    const source = isObject(payload.source) ? payload.source : {};
-    const subagent = source.subagent;
-    return (typeof subagent === 'string' && subagent === 'guardian')
-      || (isObject(subagent) && stringValue(subagent.other) === 'guardian');
-  });
+export function codexGuardianEvidence(value: unknown): boolean {
+  const raw = asCodexRecord(value);
+  if (raw?.type !== 'session_meta') return false;
+  const payload = isObject(raw.payload) ? raw.payload : {};
+  const source = isObject(payload.source) ? payload.source : {};
+  const subagent = source.subagent;
+  return (typeof subagent === 'string' && subagent === 'guardian')
+    || (isObject(subagent) && stringValue(subagent.other) === 'guardian');
 }
 
 export function parseCodexSessionFile(filePath: string, rawRecords: unknown[]): TraceSession {

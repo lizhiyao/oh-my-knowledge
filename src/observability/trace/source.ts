@@ -14,13 +14,13 @@ import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { openStreamedJsonlRecords, streamedJsonlBytes } from './streamed-records.js';
 import {
-  isCodexGuardianRollout,
-  isCodexJsonl,
+  codexFormatEvidence,
+  codexGuardianEvidence,
   parseCodexSessionFile,
 } from './adapters/codex/trace.js';
 import {
-  isQoderJsonl,
   parseQoderSessionFile,
+  qoderFormatEvidence,
 } from './adapters/qoder/trace.js';
 import {
   extractMarkdownLogSkill,
@@ -223,23 +223,35 @@ interface ParsedTraceFile {
   ingestion: TraceIngestionSummary;
 }
 
-interface JsonlTraceAdapter {
+/** 格式判定的最小单位：单条记录是否构成某一条证据；空洞（`undefined`）不是任何证据。 */
+export type RecordEvidence = (value: unknown) => boolean;
+
+export interface JsonlTraceAdapter {
   sourceKind: Exclude<TraceSourceKind, 'markdown_log' | 'unknown'>;
-  matches(records: CcRecord[]): boolean;
+  /**
+   * 判定该格式用到的证据子句。跨格式共享的子句必须是同一个函数引用（例如 claude 要让给
+   * qoder 的那一条），单遍扫描才会对它只求值一次。
+   */
+  evidence: readonly RecordEvidence[];
+  /** 用「这些证据是否在全档出现过」合成命中结果，组合方式与合并前的四个 `matches` 逐字一致。 */
+  isMatch(have: (evidence: RecordEvidence) => boolean): boolean;
   parse(filePath: string, records: Array<CcRecord | undefined>): TraceSession;
-  shouldFilter?(records: CcRecord[]): boolean;
+  /** 唯一命中本条目时才会被查阅的「整份丢弃」证据（Codex 的子代理日志）。 */
+  filterEvidence?: RecordEvidence;
 }
 
 const JSONL_TRACE_ADAPTERS: readonly JsonlTraceAdapter[] = [
   {
     sourceKind: 'codex',
-    matches: isCodexJsonl,
+    evidence: [codexFormatEvidence],
+    isMatch: (have) => have(codexFormatEvidence),
     parse: parseCodexSessionFile,
-    shouldFilter: isCodexGuardianRollout,
+    filterEvidence: codexGuardianEvidence,
   },
   {
     sourceKind: 'openclaw',
-    matches: isOpenClawJsonl,
+    evidence: [openClawSessionEvidence, openClawMessageEvidence],
+    isMatch: (have) => have(openClawSessionEvidence) && have(openClawMessageEvidence),
     parse: parseOpenClawSessionFile,
   },
   {
@@ -247,15 +259,60 @@ const JSONL_TRACE_ADAPTERS: readonly JsonlTraceAdapter[] = [
     // `assistant` + `sessionId` + `message`), so this entry has to win the
     // tie, and the Claude entry below has to give Qoder up.
     sourceKind: 'qoder',
-    matches: isQoderJsonl,
+    evidence: [qoderFormatEvidence],
+    isMatch: (have) => have(qoderFormatEvidence),
     parse: parseQoderSessionFile,
   },
   {
     sourceKind: 'claude',
-    matches: (records) => !isQoderJsonl(records) && isClaudeJsonl(records),
+    evidence: [qoderFormatEvidence, claudeTranscriptEvidence, claudeMetadataEvidence],
+    isMatch: (have) => !have(qoderFormatEvidence)
+      && (have(claudeTranscriptEvidence) || have(claudeMetadataEvidence)),
     parse: parseClaudeSessionFile,
   },
 ];
+
+export interface JsonlFormatDetection {
+  /** 命中的条目，顺序与注册表一致；长度不为 1 时调用方按「格式不唯一」处理。 */
+  matching: JsonlTraceAdapter[];
+  /** 该证据是否在扫描里出现过——`filterEvidence` 只允许对唯一命中的条目查它。 */
+  satisfied(evidence: RecordEvidence): boolean;
+}
+
+/**
+ * 一趟记录遍历同时判定四个宿主格式与 Codex 的丢弃条件。
+ *
+ * 每条证据一旦在某条记录上成立就恒为真（记录级谓词只看那一条记录，与位置无关），所以已成立的
+ * 子句不再求值，跨格式共享的子句（claude 让给 qoder 的那一条）也只算一次。合并前是「每个格式
+ * 各自 `some` 一遍」，不成立的谓词等于把整档重扫一遍——惰性记录视图上每一轮都是一整趟全档解析。
+ *
+ * 布尔结果与合并前逐字相同：`some` 只回答「存在与否」，与遍历顺序、与其他谓词的求值时机无关；
+ * 否定项要求「整档都没有」，它没成立时提前停止的条件就不满足，因此这一条必然扫完整档。提前停止
+ * 唯一允许在「所有子句都已出现过」时发生。
+ */
+export function detectJsonlFormats(records: Iterable<CcRecord | undefined>): JsonlFormatDetection {
+  const clauses: RecordEvidence[] = [];
+  for (const adapter of JSONL_TRACE_ADAPTERS) {
+    for (const evidence of adapter.filterEvidence
+      ? [...adapter.evidence, adapter.filterEvidence]
+      : adapter.evidence) {
+      if (!clauses.includes(evidence)) clauses.push(evidence);
+    }
+  }
+  const satisfied = new Set<RecordEvidence>();
+  for (const record of records) {
+    for (const evidence of clauses) {
+      if (!satisfied.has(evidence) && evidence(record)) satisfied.add(evidence);
+    }
+    if (satisfied.size === clauses.length) break;
+  }
+  return {
+    matching: JSONL_TRACE_ADAPTERS.filter((adapter) =>
+      adapter.isMatch((evidence) => satisfied.has(evidence))
+    ),
+    satisfied: (evidence) => satisfied.has(evidence),
+  };
+}
 
 function parseTraceFile(filePath: string): ParsedTraceFile {
   if (filePath.endsWith('.jsonl')) {
@@ -281,8 +338,7 @@ export function detectJsonlTraceSource(
   filePath: string,
   records: Array<CcRecord | undefined>,
 ): DetectedJsonlTrace | undefined {
-  const parsed = records.filter((record): record is CcRecord => Boolean(record));
-  const matching = JSONL_TRACE_ADAPTERS.filter((adapter) => adapter.matches(parsed));
+  const { matching } = detectJsonlFormats(records);
   if (matching.length !== 1) return undefined;
   return { sourceKind: matching[0].sourceKind, session: matching[0].parse(filePath, records) };
 }
@@ -473,13 +529,11 @@ function parseJsonlSessionFile(filePath: string): ParsedTraceFile {
     filteredSessionCount: 0,
   };
   if (records.length === 0) return { sessions: [], ingestion };
-  const matchingAdapters = JSONL_TRACE_ADAPTERS.filter((adapter) =>
-    adapter.matches(records)
-  );
+  const { matching: matchingAdapters, satisfied } = detectJsonlFormats(records);
   let session: TraceSession;
   if (matchingAdapters.length === 1) {
     const adapter = matchingAdapters[0];
-    if (adapter.shouldFilter?.(records)) {
+    if (adapter.filterEvidence && satisfied(adapter.filterEvidence)) {
       return {
         sessions: [],
         ingestion: { ...ingestion, filteredSessionCount: 1 },
@@ -565,17 +619,18 @@ export function forEachNonEmptyUtf8Line(
   }
 }
 
-// 两个谓词都可能拿到带空洞的记录数组：整档路径传的是紧凑数组，惰性视图里畸形与非对象下标是
+// 证据谓词都可能拿到带空洞的记录数组：整档路径把畸形行挡在数组外，惰性视图里畸形与非对象下标是
 // undefined。判定语义保持一致——空洞不是任何格式的证据。
-function isClaudeJsonl(records: CcRecord[]): boolean {
-  return records.some((record) =>
-    (record?.type === 'assistant' || record?.type === 'user')
-    && typeof record.sessionId === 'string'
-    && isRecordObject(record.message)
-  ) || records.some((record) =>
-    isKnownClaudeRecordType(record?.type)
-    && typeof record?.sessionId === 'string'
-  );
+export function claudeTranscriptEvidence(value: unknown): boolean {
+  if (!isRecordObject(value)) return false;
+  return (value.type === 'assistant' || value.type === 'user')
+    && typeof value.sessionId === 'string'
+    && isRecordObject(value.message);
+}
+
+export function claudeMetadataEvidence(value: unknown): boolean {
+  if (!isRecordObject(value)) return false;
+  return isKnownClaudeRecordType(value.type) && typeof value.sessionId === 'string';
 }
 
 /**
@@ -583,19 +638,18 @@ function isClaudeJsonl(records: CcRecord[]): boolean {
  * 整档常驻，实测 1.3 GiB 档的采集峰值从 3.6 GiB 降到 1.5 GiB。其余宿主、小文件、以及格式
  * 判定不唯一的文件一律返回 undefined，由调用方走原有的整档解析路径。
  *
- * 代价：判定格式要把四个 `matches` 各跑一遍，而不匹配的谓词是「全文件找一条同格式记录」，
- * 在惰性视图上每次都是一整轮重新解析（实测 1.3 GiB 档约 1.3 s/轮）。这是刻意的——换成按
- * 前若干条判定会改变「格式不唯一就不解析」的语义，属于 #974 follow-up 里要跟记录来源一起
- * 重新设计的一段。
+ * 判定这一趟只把整档扫一遍：`detectJsonlFormats` 把四个格式与丢弃条件合成一次遍历，每条记录
+ * 只解析一次。合并前不匹配的谓词各自要把整档重扫一遍，在惰性视图上那就是一整轮重新解析，
+ * 判定因此比映射本身还贵。
  */
 function parseStreamedCodexSessionFile(filePath: string): ParsedTraceFile | undefined {
   if (streamedJsonlBytes(filePath) < CODEX_STREAMED_MIN_BYTES) return undefined;
   const view = openStreamedJsonlRecords<CcRecord>(filePath);
   try {
-    const matching = JSONL_TRACE_ADAPTERS.filter((adapter) => adapter.matches(view.values));
+    const { matching, satisfied } = detectJsonlFormats(view.values);
     if (matching.length !== 1 || matching[0].sourceKind !== 'codex') return undefined;
     const adapter = matching[0];
-    if (adapter.shouldFilter?.(view.values)) {
+    if (adapter.filterEvidence && satisfied(adapter.filterEvidence)) {
       return { sessions: [], ingestion: streamedIngestion(view, 1) };
     }
     const session = adapter.parse(filePath, view.values);
@@ -1092,9 +1146,14 @@ function isRuntimeInjectedMessage(text: string): boolean {
     || /^<(?:app-context|environment_context|permissions instructions|collaboration_mode|apps_instructions|plugins_instructions|skills_instructions|recommended_plugins)>/i.test(trimmed);
 }
 
-function isOpenClawJsonl(records: CcRecord[]): boolean {
-  return records.some((record) => record?.type === 'session' && typeof record.id === 'string')
-    && records.some((record) => record?.type === 'message' && isRecordObject((record as { message?: unknown }).message));
+export function openClawSessionEvidence(value: unknown): boolean {
+  if (!isRecordObject(value)) return false;
+  return value.type === 'session' && typeof value.id === 'string';
+}
+
+export function openClawMessageEvidence(value: unknown): boolean {
+  if (!isRecordObject(value)) return false;
+  return value.type === 'message' && isRecordObject(value.message);
 }
 
 function parseOpenClawSessionFile(filePath: string, rawRecords: Array<CcRecord | undefined>): TraceSession {

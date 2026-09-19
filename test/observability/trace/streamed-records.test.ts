@@ -244,6 +244,41 @@ describe('streamed trace records', () => {
     assert.equal(parsed.sessions.length, 1);
   });
 
+  it('格式判定只多走一趟记录，不再为每个格式各自重扫整档', () => {
+    const dir = tempDir('omk-streamed-detect-');
+    const path = join(dir, 'rollout-cx-detect.jsonl');
+    writeFileSync(path, codexLog(transcriptLines()));
+    assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走惰性视图');
+
+    // 惰性视图每次访问都重新解析，所以「判定走了几趟整档」可以直接数 JSON.parse 的次数。
+    // 同一份文件的映射开销是固定的：两次计数之差就是格式判定的开销——只判结果相同的那条用例
+    // 抓不到「六趟变一趟」，只比 wall 又会被机器负载淹没。
+    const mappingOnly = countParses(() => {
+      const view = openStreamedJsonlRecords<unknown>(path);
+      try {
+        parseCodexSessionFile(path, view.values);
+      } finally {
+        view.close();
+      }
+    });
+    const wholeLoad = countParses(() => loadTraceCorpus(path));
+    const view = openStreamedJsonlRecords<unknown>(path);
+    let records = 0;
+    try {
+      records = view.stats().sourceRecordCount;
+    } finally {
+      view.close();
+    }
+    const detected = wholeLoad - mappingOnly;
+    // 合并后判定实测正好一趟整档记录（把阈值收到 1 趟也过）；留到 2 趟的余量，但远低于把
+    // 引擎退回「逐格式各扫一遍」时的 6 趟——那条断言只有成本差，结果与合并后完全相同。
+    assert.ok(
+      detected > 0 && detected <= records * 2,
+      `格式判定额外解析了 ${(detected / records).toFixed(1)} 趟整档记录，阈值 2 趟：`
+        + '判定退回逐格式各扫一遍时，大文件档的 wall 会重新被判定主导',
+    );
+  });
+
   it('建立索引期间失败时不留下已打开的 fd', () => {
     const dir = tempDir('omk-streamed-fd-');
     // 目录的 fd 能打开，随后按文件读会失败——这正是「open 成功、索引期间抛错」的形状。
@@ -257,4 +292,20 @@ describe('streamed trace records', () => {
 /** 当前进程打开着的 fd 数量（macOS 与 Linux 都提供 /dev/fd）。 */
 function openFdCount(): number {
   return readdirSync('/dev/fd').filter((name) => /^\d+$/.test(name)).length;
+}
+
+/** 在 `run` 期间数 `JSON.parse` 的调用次数；无论成功与否都把全局实现还原。 */
+function countParses(run: () => unknown): number {
+  const realParse = JSON.parse;
+  let count = 0;
+  JSON.parse = ((text: string, reviver?: (this: unknown, key: string, value: unknown) => unknown) => {
+    count += 1;
+    return realParse(text, reviver);
+  }) as typeof JSON.parse;
+  try {
+    run();
+  } finally {
+    JSON.parse = realParse;
+  }
+  return count;
 }
