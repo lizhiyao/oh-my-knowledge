@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   type AnalysisRequest,
   type Comparison,
@@ -26,9 +27,7 @@ import {
 import {
   type CapturedEvaluators,
 } from './capture-evaluators.js';
-import {
-  compareStrings,
-} from './ordering.js';
+
 import {
   configurationFailure,
 } from './errors.js';

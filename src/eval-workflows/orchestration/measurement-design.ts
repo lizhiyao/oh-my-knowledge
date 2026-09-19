@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import { EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID } from '../../eval-runtime/evaluators/exact-match.js';
 import {
   digestCanonicalJson,
@@ -206,7 +207,7 @@ export function buildProductionMeasurementDesign(
 ): ProductionMeasurementDesign {
   if (sourceSamples.length === 0) fail('samples', 'Evaluation dataset 至少需要一个 sample。');
   const sortedSamples = [...sourceSamples].sort((left, right) => (
-    left.sample_id < right.sample_id ? -1 : left.sample_id > right.sample_id ? 1 : 0
+    compareStrings(left.sample_id, right.sample_id)
   ));
   const sampleIds = sortedSamples.map((sample) => sample.sample_id);
   if (new Set(sampleIds).size !== sampleIds.length) fail('samples[].sample_id', 'sampleId 不得重复。');
@@ -442,7 +443,7 @@ export function buildProductionMeasurementDesign(
     }
   }
   const orderedRubricDimensions = [...rubricDimensions.values()].sort((left, right) => (
-    left.dimensionId < right.dimensionId ? -1 : left.dimensionId > right.dimensionId ? 1 : 0
+    compareStrings(left.dimensionId, right.dimensionId)
   ));
   for (const design of orderedRubricDimensions) metrics.push(metric(design.metricId, 'numeric'));
   // Joint calls share only dimensions actually present on that sample. Per-dimension
@@ -454,7 +455,7 @@ export function buildProductionMeasurementDesign(
     rubrics.sort((a, b) => {
       const left = (a as { metricId: string }).metricId;
       const right = (b as { metricId: string }).metricId;
-      return left < right ? -1 : left > right ? 1 : 0;
+      return compareStrings(left, right);
     });
     const metricIds = rubrics.map((rubric) => (rubric as { metricId: string }).metricId);
     const groupId = digestId('rubric-group', { metricIds });
@@ -462,7 +463,7 @@ export function buildProductionMeasurementDesign(
     group.sampleIds.push(sample.sample_id);
     rubricGroups.set(groupId, group);
   }
-  for (const [groupId, group] of [...rubricGroups].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+  for (const [groupId, group] of [...rubricGroups].sort(([a], [b]) => compareStrings(a, b))) {
     templates.push({
       evaluatorId: groupId,
       evaluatorKind: 'llm-rubric',
@@ -551,7 +552,7 @@ export function buildProductionMeasurementDesign(
       metricId: design.metricId,
       analysisResultId: ensembleResultId,
       sampleWeights: [...design.sampleWeights]
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .sort(([left], [right]) => (compareStrings(left, right)))
         .map(([sampleId, weight]) => ({ sampleId, weight })),
     });
   }
@@ -754,7 +755,7 @@ export function buildProductionMeasurementDesign(
   const judges: ResolvedJudgeMember[] = [...request.values.judges.members]
     .sort((left, right) => (
       left.executorId < right.executorId ? -1 : left.executorId > right.executorId ? 1
-        : left.model < right.model ? -1 : left.model > right.model ? 1 : 0
+        : compareStrings(left.model, right.model)
     ))
     .map((member) => {
       const identity = `${member.executorId}\u0000${member.model}`;

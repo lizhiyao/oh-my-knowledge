@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import {
   canonicalizeJson,
   digestCanonicalJson,
@@ -24,11 +26,7 @@ function sortedUnique(values: readonly string[], field: string): string[] {
   if (new Set(values).size !== values.length) {
     throw new TypeError(`${field} must not contain duplicate identifiers`);
   }
-  return [...values].sort((left, right) => {
-    if (left < right) return -1;
-    if (left > right) return 1;
-    return 0;
-  });
+  return [...values].sort(compareStrings);
 }
 
 function assertTrialIndex(trialIndex: number): void {
@@ -216,28 +214,10 @@ export interface PlannedExecutionCoordinate {
 }
 
 function resolvePointer(value: unknown, pointer: string): JsonValue {
-  let current = value;
-  if (pointer !== '') {
-    for (const encodedToken of pointer.slice(1).split('/')) {
-      const token = encodedToken.replaceAll('~1', '/').replaceAll('~0', '~');
-      if (current === null || typeof current !== 'object') {
-        throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
-      }
-      if (Array.isArray(current)) {
-        if (!/^(?:0|[1-9]\d*)$/.test(token)) {
-          throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
-        }
-        current = current[Number(token)];
-      } else {
-        if (!Object.prototype.hasOwnProperty.call(current, token)) {
-          throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
-        }
-        current = (current as Record<string, unknown>)[token];
-      }
-    }
-  }
-  canonicalizeJson(current);
-  return current as JsonValue;
+  const result = resolveJsonPointer(value, pointer);
+  if (!result.resolved) throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
+  canonicalizeJson(result.value);
+  return result.value as JsonValue;
 }
 
 function deriveMembershipBySample(
@@ -367,7 +347,7 @@ function comparePlannedCoordinates(
   if (left.sampleId < right.sampleId) return -1;
   if (left.sampleId > right.sampleId) return 1;
   return left.trialIndex - right.trialIndex
-    || (left.targetId < right.targetId ? -1 : left.targetId > right.targetId ? 1 : 0);
+    || (compareStrings(left.targetId, right.targetId));
 }
 
 export interface ExecutionCoordinateDigestInput {

@@ -72,6 +72,8 @@ Directories under `src` express domain ownership rather than one mechanical repo
 
 `shared` is a cross-domain leaf and depends only on itself. `eval-core` is the host-neutral measurement kernel. `eval-runtime` is the lightweight service-host adoption layer: its canonical façade compiles ordinary `evaluate()` input into existing Core contracts, while its foundation assembles explicit ports and Core built-ins without owning product workflows or infrastructure. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
 
+`eval-core/primitives` owns shared ordering, provenance trust ordering and JSON Pointer traversal. It is a dependency-free leaf below contracts: contracts, Core stages, Runtime and workflows consume it directly, without maintaining parallel implementations.
+
 ```text
 eval-core ← eval-runtime ← product orchestration
                 ↑                   ↑

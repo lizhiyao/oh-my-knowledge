@@ -1,3 +1,6 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import {
   EVALUATION_BUNDLE_SCHEMA_VERSION,
   CompletedEvaluationRecordSchema,
@@ -124,12 +127,6 @@ const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as 
 
 function configurationError(code: string, message: string): never {
   throw new EvaluationRuntimeConfigurationError(code, message);
-}
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function compareRecords(left: EvaluationRecord, right: EvaluationRecord): number {
@@ -294,25 +291,10 @@ function validatedUsage(value: UsageRecord | undefined): UsageRecord | undefined
 }
 
 function resolvePointer(value: JsonValue, pointer: string): JsonValue {
-  let current: unknown = value;
-  if (pointer === '') return value;
-  for (const encoded of pointer.slice(1).split('/')) {
-    const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (current === null || typeof current !== 'object') throw new TypeError('pointer-unresolved');
-    if (Array.isArray(current)) {
-      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= current.length) {
-        throw new TypeError('pointer-unresolved');
-      }
-      current = current[Number(token)];
-    } else {
-      if (!Object.prototype.hasOwnProperty.call(current, token)) {
-        throw new TypeError('pointer-unresolved');
-      }
-      current = (current as Record<string, unknown>)[token];
-    }
-  }
-  canonicalizeJson(current);
-  return current as JsonValue;
+  const result = resolveJsonPointer(value, pointer);
+  if (!result.resolved) throw new TypeError('pointer-unresolved');
+  canonicalizeJson(result.value);
+  return result.value as JsonValue;
 }
 
 async function resolveCaptured(
@@ -646,13 +628,6 @@ class Sessions {
     return failed;
   }
 }
-
-const TRUST_LEVEL: Record<Provenance['trust'], number> = {
-  untrusted: 0,
-  unknown: 1,
-  declared: 2,
-  verified: 3,
-};
 
 function minimumTrust(...values: readonly Provenance['trust'][]): Provenance['trust'] {
   return values.reduce((minimum, value) => (

@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
@@ -14,9 +15,6 @@ import { assertCoreProjectionSource } from './source.js';
 
 type FindingInput = Omit<CoreDiagnosticFinding, 'findingId'>;
 
-function compareCanonicalStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function finding(input: FindingInput): CoreDiagnosticFinding {
   return {
@@ -158,12 +156,12 @@ export function projectCoreDiagnostics(
   const stageOrder = { execution: 0, evaluation: 1, analysis: 2, decision: 3 } as const;
   findings.sort((left, right) => (
     stageOrder[left.stage] - stageOrder[right.stage]
-    || compareCanonicalStrings(
+    || compareStrings(
       canonicalizeJson(left.scope ?? null),
       canonicalizeJson(right.scope ?? null),
     )
-    || compareCanonicalStrings(left.reasonCode, right.reasonCode)
-    || compareCanonicalStrings(left.sourceDigest, right.sourceDigest)
+    || compareStrings(left.reasonCode, right.reasonCode)
+    || compareStrings(left.sourceDigest, right.sourceDigest)
   ));
   return deepFreezeCanonicalJson({
     projectionKind: 'core-diagnostic',

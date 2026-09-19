@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { parseStatelessApiSampleInput } from '../adapters/shared/sample-input.js';
 import { UnsupportedSampleSchemaError } from '../../inputs/schemas/error.js';
 import { createHash } from 'node:crypto';
@@ -1100,8 +1101,7 @@ export async function resolveNodeCliEvaluationRequest(
     hostResources: {
       schemaVersion: RESOLVED_HOST_RESOURCES_SCHEMA_VERSION,
       resources: [...resources.resourcesById.values()].sort((left, right) => (
-        left.descriptor.resourceId < right.descriptor.resourceId ? -1
-          : left.descriptor.resourceId > right.descriptor.resourceId ? 1 : 0
+        compareStrings(left.descriptor.resourceId, right.descriptor.resourceId)
       )),
     },
     orchestration: {

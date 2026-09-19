@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   type SealedRunPlan,
 } from '../../eval-core/compiler/index.js';
@@ -17,9 +18,7 @@ import {
   type PreparedEvaluationPlan,
   type PreparedEvaluation,
 } from './contracts.js';
-import {
-  compareStrings,
-} from './ordering.js';
+
 
 export interface AuthenticatedCanonicalRun {
   readonly plan: SealedRunPlan;

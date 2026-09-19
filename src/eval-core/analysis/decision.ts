@@ -1,3 +1,4 @@
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import {
   EVALUATION_REPORT_SCHEMA_VERSION,
   DecisionResultSchema,
@@ -49,8 +50,6 @@ import {
 } from './types.js';
 
 const EVIDENCE_LEVEL = { unresolvable: 0, partial: 1, complete: 2 } as const;
-const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
-
 function configurationError(code: string, message: string): never {
   throw new AnalysisRuntimeConfigurationError(code, message);
 }

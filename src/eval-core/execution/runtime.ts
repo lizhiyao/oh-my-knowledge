@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import {
   EXECUTION_BUNDLE_SCHEMA_VERSION,
   CompletedExecutionRecordSchema,
@@ -71,18 +73,11 @@ type ActiveExecutionRecord = Exclude<ExecutionRecord, { executionStatus: 'budget
 type CompletedExecutionRecord = Extract<ExecutionRecord, { executionStatus: 'completed' }>;
 type ResolvedExecutionRunOptions = ExecutionRunOptions & { budgetSource: RunBudgetSource };
 
-const PROVENANCE_TRUST_LEVEL = {
-  untrusted: 0,
-  unknown: 1,
-  declared: 2,
-  verified: 3,
-} as const;
-
 function minimumProvenanceTrust(
   records: readonly ExecutionRecord[],
 ): Provenance['trust'] {
   return records.reduce<Provenance['trust']>((minimum, record) => (
-    PROVENANCE_TRUST_LEVEL[record.provenance.trust] < PROVENANCE_TRUST_LEVEL[minimum]
+    TRUST_LEVEL[record.provenance.trust] < TRUST_LEVEL[minimum]
       ? record.provenance.trust
       : minimum
   ), 'verified');
@@ -140,12 +135,6 @@ const CLASSIFICATION_LEVEL = {
   secret: 2,
   gold: 3,
 } as const;
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 function compareRecords(left: ExecutionRecord, right: ExecutionRecord): number {
   return compareStrings(left.targetId, right.targetId)

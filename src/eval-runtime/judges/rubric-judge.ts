@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import { decodeRubricReadings, type RubricReading } from './rubric-readings.js';
 import {
   IdentifierSchema,
@@ -256,7 +257,7 @@ export function captureRubricJudgeCriteria(value: unknown): readonly RubricJudge
   if (!Array.isArray(value) || value.length === 0) {
     return failure('omk-rubric-judge-criteria-invalid', 'Rubric judge requires a nonempty criteria array.');
   }
-  const criteria = value.map(parseCriterion).sort((a, b) => a.metricId < b.metricId ? -1 : a.metricId > b.metricId ? 1 : 0);
+  const criteria = value.map(parseCriterion).sort((a, b) => compareStrings(a.metricId, b.metricId));
   if (new Set(criteria.map((item) => item.metricId)).size !== criteria.length
       || new Set(criteria.map((item) => item.criterionId)).size !== criteria.length) {
     return failure('omk-rubric-judge-criteria-invalid', 'Rubric judge metric and criterion IDs must be unique.');

@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { readonlyMapSnapshot } from '../adapters/shared/readonly-map-snapshot.js';
 import { execFile as execFileCallback } from 'node:child_process';
 import { createHash, type Hash } from 'node:crypto';
@@ -54,9 +55,6 @@ function fail(input: ConstructorParameters<typeof OmkResourceLeaseError>[0]): ne
   throw new OmkResourceLeaseError(input);
 }
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function sha256Digest(hash: Hash): `sha256:${string}` {
   return `sha256:${hash.digest('hex')}`;

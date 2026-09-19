@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EvaluationDefinitionSchema,
@@ -132,8 +133,7 @@ export function createPairedComparisonDefinition(
         targetId: candidate.targetId,
         randomizationSlotId: `slot-${candidate.targetId}`,
       })).sort((left, right) => (
-        left.randomizationSlotId < right.randomizationSlotId ? -1
-          : left.randomizationSlotId > right.randomizationSlotId ? 1 : 0
+        compareStrings(left.randomizationSlotId, right.randomizationSlotId)
       )),
       sampling: {
         experimentalUnit: 'sample',

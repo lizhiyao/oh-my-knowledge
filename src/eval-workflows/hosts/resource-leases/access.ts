@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import type { RuntimeBinding } from '../../input-compilation/index.js';
 import {
   OmkResourceLeaseAccessError,
@@ -16,9 +17,6 @@ function fail(
   throw new OmkResourceLeaseAccessError(input);
 }
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function resourceKindForRole(
   role: ResourceConsumerBinding['resourceLeaseRequirements'][number]['resourceRole'],

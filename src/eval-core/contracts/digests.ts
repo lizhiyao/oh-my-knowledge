@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import type {
   AnalysisGraphDefinition,
   ComparisonDefinition,
@@ -198,35 +200,11 @@ export function computeExecutionPlanDigest(
   });
 }
 
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
 function resolveSamplingPointer(value: unknown, pointer: string): JsonValue {
-  let current = value;
-  if (pointer !== '') {
-    for (const encodedToken of pointer.slice(1).split('/')) {
-      const token = encodedToken.replaceAll('~1', '/').replaceAll('~0', '~');
-      if (current === null || typeof current !== 'object') {
-        throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
-      }
-      if (Array.isArray(current)) {
-        if (!/^(?:0|[1-9]\d*)$/.test(token)) {
-          throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
-        }
-        current = current[Number(token)];
-      } else {
-        if (!Object.prototype.hasOwnProperty.call(current, token)) {
-          throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
-        }
-        current = (current as Record<string, unknown>)[token];
-      }
-    }
-  }
-  assertCanonicalJson(current);
-  return current as JsonValue;
+  const result = resolveJsonPointer(value, pointer);
+  if (!result.resolved) throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
+  assertCanonicalJson(result.value);
+  return result.value as JsonValue;
 }
 
 function projectSamplingMemberships(

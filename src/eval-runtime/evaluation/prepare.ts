@@ -1,3 +1,4 @@
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   type Variant,
   type Evaluator,
@@ -49,9 +50,7 @@ import {
   type SealedRunPlan,
   EvaluationDefinitionError,
 } from '../../eval-core/compiler/index.js';
-import {
-  compareStrings,
-} from './ordering.js';
+
 import {
   createMeasurementPolicy,
 } from '../builders/policy.js';

@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import {
   RuntimeIdentitySchema,
   canonicalizeJson,
@@ -22,7 +23,7 @@ import {
   COMPOSITE_SCORE_MIN,
   COMPOSITE_TABLE_SCHEMA,
 } from './composite-table.js';
-import { compareStrings } from './analysis-support.js';
+import { } from './analysis-support.js';
 
 export const COMPOSITE_ANALYSIS_IMPLEMENTATION_ID = 'omk.composite-table/v2' as const;
 

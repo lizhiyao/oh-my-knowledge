@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { readonlyMapSnapshot } from '../adapters/shared/readonly-map-snapshot.js';
 import {
   RuntimeIdentitySchema,
@@ -52,9 +53,6 @@ interface ExpectedBinding {
   readonly subject: unknown;
 }
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function fail(input: ConstructorParameters<typeof OmkRuntimeAssemblyError>[0]): never {
   throw new OmkRuntimeAssemblyError(input);

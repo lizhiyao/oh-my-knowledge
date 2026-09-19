@@ -1,3 +1,4 @@
+import { resolveJsonPointer } from '../../eval-core/primitives/json-pointer.js';
 import { SampleInputSchema } from './schemas/sample-input.js';
 import { isJsonValue } from '../../shared/json-value.js';
 import {
@@ -288,14 +289,8 @@ function mockHitReferenceValidationError(
 
 /** Validate known reference data before spending execution work on an unresolvable check. */
 function hasExpectedPointer(value: unknown, pointer: string): boolean {
-  let current = value;
-  for (const encoded of pointer === '' ? [] : pointer.slice(1).split('/')) {
-    const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (current === null || typeof current !== 'object' || !Object.hasOwn(current, token)) return false;
-    if (Array.isArray(current) && !/^(?:0|[1-9]\d*)$/.test(token)) return false;
-    current = (current as Record<string, unknown>)[token];
-  }
-  return current !== undefined;
+  const result = resolveJsonPointer(value, pointer);
+  return result.resolved && result.value !== undefined;
 }
 
 export function sampleContractValidationError(

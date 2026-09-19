@@ -1,3 +1,4 @@
+import { compareStrings } from '../eval-core/primitives/ordering.js';
 import {
   ExecutionResourceDescriptorSchema,
   IdentifierSchema,
@@ -127,7 +128,7 @@ export function captureMcpConfigPlan(
   }
   const overrides: Array<readonly [string, McpConfigDescriptor | null]> = [];
   for (const [sampleId, config] of Object.entries(plan.bySampleId ?? {})
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
+    .sort(([left], [right]) => compareStrings(left, right))) {
     if (!sampleIds.has(sampleId)) throw new TypeError('MCP config plan references an unknown sample.');
     if (config === null) {
       if (defaultConfig !== undefined) overrides.push([sampleId, null]);

@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import { z } from 'zod';
 import {
   AssumptionCheckSchema,
@@ -267,18 +269,12 @@ export type SeriesAnalysisBundle = z.infer<typeof SeriesAnalysisBundleSchema>;
 export type SeriesDecisionResult = z.infer<typeof SeriesDecisionResultSchema>;
 export type EvaluationSeriesReport = z.infer<typeof EvaluationSeriesReportSchema>;
 
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
 function compareMembers(
   left: Pick<SeriesMemberReference, 'replicateIndex' | 'memberId'>,
   right: Pick<SeriesMemberReference, 'replicateIndex' | 'memberId'>,
 ): number {
   return left.replicateIndex - right.replicateIndex
-    || (left.memberId < right.memberId ? -1 : left.memberId > right.memberId ? 1 : 0);
+    || (compareStrings(left.memberId, right.memberId));
 }
 
 function normalizeSeriesNode(
@@ -506,7 +502,7 @@ export function prepareEvaluationSeriesPlan(
   const sortedRuntimes = [...runtimes].sort((left, right) => {
     const leftKey = `${left.runtimeKind}\u0000${left.referenceId}`;
     const rightKey = `${right.runtimeKind}\u0000${right.referenceId}`;
-    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    return compareStrings(leftKey, rightKey);
   });
   const payload = {
     schemaVersion: EVALUATION_SERIES_PLAN_SCHEMA_VERSION,
@@ -559,10 +555,6 @@ export function assertEvaluationSeriesMemberSource(
   }
 }
 
-function trustLevel(value: SeriesMemberReference['effectiveTrust']): number {
-  return { untrusted: 0, unknown: 1, declared: 2, verified: 3 }[value];
-}
-
 export function createEvaluationSeriesMemberSource(input: {
   memberId: string;
   replicateIndex: number;
@@ -597,7 +589,7 @@ export function createEvaluationSeriesMemberSource(input: {
     ...(input.decision === undefined ? [] : [effectiveDecisionResultTrust(input.decision)]),
     report.provenance.trust,
   ];
-  const effectiveTrust = [...trusts].sort((left, right) => trustLevel(left) - trustLevel(right))[0];
+  const effectiveTrust = [...trusts].sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
   const reference = deepFreezeCanonicalJson(parseWireDocument(SeriesMemberReferenceSchema, {
     memberId: input.memberId,
     replicateIndex: input.replicateIndex,
@@ -821,11 +813,11 @@ export function parseSeriesAnalysisBundleDocument(value: unknown): SeriesAnalysi
       .map((record) => record.implementation.assuranceLevel),
   ];
   const trustCeiling = [...trustInputs].sort((left, right) => (
-    trustLevel(left) - trustLevel(right)
+    TRUST_LEVEL[left] - TRUST_LEVEL[right]
   ))[0] ?? 'unknown';
   if (canonicalizeJson(bundle.provenance.parentDigests)
       !== canonicalizeJson(expectedParents)
-      || trustLevel(bundle.provenance.trust) > trustLevel(trustCeiling)
+      || TRUST_LEVEL[bundle.provenance.trust] > TRUST_LEVEL[trustCeiling]
       || digestSeriesArtifact(
         bundle as unknown as Record<string, JsonValue>,
         'bundleDigest',
@@ -869,8 +861,8 @@ export function parseEvaluationSeriesReportDocument(value: unknown): EvaluationS
   if (canonicalizeJson(report.provenance.parentDigests)
       !== canonicalizeJson(expectedParents)
       || (report.decision?.policyExecutionStatus === 'executed'
-        && trustLevel(report.provenance.trust)
-          > trustLevel(report.decision.implementation.assuranceLevel))
+        && TRUST_LEVEL[report.provenance.trust]
+          > TRUST_LEVEL[report.decision.implementation.assuranceLevel])
       || digestSeriesArtifact(
         report as unknown as Record<string, JsonValue>,
         'reportDigest',

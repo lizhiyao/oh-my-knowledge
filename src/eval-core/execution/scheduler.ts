@@ -1,3 +1,4 @@
+import { compareStrings } from '../primitives/ordering.js';
 import {
   canonicalizeJson,
   derivePlannedExecutionCoordinates,
@@ -9,12 +10,6 @@ import type { SealedRunPlan } from '../compiler/index.js';
 export interface ExecutionSchedulingBlock {
   schedulingBlockId: string;
   coordinates: readonly PlannedExecutionCoordinate[];
-}
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function interleavedOrder(

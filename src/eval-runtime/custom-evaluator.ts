@@ -1,3 +1,4 @@
+import { compareStrings } from '../eval-core/primitives/ordering.js';
 import { z } from 'zod';
 import {
   EvaluatorDefinitionSchema,
@@ -311,7 +312,7 @@ export function captureCustomEvaluator(
         invalidDeclaration(['bindings', index, 'pointer']);
       }
     });
-    bindings.sort((left, right) => left.bindingId < right.bindingId ? -1 : left.bindingId > right.bindingId ? 1 : 0);
+    bindings.sort((left, right) => compareStrings(left.bindingId, right.bindingId));
     if ('metric' in value) invalidDeclaration(['metric'], 'unsupported-field');
     const implementation = at(['implementation'], () => {
       if (value.implementation == null) invalidDeclaration(['implementation']);
@@ -331,7 +332,7 @@ export function captureCustomEvaluator(
       if (seenMetrics.has(parsed.metricId)) invalidDeclaration(['metrics', index, 'metricId'], 'duplicate-id');
       seenMetrics.add(parsed.metricId);
       return parsed;
-    }).sort((left, right) => left.metricId < right.metricId ? -1 : left.metricId > right.metricId ? 1 : 0);
+    }).sort((left, right) => compareStrings(left.metricId, right.metricId));
     const metricIds = metrics.map((metric) => metric.metricId);
     at(['implementation', 'schemas', 'values'], () => {
       if (schemas.values == null || Array.isArray(schemas.values)

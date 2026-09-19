@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { z } from 'zod';
 import {
   JsonValueSchema,
@@ -59,7 +60,7 @@ export function captureClassifiedEnvironment(
 ): CapturedClassifiedEnvironment {
   const environment = EnvironmentSchema.parse(structuredClone(input ?? {}));
   const entries = Object.entries(environment).sort(([left], [right]) => (
-    left < right ? -1 : left > right ? 1 : 0
+    compareStrings(left, right)
   ));
   return Object.freeze({
     values: Object.freeze(Object.fromEntries(entries.map(([key, entry]) => [

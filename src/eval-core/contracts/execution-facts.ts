@@ -1,3 +1,4 @@
+import { TRUST_LEVEL } from '../primitives/provenance.js';
 import { z } from 'zod';
 import type { ExecutionRecord } from './artifacts.js';
 import {
@@ -280,8 +281,6 @@ function contentFact(
 }
 
 const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
-const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
-
 type SourceTrust = keyof typeof TRUST_LEVEL;
 
 function factsClassification(

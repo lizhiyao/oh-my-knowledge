@@ -1,3 +1,5 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL, isProvenanceTrust } from '../primitives/provenance.js';
 import {
   AnalysisBundleSchema,
   type AnalysisBundle,
@@ -57,12 +59,6 @@ export class AnalysisBundleValidationError extends TypeError {
     this.name = 'AnalysisBundleValidationError';
     this.code = code;
   }
-}
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function assertObservationCoverage(coverage: AnalysisObservationCoverage): void {
@@ -616,13 +612,6 @@ function assertSourceCoverage(
   }
 }
 
-const TRUST_LEVEL = {
-  untrusted: 0,
-  unknown: 1,
-  declared: 2,
-  verified: 3,
-} as const;
-
 export function analysisRuntimeDependencyTrusts(
   plan: Pick<AnalysisBundlePlanContext, 'analysis'>,
   records: readonly AnalysisRecord[],
@@ -639,8 +628,8 @@ export function analysisRuntimeDependencyTrusts(
     const assurance = identity !== null && typeof identity === 'object'
       ? (identity as Record<string, unknown>).assuranceLevel
       : undefined;
-    return typeof assurance === 'string' && assurance in TRUST_LEVEL
-      ? assurance as Provenance['trust']
+    return isProvenanceTrust(assurance)
+      ? assurance
       : 'untrusted';
   });
 }

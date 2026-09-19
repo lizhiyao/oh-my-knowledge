@@ -1,3 +1,4 @@
+import { encodePointerToken } from '../primitives/json-pointer.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { deepFreeze } from './immutability.js';
@@ -26,7 +27,7 @@ export class InvalidCanonicalJsonError extends TypeError {
 
 function childPath(path: string, key: string | number): string {
   if (typeof key === 'number') return `${path}[${key}]`;
-  return `${path}/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`;
+  return `${path}/${encodePointerToken(key)}`;
 }
 
 function assertUnicodeScalarString(value: string, path: string): void {

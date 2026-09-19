@@ -1,3 +1,6 @@
+import { compareStrings } from '../primitives/ordering.js';
+import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import {
   EvaluationBundleSchema,
   type EvaluationBundle,
@@ -66,12 +69,6 @@ export class EvaluationBundleValidationError extends TypeError {
     this.name = 'EvaluationBundleValidationError';
     this.code = code;
   }
-}
-
-function compareStrings(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function compareRecords(left: EvaluationRecord, right: EvaluationRecord): number {
@@ -655,8 +652,6 @@ function assertObservation(
 }
 
 const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
-const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
-
 type EvaluationEvidencePolicy = EvaluationBundlePlanContext['evaluation']['policy']['evidence'];
 
 export function evaluationRecordMatchesEvidencePolicy(
@@ -704,24 +699,7 @@ function assertTrustAtMost(
   }
 }
 
-function resolvePointer(value: unknown, pointer: string): { resolved: boolean; value?: unknown } {
-  let current = value;
-  if (pointer === '') return { resolved: true, value: current };
-  for (const encoded of pointer.slice(1).split('/')) {
-    const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (current === null || typeof current !== 'object') return { resolved: false };
-    if (Array.isArray(current)) {
-      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= current.length) {
-        return { resolved: false };
-      }
-      current = current[Number(token)];
-    } else {
-      if (!Object.prototype.hasOwnProperty.call(current, token)) return { resolved: false };
-      current = (current as Record<string, unknown>)[token];
-    }
-  }
-  return { resolved: true, value: current };
-}
+
 
 type BindingAvailability = 'available' | 'unavailable' | 'indeterminate';
 interface BindingClosure {
@@ -737,7 +715,7 @@ function capturedBinding(
     return { availability: 'unavailable' };
   }
   if (content.contentKind === 'descriptor') return { availability: 'indeterminate' };
-  const resolved = resolvePointer(content.value, pointer);
+  const resolved = resolveJsonPointer(content.value, pointer);
   return resolved.resolved
     ? { availability: 'available', value: resolved.value, classification: content.classification }
     : { availability: 'unavailable' };
@@ -775,7 +753,7 @@ function bindingClosure(
         executionRecord,
         minimumTrust(sourceTrust, executionRecord.provenance.trust),
       );
-      const resolved = resolvePointer(facts.value, input.pointer);
+      const resolved = resolveJsonPointer(facts.value, input.pointer);
       binding = resolved.resolved
         ? {
             availability: 'available',
@@ -790,7 +768,7 @@ function bindingClosure(
         : sample.evaluationContext;
       const resolved = value === undefined
         ? { resolved: false as const }
-        : resolvePointer(value, input.pointer);
+        : resolveJsonPointer(value, input.pointer);
       binding = resolved.resolved
         ? { availability: 'available', value: resolved.value, classification: 'gold' }
         : { availability: 'unavailable' };

@@ -1,3 +1,4 @@
+import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { parseStatelessApiSampleInput, STATELESS_API_SAMPLE_INPUT_POLICY } from './sample-input.js';
 import type { SampleMessage } from '../../../inputs/contracts/sample-input.js';
 import { readFile, readdir } from 'node:fs/promises';
@@ -180,7 +181,7 @@ async function directoryFiles(
   }
   const paths: string[] = [];
   for (const entry of entries.sort((left, right) => (
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    compareStrings(left.name, right.name)
   ))) {
     const path = join(current, entry.name);
     if (entry.isDirectory()) paths.push(...await directoryFiles(profile, path));
@@ -222,7 +223,7 @@ async function projectArtifact(
     path: relative(resource.snapshotPath, path).replaceAll('\\', '/'),
     content: await readTextFile(profile, path),
   })))).sort((left, right) => (
-    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+    compareStrings(left.path, right.path)
   ));
   const entrypoint = sections.find((section) => section.path === 'SKILL.md');
   if (entrypoint === undefined) {

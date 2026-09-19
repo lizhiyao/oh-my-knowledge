@@ -1,3 +1,4 @@
+import { compareStrings } from '../eval-core/primitives/ordering.js';
 import {
   ExecutionResourceDescriptorSchema,
   IdentifierSchema,
@@ -129,7 +130,7 @@ export function captureWorkspacePlan(
   }
   const sampleOverrides: Array<readonly [string, WorkspaceDescriptor | null]> = [];
   for (const [sampleId, workspace] of Object.entries(plan.bySampleId ?? {})
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
+    .sort(([left], [right]) => compareStrings(left, right))) {
     if (!sampleIds.has(sampleId)) {
       throw new TypeError('Workspace plan references an unknown sample.');
     }

@@ -1,3 +1,4 @@
+import { compareStrings } from '../eval-core/primitives/ordering.js';
 import {
   deepFreezeCanonicalJson,
   type TargetExecutionControls,
@@ -10,9 +11,6 @@ import type {
 } from './mock-interception.js';
 import type { CapturedWorkspacePlan, WorkspaceDescriptor } from './workspace.js';
 
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function workspaceControl(descriptor: WorkspaceDescriptor | null | undefined) {
   return descriptor === null || descriptor === undefined

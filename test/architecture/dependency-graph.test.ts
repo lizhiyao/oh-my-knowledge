@@ -82,13 +82,13 @@ const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'eval-workflows/hosts/adapters/claude/sdk-runtime.ts',
     expression: 'sdkModuleUrl.href',
-    sourceSha256: 'ecc6f7786371066da5853a70b1fe1fe6fd1af088f8a9e1207e626670e6830c21',
+    sourceSha256: '2860df51b00b50847fe45fbef352826d4c18b247ab6da11ce6de3842a8fda650',
     rationale: 'Loads the resolved optional Claude SDK entrypoint with a per-runtime file URL.',
   },
   {
     importer: 'eval-workflows/hosts/adapters/codex/sdk-runtime.ts',
     expression: 'sdkModuleUrl.href',
-    sourceSha256: '779eb62d9a6d67712ce454466e47802901637b00b6c2e99056dcd8b06fcedac1',
+    sourceSha256: '695b5e16f09f32a6e8f705dc39ad69548aaa21a2608a2b93cf2a98583694d257',
     rationale: 'Loads the resolved optional Codex SDK entrypoint with a per-runtime file URL.',
   },
 ] as const;
@@ -434,15 +434,17 @@ describe('src 依赖图', () => {
     expect(violations).toEqual([]);
   });
 
-  it('eval-core contracts 不反向依赖 Core 实现子域', () => {
+  it('eval-core contracts 只依赖契约与无依赖的基础不变量', () => {
     const violations = edges
       .filter((edge) => edge.importerDomain === 'eval-core/contracts')
       .filter((edge) => (
         edge.targetDomain.startsWith('eval-core/')
         && edge.targetDomain !== 'eval-core/contracts'
+        && edge.targetDomain !== 'eval-core/primitives'
       ))
       .map(describeEdge);
     expect(violations).toEqual([]);
+    expect(edges.filter((edge) => edge.importerDomain === 'eval-core/primitives')).toEqual([]);
   });
 
   it('运行时实现环只允许完整拓扑精确匹配的已审计登记', () => {
