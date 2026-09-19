@@ -66,6 +66,7 @@ test/knowledge/executor.test.ts
 test/mcp/http.test.ts
 test/mcp/trigger-samples.test.ts
 test/observability/experience-review-structures.test.ts
+test/observability/experience-session-story.test.ts
 test/observability/inbox/effective-review.test.ts
 test/scripts/ci-scope.test.ts
 test/scripts/docs-i18n-mirror-links.test.ts
