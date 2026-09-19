@@ -7,7 +7,7 @@ import type {
   AgentLogRootStatus,
   CollectedSession,
   DetectedAgent,
-} from '../../../../observability/agents/contracts';
+} from '../../../../observability/agents/index';
 import type { AgentsPage } from '../../../http/pages/agents-page';
 import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { displayBytes, displayTime } from '../../../application/display/format';

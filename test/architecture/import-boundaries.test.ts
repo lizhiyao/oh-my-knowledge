@@ -4,7 +4,7 @@
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
  *   - observability 反向 driving diagnosis(已修)
  *   - Studio application / catalog 散落在交付层与 workflow(已修)
- *   - Studio presentation 直接 import observability 内部(已随 HTML 渲染层删除)
+ *   - Studio 直接 import observability 内部（统一经过应用／展示入口与类型契约）
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
  * 规则形态:每条规则声明 from / to / 可选 whitelist + 注解。匹配 src-relative
@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, normalize, sep, dirname } from 'node:path';
 import ts from 'typescript';
 
@@ -38,9 +38,31 @@ interface ForbiddenRule {
    *  importer 必须 from 前缀,target 必须 to 前缀,但这一对组合不计为违例。
    *  专用于「P2 待修但 P1.3 不阻塞」的 known-debt。 */
   whitelist?: string[];
+  /** 该领域允许消费的稳定入口；不按调用文件逐条豁免私有实现。 */
+  allowedTargets?: readonly string[];
 }
 
 const RULES: ForbiddenRule[] = [
+  {
+    from: 'studio/', to: 'observability/',
+    reason: 'Studio 只消费观测应用／展示入口和稳定类型契约，不穿透私有子域。',
+    allowedTargets: [
+      'observability/application.ts',
+      'observability/presentation.ts',
+      'observability/agents/index.ts',
+      ...['contracts', 'view-models'].flatMap((directory) => (
+        listTsFiles(join(SRC_DIR, 'observability', directory)).map(toSrcRelative)
+      )),
+    ],
+  },
+  ...['application.ts', 'presentation.ts'].flatMap((entry) => (
+    readdirSync(join(SRC_DIR, 'observability'), { withFileTypes: true })
+      .filter((directory) => directory.isDirectory())
+      .map((directory) => ({
+        from: `observability/${directory.name}/`, to: `observability/${entry}`,
+        reason: '观测私有实现不得通过消费方入口反向聚合自身依赖。',
+      }))
+  )),
   ...['observability/', 'executors/', 'cli/', 'studio/', 'evidence/', 'eval-workflows/', 'knowledge-artifacts/'].map((to) => ({
     from: 'knowledge/', to,
     reason: '知识内容和接纳规则保持宿主无关；来源、执行器与存储由应用层注入。',
@@ -272,23 +294,34 @@ function listTsFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const IMPORT_RE = /(?:^|\s|;)import\s+(?:type\s+)?(?:[\w*{}\s,]+from\s+)?['"]([^'"]+)['"]/g;
-const REEXPORT_RE = /(?:^|\s|;)export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g;
-const DYNAMIC_RE = /import\(\s*['"]([^'"]+)['"]\s*\)/g;
-
 function extractSpecifiers(content: string): string[] {
   const specs = new Set<string>();
-  for (const m of content.matchAll(IMPORT_RE)) specs.add(m[1]);
-  for (const m of content.matchAll(REEXPORT_RE)) specs.add(m[1]);
-  for (const m of content.matchAll(DYNAMIC_RE)) specs.add(m[1]);
+  const source = ts.createSourceFile('boundary.tsx', content, ts.ScriptTarget.Latest, true);
+  const visit = (node: ts.Node): void => {
+    let specifier: ts.Expression | undefined;
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      specifier = node.moduleSpecifier;
+    } else if (ts.isCallExpression(node)
+      && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+        || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
+      specifier = node.arguments[0];
+    }
+    if (specifier && ts.isStringLiteralLike(specifier)) specs.add(specifier.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return [...specs];
 }
 
 function resolveSpecifier(importerAbs: string, spec: string): string | null {
   if (!spec.startsWith('.')) return null;
   const target = normalize(join(dirname(importerAbs), spec));
-  // 把 .js 解析回 .ts(项目用显式 .js 后缀的 ESM)
-  return target.replace(/\.js$/, '.ts').replace(/\\/g, '/');
+  // Node ESM 用 .js，Next 页面还使用无扩展名路径；两者必须命中同一规则。
+  const candidates = spec.endsWith('.js')
+    ? [target.replace(/\.js$/, '.ts'), target.replace(/\.js$/, '.tsx'), target]
+    : [target, `${target}.ts`, `${target}.tsx`, join(target, 'index.ts')];
+  return (candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile())
+    ?? target).replace(/\\/g, '/');
 }
 
 function toSrcRelative(absPath: string): string {
@@ -303,6 +336,12 @@ interface Violation {
   reason: string;
 }
 
+function violatesRule(importer: string, target: string, rule: ForbiddenRule): boolean {
+  return importer.startsWith(rule.from) && target.startsWith(rule.to)
+    && !rule.allowedTargets?.includes(target)
+    && !rule.whitelist?.includes(`${importer}::${target}`);
+}
+
 function collectViolations(): Violation[] {
   const files = listTsFiles(SRC_DIR);
   const violations: Violation[] = [];
@@ -315,10 +354,7 @@ function collectViolations(): Violation[] {
       if (!resolvedAbs) continue;
       const targetRel = toSrcRelative(resolvedAbs);
       for (const rule of RULES) {
-        if (!importerRel.startsWith(rule.from)) continue;
-        if (!targetRel.startsWith(rule.to)) continue;
-        const whitelistKey = `${importerRel}::${targetRel}`;
-        if (rule.whitelist?.includes(whitelistKey)) continue;
+        if (!violatesRule(importerRel, targetRel, rule)) continue;
         violations.push({
           importer: importerRel,
           target: targetRel,
@@ -497,6 +533,29 @@ function collectSharedLeafViolations(): string[] {
 }
 
 describe('架构边界守门', () => {
+  it('观测边界覆盖无扩展名、再导出和模块加载，忽略注释与字符串', () => {
+    const specifiers = extractSpecifiers(`
+      // import { ignored } from './comment';
+      const text = "import { ignored } from './text'";
+      import type { ObservationInboxViewModel } from '../../../observability/view-models/index';
+      export { queryObservationInbox } from '../../../observability/inbox/index';
+      const dynamic = import('../../../observability/inbox/review-state.js');
+      const commonjs = require('../../../observability/inbox/paths.js');
+      import { buildObservationInboxViewModel } from '../../../observability/application.js';
+    `);
+    expect(specifiers).toHaveLength(5);
+    const importer = 'studio/http/routes/observations.ts';
+    const forbidden = specifiers.flatMap((specifier) => {
+      const target = toSrcRelative(resolveSpecifier(join(SRC_DIR, importer), specifier)!);
+      return RULES.some((rule) => violatesRule(importer, target, rule)) ? [target] : [];
+    });
+    expect(forbidden).toEqual([
+      'observability/inbox/index.ts',
+      'observability/inbox/review-state.ts',
+      'observability/inbox/paths.ts',
+    ]);
+  });
+
   it('knowledge 纯逻辑只依赖自身与 Schema 校验库', () => {
     const violations: string[] = [];
     for (const file of listTsFiles(join(SRC_DIR, 'knowledge'))) {
@@ -555,7 +614,9 @@ describe('架构边界守门', () => {
       throw new Error(msg);
     }
     expect(violations).toEqual([]);
-    for (const file of listTsFiles(join(SRC_DIR, 'studio', 'view-models'))) {
+    for (const file of ['studio', 'observability'].flatMap(
+      (domain) => listTsFiles(join(SRC_DIR, domain, 'view-models')),
+    )) {
       const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
       const runtime = source.statements.filter(node => !(
         ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)

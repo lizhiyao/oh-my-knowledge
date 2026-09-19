@@ -2,11 +2,14 @@ import { projectReplay } from '../../application/conversations/replay/projection
 import { visibleAxisTicks } from '../../application/conversations/replay/layout.js';
 import { type ReplayProjection } from '../../view-models/conversations/replay.js';
 import type { Lang } from '../../../shared/language.js';
-import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
+import {
+  type ConversationCatalog,
+  buildKnowledgeDebuggerViewModel,
+} from '../../../observability/application.js';
 import type { ConversationIndexViewModel, ConversationListItem } from '../../../observability/view-models/conversation.js';
 import type { KnowledgeDebuggerViewModel } from '../../../observability/view-models/knowledge-debugger.js';
 import type { ExperienceTurnStatus } from '../../../observability/contracts/experience.js';
-import { buildKnowledgeDebuggerViewModel } from '../../../observability/conversation/knowledge-debugger.js';
+
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
 import { OBSERVE_CONVERSATION_PREFIX, OBSERVE_INDEX_PATH } from '../page-paths.js';
 

@@ -112,6 +112,7 @@ eval-workflows/
 ├── inputs/             # evaluation config, samples, and schemas
 ├── instruments/        # evaluator configuration and frozen prompt assets
 ├── projections/        # authenticated downstream views of Core artifacts
+├── sample-generation/  # evaluation case generation, constraints and source material
 ├── resume-admission/   # persisted-run integrity and resume admission
 ├── measurement/        # product scoring, analysis nodes, and evaluator implementations
 └── orchestration/      # product orchestration, persistence, and injected Runtime consumption
@@ -211,7 +212,7 @@ reach Studio through diagnosis and domain projections. Extract shared mechanics 
 contracts. The user facade's event consumption and product run-lease wrapper do not constitute
 duplicate scheduling merely because both invoke Core.
 
-Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain remains a design proposal, without placeholder implementation.
+Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain is implemented in `knowledge/contracts.ts`, `admission.ts`, `history.ts` and `store.ts`; filesystem adapters and extraction orchestration remain outside that pure domain.
 
 ### Sample input admission
 
@@ -251,19 +252,34 @@ Diagnosis and Observability have an explicit boundary. Observability produces tr
 
 ## Observability subdomains
 
-The `src/observability` root retains only the stable `experience.ts` facade. Private implementations belong to vertical subdomains:
+The `src/observability` root provides three stable entrypoints: `experience.ts`, server-side
+`application.ts`, and browser-safe `presentation.ts`. Studio consumes domain queries, review
+operations and display semantics through these entrypoints; local Agent inventory retains
+`agents/index.ts`, and type contracts are consumed through `contracts/` and `view-models/`.
+Private implementations belong to vertical subdomains:
 
 ```text
 observability/
-├── contracts/
-├── trace/           # source-neutral IR, message classification, ingestion, adapters
-├── inbox/           # observation inbox, review, and feedback projections
-├── conversation/    # conversation catalog, windows, and debugger projections
-├── experience/      # experience facts, report derivation, and text signals
-├── skill-health/    # skill chain, health checks, and advisories
-├── soft-standards/
-└── view-models/     # stable presentation facades
+├── agents/  # local Agent discovery, inventory and log collection
+├── analysis/  # coverage, gap signals and observation analysis
+├── contracts/  # stable facts and data contracts
+├── conversation/  # conversation catalog, windows and debugger projections
+├── experience/  # experience facts, report derivation and text signals
+├── inbox/  # observation inbox, review and feedback projections
+├── knowledge-extraction/  # extraction orchestration, evidence selection and adapters
+├── prompts/  # frozen review prompts and document loading
+├── skill-health/  # skill chain, health checks and advisories
+├── soft-standards/  # derived-standard extraction, storage and execution
+├── trace/  # source parsing, source-neutral IR and attribution
+└── view-models/  # type-only projection contracts
 ```
+
+`test/architecture/import-boundaries.test.ts` allows only these stable entrypoints for Studio,
+covering `.js` and extensionless Next imports, re-exports and literal module loads. Private
+subdomains cannot import the root application/presentation entrypoints. The client runtime
+closure guard separately prevents Node capabilities from reaching presentation consumers;
+`view-models/` supplies types only. `test/architecture/architecture-docs.test.ts` reconciles the
+Workflow and Observability subdomain inventories in both languages with the source tree.
 
 Trace's `message-classification.ts` decides message origin and protocol semantics. Experience's `text-signals.ts` decides hard-rule, progress, and delivery signals. Adapters therefore do not depend backwards on downstream experience projections. Old root paths are not retained as re-exports or compatibility shims.
 
@@ -279,14 +295,13 @@ See [Composite scoring](../specs/scoring.md) and [Statistical rigor](statistical
 
 ## Observation pipeline: source-neutral Trace IR
 
-`omk observe` does not disguise Codex, Claude Code, or OpenClaw logs as one another. A source adapter maps each format into the same Trace IR before attribution, segmentation, and measurement:
+`omk observe` does not disguise Codex, Claude Code, or OpenClaw logs as one another. `trace/source.ts` detects and loads formats; Claude, OpenClaw and Markdown parsing remains in that module, while Codex and Qoder use separate adapters. All paths produce the same Trace IR before attribution, segmentation, and measurement:
 
 ```mermaid
 flowchart LR
-    C["Claude adapter"] --> IR["Trace IR"]
-    X["Codex adapter"] --> IR
-    O["OpenClaw adapter"] --> IR
-    M["Markdown adapter"] --> IR
+    S0["trace/source.ts<br/>Claude · OpenClaw · Markdown"] --> IR["Trace IR"]
+    S0 --> X["adapters/codex"] --> IR
+    S0 --> Q["adapters/qoder"] --> IR
     IR --> A["lifecycle correlation and skill attribution"]
     A --> S["segment"]
     S --> R["health · inbox · experience"]

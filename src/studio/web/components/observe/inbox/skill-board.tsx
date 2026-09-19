@@ -1,9 +1,14 @@
 'use client';
 import { useMemo } from 'react';
 import { Table, Tag, Tooltip, Typography } from 'antd';
-import { buildObservationSkillRollups, skillReviewLabel, type ObservationSkillRollup } from '../../../../../observability/inbox/skill-rollups';
-import type { IndicatorHelpKey } from '../../../../../observability/inbox/metric-semantics';
-import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
+import {
+  buildObservationSkillRollups,
+  skillReviewLabel,
+  type ObservationSkillRollup,
+  type IndicatorHelpKey,
+} from '../../../../../observability/presentation';
+
+import type { ObservationInboxViewModel } from '../../../../../observability/view-models/index';
 import type { Language } from '../../layout/shell';
 import { tagStatus } from '../../tag-color';
 import { displayTime } from '../../../../application/display/format';

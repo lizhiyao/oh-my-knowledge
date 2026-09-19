@@ -6,7 +6,7 @@ import {
   signalRuleDescription,
   signalSeverityMeta,
   signalSourceMeta,
-} from '../../../../../observability/inbox/signal-semantics';
+} from '../../../../../observability/presentation';
 import { displayTime } from '../../../../application/display/format';
 import { severityTagColor } from '../../tag-color';
 import type { Language } from '../../layout/shell';

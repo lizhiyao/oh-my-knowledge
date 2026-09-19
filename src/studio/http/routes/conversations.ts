@@ -1,5 +1,5 @@
 import { readConversationTurns } from '../../application/conversations/conversation-reader.js';
-import type { ConversationCatalog } from '../../../observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../../observability/application.js';
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
 import { STUDIO_SOURCE_UNAVAILABLE, JSON_HEADERS, writeJsonError } from '../errors.js';
 import { OBSERVE_INDEX_PATH } from '../page-paths.js';

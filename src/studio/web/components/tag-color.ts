@@ -12,7 +12,7 @@
  * `neutral` 必须落到 `default`：它不是 antd 的 preset/status 色名，直接传给 Tag 会被当作自定义
  * 色值解析出一条近灰的填充色，与「样本不足／无异常，不给硬色」的口径不一致。
  */
-import type { SignalSeverityTone } from '../../../observability/inbox/signal-semantics';
+import type { SignalSeverityTone } from '../../../observability/presentation';
 import type { ManagedTone } from '../../application/knowledge/managed-format';
 import type { StudioTone } from '../../view-models/display/tone';
 

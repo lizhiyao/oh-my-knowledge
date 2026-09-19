@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Space, Tabs, Tag, Typography } from 'antd';
-import type { ObservationInboxViewModel } from '../../../../../observability/inbox/view-model';
+import type { ObservationInboxViewModel } from '../../../../../observability/view-models/index';
 import { OBSERVE_INBOX_PATH } from '../../../../http/page-paths';
 import { DEFAULT_OBSERVE_INBOX_TAB, type ObserveInboxTab } from '../../../../http/page-params';
 import { type Language } from '../../layout/shell';

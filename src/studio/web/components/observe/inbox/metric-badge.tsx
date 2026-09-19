@@ -4,7 +4,7 @@ import {
   indicatorHelp,
   indicatorLabel,
   type IndicatorHelpKey,
-} from '../../../../../observability/inbox/metric-semantics';
+} from '../../../../../observability/presentation';
 import type { Language } from '../../layout/shell';
 
 /** 指标徽章：标签 + 计数，悬停/点击展示该指标的口径说明（#839 批次 4）。 */

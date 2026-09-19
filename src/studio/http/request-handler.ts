@@ -1,9 +1,12 @@
 import { createSettingsRoutes } from './routes/settings.js';
 import { existsSync, mkdirSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
-import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
-import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
+import {
+  createCodexConversationCatalog,
+  DEFAULT_OBSERVATIONS_DIR,
+  ObservationReviewStateValidationError,
+} from '../../observability/application.js';
+
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
 import type { ReportServerOptions } from './contracts.js';

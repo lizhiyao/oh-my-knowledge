@@ -7,7 +7,7 @@ import type { ObservationMetricKey, ObservationReviewState } from '../../../../.
 import {
   reviewPriorityMeta,
   reviewStateKey,
-} from '../../../../../observability/inbox/review-semantics';
+} from '../../../../../observability/presentation';
 import { ownRecordValue } from '../../../../../shared/record-count';
 import { type Language } from '../../layout/shell';
 import { conversationPath } from '../../conversation-link';

@@ -9,7 +9,10 @@ import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
 import { nextAgentsContext, nextHealthContext, nextInboxContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
-import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
+import {
+  createCodexConversationCatalog,
+  DEFAULT_OBSERVATIONS_DIR,
+} from '../../observability/application.js';
 import { isMeasurePath, loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
 import { isObservePath, loadObservePage, type ObservePage } from './pages/observe-page.js';
 
@@ -19,7 +22,6 @@ import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.j
 import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { isAgentsPath, loadAgentsPage, type AgentsPage } from './pages/agents-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
-import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 
 /** 语言只是偏好：设置文件读坏时退回内置默认，页面照常可用，错误留给 /api/settings 报告。 */
 function preferredLanguage(): 'zh' | 'en' {

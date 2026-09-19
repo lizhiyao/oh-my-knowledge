@@ -308,7 +308,7 @@ describe('领域契约所有权', () => {
       .filter((entry) => entry.endsWith('.ts'))
       .sort();
 
-    expect(rootModules).toEqual(['experience.ts']);
+    expect(rootModules).toEqual(['application.ts', 'experience.ts', 'presentation.ts']);
   });
 
   it('Experience 枚举 Schema 只声明字符串取值，不引入实现或副作用', () => {

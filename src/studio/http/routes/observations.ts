@@ -1,11 +1,12 @@
-import { queryObservationInbox } from '../../../observability/inbox/index.js';
-import { buildObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
 import {
+  queryObservationInbox,
+  buildObservationInboxViewModel,
   deleteObservationReviewState,
   loadObservationReviewState,
   updateObservationReviewState,
   type ObservationReviewStateUpdate,
-} from '../../../observability/inbox/review-state.js';
+} from '../../../observability/application.js';
+
 import { readJsonObjectBody } from '../request-errors.js';
 import { JSON_HEADERS } from '../errors.js';
 import type { StudioRouteContext } from './contracts.js';
