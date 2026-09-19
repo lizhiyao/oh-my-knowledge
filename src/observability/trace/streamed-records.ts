@@ -139,17 +139,26 @@ export function openStreamedJsonlRecords<T = unknown>(filePath: string): Streame
   let ignored = 0;
   let closed = false;
 
+  /**
+   * 把一段绝对字节区间读进**同一块** scratch 并返回它。视图只存数字，取字段时才走这里，
+   * 所以一条记录被取用多少次都不会留下副本；返回缓冲的内容到下次读之前有效，解出来的值都是副本。
+   */
+  const bytesAt = (absoluteBegin: number, length: number): Buffer => {
+    if (closed) throw new Error(`流式 trace 记录已关闭：${filePath}`);
+    const read = readSync(fd, scratch, 0, length, absoluteBegin);
+    if (read !== length) throw new Error(`流式 trace 记录读取不完整：${filePath}@${absoluteBegin}+${length}`);
+    return scratch;
+  };
+
   const readRecord = (position: number): WindowedRecord => {
     const start = offsets[position];
     const length = ends[position] - start;
     if (length > MAX_LINE_BYTES) throw recordTooLarge(filePath);
-    const read = readSync(fd, scratch, 0, length, start);
     // 单条上限的口径与整档路径同一条：解成字符串后去掉结尾空白的字符数。差别在于这里在字节缓冲上
     // 数同一个数——整档那句 `text.trimEnd().length` 要为判长度先把整行解成字符串，那正是
     // 「只解码不解析也要 129～134 MiB」那一层地板的成因。
-    if (trimmedCharLength(scratch, 0, read) > MAX_RECORD_CHARS) throw recordTooLarge(filePath);
-    // 视图必须活得过下一次读取，所以给它一份行字节副本；scratch 随即被下一条记录复用。
-    return windowedRecord(Buffer.from(scratch.subarray(0, read)));
+    if (trimmedCharLength(bytesAt(start, length), 0, length) > MAX_RECORD_CHARS) throw recordTooLarge(filePath);
+    return windowedRecord({ bytes: bytesAt }, start, length);
   };
 
   const parseAt = (position: number): T | undefined => {

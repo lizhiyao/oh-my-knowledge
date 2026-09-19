@@ -12,17 +12,16 @@ import { openStreamedJsonlRecords } from '../../../src/observability/trace/strea
  * （例如误改成 >2 GiB）会让内存悄悄退回 2.7 倍而全部用例照绿。这里透传真实实现，只留一个调用
  * 计数用于断言阈值确实生效。
  */
-/** 记录被取用的次数：`readRecord` 每取用一条记录就读一次该行，所以它就是「整档被走过几趟」。 */
+/** 「整档被走过几趟」＝记录被从视图里取出多少次：每次取出都做一次顶层语法校验，所以数 `scanJsonValue`。 */
 const recordReads = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
+vi.mock('../../../src/observability/trace/jsonl-record-window.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/observability/trace/jsonl-record-window.js')>();
   return {
     ...actual,
-    readSync: vi.fn((...args: Parameters<typeof actual.readSync>) => {
-      const result = (actual.readSync as (...a: unknown[]) => number)(...args);
+    scanJsonValue: vi.fn((...args: Parameters<typeof actual.scanJsonValue>) => {
       recordReads.count += 1;
-      return result;
+      return actual.scanJsonValue(...args);
     }),
   };
 });
@@ -274,7 +273,7 @@ describe('streamed trace records', () => {
     assert.ok(readFileSync(path).length > 16 * 1024 * 1024, '用例前提：必须真的走惰性视图');
 
     // 「判定走了几趟整档」＝记录被取用的次数减去映射本身的次数，一趟整档恰好等于记录条数。
-    // 这里不能用 `JSON.parse` 次数当量：按需取值之后一条记录只解真被读到的字段，那个数不再
+    // 也不能数 readSync：按需取值下一条记录会按字段定位读多次，那是「读了多少段」不是「取了多少条」。：按需取值之后一条记录只解真被读到的字段，那个数不再
     // 是趟数的代理（#983 正是把整条解析换掉的）。同一份文件的映射开销两侧相同，差值即判定开销。
     const mappingOnly = countRecordReads(() => {
       const view = openStreamedJsonlRecords<unknown>(path);

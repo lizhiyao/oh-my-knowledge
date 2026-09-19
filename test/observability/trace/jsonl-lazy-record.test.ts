@@ -11,7 +11,7 @@ import { windowedRecord } from '../../../src/observability/trace/jsonl-lazy-reco
 function viewOf(line: object | string) {
   const text = typeof line === 'string' ? line : JSON.stringify(line);
   const buffer = Buffer.from(text, 'utf8');
-  const windowed = windowedRecord(buffer);
+  const windowed = windowedRecord({ bytes: (b: number, len: number) => buffer.subarray(b, b + len) }, 0, buffer.length);
   if (windowed.viewKind !== 'record') throw new Error(`用例前提不成立：${windowed.viewKind}`);
   return windowed.record as Record<string, unknown>;
 }
@@ -137,7 +137,8 @@ describe('记录窗口的按需取值视图', () => {
   it('不是对象的记录值与畸形记录各自分类，与整档路径同一口径', () => {
     const buffers = ['[1,2,3]', '"text"', '42', 'null', '{broken', '   ', ''];
     for (const text of buffers) {
-      const windowed = windowedRecord(Buffer.from(text, 'utf8'));
+      const own = Buffer.from(text, 'utf8');
+      const windowed = windowedRecord({ bytes: (b: number, len: number) => own.subarray(b, b + len) }, 0, own.length);
       const parses = (() => {
         try {
           JSON.parse(text);
