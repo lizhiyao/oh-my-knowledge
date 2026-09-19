@@ -15,16 +15,11 @@ import { describe, expect, it } from 'vitest';
  * 任何函数）一律红。每搬走一块就把对应条目删掉，删完即达标。
  */
 const CONTRACT_ALGORITHM_BUDGET: Readonly<Record<string, number>> = {
-  'contracts/analysis-bundle.ts': 149,
   'contracts/budget.ts': 159,
   'contracts/digests.ts': 110,
-  'contracts/evaluation-bundle.ts': 292,
-  'contracts/evaluation-report.ts': 99,
-  'contracts/execution-bundle.ts': 233,
   'contracts/execution-facts.ts': 120,
   'contracts/execution-identities.ts': 142,
   'contracts/json.ts': 65,
-  'contracts/series.ts': 171,
 };
 
 /** 未登记的契约文件允许的单个函数体上限：超过它说明有新算法写进了声明层。 */

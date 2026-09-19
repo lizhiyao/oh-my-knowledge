@@ -18,14 +18,18 @@ import {
   type Sha256Digest,
   type UsageRecord,
   digestCanonicalJson,
-  effectiveExecutionBundleTrust,
-  parseEvaluationReport,
-  parseExecutionBundle,
-  verifyAnalysisBundle,
-  verifyDecisionResult,
-  verifyEvaluationBundle,
-  verifyExecutionBundle,
 } from '../../../src/eval-core/contracts/index.js';
+import {  verifyAnalysisBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  verifyEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseEvaluationReport,
+  verifyDecisionResult,
+} from '../../../src/eval-core/verify/index.js';
+import {  effectiveExecutionBundleTrust,
+  parseExecutionBundle,
+  verifyExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
 import {
   prepareEvaluationPlan,
   type AnalysisRuntimeRequirement,

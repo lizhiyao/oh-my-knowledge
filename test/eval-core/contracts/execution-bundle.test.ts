@@ -10,12 +10,13 @@ import {
   deriveTrialId,
   digestArtifactPayload,
   digestCanonicalJson,
-  parseExecutionBundleDocument,
   type CapturedContent,
   type ExecutionBundle,
   type ExecutionRecord,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {  parseExecutionBundleDocument,
+} from '../../../src/eval-core/verify/index.js';
 
 const runContractDigest = `sha256:${'1'.repeat(64)}` as Sha256Digest;
 const executionPlanDigest = `sha256:${'2'.repeat(64)}` as Sha256Digest;

@@ -8,11 +8,12 @@ import {
   canonicalizeJsonBytes,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
-  evaluationRecordCapturedContents,
   type CapturedContent,
   type JsonValue,
   type Sha256Digest,
 } from '../eval-core/contracts/index.js';
+import {  evaluationRecordCapturedContents,
+} from '../eval-core/verify/index.js';
 import {
   getPreparedEvaluationPlanDigest,
   getRestorableEvaluationResultPlanDigest,

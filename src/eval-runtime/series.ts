@@ -6,13 +6,14 @@ import {
   createEvaluationSeriesDefinition,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
-  prepareEvaluationSeriesPlan,
   type EvaluationSeriesDefinition,
   type EvaluationSeriesMemberSource,
   type EvaluationSeriesPlan,
   type JsonValue,
   type SeriesAnalysisRecord,
 } from '../eval-core/contracts/index.js';
+import {  prepareEvaluationSeriesPlan,
+} from '../eval-core/verify/index.js';
 import {
   createRunStabilityRuntime,
   createRunStabilitySchemaValidators,

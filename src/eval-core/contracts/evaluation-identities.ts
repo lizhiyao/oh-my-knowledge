@@ -1,5 +1,10 @@
-import { derivePlannedExecutionCoordinates } from './execution-identities.js';
-import { digestCanonicalJson, type Sha256Digest } from './json.js';
+import {
+  derivePlannedExecutionCoordinates,
+} from './execution-identities.js';
+import {
+  digestCanonicalJson,
+  type Sha256Digest,
+} from './json.js';
 
 function assertNonEmpty(value: string, field: string): void {
   if (value.length === 0) throw new TypeError(`${field} must not be empty`);

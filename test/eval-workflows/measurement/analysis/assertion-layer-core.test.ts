@@ -8,9 +8,10 @@ import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-core/analysis/boots
 import {
   canonicalizeJson,
   schemaIdentityKey,
-  verifyAnalysisBundle,
   type RuntimeIdentity,
 } from '../../../../src/eval-core/contracts/index.js';
+import {  verifyAnalysisBundle,
+} from '../../../../src/eval-core/verify/index.js';
 import {
   prepareEvaluationPlan,
   type AnalysisRuntimeRequirement,

@@ -15,8 +15,7 @@ import {
 } from '../contracts/index.js';
 import type {
   AnalysisRuntimeRequirement,
-  RuntimeResolution,
-} from '../compiler/index.js';
+  RuntimeResolution,} from '../compiler/index.js';
 import type {
   AnalysisDecisionPolicy,
   AnalysisMetricRow,
@@ -26,8 +25,7 @@ import type {
   AnalysisNodeInput,
   AnalysisNodeRun,
   DecisionPolicyContext,
-  DecisionPolicyOutput,
-} from './types.js';
+  DecisionPolicyOutput,} from './types.js';
 
 export {
   bonferroniMarginalAlpha,

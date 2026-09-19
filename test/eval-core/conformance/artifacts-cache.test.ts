@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   digestArtifactPayload,
   digestCanonicalJson,
-  parseAnalysisBundle,
-  parseEvaluationBundle,
-  parseEvaluationReport,
-  verifyDecisionResult,
-  verifyExecutionBundle,
 } from '../../../src/eval-core/contracts/index.js';
+import {  parseAnalysisBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseEvaluationReport,
+  verifyDecisionResult,
+} from '../../../src/eval-core/verify/index.js';
+import {  verifyExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../../src/eval-core/analysis/index.js';
 import { ConformanceFaultInjector } from './fault-injector.js';
 import {

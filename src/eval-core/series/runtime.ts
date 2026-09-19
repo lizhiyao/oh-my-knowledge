@@ -2,7 +2,8 @@ import { topologicalOrder } from '../primitives/graph.js';
 import { compareStrings } from '../primitives/ordering.js';
 import { minimumTrust } from '../primitives/provenance.js';
 import { z } from 'zod';
-import { assessComparability } from '../verify/index.js';
+import {  assessComparability,
+} from '../verify/index.js';
 import {
   AssumptionCheckSchema,
   EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
@@ -13,16 +14,10 @@ import {
   JsonValueSchema,
   RuntimeIdentitySchema,
   SchemaIdentitySchema,
-  assertEvaluationSeriesMemberSource,
   canonicalizeJson,
   createComparabilityPolicy,
   deepFreezeCanonicalJson,
-  deriveSeriesMemberCoverage,
   digestCanonicalJson,
-  digestSeriesArtifact,
-  parseEvaluationSeriesPlan,
-  parseEvaluationSeriesReportDocument,
-  parseSeriesAnalysisBundleDocument,
   parseWireDocument,
   schemaIdentityKey,
   type CoreSchemaValidator,
@@ -40,6 +35,13 @@ import {
   type SeriesDecisionResult,
   type Sha256Digest,
 } from '../contracts/index.js';
+import {  assertEvaluationSeriesMemberSource,
+  deriveSeriesMemberCoverage,
+  digestSeriesArtifact,
+  parseEvaluationSeriesPlan,
+  parseEvaluationSeriesReportDocument,
+  parseSeriesAnalysisBundleDocument,
+} from '../verify/index.js';
 import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import {
   InMemoryRuntimeEventSequencer,

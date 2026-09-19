@@ -1,14 +1,6 @@
 import {
-  createEvaluationSeriesMemberSource,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
-  effectiveAnalysisBundleTrust,
-  effectiveEvaluationBundleTrust,
-  effectiveExecutionBundleTrust,
-  verifyAnalysisBundle,
-  verifyDecisionResult,
-  verifyEvaluationBundle,
-  verifyExecutionBundle,
   IdentifierSchema,
   TimestampSchema,
   type CoreSchemaValidator,
@@ -17,6 +9,19 @@ import {
   type JsonValue,
   type Sha256Digest,
 } from '../../eval-core/contracts/index.js';
+import {  effectiveAnalysisBundleTrust,
+  verifyAnalysisBundle,
+} from '../../eval-core/verify/index.js';
+import {  effectiveEvaluationBundleTrust,
+  verifyEvaluationBundle,
+} from '../../eval-core/verify/index.js';
+import {  verifyDecisionResult,
+} from '../../eval-core/verify/index.js';
+import {  effectiveExecutionBundleTrust,
+  verifyExecutionBundle,
+} from '../../eval-core/verify/index.js';
+import {  createEvaluationSeriesMemberSource,
+} from '../../eval-core/verify/index.js';
 import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
   type EvaluationSeriesRunResult,

@@ -10,20 +10,24 @@ import { describe, expect, it } from 'vitest';
 import {
   digestArtifactPayload,
   digestCanonicalJson,
-  effectiveExecutionBundleTrust,
-  parseAnalysisBundle,
-  parseEvaluationBundle,
-  parseEvaluationReport,
   schemaIdentityKey,
-  verifyAnalysisBundle,
-  verifyDecisionResult,
-  verifyEvaluationBundle,
   type AnalysisBundle,
   type DecisionResult,
   type EvaluationBundle,
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {  parseAnalysisBundle,
+  verifyAnalysisBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseEvaluationBundle,
+  verifyEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  parseEvaluationReport,
+  verifyDecisionResult,
+} from '../../../src/eval-core/verify/index.js';
+import {  effectiveExecutionBundleTrust,
+} from '../../../src/eval-core/verify/index.js';
 import {
   prepareEvaluationPlan,
   type AnalysisRuntimeRequirement,

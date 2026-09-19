@@ -1,4 +1,6 @@
-import type { EvaluationError, JsonValue } from '../contracts/index.js';
+import type {
+  EvaluationError,
+  JsonValue,} from '../contracts/index.js';
 
 export type EvaluationDefinitionErrorCode =
   | 'EVAL_DEFINITION_SCHEMA_INVALID'

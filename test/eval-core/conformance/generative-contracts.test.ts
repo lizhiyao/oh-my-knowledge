@@ -3,10 +3,6 @@ import {
   canonicalizeJson,
   digestArtifactPayload,
   digestCanonicalJson,
-  verifyAnalysisBundle,
-  verifyDecisionResult,
-  verifyEvaluationBundle,
-  verifyExecutionBundle,
   type AnalysisBundle,
   type DecisionResult,
   type EvaluationBundle,
@@ -16,6 +12,14 @@ import {
   type MeasurementPolicy,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {  verifyAnalysisBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  verifyEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  verifyDecisionResult,
+} from '../../../src/eval-core/verify/index.js';
+import {  verifyExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
 import { prepareEvaluationPlan } from '../../../src/eval-core/compiler/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../../src/eval-core/analysis/index.js';
 import { testRuntime, validDefinition, validPolicy } from '../compiler/fixtures.js';

@@ -1,4 +1,5 @@
-import type { EvaluationEvent } from '../contracts/index.js';
+import type {
+  EvaluationEvent,} from '../contracts/index.js';
 
 export const DEFAULT_EVENT_BUFFER_CAPACITY = 256;
 

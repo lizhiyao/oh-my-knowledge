@@ -5,7 +5,8 @@ import {
   digestCanonicalJson,
   type PlannedExecutionCoordinate,
 } from '../contracts/index.js';
-import type { SealedRunPlan } from '../compiler/index.js';
+import type {
+  SealedRunPlan,} from '../compiler/index.js';
 
 export interface ExecutionSchedulingBlock {
   schedulingBlockId: string;

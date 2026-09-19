@@ -17,7 +17,10 @@ import {
   MEASUREMENT_POLICY_SCHEMA_VERSION,
   MeasurementPolicySchema,
 } from './definition.js';
-import { digestCanonicalJson, type JsonValue } from './json.js';
+import {
+  digestCanonicalJson,
+  type JsonValue,
+} from './json.js';
 import {
   ANALYSIS_PLAN_SCHEMA_VERSION,
   AnalysisPlanSchema,
@@ -30,7 +33,9 @@ import {
   RUN_PLAN_SCHEMA_VERSION,
   RunPlanSchema,
 } from './plans.js';
-import type { SchemaIdentity } from './common.js';
+import {
+  SchemaIdentity,
+} from './common.js';
 import {
   BUDGET_SUMMARY_SCHEMA_VERSION,
   BudgetSummarySchema,

@@ -1,8 +1,7 @@
 import { compareStrings } from '../primitives/ordering.js';
 import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import type {
-  AnalysisNodeCapabilities,
-} from './types.js';
+  AnalysisNodeCapabilities,} from './types.js';
 import {
   canonicalizeJson,
   bonferroniMarginalAlpha,

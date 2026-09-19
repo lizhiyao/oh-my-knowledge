@@ -13,8 +13,7 @@ import {
 import type {
   SeriesAnalysisNodeContext,
   SeriesAnalysisNodeRuntime,
-  SeriesAnalysisNodeOutput,
-} from './runtime.js';
+  SeriesAnalysisNodeOutput,} from './runtime.js';
 
 export const RUN_STABILITY_IMPLEMENTATION_ID = 'descriptive.run-stability/v1';
 export const RUN_STABILITY_SCHEMA_VERSION = 'omk.series.run-stability-table/v1';

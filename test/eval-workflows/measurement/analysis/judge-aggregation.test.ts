@@ -11,12 +11,13 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
   schemaIdentityKey,
-  verifyAnalysisBundle,
   type AnalysisRecord,
   type JsonValue,
   type RuntimeIdentity,
   type SamplingUnitIds,
 } from '../../../../src/eval-core/contracts/index.js';
+import {  verifyAnalysisBundle,
+} from '../../../../src/eval-core/verify/index.js';
 import {
   AnalysisNodeCapabilitiesSchema,
   prepareEvaluationPlan,

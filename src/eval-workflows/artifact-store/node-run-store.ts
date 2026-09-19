@@ -19,19 +19,23 @@ import {
   computeRunContractDigest,
   deepFreezeCanonicalJson,
   deriveAssignmentMemberships,
-  deriveEvaluationStatus,
   digestCanonicalJson,
-  evaluationRecordCapturedContents,
-  parseAnalysisBundleDocument,
-  parseEvaluationBundleDocument,
-  parseEvaluationReportDocument,
-  parseExecutionBundleDocument,
   parseWireDocument,
   type CapturedContent,
   type ContentDescriptor,
   type RunPlan,
   type Sha256Digest,
 } from '../../eval-core/contracts/index.js';
+import {  parseAnalysisBundleDocument,
+} from '../../eval-core/verify/index.js';
+import {  evaluationRecordCapturedContents,
+  parseEvaluationBundleDocument,
+} from '../../eval-core/verify/index.js';
+import {  deriveEvaluationStatus,
+  parseEvaluationReportDocument,
+} from '../../eval-core/verify/index.js';
+import {  parseExecutionBundleDocument,
+} from '../../eval-core/verify/index.js';
 import type { EvaluationContentResolver } from '../../eval-core/evaluation/index.js';
 import { KeyedMutex } from '../../shared/keyed-mutex.js';
 import {

@@ -13,8 +13,12 @@ import {
   TimestampSchema,
   UriSchema,
 } from './common.js';
-import { JsonValueSchema } from './json.js';
-import { BudgetSummarySchema } from './budget.js';
+import {
+  JsonValueSchema,
+} from './json.js';
+import {
+  BudgetSummarySchema,
+} from './budget.js';
 
 export const EVALUATION_EVENT_SCHEMA_VERSION = 'omk.evaluation-event/v1' as const;
 export const EXECUTION_BUNDLE_SCHEMA_VERSION = 'omk.execution-bundle/v1' as const;

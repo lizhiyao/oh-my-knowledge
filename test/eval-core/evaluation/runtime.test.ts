@@ -4,15 +4,9 @@ import {
 } from '../../helpers/core-runs.js';
 import { describe, expect, it } from 'vitest';
 import {
-  aggregateEvaluationAttemptUsage,
   digestArtifactPayload,
   digestCanonicalJson,
   deriveEvaluationAttemptId,
-  effectiveExecutionBundleTrust,
-  parseExecutionBundle,
-  parseEvaluationBundle,
-  verifyExecutionBundle,
-  verifyEvaluationBundle,
   type BudgetLedgerEntry,
   type BudgetScopeSummary,
   type BudgetSummary,
@@ -22,6 +16,14 @@ import {
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../../../src/eval-core/contracts/index.js';
+import {  aggregateEvaluationAttemptUsage,
+  parseEvaluationBundle,
+  verifyEvaluationBundle,
+} from '../../../src/eval-core/verify/index.js';
+import {  effectiveExecutionBundleTrust,
+  parseExecutionBundle,
+  verifyExecutionBundle,
+} from '../../../src/eval-core/verify/index.js';
 import { prepareEvaluationPlan } from '../../../src/eval-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,

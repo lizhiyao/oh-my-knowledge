@@ -1,6 +1,8 @@
 import { TRUST_LEVEL } from '../primitives/provenance.js';
 import { z } from 'zod';
-import type { ExecutionRecord } from './artifacts.js';
+import {
+  ExecutionRecord,
+} from './artifacts.js';
 import {
   ContentClassificationSchema,
   IdentifierSchema,

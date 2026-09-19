@@ -1,7 +1,9 @@
 import { encodePointerToken } from '../primitives/json-pointer.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { deepFreeze } from './immutability.js';
+import {
+  deepFreeze,
+} from './immutability.js';
 
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
