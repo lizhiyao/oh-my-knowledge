@@ -1,5 +1,5 @@
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust, TRUST_LEVEL } from '../primitives/provenance.js';
 import { z } from 'zod';
 import {
   AssumptionCheckSchema,
@@ -589,7 +589,7 @@ export function createEvaluationSeriesMemberSource(input: {
     ...(input.decision === undefined ? [] : [effectiveDecisionResultTrust(input.decision)]),
     report.provenance.trust,
   ];
-  const effectiveTrust = [...trusts].sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
+  const effectiveTrust = minimumTrust(trusts, 'verified');
   const reference = deepFreezeCanonicalJson(parseWireDocument(SeriesMemberReferenceSchema, {
     memberId: input.memberId,
     replicateIndex: input.replicateIndex,
@@ -812,9 +812,7 @@ export function parseSeriesAnalysisBundleDocument(value: unknown): SeriesAnalysi
       .filter((record) => record.runtimeExecutionStatus === 'executed')
       .map((record) => record.implementation.assuranceLevel),
   ];
-  const trustCeiling = [...trustInputs].sort((left, right) => (
-    TRUST_LEVEL[left] - TRUST_LEVEL[right]
-  ))[0] ?? 'unknown';
+  const trustCeiling = minimumTrust(trustInputs, 'unknown');
   if (canonicalizeJson(bundle.provenance.parentDigests)
       !== canonicalizeJson(expectedParents)
       || TRUST_LEVEL[bundle.provenance.trust] > TRUST_LEVEL[trustCeiling]

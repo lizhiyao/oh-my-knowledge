@@ -1,5 +1,8 @@
+import { durationMs } from '../runtime/clock.js';
+import { RunResourceSessions } from '../runtime/run-resources.js';
+import { linkAbortSignal } from '../runtime/abort.js';
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust } from '../primitives/provenance.js';
 import { resolveJsonPointer } from '../primitives/json-pointer.js';
 import {
   EVALUATION_BUNDLE_SCHEMA_VERSION,
@@ -44,7 +47,7 @@ import {
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import type { SealedRunPlan } from '../compiler/index.js';
 import { EvaluatorCapabilitiesSchema } from '../compiler/index.js';
-import { BoundedEventStream } from '../runtime/event-stream.js';
+import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
 import {
   assertRunBudgetSource,
@@ -273,9 +276,6 @@ function safeError(error: unknown): EvaluationError {
   };
 }
 
-function durationMs(start: number, end: number): number {
-  return Math.max(0, end - start);
-}
 
 function validatedUsage(value: UsageRecord | undefined): UsageRecord | undefined {
   if (value === undefined) return undefined;
@@ -535,12 +535,6 @@ async function normalizeObservations(
   return normalized;
 }
 
-function linkAbort(parent: AbortSignal, child: AbortController): () => void {
-  const abort = (): void => child.abort(parent.reason);
-  if (parent.aborted) abort();
-  else parent.addEventListener('abort', abort, { once: true });
-  return () => parent.removeEventListener('abort', abort);
-}
 
 async function withTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
@@ -549,7 +543,7 @@ async function withTimeout<T>(
   parent: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
-  const unlink = linkAbort(parent, controller);
+  const unlink = linkAbortSignal(parent, controller);
   const timerController = new AbortController();
   const operationResult = Promise.resolve().then(() => operation(controller.signal));
   try {
@@ -599,41 +593,7 @@ type RuntimeEvents = RuntimeEventEmitter<
   EvaluationTerminalEventKind
 >;
 
-class Sessions {
-  readonly #plan: SealedRunPlan;
-  readonly #options: EvaluationRunOptions;
-  readonly #sessions = new Map<string, Promise<EvaluationEvaluatorRun>>();
 
-  constructor(plan: SealedRunPlan, options: EvaluationRunOptions) {
-    this.#plan = plan;
-    this.#options = options;
-  }
-
-  get(binding: EvaluatorBinding): Promise<EvaluationEvaluatorRun> {
-    const current = this.#sessions.get(binding.evaluator.evaluatorId);
-    if (current !== undefined) return current;
-    const session = Promise.resolve(binding.port.openRun(deepFreeze(snapshotJson({
-      runId: this.#options.runId,
-      evaluationPlanDigest: this.#plan.evaluation.evaluationPlanDigest as Sha256Digest,
-    }))));
-    this.#sessions.set(binding.evaluator.evaluatorId, session);
-    return session;
-  }
-
-  async dispose(): Promise<boolean> {
-    let failed = false;
-    for (const session of this.#sessions.values()) {
-      try { await (await session).dispose(); } catch { failed = true; }
-    }
-    return failed;
-  }
-}
-
-function minimumTrust(...values: readonly Provenance['trust'][]): Provenance['trust'] {
-  return values.reduce((minimum, value) => (
-    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
-  ), 'verified');
-}
 
 function runtimeTrust(runtime: RuntimeIdentity): Provenance['trust'] {
   return runtime.assuranceLevel;
@@ -663,7 +623,7 @@ function notEvaluatedRecord(
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native',
-      trust: minimumTrust(sourceTrust, runtimeTrust(binding.runtime)),
+      trust: minimumTrust([sourceTrust, runtimeTrust(binding.runtime)], 'verified'),
       parentDigests: [
         plan.evaluation.evaluationPlanDigest,
         ...(source === undefined ? [] : [digestCanonicalJson(source)]),
@@ -713,7 +673,7 @@ function replayRecord(
   const record = parsedRecord.data;
   const expectedMetricIds = binding.evaluator.metricIds;
   const metrics = new Map(plan.evaluation.metrics.map((metric) => [metric.metricId, metric]));
-  const expectedTrust = minimumTrust(sourceTrust, runtimeTrust(binding.runtime));
+  const expectedTrust = minimumTrust([sourceTrust, runtimeTrust(binding.runtime)], 'verified');
   const expectedNativeProvenance = {
     provenanceKind: 'native' as const,
     trust: expectedTrust,
@@ -799,7 +759,7 @@ function replayRecord(
 async function evaluateCoordinate(
   plan: SealedRunPlan,
   ports: EvaluationRuntimePorts,
-  sessions: Sessions,
+  sessions: RunResourceSessions<EvaluatorBinding, EvaluationEvaluatorRun>,
   events: RuntimeEvents,
   budget: RunBudgetController,
   prepared: EligibleCoordinate,
@@ -1065,7 +1025,7 @@ async function evaluateCoordinate(
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native' as const,
-      trust: minimumTrust(sourceTrust, runtimeTrust(binding.runtime)),
+      trust: minimumTrust([sourceTrust, runtimeTrust(binding.runtime)], 'verified'),
       parentDigests: [plan.evaluation.evaluationPlanDigest, sourceRecordDigest],
     },
     sourceRecordDigest,
@@ -1180,10 +1140,10 @@ function makeBundle(
     records,
     provenance: {
       provenanceKind: 'native',
-      trust: minimumTrust(
+      trust: minimumTrust([
         effectiveExecutionBundleTrust(source),
         ...records.map((record) => record.provenance.trust),
-      ),
+      ], 'verified'),
       parentDigests: [execution.bundleDigest, plan.evaluation.evaluationPlanDigest],
       ...(stop.error === undefined
         ? {}
@@ -1241,10 +1201,7 @@ async function prepareEvaluationCoordinates(
       });
       continue;
     }
-    const sourceTrust = minimumTrust(
-      effectiveExecutionBundleTrust(prepared.source),
-      source.provenance.trust,
-    );
+    const sourceTrust = minimumTrust([effectiveExecutionBundleTrust(prepared.source), source.provenance.trust], 'verified');
     const inputs = await materializeBindings(
       plan,
       source,
@@ -1339,7 +1296,13 @@ async function runEvaluation(
     stream,
     (reason: string, error: EvaluationError) => setStop('failed', reason, error),
   );
-  const sessions = new Sessions(plan, options);
+  const sessions = new RunResourceSessions<EvaluatorBinding, EvaluationEvaluatorRun>(
+    (binding) => binding.evaluator.evaluatorId,
+    (binding) => binding.port.openRun(deepFreeze(snapshotJson({
+      runId: options.runId,
+      evaluationPlanDigest: plan.evaluation.evaluationPlanDigest as Sha256Digest,
+    }))),
+  );
   const wallClockController = new AbortController();
   const wallClockRemainingMs = budget.wallClockRemainingMs();
   const wallClockTimer = wallClockRemainingMs === undefined
@@ -1382,10 +1345,10 @@ async function runEvaluation(
         item.coordinate,
         item.reasonCode,
         ports.clock.timestamp(),
-        minimumTrust(
+        minimumTrust([
           effectiveExecutionBundleTrust(prepared.source),
           item.source?.provenance.trust ?? effectiveExecutionBundleTrust(prepared.source),
-        ),
+        ], 'verified'),
         item.source,
       );
       records.set(record.evaluationId, record);
@@ -1525,10 +1488,10 @@ async function runEvaluation(
           ? 'execution-record-unavailable'
           : 'execution-budget-censored',
         ports.clock.timestamp(),
-        minimumTrust(
+        minimumTrust([
           effectiveExecutionBundleTrust(prepared.source),
           source?.provenance.trust ?? effectiveExecutionBundleTrust(prepared.source),
-        ),
+        ], 'verified'),
         source,
       );
       records.set(record.evaluationId, record);
@@ -1605,7 +1568,7 @@ export function startEvaluation(
     : { ...options, budgetSource: options.budgetSource };
   assertRunBudgetSource(runtimeOptions.budgetSource, plan, runtimeOptions.runId);
   const prepared = prepareRuntime(plan, source, ports, runtimeOptions);
-  const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const stream = new BoundedEventStream(options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY);
   const verified = runEvaluation(plan, ports, runtimeOptions, prepared, stream);
   let result: Promise<EvaluationBundle> | undefined;
   return {

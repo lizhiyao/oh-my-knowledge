@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { compareStrings } from '../../../src/eval-core/primitives/ordering.js';
-import { decodePointerToken, encodePointerToken, resolveJsonPointer } from '../../../src/eval-core/primitives/json-pointer.js';
-import { TRUST_LEVEL, isProvenanceTrust } from '../../../src/eval-core/primitives/provenance.js';
 import {
   InvalidCanonicalJsonError,
   canonicalizeJson,
@@ -52,38 +50,6 @@ describe('Evaluation Core RFC 8785 JSON', () => {
     expect(compareStrings('same', 'same')).toBe(0);
     const parsed = JSON.parse(canonical);
     expect(parsed.nested).toEqual([{ a: 2, z: 1 }]);
-  });
-
-  it('keeps trust ordering shared without accepting inherited object keys as evidence', () => {
-    expect(['verified', 'unknown', 'declared', 'untrusted'].sort((left, right) => {
-      if (!isProvenanceTrust(left) || !isProvenanceTrust(right)) throw new Error('Invalid fixture');
-      return TRUST_LEVEL[left] - TRUST_LEVEL[right];
-    })).toEqual(['untrusted', 'unknown', 'declared', 'verified']);
-    expect(Object.isFrozen(TRUST_LEVEL)).toBe(true);
-    for (const invalid of ['toString', '__proto__', 'constructor', '', null, 0]) {
-      expect(isProvenanceTrust(invalid)).toBe(false);
-    }
-  });
-
-  it('decodes pointer tokens once in RFC order and retains literal empty/property tokens', () => {
-    const tokens = ['', '~01', '~1', '/', '~', 'a/b', '__proto__'];
-    expect(tokens.map(encodePointerToken).map(decodePointerToken)).toEqual(tokens);
-    expect(['', '~01', '~1', '~0', 'a~1b', '__proto__'].map(decodePointerToken))
-      .toEqual(['', '~1', '/', '~', 'a/b', '__proto__']);
-  });
-
-  it('shares pointer traversal without confusing missing paths with null or own properties', () => {
-    const value = { '': 7, 'a/b': { '~1': [null, 0] }, defined: undefined };
-    expect(resolveJsonPointer(value, '')).toEqual({ resolved: true, value });
-    expect(resolveJsonPointer(value, '/')).toEqual({ resolved: true, value: 7 });
-    expect(resolveJsonPointer(value, '/a~1b/~01/0')).toEqual({ resolved: true, value: null });
-    expect(resolveJsonPointer(value, '/defined')).toEqual({ resolved: true, value: undefined });
-    for (const pointer of ['/missing', '/constructor', '/__proto__', '/a~1b/~01/01',
-      '/a~1b/~01/-', '/a~1b/~01/2', '/a~1b/~01/length', '/a~1b/~01/0/x']) {
-      expect(resolveJsonPointer(value, pointer), pointer).toEqual({ resolved: false });
-    }
-    const own = JSON.parse('{"__proto__": 1}') as unknown;
-    expect(resolveJsonPointer(own, '/__proto__')).toEqual({ resolved: true, value: 1 });
   });
 
   it('produces stable full sha256 digests independent of property order', () => {

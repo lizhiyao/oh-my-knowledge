@@ -1,4 +1,4 @@
-import { TRUST_LEVEL } from '../primitives/provenance.js';
+import { minimumTrust } from '../primitives/provenance.js';
 import {
   EVALUATION_REPORT_SCHEMA_VERSION,
   DecisionResultSchema,
@@ -28,13 +28,12 @@ import {
   type EvaluationReport,
   type JsonValue,
   type ExecutionBundleSource,
-  type Provenance,
   type RuntimeIdentity,
   type Sha256Digest,
 } from '../contracts/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import type { SealedRunPlan } from '../compiler/index.js';
-import { BoundedEventStream } from '../runtime/event-stream.js';
+import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
 import {
   AnalysisPortFailure,
@@ -80,9 +79,6 @@ function validateEventSequencer(ports: AnalysisRuntimePorts): void {
   }
 }
 
-function minimumTrust(values: readonly Provenance['trust'][]): Provenance['trust'] {
-  return [...values].sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
-}
 
 function gateReasons(
   plan: SealedRunPlan,
@@ -556,7 +552,7 @@ export function startDecision(
     ports,
     options,
   );
-  const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const stream = new BoundedEventStream(options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY);
   if (prepared === undefined) {
     stream.close();
     return {
@@ -653,7 +649,7 @@ export function materializeEvaluationReport(
         ...(decisionSource === undefined
           ? []
           : [effectiveDecisionResultTrust(decisionSource)]),
-      ]),
+      ], 'verified'),
       parentDigests,
       facets: { materializedAt: ports.clock.timestamp() },
     },
@@ -702,7 +698,7 @@ export function startReportMaterialization(
     ports,
     options,
   );
-  const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const stream = new BoundedEventStream(options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY);
   const result = (async (): Promise<EvaluationReport> => {
     let fatalError: EvaluationError | undefined;
     const events = new RuntimeEventEmitter<

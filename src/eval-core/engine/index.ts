@@ -63,7 +63,7 @@ import {
   type ExecutionExecutor,
   type ExecutionRuntimePorts,
 } from '../execution/index.js';
-import { BoundedEventStream } from '../runtime/event-stream.js';
+import { BoundedEventStream, DEFAULT_EVENT_BUFFER_CAPACITY } from '../runtime/event-stream.js';
 import {
   RuntimeBindingSnapshotError,
   snapshotSchemaValidators,
@@ -85,7 +85,6 @@ import type {
 
 export * from './types.js';
 
-const DEFAULT_EVENT_BUFFER_CAPACITY = 256;
 
 function configurationFailure(
   code: string,

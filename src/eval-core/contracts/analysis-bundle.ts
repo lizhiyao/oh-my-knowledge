@@ -1,5 +1,5 @@
 import { compareStrings } from '../primitives/ordering.js';
-import { TRUST_LEVEL, isProvenanceTrust } from '../primitives/provenance.js';
+import { minimumTrust, TRUST_LEVEL, isProvenanceTrust } from '../primitives/provenance.js';
 import {
   AnalysisBundleSchema,
   type AnalysisBundle,
@@ -394,7 +394,7 @@ export function effectiveAnalysisBundleTrust(
     source.planVerification.evaluationSourceTrust,
     source.planVerification.provenanceTrustStatus === 'verified' ? 'verified' : 'unknown',
   ];
-  return trusts.sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
+  return minimumTrust(trusts, 'verified');
 }
 
 interface ExpectedAnalysisRow {
@@ -865,9 +865,7 @@ function assertMatchesPlan(
     }
   }
   const runtimeTrusts = analysisRuntimeDependencyTrusts(plan, bundle.records);
-  const trustCeiling = [sourceTrust, ...runtimeTrusts].sort(
-    (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
-  )[0];
+  const trustCeiling = minimumTrust([sourceTrust, ...runtimeTrusts], 'verified');
   if (canonicalizeJson(bundle.provenance.parentDigests)
         !== canonicalizeJson([source.bundleDigest])
       || TRUST_LEVEL[bundle.provenance.trust] > TRUST_LEVEL[trustCeiling]) {

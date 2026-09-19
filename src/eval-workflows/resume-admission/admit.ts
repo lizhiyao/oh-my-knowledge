@@ -1,4 +1,4 @@
-import { TRUST_LEVEL } from '../../eval-core/primitives/provenance.js';
+import { TRUST_LEVEL, minimumTrust } from '../../eval-core/primitives/provenance.js';
 import {
   EvaluationReportValidationError,
   digestCanonicalJson,
@@ -13,7 +13,6 @@ import {
   verifyEvaluationBundle,
   verifyExecutionBundle,
   type CoreSchemaValidator,
-  type Provenance,
 } from '../../eval-core/contracts/index.js';
 import { assertSealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
@@ -39,11 +38,6 @@ export interface CreateCoreResumeAdmissionAdapterOptions {
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
 }
 
-function minimumTrust(values: readonly Provenance['trust'][]): Provenance['trust'] {
-  return values.reduce((minimum, value) => (
-    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
-  ), 'verified');
-}
 
 function rejected(
   sourceRunId: string,
@@ -245,7 +239,7 @@ export function createCoreResumeAdmissionAdapter(
       effectiveEvaluationBundleTrust(evaluationSource),
       effectiveAnalysisBundleTrust(analysisSource),
       artifacts.report.provenance.trust,
-    ]);
+    ], 'verified');
     if (TRUST_LEVEL[upstreamSourceTrust]
         < TRUST_LEVEL[policy.minimumSourceTrust]) {
       return reject(
@@ -297,7 +291,7 @@ export function createCoreResumeAdmissionAdapter(
     const effectiveSourceTrust = minimumTrust([
       upstreamSourceTrust,
       ...(decisionSource === undefined ? [] : [effectiveDecisionResultTrust(decisionSource)]),
-    ]);
+    ], 'verified');
     if (TRUST_LEVEL[effectiveSourceTrust]
         < TRUST_LEVEL[policy.minimumSourceTrust]) {
       return reject(

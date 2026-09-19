@@ -74,6 +74,8 @@ Directories under `src` express domain ownership rather than one mechanical repo
 
 `eval-core/primitives` owns shared ordering, provenance trust ordering and JSON Pointer traversal. It is a dependency-free leaf below contracts: contracts, Core stages, Runtime and workflows consume it directly, without maintaining parallel implementations.
 
+Core stages share run-resource acquisition and disposal, abort forwarding, elapsed-time projection and the default event buffer through `eval-core/runtime`. Budget outcome projection, trust minima and topological ordering are shared invariants. Analysis schedules one ready node at a time; Series schedules a ready frontier. These explicit ordering policies retain existing event order. Execution and Evaluation keep their own record, cache identity, timeout-result and Bundle contracts.
+
 ```text
 eval-core ← eval-runtime ← product orchestration
                 ↑                   ↑
