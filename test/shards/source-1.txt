@@ -49,7 +49,7 @@ test/eval-runtime/rubric-prompt-version.test.ts
 test/eval-runtime/runner.test.ts
 test/eval-runtime/session-executor.test.ts
 test/eval-workflows/analysis/binomial-confidence.test.ts
-test/eval-workflows/analysis/bootstrap.test.ts
+test/eval-core/analysis/bootstrap.test.ts
 test/eval-workflows/analysis/sample-size.test.ts
 test/eval-workflows/artifact-store.test.ts
 test/eval-workflows/core-consumer-projections.test.ts

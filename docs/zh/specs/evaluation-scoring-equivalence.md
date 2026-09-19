@@ -128,18 +128,20 @@ Rubric 评委使用 `omk.rubric-judge/v2` 和同一个宿主拥有的单次调�
 
 ### Bootstrap 实现归属
 
-两套 bootstrap 实现对应有意区分的版本化标准，不能作为同一个冻结随机流互换。
-`eval-core/analysis/builtins.ts` 拥有通用的 `bootstrap.* /v1`：种子包含根种子、
-AnalysisPlan 摘要、节点与实现身份及比较身份，SHA 派生抽样保持声明的分层，结果保留
-未舍入边界。`eval-workflows/analysis/bootstrap.ts` 拥有产品 Mulberry32 随机流，
-由 `omk.bootstrap-family-table/v1` 和 `/v2` 消费，描述性区间保留四位小数。
-产品 v2 的判定证据在下文单独定义。
+Core 拥有唯一的 Bootstrap 实现。`eval-core/analysis/bootstrap-kernel.ts` 统一实现
+有放回抽样、算术均值、线性分位数和百分位区间；`eval-core/analysis/bootstrap.ts`
+提供冻结的产品统计标准。Workflows 直接引用 Core，仅负责产品表组装和契约。
+Runtime 执行注册的 Core 分析节点，不另行实现统计计算。
 
-`test/eval-core/conformance/statistics.test.ts` 使用相同的均值、配对差和独立差观测，
-在 alpha `0.1`、`256` 次抽样下对照两套标准，锁定相同的点估计及各自精确的区间端点；
-不同 identity 之间不承诺区间相等。产品表测试另行验证适配路径和 v1／v2 判定契约。
-重构必须保留这些向量、种子派生、抽样顺序、采样单元、退化输入处理与舍入方式。
-统一随机流需要新的测量 identity 和明确的可比性迁移，不能作为辅助函数替换静默进行。
+共享内核接收显式抽样组和索引策略。`bootstrap.* /v1` 根据密封的计划、节点和比较身份
+派生 SHA 抽样，保留声明的分层并返回未舍入边界；产品标准保留
+`omk.bootstrap-family-table/v1` 和 `/v2` 使用的 Mulberry32 随机流及四位小数描述区间。
+这些是版本化配置的差异，不是独立的抽样或百分位算法。产品 v2 的决策证据另见下文。
+
+`test/eval-core/conformance/statistics.test.ts` 锁定两种标准的均值、配对差和独立差参考向量。
+`test/eval-core/analysis/bootstrap.test.ts` 进一步锁定 320 组观测、alpha、抽样数和种子组合
+在重构前的输出，包含完整原始抽样结果；产品表和 Runtime 测试覆盖真实调用路径。
+种子派生、抽样顺序、抽样单元、退化输入和舍入均保持不变；改变这些语义需要显式的可比性迁移。
 
 ### 产品 Bootstrap 标准
 

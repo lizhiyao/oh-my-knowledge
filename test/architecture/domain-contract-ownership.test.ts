@@ -252,6 +252,7 @@ describe('领域契约所有权', () => {
       'src/measurement-artifacts',
       'src/package-api',
       'src/eval-workflows/grading',
+      'src/eval-workflows/analysis/bootstrap.ts',
       'src/eval-workflows/downstream-projections',
       'src/eval-workflows/studio-catalog',
       'src/server',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { arithmeticMean, bootstrapDistribution, linearQuantile, percentileBounds, type BootstrapGroup } from './bootstrap-kernel.js';
 import {
   canonicalizeJson,
   bonferroniMarginalConfidenceLevel,
@@ -650,7 +651,7 @@ function numericValue(row: AnalysisMetricRow): number {
 
 function mean(values: readonly number[]): number {
   if (values.length === 0) throw new TypeError('Mean requires at least one value.');
-  return values.reduce((total, value) => total + value, 0) / values.length;
+  return arithmeticMean(values);
 }
 
 function quantile(sortedValues: readonly number[], probability: number): number {
@@ -658,12 +659,7 @@ function quantile(sortedValues: readonly number[], probability: number): number 
   if (!Number.isFinite(probability) || probability < 0 || probability > 1) {
     throw new TypeError('Quantile probability must be in [0, 1].');
   }
-  if (sortedValues.length === 1) return sortedValues[0];
-  const position = (sortedValues.length - 1) * probability;
-  const lowerIndex = Math.floor(position);
-  const upperIndex = Math.ceil(position);
-  const weight = position - lowerIndex;
-  return sortedValues[lowerIndex] * (1 - weight) + sortedValues[upperIndex] * weight;
+  return linearQuantile(sortedValues, probability);
 }
 
 function parameterNumber(
@@ -1282,33 +1278,31 @@ function percentileInterval(
     members.push(unit);
     strata.set(stratumId, members);
   }
-  const estimates: number[] = [];
-  for (let replicate = 0; replicate < resamples; replicate += 1) {
-    const sample: number[] = [];
-    let drawOffset = 0;
-    for (const [stratumId, members] of [...strata.entries()].sort()) {
-      const stratumSeed = digestCanonicalJson({
-        derivation: 'omk.analysis-bootstrap-stratum-seed/v1',
-        seed,
-        stratumId,
-      });
-      for (let draw = 0; draw < members.length; draw += 1) {
-        sample.push(members[
-          deterministicIndex(stratumSeed, replicate, drawOffset + draw, members.length)
-        ].value);
-      }
-      drawOffset += members.length;
-    }
-    estimates.push(mean(sample));
-  }
-  estimates.sort((left, right) => left - right);
+  let drawOffset = 0;
+  const groups: BootstrapGroup[] = [...strata.entries()].sort().map(([stratumId, members]) => {
+    const stratumSeed = digestCanonicalJson({
+      derivation: 'omk.analysis-bootstrap-stratum-seed/v1',
+      seed,
+      stratumId,
+    });
+    const offset = drawOffset;
+    drawOffset += members.length;
+    return {
+      values: members.map((member) => member.value),
+      indexFor: (replicate, draw) => deterministicIndex(
+        stratumSeed, replicate, offset + draw, members.length,
+      ),
+    };
+  });
+  const estimates = bootstrapDistribution(groups, resamples, (samples) => mean(samples.flat()));
+  const bounds = percentileBounds(estimates, alpha);
   return {
     analysisStatus: 'completed',
     resultType: 'interval',
     value: {
       estimate: mean(units.map((unit) => unit.value)),
-      lower: quantile(estimates, alpha / 2),
-      upper: quantile(estimates, 1 - alpha / 2),
+      lower: bounds.lower,
+      upper: bounds.upper,
       confidenceLevel: 1 - alpha,
       resamples,
       unitCount: units.length,
@@ -1640,22 +1634,22 @@ function executeCompositePairedBootstrap(
   );
 }
 
-function bootstrapArmStratumMean(
+function bootstrapArmStratumGroup(
   seed: Sha256Digest,
   armId: string,
   stratumId: string,
-  replicate: number,
   members: readonly BootstrapUnit[],
-): number {
+): BootstrapGroup {
   const stratumSeed = digestCanonicalJson({
     derivation: 'omk.analysis-unpaired-bootstrap-arm-stratum-seed/v1',
     seed,
     armId,
     stratumId,
   });
-  return mean(Array.from({ length: members.length }, (_, draw) => (
-    members[deterministicIndex(stratumSeed, replicate, draw, members.length)].value
-  )));
+  return {
+    values: members.map((member) => member.value),
+    indexFor: (replicate, draw) => deterministicIndex(stratumSeed, replicate, draw, members.length),
+  };
 }
 
 function executeUnpairedBootstrapWithUnits(
@@ -1746,15 +1740,16 @@ function executeUnpairedBootstrapWithUnits(
     throw new TypeError('Bootstrap requires positive resamples and alpha in (0, 1).');
   }
   const seed = bootstrapSeed(context);
-  const estimates = Array.from({ length: resamples }, (_, replicate) => weightedDifference(
-    (armId, stratumId, units) => bootstrapArmStratumMean(
-      seed,
-      armId,
-      stratumId,
-      replicate,
-      units,
-    ),
-  )).sort((left, right) => left - right);
+  // Keep the historical treatment-then-control order within each sorted stratum.
+  const groups = strata.flatMap((stratum) => [
+    bootstrapArmStratumGroup(seed, treatmentId, stratum.stratumId, stratum.treatment),
+    bootstrapArmStratumGroup(seed, controlId, stratum.stratumId, stratum.control),
+  ]);
+  const estimates = bootstrapDistribution(groups, resamples, (samples) => (
+    strata.reduce((sum, stratum, index) => sum + (stratum.plannedCount / plannedUnitCount)
+      * (mean(samples[index * 2]) - mean(samples[index * 2 + 1])), 0)
+  ));
+  const bounds = percentileBounds(estimates, alpha);
   const includedRowIds = [...controlUnits, ...treatmentUnits].flatMap((unit) => unit.rowIds);
   return {
     analysisStatus: 'completed',
@@ -1763,8 +1758,8 @@ function executeUnpairedBootstrapWithUnits(
       estimate: weightedDifference((_armId, _stratumId, units) => (
         mean(units.map((unit) => unit.value))
       )),
-      lower: quantile(estimates, alpha / 2),
-      upper: quantile(estimates, 1 - alpha / 2),
+      lower: bounds.lower,
+      upper: bounds.upper,
       confidenceLevel: 1 - alpha,
       resamples,
       unitCount: controlUnits.length + treatmentUnits.length,

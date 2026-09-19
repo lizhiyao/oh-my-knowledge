@@ -11,7 +11,7 @@ import {
 import {
   DEFAULT_BOOTSTRAP_ALPHA,
   DEFAULT_BOOTSTRAP_SEED,
-} from '../analysis/bootstrap.js';
+} from '../../eval-core/analysis/bootstrap.js';
 import {
   PAIRED_NORMAL_POWER_METHOD_ID,
   requiredPairedComparisonUnits,

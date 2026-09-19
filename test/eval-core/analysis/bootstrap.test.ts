@@ -1,6 +1,35 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-workflows/analysis/bootstrap.js';
+import { createHash } from 'node:crypto';
+import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, drawBootstrapIndependentDifferences, drawBootstrapPairedDifferences, DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-core/analysis/bootstrap.js';
+
+describe('product bootstrap delegates to Core without measurement drift', () => {
+  it('preserves pre-refactor raw draws and intervals across 320 frozen configurations', () => {
+    const outputs: unknown[] = [];
+    for (const scores of [[1, 2, 3, 4], [0.00001, -0.00003, 1.234567, 4.999999], [3, 3, 3], [-100, 0, 7, 22, 90]]) {
+      for (const alpha of [0.01, 0.05, 0.1, 0.5]) {
+        for (const samples of [1, 2, 7, 64, 257]) {
+          for (const seed of [undefined, 0, 42, DEFAULT_BOOTSTRAP_SEED]) {
+            const treatment = scores.map((score, index) => score + (index % 2 === 0 ? 0.1 : 1.7));
+            const pairs = scores.map((a, index) => ({ a, b: treatment[index] }));
+            outputs.push([
+              bootstrapMeanCI(scores, alpha, samples, seed),
+              bootstrapDiffCI(scores, treatment, alpha, samples, seed),
+              bootstrapPairedDiffCI(pairs, alpha, samples, seed),
+              drawBootstrapIndependentDifferences(scores, treatment, samples, seed),
+              drawBootstrapPairedDifferences(pairs, samples, seed),
+              bootstrapWithMetric(scores, (values) => Math.max(...values) - Math.min(...values), alpha, samples, seed),
+            ]);
+          }
+        }
+      }
+    }
+    // Captured before replacing the workflow implementation, including unrounded v2 evidence.
+    assert.equal(outputs.length, 320);
+    assert.equal(createHash('sha256').update(JSON.stringify(outputs)).digest('hex'),
+      '5bdb4de345f03cdcb1c1a6fa4219602adbfdf47567f0aacf76ebb62452df704f');
+  });
+});
 
 describe('bootstrapMeanCI', () => {
   it('CI on a tight sample contains the true mean', () => {

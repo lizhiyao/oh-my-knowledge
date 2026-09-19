@@ -4,7 +4,7 @@ import {
   drawBootstrapPairedDifferences,
   summarizeBootstrapMetric,
   type BootstrapDifferenceDraws,
-} from '../../analysis/bootstrap.js';
+} from '../../../eval-core/analysis/bootstrap.js';
 import { clopperPearsonInterval } from '../../analysis/binomial-confidence.js';
 import {
   canonicalizeJson,

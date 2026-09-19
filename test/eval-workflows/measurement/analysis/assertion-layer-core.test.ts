@@ -4,7 +4,7 @@ import {
   evaluateExecutionBundleSource,
 } from '../../../helpers/core-runs.js';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-workflows/analysis/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../../src/eval-core/analysis/bootstrap.js';
 import {
   canonicalizeJson,
   schemaIdentityKey,
