@@ -1,4 +1,4 @@
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { projectLayout } from '../evidence/storage/layout.js';
 import { loadEvalConfig } from '../eval-workflows/inputs/eval-config.js';
 import {
@@ -171,22 +171,25 @@ async function studioUrl(
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const layout = projectLayout(cwd);
   const { createNextStudioServer } = await import('../studio/http/next-server.js');
-  const {
-    createNodeCoreContentStore,
-    createNodeCoreRunArtifactStore,
-  } = await import('../eval-workflows/artifact-store/index.js');
-  const { createCoreStudioCatalog } = await import('../studio/application/measure/core-run-catalog.js');
-  const reportsDir = layout.evalDir;
-  const contentStore = createNodeCoreContentStore(join(reportsDir, 'content'));
+  const { createStudioDirectorySources } = await import('../studio/application/directory-sources.js');
   state.server = createNextStudioServer({
     port: 0,
-    coreStudioCatalog: createCoreStudioCatalog(createNodeCoreRunArtifactStore(reportsDir, {
-      contentResolver: contentStore,
-    })),
-    analysesDir: layout.observeHealthDir,
-    doctorsDir: layout.doctorDir,
-    observationsDir: layout.observeInboxDir,
-    managedDir: layout.managedDir,
+    // DSH 是固定 per-project 布局宿主：三档候选都指向同一份项目目录，跨项目发现保持关闭。
+    ...createStudioDirectorySources(
+      {
+        reports: { global: () => layout.evalDir, project: () => layout.evalDir },
+        observeHealth: { global: layout.observeHealthDir, projectDefault: layout.observeHealthDir },
+        doctors: { global: layout.doctorDir, projectDefault: layout.doctorDir },
+        observations: { global: layout.observeInboxDir },
+        managed: () => layout.managedDir,
+      },
+      {
+        reportsDir: layout.evalDir,
+        analysesDir: layout.observeHealthDir,
+        doctorsDir: layout.doctorDir,
+        observationsDir: layout.observeInboxDir,
+      },
+    ),
     conversationCatalog: state.catalog,
     // DSH 宿主无收件箱页面入口（输出落盘路径），裁剪收件箱页面与 API（#839 批次 0）。
     observationInbox: false,
