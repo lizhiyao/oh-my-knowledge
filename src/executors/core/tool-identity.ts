@@ -1,12 +1,5 @@
-export interface NormalizedToolIdentity {
-  /** Source-neutral name consumed by assertions and aggregate reports. */
-  name: string;
-  /** Runtime-native name, retained when normalization changes it. */
-  sourceName?: string;
-  namespace?: string;
-  provider?: string;
-  displayName?: string;
-}
+
+import type { NormalizedToolIdentity } from '../contracts/trace.js';
 
 export interface ToolIdentityInput {
   sourceName: string;

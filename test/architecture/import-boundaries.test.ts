@@ -44,6 +44,11 @@ interface ForbiddenRule {
 
 const RULES: ForbiddenRule[] = [
   {
+    from: 'observability/trace/trace-ir.ts', to: 'executors/',
+    reason: 'Trace IR 只依赖 executors 的稳定契约层（executors/contracts/），不得伸进适配器内部；trace 规范化层现存三处内部依赖（core/token-usage、core/tool-identity、tool-call-status）为已量出的待收口债务，见 #978 第 19 项。',
+    allowedTargets: listTsFiles(join(SRC_DIR, 'executors', 'contracts')).map(toSrcRelative),
+  },
+  {
     from: 'studio/', to: 'observability/',
     reason: 'Studio 只消费观测应用／展示入口和稳定类型契约，不穿透私有子域。',
     allowedTargets: [
