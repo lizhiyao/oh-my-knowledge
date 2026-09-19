@@ -760,6 +760,10 @@ function deterministicIndex(
   return Number.parseInt(digest.slice(7, 19), 16) % size;
 }
 
+// Core bootstrap.* /v1 seals plan/node-specific SHA draws. The product
+// omk.bootstrap-family-table profile intentionally retains its Mulberry32 stream;
+// replacing this derivation with that stream changes the versioned estimator.
+// Cross-profile vectors: test/eval-core/conformance/statistics.test.ts.
 function bootstrapSeed(context: AnalysisNodeExecutionContext): Sha256Digest {
   const comparisonIds = context.inputs
     .filter((input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (

@@ -26,6 +26,14 @@
  * such as `eval gold compare --seed`) may pass an explicit `seed` to vary the draw; the
  * main `omk eval` deliberately exposes no seed knob — a fixed default also prevents
  * seed-shopping for significance.
+ *
+ * Scope: this is the frozen product random stream used by the versioned
+ * omk.bootstrap-family-table nodes. Core bootstrap.* /v1 is a separate estimator
+ * profile with plan-derived SHA draws, unrounded bounds, and explicit sampling
+ * strata. They share estimands, not byte-identical intervals. Do not substitute
+ * either profile for the other without a new measurement identity; the paired
+ * reference vectors in test/eval-core/conformance/statistics.test.ts guard this
+ * boundary. See docs/specs/evaluation-scoring-equivalence.md.
  */
 
 export interface BootstrapCI {

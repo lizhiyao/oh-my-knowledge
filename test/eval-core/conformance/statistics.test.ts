@@ -5,6 +5,11 @@ import {
   type AnalysisNodeExecutionContext,
 } from '../../../src/eval-core/analysis/index.js';
 import { digestCanonicalJson, type Sha256Digest } from '../../../src/eval-core/contracts/index.js';
+import {
+  bootstrapMeanCI,
+  bootstrapPairedDiffCI,
+  bootstrapDiffCI,
+} from '../../../src/eval-workflows/analysis/bootstrap.js';
 
 const ANALYSIS_NODES = createBuiltinAnalysisNodes();
 
@@ -181,7 +186,7 @@ async function interval(input: {
 }
 
 describe('Evaluation Core deterministic statistical conformance', () => {
-  it('matches known mean, paired, and unpaired reference vectors', async () => {
+  it('pins the shared estimands and distinct Core/product bootstrap interval profiles', async () => {
     const mean = await interval({
       implementationId: 'bootstrap.mean-percentile/v1',
       simulation: 0,
@@ -229,6 +234,23 @@ describe('Evaluation Core deterministic statistical conformance', () => {
     expect(mean).toEqual({ lower: 1.5, upper: 3.25, estimate: 2.5, unitCount: 4 });
     expect(paired).toEqual({ lower: 1.5, upper: 3.5, estimate: 2.5, unitCount: 4 });
     expect(unpaired).toEqual({ lower: 0.75, upper: 3.5, estimate: 2, unitCount: 8 });
+
+    // Same observations, alpha and draw count; the versioned seed derivations differ.
+    // These literals pin both profiles instead of asserting a false CI equivalence.
+    const productMean = bootstrapMeanCI([1, 2, 3, 4], 0.1, 256);
+    const productPaired = bootstrapPairedDiffCI(
+      [1, 2, 3, 4].map((difference) => ({ a: 10, b: 10 + difference })), 0.1, 256,
+    );
+    const productUnpaired = bootstrapDiffCI([1, 2, 3, 4], [3, 4, 5, 6], 0.1, 256);
+    expect(productMean).toEqual({ low: 1.5, high: 3.25, estimate: 2.5, samples: 256 });
+    expect(productPaired).toEqual({
+      low: 1.5, high: 3.25, estimate: 2.5, samples: 256, significant: true,
+    });
+    expect(productUnpaired).toEqual({
+      low: 0.5, high: 3.25, estimate: 2, samples: 256, significant: true,
+    });
+    expect([productMean.estimate, productPaired.estimate, productUnpaired.estimate])
+      .toEqual([mean.estimate, paired.estimate, unpaired.estimate]);
   });
 
   it('pins unit-first composite covariance with a known reference vector', async () => {
