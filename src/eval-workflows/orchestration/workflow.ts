@@ -18,10 +18,10 @@ import {
   type StoredCoreRunArtifacts,
 } from '../artifact-store/index.js';
 import {
-  createCoreResumeAdmissionAdapter,
-  type CoreResumeAdmissionRequest,
-  type CoreResumeAdmissionResult,
-} from '../resume-admission/index.js';
+  createCoreResumeDispositionAdapter,
+  type CoreResumeDispositionRequest,
+  type CoreResumeDispositionResult,
+} from '../resume-disposition/index.js';
 import type {
   EvaluationRuntimeProvider,
   EvaluationPreparationOptions as OmkEvaluationPreflightOptions,
@@ -83,9 +83,9 @@ export interface ProductionPreparedEvaluation {
   execute(
     options: Readonly<ProductionEvaluationExecuteOptions>,
   ): Promise<ProductionEvaluationRun>;
-  admitResume(
-    request: Readonly<Omit<CoreResumeAdmissionRequest, 'plan'>>,
-  ): Promise<CoreResumeAdmissionResult>;
+  resolveResumeDisposition(
+    request: Readonly<Omit<CoreResumeDispositionRequest, 'plan'>>,
+  ): Promise<CoreResumeDispositionResult>;
 }
 
 export interface ProductionEvaluationWorkflow {
@@ -250,7 +250,7 @@ export function bindProductionPreparedEvaluation(
       cause,
     });
   }
-  const admission = createCoreResumeAdmissionAdapter({
+  const resumeAdapter = createCoreResumeDispositionAdapter({
     artifactStore,
     schemaValidators,
   });
@@ -304,10 +304,10 @@ export function bindProductionPreparedEvaluation(
       );
       return Object.freeze({ events: coreRun.events, result, persistence });
     },
-    admitResume(
-      request: Readonly<Omit<CoreResumeAdmissionRequest, 'plan'>>,
-    ): Promise<CoreResumeAdmissionResult> {
-      return admission.admit({ ...request, plan });
+    resolveResumeDisposition(
+      request: Readonly<Omit<CoreResumeDispositionRequest, 'plan'>>,
+    ): Promise<CoreResumeDispositionResult> {
+      return resumeAdapter.decide({ ...request, plan });
     },
   });
 }
@@ -326,7 +326,7 @@ export function evaluationExecutionInput(compiled: CliEvaluationCompileResult): 
   };
 }
 
-/** Adds persistence, resume admission and release policy to an injected Runtime capability. */
+/** Adds persistence, resume disposition and release policy to an injected Runtime capability. */
 export function createProductionEvaluationWorkflow(
   input: Readonly<ProductionEvaluationWorkflowInput>,
 ): ProductionEvaluationWorkflow {

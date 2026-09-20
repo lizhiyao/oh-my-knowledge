@@ -706,7 +706,7 @@ export interface ExecutedEvaluation {
   readonly executionPlanDigest: Sha256Digest;
   readonly executionInputDigest: Sha256Digest;
   readonly bundle: ExecutionBundle;
-  /** `'runtime'` keeps Runtime-attested provenance; `'store'` re-admits under host verification. */
+  /** `'runtime'` keeps Runtime-attested provenance; `'store'` is re-verified under host verification. */
   readonly bundleOrigin: 'runtime' | 'store';
 }
 

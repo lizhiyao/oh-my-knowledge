@@ -1,4 +1,4 @@
-import { validateGroundingReferences, validateKnowledgeDraft } from './admission.js';
+import { validateGroundingReferences, validateKnowledgeDraft } from './validation.js';
 import type { KnowledgeActor } from './contracts.js';
 import { canonicalJson, KnowledgeEnvelopeSchema, type KnowledgeEnvelope, type KnowledgeWrite } from './store.js';
 

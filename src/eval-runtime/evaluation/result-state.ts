@@ -30,8 +30,8 @@ export const authenticatedCanonicalRuns = new WeakMap<object, AuthenticatedCanon
 export const corePreparedEvaluations = new WeakMap<object, CoreAdvancedPreparedEvaluation>();
 
 /**
- * @internal One `ExecutedEvaluation` handle's re-admission material. A Runtime-issued handle
- * keeps the live source so provenance stays attested; a stored handle must be re-admitted
+ * @internal One `ExecutedEvaluation` handle's re-verification material. A Runtime-issued handle
+ * keeps the live source so provenance stays attested; a stored handle must be re-verified
  * against the scoring plan with the host verification facts captured at load time.
  */
 export interface ExecutedEvaluationState {

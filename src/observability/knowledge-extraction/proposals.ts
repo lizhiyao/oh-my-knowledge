@@ -3,7 +3,7 @@ import {
   EntityMentionSchema, EvidenceSelectionSchema, KnowledgeDraftSchema,
   type EvidenceExcerpt,
 } from '../../knowledge/contracts.js';
-import { validateEvidenceSelection, validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/admission.js';
+import { validateEvidenceSelection, validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
 
 /** Local model identifiers exist only at this transport boundary. */
 export const ExtractionProposalSchema = z.strictObject({

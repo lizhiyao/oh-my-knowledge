@@ -24,20 +24,20 @@ import {
   type CoreRunArtifactStore,
 } from '../artifact-store/index.js';
 import {
-  CoreResumeAdmissionError,
-  CoreResumeAdmissionPolicySchema,
+  CoreResumeDispositionError,
+  CoreResumeDispositionPolicySchema,
   CoreResumeLocatorSchema,
-  type AdmittedCoreResumeSource,
-  type CoreResumeAdmissionAdapter,
-  type CoreResumeAdmissionPolicy,
-  type CoreResumeAdmissionRequest,
-  type CoreResumeAdmissionResult,
+  type AcceptedCoreResumeSource,
+  type CoreResumeDispositionAdapter,
+  type CoreResumeDispositionPolicy,
+  type CoreResumeDispositionRequest,
+  type CoreResumeDispositionResult,
   type CoreResumeRejectionReasonCode,
   type RejectedCoreResumeSource,
 } from './contracts.js';
 
 
-export interface CreateCoreResumeAdmissionAdapterOptions {
+export interface CreateCoreResumeDispositionAdapterOptions {
   readonly artifactStore: CoreRunArtifactStore;
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
 }
@@ -52,12 +52,12 @@ function rejected(
 
 function reject(
   sourceRunId: string,
-  policy: CoreResumeAdmissionPolicy,
+  policy: CoreResumeDispositionPolicy,
   reasonCode: CoreResumeRejectionReasonCode,
   message: string,
 ): RejectedCoreResumeSource {
   if (policy.rejectionMode === 'fail-closed') {
-    throw new CoreResumeAdmissionError({
+    throw new CoreResumeDispositionError({
       code: reasonCode,
       sourceRunId,
       message,
@@ -82,11 +82,11 @@ function isComplete(input: {
     && input.reportStatus.evidenceStatus === 'complete';
 }
 
-function admissionDigest(input: Omit<AdmittedCoreResumeSource, 'disposition'
-  | 'admissionDigest' | 'artifacts' | 'executionSource' | 'evaluationSource'
+function dispositionDigest(input: Omit<AcceptedCoreResumeSource, 'disposition'
+  | 'dispositionDigest' | 'artifacts' | 'executionSource' | 'evaluationSource'
   | 'analysisSource' | 'decisionSource' | 'report'> & {
-    readonly artifacts: AdmittedCoreResumeSource['artifacts'];
-    readonly policy: CoreResumeAdmissionPolicy;
+    readonly artifacts: AcceptedCoreResumeSource['artifacts'];
+    readonly policy: CoreResumeDispositionPolicy;
   }): string {
   return digestCanonicalJson({
     derivation: 'omk.core-resume-admission/v1',
@@ -101,21 +101,21 @@ function admissionDigest(input: Omit<AdmittedCoreResumeSource, 'disposition'
   });
 }
 
-export function createCoreResumeAdmissionAdapter(
-  options: Readonly<CreateCoreResumeAdmissionAdapterOptions>,
-): CoreResumeAdmissionAdapter {
-  async function admit(
-    request: Readonly<CoreResumeAdmissionRequest>,
-  ): Promise<CoreResumeAdmissionResult> {
+export function createCoreResumeDispositionAdapter(
+  options: Readonly<CreateCoreResumeDispositionAdapterOptions>,
+): CoreResumeDispositionAdapter {
+  async function decide(
+    request: Readonly<CoreResumeDispositionRequest>,
+  ): Promise<CoreResumeDispositionResult> {
     const sourceRunId = typeof request?.locator?.runId === 'string'
       ? request.locator.runId
       : 'invalid-resume-source';
-    const parsedPolicy = CoreResumeAdmissionPolicySchema.safeParse(request?.policy);
+    const parsedPolicy = CoreResumeDispositionPolicySchema.safeParse(request?.policy);
     if (!parsedPolicy.success) {
-      throw new CoreResumeAdmissionError({
+      throw new CoreResumeDispositionError({
         code: 'CORE_RESUME_REQUEST_INVALID',
         sourceRunId,
-        message: 'Core resume admission policy is invalid.',
+        message: 'Core resume disposition policy is invalid.',
       });
     }
     const policy = parsedPolicy.data;
@@ -250,7 +250,7 @@ export function createCoreResumeAdmissionAdapter(
         sourceRunId,
         policy,
         'CORE_RESUME_PROVENANCE_BELOW_POLICY',
-        'Core resume source provenance is below the explicit admission policy.',
+        'Core resume source provenance is below the explicit disposition policy.',
       );
     }
 
@@ -302,7 +302,7 @@ export function createCoreResumeAdmissionAdapter(
         sourceRunId,
         policy,
         'CORE_RESUME_PROVENANCE_BELOW_POLICY',
-        'Core resume Decision provenance is below the explicit admission policy.',
+        'Core resume Decision provenance is below the explicit disposition policy.',
       );
     }
 
@@ -315,7 +315,7 @@ export function createCoreResumeAdmissionAdapter(
         : { decision: decisionSource.planVerification }),
       effectiveSourceTrust,
     });
-    const digest = admissionDigest({
+    const digest = dispositionDigest({
       sourceRunId,
       artifacts,
       verification,
@@ -324,7 +324,7 @@ export function createCoreResumeAdmissionAdapter(
     return Object.freeze({
       disposition: 'reuse' as const,
       sourceRunId,
-      admissionDigest: digest,
+      dispositionDigest: digest,
       artifacts,
       executionSource,
       evaluationSource,
@@ -335,5 +335,5 @@ export function createCoreResumeAdmissionAdapter(
     });
   }
 
-  return Object.freeze({ admit });
+  return Object.freeze({ decide });
 }

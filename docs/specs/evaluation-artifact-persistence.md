@@ -47,7 +47,7 @@ The Node content store implements the existing Execution and Evaluation content 
 
 Resolution revalidates envelope digest, descriptor, canonical value digest, media type, byte size, and classification. Failures use stable, redacted codes; raw filesystem paths and content do not become Core errors.
 
-## 6. Resume admission
+## 6. Resume disposition
 
 Resume is complete-fact reuse, not record copying or cross-process checkpoint continuation. The host first prepares the current Definition and MeasurementPolicy to obtain a fresh `SealedRunPlan`. The admission adapter rejects a transported Plan that merely has the same JSON shape, then loads the located run and invokes the Core Execution, Evaluation, Analysis, Decision, and Report verifiers in order.
 

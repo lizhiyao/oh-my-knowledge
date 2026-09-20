@@ -4,7 +4,7 @@ import {
 } from './contracts.js';
 import type { KnowledgeGrounding } from './store.js';
 
-export interface AdmissionProblem {
+export interface KnowledgeValidationProblem {
   code: 'invalid_structure' | 'duplicate_id' | 'unknown_entity' | 'unknown_statement'
     | 'unknown_evidence' | 'uncovered_statement' | 'invalid_organization' | 'quote_mismatch';
   path: string;
@@ -14,15 +14,15 @@ export interface AdmissionProblem {
 export function validateKnowledgeDraft(
   input: unknown,
   registeredEvidence: ReadonlySet<string>,
-): { accepted: true; draft: KnowledgeDraft } | { accepted: false; problems: AdmissionProblem[] } {
+): { accepted: true; draft: KnowledgeDraft } | { accepted: false; problems: KnowledgeValidationProblem[] } {
   const parsed = KnowledgeDraftSchema.safeParse(input);
   if (!parsed.success) return {
     accepted: false,
     problems: parsed.error.issues.map((issue) => ({ code: 'invalid_structure', path: issue.path.join('.') })),
   };
   const draft = parsed.data;
-  const problems: AdmissionProblem[] = [];
-  const add = (code: AdmissionProblem['code'], path: string): void => { problems.push({ code, path }); };
+  const problems: KnowledgeValidationProblem[] = [];
+  const add = (code: KnowledgeValidationProblem['code'], path: string): void => { problems.push({ code, path }); };
   const unique = (values: string[], path: string): Set<string> => {
     const result = new Set(values);
     if (result.size !== values.length) add('duplicate_id', path);
@@ -71,7 +71,7 @@ export function validateKnowledgeDraft(
 export function validateEvidenceSelection(
   selection: EvidenceSelection,
   excerpts: readonly EvidenceExcerpt[],
-): AdmissionProblem[] {
+): KnowledgeValidationProblem[] {
   const matches = excerpts.filter((excerpt) => excerpt.evidenceRef === selection.evidenceRef);
   if (matches.length !== 1) return [{ code: 'unknown_evidence', path: selection.evidenceRef }];
   const source = matches[0].text;
@@ -83,7 +83,7 @@ export function validateEvidenceSelection(
   return [];
 }
 
-/** Structural grounding closure shared by model admission and persisted revisions.
+/** Structural grounding closure shared by model-output validation and persisted revisions.
  * Exact quote validation additionally needs the registered source excerpts.
  */
 export function validateGroundingReferences(draft: KnowledgeDraft,

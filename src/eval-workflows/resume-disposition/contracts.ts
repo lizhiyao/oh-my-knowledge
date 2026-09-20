@@ -15,7 +15,7 @@ import type {
 import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
 
-export const CoreResumeAdmissionPolicySchema = z.object({
+export const CoreResumeDispositionPolicySchema = z.object({
   rejectionMode: z.enum(['fail-closed', 'start-fresh']),
   minimumSourceTrust: z.enum(['untrusted', 'unknown', 'declared', 'verified']),
   cacheReceiptMode: z.enum(['require-verified', 'allow-indeterminate']),
@@ -27,14 +27,14 @@ export const CoreResumeLocatorSchema = z.object({
   runId: IdentifierSchema,
 }).strict();
 
-export type CoreResumeAdmissionPolicy = z.infer<typeof CoreResumeAdmissionPolicySchema>;
-export type CoreResumeRejectionMode = CoreResumeAdmissionPolicy['rejectionMode'];
+export type CoreResumeDispositionPolicy = z.infer<typeof CoreResumeDispositionPolicySchema>;
+export type CoreResumeRejectionMode = CoreResumeDispositionPolicy['rejectionMode'];
 export type CoreResumeLocator = z.infer<typeof CoreResumeLocatorSchema>;
 
-export interface CoreResumeAdmissionRequest {
+export interface CoreResumeDispositionRequest {
   readonly locator: CoreResumeLocator;
   readonly plan: SealedRunPlan;
-  readonly policy: CoreResumeAdmissionPolicy;
+  readonly policy: CoreResumeDispositionPolicy;
   readonly verification?: CoreResumeVerificationContexts;
 }
 
@@ -65,10 +65,10 @@ export interface CoreResumeVerificationSummary {
   readonly effectiveSourceTrust: Provenance['trust'];
 }
 
-export interface AdmittedCoreResumeSource {
+export interface AcceptedCoreResumeSource {
   readonly disposition: 'reuse';
   readonly sourceRunId: string;
-  readonly admissionDigest: string;
+  readonly dispositionDigest: string;
   readonly artifacts: StoredCoreRunArtifacts;
   readonly executionSource: ExecutionBundleSource;
   readonly evaluationSource: EvaluationBundleSource;
@@ -84,15 +84,15 @@ export interface RejectedCoreResumeSource {
   readonly reasonCode: CoreResumeRejectionReasonCode;
 }
 
-export type CoreResumeAdmissionResult =
-  | AdmittedCoreResumeSource
+export type CoreResumeDispositionResult =
+  | AcceptedCoreResumeSource
   | RejectedCoreResumeSource;
 
-export interface CoreResumeAdmissionAdapter {
-  admit(request: Readonly<CoreResumeAdmissionRequest>): Promise<CoreResumeAdmissionResult>;
+export interface CoreResumeDispositionAdapter {
+  decide(request: Readonly<CoreResumeDispositionRequest>): Promise<CoreResumeDispositionResult>;
 }
 
-export class CoreResumeAdmissionError extends TypeError {
+export class CoreResumeDispositionError extends TypeError {
   readonly code: CoreResumeRejectionReasonCode;
   readonly sourceRunId: string;
 
@@ -102,7 +102,7 @@ export class CoreResumeAdmissionError extends TypeError {
     message: string;
   }) {
     super(input.message);
-    this.name = 'CoreResumeAdmissionError';
+    this.name = 'CoreResumeDispositionError';
     this.code = input.code;
     this.sourceRunId = input.sourceRunId;
   }

@@ -61,7 +61,7 @@ test/executors/sigint-propagation.test.ts
 test/knowledge-artifacts/governance/install.test.ts
 test/knowledge-artifacts/sources/install-source.test.ts
 test/knowledge-artifacts/sources/materialize-copy.test.ts
-test/knowledge/admission.test.ts
+test/knowledge/validation.test.ts
 test/mcp/mcp-server.test.ts
 test/mcp/review-component.test.ts
 test/observability/analysis/gap-analyzer.test.ts
