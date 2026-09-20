@@ -16,7 +16,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { normalizeRfc3339Timestamp } from '../../shared/timestamp.js';
-import { projectObservationsDir, resolveObservationsDir } from './paths.js';
+import { resolveObservationsDir } from './paths.js';
 
 export type {
   ObservationMetricKey,
@@ -158,16 +158,17 @@ export function updateObservationReviewState(
   now?: string,
 ): ObservationReviewState {
   assertReviewStateUpdate(update);
-  // 未指定目录时写入固定落在当前项目，只有读取参与「项目优先 → 全局兜底」的挑选。
-  const writeDir = observationsDir ?? projectObservationsDir();
-  const path = observationReviewStatePath(writeDir);
+  // 读改写必须同址：解析一次 inbox，锁、合并与写入都用它。读写分家会把另一处的条目
+  // 复制进写入目标，而 review-state.json 自身算「有观测数据」，一次复制就永久关掉兜底。
+  const dir = resolveObservationsDir(observationsDir);
+  const path = observationReviewStatePath(dir);
   return withFileLock(`${path}.lock`, () => {
     const reviewedAt = normalizedTimestamp(now ?? new Date().toISOString());
     if (!reviewedAt) {
       throw new ObservationReviewStateValidationError('invalid reviewedAt');
     }
     const hadPersistedState = existsSync(path);
-    const state = loadObservationReviewState(observationsDir);
+    const state = loadObservationReviewState(dir);
     if (hadPersistedState && reviewedAt < state.updatedAt) {
       throw new ObservationReviewStateValidationError(
         'reviewedAt cannot precede state updatedAt',
@@ -196,7 +197,7 @@ export function updateObservationReviewState(
       ...(update.snippet ? { snippet: update.snippet.slice(0, 500) } : {}),
     };
     state.updatedAt = reviewedAt;
-    writeObservationReviewState(writeDir, state);
+    writeObservationReviewState(dir, state);
     return state;
   }, { label: 'observation review state' });
 }
@@ -233,16 +234,16 @@ export function deleteObservationReviewState(
 ): ObservationReviewState {
   if (!isReviewTargetType(targetType)) throw new ObservationReviewStateValidationError('invalid review targetType');
   if (typeof targetId !== 'string' || targetId.trim() === '') throw new ObservationReviewStateValidationError('invalid review targetId');
-  // 写入落点与 update 同口径：未指定目录时固定当前项目。
-  const writeDir = observationsDir ?? projectObservationsDir();
-  const path = observationReviewStatePath(writeDir);
+  // 删除同样在「本次读到的那个 inbox」上做，避免把另一处的条目减去一条后复制进当前项目。
+  const dir = resolveObservationsDir(observationsDir);
+  const path = observationReviewStatePath(dir);
   return withFileLock(`${path}.lock`, () => {
     const updatedAt = normalizedTimestamp(now ?? new Date().toISOString());
     if (!updatedAt) {
       throw new ObservationReviewStateValidationError('invalid updatedAt');
     }
     const hadPersistedState = existsSync(path);
-    const state = loadObservationReviewState(observationsDir);
+    const state = loadObservationReviewState(dir);
     if (hadPersistedState && updatedAt < state.updatedAt) {
       throw new ObservationReviewStateValidationError(
         'updatedAt cannot precede state updatedAt',
@@ -251,7 +252,7 @@ export function deleteObservationReviewState(
     const key = observationReviewStateKey(targetType, targetId);
     delete state.entries[key];
     state.updatedAt = updatedAt;
-    writeObservationReviewState(writeDir, state);
+    writeObservationReviewState(dir, state);
     return state;
   }, { label: 'observation review state' });
 }

@@ -1,9 +1,16 @@
 import { describe, it, onTestFinished } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
+import {
+  globalObservationsDir,
+  observationReportsDir,
+  projectObservationsDir,
+  resolveObservationsDir,
+} from '../../../src/observability/inbox/paths.js';
+import { reportFileName } from '../../../src/evidence/storage/file-names.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,
@@ -915,5 +922,63 @@ describe('observe inbox - review state', () => {
     // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留；反馈建议没有事实门禁时不再强制注入。
     assert.equal(finalSuggestions[2].title, 'LLM 普通建议 1');
     assert.equal(finalSuggestions[9].title, 'LLM 普通建议 8');
+  });
+});
+
+/**
+ * 复核结论必须与它评价的证据同址：项目 inbox 为空、观测数据在全局时，读侧兜底到全局，
+ * 写入也得落回同一份全局文件。写进项目会把全局条目复制过来，而 review-state.json 自身
+ * 算「有观测数据」，一次复制就永久关掉该项目的兜底，全局报告与捕获从收件箱里集体消失。
+ */
+describe('observe inbox - 复核状态读写同址', () => {
+  // 只播种被 OMK_HOME 重定向的 temp 全局 inbox；仓内没有任何调用零参数读默认 inbox，
+  // 因此这份播种不会被本进程内其它测试文件读到，也不会读到它们的残留。
+  function seededGlobalInbox(): string {
+    const globalInbox = globalObservationsDir();
+    rmSync(globalInbox, { recursive: true, force: true });
+    mkdirSync(observationReportsDir(globalInbox), { recursive: true });
+    writeFileSync(join(observationReportsDir(globalInbox), reportFileName('20260507T000000-a111')), '{}');
+    updateObservationReviewState(globalInbox, {
+      targetType: 'experience_session',
+      targetId: 'global-session',
+      verdict: 'not_issue',
+    }, '2026-05-01T00:00:00.000Z');
+    onTestFinished(() => rmSync(globalInbox, { recursive: true, force: true }));
+    return globalInbox;
+  }
+
+  it('兜底读到全局时，复核写回全局那份文件，不在项目里另立一份', () => {
+    const globalInbox = seededGlobalInbox();
+    const projectRoot = mkdtempSync(join(tmpdir(), 'omk-review-colocation-'));
+    const previous = process.cwd();
+    process.chdir(projectRoot);
+    try {
+      const projectInbox = projectObservationsDir();
+      assert.equal(resolveObservationsDir(), globalInbox, '前提：读目标兜底到了全局');
+
+      const state = updateObservationReviewState(undefined, {
+        targetType: 'experience_session',
+        targetId: 'project-session',
+        verdict: 'real_issue',
+      }, '2026-06-01T00:00:00.000Z');
+
+      assert.equal(existsSync(join(projectRoot, '.omk')), false, '项目里既不该冒出第二份复核状态，也不该被建出任何观测目录树');
+      const persisted = loadObservationReviewState(globalInbox);
+      assert.equal(persisted.entries[observationReviewStateKey('experience_session', 'global-session')].verdict, 'not_issue', '原有全局复核保留');
+      assert.equal(persisted.entries[observationReviewStateKey('experience_session', 'project-session')].verdict, 'real_issue', '新复核落进同一份全局文件');
+      assert.equal(Object.keys(state.entries).length, 2);
+      assert.equal(resolveObservationsDir(), globalInbox, '写完不该把该项目永久钉成「有数据」而关掉兜底');
+
+      deleteObservationReviewState(undefined, 'experience_session', 'project-session', '2026-06-02T00:00:00.000Z');
+      assert.deepEqual(
+        Object.keys(loadObservationReviewState(globalInbox).entries),
+        [observationReviewStateKey('experience_session', 'global-session')],
+        '删除同样作用在这份全局文件上',
+      );
+      assert.equal(existsSync(join(projectInbox, 'review-state.json')), false);
+    } finally {
+      process.chdir(previous);
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 });
