@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { safeArtifactFileStem } from '../storage/file-names.js';
+import { isCanonicalArtifactFileStem } from '../storage/file-names.js';
 import { measurementDerivedDir } from '../storage/report-bundle.js';
 import { hashArtifactSource } from '../../knowledge-artifacts/sources/content-hash.js';
 import { parseArtifactGraphDocument } from './schema.js';
@@ -58,10 +58,6 @@ interface SkillSourceSnapshot {
 
 function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
-}
-
-function isCanonicalFileStem(id: string): boolean {
-  return id.length > 0 && safeArtifactFileStem(id) === id;
 }
 
 function normalizeRelPath(path: string): string {
@@ -710,7 +706,7 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
 }
 
 export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): PersistDoctorGraphResult {
-  if (!isCanonicalFileStem(options.fileStem)) {
+  if (!isCanonicalArtifactFileStem(options.fileStem)) {
     throw new Error('invalid doctor graph file stem');
   }
   const dir = measurementDerivedDir(options.outputDir, options.fileStem);
@@ -725,7 +721,7 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
 }
 
 export function removeDoctorGraphSidecars(doctorOutputDir: string, fileStem: string): void {
-  if (!isCanonicalFileStem(fileStem)) return;
+  if (!isCanonicalArtifactFileStem(fileStem)) return;
   const currentDir = measurementDerivedDir(doctorOutputDir, fileStem);
   for (const file of ['graph.json', 'card.md']) {
     try {

@@ -9,6 +9,12 @@ export function safeArtifactFileStem(id: string): string {
   return id.replaceAll(/[/\\:*?"<>|]/g, '_');
 }
 
+/** 产物文件 stem 的唯一合法性判据：非空且不含需要替换的字符。
+ *  写侧／读侧／删除侧共用同一条规则；任何一处单独放宽，卡片就会指向索引目录之外。 */
+export function isCanonicalArtifactFileStem(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && safeArtifactFileStem(value) === value;
+}
+
 export function reportFileName(stem: string): string {
   return `${safeArtifactFileStem(stem)}${REPORT_FILE_SUFFIX}`;
 }
@@ -51,8 +57,8 @@ export function doctorReportFileStem(skillName: string, reportId: string): strin
 }
 
 function collisionResistantFileComponent(value: string): string {
+  if (isCanonicalArtifactFileStem(value)) return value;
   const safe = safeArtifactFileStem(value);
-  if (safe === value) return safe;
   const fingerprint = createHash('sha256')
     .update(value)
     .digest('hex')

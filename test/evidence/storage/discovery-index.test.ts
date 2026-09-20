@@ -4,13 +4,14 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   indexDoctorWrite, listDoctorCards, removeDoctorCard,
   indexObserveWrite, listObserveCards, artifactIndexDir,
 } from '../../../src/evidence/storage/discovery-index.js';
+import { isCanonicalArtifactFileStem } from '../../../src/evidence/storage/file-names.js';
 import { globalDoctorsDir, globalObserveHealthDir } from '../../../src/evidence/storage/directories.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 
@@ -219,5 +220,64 @@ describe('artifact-index 写侧(observe-health 域)', () => {
       bySkill: { s: { toolFailureRate: 0, segmentCount: 1 } } }));
     indexObserveBundle('ok');
     assert.deepEqual(listObserveCards().map((c) => c.id), ['ok'], '只收枚举、计数、比率和结果分母均合法的卡片');
+  });
+});
+describe('artifact-index 卡片身份的合法性判据（写侧与删除侧同源）', () => {
+  let indexRoot: string;
+  let projDir: string;
+  let origEnv: string | undefined;
+
+  beforeEach(() => {
+    origEnv = process.env.OMK_ARTIFACT_INDEX_DIR;
+    indexRoot = mkdtempSync(join(tmpdir(), 'omk-ai-dunsafe-'));
+    projDir = mkdtempSync(join(tmpdir(), 'omk-ai-duproj-'));
+    process.env.OMK_ARTIFACT_INDEX_DIR = indexRoot;
+  });
+  afterEach(() => {
+    if (origEnv === undefined) delete process.env.OMK_ARTIFACT_INDEX_DIR;
+    else process.env.OMK_ARTIFACT_INDEX_DIR = origEnv;
+    rmSync(indexRoot, { recursive: true, force: true });
+    rmSync(projDir, { recursive: true, force: true });
+  });
+
+  it('空串与需要替换字符的 id 都不算合法 stem', () => {
+    assert.equal(isCanonicalArtifactFileStem('sk-20260614-1-ab12'), true);
+    assert.equal(isCanonicalArtifactFileStem(''), false);
+    for (const bad of ['../outside', 'a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b']) {
+      assert.equal(isCanonicalArtifactFileStem(bad), false, bad);
+    }
+    for (const notString of [undefined, null, 7, { id: 'x' }]) {
+      assert.equal(isCanonicalArtifactFileStem(notString), false, String(notString));
+    }
+  });
+
+  it('非规范 id 的写入不抛错、不落卡片，也不越出索引目录', () => {
+    const escapeId = `../../${basename(indexRoot)}-escaped`;
+    for (const id of [escapeId, 'a/b']) {
+      const path = join(projDir, id, 'report.json');
+      assert.doesNotThrow(() => indexDoctorWrite({
+        id, path, skillName: 'sk', reportId: 'doctor-1', timestamp: '2026-06-14T00:00:00Z',
+        status: 'pass', passCount: 1, warnCount: 0, failCount: 0,
+      }, projDir));
+      assert.doesNotThrow(() => indexObserveWrite(
+        { meta: { generatedAt: '2026-06-14T00:00:00Z', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' }, bySkill: {} },
+        path, projDir, id,
+      ));
+    }
+    for (const domain of ['doctor', 'observe-health'] as const) {
+      const dir = artifactIndexDir(domain);
+      assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], [], domain);
+    }
+    assert.equal(existsSync(join(dirname(indexRoot), `${basename(indexRoot)}-escaped.json`)), false);
+  });
+
+  it('删除卡片同样只认规范 id，非规范 id 幂等返回 false 且不碰目录外文件', () => {
+    const victim = join(dirname(indexRoot), 'must-survive.json');
+    writeFileSync(victim, '{}');
+    assert.equal(removeDoctorCard(`../${basename(dirname(indexRoot))}/must-survive`), false);
+    assert.equal(removeDoctorCard('a/b'), false);
+    assert.equal(removeDoctorCard(''), false);
+    assert.equal(existsSync(victim), true);
+    rmSync(victim, { force: true });
   });
 });

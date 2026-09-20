@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../../shared/timestamp.js';
-import { safeArtifactFileStem } from './file-names.js';
+import { isCanonicalArtifactFileStem } from './file-names.js';
 
 export const MEASUREMENT_BUNDLE_MANIFEST_SCHEMA_VERSION =
   'omk.measurement-bundle-manifest/v1' as const;
@@ -23,7 +23,7 @@ export interface MeasurementBundleManifest {
 }
 
 function assertRecordId(id: string): void {
-  if (id.length === 0 || safeArtifactFileStem(id) !== id) {
+  if (!isCanonicalArtifactFileStem(id)) {
     throw new TypeError('Invalid measurement record id.');
   }
 }
@@ -54,9 +54,7 @@ export function parseMeasurementBundleManifest(
       || manifest.manifestKind !== 'measurement-bundle'
       || (manifest.measurementDomain !== 'doctor'
         && manifest.measurementDomain !== 'observe-health')
-      || typeof manifest.recordId !== 'string'
-      || manifest.recordId.length === 0
-      || safeArtifactFileStem(manifest.recordId) !== manifest.recordId
+      || !isCanonicalArtifactFileStem(manifest.recordId)
       || typeof manifest.reportId !== 'string'
       || manifest.reportId.length === 0
       || typeof manifest.createdAt !== 'string'
@@ -106,7 +104,7 @@ function bundleDirectoriesInRoot(
     return [];
   }
   for (const entry of entries) {
-    if (!entry.isDirectory() || safeArtifactFileStem(entry.name) !== entry.name) continue;
+    if (!entry.isDirectory() || !isCanonicalArtifactFileStem(entry.name)) continue;
     const manifestPath = join(rootDir, entry.name, MEASUREMENT_MANIFEST_FILE);
     const reportPath = join(rootDir, entry.name, MEASUREMENT_REPORT_FILE);
     if (!existsSync(manifestPath) || !existsSync(reportPath)) continue;

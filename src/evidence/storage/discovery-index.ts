@@ -17,7 +17,7 @@ import type { DoctorSkillStatus } from '../../knowledge-artifacts/doctor/contrac
 import { setOwnRecordValue, sumRecordCounts } from '../../shared/record-count.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../../shared/timestamp.js';
-import { safeArtifactFileStem } from './file-names.js';
+import { isCanonicalArtifactFileStem } from './file-names.js';
 import {
   measurementManifestPath,
   measurementReportPath,
@@ -42,14 +42,6 @@ export function artifactIndexDir(domain: ArtifactDomain): string {
  *  卡片唯一价值是别项目的项目级 `.omk/<域>`。 */
 function shouldIndexDir(outputDir: string, globalDir: string): boolean {
   return resolve(outputDir) !== resolve(globalDir);
-}
-
-function safeFileName(id: string): string {
-  return safeArtifactFileStem(id);
-}
-
-function isCanonicalCardId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && safeFileName(value) === value;
 }
 
 function isCanonicalCardPath(
@@ -81,7 +73,7 @@ const isConfidence = (v: unknown): boolean => v === undefined || v === 'high' ||
 
 /** 原子写一张卡片(tmp+rename,防半截 JSON 被 reader 读到)。 */
 function writeCard(domain: ArtifactDomain, id: string, card: object): void {
-  if (!isCanonicalCardId(id)) throw new Error('invalid artifact index id');
+  if (!isCanonicalArtifactFileStem(id)) throw new Error('invalid artifact index id');
   writeJsonFileAtomic(join(artifactIndexDir(domain), `${id}.json`), card);
 }
 
@@ -101,7 +93,7 @@ function readArtifactCards<T>(
       const c: unknown = JSON.parse(readFileSync(join(dir, f), 'utf-8'));
       if (
         valid(c)
-        && isCanonicalCardId((c as { id?: unknown }).id)
+        && isCanonicalArtifactFileStem((c as { id?: unknown }).id)
         && f === `${(c as { id: string }).id}.json`
       ) out.push(c);
     } catch { /* skip corrupt card */ }
@@ -111,7 +103,7 @@ function readArtifactCards<T>(
 
 /** 删某域某 id 的卡片。幂等、best-effort。返回卡片是否曾存在。 */
 function removeArtifactCard(domain: ArtifactDomain, id: string): boolean {
-  if (!isCanonicalCardId(id)) return false;
+  if (!isCanonicalArtifactFileStem(id)) return false;
   try {
     const p = join(artifactIndexDir(domain), `${id}.json`);
     if (!existsSync(p)) return false;
@@ -189,7 +181,7 @@ export function indexDoctorWrite(card: Omit<DoctorIndexCard, 'domain'>, outputDi
 export function listDoctorCards(): DoctorIndexCard[] {
   return readArtifactCards('doctor', (c): c is DoctorIndexCard => {
     const card = c as Partial<DoctorIndexCard>;
-    return !!card && card.domain === 'doctor' && isCanonicalCardId(card.id)
+    return !!card && card.domain === 'doctor' && isCanonicalArtifactFileStem(card.id)
       && isCanonicalCardPath(card.path, card.id, 'doctor')
       && typeof card.skillName === 'string' && card.skillName.length > 0
       && typeof card.reportId === 'string' && card.reportId.length > 0
@@ -289,7 +281,7 @@ export function listObserveCards(): ObserveIndexCard[] {
     if (
       !card
       || card.domain !== 'observe-health'
-      || !isCanonicalCardId(card.id)
+      || !isCanonicalArtifactFileStem(card.id)
       || !isCanonicalCardPath(card.path, card.id, 'observe-health')
     ) return false;
     const meta = card.meta; const overall = card.overall; const bySkill = card.bySkill;
