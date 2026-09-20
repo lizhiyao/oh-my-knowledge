@@ -89,3 +89,17 @@ export function maxString(values: Array<string | undefined>): string | undefined
 export function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
 }
+
+export function compactObjectText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '');
+}
+
+export function minDefined(values: Array<number | undefined>): number | undefined {
+  const filtered = values.filter((value): value is number => typeof value === 'number');
+  return filtered.length > 0 ? Math.min(...filtered) : undefined;
+}
+
+export function maxDefined(values: Array<number | undefined>): number | undefined {
+  const filtered = values.filter((value): value is number => typeof value === 'number');
+  return filtered.length > 0 ? Math.max(...filtered) : undefined;
+}

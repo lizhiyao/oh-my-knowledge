@@ -24,7 +24,7 @@ import {
   feedbackTargetObject,
   sessionStoryFeedbackSignals,
   sessionStoryPromiseOwners,
-} from '../../src/observability/experience/session-story.js';
+} from '../../src/observability/experience/session-story-feedback.js';
 import type {
   ExperienceOrchestrationEdge,
   ExperienceSkillSegment,

@@ -12,7 +12,7 @@ import {
   dispatchTerminalLifecycle,
   mentionedUpstreamSkillSegmentForRuntime,
   sessionStoryOrchestrationEdges,
-} from '../../src/observability/experience/session-story.js';
+} from '../../src/observability/experience/session-story-orchestration.js';
 import type {
   ExperienceSessionStorySubagentDispatch,
   ExperienceSkillSegment,

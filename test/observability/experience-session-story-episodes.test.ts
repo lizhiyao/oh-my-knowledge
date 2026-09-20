@@ -4,13 +4,13 @@ import {
   episodeRangeContainsRef,
   messageRangeOverlapsEpisodeRange,
   sessionStoryEpisodeBoundaryReason,
-} from '../../src/observability/experience/session-story.js';
+} from '../../src/observability/experience/session-story-episodes.js';
 import type {
   ExperienceEpisodeBoundaryReason,
   ExperienceFeedbackAttribution,
   ExperienceOrchestrationEdge,
 } from '../../src/observability/experience.js';
-import type { ExperienceEpisodeRange } from '../../src/observability/experience/session-story.js';
+import type { ExperienceEpisodeRange } from '../../src/observability/experience/session-story-episodes.js';
 import type { ExperienceMessageRange } from '../../src/observability/contracts/experience.js';
 
 const range: ExperienceEpisodeRange = {

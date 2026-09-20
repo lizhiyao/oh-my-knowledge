@@ -66,7 +66,7 @@ test/knowledge/executor.test.ts
 test/mcp/http.test.ts
 test/mcp/trigger-samples.test.ts
 test/observability/experience-review-structures.test.ts
-test/observability/experience-session-story.test.ts
+test/observability/experience-session-story-episodes.test.ts
 test/observability/experience-session-story-orchestration.test.ts
 test/observability/experience-session-story-feedback.test.ts
 test/observability/inbox/effective-review.test.ts
