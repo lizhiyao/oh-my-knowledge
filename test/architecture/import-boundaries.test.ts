@@ -683,8 +683,9 @@ describe('架构边界守门', () => {
       'utf-8',
     );
 
-    expect(extractSpecifiers(facade)).toContain('./experience/report-structure.js');
-    expect(extractSpecifiers(facade)).toContain('./experience/report-derivations.js');
+    expect(reportStructure).toContain('export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION');
+    expect(reportStructure).toContain('export function traceTimelinesFromSessions(');
+    expect(reportDerivations).toContain('export function scoreForIndicators(');
     expect(facade).not.toContain('function traceTimelinesFromSessions(');
     expect(facade).not.toContain('function scoreForIndicators(');
     expect(extractSpecifiers(reportStructure)).not.toContain('../experience.js');
@@ -739,7 +740,7 @@ describe('架构边界守门', () => {
       'utf-8',
     );
 
-    expect(extractSpecifiers(facade)).toContain('./experience/session-story.js');
+    expect(sessionStory).toContain('export function buildSessionStory(');
     expect(facade).not.toContain('function buildSessionStory(');
     expect(facade).not.toContain('function sessionStoryFeedbackSignals(');
     expect(sessionStory).not.toContain("from '../experience.js'");
@@ -754,7 +755,7 @@ describe('架构边界守门', () => {
       'utf-8',
     );
 
-    expect(extractSpecifiers(facade)).toContain('./experience/reviewer-report.js');
+    expect(reviewerReport).toContain('export function buildReviewerReport(');
     expect(facade).not.toContain('function buildReviewerReport(');
     expect(facade).not.toContain('function reviewerFindingsForSession(');
     expect(reviewerReport).not.toContain("from '../experience.js'");
