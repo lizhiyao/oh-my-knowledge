@@ -29,6 +29,9 @@ import type {
   OmkBindingResourceLease,
   OmkLeasedHostResource,
 } from '../../resource-leases/types.js';
+import {
+  releaseTrialSlot,
+} from '../shared/trial-lifecycle.js';
 
 const DescriptorSchema = z.object({
   resourceId: z.string().min(1),
@@ -952,11 +955,7 @@ export async function disposeClaudeCliTrial(
   profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): Promise<void> {
   try {
-    try {
-      await trialState.closeWorkspace();
-    } finally {
-      await runState.releaseTrial();
-    }
+    await releaseTrialSlot({ runState: runState, close: () => trialState.closeWorkspace() });
   } catch {
     fail(profile, 'TRIAL_DISPOSE_FAILED', 'trial state could not be released.');
   }

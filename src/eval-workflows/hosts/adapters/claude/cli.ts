@@ -3,7 +3,6 @@ import { lstat, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import {
   RuntimeIdentitySchema,
-  canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type EvaluationDefinition,
@@ -62,6 +61,10 @@ export {
   CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   createClaudeCliCoreSchemaValidators,
 } from './cli-protocol.js';
+import {
+  assertTrialMatchesSealedBinding,
+  withTrialSlot,
+} from '../shared/trial-lifecycle.js';
 
 export const DEFAULT_CLAUDE_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CLAUDE_CLI_MAX_INPUT_BYTES = 2 * 1024 * 1024;
@@ -815,29 +818,25 @@ export async function createClaudeCliExecutorAdapter(
         return captureClaudeCliRunState(resources, target, configuration.maxInputBytes);
       },
       async openTrial({ runState, trial }) {
-        if (
-          trial.protocolId !== target.binding.protocolId
-          || trial.targetId !== target.binding.targetId
-          || canonicalizeJson(trial.targetConfig ?? null)
-            !== canonicalizeJson(target.target.config ?? null)
-        ) {
-          fail(
-            'OMK_CLAUDE_CLI_TRIAL_MISMATCH',
-            'infrastructure',
-            'Claude CLI trial does not match the sealed Target binding.',
-          );
-        }
-        runState.acquireTrial();
-        try {
-          return await openClaudeCliTrial(
+        assertTrialMatchesSealedBinding({
+          trial,
+          binding: {
+            protocolId: target.binding.protocolId,
+            targetId: target.binding.targetId,
+            sealedTargetConfig: target.target.config,
+          },
+          mismatchCode: 'OMK_CLAUDE_CLI_TRIAL_MISMATCH',
+          hostLabel: 'Claude CLI',
+          fail,
+        });
+        return withTrialSlot({
+          runState,
+          open: () => openClaudeCliTrial(
             trial,
             runState,
             configuration.maxInputBytes,
-          );
-        } catch (error) {
-          await runState.releaseTrial();
-          throw error;
-        }
+          ),
+        });
       },
       async execute({ runState, trialState, attempt }) {
         await assertIdentityUnchanged(files, attempt.signal);

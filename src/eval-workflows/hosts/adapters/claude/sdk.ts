@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   RuntimeIdentitySchema,
-  canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type EvaluationDefinition,
@@ -72,6 +71,10 @@ export {
   type ClaudeSdkRuntimeResolver,
   type ResolvedClaudeSdkRuntime,
 } from './sdk-runtime.js';
+import {
+  assertTrialMatchesSealedBinding,
+  withTrialSlot,
+} from '../shared/trial-lifecycle.js';
 
 export const MINIMUM_CLAUDE_SDK_CORE_VERSION = '0.3.143' as const;
 export const DEFAULT_CLAUDE_SDK_MAX_EVENT_BYTES = 10 * 1024 * 1024;
@@ -680,30 +683,26 @@ export async function createClaudeSdkExecutorAdapter(
         );
       },
       async openTrial({ runState, trial }) {
-        if (
-          trial.protocolId !== target.binding.protocolId
-          || trial.targetId !== target.binding.targetId
-          || canonicalizeJson(trial.targetConfig ?? null)
-            !== canonicalizeJson(target.target.config ?? null)
-        ) {
-          fail(
-            'OMK_CLAUDE_SDK_TRIAL_MISMATCH',
-            'infrastructure',
-            'Claude SDK trial does not match the sealed Target binding.',
-          );
-        }
-        runState.acquireTrial();
-        try {
-          return await openClaudeCliTrial(
+        assertTrialMatchesSealedBinding({
+          trial,
+          binding: {
+            protocolId: target.binding.protocolId,
+            targetId: target.binding.targetId,
+            sealedTargetConfig: target.target.config,
+          },
+          mismatchCode: 'OMK_CLAUDE_SDK_TRIAL_MISMATCH',
+          hostLabel: 'Claude SDK',
+          fail,
+        });
+        return withTrialSlot({
+          runState,
+          open: () => openClaudeCliTrial(
             trial,
             runState,
             configuration.maxInputBytes,
             CLAUDE_SDK_RESOURCE_PROFILE,
-          );
-        } catch (error) {
-          await runState.releaseTrial();
-          throw error;
-        }
+          ),
+        });
       },
       execute({ runState, trialState, attempt }) {
         return executeAttempt(

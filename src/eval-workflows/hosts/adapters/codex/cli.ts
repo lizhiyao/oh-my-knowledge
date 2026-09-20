@@ -2,7 +2,6 @@ import { buildCodexExecArguments } from '../../../../executors/openai/codex/cli-
 import { isAbsolute } from 'node:path';
 import {
   RuntimeIdentitySchema,
-  canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type EvaluationDefinition,
@@ -55,6 +54,11 @@ import { probeCodexCliVersion } from './version.js';
 export {
   createCodexCliCoreSchemaValidators,
 } from './cli-protocol.js';
+import {
+  assertTrialMatchesSealedBinding,
+  releaseTrialSlot,
+  withTrialSlot,
+} from '../shared/trial-lifecycle.js';
 
 export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.1' as const;
 export const DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -394,25 +398,21 @@ export async function createCodexCliExecutorAdapter(
         return captureCodexCliRunState(resources, target);
       },
       async openTrial({ runState, trial }) {
-        if (
-          trial.protocolId !== target.binding.protocolId
-          || trial.targetId !== target.binding.targetId
-          || canonicalizeJson(trial.targetConfig ?? null)
-            !== canonicalizeJson(target.target.config ?? null)
-        ) {
-          fail(
-            'OMK_CODEX_CLI_TRIAL_MISMATCH',
-            'infrastructure',
-            'Codex CLI trial does not match the sealed Target binding.',
-          );
-        }
-        runState.acquireTrial();
-        try {
-          return await openCodexCliTrialWorkspace(trial, runState, target);
-        } catch (error) {
-          await runState.releaseTrial();
-          throw error;
-        }
+        assertTrialMatchesSealedBinding({
+          trial,
+          binding: {
+            protocolId: target.binding.protocolId,
+            targetId: target.binding.targetId,
+            sealedTargetConfig: target.target.config,
+          },
+          mismatchCode: 'OMK_CODEX_CLI_TRIAL_MISMATCH',
+          hostLabel: 'Codex CLI',
+          fail,
+        });
+        return withTrialSlot({
+          runState,
+          open: () => openCodexCliTrialWorkspace(trial, runState, target),
+        });
       },
       async execute({ runState, trialState, trial, attempt }) {
         await assertIdentityFilesUnchanged(files, attempt.signal);
@@ -450,11 +450,7 @@ export async function createCodexCliExecutorAdapter(
         };
       },
       async disposeTrial({ runState, trialState }) {
-        try {
-          await trialState.close();
-        } finally {
-          await runState.releaseTrial();
-        }
+        await releaseTrialSlot({ runState: runState, close: () => trialState.close() });
       },
       disposeRun({ runState }) {
         return runState.requestDispose();

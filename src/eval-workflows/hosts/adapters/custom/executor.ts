@@ -58,6 +58,11 @@ import {
   type ClassifiedEnvironmentEntry,
 } from '../shared/classified-environment.js';
 
+import {
+  releaseTrialSlot,
+  withTrialSlot,
+} from '../shared/trial-lifecycle.js';
+
 export const CUSTOM_EXECUTOR_EXCHANGE_SCHEMA_VERSION =
   'omk.custom-executor-exchange/v1' as const;
 export const DEFAULT_CUSTOM_EXECUTOR_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -1129,13 +1134,10 @@ export async function createCustomExecutorAdapter(
         return captureRunState(resources, binding, executionControls);
       },
       async openTrial({ runState, trial }) {
-        runState.acquireTrial();
-        try {
-          return await openCustomExecutorTrial(runState, trial);
-        } catch (error) {
-          await runState.releaseTrial();
-          throw error;
-        }
+        return withTrialSlot({
+          runState,
+          open: () => openCustomExecutorTrial(runState, trial),
+        });
       },
       async execute({ run, runState, trial, trialState, attempt, scope }) {
         if (attempt.signal.aborted) {
@@ -1187,11 +1189,7 @@ export async function createCustomExecutorAdapter(
         };
       },
       async disposeTrial({ runState, trialState }) {
-        try {
-          await trialState.closeWorkspace();
-        } finally {
-          await runState.releaseTrial();
-        }
+        await releaseTrialSlot({ runState, close: () => trialState.closeWorkspace() });
       },
       disposeRun({ runState }) {
         return runState.requestDispose();
