@@ -66,6 +66,7 @@ test/knowledge-artifacts/governance/store.test.ts
 test/knowledge-artifacts/sources/deploy-artifact.test.ts
 test/knowledge/executor.test.ts
 test/mcp/http.test.ts
+test/observability/conversation-turn-index.test.ts
 test/mcp/trigger-samples.test.ts
 test/observability/experience-review-structures.test.ts
 test/observability/experience-session-story-episodes.test.ts

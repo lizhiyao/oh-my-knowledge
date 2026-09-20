@@ -123,7 +123,10 @@ eval-workflows/
 
 executors/
 ├── contracts/          # executor 端口、Runtime 身份、结果与 trace 事实
+├── core/               # 共用调用机制：子进程、HTTP、限额与用量
+├── mock-runtime/       # mock runtime 物化：SDK hook 与 CLI 配置目录
 ├── preflight/          # 宿主工具、文件、环境变量与自定义执行器就绪检查
+├── script/             # 用户自定义 script 命令执行器
 └── <provider>/         # provider 专属 Runtime 实现
 ```
 
@@ -261,7 +264,9 @@ observability/
 `test/architecture/import-boundaries.test.ts` 使用入口白名单阻止 Studio 穿透私有子域，
 覆盖 `.js` 和 Next 无扩展名 import、再导出及字面量模块加载。私有子域不能反向导入根应用／展示入口。
 客户端运行时闭包守卫另行保证展示入口不引入 Node 能力；`view-models/` 只提供类型。
-`test/architecture/architecture-docs.test.ts` 对账本节两种语言的 Workflow 与 Observability 子域清单。
+`test/architecture/architecture-docs.test.ts` 对账本文列出的全部目录树
+（`knowledge-artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`evidence`、`observability`）
+与源码目录，中英文同步。
 
 Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Experience 的 `text-signals.ts` 才判断硬规则、进展与交付信号。因此 adapter 不会反向依赖其下游的体验投影。旧根路径不保留 re-export 或兼容 shim。
 
@@ -277,12 +282,14 @@ Missing、invalid、failed、unavailable 与 not-started observation 都不是�
 
 ## 观测链路：source-neutral Trace IR
 
-`omk observe` 不把 Codex、Claude Code 或 OpenClaw 的日志互相伪装成对方格式。`trace/source.ts` 负责格式识别与加载，Claude、OpenClaw 和 Markdown 解析仍在该模块内；Codex 与 Qoder 使用独立 adapter。它们转换为同一套 Trace IR，再进入归因、分段和指标计算：
+`omk observe` 不把 Codex、Claude Code 或 OpenClaw 的日志互相伪装成对方格式。`trace/source.ts` 负责文件发现、读取、格式识别与 session 分组；五种来源格式的记录解析各自住在 `trace/adapters/` 的独立目录（`claude`、`codex`、`markdown`、`openclaw`、`qoder`）。它们转换为同一套 Trace IR，再进入归因、分段和指标计算：
 
 ```mermaid
 flowchart LR
-    S0["trace/source.ts<br/>Claude · OpenClaw · Markdown"] --> IR["Trace IR"]
+    S0["trace/source.ts<br/>发现 · 识别 · 分组"] --> C["adapters/claude"] --> IR["Trace IR"]
     S0 --> X["adapters/codex"] --> IR
+    S0 --> M["adapters/markdown"] --> IR
+    S0 --> O["adapters/openclaw"] --> IR
     S0 --> Q["adapters/qoder"] --> IR
     IR --> A["生命周期关联与 skill 归因"]
     A --> S["segment"]

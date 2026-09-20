@@ -125,7 +125,10 @@ eval-workflows/
 
 executors/
 ├── contracts/          # executor ports, runtime identity, result, and trace facts
+├── core/               # shared invocation mechanics: subprocess, http, limits, and usage
+├── mock-runtime/       # mock runtime materialization for SDK hooks and CLI config dirs
 ├── preflight/          # host tool, file, environment, and custom-executor readiness
+├── script/             # user-defined script command executor
 └── <provider>/         # provider-specific runtime implementations
 ```
 
@@ -284,8 +287,9 @@ observability/
 covering `.js` and extensionless Next imports, re-exports and literal module loads. Private
 subdomains cannot import the root application/presentation entrypoints. The client runtime
 closure guard separately prevents Node capabilities from reaching presentation consumers;
-`view-models/` supplies types only. `test/architecture/architecture-docs.test.ts` reconciles the
-Workflow and Observability subdomain inventories in both languages with the source tree.
+`view-models/` supplies types only. `test/architecture/architecture-docs.test.ts` reconciles every directory tree listed in this
+document (`knowledge-artifacts`, `eval-workflows`, `executors`, `eval-workflows/hosts`,
+`evidence`, `observability`) with the source tree, in both languages.
 
 Trace's `message-classification.ts` decides message origin and protocol semantics. Experience's `text-signals.ts` decides hard-rule, progress, and delivery signals. Adapters therefore do not depend backwards on downstream experience projections. Old root paths are not retained as re-exports or compatibility shims.
 
@@ -301,12 +305,14 @@ See [Composite scoring](../specs/scoring.md) and [Statistical rigor](statistical
 
 ## Observation pipeline: source-neutral Trace IR
 
-`omk observe` does not disguise Codex, Claude Code, or OpenClaw logs as one another. `trace/source.ts` detects and loads formats; Claude, OpenClaw and Markdown parsing remains in that module, while Codex and Qoder use separate adapters. All paths produce the same Trace IR before attribution, segmentation, and measurement:
+`omk observe` does not disguise Codex, Claude Code, or OpenClaw logs as one another. `trace/source.ts` discovers and reads files, detects formats, and groups sessions; record parsing for each of the five source formats lives in its own `trace/adapters/` directory (`claude`, `codex`, `markdown`, `openclaw`, `qoder`). All paths produce the same Trace IR before attribution, segmentation, and measurement:
 
 ```mermaid
 flowchart LR
-    S0["trace/source.ts<br/>Claude · OpenClaw · Markdown"] --> IR["Trace IR"]
+    S0["trace/source.ts<br/>discovery · detection · grouping"] --> C["adapters/claude"] --> IR["Trace IR"]
     S0 --> X["adapters/codex"] --> IR
+    S0 --> M["adapters/markdown"] --> IR
+    S0 --> O["adapters/openclaw"] --> IR
     S0 --> Q["adapters/qoder"] --> IR
     IR --> A["lifecycle correlation and skill attribution"]
     A --> S["segment"]

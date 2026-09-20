@@ -4,12 +4,13 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   indexDoctorWrite, listDoctorCards, removeDoctorCard,
   indexObserveWrite, listObserveCards, artifactIndexDir,
+  listLiveDoctorCards, listLiveObserveCards, cardTargetSentinel,
 } from '../../../src/evidence/storage/discovery-index.js';
 import { isCanonicalArtifactFileStem } from '../../../src/evidence/storage/file-names.js';
 import { globalDoctorsDir, globalObserveHealthDir } from '../../../src/evidence/storage/directories.js';
@@ -279,5 +280,99 @@ describe('artifact-index 卡片身份的合法性判据（写侧与删除侧同�
     assert.equal(removeDoctorCard(''), false);
     assert.equal(existsSync(victim), true);
     rmSync(victim, { force: true });
+  });
+});
+describe('artifact-index 读侧(scratch 索引的从严过滤与悬空卡片)', () => {
+  let indexRoot: string;
+  let projDir: string;
+  let origEnv: string | undefined;
+
+  beforeEach(() => {
+    origEnv = process.env.OMK_ARTIFACT_INDEX_DIR;
+    indexRoot = mkdtempSync(join(tmpdir(), 'omk-ai-ridx-'));
+    projDir = mkdtempSync(join(tmpdir(), 'omk-ai-rproj-'));
+    process.env.OMK_ARTIFACT_INDEX_DIR = indexRoot;
+  });
+  afterEach(() => {
+    if (origEnv === undefined) delete process.env.OMK_ARTIFACT_INDEX_DIR;
+    else process.env.OMK_ARTIFACT_INDEX_DIR = origEnv;
+    rmSync(indexRoot, { recursive: true, force: true });
+    rmSync(projDir, { recursive: true, force: true });
+  });
+
+  function indexDoctorBundle(id: string): string {
+    const path = join(projDir, id, 'report.json');
+    writeMeasurementReportBundle({
+      rootDir: projDir,
+      measurementDomain: 'doctor',
+      recordId: id,
+      reportId: `doctor-${id}`,
+      createdAt: '2026-06-14T00:00:00Z',
+      report: {},
+    });
+    indexDoctorWrite({
+      id, path, skillName: 'sk', reportId: `doctor-${id}`,
+      timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0,
+    }, projDir);
+    return path;
+  }
+
+  it('读侧跳过原子写遗留的 tmp 文件、非 JSON 文件与损坏 JSON,只收完整卡片', () => {
+    indexDoctorBundle('sk-good');
+    const dir = artifactIndexDir('doctor');
+    writeFileSync(join(dir, 'sk-good.json.tmp.123'), '{"domain":"doctor"');
+    writeFileSync(join(dir, 'corrupt.json'), 'not json at all');
+    writeFileSync(join(dir, 'notes.txt'), '{"domain":"doctor","id":"notes"}');
+    assert.deepEqual(listDoctorCards().map((c) => c.id), ['sk-good']);
+  });
+
+  it('读侧拒绝文件名与卡片 id 不一致的卡片,防止别名重复计数', () => {
+    indexDoctorBundle('sk-real');
+    const dir = artifactIndexDir('doctor');
+    const content = readFileSync(join(dir, 'sk-real.json'), 'utf-8');
+    writeFileSync(join(dir, 'sk-alias.json'), content);
+    assert.deepEqual(listDoctorCards().map((c) => c.id), ['sk-real']);
+  });
+
+  it('真身被带外删除后,live 列表过滤悬空卡片而 by-id 兜底仍可见', () => {
+    const path = indexDoctorBundle('sk-dangling');
+    assert.equal(listLiveDoctorCards().length, 1);
+    unlinkSync(path);
+    assert.deepEqual(listDoctorCards().map((c) => c.id), ['sk-dangling'], 'raw 列表保留 best-effort 兜底');
+    assert.deepEqual(listLiveDoctorCards(), [], '机器级合并不展示指向已消失产物的卡片');
+  });
+
+  it('observe-health 域同样过滤悬空卡片', () => {
+    const id = 'ob-dangling';
+    const path = join(projDir, id, 'report.json');
+    const report = {
+      meta: { generatedAt: '2026-06-14T00:00:00Z', sessionCount: 1, segmentCount: 1 },
+      overall: { healthBand: 'green' as const },
+      bySkill: { sk: { toolFailureRate: 0, segmentCount: 1 } },
+    };
+    writeMeasurementReportBundle({
+      rootDir: projDir,
+      measurementDomain: 'observe-health',
+      recordId: id,
+      reportId: id,
+      createdAt: report.meta.generatedAt,
+      report,
+    });
+    indexObserveWrite(report, path, projDir, id);
+    assert.equal(listLiveObserveCards().length, 1);
+    unlinkSync(path);
+    assert.deepEqual(listLiveObserveCards(), []);
+    assert.deepEqual(listObserveCards().map((c) => c.id), [id]);
+  });
+
+  it('cardTargetSentinel 随真身删除而变为 gone,使长会话缓存失效', () => {
+    const path = indexDoctorBundle('sk-sentinel');
+    const alive = cardTargetSentinel('doctor');
+    assert.ok(alive.includes('sk-sentinel.json='), alive);
+    assert.ok(!alive.includes('gone'), alive);
+    unlinkSync(path);
+    const stale = cardTargetSentinel('doctor');
+    assert.ok(stale.includes('sk-sentinel.json=gone'), stale);
+    assert.notEqual(stale, alive, '真身删除必须改变指纹,否则旧缓存会继续展示悬空卡片');
   });
 });
