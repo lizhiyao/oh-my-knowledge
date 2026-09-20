@@ -4,7 +4,17 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildObserveDiagnosticsFromReport } from '../../src/diagnosis/observe-producer.js';
+import {
+  buildSkillChainsForEvidence,
+  skillNamesFromReports,
+} from '../../src/observability/inbox/skill-chains.js';
+import { buildObservationSkillChains } from '../../src/observability/skill-health/skill-chain.js';
 import type { ObservationInboxReport } from '../../src/observability/inbox/index.js';
+
+/** 宿主接线：链由上游单一生产者按报告内的 cwd 证据构建，诊断层只消费结果。 */
+function chainsOf(report: ObservationInboxReport): Record<string, never> | ReturnType<typeof buildSkillChainsForEvidence>['chains'] {
+  return buildSkillChainsForEvidence(skillNamesFromReports([report]), [report]).chains;
+}
 
 describe('buildObserveDiagnosticsFromReport', () => {
   it('uses real observe skill-chain, runtime checks, patterns, and rule findings', () => {
@@ -134,7 +144,9 @@ workflows:
         },
       } as unknown as ObservationInboxReport;
 
-      const bundle = buildObserveDiagnosticsFromReport(report, { cwd: dir });
+      const bundle = buildObserveDiagnosticsFromReport(report, {
+        skillChains: buildObservationSkillChains(skillNamesFromReports([report]), dir),
+      });
       const signals = bundle.bySkill.omk_fake_skill_x9z.map((item) => item.signal);
       assert.ok(signals.includes('runtime_workflow_review'));
       assert.ok(signals.includes('user_correction'));
@@ -187,7 +199,7 @@ hardRules:
             occurrences: 1, recentSessionIds: ['s1'], representativeEvidence: [],
           }],
         } as unknown as ObservationInboxReport;
-        const bundle = buildObserveDiagnosticsFromReport(report);
+        const bundle = buildObserveDiagnosticsFromReport(report, { skillChains: chainsOf(report) });
         const signals = (bundle.bySkill.omk_fake_skill_x9z ?? []).map((item) => item.signal);
         assert.equal(
           signals.includes('skill_md_not_found'), false,
@@ -270,7 +282,7 @@ hardRules:
             }],
           },
         } as unknown as ObservationInboxReport;
-        const bundle = buildObserveDiagnosticsFromReport(report);
+        const bundle = buildObserveDiagnosticsFromReport(report, { skillChains: chainsOf(report) });
         const signals = (bundle.bySkill.omk_fake_skill_x9z ?? []).map((item) => item.signal);
         assert.ok(
           signals.includes('skill_md_not_found'),
@@ -311,7 +323,7 @@ hardRules:
           firstSeen: 't', lastSeen: 't', occurrences: 1, recentSessionIds: ['s2'], representativeEvidence: [] },
       ],
     } as unknown as ObservationInboxReport;
-    const bundle = buildObserveDiagnosticsFromReport(report);
+    const bundle = buildObserveDiagnosticsFromReport(report, { skillChains: chainsOf(report) });
     const signals = (bundle.bySkill.omk_fake_skill_x9z ?? []).map((item) => item.signal);
     assert.equal(
       signals.includes('skill_md_not_found'), false,

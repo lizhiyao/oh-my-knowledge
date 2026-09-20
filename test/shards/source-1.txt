@@ -133,6 +133,7 @@ test/observability/inbox/review-action-items.test.ts
 test/observability/inbox/review-semantics.test.ts
 test/observability/inbox/session-time-range.test.ts
 test/observability/inbox/signal-semantics.test.ts
+test/observability/inbox/skill-chains.test.ts
 test/observability/inbox/skill-rollups.test.ts
 test/observability/llm-enhanced-review-prompt.test.ts
 test/observability/orchestration-contract.test.ts

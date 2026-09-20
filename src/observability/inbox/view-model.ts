@@ -8,7 +8,8 @@ import {
 import { projectEffectiveObservationReview, type EffectiveObservationReview } from './effective-review.js';
 import type { ObservationExperienceReport } from '../experience.js';
 import { loadObservationReviewState, type ObservationReviewState } from './review-state.js';
-import { buildObservationSkillChains, type ObservationSkillChain } from '../skill-health/skill-chain.js';
+import { buildSkillChainsForEvidence } from './skill-chains.js';
+import type { ObservationSkillChain } from '../skill-health/skill-chain.js';
 import {
   loadSkillDerivedStandards,
   resolveSkillStandards,
@@ -97,7 +98,7 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     ...allItems.map((item) => item.skillName),
     ...experienceReports.flatMap((report) => report.skills.map((skill) => skill.skillName)),
   ]));
-  const skillChains = buildObservationSkillChains(skillNames, process.cwd(), experienceReports);
+  const { chains: skillChains } = buildSkillChainsForEvidence(skillNames, reports, experienceReports);
   const reviewState = loadObservationReviewState(observationsDir);
   const skillDerivedStandards = loadSkillDerivedStandards(observationsDir, reviewState);
   const skillResolvedStandards = Object.fromEntries(skillNames.map((skillName) => [skillName, resolveSkillStandards(skillName, {

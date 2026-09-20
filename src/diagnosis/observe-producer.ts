@@ -1,4 +1,4 @@
-import { buildObservationSkillChain, buildObservationSkillChains, type ObservationRuntimeCheck, type ObservationSkillChain } from '../observability/skill-health/skill-chain.js';
+import type { ObservationRuntimeCheck, ObservationSkillChain } from '../observability/skill-health/skill-chain.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observability/skill-health/advisories.js';
 import type { ObservationInboxReport } from '../observability/inbox/index.js';
 import type {
@@ -10,20 +10,18 @@ import type {
 import type { ExperienceProblemPattern } from '../observability/inbox/problem-patterns.js';
 import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
 import type { DiagnosisBundle, DiagnosisEvidenceRef } from './contracts.js';
-import { setOwnRecordValue } from '../shared/record-count.js';
 
 export interface BuildObserveDiagnosticsFromReportOptions {
-  cwd?: string;
-  skillChains?: Record<string, ObservationSkillChain>;
+  /** 由上游单一生产者（observability/inbox/skill-chains.ts）建好的链；诊断层不再碰文件系统。 */
+  readonly skillChains: Record<string, ObservationSkillChain>;
 }
 
 export function buildObserveDiagnosticsFromReport(
   report: ObservationInboxReport,
-  options: BuildObserveDiagnosticsFromReportOptions = {},
+  options: BuildObserveDiagnosticsFromReportOptions,
 ): DiagnosisBundle {
   const experienceReports = report.experience ? [report.experience] : [];
-  const skillNames = skillNamesFromReport(report);
-  const chains = resolveSkillChains(report, skillNames, experienceReports, options);
+  const { skillChains: chains } = options;
   return buildObserveDiagnostics({
     generatedAt: report.meta.generatedAt,
     skillChainAdvisories: Object.values(chains).flatMap(chainAdvisories),
@@ -32,79 +30,6 @@ export function buildObserveDiagnosticsFromReport(
     reviewerFindings: experienceReports.flatMap(experienceRuleFindings),
     derivedStandards: [],
   });
-}
-
-function resolveSkillChains(
-  report: ObservationInboxReport,
-  skillNames: string[],
-  experienceReports: ObservationExperienceReport[],
-  options: BuildObserveDiagnosticsFromReportOptions,
-): Record<string, ObservationSkillChain> {
-  // 调用方显式传 skillChains(测试 mock)或 cwd(已知项目根)时直接用。
-  // 否则按 skill 推断 cwd:
-  //   - 该 skill 的所有 inbox items 只出现 1 个 cwd → 用它构建 chain
-  //   - 多个 cwd 或完全没有 cwd 信息 → 跳过该 skill 的 chain 构建
-  //
-  // 跳过比 fallback 到 process.cwd() 安全:跨项目 `omk observe ingest /path/to/B-traces`
-  // 时 process.cwd() 找不到 SKILL.md 会产生 `skill_md_not_found` 假阳性,而且这条 advisory
-  // 会被 build 路径持久化进 inbox JSON,后续 Studio 读取时已无从分辨是 cwd 漂移导致的误报。
-  // 跳过的语义是「没把握判断,不发 advisory」,problemPatterns / reviewerFindings 仍正常工作。
-  if (options.skillChains) return options.skillChains;
-  if (options.cwd) return buildObservationSkillChains(skillNames, options.cwd, experienceReports);
-  const cwdBySkill = inferCwdBySkill(report);
-  const chains: Record<string, ObservationSkillChain> = {};
-  for (const skillName of skillNames) {
-    const cwd = cwdBySkill.get(skillName);
-    if (cwd) {
-      setOwnRecordValue(
-        chains,
-        skillName,
-        buildObservationSkillChain(skillName, cwd, experienceReports),
-      );
-    }
-  }
-  return chains;
-}
-
-/** 按 skill 从 inbox items + experience 聚合 cwd。返回:单一 cwd 字符串 / null(多 cwd,跳过 chain)。
- *
- *  数据源优先级一致(同等聚合 set,不分先后):
- *    - report.items[].cwd:有 observation signal 的 skill 调用
- *    - report.experience.invocations[].cwd:所有 skill 调用(干净运行也有,items 可能为空)
- *    - report.experience.goalSlices[].cwd:goal slice 级 cwd
- *
- *  「items 为空但 experience 有 cwd」是真实 build 路径的常见态(skill 跑得很干净没产生 signal,
- *  但仍要看 SKILL.md 结构),只看 items 会漏整个 chain advisory + runtime check。 */
-function inferCwdBySkill(report: ObservationInboxReport): Map<string, string | null> {
-  const cwdsBySkill = new Map<string, Set<string>>();
-  const addCwd = (skillName: string | undefined | null, cwd: string | undefined): void => {
-    if (!skillName || !cwd) return;
-    if (!cwdsBySkill.has(skillName)) cwdsBySkill.set(skillName, new Set());
-    cwdsBySkill.get(skillName)!.add(cwd);
-  };
-  for (const item of report.items) {
-    addCwd(item.skillName, item.cwd);
-  }
-  for (const invocation of report.experience?.invocations ?? []) {
-    addCwd(invocation.skillName, invocation.cwd);
-  }
-  for (const slice of report.experience?.goalSlices ?? []) {
-    addCwd(slice.skillName, slice.cwd);
-  }
-  const out = new Map<string, string | null>();
-  for (const [skill, set] of cwdsBySkill) {
-    out.set(skill, set.size === 1 ? Array.from(set)[0] : null);
-  }
-  return out;
-}
-
-function skillNamesFromReport(report: ObservationInboxReport): string[] {
-  return Array.from(new Set([
-    ...Object.keys(report.meta.skillInvocationCounts ?? {}),
-    ...Object.keys(report.meta.skillSessionCounts ?? {}),
-    ...report.items.map((item) => item.skillName),
-    ...(report.experience?.skills.map((skill) => skill.skillName) ?? []),
-  ].filter(Boolean))).sort();
 }
 
 function chainAdvisories(chain: ObservationSkillChain) {
