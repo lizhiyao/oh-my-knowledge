@@ -19,7 +19,7 @@ export const REGISTERED_RUNTIME_CYCLES = [
     domains: ['diagnosis', 'observability'],
     edges: [
       'diagnosis/observe-producer.ts → observability/skill-health/advisories.ts',
-      'observability/inbox/index.ts → diagnosis/contracts/parser.ts',
+      'observability/inbox/report-store.ts → diagnosis/contracts/parser.ts',
     ],
     rationale: 'Diagnosis produces Observability projections while Observability parses the stable Diagnosis wire contract.',
   },

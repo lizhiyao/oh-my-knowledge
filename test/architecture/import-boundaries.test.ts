@@ -537,6 +537,28 @@ function collectSharedLeafViolations(): string[] {
   return violations;
 }
 
+/** 族内每个导出值都必须有模块外真实消费者（src 或 test），否则应收回私有。类型随签名可见，不在此列。 */
+function unreferencedExports(dir: string, family: string[]): string[] {
+  const contents = new Map(family.map((name) => [name, readFileSync(join(dir, name), 'utf-8')]));
+  const outsiders = [
+    ...listTsFiles(SRC_DIR),
+    ...listTsFiles(join(REPO_ROOT, 'test')),
+  ]
+    .filter((file) => !family.includes(file.slice(file.lastIndexOf(sep) + 1)))
+    .map((file) => readFileSync(file, 'utf-8'));
+  const unreferenced: string[] = [];
+  for (const [name, content] of contents) {
+    const siblings = [...contents.values()].filter((sibling) => sibling !== content);
+    for (const match of content.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)) {
+      const pattern = new RegExp(`\\b${match[1]}\\b`);
+      const consumed = outsiders.some((text) => pattern.test(text))
+        || siblings.some((text) => pattern.test(text));
+      if (!consumed) unreferenced.push(`${name} → ${match[1]}`);
+    }
+  }
+  return unreferenced;
+}
+
 describe('架构边界守门', () => {
   it('观测边界覆盖无扩展名、再导出和模块加载，忽略注释与字符串', () => {
     const specifiers = extractSpecifiers(`
@@ -798,6 +820,54 @@ describe('架构边界守门', () => {
       }
     }
     expect(unreferenced).toEqual([]);
+  });
+
+  it('Observation inbox 按构建／存取／呈现拆族，入口只留转口', () => {
+    const inboxDir = join(SRC_DIR, 'observability', 'inbox');
+    const family = readdirSync(inboxDir)
+      .filter((name) => name.startsWith('report-') && name.endsWith('.ts'))
+      .sort();
+    // 新增 report-* 模块必须在此显式登记：收件箱入口曾经把构建、IO 与呈现摊在 1,541 行里。
+    expect(family).toEqual([
+      'report-building.ts',
+      'report-filter.ts',
+      'report-presentation.ts',
+      'report-primitives.ts',
+      'report-store.ts',
+    ]);
+    const contents = new Map(family.map((name) => [name, readFileSync(join(inboxDir, name), 'utf-8')]));
+    const index = readFileSync(join(inboxDir, 'index.ts'), 'utf-8');
+
+    // 入口是纯转口层：不得再住任何值声明，实现必须在族模块里。
+    expect(index).not.toMatch(/^(?:export )?(?:async )?function \w+/m);
+    expect(index).not.toMatch(/^export const \w+/m);
+    for (const name of ['buildObservationInboxReport', 'loadObservationInboxReports', 'formatObservationShow']) {
+      expect(index).toContain(`from './${name === 'buildObservationInboxReport' ? 'report-building' : name === 'loadObservationInboxReports' ? 'report-store' : 'report-presentation'}.js'`);
+      expect(index).not.toContain(`function ${name}(`);
+    }
+    expect(contents.get('report-building.ts')).toContain('export function buildObservationInboxReport(');
+    expect(contents.get('report-store.ts')).toContain('export function loadObservationInboxReports(');
+    expect(contents.get('report-presentation.ts')).toContain('export function formatObservationShow(');
+
+    // 族内单向分层：primitives 是叶子，building ← store ← presentation；谁都不许回指入口。
+    const allowed: Record<string, string[]> = {
+      'report-primitives.ts': [],
+      'report-filter.ts': [],
+      'report-building.ts': ['report-primitives.ts'],
+      'report-store.ts': ['report-building.ts', 'report-primitives.ts'],
+      'report-presentation.ts': ['report-building.ts', 'report-primitives.ts'],
+    };
+    for (const [name, content] of contents) {
+      const specifiers = extractSpecifiers(content);
+      const intra = specifiers
+        .filter((spec) => spec.startsWith('./report-'))
+        .map((spec) => `${spec.slice(2, -3)}.ts`)
+        .sort();
+      expect({ module: name, intra }).toEqual({ module: name, intra: (allowed[name] ?? []).slice().sort() });
+      expect(specifiers).not.toContain('./index.js');
+    }
+
+    expect(unreferencedExports(inboxDir, family)).toEqual([]);
   });
 
   it('Experience reviewer report 由独立模块拥有', () => {
