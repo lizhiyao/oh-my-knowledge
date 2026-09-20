@@ -959,6 +959,173 @@ describe('架构边界守门', () => {
     expect(unreferencedExports(analysisDir, family)).toEqual([]);
   });
 
+  it('Codex 会话装配按记录族拆分，入口公开面冻结', () => {
+    const codexDir = join(SRC_DIR, 'observability', 'trace', 'adapters', 'codex');
+    // 会话装配族（12 个模块）：分发契约与状态在最下，四族 handler 平行，orchestrator 与入口在最上。
+    // convertCodexRecords 曾经是一条 722 行的 if 链，前置索引、十几种记录、跨视图去重、
+    // 运行时状态、终态回填与补发全摊在 trace.ts 的 1,519 行里。
+    const family = [
+      'context-events.ts',
+      'conversation-events.ts',
+      'conversion-contract.ts',
+      'pending-tool-events.ts',
+      'record-conversion.ts',
+      'record-fields.ts',
+      'record-indexes.ts',
+      'record-text.ts',
+      'tool-event-factory.ts',
+      'tool-events.ts',
+      'trace.ts',
+      'turn-events.ts',
+    ];
+    const preExistingModules = [
+      'conversation-index.ts',
+      'exec-command.ts',
+      'item-views.ts',
+      'protocol.ts',
+      'tool-status.ts',
+    ];
+    // 目录清单整体显式登记：新增文件既不悄悄进族，也不悄悄进适配器目录。
+    expect(readdirSync(codexDir).filter((name) => name.endsWith('.ts')).sort())
+      .toEqual([...family, ...preExistingModules].sort());
+    const contents = new Map(family.map((name) => [name, readFileSync(join(codexDir, name), 'utf-8')]));
+
+    // 归属：每个记录族只住在自己的文件里；入口不再持有任何记录分支或状态。
+    // 这里只点名跨文件消费的符号——守卫自己的文本提到私有符号会让判据失去消费者。
+    expect(contents.get('trace.ts')).toContain('export function parseCodexSessionFile(');
+    expect(contents.get('record-conversion.ts')).toContain('export function convertCodexRecords(');
+    expect(contents.get('record-indexes.ts')).toContain('export function indexMcpCallEnds(');
+    expect(contents.get('tool-event-factory.ts')).toContain('export function toolCallEvent(');
+    expect(contents.get('context-events.ts')).toContain("runtimeKind: 'session_context'");
+    expect(contents.get('conversation-events.ts')).toContain("activityKind: 'communication'");
+    expect(contents.get('tool-events.ts')).toContain("payloadType === 'custom_tool_call_output'");
+    expect(contents.get('turn-events.ts')).toContain("phase: 'turn_started'");
+    expect(contents.get('pending-tool-events.ts')).toContain('for (const end of webSearchItems.ordered)');
+    expect(contents.get('trace.ts')).not.toContain('function convertCodexRecords(');
+    expect(contents.get('trace.ts')).not.toContain("record.type === 'response_item'");
+    expect(contents.get('trace.ts')).not.toContain('const state: CodexConversionState');
+
+    // 每个族文件的对外名字冻结：族内私有判定要重新导出，先在这里说明理由。
+    const exportedSurface: Record<string, string[]> = {
+      'record-fields.ts': [
+        'CodexRecord',
+        'asCodexRecord',
+        'booleanValue',
+        'isObject',
+        'nestedString',
+        'parseToolInput',
+        'stringArray',
+        'stringValue',
+      ],
+      'record-text.ts': [
+        'codexContentText',
+        'codexPlaintext',
+        'codexReasoningPlaintext',
+        'normalizeReasoningMirrorText',
+      ],
+      'record-indexes.ts': [
+        'ExternalToolEndIndex',
+        'McpCallEnd',
+        'McpCallEndIndex',
+        'PatchApplyEnd',
+        'PatchApplyEndIndex',
+        'WebSearchItemEnd',
+        'WebSearchItemIndex',
+        'indexDuplicateAgentReasoningMessages',
+        'indexDuplicateEventMessages',
+        'indexExternalToolEnds',
+        'indexMcpCallEnds',
+        'indexPatchApplyEnds',
+        'indexWebSearchItemViews',
+        'mcpCallOccurrenceKey',
+        'takeOccurrence',
+      ],
+      'tool-event-factory.ts': [
+        'TraceEventBase',
+        'codexPayloadIds',
+        'mcpToolRefFromEnd',
+        'toolCallEvent',
+        'toolResultEvent',
+      ],
+      'conversion-contract.ts': [
+        'CodexConversionState',
+        'CodexFamilyHandler',
+        'CodexFamilyOutcome',
+        'CodexRecordContext',
+        'CodexRecordIndexes',
+        'familyOutcome',
+      ],
+      'context-events.ts': ['convertCodexContextRecord'],
+      'conversation-events.ts': ['convertCodexConversationRecord'],
+      'tool-events.ts': ['convertCodexToolRecord'],
+      'turn-events.ts': ['convertCodexTurnRecord'],
+      'pending-tool-events.ts': ['collectPendingCodexToolEvents'],
+      'record-conversion.ts': ['convertCodexRecords'],
+      // 入口公开面与拆分前逐字相同：外部消费者只经这三个名字认 Codex 适配器。
+      'trace.ts': ['codexFormatEvidence', 'codexGuardianEvidence', 'parseCodexSessionFile'],
+    };
+    for (const [name, content] of contents) {
+      expect(exportedNames(content), name).toEqual(exportedSurface[name]);
+    }
+
+    // 分发顺序与 fall-through 是等价性的一部分：四族按拆分前 if 链的先后被问询，
+    // 第一个非 pass 即消费本条记录；item_completed 落空时仍走 patch_apply_end 与 unknown 兜底。
+    expect(contents.get('record-conversion.ts')).toContain([
+      'const CODEX_RECORD_FAMILIES: readonly CodexFamilyHandler[] = [',
+      '  convertCodexContextRecord,',
+      '  convertCodexConversationRecord,',
+      '  convertCodexToolRecord,',
+      '  convertCodexTurnRecord,',
+    ].join('\n'));
+    expect(contents.get('record-conversion.ts')).toContain("payloadType === 'item_completed'");
+    expect(contents.get('record-conversion.ts')).toContain("payloadType === 'patch_apply_end'");
+
+    // 族内单向分层：字段与文本投影是叶子，契约层在族 handler 之下，orchestrator 与入口在最上。
+    const allowed: Record<string, string[]> = {
+      'record-fields.ts': [],
+      'record-text.ts': ['record-fields.ts'],
+      'record-indexes.ts': ['record-fields.ts', 'record-text.ts'],
+      'tool-event-factory.ts': ['record-indexes.ts'],
+      'conversion-contract.ts': ['record-fields.ts', 'record-indexes.ts', 'tool-event-factory.ts'],
+      'context-events.ts': ['conversion-contract.ts', 'record-fields.ts', 'record-text.ts'],
+      'conversation-events.ts': ['conversion-contract.ts', 'record-fields.ts', 'record-text.ts'],
+      'tool-events.ts': [
+        'conversion-contract.ts',
+        'record-fields.ts',
+        'record-indexes.ts',
+        'record-text.ts',
+        'tool-event-factory.ts',
+      ],
+      'turn-events.ts': ['conversion-contract.ts', 'record-fields.ts'],
+      'pending-tool-events.ts': ['conversion-contract.ts', 'record-indexes.ts', 'tool-event-factory.ts'],
+      'record-conversion.ts': [
+        'context-events.ts',
+        'conversation-events.ts',
+        'conversion-contract.ts',
+        'pending-tool-events.ts',
+        'record-fields.ts',
+        'record-indexes.ts',
+        'tool-events.ts',
+        'turn-events.ts',
+      ],
+      'trace.ts': ['record-conversion.ts', 'record-fields.ts'],
+    };
+    for (const [name, content] of contents) {
+      const specifiers = extractSpecifiers(content);
+      const intra = [...new Set(
+        specifiers
+          .filter((spec) => spec.startsWith('./') && spec.endsWith('.js'))
+          .map((spec) => `${spec.slice(2, -3)}.ts`)
+          .filter((target) => family.includes(target)),
+      )].sort();
+      expect({ module: name, intra }).toEqual({ module: name, intra: allowed[name] });
+      // 任何族模块都不得回指会话装配入口，否则入口重新变成共用实现的家。
+      expect(specifiers, name).not.toContain('./trace.js');
+    }
+
+    expect(unreferencedExports(codexDir, family)).toEqual([]);
+  });
+
   it('Experience reviewer report 由独立模块拥有', () => {
     const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
     const reviewerReport = readFileSync(
