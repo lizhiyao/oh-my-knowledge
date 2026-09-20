@@ -729,23 +729,75 @@ describe('架构边界守门', () => {
     expect(extractSpecifiers(checklist)).not.toContain('../experience.js');
   });
 
-  it('Experience 会话故事由独立模块拥有', () => {
+  it('Experience 会话故事按族拆分，族内导出都有真实消费者', () => {
+    const experienceDir = join(SRC_DIR, 'observability', 'experience');
     const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
-    const sessionStory = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'session-story.ts'),
-      'utf-8',
-    );
-    const textSignals = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'text-signals.ts'),
-      'utf-8',
+    const textSignals = readFileSync(join(experienceDir, 'text-signals.ts'), 'utf-8');
+    const family = readdirSync(experienceDir)
+      .filter((name) => name.startsWith('session-story') && name.endsWith('.ts'))
+      .sort();
+    // 新增族模块必须在此显式登记：故事装配曾经把 71 个符号摊在一个文件里，
+    // 其中 65 个只是为了让测试够得到内部实现。
+    expect(family).toEqual([
+      'session-story-episodes.ts',
+      'session-story-evidence.ts',
+      'session-story-feedback.ts',
+      'session-story-orchestration.ts',
+      'session-story-segments.ts',
+      'session-story.ts',
+    ]);
+    const contents = new Map(
+      family.map((name) => [name, readFileSync(join(experienceDir, name), 'utf-8')]),
     );
 
-    expect(sessionStory).toContain('export function buildSessionStory(');
+    expect(contents.get('session-story.ts')).toContain('export function buildSessionStory(');
     expect(facade).not.toContain('function buildSessionStory(');
     expect(facade).not.toContain('function sessionStoryFeedbackSignals(');
-    expect(sessionStory).not.toContain("from '../experience.js'");
     expect(facade).not.toContain('const USER_INTERRUPTION_RE =');
     expect(textSignals).toContain('export const USER_INTERRUPTION_RE =');
+
+    // 族内依赖单向分层：证据定位层是叶子，装配层在最上，任何族模块都不得回指 façade。
+    const allowedFamilyImports: Record<string, string[]> = {
+      'session-story-evidence.ts': [],
+      'session-story-segments.ts': ['session-story-evidence.ts'],
+      'session-story-orchestration.ts': ['session-story-evidence.ts'],
+      'session-story-feedback.ts': ['session-story-evidence.ts'],
+      'session-story-episodes.ts': [
+        'session-story-feedback.ts',
+        'session-story-orchestration.ts',
+        'session-story-segments.ts',
+      ],
+      'session-story.ts': ['session-story-episodes.ts', 'session-story-segments.ts'],
+    };
+    for (const [name, content] of contents) {
+      const specifiers = extractSpecifiers(content);
+      const intra = specifiers
+        .filter((spec) => spec.startsWith('./session-story'))
+        .map((spec) => `${spec.slice(2, -3)}.ts`)
+        .sort();
+      expect({ module: name, intra }).toEqual({ module: name, intra: allowedFamilyImports[name] });
+      expect(specifiers).not.toContain('../experience.js');
+    }
+
+    // 每个导出值都必须有模块外的真实消费者（src 或 test），否则收回为模块私有。
+    // 类型与接口不受本条约束：它们随导出签名可见，不构成实现泄漏。
+    const outsiders = [
+      ...listTsFiles(SRC_DIR),
+      ...listTsFiles(join(REPO_ROOT, 'test')),
+    ]
+      .filter((file) => !family.includes(file.slice(file.lastIndexOf(sep) + 1)))
+      .map((file) => readFileSync(file, 'utf-8'));
+    const unreferenced: string[] = [];
+    for (const [name, content] of contents) {
+      const siblings = [...contents.values()].filter((sibling) => sibling !== content);
+      for (const match of content.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)) {
+        const pattern = new RegExp(`\\b${match[1]}\\b`);
+        const consumed = outsiders.some((text) => pattern.test(text))
+          || siblings.some((text) => pattern.test(text));
+        if (!consumed) unreferenced.push(`${name} → ${match[1]}`);
+      }
+    }
+    expect(unreferenced).toEqual([]);
   });
 
   it('Experience reviewer report 由独立模块拥有', () => {
