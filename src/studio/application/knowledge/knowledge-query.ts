@@ -1,5 +1,4 @@
 import { projectDoctorsDir, projectObserveHealthDir, resolveDoctorsDir, resolveObserveHealthDir } from '../../../evidence/storage/directories.js';
-import { DEFAULT_OBSERVATIONS_DIR } from '../../../observability/application.js';
 import { buildSkillIndex, createSkillIndexCache, type SkillIndexCache } from './skill-index.js';
 
 interface KnowledgeQueryOptions {
@@ -27,7 +26,7 @@ export function createKnowledgeQuery(options: KnowledgeQueryOptions = {}) {
     directories,
     read(source = directories()) {
       const { analysesDir, doctorsDir } = source;
-      return buildSkillIndex(analysesDir, doctorsDir, options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR, {
+      return buildSkillIndex(analysesDir, doctorsDir, options.observationsDir, {
         includeObserveCards: options.includeObserveCards ?? false,
         includeDoctorCards: options.includeDoctorCards ?? false,
         cache,

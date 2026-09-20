@@ -133,6 +133,22 @@ describe('Evaluation catalog on the production host', () => {
     }
   });
 
+  it('只读观测数据的宿主不为收件箱在用户项目里建目录', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-observations-lazy-'));
+    try {
+      const observationsDir = join(root, 'observations');
+      const url = await serve({ coreStudioCatalog: catalog(), observationsDir });
+      assert.equal(existsSync(observationsDir), false, '启动观测页面宿主也不预建收件箱目录');
+
+      // 收件箱为空是正常状态，目录不存在时按空投影回答，而不是顺手补一个目录。
+      const view = await fetch(`${url}/api/observe-inbox/view`);
+      assert.equal(view.status, 200);
+      assert.equal(existsSync(observationsDir), false, '读收件箱不建目录');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('connects the production HTTP server to the evaluation catalog', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omk-core-route-wiring-'));
     try {

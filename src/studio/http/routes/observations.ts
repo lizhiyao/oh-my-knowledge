@@ -13,7 +13,7 @@ import type { StudioRouteContext } from './contracts.js';
 import { createStudioRouter, type StudioRouteDefinition } from './router.js';
 
 interface ObservationRoutesOptions {
-  readonly observationsDir: string;
+  readonly observationsDir?: string;
   /** 是否注册观测收件箱路由组；独立宿主无收件箱入口，传 false 裁剪（#839 批次 0）。 */
   readonly includeInbox: boolean;
 }

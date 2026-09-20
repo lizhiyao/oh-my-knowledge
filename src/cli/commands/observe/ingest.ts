@@ -94,15 +94,16 @@ export default class ObserveIngest extends BaseCommand {
         buildObservationInboxReport,
         compactObservationInboxReport,
         saveObservationInboxReport,
-        DEFAULT_PROJECT_OBSERVATIONS_DIR,
-        DEFAULT_GLOBAL_OBSERVATIONS_DIR,
+        projectObservationsDir,
+        globalObservationsDir,
       } = await import('../../../observability/inbox/index.js');
-      // 显式 --output-dir 最高;否则 --global 写全局、默认写项目(读侧 loadObservationInboxReports 会从项目兜底到全局)。
-      const defaultDir = flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_PROJECT_OBSERVATIONS_DIR;
-      const outDir = resolve(outDirRaw ?? defaultDir);
+      // 显式 --output-dir 最高;否则 --global 写全局、默认写项目。
+      const outDir = resolve(outDirRaw ?? (flags.global ? globalObservationsDir() : projectObservationsDir()));
+      // 读侧兜底只在默认目标上生效：显式 --output-dir 与 --global 都照读给定目录，与 inbox 读侧同口径。
+      const reviewStateSource = outDirRaw || flags.global ? outDir : undefined;
       const { loadObservationReviewState } = await import('../../../observability/inbox/review-state.js');
       const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
-      const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
+      const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(reviewStateSource) });
       // 链由 observability 侧单一生产者按报告内的 cwd 证据构建，歧义即跳过；诊断层只消费。
       const { skillNamesFromReports, buildSkillChainsForEvidence } = await import(
         '../../../observability/inbox/skill-chains.js');

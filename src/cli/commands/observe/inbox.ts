@@ -22,11 +22,11 @@ export async function runObserveInbox(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox/index.js');
-  // 显式 --input-dir 最高;否则 --global 直读全局、默认读项目(空则 loadObservationInboxReports 兜底全局)。
+  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, globalObservationsDir, projectObservationsDir } = await import('../../../observability/inbox/index.js');
+  // 显式 --input-dir 最高;否则 --global 直读全局、默认交给 inbox 读侧的「项目优先 → 全局兜底」。
   const dir = flags['input-dir']
     ? resolve(flags['input-dir'])
-    : (flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_OBSERVATIONS_DIR);
+    : (flags.global ? globalObservationsDir() : undefined);
   if (flags['llm-enhanced-review']) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
     const { extractSkillSoftStandards } = await import('../../../observability/soft-standards/index.js');
@@ -73,7 +73,7 @@ export async function runObserveInbox(
     items = items.filter((item) => item.skillName === flags.skill);
   }
   const recyclableCount = items.filter((item) => item.severity !== 'noise').length;
-  const sampleCommandBase = `omk sample --from-traces --observations-dir ${shellQuoteArg(dir)}`;
+  const sampleCommandBase = `omk sample --from-traces --observations-dir ${shellQuoteArg(dir ?? projectObservationsDir())}`;
   const sampleCommand = flags.skill
     ? `${sampleCommandBase} --skill ${shellQuoteArg(flags.skill)}`
     : sampleCommandBase;

@@ -15,7 +15,7 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 
 CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的会话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情、候选知识与受管决策史页。HTTP adapter 不渲染页面 HTML：它只提供 `/api/*` 的 JSON 事实源、SSE、`/health` 与纯文本缺页／错误文档（`http/request-handler.ts`），外加一条站点入口 `GET /` → 302 `/observe`（原样带上 query，`http/routes/conversations.ts`）——根路径不在 Next 宿主的接管集合里，所以始终由 HTTP adapter 回答。这条重定向属于观测路由组，因此只在挂页面组时存在：只挂 `/measure` 的评测预览宿主对 `/` 给 404，与它把壳层品牌链接指向 `/measure` 是同一口径。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
 
-CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE），因此不为用不到的观测页面在用户项目里创建 observations 目录。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/measure/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
+CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE）。宿主两种模式都不创建 observations 目录：收件箱为空是正常状态，目录只在真正写入观测数据时由写路径自己建（#1019）。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/measure/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
 
 `createReportServer` 的第二个参数是页面宿主接缝（`StudioAppHost`，`http/app-host.ts`）：Next 宿主从那里接管页面路径，不传它就得到只服务 JSON 面的独立模式。全仓没有产品入口用独立模式起服务，它的读者是性能基线脚本（`scripts/bench/studio-baseline.ts`）与直接验证 `/api/*` 的 HTTP 层测试。
 

@@ -16,6 +16,6 @@ export function isInboxPath(path: string): boolean {
  * 投影仍由 observability/inbox/view-model.ts 提供，React 不引入第二份业务语义。
  * 目录不可读等数据源失败在此抛出，由 next-server 统一投影为 503。
  */
-export function loadInboxPage(observationsDir: string, skill: string | undefined): InboxPage {
+export function loadInboxPage(observationsDir: string | undefined, skill: string | undefined): InboxPage {
   return { pageKind: 'inbox', model: buildObservationInboxViewModel(observationsDir, { skill }) };
 }

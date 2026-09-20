@@ -93,7 +93,7 @@ export function writeObservationSourceRecordArchives(
 
 export function loadObservationSourceRecordArchive(
   ref: ObservationSourceRecordArchiveRef | undefined,
-  observationsDir: string,
+  observationsDir?: string,
 ): ObservationSourceRecordArchiveView {
   if (!ref || ref.status === 'unavailable' || !ref.relativePath) {
     return unavailableView(ref?.reason ?? 'no_record_ranges');

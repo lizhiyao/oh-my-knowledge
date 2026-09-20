@@ -20,18 +20,16 @@ import {
   normalizeObservationKeyInput,
 } from './identity.js';
 import {
-  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
-  DEFAULT_OBSERVATIONS_DIR,
-  DEFAULT_PROJECT_OBSERVATIONS_DIR,
+  globalObservationsDir,
   observationDraftsDir,
+  projectObservationsDir,
   resolveObservationsDir,
 } from './paths.js';
 
 export {
-  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
-  DEFAULT_OBSERVATIONS_DIR,
-  DEFAULT_PROJECT_OBSERVATIONS_DIR,
+  globalObservationsDir,
   observationDraftsDir,
+  projectObservationsDir,
   resolveObservationsDir,
   normalizeObservationKeyInput,
 };

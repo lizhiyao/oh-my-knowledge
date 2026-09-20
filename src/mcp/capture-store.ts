@@ -7,7 +7,7 @@ import {
   type ExplicitObservationCaptureOptions,
   type ExplicitObservationCaptureResult,
 } from '../observability/inbox/explicit-capture.js';
-import { DEFAULT_OBSERVATIONS_DIR } from '../observability/inbox/paths.js';
+import { projectObservationsDir } from '../observability/inbox/paths.js';
 import {
   validateObservationPrincipal,
   type ObservationPrincipal,
@@ -42,12 +42,13 @@ export interface FileObservationCaptureStoreOptions extends ExplicitObservationC
 }
 
 export class FileObservationCaptureStore implements ObservationCaptureStore {
-  protected readonly observationsDir: string;
+  /** 未显式指定时按调用时的当前项目解析，不在构造时冻结 cwd。 */
+  protected readonly observationsDir: string | undefined;
   protected readonly now?: () => Date;
   private readonly partition: 'principal' | 'shared';
 
   constructor(options: FileObservationCaptureStoreOptions = {}) {
-    this.observationsDir = options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR;
+    this.observationsDir = options.observationsDir;
     this.now = options.now;
     this.partition = options.partition ?? 'principal';
   }
@@ -74,10 +75,11 @@ export class FileObservationCaptureStore implements ObservationCaptureStore {
   }
 
   protected resolveObservationsDir(principal: ObservationPrincipal): string {
+    const root = this.observationsDir ?? projectObservationsDir();
     return this.partition === 'shared'
-      ? this.observationsDir
+      ? root
       : join(
-        this.observationsDir,
+        root,
         'tenants',
         hashPartition('tenant', principal.tenantId),
         'principals',

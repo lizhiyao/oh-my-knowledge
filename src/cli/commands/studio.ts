@@ -10,7 +10,7 @@ import {
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
   projectReportsDir, globalReportsDir,
 } from '../../evidence/storage/directories.js';
-import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
+import { globalObservationsDir } from '../../observability/inbox/index.js';
 import type { ReportServer } from '../../studio/http/contracts.js';
 import { CliExit } from '../lib/cli-exit.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
@@ -104,7 +104,7 @@ export async function runStudio(
           global: globalDoctorsDir,
           projectDefault: (): string => resolveDoctorsDir(projectDoctorsDir()),
         },
-        observations: { global: DEFAULT_GLOBAL_OBSERVATIONS_DIR },
+        observations: { global: globalObservationsDir() },
         // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
         // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
         managed: () => resolveManagedDir(managedDir()),

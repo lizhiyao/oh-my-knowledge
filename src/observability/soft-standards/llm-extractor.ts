@@ -1,5 +1,6 @@
 import { createExecutor } from '../../executors/index.js';
 import { readPromptDocument } from '../prompts/document.js';
+import { projectObservationsDir } from '../inbox/paths.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import type {
   ObservationSkillChain,
@@ -47,7 +48,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   const model = options.model;
   const executorName = options.executorName;
   const generatedAt = options.now || new Date().toISOString();
-  const path = skillDerivedStandardsPath(observationsDir, skillChain.skillName);
+  const path = skillDerivedStandardsPath(observationsDir ?? projectObservationsDir(), skillChain.skillName);
   const sourceHash = skillChain.definition.content ? hashText(skillChain.definition.content) : undefined;
   const runtimeEvidenceHash = options.runtimeEvidence ? hashText(JSON.stringify(options.runtimeEvidence)) : undefined;
   const existing = loadSkillDerivedStandards(observationsDir)[skillChain.skillName];

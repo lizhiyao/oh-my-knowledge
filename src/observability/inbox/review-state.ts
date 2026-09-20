@@ -16,7 +16,7 @@ import type {
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { normalizeRfc3339Timestamp } from '../../shared/timestamp.js';
-import { resolveObservationsDir } from './paths.js';
+import { projectObservationsDir, resolveObservationsDir } from './paths.js';
 
 export type {
   ObservationMetricKey,
@@ -138,7 +138,7 @@ export function emptyObservationReviewState(now = new Date().toISOString()): Obs
   };
 }
 
-export function loadObservationReviewState(observationsDir: string): ObservationReviewState {
+export function loadObservationReviewState(observationsDir?: string): ObservationReviewState {
   const path = observationReviewStatePath(resolveObservationsDir(observationsDir));
   if (!existsSync(path)) return emptyObservationReviewState();
   let parsed: unknown;
@@ -153,12 +153,14 @@ export function loadObservationReviewState(observationsDir: string): Observation
 }
 
 export function updateObservationReviewState(
-  observationsDir: string,
+  observationsDir: string | undefined,
   update: ObservationReviewStateUpdate,
   now?: string,
 ): ObservationReviewState {
   assertReviewStateUpdate(update);
-  const path = observationReviewStatePath(observationsDir);
+  // 未指定目录时写入固定落在当前项目，只有读取参与「项目优先 → 全局兜底」的挑选。
+  const writeDir = observationsDir ?? projectObservationsDir();
+  const path = observationReviewStatePath(writeDir);
   return withFileLock(`${path}.lock`, () => {
     const reviewedAt = normalizedTimestamp(now ?? new Date().toISOString());
     if (!reviewedAt) {
@@ -194,7 +196,7 @@ export function updateObservationReviewState(
       ...(update.snippet ? { snippet: update.snippet.slice(0, 500) } : {}),
     };
     state.updatedAt = reviewedAt;
-    writeObservationReviewState(observationsDir, state);
+    writeObservationReviewState(writeDir, state);
     return state;
   }, { label: 'observation review state' });
 }
@@ -224,14 +226,16 @@ function normalizeObservationReviewState(value: unknown): ObservationReviewState
 }
 
 export function deleteObservationReviewState(
-  observationsDir: string,
+  observationsDir: string | undefined,
   targetType: ObservationReviewTargetType,
   targetId: string,
   now?: string,
 ): ObservationReviewState {
   if (!isReviewTargetType(targetType)) throw new ObservationReviewStateValidationError('invalid review targetType');
   if (typeof targetId !== 'string' || targetId.trim() === '') throw new ObservationReviewStateValidationError('invalid review targetId');
-  const path = observationReviewStatePath(observationsDir);
+  // 写入落点与 update 同口径：未指定目录时固定当前项目。
+  const writeDir = observationsDir ?? projectObservationsDir();
+  const path = observationReviewStatePath(writeDir);
   return withFileLock(`${path}.lock`, () => {
     const updatedAt = normalizedTimestamp(now ?? new Date().toISOString());
     if (!updatedAt) {
@@ -247,7 +251,7 @@ export function deleteObservationReviewState(
     const key = observationReviewStateKey(targetType, targetId);
     delete state.entries[key];
     state.updatedAt = updatedAt;
-    writeObservationReviewState(observationsDir, state);
+    writeObservationReviewState(writeDir, state);
     return state;
   }, { label: 'observation review state' });
 }

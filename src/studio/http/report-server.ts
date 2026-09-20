@@ -64,7 +64,6 @@ export function createReportServer(options: ReportServerOptions = {}, appHost?: 
 
   async function startListener(): Promise<string> {
     if (server) return serverUrl!;
-    requestHandler.prepare();
     await appHost?.prepare();
 
     const listenPort = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);

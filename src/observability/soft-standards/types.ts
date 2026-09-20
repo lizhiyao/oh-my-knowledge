@@ -230,7 +230,8 @@ export interface ResolvedSkillStandards {
 
 export interface ExtractSkillSoftStandardsOptions {
   signal?: AbortSignal;
-  observationsDir: string;
+  /** 省略时写入落在当前项目 inbox，读取仍走「项目优先 → 全局兜底」。 */
+  observationsDir?: string;
   skillChain: ObservationSkillChain;
   runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence;
   model: string;
