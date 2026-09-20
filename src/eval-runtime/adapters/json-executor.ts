@@ -2,11 +2,9 @@ import { dirname, isAbsolute, normalize } from 'node:path';
 import {
   IdentifierSchema,
   JsonValueSchema,
-  RuntimeIdentitySchema,
   UsageRecordSchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
-  digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
   type UsageRecord,
@@ -61,6 +59,13 @@ const OPENED_MCP_CONFIG_LEASES = new WeakSet<object>();
 const OPENED_MOCK_INTERCEPTION_LEASES = new WeakSet<object>();
 
 /** Internal process-wide guard shared by the canonical facade and advanced adapter. */
+import {
+  bindProviderIdentity,
+  openCancellableLease,
+  rejectInvalidLease,
+  requireCapabilityPairing,
+} from './resource-lease.js';
+
 export function assertFreshExecutorSessionObject(session: object): void {
   if (OPENED_EXECUTOR_SESSIONS.has(session)) {
     throw new TypeError('Session Executor reused one session object across trials or runs.');
@@ -203,18 +208,6 @@ function effectiveAllowedTools(trial: Readonly<ExecutorTrialContext>): readonly 
     : Object.freeze([...trial.executionControl.tools.allowedTools]);
 }
 
-async function rejectInvalidWorkspaceLease(lease: unknown): Promise<never> {
-  if (lease !== null && typeof lease === 'object') {
-    let close: WorkspaceLease['close'] | undefined;
-    try {
-      close = (lease as Partial<WorkspaceLease>).close;
-      if (typeof close === 'function') await Reflect.apply(close, lease, []);
-    } catch {
-      // The public failure remains a single redacted resource-open error.
-    }
-  }
-  throw new TypeError('Workspace provider returned an invalid lease.');
-}
 
 async function closeLateWorkspaceLease(lease: unknown): Promise<void> {
   if (lease === null || typeof lease !== 'object' || OPENED_WORKSPACE_LEASES.has(lease)) return;
@@ -259,15 +252,10 @@ async function openWorkspace(
     throw new TypeError('Workspace execution requires a WorkspaceProvider.');
   }
   if (trial.signal.aborted) throw trial.signal.reason;
-  let abortListener: (() => void) | undefined;
-  const aborted = new Promise<never>((_resolve, reject) => {
-    abortListener = () => reject(trial.signal.reason);
-    trial.signal.addEventListener('abort', abortListener, { once: true });
-    if (trial.signal.aborted) abortListener();
-  });
-  const opening = Promise.resolve().then(() => {
-    if (trial.signal.aborted) throw trial.signal.reason;
-    return provider.open(Object.freeze({
+  const lease = await openCancellableLease<WorkspaceLease>({
+    signal: trial.signal,
+    closeLate: closeLateWorkspaceLease,
+    open: () => provider.open(Object.freeze({
       descriptor: control.descriptor,
       runId: run.runId,
       trialId: trial.trialId,
@@ -276,37 +264,31 @@ async function openWorkspace(
       trialIndex: trial.trialIndex,
       ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
       signal: trial.signal,
-    }));
+    })),
   });
-  let lease: WorkspaceLease;
-  try {
-    lease = await Promise.race([opening, aborted]);
-  } catch (error) {
-    if (trial.signal.aborted) {
-      void opening.then(closeLateWorkspaceLease, () => undefined);
-    }
-    throw error;
-  } finally {
-    if (abortListener !== undefined) trial.signal.removeEventListener('abort', abortListener);
-  }
-  if (trial.signal.aborted) {
-    await closeLateWorkspaceLease(lease);
-    throw trial.signal.reason;
-  }
   let close: WorkspaceLease['close'] | undefined;
   try {
     close = lease?.close;
   } catch {
-    return rejectInvalidWorkspaceLease(lease);
+    return rejectInvalidLease({
+    lease,
+    message: 'Workspace provider returned an invalid lease.',
+  });
   }
   if (lease === null || typeof lease !== 'object'
       || typeof lease.root !== 'string' || lease.root.trim() === ''
       || lease.root.includes('\0') || !isAbsolute(lease.root)
       || typeof close !== 'function') {
-    return rejectInvalidWorkspaceLease(lease);
+    return rejectInvalidLease({
+    lease,
+    message: 'Workspace provider returned an invalid lease.',
+  });
   }
   const root = normalize(lease.root);
-  if (dirname(root) === root) return rejectInvalidWorkspaceLease(lease);
+  if (dirname(root) === root) return rejectInvalidLease({
+    lease,
+    message: 'Workspace provider returned an invalid lease.',
+  });
   if (OPENED_WORKSPACE_LEASES.has(lease)) {
     throw new TypeError('Workspace provider reused one lease object across trials or runs.');
   }
@@ -346,19 +328,6 @@ async function openWorkspace(
   });
 }
 
-async function rejectInvalidMcpConfigLease(lease: unknown): Promise<never> {
-  if (lease !== null && typeof lease === 'object'
-      && !OPENED_MCP_CONFIG_LEASES.has(lease)
-      && typeof (lease as Partial<McpConfigLease>).close === 'function') {
-    OPENED_MCP_CONFIG_LEASES.add(lease);
-    try {
-      await Reflect.apply((lease as McpConfigLease).close, lease, []);
-    } catch {
-      // The public failure remains a single redacted resource-open error.
-    }
-  }
-  throw new TypeError('MCP config provider returned an invalid lease.');
-}
 
 async function closeLateMcpConfigLease(lease: unknown): Promise<void> {
   if (lease === null || typeof lease !== 'object'
@@ -385,15 +354,10 @@ async function openMcpConfig(
       || control.descriptor.classification !== 'secret') {
     throw new TypeError('MCP config descriptors require secret application/json content.');
   }
-  let abortListener: (() => void) | undefined;
-  const aborted = new Promise<never>((_resolve, reject) => {
-    abortListener = () => reject(trial.signal.reason);
-    trial.signal.addEventListener('abort', abortListener, { once: true });
-    if (trial.signal.aborted) abortListener();
-  });
-  const opening = Promise.resolve().then(() => {
-    if (trial.signal.aborted) throw trial.signal.reason;
-    return provider.open(Object.freeze({
+  const lease = await openCancellableLease<McpConfigLease>({
+    signal: trial.signal,
+    closeLate: closeLateMcpConfigLease,
+    open: () => provider.open(Object.freeze({
       descriptor: control.descriptor,
       runId: run.runId,
       trialId: trial.trialId,
@@ -402,29 +366,16 @@ async function openMcpConfig(
       trialIndex: trial.trialIndex,
       ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
       signal: trial.signal,
-    }));
+    })),
   });
-  let lease: McpConfigLease;
-  try {
-    lease = await Promise.race([opening, aborted]);
-  } catch (error) {
-    if (trial.signal.aborted) {
-      void opening.then(closeLateMcpConfigLease, () => undefined);
-    }
-    throw error;
-  } finally {
-    if (abortListener !== undefined) {
-      trial.signal.removeEventListener('abort', abortListener);
-    }
-  }
-  if (trial.signal.aborted) {
-    await closeLateMcpConfigLease(lease);
-    throw trial.signal.reason;
-  }
   if (lease === null || typeof lease !== 'object'
       || !Object.prototype.hasOwnProperty.call(lease, 'config')
       || typeof lease.close !== 'function') {
-    return rejectInvalidMcpConfigLease(lease);
+    return rejectInvalidLease({
+    lease,
+    message: 'MCP config provider returned an invalid lease.',
+    tracker: OPENED_MCP_CONFIG_LEASES,
+  });
   }
   if (OPENED_MCP_CONFIG_LEASES.has(lease)) {
     throw new TypeError('MCP config provider reused one lease object across trials or runs.');
@@ -450,23 +401,6 @@ async function openMcpConfig(
   });
 }
 
-async function rejectInvalidMockInterceptionLease(
-  lease: unknown,
-  capturedClose?: unknown,
-): Promise<never> {
-  if (lease !== null && typeof lease === 'object'
-      && !OPENED_MOCK_INTERCEPTION_LEASES.has(lease)) {
-    OPENED_MOCK_INTERCEPTION_LEASES.add(lease);
-    if (typeof capturedClose === 'function') {
-      try {
-        await Reflect.apply(capturedClose, lease, []);
-      } catch {
-        // The public failure remains a single redacted resource-open error.
-      }
-    }
-  }
-  throw new TypeError('Mock interception provider returned an invalid lease.');
-}
 
 async function closeLateMockInterceptionLease(lease: unknown): Promise<void> {
   if (lease === null || typeof lease !== 'object'
@@ -502,15 +436,11 @@ async function openMockInterception(
       || control.descriptor.classification !== 'secret') {
     throw new TypeError('Mock interception descriptor is invalid.');
   }
-  let abortListener: (() => void) | undefined;
-  const aborted = new Promise<never>((_resolve, reject) => {
-    abortListener = () => reject(attempt.signal.reason);
-    attempt.signal.addEventListener('abort', abortListener, { once: true });
-    if (attempt.signal.aborted) abortListener();
-  });
-  const opening = Promise.resolve().then(() => {
-    if (attempt.signal.aborted) throw attempt.signal.reason;
-    return provider.open(Object.freeze({
+  const lease = await openCancellableLease<MockInterceptionLease>({
+    signal: attempt.signal,
+    closeLate: closeLateMockInterceptionLease,
+    openFailureMessage: 'Mock interception provider failed to open a lease.',
+    open: () => provider.open(Object.freeze({
       descriptor: control.descriptor,
       runId: run.runId,
       trialId: trial.trialId,
@@ -521,28 +451,14 @@ async function openMockInterception(
       attemptId: attempt.attemptId,
       attemptNumber: attempt.attemptNumber,
       signal: attempt.signal,
-    }));
+    })),
   });
-  let lease: MockInterceptionLease;
-  try {
-    lease = await Promise.race([opening, aborted]);
-  } catch (error) {
-    if (attempt.signal.aborted) {
-      void opening.then(closeLateMockInterceptionLease, () => undefined);
-      throw error;
-    }
-    throw new TypeError('Mock interception provider failed to open a lease.');
-  } finally {
-    if (abortListener !== undefined) {
-      attempt.signal.removeEventListener('abort', abortListener);
-    }
-  }
-  if (attempt.signal.aborted) {
-    await closeLateMockInterceptionLease(lease);
-    throw attempt.signal.reason;
-  }
   if (lease === null || typeof lease !== 'object') {
-    return rejectInvalidMockInterceptionLease(lease);
+    return rejectInvalidLease({
+    lease,
+    message: 'Mock interception provider returned an invalid lease.',
+    tracker: OPENED_MOCK_INTERCEPTION_LEASES,
+  });
   }
   let close: unknown;
   let intercept: unknown;
@@ -550,10 +466,20 @@ async function openMockInterception(
     close = Reflect.get(lease, 'close');
     intercept = Reflect.get(lease, 'intercept');
   } catch {
-    return rejectInvalidMockInterceptionLease(lease, close);
+    return rejectInvalidLease({
+    lease,
+    message: 'Mock interception provider returned an invalid lease.',
+    tracker: OPENED_MOCK_INTERCEPTION_LEASES,
+    close,
+  });
   }
   if (typeof intercept !== 'function' || typeof close !== 'function') {
-    return rejectInvalidMockInterceptionLease(lease, close);
+    return rejectInvalidLease({
+    lease,
+    message: 'Mock interception provider returned an invalid lease.',
+    tracker: OPENED_MOCK_INTERCEPTION_LEASES,
+    close,
+  });
   }
   if (OPENED_MOCK_INTERCEPTION_LEASES.has(lease)) {
     throw new TypeError('Mock interception provider reused one lease object across attempts.');
@@ -635,114 +561,72 @@ function requireWorkspaceCapability(
   protocol: ReturnType<typeof executorProtocol>,
   provider: CapturedWorkspaceProvider | undefined,
 ): void {
-  const supportsWorkspace = protocol.execution.features.workspace.includes(
-    'copy-on-write-overlay',
-  );
-  if (provider !== undefined && !supportsWorkspace) {
-    throw new TypeError(
-      'WorkspaceProvider requires copy-on-write-overlay Runtime capability.',
-    );
-  }
-  if (provider === undefined && supportsWorkspace) {
-    throw new TypeError(
-      'copy-on-write-overlay Runtime capability requires a WorkspaceProvider.',
-    );
-  }
+  requireCapabilityPairing({
+    capabilityDeclared: protocol.execution.features.workspace.includes('copy-on-write-overlay'),
+    providerPresent: provider !== undefined,
+    providerRequiresCapabilityMessage: 'WorkspaceProvider requires copy-on-write-overlay Runtime capability.',
+    capabilityRequiresProviderMessage: 'copy-on-write-overlay Runtime capability requires a WorkspaceProvider.',
+  });
 }
 
 function requireMcpConfigCapability(
   protocol: ReturnType<typeof executorProtocol>,
   provider: CapturedMcpConfigProvider | undefined,
 ): void {
-  const supportsMcp = protocol.execution.features.mcp.includes('native-config');
-  if (provider !== undefined && !supportsMcp) {
-    throw new TypeError('McpConfigProvider requires native-config Runtime capability.');
-  }
-  if (provider === undefined && supportsMcp) {
-    throw new TypeError('native-config Runtime capability requires an McpConfigProvider.');
-  }
+  requireCapabilityPairing({
+    capabilityDeclared: protocol.execution.features.mcp.includes('native-config'),
+    providerPresent: provider !== undefined,
+    providerRequiresCapabilityMessage: 'McpConfigProvider requires native-config Runtime capability.',
+    capabilityRequiresProviderMessage: 'native-config Runtime capability requires an McpConfigProvider.',
+  });
 }
 
 function requireMockInterceptionCapability(
   protocol: ReturnType<typeof executorProtocol>,
   provider: CapturedMockInterceptionProvider | undefined,
 ): void {
-  const supportsMockInterception = protocol.execution.features.mockInterception.includes(
-    'pre-tool-call',
-  );
-  if (provider !== undefined && !supportsMockInterception) {
-    throw new TypeError(
-      'MockInterceptionProvider requires pre-tool-call Runtime capability.',
-    );
-  }
-  if (provider === undefined && supportsMockInterception) {
-    throw new TypeError(
-      'pre-tool-call Runtime capability requires a MockInterceptionProvider.',
-    );
-  }
+  requireCapabilityPairing({
+    capabilityDeclared: protocol.execution.features.mockInterception.includes('pre-tool-call'),
+    providerPresent: provider !== undefined,
+    providerRequiresCapabilityMessage: 'MockInterceptionProvider requires pre-tool-call Runtime capability.',
+    capabilityRequiresProviderMessage: 'pre-tool-call Runtime capability requires a MockInterceptionProvider.',
+  });
 }
 
 function bindWorkspaceIdentity(
   identity: RuntimeIdentity,
   provider: CapturedWorkspaceProvider | undefined,
 ): RuntimeIdentity {
-  if (provider === undefined) return identity;
-  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
-    ...structuredClone(identity),
-    fingerprint: digestCanonicalJson({
-      derivation: 'omk.eval-runtime.workspace-bound-identity/v1',
-      executorIdentity: identity,
-      workspaceProvider: {
-        providerId: provider.providerId,
-        version: provider.version,
-        ...(provider.fingerprintFacets === undefined
-          ? {}
-          : { fingerprintFacets: provider.fingerprintFacets }),
-      },
-    }),
-  }));
+  return bindProviderIdentity({
+    identity,
+    provider,
+    derivation: 'omk.eval-runtime.workspace-bound-identity/v1',
+    providerKey: 'workspaceProvider',
+  });
 }
 
 function bindMcpConfigIdentity(
   identity: RuntimeIdentity,
   provider: CapturedMcpConfigProvider | undefined,
 ): RuntimeIdentity {
-  if (provider === undefined) return identity;
-  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
-    ...structuredClone(identity),
-    fingerprint: digestCanonicalJson({
-      derivation: 'omk.eval-runtime.mcp-config-bound-identity/v1',
-      executorIdentity: identity,
-      mcpConfigProvider: {
-        providerId: provider.providerId,
-        version: provider.version,
-        ...(provider.fingerprintFacets === undefined
-          ? {}
-          : { fingerprintFacets: provider.fingerprintFacets }),
-      },
-    }),
-  }));
+  return bindProviderIdentity({
+    identity,
+    provider,
+    derivation: 'omk.eval-runtime.mcp-config-bound-identity/v1',
+    providerKey: 'mcpConfigProvider',
+  });
 }
 
 function bindMockInterceptionIdentity(
   identity: RuntimeIdentity,
   provider: CapturedMockInterceptionProvider | undefined,
 ): RuntimeIdentity {
-  if (provider === undefined) return identity;
-  return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
-    ...structuredClone(identity),
-    fingerprint: digestCanonicalJson({
-      derivation: 'omk.eval-runtime.mock-interception-bound-identity/v1',
-      executorIdentity: identity,
-      mockInterceptionProvider: {
-        providerId: provider.providerId,
-        version: provider.version,
-        ...(provider.fingerprintFacets === undefined
-          ? {}
-          : { fingerprintFacets: provider.fingerprintFacets }),
-      },
-    }),
-  }));
+  return bindProviderIdentity({
+    identity,
+    provider,
+    derivation: 'omk.eval-runtime.mock-interception-bound-identity/v1',
+    providerKey: 'mockInterceptionProvider',
+  });
 }
 
 function structuredFailure(code: string, usage?: UsageRecord): never {
