@@ -44,9 +44,51 @@ interface ForbiddenRule {
 
 const RULES: ForbiddenRule[] = [
   {
-    from: 'observability/trace/trace-ir.ts', to: 'executors/',
-    reason: 'Trace IR 只依赖 executors 的稳定契约层（executors/contracts/），不得伸进适配器内部；trace 规范化层现存三处内部依赖（core/token-usage、core/tool-identity、tool-call-status）为已量出的待收口债务，见 #978 第 19 项。',
+    from: 'observability/', to: 'executors/',
+    reason: 'Observability 只依赖 executors 的稳定契约层（executors/contracts/），不得伸进执行器内部实现；whitelist 逐条登记 #978 第 19 项量出的存量债务，只减不增（下方防腐测试会挂掉不再被引用的条目）。',
     allowedTargets: listTsFiles(join(SRC_DIR, 'executors', 'contracts')).map(toSrcRelative),
+    whitelist: [
+      // 工具失败语义判定（值级导入）：统一由 executors/tool-call-status 拥有，
+      // 观测投影暂直接消费，待收口为契约层 re-export，见 #978 第 19 项。
+      'observability/experience/report-assembly.ts::executors/tool-call-status.ts',
+      'observability/trace/adapters/claude/record-events.ts::executors/tool-call-status.ts',
+      'observability/trace/adapters/openclaw/record-events.ts::executors/tool-call-status.ts',
+      'observability/trace/adapters/codex/tool-status.ts::executors/tool-call-status.ts',
+      'observability/trace/adapters/qoder/trace.ts::executors/tool-call-status.ts',
+      'observability/trace/tool-search.ts::executors/tool-call-status.ts',
+      'observability/inbox/report-building.ts::executors/tool-call-status.ts',
+      'observability/analysis/gap-analyzer.ts::executors/tool-call-status.ts',
+      'observability/analysis/coverage-analyzer.ts::executors/tool-call-status.ts',
+      // token 计数聚合（值级导入）：trace 规范化与 skill-health 暂共用 executors/core/token-usage，
+      // 待收口为契约层能力，见 #978 第 19 项。
+      'observability/experience/report-derivations.ts::executors/core/token-usage.ts',
+      'observability/trace/segmentation.ts::executors/core/token-usage.ts',
+      'observability/trace/adapters/jsonl-records.ts::executors/core/token-usage.ts',
+      'observability/trace/adapters/claude/record-events.ts::executors/core/token-usage.ts',
+      'observability/trace/adapters/openclaw/record-events.ts::executors/core/token-usage.ts',
+      'observability/trace/adapters/codex/turn-events.ts::executors/core/token-usage.ts',
+      'observability/trace/adapters/qoder/trace.ts::executors/core/token-usage.ts',
+      'observability/skill-health/analyzer.ts::executors/core/token-usage.ts',
+      // 工具身份规范化（值级导入）：各 trace 适配器暂共用 executors/core/tool-identity，
+      // 待收口为契约层能力，见 #978 第 19 项。
+      'observability/trace/adapters/claude/record-events.ts::executors/core/tool-identity.ts',
+      'observability/trace/adapters/openclaw/record-events.ts::executors/core/tool-identity.ts',
+      'observability/trace/adapters/codex/pending-tool-events.ts::executors/core/tool-identity.ts',
+      'observability/trace/adapters/codex/tool-events.ts::executors/core/tool-identity.ts',
+      'observability/trace/adapters/codex/tool-event-factory.ts::executors/core/tool-identity.ts',
+      'observability/trace/adapters/qoder/trace.ts::executors/core/tool-identity.ts',
+      // TraceSourceKind 运行时判定（值级导入）：inbox 存储侧暂直接消费 executors/core/trace-source-kind，
+      // 契约层只有类型与 schema，见 #978 第 19 项。
+      'observability/inbox/report-store.ts::executors/core/trace-source-kind.ts',
+      // 运行时值级跨域调用（非类型）：这两个 LLM 抽取适配器经 executors 桶入口 createExecutor
+      // 真实创建执行器，是运行时依赖，收口方案需先定观测侧执行注入口，见 #978 第 19 项。
+      'observability/soft-standards/llm-extractor.ts::executors/index.ts',
+      'observability/knowledge-extraction/adapters/executor.ts::executors/index.ts',
+    ],
+  },
+  {
+    from: 'observability/trace/adapters/', to: 'observability/trace/source.ts',
+    reason: 'Trace 适配器只暴露证据谓词与 parse 入口；发现、流式读取、session 分组留在 source.ts，单向消费适配器。',
   },
   {
     from: 'studio/', to: 'observability/',
@@ -1124,6 +1166,67 @@ describe('架构边界守门', () => {
     }
 
     expect(unreferencedExports(codexDir, family)).toEqual([]);
+  });
+
+  it('Claude / OpenClaw / Markdown 适配器按族登记，族内不得回指 source.ts', () => {
+    const adaptersDir = join(SRC_DIR, 'observability', 'trace', 'adapters');
+    // adapters/ 顶层清单整体登记：每个宿主一个目录；跨族共享的 JSONL 记录基元只有 jsonl-records.ts。
+    // Claude / OpenClaw / Markdown 的记录→事件映射曾经与发现、流式读取、session 分组
+    // 一起摊在 source.ts 的 1,648 行里。
+    expect(readdirSync(adaptersDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
+      .toEqual(['claude', 'codex', 'markdown', 'openclaw', 'qoder']);
+    expect(readdirSync(adaptersDir).filter((name) => name.endsWith('.ts')).sort())
+      .toEqual(['jsonl-records.ts']);
+
+    const families: Record<string, string[]> = {
+      claude: ['record-events.ts', 'record-schema.ts', 'trace.ts'],
+      markdown: ['trace.ts'],
+      openclaw: ['record-events.ts', 'trace.ts'],
+    };
+    for (const [familyName, files] of Object.entries(families)) {
+      const dir = join(adaptersDir, familyName);
+      // 目录清单显式登记：新增文件不悄悄进族。
+      expect(readdirSync(dir).filter((name) => name.endsWith('.ts')).sort(), familyName).toEqual(files);
+      for (const name of files) {
+        // 族内模块不得回指 source.ts；该方向同时由 RULES 的 adapters/ → source.ts 规则钉住。
+        expect(extractSpecifiers(readFileSync(join(dir, name), 'utf-8')), `${familyName}/${name}`)
+          .not.toContain('../../source.js');
+      }
+      expect(unreferencedExports(dir, files), familyName).toEqual([]);
+    }
+    expect(unreferencedExports(adaptersDir, ['jsonl-records.ts'])).toEqual([]);
+
+    // 每个族的对外名字冻结：公开面变化先在这里登记理由。
+    const exportedSurface: Record<string, string[]> = {
+      'claude/record-schema.ts': [
+        'CcAssistantContent',
+        'CcAssistantRecord',
+        'CcRecord',
+        'CcUserRecord',
+        'CcUserTextContent',
+        'CcUserToolResultContent',
+      ],
+      'claude/record-events.ts': ['claudeRecordToTraceEvents', 'isKnownClaudeRecordType'],
+      'claude/trace.ts': ['claudeMetadataEvidence', 'claudeTranscriptEvidence', 'parseClaudeSessionFile'],
+      'openclaw/record-events.ts': [
+        'OpenClawRecord',
+        'asOpenClawRecord',
+        'openClawContentText',
+        'openClawRecordToTraceEvents',
+      ],
+      'openclaw/trace.ts': ['openClawMessageEvidence', 'openClawSessionEvidence', 'parseOpenClawSessionFile'],
+      'markdown/trace.ts': ['ParsedMarkdownLogFile', 'parseMarkdownLogFile'],
+      'jsonl-records.ts': [
+        'classifyUserMessageOrigin',
+        'isRecordObject',
+        'isValidUsageCounters',
+        'lifecycleEventFromLegacy',
+      ],
+    };
+    for (const [name, expected] of Object.entries(exportedSurface)) {
+      expect(exportedNames(readFileSync(join(adaptersDir, name), 'utf-8')), name).toEqual(expected);
+    }
   });
 
   it('Experience reviewer report 由独立模块拥有', () => {
