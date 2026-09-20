@@ -1,7 +1,7 @@
 import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { createHash } from 'node:crypto';
-import { open } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { open, readdir } from 'node:fs/promises';
+import { isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
 import type { Sha256Digest } from '../../../../eval-core/contracts/index.js';
 import { ExecutionPortFailure } from '../../../../eval-core/execution/index.js';
@@ -125,4 +125,42 @@ export async function assertIdentityFilesUnchanged(
       });
     }
   }
+}
+
+/**
+ * 递归收集目录下的常规文件，facetId 由相对路径摘要派生；根目录下的 node_modules 整棵跳过。
+ *
+ * claude 与 codex 的 SDK 运行时曾经各存一份逐字相同的实现，只有报错文案里的宿主名不同，
+ * 因此文案由 label 统一派生。
+ */
+export async function collectIdentityFilesInDirectory(input: {
+  readonly root: string;
+  readonly facetNamespace: string;
+  readonly label: string;
+  readonly current?: string;
+}): Promise<readonly ContentIdentityFile[]> {
+  const current = input.current ?? input.root;
+  let entries;
+  try {
+    entries = await readdir(current, { withFileTypes: true });
+  } catch {
+    throw new TypeError(`${input.label} is unavailable.`);
+  }
+  const files: ContentIdentityFile[] = [];
+  for (const entry of entries.sort((left, right) => (
+    compareStrings(left.name, right.name)
+  ))) {
+    if (current === input.root && entry.name === 'node_modules' && entry.isDirectory()) continue;
+    const path = join(current, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectIdentityFilesInDirectory({ ...input, current: path }));
+    } else if (entry.isFile()) {
+      const relativePath = relative(input.root, path).replaceAll('\\', '/');
+      const pathDigest = createHash('sha256').update(relativePath).digest('hex');
+      files.push({ facetId: `${input.facetNamespace}.file.${pathDigest}`, path });
+    } else {
+      throw new TypeError(`${input.label} contains an unsupported entry.`);
+    }
+  }
+  return files;
 }

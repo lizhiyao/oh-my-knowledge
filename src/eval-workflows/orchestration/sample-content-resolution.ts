@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
 import type { ResourceClassification } from '../input-compilation/index.js';
 import type { Sample } from '../inputs/contracts/sample.js';
+
+import { contentSha256 } from '../../shared/content-hash.js';
 
 const URL_PATTERN = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/gi;
 const TRAILING_PUNCTUATION = /[.,;!?，。；！？、：]+$/u;
@@ -77,9 +78,6 @@ interface UrlGroup {
   readonly occurrences: readonly UrlOccurrence[];
 }
 
-function sha256(value: string): `sha256:${string}` {
-  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
-}
 
 function stripUnbalancedClosingPunctuation(value: string): string {
   let result = value.replace(TRAILING_PUNCTUATION, '');
@@ -109,7 +107,7 @@ function normalizedHttpUrl(rawUrl: string): string | undefined {
   if (parsed.username !== '' || parsed.password !== '') {
     throw new SampleContentResolutionError({
       message: 'Sample URL 不得在 authority 中携带用户名或密码。',
-      sourceUrlDigest: sha256(candidate),
+      sourceUrlDigest: contentSha256(candidate),
       sourceLabel: safeUrlLabel(candidate),
     });
   }
@@ -192,14 +190,14 @@ function normalizedContent(content: string, sourceUrl: string): string {
   if (normalized === '') {
     throw new SampleContentResolutionError({
       message: 'Sample URL 解析结果为空。',
-      sourceUrlDigest: sha256(sourceUrl),
+      sourceUrlDigest: contentSha256(sourceUrl),
       sourceLabel: safeUrlLabel(sourceUrl),
     });
   }
   if (size > MAX_CONTENT_BYTES) {
     throw new SampleContentResolutionError({
       message: `Sample URL 解析内容超过 ${MAX_CONTENT_BYTES} bytes 上限。`,
-      sourceUrlDigest: sha256(sourceUrl),
+      sourceUrlDigest: contentSha256(sourceUrl),
       sourceLabel: safeUrlLabel(sourceUrl),
     });
   }
@@ -244,7 +242,7 @@ export async function resolveSampleContents(
       if (cause instanceof SampleContentResolutionError) {
         throw new SampleContentResolutionError({
           message: cause.message,
-          sourceUrlDigest: cause.sourceUrlDigest ?? sha256(group.fetchUrl),
+          sourceUrlDigest: cause.sourceUrlDigest ?? contentSha256(group.fetchUrl),
           sourceLabel: cause.sourceLabel ?? safeUrlLabel(group.fetchUrl),
           sampleIds,
           cause,
@@ -252,7 +250,7 @@ export async function resolveSampleContents(
       }
       throw new SampleContentResolutionError({
         message: 'Sample URL 无法解析；不会退回原始 URL 继续测量。',
-        sourceUrlDigest: sha256(group.fetchUrl),
+        sourceUrlDigest: contentSha256(group.fetchUrl),
         sourceLabel: safeUrlLabel(group.fetchUrl),
         sampleIds,
         cause,
@@ -303,8 +301,8 @@ export async function resolveSampleContents(
   for (const item of resolved) {
     records.push({
       ...item.result,
-      sourceUrlDigest: sha256(item.group.fetchUrl),
-      contentDigest: sha256(item.result.content),
+      sourceUrlDigest: contentSha256(item.group.fetchUrl),
+      contentDigest: contentSha256(item.result.content),
       sampleIds: item.sampleIds,
       fields: [...new Set(item.group.occurrences.map((entry) => entry.field))].sort(),
     });

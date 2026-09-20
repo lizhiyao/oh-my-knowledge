@@ -1,11 +1,12 @@
-import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { createRequire } from 'node:module';
-import { createHash, randomUUID } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { arch, platform } from 'node:process';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { CodexContentIdentityFile } from './content-identity.js';
+
+import { collectIdentityFilesInDirectory } from '../shared/content-identity.js';
 
 const CODEX_SDK_PACKAGE = '@openai/codex-sdk';
 const CODEX_PACKAGE = '@openai/codex';
@@ -106,36 +107,6 @@ function platformPackageName(): string {
   return name;
 }
 
-async function identityFilesInDirectory(
-  root: string,
-  facetNamespace: string,
-  current = root,
-): Promise<readonly CodexContentIdentityFile[]> {
-  let entries;
-  try {
-    entries = await readdir(current, { withFileTypes: true });
-  } catch {
-    throw new TypeError('Codex SDK bundled native runtime is unavailable.');
-  }
-  const files: CodexContentIdentityFile[] = [];
-  for (const entry of entries.sort((left, right) => (
-    compareStrings(left.name, right.name)
-  ))) {
-    if (current === root && entry.name === 'node_modules' && entry.isDirectory()) continue;
-    const path = join(current, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await identityFilesInDirectory(root, facetNamespace, path));
-    }
-    else if (entry.isFile()) {
-      const relativePath = relative(root, path).replaceAll('\\', '/');
-      const pathDigest = createHash('sha256').update(relativePath).digest('hex');
-      files.push({ facetId: `${facetNamespace}.file.${pathDigest}`, path });
-    } else {
-      throw new TypeError('Codex SDK bundled native runtime contains an unsupported entry.');
-    }
-  }
-  return files;
-}
 
 /** Resolves the optional peer once per adapter assembly; no process-level cache is used. */
 export async function resolveInstalledCodexSdkRuntime(): Promise<ResolvedCodexSdkRuntime> {
@@ -150,7 +121,7 @@ export async function resolveInstalledCodexSdkRuntime(): Promise<ResolvedCodexSd
   const sdkPackageManifestPath = join(dirname(dirname(sdkEntrypointPath)), 'package.json');
   const sdkManifest = await readPackageManifest(sdkPackageManifestPath, CODEX_SDK_PACKAGE);
   const sdkPackageRoot = dirname(sdkPackageManifestPath);
-  const sdkPackageFiles = await identityFilesInDirectory(sdkPackageRoot, 'codex-sdk');
+  const sdkPackageFiles = await collectIdentityFilesInDirectory({ root: sdkPackageRoot, facetNamespace: 'codex-sdk', label: 'Codex SDK bundled native runtime' });
   const sdkRuntimeJavaScriptFiles = sdkPackageFiles.filter((file) => /\.(?:c|m)?js$/.test(file.path));
   if (
     sdkRuntimeJavaScriptFiles.length !== 1
@@ -176,7 +147,7 @@ export async function resolveInstalledCodexSdkRuntime(): Promise<ResolvedCodexSd
   }
   const vendorRoot = join(dirname(nativePackageManifestPath), 'vendor');
   const nativeRoot = join(vendorRoot, targetTriple());
-  const nativeFiles = await identityFilesInDirectory(nativeRoot, 'codex-native');
+  const nativeFiles = await collectIdentityFilesInDirectory({ root: nativeRoot, facetNamespace: 'codex-native', label: 'Codex SDK bundled native runtime' });
   const binaryName = platform === 'win32' ? 'codex.exe' : 'codex';
   let binaryPath = join(nativeRoot, 'bin', binaryName);
   if (!nativeFiles.some((file) => file.path === binaryPath)) {

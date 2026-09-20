@@ -1,6 +1,5 @@
 import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
 import { openNodeTrialWorkspace } from '../shared/trial-workspace.js';
-import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
@@ -62,6 +61,8 @@ import {
   releaseTrialSlot,
   withTrialSlot,
 } from '../shared/trial-lifecycle.js';
+
+import { contentSha256 } from '../../../../shared/content-hash.js';
 
 export const CUSTOM_EXECUTOR_EXCHANGE_SCHEMA_VERSION =
   'omk.custom-executor-exchange/v1' as const;
@@ -357,9 +358,6 @@ interface CustomExecutorTrialState {
   readonly mockOutputClassification: 'public' | 'secret';
 }
 
-function sha256Bytes(bytes: Uint8Array): Sha256Digest {
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-}
 
 function fail(code: string, stage: 'infrastructure' | 'execution', message: string): never {
   throw new ExecutionPortFailure({ code, stage, message });
@@ -404,7 +402,7 @@ async function captureIdentityFiles(
     return Object.freeze({
       facetId: IdentifierSchema.parse(file.facetId),
       path: file.path,
-      digest: sha256Bytes(bytes),
+      digest: contentSha256(bytes),
       size: bytes.byteLength,
     });
   }));
@@ -549,7 +547,7 @@ async function assertIdentityFilesUnchanged(
         'Custom executor implementation identity could not be reverified.',
       );
     }
-    if (bytes.byteLength !== file.size || sha256Bytes(bytes) !== file.digest) {
+    if (bytes.byteLength !== file.size || contentSha256(bytes) !== file.digest) {
       fail(
         'OMK_CUSTOM_EXECUTOR_IDENTITY_CHANGED',
         'infrastructure',
