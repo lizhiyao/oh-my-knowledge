@@ -83,7 +83,7 @@ export function validateEvidenceSelection(
   return [];
 }
 
-/** Structural grounding closure shared by model validation and persisted revisions.
+/** Structural grounding closure shared by model-output validation and persisted revisions.
  * Exact quote validation additionally needs the registered source excerpts.
  */
 export function validateGroundingReferences(draft: KnowledgeDraft,
