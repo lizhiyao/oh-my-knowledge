@@ -3,6 +3,8 @@ import {
   assertTrialMatchesSealedBinding,
   releaseTrialSlot,
   withTrialSlot,
+  type SealedBindingTrial,
+  type SealedTargetBinding,
 } from '../../../../../src/eval-workflows/hosts/adapters/shared/trial-lifecycle.js';
 
 const fail = (code: string, kind: 'infrastructure', message: string): never => {
@@ -64,7 +66,7 @@ describe('宿主 Trial 生命周期共享判据', () => {
   });
 
   it('密封配置按规范化 JSON 比较：键序无关，缺省与 null 同义，多一个键就不算同一份', () => {
-    const check = (trial: object, binding: object): string | undefined => {
+    const check = (trial: SealedBindingTrial, binding: SealedTargetBinding): string | undefined => {
       try {
         assertTrialMatchesSealedBinding({
           trial,
