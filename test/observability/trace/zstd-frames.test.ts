@@ -74,4 +74,17 @@ describe('zstd 会话逐帧读取', () => {
   it('空文件没有帧，读出来就是空', () => {
     assert.deepEqual(collect(write('empty.jsonl.zstd', Buffer.alloc(0))), []);
   });
+
+  it('压缩会话经 loadTraceCorpus 落成 session，记录一条不丢', async () => {
+    // 归因暂时是 unknown（还没有 dsh 磁盘适配器），但证据必须先活下来：仓里既定口径是
+    // 「未知格式降级为 unknown 而不是丢弃」，这条钉住路由与逐条解析都成立。
+    const { loadTraceCorpus } = await import('../../../src/observability/trace/source.js');
+    const path = write('corpus.jsonl.zstd', framesOf(RECORDS));
+    const corpus = loadTraceCorpus(path);
+    assert.equal(corpus.sessions.length, 1);
+    assert.equal(corpus.ingestion.sourceRecordCount, RECORDS.length);
+    assert.equal(corpus.ingestion.parsedRecordCount, RECORDS.length);
+    assert.equal(corpus.ingestion.malformedRecordCount, 0);
+    assert.equal(corpus.sessions[0].sourceKind, 'unknown');
+  });
 });
