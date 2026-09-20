@@ -46,6 +46,14 @@ describe('zstd 会话逐帧读取', () => {
     assert.equal(chunks.length, RECORDS.length, '一帧一段：帧数即记录数');
   });
 
+  it('帧跨读块边界时仍按帧交付，不靠整档常驻', () => {
+    const path = write('straddle.jsonl.zstd', multiFrame);
+    // 7 字节的读块一定把帧切断：证明解析靠滚动窗口推进，而不是先把文件整个读进内存。
+    const chunks = [...iterateZstdFramePlainText(path, 8 * 1024 * 1024, 7)];
+    assert.equal(Buffer.concat(chunks).toString('utf8'), RECORDS.map((r) => `${r}\n`).join(''));
+    assert.equal(chunks.length, RECORDS.length);
+  });
+
   it('一次性 zlib 调用只能解出第一帧，所以帧边界必须自己定位', () => {
     // 真机对照：1.4 MB 的三千帧文件按整个 buffer 一次解只拿回 279 字节，会静默少掉整段证据。
     assert.equal(zstdDecompressSync(multiFrame).length, firstFramePlainText.length);
