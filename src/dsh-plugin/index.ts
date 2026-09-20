@@ -260,7 +260,10 @@ async function executeObserveCommand(
     dshTraceIngestionSummary(group),
     { reviewState: loadObservationReviewState(observationsDir) },
   );
-  report.diagnostics = buildObserveDiagnosticsFromReport(report);
+  const { skillNamesFromReports, buildSkillChainsForEvidence } = await import(
+    '../observability/inbox/skill-chains.js');
+  const { chains } = buildSkillChainsForEvidence(skillNamesFromReports([report]), [report]);
+  report.diagnostics = buildObserveDiagnosticsFromReport(report, { skillChains: chains });
   const inboxPath = saveObservationInboxReport(report, observationsDir);
   const target = state.catalog.upsert(group);
   const baseUrl = await studioUrl(invocation, state);

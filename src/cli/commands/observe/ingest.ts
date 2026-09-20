@@ -103,7 +103,11 @@ export default class ObserveIngest extends BaseCommand {
       const { loadObservationReviewState } = await import('../../../observability/inbox/review-state.js');
       const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
-      report.diagnostics = buildObserveDiagnosticsFromReport(report);
+      // 链由 observability 侧单一生产者按报告内的 cwd 证据构建，歧义即跳过；诊断层只消费。
+      const { skillNamesFromReports, buildSkillChainsForEvidence } = await import(
+        '../../../observability/inbox/skill-chains.js');
+      const { chains } = buildSkillChainsForEvidence(skillNamesFromReports([report]), [report]);
+      report.diagnostics = buildObserveDiagnosticsFromReport(report, { skillChains: chains });
       const path = saveObservationInboxReport(report, outDir);
       console.log(flags.json
         ? JSON.stringify(compactObservationInboxReport(report), null, 2)
