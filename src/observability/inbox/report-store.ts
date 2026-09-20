@@ -30,7 +30,6 @@ import { writeObservationSourceRecordArchives } from './source-record-archive.js
 import { loadExplicitObservationCaptureItems } from './explicit-capture.js';
 import { isObservationCaptureCoverage } from './capture-coverage.js';
 import {
-  DEFAULT_OBSERVATIONS_DIR,
   observationReportsDir,
   resolveObservationsDir,
 } from './paths.js';
@@ -47,7 +46,7 @@ import {
   timestampedOccurrencesOf,
 } from './report-primitives.js';
 
-export function saveObservationInboxReport(report: ObservationInboxReport, outDir: string = DEFAULT_OBSERVATIONS_DIR): string {
+export function saveObservationInboxReport(report: ObservationInboxReport, outDir: string): string {
   const compact = compactObservationInboxReport(report);
   if (!normalizeObservationInboxReport(compact)) {
     throw new Error('拒绝写入无法回读的 observe inbox 报告。');
@@ -69,7 +68,7 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
   return path;
 }
 
-export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxReport[] {
+export function loadObservationInboxReports(dir?: string): ObservationInboxReport[] {
   const resolvedDir = resolveObservationsDir(dir);
   const reportsDir = observationReportsDir(resolvedDir);
   if (!existsSync(reportsDir)) return [];
@@ -650,18 +649,18 @@ function isInboxTimestampRecord(value: unknown): boolean {
   return isInboxRecord(value) && Object.values(value).every(isInboxTimestamp);
 }
 
-function loadLatestObservationInboxReport(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxReport | null {
+function loadLatestObservationInboxReport(dir?: string): ObservationInboxReport | null {
   const reports = loadObservationInboxReports(dir);
   if (reports.length === 0) return null;
   return reports.sort((a, b) => b.meta.generatedAt.localeCompare(a.meta.generatedAt))[0] ?? null;
 }
 
-export function loadLatestObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxReport[] {
+export function loadLatestObservationInboxReports(dir?: string): ObservationInboxReport[] {
   const latest = loadLatestObservationInboxReport(dir);
   return latest ? [latest] : [];
 }
 
-export function queryObservationInbox(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxItem[] {
+export function queryObservationInbox(dir?: string): ObservationInboxItem[] {
   const reports = loadLatestObservationInboxReports(dir);
   return aggregateInboxItems([
     ...reports.flatMap((report) => report.items),
@@ -669,7 +668,7 @@ export function queryObservationInbox(dir: string = DEFAULT_OBSERVATIONS_DIR): O
   ]);
 }
 
-export function findObservationInboxItem(id: string, dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxItem | null {
+export function findObservationInboxItem(id: string, dir?: string): ObservationInboxItem | null {
   const reports = loadObservationInboxReports(dir);
   for (const item of [...reports].reverse().flatMap((report) => report.items)) {
     if (item.id === id) return item;

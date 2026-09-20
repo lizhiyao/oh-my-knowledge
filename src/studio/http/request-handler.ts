@@ -1,9 +1,7 @@
 import { createSettingsRoutes } from './routes/settings.js';
-import { existsSync, mkdirSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   createCodexConversationCatalog,
-  DEFAULT_OBSERVATIONS_DIR,
   ObservationReviewStateValidationError,
 } from '../../observability/application.js';
 
@@ -23,7 +21,6 @@ type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host'> & {
 };
 
 interface StudioRequestHandler {
-  prepare(): void;
   handle(request: IncomingMessage, response: ServerResponse): Promise<void>;
   close(): void;
 }
@@ -33,7 +30,7 @@ export function createStudioRequestHandler({
   knowledgeQuery,
   analysesDir,
   doctorsDir,
-  observationsDir = DEFAULT_OBSERVATIONS_DIR,
+  observationsDir,
   managedDir,
   conversationCatalog,
   coreStudioCatalog,
@@ -91,11 +88,6 @@ export function createStudioRequestHandler({
       },
     },
   ]);
-
-  function prepare(): void {
-    // 只有挂载观测页面时才需要观测目录；独立报告宿主不产生这个副作用。
-    if (studioPages && !existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
-  }
 
   async function handleRequest(
     request: IncomingMessage,
@@ -168,5 +160,5 @@ export function createStudioRequestHandler({
     for (const closeStream of [...liveStreamClosers]) closeStream();
   }
 
-  return { prepare, handle: handleRequest, close };
+  return { handle: handleRequest, close };
 }

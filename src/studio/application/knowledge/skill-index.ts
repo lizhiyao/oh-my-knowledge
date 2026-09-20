@@ -17,7 +17,6 @@ import {
   effectiveObserveBand,
   toolStabilityOf,
   type SkillHealthReport,
-  DEFAULT_OBSERVATIONS_DIR,
   loadLatestObservationInboxReports,
   observationReportsDir,
   resolveObservationsDir,
@@ -305,9 +304,11 @@ interface BuildSkillIndexOptions {
 export function buildSkillIndex(
   analysesDir: string,
   doctorsDir: string,
-  observationsDir: string = DEFAULT_OBSERVATIONS_DIR,
+  observationsDir?: string,
   options: BuildSkillIndexOptions = {},
 ): SkillIndex {
+  // 一次构建只解析一次 inbox 目标，缓存身份与实际读取的目录同值。
+  const inboxDir = resolveObservationsDir(observationsDir);
   const includeObserveCards = options.includeObserveCards ?? false;
   const includeDoctorCards = options.includeDoctorCards ?? false;
   const graphPaths = listMeasurementDerivedPaths(doctorsDir, 'doctor', 'graph.json');
@@ -316,15 +317,15 @@ export function buildSkillIndex(
   // key 限定目录组合身份，fingerprint 每次请求按文件元数据重算，
   // 保证编辑与删除对缓存可见（目录 mtime 单独不足以检测既有文件的内容变化）。
   const cacheKey = [
-    analysesDir, doctorsDir, observationsDir,
+    analysesDir, doctorsDir, inboxDir,
     includeObserveCards ? 'observe-cards' : '',
     includeDoctorCards ? 'doctor-cards' : '',
   ].join('\n');
   const fingerprint = options.cache ? [
-    analysesDir, doctorsDir, observationsDir,
+    analysesDir, doctorsDir, inboxDir,
     pathsFingerprint(observeReportPaths),
     pathsFingerprint(doctorReportPaths),
-    directoryFingerprint(observationReportsDir(resolveObservationsDir(observationsDir)), '.report.json'),
+    directoryFingerprint(observationReportsDir(inboxDir), '.report.json'),
     pathsFingerprint(graphPaths),
     cardFingerprint(includeObserveCards, includeDoctorCards),
   ].join('|') : '';
@@ -368,7 +369,7 @@ export function buildSkillIndex(
   for (const list of Object.values(doctorBy)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   const diagnosisBundle = mergeDiagnosisBundles(
-    loadLatestObservationInboxReports(observationsDir).flatMap((report) => report.diagnostics ? [report.diagnostics] : []),
+    loadLatestObservationInboxReports(inboxDir).flatMap((report) => report.diagnostics ? [report.diagnostics] : []),
     new Date().toISOString(),
   );
   const allSkills = new Set([

@@ -35,7 +35,7 @@ export async function runSampleFromTraces(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/paths.js');
+  const { projectObservationsDir } = await import('../../observability/inbox/paths.js');
   const { generateTraceDrafts, TraceDraftPreparationError } = await import('../../eval-workflows/sample-generation/trace-drafts.js');
   const model = flags.model;
   const executorName = flags.executor;
@@ -43,7 +43,7 @@ export async function runSampleFromTraces(
     throw new Error('internal error: sample generation requires runtime selection before execution');
   }
 
-  const obsDir = resolve(flags['observations-dir'] ?? DEFAULT_OBSERVATIONS_DIR);
+  const obsDir = resolve(flags['observations-dir'] ?? projectObservationsDir());
   const count = flags.count !== undefined ? Math.max(1, Number(flags.count) || 5) : undefined;
   try {
     const result = await generateTraceDrafts({
@@ -75,8 +75,8 @@ export async function runSampleFromTraces(
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
     if (err instanceof TraceDraftPreparationError) {
-      console.error(err.reason === 'missing-inbox'
-        ? (lang === 'zh' ? `observe-inbox 目录不存在: ${err.path}（先运行 omk observe ingest 生成）` : `Observe-inbox dir not found: ${err.path} (run omk observe ingest first)`)
+      console.error(err.reason === 'no-observation-data'
+        ? (lang === 'zh' ? `${err.path} 里还没有观测数据（先运行 omk observe ingest 生成）` : `No observation data in ${err.path} yet (run omk observe ingest first)`)
         : (lang === 'zh' ? `草稿已存在: ${err.path}，请先 review 并合入正式集（或删除）后再生成` : `Draft already exists: ${err.path}; review/merge (or remove) it before regenerating`));
       throw new CliExit(1);
     }

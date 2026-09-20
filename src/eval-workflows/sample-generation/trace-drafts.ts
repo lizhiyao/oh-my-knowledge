@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { queryObservationInbox } from '../../observability/inbox/index.js';
-import { observationDraftsDir } from '../../observability/inbox/paths.js';
+import {
+  hasObservationInboxData,
+  observationDraftsDir,
+} from '../../observability/inbox/paths.js';
 import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 import { createWorkflowSampleSetDocument } from '../inputs/schemas/sample-set.js';
 import type { generateSamplesFromTraces } from './generator.js';
@@ -10,7 +13,7 @@ type TraceGenerator = typeof generateSamplesFromTraces;
 type TraceOptions = Omit<Parameters<TraceGenerator>[0], 'items'>;
 
 export class TraceDraftPreparationError extends Error {
-  constructor(readonly reason: 'missing-inbox' | 'existing-draft', readonly path: string) {
+  constructor(readonly reason: 'no-observation-data' | 'existing-draft', readonly path: string) {
     super(`Trace draft preparation failed (${reason}): ${path}`);
     this.name = 'TraceDraftPreparationError';
   }
@@ -25,7 +28,7 @@ export async function generateTraceDrafts(input: {
 }, generate?: TraceGenerator) {
   const { observationsDir, skill, options } = input;
   options.signal?.throwIfAborted();
-  if (!existsSync(observationsDir)) throw new TraceDraftPreparationError('missing-inbox', observationsDir);
+  if (!hasObservationInboxData(observationsDir)) throw new TraceDraftPreparationError('no-observation-data', observationsDir);
   const items = queryObservationInbox(observationsDir)
     .filter((item) => item.severity !== 'noise' && (!skill || item.skillName === skill));
   if (items.length === 0) return { draftStatus: 'no-signals' as const };

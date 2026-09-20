@@ -34,7 +34,7 @@ export function skillDerivedStandardsPath(observationsDir: string, skillName: st
 }
 
 export function loadSkillDerivedStandards(
-  observationsDir: string,
+  observationsDir?: string,
   reviewState: ObservationReviewState = loadObservationReviewState(observationsDir),
 ): Record<string, SkillDerivedStandards> {
   const dir = skillDerivedStandardsDir(resolveObservationsDir(observationsDir));

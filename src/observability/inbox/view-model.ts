@@ -8,6 +8,7 @@ import {
 import { projectEffectiveObservationReview, type EffectiveObservationReview } from './effective-review.js';
 import type { ObservationExperienceReport } from '../experience.js';
 import { loadObservationReviewState, type ObservationReviewState } from './review-state.js';
+import { resolveObservationsDir } from './paths.js';
 import { buildSkillChainsForEvidence } from './skill-chains.js';
 import type { ObservationSkillChain } from '../skill-health/skill-chain.js';
 import {
@@ -48,11 +49,13 @@ export interface ObservationInboxViewModelOptions {
   skill?: string;
 }
 
-export function buildObservationInboxViewModel(observationsDir: string, options: ObservationInboxViewModelOptions = {}): ObservationInboxViewModel {
+export function buildObservationInboxViewModel(observationsDir?: string, options: ObservationInboxViewModelOptions = {}): ObservationInboxViewModel {
+  // 一次投影只解析一次 inbox 目标，返回的 observationsDir 就是数据实际来自哪个 inbox。
+  const observationsRoot = resolveObservationsDir(observationsDir);
   const activeSkill = options.skill?.trim() || undefined;
-  const allItems = filterItemsBySkill(queryObservationInbox(observationsDir), activeSkill);
+  const allItems = filterItemsBySkill(queryObservationInbox(observationsRoot), activeSkill);
   const items = allItems.slice(0, 100);
-  const reports = loadLatestObservationInboxReports(observationsDir).map((report) => filterReportBySkill(report, activeSkill));
+  const reports = loadLatestObservationInboxReports(observationsRoot).map((report) => filterReportBySkill(report, activeSkill));
   const experienceReports = reports.flatMap((report) => report.experience ? [report.experience] : []);
   const skillInvocationCounts = reports.reduce((acc, report) => {
     for (const [skill, count] of Object.entries(report.meta.skillInvocationCounts ?? {})) {
@@ -99,10 +102,10 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     ...experienceReports.flatMap((report) => report.skills.map((skill) => skill.skillName)),
   ]));
   const { chains: skillChains } = buildSkillChainsForEvidence(skillNames, reports, experienceReports);
-  const reviewState = loadObservationReviewState(observationsDir);
-  const skillDerivedStandards = loadSkillDerivedStandards(observationsDir, reviewState);
+  const reviewState = loadObservationReviewState(observationsRoot);
+  const skillDerivedStandards = loadSkillDerivedStandards(observationsRoot, reviewState);
   const skillResolvedStandards = Object.fromEntries(skillNames.map((skillName) => [skillName, resolveSkillStandards(skillName, {
-    observationsDir,
+    observationsDir: observationsRoot,
     skillChain: skillChains[skillName],
     derivedStandards: skillDerivedStandards,
   })]));
@@ -110,7 +113,7 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
   const effectiveReview = projectEffectiveObservationReview(experienceReports, reviewState, skillDerivedStandards);
 
   return {
-    observationsDir,
+    observationsDir: observationsRoot,
     activeSkill,
     allItems,
     items,

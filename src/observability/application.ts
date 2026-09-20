@@ -6,7 +6,6 @@ export {
   buildKnowledgeDebuggerViewModel,
 } from './conversation/knowledge-debugger.js';
 export {
-  DEFAULT_OBSERVATIONS_DIR,
   loadLatestObservationInboxReports,
   queryObservationInbox,
 } from './inbox/index.js';

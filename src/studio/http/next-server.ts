@@ -11,7 +11,6 @@ import { nextAgentsContext, nextHealthContext, nextInboxContext, nextManagedCont
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
 import {
   createCodexConversationCatalog,
-  DEFAULT_OBSERVATIONS_DIR,
 } from '../../observability/application.js';
 import { isMeasurePath, loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
 import { isObservePath, loadObservePage, type ObservePage } from './pages/observe-page.js';
@@ -129,7 +128,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       }
       let inboxPage: InboxPage | undefined;
       if (inbox) {
-        try { inboxPage = loadInboxPage(options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR, searchParams.get('skill') ?? undefined); }
+        try { inboxPage = loadInboxPage(options.observationsDir, searchParams.get('skill') ?? undefined); }
         catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end(STUDIO_SOURCE_UNAVAILABLE); return true;

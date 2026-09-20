@@ -10,7 +10,7 @@ import {
 } from './capture-coverage.js';
 import { aggregateObservationInboxItemId } from './identity.js';
 import {
-  DEFAULT_OBSERVATIONS_DIR,
+  projectObservationsDir,
   resolveObservationsDir,
 } from './paths.js';
 
@@ -75,7 +75,7 @@ export function captureExplicitObservation(
   options: ExplicitObservationCaptureOptions = {},
 ): ExplicitObservationCaptureResult {
   const record = prepareExplicitObservationCaptureRecord(rawInput, options);
-  const observationsDir = options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR;
+  const observationsDir = options.observationsDir ?? projectObservationsDir();
   const recordPath = explicitCaptureRecordPath(observationsDir, record.captureId);
 
   return withFileLock(`${recordPath}.lock`, () => {
@@ -141,7 +141,7 @@ export function assertCompatibleExplicitObservationCapture(
 }
 
 export function loadExplicitObservationCaptureRecords(
-  observationsDir: string = DEFAULT_OBSERVATIONS_DIR,
+  observationsDir?: string,
 ): ExplicitObservationCaptureRecord[] {
   const capturesDir = join(resolveObservationsDir(observationsDir), CAPTURES_DIR_NAME);
   if (!existsSync(capturesDir)) return [];
@@ -155,7 +155,7 @@ export function loadExplicitObservationCaptureRecords(
 }
 
 export function loadExplicitObservationCaptureItems(
-  observationsDir: string = DEFAULT_OBSERVATIONS_DIR,
+  observationsDir?: string,
 ): ObservationInboxItem[] {
   return loadExplicitObservationCaptureRecords(observationsDir).map(projectCaptureRecord);
 }

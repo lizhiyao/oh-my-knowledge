@@ -131,6 +131,7 @@ test/observability/agents/smoke.test.ts
 test/observability/analysis/hedging-classifier.test.ts
 test/observability/inbox/experience-report.test.ts
 test/observability/inbox/metric-semantics.test.ts
+test/observability/inbox/paths.test.ts
 test/observability/inbox/resolved-review.test.ts
 test/observability/inbox/review-action-items.test.ts
 test/observability/inbox/review-semantics.test.ts
