@@ -62,6 +62,7 @@ test/eval-workflows/hosts/adapters/shared/content-identity.test.ts
 test/eval-workflows/hosts/adapters/shared/trial-lifecycle.test.ts
 test/eval-workflows/hosts/adapters/shared/trial-workspace.test.ts
 test/eval-workflows/hosts/composition/judge-provider-identity.test.ts
+test/eval-workflows/hosts/input-resolution/content-materialization.test.ts
 test/eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.test.ts
 test/eval-workflows/hosts/input-resolution/node-cli-materialization-concurrency.test.ts
 test/eval-workflows/hosts/reference-executors.test.ts

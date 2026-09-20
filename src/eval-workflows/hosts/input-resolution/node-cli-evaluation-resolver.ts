@@ -2,8 +2,8 @@ import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { parseStatelessApiSampleInput } from '../adapters/shared/sample-input.js';
 import { UnsupportedSampleSchemaError } from '../../inputs/schemas/error.js';
 import { createHash } from 'node:crypto';
-import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { extname, isAbsolute, join, resolve } from 'node:path';
+import { lstat, readFile } from 'node:fs/promises';
+import { extname, isAbsolute, resolve } from 'node:path';
 import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
@@ -44,7 +44,12 @@ import {
   type SampleContentResolverSession,
 } from '../../orchestration/sample-content-resolution.js';
 
-import { contentSha256 } from '../../../shared/content-hash.js';
+
+import {
+  materializeContentAddressedBytes,
+  type MaterializedContentExtension,
+  type MaterializationRejectionReason,
+} from './content-materialization.js';
 
 export interface ResolveNodeCliEvaluationRequestOptions {
   /** Absolute semantic root for relative CLI／eval.yaml locators. */
@@ -315,76 +320,32 @@ async function treeResource(
 }
 
 
+/** 物化失败的措辞与错误码属本层词汇；存储原语只报告原因。 */
+const MATERIALIZATION_REJECTION_MESSAGES: Record<MaterializationRejectionReason, string> = {
+  'content-directory-not-plain': 'Resolver materialization content path 必须是普通目录，不能是符号链接。',
+  'path-not-plain': 'Resolver materialization path 必须是普通文件，不能是符号链接。',
+  'digest-mismatch': 'Resolver materialization path 已存在但内容摘要不一致。',
+  'concurrent-path-not-plain': '并发物化命中的 path 必须是普通文件，不能是符号链接。',
+  'concurrent-digest-mismatch': '并发物化命中了摘要不一致的既有资源。',
+  'unsafe': '无法安全物化 resolver-owned 资源。',
+};
+
 async function materializeBytes(
   root: string,
   bytes: Uint8Array,
-  extension: '.json' | '.txt' | '.md',
+  extension: MaterializedContentExtension,
 ): Promise<string> {
-  const digest = contentSha256(bytes);
-  const directory = join(root, 'content');
-  const path = join(directory, `${digest.slice('sha256:'.length)}${extension}`);
-  try {
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    const directoryStat = await lstat(directory);
-    if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) fail({
-      code: 'CLI_INPUT_RESOLUTION_FAILED',
-      sourcePath: directory,
-      message: 'Resolver materialization content path 必须是普通目录，不能是符号链接。',
-    });
-    await chmod(directory, 0o700);
-    try {
-      const existingStat = await lstat(path);
-      if (!existingStat.isFile() || existingStat.isSymbolicLink()) fail({
-        code: 'CLI_INPUT_RESOLUTION_FAILED',
-        sourcePath: path,
-        message: 'Resolver materialization path 必须是普通文件，不能是符号链接。',
-      });
-      const existing = await readFile(path);
-      if (contentSha256(existing) !== digest) fail({
-        code: 'CLI_INPUT_RESOLUTION_FAILED',
-        sourcePath: path,
-        message: 'Resolver materialization path 已存在但内容摘要不一致。',
-      });
-      await chmod(path, 0o600);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      try {
-        const stagingRoot = await mkdtemp(join(directory, '.materialize-'));
-        try {
-          const stagedPath = join(stagingRoot, 'content');
-          await writeFile(stagedPath, bytes, { flag: 'wx', mode: 0o600 });
-          // Publish complete bytes without replacing a concurrent winner.
-          await link(stagedPath, path);
-        } finally {
-          await rm(stagingRoot, { recursive: true, force: true });
-        }
-      } catch (writeError) {
-        if ((writeError as NodeJS.ErrnoException).code !== 'EEXIST') throw writeError;
-        const existingStat = await lstat(path);
-        if (!existingStat.isFile() || existingStat.isSymbolicLink()) fail({
-          code: 'CLI_INPUT_RESOLUTION_FAILED',
-          sourcePath: path,
-          message: '并发物化命中的 path 必须是普通文件，不能是符号链接。',
-        });
-        const existing = await readFile(path);
-        if (contentSha256(existing) !== digest) fail({
-          code: 'CLI_INPUT_RESOLUTION_FAILED',
-          sourcePath: path,
-          message: '并发物化命中了摘要不一致的既有资源。',
-        });
-        await chmod(path, 0o600);
-      }
-    }
-  } catch (cause) {
-    if (cause instanceof CliEvaluationInputError) throw cause;
-    return fail({
+  return materializeContentAddressedBytes({
+    root,
+    bytes,
+    extension,
+    reject: ({ reason, path, cause }) => fail({
       code: 'CLI_INPUT_RESOLUTION_FAILED',
       sourcePath: path,
-      message: '无法安全物化 resolver-owned 资源。',
-      cause,
-    });
-  }
-  return path;
+      message: MATERIALIZATION_REJECTION_MESSAGES[reason],
+      ...(cause === undefined ? {} : { cause }),
+    }),
+  });
 }
 
 async function artifactResource(
