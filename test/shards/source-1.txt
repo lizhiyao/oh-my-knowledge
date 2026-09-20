@@ -58,6 +58,7 @@ test/eval-workflows/core-consumer-projections.test.ts
 test/eval-workflows/cross-executor-input-production.test.ts
 test/eval-workflows/hosts/adapters/shared/classified-environment.test.ts
 test/eval-workflows/hosts/adapters/shared/readonly-map-snapshot.test.ts
+test/eval-workflows/hosts/adapters/shared/trial-lifecycle.test.ts
 test/eval-workflows/hosts/adapters/shared/trial-workspace.test.ts
 test/eval-workflows/hosts/composition/judge-provider-identity.test.ts
 test/eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.test.ts

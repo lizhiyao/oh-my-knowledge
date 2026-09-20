@@ -3,7 +3,6 @@ import { STATELESS_API_SAMPLE_INPUT_POLICY } from '../shared/sample-input.js';
 import { z } from 'zod';
 import {
   RuntimeIdentitySchema,
-  canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type EvaluationDefinition,
@@ -53,6 +52,9 @@ export {
   OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   createOpenAIApiCoreSchemaValidators,
 } from './protocol.js';
+import {
+  assertTrialMatchesSealedBinding,
+} from '../shared/trial-lifecycle.js';
 
 export const DEFAULT_OPENAI_API_ENDPOINT = 'https://api.openai.com/v1/responses';
 export const DEFAULT_OPENAI_API_MAX_REQUEST_BYTES = 2 * 1024 * 1024;
@@ -416,18 +418,17 @@ export async function createOpenAIApiExecutorAdapter(
         );
       },
       openTrial({ trial, runState }) {
-        if (
-          trial.protocolId !== target.binding.protocolId
-          || trial.targetId !== target.binding.targetId
-          || canonicalizeJson(trial.targetConfig ?? null)
-            !== canonicalizeJson(target.target.config ?? null)
-        ) {
-          fail(
-            'OMK_OPENAI_API_TRIAL_MISMATCH',
-            'infrastructure',
-            'OpenAI API trial does not match the sealed Target binding.',
-          );
-        }
+        assertTrialMatchesSealedBinding({
+          trial,
+          binding: {
+            protocolId: target.binding.protocolId,
+            targetId: target.binding.targetId,
+            sealedTargetConfig: target.target.config,
+          },
+          mismatchCode: 'OMK_OPENAI_API_TRIAL_MISMATCH',
+          hostLabel: 'OpenAI API',
+          fail,
+        });
         return openStatelessApiTrial(
           trial,
           runState,

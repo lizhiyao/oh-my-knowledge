@@ -48,6 +48,10 @@ export {
   DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   createDshHostCoreSchemaValidators,
 } from './core-protocol.js';
+import {
+  assertTrialMatchesSealedBinding,
+  withTrialSlot,
+} from '../eval-workflows/hosts/adapters/shared/trial-lifecycle.js';
 
 export const DEFAULT_DSH_HOST_CORE_MAX_INPUT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_DSH_HOST_CORE_MAX_EVENT_BYTES = 10 * 1024 * 1024;
@@ -925,25 +929,21 @@ export async function createDshHostCoreExecutorAdapter(
         return captureClaudeCliRunState(resources, target, host.maxInputBytes, RESOURCE_PROFILE);
       },
       async openTrial({ runState, trial }) {
-        if (
-          trial.protocolId !== target.binding.protocolId
-          || trial.targetId !== target.binding.targetId
-          || canonicalizeJson(trial.targetConfig ?? null)
-            !== canonicalizeJson(target.target.config ?? null)
-        ) {
-          fail(
-            'OMK_DSH_HOST_TRIAL_MISMATCH',
-            'infrastructure',
-            'DSH Host trial does not match the sealed Target binding.',
-          );
-        }
-        runState.acquireTrial();
-        try {
-          return await openClaudeCliTrial(trial, runState, host.maxInputBytes, RESOURCE_PROFILE);
-        } catch (error) {
-          await runState.releaseTrial();
-          throw error;
-        }
+        assertTrialMatchesSealedBinding({
+          trial,
+          binding: {
+            protocolId: target.binding.protocolId,
+            targetId: target.binding.targetId,
+            sealedTargetConfig: target.target.config,
+          },
+          mismatchCode: 'OMK_DSH_HOST_TRIAL_MISMATCH',
+          hostLabel: 'DSH Host',
+          fail,
+        });
+        return withTrialSlot({
+          runState,
+          open: () => openClaudeCliTrial(trial, runState, host.maxInputBytes, RESOURCE_PROFILE),
+        });
       },
       execute({ runState, trialState, attempt, scope }) {
         return executeDshHost(

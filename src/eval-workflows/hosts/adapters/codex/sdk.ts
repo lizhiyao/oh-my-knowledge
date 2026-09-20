@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   RuntimeIdentitySchema,
-  canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type EvaluationDefinition,
@@ -64,6 +63,11 @@ export {
   type CodexSdkThreadOptions,
   type ResolvedCodexSdkRuntime,
 } from './sdk-runtime.js';
+import {
+  assertTrialMatchesSealedBinding,
+  releaseTrialSlot,
+  withTrialSlot,
+} from '../shared/trial-lifecycle.js';
 
 export const CODEX_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.1' as const;
 export const DEFAULT_CODEX_SDK_MAX_EVENT_BYTES = 10 * 1024 * 1024;
@@ -494,27 +498,23 @@ export async function createCodexSdkExecutorAdapter(
         }
       },
       async openTrial({ runState, trial }) {
-        if (
-          trial.protocolId !== target.binding.protocolId
-          || trial.targetId !== target.binding.targetId
-          || canonicalizeJson(trial.targetConfig ?? null)
-            !== canonicalizeJson(target.target.config ?? null)
-        ) {
-          fail(
-            'OMK_CODEX_SDK_TRIAL_MISMATCH',
-            'infrastructure',
-            'Codex SDK trial does not match the sealed Target binding.',
-          );
-        }
-        runState.resources.acquireTrial();
-        try {
-          return await openCodexTrialWorkspace(
+        assertTrialMatchesSealedBinding({
+          trial,
+          binding: {
+            protocolId: target.binding.protocolId,
+            targetId: target.binding.targetId,
+            sealedTargetConfig: target.target.config,
+          },
+          mismatchCode: 'OMK_CODEX_SDK_TRIAL_MISMATCH',
+          hostLabel: 'Codex SDK',
+          fail,
+        });
+        return withTrialSlot({
+          runState: runState.resources,
+          open: () => openCodexTrialWorkspace(
             trial, runState.resources, CODEX_SDK_RESOURCE_PROFILE, target,
-          );
-        } catch (error) {
-          await runState.resources.releaseTrial();
-          throw error;
-        }
+          ),
+        });
       },
       async execute({ runState, trialState, trial, attempt }) {
         await assertCodexIdentityFilesUnchanged(files, {
@@ -564,11 +564,7 @@ export async function createCodexSdkExecutorAdapter(
         };
       },
       async disposeTrial({ runState, trialState }) {
-        try {
-          await trialState.close();
-        } finally {
-          await runState.resources.releaseTrial();
-        }
+        await releaseTrialSlot({ runState: runState.resources, close: () => trialState.close() });
       },
       disposeRun({ runState }) {
         return disposeSdkRun(runState);
