@@ -101,7 +101,8 @@ export function coreRunArtifactDirectoryName(runId: string): string {
   return `run-${createHash('sha256').update(runId).digest('hex')}`;
 }
 
-function sha256(value: string): Sha256Digest {
+/** 只做品牌断言：入参已经是 `sha256:` 前缀的摘要串，这里不重新计算摘要。 */
+function asSha256Digest(value: string): Sha256Digest {
   return value as Sha256Digest;
 }
 
@@ -165,7 +166,7 @@ function assertPlanDocument(plan: RunPlan): void {
     },
   });
   const actualRandomizationDesignDigest = computeRandomizationDesignDigest({
-    executionInputDigest: sha256(plan.execution.executionInputDigest),
+    executionInputDigest: asSha256Digest(plan.execution.executionInputDigest),
     samples: plan.execution.samples,
     schedulingTargetGroups: plan.execution.schedulingTargetGroups,
     experiment: {
@@ -178,8 +179,8 @@ function assertPlanDocument(plan: RunPlan): void {
     assignments: plan.execution.assignments,
   });
   const actualExecutionPlanDigest = computeExecutionPlanDigest({
-    executionInputDigest: sha256(plan.execution.executionInputDigest),
-    randomizationDesignDigest: sha256(plan.execution.randomizationDesignDigest),
+    executionInputDigest: asSha256Digest(plan.execution.executionInputDigest),
+    randomizationDesignDigest: asSha256Digest(plan.execution.randomizationDesignDigest),
     targets: plan.execution.targets,
     assignments: plan.execution.assignments,
     schedulingTargetGroups: plan.execution.schedulingTargetGroups,
@@ -191,8 +192,8 @@ function assertPlanDocument(plan: RunPlan): void {
       : { extensions: plan.execution.extensions }),
   });
   const actualEvaluationPlanDigest = computeEvaluationPlanDigest({
-    executionPlanDigest: sha256(plan.evaluation.executionPlanDigest),
-    evaluationInputDigest: sha256(plan.evaluation.evaluationInputDigest),
+    executionPlanDigest: asSha256Digest(plan.evaluation.executionPlanDigest),
+    evaluationInputDigest: asSha256Digest(plan.evaluation.evaluationInputDigest),
     evaluators: plan.evaluation.evaluators,
     metrics: plan.evaluation.metrics,
     evaluatorRuntimes: plan.evaluation.runtimes,
@@ -202,8 +203,8 @@ function assertPlanDocument(plan: RunPlan): void {
       : { extensions: plan.evaluation.extensions }),
   });
   const actualAnalysisPlanDigest = computeAnalysisPlanDigest({
-    evaluationPlanDigest: sha256(plan.analysis.evaluationPlanDigest),
-    analysisInputDigest: sha256(plan.analysis.analysisInputDigest),
+    evaluationPlanDigest: asSha256Digest(plan.analysis.evaluationPlanDigest),
+    analysisInputDigest: asSha256Digest(plan.analysis.analysisInputDigest),
     samples: plan.analysis.samples,
     cohorts: plan.analysis.cohorts,
     metrics: plan.analysis.metrics,
@@ -216,8 +217,8 @@ function assertPlanDocument(plan: RunPlan): void {
       : { extensions: plan.analysis.extensions }),
   });
   const actualDecisionPlanDigest = computeDecisionPlanDigest({
-    analysisPlanDigest: sha256(plan.decision.analysisPlanDigest),
-    analysisInputDigest: sha256(plan.decision.analysisInputDigest),
+    analysisPlanDigest: asSha256Digest(plan.decision.analysisPlanDigest),
+    analysisInputDigest: asSha256Digest(plan.decision.analysisInputDigest),
     ...(plan.decision.decisionPolicy === undefined
       ? {}
       : { decisionPolicy: plan.decision.decisionPolicy }),
@@ -227,10 +228,10 @@ function assertPlanDocument(plan: RunPlan): void {
       : { extensions: plan.decision.extensions }),
   });
   const actualRunContractDigest = computeRunContractDigest({
-    executionPlanDigest: sha256(plan.execution.executionPlanDigest),
-    evaluationPlanDigest: sha256(plan.evaluation.evaluationPlanDigest),
-    analysisPlanDigest: sha256(plan.analysis.analysisPlanDigest),
-    decisionPlanDigest: sha256(plan.decision.decisionPlanDigest),
+    executionPlanDigest: asSha256Digest(plan.execution.executionPlanDigest),
+    evaluationPlanDigest: asSha256Digest(plan.evaluation.evaluationPlanDigest),
+    analysisPlanDigest: asSha256Digest(plan.analysis.analysisPlanDigest),
+    decisionPlanDigest: asSha256Digest(plan.decision.decisionPlanDigest),
     schemaIdentities: plan.schemaIdentities,
     eventDeliveryPolicy: plan.measurementPolicy.eventDelivery,
     ...(plan.definition.seriesMembership === undefined

@@ -44,6 +44,8 @@ import {
   type SampleContentResolverSession,
 } from '../../orchestration/sample-content-resolution.js';
 
+import { contentSha256 } from '../../../shared/content-hash.js';
+
 export interface ResolveNodeCliEvaluationRequestOptions {
   /** Absolute semantic root for relative CLI／eval.yaml locators. */
   readonly projectRoot: string;
@@ -312,16 +314,13 @@ async function treeResource(
   });
 }
 
-function sha256(bytes: Uint8Array): `sha256:${string}` {
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-}
 
 async function materializeBytes(
   root: string,
   bytes: Uint8Array,
   extension: '.json' | '.txt' | '.md',
 ): Promise<string> {
-  const digest = sha256(bytes);
+  const digest = contentSha256(bytes);
   const directory = join(root, 'content');
   const path = join(directory, `${digest.slice('sha256:'.length)}${extension}`);
   try {
@@ -341,7 +340,7 @@ async function materializeBytes(
         message: 'Resolver materialization path 必须是普通文件，不能是符号链接。',
       });
       const existing = await readFile(path);
-      if (sha256(existing) !== digest) fail({
+      if (contentSha256(existing) !== digest) fail({
         code: 'CLI_INPUT_RESOLUTION_FAILED',
         sourcePath: path,
         message: 'Resolver materialization path 已存在但内容摘要不一致。',
@@ -368,7 +367,7 @@ async function materializeBytes(
           message: '并发物化命中的 path 必须是普通文件，不能是符号链接。',
         });
         const existing = await readFile(path);
-        if (sha256(existing) !== digest) fail({
+        if (contentSha256(existing) !== digest) fail({
           code: 'CLI_INPUT_RESOLUTION_FAILED',
           sourcePath: path,
           message: '并发物化命中了摘要不一致的既有资源。',

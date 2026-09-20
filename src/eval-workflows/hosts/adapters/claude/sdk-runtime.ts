@@ -1,11 +1,12 @@
-import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
-import { createHash, randomUUID } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { arch, platform } from 'node:process';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { ContentIdentityFile } from '../shared/content-identity.js';
+
+import { collectIdentityFilesInDirectory } from '../shared/content-identity.js';
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 
@@ -104,35 +105,6 @@ function platformPackageNames(): readonly string[] {
   return names;
 }
 
-async function identityFilesInDirectory(
-  root: string,
-  facetNamespace: string,
-  current = root,
-): Promise<readonly ContentIdentityFile[]> {
-  let entries;
-  try {
-    entries = await readdir(current, { withFileTypes: true });
-  } catch {
-    throw new TypeError('Claude SDK runtime package tree is unavailable.');
-  }
-  const files: ContentIdentityFile[] = [];
-  for (const entry of entries.sort((left, right) => (
-    compareStrings(left.name, right.name)
-  ))) {
-    if (current === root && entry.name === 'node_modules' && entry.isDirectory()) continue;
-    const path = join(current, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await identityFilesInDirectory(root, facetNamespace, path));
-    } else if (entry.isFile()) {
-      const relativePath = relative(root, path).replaceAll('\\', '/');
-      const pathDigest = createHash('sha256').update(relativePath).digest('hex');
-      files.push({ facetId: `${facetNamespace}.file.${pathDigest}`, path });
-    } else {
-      throw new TypeError('Claude SDK runtime package contains an unsupported entry.');
-    }
-  }
-  return files;
-}
 
 /** Resolves the optional peer once per adapter assembly; no process-level cache is used. */
 export async function resolveInstalledClaudeSdkRuntime(): Promise<ResolvedClaudeSdkRuntime> {
@@ -150,7 +122,7 @@ export async function resolveInstalledClaudeSdkRuntime(): Promise<ResolvedClaude
     throw new TypeError('Claude SDK package does not declare its bundled Claude Code version.');
   }
   const sdkPackageRoot = dirname(sdkPackageManifestPath);
-  const sdkFiles = await identityFilesInDirectory(sdkPackageRoot, 'claude-sdk');
+  const sdkFiles = await collectIdentityFilesInDirectory({ root: sdkPackageRoot, facetNamespace: 'claude-sdk', label: 'Claude SDK runtime package' });
   if (!sdkFiles.some((file) => file.path === sdkEntrypointPath)) {
     throw new TypeError('Claude SDK package entrypoint is outside its package tree.');
   }
@@ -176,7 +148,7 @@ export async function resolveInstalledClaudeSdkRuntime(): Promise<ResolvedClaude
     || platformManifest.version !== sdkManifest.version
   ) throw new TypeError('Claude SDK and bundled Claude Code package versions are inconsistent.');
   const platformRoot = dirname(platformPackageManifestPath);
-  const platformFiles = await identityFilesInDirectory(platformRoot, 'claude-native');
+  const platformFiles = await collectIdentityFilesInDirectory({ root: platformRoot, facetNamespace: 'claude-native', label: 'Claude SDK runtime package' });
   const executablePath = join(platformRoot, platform === 'win32' ? 'claude.exe' : 'claude');
   if (!platformFiles.some((file) => file.path === executablePath)) {
     throw new TypeError('Claude SDK bundled Claude Code executable is unavailable.');
