@@ -281,7 +281,7 @@ async function validateReferencedContentClosure(
   }
 }
 
-/** Resolves and re-admits one execution envelope as a handle; plan binding happens at scoring. */
+/** Resolves and re-verifies one execution envelope as a handle; plan binding happens at scoring. */
 export async function loadExecutedEvaluation(
   input: Readonly<LoadExecutedEvaluationInput>,
 ): Promise<ExecutedEvaluation> {

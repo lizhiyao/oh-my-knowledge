@@ -360,10 +360,31 @@ Two caveats:
 - **The persisted report / observe / doctor / diagnosis top-level discriminant is `kind`, cut over from its earlier qualified field name in a deliberate BREAKING-SCHEMA change.** The cutover is hard — no dual-read, no migration shim: files written by older versions (an old qualified top-level discriminant, no `kind`) are simply not read and are skipped. This is serialization back-compat, not statistical comparability — the field name changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat further changes there with the usual schema care.)
 - Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
 
+### 5. Retire `admission`: one scene, one qualified name
+
+`admission` used to carry at least five unrelated meanings in this repo (provider-cost budget reservation, Core's plan-bound capability API, in-memory stage reuse, knowledge draft validation, persisted resume trust). The term is retired scene by scene; each scene keeps exactly one qualified name.
+
+| Scene | Standard name | Note |
+|---|---|---|
+| In-memory stage reuse against a freshly sealed Plan | plan-bound conformance verification (`verifyExecutedStageAgainstPlan`) | fail-closed verification, not an eligibility check |
+| Knowledge draft / evidence / grounding validation | knowledge validation (`src/knowledge/validation.ts`, `KnowledgeValidationProblem`) | pure validator, no governance meaning |
+| Persisted resume trust decision | resume disposition (`src/eval-workflows/resume-disposition/`, `CoreResumeDisposition*`) | `disposition` was already the module's own word |
+| Provider-cost budget reservation | unchanged for now | the field `policy.budget.providerCostAdmission.admissionMode` is published and persisted; renaming it would make stored plans unreadable, so it waits for a schema version bump (target name `providerCostOvershoot.mode`) |
+
+Two identities are deliberately frozen and keep the old word:
+
+- the digest derivation tag `omk.core-resume-admission/v1` — a versioned identity string, not vocabulary; changing it would silently change every resume disposition digest;
+- enum values such as `'admitted'` / `'rejected'` — values stay stable so the rename cannot alter a measurement or a persisted decision.
+
+Core's published `admit*` capability API (`admitExecutionBundle` and siblings) and the Series member field `admissionStatus` are two further senses. Both are external surface, so they are renamed only after an explicit vocabulary decision, not as part of an internal sweep.
+
 ## 6. Term mapping
 
 | Old term | New standard term | Note |
 |---|---|---|
+| admission (stage reuse) | plan-bound conformance verification | `verifyExecutedStageAgainstPlan`; fail-closed, not eligibility |
+| admission (knowledge drafts) | knowledge validation | `src/knowledge/validation.ts`, `KnowledgeValidationProblem` |
+| resume-admission | resume-disposition | persisted resume trust decision; digest tag stays frozen |
 | evaluand | artifact | unified umbrella for the thing being evaluated |
 | EvaluandSpec | Artifact | core object type |
 | EvaluandKind | ArtifactKind | object category |

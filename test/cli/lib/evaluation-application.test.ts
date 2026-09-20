@@ -182,7 +182,7 @@ describe('CLI product application', () => {
       .toBe(result.stored!.report.reportDigest);
   });
 
-  it('finds global evidence from the explicit project context without weakening resume admission', async () => {
+  it('finds global evidence from the explicit project context without weakening resume disposition', async () => {
     const input = await fixture();
     const unrelated = join(input.root, 'unrelated');
     await mkdir(unrelated);

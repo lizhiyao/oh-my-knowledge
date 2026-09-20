@@ -14,11 +14,11 @@ import {
   createNodeCoreRunArtifactStore,
 } from '../../src/eval-workflows/artifact-store/index.js';
 import {
-  CoreResumeAdmissionError,
-  createCoreResumeAdmissionAdapter,
-  type CoreResumeAdmissionPolicy,
+  CoreResumeDispositionError,
+  createCoreResumeDispositionAdapter,
+  type CoreResumeDispositionPolicy,
   type CoreResumeVerificationContexts,
-} from '../../src/eval-workflows/resume-admission/index.js';
+} from '../../src/eval-workflows/resume-disposition/index.js';
 import {
   InMemoryConformanceExecutionCache,
   InMemoryConformanceArtifactStore,
@@ -41,7 +41,7 @@ afterEach(async () => {
   )));
 });
 
-const strictPolicy: CoreResumeAdmissionPolicy = {
+const strictPolicy: CoreResumeDispositionPolicy = {
   rejectionMode: 'fail-closed',
   minimumSourceTrust: 'declared',
   cacheReceiptMode: 'require-verified',
@@ -107,7 +107,7 @@ async function saveResult(
   return store;
 }
 
-describe('Core resume admission', () => {
+describe('Core resume disposition', () => {
   it('re-admits a complete run against a freshly sealed Plan and trusted evidence', async () => {
     const root = await temporaryDirectory();
     const sourceRunId = 'resume-source';
@@ -119,12 +119,12 @@ describe('Core resume admission', () => {
       freshPlan.digests.runContractDigest,
       result.plan.digests.runContractDigest,
     );
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: store,
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
 
-    const admitted = await adapter.admit({
+    const admitted = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: freshPlan,
       policy: strictPolicy,
@@ -135,17 +135,17 @@ describe('Core resume admission', () => {
     if (admitted.disposition !== 'reuse') return;
     assert.equal(admitted.report.reportDigest, result.report.reportDigest);
     assert.equal(admitted.verification.effectiveSourceTrust, 'declared');
-    assert.match(admitted.admissionDigest, /^sha256:[0-9a-f]{64}$/);
+    assert.match(admitted.dispositionDigest, /^sha256:[0-9a-f]{64}$/);
     assert.deepEqual(admitted.executionSource.bundle, admitted.artifacts.execution);
   });
 
   it('returns a stable start-fresh reason when an explicit fallback policy rejects a source', async () => {
     const root = await temporaryDirectory();
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: createNodeCoreRunArtifactStore(root),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
-    const result = await adapter.admit({
+    const result = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: 'missing-run' },
       plan: await prepareConformancePlan('function'),
       policy: { ...strictPolicy, rejectionMode: 'start-fresh' },
@@ -162,16 +162,16 @@ describe('Core resume admission', () => {
     const sourceRunId = 'contract-source';
     const result = await runConformanceScenario('function', { runId: sourceRunId });
     const store = await saveResult(result, root, sourceRunId);
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: store,
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
-    await assert.rejects(adapter.admit({
+    await assert.rejects(adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: await prepareConformancePlan('rag'),
       policy: strictPolicy,
     }), (error: unknown) => (
-      error instanceof CoreResumeAdmissionError
+      error instanceof CoreResumeDispositionError
       && error.code === 'CORE_RESUME_CONTRACT_MISMATCH'
     ));
   });
@@ -181,18 +181,18 @@ describe('Core resume admission', () => {
     const sourceRunId = 'transported-plan-source';
     const result = await runConformanceScenario('function', { runId: sourceRunId });
     const store = await saveResult(result, root, sourceRunId);
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: store,
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
     const transportedPlan = structuredClone(result.plan) as unknown as SealedRunPlan;
-    const admission = await adapter.admit({
+    const resume = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: transportedPlan,
       policy: { ...strictPolicy, rejectionMode: 'start-fresh' },
       verification: trustedVerification(result),
     });
-    assert.deepEqual(admission, {
+    assert.deepEqual(resume, {
       disposition: 'start-fresh',
       sourceRunId,
       reasonCode: 'CORE_RESUME_REQUEST_INVALID',
@@ -204,11 +204,11 @@ describe('Core resume admission', () => {
     const sourceRunId = 'unattested-source';
     const result = await runConformanceScenario('function', { runId: sourceRunId });
     const store = await saveResult(result, root, sourceRunId);
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: store,
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
-    const provenanceRejected = await adapter.admit({
+    const provenanceRejected = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: result.plan,
       policy: { ...strictPolicy, rejectionMode: 'start-fresh' },
@@ -220,7 +220,7 @@ describe('Core resume admission', () => {
         'CORE_RESUME_PROVENANCE_BELOW_POLICY',
       );
     }
-    const verificationRejected = await adapter.admit({
+    const verificationRejected = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: result.plan,
       policy: {
@@ -250,18 +250,18 @@ describe('Core resume admission', () => {
     });
     assert.notEqual(result.report.status.runStatus, 'completed');
     const store = await saveResult(result, root, sourceRunId);
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: store,
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
-    const admission = await adapter.admit({
+    const resume = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: result.plan,
       policy: { ...strictPolicy, rejectionMode: 'start-fresh' },
     });
-    assert.equal(admission.disposition, 'start-fresh');
-    if (admission.disposition === 'start-fresh') {
-      assert.equal(admission.reasonCode, 'CORE_RESUME_SOURCE_INCOMPLETE');
+    assert.equal(resume.disposition, 'start-fresh');
+    if (resume.disposition === 'start-fresh') {
+      assert.equal(resume.reasonCode, 'CORE_RESUME_SOURCE_INCOMPLETE');
     }
   });
 
@@ -280,17 +280,17 @@ describe('Core resume admission', () => {
       contentResolver: contentStore,
     });
     await writableStore.save(saveRequest(result, sourceRunId));
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: createNodeCoreRunArtifactStore(root),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
-    const admission = await adapter.admit({
+    const resume = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: result.plan,
       policy: { ...strictPolicy, rejectionMode: 'start-fresh' },
       verification: trustedVerification(result),
     });
-    assert.deepEqual(admission, {
+    assert.deepEqual(resume, {
       disposition: 'start-fresh',
       sourceRunId,
       reasonCode: 'CORE_RESUME_EVIDENCE_UNAVAILABLE',
@@ -316,11 +316,11 @@ describe('Core resume admission', () => {
       mutate,
     });
     const store = await saveResult(replay, root, sourceRunId);
-    const adapter = createCoreResumeAdmissionAdapter({
+    const adapter = createCoreResumeDispositionAdapter({
       artifactStore: store,
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
     });
-    const withoutReceipts = await adapter.admit({
+    const withoutReceipts = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: replay.plan,
       policy: {
@@ -343,7 +343,7 @@ describe('Core resume admission', () => {
         ? [record.cache.sourceRecordDigest as Sha256Digest]
         : []
     ));
-    const admitted = await adapter.admit({
+    const admitted = await adapter.decide({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       plan: replay.plan,
       policy: strictPolicy,

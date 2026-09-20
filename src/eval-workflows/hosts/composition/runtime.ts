@@ -303,7 +303,7 @@ function captureClock(clock: EvaluationEngineClock): EvaluationEngineClock {
 }
 
 /**
- * Build the exact validator registry shared by execution, resume admission,
+ * Build the exact validator registry shared by execution, resume disposition,
  * and Series verification. Keeping this merge in one place prevents a host
  * workflow from accepting evidence that the executing Runtime would reject.
  */

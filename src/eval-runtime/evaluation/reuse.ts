@@ -54,7 +54,7 @@ import {  assertEvaluationBundleSourceMatchesPlan,
 import {  assertExecutionBundleSourceMatchesPlan,
 } from '../../eval-core/verify/index.js';
 
-/** @internal Re-admits one serialized result against an exact prepared contract. */
+/** @internal Re-verifies one serialized result against an exact prepared contract. */
 export function restorePreparedEvaluationResult(
   preparedFacade: PreparedEvaluation,
   value: unknown,
@@ -155,12 +155,12 @@ export function restorePreparedEvaluationResult(
     if (error instanceof EvaluationConfigurationError) throw error;
     return configurationFailure(
       'EVAL_RUNTIME_REUSE_INVALID',
-      'Evaluation stored result 未通过 Core admission。',
+      'Evaluation stored result 未通过 Core 计划绑定符合性校验。',
     );
   }
 }
 
-/** @internal Admits an exact canonical result as its preregistered Series slot. */
+/** @internal Verifies an exact canonical result as its preregistered Series slot. */
 export function createCanonicalEvaluationSeriesMemberSource(
   result: EvaluationResult,
   membership: Readonly<EvaluationSeriesMembership>,
@@ -312,12 +312,12 @@ export async function redecide(
 }
 
 /**
- * @internal Re-admits one execution-only handle against a freshly sealed Plan.
+ * @internal Re-verifies one execution-only handle against a freshly sealed Plan.
  * A Runtime-issued handle keeps its live source so attested provenance is not silently
- * downgraded; a loaded handle has no live source and must pass Core's plan-bound admission
+ * downgraded; a loaded handle has no live source and must pass Core's plan-bound conformance verification
  * with the host verification facts captured when it was loaded.
  */
-function admitExecutedEvaluationStage(
+function verifyExecutedStageAgainstPlan(
   prepared: CoreAdvancedPreparedEvaluation,
   executed: ExecutedEvaluation,
 ): ExecutionBundleSource {
@@ -365,7 +365,7 @@ export async function scoreExecutedEvaluation(
   const prepared = corePreparedCapability(await prepareEvaluation(input));
   return runSuffixStages(
     prepared,
-    { execution: admitExecutedEvaluationStage(prepared, executed) },
+    { execution: verifyExecutedStageAgainstPlan(prepared, executed) },
     captured,
     'Evaluation stage scoring',
   );

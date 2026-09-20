@@ -41,7 +41,7 @@ test/eval-workflows/measurement/analysis/assertion-layer-core.test.ts
 test/eval-workflows/measurement/analysis/assertion-layer.test.ts
 test/eval-workflows/measurement/analysis/bootstrap-family-table.test.ts
 test/eval-workflows/measurement/analysis/dimension-node.test.ts
-test/eval-workflows/resume-admission.test.ts
+test/eval-workflows/resume-disposition.test.ts
 test/eval-workflows/sample-generation/trace-drafts.test.ts
 test/evidence/storage/report-bundle.test.ts
 test/evidence/storage/user-settings.test.ts

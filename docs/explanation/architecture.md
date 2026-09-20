@@ -62,7 +62,7 @@ Each stage retains its own artifacts. Reusing existing artifacts through staged 
 
 ## Source dependency model
 
-`knowledge/` owns reusable knowledge content contracts and pure admission validation, separately from carrier lifecycle in `knowledge-artifacts/`. CLI and Studio share these rules; outer application flows and adapters own source reads, extraction calls, and persistence. Reference checks establish structural and source-location integrity, not support for a claim. This domain is under implementation; complete user entry points still require acceptance verification.
+`knowledge/` owns reusable knowledge content contracts and pure knowledge validation, separately from carrier lifecycle in `knowledge-artifacts/`. CLI and Studio share these rules; outer application flows and adapters own source reads, extraction calls, and persistence. Reference checks establish structural and source-location integrity, not support for a claim. This domain is under implementation; complete user entry points still require acceptance verification.
 
 Directories under `src` express domain ownership rather than one mechanical repository-wide layering scheme. Three dependency kinds are reviewed separately:
 
@@ -119,7 +119,7 @@ eval-workflows/
 ├── instruments/        # evaluator configuration and frozen prompt assets
 ├── projections/        # authenticated downstream views of Core artifacts
 ├── sample-generation/  # evaluation case generation, constraints and source material
-├── resume-admission/   # persisted-run integrity and resume admission
+├── resume-disposition/   # persisted-run integrity and resume disposition
 ├── measurement/        # product scoring, analysis nodes, and evaluator implementations
 └── orchestration/      # product orchestration, persistence, and injected Runtime consumption
 
@@ -218,7 +218,7 @@ reach Studio through diagnosis and domain projections. Extract shared mechanics 
 contracts. The user facade's event consumption and product run-lease wrapper do not constitute
 duplicate scheduling merely because both invoke Core.
 
-Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain is implemented in `knowledge/contracts.ts`, `admission.ts`, `history.ts` and `store.ts`; filesystem adapters and extraction orchestration remain outside that pure domain.
+Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain is implemented in `knowledge/contracts.ts`, `validation.ts`, `history.ts` and `store.ts`; filesystem adapters and extraction orchestration remain outside that pure domain.
 
 ### Sample input admission
 

@@ -117,7 +117,7 @@ eval-workflows/
 ├── instruments/        # evaluator 配置与冻结 prompt 资产
 ├── projections/        # 基于认证 Core 产物的下游视图
 ├── sample-generation/  # 评测用例生成、约束与输入素材
-├── resume-admission/   # 持久化 run 完整性与 resume 准入
+├── resume-disposition/   # 持久化 run 完整性与续跑处置
 ├── measurement/        # 产品评分、analysis node 与 evaluator 实现
 └── orchestration/      # 产品编排、持久化与注入的 Runtime 消费
 
@@ -198,7 +198,7 @@ Runtime；生成、修复及辅助分析可以直接使用 `ExecutorFn`；观测
 Studio。这些路径用途不同，共用机制须按契约提取。用户 façade 的事件消费与产品运行租约也不能
 仅因都调用 Core 就认定为重复调度。
 
-当前保留共用宿主，是因为 CLI 与 DSH 实际复用其绑定、注册和资源装配；入口专属策略已经归入口。内部实现测试按宿主适配、Runtime、产品测量和投影分别归属。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，应依据公开引用与证据读取需求决定保留或迁移。知识内容领域已由 `knowledge/contracts.ts`、`admission.ts`、`history.ts` 和 `store.ts` 实现；文件系统适配和提炼编排仍归外层。
+当前保留共用宿主，是因为 CLI 与 DSH 实际复用其绑定、注册和资源装配；入口专属策略已经归入口。内部实现测试按宿主适配、Runtime、产品测量和投影分别归属。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，应依据公开引用与证据读取需求决定保留或迁移。知识内容领域已由 `knowledge/contracts.ts`、`validation.ts`、`history.ts` 和 `store.ts` 实现；文件系统适配和提炼编排仍归外层。
 
 ### 样本输入准入
 

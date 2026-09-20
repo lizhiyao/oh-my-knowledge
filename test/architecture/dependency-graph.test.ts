@@ -28,7 +28,7 @@ const EVAL_WORKFLOW_SUBDOMAINS = new Set([
   'measurement',
   'orchestration',
   'projections',
-  'resume-admission',
+  'resume-disposition',
   'sample-generation',
 ]);
 
@@ -329,7 +329,7 @@ describe('src 与 scripts 依赖图', () => {
     expect(moduleDomain('eval-workflows/input-compilation/compile.ts')).toBe('eval-workflows/input-compilation');
     expect(moduleDomain('eval-workflows/orchestration/orchestration.ts')).toBe('eval-workflows/orchestration');
     expect(moduleDomain('eval-workflows/projections/cli.ts')).toBe('eval-workflows/projections');
-    expect(moduleDomain('eval-workflows/resume-admission/admit.ts')).toBe('eval-workflows/resume-admission');
+    expect(moduleDomain('eval-workflows/resume-disposition/disposition.ts')).toBe('eval-workflows/resume-disposition');
     expect(moduleDomain('eval-workflows/measurement/analysis/composite-node.ts')).toBe('eval-workflows/measurement');
     expect(moduleDomain('eval-workflows/hosts/composition/assembly.ts')).toBe('eval-workflows/hosts');
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');

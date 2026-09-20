@@ -18,7 +18,7 @@ describe('eval-workflows 与 executors 领域布局', () => {
         'measurement',
         'orchestration',
         'projections',
-        'resume-admission',
+        'resume-disposition',
         'sample-generation',
       ]);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())

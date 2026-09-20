@@ -47,7 +47,7 @@ Node content store 实现现有 Execution／Evaluation content port。写入前�
 
 解析时重新校验 envelope digest、descriptor、canonical value digest、media type、byte size 与 classification。失败只返回稳定且脱敏的错误码；原始文件路径和内容不会进入 Core error。
 
-## 六、Resume admission
+## 六、Resume disposition
 
 resume 是完整事实复用，不是复制结果行或跨进程续接 checkpoint。宿主先根据当前 Definition 与 MeasurementPolicy prepare，获得新的 `SealedRunPlan`。admission adapter 会拒绝只有相同 JSON 结构的 transported Plan，再按 Execution、Evaluation、Analysis、Decision、Report 的顺序调用 Core verifier。
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { validateEvidenceSelection, validateKnowledgeDraft } from '../../src/knowledge/admission.js';
+import { validateEvidenceSelection, validateKnowledgeDraft } from '../../src/knowledge/validation.js';
 import { KnowledgeTimeSchema, type KnowledgeDraft } from '../../src/knowledge/contracts.js';
 import { checkExtractionResponse, type ExtractionProposal } from '../../src/observability/knowledge-extraction/proposals.js';
 
 import { draft, proposal } from './fixtures.js';
 const evidence = new Set(['record-1']);
 
-describe('model output admission', () => {
+describe('model output validation', () => {
   const excerpts = [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta' }];
   it('accepts a grounded proposal and treats zero proposals as a valid result', () => {
     expect(checkExtractionResponse({ proposals: [proposal()] }, excerpts).accepted).toHaveLength(1);
@@ -33,7 +33,7 @@ describe('model output admission', () => {
   });
 });
 
-describe('knowledge admission', () => {
+describe('knowledge validation', () => {
   it('admits background-only candidates without promoting inference to support', () => {
     const input = draft();
     const result = validateKnowledgeDraft(input, evidence);

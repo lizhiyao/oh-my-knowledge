@@ -272,7 +272,7 @@ async function validateReferencedContentClosure(
   }
 }
 
-/** Resolves and re-admits one result against the caller's exact prepared contract. */
+/** Resolves and re-verifies one result against the caller's exact prepared contract. */
 export async function loadEvaluationResult(
   input: Readonly<LoadEvaluationResultInput>,
 ): Promise<EvaluationResult> {
@@ -401,6 +401,6 @@ export async function loadEvaluationResult(
     return restored;
   } catch (error) {
     if (error instanceof EvaluationResultStoreError) throw error;
-    return failure('EVAL_RUNTIME_RESULT_CONTENT_INVALID', 'Evaluation result 未通过 Core admission。');
+    return failure('EVAL_RUNTIME_RESULT_CONTENT_INVALID', 'Evaluation result 未通过 Core 计划绑定符合性校验。');
   }
 }

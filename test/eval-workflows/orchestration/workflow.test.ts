@@ -321,7 +321,7 @@ describe('production evaluation host workflow', () => {
       result: Promise.resolve(completedResult(fixture)),
       store,
     })).prepare();
-    const admitted = await prepared.admitResume({
+    const admitted = await prepared.resolveResumeDisposition({
       locator: { locatorKind: 'core-run', runId: 'resume-source' },
       policy: {
         rejectionMode: 'fail-closed',

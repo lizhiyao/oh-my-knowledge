@@ -78,12 +78,12 @@ export async function executeProductEvaluation(input: ProductEvaluationExecution
   const prepared = await createProductionEvaluationWorkflow(host).prepare({ signal: input.signal });
   let artifacts: StoredCoreRunArtifacts;
   if (sourceRunId !== undefined) {
-    const admission = await prepared.admitResume({
+    const resume = await prepared.resolveResumeDisposition({
       locator: { locatorKind: 'core-run', runId: sourceRunId },
       policy: { rejectionMode: 'fail-closed', minimumSourceTrust: 'unknown', cacheReceiptMode: 'allow-indeterminate', budgetVerificationMode: 'allow-indeterminate' },
     });
-    if (admission.disposition !== 'reuse') throw new Error(`Core resume 被拒绝：${admission.reasonCode}`);
-    artifacts = admission.artifacts;
+    if (resume.disposition !== 'reuse') throw new Error(`Core resume 被拒绝：${resume.reasonCode}`);
+    artifacts = resume.artifacts;
   } else {
     const run = await prepared.execute({
       runId: generateRunId(prepared.plan.execution.targets.map((target) => target.targetId)),
