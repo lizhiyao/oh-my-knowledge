@@ -559,6 +559,19 @@ function unreferencedExports(dir: string, family: string[]): string[] {
   return unreferenced;
 }
 
+/** 一个模块对外可见的名字集合：自身声明的导出 ＋ 所有 export {} 块里的名字。 */
+function exportedNames(content: string): string[] {
+  const names = new Set<string>();
+  for (const match of content.matchAll(/^export (?:async )?(?:function|const|class|interface|type) (\w+)/gm)) names.add(match[1]);
+  for (const match of content.matchAll(/export (?:type )?\{([^}]*)\}/g)) {
+    for (const raw of match[1].split(',')) {
+      const name = raw.trim().replace(/^type /, '').split(/\s+as\s+/).pop();
+      if (name) names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
 describe('架构边界守门', () => {
   it('观测边界覆盖无扩展名、再导出和模块加载，忽略注释与字符串', () => {
     const specifiers = extractSpecifiers(`
@@ -868,6 +881,82 @@ describe('架构边界守门', () => {
     }
 
     expect(unreferencedExports(inboxDir, family)).toEqual([]);
+  });
+
+  it('Evaluation Core 内建分析按算法族拆分，入口公开面冻结', () => {
+    const analysisDir = join(SRC_DIR, 'eval-core', 'analysis');
+    const family = readdirSync(analysisDir)
+      .filter((name) => name.startsWith('builtin-') && name.endsWith('.ts'))
+      .sort();
+    // 新增 builtin-* 模块必须在此显式登记：内建分析曾经把 4 个算法族与 3 个决策策略摊在 2,728 行里。
+    expect(family).toEqual([
+      'builtin-aggregation.ts',
+      'builtin-bootstrap.ts',
+      'builtin-composite.ts',
+      'builtin-decisions.ts',
+      'builtin-hypothesis.ts',
+      'builtin-identity.ts',
+      'builtin-primitives.ts',
+      'builtin-registry.ts',
+      'builtin-schemas.ts',
+      'builtin-validation.ts',
+    ]);
+    const contents = new Map(family.map((name) => [name, readFileSync(join(analysisDir, name), 'utf-8')]));
+
+    // 族内单向分层：primitives 是叶子，registry 在最上；任何反向边都会造出 Core 内部环。
+    const allowed: Record<string, string[]> = {
+      'builtin-primitives.ts': [],
+      'builtin-schemas.ts': [],
+      'builtin-identity.ts': ['builtin-schemas.ts'],
+      'builtin-aggregation.ts': ['builtin-primitives.ts', 'builtin-schemas.ts'],
+      'builtin-composite.ts': ['builtin-aggregation.ts', 'builtin-primitives.ts', 'builtin-schemas.ts'],
+      'builtin-bootstrap.ts': ['builtin-aggregation.ts', 'builtin-composite.ts', 'builtin-primitives.ts'],
+      'builtin-hypothesis.ts': ['builtin-primitives.ts', 'builtin-schemas.ts'],
+      'builtin-registry.ts': [
+        'builtin-bootstrap.ts',
+        'builtin-hypothesis.ts',
+        'builtin-identity.ts',
+        'builtin-primitives.ts',
+        'builtin-schemas.ts',
+      ],
+      'builtin-validation.ts': ['builtin-hypothesis.ts', 'builtin-primitives.ts', 'builtin-schemas.ts'],
+      'builtin-decisions.ts': ['builtin-identity.ts', 'builtin-schemas.ts'],
+    };
+    for (const [name, content] of contents) {
+      const intra = [...new Set(
+        extractSpecifiers(content)
+          .filter((spec) => spec.startsWith('./builtin-'))
+          .map((spec) => `${spec.slice(2, -3)}.ts`),
+      )].sort();
+      expect({ module: name, intra }).toEqual({ module: name, intra: allowed[name] });
+    }
+
+    // 入口只住五个公开工厂，算法实现一律转口；公开名集合冻结为拆分前那 16 个。
+    const entry = readFileSync(join(analysisDir, 'builtins.ts'), 'utf-8');
+    expect(entry).toContain('export function createBuiltinAnalysisNodes(');
+    expect(entry).not.toContain('function executeMeanBootstrap(');
+    expect(entry).not.toContain('function aggregateMeasurementTrials(');
+    expect(entry).not.toContain('const BUILTIN_DEFINITIONS');
+    expect(exportedNames(entry)).toEqual([
+      'BUILTIN_EXCLUDE_MISSING_POLICY',
+      'BUILTIN_FAMILY_RELEASE_DECISION_POLICY',
+      'BUILTIN_HYPOTHESIS_INPUT_SCHEMA',
+      'BUILTIN_HYPOTHESIS_TABLE_SCHEMA',
+      'BUILTIN_INTERVAL_PROGRESS_DECISION_POLICY',
+      'BUILTIN_INTERVAL_RESULT_SCHEMA',
+      'BUILTIN_PROGRESS_DECISION_POLICY',
+      'BUILTIN_SCALAR_RESULT_SCHEMA',
+      'BUILTIN_SIMULTANEOUS_INTERVAL_FAMILY_RESULT_SCHEMA',
+      'bonferroniMarginalAlpha',
+      'bonferroniMarginalConfidenceLevel',
+      'createBuiltinAnalysisNodes',
+      'createBuiltinAnalysisSchemaValidators',
+      'createBuiltinDecisionPolicies',
+      'createBuiltinMissingPolicies',
+      'resolveBuiltinAnalysisRuntime',
+    ]);
+
+    expect(unreferencedExports(analysisDir, family)).toEqual([]);
   });
 
   it('Experience reviewer report 由独立模块拥有', () => {
