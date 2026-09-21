@@ -8,7 +8,13 @@
 import { z } from 'zod';
 import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
 
-export const AGENT_INVENTORY_VERSION = 'agent-inventory-v1' as const;
+/**
+ * v2 起日志根状态能表达「目录里有会话文件，但当前运行时读不了这种格式」（`unreadableReason`）。
+ * v1 里这种情况与「装了但没日志」长得一样，会把能力缺口说成空目录，因此不自动改写用户磁盘上的
+ * 旧清单，只把它识别为旧版本并提示重新识别。
+ */
+export const AGENT_INVENTORY_VERSION = 'agent-inventory-v2' as const;
+export const SUPERSEDED_AGENT_INVENTORY_VERSIONS = ['agent-inventory-v1'] as const;
 /**
  * v2 起 `unknownEventCount` 只统计「未支持的记录」，同一事实的重复／累计视图与尚未映射的
  * 唯一证据各自成档。v1 里这个字段是全部未识别事件的总数，两者不可同比，因此不自动改写
@@ -68,6 +74,11 @@ export const AgentLogRootStatusSchema = z.strictObject({
   newestModifiedAt: z.string().optional(),
   /** 扫描被容量上限截断时为 true，报告不得把截断后的计数当作全量。 */
   truncated: z.boolean(),
+  /**
+   * 发现了会话文件却读不了时的原因；能读时省略。刻意不复用 `readable`——那一位说的是目录
+   * 权限，不是格式支持，两者混在一起会把「没权限」和「没能力」报成同一句话。
+   */
+  unreadableReason: z.enum(['needs-zstd-decompression']).optional(),
 });
 
 export const DetectedAgentSchema = z.strictObject({

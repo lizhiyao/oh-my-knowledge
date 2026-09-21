@@ -106,7 +106,7 @@ describe('detectAgentInventory 安装判定', () => {
     assert.equal(report.generatedAt, GENERATED_AT);
     assert.equal(report.homeDirectory, HOME);
     assert.equal(report.platform, 'darwin');
-    assert.equal(report.schemaVersion, 'agent-inventory-v1');
+    assert.equal(report.schemaVersion, 'agent-inventory-v2');
   });
 });
 
@@ -215,5 +215,31 @@ describe('detectAgentInventory 能力边界', () => {
     for (const key of ['exec', 'execFile', 'spawn', 'readFile', 'open', 'unlink', 'rm'] as const) {
       assert.equal((fake as unknown as Record<string, unknown>)[key], undefined, `端口不得暴露 ${key}`);
     }
+  });
+});
+
+/** 「装了但本机读不了这格式」与「装了没日志」必须分开呈现：前者要换运行时，后者要等真会话。 */
+describe('识别报告的格式不可读这一位', () => {
+  const dshSession = `${HOME}/.dsh/sessions/--repo--/session-1/session.jsonl.zstd`;
+
+  it('发现 .zstd 会话而运行时没有 zstd 能力时记一档，有能力时不记', () => {
+    const fs = new FakeFileSystem();
+    fs.file(dshSession);
+
+    const blocked = rootOf(agentOf(detect(fs, { zstdAvailable: false }), 'dsh'), 'sessions');
+    assert.equal(blocked.unreadableReason, 'needs-zstd-decompression');
+    assert.equal(blocked.sessionFileCount, 1, '计数照旧：读不了不等于没有文件');
+
+    const readable = rootOf(agentOf(detect(fs, { zstdAvailable: true }), 'dsh'), 'sessions');
+    assert.equal(readable.unreadableReason, undefined);
+  });
+
+  it('目录存在但没有会话文件时不报格式不可读', () => {
+    const fs = new FakeFileSystem();
+    fs.mkdir(`${HOME}/.dsh/sessions`);
+
+    const empty = rootOf(agentOf(detect(fs, { zstdAvailable: false }), 'dsh'), 'sessions');
+    assert.equal(empty.unreadableReason, undefined);
+    assert.equal(empty.sessionFileCount, 0);
   });
 });
