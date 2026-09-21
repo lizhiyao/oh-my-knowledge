@@ -154,6 +154,29 @@ Sample schema 含一组可选元数据字段，纯文档 / 诊断用，**不参�
 - trace 属于运行结果
 - trace 用于解释 agent 行为差异，不用于命名被评测对象
 
+### 9. Evaluation Runtime vocabulary（评测运行时词表）
+
+内嵌 Runtime API 使用下列标准术语，不引入第二套词表：
+
+| 术语 | 规范性含义 |
+|---|---|
+| `evaluation` | 从封存输入到 Report 的一次完整测量过程。 |
+| `executor` | 针对一条用例运行一个 artifact／variant 的宿主侧代码。它不是知识载体本身。 |
+| `evaluator` | 把执行事实转成指标观测的测量方法。 |
+| `metric` | 用于分析的具名取值契约与方向。 |
+| `judge` | 由 evaluator 使用的 LLM 评委调用；它不是所有 evaluator 的同义词。 |
+| `rubric` | 提供给 Rubric Judge 的评分标准与打分指令。 |
+| `dataset` | 具名且非空的用例集合。 |
+| `experiment` | 预先登记的试验、种子、重采样与决策设计。 |
+| `policy` | 执行、评测、证据、重试、预算与失败处理的运行限值。 |
+| `run` | 一次按封存评测设计执行的运行，由 `runId` 标识。 |
+| `comparison` | 分析所消费的对照组／处理组关系声明。 |
+| `verdict` | Decision 的结果，例如 `PROGRESS`／`NOISE`；它不是原始分数。 |
+| `evidence` | 支撑某一观测或结论的、已分类且可归属的事实。 |
+| `report` | 经认证的运行产物与 Decision 的物化投影。 |
+
+因此规范的包入口是 `evaluate({ dataset, variants, evaluators, comparisons, experiment, analyses, decision, policy, runId })`。配对／独立语义的唯一 owner 是 Sampling Design；每个 Variant 拥有自己的执行绑定，每个 Comparison 只显式声明自己的 control、treatments 与 Metrics。避免出现 runner、suite、cases、candidate、scoring 这类公共别名，也不要把 `target` 当作 artifact 的同义词。Core 的 `Target` 是 variant 到执行要求的编译绑定，仍属更底层的契约。`eval-workflows` 可以依赖 Runtime 的基础叶子模块，但不得依赖面向用户的规范 façade 或包索引。
+
 ### 10. Knowledge（知识）
 
 **知识是能被未来任务复用的事实、案例或方法；每条知识应保留适用范围、来源证据和当前验证状态。**
@@ -374,10 +397,31 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 - **持久化判别字段 —— report / observe / doctor / diagnosis 的顶层判别字段是 `kind`，由它早先的限定名字段经一次有意的 BREAKING-SCHEMA 硬切换而来。** 硬切换不做双读、不留迁移垫片：旧版本写的文件（顶层是旧的限定名判别字段、无 `kind`）直接不读、跳过。这是序列化向后兼容，不是统计可比性 —— 改字段名不改任何测量数字。（`report.kind` 另外还在 Report schema 不变量清单里，后续改动按常规 schema 谨慎处理。）
 - 内部非持久字段的改名是渐进式的 —— 改到那块代码时顺手做，不搞一次性大扫除。一个 CI 护栏冻结当前裸 `kind` 声明点的集合，防止新的不加限定的 `kind` 混进来。
 
+### 5. 退役 `admission`：一个场景只留一个限定名
+
+`admission` 在本仓库曾至少承载五种互不相关的含义（provider-cost 预算预留、Core 的 plan 绑定能力 API、内存态阶段复用、知识草案校验、持久化的续跑信任）。该词按场景逐个退役，每个场景只保留一个限定名。
+
+| 场景 | 标准名 | 说明 |
+|---|---|---|
+| 针对新封存 Plan 的内存态阶段复用 | plan-bound conformance verification（`verifyExecutedStageAgainstPlan`） | fail-closed 校验，不是资格检查 |
+| 知识草案／证据／grounding 校验 | knowledge validation（`src/knowledge/validation.ts`、`KnowledgeValidationProblem`） | 纯校验器，不含治理含义 |
+| 持久化的续跑信任判定 | resume disposition（`src/eval-workflows/resume-disposition/`、`CoreResumeDisposition*`） | `disposition` 本来就是该模块自己的用词 |
+| provider-cost 预算预留 | 暂不改动 | 字段 `policy.budget.providerCostAdmission.admissionMode` 已发布且已落盘；改名会让存量 plan 读不回，因此等一次 schema 版本 bump（目标名 `providerCostOvershoot.mode`） |
+
+两个身份被刻意冻结，保留旧词：
+
+- 摘要推导标签 `omk.core-resume-admission/v1` —— 它是带版本的身份串，不是词汇；改动会静默改变所有续跑判定摘要。
+- `'admitted'`／`'rejected'` 这类枚举值 —— 取值保持稳定，改名不会改变任何测量结果或已持久化判定。
+
+Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 Series 的成员字段 `admissionStatus` 是另外两种含义。两者都是对外表面，只能在显式的词汇决策之后改名，不作为内部清扫的一部分。
+
 ## 六、术语映射
 
 | 旧术语 | 新标准术语 | 说明 |
 |---|---|---|
+| admission (stage reuse) | plan-bound conformance verification | `verifyExecutedStageAgainstPlan`；fail-closed，不是资格检查 |
+| admission (knowledge drafts) | knowledge validation | `src/knowledge/validation.ts`、`KnowledgeValidationProblem` |
+| resume-admission | resume-disposition | 持久化续跑信任判定；摘要标签保持冻结 |
 | evaluand | artifact | 被评测对象的统一总称 |
 | EvaluandSpec | Artifact | 核心对象类型 |
 | EvaluandKind | ArtifactKind | 对象类别 |

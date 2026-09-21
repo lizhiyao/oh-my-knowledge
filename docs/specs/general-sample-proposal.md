@@ -10,12 +10,14 @@ Status: design review draft with offline feasibility evidence; public-contract i
 
 Research date: 2026-09-13. Primary sources show recurring principles, not a single industry-wide sample standard:
 
-- [LangSmith evaluation concepts](https://docs.langchain.com/langsmith/evaluation-concepts): keep application inputs separate from reference outputs consumed by evaluators.
-- [Inspect datasets](https://inspect.aisi.org.uk/datasets.html): distinguish text/messages, targets, metadata, sandbox resources, and setup. Environment descriptions must not imply materialized fixtures.
-- [Ragas schemas](https://docs.ragas.io/en/latest/references/evaluation_schema/): distinguish retrieved and reference contexts/IDs; preserve conversation messages and reference tool calls.
-- [Anthropic agent evaluation practice](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents): distinguish transcripts from actual environmental outcomes.
-- [LangSmith trajectory evaluation](https://docs.langchain.com/langsmith/trajectory-evals): evaluate trajectories separately from final answers.
-- [Promptfoo test cases](https://www.promptfoo.dev/docs/configuration/test-cases/): separate input variables from assertions.
+| Source | Practice worth borrowing | OMK's trade-off |
+|---|---|---|
+| [LangSmith evaluation concepts](https://docs.langchain.com/langsmith/evaluation-concepts) | Keep application inputs separate from the reference outputs evaluation consumes; tie an experiment to its dataset, outputs and trajectory. | Keep Core's input / expected / evaluation-evidence boundary; the whole sample is never handed to the executor. |
+| [Inspect datasets](https://inspect.aisi.org.uk/datasets.html) | Text or message input declared apart from target, sandbox, files and setup; supports data mapping. | Declare user input and environment resources separately. An environment description is not materialization, and no arbitrary setup-script entry point is introduced. |
+| [Ragas evaluation schema](https://docs.ragas.io/en/latest/references/evaluation_schema/) | Distinguish retrieved context from reference context and IDs; multi-turn samples keep messages and reference tool calls. | Retrieval results are execution evidence while relevance labels are expectations; the two are never merged into one context. |
+| [Anthropic agent evaluation practice](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) | Distinguish the transcript from what actually happened in the environment; combine several scoring approaches. | A reply claiming completion does not prove the database or workflow state changed; check real state evidence first. |
+| [LangSmith trajectory evaluation](https://docs.langchain.com/langsmith/trajectory-evals) | Evaluate the trajectory on its own terms. | Score the final outcome and path constraints separately; constrain exact tool ordering only when the business requires it. |
+| [Promptfoo test cases](https://www.promptfoo.dev/docs/configuration/test-cases/) | Configure input variables and assertions separately; a dataset is not bound to one prompt template. | Structured inputs are supported; rendering belongs to an explicit, versioned adapter. |
 
 Use one common envelope with versioned input/evidence contracts, rather than separate prompt/RAG/agent/workflow protocols. An unconstrained JSON container alone is not a sufficient user contract. History replay, interactive sessions, and internal multi-step execution are distinct capabilities.
 
@@ -41,6 +43,17 @@ Initial probes pass [historical probe at d7088ca7](https://github.com/lizhiyao/o
 This proves test-adapter feasibility, not v2 loading, native message conversion, interactive sessions, or production workflow integration. Exact matching of fixture outcomes is not a general RAG or agent quality metric. Additional probes cover negative-amount rejection, large-order manual review, missing output remaining nonconclusive, and rejection of the proposed envelope by the actual v2 loader. The final matrix must independently cover the user entrypoint, executor, evaluator, evidence, and report.
 
 ## Proposed boundaries
+
+The concepts and version numbers below are a proposed design direction, not yet a loadable format.
+
+| Concept | Core mapping | Allowed consumers |
+|---|---|---|
+| Stable sample ID | `sampleId` | Identity, execution, scoring and reporting |
+| Task input | `input` | The selected executor / input adapter |
+| Runtime conditions and resource references | `executionContext` / existing resource leases | Executor; the host materializes resources in isolation |
+| Decidable expected result | `expected` | Explicitly bound evaluators |
+| Evidence, rubric and annotation versions consumed only by evaluation | `evaluationContext` | Explicitly bound evaluators |
+| Provenance, difficulty, coverage anchors, and similar | `annotations` / `analysis` | Diagnosis or analysis; kept out of execution and scoring by default |
 
 Keep stable sample IDs, execution input, execution context/resources, expected results, evaluation context, and annotations/analysis separate, mapping to existing Core concepts. Use a qualified `inputKind` for text, structured tasks, or message history; register application schemas with explicit identities. Specify roles and message/tool-call correlation. Reuse existing resource leases and execution controls instead of duplicating retry/cache/isolation machinery.
 
