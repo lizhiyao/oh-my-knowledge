@@ -14,6 +14,15 @@ describe('CI change scope', () => {
   it.each([
     [['AGENTS.md'], 'rules'],
     [['CONTRIBUTING.md', 'CLAUDE.md', 'CODE_REVIEW.md', '.github/PULL_REQUEST_TEMPLATE.md'], 'rules'],
+    // 模块级维护文档与根规则文件同档；与源码混排时仍按最强门禁。
+    [['src/studio/README.md'], 'rules'],
+    [['src/studio/README.md', 'src/observability/README.md'], 'rules'],
+    [['src/studio/README.md', 'AGENTS.md'], 'rules'],
+    [['src/studio/README.md', 'src/studio/web/components/knowledge/knowledge.tsx'], 'full'],
+    [['src/studio/README.md', 'docs/guides/a.md'], 'docs'],
+    // 边界：只认模块目录下的 README.md，不认裸 `src/README.md`、非 README 的 Markdown 与站点配置。
+    [['src/README.md'], 'full'],
+    [['src/studio/README.markdown'], 'full'],
     [['docs/guides/a.md', 'docs/zh/guides/a.md'], 'docs'],
     [['AGENTS.md', 'README.zh.md'], 'docs'],
     [['docs/guides/a.md', 'src/a.ts'], 'full'],
