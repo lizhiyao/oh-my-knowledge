@@ -2,7 +2,7 @@
   <div class="wrap">
     <span class="tag"><span class="dot"></span> <b>OMK</b> · 1.0 Beta 持续迭代</span>
     <h1>Observe. Measure.<br/><span class="em">Know.</span></h1>
-    <p class="sub"><b>让 AI 应用的知识改动有据可依。</b><br/>比较 prompt、RAG、skill 与 agent 的版本，查看证据，发现真实任务中的知识缺口。</p>
+    <p class="sub"><b>让 AI 应用的知识改动有据可依。</b><br/>从真实任务提炼知识，受控比较 prompt、RAG、skill、agent 与 workflow 的改动，依据证据决定是否采纳。</p>
     <div class="cta">
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">复制 ⧉</span></span>
       <a class="lnk" href="/zh/quickstart-skill-eval">命令行评测 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/eval-runtime">Node.js 服务接入 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/observe-production">查看任务轨迹 <span class="ar">→</span></a>
@@ -22,24 +22,46 @@
 </header>
 <section class="band" id="caps">
   <div class="wrap">
-    <div class="sec-head"><h2>从当前任务开始</h2><p class="lead">选择一条路径，需要时再查命令和设计规范。</p></div>
+    <div class="sec-head"><h2>从当前任务开始</h2><p class="lead">CLI 执行工作流，Studio 浏览与复核证据，eval-runtime 将评测嵌入服务，DSH 插件直接复用宿主环境。</p></div>
     <div class="cap-grid">
+      <div class="cap o">
+        <div class="ic">01</div><h3>看清真实任务</h3>
+        <p>从本机 Codex 对话进入任务轨迹，核对请求、工具调用、结果与知识访问；实时跟随不调用模型。</p><code class="cmd2">omk studio</code>
+        <p><a class="lnk" href="/zh/guides/observe-production">打开观测指南 <span class="ar">→</span></a></p>
+      </div>
       <div class="cap d">
-        <div class="ic">CLI</div><h3>比较两版 skill</h3>
-        <p>固定模型和用例，检查版本差异、置信区间与失败样本。</p><code class="cmd2">omk eval --control v1 --treatment v2</code>
-        <p><a class="lnk" href="/zh/quickstart-skill-eval">预览计划，再执行评测 <span class="ar">→</span></a></p>
+        <div class="ic">02</div><h3>沉淀可复核的知识</h3>
+        <p>从选定的 Codex 日志提炼事实、经验与方法。对照原文修订、保留或舍弃；保留不等于证实。</p>
+        <p><a class="lnk" href="/zh/guides/extract-knowledge">了解知识提炼 <span class="ar">→</span></a></p>
       </div>
       <div class="cap e">
-        <div class="ic">API</div><h3>接入你的服务</h3>
-        <p>从无需模型凭证的示例开始，为自己的 Node.js 服务配置执行器与评分器。</p><code class="cmd2">import { evaluate } from &#x27;oh-my-knowledge&#x27;</code>
-        <p><a class="lnk" href="/zh/guides/eval-runtime">查看服务接入教程 <span class="ar">→</span></a></p>
+        <div class="ic">03</div><h3>验证载体改动</h3>
+        <p>固定模型、用例与运行条件，比较两版载体，检查判定、置信区间与失败证据。</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
+        <p><a class="lnk" href="/zh/quickstart-skill-eval">预览第一次比较 <span class="ar">→</span></a></p>
       </div>
       <div class="cap o">
-        <div class="ic">任务</div><h3>查看真实任务</h3>
-        <p>浏览本机 Codex 对话与任务轨迹，按日志还原可观测的请求、工具调用和结果。</p><code class="cmd2">omk studio</code>
-        <p><a class="lnk" href="/zh/guides/observe-production">查看观测指南 <span class="ar">→</span></a></p>
+        <div class="ic">04</div><h3>记录知识问题</h3>
+        <p>用户确认后保存最小反馈证据；复核为真实问题后再草拟用例，不自动监听完整对话。</p>
+        <p><a class="lnk" href="/zh/guides/mcp-integration">接入主动反馈 <span class="ar">→</span></a></p>
+      </div>
+      <div class="cap d">
+        <div class="ic">05</div><h3>迭代改进 skill</h3>
+        <p>生成候选版本，通过受控 A/B 门禁筛选，写回前再次比较。发布判断仍需独立验证集。</p>
+        <p><a class="lnk" href="/zh/guides/auto-improve-skills">了解迭代与门禁 <span class="ar">→</span></a></p>
+      </div>
+      <div class="cap e">
+        <div class="ic">06</div><h3>嵌入 eval-runtime</h3>
+        <p>通过 Node.js API 组合执行、评分与比较，接入自己的服务或平台，无需通过 CLI 或启动 Studio。</p>
+        <p><a class="lnk" href="/zh/guides/eval-runtime">查看服务接入教程 <span class="ar">→</span></a></p>
       </div>
     </div>
+  </div>
+</section>
+<section class="band" id="workflow">
+  <div class="wrap">
+    <div class="sec-head"><h2>从证据到改动，每一步都有边界</h2><p class="lead">知识内容是一条事实、经验或方法；知识载体是承载它们的 prompt、文档或 skill。提炼产生待复核内容，人工形成载体改动后再评测。</p></div>
+    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>看任务、核对来源与覆盖范围。</p></div><div class="cap in"><h3>Measure</h3><p>固定条件，验证改动是否有效。</p></div><div class="cap in"><h3>Know</h3><p>保留依据，决定采纳、回退或继续改进。</p></div></div>
+    <p><a class="lnk" href="/zh/explanation/knowledge">理解知识内容与载体 <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band alt" id="moat">
@@ -63,6 +85,12 @@
       </div>
       <div class="copy"><h3>让 Agent 执行工作流</h3><p>安装 OMK Skill 后，用自然语言描述比较目标。安装目标、模型准备和执行步骤见快速上手。</p><a class="lnk" href="/zh/quickstart-skill-eval">命令行评测 <span class="ar">→</span></a></div>
     </div>
+  </div>
+</section>
+<section class="band" id="dsh">
+  <div class="wrap">
+    <div class="sec-head"><h2>在 DSH 中直接使用 OMK</h2><p class="lead">安装宿主插件后，在现有 profile 内运行 /omk eval 或 /omk observe，复用模型、凭证、工具与 sandbox。评测用例使用隔离 session；观测读取已结束任务的快照。</p></div>
+    <p><a class="lnk" href="/zh/reference/executors#deepseek-harness-优先使用宿主插件">DSH 插件接入与限制 <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band alt" id="start">

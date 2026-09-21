@@ -2,7 +2,13 @@
 
 从当前任务选择入口。1.0 仍在 Beta 迭代；旧版本用户先看[迁移指南](./guides/v1-preview-migration.md)。[English index](../README.md)。
 
-## 开始使用
+## 选择使用方式
+
+OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流；**Studio** 是浏览任务、复核知识和检查证据的本地工作台；**eval-runtime** 是可独立嵌入 Node.js 服务或平台的评测 API，不要求通过 CLI 或启动 Studio。
+
+**DSH 插件**把 `/omk eval` 与 `/omk observe` 带入现有 DeepSeek Harness profile，复用宿主环境，见[DSH 接入](./reference/executors.md#deepseek-harness-优先使用宿主插件)。Agent Skill 用于自然语言驱动 CLI 工作流，MCP 用于用户授权的主动反馈。
+
+## 选择入口
 
 | 目标 | 先读 | 按需查阅 |
 |---|---|---|
@@ -11,12 +17,21 @@
 | 由平台宿主下发评测任务 | [平台宿主集成指南](./guides/platform-host-integration.md) | [Runtime API](./reference/eval-runtime-api.md) |
 | 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./explanation/effective-observation-review.md) |
 
+## 从真实任务沉淀知识
+
+1. [在 Studio 查看任务轨迹](./guides/observe-production.md)：选择本机 Codex 对话，核对原始记录与知识访问，无需先 ingest。
+2. [从工作日志提炼知识](./guides/extract-knowledge.md)：选定来源片段，生成并复核知识内容，保留修订与处理理由。
+3. [通过 MCP 记录反馈](./guides/mcp-integration.md)：在用户确认后提交最小证据，复核真实问题，再草拟用例。
+4. [将载体改动交给评测](./quickstart-skill-eval.md)：人工整理正式用例与候选版本，依据受控比较决定后续动作。
+
+这些路径按需组合。知识内容的保留、载体的写入、评测通过与发布分别记录；候选不会自动生效。概念见[知识内容与知识载体](./explanation/knowledge.md)。
+
 ## 完成具体任务
 
 - [在 Agent 中使用 OMK Skill](./quickstart-skill-eval.md#在-agent-中使用)
 - [doctor 体检](./guides/run-doctor-checks.md) · [自动改进 skill](./guides/auto-improve-skills.md)
 - [评测 agent 与项目上下文](./guides/agent-eval.md) · [使用非 Claude 模型](./guides/non-claude-models.md)
-- [组合 MCP 集成](./guides/mcp-integration.md) · [DeepSeek Harness 接入](./reference/executors.md#deepseek-harness优先使用宿主插件)
+- [组合 MCP 集成](./guides/mcp-integration.md) · [DeepSeek Harness 接入](./reference/executors.md#deepseek-harness-优先使用宿主插件)
 
 ## 理解结果与边界
 

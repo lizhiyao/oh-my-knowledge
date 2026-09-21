@@ -2,7 +2,7 @@
   <div class="wrap">
     <span class="tag"><span class="dot"></span> <b>OMK</b> · 1.0 Beta iteration continues</span>
     <h1>Observe. Measure.<br/><span class="em">Know.</span></h1>
-    <p class="sub"><b>Make knowledge changes in your AI application evidence-backed.</b><br/>Compare prompt, RAG, skill, and agent versions, inspect evidence, and find knowledge gaps in real tasks.</p>
+    <p class="sub"><b>Make knowledge changes in your AI application evidence-backed.</b><br/>Extract knowledge from real tasks, compare changes to prompts, RAG, skills, agents, and workflows, and use evidence to decide what to adopt.</p>
     <div class="cta">
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">Copy ⧉</span></span>
       <a class="lnk" href="/quickstart-skill-eval">CLI evaluation <span class="ar">→</span></a><a class="lnk" href="/guides/eval-runtime">Node.js integration <span class="ar">→</span></a><a class="lnk" href="/guides/observe-production">Inspect task trajectories <span class="ar">→</span></a>
@@ -22,24 +22,46 @@
 </header>
 <section class="band" id="caps">
   <div class="wrap">
-    <div class="sec-head"><h2>Start with your task</h2><p class="lead">Choose one path; consult commands and design specs when needed.</p></div>
+    <div class="sec-head"><h2>Start with your task</h2><p class="lead">Run workflows with the CLI, inspect evidence in Studio, embed eval-runtime in a service, or use the DSH plugin within your host environment.</p></div>
     <div class="cap-grid">
-      <div class="cap d">
-        <div class="ic">CLI</div><h3>Compare two skills</h3>
-        <p>Keep the model and cases fixed, then inspect version differences, intervals, and failed samples.</p><code class="cmd2">omk eval --control v1 --treatment v2</code>
-        <p><a class="lnk" href="/quickstart-skill-eval">Preview, then evaluate <span class="ar">→</span></a></p>
-      </div>
-      <div class="cap e">
-        <div class="ic">API</div><h3>Connect your service</h3>
-        <p>Start with an example without model credentials, then configure execution and scoring for your Node.js service.</p><code class="cmd2">import { evaluate } from &#x27;oh-my-knowledge&#x27;</code>
-        <p><a class="lnk" href="/guides/eval-runtime">Read the integration guide <span class="ar">→</span></a></p>
-      </div>
       <div class="cap o">
-        <div class="ic">Tasks</div><h3>Inspect a real task</h3>
-        <p>Browse local Codex conversations and task trajectories to reconstruct observable requests, tool calls, and results.</p><code class="cmd2">omk studio</code>
+        <div class="ic">01</div><h3>Inspect real tasks</h3>
+        <p>Open local Codex conversations and inspect requests, tool calls, results, and knowledge access. Live following makes no model calls.</p><code class="cmd2">omk studio</code>
         <p><a class="lnk" href="/guides/observe-production">Read the observation guide <span class="ar">→</span></a></p>
       </div>
+      <div class="cap d">
+        <div class="ic">02</div><h3>Preserve reviewable knowledge</h3>
+        <p>Extract facts, experience, and methods from selected Codex logs. Review sources, revise, retain, or discard; retention is not verification.</p>
+        <p><a class="lnk" href="/guides/extract-knowledge">Explore knowledge extraction <span class="ar">→</span></a></p>
+      </div>
+      <div class="cap e">
+        <div class="ic">03</div><h3>Validate artifact changes</h3>
+        <p>Fix the model, cases, and execution conditions; compare artifact versions with decisions, intervals, and failure evidence.</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
+        <p><a class="lnk" href="/quickstart-skill-eval">Preview your first comparison <span class="ar">→</span></a></p>
+      </div>
+      <div class="cap o">
+        <div class="ic">04</div><h3>Record knowledge problems</h3>
+        <p>Save minimal feedback evidence with user confirmation. Draft cases after review confirms real issues; no automatic conversation monitoring.</p>
+        <p><a class="lnk" href="/guides/mcp-integration">Connect active feedback <span class="ar">→</span></a></p>
+      </div>
+      <div class="cap d">
+        <div class="ic">05</div><h3>Improve skills iteratively</h3>
+        <p>Generate candidate versions, screen them through controlled A/B gates, and compare again before writing back. Release decisions still need independent validation.</p>
+        <p><a class="lnk" href="/guides/auto-improve-skills">Explore iteration and gates <span class="ar">→</span></a></p>
+      </div>
+      <div class="cap e">
+        <div class="ic">06</div><h3>Embed eval-runtime</h3>
+        <p>Compose execution, scoring, and comparison through a Node.js API in your own service or platform, without the CLI or Studio.</p>
+        <p><a class="lnk" href="/guides/eval-runtime">Read the integration guide <span class="ar">→</span></a></p>
+      </div>
     </div>
+  </div>
+</section>
+<section class="band" id="workflow">
+  <div class="wrap">
+    <div class="sec-head"><h2>Connect evidence to changes, with explicit boundaries</h2><p class="lead">Knowledge items are facts, experiences, or methods; artifacts are the prompts, documents, or skills carrying them. Extraction produces content for review; evaluation follows when you prepare an artifact change.</p></div>
+    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>Inspect tasks, sources, and coverage.</p></div><div class="cap in"><h3>Measure</h3><p>Fix conditions and test whether a change helps.</p></div><div class="cap in"><h3>Know</h3><p>Preserve the evidence behind adoption, rollback, or further improvement.</p></div></div>
+    <p><a class="lnk" href="/explanation/knowledge">Understand knowledge items and artifacts <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band alt" id="moat">
@@ -63,6 +85,12 @@
       </div>
       <div class="copy"><h3>Let your agent run the workflow</h3><p>Install the OMK Skill, then describe your comparison in natural language. The quickstart covers installation targets, runtime setup, and execution.</p><a class="lnk" href="/quickstart-skill-eval">CLI evaluation <span class="ar">→</span></a></div>
     </div>
+  </div>
+</section>
+<section class="band" id="dsh">
+  <div class="wrap">
+    <div class="sec-head"><h2>Use OMK directly inside DSH</h2><p class="lead">Install the host plugin to run /omk eval or /omk observe in your existing profile, reusing its model, credentials, tools, and sandbox. Evaluation cases use isolated sessions; observation reads snapshots of completed tasks.</p></div>
+    <p><a class="lnk" href="/reference/executors#deepseek-harness-prefer-the-host-plugin">DSH plugin setup and limitations <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band alt" id="start">

@@ -6,6 +6,8 @@
 
 **Observe. Measure. Know.** OMK makes knowledge changes in AI applications evidence-backed. It does not assign context-free quality scores. It helps the people who bear the consequences of a change decide whether that change created enough incremental value to ship, under an explicit target audience, task set, model, and acceptance standard.
 
+OMK delivers these capabilities through the CLI, Studio, eval-runtime, and the DSH plugin: command-line workflows, local inspection and review, evaluation embedded in Node.js services, and integration with an existing DeepSeek Harness profile. The workbench is one interface, not the definition of the whole product.
+
 ## First principle: there is no context-free "good knowledge"
 
 People naturally differ in how they understand knowledge and what they require from it. The same prompt / RAG / skill / agent / workflow can help a beginner while distracting an expert, improve one model while degrading another, or raise output quality at an unacceptable cost.
@@ -41,7 +43,7 @@ change a skill / prompt / agent artifact
 → decide ship / don't ship
 ```
 
-That is the trunk. `observe` matters after real usage exists, but it is not required for omk's first value. A product direction that makes doctor and eval more trustworthy at this context-specific ship/no-ship moment should outrank one that only adds a new surface area.
+This path does not require logs. When real tasks are available, start with Studio observation, knowledge extraction, and review, then apply selected content to artifacts and cases. Both paths share one principle: decisions should remain traceable to sources and an evaluation contract.
 
 ## Current target users: two hypotheses to validate
 
@@ -70,7 +72,7 @@ omk's three stages reach different audiences:
 
 - **doctor (check)**: the pre-ship health gate. Authors use it before trusting an eval; adopters can use it to rule out structural, dependency, and measurability problems.
 - **eval (evaluate)**: the release decision core. It needs an evaluation contract and measurement intent, so it belongs to author iteration and adoption decisions. Passive users do not need to run it.
-- **observe (observe)**: the post-ship feedback loop. It finds gaps in real session traces that the current contract does not cover and feeds the next sample set. It does not replace controlled eval and should not be the first surface a new user must understand.
+- **observe (observe)**: the real-usage feedback loop. It finds gaps in real session traces that the current contract does not cover and feeds the next sample set. It does not replace controlled eval and should not be the first surface a new user must understand.
 
 ## Boundaries: what omk doesn't do
 
