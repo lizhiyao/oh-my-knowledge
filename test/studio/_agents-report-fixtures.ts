@@ -3,7 +3,7 @@
  * 不从内部模块借用私有助手——页面读取的是落盘契约，夹具就必须按同一份契约写盘。
  */
 
-import { AGENT_COLLECTION_VERSION } from '../../src/observability/agents/index.js';
+import { AGENT_COLLECTION_VERSION, AGENT_INVENTORY_VERSION } from '../../src/observability/agents/index.js';
 import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
 import type {
   AgentCollectionReport,
@@ -12,7 +12,7 @@ import type {
 
 export function sampleInventoryReport(overrides: Partial<AgentInventoryReport> = {}): AgentInventoryReport {
   return {
-    schemaVersion: 'agent-inventory-v1',
+    schemaVersion: AGENT_INVENTORY_VERSION,
     generatedAt: '2026-09-11T14:54:30.000Z',
     platform: 'darwin',
     homeDirectory: '/Users/tester',

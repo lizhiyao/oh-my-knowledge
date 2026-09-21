@@ -9,6 +9,7 @@
 import {
   agentStorageLayout,
   AgentCollectionReportOutdatedError,
+  AgentInventoryReportOutdatedError,
   loadAgentCollectionReport,
   loadAgentInventoryReport,
   type AgentCollectionReport,
@@ -38,6 +39,9 @@ function readReport<T>(load: () => T | undefined): AgentsReportState<T> {
     report = load();
   } catch (cause) {
     if (cause instanceof AgentCollectionReportOutdatedError) {
+      return { status: 'outdated', foundVersion: cause.foundVersion };
+    }
+    if (cause instanceof AgentInventoryReportOutdatedError) {
       return { status: 'outdated', foundVersion: cause.foundVersion };
     }
     return { status: 'unreadable' };

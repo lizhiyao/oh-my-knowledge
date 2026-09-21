@@ -68,7 +68,9 @@ test/observability/skill-health/skill-chain.test.ts
 test/observability/task-window.test.ts
 test/observability/trace/streamed-records.test.ts
 test/observability/trace/trace-adapter.test.ts
+test/observability/trace/dsh-adapter.test.ts
 test/observability/trace/unknown-disposition.test.ts
+test/observability/trace/zstd-frames.test.ts
 test/scripts/build-docs.test.ts
 test/scripts/eval-core-dependency-guard.test.ts
 test/scripts/markdown-cmd-refs.test.ts

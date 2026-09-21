@@ -152,9 +152,16 @@ const CATALOG_SOURCE: readonly AgentDescriptorSource[] = [
     traceSourceKind: 'dsh',
     binaries: ['dsh'],
     installDirs: ['.dsh'],
-    // 已核对：sessions 下是 session.jsonl.zstd（zstd 压缩），现有解析器不读压缩文件，
-    // 因此本轮只登记安装事实，不把压缩会话计入可采集范围。
-    logRoots: [],
+    // 会话按 <cwd>/<session>/session.jsonl.zstd 存放：多帧 zstd 由 trace 侧按帧读取，
+    // 因此这里只登记到 .zstd（matchExtensions 的正则不接受 .jsonl.zstd 这种双段扩展名）。
+    logRoots: [{
+      rootId: 'sessions',
+      relativePath: '.dsh/sessions',
+      traceSourceKind: 'dsh',
+      matchExtensions: ['.zstd'],
+      recursive: true,
+      note: '每追加一条记录独立压一帧的 zstd 会话流；运行时没有内建 zstd 解压时读不到。',
+    }],
   },
 ];
 

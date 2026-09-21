@@ -115,15 +115,24 @@ export default class AgentsCommand extends BaseCommand {
             this.log(`${agent.displayName} (${agent.agentId}) · ${agent.traceSourceKind ?? 'unknown'} · ${agent.sessionFileCount}`);
             for (const root of agent.logRoots.filter((entry) => entry.exists)) {
               this.log(lang === 'zh'
-                ? `  ${root.path}：${root.sessionFileCount} 份${root.truncated ? '（已截断）' : ''}${root.readable ? '' : '（不可读）'}`
-                : `  ${root.path}: ${root.sessionFileCount}${root.truncated ? ' (truncated)' : ''}${root.readable ? '' : ' (unreadable)'}`);
+                ? `  ${root.path}：${root.sessionFileCount} 份${root.truncated ? '（已截断）' : ''}${root.readable ? '' : '（不可读）'}${root.unreadableReason ? '（本机运行时解不了这格式）' : ''}`
+                : `  ${root.path}: ${root.sessionFileCount}${root.truncated ? ' (truncated)' : ''}${root.readable ? '' : ' (unreadable)'}${root.unreadableReason ? ' (this runtime cannot read the format)' : ''}`);
             }
           }
           this.log(lang === 'zh'
             ? `已识别 ${report.summary.installedAgentCount}/${report.summary.knownAgentCount} 个 Agent · 会话日志 ${report.summary.sessionFileCount} 份`
             : `${report.summary.installedAgentCount}/${report.summary.knownAgentCount} agents detected · ${report.summary.sessionFileCount} session logs`);
         }
-        for (const agent of report.agents.filter((entry) => entry.installed && entry.sessionFileCount === 0)) {
+        for (const agent of report.agents.filter((entry) => entry.installed)) {
+          // 「装了但本机读不了这格式」与「装了且没有日志」是两件事：前者要换运行时，
+          // 后者要等用户真的产生会话，混成一句会让人白跑一边排查。
+          if (agent.logRoots.some((root) => root.unreadableReason !== undefined)) {
+            this.logToStderr(lang === 'zh'
+              ? `${agent.displayName} 已安装并发现了会话文件，但本机 Node 运行时没有内建 zstd 解压，读不了 .jsonl.zstd 会话。`
+              : `${agent.displayName} is installed and session files were found, but this Node runtime has no built-in zstd decompression, so .jsonl.zstd sessions cannot be read.`);
+            continue;
+          }
+          if (agent.sessionFileCount > 0) continue;
           this.logToStderr(lang === 'zh'
             ? `${agent.displayName} 已安装，但没有找到可读的会话日志。`
             : `${agent.displayName} is installed but has no readable session logs.`);

@@ -39,6 +39,7 @@ import {
   AgentCollectionReportSchema,
   AgentInventoryReportSchema,
   SUPERSEDED_AGENT_COLLECTION_VERSIONS,
+  SUPERSEDED_AGENT_INVENTORY_VERSIONS,
   type AgentCollectionEntry,
   type AgentCollectionReport,
   type AgentDescriptor,
@@ -584,7 +585,27 @@ export function loadAgentInventoryReport(
 ): AgentInventoryReport | undefined {
   const layout = typeof dirOrLayout === 'string' ? agentStorageLayout(dirOrLayout) : dirOrLayout;
   if (!existsSync(layout.observeAgentsInventoryPath)) return undefined;
-  return AgentInventoryReportSchema.parse(JSON.parse(readFileSync(layout.observeAgentsInventoryPath, 'utf-8')));
+  const parsed: unknown = JSON.parse(readFileSync(layout.observeAgentsInventoryPath, 'utf-8'));
+  const foundVersion = typeof parsed === 'object' && parsed !== null
+    ? (parsed as { schemaVersion?: unknown }).schemaVersion
+    : undefined;
+  if (typeof foundVersion === 'string'
+    && (SUPERSEDED_AGENT_INVENTORY_VERSIONS as readonly string[]).includes(foundVersion)) {
+    // v1 清单没有「装了但本机读不了这格式」这一位，与空目录混成一谈；不猜、不改写，
+    // 只让调用方按当前口径重新识别。
+    throw new AgentInventoryReportOutdatedError(foundVersion, layout.observeAgentsInventoryPath);
+  }
+  return AgentInventoryReportSchema.parse(parsed);
+}
+
+export class AgentInventoryReportOutdatedError extends Error {
+  constructor(
+    readonly foundVersion: string,
+    readonly reportPath: string,
+  ) {
+    super(`识别报告 ${reportPath} 已过期：${foundVersion} 没有格式不可读这一位。运行 omk agents list 重新识别。`);
+    this.name = 'AgentInventoryReportOutdatedError';
+  }
 }
 
 /**

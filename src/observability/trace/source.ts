@@ -12,6 +12,12 @@ import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { openStreamedJsonlRecords, streamedJsonlBytes } from './streamed-records.js';
 import {
+  iterateZstdFramePlainText,
+  ZstdDecodedSizeLimitError,
+  ZstdDecompressionUnavailableError,
+  ZstdFrameDecodeError,
+} from './zstd-frames.js';
+import {
   codexFormatEvidence,
   codexGuardianEvidence,
   parseCodexSessionFile,
@@ -32,6 +38,11 @@ import {
   parseOpenClawSessionFile,
 } from './adapters/openclaw/trace.js';
 import { parseMarkdownLogFile } from './adapters/markdown/trace.js';
+import {
+  dshEventEvidence,
+  dshSessionHeaderEvidence,
+  parseDshSessionFile,
+} from './adapters/dsh/trace.js';
 import { isRecordObject } from './adapters/jsonl-records.js';
 import type { TraceIngestionSummary } from '../contracts/trace.js';
 import type {
@@ -220,6 +231,14 @@ const JSONL_TRACE_ADAPTERS: readonly JsonlTraceAdapter[] = [
       && (have(claudeTranscriptEvidence) || have(claudeMetadataEvidence)),
     parse: parseClaudeSessionFile,
   },
+  {
+    // DSH 的记录名都带斜杠命名空间（`assistant/message`、`tool/call`），与其余四个宿主的
+    // 判定子句互斥，因此不参与争抢；放最后只为读表顺序稳定。
+    sourceKind: 'dsh',
+    evidence: [dshSessionHeaderEvidence, dshEventEvidence],
+    isMatch: (have) => have(dshSessionHeaderEvidence) && have(dshEventEvidence),
+    parse: parseDshSessionFile,
+  },
 ];
 
 export interface JsonlFormatDetection {
@@ -265,7 +284,8 @@ export function detectJsonlFormats(records: Iterable<CcRecord | undefined>): Jso
 }
 
 function parseTraceFile(filePath: string): ParsedTraceFile {
-  if (filePath.endsWith('.jsonl')) {
+  // 压缩会话解压后就是同一份 JSONL 记录流，走与 .jsonl 完全同一条解析路径。
+  if (filePath.endsWith('.jsonl') || isCompressedTraceFile(filePath)) {
     return parseJsonlSessionFile(filePath);
   }
   if (filePath.endsWith('.log')) return parseMarkdownLogFile(filePath);
@@ -502,18 +522,51 @@ function parseJsonlSessionFile(filePath: string): ParsedTraceFile {
   };
 }
 
-export function forEachNonEmptyUtf8Line(
-  filePath: string,
-  visit: (trimmedLine: string) => boolean | void,
-): void {
+/** 压缩会话的明文预算：按压缩后大小 × 放大上限算，真机实测放大 2.36 倍。 */
+const TRACE_ZSTD_MAX_AMPLIFICATION = 4;
+
+export function isCompressedTraceFile(filePath: string): boolean {
+  return filePath.endsWith('.zstd');
+}
+
+function* readFileBytesChunks(filePath: string): Generator<Buffer, void, void> {
   let fd: number;
   try {
     fd = openSync(filePath, 'r');
   } catch (cause) {
     throw new Error(`无法读取 trace 输入文件：${filePath}`, { cause });
   }
+  try {
+    const buffer = Buffer.allocUnsafe(TRACE_READ_CHUNK_BYTES);
+    for (;;) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) return;
+      yield buffer.subarray(0, bytesRead);
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function* readTraceChunks(filePath: string): Generator<Buffer, void, void> {
+  if (!isCompressedTraceFile(filePath)) {
+    yield* readFileBytesChunks(filePath);
+    return;
+  }
+  const budget = statSync(filePath).size * TRACE_ZSTD_MAX_AMPLIFICATION;
+  yield* iterateZstdFramePlainText(filePath, budget);
+}
+
+/**
+ * 按行回调一份 trace 文件，压缩与未压缩共用同一套守卫（单条记录字符上限、空行跳过、
+ * `visit` 返回 false 提前停止）。归档器与知识提炼读的都是**原始**证据文件，所以分流必须
+ * 在这里做，而不是让每个调用方各自判断该不该解压。
+ */
+export function forEachNonEmptyUtf8Line(
+  filePath: string,
+  visit: (trimmedLine: string) => boolean | void,
+): void {
   const decoder = new StringDecoder('utf8');
-  const buffer = Buffer.allocUnsafe(TRACE_READ_CHUNK_BYTES);
   let pending = '';
   let stopped = false;
   const consumeCompleteLines = (): void => {
@@ -541,10 +594,9 @@ export function forEachNonEmptyUtf8Line(
   };
 
   try {
-    while (!stopped) {
-      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
-      if (bytesRead === 0) break;
-      pending += decoder.write(buffer.subarray(0, bytesRead));
+    for (const chunk of readTraceChunks(filePath)) {
+      if (stopped) return;
+      pending += decoder.write(chunk);
       consumeCompleteLines();
     }
     if (stopped) return;
@@ -561,11 +613,13 @@ export function forEachNonEmptyUtf8Line(
   } catch (cause) {
     if (
       cause instanceof Error
-      && cause.message.startsWith('trace JSONL 单条记录超过')
+      && (cause.message.startsWith('trace JSONL 单条记录超过')
+        // 解压自身的分类错误原样上抛，采集侧要据此区分容量／格式／运行时能力。
+        || cause instanceof ZstdFrameDecodeError
+        || cause instanceof ZstdDecodedSizeLimitError
+        || cause instanceof ZstdDecompressionUnavailableError)
     ) throw cause;
     throw new Error(`无法解析 trace 输入文件：${filePath}`, { cause });
-  } finally {
-    closeSync(fd);
   }
 }
 
@@ -579,6 +633,9 @@ export function forEachNonEmptyUtf8Line(
  * 判定因此比映射本身还贵。
  */
 function parseStreamedCodexSessionFile(filePath: string): ParsedTraceFile | undefined {
+  // 惰性视图按字节偏移索引原始文件；压缩文件里几 MB 无换行的密文会被当成一条超长“记录”，
+  // 既索不到证据又会撞单条上限。压缩会话一律走整档解析（明文本来就由帧读取器分块交付）。
+  if (isCompressedTraceFile(filePath)) return undefined;
   if (streamedJsonlBytes(filePath) < CODEX_STREAMED_MIN_BYTES) return undefined;
   const view = openStreamedJsonlRecords<CcRecord>(filePath);
   try {

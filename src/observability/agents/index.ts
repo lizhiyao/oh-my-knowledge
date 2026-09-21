@@ -45,6 +45,7 @@ export type { DetectAgentInventoryOptions } from './detect.js';
 export {
   AGENT_TRACE_ARTIFACT_VERSION,
   AgentCollectionReportOutdatedError,
+  AgentInventoryReportOutdatedError,
   COLLECTION_REPORT_FILE_NAME,
   DEFAULT_MAX_BYTES_PER_RUN,
   DEFAULT_MAX_SESSION_FILE_BYTES,

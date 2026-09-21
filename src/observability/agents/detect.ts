@@ -26,6 +26,7 @@ import {
   type AgentFsPorts,
 } from './fs-ports.js';
 import { KNOWN_AGENTS } from './registry.js';
+import { zstdDecompressionAvailable } from '../trace/zstd-frames.js';
 import {
   DEFAULT_MAX_DIRECTORIES_PER_ROOT,
   DEFAULT_MAX_SESSION_FILES_PER_ROOT,
@@ -41,6 +42,11 @@ export interface DetectAgentInventoryOptions {
   pathDirectories?: readonly string[];
   /** 只读文件系统端口；默认走真实 fs。 */
   fsPorts?: AgentFsPorts;
+  /**
+   * 本机运行时能否解压 zstd；默认取 `zstdDecompressionAvailable()`。显式传 false 用来呈现
+   * 「装了、有日志、但这个运行时读不了」这一档，不让用例去伪造旧版 Node。
+   */
+  zstdAvailable?: boolean;
   /**
    * 登记表；默认只用内置表。要包含本机扩展条目，由调用方传 `resolveAgentCatalog()` 的结果——
    * 探测本身不读用户目录里的配置文件，用例与调用方因此都能掌控输入。
@@ -70,6 +76,7 @@ export function detectAgentInventory(
     realHome,
     maxSessionFiles: options.maxSessionFilesPerRoot ?? DEFAULT_MAX_SESSION_FILES_PER_ROOT,
     maxDirectories: options.maxDirectoriesPerRoot ?? DEFAULT_MAX_DIRECTORIES_PER_ROOT,
+    zstdAvailable: options.zstdAvailable ?? zstdDecompressionAvailable(),
   };
 
   const agents = descriptors.map((descriptor) => detectOneAgent(descriptor, scanContext));
@@ -91,6 +98,7 @@ interface DetectContext {
   realHome: string;
   maxSessionFiles: number;
   maxDirectories: number;
+  zstdAvailable: boolean;
 }
 
 function detectOneAgent(
@@ -167,6 +175,17 @@ function scanRootStatus(
     maxSessionFiles: context.maxSessionFiles,
     maxDirectories: context.maxDirectories,
   });
+  // 有会话文件、目录也可读，但这个运行时解不了该格式：单独记一档，
+  // 别把它和「装了但没日志」压成同一句话。
+  if (
+    root.matchExtensions.includes('.zstd')
+    && !context.zstdAvailable
+    && status.exists
+    && status.readable
+    && status.sessionFileCount > 0
+  ) {
+    return { ...status, unreadableReason: 'needs-zstd-decompression' };
+  }
   return status;
 }
 
