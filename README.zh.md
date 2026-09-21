@@ -10,13 +10,22 @@
 
 **Observe. Measure. Know.** 让 AI 应用的知识改动有据可依。
 
-OMK 是面向 AI 应用作者与维护者的本地知识工作台。查看真实任务如何执行，从工作日志提炼可复核的知识内容，再测量 prompt、RAG、skill、agent 或 workflow 的载体改动是否有效，为采纳、回退和继续改进提供证据。
+OMK 是面向 AI 应用作者与维护者的知识观测、评测与改进工具体系。查看真实任务如何执行，从工作日志提炼可复核的知识内容，再测量 prompt、RAG、skill、agent 或 workflow 的载体改动是否有效，为采纳、回退和继续改进提供证据。
 
 **Observe** 保留真实表现与来源，**Measure** 在相同模型、用例与运行条件下比较知识载体，**Know** 让决定可以回到证据核对。已有两版载体时，可以直接开始评测；不必先收集日志。
 
 当前 1.0 仍处于 **Beta 迭代期**，接口与存储契约可能继续变化。从旧版本升级前，请先阅读[迁移指南](docs/zh/guides/v1-preview-migration.md)。
 
 ![OMK：从受控评测到真实使用反馈](./docs/public/omk-knowledge-flow-animated.gif)
+
+## 选择使用方式
+
+| 入口 | 适合什么场景 |
+|---|---|
+| **CLI** | 在终端、coding agent 或 CI 中执行检查、评测、观测与迭代工作流 |
+| **Studio** | 在本地工作台浏览任务轨迹、复核知识内容，查看报告与原始证据 |
+| **eval-runtime** | 通过 Node.js API 将执行、评分与版本比较嵌入自己的服务或平台；无需通过 CLI 或启动 Studio |
+| **DSH 插件** | 在 DeepSeek Harness 内用 `/omk eval` 和 `/omk observe`，复用当前 profile 的模型、凭证、工具与 sandbox；见[宿主插件接入](docs/zh/reference/executors.md#deepseek-harness-优先使用宿主插件) |
 
 ## 从你的目标开始
 
@@ -65,15 +74,36 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 [完整教程](docs/zh/quickstart-skill-eval.md)介绍模型选择、换成自己的 skill 和结果解读；[示例画廊](examples/README.zh.md)提供更多可运行场景。
 
-## 在 Agent 中使用
+## 在 Agent 与 DSH 中使用
+
+### Agent Skill 与 MCP
 
 ```bash
 omk install omk-agent-skill
 ```
 
-安装后，可以对 coding agent 说：“用 omk 比较这两版 skill。”安装目标与使用方法见[快速上手](docs/zh/quickstart-skill-eval.md#在-agent-中使用)。DeepSeek Harness 用户可直接使用[宿主插件](docs/zh/reference/executors.md#deepseek-harness优先使用宿主插件)，复用当前 profile。
+安装 Skill 后，可以对 coding agent 说：“用 omk 比较这两版 skill，先预览计划。”安装目标与使用方法见[快速上手](docs/zh/quickstart-skill-eval.md#在-agent-中使用)。
 
 [MCP 集成](docs/zh/guides/mcp-integration.md)提供用户授权的主动知识反馈入口。它仅记录提交到工具边界的部分证据，不自动监听完整对话。
+
+### DeepSeek Harness 插件
+
+已有 DSH 环境时，把 OMK 加入现有 profile。以支持命令适配的 `web` profile 为例：
+
+```bash
+dsh plugin --profile web add oh-my-knowledge
+dsh --profile web
+```
+
+在 DSH 内执行：
+
+```text
+/omk eval eval.yaml
+/omk observe
+/omk observe <session-id>
+```
+
+评测复用当前宿主的模型、凭证、工具和 sandbox，并为每条用例创建隔离 session。观测读取已结束 session 的快照并返回 Studio 任务轨迹地址；目前不实时跟随正在运行的 DSH session。配置要求与插件当前限制见[DSH 接入](docs/zh/reference/executors.md#deepseek-harness-优先使用宿主插件)。
 
 ## 如何使用证据
 

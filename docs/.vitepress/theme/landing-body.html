@@ -22,7 +22,7 @@
 </header>
 <section class="band" id="caps">
   <div class="wrap">
-    <div class="sec-head"><h2>从当前任务开始</h2><p class="lead">从已有任务开始，或直接比较两版载体；不要求先走完所有步骤。</p></div>
+    <div class="sec-head"><h2>从当前任务开始</h2><p class="lead">CLI 执行工作流，Studio 浏览与复核证据，eval-runtime 将评测嵌入服务，DSH 插件直接复用宿主环境。</p></div>
     <div class="cap-grid">
       <div class="cap o">
         <div class="ic">01</div><h3>看清真实任务</h3>
@@ -50,8 +50,8 @@
         <p><a class="lnk" href="/zh/guides/auto-improve-skills">了解迭代与门禁 <span class="ar">→</span></a></p>
       </div>
       <div class="cap e">
-        <div class="ic">06</div><h3>接入服务与平台</h3>
-        <p>在 Node.js 服务中组合执行、评分与比较；也可由平台宿主管理任务与运行环境。</p>
+        <div class="ic">06</div><h3>嵌入 eval-runtime</h3>
+        <p>通过 Node.js API 组合执行、评分与比较，接入自己的服务或平台，无需通过 CLI 或启动 Studio。</p>
         <p><a class="lnk" href="/zh/guides/eval-runtime">查看服务接入教程 <span class="ar">→</span></a></p>
       </div>
     </div>
@@ -85,6 +85,12 @@
       </div>
       <div class="copy"><h3>让 Agent 执行工作流</h3><p>安装 OMK Skill 后，用自然语言描述比较目标。安装目标、模型准备和执行步骤见快速上手。</p><a class="lnk" href="/zh/quickstart-skill-eval">命令行评测 <span class="ar">→</span></a></div>
     </div>
+  </div>
+</section>
+<section class="band" id="dsh">
+  <div class="wrap">
+    <div class="sec-head"><h2>在 DSH 中直接使用 OMK</h2><p class="lead">安装宿主插件后，在现有 profile 内运行 /omk eval 或 /omk observe，复用模型、凭证、工具与 sandbox。评测用例使用隔离 session；观测读取已结束任务的快照。</p></div>
+    <p><a class="lnk" href="/zh/reference/executors#deepseek-harness-优先使用宿主插件">DSH 插件接入与限制 <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band alt" id="start">

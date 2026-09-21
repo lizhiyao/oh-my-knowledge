@@ -6,6 +6,8 @@
 
 **Observe. Measure. Know.** OMK makes knowledge changes in AI applications evidence-backed. It does not assign context-free quality scores. It helps the people who bear the consequences of a change decide whether that change created enough incremental value to ship, under an explicit target audience, task set, model, and acceptance standard.
 
+OMK delivers these capabilities through the CLI, Studio, eval-runtime, and the DSH plugin: command-line workflows, local inspection and review, evaluation embedded in Node.js services, and integration with an existing DeepSeek Harness profile. The workbench is one interface, not the definition of the whole product.
+
 ## First principle: there is no context-free "good knowledge"
 
 People naturally differ in how they understand knowledge and what they require from it. The same prompt / RAG / skill / agent / workflow can help a beginner while distracting an expert, improve one model while degrading another, or raise output quality at an unacceptable cost.

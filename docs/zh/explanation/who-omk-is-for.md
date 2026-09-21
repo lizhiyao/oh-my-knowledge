@@ -6,6 +6,8 @@
 
 **Observe. Measure. Know.** OMK 让 AI 应用的知识改动有据可依。它不为知识给出脱离上下文的统一质量分，而是帮助需要承担改动后果的人，在明确的目标用户、任务、模型和验收标准下，判断一次知识改动是否带来了值得发布的增量价值。
 
+OMK 通过 CLI、Studio、eval-runtime 与 DSH 插件提供这套能力：CLI 承载命令行与自动化工作流，Studio 承载本地浏览与复核，eval-runtime 将评测嵌入 Node.js 服务或平台，DSH 插件复用现有 DeepSeek Harness profile。工作台是其中一种使用方式，不能代替整个产品的定义。
+
 ## 先明确：不存在脱离上下文的「好知识」
 
 人们对知识的理解、偏好和要求天然不同。同一份 prompt / RAG / skill / agent / workflow，可能适合新手却打扰专家，可能在一种模型上有效却在另一种模型上退化，也可能提高质量但增加了无法接受的成本。

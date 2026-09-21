@@ -10,13 +10,22 @@
 
 **Observe. Measure. Know.** Make knowledge changes in your AI application evidence-backed.
 
-OMK is a local knowledge workbench for AI application authors and maintainers. Inspect how real tasks ran, extract reviewable knowledge items from work logs, and measure changes to prompts, RAG, skills, agents, or workflows to inform adoption, rollback, and further improvement.
+OMK is a toolkit for observing, evaluating, and improving knowledge in AI applications. Inspect how real tasks ran, extract reviewable knowledge items from work logs, and measure changes to prompts, RAG, skills, agents, or workflows to inform adoption, rollback, and further improvement.
 
 **Observe** preserves real behavior and its sources. **Measure** compares knowledge artifacts with the same model, cases, and execution conditions. **Know** connects decisions back to evidence. If you already have two artifact versions, start directly with evaluation; logs are not a prerequisite.
 
 Version 1.0 is still **in Beta iteration**; APIs and storage contracts may change. Read the [migration guide](docs/guides/v1-preview-migration.md) before upgrading an older installation.
 
 ![OMK: from controlled evaluation to real-world feedback](./docs/public/omk-knowledge-flow-en-animated.gif)
+
+## Choose how to use OMK
+
+| Interface | Use it for |
+|---|---|
+| **CLI** | Run checks, evaluations, observation, and improvement workflows from a terminal, coding agent, or CI |
+| **Studio** | Browse task trajectories, review knowledge items, and inspect reports and source evidence in a local workbench |
+| **eval-runtime** | Embed execution, scoring, and version comparison in your Node.js service or platform, without going through the CLI or starting Studio |
+| **DSH plugin** | Use `/omk eval` and `/omk observe` inside DeepSeek Harness with the current profile’s model, credentials, tools, and sandbox; see [host plugin setup](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) |
 
 ## Start with your goal
 
@@ -65,15 +74,36 @@ The scaffold contains two skills and three cases. This small default set checks 
 
 The [full walkthrough](docs/quickstart-skill-eval.md) covers runtime selection, your own skills, and interpreting results. The [example gallery](examples/README.md) offers more runnable scenarios.
 
-## Use inside AI Coding Agents
+## Use inside agents and DSH
+
+### Agent Skill and MCP
 
 ```bash
 omk install omk-agent-skill
 ```
 
-Then ask your coding agent: “Use omk to compare these two skills.” See the [quickstart](docs/quickstart-skill-eval.md#use-inside-an-agent) for installation targets and usage. DeepSeek Harness users can use the [host plugin](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) to reuse their current profile.
+Install the Skill, then ask your coding agent: “Use omk to compare these two skills; preview the plan first.” See the [quickstart](docs/quickstart-skill-eval.md#use-inside-an-agent) for installation targets and usage.
 
 The [MCP integration](docs/guides/mcp-integration.md) accepts user-authorized knowledge feedback. It records partial evidence submitted at its tool boundary; it does not automatically monitor complete conversations.
+
+### DeepSeek Harness plugin
+
+If you already use DSH, add OMK to an existing profile. For example, use the command-enabled `web` profile:
+
+```bash
+dsh plugin --profile web add oh-my-knowledge
+dsh --profile web
+```
+
+Inside DSH, run:
+
+```text
+/omk eval eval.yaml
+/omk observe
+/omk observe <session-id>
+```
+
+Evaluation reuses the host’s model, credentials, tools, and sandbox, creating an isolated session for each case. Observation reads snapshots of completed sessions and returns a Studio task-trajectory URL; it does not currently live-follow running DSH sessions. See [DSH integration](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) for configuration requirements and current plugin limitations.
 
 ## Use the evidence
 

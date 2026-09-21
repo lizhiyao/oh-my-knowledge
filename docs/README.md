@@ -2,6 +2,12 @@
 
 Choose an entry for your task. Version 1.0 is still in Beta iteration; existing users should read the [migration guide](./guides/v1-preview-migration.md) first. [简体中文 index](./zh/README.md).
 
+## Choose an interface
+
+OMK offers complementary interfaces: **CLI** workflows for terminals, agents, and CI; **Studio**, a local workbench for tasks, knowledge review, and evidence; and **eval-runtime**, an evaluation API you can embed independently in a Node.js service or platform, without the CLI or Studio.
+
+The **DSH plugin** brings `/omk eval` and `/omk observe` into an existing DeepSeek Harness profile, reusing its host environment; see [DSH integration](./reference/executors.md#deepseek-harness-prefer-the-host-plugin). The Agent Skill guides CLI workflows in natural language; MCP accepts user-authorized feedback.
+
 ## Choose an entry point
 
 | Goal | Start here | Reference when needed |
