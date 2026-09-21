@@ -8,7 +8,7 @@
  * 所以只比与语言无关的形状，不比行数、不比字数。
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -71,11 +71,10 @@ function readShape(root: string, path: string): Shape {
 describe('中英文档镜像结构门禁', () => {
   const paths = mirrorPaths();
 
-  it('两侧文件清单一致', () => {
-    expect(walkMarkdown(ZH_ROOT, []).map((file) => relative(ZH_ROOT, file)).sort()).toEqual(paths);
-  });
-
+  // 文件清单一致由 docs-i18n-mirror-links.test.ts 判；这里只在镜像缺失时给出
+  // 一句能定位的断言，避免 ENOENT 顶掉真正的形状差异。
   it.each(paths)('docs/%s 与中文镜像同构', (path) => {
+    expect(existsSync(join(ZH_ROOT, path)), `missing mirror docs/zh/${path}`).toBe(true);
     expect(readShape(ZH_ROOT, path)).toEqual(readShape(DOCS_ROOT, path));
   });
 });
