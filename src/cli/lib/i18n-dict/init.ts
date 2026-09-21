@@ -10,7 +10,8 @@ export type InitMessageKey =
   | 'cli.init.next_step_report_quick'
   | 'cli.init.next_step_report_full'
   | 'cli.init.next_step_customize'
-  | 'cli.init.note_skill_injection';
+  | 'cli.init.note_skill_injection'
+  | 'cli.init.language_hint';
 
 export const initDict: Record<InitMessageKey, CliMessage> = {
   'cli.init.scaffolded': {
@@ -55,5 +56,11 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
   'cli.init.note_skill_injection': {
     zh: '     注：omk eval 会把 SKILL.md 作为 system prompt 注入；模板 frontmatter 只是方便同一目录复用为 agent skill。',
     en: '     Note: omk eval injects SKILL.md as the system prompt; the starter frontmatter only helps reuse the same directory as an agent skill.',
+  },
+  // 语言未显式设置时（locale 推断或 zh 兜底）才打印：英文系统用户即使已经自动拿到
+  // 英文，也需要知道去哪里固定它。
+  'cli.init.language_hint': {
+    zh: '  输出语言 {lang} 尚未固定：单次切换用 --lang en|zh 或 OMK_LANG，长期切换在 omk studio 设置页保存。',
+    en: '  Output language {lang} is not pinned: pass --lang en|zh or set OMK_LANG for one run, or save it in the omk studio settings page.',
   },
 };

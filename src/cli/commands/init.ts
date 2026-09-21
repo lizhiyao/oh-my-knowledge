@@ -182,6 +182,7 @@ export default class Init extends BaseCommand {
       ));
       console.log(tCli('cli.init.next_step_customize', lang));
       console.log(tCli('cli.init.note_skill_injection', lang));
+      if (!this.langConfigured) console.log(tCli('cli.init.language_hint', lang, { lang }));
     });
   }
 }

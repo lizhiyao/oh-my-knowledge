@@ -16,7 +16,7 @@ omk init [dir]
 
 ```text
   --force           Allow overwriting existing project scaffold files in the target directory
-  --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --samples <3|20>  Number of first-party starter samples: 3 for a quick run, 20 to meet the default heuristic evidence floor
 ```
 
@@ -47,7 +47,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
   --git-ref <value>               Remote git ref (branch / tag / SHA), default HEAD. Only with --git-url.
   --git-url <value>               Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).
   --kind <skill|prompt|agent|workflow>Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.
-  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --to <value>                    Install target: auto (default, detected local targets) / codex / claude / all.
 ```
 
@@ -76,7 +76,7 @@ omk list --json          # machine-readable output with full comparability marke
 ```text
   --global        Show the global managed dir (~/.oh-my-knowledge/governance/managed) instead of project .omk/governance/managed
   --json          Output JSON (with full comparability markers) for scripts
-  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
 ```
 
 For full descriptions: `omk list --help`.
@@ -104,7 +104,7 @@ omk promote review --force --reason "manually reviewed"   # override the gate, r
   --global           operate on the global managed dir instead of project .omk/governance/managed
   --json             output JSON (versioned envelope) for scripts
   --kind <value>     artifact kind (only skill today)
-  --lang <value>     Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>     Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --reason <value>   reason for the promotion / override (stored on the decision)
 ```
 
@@ -130,7 +130,7 @@ omk rollback review --reason "regression found in prod"   # roll back and record
   --global          operate on the global managed dir instead of project .omk/governance/managed
   --json            output JSON (versioned envelope) for scripts
   --kind <value>    artifact kind (only skill today)
-  --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --reason <value>  reason for the rollback (stored on the decision)
 ```
 
@@ -164,7 +164,7 @@ omk doctor --static-only                 # static checks only: no LLM, no sample
   --gate                 Silent mode: only emit stderr summary on fail. Exit code carries the signal.
   --global               Write to global ~/.oh-my-knowledge/doctor instead of project .omk/doctor
   --json                 JSON output to stdout, for CI / external script consumption.
-  --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --model <value>        LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --output-dir <value>   Report output dir, default project-level .omk/doctor (--global for global).
   --repeat <value>       Health-check repeat count (self-consistency). Default 2: runs 2 passes in parallel, unions findings, merges same root cause via an LLM pass, tags k/N support. Set 1 for a single quick pass (no sampling/merge, cheapest).
@@ -246,7 +246,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting
   --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Claude uses haiku, other executors reuse the evaluated model.
   --judge-repeat <value>          Judge each dim N times
-  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --layered-stats                 Emit layered stats
   --mcp-config <value>            MCP config path
   --model <value>                 Evaluated model
@@ -310,7 +310,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
   --from <value>        Start time ISO, overrides --last
   --global              Write to global ~/.oh-my-knowledge/observe/health instead of project .omk/observe/health
   --kb <value>          KB root, enables KB-aware analysis
-  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --last <value>        Time window (7d / 24h / 30m)
   --output-dir <value>  Health report output dir, default project-level .omk/observe/health (--global for global)
   --skills <value>      Filter to specific skills, comma-separated
@@ -378,7 +378,7 @@ omk agents extract --session <runId>     # draft candidate knowledge from one co
   --executor <value>   extract: generation executor, using OMK runtime configuration.
   --json               Print complete JSON instead of a readable summary.
   --knowledge <value>  extract: knowledge workspace; defaults to the global knowledge dir.
-  --lang <value>       Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>       Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --limit <value>      Per-run session file cap for collect.
   --model <value>      extract: generation model, using the configured model.
   --session <value>    extract: a runId from the collection report.
@@ -417,7 +417,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
   --improve-model <value>         LLM that rewrites the skill; defaults to the evaluated model
   --judge-models <value>          Judge model (single judge required), executor:model format. Defaults to the selected executor; Codex reuses the evaluated model.
-  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --model <value>                 Evaluated LLM. Codex reads the local configured model. Also used to generate samples when none exist.
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
@@ -459,7 +459,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --executor <value>          Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --focus <value>             Generation focus (NL hint). Steers LLM toward certain sample types.
   --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
-  --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --model <value>             Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --no-mock                   Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.
   --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe/inbox.
@@ -495,7 +495,7 @@ omk studio --no-open
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctor, falls back to global)
   --global                    View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/; does not affect governance/managed
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
-  --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.
+  --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe/inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned

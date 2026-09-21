@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { globalLayout } from './layout.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { resolveLanguagePreference } from '../../shared/language-preference.js';
 
 const text = z.string().trim().min(1).max(4096);
 export const UserSettingsSchema = z.strictObject({
@@ -42,11 +43,14 @@ export class UserSettingsStore {
   resolve(overrides: UserSettingsOverrides = {}, env: NodeJS.ProcessEnv = process.env) {
     const { settings } = this.read();
     const nonempty = (value?: string) => value?.trim() || undefined;
-    const language = [overrides.language, env.OMK_LANG, settings.language].find(value => value === 'zh' || value === 'en') as 'zh' | 'en' | undefined;
+    // 展示语言口径与 CLI 共用 resolveLanguagePreference:显式 > env > 已保存 > 系统 locale > zh。
+    const language = resolveLanguagePreference({
+      override: overrides.language, stored: settings.language, env,
+    }).lang;
     const executor = nonempty(overrides.executor) ?? nonempty(env.OMK_EXECUTOR) ?? settings.knowledge?.executor ?? 'codex';
     // Switching provider must not inherit a model configured for another provider.
     const storedModel = (settings.knowledge?.executor ?? 'codex') === executor ? settings.knowledge?.model : undefined;
     return { workspace: nonempty(overrides.workspace) ?? settings.knowledge?.workspace ?? globalLayout(this.root).knowledgeDir,
-      executor, model: nonempty(overrides.model) ?? nonempty(env.OMK_MODEL) ?? storedModel ?? '', language: language ?? 'zh' };
+      executor, model: nonempty(overrides.model) ?? nonempty(env.OMK_MODEL) ?? storedModel ?? '', language };
   }
 }

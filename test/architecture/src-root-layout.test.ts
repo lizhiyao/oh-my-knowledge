@@ -43,6 +43,7 @@ const EXPECTED_SHARED_FILES = [
   'json-safe-truncation.ts',
   'json-value.ts',
   'keyed-mutex.ts',
+  'language-preference.ts',
   'language.ts',
   'record-count.ts',
   'shell-quote.ts',

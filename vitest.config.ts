@@ -16,6 +16,11 @@ export default defineConfig({
     // 每个子目录单独补 env 兜底,也消除「新写路径忘了补兜底就静默污染真实 ~/.oh-my-knowledge」的隐患。
     // 需要更细粒度的用例仍可 per-test 覆盖 OMK_TREES_DIR / OMK_ARTIFACT_INDEX_DIR 等子目录变量。
     env: {
+      // 展示语言会按系统 locale 推断默认值；不钉住 LANG，「默认输出中文」这类断言就跟着
+      // 开发者 shell 或 CI 镜像漂。C = 无 locale 信号 = 走兜底，locale 推断本身另有用例显式覆盖。
+      LANG: 'C',
+      LC_ALL: 'C',
+      LC_MESSAGES: 'C',
       OMK_HOME: join(tmpdir(), `omk-test-home-${process.pid}`),
       // Update-check behavior has dedicated tests. Disable it everywhere else
       // so CLI integration tests do not create caches or detached refresh

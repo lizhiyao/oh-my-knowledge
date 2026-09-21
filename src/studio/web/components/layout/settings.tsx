@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Drawer, Input, Select } from 'antd';
-import type { StudioSettings } from '../../../view-models/settings/settings';
+import type { StudioLanguageChoice, StudioSettings } from '../../../view-models/settings/settings';
+import { languageField } from './settings-language';
 import type { Language } from './shell';
 
 /** One settings surface across Studio; reading or saving never invokes a model. */
@@ -12,7 +13,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
   const [workspace, setWorkspace] = useState('');
   const [executor, setExecutor] = useState('codex');
   const [model, setModel] = useState('');
-  const [language, setLanguage] = useState<Language>(lang);
+  const [language, setLanguage] = useState<StudioLanguageChoice>(lang);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const controller = useRef<AbortController | null>(null);
@@ -27,7 +28,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
       if (active.signal.aborted) return;
       setData(value); setWorkspace(value.settings.knowledge?.workspace ?? value.defaults.workspace);
       setExecutor(value.settings.knowledge?.executor ?? value.defaults.executor); setModel(value.settings.knowledge?.model ?? '');
-      setLanguage(value.settings.language ?? value.defaults.language);
+      setLanguage(value.settings.language ?? 'auto');
     } catch { if (!active.signal.aborted) setError(zh ? '无法读取设置，请检查本地配置文件。' : 'Cannot read settings. Check the local settings file.'); }
     finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
@@ -35,7 +36,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
     if (!data) return;
     const active = new AbortController(); controller.current = active; setBusy(true); setError('');
     try {
-      const response = await fetch('/api/settings', { method: 'POST', signal: active.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revision: data.revision, settings: { schemaVersion: 1, language, knowledge: { workspace: workspace.trim(), executor, ...(model.trim() ? { model: model.trim() } : {}) } } }) });
+      const response = await fetch('/api/settings', { method: 'POST', signal: active.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revision: data.revision, settings: { schemaVersion: 1, ...languageField(language), knowledge: { workspace: workspace.trim(), executor, ...(model.trim() ? { model: model.trim() } : {}) } } }) });
       if (!response.ok) throw new Error(response.status === 409 ? 'conflict' : 'save');
       // 语言由设置决定、不进地址：保存后重载当前页即可生效，地址与其余查询参数原样保留。
       window.location.reload();
@@ -53,13 +54,18 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
         <label>{zh ? '知识提炼调用方式' : 'Knowledge extraction provider'}<Select style={{ width: '100%' }} disabled={busy || !data} value={executor} onChange={value => { setExecutor(value); setModel(''); }} options={['codex','openai-api','anthropic-api'].map(value => ({ value, label: value }))}/></label>
         <label>{zh ? '知识提炼默认模型' : 'Default extraction model'}<Input disabled={busy || !data} value={model} onChange={event => setModel(event.target.value)} placeholder={zh ? '未设置时，每次提炼需明确选择模型' : 'Choose a model per extraction when unset'}/></label>
         <p className="candidate-help">{zh ? '这里只设置知识提炼模型，不修改评测模型或评委配置。保存设置不会调用模型。' : 'Applies only to knowledge extraction, not evaluation models or judges. Saving invokes no model.'}</p>
-        <label>{zh ? '界面与 CLI 默认语言' : 'Default Studio and CLI language'}<Select style={{ width: '100%' }} disabled={busy || !data} value={language} onChange={setLanguage} options={[{ value: 'zh', label: '中文' }, { value: 'en', label: 'English' }]}/></label>
-        <Button disabled={busy || !data} onClick={() => { if (data) { setWorkspace(data.defaults.workspace); setExecutor(data.defaults.executor); setModel(data.defaults.model); setLanguage(data.defaults.language); } }}>{zh ? '填入内置默认值' : 'Use built-in defaults'}</Button>
+        {/* 「自动」不写死语言：保存时省略该字段，交回 OMK_LANG → 系统 locale → zh 的解析链。 */}
+        <label>{zh ? '界面与 CLI 默认语言' : 'Default Studio and CLI language'}<Select style={{ width: '100%' }} disabled={busy || !data} value={language} onChange={setLanguage} options={[
+          { value: 'auto' as StudioLanguageChoice, label: zh ? `自动（当前 ${data?.effective.language ?? lang}）` : `Auto (currently ${data?.effective.language ?? lang})` },
+          { value: 'zh' as StudioLanguageChoice, label: '中文' },
+          { value: 'en' as StudioLanguageChoice, label: 'English' },
+        ]}/></label>
+        <Button disabled={busy || !data} onClick={() => { if (data) { setWorkspace(data.defaults.workspace); setExecutor(data.defaults.executor); setModel(data.defaults.model); setLanguage('auto'); } }}>{zh ? '填入内置默认值' : 'Use built-in defaults'}</Button>
         <details><summary>{zh ? '还有哪些配置？' : 'Other configuration'}</summary><ul>
           <li>{zh ? '启动环境：OMK_HOME、Studio 地址／端口、外部 Codex 配置。修改环境后需重启服务。' : 'Startup environment: OMK_HOME, Studio host/port, external Codex configuration. Restart after changing the environment.'}</li>
           <li>{zh ? '凭证与服务地址：OPENAI_API_KEY、ANTHROPIC_API_KEY、对应 BASE_URL，由环境管理，这里不读取或保存密钥。' : 'Credentials and endpoints: OPENAI_API_KEY, ANTHROPIC_API_KEY and corresponding BASE_URL variables. Keys are not read or saved here.'}</li>
           <li>{zh ? '项目／运行：评测配置、评委、样本、并发、预算、报告目录与日志选区，仍在对应入口配置。' : 'Project/run: evaluation config, judges, samples, concurrency, budgets, report directories and log selections remain in their respective flows.'}</li>
-        </ul><p>{zh ? '优先级：单次显式指定 → 启动环境覆盖 → 全局设置 → 内置默认。' : 'Priority: explicit request → environment → saved settings → built-in default.'}</p><p className="candidate-help">{data?.path}</p></details>
+        </ul><p>{zh ? '优先级：单次显式指定 → 启动环境覆盖 → 全局设置 → 系统 locale → 内置默认 zh。' : 'Priority: explicit request → environment → saved settings → system locale → built-in default zh.'}</p><p className="candidate-help">{data?.path}</p></details>
       </div>
     </Drawer></>;
 }
