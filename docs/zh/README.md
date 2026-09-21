@@ -2,7 +2,7 @@
 
 从当前任务选择入口。1.0 仍在 Beta 迭代；旧版本用户先看[迁移指南](./guides/v1-preview-migration.md)。[English index](../README.md)。
 
-## 开始使用
+## 选择入口
 
 | 目标 | 先读 | 按需查阅 |
 |---|---|---|
@@ -10,6 +10,15 @@
 | 在 Node.js 服务中接入 | [服务接入指南](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [底层 Core API](./reference/embedded-api.md) |
 | 由平台宿主下发评测任务 | [平台宿主集成指南](./guides/platform-host-integration.md) | [Runtime API](./reference/eval-runtime-api.md) |
 | 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./explanation/effective-observation-review.md) |
+
+## 从真实任务沉淀知识
+
+1. [在 Studio 查看任务轨迹](./guides/observe-production.md)：选择本机 Codex 对话，核对原始记录与知识访问，无需先 ingest。
+2. [从工作日志提炼知识](./guides/extract-knowledge.md)：选定来源片段，生成并复核知识内容，保留修订与处理理由。
+3. [通过 MCP 记录反馈](./guides/mcp-integration.md)：在用户确认后提交最小证据，复核真实问题，再草拟用例。
+4. [将载体改动交给评测](./quickstart-skill-eval.md)：人工整理正式用例与候选版本，依据受控比较决定后续动作。
+
+这些路径按需组合。知识内容的保留、载体的写入、评测通过与发布分别记录；候选不会自动生效。概念见[知识内容与知识载体](./explanation/knowledge.md)。
 
 ## 完成具体任务
 

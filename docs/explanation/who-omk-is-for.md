@@ -41,7 +41,7 @@ change a skill / prompt / agent artifact
 → decide ship / don't ship
 ```
 
-That is the trunk. `observe` matters after real usage exists, but it is not required for omk's first value. A product direction that makes doctor and eval more trustworthy at this context-specific ship/no-ship moment should outrank one that only adds a new surface area.
+This path does not require logs. When real tasks are available, start with Studio observation, knowledge extraction, and review, then apply selected content to artifacts and cases. Both paths share one principle: decisions should remain traceable to sources and an evaluation contract.
 
 ## Current target users: two hypotheses to validate
 
@@ -70,7 +70,7 @@ omk's three stages reach different audiences:
 
 - **doctor (check)**: the pre-ship health gate. Authors use it before trusting an eval; adopters can use it to rule out structural, dependency, and measurability problems.
 - **eval (evaluate)**: the release decision core. It needs an evaluation contract and measurement intent, so it belongs to author iteration and adoption decisions. Passive users do not need to run it.
-- **observe (observe)**: the post-ship feedback loop. It finds gaps in real session traces that the current contract does not cover and feeds the next sample set. It does not replace controlled eval and should not be the first surface a new user must understand.
+- **observe (observe)**: the real-usage feedback loop. It finds gaps in real session traces that the current contract does not cover and feeds the next sample set. It does not replace controlled eval and should not be the first surface a new user must understand.
 
 ## Boundaries: what omk doesn't do
 

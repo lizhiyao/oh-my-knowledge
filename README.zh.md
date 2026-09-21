@@ -10,7 +10,9 @@
 
 **Observe. Measure. Know.** 让 AI 应用的知识改动有据可依。
 
-OMK 帮助 prompt、RAG、skill 和 agent 的作者比较版本、检查证据，并从真实任务中发现知识缺口。受控比较遵循：**相同模型，相同评测用例，只改变知识载体。**
+OMK 是面向 AI 应用作者与维护者的本地知识工作台。查看真实任务如何执行，从工作日志提炼可复核的知识内容，再测量 prompt、RAG、skill、agent 或 workflow 的载体改动是否有效，为采纳、回退和继续改进提供证据。
+
+**Observe** 保留真实表现与来源，**Measure** 在相同模型、用例与运行条件下比较知识载体，**Know** 让决定可以回到证据核对。已有两版载体时，可以直接开始评测；不必先收集日志。
 
 当前 1.0 仍处于 **Beta 迭代期**，接口与存储契约可能继续变化。从旧版本升级前，请先阅读[迁移指南](docs/zh/guides/v1-preview-migration.md)。
 
@@ -18,18 +20,36 @@ OMK 帮助 prompt、RAG、skill 和 agent 的作者比较版本、检查证据�
 
 ## 从你的目标开始
 
-| 想做什么 | 入口 |
-|---|---|
-| 比较两版 skill，获得判定、置信区间与失败用例 | [命令行快速上手](docs/zh/quickstart-skill-eval.md) |
-| 在 Node.js 服务中接入评分与版本对比 | [服务接入指南](docs/zh/guides/eval-runtime.md)，含无需模型凭证的示例 |
-| 看清一次任务，或从历史日志发现问题 | [观测与任务轨迹](docs/zh/guides/observe-production.md) |
+| 想做什么 | 入口 | 得到什么 |
+|---|---|---|
+| 看清一次真实任务 | [Studio 与任务轨迹](docs/zh/guides/observe-production.md) | 对话、执行、结果、知识四条泳道，以及可核对的原始记录 |
+| 把工作经验沉淀为知识 | [从日志提炼知识](docs/zh/guides/extract-knowledge.md) | 带来源和适用条件的候选知识，支持修订、保留和舍弃 |
+| 记录已确认的知识问题 | [MCP 主动反馈](docs/zh/guides/mcp-integration.md) | 待复核 observation；确认真实问题后再草拟用例 |
+| 判断一版改动是否值得采用 | [评测快速上手](docs/zh/quickstart-skill-eval.md) | 版本判定、不确定性、失败用例和评分依据 |
+| 自动尝试改进 skill | [迭代改进](docs/zh/guides/auto-improve-skills.md) | 经受控比较筛选的候选版本 |
+| 将评测接入服务或平台 | [Node.js 服务](docs/zh/guides/eval-runtime.md) · [平台宿主](docs/zh/guides/platform-host-integration.md) | 可组合的执行、评分与比较接口 |
 
 ## 快速开始
 
-需要 Node.js >=22 和一个已认证的模型 runtime，详见[系统要求](#系统要求)。安装 Beta 并预览第一次比较：
+安装需要 Node.js >=22。调用模型前还需配置已认证的 runtime，详见[系统要求](#系统要求)。
 
 ```bash
 npm i -g oh-my-knowledge@next
+```
+
+### 先看已有任务
+
+```bash
+omk studio
+```
+
+打开命令返回的本地地址，从本机 Codex 对话进入任务轨迹；无需先 ingest，也不调用模型。进行中的任务支持实时跟随。Claude Code、OpenClaw 与 markdown 日志通过 `omk observe` 进入观测报告，见[观测指南](docs/zh/guides/observe-production.md)。
+
+需要沉淀经验时，在知识页面选择“从工作日志提炼知识”，选定工作区与 Codex 日志片段，核对来源后再生成。生成会调用模型；保留候选表示愿意维护，不等于已证实，也不会自动写入 AGENTS.md 或 skill。步骤见[提炼指南](docs/zh/guides/extract-knowledge.md)。
+
+### 或者，直接比较两版 skill
+
+```bash
 omk init demo
 cd demo
 omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
@@ -57,11 +77,18 @@ omk install omk-agent-skill
 
 ## 如何使用证据
 
-`doctor` 检查知识载体，`eval` 做受控比较，`studio` 展示结果与原始证据。证据满足条件后可以 `promote` 接受版本，或用 `evolve` 生成候选；`observe` 暴露的缺口可转成待复核用例，再进入下一轮评测。
+知识内容是一条可复核的事实、经验或方法；知识载体是承载内容的 prompt、文档、skill 等。候选知识是内容的待复核状态，候选版本是拟采用的载体版本，两者不能混为一谈。
+
+1. **观测与复核**：在 Studio 核对任务与来源；提炼知识或确认 observation，留下适用条件和处理理由。
+2. **形成可测改动**：人工把需要采纳的内容落实到载体，把可复现的问题整理为正式用例；候选不会自动生效。
+3. **受控比较**：`doctor` 做前置检查，`eval` 比较 control 与 treatment，检查 Decision、覆盖、失败样本与成本。
+4. **采纳或继续改进**：受管 skill 可按证据 `promote`／`rollback`；`evolve` 通过 A/B 门禁筛选候选版本，写回前再次比较。
+
+这是可组合的工作路径，不是强制的单向状态机。一次评测通过也不等于知识已写入或版本已发布。
 
 结论受用例、评分准则和执行环境约束。观测信号不等于因果结论，生成的样本也不能直接充当独立发布验证集。原理与限制见[统计严谨性](docs/zh/explanation/statistical-rigor.md)和[三阶段工作流](docs/zh/explanation/three-stage-workflow.md)。
 
-项目证据保存在 `.omk/`，机器级状态位于 `~/.oh-my-knowledge/`。当前版本不读取或迁移旧存储布局；升级前备份，按[迁移指南](docs/zh/guides/v1-preview-migration.md)重新建立证据。
+项目评测与观测证据保存在 `.omk/`，机器级状态位于 `~/.oh-my-knowledge/`；提炼的知识内容保存在显式选择的知识工作区。当前版本不读取或迁移旧存储布局；升级前备份，按[迁移指南](docs/zh/guides/v1-preview-migration.md)重新建立证据。
 
 ## 文档
 
