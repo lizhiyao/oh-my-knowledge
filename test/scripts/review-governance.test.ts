@@ -7,7 +7,12 @@ const read = (path: string): string => readFileSync(join(root, path), 'utf8');
 
 describe('autonomous review governance', () => {
   it('keeps local Markdown links in repository rules resolvable', () => {
-    for (const path of ['AGENTS.md', 'CLAUDE.md', 'CODE_REVIEW.md', 'CONTRIBUTING.md', '.github/PULL_REQUEST_TEMPLATE.md']) {
+    for (const path of [
+      'AGENTS.md', 'AGENTS.en.md', 'CLAUDE.md', 'CODE_REVIEW.md', 'CODE_REVIEW.en.md',
+      'CONTRIBUTING.md', 'CONTRIBUTING.zh.md', 'PRODUCT.md', 'PRODUCT.en.md',
+      'SECURITY.md', 'SECURITY.zh.md', 'schemas/README.md', 'schemas/README.zh.md',
+      '.github/PULL_REQUEST_TEMPLATE.md',
+    ]) {
       for (const match of read(path).matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
         const target = match[1].split(/[?#]/)[0];
         if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
@@ -36,6 +41,30 @@ describe('autonomous review governance', () => {
     expect(playbook).toContain('不得用 `.gitignore` 掩盖工具写入');
     expect(agents).toContain('PR 边界在开工划分工作时就确定');
     expect(playbook).toContain('### 2. 实现中保持可审查');
+  });
+
+  it('keeps every bilingual governance document pointed at its counterpart', () => {
+    // 对照关系与「以哪一版为准」是同一件事：链接保证读者找得到另一版，声明保证两版冲突时有唯一口径。
+    const counterparts: Record<string, string> = {
+      'AGENTS.md': 'AGENTS.en.md',
+      'AGENTS.en.md': 'AGENTS.md',
+      'CODE_REVIEW.md': 'CODE_REVIEW.en.md',
+      'CODE_REVIEW.en.md': 'CODE_REVIEW.md',
+      'CONTRIBUTING.md': 'CONTRIBUTING.zh.md',
+      'CONTRIBUTING.zh.md': 'CONTRIBUTING.md',
+      'PRODUCT.md': 'PRODUCT.en.md',
+      'PRODUCT.en.md': 'PRODUCT.md',
+      'SECURITY.md': 'SECURITY.zh.md',
+      'SECURITY.zh.md': 'SECURITY.md',
+      'schemas/README.md': 'README.zh.md',
+      'schemas/README.zh.md': 'README.md',
+    };
+    for (const [path, counterpart] of Object.entries(counterparts)) {
+      const text = read(path);
+      const href = counterpart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(text, `${path} 必须链到 ${counterpart}`).toMatch(new RegExp(`\\((?:\\.\\/)?${href}\\)`));
+      expect(text, `${path} 必须声明以哪一版为准`).toMatch(/为准|authoritative/iu);
+    }
   });
 
   it('keeps domain-specific review rules close to the code they govern', () => {

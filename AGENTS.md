@@ -70,6 +70,6 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 
 - 用户文档：README.md、README.zh.md。
 - Skill：.agents/skills/omk/SKILL.md。
-- 审查：CODE_REVIEW.md。
-- 设计规范：docs/。
-- Git 与发版：CONTRIBUTING.md。
+- 审查：CODE_REVIEW.md（English: CODE_REVIEW.en.md）。
+- 设计规范：docs/（英文 `docs/`、中文 `docs/zh/`，逐节对照由 CI 门禁判）。
+- Git 与发版：CONTRIBUTING.md（中文版：CONTRIBUTING.zh.md）。
