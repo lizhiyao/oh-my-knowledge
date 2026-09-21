@@ -17,6 +17,8 @@ All work happens on short-lived topic branches cut from `main`:
 | `docs/<desc>` | `main` | `main` | docs only |
 | `chore/<desc>` | `main` | `main` | build, tooling, dependency bumps, release version bumps |
 
+The prefix is the Conventional Commits type of the change the branch mainly carries; `refactor/`, `test/`, `perf/` and `ci/` follow the same shape. Never take the prefix from the tool or the person doing the work.
+
 Delete the topic branch after its PR is merged.
 
 ## Typical workflow
@@ -39,7 +41,7 @@ git checkout main
 git pull --ff-only
 
 # cut a topic branch from main
-git checkout -b codex/my-feature
+git checkout -b feat/my-feature
 
 # Batch the intended changes, then validate based on risk level.
 yarn install
@@ -54,7 +56,7 @@ yarn ci:quick <相关测试文件>
 yarn ci
 
 git commit -m "feat(cli): 中文 subject"
-git push -u origin codex/my-feature
+git push -u origin feat/my-feature
 
 # open a PR against **main**
 ```
