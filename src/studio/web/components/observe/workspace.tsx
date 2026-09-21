@@ -63,18 +63,18 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   const heading = view === 'recent' ? t('全部对话', 'All conversations') : view === 'running' ? t('进行中的对话', 'Running conversations') : group?.[0] ? projectName(group[0], zh) : t('项目', 'Project');
   const projectWindow: ProjectWindow = { all: allProjects, searching: Boolean(query), selectedId: selected ? projectId(selected) : undefined, activeId: view };
   const projectIds = visibleProjectIds([...groups.keys()], projectWindow);
-  /* 四种空的下一步各不相同，合成一句「暂无匹配的会话」等于把判断推回给用户。 */
+  /* 四种空的下一步各不相同，合成一句「暂无匹配的对话」等于把判断推回给用户。 */
   const emptyState: ListEmptyState = listEmptyState({ searching: Boolean(query), view, viewExists: groups.has(view) });
   const emptyCopy: Record<ListEmptyState, { description: string; action?: string }> = {
-    'no-match': { description: t('没有匹配的会话。搜索只匹配标题、路径与项目名，不检索消息正文。', 'No matching conversations. Search matches titles, paths and project names, not message bodies.'), action: t('清空搜索', 'Clear the search') },
-    'no-running': { description: t('当前没有进行中的会话。已结束的工作记录仍在全部对话里。', 'Nothing is running right now. Finished work is still in All conversations.'), action: t('查看全部对话', 'View all conversations') },
+    'no-match': { description: t('没有匹配的对话。搜索只匹配标题、路径与项目名，不检索消息正文。', 'No matching conversations. Search matches titles, paths and project names, not message bodies.'), action: t('清空搜索', 'Clear the search') },
+    'no-running': { description: t('当前没有进行中的对话。已结束的工作记录仍在全部对话里。', 'Nothing is running right now. Finished work is still in All conversations.'), action: t('查看全部对话', 'View all conversations') },
     'unknown-project': { description: t('找不到这个项目，它可能已被移动或清理。', 'This project cannot be found; it may have been moved or cleaned up.'), action: t('查看全部对话', 'View all conversations') },
-    'no-data': { description: t('暂无会话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。', 'No conversations yet. Records appear automatically once an agent has run; see “Settings and help” for guidance.') },
+    'no-data': { description: t('暂无对话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。', 'No conversations yet. Records appear automatically once an agent has run; see “Settings and help” for guidance.') },
   };
   function clearSearch() { setQuery(''); setCurrent(1); }
   return <div className={`observe-workbench${navigationOpen ? ' navigation-open' : ''}`}>
-    <aside className="observe-sidebar" aria-label={t('项目与会话', 'Projects and conversations')}>
-      <Input allowClear aria-label={t('搜索项目或会话', 'Search projects or conversations')} placeholder={t('搜索项目或会话', 'Search projects or conversations')} value={query} onChange={event => { setQuery(event.target.value); setCurrent(1); }}/>
+    <aside className="observe-sidebar" aria-label={t('项目与对话', 'Projects and conversations')}>
+      <Input allowClear aria-label={t('搜索项目或对话', 'Search projects or conversations')} placeholder={t('搜索项目或对话', 'Search projects or conversations')} value={query} onChange={event => { setQuery(event.target.value); setCurrent(1); }}/>
       <div className="observe-sidebar-scroll">
       <div className="observe-projects" aria-label={t('项目', 'Projects')}><h2>{t('项目', 'Projects')}</h2>{projectIds.map(id => {
         const items = groups.get(id) ?? [];
@@ -83,13 +83,13 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         const shown = keepSelectedVisible(visible.slice(0, PROJECT_SESSION_LIMIT), visible, selected);
         const directory = items[0].project?.directory ?? items[0].cwd;
         return <details key={id} open={selected ? projectId(selected) === id : view === id}>
-          <summary><span title={directory ? `${name}\n${directory}` : name}>{name}</span><span title={t(`${visible.length} 个会话`, `${visible.length} conversations`)}>{visible.length}</span></summary>
-          <button className="observe-project-overview" onClick={() => choose(id)}>{t('查看项目会话', 'View project conversations')}</button>
+          <summary><span title={directory ? `${name}\n${directory}` : name}>{name}</span><span title={t(`${visible.length} 个对话`, `${visible.length} conversations`)}>{visible.length}</span></summary>
+          <button className="observe-project-overview" onClick={() => choose(id)}>{t('查看项目对话', 'View project conversations')}</button>
           {shown.map(item => { const meta = item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind; return <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationPath(item.threadId)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small title={meta}>{meta}</small></Link>; })}
-          {visible.length > PROJECT_SESSION_LIMIT && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个会话`, `View all ${visible.length} conversations`)}</button>}
+          {visible.length > PROJECT_SESSION_LIMIT && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个对话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
       })}{query && !index.conversations.some(matches) && <>
-        <p className="observe-sidebar-empty">{t('没有匹配的项目或会话。搜索只匹配标题、路径与项目名，不检索消息正文。', 'No matching projects or conversations. Search matches titles, paths and project names, not message bodies.')}</p>
+        <p className="observe-sidebar-empty">{t('没有匹配的项目或对话。搜索只匹配标题、路径与项目名，不检索消息正文。', 'No matching projects or conversations. Search matches titles, paths and project names, not message bodies.')}</p>
         <button className="observe-sidebar-link" onClick={clearSearch}>{t('清空搜索', 'Clear the search')}</button>
       </>}</div>
       {groups.size > PROJECT_LIMIT && !query && <button className="observe-sidebar-link" onClick={() => setAllProjects(value => !value)}>{allProjects ? t('收起项目', 'Show fewer projects') : t('查看全部项目', 'View all projects')}</button>}
@@ -97,7 +97,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         <header><h2>{t('独立对话', 'Standalone conversations')}</h2></header>
         <div className="observe-recent-links">{shownIndependent.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationPath(item.threadId)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
         {hiddenIndependent > 0 && <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t(`还有 ${hiddenIndependent} 个独立对话，在全部对话中查看`, `${hiddenIndependent} more standalone conversations in All conversations`)}</button>}
-        {!independent.length && <p className="observe-sidebar-empty">{query ? t('没有匹配的独立对话。', 'No matching standalone conversations.') : t('暂无独立对话。有项目归属的会话显示在上方项目下。', 'No standalone conversations yet. Conversations that belong to a project are listed under Projects above.')}</p>}
+        {!independent.length && <p className="observe-sidebar-empty">{query ? t('没有匹配的独立对话。', 'No matching standalone conversations.') : t('暂无独立对话。有项目归属的对话显示在上方项目下。', 'No standalone conversations yet. Conversations that belong to a project are listed under Projects above.')}</p>}
       </section>
       <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
       <button className="observe-sidebar-link" aria-pressed={view === 'running'} onClick={() => choose(view === 'running' ? 'recent' : 'running')}>{t('进行中的对话', 'Running conversations')}</button>
@@ -105,15 +105,15 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
       <StudioUtilities lang={lang}/>
     </aside>
     <main className="observe-workspace-main">
-      <div className="observe-workspace-tools"><Button className="observe-navigation-toggle" size="small" onClick={() => setNavigationOpen(value => !value)}>{t('项目与会话', 'Projects and conversations')}</Button><ActivityNotice activity={activity} lang={lang}/></div>
+      <div className="observe-workspace-tools"><Button className="observe-navigation-toggle" size="small" onClick={() => setNavigationOpen(value => !value)}>{t('项目与对话', 'Projects and conversations')}</Button><ActivityNotice activity={activity} lang={lang}/></div>
       {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang} title={conversationLabel(selected.title)} project={projectName(selected, zh)}/> : <>
-        <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个会话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开会话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
+        <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个对话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开对话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
         <div className="observe-session-list">{listed.rows.map(item => {
           const label = conversationLabel(item.title);
           const lastTask = item.tasks.at(-1);
           const latest = lastTask ? conversationLabel(lastTask.title) : undefined;
           return <Link className="observe-session-row" key={item.threadId} href={conversationPath(item.threadId)}>
-          <div><strong title={label}>{label}</strong><p title={latest}>{latest ? `${t('最近请求：', 'Latest request: ')}${latest}` : t('打开后读取会话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
+          <div><strong title={label}>{label}</strong><p title={latest}>{latest ? `${t('最近请求：', 'Latest request: ')}${latest}` : t('打开后读取对话内容', 'Open to read this conversation')}</p><small title={item.cwd}>{projectName(item, zh)} · {item.model ?? item.sourceKind}{item.archived ? ` · ${t('已归档', 'Archived')}` : ''}</small></div>
           <div className="observe-session-meta">{running(item) && <span className="conversation-running"><i className="studio-running-dot"/>{t('进行中', 'Running')}</span>}<time title={displayTime(item.endTimestamp ?? item.startTimestamp)}>{displayTime(item.endTimestamp ?? item.startTimestamp, 'minute')}</time>{(item.toolFailureCount ?? 0) > 0 && <small className="observe-session-error" title={t('曾发生工具报错，不代表最终工作失败。', 'Tool errors were observed; this does not determine the final outcome.')}>{t(`${item.toolFailureCount} 次工具报错`, `${item.toolFailureCount} tool errors`)}</small>}</div>
         </Link>;
         })}{!rows.length && <Empty description={emptyCopy[emptyState].description}>

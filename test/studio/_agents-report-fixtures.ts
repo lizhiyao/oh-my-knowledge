@@ -134,7 +134,7 @@ export function sampleCollectionReport(overrides: Partial<AgentCollectionReport>
         unmappedEvidenceCount: 0,
       },
     ],
-    limitations: ['本轮采集上限为 200 个会话文件、2 GiB，剩余 0 个待采文件留到后续增量运行。'],
+    limitations: ['本轮采集上限为 200 个来源会话文件、2 GiB，剩余 0 个待采文件留到后续增量运行。'],
     summary: {
       agentCount: 1,
       discoveredCount: 42,

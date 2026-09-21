@@ -55,7 +55,7 @@ export function TimelineView({
         value={selectedId}
         onChange={setSelectedId}
         options={options}
-        placeholder={zh ? '选择会话' : 'Select a session'}
+        placeholder={zh ? '选择来源会话' : 'Select a source session'}
       />
       {selected ? (
         <Timeline

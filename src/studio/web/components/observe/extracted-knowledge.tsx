@@ -32,12 +32,12 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
     } catch { if (!active.signal.aborted) setError(true); } finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
   return <><div className="conversation-knowledge-actions"><ExtractConversation threadId={threadId} turnId={turnId} lang={lang} onFinished={() => { if (open && workspace) void load(); }}/><Button onClick={() => { setOpen(true); if (workspace) void load(); }}>{zh ? '已提炼知识' : 'Extracted knowledge'}</Button></div>
-    <Drawer title={zh ? '这个会话的提炼记录' : 'Extractions from this conversation'} open={open} onClose={() => setOpen(false)} size={560}>
-      <p>{zh ? '查看所选知识目录中，这个会话的提炼结果。' : 'Show this conversation’s extraction results in the selected knowledge folder.'}</p>
+    <Drawer title={zh ? '这条对话的提炼记录' : 'Extractions from this conversation'} open={open} onClose={() => setOpen(false)} size={560}>
+      <p>{zh ? '查看所选知识目录中，这条对话的提炼结果。' : 'Show this conversation’s extraction results in the selected knowledge folder.'}</p>
       <Input disabled={busy} aria-label={zh ? '知识保存目录' : 'Knowledge folder'} value={workspace} onChange={event => { setWorkspace(event.target.value); setRuns([]); }}/>
       <Button disabled={!workspace.trim()} loading={busy} onClick={() => void load()}>{zh ? '读取记录' : 'Load history'}</Button>
       {error && <Alert type="error" title={zh ? '无法读取，请检查保存目录。' : 'Could not load history. Check the folder.'}/>}
-      {!busy && !error && runs.length === 0 && <Empty description={zh ? '当前目录尚无这个会话的提炼记录。' : 'No extractions for this conversation in this folder.'}/>}
+      {!busy && !error && runs.length === 0 && <Empty description={zh ? '当前目录尚无这条对话的提炼记录。' : 'No extractions for this conversation in this folder.'}/>}
       {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{extractionRunStatusLabel(run.status, lang)} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>{run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><Link href={`${KNOWLEDGE_CANDIDATES_PATH}?${link}`}>{item.title}</Link> · {candidateDecisionLabel(item.choice, lang)}</p>; })}</section>)}
     </Drawer></>;
 }

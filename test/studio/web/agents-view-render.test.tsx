@@ -50,7 +50,7 @@ describe('本机 Agent 视图的双语呈现', () => {
   it('中文界面呈现识别计数、截断告警与未识别事件比', () => {
     const zh = render('zh');
     assert.match(zh, /<h1>本机 Agent<\/h1>/);
-    assert.match(zh, /登记表 3 个 · 已安装 2 个 · 会话日志 42 份/);
+    assert.match(zh, /登记表 3 个 · 已安装 2 个 · 来源会话日志 42 份/);
     assert.match(zh, /有日志根被容量上限截断/);
     assert.match(zh, /25 \/ 100/);
     assert.match(zh, /修复登录态丢失/);

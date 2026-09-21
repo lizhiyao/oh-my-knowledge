@@ -93,12 +93,12 @@ describe('Next Studio production boundary', () => {
     assert.match(skillHtml, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
     for (const label of ['健康体检','生产观测','待优化项']) assert.ok(skillHtml.includes(label));
     // 结构证据随真实 sidecar 出现，且弱绑定必须在页面上自己说清楚（#884）。
-    assert.match(skillHtml, /知识对象结构/);
+    assert.match(skillHtml, /知识载体结构/);
     assert.match(skillHtml, /仅来源路径一致/);
     assert.match(skillHtml, /内容有没有变动未被证明/);
     // 详情页标题带对象身份；skill 名是外部文本，进 `<title>` 也只能是转义后的文字。
-    assert.match(knowledgeHtml, /<title>OMK · 知识对象<\/title>/);
-    assert.match(skillHtml, /<title>OMK · 知识对象 · audit\/&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/title>/);
+    assert.match(knowledgeHtml, /<title>OMK · 知识载体<\/title>/);
+    assert.match(skillHtml, /<title>OMK · 知识载体 · audit\/&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/title>/);
     // RSC 会把页面 props 序列化进 HTML 负载：sourceLocator／graphPath／evidence path 都是用户
     // 机器的绝对路径，一旦上了页面模型就在这里泄出去，所以断言整页读不到 tmpdir。
     assert.ok(!skillHtml.includes(root), 'skill detail must not leak the absolute skill path');
