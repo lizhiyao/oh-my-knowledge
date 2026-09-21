@@ -198,14 +198,19 @@ after source, dependency or build-config changes. Removed or renamed emitted
 files may require `yarn clean` before rebuilding. Preserve incremental caches
 between unchanged checks; use clean builds when the tested boundary requires it.
 
-Keep those caches local to each checkout. Incremental state records input file
-signatures, not whether the emitted output exists: a second checkout with the
-same file signatures and an empty `dist` finished
-`tsc -p tsconfig.build.json` in 6 seconds with exit code 0 after emitting 22
-JavaScript files, where a private cache emitted 732 in 12 seconds. Type
-checking still enumerates newly added files, so a shared cache falsifies build
-artifacts rather than coverage. Linking dependency directories per entry to
-skip an install is fine; leave `node_modules/.cache` inside each checkout.
+Keep the writable per-checkout state local to that checkout: incremental build
+info, type-check state and lint caches decide work from that tree's file
+signatures rather than from whether its output files already exist. A second
+checkout that borrows them can finish `tsc -p tsconfig.build.json` with
+exit code 0 while emitting almost no output; in a recorded run (PR #1028) it
+wrote 22 JavaScript files, where the same tree with a private cache emitted 732.
+That observation covers build artifacts only — the file added for the experiment was
+still type-checked, so it is not a guarantee that sharing never affects
+coverage. The read-only package download cache is a different thing: this
+repository uses Yarn's global cache, which lives outside every checkout and
+stays shared by default. Linking dependency directories per entry is acceptable
+only while dependency versions and install configuration match and the shared
+target is not modified concurrently; otherwise install inside the checkout.
 
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
