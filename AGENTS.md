@@ -1,5 +1,7 @@
 # AGENTS.md - OMK 项目约定
 
+> English companion for human contributors: [AGENTS.en.md](./AGENTS.en.md) — 内容与本文件有出入时以本文件（中文）为准。This file and the per-directory `AGENTS.md` domain rule files are the machine-loaded instruction source and are maintained in Chinese only; the English twin covers this root checklist and says so at its top.
+
 OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测和测量 prompt、RAG、skill、agent、workflow 的版本差异。所有改动优先保护测量可比性、证据完整性和用户数据。
 
 本文件是工具中立的项目入场清单。Claude Code 通过 CLAUDE.md import；不为不同工具复制维护第二份项目规则。
@@ -68,6 +70,6 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 
 - 用户文档：README.md、README.zh.md。
 - Skill：.agents/skills/omk/SKILL.md。
-- 审查：CODE_REVIEW.md。
-- 设计规范：docs/。
-- Git 与发版：CONTRIBUTING.md。
+- 审查：CODE_REVIEW.md（English: CODE_REVIEW.en.md）。
+- 设计规范：docs/（英文 `docs/`、中文 `docs/zh/`，逐节对照由 CI 门禁判）。
+- Git 与发版：CONTRIBUTING.md（中文版：CONTRIBUTING.zh.md）。

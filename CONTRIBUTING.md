@@ -1,5 +1,7 @@
 # Contributing
 
+> 中文对照版：[贡献指南（中文）](./CONTRIBUTING.zh.md)，逐节对照维护；两版文字有出入时以本文件（英文）为准。
+
 Thanks for taking the time to contribute to `oh-my-knowledge`.
 
 ## Branch model — GitHub Flow
@@ -37,28 +39,37 @@ Node ≥ 22 is required (`engines`). After that, the `yarn` commands below Just 
 
 ```bash
 # sync main first
+
 git checkout main
 git pull --ff-only
 
 # cut a topic branch from main
+
 git checkout -b feat/my-feature
 
 # Batch the intended changes, then validate based on risk level.
+
 yarn install
 # Review the complete diff and risk-specific evidence first.
+
 # See CODE_REVIEW.md.
 
+
 # Choose one of the two by risk level: the chosen layer satisfies the local gate.
+
 # For ordinary local changes: targeted validation
+
 yarn ci:quick <相关测试文件>
 
 # For cross-module, dependency, build/packaging, or CI gate changes: full local gate
+
 yarn ci
 
 git commit -m "feat(cli): 中文 subject"
 git push -u origin feat/my-feature
 
 # open a PR against **main**
+
 ```
 
 Validation triggers, evidence reuse, and exceptions are defined once in
@@ -108,25 +119,31 @@ npm 发布使用 GitHub Actions OIDC Trusted Publishing，不保存长期 npm to
 
 ```bash
 # cut a release version-bump branch from main
+
 git checkout main
 git pull --ff-only
 # Replace X.Y.Z with the intended version, including any prerelease suffix.
+
 release_version=X.Y.Z
 git checkout -b "chore/release-${release_version}"
 
 # bump version in package.json, final polish commits, then verify
+
 yarn ci
 
 # commit and open a PR against main
+
 git commit -m "chore(release): 发布 ${release_version}"
 git push -u origin "chore/release-${release_version}"
 
 # after the PR is merged, tag the merge commit on main
+
 git checkout main
 git pull --ff-only
 git tag -a "v${release_version}" -m "Release ${release_version}"
 
 # Push the release tag separately to trigger publish.yml.
+
 git push origin "v${release_version}"
 ```
 
@@ -179,11 +196,15 @@ docs(readme): 补充评测用例说明
 
 ```bash
 # Each edit: select the affected logic and its direct callers.
+
 yarn test test/scripts/test-profile.test.ts
 # Checkpoint: lint + typecheck + explicitly selected tests, without a build.
+
 yarn ci:quick test/scripts/test-profile.test.ts test/scripts/ci-quick.test.ts
 # Final changes before the first push, high-risk tier: the complete gate.
+
 # Ordinary local changes stop at the checkpoint line above; see AGENTS.md.
+
 yarn ci
 ```
 

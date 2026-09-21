@@ -133,6 +133,25 @@ describe('落地页双语正文同构', () => {
 });
 
 /**
+ * 仓库元文档的中英孪生版本不在 `docs/` 下，但漂的是同一件事：一侧改了规则、另一侧静默掉节。
+ * 因此同一套形状判据也判它们，口径与上面一致，不另立标准。
+ */
+const GOVERNANCE_TWINS: ReadonlyArray<readonly [string, string]> = [
+  ['AGENTS.md', 'AGENTS.en.md'],
+  ['CODE_REVIEW.md', 'CODE_REVIEW.en.md'],
+  ['CONTRIBUTING.md', 'CONTRIBUTING.zh.md'],
+  ['PRODUCT.md', 'PRODUCT.en.md'],
+  ['SECURITY.md', 'SECURITY.zh.md'],
+  ['schemas/README.md', 'schemas/README.zh.md'],
+];
+
+describe('仓库元文档与双语孪生同构', () => {
+  it.each(GOVERNANCE_TWINS)('%s 与 %s 同构', (source, twin) => {
+    expect(readShape(PROJECT_ROOT, twin)).toEqual(readShape(PROJECT_ROOT, source));
+  });
+});
+
+/**
  * 英文发布页的标题必须是英文：标题是读者扫目录时唯一必读的内容，中文标题就是翻译漏段。
  * 围栏内是原样引用的产物（评委 prompt 字节、命令输出等），那是内容不是标题，因此按
  * 围栏状态切段后再判。

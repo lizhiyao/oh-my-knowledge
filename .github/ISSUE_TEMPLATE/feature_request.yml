@@ -7,6 +7,7 @@ body:
     attributes:
       value: |
         Thanks for the suggestion. Explaining the problem first helps us pick the right solution together.
+        欢迎用中文描述需求；小节标题保持原样即可。 / Chinese feature requests are welcome — keep the section headings as they are.
 
   - type: textarea
     id: problem

@@ -1,5 +1,7 @@
 # Published JSON Schemas
 
+> 中文对照版：[已发布的 JSON Schema（中文）](./README.zh.md)，逐节对照维护；两版文字有出入时以本文件（英文）为准。
+
 This directory is the checked-in catalog of OMK's public JSON Schemas. The files are generated
 from the runtime contract definitions and are published inside the npm package; do not edit a
 schema file by hand.

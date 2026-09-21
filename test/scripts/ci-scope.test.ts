@@ -14,6 +14,10 @@ describe('CI change scope', () => {
   it.each([
     [['AGENTS.md'], 'rules'],
     [['CONTRIBUTING.md', 'CLAUDE.md', 'CODE_REVIEW.md', '.github/PULL_REQUEST_TEMPLATE.md'], 'rules'],
+    // 双语孪生文件与原本同意图：改文不改行为。
+    [['CONTRIBUTING.zh.md'], 'rules'],
+    [['AGENTS.en.md', 'CODE_REVIEW.en.md', 'schemas/README.zh.md'], 'rules'],
+    [['CONTRIBUTING.zh.md', 'src/cli/lib/i18n.ts'], 'full'],
     // 模块级维护文档与根规则文件同档；与源码混排时仍按最强门禁。
     [['src/studio/README.md'], 'rules'],
     [['src/studio/README.md', 'src/observability/README.md'], 'rules'],

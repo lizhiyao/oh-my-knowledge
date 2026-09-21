@@ -1,5 +1,7 @@
 # OMK 产品定位
 
+> English companion: [PRODUCT.en.md](./PRODUCT.en.md), maintained section by section; this Chinese file is authoritative when the two differ.
+
 <!-- impeccable:product-schema 1 -->
 
 ## Platform
