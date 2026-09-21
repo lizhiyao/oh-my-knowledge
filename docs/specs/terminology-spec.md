@@ -283,28 +283,31 @@ The terms name Analysis responsibilities, not mutable report fields. New code us
 
 ### 8. A conversation is what the user reads; a session is what the host wrote
 
-Interface wording splits into two layers, one term each:
+Interface wording follows what each reference denotes; **the number of terms on one screen is not restricted**:
 
-- **conversation**: the work record the user reads, filters and extracts from inside Studio. Lists, counters, navigation, empty states, buttons and page titles all live on this layer.
-- **session**: the raw record the host itself wrote — log files, trace sources, `--session` style parameters, source identities and fields inside snapshot metadata.
+- **conversation**: the work record the user reads, filters and extracts from inside Studio. Lists, list counters, navigation, empty states, buttons and page titles all live on this layer.
+- **session**: the raw record the host itself wrote — log files, trace sources, `--session` style parameters, source identities and fields inside snapshot metadata. Prefer the qualified **source session** when naming it, so it cannot be confused with the reading unit.
 
-The test is a single question rather than a find-and-replace list: **does this refer to the record the user is reading, or to the record the host stored**. Within one screen only the former may appear as interface wording. The precedent already exists in `evaluation-studio-projection.md`: the four Observe lanes read "conversation, execution, outcome, knowledge", while "reuse the session and trajectory projection … never serialize the whole source session" speaks of sessions.
+The rule is **one referent, one name**. Both of these co-presences are legitimate: a conversation view that labels its origin "来源会话：…" (which is what the candidate page renders today); and the "来源会话数" column in the health report, whose value is the source-side `sessions.length` aggregated in `report-assembly.ts` and was never a count of conversation rows.
 
-Rejected usage: treating the two as synonyms on one screen — a page title that reads "All conversations" next to a counter that reads "N sessions". Where English has only `conversation` but Chinese distinguishes the layers, the Chinese follows what is actually meant; never rewrite a source field into "conversation" just to match the English surface.
+Rejected usage is one referent named two ways — a page title that reads "All conversations" while the very same list counts "N sessions". Where English has only `conversation` but Chinese distinguishes the layers, the Chinese follows what is actually meant; never rewrite a source field into "conversation" just to match the English surface. The precedent already exists in `evaluation-studio-projection.md`: the four Observe lanes read "conversation, execution, outcome, knowledge", while "reuse the session and trajectory projection … never serialize the whole source session" speaks of sessions.
 
-### 9. The knowledge side has exactly three layers: content, carrier, candidate
+### 9. Two object layers: knowledge content and knowledge carrier; a candidate is a state
 
-Only these three terms are allowed as `/knowledge` interface wording, one per layer:
+The `/knowledge` side has exactly two object layers:
 
-| Layer | Chinese interface term | English interface term | What it denotes |
+| Object layer | Chinese interface term | English interface term | What it denotes |
 |---|---|---|---|
-| Content | 知识内容 | knowledge content | one reviewable fact, experience or method |
+| Content | 知识内容 (the domain model also calls this layer **知识条目**) | knowledge item | one reviewable fact, experience or method: stable identity plus immutable revisions |
 | Carrier | **知识载体** | `Knowledge artifact` | one skill, prompt or project rule file |
-| Unreviewed state | 候选知识 | candidate knowledge | an extracted explanation that has not been reviewed |
+
+**「候选知识」 ("candidate knowledge") is not a third object layer; it is a state of a knowledge item.** `knowledge-domain-model.md` describes the lifecycle as propose → review → form a candidate → attach evaluation → accept or reject. Interfaces may therefore say 候选知识, but it must read as "this knowledge item has not been reviewed yet": it must not be presented alongside the content layer as a different kind of object, and a terminology gate must not treat candidate and content as mutually exclusive categories. For the same reason this side of the interface is not a closed vocabulary — revisions, supporting evidence and knowledge gaps remain valid concepts wherever their own definitions apply.
+
+Two consistency checks; any rename or gate must pass both: a candidate that survives review is still the same knowledge item (identity retained, only the state changes), and one carrier can hold several items in different states at the same time.
 
 This follows sections 2.1 and 2.10 of this document: knowledge content and knowledge carrier are two layers, one carrier can hold many pieces of knowledge and one piece can appear in several carriers; these forms do not extend `ArtifactKind` and do not replace existing artifact identity.
 
-**「知识对象」 ("knowledge object") is an interface-invented term: before this change it appeared zero times across all specs and guides and existed only in interface copy, so it is treated as a rejected alias (naming it here records the rejection; it does not license the word).** Decide by the data, not by habit: a row in the `/knowledge` list is one skill (its key is the skill name), i.e. the carrier layer, so that column plus the counters, search placeholder and tab title read 知识载体 / `Knowledge artifact`; only a count of items uses 知识内容. Renaming the shipped interface is the implementation change's job — this document settles the vocabulary first.
+**「知识对象」 ("knowledge object") is rejected because it cannot tell the two layers apart** — the same phrase can mean one knowledge item or one skill, and separating them is exactly what this section exists for. Corroborating evidence: before this change it appeared zero times across all specs and guides and lived only in interface copy, so naming it here records the rejection rather than licensing the word. Decide by the data, not by habit: a row in the `/knowledge` list is one skill (its key is the skill name), i.e. the carrier layer, so that column plus the counters, search placeholder and tab title read 知识载体 / `Knowledge artifact`; only a count of items uses 知识内容. Renaming the shipped interface is the implementation change's job — this document settles the vocabulary first.
 
 ## 4. External expression conventions
 
