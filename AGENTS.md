@@ -55,7 +55,8 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 ## Git 与写作
 
 - main 是唯一长期分支；从 main 创建短分支，通过 PR 合并，不直接提交 main，也不恢复 develop 流程。发版通过短分支 PR 回 main，再由 tag 触发；具体流程见 CONTRIBUTING.md。
-- 分支默认使用 codex/ 前缀。提交格式为 type(scope): 中文 subject，scope 使用稳定模块名，本文件使用 agents-md。
+- 短分支名前缀取该分支主要改动的 Conventional Commits type（`feat/`、`fix/`、`docs/`、`refactor/`、`test/`、`perf/`、`chore/`、`ci/`），与提交信息的 `type(scope):` 保持一致，不与工具、模型或人员绑定；一个分支承载多类改动时不勉强对齐。
+- 提交格式为 type(scope): 中文 subject，scope 使用稳定模块名，本文件使用 agents-md。
 - 用户可见文案中文优先，中文使用全角标点；代码、路径、命令、URL、frontmatter、数学区间、技术标识符及英文技术括注保留对应语法。Conventional Commits 的 type(scope): 前缀保持半角。
 - LLM judge 统一称为“评委”，不称“判官”。PR 审查评论语言跟随用户操作系统设置语言。
 - 创建 PR 默认使用非草稿状态；仅在用户明确要求草稿时使用 Draft。未完成的验证、已知问题和合并阻塞在 PR 描述中如实记录，仍须满足门禁与完成定义后才能合并。
