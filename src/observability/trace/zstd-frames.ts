@@ -45,16 +45,17 @@ export function zstdDecompressionAvailable(): boolean {
   return typeof zstdDecompressSync === 'function';
 }
 
-type FrameParse
-  = { status: 'complete'; end: number; declaredPlainBytes: number | null }
-  | { status: 'incomplete' }
-  | { status: 'corrupt'; reason: string };
+type FrameParse = { status: 'complete'; end: number } | { status: 'incomplete' } | { status: 'corrupt'; reason: string };
 
 /**
- * 按 RFC 8878 解析一帧：帧头 → 逐块头 → 可选内容校验和。
+ * 按 RFC 8878 的帧格式算出一帧的字节范围：帧头 → 逐块头 → 可选内容校验和。
  *
  * `incomplete` 只表示「窗口还没读够」，调用方应当再读一块；结构性矛盾（块体越界、没有
- * last-block 就到不了尾）由调用方在文件读尽后判为 `corrupt`。
+ * last-block 就到文件尾）在文件读尽后判为 `corrupt`。
+ *
+ * 帧内容长度字段只用来跳过它自身，**不参与校验**：本机 Node 的 zstd 写入器给单段帧写的这个
+ * 值可以远小于实际产出（实测声明 222、解出 478），拿它判截断会误杀正常帧。截断由块走查发现
+ * ——块体长度越过剩余字节就是截断，这条有对应用例。
  */
 function parseFrame(bytes: Buffer, truncated: boolean): FrameParse {
   if (bytes.length < ZSTD_MAGIC_BYTES + 1) {
@@ -80,11 +81,6 @@ function parseFrame(bytes: Buffer, truncated: boolean): FrameParse {
   if (bytes.length < cursor + contentSizeBytes) {
     return truncated ? { status: 'corrupt', reason: '帧内容长度字段被截断' } : { status: 'incomplete' };
   }
-  let declaredPlainBytes: number | null = null;
-  if (contentSizeBytes === 1) declaredPlainBytes = bytes.readUInt8(cursor);
-  else if (contentSizeBytes === 2) declaredPlainBytes = bytes.readUInt16LE(cursor);
-  else if (contentSizeBytes === 4) declaredPlainBytes = bytes.readUInt32LE(cursor);
-  else if (contentSizeBytes === 8) declaredPlainBytes = Number(bytes.readBigUInt64LE(cursor));
   cursor += contentSizeBytes;
 
   for (;;) {
@@ -111,7 +107,7 @@ function parseFrame(bytes: Buffer, truncated: boolean): FrameParse {
     }
     cursor += 4;
   }
-  return { status: 'complete', end: cursor, declaredPlainBytes };
+  return { status: 'complete', end: cursor };
 }
 
 /**
@@ -165,13 +161,6 @@ export function* iterateZstdFramePlainText(
           throw new ZstdDecodedSizeLimitError(maxDecodedBytes, filePath);
         }
         throw new ZstdFrameDecodeError(filePath, '帧内容无法解压');
-      }
-      if (parsed.declaredPlainBytes !== null && parsed.declaredPlainBytes !== plain.length) {
-        // 帧头说 N 字节却只解出更少，就是被截断的证据；宁可整文件失败。
-        throw new ZstdFrameDecodeError(
-          filePath,
-          `帧明文 ${plain.length} 与帧头声明 ${parsed.declaredPlainBytes} 不符`,
-        );
       }
       delivered += plain.length;
       if (plain.length > 0) yield plain;

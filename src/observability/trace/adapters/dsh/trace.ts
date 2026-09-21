@@ -291,20 +291,30 @@ function dshLifecycleEvent(record: Record_, runId: string, sourceIndex: number):
 export function parseDshSessionFile(filePath: string, rawRecords: unknown[]): TraceSession {
   const records = rawRecords.map((record) => (isRecord(record) ? record : undefined));
   const header = records.find((record) => record && dshSessionHeaderEvidence(record)) as Record_ | undefined;
+  const headerIndex = records.findIndex((record) => record !== undefined && dshSessionHeaderEvidence(record));
   const runId = stringValue(header?.id) ?? basename(filePath, '.jsonl.zstd');
   const titleBySequence = records.reduce<string | undefined>((title, record) => {
     if (title || !record || record.type !== 'session/title') return title;
     const data = isRecord(record.data) ? record.data : {};
     return stringValue(data.title);
   }, undefined);
+  const titleIndex = records.findIndex((record) => record?.type === 'session/title');
 
   const events = correlateTraceToolEvents(records.flatMap((record, sourceIndex) => {
     if (!record) return [];
+    // 会话头与标题已被消费成身份（runId／cwd／父会话／label），再各计一条「待映射证据」是重复表述。
+    if (sourceIndex === headerIndex || sourceIndex === titleIndex) return [];
     const type = typeof record.type === 'string' ? record.type : '';
     if (type === 'user/message') {
-      return [dshMessageEvent(record, runId, sourceIndex, 'user', dshUserMessageOrigin(
-        isRecord(record.data) ? (record.data as Record_) : undefined,
-      ), undefined)];
+      const data = isRecord(record.data) ? record.data : {};
+      return [dshMessageEvent(
+        record,
+        runId,
+        sourceIndex,
+        'user',
+        dshUserMessageOrigin(isRecord(data.source) ? data.source : undefined),
+        undefined,
+      )];
     }
     if (type === 'assistant/message') {
       const data = isRecord(record.data) ? record.data : {};
