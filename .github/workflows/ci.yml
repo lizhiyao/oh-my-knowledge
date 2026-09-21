@@ -190,7 +190,8 @@ jobs:
     if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
     name: test (macOS)
     runs-on: macos-latest
-    timeout-minutes: 15
+    # 预算：安装＋构建＋风险边界测试实测 148s，打包与安装冒烟上限 120s＋420s；留并发余量。
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - run: corepack enable
@@ -205,6 +206,12 @@ jobs:
       - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 600000 --retry-on=unknown_signal yarn test --maxWorkers=1 test/evidence/storage/ test/cli/oclif-startup.test.ts test/cli/oclif-dispatch.test.ts test/cli/first-run-smoke.test.ts test/cli/studio-dev-spawn.test.ts test/studio/http/server-lifecycle.test.ts test/studio/http/next-studio.test.ts
         env:
           CI_DIAGNOSTICS_DIR: ${{ runner.temp }}/ci-diagnostics
+      # 打包资源边界：复用发布链的同一脚本，验证 tarball 在 macOS 上可安装、可启动、资源齐全。
+      # 与 publish.yml 的 pack/package-smoke 保持单一来源，避免 CI 与发版各跑一套。
+      - name: Pack the built bytes
+        run: node scripts/ci/diagnostics.mjs run macos-pack "$RUNNER_TEMP/ci-diagnostics" 120000 node scripts/release/package.mjs pack "$RUNNER_TEMP/macos-package"
+      - name: Verify the package through an isolated installation
+        run: node scripts/ci/diagnostics.mjs run macos-package-smoke "$RUNNER_TEMP/ci-diagnostics" 420000 node scripts/release/package.mjs smoke "$RUNNER_TEMP/macos-package"
       - name: Summarize diagnostics
         if: ${{ always() }}
         env:
