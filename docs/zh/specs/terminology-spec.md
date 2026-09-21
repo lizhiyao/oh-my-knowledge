@@ -415,6 +415,16 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 Series 的成员字段 `admissionStatus` 是另外两种含义。两者都是对外表面，只能在显式的词汇决策之后改名，不作为内部清扫的一部分。
 
+### 6. 用户可见文案的双语完整性
+
+每条用户可见文案都必须两种语言都在。已经有两套机制满足这件事，并继续使用：CLI 运行期字典（`tCli()` 加 `src/cli/lib/i18n-dict/`，两侧 key 完整性由 `test/cli-i18n.test.ts` 判）与 oclif 静态帮助用的 `bilingual({ zh, en })`。Studio 的文案仍然内联写成 `lang === 'zh' ? … : …`；这是刻意选择，不是等着还的技术债。
+
+不引入 i18next／vue-i18n，也不把 Studio 的内联文案一次性扫进集中字典。这条规则要关的缺口是「漏翻」，而集中字典判不出漏翻——只在一侧加 key，和只写一个分支一样容易忘。承担这条规则的是：
+
+- `test/studio/web/bilingual-copy.test.ts`：语言分支的英文侧仍带中文就判红。它刻意只判这个方向——按当前代码实测，反方向（中文侧必须含中文）会在分隔符、语言码、品牌复数和文件名上报错，只会逼出一份豁免名单。
+- 需要跨组件复用的文案，用仓库里更强的既有构造：带访问器的 `Record<Lang, Record<Key, string>>`（`src/observability/inbox/metric-semantics.ts`、`src/studio/application/knowledge/candidate-status.ts`），或 `const enCopy: typeof zhCopy`（`src/studio/web/components/observe/health.tsx`）。那里少一个键是编译错误，强于任何运行期查表。
+- 只属于单个组件的文案留在该组件里。
+
 ## 六、术语映射
 
 | 旧术语 | 新标准术语 | 说明 |
