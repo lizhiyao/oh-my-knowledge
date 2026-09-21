@@ -68,6 +68,7 @@ const RULES: ForbiddenRule[] = [
       'observability/trace/adapters/openclaw/record-events.ts::executors/core/token-usage.ts',
       'observability/trace/adapters/codex/turn-events.ts::executors/core/token-usage.ts',
       'observability/trace/adapters/qoder/trace.ts::executors/core/token-usage.ts',
+      'observability/trace/adapters/dsh/trace.ts::executors/core/token-usage.ts',
       'observability/skill-health/analyzer.ts::executors/core/token-usage.ts',
       // 工具身份规范化（值级导入）：各 trace 适配器暂共用 executors/core/tool-identity，
       // 待收口为契约层能力，见 #978 第 19 项。
@@ -77,6 +78,7 @@ const RULES: ForbiddenRule[] = [
       'observability/trace/adapters/codex/tool-events.ts::executors/core/tool-identity.ts',
       'observability/trace/adapters/codex/tool-event-factory.ts::executors/core/tool-identity.ts',
       'observability/trace/adapters/qoder/trace.ts::executors/core/tool-identity.ts',
+      'observability/trace/adapters/dsh/trace.ts::executors/core/tool-identity.ts',
       // TraceSourceKind 运行时判定（值级导入）：inbox 存储侧暂直接消费 executors/core/trace-source-kind，
       // 契约层只有类型与 schema，见 #978 第 19 项。
       'observability/inbox/report-store.ts::executors/core/trace-source-kind.ts',
@@ -1175,7 +1177,7 @@ describe('架构边界守门', () => {
     // 一起摊在 source.ts 的 1,648 行里。
     expect(readdirSync(adaptersDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['claude', 'codex', 'markdown', 'openclaw', 'qoder']);
+      .toEqual(['claude', 'codex', 'dsh', 'markdown', 'openclaw', 'qoder']);
     expect(readdirSync(adaptersDir).filter((name) => name.endsWith('.ts')).sort())
       .toEqual(['jsonl-records.ts']);
 
