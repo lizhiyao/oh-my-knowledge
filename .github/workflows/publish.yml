@@ -138,7 +138,7 @@ jobs:
         npm install --global 'npm@^11.5.1'
         node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)" "$(npm --version)"
     - name: Download verified package
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: ${{ needs.verify.outputs.artifact_name }}
         path: ${{ runner.temp }}/release-bundle
