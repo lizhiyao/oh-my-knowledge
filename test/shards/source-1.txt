@@ -16,6 +16,7 @@ test/cli/doctor-eval-embed.test.ts
 test/cli/eval-preflight-hint.test.ts
 test/cli/init-scaffold-conformance.test.ts
 test/cli/init-skill-md.test.ts
+test/cli/init-samples-i18n.test.ts
 test/cli/judge-models-validation.test.ts
 test/cli/list-render.test.ts
 test/cli/oclif-eval.test.ts

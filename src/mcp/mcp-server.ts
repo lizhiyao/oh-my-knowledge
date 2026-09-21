@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { mcpDisplayCopy, resolveMcpDisplayLang, type McpDisplayLanguage } from './tool-copy.js';
 import { z } from 'zod';
 import {
   type ExplicitObservationCaptureOptions,
@@ -50,12 +51,13 @@ const captureCoverageSchema = z.object({
   unavailableEventKinds: z.array(unavailableEventKindSchema),
 });
 
-export interface ObservationMcpToolOptions {
+/** 展示语言：`title`／`description` 给人和宿主 UI 读，必须同语言（见 `tool-copy.ts`）。 */
+export interface ObservationMcpToolOptions extends McpDisplayLanguage {
   principal: ObservationPrincipal;
   captureStore: ObservationCaptureStore;
 }
 
-export interface ObservationMcpServerOptions extends ExplicitObservationCaptureOptions {
+export interface ObservationMcpServerOptions extends ExplicitObservationCaptureOptions, McpDisplayLanguage {
   principal?: ObservationPrincipal;
   captureStore?: ObservationCaptureStore;
 }
@@ -79,7 +81,7 @@ export function createObservationMcpServer(
     now: options.now,
     partition: options.principal ? 'principal' : 'shared',
   });
-  registerObservationMcpTools(server, { principal, captureStore });
+  registerObservationMcpTools(server, { principal, captureStore, lang: options.lang, env: options.env });
 
   return server;
 }
@@ -89,15 +91,11 @@ export function registerObservationMcpTools(
   options: ObservationMcpToolOptions,
 ): void {
   const principal = validateObservationPrincipal(options.principal);
+  const lang = resolveMcpDisplayLang(options);
 
   if (principal.scopes.includes(OBSERVATION_CAPTURE_SCOPE)) {
     server.registerTool('save_observation', {
-    title: '保存 OMK 知识反馈',
-    description: [
-      'Record knowledge feedback only after the user explicitly asks to save it.',
-      'This captures the submitted feedback and optional evidence at the OMK tool boundary.',
-      'It does not capture the full client conversation, other tool calls, or hidden reasoning.',
-    ].join(' '),
+    ...mcpDisplayCopy('save_observation', lang),
     inputSchema: {
       skillName: z.string().trim().min(1).max(120)
         .describe('OMK knowledge artifact or skill name under review.'),
@@ -125,7 +123,7 @@ export function registerObservationMcpTools(
       captureCoverage: captureCoverageSchema,
     },
     annotations: {
-      title: '保存 OMK 知识反馈',
+      title: mcpDisplayCopy('save_observation', lang).title,
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -161,11 +159,7 @@ export function registerObservationMcpTools(
 
   if (principal.scopes.includes(OBSERVATION_READ_SCOPE)) {
     server.registerTool('get_observation', {
-    title: '读取 OMK 知识反馈',
-    description: [
-      'Read one explicitly captured observation, its user-authorized evidence, partial coverage,',
-      'and current human review state. This never returns a complete client transcript or hidden reasoning.',
-    ].join(' '),
+    ...mcpDisplayCopy('get_observation', lang),
     inputSchema: {
       observationId: z.string().trim().min(1).max(128),
     },
@@ -193,7 +187,7 @@ export function registerObservationMcpTools(
       }).optional(),
     },
     annotations: {
-      title: '读取 OMK 知识反馈',
+      title: mcpDisplayCopy('get_observation', lang).title,
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
@@ -221,11 +215,7 @@ export function registerObservationMcpTools(
 
   if (principal.scopes.includes(OBSERVATION_REVIEW_SCOPE)) {
     server.registerTool('record_observation_review', {
-    title: '保存 OMK 人工复核',
-    description: [
-      'Record the user or reviewer decision for a captured observation.',
-      'Use real_issue only after a human confirms the knowledge gap.',
-    ].join(' '),
+    ...mcpDisplayCopy('record_observation_review', lang),
     inputSchema: {
       observationId: z.string().trim().min(1).max(128),
       verdict: reviewVerdictSchema,
@@ -240,7 +230,7 @@ export function registerObservationMcpTools(
       }),
     },
     annotations: {
-      title: '保存 OMK 人工复核',
+      title: mcpDisplayCopy('record_observation_review', lang).title,
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -268,12 +258,7 @@ export function registerObservationMcpTools(
 
   if (principal.scopes.includes(OBSERVATION_DRAFT_SCOPE)) {
     server.registerTool('draft_sample_from_observation', {
-    title: '生成 OMK 回归评测草稿',
-    description: [
-      'Persist a candidate regression sample proposed from a human-confirmed observation.',
-      'The result remains a draft and never changes the formal eval sample set.',
-      'Base the prompt and rubric only on user-authorized evidence returned by get_observation.',
-    ].join(' '),
+    ...mcpDisplayCopy('draft_sample_from_observation', lang),
     inputSchema: {
       observationId: z.string().trim().min(1).max(128),
       prompt: z.string().trim().min(1).max(16_000)
@@ -303,7 +288,7 @@ export function registerObservationMcpTools(
       }),
     },
     annotations: {
-      title: '生成 OMK 回归评测草稿',
+      title: mcpDisplayCopy('draft_sample_from_observation', lang).title,
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -340,6 +325,6 @@ export function registerObservationMcpTools(
   }
 
   if (principal.scopes.includes(OBSERVATION_READ_SCOPE)) {
-    registerObservationReviewComponent(server, { principal, feedbackStore });
+    registerObservationReviewComponent(server, { principal, feedbackStore, lang });
   }
 }
