@@ -46,6 +46,7 @@ yarn install
 # Review the complete diff and risk-specific evidence first.
 # See CODE_REVIEW.md.
 
+# Choose one of the two by risk level: the chosen layer satisfies the local gate.
 # For ordinary local changes: targeted validation
 yarn ci:quick <相关测试文件>
 
@@ -179,7 +180,8 @@ docs(readme): 补充评测用例说明
 yarn test test/scripts/test-profile.test.ts
 # Checkpoint: lint + typecheck + explicitly selected tests, without a build.
 yarn ci:quick test/scripts/test-profile.test.ts test/scripts/ci-quick.test.ts
-# Final changes before the first push: the complete gate.
+# Final changes before the first push, high-risk tier: the complete gate.
+# Ordinary local changes stop at the checkpoint line above; see AGENTS.md.
 yarn ci
 ```
 
