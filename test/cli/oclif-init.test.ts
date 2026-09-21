@@ -243,6 +243,42 @@ describe('oclif init', () => {
       assert.ok(/cannot start with --/.test(out), `expected en footgun msg, got:\n${out.slice(0, 200)}`);
     }
   });
+  it('语言未显式设置时 init 给出切换引导,已设置时不再重复提示', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-init-lang-hint-'));
+    const machine = await mkdtemp(join(tmpdir(), 'omk-init-lang-hint-home-'));
+    try {
+      const neutral = { OMK_HOME: machine };
+      const unpin = await runCommand(InitCommand, ['p1'], { cwd: dir, env: neutral });
+      assert.match(unpin.stdout, /输出语言 zh 尚未固定/, `zh hint expected:\n${unpin.stdout}`);
+
+      const pinned = await runCommand(InitCommand, ['p2', '--lang', 'zh'], { cwd: dir, env: neutral });
+      assert.ok(!pinned.stdout.includes('尚未固定'), `--lang zh should suppress the hint:\n${pinned.stdout}`);
+
+      const byEnv = await runCommand(InitCommand, ['p3'], { cwd: dir, env: { ...neutral, OMK_LANG: 'zh' } });
+      assert.ok(!byEnv.stdout.includes('尚未固定'), `OMK_LANG should suppress the hint:\n${byEnv.stdout}`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(machine, { recursive: true, force: true });
+    }
+  });
+
+  it('英文 locale 下 init 产物与引导都是英文', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-init-locale-'));
+    const machine = await mkdtemp(join(tmpdir(), 'omk-init-locale-home-'));
+    try {
+      const { stdout } = await runCommand(InitCommand, ['project'], {
+        cwd: dir,
+        env: { OMK_HOME: machine },
+        locale: 'en_US.UTF-8',
+      });
+      assert.match(stdout, /omk project initialized at:/);
+      assert.match(stdout, /Output language en is not pinned/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(machine, { recursive: true, force: true });
+    }
+  });
+
   it.each(['', '   '])('rejects empty directory %j with argument exit code 2', async (directory) => {
     await assert.rejects(() => runCommand(InitCommand, [directory]), (error: CommandRunError) => {
       assert.equal(error.code, 2);

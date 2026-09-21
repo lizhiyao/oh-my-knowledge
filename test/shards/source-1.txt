@@ -159,6 +159,7 @@ test/scripts/lint-coverage-guard.test.ts
 test/scripts/test-profile.test.ts
 test/scripts/vitepress-config-links.test.ts
 test/shared/json-safe-truncation.test.ts
+test/shared/language-preference.test.ts
 test/shared/keyed-mutex.test.ts
 test/shared/record-count.test.ts
 test/shared/shell-quote.test.ts
@@ -200,3 +201,4 @@ test/studio/web/observe-workspace.test.tsx
 test/studio/web/run-report-link.test.tsx
 test/studio/web/tab-url.test.ts
 test/studio/web/terminology-guard.test.ts
+test/studio/web/settings-language.test.ts

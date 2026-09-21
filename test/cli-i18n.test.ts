@@ -1,7 +1,10 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CLI_DICT } from '../src/cli/lib/i18n-dict.js';
-import { tCli, getCliLang } from '../src/cli/lib/i18n.js';
+import { tCli, getCliLang, resolveCliLang } from '../src/cli/lib/i18n.js';
 
 describe('CLI i18n dictionary parity (zh ↔ en)', () => {
   it('every key has both zh and en, neither empty', () => {
@@ -38,37 +41,71 @@ describe('tCli()', () => {
 
 describe('getCliLang()', () => {
   let originalEnv: string | undefined;
+  let originalHome: string | undefined;
+  let machineRoot: string;
+  const NO_SIGNAL: NodeJS.ProcessEnv = {};
+
   beforeEach(() => {
     originalEnv = process.env.OMK_LANG;
+    originalHome = process.env.OMK_HOME;
+    // 已保存设置是解析链的一档:不隔离到临时根,就会读到开发者真机的 settings.json。
+    machineRoot = mkdtempSync(join(tmpdir(), 'omk-cli-lang-'));
+    process.env.OMK_HOME = machineRoot;
     delete process.env.OMK_LANG;
   });
   afterEach(() => {
     if (originalEnv === undefined) delete process.env.OMK_LANG;
     else process.env.OMK_LANG = originalEnv;
+    if (originalHome === undefined) delete process.env.OMK_HOME;
+    else process.env.OMK_HOME = originalHome;
+    rmSync(machineRoot, { recursive: true, force: true });
   });
 
-  it('defaults to zh when no flag and no env', () => {
-    assert.equal(getCliLang(), 'zh');
+  it('defaults to zh when no flag, no env and no locale signal', () => {
+    assert.equal(getCliLang(undefined, NO_SIGNAL), 'zh');
   });
 
   it('reads OMK_LANG=en from env', () => {
-    process.env.OMK_LANG = 'en';
-    assert.equal(getCliLang(), 'en');
+    assert.equal(getCliLang(undefined, { OMK_LANG: 'en' }), 'en');
   });
 
   it('flag value beats env', () => {
-    process.env.OMK_LANG = 'en';
-    assert.equal(getCliLang('zh'), 'zh');
+    assert.equal(getCliLang('zh', { OMK_LANG: 'en' }), 'zh');
   });
 
-  it('silently falls back to zh on unknown value', () => {
-    assert.equal(getCliLang('fr'), 'zh');
-    process.env.OMK_LANG = 'jp';
-    assert.equal(getCliLang(), 'zh');
+  it('silently falls back on unknown value', () => {
+    assert.equal(getCliLang('fr', NO_SIGNAL), 'zh');
+    assert.equal(getCliLang(undefined, { OMK_LANG: 'jp' }), 'zh');
   });
 
   it('empty string flag is ignored (falls through to env / default)', () => {
-    process.env.OMK_LANG = 'en';
-    assert.equal(getCliLang(''), 'en');
+    assert.equal(getCliLang('', { OMK_LANG: 'en' }), 'en');
+  });
+
+  it('系统 locale 只在没有显式信号时决定默认语言', () => {
+    assert.equal(getCliLang(undefined, { LANG: 'en_US.UTF-8' }), 'en');
+    assert.equal(getCliLang(undefined, { LANG: 'fr_FR.UTF-8' }), 'zh');
+    assert.equal(getCliLang(undefined, { LANG: 'en_US.UTF-8', OMK_LANG: 'zh' }), 'zh');
+    assert.equal(getCliLang('en', { LANG: 'zh_CN.UTF-8' }), 'en');
+  });
+
+  it('已保存设置优先于系统 locale', () => {
+    writeFileSync(join(machineRoot, 'settings.json'), JSON.stringify({ schemaVersion: 1, language: 'zh' }));
+    assert.equal(getCliLang(undefined, { LANG: 'en_US.UTF-8' }), 'zh');
+  });
+
+  it('settings 文件损坏时不抛错,退回 locale／兜底', () => {
+    writeFileSync(join(machineRoot, 'settings.json'), '{ not json');
+    assert.equal(getCliLang(undefined, { LANG: 'en_US.UTF-8' }), 'en');
+    assert.equal(getCliLang(undefined, NO_SIGNAL), 'zh');
+  });
+
+  it('resolveCliLang 报告语言是否来自显式信号', () => {
+    assert.deepEqual(resolveCliLang(undefined, { LANG: 'en_US.UTF-8' }), { lang: 'en', configured: false });
+    assert.deepEqual(resolveCliLang(undefined, NO_SIGNAL), { lang: 'zh', configured: false });
+    assert.deepEqual(resolveCliLang('en', NO_SIGNAL), { lang: 'en', configured: true });
+    assert.deepEqual(resolveCliLang(undefined, { OMK_LANG: 'en' }), { lang: 'en', configured: true });
+    writeFileSync(join(machineRoot, 'settings.json'), JSON.stringify({ schemaVersion: 1, language: 'en' }));
+    assert.deepEqual(resolveCliLang(undefined, NO_SIGNAL), { lang: 'en', configured: true });
   });
 });

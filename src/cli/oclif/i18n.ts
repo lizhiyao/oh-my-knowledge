@@ -13,8 +13,9 @@
 // 文档。
 
 import { Flags } from '@oclif/core';
-import { getCliLang, parseLangFromArgv } from '../lib/i18n.js';
+import { getCliLang, parseLangFromArgv, resolveCliLang } from '../lib/i18n.js';
 import type { CliLang } from '../lib/i18n.js';
+import type { LanguageDecision } from '../../shared/language-preference.js';
 
 export type Lang = CliLang;
 
@@ -51,11 +52,12 @@ export function bilingual(text: BiText): string {
 }
 
 export const LANG_FLAG = Flags.string({
+  // 不写 default:oclif 的 default 会让 flags.lang 恒有值,输入编译据此把语言记成
+  // sourceKind 'cli-flag'——用户没传 --lang 也被记成显式选择。缺省值交给解析链。
   description: bilingual({
-    zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > zh。',
-    en: 'Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > zh.',
+    zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。',
+    en: 'Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.',
   }),
-  default: 'zh',
 });
 
 /** 按 lang 把双语串切回单语;只有 1 行的串原样返回。 */
@@ -67,7 +69,12 @@ export function pickLang(text: string | undefined, lang: Lang): string | undefin
   return parts.slice(1).join('\n');
 }
 
-/** 从 process.argv 解析 lang,优先级跟 ../i18n.ts 的 getCliLang 一致:CLI flag > OMK_LANG > zh。 */
+/** 从 process.argv 解析 lang,优先级跟 ../i18n.ts 的 getCliLang 一致:CLI flag > OMK_LANG > 设置 > locale > zh。 */
 export function resolveLang(argv: readonly string[] = process.argv): Lang {
   return getCliLang(parseLangFromArgv(argv));
+}
+
+/** 同一口径,但额外回答「语言是否来自用户显式信号」——首次运行引导据此决定是否出现。 */
+export function resolveLangDecision(argv: readonly string[] = process.argv): LanguageDecision {
+  return resolveCliLang(parseLangFromArgv(argv));
 }

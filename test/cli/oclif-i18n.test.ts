@@ -13,7 +13,7 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bilingual } from '../../src/cli/oclif/i18n.js';
+import { bilingual, LANG_FLAG } from '../../src/cli/oclif/i18n.js';
 
 describe('oclif/i18n bilingual() footgun', () => {
   it('正常 single-line zh + en 返回 `${zh}\\n${en}`', () => {
@@ -54,5 +54,12 @@ describe('oclif/i18n bilingual() footgun', () => {
       () => bilingual({ zh: '前缀 <%= ', en: 'safe' }),
       /must not contain ejs template markers/,
     );
+  });
+
+  it('LANG_FLAG 不带 oclif default(否则未传 --lang 也会被记成 cli-flag 来源)', () => {
+    // 输入编译按 flags.lang 是否为空判定 sourceKind。给 flag 设 default 'zh' 会让
+    // 每一次 `omk eval` 都在 provenance 里谎称「用户显式选了语言」,并让
+    // OMK_LANG / 系统 locale 解析出的语言被这个假默认覆盖。
+    assert.equal((LANG_FLAG as { default?: unknown }).default, undefined);
   });
 });

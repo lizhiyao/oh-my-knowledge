@@ -35,6 +35,11 @@ export interface RunCommandOptions {
   cwd?: string;
   /** Environment overrides merged onto the current test-process environment. */
   env?: NodeJS.ProcessEnv;
+  /**
+   * 按系统 locale 推断默认语言是被测行为之一，只能显式要求：整个 suite 的 LANG 已在
+   * vitest.config.ts 钉成 C（默认语言断言不该跟着开发者 shell 漂），被测用例在此覆盖。
+   */
+  locale?: string;
 }
 
 export interface CommandOutput {
@@ -133,7 +138,9 @@ export async function runCommand(
   try {
     process.argv = [process.execPath, 'omk', ...argv];
     process.chdir(options.cwd ?? isolatedCwd!);
-    if (options.env) Object.assign(process.env, options.env);
+    const env: NodeJS.ProcessEnv = { ...options.env };
+    if (options.locale !== undefined) Object.assign(env, { LC_ALL: options.locale });
+    if (Object.keys(env).length > 0) Object.assign(process.env, env);
 
     const command = new CommandType(argv, await commandConfig());
     // Synthetic test commands are absent from Config; initialize only this instance so runs cannot pollute CommandType.id.

@@ -9,9 +9,9 @@ Studio’s Settings button manages local user preferences in `$OMK_HOME/settings
 | Knowledge folder | `$OMK_HOME/knowledge` | Studio extraction and `omk observe knowledge`; `workspace` / `--workspace` overrides it |
 | Extraction provider | `codex` | Knowledge extraction; supports `codex`, `openai-api`, `anthropic-api` |
 | Extraction model | Unset | Must be selected before extraction; changing provider does not inherit another provider’s model |
-| Default language | `zh` | Studio and CLI; `lang` / `--lang` overrides it |
+| Default language | Auto: system locale, falling back to `zh` | Studio and CLI; `lang` / `--lang` overrides it |
 
-Priority: **explicit request → existing environment overrides → saved settings → built-in defaults**. `OMK_EXECUTOR`, `OMK_MODEL` and `OMK_LANG` remain environment overrides; Settings shows the overriding variable names. There is no additional knowledge-folder environment alias. An empty model means selection is required, not automatic model discovery.
+Priority: **explicit request → existing environment overrides → saved settings → system locale → `zh`**. `OMK_EXECUTOR`, `OMK_MODEL` and `OMK_LANG` remain environment overrides; Settings shows the overriding variable names. There is no additional knowledge-folder environment alias. An empty model means selection is required, not automatic model discovery.
 
 The knowledge page’s per-operation folder and model controls do not modify global preferences. Browsers no longer own durable folder settings. Old browser selections are not automatically copied into the settings file; save them explicitly if needed. Explicit page directories still apply. Changing the default does not migrate existing candidates or sources.
 
