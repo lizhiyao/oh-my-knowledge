@@ -51,6 +51,26 @@ function collectConfigLinks(source: ts.SourceFile): ConfigLink[] {
   return links;
 }
 
+/**
+ * nav 与 sidebar 是两份手写的平行字面量（`config.ts` 里没有生成器也没有共享数组），
+ * 只比「每条链接都能落到某个页面」比不出「一侧多一项」。按 `/zh/` 前缀切成两列后，
+ * 英文侧与中文侧的路径序列必须完全一致 —— 少一项、错一位、只加在一侧都会红。
+ * 标签文本本身就是两种语言，不参与比较。语言切换项（`locales.zh.link` = `/zh/`）按语言
+ * 固有、根 locale 没有对应字面量，因此 locale 首页本身不算导航条目。
+ */
+function localeMirrorPaths(links: string[]): { english: string[]; chinese: string[] } {
+  const normalize = (link: string) => `/${link.replace(/^\/zh\//u, '').replace(/^\//u, '')}`.replace(/\/+$/u, '');
+  const english: string[] = [];
+  const chinese: string[] = [];
+  for (const link of links) {
+    const path = normalize(link);
+    if (path === '') continue;
+    if (link === '/zh' || link.startsWith('/zh/')) chinese.push(path);
+    else english.push(path);
+  }
+  return { english, chinese };
+}
+
 function resolvesToPublishedPage(link: string): boolean {
   const pathname = link.split(/[?#]/u, 1)[0]!.replace(/^\/+|\/+$/gu, '');
   const base = join(DOCS_ROOT, pathname);
@@ -61,6 +81,13 @@ function resolvesToPublishedPage(link: string): boolean {
 }
 
 describe('VitePress config internal links', () => {
+  it('中英 nav 与 sidebar 两棵树同序同集合', () => {
+    const source = ts.createSourceFile(CONFIG_PATH, readFileSync(CONFIG_PATH, 'utf8'), ts.ScriptTarget.Latest, true);
+    const { english, chinese } = localeMirrorPaths(collectConfigLinks(source).map((entry) => entry.link));
+    expect(english.length).toBeGreaterThan(0);
+    expect(chinese).toEqual(english);
+  });
+
   it('rejects missing pages and dynamic links instead of silently skipping them', () => {
     const missing = ts.createSourceFile(
       'missing.ts',

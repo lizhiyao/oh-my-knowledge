@@ -59,7 +59,7 @@ jobs:
         run: |
           yarn build:runtime
           yarn build:docs:check
-          yarn test test/scripts/markdown-cmd-refs.test.ts test/scripts/docs-i18n-mirror-links.test.ts test/scripts/vitepress-config-links.test.ts test/scripts/evaluation-docs-current-contract.test.ts test/scripts/eval-core-terminology-guard.test.ts test/scripts/eval-runtime-facade-guard.test.ts test/eval-runtime/public-api.test.ts
+          yarn test test/scripts/markdown-cmd-refs.test.ts test/scripts/docs-i18n-mirror-links.test.ts test/scripts/docs-i18n-mirror-structure.test.ts test/scripts/vitepress-config-links.test.ts test/scripts/evaluation-docs-current-contract.test.ts test/scripts/eval-core-terminology-guard.test.ts test/scripts/eval-runtime-facade-guard.test.ts test/eval-runtime/public-api.test.ts
           yarn docs:build
 
   quality:

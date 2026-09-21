@@ -8,12 +8,15 @@ Choose an explicit local workspace shared by CLI and Studio. Replace paths and i
 
 ```bash
 omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl --json
+```
+
+Capture is local and makes no model call. Optional `--start-record 10 --end-record 30` selects inclusive, zero-based nonempty record indices. Inspect the returned `snapshotId`, record scope, excerpts and limitations before generating.
+
+```bash
 omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --json
 omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --json
 omk observe knowledge list --workspace ./knowledge --json
 ```
-
-Capture is local and makes no model call. Optional `--start-record 10 --end-record 30` selects inclusive, zero-based nonempty record indices. Inspect the captured scope, excerpts and limitations before generating.
 
 Generation sends selected excerpts and coverage limitations to the configured executor and model and may incur costs. Supported executors are codex, openai-api and anthropic-api; their existing credential configuration applies. Native log paths and raw record envelopes are excluded from model input, but selected text can itself contain sensitive information.
 
