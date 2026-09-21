@@ -1,4 +1,5 @@
 import type { TraceEvent, TraceSession } from './trace-ir.js';
+import { DSH_RECOGNIZED_FAMILIES } from './adapters/dsh/trace.js';
 
 /**
  * 未识别记录的分桶口径版本。桶归属是采集期推导的结论，不是原始证据：口径表变化会让
@@ -10,8 +11,12 @@ import type { TraceEvent, TraceSession } from './trace-ir.js';
  * v3 纳入 shell 结果视图的 1∶N 子集归属：一批原本留在「待映射证据」的视图改由既有工具
  * 结果承载，同一份日志的三档计数与 v2 不可同比。版本号守卫的是「同一份报告里不许混两代
  * 计数」，因此改变映射面（哪些记录会成为未识别）与改变分桶表同等对待。
+ * v4 给 DSH 登记族表：三个增量族（`reasoning-chunks`／`assistant/chunk`／`tool-call-chunks`）
+ * 按身份或同类正牌事件上界判为重复视图，其余已识别但未定口径的族进「待映射证据」。同一份
+ * DSH 日志的三档计数与 v3 不可同比——v3 里它们全部计入「未支持缺口」，把刻意不映射的增量投递
+ * 说成了能力缺口。
  */
-export const UNKNOWN_DISPOSITION_RULES_VERSION = 'unknown-disposition-v3' as const;
+export const UNKNOWN_DISPOSITION_RULES_VERSION = 'unknown-disposition-v4' as const;
 
 export interface UnknownEventDispositionCounts {
   /** 适配器读不出语义的记录：真正的支持缺口，需要修适配器。 */
@@ -50,6 +55,21 @@ const CODEX_IDENTITY_DEDUP_FAMILIES = new Set([
 /** 累计快照记录：逐条求和会把 token 总量放大数倍，只保留原始证据。 */
 const CODEX_CUMULATIVE_VIEW_RECORDS = new Set(['token_usage_record']);
 
+/**
+ * DSH 的增量投递族 → 它承载的正牌事件。`tool-call-chunks` 带 `data.id`（即 callId），先按
+ * 身份判；另两族只有 step／index 序号，只能按同类正牌事件数作上界——上界之外的部分是真唯一
+ * 证据，不能一并说成重复。
+ */
+const DSH_DUPLICATE_VIEW_FAMILIES = new Map<string, (event: TraceEvent) => boolean>([
+  ['reasoning-chunks', (event) => event.eventKind === 'model_activity'],
+  ['assistant/chunk', (event) => event.eventKind === 'message' && event.role === 'assistant'],
+  ['text-chunks', (event) => event.eventKind === 'message' && event.role === 'assistant'],
+  ['tool-call-chunks', (event) => event.eventKind === 'tool_call'],
+]);
+
+/** 已识别的 DSH 族名由适配器的 `DSH_RECOGNIZED_FAMILIES` 单点登记；不在其中的一律算未支持缺口，
+ * 不用口径表埋掉真正的读不出。 */
+
 /** 登记表里出现过的族名：只有登记过的记录才可能被解释成重复视图或待映射证据。 */
 const CODEX_RECOGNIZED_FAMILIES = new Set<string>([
   ...CODEX_DUPLICATE_VIEW_FAMILIES.keys(),
@@ -73,6 +93,10 @@ export function countUnknownEventDispositions(
   const counts: UnknownEventDispositionCounts = { unsupported: 0, duplicateView: 0, unmappedEvidence: 0 };
   const unknownEvents = session.events.filter((event) => event.eventKind === 'unknown');
   if (unknownEvents.length === 0) return counts;
+  if (session.sourceKind === 'dsh') {
+    countDshDispositions(session, unknownEvents, counts);
+    return counts;
+  }
   if (session.sourceKind !== 'codex') {
     counts.unsupported = unknownEvents.length;
     return counts;
@@ -165,6 +189,57 @@ function truncatedRecordFamily(event: TraceEvent): string | undefined {
 
 function rawRecord(event: TraceEvent): Record<string, unknown> | undefined {
   return event.eventKind === 'unknown' && isPlainObject(event.raw) ? event.raw : undefined;
+}
+
+/**
+ * DSH 的三档判定。增量族按「它属于哪一步」判身份：适配器给正牌事件与增量记录登记同一个
+ * `dsh:step:<n>` 视图键，命中即重复视图（同一步里的多条累计快照都命中，正是累计视图的语义）；
+ * 没有步号可登的增量记录退回同类正牌事件上界，超出上界的算唯一证据待映射。已识别但还没定
+ * 映射口径的族（`sandbox/mode`、`request/*` 等）一律进待映射证据；族名没登记过的才是真缺口。
+ */
+function countDshDispositions(
+  session: Pick<TraceSession, 'events'>,
+  unknownEvents: TraceEvent[],
+  counts: UnknownEventDispositionCounts,
+): void {
+  const mappedIdentities = new Set<string>();
+  for (const event of session.events) {
+    if (event.eventKind === 'unknown') continue;
+    for (const id of event.sourceIds ?? []) mappedIdentities.add(id);
+    if (event.sourceEventId) mappedIdentities.add(event.sourceEventId);
+    if (event.eventKind === 'tool_call' || event.eventKind === 'tool_result') mappedIdentities.add(event.callId);
+  }
+
+  const remainingTwins = new Map<string, number>();
+  for (const [family, isTwin] of DSH_DUPLICATE_VIEW_FAMILIES) {
+    remainingTwins.set(family, session.events.filter(isTwin).length);
+  }
+
+  const recognized = new Set<string>(DSH_RECOGNIZED_FAMILIES);
+  for (const event of unknownEvents) {
+    if (event.eventKind !== 'unknown') { counts.unsupported += 1; continue; }
+    const family = typeof event.recordFamily === 'string' ? event.recordFamily : undefined;
+    if (family === undefined || !recognized.has(family)) {
+      counts.unsupported += 1;
+      continue;
+    }
+    const isTwin = DSH_DUPLICATE_VIEW_FAMILIES.get(family);
+    if (!isTwin) {
+      counts.unmappedEvidence += 1;
+      continue;
+    }
+    if (typeof event.recordId === 'string' && mappedIdentities.has(event.recordId)) {
+      counts.duplicateView += 1;
+      continue;
+    }
+    const remaining = remainingTwins.get(family) ?? 0;
+    if (remaining > 0) {
+      remainingTwins.set(family, remaining - 1);
+      counts.duplicateView += 1;
+    } else {
+      counts.unmappedEvidence += 1;
+    }
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

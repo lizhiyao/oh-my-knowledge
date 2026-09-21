@@ -38,6 +38,11 @@ import {
   parseOpenClawSessionFile,
 } from './adapters/openclaw/trace.js';
 import { parseMarkdownLogFile } from './adapters/markdown/trace.js';
+import {
+  dshEventEvidence,
+  dshSessionHeaderEvidence,
+  parseDshSessionFile,
+} from './adapters/dsh/trace.js';
 import { isRecordObject } from './adapters/jsonl-records.js';
 import type { TraceIngestionSummary } from '../contracts/trace.js';
 import type {
@@ -225,6 +230,14 @@ const JSONL_TRACE_ADAPTERS: readonly JsonlTraceAdapter[] = [
     isMatch: (have) => !have(qoderFormatEvidence)
       && (have(claudeTranscriptEvidence) || have(claudeMetadataEvidence)),
     parse: parseClaudeSessionFile,
+  },
+  {
+    // DSH 的记录名都带斜杠命名空间（`assistant/message`、`tool/call`），与其余四个宿主的
+    // 判定子句互斥，因此不参与争抢；放最后只为读表顺序稳定。
+    sourceKind: 'dsh',
+    evidence: [dshSessionHeaderEvidence, dshEventEvidence],
+    isMatch: (have) => have(dshSessionHeaderEvidence) && have(dshEventEvidence),
+    parse: parseDshSessionFile,
   },
 ];
 
