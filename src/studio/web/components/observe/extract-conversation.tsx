@@ -35,9 +35,9 @@ export function ExtractConversation({ threadId, turnId, lang, onFinished }: { th
   }
   function explain(cause: unknown) {
     return cause instanceof Error && cause.message === 'knowledge_conflict'
-      ? t('会话内容有更新，请重新读取后确认。', 'The conversation changed. Reload and confirm again.')
+      ? t('对话内容有更新，请重新读取后确认。', 'The conversation changed. Reload and confirm again.')
       : cause instanceof Error && cause.message === 'knowledge_capacity_exceeded'
-        ? t('这段会话超出提炼上限，请进入某一轮详情后提炼。', 'This conversation exceeds the limit. Extract from one turn’s detail instead.')
+        ? t('这段对话超出提炼上限，请进入某一轮详情后提炼。', 'This conversation exceeds the limit. Extract from one turn’s detail instead.')
         : t('未能完成。请检查来源是否可读、保存目录及模型配置，然后重试。', 'Could not complete. Check source availability, the folder and model configuration, then retry.');
   }
   async function prepare() {
@@ -74,7 +74,7 @@ export function ExtractConversation({ threadId, turnId, lang, onFinished }: { th
     } finally { if (controller.current === active) controller.current = null; }
   }
   const link = (id: string) => `${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id })}`;
-  const scope = turnId ? t('当前这一轮', 'This turn') : t('当前会话', 'This conversation');
+  const scope = turnId ? t('当前这一轮', 'This turn') : t('当前对话', 'This conversation');
   return <><Button type="primary" onClick={() => void prepare()}>{t('提炼知识', 'Extract knowledge')}</Button>
     <Modal centered title={t('提炼知识', 'Extract knowledge')} open={open} width={640} closable={stage !== 'generating'} mask={{ closable: false }}
       onCancel={() => { controller.current?.abort(); setOpen(false); }}

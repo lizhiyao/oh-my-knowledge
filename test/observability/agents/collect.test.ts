@@ -454,7 +454,7 @@ describe('collectAgentLogs 容量与失败口径', () => {
     assert.deepEqual(first.sessions.map((session) => session.sourcePath), [newest], '容量受限时要先拿到最近的证据');
     assert.equal(
       first.limitations.find((text) => text.includes('本轮采集上限')),
-      '本轮采集上限为 1 个会话文件、2 GiB，剩余 2 个待采文件留到后续增量运行。',
+      '本轮采集上限为 1 个来源会话文件、2 GiB，剩余 2 个待采文件留到后续增量运行。',
     );
 
     const second = collect(harness, { limits: { maxFilesPerRun: 5 } });
@@ -482,7 +482,7 @@ describe('collectAgentLogs 容量与失败口径', () => {
     assert.deepEqual(report.sessions.map((session) => session.sourcePath), [small]);
     assert.match(
       report.limitations.join('\n'),
-      /1 个会话文件超过单文件上限 \d+ (?:字节|KiB|MiB)，本轮未采集。/,
+      /1 个来源会话文件超过单文件上限 \d+ (?:字节|KiB|MiB)，本轮未采集。/,
     );
   });
 
@@ -538,7 +538,7 @@ describe('collectAgentLogs 容量与失败口径', () => {
     assert.equal(report.summary.failedCount, 1);
     assert.equal(sessionFor(report, good).sourceKind, 'claude');
     assert.equal(report.sessions.some((session) => session.sourcePath === broken), false);
-    assert.match(report.limitations.join('\n'), /个会话文件解析后没有产生任何会话/);
+    assert.match(report.limitations.join('\n'), /个来源会话文件解析后没有产生任何会话记录/);
     assert.ok(report.limitations.join('\n').includes(broken), 'limitations 要能指回具体文件');
     // 失败也被登记进 per-root 口径，Studio 侧才看得到「发现了但没拿到」。
     assert.deepEqual(agentOf(report, 'claude-code').logRoots[0].failedCount, 1);

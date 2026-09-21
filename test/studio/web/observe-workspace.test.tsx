@@ -15,7 +15,7 @@ const index = { conversations: [item], totalTurnCount: 0, totalToolCallCount: 0,
 
 it('presents projects and readable conversation links without raw Markdown or task-table navigation', () => {
   const html = renderToStaticMarkup(createElement(ObserveWorkspace, { lang: 'zh', page: { pageKind: 'index', model: index, revision: 'test' } }));
-  expect(html).toContain('项目与会话'); expect(html).toContain('Example project');
+  expect(html).toContain('项目与对话'); expect(html).toContain('Example project');
   expect(html).toContain('Issue #375'); expect(html).not.toContain('[https://');
   expect(html).not.toContain('<script>bad'); expect(html).toContain('&lt;script&gt;bad');
   // 语言不进地址：站内深链一律不带 lang，渲染语言由本机设置决定。
@@ -93,7 +93,7 @@ it('长标题与长路径单行省略后，完整内容仍可通过提示取得'
   // 项目名的提示同时给出完整名称与完整目录：只给目录时，被省略掉的名称就没有别的读法。
   const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'));
   expect(summary).toContain(`title="${name}\n/very/long/project/directory"`);
-  expect(summary).toContain('<span title="1 个会话">1</span>');
+  expect(summary).toContain('<span title="1 个对话">1</span>');
   // 侧栏会话的归档／来源小字与列表页同类小字同一口径：单行省略，完整值走提示。
   expect(sidebarOf(html)).toContain(`<small title="${longModel}">${longModel}</small>`);
 });
@@ -120,13 +120,13 @@ it('项目内会话超出视野时给出该项目全部会话的入口', () => {
   const conversations = Array.from({ length: 13 }, (_, index) => conversation(`t-${index}`, {
     title: `会话 ${index}`, project: { projectId: 'p', name: '同一个项目', directory: '/p' },
   }));
-  expect(sidebarOf(renderIndex(conversations))).toContain('查看全部 13 个会话');
+  expect(sidebarOf(renderIndex(conversations))).toContain('查看全部 13 个对话');
 });
 
 it('完全没有记录时说明记录从哪里来，而不是只说一句暂无', () => {
   const html = renderIndex([]);
-  expect(html).toContain('暂无会话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。');
-  expect(sidebarOf(html)).toContain('暂无独立对话。有项目归属的会话显示在上方项目下。');
+  expect(html).toContain('暂无对话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。');
+  expect(sidebarOf(html)).toContain('暂无独立对话。有项目归属的对话显示在上方项目下。');
 });
 
 it('进行中的入口与标题使用同一个名字', () => {

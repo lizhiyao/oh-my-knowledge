@@ -57,7 +57,7 @@ describe('知识列表的列顺序', () => {
     const page = loadKnowledgePage(indexFor([entry('demo-skill')]), '/knowledge', 'zh');
     assert.ok(page && page.pageKind === 'index');
     const cells = headerCells(renderToString(createElement(KnowledgeView, { page, lang: 'zh' })));
-    expect(cells).toEqual(['知识对象', '健康', '健康体检', '观测缺口', '更新时间', '问题:right']);
+    expect(cells).toEqual(['知识载体', '健康', '健康体检', '观测缺口', '更新时间', '问题:right']);
   });
 });
 

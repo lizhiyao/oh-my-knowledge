@@ -47,7 +47,7 @@ export function ExperienceReviewSection({
     return b.endTimestamp.localeCompare(a.endTimestamp);
   }), [sessions]);
   if (sorted.length === 0) {
-    return <Empty description={zh ? '暂无经验会话复盘记录。' : 'No experience review sessions yet.'} />;
+    return <Empty description={zh ? '暂无来源会话的复盘记录。' : 'No experience review sessions yet.'} />;
   }
   return (
     <Listy
