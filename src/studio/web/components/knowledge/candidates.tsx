@@ -121,7 +121,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     <header className="candidate-heading"><div><Link href={KNOWLEDGE_INDEX_PATH}>{t('知识载体', 'Knowledge artifacts')}</Link><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
       <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
         {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
-        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('从会话选择', 'Choose a conversation')}</Button>}
+        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('从对话选择', 'Choose a conversation')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
         <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
       </Space></header>
@@ -195,7 +195,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         <p className="candidate-help">{t('粘贴这台电脑上日志文件的完整路径。默认读取整份文件，可在下方缩小范围。', 'Paste the full path to a log file on this computer. Read the entire file or narrow the range below.')}</p>
         <details><summary>{t('只选部分记录（可选）', 'Select a record range (optional)')}</summary><Space wrap><label>{t('起始记录（从零开始）', 'First record (zero-based)')}<InputNumber min={0} value={start} disabled={busy} onChange={(value) => { setStart(value); setSnapshot(null); }}/></label><label>{t('结束记录（包含）', 'Last record (inclusive)')}<InputNumber min={0} value={end} disabled={busy} onChange={(value) => { setEnd(value); setSnapshot(null); }}/></label></Space></details>
         <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('读取并预览', 'Read and preview')}</Button></>}
-        {snapshot && <><section>{snapshot.origin && <p>{t('来源会话：', 'Conversation: ')}{snapshot.origin.title}</p>}<h3 className="candidate-form-heading">{t('核对将要提炼的内容', 'Review the selected content')}</h3>
+        {snapshot && <><section>{snapshot.origin && <p>{t('来源会话：', 'Source session: ')}{snapshot.origin.title}</p>}<h3 className="candidate-form-heading">{t('核对将要提炼的内容', 'Review the selected content')}</h3>
           <p className="candidate-help">{t('以下内容已在本地读取，尚未发送给模型。', 'This content was read locally and has not been sent to a model.')}</p>
           <pre className="candidate-source-preview">{snapshot.excerpts.map((entry) => `[${entry.role ?? entry.eventKind}] ${entry.text}`).join('\n\n')}</pre>
         </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
@@ -260,11 +260,11 @@ export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, lat
     <div className="candidate-start-main">
       <h2>{t('选一段工作记录，找出值得复用的经验', 'Find reusable knowledge in a work log')}</h2>
       <p className="candidate-start-intro">{t('OMK 帮你整理其中的项目事实、解决方法和经验。你核对原文，决定哪些值得留下。', 'OMK proposes project facts, methods, and lessons. Compare them with the original text and choose what to keep.')}</p>
-      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{hasWorkspace ? t('从会话选择', 'Choose a conversation') : t('设置保存位置并开始', 'Choose where to save and begin')}</Button>
+      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{hasWorkspace ? t('从对话选择', 'Choose a conversation') : t('设置保存位置并开始', 'Choose where to save and begin')}</Button>
         <span>{t('先预览内容，再确认发送给模型。', 'Preview the content before confirming a model request.')}</span>
       </div>
       <ol className="candidate-steps">
-        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('打开观测会话，直接点击提炼知识。', 'Open an observed conversation and click Extract knowledge.')}</span></li>
+        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('打开观测对话，直接点击提炼知识。', 'Open an observed conversation and click Extract knowledge.')}</span></li>
         <li><strong>{t('预览并提炼', 'Preview and extract')}</strong><span>{t('确认内容和模型，生成待核对的知识。', 'Confirm the content and model to propose knowledge.')}</span></li>
         <li><strong>{t('核对并保留', 'Review and keep')}</strong><span>{t('对照原文，保留、修改或舍弃。', 'Check the original text, then keep, edit, or discard.')}</span></li>
       </ol>

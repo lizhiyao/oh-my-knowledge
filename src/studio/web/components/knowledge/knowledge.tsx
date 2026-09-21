@@ -113,7 +113,7 @@ const BINDING_NOTE = {
     en: 'Only the source path matches. Unchanged content is not proven, so the counts below cannot be read as "this is the content I edited".',
   },
   'name-only': {
-    zh: '图谱既没有内容哈希也没有来源路径，只按知识对象名称对上；改名或同名换内容都会读成同一份结构，这不是内容证明。',
+    zh: '图谱既没有内容哈希也没有来源路径，只按知识载体名称对上；改名或同名换内容都会读成同一份结构，这不是内容证明。',
     en: 'The graph carries neither a content hash nor a source path — nodes were matched by name only. Renames and same-name rewrites collapse into this one structure; it is not proof of content.',
   },
 } as const satisfies Record<DoctorGraphView['binding'], { zh: string; en: string }>;
@@ -136,7 +136,7 @@ function nodeKindLabel(kind: string, zh: boolean): string {
   return label ? (zh ? label.zh : label.en) : kind;
 }
 
-/** 知识对象结构：体检 graph sidecar 的绑定强度与分类计数（#884）。 */
+/** 知识载体结构：体检 graph sidecar 的绑定强度与分类计数（#884）。 */
 function GraphStructure({ graph, run, zh }: { graph: DoctorGraphView; run: SkillDoctorSnapshot; zh: boolean }) {
   const tier = BINDING_TIER[graph.binding];
   const counts: [string, number][] = [
@@ -151,7 +151,7 @@ function GraphStructure({ graph, run, zh }: { graph: DoctorGraphView; run: Skill
   const definitionTotal = graph.nodeGroups.reduce((sum, group) => sum + group.nodes.length, 0);
   return <div className="knowledge-graph">
     <div className="knowledge-graph-head">
-      <Text strong>{zh ? '知识对象结构' : 'Knowledge structure'}</Text>
+      <Text strong>{zh ? '知识载体结构' : 'Knowledge artifact structure'}</Text>
       <Tag color={tier.color}>{zh ? tier.zh : tier.en}</Tag>
       {graph.artifactHash && <Text className="knowledge-graph-hash" code title={graph.artifactHash}>{graph.artifactHash}</Text>}
       <Text type="secondary">{zh ? `来自体检 ${graph.sourceId} · ${displayTime(graph.generatedAt)}` : `from doctor run ${graph.sourceId} · ${displayTime(graph.generatedAt)}`}</Text>
@@ -254,9 +254,9 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
 
       <div><Link href={KNOWLEDGE_CANDIDATES_PATH}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</Link></div>
 
-      <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识对象' : 'Search knowledge'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识对象' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
+      <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识载体' : 'Search knowledge artifacts'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识载体' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
       <Table<KnowledgeRow> className="studio-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 1000 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无体检或生产观测数据。运行 ' : 'No doctor or observe data yet. Run '}<code>omk doctor</code>{zh ? ' 体检知识载体，或 ' : ' to audit an artifact, or '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 采集生产表现。' : ' to collect production evidence.'}</span>}/> }} columns={[
-        { title: zh ? '知识对象' : 'Knowledge', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}`} title={name}>{name}</Link> },
+        { title: zh ? '知识载体' : 'Knowledge artifact', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}`} title={name}>{name}</Link> },
         { title: zh ? '健康' : 'Health', width: 140, render: (_, row) => <Health row={row}/> },
         { title: zh ? '健康体检' : 'Doctor', width: 140, render: (_, { doctor }) => doctor ? `${doctor.passCount}✓ ${doctor.warnCount}⚠ ${doctor.failCount}✗` : '—' },
         { title: zh ? '观测缺口' : 'Observe gap', width: 192, render: (_, { observe }) => observe ? observeGapText(observe, zh, true) : '—' },

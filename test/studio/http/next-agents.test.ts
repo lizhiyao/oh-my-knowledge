@@ -68,10 +68,10 @@ describe('Next 宿主的 /agents 路由', () => {
       assert.ok(html.includes(fact), `页面缺少事实：${fact}`);
     }
     // 计数被容量上限砍过、事件没被识别，都必须显式出现在页面上而不是被静默汇总。
-    assert.match(html, /登记表 3 个 · 已安装 2 个 · 会话日志 42 份/);
+    assert.match(html, /登记表 3 个 · 已安装 2 个 · 来源会话日志 42 份/);
     assert.match(html, /有日志根被容量上限截断/);
     assert.match(html, /25 \/ 100/);
-    assert.match(html, /本轮采集上限为 200 个会话文件/);
+    assert.match(html, /本轮采集上限为 200 个来源会话文件/);
     // 一级导航给出入口并标出当前区。
     assert.match(html, /<a[^>]*aria-current="page"[^>]*href="\/agents"/);
   }, 30000);
@@ -96,7 +96,7 @@ describe('Next 宿主的 /agents 路由', () => {
     const html = await (await fetch(`${url}/agents`)).text();
     assert.match(html, /识别报告读不动/);
     // 坏一份不影响另一份：采集结果照常呈现，用户才分得清哪一步出了问题。
-    assert.match(html, /采集 2 份会话/);
+    assert.match(html, /采集 2 份来源会话/);
   }, 30000);
 
   it('只接受 GET', async () => {

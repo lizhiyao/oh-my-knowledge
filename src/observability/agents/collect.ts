@@ -93,7 +93,7 @@ export interface AgentCollectionLimits {
   /** 本轮「读内容 + 解析 + 写产物」的文件数与字节数上限。 */
   maxFilesPerRun: number;
   maxBytesPerRun: number;
-  /** 单个会话文件的字节上限；超过则本轮不处理，避免一次读入超大文件。 */
+  /** 单个来源会话文件的字节上限；超过则本轮不处理，避免一次读入超大文件。 */
   maxFileBytes: number;
 }
 
@@ -266,22 +266,22 @@ export function collectAgentLogs(
   }
 
   if (deferredByCapacity > 0) {
-    limitations.push(`本轮采集上限为 ${limits.maxFilesPerRun} 个会话文件、${formatBytes(limits.maxBytesPerRun)}，剩余 ${deferredByCapacity} 个待采文件留到后续增量运行。`);
+    limitations.push(`本轮采集上限为 ${limits.maxFilesPerRun} 个来源会话文件、${formatBytes(limits.maxBytesPerRun)}，剩余 ${deferredByCapacity} 个待采文件留到后续增量运行。`);
   }
   if (oversizedFiles > 0) {
-    limitations.push(`${oversizedFiles} 个会话文件超过单文件上限 ${formatBytes(limits.maxFileBytes)}，本轮未采集。`);
+    limitations.push(`${oversizedFiles} 个来源会话文件超过单文件上限 ${formatBytes(limits.maxFileBytes)}，本轮未采集。`);
   }
   if (readFailures.length > 0) {
-    limitations.push(`${readFailures.length} 个会话文件无法读取：${enumerate(readFailures)}。`);
+    limitations.push(`${readFailures.length} 个来源会话文件无法读取：${enumerate(readFailures)}。`);
   }
   if (parseFailures.length > 0) {
-    limitations.push(`${parseFailures.length} 个会话文件解析失败：${enumerate(parseFailures)}。`);
+    limitations.push(`${parseFailures.length} 个来源会话文件解析失败：${enumerate(parseFailures)}。`);
   }
   if (emptySessions.length > 0) {
-    limitations.push(`${emptySessions.length} 个会话文件解析后没有产生任何会话，通常是记录被适配器过滤或格式不受支持：${enumerate(emptySessions)}。`);
+    limitations.push(`${emptySessions.length} 个来源会话文件解析后没有产生任何会话记录，通常是记录被适配器过滤或格式不受支持：${enumerate(emptySessions)}。`);
   }
   if (unknownFormatSessions > 0) {
-    limitations.push(`${unknownFormatSessions} 个会话按 unknown 格式归档，OMK 尚未支持其原生日志结构。`);
+    limitations.push(`${unknownFormatSessions} 个来源会话按 unknown 格式归档，OMK 尚未支持其原生日志结构。`);
   }
   if (mismatchedFormatSessions > 0) {
     limitations.push(`${mismatchedFormatSessions} 个会话的实际解析格式与日志根登记格式不一致，报告按实际解析结果记录 sourceKind。`);

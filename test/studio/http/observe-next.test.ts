@@ -45,11 +45,11 @@ describe('Observe Next production routes', () => {
       // 会话页展示的是随时在变的任务状态，浏览器不得用陈旧缓存恢复它。
       assert.match(response.headers.get('cache-control')??'',/no-store/);
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
-      // 标签标题按页面与对象给出：会话详情带上 threadId，列表只给页面名。
-      assert.ok(html.includes(path === '/observe' ? '<title>OMK · 会话列表</title>' : '<title>OMK · 会话详情 · thread</title>'), `title of ${path}`);
+      // 标签标题按页面与对象给出：对话详情带上 threadId，列表只给页面名。
+      assert.ok(html.includes(path === '/observe' ? '<title>OMK · 对话列表</title>' : '<title>OMK · 对话详情 · thread</title>'), `title of ${path}`);
       assert.match(html,/<a(?=[^>]*href="\/observe")(?=[^>]*aria-current="page")/u);
       if(path==='/observe') {
-        assert.match(html,/项目与会话/);
+        assert.match(html,/项目与对话/);
         assert.match(html,/全部对话/);
         assert.match(html,/未归属项目/);
         // 语言不进地址：站内链接一律不带 lang，渲染语言由本机设置决定。

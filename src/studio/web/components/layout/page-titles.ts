@@ -8,8 +8,8 @@ import type { Language } from './shell';
  * 根 layout 的 `OMK · %s` 模板补上品牌前缀，等价于迁移前 HTML 外壳的 `<title>OMK · <页面名></title>`。
  */
 const TITLES = {
-  conversations: { zh: '会话列表', en: 'Conversations' },
-  conversation: { zh: '会话详情', en: 'Conversation details' },
+  conversations: { zh: '对话列表', en: 'Conversations' },
+  conversation: { zh: '对话详情', en: 'Conversation details' },
   task: { zh: '任务轨迹', en: 'Task trajectory' },
   inbox: { zh: '观测收件箱', en: 'Observation inbox' },
   health: { zh: 'Skill 健康度日报', en: 'Skill Health Reports' },
@@ -17,7 +17,7 @@ const TITLES = {
   healthDiff: { zh: 'Skill 健康度对比', en: 'Skill health diff' },
   measure: { zh: '评测记录', en: 'Evaluations' },
   measureRun: { zh: '运行', en: 'Run' },
-  knowledge: { zh: '知识对象', en: 'Knowledge artifacts' },
+  knowledge: { zh: '知识载体', en: 'Knowledge artifacts' },
   candidates: { zh: '候选知识', en: 'Candidate knowledge' },
   managed: { zh: '受管决策史', en: 'Managed history' },
   agents: { zh: '本机 Agent', en: 'Installed agents' },

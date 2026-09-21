@@ -20,7 +20,7 @@ import { conversationPath } from '../conversation-link';
 function Evidence({value}: {value: unknown}) { return <pre className="observe-evidence">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>; }
 
 /**
- * `initialTab` 只有 trajectory 分支用得上：本组件同时服务会话列表、会话详情与任务轨迹三条路由，
+ * `initialTab` 只有 trajectory 分支用得上：本组件同时服务对话列表、对话详情与任务轨迹三条路由，
  * 前两条渲染工作区（其视图切换是另一件事），没有面板可言，所以它是可选的而不是占位参数。
  */
 export function ObserveView({page, lang, initialTab}: {page: ObservePage; lang: Language; initialTab?: TrajectoryTab}) {
@@ -70,7 +70,7 @@ function Trajectory({page,lang,initialTab}: {page:Extract<ObservePage,{pageKind:
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
     <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={OBSERVE_INDEX_PATH}>{zh?'会话列表':'Conversations'}</Link>},{title:<Link href={conversationPath(page.threadId)}>{zh?'会话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
+      <Breadcrumb items={[{title:<Link href={OBSERVE_INDEX_PATH}>{zh?'对话列表':'Conversations'}</Link>},{title:<Link href={conversationPath(page.threadId)}>{zh?'对话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
     <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
         <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal?conversationLabel(model.summary.userGoal):(zh?'任务轨迹':'Task trajectory')}</button></h1>

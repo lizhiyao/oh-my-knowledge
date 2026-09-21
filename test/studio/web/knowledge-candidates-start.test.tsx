@@ -13,7 +13,7 @@ const render = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeC
 describe('knowledge extraction onboarding', () => {
   it('explains the next action and keeps workspace paths out of the empty main page', () => {
     const html = renderToStaticMarkup(createElement(KnowledgeCandidates, { lang: 'zh', initialWorkspace: '/private/example' }));
-    expect(html).toContain('从会话选择');
+    expect(html).toContain('从对话选择');
     expect(html).toContain('预览并提炼');
     expect(html).toContain('核对并保留');
     expect(html).not.toContain('/private/example');

@@ -199,3 +199,4 @@ test/studio/web/observe-trajectory-page.test.tsx
 test/studio/web/observe-workspace.test.tsx
 test/studio/web/run-report-link.test.tsx
 test/studio/web/tab-url.test.ts
+test/studio/web/terminology-guard.test.ts
