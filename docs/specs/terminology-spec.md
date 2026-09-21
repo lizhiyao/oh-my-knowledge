@@ -31,6 +31,7 @@ Rules:
 
 - Prefer `artifact` in user-facing docs.
 - Prefer `artifact` in core internal types, request structures, and task structures.
+- Chinese interface copy renders `artifact` as 「知识载体」; English interface copy keeps the identity word `artifact` (for example `Knowledge artifact`). Do not invent alternatives such as 「知识对象」 (see section 3.9).
 
 ### 2. Artifact kind
 
@@ -279,6 +280,31 @@ Core Composite Analysis binds up to three named layers: `fact`, `behavior`, and 
 | Judge | an ensemble consensus or dimension aggregate | model-evaluated |
 
 The terms name Analysis responsibilities, not mutable report fields. New code uses qualified table entries and source bindings; it must not reintroduce deleted `LayeredScores`, `factScore`, `behaviorScore`, `judgeScore`, or `avg*Score` report-row fields. User-facing English uses "LLM judge" when referring to the evaluator source and "judge layer" when referring to Composite Analysis.
+
+### 8. A conversation is what the user reads; a session is what the host wrote
+
+Interface wording splits into two layers, one term each:
+
+- **conversation**: the work record the user reads, filters and extracts from inside Studio. Lists, counters, navigation, empty states, buttons and page titles all live on this layer.
+- **session**: the raw record the host itself wrote — log files, trace sources, `--session` style parameters, source identities and fields inside snapshot metadata.
+
+The test is a single question rather than a find-and-replace list: **does this refer to the record the user is reading, or to the record the host stored**. Within one screen only the former may appear as interface wording. The precedent already exists in `evaluation-studio-projection.md`: the four Observe lanes read "conversation, execution, outcome, knowledge", while "reuse the session and trajectory projection … never serialize the whole source session" speaks of sessions.
+
+Rejected usage: treating the two as synonyms on one screen — a page title that reads "All conversations" next to a counter that reads "N sessions". Where English has only `conversation` but Chinese distinguishes the layers, the Chinese follows what is actually meant; never rewrite a source field into "conversation" just to match the English surface.
+
+### 9. The knowledge side has exactly three layers: content, carrier, candidate
+
+Only these three terms are allowed as `/knowledge` interface wording, one per layer:
+
+| Layer | Chinese interface term | English interface term | What it denotes |
+|---|---|---|---|
+| Content | 知识内容 | knowledge content | one reviewable fact, experience or method |
+| Carrier | **知识载体** | `Knowledge artifact` | one skill, prompt or project rule file |
+| Unreviewed state | 候选知识 | candidate knowledge | an extracted explanation that has not been reviewed |
+
+This follows sections 2.1 and 2.10 of this document: knowledge content and knowledge carrier are two layers, one carrier can hold many pieces of knowledge and one piece can appear in several carriers; these forms do not extend `ArtifactKind` and do not replace existing artifact identity.
+
+**「知识对象」 ("knowledge object") is an interface-invented term: before this change it appeared zero times across all specs and guides and existed only in interface copy, so it is treated as a rejected alias (naming it here records the rejection; it does not license the word).** Decide by the data, not by habit: a row in the `/knowledge` list is one skill (its key is the skill name), i.e. the carrier layer, so that column plus the counters, search placeholder and tab title read 知识载体 / `Knowledge artifact`; only a count of items uses 知识内容. Renaming the shipped interface is the implementation change's job — this document settles the vocabulary first.
 
 ## 4. External expression conventions
 

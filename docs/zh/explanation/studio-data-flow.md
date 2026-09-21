@@ -36,6 +36,6 @@ revision 闸门意味着只有用户可见的生命周期状态变化时才触�
 
 ## 已记录的取舍
 
-- 会话列表全量传输、客户端过滤分页（20 条/页）。在已测规模下可接受（见 [Studio 性能基线](/zh/explanation/studio-performance-baseline)）；出现远端托管场景时重估。
+- 对话列表全量传输、客户端过滤分页（20 条/页）。在已测规模下可接受（见 [Studio 性能基线](/zh/explanation/studio-performance-baseline)）；出现远端托管场景时重估。
 - Measure 页面当前没有实时刷新；运行中的评测靠导航重新查看。这是记录在案的决策，不是疏漏。
 - 标题改名会触发 revision；增长信号不会。未来若某界面需要在列表/详情页显示实时计数，应显式加入 snapshot 状态，而不是隐式带入。

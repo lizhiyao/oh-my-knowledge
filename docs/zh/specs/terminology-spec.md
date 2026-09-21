@@ -31,6 +31,7 @@
 
 - 对外文档优先使用 `artifact`
 - 对内核心类型、请求结构、任务结构优先使用 `artifact`
+- 界面中文文案把 `artifact` 写作「知识载体」；英文界面保留身份词 `artifact`（如 `Knowledge artifact`），不另造「知识对象」一类说法（见 §三.9）
 
 ### 2. Artifact Kind
 
@@ -256,6 +257,31 @@ Core Composite Analysis 最多绑定 `fact`、`behavior` 与 `judge` 三个具�
 | LLM 评价 | ensemble consensus 或 dimension aggregate | 模型评测 |
 
 这些术语表示 Analysis 职责，不是可变的 report field。新代码使用限定 table entry 与 source binding；不得重新引入已删除的 `LayeredScores`、`factScore`、`behaviorScore`、`judgeScore` 或 `avg*Score` 结果行字段。中文在指 evaluator 来源时使用「LLM 评委」，指 Composite Analysis 时使用「judge layer」。
+
+### 8. 对话是用户在读的那条，会话是宿主写下的那份
+
+界面用词分两层，各一个词：
+
+- **对话**（英文 `conversation`）：用户在 Studio 里阅读、筛选、提炼的那一条工作记录。列表、统计、导航、空态、按钮与页面标题都属于这一层。
+- **会话**（英文 `session`）：宿主自己写下的原始记录——日志文件、trace 源、`--session` 一类参数、来源身份与快照元数据里的字段。
+
+判据是一句话，不是词表替换：**这一处指的是用户在读的记录，还是宿主落盘的记录**。同一屏只允许出现前者作为界面词。出处是 `evaluation-studio-projection.md` 已有的用法：Observe 的四条泳道写作「对话、执行、结果、知识」，而复用的投影与「不序列化整个源会话」说的是会话。
+
+被拒的写法：把两者当同义词在同一屏混排——页面标题写「全部对话」、同屏统计写「N 个会话」。英文只有一个 `conversation` 而中文按所指分层的场合，以中文所指为准，不为对齐字面而把来源字段改成「对话」。
+
+### 9. 界面只有三层：知识内容、知识载体、候选知识
+
+`/knowledge` 一侧的界面词只允许这三个，各管一层：
+
+| 层 | 中文界面词 | 英文界面词 | 指什么 |
+|---|---|---|---|
+| 内容 | 知识内容 | knowledge content | 一条可复核的事实、经验或方法 |
+| 载体 | **知识载体** | `Knowledge artifact` | 一份 skill、prompt 或项目规则文件 |
+| 未复核状态 | 候选知识 | candidate knowledge | 提炼出来、尚未核对的解释 |
+
+依据是本文 §二.1 与 §二.10：知识内容与知识载体是两个层次，一份载体可以装多条知识，同一条知识也可以出现在多个载体中；这些形式不扩展 `ArtifactKind`，也不替代现有 artifact 身份。
+
+**「知识对象」是界面自造词：改动前它在本仓库全部 specs 与 guides 里出现 0 次，只在界面文案里存在，因此按被拒别名处理（本文此处是登记它，不是启用它）。** 判法看数据不看习惯：`/knowledge` 列表一行就是一个 skill（主键是 skill 名），属于载体层，因此该列与统计、搜索、标签标题都写「知识载体」；只有指内容计数时才用「知识内容」。界面改名由实现改动负责，本文先定口径。
 
 ## 四、对外表达规范
 
