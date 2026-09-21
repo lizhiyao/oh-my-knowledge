@@ -198,6 +198,15 @@ after source, dependency or build-config changes. Removed or renamed emitted
 files may require `yarn clean` before rebuilding. Preserve incremental caches
 between unchanged checks; use clean builds when the tested boundary requires it.
 
+Keep those caches local to each checkout. Incremental state records input file
+signatures, not whether the emitted output exists: a second checkout with the
+same file signatures and an empty `dist` finished
+`tsc -p tsconfig.build.json` in 6 seconds with exit code 0 after emitting 22
+JavaScript files, where a private cache emitted 732 in 12 seconds. Type
+checking still enumerates newly added files, so a shared cache falsifies build
+artifacts rather than coverage. Linking dependency directories per entry to
+skip an install is fine; leave `node_modules/.cache` inside each checkout.
+
 - `yarn test` runs the full vitest suite
 - `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
 - `yarn typecheck` 跑两个 tsc 程序：根程序（Node16、不开 `--jsx`）收 `src`／`test`／`scripts` 下的 `.ts`；`tsconfig.studio-web.json` extends `src/studio/web/tsconfig.json`，收整个 Studio web 子树和 `test/studio/web` 的用例，`.ts` 与 `.tsx` 同权。归属由 `test/architecture/test-gate-coverage.test.ts` 守住，新增文件不必再靠文件名试探谁在检查它。
