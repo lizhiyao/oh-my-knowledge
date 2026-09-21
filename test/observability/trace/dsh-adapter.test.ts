@@ -10,6 +10,7 @@ import {
   type CcRecord,
 } from '../../../src/observability/trace/source.js';
 import { countUnknownEventDispositions } from '../../../src/observability/trace/unknown-disposition.js';
+import type { TraceEvent, TraceSession } from '../../../src/observability/trace/trace-ir.js';
 import { dshSessionHeaderEvidence } from '../../../src/observability/trace/adapters/dsh/trace.js';
 
 /**
@@ -58,8 +59,10 @@ function parse() {
   return detected.session;
 }
 
-function byKind(session: ReturnType<typeof parse>, kind: string) {
-  return session.events.filter((event) => event.eventKind === kind);
+function byKind<K extends TraceEvent['eventKind']>(session: TraceSession, kind: K) {
+  return session.events.filter(
+    (event): event is Extract<TraceEvent, { eventKind: K }> => event.eventKind === kind,
+  );
 }
 
 describe('DSH 磁盘会话映射', () => {
