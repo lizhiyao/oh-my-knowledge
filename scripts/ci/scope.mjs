@@ -4,6 +4,11 @@ import { pathToFileURL } from 'node:url';
 
 // Deliberately narrow: Markdown can also be a runtime prompt, skill or generated contract.
 const rules = new Set(['AGENTS.md', 'CLAUDE.md', 'CODE_REVIEW.md', 'CONTRIBUTING.md', '.github/PULL_REQUEST_TEMPLATE.md']);
+// 模块级维护文档（`src/<域>/README.md`）与根规则文件同档：只有叙述与链接，没有构建、打包与行为面，
+// 治理测试加空白检查即够。`docs/.vitepress/**`、生成物与任何非 `README.md` 的 `src/**` Markdown
+// （提示词、技能、契约样本）都不在此列，仍走完整门禁。
+const moduleDoc = /^src\/.+\/README\.md$/;
+const isRulesSurface = (path) => rules.has(path) || moduleDoc.test(path);
 const generated = new Set([
   'docs/reference/cli.md', 'docs/zh/reference/cli.md',
   'docs/specs/cli-evaluation-input-compilation.md', 'docs/zh/specs/cli-evaluation-input-compilation.md',
@@ -13,7 +18,7 @@ export function classifyPaths(paths) {
   if (!paths.length) return 'full';
   let scope = 'rules';
   for (const path of paths) {
-    if (rules.has(path)) continue;
+    if (isRulesSurface(path)) continue;
     if (generated.has(path)) return 'full';
     if (path === 'README.md' || path === 'README.zh.md'
       || /^docs\/(?!\.)(?:[^/.][^/]*\/)*[^/]+\.md$/.test(path)) {
