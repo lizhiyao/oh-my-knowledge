@@ -22,7 +22,7 @@ comments, but keep every heading; use "无" when a section does not apply.
 
 ## 验证
 
-<!-- 定向验证、yarn ci，以及与风险匹配的真实用户路径／clean-room／UI 验收证据。 -->
+<!-- 定向验证、与风险档位相称的那一层本地门禁（`ci:quick` 或完整 `yarn ci`），以及与风险匹配的真实用户路径／clean-room／UI 验收证据。 -->
 
 ## 未解决风险
 
