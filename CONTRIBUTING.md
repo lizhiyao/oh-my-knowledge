@@ -41,10 +41,15 @@ git pull --ff-only
 # cut a topic branch from main
 git checkout -b codex/my-feature
 
-# Batch the intended changes, then run the complete local gate once before pushing.
+# Batch the intended changes, then validate based on risk level.
 yarn install
 # Review the complete diff and risk-specific evidence first.
 # See CODE_REVIEW.md.
+
+# For ordinary local changes: targeted validation
+yarn ci:quick <相关测试文件>
+
+# For cross-module, dependency, build/packaging, or CI gate changes: full local gate
 yarn ci
 
 git commit -m "feat(cli): 中文 subject"
@@ -56,6 +61,15 @@ git push -u origin codex/my-feature
 Validation triggers, evidence reuse, and exceptions are defined once in
 [`AGENTS.md`](./AGENTS.md#开发反馈与验证). The commands below implement that policy;
 follow-up fixes do not automatically require another full local gate.
+
+### Local validation strategy
+
+| Scenario | Strategy | Command |
+|----------|----------|---------|
+| Ordinary local changes | Targeted validation | `yarn ci:quick <相关测试文件>` |
+| Tests depend on build artifacts | Update build first, then test | `yarn build:runtime && yarn test <相关测试文件>` |
+| Cross-module, dependency, build/packaging, CI gate changes | Full local gate | `yarn ci` |
+| PR merge | Remote gate passes + autonomous CR | See CI checks |
 
 ## Code review and definition of done
 

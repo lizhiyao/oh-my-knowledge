@@ -183,11 +183,46 @@ jobs:
           path: ${{ runner.temp }}/ci-diagnostics
           retention-days: 14
 
+  # macOS 平台风险边界检查：文件存储、目录发现、子进程、CLI 启动、Studio 服务生命周期。
+  # 不跑全量，只跑平台差异高风险测试；接入合并门禁，失败阻止合并。
+  test_macos:
+    needs: changes
+    if: ${{ always() && (needs.changes.result != 'success' || (needs.changes.outputs.scope != 'rules' && needs.changes.outputs.scope != 'docs')) }}
+    name: test (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --immutable
+      - run: yarn build
+      # 平台风险边界测试：文件存储、目录发现、子进程、CLI 启动、Studio 服务生命周期
+      # 选择依据：macOS 与 Linux 在这些边界存在实际差异（文件系统大小写、进程信号、路径解析等）
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 600000 --retry-on=unknown_signal yarn test --maxWorkers=1 test/evidence/storage/ test/cli/oclif-startup.test.ts test/cli/oclif-dispatch.test.ts test/cli/first-run-smoke.test.ts test/cli/studio-dev-spawn.test.ts test/studio/http/server-lifecycle.test.ts test/studio/http/next-studio.test.ts
+        env:
+          CI_DIAGNOSTICS_DIR: ${{ runner.temp }}/ci-diagnostics
+      - name: Summarize diagnostics
+        if: ${{ always() }}
+        env:
+          CI_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/ci-diagnostics"
+      - name: Save diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/ci-diagnostics
+          retention-days: 14
+
   # Required names stay stable. A skipped suite is valid only after an explicit light gate succeeds.
   test_22:
     name: test (22)
     if: ${{ always() }}
-    needs: [changes, lightweight, quality, test_22_shard]
+    needs: [changes, lightweight, quality, test_22_shard, test_macos]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -198,6 +233,7 @@ jobs:
           LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_22_shard.result }}
+          MACOS_RESULT: ${{ needs.test_macos.result }}
           IS_PR: ${{ github.event_name == 'pull_request' }}
           IS_DEPENDABOT: ${{ contains(github.event.pull_request.labels.*.name, 'dependencies') }}
         run: |
@@ -208,15 +244,17 @@ jobs:
             test "$LIGHT_RESULT" = success
             test "$QUALITY_RESULT" = skipped
             test "$SHARD_RESULT" = skipped
+            test "$MACOS_RESULT" = skipped
           else
             test "$QUALITY_RESULT" = success
             test "$SHARD_RESULT" = success
+            test "$MACOS_RESULT" = success
           fi
 
   test_24:
     name: test (24)
     if: ${{ always() }}
-    needs: [changes, lightweight, quality, test_24_shard]
+    needs: [changes, lightweight, quality, test_24_shard, test_macos]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -227,12 +265,15 @@ jobs:
           LIGHT_RESULT: ${{ needs.lightweight.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           SHARD_RESULT: ${{ needs.test_24_shard.result }}
+          MACOS_RESULT: ${{ needs.test_macos.result }}
         run: |
           if [ "$CHANGE_RESULT" = success ] && { [ "$SCOPE" = rules ] || [ "$SCOPE" = docs ]; }; then
             test "$LIGHT_RESULT" = success
             test "$QUALITY_RESULT" = skipped
             test "$SHARD_RESULT" = skipped
+            test "$MACOS_RESULT" = skipped
           else
             test "$QUALITY_RESULT" = success
             test "$SHARD_RESULT" = success
+            test "$MACOS_RESULT" = success
           fi
