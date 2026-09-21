@@ -8,6 +8,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import InitCommand from '../../src/cli/commands/init.js';
+import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
 import { runCommand } from '../helpers/run-command.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
@@ -22,6 +23,7 @@ interface GeneratedSample {
   annotations: Record<string, unknown>;
 }
 
+// 英文集必须和中文集走同一个 strict-mode 加载器：只比字符串会漏掉「翻译后不再合规」。
 async function generate(lang: 'zh' | 'en'): Promise<{ samples: GeneratedSample[] }> {
   const dir = await mkdtemp(join(tmpdir(), `omk-init-samples-${lang}-`));
   try {
@@ -31,6 +33,9 @@ async function generate(lang: 'zh' | 'en'): Promise<{ samples: GeneratedSample[]
     });
     const file = join(dir, 'project', 'eval-samples.json');
     assert.ok(existsSync(file), 'init should write eval-samples.json');
+    const loaded = loadSamples(file);
+    // strict-mode 加载器不合规即抛错；两版都过同一道校验。
+    assert.equal(loaded.samples.length, 20);
     return JSON.parse(readFileSync(file, 'utf8')) as { samples: GeneratedSample[] };
   } finally {
     await rm(dir, { recursive: true, force: true });
