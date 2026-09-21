@@ -1,5 +1,7 @@
 # OMK 自主代码审查 Playbook
 
+> English companion: [CODE_REVIEW.en.md](./CODE_REVIEW.en.md), maintained section by section; this Chinese file is authoritative when the two differ.
+
 这份 playbook 把代码审查定义为交付过程的一部分，而不是等待用户触发的额外动作。它面向所有参与 OMK 开发的 Agent 与人类贡献者，不依赖特定模型、工具或多 Agent 能力。
 
 ## 核心原则

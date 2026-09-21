@@ -3,7 +3,16 @@ import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 // Deliberately narrow: Markdown can also be a runtime prompt, skill or generated contract.
-const rules = new Set(['AGENTS.md', 'CLAUDE.md', 'CODE_REVIEW.md', 'CONTRIBUTING.md', '.github/PULL_REQUEST_TEMPLATE.md']);
+// 双语孪生文件与原本同意图：只有叙述与链接，改文不改行为，与根规则文件同档。
+const rules = new Set([
+  'AGENTS.md', 'AGENTS.en.md', 'CLAUDE.md',
+  'CODE_REVIEW.md', 'CODE_REVIEW.en.md',
+  'CONTRIBUTING.md', 'CONTRIBUTING.zh.md',
+  'SECURITY.md', 'SECURITY.zh.md',
+  'PRODUCT.md', 'PRODUCT.en.md',
+  'schemas/README.md', 'schemas/README.zh.md',
+  '.github/PULL_REQUEST_TEMPLATE.md',
+]);
 // 模块级维护文档（`src/<域>/README.md`）与根规则文件同档：只有叙述与链接，没有构建、打包与行为面，
 // 治理测试加空白检查即够。`docs/.vitepress/**`、生成物与任何非 `README.md` 的 `src/**` Markdown
 // （提示词、技能、契约样本）都不在此列，仍走完整门禁。
