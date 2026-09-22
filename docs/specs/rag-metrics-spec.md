@@ -68,7 +68,7 @@ Default threshold = 3.
 
 ## Length-debias is inherited automatically
 
-The judge prompt for all three metrics **automatically includes the same "length is not a quality signal" paragraph as the main judge**:
+The judge prompt for all three metrics **automatically includes the same "length is not a quality signal" paragraph as the main judge**. It is quoted below in its original Chinese bytes — judge prompts are a single-language instrument (see [scoring equivalence §4](./evaluation-scoring-equivalence.md)):
 
 ```
 ## 重要:长度不是质量信号

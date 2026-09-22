@@ -58,6 +58,8 @@ Evaluator 家族覆盖整个运行计划，并且只声明自身需要的输入�
 
 Core 永不导入 `PROMPT_REGISTRY`。组合根解析冻结的 prompt，并把它的哈希放进宿主 Runtime 身份。`lengthDebias=false` 仅选择现有的 rubric 关闭长度去偏工具；表达和语气中性仍然启用。RAG 和语义 prompt 没有长度去偏开关。
 
+评委 prompt 是刻意只有一种语言的仪器：rubric、RAG 与语义 prompt 用中文写，不跟随 `--lang`／`OMK_LANG`／全局设置／系统 locale 解析出的输出语言。prompt 的字节会进入宿主 Runtime 身份，因此把语言交给环境决定，等于让同一份封存配置在另一台机器上量到另一件仪器，series 对比会在不知不觉间换掉构念。可见代价写在这里而不是藏起来：英文界面下评委指令仍是中文，评委给出的 `reason` 通常也是中文。要把仪器翻译过去，就得新增登记表 promptId、已发布 instrument schema 的 enum 取值和新冻结的 hash，也就是一次带版本的 `BREAKING-COMPARABILITY` 改动；[#1043](https://github.com/lizhiyao/oh-my-knowledge/issues/1043) 于 2026-09-22 由维护者决定不这样做，理由是仪器身份不绑环境状态。文档里引用评委 prompt 时展示的是原始中文字节——翻译后的引用会歪曲仪器本身。
+
 语义和 RAG assertion 使用 `omk.llm-assertions/v2`。一个 Evaluator 坐标只拥有一条准则和一个布尔 Metric，因此一次提供方失败不能压制或伪造无关准则。规范化的 `applicableSampleIds` 在评测和分析前移除不适用坐标，而不把多条准则合并进共享的提供方调用。密封工具保留 assertion 类型、注册表 prompt ID 和冻结 prompt 哈希；下游聚合所需的阈值、正权重、显式取反规则和事实层身份也会保留。仅在有效原始分数完成阈值比较后执行取反；证据同时保留 `rawPassed` 和 `negated`，提供方失败、无效响应、超时、取消或预算截尾均不得成为已观测的通过。Runtime 指纹还绑定所选模型配置和宿主调用 Runtime 身份。宿主调用端口只执行一次支持协作取消的调用，自身没有重试、超时、预算或缓存策略。
 
 `[1, 5]` 内的严格整数读数和非空解释会生成已观测的布尔阈值结果。非 JSON、畸形 JSON、畸形分数、越界分数和缺失解释分别生成不同的无效观测。提供方失败生成带脱敏稳定代码的失败 Evaluation 记录。Core 超时和取消仍是尝试状态，准入失败仍是预算截尾。未知用量或提供方成本保持缺失。这是 [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) 负责的有意 `BREAKING-COMPARABILITY` 修正；不提供兼容模式或旧读取器。

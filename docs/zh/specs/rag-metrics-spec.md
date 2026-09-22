@@ -68,7 +68,7 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 
 ## Length-debias 自动继承
 
-三个 metric 的 judge prompt **自动包含与主 judge 同款的"长度不是质量信号"段落**:
+三个 metric 的 judge prompt **自动包含与主 judge 同款的"长度不是质量信号"段落**，下面按原始字节原样引用（评委 prompt 是单一语言仪器，见[评分等价规范 §4](./evaluation-scoring-equivalence.md)）:
 
 ```
 ## 重要：长度不是质量信号
