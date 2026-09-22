@@ -35,18 +35,45 @@ function LanguageSwitch({ lang }: { lang: Language }) {
   >{zh ? '英文' : '中文'}</button>;
 }
 
-export function StudioShell({ lang, children, active, utilitiesInSidebar = false }: { utilitiesInSidebar?: boolean; lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | 'agents' | false }) {
-  // 只挂 /measure 的宿主不提供兄弟路由组，渲染导航等于把用户导向 404；语言切换不依赖路由组，始终保留。
+/**
+ * Studio 外壳（#1055）：左侧栏承载品牌、一级导航与各工作区列表，设置与帮助固定侧栏底部；
+ * 主区只放当前选中内容。工作区把自己的列表（对话、评测运行）经 `sidebar` 交给外壳渲染，
+ * 页面不得自画入口（架构门禁守）。
+ *
+ * 只挂 `/measure` 的预览宿主没有兄弟路由，保留无导航的紧凑页头，不侧栏化。
+ *
+ * 品牌链接在三个分支各自内联书写：抽组件接 `href` 会把跳转的归属从 next/link 挪到自定义组件，
+ * 站内跳转守门（studio-internal-navigation）认不出，宁可重复三行。
+ */
+export function StudioShell({ lang, children, active, sidebar }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | 'agents' | false; sidebar?: ReactNode }) {
   const navigation = useStudioNavigation();
-  return <ConfigProvider locale={lang === 'zh' ? zhCN : enUS}>
-    <div className="studio-app"><header className="studio-header"><Link className="studio-brand" href={studioEntryPath(navigation)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
-      {navigation ? <nav aria-label={lang === 'zh' ? 'Studio 一级导航' : 'Studio primary navigation'}>
-        <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{lang === 'zh' ? '观测' : 'Observe'}</Link>
-        <Link href={MEASURE_INDEX_PATH} aria-current={active === 'measure' ? 'page' : undefined}>{lang === 'zh' ? '评测' : 'Measure'}</Link>
-        <Link href={KNOWLEDGE_INDEX_PATH} aria-current={active === 'knowledge' ? 'page' : undefined}>{lang === 'zh' ? '知识' : 'Knowledge'}</Link>
-        <Link href={AGENTS_INDEX_PATH} aria-current={active === 'agents' ? 'page' : undefined}>{lang === 'zh' ? 'Agent' : 'Agents'}</Link>
-      </nav> : null}
-      <div className="studio-global-actions">{navigation ? !utilitiesInSidebar && <StudioUtilities lang={lang} placement="bottomRight"/> : <LanguageSwitch lang={lang}/>}</div>
-    </header><main className="studio-content">{children}</main></div>
+  const zh = lang === 'zh';
+  const [open, setOpen] = useState(false);
+  if (!navigation) {
+    return <ConfigProvider locale={zh ? zhCN : enUS}>
+      <div className="studio-app studio-app--flat"><header className="studio-header"><Link className="studio-brand" href={studioEntryPath(false)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
+        <div className="studio-global-actions"><LanguageSwitch lang={lang}/></div>
+      </header><main className="studio-content">{children}</main></div>
+    </ConfigProvider>;
+  }
+  return <ConfigProvider locale={zh ? zhCN : enUS}>
+    <div className={`studio-app${open ? ' sidebar-open' : ''}`}>
+      <header className="studio-mobile-bar">
+        <button type="button" className="studio-sidebar-toggle" aria-expanded={open} aria-label={zh ? '打开导航与列表' : 'Open navigation and lists'} onClick={() => setOpen(value => !value)}>☰</button>
+        <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
+      </header>
+      <aside className="studio-sidebar" onClick={event => { if ((event.target as HTMLElement).closest('a')) setOpen(false); }}>
+        <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
+        <nav aria-label={zh ? 'Studio 一级导航' : 'Studio primary navigation'}>
+          <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
+          <Link href={MEASURE_INDEX_PATH} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
+          <Link href={KNOWLEDGE_INDEX_PATH} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
+          <Link href={AGENTS_INDEX_PATH} aria-current={active === 'agents' ? 'page' : undefined}>{zh ? 'Agent' : 'Agents'}</Link>
+        </nav>
+        {sidebar ? <div className="studio-sidebar-body">{sidebar}</div> : null}
+        <StudioUtilities lang={lang}/>
+      </aside>
+      <main className="studio-content">{children}</main>
+    </div>
   </ConfigProvider>;
 }

@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { requestObservePage } from '../../../../../../catalog';
 import { ObserveView } from '../../../../../../components/observe/observe';
-import { StudioShell } from '../../../../../../components/layout/shell';
 import { pageTitle, requestStudioLang } from '../../../../../../components/layout/page-titles';
 import { DEFAULT_TRAJECTORY_TAB, parseTab, TRAJECTORY_TABS } from '../../../../../../../http/page-params';
 export const dynamic = 'force-dynamic';
@@ -14,5 +13,5 @@ export async function generateMetadata({ params }: { params: Promise<{threadId: 
 export default async function Page({ searchParams }: { searchParams: Promise<{tab?: string}> }) {
   const params = await searchParams;
   const lang = await requestStudioLang();
-  return <StudioShell lang={lang} active="observe"><ObserveView page={requestObservePage()} lang={lang} initialTab={parseTab(params.tab, TRAJECTORY_TABS, DEFAULT_TRAJECTORY_TAB)}/></StudioShell>;
+  return <ObserveView page={requestObservePage()} lang={lang} initialTab={parseTab(params.tab, TRAJECTORY_TABS, DEFAULT_TRAJECTORY_TAB)}/>;
 }

@@ -6,10 +6,9 @@ import { Button, Empty, Input, Pagination } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
 import { OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
-import { type Language } from '../layout/shell';
+import { StudioShell, type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
 import { ConversationReader } from './reader';
-import { StudioUtilities } from '../layout/utilities';
 import { displayTime } from '../../../application/display/format';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { INDEPENDENT_LIMIT, LIST_PAGE_SIZE, PROJECT_LIMIT, PROJECT_SESSION_LIMIT, keepSelectedVisible, listPage, visibleProjectIds } from '../../../application/conversations/sidebar-window';
@@ -32,7 +31,6 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
   const [query, setQuery] = useState('');
   const [allProjects, setAllProjects] = useState(false);
   const [current, setCurrent] = useState(1);
-  const [navigationOpen, setNavigationOpen] = useState(false);
   const activity = useActivity(selected ? `/api/conversations/${encodeURIComponent(selected.threadId)}/activity` : '/api/conversations/activity', page.revision);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -46,7 +44,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
     } catch { /* Navigation still works when browser storage is disabled. */ }
   }, [selected?.threadId, page.pageKind, router, lang]);
   function choose(next: string) {
-    setNavigationOpen(false); setCurrent(1);
+    setCurrent(1);
     const target = `${OBSERVE_INDEX_PATH}?${new URLSearchParams({ view: next })}`;
     if (selected) router.push(target);
     else { setView(next); window.history.replaceState(null, '', target); }
@@ -72,8 +70,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
     'no-data': { description: t('暂无对话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。', 'No conversations yet. Records appear automatically once an agent has run; see “Settings and help” for guidance.') },
   };
   function clearSearch() { setQuery(''); setCurrent(1); }
-  return <div className={`observe-workbench${navigationOpen ? ' navigation-open' : ''}`}>
-    <aside className="observe-sidebar" aria-label={t('项目与对话', 'Projects and conversations')}>
+  return <StudioShell lang={lang} active="observe" sidebar={<div className="observe-sidebar" role="group" aria-label={t('项目与对话', 'Projects and conversations')}>
       <Input allowClear aria-label={t('搜索项目或对话', 'Search projects or conversations')} placeholder={t('搜索项目或对话', 'Search projects or conversations')} value={query} onChange={event => { setQuery(event.target.value); setCurrent(1); }}/>
       <div className="observe-sidebar-scroll">
       <div className="observe-projects" aria-label={t('项目', 'Projects')}><h2>{t('项目', 'Projects')}</h2>{projectIds.map(id => {
@@ -85,7 +82,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         return <details key={id} open={selected ? projectId(selected) === id : view === id}>
           <summary><span title={directory ? `${name}\n${directory}` : name}>{name}</span><span title={t(`${visible.length} 个对话`, `${visible.length} conversations`)}>{visible.length}</span></summary>
           <button className="observe-project-overview" onClick={() => choose(id)}>{t('查看项目对话', 'View project conversations')}</button>
-          {shown.map(item => { const meta = item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind; return <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationPath(item.threadId)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small title={meta}>{meta}</small></Link>; })}
+          {shown.map(item => { const meta = item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind; return <Link key={item.threadId} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationPath(item.threadId)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span><small title={meta}>{meta}</small></Link>; })}
           {visible.length > PROJECT_SESSION_LIMIT && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个对话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
       })}{query && !index.conversations.some(matches) && <>
@@ -95,17 +92,16 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
       {groups.size > PROJECT_LIMIT && !query && <button className="observe-sidebar-link" onClick={() => setAllProjects(value => !value)}>{allProjects ? t('收起项目', 'Show fewer projects') : t('查看全部项目', 'View all projects')}</button>}
       <section className="observe-recents" aria-label={t('独立对话', 'Standalone conversations')}>
         <header><h2>{t('独立对话', 'Standalone conversations')}</h2></header>
-        <div className="observe-recent-links">{shownIndependent.map(item => <Link key={item.threadId} onClick={() => setNavigationOpen(false)} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationPath(item.threadId)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
+        <div className="observe-recent-links">{shownIndependent.map(item => <Link key={item.threadId} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} title={conversationLabel(item.title)} href={conversationPath(item.threadId)}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title)}</span></Link>)}</div>
         {hiddenIndependent > 0 && <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t(`还有 ${hiddenIndependent} 个独立对话，在全部对话中查看`, `${hiddenIndependent} more standalone conversations in All conversations`)}</button>}
         {!independent.length && <p className="observe-sidebar-empty">{query ? t('没有匹配的独立对话。', 'No matching standalone conversations.') : t('暂无独立对话。有项目归属的对话显示在上方项目下。', 'No standalone conversations yet. Conversations that belong to a project are listed under Projects above.')}</p>}
       </section>
       <button className="observe-sidebar-link" onClick={() => choose('recent')}>{t('查看全部对话', 'View all conversations')}</button>
       <button className="observe-sidebar-link" aria-pressed={view === 'running'} onClick={() => choose(view === 'running' ? 'recent' : 'running')}>{t('进行中的对话', 'Running conversations')}</button>
       </div>
-      <StudioUtilities lang={lang}/>
-    </aside>
-    <main className="observe-workspace-main">
-      <div className="observe-workspace-tools"><Button className="observe-navigation-toggle" size="small" onClick={() => setNavigationOpen(value => !value)}>{t('项目与对话', 'Projects and conversations')}</Button><ActivityNotice activity={activity} lang={lang}/></div>
+  </div>}>
+    <div className="observe-workspace-main">
+      <div className="observe-workspace-tools"><ActivityNotice activity={activity} lang={lang}/></div>
       {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang} title={conversationLabel(selected.title)} project={projectName(selected, zh)}/> : <>
         <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个对话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开对话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
         <div className="observe-session-list">{listed.rows.map(item => {
@@ -121,6 +117,6 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         </Empty>}</div>
         <Pagination current={listed.page} total={rows.length} pageSize={LIST_PAGE_SIZE} showSizeChanger={false} onChange={setCurrent}/>
       </>}
-    </main>
-  </div>;
+    </div>
+  </StudioShell>;
 }

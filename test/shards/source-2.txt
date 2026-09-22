@@ -5,6 +5,7 @@ test/architecture/import-boundaries.test.ts
 test/architecture/production-reachability.test.ts
 test/architecture/src-root-layout.test.ts
 test/architecture/studio-export-consumers.test.ts
+test/architecture/studio-shell-utilities.test.ts
 test/architecture/studio-react-rendering.test.ts
 test/architecture/test-gate-coverage.test.ts
 test/cli/agents-catalog.test.ts
