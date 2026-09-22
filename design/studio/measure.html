@@ -221,8 +221,8 @@
     </header>
 
     <div class="page-body" data-audit-region="记录比较表格" data-audit-contrast>
-      <p class="proto-note">
-        合成数据。运行状态、证据状态、结论状态是三个独立维度，各占一列：「已完成」只说明执行走到了终态，
+      <details class="proto-note">
+<summary>评审注记：本页是合成数据，展开看口径与刻意保留的反例</summary><div class="proto-note-body">合成数据。运行状态、证据状态、结论状态是三个独立维度，各占一列：「已完成」只说明执行走到了终态，
         既不说明证据完整，也不说明结论成立。读表顺序建议是先看证据状态与结论状态，再回看运行状态——
         第 2 行「已完成 · 部分缺失 · 证据不足」就是刻意保留的反例，它下面那一行就近给出限制说明，
         文案沿用现网已有的那句「运行完成不代表改动有效；需要结合证据与结论判断。」
@@ -232,8 +232,8 @@
         未输入时的占位文案是「搜索运行或报告 ID」。列宽合计超过视口宽度，横向滚动只发生在表格内部，
         页面根节点不出现横向滚动；较矮窗口下由表格区自己纵向滚动。底部分页条是静态演示：每页 20 条，命中 6 条时只有一页，按
         <span class="mono">hideOnSinglePage</span> 口径产品界面此时不渲染它。页头不给操作按钮，
-        与现网列表页一致——列表页只提供搜索与比较表格，动作在报告页里发生。
-      </p>
+        与现网列表页一致——列表页只提供搜索与比较表格，动作在报告页里发生。</div>
+</details>
 
       <div class="measure-toolbar">
         <input class="input" id="run-search" type="search" placeholder="搜索运行或报告 ID" aria-label="搜索运行或报告 ID" value="run-2026-09-22">

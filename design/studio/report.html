@@ -177,15 +177,15 @@ h2.pane-head {
     </header>
 
     <div class="page-body" data-audit-region="报告详情" data-audit-contrast>
-      <p class="proto-note">
-        合成数据，只用于评审层级。对应实现是 <code class="mono">/measure/[runId]</code>
+      <details class="proto-note">
+<summary>评审注记：本页是合成数据，展开看口径与刻意保留的反例</summary><div class="proto-note-body">合成数据，只用于评审层级。对应实现是 <code class="mono">/measure/[runId]</code>
         （<code class="mono">src/studio/web/components/measure/measure.tsx</code>）。本页比今天的页面多出四层——
         <strong>结果摘要</strong>、<strong>比较条件</strong>、<strong>证据入口</strong>、<strong>结论限制</strong>，
         每层就地标注真实数据来源与「Studio 尚未投影」；其余分区的字段名与取值全部沿用现有词表，
         <code class="mono">评测范围</code>、<code class="mono">分析结果</code>、<code class="mono">证据与定义</code>
         三个标签页保留，便于和现在的实现对齐。本条运行的合成取值刻意取「已完成 ＋ 部分缺失 ＋ 证据不足」，
-        用来检查证据不足与未判定会不会被那一枚绿色的 <code class="mono">已完成</code> 盖住。
-      </p>
+        用来检查证据不足与未判定会不会被那一枚绿色的 <code class="mono">已完成</code> 盖住。</div>
+</details>
 
       <!-- ===== 摘要带：三根状态轴 ＋ 结果摘要 ===== -->
       <section class="summary-band">

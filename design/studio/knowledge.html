@@ -251,8 +251,8 @@
         </nav>
       </div>
 
-      <p class="proto-note">
-        合成数据。三栏沿用已实现的 <span class="mono">/knowledge/candidates</span>
+      <details class="proto-note">
+<summary>评审注记：本页是合成数据，展开看口径与刻意保留的反例</summary><div class="proto-note-body">合成数据。三栏沿用已实现的 <span class="mono">/knowledge/candidates</span>
         （components/knowledge/candidates.tsx）：候选列表／知识陈述／原始依据并置，核对必须同屏。
         层级：陈述正文与原文片段优先，身份值与时间为辅助信息，维护状态只报用户做过的决定——
         实现里 <span class="mono">reviewStatus</span> 恒为 <span class="mono">pending</span>，
@@ -269,8 +269,8 @@
         limitations 文字由证据层产出、当前只有英文措辞，Studio 原样透传，本页不翻译也不补中文。
         来源不可用的 reason 只可能取 <span class="mono">missing|deleted|invalid_source|version_mismatch</span>
         （observability/knowledge-extraction/evidence.ts），收件箱那套 <span class="mono">source_missing</span>
-        不属于本页；不可用分支的现网投影里也没有 snapshotId 与 sourcePath，身份只剩 reason 可报。
-      </p>
+        不属于本页；不可用分支的现网投影里也没有 snapshotId 与 sourcePath，身份只剩 reason 可报。</div>
+</details>
 
       <div class="panes">
         <!-- 第一栏：候选列表。现网行元素是 <button disabled={busy}>，base.css 的 .list-row
