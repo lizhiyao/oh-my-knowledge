@@ -64,7 +64,7 @@ export function loadKnowledgePage(
   lang: Lang,
   doctorRunId?: string | null,
 ): KnowledgePage | undefined {
-  const index = query.read();
+  const index = query.read({ lang });
   const row = (entry: SkillIndexEntry): KnowledgeRow => ({
     skillName: entry.skillName,
     health: assessHealth(entry, index.insightsBySkill.get(entry.skillName) ?? [], lang),
