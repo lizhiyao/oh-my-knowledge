@@ -173,7 +173,13 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 /* 外壳侧栏（#1055）：品牌、一级导航与工作区列表共居一栏，设置与帮助沉底；工作区列表内容经
    `.studio-sidebar-body` 注入，内部滚动由工作区自己的 scroll 容器承担，搜索等工具保持固定。 */
 .studio-sidebar{width:260px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;background:white;border-right:1px solid #e2e6ee;padding:12px 12px 0}
-.studio-sidebar>.studio-brand{padding:6px 10px 12px}
+.studio-sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0 12px}
+.studio-sidebar-head>.studio-brand{padding:0 10px}
+.studio-sidebar-collapse,.studio-sidebar-expand{display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:#657085;cursor:pointer;border-radius:6px;padding:6px}
+.studio-sidebar-collapse:hover,.studio-sidebar-expand:hover{background:#eef0f6;color:#293348}
+.studio-sidebar-expand{position:fixed;top:10px;left:10px;z-index:6;background:white;border:1px solid #e2e6ee;box-shadow:0 1px 6px rgba(25,34,54,.12)}
+.studio-sidebar-expand>svg{transform:scaleX(-1)}
+.studio-app.sidebar-collapsed>.studio-sidebar{display:none}
 .studio-sidebar nav{display:flex;flex-direction:column;gap:2px;padding-bottom:12px}
 .studio-sidebar nav a{display:flex;align-items:center;padding:7px 10px;border-radius:6px;text-decoration:none;font-weight:600;color:#657085}
 .studio-sidebar nav a[aria-current]{color:#192236;background:#eef0f6}
@@ -232,7 +238,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .observe-reading-message{margin:20px 0;line-height:1.8;font-size:14px;overflow-wrap:anywhere}.observe-reading-message>strong{display:block;font-size:12px;color:#657085;margin-bottom:6px}.observe-reading-message.human{background:#eef0f6;padding:14px 18px;border-radius:8px;margin-left:auto;max-width:85%;width:fit-content}.observe-message-text{white-space:pre-wrap}
 .observe-tool-summary{font-size:12px;color:#657085}.observe-tool-summary summary{cursor:pointer}.observe-tool-summary p{line-height:1.7}.observe-history-control{text-align:center;margin-bottom:20px}.observe-new-messages{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:2}
 @media(max-width:1100px){.studio-sidebar{width:220px}.observe-reader-header{flex-wrap:wrap;gap:10px}.observe-reader-header h1{font-size:16px}.observe-reading-turn>header{flex-wrap:wrap}.observe-session-row{gap:12px}}
-@media(max-width:760px){.studio-app{flex-direction:column}.studio-mobile-bar{display:flex;align-items:center;gap:4px;height:52px;flex-shrink:0;padding:0 12px;background:white;border-bottom:1px solid #e2e6ee}.studio-sidebar{position:fixed;top:0;bottom:0;left:0;z-index:40;width:280px;transform:translateX(-105%);transition:transform .2s ease;padding-top:12px;box-shadow:0 0 24px rgba(25,34,54,.18)}.studio-app.sidebar-open .studio-sidebar{transform:none}.observe-workspace-tools{justify-content:flex-start;margin-bottom:8px}.observe-session-meta{max-width:100px}.observe-session-meta small{display:none}.observe-reading-message.human{max-width:95%}}
+@media(max-width:760px){.studio-app{flex-direction:column}.studio-mobile-bar{display:flex;align-items:center;gap:4px;height:52px;flex-shrink:0;padding:0 12px;background:white;border-bottom:1px solid #e2e6ee}.studio-sidebar{position:fixed;top:0;bottom:0;left:0;z-index:40;width:280px;transform:translateX(-105%);transition:transform .2s ease;padding-top:12px;box-shadow:0 0 24px rgba(25,34,54,.18)}.studio-app.sidebar-open .studio-sidebar{transform:none}.studio-app.sidebar-collapsed>.studio-sidebar{display:flex}.studio-sidebar-expand{display:none}.observe-workspace-tools{justify-content:flex-start;margin-bottom:8px}.observe-session-meta{max-width:100px}.observe-session-meta small{display:none}.observe-reading-message.human{max-width:95%}}
 /*
  * 宽表的横向滚动提示。macOS 默认把滚动条渲染成覆盖式、只在滚动的瞬间出现，所以一张声明了
  * `scroll.x` 的表在窄容器里只读得到「最后一列被切掉了」，读不出「它还能横向滚」。这里给皮肤

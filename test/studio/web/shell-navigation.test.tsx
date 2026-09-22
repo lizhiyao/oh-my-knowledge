@@ -42,4 +42,11 @@ describe('壳层一级导航', () => {
     assert.match(render('observe'), /<a[^>]*class="studio-brand"[^>]*href="\/"/);
     assert.match(render(false, 'zh', false), /<a[^>]*class="studio-brand"[^>]*href="\/measure"/);
   });
+
+  it('侧栏头部提供收起入口；SSR 永远按展开渲染，展开按钮不进首帧文档', () => {
+    const html = render('observe');
+    assert.match(html, /aria-label="收起侧栏"/);
+    assert.doesNotMatch(html, /aria-label="展开侧栏"/);
+    assert.match(render('agents', 'en'), /aria-label="Collapse sidebar"/);
+  });
 });
