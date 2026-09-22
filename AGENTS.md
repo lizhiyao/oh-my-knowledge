@@ -68,6 +68,8 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 
 ## 参考入口
 
+- 产品定位与范围：[PRODUCT.md](./PRODUCT.md)。涉及产品目标、用户场景或功能边界时读取。
+- Studio 视觉与交互依据：[DESIGN.md](./DESIGN.md)。涉及 Studio 界面设计或视觉改进时读取，区分当前实现基线、已确认方向与待验证提案；实现时同时遵守目标目录的领域规则。
 - 用户文档：README.md、README.zh.md。
 - Skill：.agents/skills/omk/SKILL.md。
 - 审查：CODE_REVIEW.md（只有中文）。
