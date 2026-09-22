@@ -4,12 +4,12 @@ import { Dropdown, Drawer } from 'antd';
 import type { Language } from './shell';
 import { StudioSettingsButton } from './settings';
 
-/** Local Studio has no signed-in identity; expose only capabilities it actually has. */
-export function StudioUtilities({ lang, placement = 'topLeft' }: { lang: Language; placement?: 'topLeft' | 'bottomRight' }) {
+/** Local Studio has no signed-in identity; expose only capabilities it actually has. Rendered only by the shell at the sidebar foot (#1055); the menu opens upward from there. */
+export function StudioUtilities({ lang }: { lang: Language }) {
   const [help, setHelp] = useState(false);
   const zh = lang === 'zh';
   return <div className="studio-utilities">
-    <StudioSettingsButton lang={lang} trigger={openSettings => <Dropdown trigger={['click']} placement={placement} menu={{
+    <StudioSettingsButton lang={lang} trigger={openSettings => <Dropdown trigger={['click']} placement="topLeft" menu={{
       items: [{ key: 'settings', label: zh ? '全局设置' : 'Global settings' }, { key: 'help', label: zh ? '使用帮助' : 'Help' }],
       onClick: ({ key }) => key === 'settings' ? openSettings() : setHelp(true),
     }}><button className="studio-utilities-trigger" aria-label={zh ? '设置与帮助' : 'Settings and help'}>

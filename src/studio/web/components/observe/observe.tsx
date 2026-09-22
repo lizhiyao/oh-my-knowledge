@@ -12,7 +12,7 @@ import type { ObservationSourceRecordArchiveView } from '../../../../observabili
 import { Swimlane } from './swimlane';
 import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
-import { type Language } from '../layout/shell';
+import { StudioShell, type Language } from '../layout/shell';
 import { mirrorTabToUrl } from '../tab-url';
 import { displayTime } from '../../../application/display/format';
 import { conversationLabel } from '../../../application/display/conversation-label';
@@ -22,10 +22,12 @@ function Evidence({value}: {value: unknown}) { return <pre className="observe-ev
 /**
  * `initialTab` 只有 trajectory 分支用得上：本组件同时服务对话列表、对话详情与任务轨迹三条路由，
  * 前两条渲染工作区（其视图切换是另一件事），没有面板可言，所以它是可选的而不是占位参数。
+ *
+ * 外壳由本组件统一包裹（#1055）：工作区分支把对话列表经 `sidebar` 交给外壳侧栏，轨迹分支不带侧栏内容。
  */
 export function ObserveView({page, lang, initialTab}: {page: ObservePage; lang: Language; initialTab?: TrajectoryTab}) {
   if (page.pageKind !== 'trajectory') return <ObserveWorkspace page={page} lang={lang}/>;
-  return <Trajectory page={page} lang={lang} initialTab={initialTab ?? DEFAULT_TRAJECTORY_TAB}/>;
+  return <StudioShell lang={lang} active="observe"><Trajectory page={page} lang={lang} initialTab={initialTab ?? DEFAULT_TRAJECTORY_TAB}/></StudioShell>;
 }
 function SourceRecords({endpoint,lang}: {endpoint:string;lang:Language}) {
   const [value,setValue]=useState<ObservationSourceRecordArchiveView>(); const [failed,setFailed]=useState(false);

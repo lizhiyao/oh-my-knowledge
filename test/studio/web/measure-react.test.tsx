@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
-import { RunDetail, RunList } from '../../../src/studio/web/components/measure/measure';
+import { RunDetail, RunList, RunSidebar } from '../../../src/studio/web/components/measure/measure';
 import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../src/studio/view-models/measure/core-runs.js';
 import { card, detail } from '../fixtures/core-run-view.js';
 import { reactText } from '../../helpers/react-ssr.js';
@@ -164,5 +164,33 @@ describe('measure react list keeps the three status axes orthogonal', () => {
     const [cell] = html.match(/<span class="(ant-tag[^"]*)">sensitive<\/span>/u) ?? [];
     assert.ok(cell, 'classification stays a status tag');
     assert.ok(!/ant-tag-(success|warning|error)/u.test(cell), 'but carries no tone');
+  });
+});
+
+/**
+ * 侧栏运行切换器（#1055）：外壳侧栏里的紧凑列表只承担「切换运行」一件事——
+ * 最新在前、状态与时间在列、当前运行高亮；多列对比仍是主区表格的职责。
+ */
+describe('measure sidebar run switcher', () => {
+  it('lists runs newest-first with status and links into reports', () => {
+    const older = card({ runId: 'core-run-old', createdAt: '2026-08-30T08:00:00.000Z' });
+    const newer = card({ runId: 'core-run-new', createdAt: '2026-08-31T12:00:00.000Z', status: { runStatus: 'completed', evidenceStatus: 'complete', conclusionStatus: 'conclusive' } });
+    const html = renderToString(createElement(RunSidebar, { runs: [older, newer], lang: 'zh' }));
+    assert.ok(html.indexOf('core-run-new') < html.indexOf('core-run-old'), 'newest first');
+    assert.ok(html.includes('href="/measure/core-run-new"'));
+    assert.ok(html.includes('已完成'), 'run status label renders');
+    assert.ok(html.includes('<time dateTime="2026-08-31T12:00:00.000Z">'), 'created-at stays a <time> element');
+  });
+
+  it('marks the open run and encodes ids into single-segment links', () => {
+    const run = card({ runId: 'thread/a' });
+    const html = renderToString(createElement(RunSidebar, { runs: [run], activeRunId: 'thread/a', lang: 'en' }));
+    assert.ok(html.includes('href="/measure/thread%2Fa"'), 'run id stays one encoded segment');
+    assert.ok(html.includes('measure-sidebar-link selected'), 'current run is marked');
+  });
+
+  it('explains the empty state instead of rendering a blank rail', () => {
+    assert.ok(renderToString(createElement(RunSidebar, { runs: [], lang: 'zh' })).includes('尚无评测记录'));
+    assert.ok(renderToString(createElement(RunSidebar, { runs: [], lang: 'en' })).includes('No evaluations yet'));
   });
 });

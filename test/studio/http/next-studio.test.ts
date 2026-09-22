@@ -138,9 +138,14 @@ describe('Next Studio production boundary', () => {
       if (previousLang === undefined) delete process.env.OMK_LANG; else process.env.OMK_LANG = previousLang;
     }
     assert.match(knowledgeEn, /<html lang="en"/);
-    const shellOf = (html: string): string => (html.match(/<header class="studio-header">[\s\S]*?<\/header>/u) ?? ['<missing header>'])[0]
-      .replace(/<button[^>]*class="studio-lang"[\s\S]*?<\/button>/u, '<lang-switch/>')
-      .replaceAll(' aria-current="page"', '');
+    // 外壳一致性看品牌位与侧栏一级导航（#1055 后入口收进侧栏）：两页除 aria-current 外必须逐字节一致；
+    // 工作区列表（studio-sidebar-body）随页面不同，不属于外壳比较面。
+    const shellOf = (html: string): string => {
+      const brand = (html.match(/<a class="studio-brand"[^>]*>/u) ?? ['<missing brand>'])[0];
+      const nav = (html.match(/<nav aria-label="Studio primary navigation">[\s\S]*?<\/nav>/u) ?? ['<missing nav>'])[0]
+        .replaceAll(' aria-current="page"', '');
+      return `${brand}${nav}`;
+    };
     assert.equal(shellOf(measureEn), shellOf(knowledgeEn));
     assert.match(knowledgeEn, /studio-utilities-trigger/);
     for (const href of ['href="/observe"', 'href="/measure"', 'href="/knowledge"']) {

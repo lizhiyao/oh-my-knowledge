@@ -9,7 +9,8 @@ import { MEASURE_DETAIL_PREFIX, MEASURE_INDEX_PATH } from '../page-paths.js';
  */
 export type MeasurePage =
   | { pageKind: 'index'; runs: CoreStudioRunCard[] }
-  | { pageKind: 'run'; detail: CoreStudioRunDetail };
+  // 详情页也带运行列表：外壳侧栏（#1055）要在详情页给出全部运行的切换入口。
+  | { pageKind: 'run'; detail: CoreStudioRunDetail; runs: CoreStudioRunCard[] };
 
 /** 地址识别属装载器（`src/studio/README.md`：`pages/` 的装载器「识别地址、装载证据、给出契约」），宿主只按路由组开关决定接不接管。 */
 export function isMeasurePath(path: string): boolean {
@@ -32,6 +33,6 @@ export async function loadMeasurePage(catalog: CoreStudioCatalog, path: string):
   if (path === MEASURE_INDEX_PATH) return { pageKind: 'index', runs: await catalog.list() };
   const runId = runIdOf(path);
   if (runId === undefined) return undefined;
-  const detail = await catalog.get(runId);
-  return detail ? { pageKind: 'run', detail } : undefined;
+  const [detail, runs] = await Promise.all([catalog.get(runId), catalog.list()]);
+  return detail ? { pageKind: 'run', detail, runs } : undefined;
 }

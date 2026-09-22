@@ -174,7 +174,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       else if (agentsPage) await nextAgentsContext.run(agentsPage, () => handler(request, response));
       else if (measurePage) await (measurePage.pageKind === 'index'
         ? nextMeasureRunsContext.run(measurePage.runs, () => handler(request, response))
-        : nextMeasureRunContext.run(measurePage.detail, () => handler(request, response)));
+        : nextMeasureRunContext.run(measurePage.detail, () => nextMeasureRunsContext.run(measurePage.runs, () => handler(request, response))));
       else await handler(request, response);
       return true;
     },

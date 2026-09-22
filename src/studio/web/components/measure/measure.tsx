@@ -56,6 +56,7 @@ const COPY = {
     lineage: '产物谱系', document: '文档', schema: 'Schema', identityDigest: '身份摘要', documentDigest: '文档摘要',
     scopeTab: '评测范围', evidenceTab: '证据与定义',
     hint: '运行完成不代表改动有效；需要结合证据与结论判断。',
+    sidebarEmpty: '尚无评测记录。',
     none: '无', notAvailable: '—',
   },
   en: {
@@ -81,6 +82,7 @@ const COPY = {
     lineage: 'Artifact lineage', document: 'Document', schema: 'Schema', identityDigest: 'Identity digest', documentDigest: 'Document digest',
     scopeTab: 'Evaluation scope', evidenceTab: 'Evidence and definitions',
     hint: 'A completed run does not imply an effective change. Review its evidence and conclusions.',
+    sidebarEmpty: 'No evaluations yet.',
     none: 'None', notAvailable: '—',
   },
 } as const;
@@ -155,6 +157,25 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
       { title: copy.created, dataIndex: 'createdAt', width: 200, sorter: (a, b) => a.createdAt.localeCompare(b.createdAt), defaultSortOrder: 'descend', render: (value: string) => <time dateTime={value}>{displayTime(value)}</time> },
     ]}/>
   </>;
+}
+
+/**
+ * 评测工作区的侧栏列表（#1055）：按创建时间倒序给出运行入口，详情页高亮当前运行。
+ * 主区表格负责多列对比，这里只保留切换所需的最低信息：运行 ID、运行状态、时间。
+ */
+export function RunSidebar({ runs, activeRunId, lang }: { runs: CoreStudioRunCard[]; activeRunId?: string; lang: Language }) {
+  const copy = COPY[lang];
+  const sorted = [...runs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return <nav className="measure-sidebar" aria-label={copy.listTitle}>
+    <h2>{copy.listTitle}</h2>
+    <div className="measure-sidebar-scroll">
+      {sorted.map(run => <Link key={run.runId} href={runReportHref(run.runId)} className={`measure-sidebar-link${run.runId === activeRunId ? ' selected' : ''}`} title={run.runId}>
+        <span className="measure-sidebar-id">{run.runId}</span>
+        <small><Status value={run.status.runStatus} lang={lang}/> <time dateTime={run.createdAt}>{displayTime(run.createdAt, 'minute')}</time></small>
+      </Link>)}
+      {!sorted.length && <p className="observe-sidebar-empty">{copy.sidebarEmpty}</p>}
+    </div>
+  </nav>;
 }
 
 function Axes({ run, copy, lang }: { run: CoreStudioRunCard; copy: Copy; lang: Language }) {
