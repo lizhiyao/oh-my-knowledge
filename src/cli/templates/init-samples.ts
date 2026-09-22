@@ -1,3 +1,4 @@
+import type { Lang } from '../../shared/language.js';
 import type { Sample } from '../../eval-workflows/inputs/contracts/sample.js';
 import { createWorkflowSampleSetDocument } from '../../eval-workflows/inputs/schemas/sample-set.js';
 
@@ -308,6 +309,78 @@ const INIT_CURATED_SAMPLES: Sample[] = [
   },
 ];
 
-export function serializeInitSamples(count: InitSampleCount): string {
-  return `${JSON.stringify(createWorkflowSampleSetDocument(INIT_CURATED_SAMPLES.slice(0, count)), null, 2)}\n`;
+/**
+ * 起步用例的英文文案覆盖表。键是 `<sample_id>:<rubric 维度>`。
+ *
+ * 只覆盖文字：代码、`reference`、断言、能力标签、难度与出处都跟中文版共用，
+ * 因此两种语言的样本测的是同一个构造，差别只在读者读到的那句话。
+ * 少一条键就在序列化时抛错，避免英文用户静默拿到半中半英的用例集。
+ */
+const INIT_SAMPLE_EN_ASK = 'Review the following code';
+const INIT_SAMPLE_EN_CRITERION: Record<string, string> = {
+  's001:security': 'Does it accurately identify the SQL injection vulnerability and explain the attack impact',
+  's001:actionability': 'Does it provide a parameterized-query fix that can be applied directly',
+  's002:robustness': 'Does it cover the main failure paths and distinguish where each error comes from',
+  's002:actionability': 'Does it give a complete fix without over-engineering',
+  's003:security': 'Does it accurately identify the XSS vulnerability and its data flow',
+  's003:actionability': 'Does it render safely in a way that fits the current scenario',
+  's004:security': 'Does it spot the command-injection path where a template string reaches a shell',
+  's004:actionability': 'Does it remove the injection surface using an argument array and input constraints',
+  's005:security': 'Does it identify encoding, absolute-path and parent-directory traversal risks',
+  's005:actionability': 'Does it validate boundaries against the resolved path',
+  's006:precision': 'Does it avoid flagging a safe parameterized query as an injection vulnerability',
+  's006:reasoning': 'Does it separate definite defects, conditional risks and optional improvements',
+  's007:robustness': 'Does it locate the null boundaries of user, profile and name completely',
+  's007:actionability': 'Does it choose sensibly between a default value, explicit validation and optional chaining',
+  's008:robustness': 'Does it cover both parse failure and input that parses but is structurally wrong',
+  's008:actionability': 'Does it validate and report errors precisely enough to locate the offending field',
+  's009:robustness': 'Does it cover infinite loops, error observability and the service amplification effect',
+  's009:actionability': 'Does it give a complete strategy with caps, backoff, timeouts and cancellation',
+  's010:precision': 'Does it avoid dismissing robustness measures the code already has',
+  's010:reasoning': 'Does it separate established facts from suggestions that depend on business context',
+  's011:maintainability': 'Does it explain the meaning and change risk of 30, 999, 7.35 and 12',
+  's011:actionability': 'Does it propose concrete naming, units and where the rule belongs',
+  's012:maintainability': 'Does it spot duplicated logic diverging from future rules',
+  's012:actionability': 'Does it propose a refactor with clear responsibilities, easy testing and no over-abstraction',
+  's013:maintainability': 'Does it spot coupled responsibilities and the partial-completion state left behind on failure',
+  's013:actionability': 'Does it keep transaction boundaries and side-effect order while splitting responsibilities',
+  's014:maintainability': 'Does it explain readability at the call site and the evolution cost of adding options',
+  's014:actionability': 'Does it give a parameter design with an explicit type compatible with its default value',
+  's015:precision': 'Does it avoid inventing maintainability problems just to look thorough',
+  's015:proportionality': 'Is the suggested complexity proportionate to this small pure function',
+  's016:performance': 'Does it spot query count and serial latency growing with the number of users',
+  's016:actionability': 'Does it propose a batch read that fits the database boundary',
+  's017:performance': 'Does it see both the serial bottleneck and the reverse risk of unbounded concurrency',
+  's017:actionability': 'Does it give a tunable concurrency limit, error strategy and ordering semantics',
+  's018:performance': 'Does it analyse time complexity accurately instead of vaguely claiming poor performance',
+  's018:actionability': 'Does it choose an index structure based on uniqueness and memory trade-offs',
+  's019:performance': 'Does it cover unbounded memory growth and concurrent cache misses as two separate problems',
+  's019:actionability': 'Does it give a caching strategy that matches freshness and capacity constraints',
+  's020:precision': 'Does it avoid flagging normal O(n) work as a performance defect',
+  's020:reasoning': 'Does it treat duplicate-key semantics as a conditional business question rather than a definite bug',
+};
+
+function localizeInitSample(sample: Sample, lang: Lang): Sample {
+  if (lang === 'zh') return sample;
+  const rubric: NonNullable<Sample['rubric']> = {};
+  for (const [dimension, entry] of Object.entries(sample.rubric ?? {})) {
+    const key = `${sample.sample_id}:${dimension}`;
+    const criterion = INIT_SAMPLE_EN_CRITERION[key];
+    if (criterion === undefined) throw new Error(`init samples: missing English copy for ${key}`);
+    rubric[dimension] = { ...entry, criterion };
+  }
+  const input = sample.input;
+  if (input.inputKind !== 'text') {
+    throw new Error(`init samples: no English copy for ${input.inputKind} input yet`);
+  }
+  return {
+    ...sample,
+    input: { ...input, text: INIT_SAMPLE_EN_ASK + input.text.slice(input.text.indexOf('\n\n')) },
+    rubric,
+  };
+}
+
+export function serializeInitSamples(count: InitSampleCount, lang: Lang = 'zh'): string {
+  const samples = INIT_CURATED_SAMPLES.slice(0, count).map((sample) => localizeInitSample(sample, lang));
+  return `${JSON.stringify(createWorkflowSampleSetDocument(samples), null, 2)}\n`;
 }

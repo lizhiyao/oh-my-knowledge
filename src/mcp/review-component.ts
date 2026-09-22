@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { mcpDisplayCopy, resolveMcpDisplayLang, type McpDisplayLanguage } from './tool-copy.js';
 import { z } from 'zod';
 import type {
   ObservationDetail,
@@ -65,7 +66,7 @@ const reviewComponentOutputSchema = {
   }).optional(),
 };
 
-export interface ObservationReviewComponentOptions {
+export interface ObservationReviewComponentOptions extends McpDisplayLanguage {
   principal: ObservationPrincipal;
   feedbackStore: ObservationFeedbackStore;
 }
@@ -74,9 +75,9 @@ export function registerObservationReviewComponent(
   server: McpServer,
   options: ObservationReviewComponentOptions,
 ): void {
+  const lang = resolveMcpDisplayLang(options);
   server.registerResource('omk-observation-review', OBSERVATION_REVIEW_RESOURCE_URI, {
-    title: 'OMK 知识反馈复核',
-    description: '查看用户授权的证据，记录人工结论，并生成回归评测草稿。',
+    ...mcpDisplayCopy('omk-observation-review', lang),
     mimeType: MCP_APP_HTML_MIME_TYPE,
   }, async () => ({
     contents: [{
@@ -92,12 +93,7 @@ export function registerObservationReviewComponent(
   }));
 
   server.registerTool('review_observation', {
-    title: 'OMK 知识反馈',
-    description: [
-      'Show the inline review component for an observation.',
-      'First call get_observation, propose a regression prompt only from its authorized evidence,',
-      'then pass the observationId and optional proposal to this tool.',
-    ].join(' '),
+    ...mcpDisplayCopy('review_observation', lang),
     inputSchema: {
       observationId: z.string().trim().min(1).max(128),
       candidatePrompt: z.string().trim().min(1).max(16_000).optional(),
@@ -105,7 +101,7 @@ export function registerObservationReviewComponent(
     },
     outputSchema: reviewComponentOutputSchema,
     annotations: {
-      title: 'OMK 知识反馈',
+      title: mcpDisplayCopy('review_observation', lang).title,
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,

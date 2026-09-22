@@ -1,6 +1,7 @@
 import { resolve, join, relative, sep } from 'node:path';
 import { Args, Flags, Errors } from '@oclif/core';
 import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
+import type { Lang } from '../../shared/language.js';
 import { nonEmptyStringParser } from '../oclif/parsers.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
@@ -13,21 +14,33 @@ import {
   serializeInitSamples,
 } from '../templates/init-samples.js';
 
-// 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
-// managed/ 治理档案 + 配置不在此列,默认 track。
-const INIT_OMK_GITIGNORE = `# omk 测量 bulk 与 doctor --fix 备份（项目本地）——不入库；前导 / 锚定 .omk/ 顶层，不误伤嵌套同名目录。
+// 脚手架是用户拿到手的产物内容：语言必须跟着 --lang 走，否则英文用户 init 出来的
+// 项目从注释到 skill 正文都是中文。name／目录名等身份字段两版一致，只有文字随语言。
+const INIT_OMK_GITIGNORE: Record<Lang, string> = {
+  // 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
+  // managed/ 治理档案 + 配置不在此列,默认 track。
+  zh: `# omk 测量 bulk 与 doctor --fix 备份（项目本地）——不入库；前导 / 锚定 .omk/ 顶层，不误伤嵌套同名目录。
 /eval/
 /doctor/
 /observe/
 /backups/
 /state/
-`;
+`,
+  en: `# omk measurement bulk and doctor --fix backups (project-local) - not committed; the leading / anchors at the .omk/ root so nested directories with the same name are unaffected.
+/eval/
+/doctor/
+/observe/
+/backups/
+/state/
+`,
+};
 
 // 模板带 Claude Code SKILL.md 兼容 frontmatter(name + description),让用户
 // 可以把 init 出来的 SKILL.md 直接 deploy 到 ~/.claude/skills/ 给 Claude Code 用,
 // 一份文件双向 dogfood(omk 评测 + Claude 部署)。omk 当前不 strip frontmatter,
 // 它会跟着 leak 进 system prompt — 在 model 行为层面是无害噪声,跨 executor 一致。
-const INIT_SKILL_V1 = `---
+const INIT_SKILL_V1: Record<Lang, string> = {
+  zh: `---
 name: code-review-v1
 description: 简单代码审查 skill,识别明显问题
 ---
@@ -35,9 +48,20 @@ description: 简单代码审查 skill,识别明显问题
 # Code review v1
 
 你是一个代码审查助手。请审查用户提供的代码，指出潜在问题。
-`;
+`,
+  en: `---
+name: code-review-v1
+description: Simple code review skill that flags obvious problems
+---
 
-const INIT_SKILL_V2 = `---
+# Code review v1
+
+You are a code review assistant. Review the code the user provides and point out potential problems.
+`,
+};
+
+const INIT_SKILL_V2: Record<Lang, string> = {
+  zh: `---
 name: code-review-v2
 description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,带严重程度标注
 ---
@@ -52,7 +76,24 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 4. 性能：是否存在明显的性能瓶颈
 
 对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
-`;
+`,
+  en: `---
+name: code-review-v2
+description: Multi-dimension code review covering security / robustness / maintainability / performance, with severity labels
+---
+
+# Code review v2
+
+You are a senior code review specialist. Review the code the user provides along these dimensions:
+
+1. Security: injection, XSS, secret leakage and similar risks
+2. Robustness: adequate error handling and boundary checks
+3. Maintainability: clear naming and sound structure
+4. Performance: obvious bottlenecks
+
+For each dimension give concrete improvements and label their severity (high / medium / low).
+`,
+};
 
 const INIT_EVAL_COMMAND = 'omk eval --control code-review-v1 --treatment code-review-v2';
 
@@ -162,10 +203,10 @@ export default class Init extends BaseCommand {
       }
 
       writeProjectScaffold(targetDir, [
-        { relativePath: 'eval-samples.json', content: serializeInitSamples(sampleCount) },
-        { relativePath: 'skills/code-review-v1/SKILL.md', content: INIT_SKILL_V1 },
-        { relativePath: 'skills/code-review-v2/SKILL.md', content: INIT_SKILL_V2 },
-        { relativePath: relative(targetDir, join(layout.root, '.gitignore')), content: INIT_OMK_GITIGNORE },
+        { relativePath: 'eval-samples.json', content: serializeInitSamples(sampleCount, lang) },
+        { relativePath: 'skills/code-review-v1/SKILL.md', content: INIT_SKILL_V1[lang] },
+        { relativePath: 'skills/code-review-v2/SKILL.md', content: INIT_SKILL_V2[lang] },
+        { relativePath: relative(targetDir, join(layout.root, '.gitignore')), content: INIT_OMK_GITIGNORE[lang] },
       ], flags.force);
 
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));

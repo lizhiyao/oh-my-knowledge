@@ -24,7 +24,7 @@ omk init [目录]
 
 <!-- omk:cli:init:flags:end -->
 
-在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到默认启发式证据下限的官方起步用例集，但不代表完成先验功效规划。起步用例标记为 `llm-generated`，作为发布证据前必须人工复核或替换。除非显式传入 `--force`，`init` 不会覆盖已有脚手架文件。
+在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到默认启发式证据下限的官方起步用例集，但不代表完成先验功效规划。起步用例标记为 `llm-generated`，作为发布证据前必须人工复核或替换。写到磁盘的脚手架内容（两份起步 `SKILL.md`、`.omk/.gitignore` 与起步用例集）按解析出的输出语言（`--lang`／`OMK_LANG`／全局设置／系统 locale）生成：英文环境拿到的是英文题干与英文评分标准；用例中的代码、断言与权重两版完全一致。除非显式传入 `--force`，`init` 不会覆盖已有脚手架文件。
 
 ## `omk install`
 
