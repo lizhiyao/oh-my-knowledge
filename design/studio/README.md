@@ -22,6 +22,7 @@ Studio 视觉体系改进（Issue #1060）的**评审资产**：四张代表页�
 | `tokens.css` | 目标与基线两套 token，`<html data-spec>` 切换 |
 | `base.css` | 组件层，唯一实现，页面不得复制其声明 |
 | `spec-switch.js` | 规范档切换（URL `?spec=` 优先，其次 localStorage） |
+| `nav-drawer.js` | 窄屏侧栏抽屉开关：点击开、Esc 与遮罩关、焦点回到触发按钮 |
 | `audit.js` | 页内自测：溢出、裁切、对比度、省略可达、焦点顺序 |
 | `run-audit.sh` | 用本机 Chrome 无头模式逐视口、逐规范档取证 |
 | `audit-summary.mjs` | 解析取证目录，打印结论表 |

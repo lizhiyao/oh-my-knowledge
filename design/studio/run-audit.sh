@@ -6,7 +6,8 @@ set -eu
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT_DIR="${OUT_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/omk-studio-proto-audit.XXXXXX")}"
-VIEWPORTS="${VIEWPORTS:-1440x900 1280x800 1024x768 860x900 720x640 1440x620}"
+# 视口含断点两侧：1279/1280 与 1023/1024 是 .panes 退化档的边界，必须各测一次。
+VIEWPORTS="${VIEWPORTS:-1440x900 1280x800 1279x800 1024x768 1023x768 860x900 720x640 1440x620}"
 PAGES="${PAGES:-index observe measure knowledge report states}"
 SPECS="${SPECS:-target baseline}"
 

@@ -162,7 +162,7 @@
 </div>
 
 <div class="shell">
-  <aside class="sidebar" data-audit-region="侧栏">
+  <aside id="studio-sidebar" class="sidebar" data-audit-region="侧栏">
     <a class="brand" href="index.html">
       <span class="brand-mark" aria-hidden="true">OMK</span>
       OMK Studio
@@ -228,6 +228,7 @@
 
   <div class="main">
     <header class="page-head">
+      <button type="button" class="btn drawer-toggle" data-drawer-toggle aria-controls="studio-sidebar" aria-expanded="false" aria-label="打开导航侧栏"><svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg></button>
       <div>
         <p class="meta" data-audit-contrast>候选知识 · /knowledge/candidates</p>
         <h1 class="page-title">判定口径落在修订层，而不是文档层</h1>
@@ -526,6 +527,7 @@ src/observability/knowledge-extraction/application.ts:43:      history, revision
   </div>
 </div>
 
+<script src="nav-drawer.js"></script>
 <script src="spec-switch.js"></script>
 <script src="audit.js"></script>
 </body>

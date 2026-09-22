@@ -35,6 +35,8 @@
    */
   --studio-selection-fill: #f2eeff;
   --studio-selection-edge: #d9cffb;
+  /* 按下档：比悬停更深一层的中性底，不引入第二种强调色。 */
+  --studio-surface-press: #eaeef6;
 
   /*
    * 文字层级。次级与弱化档按 12px 小字实测取到 AA 以上：

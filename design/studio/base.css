@@ -879,8 +879,149 @@ mark {
   }
 }
 
-/* ---------- 浮层（按需详情） ---------- */
+/* ---------- 补全状态：原规范空洞，取值一律走 token ----------
+ * 这一节把「六态矩阵」里此前只能标「待补」的格子补齐为可评审的定义。
+ * 明确「不适用」的（导航无禁用项、导航不触发异步、输入框按下即焦点）写在 spec.md，
+ * 不在此处造一个没有语义的样式。
+ */
 
+.link[aria-disabled='true'] {
+  color: var(--studio-ink-disabled);
+  text-decoration: none;
+  cursor: not-allowed;
+}
+
+.link[data-loading='true'] {
+  cursor: progress;
+}
+
+/* 链接加载态保留标签，在其后追加 spinner，不隐藏文字。 */
+.link[data-loading='true']::after {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-inline-start: var(--studio-space-2);
+  vertical-align: -2px;
+  content: '';
+  border: 2px solid currentColor;
+  border-block-start-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+/* 导航与列表行的按下档：只加深中性底，不改文字层级，也不把当前项染紫。 */
+.nav-item:active,
+.list-row:active,
+.side-row:active {
+  color: var(--studio-ink);
+  background: var(--studio-surface-press);
+}
+
+.nav-item[aria-current='page']:active,
+.side-row[aria-current='true']:active {
+  background: var(--studio-selection-fill);
+}
+
+.tab:active {
+  color: var(--studio-ink);
+  border-bottom-color: var(--studio-ink-nav-hover);
+}
+
+.tab[aria-selected='true']:active {
+  color: var(--studio-action-ink);
+  border-bottom-color: var(--studio-action);
+}
+
+/* 安静按钮此前继承主按钮的紫色描边，按下看起来像被选中；这里断开。 */
+.btn--quiet:active {
+  color: var(--studio-ink);
+  background: var(--studio-surface-press);
+  border-color: transparent;
+}
+
+.table tbody tr[aria-disabled='true'] {
+  color: var(--studio-ink-disabled);
+  background: var(--studio-surface-subtle);
+}
+
+.table tbody tr[aria-disabled='true']:hover {
+  background: var(--studio-surface-subtle);
+}
+
+/* 列表行禁用与表格行同一取值：同一件事不该有两种灰法。 */
+.list-row[aria-disabled='true'],
+.side-row[aria-disabled='true'] {
+  color: var(--studio-ink-disabled);
+  background: var(--studio-surface-subtle);
+}
+
+.list-row[aria-disabled='true']:hover,
+.side-row[aria-disabled='true']:hover {
+  background: var(--studio-surface-subtle);
+}
+
+/* 表头排序：悬停与键盘焦点都要可见，且与选中列的强调分开。 */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--studio-space-2);
+  padding: var(--studio-space-2);
+  color: inherit;
+  font: inherit;
+  background: none;
+  border: 0;
+  border-radius: var(--studio-radius-control);
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--studio-ink);
+  background: var(--studio-surface-hover);
+}
+
+.th-sort:focus-visible {
+  outline: var(--studio-focus-ring);
+  outline-offset: -2px;
+}
+
+th[aria-sort] .th-sort {
+  color: var(--studio-action-ink);
+  font-weight: var(--studio-weight-emphasis);
+}
+
+/* 异步加载的输入与下拉：保留标签与尺寸，右侧指示并声明 aria-busy。 */
+.input[data-loading='true'],
+.select[data-loading='true'] {
+  cursor: progress;
+  border-color: var(--studio-action-disabled);
+  box-shadow: inset -18px 0 0 -14px var(--studio-action);
+}
+
+/* 行级加载：整行换成骨架但保留行高，避免加载时表格与列表跳动。
+ * 轮询期间的「结果区」骨架走 .skeleton，不是控件自身的加载档。 */
+.table tbody tr[data-loading='true'] td,
+.list-row[data-loading='true'] > *,
+.side-row[data-loading='true'] > * {
+  color: transparent;
+}
+
+.table tbody tr[data-loading='true'] td > *,
+.list-row[data-loading='true'] > * {
+  visibility: hidden;
+}
+
+.table tbody tr[data-loading='true'] td,
+.list-row[data-loading='true'],
+.side-row[data-loading='true'] {
+  background-image: linear-gradient(var(--studio-tone-neutral-fill), var(--studio-tone-neutral-fill));
+  background-origin: content-box;
+  background-size: 55% 12px;
+  background-position: left center;
+  background-repeat: no-repeat;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* ---------- 浮层（按需详情） ---------- */
 .overlay {
   position: fixed;
   inset: 0;
@@ -899,6 +1040,22 @@ mark {
   border-inline-start: var(--studio-edge-width) solid var(--studio-edge);
   box-shadow: 0 0 24px rgba(25, 34, 54, 0.18);
   overflow: hidden;
+}
+
+/* 窄屏侧栏抽屉：宽屏不出现开关，窄屏才露出。 */
+.drawer-toggle {
+  display: none;
+}
+
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--studio-z-overlay) - 1);
+  background: rgba(25, 34, 54, 0.45);
+}
+
+.drawer-scrim[hidden] {
+  display: none;
 }
 
 /* ---------- 原型自身的评审边框，不属于产品视觉 ---------- */
@@ -964,6 +1121,10 @@ mark {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .drawer-toggle {
+    display: inline-flex;
+  }
+
   .sidebar {
     position: fixed;
     inset-block: 0;
@@ -979,10 +1140,20 @@ mark {
     transform: translateX(0);
   }
 
+  /* 页头保持一行并允许换行：把抽屉开关塞进纵向堆叠的页头会把页头撑高，
+   * 进而让内容区被挤出视口（实测 720×640 出现 22px 页面级纵向溢出）。 */
   .page-head {
     align-items: flex-start;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: var(--studio-space-3);
+  }
+
+  .page-head > div {
+    min-width: 0;
+  }
+
+  .page-actions {
+    margin-inline-start: auto;
   }
 
   .turn {
