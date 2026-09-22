@@ -10,7 +10,10 @@ export {
 // RAG 与语义相似度等 OMK 产品工作流 prompt 仍由本模块拥有。
 // 这些是测量学不变量:文本字节决定可比性,改动须配合 prompt-registry 的冻结 hash bump
 // (BREAKING-COMPARABILITY)。执行器调用 / JSON 解析逻辑位于 Evaluation Core runtime adapter。
-//// 评委 prompt 刻意只用中文，不跟随 --lang／OMK_LANG／全局设置／系统 locale 解析出的输出语言：prompt 字节进宿主 Runtime 身份，绑环境就等于让同一份封存配置在不同机器上量到不同仪器。英文界面下评委指令与 reason 仍是中文，这一代价已被明确接受。口径见 docs/specs/evaluation-scoring-equivalence.md §4。
+// 评委 prompt 刻意只用中文，不跟随 --lang／OMK_LANG／全局设置／系统 locale 解析出的输出语言：
+// prompt 字节进宿主 Runtime 身份，绑环境就等于让同一份封存配置在不同机器上量到不同仪器。
+// 英文界面下评委指令与 reason 仍是中文，这一代价已被明确接受。
+// 口径见 docs/specs/evaluation-scoring-equivalence.md §4。
 
 // ===========================================================================
 // Rubric 主评委 prompt
