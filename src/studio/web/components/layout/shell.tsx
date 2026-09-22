@@ -55,9 +55,13 @@ function readCollapsed(): boolean {
   try { return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'; } catch { return false; }
 }
 
-/** 折叠／展开共用同一枚 panel 图标，方向由 CSS 按状态翻转，保证两个状态视觉上互为镜像。 */
-function PanelIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9.5" y1="4" x2="9.5" y2="20"/></svg>;
+/** 图标跟随状态：收起按钮是「面板 + 指向面板的左箭头」，展开按钮是「面板 + 离开面板的右箭头」，两态互换即语义互逆。 */
+function PanelIcon({ direction }: { direction: 'collapse' | 'expand' }) {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2"/>
+    <line x1="9.5" y1="4" x2="9.5" y2="20"/>
+    {direction === 'collapse' ? <polyline points="16.5 9.5 13.5 12 16.5 14.5"/> : <polyline points="12.5 9.5 15.5 12 12.5 14.5"/>}
+  </svg>;
 }
 
 export function StudioShell({ lang, children, active, sidebar }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | 'agents' | false; sidebar?: ReactNode }) {
@@ -89,7 +93,7 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
       <aside className="studio-sidebar" onClick={event => { if ((event.target as HTMLElement).closest('a')) setOpen(false); }}>
         <div className="studio-sidebar-head">
           <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
-          <button type="button" className="studio-sidebar-collapse" aria-label={zh ? '收起侧栏' : 'Collapse sidebar'} title={zh ? '收起侧栏' : 'Collapse sidebar'} onClick={toggleCollapsed}><PanelIcon/></button>
+          <button type="button" className="studio-sidebar-collapse" aria-label={zh ? '收起侧栏' : 'Collapse sidebar'} title={zh ? '收起侧栏' : 'Collapse sidebar'} onClick={toggleCollapsed}><PanelIcon direction="collapse"/></button>
         </div>
         <nav aria-label={zh ? 'Studio 一级导航' : 'Studio primary navigation'}>
           <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
@@ -101,7 +105,7 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
         <StudioUtilities lang={lang}/>
       </aside>
       <main className="studio-content">
-        {collapsed ? <button type="button" className="studio-sidebar-expand" aria-label={zh ? '展开侧栏' : 'Expand sidebar'} title={zh ? '展开侧栏' : 'Expand sidebar'} onClick={toggleCollapsed}><PanelIcon/></button> : null}
+        {collapsed ? <button type="button" className="studio-sidebar-expand" aria-label={zh ? '展开侧栏' : 'Expand sidebar'} title={zh ? '展开侧栏' : 'Expand sidebar'} onClick={toggleCollapsed}><PanelIcon direction="expand"/></button> : null}
         {children}
       </main>
     </div>
