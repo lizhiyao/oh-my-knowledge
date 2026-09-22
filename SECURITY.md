@@ -4,11 +4,15 @@
 
 ## Supported versions
 
-Only the **latest `0.x` release** receives security fixes. Older versions are not patched. Upgrade to the latest version from npm:
+The **1.x line is the only supported line**: it is what receives security fixes, and a fix ships in the next release from `main`. `0.x` is no longer supported and is not patched, including for security reports.
+
+While the 1.x line is still prerelease, the supported build is the newest `1.0.0-beta.*`, which npm serves from the `next` dist-tag — `@latest` still resolves to the last `0.x` release:
 
 ```bash
-npm i -g oh-my-knowledge@latest
+npm i -g oh-my-knowledge@next
 ```
+
+No manual tag move is needed: the release workflow derives the dist-tag from the version it publishes, so the first stable `1.0.0` release lands on `latest` and `oh-my-knowledge@latest` then installs a supported version. Report vulnerabilities against the build you run, including its `npm view oh-my-knowledge dist-tags` value when the channel matters.
 
 ## Reporting a vulnerability
 

@@ -4,11 +4,15 @@
 
 ## 支持版本
 
-只有**最新的 `0.x` 发布版本**会获得安全修复。更早的版本不打补丁。请从 npm 升级到最新版本：
+**只有 1.x 这一条线受支持**：安全修复只落在 1.x，修复合入 `main` 后随下一次发布带出。`0.x` 已不再受支持，即使安全报告也不打补丁。
+
+1.x 目前仍是预发布版本，受支持的构建就是最新的 `1.0.0-beta.*`，npm 用 `next` 这个 dist-tag 提供它——此时 `@latest` 仍指向最后一个 `0.x` 版本：
 
 ```bash
-npm i -g oh-my-knowledge@latest
+npm i -g oh-my-knowledge@next
 ```
+
+不需要手工挪动 dist-tag：发布流程按被发布的版本号自己决定 tag，所以第一个正式版 `1.0.0` 发布时就会落到 `latest`，此后 `oh-my-knowledge@latest` 装到的就是受支持版本。报告漏洞时请写明你实际运行的版本，通道有影响时附上 `npm view oh-my-knowledge dist-tags` 的结果。
 
 ## 报告漏洞
 
