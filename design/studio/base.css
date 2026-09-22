@@ -979,9 +979,21 @@ mark {
   background: var(--studio-surface-hover);
 }
 
+.th-sort:active {
+  color: var(--studio-ink);
+  background: var(--studio-surface-press);
+}
+
 .th-sort:focus-visible {
   outline: var(--studio-focus-ring);
   outline-offset: -2px;
+}
+
+/* 不可排序的列（例如未建索引时）：按下去掉指针样式，文字随禁用降档。 */
+.th-sort:disabled {
+  color: var(--studio-ink-disabled);
+  background: none;
+  cursor: not-allowed;
 }
 
 th[aria-sort] .th-sort {

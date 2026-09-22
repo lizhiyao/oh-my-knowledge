@@ -215,23 +215,29 @@ body { display: flex; flex-direction: column; }
   color: var(--studio-action-ink);
   border-bottom-color: var(--studio-action);
 }
-/* 复刻 .th-sort:hover／.th-sort:focus-visible。焦点环内收 -2px 是 base.css 为了避开
-   .table-wrap 的 overflow: hidden 裁切而选的偏移，所以照抄字面量。 */
+/* 复刻 .th-sort:hover／.th-sort:active／.th-sort:focus-visible。焦点环内收 -2px 是
+   base.css 为了避开 .table-wrap 的 overflow: hidden 裁切而选的偏移，所以照抄字面量。 */
 .th-sort.state-preview[data-state='hover'] {
   color: var(--studio-ink);
   background: var(--studio-surface-hover);
+}
+.th-sort.state-preview[data-state='active'] {
+  color: var(--studio-ink);
+  background: var(--studio-surface-press);
 }
 .th-sort.state-preview[data-state='focus'] {
   outline: var(--studio-focus-ring);
   outline-offset: -2px; /* 照抄 base.css 字面量：该值未走 token，属 base.css 待收敛 */
 }
-/* 链接禁用／加载、表格行禁用、下拉加载都由属性触发，base.css 的规则直接命中
-   格子里的真实标记，这里不重复声明。 */
+/* 属性触发的档不在这里复现：链接禁用／加载、输入与下拉的加载、表格行与列表行的禁用、
+   行级加载、当前排序列（th[aria-sort]）都由 base.css 直接命中格子里的真实标记。 */
 
-/* 待收敛：base.css 仍未定义这些表面的这一档（列表行的禁用与加载、文本输入的加载）。
-   矩阵需要一个能明说「规范还缺定义」的格子，而不是留空或临时补个样式。
-   本轮补出的那些（安静按钮按下、链接禁用与加载、导航与列表行按下、tab 按下、
-   表格行禁用、表头排序悬停与焦点、下拉加载）已换成真实标记，不再用这种占位。 */
+/* 待收敛：矩阵需要一个能明说「规范还缺定义」的格子，而不是留空或临时补个样式。
+   本轮补出的那些（安静按钮按下、链接禁用与加载、导航／列表行／tab 的按下、
+   表格行与列表行的禁用、行级加载、输入与下拉的加载、表头排序的悬停／按下／焦点／禁用）
+   已全部换成真实标记或 ②，spec.md 3.4 也没有别的缺定义项。
+   因此这一档当前没有实例，只作为开头「三种口径」里的 ③ 词汇保留：
+   以后矩阵再暴露规范空洞时用它，别临时另造一种虚线样式。 */
 .cell-todo {
   display: block;
   padding: var(--studio-space-3);
@@ -277,10 +283,6 @@ body { display: flex; flex-direction: column; }
   background: var(--studio-tone-error-ink);
   border-color: var(--studio-tone-error-ink);
 }
-
-/* 待收敛：base.css 的 .skeleton 只在 flex 父级里成立（observe.html 的用法），
-   表格单元格内是行内元素，height 不生效。.skeleton-line 只补 display: block。 */
-.skeleton-line { display: block; }
 
 /* 待收敛：base.css 的 .cell-id 只在 .table（td 已 nowrap）里成立，
    脱离表格时缺 white-space: nowrap，省略号不生效；.clip-line 只补这一条，
@@ -333,15 +335,15 @@ body { display: flex; flex-direction: column; }
         <span class="mono">audit.js</span> 在渲染后的计算样式上量出来，不由人填。
       </p>
       <p class="proto-note" data-audit-contrast>
-        格子有三种口径，别混读：<span class="mono">①</span> 真实标记＝base.css 已定义这一档；
+        格子有三种口径，分开读：<span class="mono">①</span> 真实标记＝base.css 已定义这一档；
         <span class="mono">②</span> 实线灰底格（<span class="mono">.cell-na</span>）＝规范判定这一档
         <span class="mono">不适用</span>，格子里写着判定理由，这是决定不是遗漏，不为它造样式
         （见 <span class="mono">spec.md</span> 3.4）；<span class="mono">③</span> 虚线格
         （<span class="mono">.cell-todo</span>）＝规范仍缺定义，待补。本轮把 ① 扩到安静按钮按下、
-        链接禁用与加载、一级导航／分区导航／列表行的按下、文本输入与下拉的加载、表格行与列表行的禁用、
-        行级加载骨架、表头排序的悬停与焦点，把导航的禁用与加载、输入框的按下、搜索框的加载改判为 ②。
-        <strong>本页只剩一处 ③</strong>：表头排序按钮的按下、禁用与加载三档，base.css 未定义、
-        spec.md 3.4 也没判为不适用，见第 5 节排序矩阵下的标注；其余格子都已落到 ① 或 ②。
+        链接禁用与加载、一级导航／分区导航／双行列表行的按下、文本输入／搜索／下拉的加载、
+        表格行与列表行的禁用、行级加载、表头排序的悬停与焦点；把导航的禁用与加载、输入框的按下改判为 ②。
+        <strong>本页 ③ 已清零</strong>：表头排序按钮的按下与禁用（不可排序列）本轮补进 base.css，
+        加载档判为不适用——排序是同步行为，不触发异步工作；其余格子都已落到 ① 或 ②。
         另两条未决项属人工确认，不是矩阵缺口（真实 Ant Design 焦点环的覆盖顺序、
         危险按钮是否成为规范组件，见 <span class="mono">spec.md</span> 3.4 末尾）。
       </p>
@@ -352,7 +354,9 @@ body { display: flex; flex-direction: column; }
         脚本报红是预期结果，评审要判的是「这一档是否只用于禁用态」，不是把它拉亮；
         <span class="mono">②</span> 非主按钮的加载态用
         <span class="mono">color: transparent</span> 把标签让位给 spinner，文字节点本身没有前景色，
-        对比度不成立，属于组件层的设计选择，见第 1 节的待收敛说明。
+        对比度不成立，属于组件层的设计选择，见第 1 节的待收敛说明；行级加载同理——
+        列表行加载格的文字被 <span class="mono">visibility: hidden</span> 隐去、表格加载行的格子本来就是空的，
+        两处都不产生可见文字对（脚本给这类项的说明文字写的是 spinner，用在骨架条上措辞偏窄，属脚本侧待跟进）。
         图标与指示条属非文本对比（WCAG 1.4.11），脚本只遍历文字节点，需要人工核对。
       </p>
 
@@ -478,10 +482,11 @@ body { display: flex; flex-direction: column; }
           这一列有两种结论，分开读。<span class="mono">不适用</span>：输入类控件没有独立的按下档——
           聚焦即按下，再画一档只会与焦点环打架（<span class="mono">spec.md</span> 3.4 的判定，
           不是遗漏），所以按下三格改标为不适用，也不为它造样式。
-          <span class="mono">本轮补齐</span>：<span class="mono">base.css 新增 .select[data-loading='true']</span>，
-          保留标签与尺寸、右侧给指示，标记上同时声明 <span class="mono">aria-busy</span>，下拉的加载格已换成真实标记。
-          <span class="mono">仍待补</span>：文本输入与搜索框的加载档——base.css 这轮只补了下拉，
-          读取默认目录与轮询期间仍只换 <span class="mono">disabled</span>，而这一格也没被判定为不适用。
+          <span class="mono">本轮补齐</span>：<span class="mono">base.css 新增 .input[data-loading='true'] 与 .select[data-loading='true']</span>
+          同一条规则——保留标签与尺寸、描边降到 <span class="mono">--studio-action-disabled</span>、右侧给指示，
+          标记上同时声明 <span class="mono">aria-busy</span>；文本输入、搜索与下拉三格都换成真实标记，
+          不给下拉留特例。要分清的是：轮询期间进骨架的是<span class="mono">结果区</span>（页面级
+          <span class="mono">.skeleton</span>，真实用法见 observe.html 里进行中轮次的正文骨架），那不是控件自己的加载档。
           焦点环与按钮不同：base.css 对
           <span class="mono">.input:focus-visible</span>／<span class="mono">.select:focus-visible</span>
           用内收偏移并加深描边，静态复刻时照抄同一批声明。
@@ -507,7 +512,7 @@ body { display: flex; flex-direction: column; }
               <td><span class="cell-na" data-audit-contrast>不适用：输入框无独立按下态——聚焦即按下，再画一档只会与焦点环打架。</span></td>
               <td><input class="input state-preview" data-state="focus" type="text" placeholder="输入候选标题"></td>
               <td><input class="input" type="text" value="运行中的评测不可改" disabled></td>
-              <td><input class="input" type="text" value="工作区默认目录" data-loading="true" aria-busy="true" readonly data-audit-contrast></td>
+              <td><input class="input" type="text" value="工作区默认目录" data-loading="true" aria-busy="true" data-audit-contrast></td>
             </tr>
             <tr>
               <th scope="row">搜索<p class="meta">侧栏工作区检索，只匹配标题、路径与项目名</p></th>
@@ -599,28 +604,30 @@ body { display: flex; flex-direction: column; }
         <h2 class="section-title">4. 导航</h2>
         <p class="proto-note" data-audit-contrast>
           导航在六态之外多一档「当前／选中」，它决定读者在哪一页，不能塞回默认列。
-          <span class="mono">本轮补齐</span>：<span class="mono">base.css 新增 .nav-item:active、.tab:active、.list-row:active</span>
-          （与 <span class="mono">.side-row</span> 同一组声明），按下只加深中性底
-          <span class="mono">--studio-surface-press</span>，不改文字层级，也不把当前项染紫；当前项按下仍保持选中底、
-          不被悬停档压浅，但这一条在双行列表行上还没写全（本段末标注）。
+          <span class="mono">本轮补齐</span>：一级导航、分区导航与双行列表行的按下档
+          （<span class="mono">base.css 新增 .nav-item:active、.tab:active、.list-row:active</span>，
+          与 <span class="mono">.side-row</span> 同一组声明）——按下只加深中性底
+          <span class="mono">--studio-surface-press</span>，不改文字层级，也不把当前项染紫；
+          列表行的禁用与加载也一并补齐：<span class="mono">.list-row[aria-disabled='true']</span>
+          与表格行共用同一取值（同一件事不该有两种灰法），加载走行级骨架
+          <span class="mono">.list-row[data-loading='true']</span>，整行内容隐去、以骨架条替代并保持行高。
           悬停一档此前已按 Issue #1055 的口径补齐，本轮不动。
           <span class="mono">不适用</span>（<span class="mono">spec.md</span> 3.4 的判定，不是缺定义）：
           一级导航与分区导航没有禁用态——Studio 的四条泳道始终可达，不存在被灰掉的目的地；
           导航也没有加载态——它不触发异步工作，跳转即完成。这两档写在格子里，不造样式。
-          <span class="mono">本轮补齐（续）</span>：列表行的禁用与加载——
-          <span class="mono">.list-row[aria-disabled='true']</span> 与表格行共用同一取值（同一件事不该有两种灰法），
-          加载走行级骨架 <span class="mono">.list-row[data-loading='true']</span>：整行内容隐去、以骨架条替代并保持行高。
-          两处口径提醒：当前页以背景块 + 指示条标识，且不参与悬停加深，否则最深的一档反而变浅；
-          矩阵目前没有 <span class="mono">.side-row</span>（侧栏工作区行）这一行，它的按下、禁用与加载取值与上面同一组，
-          进矩阵时再补格子，本轮不顺手加。
-          禁用的悬停档（<span class="mono">.list-row[aria-disabled='true']:hover</span>）与「当前项＋按下」一样，
-          一格标不出两档，要人工在浏览器里确认。
+          三点提醒：<span class="mono">①</span> 当前页以背景块 + 指示条标识，且不参与悬停加深，
+          否则最深的一档反而变浅；<span class="mono">②</span> 矩阵目前没有
+          <span class="mono">.side-row</span>（侧栏工作区行）这一行，它的按下、禁用与加载取值与上面同一组，
+          进矩阵时再补格子，本轮不顺手加；<span class="mono">③</span> 一格标不出两档，
+          「禁用＋悬停不加深」（<span class="mono">.list-row[aria-disabled='true']:hover</span>）
+          与「当前项＋按下」都要人工在浏览器里确认。
           另有一处 <span class="mono">base.css</span> 与 <span class="mono">spec.md</span> 3.4 没对齐，如实标出不擅自补：
-          「当前项按下仍保持选中底」这一条只写了
+          spec.md 把「当前项按下仍保持选中底」写给一级导航、双行列表行与侧栏工作区行三者，
+          base.css 这一条只写了
           <span class="mono">.nav-item[aria-current='page']:active</span> 与
           <span class="mono">.side-row[aria-current='true']:active</span>，
-          <span class="mono">.list-row[aria-current='true']:active</span> 不在这组里——
-          按 <span class="mono">base.css</span> 现在的顺序，选中的双行列表行按下会换成按下底而不是保持选中底。
+          <span class="mono">.list-row[aria-current='true']:active</span> 不在组里——
+          按现在的源码顺序，选中的双行列表行按下会换成按下底而不是保持选中底。
         </p>
         <table class="matrix matrix--states" data-audit-contrast>
           <caption>行＝导航表面，列＝六态 + 当前／选中。浅紫底只承载文字与图标，不承载品牌紫文字。</caption>
@@ -728,13 +735,13 @@ body { display: flex; flex-direction: column; }
                   <td><span class="chip chip--neutral">未判定</span></td>
                   <td class="cell-actions"><span class="meta">产物仍在写入，本次不可操作</span></td>
                 </tr>
-                <tr aria-busy="true">
-                  <td><span class="skeleton skeleton-line"></span></td>
-                  <td><span class="skeleton skeleton-line"></span></td>
-                  <td><span class="skeleton skeleton-line"></span></td>
-                  <td><span class="skeleton skeleton-line"></span></td>
-                  <td><span class="skeleton skeleton-line"></span></td>
-                  <td class="cell-actions"><span class="meta">正在读取评测记录</span></td>
+                <tr data-loading="true" aria-busy="true">
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td class="cell-actions"></td>
                 </tr>
                 <tr>
                   <td colspan="6">没有匹配的记录</td>
@@ -752,20 +759,24 @@ body { display: flex; flex-direction: column; }
           </div>
         </div>
         <div class="stack">
-          <p class="meta" data-audit-contrast>行的状态口径：默认 → 悬停加深表面 → 选中换浅紫底（不换文字色）→ 禁用整体降档（文字与底色一起降，悬停不再加深）→ 加载整行进骨架并保持行高 → 空表以单行占位说明原因，表格本身不消失，列头仍在。禁用行的操作列给一句说明而不是灰按钮：这一行现在不可操作，理由就近写出来。</p>
-          <p class="meta" data-audit-contrast>本轮补齐：<span class="mono">base.css 新增 .table tbody tr[aria-disabled='true']</span>，连同它的 <span class="mono">:hover</span> 一档（保持 <span class="mono">--studio-surface-subtle</span>、不随悬停加深），避免「灰着但会响应悬停」的误导；见 <span class="mono">spec.md</span> 3.4。徽标（<span class="mono">.chip</span>）保留自身语义色、不随行降档——三条状态轴与「这一行能不能点」不是同一个维度。</p>
-          <p class="meta" data-audit-contrast>禁用的悬停档没法并排画在同一行上（<span class="mono">.state-preview</span> 一次只标一档），要人工把鼠标移到这一行确认它不变深。</p>
+          <p class="meta" data-audit-contrast>行从上到下的顺序就是状态阶梯：默认 → 悬停加深表面 → 选中换浅紫底（不换文字色）→ 禁用整体降档 → 加载整行进骨架 → 空表 → 行内键盘焦点。禁用行的操作列给一句说明而不是灰按钮：这一行现在不可操作，理由就近写出来。空表行以单行占位说明原因，表格本身不消失、列头仍在；它只在这张稿子里与数据行并排，真实页面互斥。</p>
+          <p class="meta" data-audit-contrast>本轮补齐两档：<span class="mono">base.css 新增 .table tbody tr[aria-disabled='true']</span>（连同它的 <span class="mono">:hover</span> 一档，保持 <span class="mono">--studio-surface-subtle</span>、不随悬停加深，避免「灰着但会响应悬停」的误导）与 <span class="mono">.table tbody tr[data-loading='true']</span>（整行内容隐去、每格换成一条骨架条，<span class="mono">--studio-row-table</span> 行高不变，标记上声明 <span class="mono">aria-busy</span>）；两者与列表行共用同一取值，见 <span class="mono">spec.md</span> 3.4。</p>
+          <p class="meta" data-audit-contrast>加载行因此<span class="mono">没有行内文字</span>：原先格子里那句「正在读取评测记录」被这一档的定义本身隐掉了，说明改写在表外——区域级读取（页面级 <span class="mono">.skeleton</span>）与控件级行加载是两条路径，不要混成一条。徽标（<span class="mono">.chip</span>）保留自身语义色、不随行降档：三条状态轴与「这一行能不能点」不是同一个维度。</p>
+          <p class="meta" data-audit-contrast>禁用的悬停档没法并排画在同一行上（<span class="mono">.state-preview</span> 一次只标一档），要人工把鼠标移到禁用行上确认它不变深。</p>
         </div>
 
         <h3 class="section-title">表头排序按钮</h3>
         <table class="matrix matrix--states" data-audit-contrast>
-          <caption>行＝<span class="mono">.th-sort</span>，列＝base.css 本轮已定义的档位。当前排序列不是第七态，而是 <span class="mono">th[aria-sort]</span> 这条独立的轴。格子里放的是真实表头（<span class="mono">.table-wrap &gt; .table-scroll &gt; table.table &gt; th</span>），因为 base.css 的强调规则写作 <span class="mono">th[aria-sort] .th-sort</span>，只有真 <span class="mono">th</span> 才命中；图标字形仍按 spec.md 3.2 算占位。</caption>
+          <caption>行＝<span class="mono">.th-sort</span>，列＝六态 + 当前排序列。当前排序列不是第七态，而是 <span class="mono">th[aria-sort]</span> 这条独立的轴。格子里放的是真实表头（<span class="mono">.table-wrap &gt; .table-scroll &gt; table.table &gt; th</span>）：一是 base.css 的强调规则写作 <span class="mono">th[aria-sort] .th-sort</span>，只有真 <span class="mono">th</span> 才命中，二是 <span class="mono">.th-sort</span> 用 <span class="mono">color: inherit</span>，脱离表头就取不到 <span class="mono">--studio-ink-muted</span> 这一档默认色；图标字形仍按 spec.md 3.2 算占位。</caption>
           <thead>
             <tr>
               <th scope="col">变体</th>
               <th scope="col">默认</th>
               <th scope="col">悬停</th>
+              <th scope="col">按下</th>
               <th scope="col">焦点</th>
+              <th scope="col">禁用</th>
+              <th scope="col">加载</th>
               <th scope="col">当前排序列</th>
             </tr>
           </thead>
@@ -804,6 +815,19 @@ body { display: flex; flex-direction: column; }
                     <table class="table">
                       <thead>
                         <tr>
+                          <th scope="col"><button type="button" class="th-sort state-preview" data-state="active">创建时间<svg class="icon icon--inline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v11M4.5 10l3.5 3.5L11.5 10"/></svg></button></th>
+                        </tr>
+                      </thead>
+                    </table>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="table-wrap" data-audit-contrast>
+                  <div class="table-scroll">
+                    <table class="table">
+                      <thead>
+                        <tr>
                           <th scope="col"><button type="button" class="th-sort state-preview" data-state="focus">创建时间<svg class="icon icon--inline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v11M4.5 10l3.5 3.5L11.5 10"/></svg></button></th>
                         </tr>
                       </thead>
@@ -811,6 +835,20 @@ body { display: flex; flex-direction: column; }
                   </div>
                 </div>
               </td>
+              <td>
+                <div class="table-wrap" data-audit-contrast>
+                  <div class="table-scroll">
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th scope="col"><button type="button" class="th-sort" disabled aria-disabled="true">未建索引</button></th>
+                        </tr>
+                      </thead>
+                    </table>
+                  </div>
+                </div>
+              </td>
+              <td><span class="cell-na" data-audit-contrast>不适用：排序是同步行为，不触发异步工作，没有加载档（spec.md 3.4）。</span></td>
               <td>
                 <div class="table-wrap" data-audit-contrast>
                   <div class="table-scroll">
@@ -828,8 +866,8 @@ body { display: flex; flex-direction: column; }
           </tbody>
         </table>
         <div class="stack">
-          <p class="meta" data-audit-contrast>当前排序列用 <span class="mono">--studio-action-ink</span> 而不是 <span class="mono">--studio-action</span>：表头是 12px 小字，紫色文字压在 <span class="mono">--studio-surface-subtle</span> 上走的是「文字用的品牌紫」那一档（见 spec.md 3.1）。表头底色与悬停底由 <span class="mono">.table thead th</span>／<span class="mono">.th-sort:hover</span> 给出，页内不再另定一套。</p>
-          <p class="meta" data-audit-contrast>仍待补：排序按钮的按下、禁用与加载三档 base.css 没有定义，<span class="mono">spec.md</span> 3.4 也没判为不适用，这一列本轮不画不等于它不需要。<span class="mono">measure.html</span> 里那份页内 <span class="mono">.th-sort</span> 副本与组件层不一致（<span class="mono">padding: 0</span> 对 <span class="mono">--studio-space-2</span>、悬停只改文字色不加深底、当前排序列取 <span class="mono">--studio-ink</span> 而非 <span class="mono">--studio-action-ink</span>），落地时删掉页内那份、统一到组件层。</p>
+          <p class="meta" data-audit-contrast>当前排序列用 <span class="mono">--studio-action-ink</span> 而不是 <span class="mono">--studio-action</span>：表头是 12px 小字，紫色文字压在 <span class="mono">--studio-surface-subtle</span> 上走的是「文字用的品牌紫」那一档（见 spec.md 3.1）。表头底色、悬停底、按下底与禁用档都由 <span class="mono">.table thead th</span>／<span class="mono">.th-sort</span> 那组规则给出，页内不再另定一套。禁用格按 base.css 的注释取「未建索引」这一类不可排序列，文字降档、指针改 <span class="mono">not-allowed</span>。</p>
+          <p class="meta" data-audit-contrast><span class="mono">measure.html</span> 里那份页内 <span class="mono">.th-sort</span> 副本与组件层不一致（<span class="mono">padding: 0</span> 对 <span class="mono">--studio-space-2</span>、悬停只改文字色不加深底、当前排序列取 <span class="mono">--studio-ink</span> 而非 <span class="mono">--studio-action-ink</span>，也没有按下与禁用档），落地时删掉页内那份、统一到组件层。</p>
         </div>
       </section>
 
