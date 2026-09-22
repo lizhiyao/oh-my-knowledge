@@ -424,6 +424,8 @@ Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 S
 - `test/studio/web/bilingual-copy.test.ts`：语言分支的英文侧仍带中文就判红。它刻意只判这个方向——按当前代码实测，反方向（中文侧必须含中文）会在分隔符、语言码、品牌复数和文件名上报错，只会逼出一份豁免名单。
 - 需要跨组件复用的文案，用仓库里更强的既有构造：带访问器的 `Record<Lang, Record<Key, string>>`（`src/observability/inbox/metric-semantics.ts`、`src/studio/application/knowledge/candidate-status.ts`），或 `const enCopy: typeof zhCopy`（`src/studio/web/components/observe/health.tsx`）。那里少一个键是编译错误，强于任何运行期查表。
 - 只属于单个组件的文案留在该组件里。
+- 读路径上要区分「OMK 自己写的」与「已被记录下来的」。Studio 知识页的待优化项里，OMK 自己的规则文案按请求语言呈现；更早落盘的证据——doctor 规则自己的 message、Diagnosis 的标题／摘要／建议——按记录时的语言原样显示。在渲染层重翻已存证据，等于改写视图背后的记录。
+- 语言按请求决定时，它同时属于缓存身份：缓存里存着展示文案的投影，不能把第一个请求者的语言发给之后所有人。
 
 ## 六、术语映射
 

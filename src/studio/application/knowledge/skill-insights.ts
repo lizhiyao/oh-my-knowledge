@@ -20,12 +20,97 @@ import type {
 } from '../../../diagnosis/contracts.js';
 import { isActiveDiagnosisLifecycle } from '../../../diagnosis/lifecycle.js';
 import { formatPercent } from '../display/format.js';
+import type { Lang } from '../../../shared/language.js';
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
-function underpoweredCaveat(observe: SkillObserveSnapshot): InsightEvidence | null {
+/**
+ * OMK 自己写的规则型 insight 文案。`Record<Lang, …>` 让少一种语言直接编译失败，
+ * 比运行期查表强（口径见 docs/specs/terminology-spec.md §5.6）。
+ *
+ * 只覆盖 OMK 规则：由 Diagnosis 投影出来的 insight 承载的是已落盘证据文字，
+ * 按「持久化证据优先于界面语言」原样呈现，这里不翻、渲染层也不改。
+ */
+type OmkInsightRule = 'skill-doc-gap' | 'production-instability' | 'coverage-gap' | 'skill-too-long';
+
+const RULE_COPY: Record<OmkInsightRule, Record<Lang, {
+  readonly title: string;
+  readonly description: string;
+  readonly action: string;
+}>> = {
+  'skill-doc-gap': {
+    zh: {
+      title: 'skill 引用了未声明或不可用的依赖文件',
+      description: '静态体检确认知识定义依赖不完整；请先修复依赖事实，再生成或调整评测用例。',
+      action: '补齐实际依赖文件，或从 SKILL.md 中移除失效引用；随后重新运行 doctor。',
+    },
+    en: {
+      title: 'The skill references dependency files that are undeclared or unavailable',
+      description: 'The static health check confirms the knowledge definition has incomplete dependencies. Repair the dependency facts first, then generate or adjust samples.',
+      action: 'Add the missing dependency files or drop the stale references from SKILL.md, then run doctor again.',
+    },
+  },
+  'production-instability': {
+    zh: {
+      title: '真实运行中的工具调用不稳定',
+      description: '生产观测显示工具调用存在持续失败；先区分知识工作流问题与环境故障，再决定修改位置。',
+      action: '核对失败调用的凭证、网络、工具版本和参数；若属于可恢复故障，在 skill 中明确重试与诚实失败策略。',
+    },
+    en: {
+      title: 'Tool calls are unreliable in real runs',
+      description: 'Production observation shows sustained tool-call failures. Separate knowledge-workflow problems from environment faults before deciding what to change.',
+      action: 'Check credentials, network, tool version and arguments for the failing calls; if the failures are recoverable, state the retry and honest-failure policy in the skill.',
+    },
+  },
+  'coverage-gap': {
+    zh: {
+      title: '真实使用中存在知识覆盖缺口',
+      description: '观测证据表明部分真实任务没有被现有知识覆盖。用例应从原始观测证据生成，而不是从旧评测报告反推。',
+      action: '查看对应观察记录，基于真实失败轨迹起草新用例并人工确认。',
+    },
+    en: {
+      title: 'Real usage exposes knowledge coverage gaps',
+      description: 'Observation evidence shows some real tasks are not covered by the existing knowledge. Draft samples from the raw observed evidence, not by reverse-engineering an older evaluation report.',
+      action: 'Open the matching observation records, draft new samples from the real failing trajectories, and confirm them by hand.',
+    },
+  },
+  'skill-too-long': {
+    zh: {
+      title: 'skill 文档过长，关键约束可能被忽略',
+      description: '将长示例和背景资料下沉到 references，保持主工作流清晰。',
+      action: '把长示例和背景材料拆到 references，SKILL.md 只保留触发条件、硬规则与主工作流。',
+    },
+    en: {
+      title: 'The skill document is long enough that key constraints may be missed',
+      description: 'Move long examples and background material down into references so the main workflow stays clear.',
+      action: 'Split long examples and background material into references; keep only the trigger conditions, hard rules and main workflow in SKILL.md.',
+    },
+  },
+};
+
+const MESSAGE_COPY: Record<Lang, {
+  readonly failureRate: (percent: string) => string;
+  readonly gapRate: (percent: string) => string;
+  readonly underpowered: (segments: number) => string;
+  readonly diagnosisFallback: string;
+}> = {
+  zh: {
+    failureRate: (percent) => `生产工具失败率为 ${percent}。`,
+    gapRate: (percent) => `生产知识缺口率为 ${percent}。`,
+    underpowered: (segments) => `仅观测到 ${segments} 个片段，信号样本不足，暂不下硬结论。`,
+    diagnosisFallback: '检查关联证据并修复对应知识定义。',
+  },
+  en: {
+    failureRate: (percent) => `The production tool failure rate is ${percent}.`,
+    gapRate: (percent) => `The production knowledge gap rate is ${percent}.`,
+    underpowered: (segments) => `Only ${segments} segment(s) were observed; the sample is too small for a firm conclusion.`,
+    diagnosisFallback: 'Review the linked evidence and fix the corresponding knowledge definition.',
+  },
+};
+
+function underpoweredCaveat(observe: SkillObserveSnapshot, lang: Lang): InsightEvidence | null {
   return observe.confidence === 'underpowered'
-    ? { perspective: 'observe', status: 'silent', message: `仅观测到 ${observe.segmentCount} 个片段，信号样本不足，暂不下硬结论。` }
+    ? { perspective: 'observe', status: 'silent', message: MESSAGE_COPY[lang].underpowered(observe.segmentCount) }
     : null;
 }
 
@@ -44,6 +129,7 @@ function hasEnoughComparableToolResults(observe: SkillObserveSnapshot): boolean 
 function detectSkillDocGap(
   doctor: SkillDoctorSnapshot | null,
   observe: SkillObserveSnapshot | null,
+  lang: Lang,
 ): Insight | null {
   const dependency = doctor?.results.find((result) => (
     result.ruleId === 'dependencies_present' && result.status !== 'pass'
@@ -54,8 +140,8 @@ function detectSkillDocGap(
     id: 'skill-doc-gap',
     category: 'skill-doc-gap',
     audience: 'sample-author',
-    title: 'skill 引用了未声明或不可用的依赖文件',
-    description: '静态体检确认知识定义依赖不完整；请先修复依赖事实，再生成或调整评测用例。',
+    title: RULE_COPY['skill-doc-gap'][lang].title,
+    description: RULE_COPY['skill-doc-gap'][lang].description,
     severity: dependency.status === 'fail' ? 'high' : 'medium',
     affectedCount: Math.max(1, missingFiles.length),
     stageRefs: {
@@ -64,7 +150,7 @@ function detectSkillDocGap(
     },
     evidence: [{ perspective: 'doctor', status: 'flagged', message: dependency.message, ref: dependency.ruleId }],
     recommendations: [{
-      action: '补齐实际依赖文件，或从 SKILL.md 中移除失效引用；随后重新运行 doctor。',
+      action: RULE_COPY['skill-doc-gap'][lang].action,
       priority: dependency.status === 'fail' ? 'high' : 'medium',
     }],
   };
@@ -73,6 +159,7 @@ function detectSkillDocGap(
 function detectProductionInstability(
   doctor: SkillDoctorSnapshot | null,
   observe: SkillObserveSnapshot | null,
+  lang: Lang,
 ): Insight | null {
   if (observe === null
       || observe.failureRate < 0.2
@@ -81,7 +168,7 @@ function detectProductionInstability(
   const evidence: InsightEvidence[] = [{
     perspective: 'observe',
     status: 'flagged',
-    message: `生产工具失败率为 ${formatPercent(observe.failureRate)}。`,
+    message: MESSAGE_COPY[lang].failureRate(formatPercent(observe.failureRate)),
   }];
   const dependency = doctor?.results.find((result) => (
     result.ruleId === 'dependencies_present' && result.status !== 'pass'
@@ -89,26 +176,26 @@ function detectProductionInstability(
   if (dependency !== undefined) {
     evidence.push({ perspective: 'doctor', status: 'flagged', message: dependency.message, ref: dependency.ruleId });
   }
-  const caveat = underpoweredCaveat(observe);
+  const caveat = underpoweredCaveat(observe, lang);
   if (caveat !== null) evidence.push(caveat);
   return {
     id: 'production-instability',
     category: 'production-instability',
     audience: 'skill-author',
-    title: '真实运行中的工具调用不稳定',
-    description: '生产观测显示工具调用存在持续失败；先区分知识工作流问题与环境故障，再决定修改位置。',
+    title: RULE_COPY['production-instability'][lang].title,
+    description: RULE_COPY['production-instability'][lang].description,
     severity,
     affectedCount: Math.max(1, Math.round((observe.toolCallCount ?? observe.segmentCount) * observe.failureRate)),
     stageRefs: { observeRefs: ['high-failure-rate'] },
     evidence,
     recommendations: [{
-      action: '核对失败调用的凭证、网络、工具版本和参数；若属于可恢复故障，在 skill 中明确重试与诚实失败策略。',
+      action: RULE_COPY['production-instability'][lang].action,
       priority: severity,
     }],
   };
 }
 
-function detectCoverageGap(observe: SkillObserveSnapshot | null): Insight | null {
+function detectCoverageGap(observe: SkillObserveSnapshot | null, lang: Lang): Insight | null {
   if (observe === null || observe.gapRate <= 0) return null;
   const severity = capByObserveConfidence(
     observe.gapRate >= 0.4 ? 'high' : observe.gapRate >= 0.2 ? 'medium' : 'low',
@@ -117,27 +204,28 @@ function detectCoverageGap(observe: SkillObserveSnapshot | null): Insight | null
   const evidence: InsightEvidence[] = [{
     perspective: 'observe',
     status: 'flagged',
-    message: `生产知识缺口率为 ${formatPercent(observe.gapRate)}。`,
+    message: MESSAGE_COPY[lang].gapRate(formatPercent(observe.gapRate)),
   }];
-  const caveat = underpoweredCaveat(observe);
+  const caveat = underpoweredCaveat(observe, lang);
   if (caveat !== null) evidence.push(caveat);
   return {
     id: 'coverage-gap',
     category: 'coverage-gap',
     audience: 'sample-author',
-    title: '真实使用中存在知识覆盖缺口',
-    description: '观测证据表明部分真实任务没有被现有知识覆盖。用例应从原始观测证据生成，而不是从旧评测报告反推。',
+    title: RULE_COPY['coverage-gap'][lang].title,
+    description: RULE_COPY['coverage-gap'][lang].description,
     severity,
     affectedCount: Math.max(1, Math.round(observe.segmentCount * observe.gapRate)),
     stageRefs: { observeRefs: ['gap', 'uncovered-files'] },
     evidence,
-    recommendations: [{ action: '查看对应观察记录，基于真实失败轨迹起草新用例并人工确认。', priority: severity }],
+    recommendations: [{ action: RULE_COPY['coverage-gap'][lang].action, priority: severity }],
   };
 }
 
 function detectSkillTooLong(
   doctor: SkillDoctorSnapshot | null,
   observe: SkillObserveSnapshot | null,
+  lang: Lang,
 ): Insight | null {
   const rule = doctor?.results.find((result) => (
     result.ruleId === 'skill_readable' && result.status === 'warn'
@@ -148,14 +236,14 @@ function detectSkillTooLong(
     id: 'skill-too-long',
     category: 'skill-too-long',
     audience: 'skill-author',
-    title: 'skill 文档过长，关键约束可能被忽略',
-    description: '将长示例和背景资料下沉到 references，保持主工作流清晰。',
+    title: RULE_COPY['skill-too-long'][lang].title,
+    description: RULE_COPY['skill-too-long'][lang].description,
     severity: observeBump ? 'medium' : 'low',
     affectedCount: 1,
     stageRefs: { doctorRuleIds: [rule.ruleId], ...(observeBump ? { observeRefs: ['gap'] } : {}) },
     evidence: [{ perspective: 'doctor', status: 'flagged', message: rule.message, ref: rule.ruleId }],
     recommendations: [{
-      action: '把长示例和背景材料拆到 references，SKILL.md 只保留触发条件、硬规则与主工作流。',
+      action: RULE_COPY['skill-too-long'][lang].action,
       priority: 'medium',
     }],
   };
@@ -186,12 +274,12 @@ function patchTarget(target: NonNullable<Diagnosis['patch']>['target']): NonNull
   return target === 'definition' ? 'skill' : target;
 }
 
-function projectDiagnosis(diagnosis: Diagnosis): Insight {
+function projectDiagnosis(diagnosis: Diagnosis, lang: Lang): Insight {
   const severity = insightSeverity(diagnosis.severity);
   const recommendations: InsightRecommendation[] = [];
   if (diagnosis.recommendation !== undefined || diagnosis.patch !== undefined) {
     recommendations.push({
-      action: diagnosis.recommendation ?? diagnosis.command ?? '检查关联证据并修复对应知识定义。',
+      action: diagnosis.recommendation ?? diagnosis.command ?? MESSAGE_COPY[lang].diagnosisFallback,
       priority: severity,
       ...(diagnosis.patch === undefined ? {} : {
         patch: {
@@ -207,7 +295,7 @@ function projectDiagnosis(diagnosis: Diagnosis): Insight {
     recommendations.push({ action: diagnosis.command, priority: severity });
   }
   if (recommendations.length === 0) {
-    recommendations.push({ action: '检查关联证据并修复对应知识定义。', priority: severity });
+    recommendations.push({ action: MESSAGE_COPY[lang].diagnosisFallback, priority: severity });
   }
   const doctorRuleIds = diagnosis.scope.refs.ruleId === undefined
     ? []
@@ -241,20 +329,21 @@ function projectDiagnosis(diagnosis: Diagnosis): Insight {
   };
 }
 
-function projectDiagnosticsToInsights(diagnostics: Diagnosis[]): Insight[] {
+function projectDiagnosticsToInsights(diagnostics: Diagnosis[], lang: Lang): Insight[] {
   return diagnostics
     .filter((diagnosis) => isActiveDiagnosisLifecycle(diagnosis.lifecycle))
-    .map(projectDiagnosis)
+    .map((diagnosis) => projectDiagnosis(diagnosis, lang))
     .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.affectedCount - a.affectedCount);
 }
 
-export function detectInsights(entry: SkillIndexEntry, options: DetectInsightsOptions = {}): Insight[] {
+export function detectInsights(entry: SkillIndexEntry, options: DetectInsightsOptions): Insight[] {
+  const { diagnostics, lang } = options;
   return [
-    detectSkillDocGap(entry.doctor, entry.observe),
-    detectSkillTooLong(entry.doctor, entry.observe),
-    detectCoverageGap(entry.observe),
-    detectProductionInstability(entry.doctor, entry.observe),
-    ...projectDiagnosticsToInsights(options.diagnostics ?? []),
+    detectSkillDocGap(entry.doctor, entry.observe, lang),
+    detectSkillTooLong(entry.doctor, entry.observe, lang),
+    detectCoverageGap(entry.observe, lang),
+    detectProductionInstability(entry.doctor, entry.observe, lang),
+    ...projectDiagnosticsToInsights(diagnostics ?? [], lang),
   ].filter((candidate): candidate is Insight => candidate !== null)
     .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.affectedCount - a.affectedCount);
 }

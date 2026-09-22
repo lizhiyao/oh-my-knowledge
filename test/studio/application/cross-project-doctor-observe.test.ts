@@ -244,7 +244,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       bySkill: { bar: { toolFailureRate: 0.0, segmentCount: 30, confidence: 'high', gap: { weightedGapRate: 0.1 } } },
     }, join(proj, reportFileName('o-20260614-aa11')), proj, 'o-20260614-aa11');
 
-    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
+    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh', includeObserveCards: true, includeDoctorCards: true });
     const names = idx.entries.map((e) => e.skillName).sort();
     assert.ok(names.includes('foo'), 'doctor 卡片的 skill 进索引');
     assert.ok(names.includes('bar'), 'observe 卡片的 skill 进索引');
@@ -274,6 +275,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     }, path, proj, 'o-unknown');
 
     const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh',
       includeObserveCards: true,
       includeDoctorCards: false,
     });
@@ -308,6 +310,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     }, path, proj, 'o-partial-outcomes');
 
     const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh',
       includeObserveCards: true,
       includeDoctorCards: false,
     });
@@ -316,7 +319,9 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(partial.band, 'gray');
     assert.equal(partial.observe?.effectiveBand, 'gray');
     assert.equal(assessHealth(partial, [], 'zh').band, partial.observe?.effectiveBand);
-    const local = buildSkillIndex(proj, emptyDoctors, emptyObs).entries.find((entry) => entry.skillName === 'partial')!;
+    const local = buildSkillIndex(proj, emptyDoctors, emptyObs, {
+      lang: 'zh',
+    }).entries.find((entry) => entry.skillName === 'partial')!;
     assert.equal(local.observe?.effectiveBand, partial.observe?.effectiveBand);
   });
 
@@ -327,7 +332,9 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       overall: { healthBand: 'red', confidence: 'high' },
       bySkill: { gap: { toolFailureRate: 0, toolCallCount: 20, segmentCount: 20, confidence: 'high', gap: { weightedGapRate: 0.4 } } },
     }, path, proj, 'o-gap-summary');
-    const idx = buildSkillIndex(proj, emptyDoctors, emptyObs);
+    const idx = buildSkillIndex(proj, emptyDoctors, emptyObs, {
+      lang: 'zh',
+    });
     const entry = idx.entries.find((item) => item.skillName === 'gap')!;
     const health = assessHealth(entry, idx.insightsBySkill.get('gap') ?? [], 'zh');
     assert.equal(health.band, 'red');
@@ -358,6 +365,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     }, path, proj, 'o-underpowered-failures');
 
     const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh',
       includeObserveCards: true,
       includeDoctorCards: false,
     });
@@ -387,6 +395,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     }, path, proj, 'o-high-outcome-coverage');
 
     const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh',
       includeObserveCards: true,
       includeDoctorCards: false,
     });
@@ -405,7 +414,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       overall: { healthBand: 'green', confidence: 'high' },
       bySkill: { 'gone-obs': { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
     }, join(proj, reportFileName('gone-observe')), proj, 'gone-observe'); // 真身均不写
-    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
+    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh', includeObserveCards: true, includeDoctorCards: true });
     assert.deepEqual(idx.entries.map((e) => e.skillName), [], '悬空卡片(真身不在)不进 skill 索引');
   });
 
@@ -416,7 +426,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       overall: { healthBand: 'green', confidence: 'high' },
       bySkill: { co: { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
     }, join(proj, reportFileName('fo')), proj, 'fo');
-    const opts = { includeObserveCards: true, includeDoctorCards: true, cache: createSkillIndexCache() };
+    const opts = { includeObserveCards: true, includeDoctorCards: true, cache: createSkillIndexCache(), lang: 'zh' as const };
     let idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, opts);
     assert.deepEqual(idx.entries.map((e) => e.skillName).sort(), ['cf', 'co'], 'build1 可见(进入显式缓存)');
     rmSync(join(proj, reportFileName('fd')), { force: true }); // 仅删真身,不动卡片目录
@@ -434,7 +444,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       bySkill: { y: { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
     }, join(proj, reportFileName('y')), proj, 'y');
     // 不传 include 标志(默认 false)→ 固定目录语义,卡片一律不合并。
-    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs);
+    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { lang: 'zh' });
     assert.deepEqual(idx.entries.map((e) => e.skillName), [], '固定目录模式下别项目卡片不进 skill 索引');
   });
 
@@ -456,7 +466,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     };
     indexObserveWrite(liveObs, join(emptyAnalyses, reportFileName(oid)), emptyAnalyses, oid);
 
-    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
+    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh', includeObserveCards: true, includeDoctorCards: true });
     const d = idx.entries.find((e) => e.skillName === 'd')!;
     assert.equal(d.doctorHistory.length, 1, 'doctor 同 reportId 的 live+卡片 dedup 为 1 条,不双计');
     assert.ok((d.doctor?.results.length ?? 0) > 0, 'live 盖卡片:取含 results 的 live 那份,非卡片空壳');
@@ -476,7 +487,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     pruneDoctorHistory(emptyDoctors, ['p'], 1); // 只留最新 1 份 → 删 p-r1 正文 + 卡片
 
     assert.deepEqual(listDoctorCards().map((c) => c.id), ['p-r2'], '老卡片随正文一起删');
-    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
+    const idx = buildSkillIndex(emptyAnalyses, emptyDoctors, emptyObs, {
+      lang: 'zh', includeObserveCards: true, includeDoctorCards: true });
     const p = idx.entries.find((e) => e.skillName === 'p')!;
     assert.equal(p.doctorHistory.length, 1, '历史只剩 1 份,被 prune 的没经卡片复活');
     assert.equal(p.doctor?.reportId, 'r2');

@@ -92,7 +92,7 @@ describe('studio-baseline 夹具有效性', () => {
     const scale = BASELINE_SCALES[0]!;
     const layout = writeBaselineDataset(scale, writers, makeTempRoot());
 
-    const index = buildSkillIndex(layout.analysesDir, layout.doctorsDir, layout.observationsDir);
+    const index = buildSkillIndex(layout.analysesDir, layout.doctorsDir, layout.observationsDir, { lang: 'zh' });
     assert.equal(index.summary.totalSkills, scale.skills);
     assert.equal(index.summary.withObserve, scale.skills);
     assert.equal(index.summary.withDoctor, scale.skills);

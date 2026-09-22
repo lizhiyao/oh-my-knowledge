@@ -422,6 +422,8 @@ Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a c
 - `test/studio/web/bilingual-copy.test.ts` fails when the English branch of a language conditional still carries Chinese. It deliberately checks only that direction: measured over the current tree, the opposite test (the Chinese branch must contain Chinese) fires on separators, language codes, brand plurals and file names, which would only produce an exemption list.
 - Where copy is shared across components, use the stronger existing construct — `Record<Lang, Record<Key, string>>` with an accessor (`src/observability/inbox/metric-semantics.ts`, `src/studio/application/knowledge/candidate-status.ts`), or `const enCopy: typeof zhCopy` (`src/studio/web/components/observe/health.tsx`). A missing key there is a compile error, which beats any runtime lookup.
 - Copy that belongs to one component stays in that component.
+- On a read path, separate what OMK authored from what was recorded. Studio's knowledge findings render OMK's own rule text in the request language, while evidence persisted earlier — a doctor rule's own message, a Diagnosis title, summary or recommendation — is shown in the language it was recorded in. Re-translating stored evidence at render time would rewrite the record behind the view.
+- Where that language is chosen per request, it also belongs in the cache identity: a cached projection holding display text must not serve the first requester's language to everyone else.
 
 ## 6. Term mapping
 

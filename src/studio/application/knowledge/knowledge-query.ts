@@ -1,5 +1,11 @@
 import { projectDoctorsDir, projectObserveHealthDir, resolveDoctorsDir, resolveObserveHealthDir } from '../../../evidence/storage/directories.js';
 import { buildSkillIndex, createSkillIndexCache, type SkillIndexCache } from './skill-index.js';
+import type { Lang } from '../../../shared/language.js';
+
+interface KnowledgeQueryReadOptions {
+  /** 本次请求的展示语言；决定 OMK 规则文案，不改动已落盘证据。 */
+  lang: Lang;
+}
 
 interface KnowledgeQueryOptions {
   analysesDir?: string | (() => string);
@@ -24,12 +30,13 @@ export function createKnowledgeQuery(options: KnowledgeQueryOptions = {}) {
   });
   return {
     directories,
-    read(source = directories()) {
+    read(readOptions: KnowledgeQueryReadOptions, source = directories()) {
       const { analysesDir, doctorsDir } = source;
       return buildSkillIndex(analysesDir, doctorsDir, options.observationsDir, {
         includeObserveCards: options.includeObserveCards ?? false,
         includeDoctorCards: options.includeDoctorCards ?? false,
         cache,
+        lang: readOptions.lang,
       });
     },
     close() {

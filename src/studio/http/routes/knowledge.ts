@@ -48,8 +48,8 @@ export function createKnowledgeRoutes({
     },
     {
       pattern: '/api/skills',
-      handler({ response: res, analysesDir, doctorsDir }) {
-        const idx = query.read({ analysesDir, doctorsDir });
+      handler({ response: res, analysesDir, doctorsDir, lang }) {
+        const idx = query.read({ lang }, { analysesDir, doctorsDir });
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({
           entries: idx.entries.map((entry) => ({

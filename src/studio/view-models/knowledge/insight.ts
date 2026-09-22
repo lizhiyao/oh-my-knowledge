@@ -1,4 +1,5 @@
 import type { Diagnosis } from '../../../diagnosis/contracts.js';
+import type { Lang } from '../../../shared/language.js';
 
 export type InsightCategory =
   | 'environment-blocked-mocks'
@@ -84,4 +85,9 @@ export interface DetectInsightsOptions {
    * 从 Diagnosis 投影,不再从 entry.observe 重复推断,避免维护者新增规则时双写。
    */
   diagnostics?: Diagnosis[];
+  /**
+   * OMK 规则文案的展示语言。由 Diagnosis 投影出的 insight 承载的是已落盘证据文字，
+   * 不受它影响——持久化证据优先于界面语言，渲染层不改写。
+   */
+  lang: Lang;
 }

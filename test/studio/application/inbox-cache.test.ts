@@ -15,7 +15,7 @@ describe('Studio inbox cache source', () => {
       const report = buildObservationInboxReport(source);
       const observations = join(root, 'inbox');
       const query = createKnowledgeQuery({ analysesDir:join(root, 'health'), doctorsDir:join(root, 'doctor'), observationsDir:observations });
-      const build = () => query.read();
+      const build = () => query.read({ lang: 'zh' });
       for (const [index, name] of ['first', 'second'].entries()) {
         report.meta.generatedAt = `2026-09-01T00:00:0${index}.000Z`;
         if (report.experience) report.experience.generatedAt = report.meta.generatedAt;

@@ -40,6 +40,7 @@ import type { DoctorReport } from '../../../knowledge-artifacts/doctor/contracts
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../../evidence/graph/contracts.js';
 import { healthBand } from './skill-health.js';
 import { detectInsights } from './skill-insights.js';
+import type { Lang } from '../../../shared/language.js';
 
 interface SkillIndexCacheEntry {
   readonly fingerprint: string;
@@ -299,25 +300,30 @@ interface BuildSkillIndexOptions {
   includeDoctorCards?: boolean;
   /** Owned by the querying server; omitted for uncached standalone builds. */
   cache?: SkillIndexCache;
+  /** OMK 规则文案的展示语言；已落盘证据文字不受影响。进入缓存身份，见 cacheKey。 */
+  lang: Lang;
 }
 
 export function buildSkillIndex(
   analysesDir: string,
   doctorsDir: string,
-  observationsDir?: string,
-  options: BuildSkillIndexOptions = {},
+  observationsDir: string | undefined,
+  options: BuildSkillIndexOptions,
 ): SkillIndex {
   // 一次构建只解析一次 inbox 目标，缓存身份与实际读取的目录同值。
   const inboxDir = resolveObservationsDir(observationsDir);
   const includeObserveCards = options.includeObserveCards ?? false;
   const includeDoctorCards = options.includeDoctorCards ?? false;
+  const lang = options.lang;
   const graphPaths = listMeasurementDerivedPaths(doctorsDir, 'doctor', 'graph.json');
   const doctorReportPaths = listMeasurementReportPaths(doctorsDir, 'doctor');
   const observeReportPaths = listMeasurementReportPaths(analysesDir, 'observe-health');
   // key 限定目录组合身份，fingerprint 每次请求按文件元数据重算，
   // 保证编辑与删除对缓存可见（目录 mtime 单独不足以检测既有文件的内容变化）。
+  // 缓存里存的是带展示语言的 insight 文案，语言必须进 key：否则先被请求的语言会
+  // 把另一语言的文案留给后续请求（同一目录组合、同一进程）。
   const cacheKey = [
-    analysesDir, doctorsDir, inboxDir,
+    analysesDir, doctorsDir, inboxDir, lang,
     includeObserveCards ? 'observe-cards' : '',
     includeDoctorCards ? 'doctor-cards' : '',
   ].join('\n');
@@ -394,6 +400,7 @@ export function buildSkillIndex(
   for (const entry of entries) {
     const insights = detectInsights(entry, {
       diagnostics: ownRecordValue(diagnosisBundle.bySkill, entry.skillName) ?? [],
+      lang,
     });
     insightsBySkill.set(entry.skillName, insights);
     entry.band = healthBand(entry, insights);

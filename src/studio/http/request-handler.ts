@@ -11,6 +11,7 @@ import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage, JSON_HEADERS, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS, writeJsonError } from './errors.js';
 import { RequestBodyError } from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
+import { studioHostLanguage } from './language.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
 import { createObservationRoutes } from './routes/observations.js';
@@ -121,6 +122,7 @@ export function createStudioRequestHandler({
         response,
         url,
         path,
+        lang: studioHostLanguage(),
       };
 
       if (await hostRoutes(routeContext)) return;

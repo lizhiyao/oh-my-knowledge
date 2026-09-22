@@ -1,4 +1,3 @@
-import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
@@ -21,11 +20,7 @@ import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.j
 import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { isAgentsPath, loadAgentsPage, type AgentsPage } from './pages/agents-page.js';
 import { resolveManagedRootOption } from './managed-root.js';
-
-/** 语言只是偏好：设置文件读坏时退回内置默认，页面照常可用，错误留给 /api/settings 报告。 */
-function preferredLanguage(): 'zh' | 'en' {
-  try { return new UserSettingsStore().resolve().language; } catch { return 'zh'; }
-}
+import { studioHostLanguage } from './language.js';
 
 /** Next owns every Studio page; JSON APIs and SSE keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
@@ -68,7 +63,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       // 语言不进地址：渲染语言只看本机设置（经 x-omk-studio-lang 注入），地址里的 lang 参数既不生效也不清理。
       // 一次请求只读一次：装载器与注入头用同一个值，设置文件在请求中途被改也不会半新半旧。
       const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
-      const studioLanguage = preferredLanguage();
+      const studioLanguage = studioHostLanguage();
       let healthPage: HealthPage | undefined;
       if (health) {
         try {
