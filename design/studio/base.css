@@ -1074,6 +1074,49 @@ th[aria-sort] .th-sort {
 
 /* ---------- 原型自身的评审边框，不属于产品视觉 ---------- */
 
+/*
+ * 注记默认收起：实测四张代表页在 1440×900 下，展开的注记把被评审的构图整段推到首屏之外
+ * （知识页的主操作层级、评测页的创建时间列与操作列都因此看不到）。
+ * 收起后构图在前、口径一点即开，两条信息都不丢。
+ */
+details.proto-note {
+  padding: 0;
+  overflow: hidden;
+}
+
+details.proto-note > summary {
+  padding: var(--studio-space-3) var(--studio-space-4);
+  color: var(--studio-ink-secondary);
+  font-size: var(--studio-size-meta);
+  line-height: var(--studio-line-meta);
+  cursor: pointer;
+  list-style: none;
+}
+
+details.proto-note > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.proto-note > summary::before {
+  margin-inline-end: var(--studio-space-2);
+  color: var(--studio-ink-muted);
+  content: '＋';
+}
+
+details.proto-note[open] > summary::before {
+  content: '－';
+}
+
+details.proto-note > summary:hover {
+  color: var(--studio-ink);
+  background: var(--studio-surface-hover);
+}
+
+details.proto-note > .proto-note-body {
+  padding: 0 var(--studio-space-4) var(--studio-space-4);
+  border-top: var(--studio-edge-width) solid var(--studio-edge-divider);
+}
+
 .proto-note {
   margin: 0 0 var(--studio-space-5);
   padding: var(--studio-space-3) var(--studio-space-4);
