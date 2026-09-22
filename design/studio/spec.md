@@ -126,8 +126,8 @@ node design/studio/audit-summary.mjs <输出目录>      # 打印结论表与未
 | 保留／舍弃／修订与各自成功文案 | 已实现 | `knowledge/candidates.tsx:164-168,210-211` |
 | 来源不可用告警、多来源共享证据片段选择器、`原始记录及相邻上下文` | 已实现 | `knowledge/candidates.tsx:173-177` |
 | 报告详情「结果摘要」 | 契约已有，Studio 未投影 | `src/eval-core/contracts/artifacts.ts:517`（`summaries`）未进 `CoreStudioRunDetail` |
-| 报告详情「比较条件」 | 契约已有，Studio 未投影 | `src/eval-core/contracts/comparability.ts:30-32`；`src/studio` 内无 control/treatment 投影 |
-| 报告详情「结论限制」 | 缺口，需产品决策 | 运行视图无 limitations 字段；可比性原因码见 `comparability.ts:320-336` |
+| 报告详情「比较条件」 | 契约已有，Studio 未投影 | 对照／处理身份来自 `ComparisonDefinition` 的 `controlTargetId`／`treatmentTargetIds`（`src/eval-core/contracts/definition.ts:277-278`）；可比性来自 `omk.comparability-policy/v1`／`omk.comparability-assessment/v2`（`comparability.ts:30-32`）。`src/studio` 内两者都无投影，也没有中文标签词表 |
+| 报告详情「结论限制」 | 缺口，需产品决策 | 运行视图无 limitations 字段；可比性原因码被 `COMPARABILITY_REASON_CODES` 与 `REASON_CLASSIFICATION` 限死（`comparability.ts:319,350`），只能原值呈现 |
 | 报告详情「逐用例证据入口」 | 缺口，需产品决策 | 现仅 `measure.tsx:310` 的观测文本片段，无按用例证据路由 |
 | 危险按钮 | 三域当前不存在，待确认 | 观测／评测／知识页面均无该角色 |
 
