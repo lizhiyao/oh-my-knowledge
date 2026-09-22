@@ -102,7 +102,7 @@ h2.pane-head {
 </div>
 
 <div class="shell">
-  <aside class="sidebar" data-audit-region="侧栏">
+  <aside id="studio-sidebar" class="sidebar" data-audit-region="侧栏">
     <a class="brand" href="index.html">
       <span class="brand-mark" aria-hidden="true">OMK</span>
       OMK Studio
@@ -168,6 +168,7 @@ h2.pane-head {
 
   <div class="main">
     <header class="page-head">
+      <button type="button" class="btn drawer-toggle" data-drawer-toggle aria-controls="studio-sidebar" aria-expanded="false" aria-label="打开导航侧栏"><svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg></button>
       <div style="min-width:0">
         <p class="meta"><a class="link" href="measure.html">返回评测记录</a></p>
         <h1 class="page-title mono" data-audit-truncate style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="run-2026-09-22-b2d8e4-skill路由回归">run-2026-09-22-b2d8e4-skill路由回归</h1>
@@ -983,6 +984,7 @@ h2.pane-head {
   </div>
 </div>
 
+<script src="nav-drawer.js"></script>
 <script src="spec-switch.js"></script>
 <script src="audit.js"></script>
 </body>
