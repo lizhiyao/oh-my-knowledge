@@ -4,7 +4,7 @@ contact_links:
     url: https://github.com/lizhiyao/oh-my-knowledge/blob/main/CONTRIBUTING.md
     about: Before opening an issue, check the contributing guide for workflow, branch model, and project scope.
   - name: 贡献指南（中文）
-    url: https://github.com/lizhiyao/oh-my-knowledge/blob/main/CONTRIBUTING.zh.md
+    url: https://oh-my-knowledge.pages.dev/zh/guides/contributing
     about: 中文贡献者可以先看中文版的工作流、分支模型与项目范围说明。
   - name: Security vulnerability
     url: https://github.com/lizhiyao/oh-my-knowledge/security/advisories/new

@@ -1,6 +1,6 @@
 # AGENTS.md - OMK 项目约定
 
-> English companion for human contributors: [AGENTS.en.md](./AGENTS.en.md) — 内容与本文件有出入时以本文件（中文）为准。This file and the per-directory `AGENTS.md` domain rule files are the machine-loaded instruction source and are maintained in Chinese only; the English twin covers this root checklist and says so at its top.
+本文件与各目录的领域 `AGENTS.md` 只维护中文：它们是被 Agent 按路径加载的指令来源，不存在英文版，也不做双语副本（GitHub 与各工具都只认 `AGENTS.md` 这一个文件名）。人类贡献者的流程入口是 [CONTRIBUTING.md](./CONTRIBUTING.md)，其正文在文档站，中英两版都有。
 
 OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测和测量 prompt、RAG、skill、agent、workflow 的版本差异。所有改动优先保护测量可比性、证据完整性和用户数据。
 
@@ -70,6 +70,6 @@ OMK（Observe. Measure. Know.）通过固定模型、改变知识载体，观测
 
 - 用户文档：README.md、README.zh.md。
 - Skill：.agents/skills/omk/SKILL.md。
-- 审查：CODE_REVIEW.md（English: CODE_REVIEW.en.md）。
+- 审查：CODE_REVIEW.md（只有中文）。
 - 设计规范：docs/（英文 `docs/`、中文 `docs/zh/`，逐节对照由 CI 门禁判）。
-- Git 与发版：CONTRIBUTING.md（中文版：CONTRIBUTING.zh.md）。
+- Git 与发版：CONTRIBUTING.md 是指针，正文在文档站 `docs/guides/contributing.md` 与 `docs/zh/guides/contributing.md`。

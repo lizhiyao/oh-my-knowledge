@@ -42,6 +42,7 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 
 ## 迁移与设计规范
 
+- [贡献指南](./guides/contributing.md) —— 分支模型、本地门禁与发版流程。
 - [通用 sample 规范草案](./specs/general-sample-proposal.md)
 
 - [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/storage-layout-spec.md)

@@ -1,6 +1,5 @@
 # 贡献指南
-
-> 英文原文：[Contributing](./CONTRIBUTING.md)。本文件逐节对照维护，内容有出入时以英文版为准。
+本文就是贡献流程的完整正文。开 PR 时 GitHub 会展示仓库根的 [`CONTRIBUTING.md`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/CONTRIBUTING.md)，那份文件只是指向本文的入口，不是第二套规则。
 
 感谢你抽出时间为 `oh-my-knowledge` 做出贡献。
 
@@ -73,7 +72,7 @@ git push -u origin feat/my-feature
 ```
 
 验证触发条件、证据复用与例外只在
-[`AGENTS.md`](./AGENTS.md#开发反馈与验证) 中定义一次。下文命令实现该策略；
+[`AGENTS.md`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/AGENTS.md#开发反馈与验证) 中定义一次。下文命令实现该策略；
 后续修复不会自动要求再跑一轮完整本地门禁。
 
 ### 本地验证策略
@@ -91,7 +90,7 @@ git push -u origin feat/my-feature
 在首次 push 或交付前都要做一次与风险相称的自我审查。
 不要等维护者来问 CR 是否做了。
 风险等级、审查维度、finding 格式、验证阶梯和停止规则，见
-[`CODE_REVIEW.md`](./CODE_REVIEW.md)。
+[`CODE_REVIEW.md`](https://github.com/lizhiyao/oh-my-knowledge/blob/main/CODE_REVIEW.md)。
 
 测试全绿本身不能证明已经完成。风险对应的证据与 finding 处理见 `CODE_REVIEW.md`，
 何时跑完整门禁或 clean-room 验收见 `AGENTS.md`；
@@ -347,7 +346,7 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 
 ## 安全
 
-自定义断言与本地报告服务相关的风险，见 README 中的 [Security notice](./README.md#security-notice)。
+自定义断言与本地报告服务相关的风险，见 README 中的 [Security notice](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.md#security-notice)。
 
 ## 发布可靠性与诊断
 

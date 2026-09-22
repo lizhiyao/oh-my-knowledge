@@ -1,6 +1,6 @@
 # Security Policy
 
-> 中文对照版：[安全策略（中文）](./SECURITY.zh.md)，逐节对照维护；两版文字有出入时以本文件（英文）为准。
+This policy is maintained in English only: vulnerability reports come from anywhere, and GitHub surfaces exactly one `SECURITY.md` with no locale variant.
 
 ## Supported versions
 

@@ -3,14 +3,10 @@ import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 // Deliberately narrow: Markdown can also be a runtime prompt, skill or generated contract.
-// 双语孪生文件与原本同意图：只有叙述与链接，改文不改行为，与根规则文件同档。
+// 治理文档只维护单语言（双语副本会造出本仓正在治的那种漂移），改文不改行为，与根规则同档。
 const rules = new Set([
-  'AGENTS.md', 'AGENTS.en.md', 'CLAUDE.md',
-  'CODE_REVIEW.md', 'CODE_REVIEW.en.md',
-  'CONTRIBUTING.md', 'CONTRIBUTING.zh.md',
-  'SECURITY.md', 'SECURITY.zh.md',
-  'PRODUCT.md', 'PRODUCT.en.md',
-  'schemas/README.md', 'schemas/README.zh.md',
+  'AGENTS.md', 'CLAUDE.md', 'CODE_REVIEW.md', 'CONTRIBUTING.md',
+  'SECURITY.md', 'PRODUCT.md', 'schemas/README.md',
   '.github/PULL_REQUEST_TEMPLATE.md',
 ]);
 // 模块级维护文档（`src/<域>/README.md`）与根规则文件同档：只有叙述与链接，没有构建、打包与行为面，
