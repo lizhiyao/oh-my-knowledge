@@ -15,7 +15,7 @@
  *    禁用与加载不在此列：它们由属性触发（disabled／aria-disabled／data-loading／aria-sort），
  *    base.css 的规则直接命中格子里的真实标记，不需要静态复现类——复现等于把同一批声明抄第二遍，
  *    base.css 一改就漂移。
- * 只有两处照抄了 base.css 的字面量 outline-offset: -2px：输入类控件的焦点环与
+ * 只有两处照抄了 base.css 的字面量 outline-offset: var(--studio-focus-offset-inset)：输入类控件的焦点环与
  * .th-sort:focus-visible。「静态复刻」要求与浏览器实际渲染一致，所以不换成 token；
  * 这两个值在 base.css 里本身未走 token，属 base.css 的待收敛项，不在这里顺手替换。
  */
@@ -151,7 +151,7 @@ body { display: flex; flex-direction: column; }
 .select.state-preview[data-state='focus'] {
   border-color: var(--studio-action);
   outline: var(--studio-focus-ring);
-  outline-offset: -2px; /* 照抄 base.css 字面量：该值未走 token，属 base.css 待收敛 */
+  outline-offset: var(--studio-focus-offset-inset); /* 走 --studio-focus-offset-inset，与 base.css 同源 */
 }
 /* 复刻 .link:hover／.link:active。 */
 .link.state-preview[data-state='hover'] {
@@ -227,7 +227,7 @@ body { display: flex; flex-direction: column; }
 }
 .th-sort.state-preview[data-state='focus'] {
   outline: var(--studio-focus-ring);
-  outline-offset: -2px; /* 照抄 base.css 字面量：该值未走 token，属 base.css 待收敛 */
+  outline-offset: var(--studio-focus-offset-inset); /* 走 --studio-focus-offset-inset，与 base.css 同源 */
 }
 /* 属性触发的档不在这里复现：链接禁用／加载、输入与下拉的加载、表格行与列表行的禁用、
    行级加载、当前排序列（th[aria-sort]）都由 base.css 直接命中格子里的真实标记。 */
@@ -432,7 +432,7 @@ body { display: flex; flex-direction: column; }
           本轮补齐两处：<span class="mono">base.css 新增 .link[aria-disabled='true']</span>（变灰、
           不划线、<span class="mono">cursor: not-allowed</span>）与
           <span class="mono">.link[data-loading='true']</span>（保留标签文字，在其后追加 spinner，
-          与按钮同一口径，不隐藏文字）。两格因此换成真实标记：禁用格用不带
+          与按钮同一口径，不隐藏文字）。两档共四格因此换成真实标记：禁用格用不带
           <span class="mono">href</span> 的 <span class="mono">&lt;a aria-disabled=&quot;true&quot;&gt;</span>，
           与按钮列的 <span class="mono">disabled</span> 同档——是真的点不动，不是画个灰样子。
           正文链接与标识链接共用同一套前景色，标识链接只换等宽字族与字号。
@@ -866,7 +866,7 @@ body { display: flex; flex-direction: column; }
           </tbody>
         </table>
         <div class="stack">
-          <p class="meta" data-audit-contrast>当前排序列用 <span class="mono">--studio-action-ink</span> 而不是 <span class="mono">--studio-action</span>：表头是 12px 小字，紫色文字压在 <span class="mono">--studio-surface-subtle</span> 上走的是「文字用的品牌紫」那一档（见 spec.md 3.1）。表头底色、悬停底、按下底与禁用档都由 <span class="mono">.table thead th</span>／<span class="mono">.th-sort</span> 那组规则给出，页内不再另定一套。禁用格按 base.css 的注释取「未建索引」这一类不可排序列，文字降档、指针改 <span class="mono">not-allowed</span>。</p>
+          <p class="meta" data-audit-contrast>当前排序列用 <span class="mono">--studio-action-ink</span> 而不是 <span class="mono">--studio-action</span>：表头是 12px 小字，紫色文字压在 <span class="mono">--studio-surface-subtle</span> 上走的是「文字用的品牌紫」那一档（见 spec.md 3.1）。表头底色、悬停底、按下底与禁用档都由 <span class="mono">.table thead th</span>／<span class="mono">.th-sort</span> 那组规则给出，页内不再另定一套。禁用格按 base.css 的注释取「未建索引」这一类不可排序列做示例（<span class="mono">.th-sort:disabled</span>：文字降档、指针改 <span class="mono">not-allowed</span>），真实列名仍以 measure.html 的九列为准，这里不新增列。</p>
           <p class="meta" data-audit-contrast><span class="mono">measure.html</span> 里那份页内 <span class="mono">.th-sort</span> 副本与组件层不一致（<span class="mono">padding: 0</span> 对 <span class="mono">--studio-space-2</span>、悬停只改文字色不加深底、当前排序列取 <span class="mono">--studio-ink</span> 而非 <span class="mono">--studio-action-ink</span>，也没有按下与禁用档），落地时删掉页内那份、统一到组件层。</p>
         </div>
       </section>

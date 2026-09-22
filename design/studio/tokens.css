@@ -109,6 +109,8 @@
   --studio-edge-width-focus: 2px;
   --studio-focus-ring: var(--studio-edge-width-focus) solid var(--studio-action);
   --studio-focus-offset: 2px;
+  /* 控件内部与表头排序按钮用内偏移，避免焦点环被容器 overflow: hidden 裁掉。 */
+  --studio-focus-offset-inset: -2px;
 
   /* 行高与尺寸基准 */
   --studio-row-list: 56px;

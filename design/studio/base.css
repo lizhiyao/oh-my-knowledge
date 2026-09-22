@@ -462,7 +462,7 @@ body {
 .select:focus-visible {
   border-color: var(--studio-action);
   outline: var(--studio-focus-ring);
-  outline-offset: -2px;
+  outline-offset: var(--studio-focus-offset-inset);
 }
 
 .input:disabled {
@@ -895,12 +895,13 @@ mark {
   cursor: progress;
 }
 
-/* 链接加载态保留标签，在其后追加 spinner，不隐藏文字。 */
-.link[data-loading='true']::after {
+/* 链接加载态把 spinner 放在标签之前：放在之后会落进 .cell-id／.clip-line 的
+ * overflow: hidden 裁切区，省略显示的标识链接加载时等于没有反馈。 */
+.link[data-loading='true']::before {
   display: inline-block;
   width: 12px;
   height: 12px;
-  margin-inline-start: var(--studio-space-2);
+  margin-inline-end: var(--studio-space-2);
   vertical-align: -2px;
   content: '';
   border: 2px solid currentColor;
@@ -918,6 +919,7 @@ mark {
 }
 
 .nav-item[aria-current='page']:active,
+.list-row[aria-current='true']:active,
 .side-row[aria-current='true']:active {
   background: var(--studio-selection-fill);
 }
@@ -986,7 +988,7 @@ mark {
 
 .th-sort:focus-visible {
   outline: var(--studio-focus-ring);
-  outline-offset: -2px;
+  outline-offset: var(--studio-focus-offset-inset);
 }
 
 /* 不可排序的列（例如未建索引时）：按下去掉指针样式，文字随禁用降档。 */
