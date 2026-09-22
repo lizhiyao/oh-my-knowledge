@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN" data-spec="target" data-audit-page="index">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio 代表页原型 · 评审索引</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+  /* 待收敛：base.css 缺评审索引页用的卡片网格，仅原型外壳使用，不进产品规范 */
+  .index-body {
+    height: 100%;
+    overflow: auto;
+    padding: var(--studio-space-7) var(--studio-space-9);
+  }
+
+  .index-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--studio-space-4);
+    margin-bottom: var(--studio-space-7);
+  }
+
+  .index-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--studio-space-2);
+    padding: var(--studio-space-5);
+    color: inherit;
+    text-decoration: none;
+    background: var(--studio-surface);
+    border: var(--studio-edge-width) solid var(--studio-edge);
+    border-radius: var(--studio-radius-container);
+  }
+
+  .index-card:hover {
+    background: var(--studio-surface-hover);
+    border-color: var(--studio-action-disabled);
+  }
+
+  .index-card:focus-visible {
+    outline: var(--studio-focus-ring);
+    outline-offset: var(--studio-focus-offset);
+  }
+
+  .index-card h2 {
+    margin: 0;
+    font-size: var(--studio-size-section-title);
+    font-weight: var(--studio-weight-emphasis);
+  }
+
+  .index-list {
+    margin: 0;
+    padding-inline-start: var(--studio-space-5);
+  }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <strong>Studio 代表页原型</strong>
+  <span>
+    规范档
+    <button type="button" class="btn btn--quiet" data-spec-switch="target">目标</button>
+    <button type="button" class="btn btn--quiet" data-spec-switch="baseline">基线</button>
+  </span>
+</div>
+
+<main class="main index-body" data-audit-region="索引页滚动区" data-audit-contrast>
+  <header class="section">
+    <h1 class="page-title">Studio 视觉体系改进 · 代表页与状态矩阵</h1>
+    <p class="page-desc">
+      本目录是 <a class="link" href="https://github.com/lizhiyao/oh-my-knowledge/issues/1060">Issue #1060</a>
+      的评审资产，不是产品代码：不接入 Studio 构建、不参与打包、不代表任何功能已实现。
+      全部数据为合成数据；规范口径的唯一正文是 <a class="link" href="spec.md">spec.md</a>，
+      当前实现基线见仓库根 <a class="link" href="../../DESIGN.md">DESIGN.md</a>。
+    </p>
+  </header>
+
+  <section class="section">
+    <h2 class="section-title">代表页</h2>
+    <div class="index-grid">
+      <a class="index-card" href="observe.html">
+        <h2>Observe · 对话阅读</h2>
+        <p class="meta">正文优先，轮次与时间为辅助信息，工具调用收拢为次级信息；含原始记录不可读、进行中与分页边界。</p>
+      </a>
+      <a class="index-card" href="measure.html">
+        <h2>Measure · 记录比较</h2>
+        <p class="meta">连续表格承载运行标识与三条状态轴，横向比较；表格内部横向滚动，操作列不换行。</p>
+      </a>
+      <a class="index-card" href="knowledge.html">
+        <h2>Knowledge · 候选与原文核对</h2>
+        <p class="meta">候选列表、知识陈述、原始依据三栏；原文高亮、多来源与来源不可用；保留只表示维护选择。</p>
+      </a>
+      <a class="index-card" href="report.html">
+        <h2>报告详情</h2>
+        <p class="meta">在现有层级上补齐结果摘要、比较条件、证据入口与结论限制，并标注各自的真实数据来源。</p>
+      </a>
+      <a class="index-card" href="states.html">
+        <h2>组件与异常状态矩阵</h2>
+        <p class="meta">按钮、链接、输入框、导航、表格、证据提示的六态，以及空态、错误态、来源不可读、证据不完整、多来源、超长内容。</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">怎么读这些稿子</h2>
+    <ol class="index-list prose">
+      <li>用浏览器直接打开任意 <code class="mono">.html</code>，无需构建、无依赖。</li>
+      <li>顶栏的「目标／基线」切换同一份构图的两套 token：<em>目标</em>是 #1060 已确认方向，<em>基线</em>是现有实现提取值。切换不等于产品已改动。</li>
+      <li>访问 <code class="mono">?audit=1</code>（或顶栏「量测报告」）读取本页的实测数据：文档是否溢出、各滚动区是否裁切、文字对比度、省略单元是否有完整内容路径、键盘焦点顺序。</li>
+      <li>命令行批量取证：在仓库根执行 <code class="mono">sh design/studio/run-audit.sh</code>，它用本机 Chrome 无头模式按精确视口跑一遍并把 JSON 落到临时目录。</li>
+      <li>任何看起来像新功能入口的东西，先在 <a class="link" href="spec.md">spec.md 的入口映射表</a>里查它对应哪个现有能力；查不到就说明它是缺口，不是承诺。</li>
+    </ol>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">评审时需要你判断的</h2>
+    <ul class="index-list prose">
+      <li>三栏候选核对在 1280px 与 1024px 的退化方式是否可接受，还是应当改为两栏＋按需详情。</li>
+      <li>报告详情的「比较条件」需要新的 Studio 投影，措辞（对照／处理）与是否本轮立项都未定。</li>
+      <li>状态小字号文字改用更深的墨绿／墨橙／墨红后，观感是否仍可接受——这是为了让 12px 文字达到 4.5:1，基线色做不到。</li>
+      <li>危险按钮在观测、评测、知识三域当前不存在，是否要作为规范组件补上。</li>
+    </ul>
+  </section>
+</main>
+
+<script src="spec-switch.js"></script>
+<script src="audit.js"></script>
+</body>
+</html>

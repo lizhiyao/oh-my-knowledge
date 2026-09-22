@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="zh-CN" data-spec="target" data-audit-page="measure">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Measure 记录比较 · Studio 代表页原型</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+  /* 待收敛：base.css 缺下面这些，只在页内补齐，不动组件层与 token 层。
+   * 1. 表格工具条（现网类名 .measure-toolbar）与「已筛选 / 全部」计数的排版。
+   * 2. 表格列宽与最小宽度的声明方式：现网由 AntD 的 column.width 与 scroll.x 给出，
+   *    base.css 只给了 .table 的 min-width:720px，撑不住九列连续比较。
+   * 3. 两行表头（列名 + 维度副标签），用于说明「可重放性」的两个徽标各属哪个阶段。
+   * 4. 表头排序 affordance：现网由 AntD sorter 提供，base.css 没有对应的表头按钮样式。
+   * 5. 单元格内多徽标并排的间距。
+   * 6. 就近说明行的底色。
+   * 7. 分页条。
+   * 8. 「仅屏幕阅读器可见」工具类：表格 caption 与纯图标的分页按钮需要它。
+   * 颜色、字号与间距一律取 --studio-*；只有列宽是结构尺寸，取与现网同源的像素值。
+   * 块里出现的 margin:0 只是把浏览器默认外边距归零，不引入新间距；.sr-only 的
+   * 1px/-1px 是裁切图案的固定量，不承载视觉尺寸，token 层没有对应变量。 */
+
+  /* 1. 工具条 */
+  .measure-toolbar {
+    --w-search: 360px;
+    display: flex;
+    align-items: center;
+    gap: var(--studio-space-5);
+    margin: 0 0 var(--studio-space-4);
+  }
+
+  .measure-toolbar .input {
+    flex: 0 1 var(--w-search);
+    min-width: var(--studio-control-height);
+  }
+
+  .measure-count {
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  /* 2. 九列连续比较的列宽：每列只声明一次，表头与单元格共用。 */
+  .table--runs {
+    --w-run: 268px;
+    --w-run-status: 108px;
+    --w-evidence: 120px;
+    --w-conclusion: 136px;
+    --w-replay: 176px;
+    --w-class: 124px;
+    --w-report: 248px;
+    --w-digest: 248px;
+    --w-created: 216px;
+    --w-actions: 104px;
+    min-width: calc(
+      var(--w-run) + var(--w-run-status) + var(--w-evidence) + var(--w-conclusion) +
+      var(--w-replay) + var(--w-class) + var(--w-report) + var(--w-digest) +
+      var(--w-created) + var(--w-actions)
+    );
+  }
+
+  .table--runs thead th:nth-child(1),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(1) { width: var(--w-run); }
+  .table--runs thead th:nth-child(2),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(2) { width: var(--w-run-status); }
+  .table--runs thead th:nth-child(3),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(3) { width: var(--w-evidence); }
+  .table--runs thead th:nth-child(4),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(4) { width: var(--w-conclusion); }
+  .table--runs thead th:nth-child(5),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(5) { width: var(--w-replay); }
+  .table--runs thead th:nth-child(6),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(6) { width: var(--w-class); }
+  .table--runs thead th:nth-child(7),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(7) { width: var(--w-report); }
+  .table--runs thead th:nth-child(8),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(8) { width: var(--w-digest); }
+  .table--runs thead th:nth-child(9),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(9) { width: var(--w-created); }
+  .table--runs thead th:nth-child(10),
+  .table--runs tbody tr:not(.row-hint) td:nth-child(10) { width: var(--w-actions); }
+
+  /* 3. 两行表头 */
+  .th-name { display: block; }
+
+  .th-sub { display: block; }
+
+  /* 4. 排序 affordance：默认倒序（最新在前）由 th 的 aria-sort 表达。 */
+  .th-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--studio-space-2);
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    background: none;
+    border: 0;
+    border-radius: var(--studio-radius-control);
+    cursor: pointer;
+  }
+
+  .th-sort:hover { color: var(--studio-ink); }
+
+  .table--runs th[aria-sort] .th-sort {
+    color: var(--studio-ink);
+    font-weight: var(--studio-weight-emphasis);
+  }
+
+  /* 5. 单元格内多徽标并排 */
+  .cell-chips {
+    display: flex;
+    align-items: center;
+    gap: var(--studio-space-2);
+  }
+
+  /* 6. 就近说明行：跟着上一条数据行，只解释那一行的三个维度。 */
+  .row-hint td { background: var(--studio-surface-subtle); }
+  .row-hint .evidence { margin: 0; }
+
+  /* 7. 分页条 */
+  .pager {
+    display: flex;
+    align-items: center;
+    gap: var(--studio-space-2);
+    margin: var(--studio-space-4) 0 0;
+  }
+
+  .pager .btn {
+    min-width: var(--studio-control-height);
+    padding: 0 var(--studio-space-2);
+  }
+
+  .pager .btn[aria-current='page'] {
+    color: var(--studio-ink);
+    background: var(--studio-selection-fill);
+    border-color: var(--studio-selection-edge);
+  }
+
+  /* 8. 仅屏幕阅读器可见 */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+    border: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- 原型评审工具条：不属于产品界面，实现时整块删除 -->
+<div class="proto-bar">
+  <a href="index.html">评审索引</a>
+  <strong>Measure · 记录比较</strong>
+  <span>
+    <a href="?audit=1" rel="noopener">量测报告</a> ·
+    规范档
+    <button type="button" class="btn btn--quiet" data-spec-switch="target">目标</button>
+    <button type="button" class="btn btn--quiet" data-spec-switch="baseline">基线</button>
+  </span>
+</div>
+
+<div class="shell">
+  <aside class="sidebar" data-audit-region="侧栏">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">OMK</span>
+      OMK Studio
+    </a>
+
+    <nav class="nav-group" aria-label="Studio 一级导航">
+      <a class="nav-item" href="observe.html">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="2.5"/><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z"/></svg>
+        观测
+      </a>
+      <a class="nav-item" aria-current="page" href="measure.html">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 13.5h11M4.5 11V6M8 11V2.5M11.5 11V8"/></svg>
+        评测
+      </a>
+      <a class="nav-item" href="knowledge.html">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 3.5h4.5A1.5 1.5 0 0 1 9 5v8M13 3.5H8.5A1.5 1.5 0 0 0 7 5v8"/><path d="M2.5 13.5h11"/></svg>
+        知识
+      </a>
+      <a class="nav-item" href="states.html">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3" width="11" height="8" rx="1.5"/><path d="M6 13.5h4"/></svg>
+        Agent
+      </a>
+    </nav>
+
+    <div class="sidebar-scroll" data-audit-region="侧栏工作区列表">
+      <nav class="nav-group" style="margin-top:var(--studio-space-4)" aria-label="评测记录">
+        <p class="nav-group-title">评测记录</p>
+        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="report.html" title="run-2026-09-22-a7f3c1-评测口径对照">
+          <div>
+            <div class="list-title mono" data-audit-truncate title="run-2026-09-22-a7f3c1-评测口径对照">run-2026-09-22-a7f3c1-评测口径对照</div>
+            <div class="meta" data-audit-contrast><span class="chip chip--success">已完成</span> 2026-09-22 14:12 UTC</div>
+          </div>
+        </a>
+        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="report.html" title="run-2026-09-22-b2d8e4-skill路由回归">
+          <div>
+            <div class="list-title mono" data-audit-truncate title="run-2026-09-22-b2d8e4-skill路由回归">run-2026-09-22-b2d8e4-skill路由回归</div>
+            <div class="meta" data-audit-contrast><span class="chip chip--success">已完成</span> 2026-09-22 13:58 UTC</div>
+          </div>
+        </a>
+        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="report.html" title="run-2026-09-22-c9a5f7-RAG切片阈值对照">
+          <div>
+            <div class="list-title mono" data-audit-truncate title="run-2026-09-22-c9a5f7-RAG切片阈值对照">run-2026-09-22-c9a5f7-RAG切片阈值对照</div>
+            <div class="meta" data-audit-contrast><span class="chip chip--success">已完成</span> 2026-09-22 11:36 UTC</div>
+          </div>
+        </a>
+        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="report.html" title="run-2026-09-22-d4e7b1-prompt-v7-对照">
+          <div>
+            <div class="list-title mono" data-audit-truncate title="run-2026-09-22-d4e7b1-prompt-v7-对照">run-2026-09-22-d4e7b1-prompt-v7-对照</div>
+            <div class="meta" data-audit-contrast><span class="chip chip--warning">预算耗尽</span> 2026-09-22 10:04 UTC</div>
+          </div>
+        </a>
+      </nav>
+    </div>
+
+    <div class="sidebar-footer">
+      <a class="nav-item" href="index.html">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/></svg>
+        设置与帮助
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="page-head">
+      <div>
+        <p class="meta" data-audit-contrast>oh-my-knowledge</p>
+        <h1 class="page-title">评测记录</h1>
+        <p class="page-desc" data-audit-contrast>查看版本差异的测量结果和证据，判断知识改动是否有效。</p>
+      </div>
+    </header>
+
+    <div class="page-body" data-audit-region="记录比较表格" data-audit-contrast>
+      <p class="proto-note">
+        合成数据。运行状态、证据状态、结论状态是三个独立维度，各占一列：「已完成」只说明执行走到了终态，
+        既不说明证据完整，也不说明结论成立。读表顺序建议是先看证据状态与结论状态，再回看运行状态——
+        第 2 行「已完成 · 部分缺失 · 证据不足」就是刻意保留的反例，它下面那一行就近给出限制说明，
+        文案沿用现网已有的那句「运行完成不代表改动有效；需要结合证据与结论判断。」
+        着色沿用现网 statusTone 口径（成功／告警／错误／中性），「未评估」改用虚线边的 chip--unknown
+        表示这一维度没给出判断，与「证据不足」的实线告警区分开；这是原型提案，现网两者同为告警色。
+        合成数据集共 9 条，搜索框已填入 <span class="mono">run-2026-09-22</span>，命中 6 条（工具条右侧 6 / 9），
+        未输入时的占位文案是「搜索运行或报告 ID」。列宽合计超过视口宽度，横向滚动只发生在表格内部，
+        页面根节点不出现横向滚动；较矮窗口下由表格区自己纵向滚动。底部分页条是静态演示：每页 20 条，命中 6 条时只有一页，按
+        <span class="mono">hideOnSinglePage</span> 口径产品界面此时不渲染它。页头不给操作按钮，
+        与现网列表页一致——列表页只提供搜索与比较表格，动作在报告页里发生。
+      </p>
+
+      <div class="measure-toolbar">
+        <input class="input" id="run-search" type="search" placeholder="搜索运行或报告 ID" aria-label="搜索运行或报告 ID" value="run-2026-09-22">
+        <p class="meta mono measure-count" title="已筛选 / 全部">6 / 9</p>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll" data-audit-region="表格内部横向滚动">
+          <table class="table table--runs">
+            <caption class="sr-only">评测记录比较：运行 ID、运行状态、证据状态、结论状态、可重放性、最高数据分级、报告 ID、产物集摘要、创建时间</caption>
+            <thead>
+              <tr>
+                <th scope="col">运行 ID</th>
+                <th scope="col">运行状态</th>
+                <th scope="col">证据状态</th>
+                <th scope="col">结论状态</th>
+                <th scope="col">
+                  <span class="th-name">可重放性</span>
+                  <span class="th-sub meta">执行 · 评价</span>
+                </th>
+                <th scope="col">最高数据分级</th>
+                <th scope="col">报告 ID</th>
+                <th scope="col">产物集摘要</th>
+                <th scope="col" aria-sort="descending">
+                  <button type="button" class="th-sort">
+                    创建时间
+                    <svg class="icon icon--inline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5v11M4.5 10l3.5 3.5L11.5 10"/></svg>
+                  </button>
+                </th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="run-2026-09-22-a7f3c1-评测口径对照">
+                    <a class="link link--identity" href="report.html">run-2026-09-22-a7f3c1-评测口径对照</a>
+                  </div>
+                </td>
+                <td><span class="chip chip--success">已完成</span></td>
+                <td><span class="chip chip--success">完整</span></td>
+                <td><span class="chip chip--success">可形成结论</span></td>
+                <td><span class="cell-chips"><span class="chip chip--success">预算内</span><span class="chip chip--success">自包含</span></span></td>
+                <td><span class="chip chip--neutral mono">public</span></td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="rpt-2026-09-22-a7f3c1">
+                    <span class="mono">rpt-2026-09-22-a7f3c1</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="sha256:2f8ac4d1b9e73c05a6f21d48e9b7c30f5a1d8e24b6c90f3a7d5e2b18c4f60a9d">
+                    <span class="mono">sha256:2f8ac4d1b9e73c05a6f21d48e9b7c30f5a1d8e24b6c90f3a7d5e2b18c4f60a9d</span>
+                  </div>
+                </td>
+                <td><time datetime="2026-09-22T14:12:03.000Z">2026-09-22 14:12:03 UTC</time></td>
+                <td class="cell-actions"><a class="link" href="report.html">查看报告</a></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="run-2026-09-22-b2d8e4-skill路由回归">
+                    <a class="link link--identity" href="report.html">run-2026-09-22-b2d8e4-skill路由回归</a>
+                  </div>
+                </td>
+                <td><span class="chip chip--success">已完成</span></td>
+                <td><span class="chip chip--warning">部分缺失</span></td>
+                <td><span class="chip chip--warning">证据不足</span></td>
+                <td><span class="cell-chips"><span class="chip chip--success">预算内</span><span class="chip chip--neutral">可回溯</span></span></td>
+                <td><span class="chip chip--neutral mono">sensitive</span></td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="rpt-2026-09-22-b2d8e4-skill路由回归">
+                    <span class="mono">rpt-2026-09-22-b2d8e4-skill路由回归</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="sha256:7c1f5b0e3d9a64c285be10f7d2a49c6310e8b7f56a2d3c94f80b17ae5d4c2306">
+                    <span class="mono">sha256:7c1f5b0e3d9a64c285be10f7d2a49c6310e8b7f56a2d3c94f80b17ae5d4c2306</span>
+                  </div>
+                </td>
+                <td><time datetime="2026-09-22T13:58:41.000Z">2026-09-22 13:58:41 UTC</time></td>
+                <td class="cell-actions"><a class="link" href="report.html">查看报告</a></td>
+              </tr>
+              <tr class="row-hint">
+                <td colspan="10">
+                  <p class="evidence evidence--partial">运行完成不代表改动有效；需要结合证据与结论判断。</p>
+                </td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="run-2026-09-22-c9a5f7-RAG切片阈值对照">
+                    <a class="link link--identity" href="report.html">run-2026-09-22-c9a5f7-RAG切片阈值对照</a>
+                  </div>
+                </td>
+                <td><span class="chip chip--success">已完成</span></td>
+                <td><span class="chip chip--error">无法解析</span></td>
+                <td><span class="chip chip--unknown">未评估</span></td>
+                <td><span class="cell-chips"><span class="chip chip--warning">已耗尽</span><span class="chip chip--warning">仅摘要</span></span></td>
+                <td><span class="chip chip--neutral mono">secret</span></td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="rpt-2026-09-22-c9a5f7">
+                    <span class="mono">rpt-2026-09-22-c9a5f7</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="sha256:a30e7c145f9b2d86e1c4a07b96d3f52a08b7e6c14d2a9f35c75e18b06a03d94f">
+                    <span class="mono">sha256:a30e7c145f9b2d86e1c4a07b96d3f52a08b7e6c14d2a9f35c75e18b06a03d94f</span>
+                  </div>
+                </td>
+                <td><time datetime="2026-09-22T11:36:20.000Z">2026-09-22 11:36:20 UTC</time></td>
+                <td class="cell-actions"><a class="link" href="report.html">查看报告</a></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="run-2026-09-22-d4e7b1-prompt-v7-对照">
+                    <a class="link link--identity" href="report.html">run-2026-09-22-d4e7b1-prompt-v7-对照</a>
+                  </div>
+                </td>
+                <td><span class="chip chip--warning">预算耗尽</span></td>
+                <td><span class="chip chip--warning">部分缺失</span></td>
+                <td><span class="chip chip--unknown">未评估</span></td>
+                <td><span class="cell-chips"><span class="chip chip--warning">已耗尽</span><span class="chip chip--neutral">可回溯</span></span></td>
+                <td><span class="chip chip--neutral mono">sensitive</span></td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="rpt-2026-09-22-d4e7b1">
+                    <span class="mono">rpt-2026-09-22-d4e7b1</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="sha256:5bd8f012a7c3e9463f10d5b8c96a2e7414b0f9a3d8e5c26762a91b0ff3d47c58">
+                    <span class="mono">sha256:5bd8f012a7c3e9463f10d5b8c96a2e7414b0f9a3d8e5c26762a91b0ff3d47c58</span>
+                  </div>
+                </td>
+                <td><time datetime="2026-09-22T10:04:55.000Z">2026-09-22 10:04:55 UTC</time></td>
+                <td class="cell-actions"><a class="link" href="report.html">查看报告</a></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="run-2026-09-22-e8c2a6-评委口径一致性">
+                    <a class="link link--identity" href="report.html">run-2026-09-22-e8c2a6-评委口径一致性</a>
+                  </div>
+                </td>
+                <td><span class="chip chip--warning">已取消</span></td>
+                <td><span class="chip chip--warning">部分缺失</span></td>
+                <td><span class="chip chip--warning">证据不足</span></td>
+                <td><span class="cell-chips"><span class="chip chip--success">预算内</span><span class="chip chip--warning">仅摘要</span></span></td>
+                <td><span class="chip chip--neutral mono">public</span></td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="rpt-2026-09-22-e8c2a6-评委口径一致性">
+                    <span class="mono">rpt-2026-09-22-e8c2a6-评委口径一致性</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="sha256:e4c1907a2d6b5f38a0c8e15d73b9d24fc6f01a8b59d3e7c20b48a6f1d27e95c3">
+                    <span class="mono">sha256:e4c1907a2d6b5f38a0c8e15d73b9d24fc6f01a8b59d3e7c20b48a6f1d27e95c3</span>
+                  </div>
+                </td>
+                <td><time datetime="2026-09-22T09:20:07.000Z">2026-09-22 09:20:07 UTC</time></td>
+                <td class="cell-actions"><a class="link" href="report.html">查看报告</a></td>
+              </tr>
+
+              <tr>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="run-2026-09-22-f1b6d3-长文档检索延迟">
+                    <a class="link link--identity" href="report.html">run-2026-09-22-f1b6d3-长文档检索延迟</a>
+                  </div>
+                </td>
+                <td><span class="chip chip--error">失败</span></td>
+                <td><span class="chip chip--error">无法解析</span></td>
+                <td><span class="chip chip--unknown">未评估</span></td>
+                <td><span class="cell-chips"><span class="chip chip--warning">已耗尽</span><span class="chip chip--warning">仅摘要</span></span></td>
+                <td><span class="chip chip--neutral mono">gold</span></td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="rpt-2026-09-22-f1b6d3">
+                    <span class="mono">rpt-2026-09-22-f1b6d3</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-id" data-audit-truncate title="sha256:1a94d7c0e3b26f580c7ae41d95f3b826d1e0c95a68b7f4a32c5d10e9f7a6b3d4">
+                    <span class="mono">sha256:1a94d7c0e3b26f580c7ae41d95f3b826d1e0c95a68b7f4a32c5d10e9f7a6b3d4</span>
+                  </div>
+                </td>
+                <td><time datetime="2026-09-22T08:47:12.000Z">2026-09-22 08:47:12 UTC</time></td>
+                <td class="cell-actions"><a class="link" href="report.html">查看报告</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <nav class="pager" aria-label="分页">
+        <button type="button" class="btn btn--quiet" aria-label="上一页" disabled>
+          <svg class="icon icon--inline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>
+        </button>
+        <button type="button" class="btn" aria-current="page">1</button>
+        <button type="button" class="btn btn--quiet" aria-label="下一页" disabled>
+          <svg class="icon icon--inline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+        </button>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<script src="spec-switch.js"></script>
+<script src="audit.js"></script>
+</body>
+</html>
