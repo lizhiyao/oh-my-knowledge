@@ -42,6 +42,7 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 
 ## Migration and design specs
 
+- [Contributing guide](./guides/contributing.md) — branch model, local gates, release process.
 - [General sample proposal (draft)](./specs/general-sample-proposal.md)
 
 - [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/storage-layout-spec.md)

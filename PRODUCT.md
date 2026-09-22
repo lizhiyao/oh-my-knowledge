@@ -1,6 +1,6 @@
 # OMK 产品定位
 
-> English companion: [PRODUCT.en.md](./PRODUCT.en.md), maintained section by section; this Chinese file is authoritative when the two differ.
+本文件只维护中文：它是内部产品定位与口径记录。对外的双语表达在 README 与文档站，不在这里做副本。
 
 <!-- impeccable:product-schema 1 -->
 
