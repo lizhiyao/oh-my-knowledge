@@ -8,8 +8,9 @@
 <link rel="stylesheet" href="base.css">
 <style>
 /*
- * 待收敛：以下页面级角色在 base.css 里没有对应组件，先在本页就地补，全部只取 --studio-* 值。
- * 收敛方向是把这些并进 base.css（报告详情与评测记录共用同一副骨架），不留在一页的 style 里。
+ * 待收敛：base.css 缺下面这些页面级角色，只在页内补齐，不动组件层与 token 层。
+ * 收敛方向是并进 base.css——报告详情与评测记录共用同一副骨架，不留在一页的 style 里。
+ * 颜色、字号、间距与圆角一律取 --studio-*；网格轨道只用 fr 与 0，不引入新的像素尺寸。
  *
  * .panes--split —— base.css 的 .panes 只有三栏与堆叠两档，报告详情要「判断栏 + 证据栏」两栏。
  * .pane-column  —— 栏内纵向堆叠多个 .pane；.panes 的网格子项没有堆叠角色。
@@ -132,30 +133,26 @@ h2.pane-head {
         <input class="input" id="q" type="search" placeholder="标题、路径或项目名">
       </div>
 
-      <div class="nav-group" style="margin-top:var(--studio-space-4)">
+      <div class="nav-group">
         <p class="nav-group-title">项目</p>
-        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="observe.html" aria-current="true">
-          <span>
-            <span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span>
-            <span class="meta" data-audit-contrast>12 个对话</span>
-          </span>
+        <a class="side-row" href="observe.html" aria-current="true">
+          <span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span>
+          <span class="meta" data-audit-contrast>12 个对话</span>
         </a>
-        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="observe.html">
-          <span>
-            <span class="list-title" data-audit-truncate title="example-miniapp">example-miniapp</span>
-            <span class="meta" data-audit-contrast>4 个对话</span>
-          </span>
+        <a class="side-row" href="observe.html">
+          <span class="list-title" data-audit-truncate title="example-miniapp">example-miniapp</span>
+          <span class="meta" data-audit-contrast>4 个对话</span>
         </a>
       </div>
 
-      <div class="nav-group" style="margin-top:var(--studio-space-4)">
+      <div class="nav-group">
         <p class="nav-group-title">独立对话</p>
-        <a class="list-row" style="min-height:auto;padding:6px 10px;border:0" href="observe.html">
+        <a class="side-row" href="observe.html">
           <span class="list-title" data-audit-truncate title="梳理评委口径的讨论记录">梳理评委口径的讨论记录</span>
         </a>
       </div>
 
-      <div class="nav-group" style="margin-top:var(--studio-space-4)">
+      <div class="nav-group">
         <a class="nav-item" href="observe.html">查看全部对话</a>
         <a class="nav-item" href="observe.html">进行中的对话</a>
       </div>
@@ -173,8 +170,8 @@ h2.pane-head {
     <header class="page-head">
       <div style="min-width:0">
         <p class="meta"><a class="link" href="measure.html">返回评测记录</a></p>
-        <h1 class="page-title mono" data-audit-truncate style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="core-run-2026-09-22-skill-map-showcase-v18">core-run-2026-09-22-skill-map-showcase-v18</h1>
-        <p class="page-desc" data-audit-contrast>创建时间 2026-09-22 13:41:07 UTC</p>
+        <h1 class="page-title mono" data-audit-truncate style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="run-2026-09-22-b2d8e4-skill路由回归">run-2026-09-22-b2d8e4-skill路由回归</h1>
+        <p class="page-desc" data-audit-contrast>创建时间 2026-09-22 13:58:41 UTC</p>
       </div>
     </header>
 
@@ -489,7 +486,7 @@ h2.pane-head {
                 <div class="list-row">
                   <span>
                     <span class="list-title" data-audit-truncate title="sample-routing-19">sample-routing-19</span>
-                    <span class="meta">试次 0 · <code class="mono">trial-5</code> · <span class="chip chip--warning">未评估</span> · <code class="mono">execution-record-unavailable</code></span>
+                    <span class="meta">试次 0 · <code class="mono">trial-5</code> · <span class="chip chip--unknown">未评估</span> · <code class="mono">execution-record-unavailable</code></span>
                   </span>
                   <a class="link" href="#evidence-evaluation">评价记录</a>
                 </div>
@@ -770,11 +767,11 @@ h2.pane-head {
             <div class="table-wrap table-scroll" data-audit-region="产物身份字段表">
               <table class="table table--compact">
                 <tbody>
-                  <tr><th scope="row">运行 ID</th><td class="cell-id mono" data-audit-truncate title="core-run-2026-09-22-skill-map-showcase-v18">core-run-2026-09-22-skill-map-showcase-v18</td></tr>
-                  <tr><th scope="row">报告 ID</th><td class="cell-id mono" data-audit-truncate title="core-run-2026-09-22-skill-map-showcase-v18.report">core-run-2026-09-22-skill-map-showcase-v18.report</td></tr>
+                  <tr><th scope="row">运行 ID</th><td class="cell-id mono" data-audit-truncate title="run-2026-09-22-b2d8e4-skill路由回归">run-2026-09-22-b2d8e4-skill路由回归</td></tr>
+                  <tr><th scope="row">报告 ID</th><td class="cell-id mono" data-audit-truncate title="rpt-2026-09-22-b2d8e4-skill路由回归">rpt-2026-09-22-b2d8e4-skill路由回归</td></tr>
                   <tr><th scope="row">运行契约摘要</th><td class="cell-id mono" data-audit-truncate title="sha256:1ba1782345c6b62d1ba1782345c6b62d1ba1782345c6b62d1ba1782345c6b62d">sha256:1ba1782345c6b62d1ba1782345c6b62d1ba1782345c6b62d1ba1782345c6b62d</td></tr>
                   <tr><th scope="row">报告摘要</th><td class="cell-id mono" data-audit-truncate title="sha256:2cb2893456d7c73e2cb2893456d7c73e2cb2893456d7c73e2cb2893456d7c73e">sha256:2cb2893456d7c73e2cb2893456d7c73e2cb2893456d7c73e2cb2893456d7c73e</td></tr>
-                  <tr><th scope="row">产物集摘要</th><td class="cell-id mono" data-audit-truncate title="sha256:3dc39a4567e8d84f3dc39a4567e8d84f3dc39a4567e8d84f3dc39a4567e8d84f">sha256:3dc39a4567e8d84f3dc39a4567e8d84f3dc39a4567e8d84f3dc39a4567e8d84f</td></tr>
+                  <tr><th scope="row">产物集摘要</th><td class="cell-id mono" data-audit-truncate title="sha256:7c1f5b0e3d9a64c285be10f7d2a49c6310e8b7f56a2d3c94f80b17ae5d4c2306">sha256:7c1f5b0e3d9a64c285be10f7d2a49c6310e8b7f56a2d3c94f80b17ae5d4c2306</td></tr>
                   <tr><th scope="row">可重放性</th><td class="meta">执行 <span class="chip chip--success">自包含</span> · 评价 <span class="chip chip--neutral">可回溯</span></td></tr>
                   <tr><th scope="row">最高数据分级</th><td class="mono">sensitive</td></tr>
                   <tr><th scope="row">来源</th><td class="mono">native verified parents=—</td></tr>
@@ -896,7 +893,7 @@ h2.pane-head {
                       <td class="mono">trial-5</td>
                       <td class="mono">evaluator-judge-grounding</td>
                       <td class="mono">instrument-grounding / member-1 / replicate-2 / 0</td>
-                      <td><span class="chip chip--warning">未评估</span></td>
+                      <td><span class="chip chip--unknown">未评估</span></td>
                       <td class="cell-id mono" data-audit-truncate title="evaluator-llm-judge-grounding@0.9.4 · sha256:77916e0fa42b1c8377916e0fa42b1c8377916e0fa42b1c8377916e0fa42b1c83 · content-derived · declared">evaluator-llm-judge-grounding@0.9.4 · sha256:77916e0fa42b1c8377916e0fa42b1c8377916e0fa42b1c83 · content-derived · declared</td>
                       <td class="mono">imported declared parents=—</td>
                       <td class="mono">—</td>
@@ -913,6 +910,10 @@ h2.pane-head {
               <div>
                 未评估 与 部分缺失 是两处独立观测：这一行的 <code class="mono">来源</code> 是 <code class="mono">imported declared</code>，父执行记录不可得（<code class="mono">execution-record-unavailable</code>），所以没有用量与观测值。
                 缺席的字段不补 <code class="mono">0</code>。
+                未评估 这枚徽标用虚线边的 <code class="mono">chip--unknown</code>，与「评测记录」列表页同一提案：
+                现网 <code class="mono">statusTone</code> 把 <code class="mono">not-evaluated</code> 与
+                <code class="mono">inconclusive</code> 都归 warning 档，两者同为实线告警色；这里把
+                「没给出判断」与「给出了不可判断」分开，是呈现层提案，不改评分口径。
               </div>
             </div>
           </div>
