@@ -53,7 +53,7 @@ const zhCopy = {
   colHealth: '健康度',
   colSessions: '来源会话',
   colSegments: '段',
-  colSkills: '技能',
+  colSkills: 'Skill',
   bandGreen: '健康',
   bandYellow: '待观察',
   bandRed: '需关注',
