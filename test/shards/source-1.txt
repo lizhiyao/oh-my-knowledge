@@ -202,4 +202,5 @@ test/studio/web/observe-workspace.test.tsx
 test/studio/web/run-report-link.test.tsx
 test/studio/web/tab-url.test.ts
 test/studio/web/terminology-guard.test.ts
+test/studio/web/bilingual-copy.test.ts
 test/studio/web/settings-language.test.ts

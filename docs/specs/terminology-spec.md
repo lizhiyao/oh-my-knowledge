@@ -413,6 +413,16 @@ Two identities are deliberately frozen and keep the old word:
 
 Core's published `admit*` capability API (`admitExecutionBundle` and siblings) and the Series member field `admissionStatus` are two further senses. Both are external surface, so they are renamed only after an explicit vocabulary decision, not as part of an internal sweep.
 
+### 6. Bilingual completeness of user-facing copy
+
+Every user-facing string must exist in both languages. Two mechanisms already satisfy this and stay in use: the CLI runtime dictionary (`tCli()` plus `src/cli/lib/i18n-dict/`, whose zh/en key parity is asserted by `test/cli-i18n.test.ts`) and oclif's `bilingual({ zh, en })` for static help. Studio keeps its copy inline as `lang === 'zh' ? … : …`; that is a deliberate choice, not debt to be paid down with a framework.
+
+Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a central dictionary. The gap this rule closes is missed translation, and a dictionary does not detect it — a key added on one side only is exactly as easy to forget as a branch. What carries the rule instead:
+
+- `test/studio/web/bilingual-copy.test.ts` fails when the English branch of a language conditional still carries Chinese. It deliberately checks only that direction: measured over the current tree, the opposite test (the Chinese branch must contain Chinese) fires on separators, language codes, brand plurals and file names, which would only produce an exemption list.
+- Where copy is shared across components, use the stronger existing construct — `Record<Lang, Record<Key, string>>` with an accessor (`src/observability/inbox/metric-semantics.ts`, `src/studio/application/knowledge/candidate-status.ts`), or `const enCopy: typeof zhCopy` (`src/studio/web/components/observe/health.tsx`). A missing key there is a compile error, which beats any runtime lookup.
+- Copy that belongs to one component stays in that component.
+
 ## 6. Term mapping
 
 | Old term | New standard term | Note |
