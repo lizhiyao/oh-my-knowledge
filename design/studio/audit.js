@@ -59,7 +59,7 @@
   }
 
   function exemptionOf(el, fg) {
-    if (fg.a === 0) return '文字不可见（加载态以 spinner 承载）';
+    if (fg.a === 0) return '文字被隐去（加载态由 spinner 或骨架条承载，无前景色可比）';
     if (el.closest('.sr-only,[aria-hidden="true"]')) return '仅供屏幕阅读器，不参与视觉对比度';
     if (el.closest(':disabled,[aria-disabled="true"],.skeleton')) return '禁用态或骨架，WCAG 不设对比度要求';
     return null;

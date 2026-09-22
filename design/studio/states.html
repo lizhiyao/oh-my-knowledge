@@ -190,9 +190,9 @@ body { display: flex; flex-direction: column; }
 }
 
 /* 以下四组复刻 base.css「补全状态」一节的按下档，声明逐条照抄、不换设计。
-   选择器分组与 base.css 保持一致：侧栏工作区行 .side-row 与导航、列表行共用同一条规则；
-   矩阵当前没有 .side-row 的行，也没有「当前项＋按下」「选中项＋按下」两格，
-   这两组的取值仍在这里列出，供评审与 base.css 逐条对照。 */
+   选择器分组与 base.css 保持一致：侧栏工作区行 .side-row 与导航、列表行共用同一条规则，
+   第 4 节已单列一行 .side-row，六档与「当前项」都能就地核对。
+   「当前项＋按下」「选中项＋按下」两组仍作为对照列出，供与 base.css 逐条比对。 */
 .nav-item.state-preview[data-state='active'],
 .list-row.state-preview[data-state='active'],
 .side-row.state-preview[data-state='active'] {
@@ -673,6 +673,16 @@ body { display: flex; flex-direction: column; }
               <td><a class="list-row" href="observe.html" aria-disabled="true" data-audit-contrast><span><span class="list-title">oh-my-knowledge</span><span class="meta">12 个对话</span></span></a></td>
               <td><a class="list-row" href="observe.html" data-loading="true" aria-busy="true" data-audit-contrast><span><span class="list-title">oh-my-knowledge</span><span class="meta">12 个对话</span></span></a></td>
               <td><a class="list-row" aria-current="true" href="observe.html"><span><span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span><span class="meta">12 个对话</span></span></a></td>
+            </tr>
+            <tr>
+              <th scope="row">侧栏工作区行<p class="meta">外壳左侧栏里的项目与对话条目，取值与双行列表行同一组声明</p></th>
+              <td><a class="side-row" href="observe.html"><span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
+              <td><a class="side-row state-preview" data-state="hover" href="observe.html"><span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
+              <td><a class="side-row state-preview" data-state="active" href="observe.html" data-audit-contrast><span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
+              <td><a class="side-row state-preview" data-state="focus" href="observe.html"><span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
+              <td><a class="side-row" href="observe.html" aria-disabled="true" data-audit-contrast><span class="list-title">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
+              <td><a class="side-row" href="observe.html" data-loading="true" aria-busy="true" data-audit-contrast><span class="list-title">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
+              <td><a class="side-row" aria-current="true" href="observe.html"><span class="list-title" data-audit-truncate title="oh-my-knowledge">oh-my-knowledge</span><span class="meta">12 个对话</span></a></td>
             </tr>
           </tbody>
         </table>
