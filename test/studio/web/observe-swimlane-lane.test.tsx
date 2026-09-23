@@ -29,7 +29,9 @@ describe('泳道标签', () => {
 
   it('short 档由 CSS 收掉说明而不是留下压字的文本', () => {
     assert.match(css, /\.swimlane-label\[data-density="short"\] span\{display:none\}/);
-    assert.match(css, /\.swimlane-label\{padding:8px 12px;overflow:hidden\}/);
+    // 钉的是「有内边距且溢出裁字」，不钉具体像素：阶梯值已由 --studio-space-* 统一给出，
+    // 写死数字会让这条变成对实现细节的耦合（见 studio-type-scale.test.ts 的间距 token 不变量）。
+    assert.match(css, /\.swimlane-label\{padding:var\(--studio-space-3\) var\(--studio-space-4\);overflow:hidden\}/);
   });
 
   it('英文同一口径，空泳道仍说明没有记录', () => {
