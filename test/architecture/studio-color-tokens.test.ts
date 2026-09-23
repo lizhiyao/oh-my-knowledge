@@ -155,6 +155,17 @@ describe('Studio 配色 token 单一来源', () => {
     }
   });
 
+  it('结构边界色只有一个来源，样式里不再散写 #e2e6ee', () => {
+    // 这条与圆角那条同一口径：现网的分隔线本来就是同一个灰，只是散在 38 处字面量里。
+    // 换成 token 不改变任何取值，改的是「谁来定义它」——同值替换可由真实页面的计算样式核对。
+    expect(css).toContain('--studio-edge-default:#e2e6ee');
+    const outside = css
+      .split('}')
+      .filter((rule) => !rule.includes(':root{'))
+      .filter((rule) => /#e2e6ee/i.test(rule));
+    expect(outside, '这些规则仍在字面写结构边界色').toEqual([]);
+  });
+
   it('列表行悬停只加底色，文字保持墨色层级', () => {
     // 规范里导航／列表行用墨色层级，正文链接才用品牌色层级。会话行本身没有悬停文字色时，
     // 会继承 antd 的链接悬停色，所以这一档要显式给出，写法与其它侧栏行一致。
