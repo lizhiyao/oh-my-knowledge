@@ -92,6 +92,37 @@ describe('Studio 页级标题尺度', () => {
       .not.toMatch(/ant-table-thead>tr>th\{[^}]*position:sticky/);
   });
 
+  it('响应式断点只有阶梯上的三个宽度档', () => {
+    // 第九批把 600／700／760／1000／1100 五个宽度值收到 1280／1024／860 三档，
+    // 与原型 design/studio/base.css 的退化决定逐档对齐（原型是这套外壳与三栏核对的设计来源）：
+    // 1280 管「候选三栏→两栏」，1024 管「侧栏收窄、阅读页头紧凑、候选两栏→单栏」，
+    // 860 管「整个应用切抽屉导航，页头、工具条与时间轴一起退到窄屏形态」。
+    // 同一档保留多个块是刻意的：块与块之间有先后，合并成一个块会改变层叠顺序。
+    // 高度档不参与宽度阶梯——它管候选起始页在矮窗口里的纵向紧凑。
+    const widths = [...new Set([...css.matchAll(/@media\(max-width:(\d+)px\)/g)].map((m) => Number(m[1])))];
+    expect([...widths].sort((a, b) => a - b), '断点又长出了阶梯外的宽度档').toEqual([860, 1024, 1280]);
+    const heights = [...new Set([...css.matchAll(/@media\(max-height:(\d+)px\)/g)].map((m) => Number(m[1])))];
+    expect(heights, '高度档应只有一个，且明确不参与宽度阶梯').toEqual([700]);
+    // 860 档把侧栏变成盖在内容上的抽屉，那它必须自带两条关闭路径：Esc 与遮罩点击。
+    // 真实页面上量过：接这两条之前，抽屉点开只能再点页头那个按钮收回去，Esc 按了没反应。
+    // 同一档有多个块（见上），因此按块收集而不是只取第一个。
+    const blocksOf = (condition: string) =>
+      [...css.matchAll(new RegExp(`@media\\(${condition}\\)\\{`, 'g'))].map((m) => {
+        let depth = 1;
+        let i = m.index + m[0].length;
+        while (i < css.length && depth > 0) {
+          if (css[i] === '{') depth += 1;
+          else if (css[i] === '}') depth -= 1;
+          i += 1;
+        }
+        return css.slice(m.index + m[0].length, i - 1);
+      });
+    const step860 = blocksOf('max-width:860px');
+    expect(step860.length, '一个 860 档的块都没量到，扫描口径失效').toBeGreaterThan(0);
+    expect(step860.join('\n'), '抽屉没有遮罩层：点内容区收不掉它').toContain('.studio-app.sidebar-open .studio-scrim{');
+    expect(css, '遮罩在宽屏上也会显示：桌面态会被盖住').toContain('.studio-scrim{display:none}');
+  });
+
   it('对话阅读正文取 15px/27px', () => {
     const reader = css.match(/\.observe-reading-message\{[^}]*\}/);
     expect(reader, '找不到对话阅读正文规则').not.toBeNull();

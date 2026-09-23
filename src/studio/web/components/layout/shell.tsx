@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { StudioUtilities } from './utilities';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
 import { AGENTS_INDEX_PATH, KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import zhCN from 'antd/locale/zh_CN';
@@ -69,7 +69,20 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
   const zh = lang === 'zh';
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const drawerToggle = useRef<HTMLButtonElement>(null);
   useEffect(() => { setCollapsed(readCollapsed()); }, []);
+  // 抽屉是覆盖在内容上的，读者要能不回到页头就把它收掉：Esc 与遮罩点击都关闭，
+  // 关闭后焦点回到触发它的那个按钮，否则键盘读者会掉回页面顶部重新找。
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      drawerToggle.current?.focus();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => { window.removeEventListener('keydown', onKeyDown); };
+  }, [open]);
   function toggleCollapsed() {
     setCollapsed(value => {
       const next = !value;
@@ -87,9 +100,10 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
   return <ConfigProvider locale={zh ? zhCN : enUS}>
     <div className={`studio-app${open ? ' sidebar-open' : ''}${collapsed ? ' sidebar-collapsed' : ''}`}>
       <header className="studio-mobile-bar">
-        <button type="button" className="studio-sidebar-toggle" aria-expanded={open} aria-label={zh ? '打开导航与列表' : 'Open navigation and lists'} onClick={() => setOpen(value => !value)}>☰</button>
+        <button ref={drawerToggle} type="button" className="studio-sidebar-toggle" aria-expanded={open} aria-label={zh ? '打开导航与列表' : 'Open navigation and lists'} onClick={() => setOpen(value => !value)}>☰</button>
         <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
       </header>
+      {open ? <div className="studio-scrim" aria-hidden="true" onClick={() => { setOpen(false); drawerToggle.current?.focus(); }}/> : null}
       <aside className="studio-sidebar" onClick={event => { if ((event.target as HTMLElement).closest('a')) setOpen(false); }}>
         <div className="studio-sidebar-head">
           <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
