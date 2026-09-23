@@ -57,7 +57,7 @@ function readCollapsed(): boolean {
 
 /** 图标跟随状态：收起按钮是「面板 + 指向面板的左箭头」，展开按钮是「面板 + 离开面板的右箭头」，两态互换即语义互逆。 */
 function PanelIcon({ direction }: { direction: 'collapse' | 'expand' }) {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect x="3" y="4" width="18" height="16" rx="2"/>
     <line x1="9.5" y1="4" x2="9.5" y2="20"/>
     {direction === 'collapse' ? <polyline points="16.5 9.5 13.5 12 16.5 14.5"/> : <polyline points="12.5 9.5 15.5 12 12.5 14.5"/>}
