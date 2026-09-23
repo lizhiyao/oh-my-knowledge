@@ -188,12 +188,12 @@ describe('Core Studio catalog', () => {
     for (const comparison of detail.comparisons) {
       assert.ok(
         detail.targets.some((target) => target.targetId === comparison.controlTargetId),
-        '基准版必须是被投影出来的被测版本',
+        '对照组必须是同页已投影的被测版本',
       );
       for (const treatment of comparison.treatmentTargetIds) {
         assert.ok(
           detail.targets.some((target) => target.targetId === treatment),
-          '候选版必须是被投影出来的被测版本',
+          '实验组必须是同页已投影的被测版本',
         );
       }
     }
