@@ -172,7 +172,7 @@ export interface CoreStudioRunDetail {
   }[];
   /**
    * 一次比较的两方角色，取自 `plan.definition.comparisons`，只读投影、不参与评分口径。
-   * 报告页靠它区分「基准版」与「候选版」；此前只有 targetId 列表，读者得自己记住哪个是原版。
+   * 报告页靠它区分「对照组」与「实验组」；此前只有 targetId 列表，读者得自己记住哪边是参照侧。
    */
   readonly comparisons: readonly {
     readonly comparisonId: string;

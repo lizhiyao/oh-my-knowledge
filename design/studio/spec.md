@@ -145,7 +145,7 @@ node design/studio/audit-summary.mjs <输出目录>      # 打印结论表与未
 | 保留／舍弃／修订与各自成功文案 | 已实现 | `knowledge/candidates.tsx:164-168,210-211` |
 | 来源不可用告警、多来源共享证据片段选择器、`原始记录及相邻上下文` | 已实现 | `knowledge/candidates.tsx:173-177` |
 | 报告详情「结果摘要」 | 契约已有，Studio 未投影 | `src/eval-core/contracts/artifacts.ts:517`（`summaries`）未进 `CoreStudioRunDetail` |
-| 报告详情「比较条件」 | 角色已投影，可比性仍是缺口 | 基准版／候选版角色来自 `plan.definition.comparisons` 的 `controlTargetId`／`treatmentTargetIds`（`src/eval-core/contracts/definition.ts:275-279`），已由 `CoreStudioRunDetail.comparisons` 只读投影到报告页，不改任何评分口径。**可比性评估仍未接**：它落在 series 文档（`contracts/series.ts:201`），不在 Studio 加载的运行产物集（`StoredCoreRunArtifacts`＝manifest／plan／四个 bundle／report）里，要接得先决定读哪一份文档，属独立一步。 |
+| 报告详情「比较条件」 | 角色已投影，可比性仍是缺口 | 对照组／实验组角色来自 `plan.definition.comparisons` 的 `controlTargetId`／`treatmentTargetIds`（`src/eval-core/contracts/definition.ts:275-279`），已由 `CoreStudioRunDetail.comparisons` 只读投影到报告页，不改任何评分口径。**可比性评估仍未接**：它落在 series 文档（`contracts/series.ts:201`），不在 Studio 加载的运行产物集（`StoredCoreRunArtifacts`＝manifest／plan／四个 bundle／report）里，要接得先决定读哪一份文档，属独立一步。 |
 | 报告详情「结论限制」与「逐用例证据入口」 | 已删除，不再作为入口 | 2026-09-23 决定：产品里没有承载「结论限制」的字段（运行视图无 limitations，可比性原因码被 `COMPARABILITY_REASON_CODES` 与 `REASON_CLASSIFICATION` 限死），按用例定位证据也没有路由参数（`run-report-link.ts` 只产出按运行 ID 的地址）。两者都不做成功能，稿子里的这两块已删除，避免示意图变成对外承诺。数据本身仍在页面上（执行记录／评价记录两张表带用例与试次列）。 |
 | 危险按钮 | 三域当前不存在，待确认 | 观测／评测／知识页面均无该角色 |
 
@@ -201,7 +201,7 @@ node design/studio/audit-summary.mjs <输出目录>      # 打印结论表与未
 6. **元信息文字色统一**：12px 角色一律 `--studio-ink-muted`。验收：着色表面上无 <4.5:1 的元信息。〔已完成，PR #1068。〕
 7. **断点收敛**：以 1440/1280/1024/860/720 替换 700/760/1100。验收：六视口 × 四页面页面级零溢出、零裁切区。
 8. **结果摘要投影**：把 `EvaluationReportSchema.summaries` 投影进 `CoreStudioRunDetail` 并渲染。验收：渲染输出断言覆盖有值与缺值两分支；不改评分语义。
-9. **比较条件投影**：comparability 契约进 view-model。〔部分完成：措辞已由 owner 定为 `基准版／候选版`（英文 `Baseline／Candidate`），角色已进 view-model 并在报告页只读呈现，`test/studio/application/core-run-catalog.test.ts` 钉住它逐字等于 `plan.definition.comparisons`、且两方都必须是同一页已投影的被测版本。可比性评估未接——它不在运行产物集里，见第五节该行。〕
+9. **比较条件投影**：comparability 契约进 view-model。〔部分完成：措辞已由 owner 定为 `对照组／实验组`（英文 `Control／Treatment`），与 CLI、CLI 参考文档与词汇表逐字一致；此前中文术语表里 `treatment` 还留着「干预组（实验组）」与「处理组」两个异名，已一并收成「实验组」，角色已进 view-model 并在报告页只读呈现，`test/studio/application/core-run-catalog.test.ts` 钉住它逐字等于 `plan.definition.comparisons`、且两方都必须是同一页已投影的被测版本。可比性评估未接——它不在运行产物集里，见第五节该行。〕
 10. ~~结论限制与逐用例证据入口~~：〔2026-09-23 决定不做，已从报告稿中删除。当前无字段、无路由，不新增能力。〕
 11. **按下档接入**：`--studio-surface-press`（`#EAEEF6`）目前只存在于本目录。真实页面量到会话行、一级导航非当前项、工具入口三处「按下与悬停同色」，读者无法从视觉上区分「正要点下去」和「只是停在这」。验收：同一批控件在派发 `mousePressed` 后底色比悬停档深一档，且松开即回弹。〔已完成（第六批）：五处表面接入，并顺带修掉「选中行悬停被压浅」的回归（`:not(.selected)` 与一级导航的 `:not([aria-current])` 同口径）。候选列表行没有在线数据，只有门禁与原型证据。〕
 

@@ -74,7 +74,7 @@
 枚举：
 
 - `control` — 对照组，提供基线测量
-- `treatment` — 干预组（实验组），对比 control 看变化
+- `treatment` — 实验组，对比 control 看变化
 
 规则：
 
@@ -170,7 +170,7 @@ Sample schema 含一组可选元数据字段，纯文档 / 诊断用，**不参�
 | `experiment` | 预先登记的试验、种子、重采样与决策设计。 |
 | `policy` | 执行、评测、证据、重试、预算与失败处理的运行限值。 |
 | `run` | 一次按封存评测设计执行的运行，由 `runId` 标识。 |
-| `comparison` | 分析所消费的对照组／处理组关系声明。 |
+| `comparison` | 分析所消费的对照组／实验组关系声明。 |
 | `verdict` | Decision 的结果，例如 `PROGRESS`／`NOISE`；它不是原始分数。 |
 | `evidence` | 支撑某一观测或结论的、已分类且可归属的事实。 |
 | `report` | 经认证的运行产物与 Decision 的物化投影。 |
