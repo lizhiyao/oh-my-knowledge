@@ -45,6 +45,21 @@ describe('Studio 页级标题尺度', () => {
     expect(raw, "出现了未走 token 的圆角").toEqual([]);
   });
 
+  it('间距走 token：阶梯值不再以字面量出现在布局声明里', () => {
+    // 规范 §3.2 的阶梯是 4/8/12/16/20/24/32。这条只钉「同一个值只有一个来源」，
+    // 不钉「所有间距都必须在阶梯上」——现网仍有 97 条一次性值（0 14px、8px 7px 等），
+    // 把它们归档会挪动整站元素（实测 2305/3290 个元素尺寸或位置变化、无溢出），
+    // 属需要看观感的布局决定，不在这一条里偷偷做。
+    for (const [n, px] of [['2', 4], ['3', 8], ['4', 12], ['5', 16], ['6', 20], ['7', 24], ['9', 32]] as const) {
+      expect(css, `缺少 --studio-space-${n}（${px}px）`).toContain(`--studio-space-${n}:${px}px`);
+    }
+    const ladder = /\b(?:4|8|12|16|20|24|32)px\b/;
+    const offenders = [...css.matchAll(/(padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:\s*([^;}]+)/g)]
+      .filter(([, , value]) => !value.includes(':root') && ladder.test(value) && !/var\(--studio-space/.test(value))
+      .map((m) => `${m[1]}:${m[2].trim()}`);
+    expect(offenders, '这些布局声明仍把阶梯值写死').toEqual([]);
+  });
+
   it('长表的数字列保持等宽', () => {
     // 数字列不等宽时，耗时与用量的位数对不齐，跨行比较要逐字看。这条在真实页面上量得到
     // （knowledge／measure 的表格单元格计算值为 tabular-nums），单元格不换行由同一条规则钉住。
