@@ -296,6 +296,12 @@ export function projectCoreStudioRunDetail(
       protocolId: target.protocolId,
       executorId: target.executorId,
     })),
+    comparisons: source.plan.definition.comparisons.map((comparison) => ({
+      comparisonId: comparison.comparisonId,
+      controlTargetId: comparison.controlTargetId,
+      treatmentTargetIds: [...comparison.treatmentTargetIds],
+      metricIds: [...comparison.metricIds],
+    })),
     evaluators: source.plan.evaluation.evaluators.map((evaluator) => ({
       evaluatorId: evaluator.evaluatorId,
       evaluatorKind: evaluator.evaluatorKind,

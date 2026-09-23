@@ -25,8 +25,7 @@ export interface CoreStudioRunCard {
   readonly maximumCapturedClassification: 'public' | 'sensitive' | 'secret' | 'gold';
 }
 
-export interface CoreStudioRuntimeIdentity {
-  readonly implementationId: string;
+export interface CoreStudioRuntimeIdentity {  readonly implementationId: string;
   readonly version?: string;
   readonly fingerprint: string;
   readonly fingerprintBasis: 'content-derived' | 'environment-derived' | 'self-reported' | 'opaque';
@@ -39,8 +38,7 @@ export interface CoreStudioProvenance {
   readonly parentDigests: readonly string[];
 }
 
-export interface CoreStudioUsage {
-  readonly inputTokens?: number;
+export interface CoreStudioUsage {  readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly totalTokens?: number;
   readonly providerCost?: {
@@ -171,6 +169,16 @@ export interface CoreStudioRunDetail {
     readonly targetKind: string;
     readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
     readonly executorId: string;
+  }[];
+  /**
+   * 一次比较的两方角色，取自 `plan.definition.comparisons`，只读投影、不参与评分口径。
+   * 报告页靠它区分「基准版」与「候选版」；此前只有 targetId 列表，读者得自己记住哪个是原版。
+   */
+  readonly comparisons: readonly {
+    readonly comparisonId: string;
+    readonly controlTargetId: string;
+    readonly treatmentTargetIds: readonly string[];
+    readonly metricIds: readonly string[];
   }[];
   readonly evaluators: readonly {
     readonly evaluatorId: string;
