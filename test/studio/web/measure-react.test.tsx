@@ -83,6 +83,10 @@ describe('measure react detail keeps every projected fact in the served document
     const holders = html.match(/ant-table-sticky-holder/g)?.length ?? 0;
     assert.ok(tables >= 8, `报告页应有 8 张表，实际量到 ${tables} 张`);
     assert.equal(holders, tables, '这些表没吃到 sticky：表头仍在横向滚动容器里面');
+    // 纯字符串身份列必须带 ellipsis：省略号由样式给，完整内容出口由 antd 的自动 title 给，
+    // 两者缺一个都会让长标识被静默裁断。
+    const ellipsed = html.match(/ant-table-cell-ellipsis/g)?.length ?? 0;
+    assert.ok(ellipsed >= 5, `身份列的省略出口只剩 ${ellipsed} 处`);
     for (const label of ['Targets', 'Comparison', 'Evaluators', 'Metrics']) {
       assert.ok(html.includes(`<h3>${label}</h3>`), `table block needs its own heading: ${label}`);
     }

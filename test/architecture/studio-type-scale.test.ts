@@ -45,19 +45,27 @@ describe('Studio 页级标题尺度', () => {
     expect(raw, "出现了未走 token 的圆角").toEqual([]);
   });
 
-  it('间距走 token：阶梯值不再以字面量出现在布局声明里', () => {
-    // 规范 §3.2 的阶梯是 4/8/12/16/20/24/32。这条只钉「同一个值只有一个来源」，
-    // 不钉「所有间距都必须在阶梯上」——现网仍有 97 条一次性值（0 14px、8px 7px 等），
-    // 把它们归档会挪动整站元素（实测 2305/3290 个元素尺寸或位置变化、无溢出），
-    // 属需要看观感的布局决定，不在这一条里偷偷做。
-    for (const [n, px] of [['2', 4], ['3', 8], ['4', 12], ['5', 16], ['6', 20], ['7', 24], ['9', 32]] as const) {
+  it('间距走 token：布局声明里不再出现任何字面 px', () => {
+    // 规范 §3.2 的阶梯是 4/8/12/16/20/24/32，另加两个不属阶梯的档位：`--studio-space-1`
+    //（2px 发丝档，图标与文字基线之间，抬到 4px 会把紧凑堆叠撑开）与
+    // `--studio-collapsed-rail-offset`（折叠栏内容避让量，与 44px 轨道宽度绑定，是布局偏移不是间距）。
+    // 第八批把现网 80 条一次性值就近归档（同距向上），这条门禁随之从「阶梯值必须走 token」
+    // 收紧成「padding／margin／gap 里不许出现任何字面 px」——归档会挪动整站元素，
+    // 收紧才有意义；前后几何由真实页面逐元素对量，不是靠这条门禁自证。
+    for (const [n, px] of [['1', 2], ['2', 4], ['3', 8], ['4', 12], ['5', 16], ['6', 20], ['7', 24], ['9', 32]] as const) {
       expect(css, `缺少 --studio-space-${n}（${px}px）`).toContain(`--studio-space-${n}:${px}px`);
     }
-    const ladder = /\b(?:4|8|12|16|20|24|32)px\b/;
-    const offenders = [...css.matchAll(/(padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:\s*([^;}]+)/g)]
-      .filter(([, , value]) => !value.includes(':root') && ladder.test(value) && !/var\(--studio-space/.test(value))
-      .map((m) => `${m[1]}:${m[2].trim()}`);
-    expect(offenders, '这些布局声明仍把阶梯值写死').toEqual([]);
+    expect(css, '折叠栏避让量应作为布局偏移单独命名').toContain('--studio-collapsed-rail-offset:52px');
+    const offenders: string[] = [];
+    for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (rule[1].includes(':root')) continue;
+      for (const d of rule[2].matchAll(/(padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:\s*([^;}]+)/g)) {
+        // clamp()／max()／min() 里的 px 是视口派生的边界，不是间距档位
+        if (/calc\(|max\(|min\(/.test(d[2])) continue;
+        if (/\d+(?:\.\d+)?px/.test(d[2])) offenders.push(`${d[1]}:${d[2].trim()}`);
+      }
+    }
+    expect(offenders, '这些布局声明又把长度写成了字面量').toEqual([]);
   });
 
   it('长表的数字列保持等宽', () => {
@@ -67,6 +75,11 @@ describe('Studio 页级标题尺度', () => {
     expect(cell, '找不到表格单元格规则').not.toBeNull();
     expect(cell![0], '表格单元格未启用等宽数字').toContain('font-variant-numeric:tabular-nums');
     expect(cell![0], '表格单元格又允许换行').toContain('white-space:nowrap');
+    // 省略号与出口刻意不钉在这条全局规则上：实测给 `.ant-table-cell` 加 `overflow:hidden`
+    // 会让被裁单元格不再贡献固有宽度，整张表从「比容器宽、可横向滚」塌成容器宽，
+    // 长标识就只能逐个悬停看 title，反而不如原来可达（配 `tableLayout:fixed` 也救不回来，
+    // 列会被拉伸填满，同样没有横向滚动）。因此按列给 `ellipsis: true`——省略号与自动 title
+    // 由它一起给，表体仍保持可横向滚动；这条全局规则只管不换行与等宽数字。
     // 吸顶表头的锚点：卡片必须用 `overflow:clip`，不能用 `hidden`。真实页面上逐个清祖先的
     // overflow 量过：`.studio-table`（圆角裁切）与 `.ant-table-content`（横向滚动）任一存在，
     // 该层就变成滚动容器，sticky 的锚点被截到卡片内部——计算值是 sticky，滚动时表头照样走。
