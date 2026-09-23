@@ -45,6 +45,20 @@ describe('Studio 页级标题尺度', () => {
     expect(raw, "出现了未走 token 的圆角").toEqual([]);
   });
 
+  it('长表的数字列保持等宽', () => {
+    // 数字列不等宽时，耗时与用量的位数对不齐，跨行比较要逐字看。这条在真实页面上量得到
+    // （knowledge／measure 的表格单元格计算值为 tabular-nums），单元格不换行由同一条规则钉住。
+    const cell = css.match(/\.ant-table-cell\{[^}]*\}/);
+    expect(cell, '找不到表格单元格规则').not.toBeNull();
+    expect(cell![0], '表格单元格未启用等宽数字').toContain('font-variant-numeric:tabular-nums');
+    expect(cell![0], '表格单元格又允许换行').toContain('white-space:nowrap');
+    // 吸顶表头刻意不钉在这条里：两次尝试（裸选择器与加 .ant-table 限定）都被 antd 自己的
+    // position: relative 压过，计算值量不到效果；而现网能纵向滚动的表格要真跑一次
+    // omk eval 才有数据可滚。补这条时走 antd 的 sticky 属性，并在能滚动的页面上验，
+    // 不在样式里留一条没人能证实生效的规则。
+    expect(css, '未生效的 sticky 规则又回到了样式里').not.toMatch(/ant-table-thead>tr>th\{[^}]*position:sticky/);
+  });
+
   it('对话阅读正文取 15px/27px', () => {
     const reader = css.match(/\.observe-reading-message\{[^}]*\}/);
     expect(reader, '找不到对话阅读正文规则').not.toBeNull();
