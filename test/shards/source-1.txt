@@ -3,6 +3,7 @@ test/architecture/eval-workflows-executors-layout.test.ts
 test/architecture/knowledge-artifacts-layout.test.ts
 test/architecture/package-schema-assets.test.ts
 test/architecture/retired-evaluation-layout.test.ts
+test/architecture/studio-color-tokens.test.ts
 test/architecture/studio-internal-navigation.test.ts
 test/architecture/studio-page-params.test.ts
 test/architecture/studio-page-paths.test.ts
