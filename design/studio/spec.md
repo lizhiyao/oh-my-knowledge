@@ -144,7 +144,7 @@ node design/studio/audit-summary.mjs <输出目录>      # 打印结论表与未
 | 候选三栏（候选列表／知识陈述／原始依据） | 已实现 | `knowledge/candidates.tsx:133-177` |
 | 保留／舍弃／修订与各自成功文案 | 已实现 | `knowledge/candidates.tsx:164-168,210-211` |
 | 来源不可用告警、多来源共享证据片段选择器、`原始记录及相邻上下文` | 已实现 | `knowledge/candidates.tsx:173-177` |
-| 报告详情「结果摘要」 | 契约已有，Studio 未投影 | `src/eval-core/contracts/artifacts.ts:517`（`summaries`）未进 `CoreStudioRunDetail` |
+| 报告详情「结果摘要」 | 契约有字段但**无类型**，不能直接投影 | `EvaluationReportSchema.summaries` 是 `JsonValueSchema.optional()`（`contracts/artifacts.ts:517`），引擎只把调用方传入的 `options.summaries` 原样写进报告（`engine/index.ts:613`、`analysis/decision.ts:642`）。本仓库没有任何生产者写它，`test/` 与 `examples/` 里也搜不到赋值。所以「契约已有」这句当时说轻了：字段在，形状不在。 |
 | 报告详情「比较条件」 | 角色已投影，可比性仍是缺口 | 对照组／实验组角色来自 `plan.definition.comparisons` 的 `controlTargetId`／`treatmentTargetIds`（`src/eval-core/contracts/definition.ts:275-279`），已由 `CoreStudioRunDetail.comparisons` 只读投影到报告页，不改任何评分口径。**可比性评估仍未接**：它落在 series 文档（`contracts/series.ts:201`），不在 Studio 加载的运行产物集（`StoredCoreRunArtifacts`＝manifest／plan／四个 bundle／report）里，要接得先决定读哪一份文档，属独立一步。 |
 | 报告详情「结论限制」与「逐用例证据入口」 | 已删除，不再作为入口 | 2026-09-23 决定：产品里没有承载「结论限制」的字段（运行视图无 limitations，可比性原因码被 `COMPARABILITY_REASON_CODES` 与 `REASON_CLASSIFICATION` 限死），按用例定位证据也没有路由参数（`run-report-link.ts` 只产出按运行 ID 的地址）。两者都不做成功能，稿子里的这两块已删除，避免示意图变成对外承诺。数据本身仍在页面上（执行记录／评价记录两张表带用例与试次列）。 |
 | 危险按钮 | 三域当前不存在，待确认 | 观测／评测／知识页面均无该角色 |
@@ -200,7 +200,7 @@ node design/studio/audit-summary.mjs <输出目录>      # 打印结论表与未
 5. **表格可达性统一**：sticky 表头、`tabular-nums`、省略单元格强制完整内容出口、操作列不换行。验收：`audit.js` 的「省略无出口」为 0，页面级溢出为 0。〔部分完成：等宽数字与不换行已在真实页面量到（knowledge／measure 表格单元格计算值 `tabular-nums`），省略单元格的出口逐元素量过为 0 缺失；**sticky 表头未做**——两次尝试都被 antd 自己的 `position: relative` 压过，量不到效果，而现网可纵向滚动的表要真跑一次 `omk eval` 才有数据可滚。补它走 antd 的 `sticky` 属性并在能滚动的页面上验，不在样式里留死规则。〕
 6. **元信息文字色统一**：12px 角色一律 `--studio-ink-muted`。验收：着色表面上无 <4.5:1 的元信息。〔已完成，PR #1068。〕
 7. **断点收敛**：以 1440/1280/1024/860/720 替换 700/760/1100。验收：六视口 × 四页面页面级零溢出、零裁切区。〔**这条不能机械替换，已核实原因**：现存 6 个宽度条件里有 4 处 `max-width:700px`、2 处 `max-width:760px` 各自混着不同层的决定——`760px` 一处管候选页起始区的多栏退化（属待评审项），另一处管整个应用切抽屉导航；`700px` 四处分别管页头与内容内边距、轨迹与泳道工具条、观测工具条换行、健康度网格。把它们统一挪到 860/720 会连带改掉多栏退化点，而候选页与报告页在隔离工作区里没有数据可渲染，退化了也验不出来。要么先定多栏退化，要么等一次真实 `omk eval` 的产物再收，二者取其一并由人确认，不在这里猜。〕
-8. **结果摘要投影**：把 `EvaluationReportSchema.summaries` 投影进 `CoreStudioRunDetail` 并渲染。验收：渲染输出断言覆盖有值与缺值两分支；不改评分语义。
+8. **结果摘要投影**：把 `EvaluationReportSchema.summaries` 投影进 `CoreStudioRunDetail` 并渲染。验收：渲染输出断言覆盖有值与缺值两分支；不改评分语义。〔**这条的前置比原先写的更硬，已核实**：`summaries` 是无类型 `JsonValue`，内容由调用方决定，本仓库无生产者。直接把外部可写的 JSON 投到报告页，等于让展示层渲染一个没有契约的形状——既无法决定"哪些键该显示"，也无法为它写有意义的缺值分支。两条出路，都需要 owner 定：① 先给 `summaries` 定一个带版本的类型化 schema（属公开契约变更，要迁移与 BREAKING 标注），再投影；② 与「结论限制／逐用例证据」同样处理，从稿子里删掉结果摘要这一层，等真有生产者与形状再说。〕
 9. **比较条件投影**：comparability 契约进 view-model。〔部分完成：措辞已由 owner 定为 `对照组／实验组`（英文 `Control／Treatment`），与 CLI、CLI 参考文档与词汇表逐字一致；此前中文术语表里 `treatment` 还留着「干预组（实验组）」与「处理组」两个异名，已一并收成「实验组」，角色已进 view-model 并在报告页只读呈现，`test/studio/application/core-run-catalog.test.ts` 钉住它逐字等于 `plan.definition.comparisons`、且两方都必须是同一页已投影的被测版本。可比性评估未接——它不在运行产物集里，见第五节该行。〕
 10. ~~结论限制与逐用例证据入口~~：〔2026-09-23 决定不做，已从报告稿中删除。当前无字段、无路由，不新增能力。〕
 11. **按下档接入**：`--studio-surface-press`（`#EAEEF6`）目前只存在于本目录。真实页面量到会话行、一级导航非当前项、工具入口三处「按下与悬停同色」，读者无法从视觉上区分「正要点下去」和「只是停在这」。验收：同一批控件在派发 `mousePressed` 后底色比悬停档深一档，且松开即回弹。〔已完成（第六批）：五处表面接入，并顺带修掉「选中行悬停被压浅」的回归（`:not(.selected)` 与一级导航的 `:not([aria-current])` 同口径）。候选列表行没有在线数据，只有门禁与原型证据。〕
