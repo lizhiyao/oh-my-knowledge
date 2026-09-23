@@ -8,12 +8,13 @@
  * 落在应用底色只有 4.43:1、落在选中底只有 4.13:1，都不够小字的 4.5:1。这个区分一旦被人顺手
  * 改回一个值，无障碍结论就悄悄失效了，所以锁在门禁里而不是锁在 PR 描述里。
  *
- * 本门禁只查五件事：
+ * 本门禁只查六件事：
  *  1. 语义 token 在 `:root` 一处定义，且取值就是规范登记的那批；
  *  2. 主题主色与 `--studio-action` 同源，Ant Design 派生不出第二个品牌紫；
  *  3. 旧的品牌紫 `#5145cd` 不再出现在样式里——出现即说明有人绕过 token 写死；
  *  4. 「导航选中底」与「人类消息气泡底」是两个角色，历史上它们同值，容易被一次替换合并；
- *  5. 「悬停档」与「选中档」也是两个角色，同理。
+ *  5. 「悬停档」与「选中档」也是两个角色，同理；链接与按钮的悬停深色在主题层与 token 同源；
+ *  6. 表面状态是一整套：有悬停档就得有按下档，且带选中态的表面必须把选中项排除在悬停／按下之外。
  *
  * 口径边界（刻意不查）：
  *  - 不查 `#657085` 这类尚未收敛到 token 的散落色值。它们仍是有意的现状，收敛是后续任务，
@@ -49,6 +50,14 @@ const TARGET_TOKENS: Record<string, string> = {
 const css = readFileSync(CSS_FILE, 'utf8');
 const theme = readFileSync(THEME_FILE, 'utf8');
 const design = readFileSync(DESIGN_FILE, 'utf8');
+
+/** 从规则原文取选择器列表：studio.css 里规则之间夹着中文注释与换行，剥掉才不会把注释当选择器比对。 */
+const selectorsOf = (ruleText: string) =>
+  ruleText
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split(',')
+    .map((selector) => selector.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
 
 describe('Studio 配色 token 单一来源', () => {
   it('语义 token 在 :root 一处定义，取值与规范一致', () => {
@@ -137,7 +146,7 @@ describe('Studio 配色 token 单一来源', () => {
     // 会继承 antd 的链接悬停色，所以这一档要显式给出，写法与其它侧栏行一致。
     const row = css.match(/\.observe-session-row:hover\{[^}]*\}/);
     expect(row, '找不到会话行悬停规则').not.toBeNull();
-    expect(row![0]).toContain('background:var(--studio-navigation-hover-fill)');
+    expect(row![0]).toContain('background:var(--studio-surface-hover)');
     expect(row![0], '会话行悬停文字未收回墨色').toContain('color:#293348');
     expect(row![0], '会话行悬停文字不应引用品牌紫').not.toMatch(/var\(--studio-action/);
   });
@@ -155,20 +164,79 @@ describe('Studio 配色 token 单一来源', () => {
     expect(text![0], '分页选中文字仍引用品牌紫').not.toContain('var(--studio-action)');
   });
 
-  it("悬停档与选中档是两个值，不许合并回同一个灰", () => {
+  it('悬停档与选中档是两个值，不许合并回同一个灰', () => {
     // 历史上四处悬停直接复用选中底 #eef0f6，读者分不清「鼠标在这」和「你在这」。
-    const hover = css.match(/--studio-navigation-hover-fill:([^;]+);/);
+    const hover = css.match(/--studio-surface-hover:([^;]+);/);
     const selected = css.match(/--studio-selection-fill:([^;]+);/);
-    expect(hover, "缺少悬停档 token").not.toBeNull();
-    expect(selected, "缺少选中档 token").not.toBeNull();
+    expect(hover, '缺少悬停档 token').not.toBeNull();
+    expect(selected, '缺少选中档 token').not.toBeNull();
     expect(hover![1]).not.toBe(selected![1]);
-    expect(hover![1]).toBe("#f4f6fa");
-    expect(css, "悬停规则又写回了硬编码底色").not.toMatch(/:hover[^{]*\{[^}]*background:#eef0f6/);
+    expect(hover![1]).toBe('#f4f6fa');
+    expect(css, '悬停规则又写回了硬编码底色').not.toMatch(/:hover[^{]*\{[^}]*background:#eef0f6/);
     // 悬停档只许一个值：会话行曾另用 #f0f1f8。运行中行的 #e2edff 是「活动性」角色，不并入。
     const otherHovers = [...css.matchAll(/[^{}]*:hover[^{}]*\{[^}]*background:#[0-9a-f]{3,6}[^}]*\}/g)]
       .map((match) => match[0])
-      .filter((rule) => !/studio-running-row/.test(rule));
-    expect(otherHovers, "出现了第二个悬停底色").toEqual([]);
+      .filter((match) => !/studio-running-row/.test(match));
+    expect(otherHovers, '出现了第二个悬停底色').toEqual([]);
+  });
+
+  it('每一处悬停底都有对应的按下档，且按下比悬停深', () => {
+    // 真实页面量到「按下与悬停同色」（会话行、一级导航非当前项、工具入口三处），读者无法从
+    // 视觉区分「正要点下去」和「只是停在这」。规范里按下档只加深中性底、不改文字层级。
+    // 这条不变量按选择器一一对齐：漏掉任何一个悬停表面都会变红，改名也躲不过去。
+    const press = css.match(/--studio-surface-press:([^;]+);/);
+    expect(press, '缺少按下档 token').not.toBeNull();
+    expect(press![1], '按下档与悬停档同值，等于没有按下档').not.toBe(css.match(/--studio-surface-hover:([^;]+);/)![1]);
+    expect(press![1]).not.toBe(css.match(/--studio-selection-fill:([^;]+);/)![1]);
+    expect(press![1]).toBe('#eaeef6');
+    // 第三份来源：DESIGN.md 的 frontmatter 必须记同一批值，否则规范与页面会各说各话。
+    for (const [key, value] of [
+      ['surface-hover', css.match(/--studio-surface-hover:([^;]+);/)![1]],
+      ['surface-press', press![1]],
+      ['selection-fill', css.match(/--studio-selection-fill:([^;]+);/)![1]],
+    ]) {
+      expect(design, `DESIGN.md 的 ${key} 与样式不同源`).toContain(`${key}: "${value}"`);
+    }
+
+    const hoverSelectors = new Set<string>();
+    for (const rule of css.matchAll(/([^{}]*:hover[^{}]*)\{[^}]*var\(--studio-surface-hover\)[^}]*\}/g)) {
+      for (const selector of selectorsOf(rule[1])) hoverSelectors.add(selector);
+    }
+    expect([...hoverSelectors], '一处悬停表面都没量到，扫描口径失效').not.toEqual([]);
+    const pressed = new Set(
+      [...css.matchAll(/([^{}]*:active[^{}]*)\{[^}]*var\(--studio-surface-press\)[^}]*\}/g)]
+        .flatMap((rule) => selectorsOf(rule[1])),
+    );
+    const missing = [...hoverSelectors].filter((selector) => !pressed.has(selector.replace(/:hover\b/, ':active')));
+    expect(missing, '这些表面有悬停档却没有按下档').toEqual([]);
+  });
+
+  it('带选中态的表面必须把选中项排除在悬停／按下档之外', () => {
+    // 规范：当前项不参与非当前项的悬停加深，否则「最深的那一档反而变浅」。真实页面上量到
+    // 侧栏工作区行被选中时（浅紫底）悬停会换成更浅的中性底，选中感在鼠标经过的一瞬间消失。
+    // 一级导航用 :not([aria-current]) 已经做对了，这条把同一个口径推广到所有共用表面。
+    // 选择器原文要先把注释与换行剥掉：studio.css 里规则之间夹着中文注释，连 `\n` 一起
+    // 当选择器比对会让这条检查静默空跑（第一版就是这么假绿的）。
+    const stateOf = new Map<string, string>();
+    for (const rule of css.matchAll(/([^{}]*)\{[^}]*var\(--studio-selection-fill\)[^}]*\}/g)) {
+      for (const selector of selectorsOf(rule[1])) {
+        const selected = selector.match(/^(.*?)((?:\.selected|\[aria-current\]))$/);
+        if (selected) stateOf.set(selected[1], selected[2]);
+      }
+    }
+    expect([...stateOf.keys()], '没有量到任何选中态表面，扫描口径失效').not.toEqual([]);
+    const offenders: string[] = [];
+    for (const rule of css.matchAll(/([^{}]*)\{[^}]*var\(--studio-surface-(?:hover|press)\)[^}]*\}/g)) {
+      for (const text of selectorsOf(rule[1])) {
+        for (const [base, marker] of stateOf) {
+          const negation = marker === '.selected' ? ':not(.selected)' : ':not([aria-current])';
+          const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const touchesBase = new RegExp(`^${escaped}:(hover|active)$`).test(text);
+          if (touchesBase && !text.includes(negation)) offenders.push(text);
+        }
+      }
+    }
+    expect(offenders, '这些表面在悬停／按下时会把选中项压浅').toEqual([]);
   });
 
   it('Ant Design 主题 token 与本目录 token 同源，页面不再出现 antd 默认蓝与默认灰', () => {
