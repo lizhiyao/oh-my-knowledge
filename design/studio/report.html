@@ -20,7 +20,7 @@
  * h2.pane-head —— .pane-head 用作标题元素时不重置外边距，标题的 UA 外边距会顶开面板头部。
  */
 
-/* 两栏：左栏承载比较条件／决策／结论限制，右栏承载证据入口与阶段与覆盖。 */
+/* 两栏：左栏承载比较条件／决策，右栏承载阶段与覆盖。 */
 .panes--split {
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
 }
@@ -180,8 +180,8 @@ h2.pane-head {
       <details class="proto-note">
 <summary>评审注记：本页是合成数据，展开看口径与刻意保留的反例</summary><div class="proto-note-body">合成数据，只用于评审层级。对应实现是 <code class="mono">/measure/[runId]</code>
         （<code class="mono">src/studio/web/components/measure/measure.tsx</code>）。本页比今天的页面多出四层——
-        <strong>结果摘要</strong>、<strong>比较条件</strong>、<strong>证据入口</strong>、<strong>结论限制</strong>，
-        每层就地标注真实数据来源与「Studio 尚未投影」；其余分区的字段名与取值全部沿用现有词表，
+        <strong>结果摘要</strong>、<strong>比较条件</strong>，
+        两层都就地标注真实数据来源与「Studio 尚未投影」；其余分区的字段名与取值全部沿用现有词表，
         <code class="mono">评测范围</code>、<code class="mono">分析结果</code>、<code class="mono">证据与定义</code>
         三个标签页保留，便于和现在的实现对齐。本条运行的合成取值刻意取「已完成 ＋ 部分缺失 ＋ 证据不足」，
         用来检查证据不足与未判定会不会被那一枚绿色的 <code class="mono">已完成</code> 盖住。</div>
@@ -243,7 +243,7 @@ h2.pane-head {
       <!-- ===== 两栏主体 ===== -->
       <div class="panes panes--split">
 
-        <!-- 左栏：比较条件 / 决策 / 结论限制 -->
+        <!-- 左栏：比较条件 / 决策 -->
         <div class="pane-column">
 
           <section class="pane" aria-labelledby="compare-title">
@@ -403,103 +403,11 @@ h2.pane-head {
             </div>
           </section>
 
-          <section class="pane" aria-labelledby="limit-title">
-            <h2 class="pane-head" id="limit-title">
-              <span>结论限制</span>
-              <span class="meta mono">ComparabilityAssessmentSchema.reasons[]</span>
-            </h2>
-            <div class="pane-body" data-audit-region="结论限制">
-              <p class="proto-note">
-                缺口：运行详情没有「结论限制」这一层，也没有承载它的字段。今天能拿到的只有可比性的原因码：
-                <code class="mono">ComparabilityAssessmentSchema.reasons[]</code> 里的
-                <code class="mono">reasonCode</code> 取值被 <code class="mono">COMPARABILITY_REASON_CODES</code>
-                限死，<code class="mono">axis</code>、<code class="mono">severity</code>、
-                <code class="mono">scope</code> 由 <code class="mono">REASON_CLASSIFICATION</code> 固定。
-                本页按代码原值罗列，不改写成更软的中文说法，也不合并成一句「样本不足」。
-                <code class="mono">决策 › 原因码</code> 里的 <code class="mono">release-evidence-incomplete</code>
-                只说明这次为什么未判定，替代不了限制说明。这一段要不要成为产品能力、由谁产出措辞，
-                是产品决策，不是展示层能补的。
-              </p>
-
-              <div class="evidence evidence--missing" style="margin-bottom:var(--studio-space-3)">
-                <div>
-                  <code class="mono">comparability-design-evaluation-instrument-mismatch</code><br>
-                  <span class="mono">axis=design severity=incompatible scope=decision</span>
-                </div>
-              </div>
-              <div class="evidence evidence--partial" style="margin-bottom:var(--studio-space-3)">
-                <div>
-                  <code class="mono">comparability-evidence-source-absent</code><br>
-                  <span class="mono">axis=evidence severity=conditional scope=decision</span>
-                </div>
-              </div>
-              <div class="evidence evidence--partial" style="margin-bottom:var(--studio-space-3)">
-                <div>
-                  <code class="mono">comparability-evidence-verification-indeterminate</code><br>
-                  <span class="mono">axis=evidence severity=conditional scope=decision</span>
-                </div>
-              </div>
-              <div class="evidence evidence--partial">
-                <div>
-                  <code class="mono">comparability-evidence-runtime-identity-opaque</code><br>
-                  <span class="mono">axis=evidence severity=conditional scope=decision</span>
-                </div>
-              </div>
-            </div>
-          </section>
         </div>
 
-        <!-- 右栏：证据入口 / 阶段与覆盖 -->
+        <!-- 右栏：阶段与覆盖 -->
         <div class="pane-column">
 
-          <section class="pane" aria-labelledby="entry-title">
-            <h2 class="pane-head" id="entry-title">
-              <span>证据入口</span>
-              <span class="meta">按用例</span>
-            </h2>
-            <div class="pane-body" data-audit-region="证据入口">
-              <p class="proto-note">
-                缺口：按用例定位的证据入口不存在。<code class="mono">/measure/[runId]</code>
-                只按运行 ID 装载，<code class="mono">run-report-link.ts</code> 也只产出这一种地址，
-                没有任何带用例或试次的参数；<code class="mono">证据与定义</code> 的四个折叠项默认收起，
-                用例明细要靠 <code class="mono">执行记录</code>、<code class="mono">评价记录</code>
-                两张宽表横向滚动去找。数据本身已经在这一页里（两张表都带 <code class="mono">用例</code>、
-                <code class="mono">试次</code> 列），缺的只是入口。下面的链接落到本页已有的折叠项，
-                只用来表达「点它应该到这里」，锚点形式不代表实现方案——按用例定位是走查询参数还是锚点，
-                要先定契约。
-              </p>
-
-              <div class="list">
-                <div class="list-row">
-                  <span>
-                    <span class="list-title" data-audit-truncate title="sample-routing-07">sample-routing-07</span>
-                    <span class="meta">试次 0 · <code class="mono">trial-1</code> · <span class="chip chip--error">失败</span></span>
-                  </span>
-                  <a class="link" href="#evidence-execution">执行记录</a>
-                </div>
-                <div class="list-row">
-                  <span>
-                    <span class="list-title" data-audit-truncate title="sample-routing-11">sample-routing-11</span>
-                    <span class="meta">试次 0 · <code class="mono">trial-3</code> · <span class="chip chip--success">已完成</span></span>
-                  </span>
-                  <a class="link" href="#evidence-execution">执行记录</a>
-                </div>
-                <div class="list-row">
-                  <span>
-                    <span class="list-title" data-audit-truncate title="sample-routing-19">sample-routing-19</span>
-                    <span class="meta">试次 0 · <code class="mono">trial-5</code> · <span class="chip chip--unknown">未评估</span> · <code class="mono">execution-record-unavailable</code></span>
-                  </span>
-                  <a class="link" href="#evidence-evaluation">评价记录</a>
-                </div>
-              </div>
-              <div class="evidence evidence--partial" style="margin-top:var(--studio-space-3)">
-                <div>
-                  三行都取自本页已有的 <code class="mono">执行记录</code> 与 <code class="mono">评价记录</code>
-                  行，不新增事实；徽标只重复该行的 <code class="mono">状态</code> 列取值。
-                </div>
-              </div>
-            </div>
-          </section>
 
           <section class="pane" aria-labelledby="stages-title">
             <h2 class="pane-head" id="stages-title">
