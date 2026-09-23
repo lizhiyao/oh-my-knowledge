@@ -68,12 +68,21 @@ describe('measure react detail keeps every projected fact in the served document
     assert.ok(html.includes('2026-08-31 12:00:00 UTC'), 'created-at text is displayTime output, not a local formatter');
     assert.ok(html.includes('>800ms<') && html.includes('>450ms<'), 'stage durations render formatDuration output');
     assert.ok(/<span class="ant-tag[^"]*ant-tag-success[^"]*">within-budget<\/span>/.test(html), 'budget summary carries its tone');
-    assert.ok(html.includes('<code class="measure-code">invocations=2</code>'), 'budget counts stay plain facts');
+    assert.ok(html.includes('<code class="measure-code" title="invocations=2">invocations=2</code>'), 'budget counts stay plain facts and carry a full-content exit');
   });
 
   it('labels tables with headings and scoped column headers', () => {
     const html = runDetail(detail(), 'en');
     assert.ok(html.includes('scope="col"'), 'column headers stay programmatically associated');
+    // 吸顶表头必须由 antd 的 sticky 属性给出：它把表头拆成独立一层（.ant-table-sticky-holder），
+    // 表头才出得了横向滚动容器。真实页面上量过：在样式里给 th 加 position:sticky 计算值是对的，
+    // 但锚点被卡片与 .ant-table-content 的 overflow 截走，滚动时表头照样走。
+    assert.ok(html.includes('ant-table-sticky-holder'), '长表表头没有拆成独立吸顶层');
+    // 逐表对齐：漏掉任何一张表的 sticky 都会让这两个计数不相等。
+    const tables = html.match(/class="ant-table /g)?.length ?? 0;
+    const holders = html.match(/ant-table-sticky-holder/g)?.length ?? 0;
+    assert.ok(tables >= 8, `报告页应有 8 张表，实际量到 ${tables} 张`);
+    assert.equal(holders, tables, '这些表没吃到 sticky：表头仍在横向滚动容器里面');
     for (const label of ['Targets', 'Comparison', 'Evaluators', 'Metrics']) {
       assert.ok(html.includes(`<h3>${label}</h3>`), `table block needs its own heading: ${label}`);
     }
