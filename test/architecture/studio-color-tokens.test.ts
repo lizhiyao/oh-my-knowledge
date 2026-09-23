@@ -127,4 +127,29 @@ describe('Studio 配色 token 单一来源', () => {
     expect(text![0]).toContain('color:var(--studio-ink)');
     expect(text![0], '分页选中文字仍引用品牌紫').not.toContain('var(--studio-action)');
   });
+
+  it('Ant Design 主题 token 与本目录 token 同源，页面不再出现 antd 默认蓝与默认灰', () => {
+    // 未达 AA 的文字里，多数不是本仓库写的颜色，而是 antd 的默认值：
+    // colorLink #1677ff（3.86:1）、次要文字 #88888a（3.32:1）、空态 #8c8c8c（3.35:1）。
+    // 只有把它们在主题层对齐，才不用给每个组件补 CSS 覆写。
+    const themeToken = (name: string) => theme.match(new RegExp(`${name}:\\s*'([^']+)'`))?.[1];
+    expect(themeToken('colorLink'), 'colorLink 应与文字紫同源').toBe(TARGET_TOKENS['--studio-action-ink']);
+    expect(themeToken('colorTextTertiary'), '次要文字应与 --studio-ink-muted 同源').toBe('#5f6b7f');
+    expect(themeToken('colorSuccess')).toBe(TARGET_TOKENS['--tone-success-ink']);
+    expect(themeToken('colorWarning')).toBe(TARGET_TOKENS['--tone-warning-ink']);
+    expect(themeToken('colorError')).toBe(TARGET_TOKENS['--tone-error-ink']);
+    // 中性灰小字必须走 token；样式里再出现 #8893a5 就说明有人又写死了一个灰。
+    expect(css, 'studio.css 仍写死 #8893a5').not.toMatch(/:#8893a5/i);
+    expect(css).toContain('--studio-ink-muted:#5f6b7f');
+  });
+
+  it('状态色的浅底与边框被显式给出，不由暗基色派生', () => {
+    // antd 的 Tag／Alert 底色是从 colorSuccess 这类基色「派生」出来的。
+    // 把基色换成规范要求的深色后，派生结果落在灰绿 #adb8b2、土黄 #e0d9ca 上，
+    // 12px 文字实测只有 2.63 与 3.88:1——比换色前更差。浅底必须一起显式给出。
+    const themeToken = (name: string) => theme.match(new RegExp(`${name}:\\s*'([^']+)'`))?.[1];
+    expect(themeToken('colorSuccessBg'), 'colorSuccessBg 需显式声明，不能让 antd 派生').toBe('#e6f4ee');
+    expect(themeToken('colorWarningBg')).toBe('#fdf1e3');
+    expect(themeToken('colorErrorBg')).toBe('#fbeae8');
+  });
 });
