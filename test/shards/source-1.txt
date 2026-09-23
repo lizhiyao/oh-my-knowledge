@@ -8,6 +8,7 @@ test/architecture/studio-internal-navigation.test.ts
 test/architecture/studio-page-params.test.ts
 test/architecture/studio-page-paths.test.ts
 test/architecture/studio-table-skin.test.ts
+test/architecture/studio-type-scale.test.ts
 test/architecture/subprocess-bounded-exec.test.ts
 test/cli-i18n.test.ts
 test/cli-progress.test.ts

@@ -61,6 +61,28 @@ describe('知识列表的列顺序', () => {
   });
 });
 
+describe('知识首页的页级标题', () => {
+  /**
+   * #1060 的排版收敛顺带发现：知识首页此前没有 h1（只有 skill 详情页有），
+   * 读者与辅助技术拿不到「这一页讲什么」的顶层答案，而其它三个区都有。
+   * 这里钉的是「首页有一个且只有一个 h1，文案沿用分区导航已有的标签」，
+   * 不钉字号——字号由 studio.css 与真实渲染量测负责，不在此重复。
+   */
+  const indexHtml = (lang: 'zh' | 'en') => {
+    const page = loadKnowledgePage(indexFor([entry('demo-skill')]), '/knowledge', lang);
+    assert.ok(page && page.pageKind === 'index');
+    return renderToString(createElement(KnowledgeView, { page, lang }));
+  };
+
+  for (const [lang, label] of [['zh', '知识载体'], ['en', 'Knowledge artifacts']] as const) {
+    it(`${lang} 给出唯一的页级标题`, () => {
+      const headings = [...indexHtml(lang).matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/g)]
+        .map(([, body]) => body.replace(/<[^>]+>/g, ''));
+      expect(headings).toEqual([label]);
+    });
+  }
+});
+
 describe('知识详情到观测区的跨区边', () => {
   it('中文给出通往该 Skill 趋势页的链接，地址不带语言参数', () => {
     const html = renderToString(createElement(ObservePanel, { observe, toolFailureRate: null, skillName: 'demo-skill', zh: true }));
