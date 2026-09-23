@@ -151,5 +151,12 @@ describe('Studio 配色 token 单一来源', () => {
     expect(themeToken('colorSuccessBg'), 'colorSuccessBg 需显式声明，不能让 antd 派生').toBe('#e6f4ee');
     expect(themeToken('colorWarningBg')).toBe('#fdf1e3');
     expect(themeToken('colorErrorBg')).toBe('#fbeae8');
+    // 页签选中文字：antd 默认把 colorPrimary 当选中文字色，压在应用底色上实测 4.43:1。
+    // components 必须与 token 平级——放进 token 里会被当成无效 token 名而静默失效。
+    const tabs = theme.match(/components:\s*\{\s*Tabs:\s*\{([^}]*)\}/);
+    expect(tabs, 'theme.tsx 缺少 Tabs 组件 token（注意必须与 token 平级）').not.toBeNull();
+    expect(tabs![1]).toContain("itemSelectedColor: '#5a3cdb'");
+    expect(theme.indexOf('components:'), 'components 被放进了 token 对象内部')
+      .toBeGreaterThan(theme.indexOf('sans-serif'));
   });
 });
