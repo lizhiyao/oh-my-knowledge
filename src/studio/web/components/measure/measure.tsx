@@ -218,26 +218,26 @@ function Plan({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) {
       { key: 'samples', label: copy.samples, children: detail.dataset.sampleCount },
     ]}/>
     <TableBlock label={copy.targets}><Table className="studio-table" sticky size="small" rowKey="targetId" pagination={false} scroll={{ x: 620 }} dataSource={[...detail.targets]} locale={{ emptyText }} columns={[
-      { title: 'ID', dataIndex: 'targetId', width: 200 },
+      { title: 'ID', dataIndex: 'targetId', width: 200, ellipsis: true },
       { title: copy.kind, dataIndex: 'targetKind', width: 140 },
       { title: copy.protocol, dataIndex: 'protocolId', width: 150 },
-      { title: copy.executor, dataIndex: 'executorId', width: 130 },
+      { title: copy.executor, dataIndex: 'executorId', width: 130, ellipsis: true },
     ]}/></TableBlock>
     <TableBlock label={copy.comparison}><Table className="studio-table" sticky size="small" rowKey="comparisonId" pagination={false} scroll={{ x: 780 }} dataSource={[...detail.comparisons]} locale={{ emptyText }} columns={[
-      { title: copy.comparisonId, dataIndex: 'comparisonId', width: 170 },
+      { title: copy.comparisonId, dataIndex: 'comparisonId', width: 170, ellipsis: true },
       { title: copy.controlVersion, dataIndex: 'controlTargetId', width: 190, render: (targetId: string) => <Code value={targetId}/> },
       { title: copy.candidateVersions, dataIndex: 'treatmentTargetIds', width: 210, render: (values: readonly string[]) => <Fragments parts={values}/> },
-      { title: copy.metrics, dataIndex: 'metricIds', render: (values: readonly string[]) => <Fragments parts={values}/> },
+      { title: copy.metrics, dataIndex: 'metricIds', ellipsis: true, render: (values: readonly string[]) => <Fragments parts={values}/> },
     ]}/></TableBlock>
     <TableBlock label={copy.evaluators}><Table className="studio-table" sticky size="small" rowKey="evaluatorId" pagination={false} scroll={{ x: 820 }} dataSource={[...detail.evaluators]} locale={{ emptyText }} columns={[
-      { title: 'ID', dataIndex: 'evaluatorId', width: 190 },
+      { title: 'ID', dataIndex: 'evaluatorId', width: 190, ellipsis: true },
       { title: copy.kind, dataIndex: 'evaluatorKind', width: 130 },
       { title: copy.implementation, dataIndex: 'implementationId', width: 190, ellipsis: true },
-      { title: copy.metrics, dataIndex: 'metricIds', render: (values: readonly string[]) => <Fragments parts={values}/> },
-      { title: copy.measurement, width: 250, render: (_, evaluator) => <Code value={formatMeasurement(evaluator.measurement)}/> },
+      { title: copy.metrics, dataIndex: 'metricIds', ellipsis: true, render: (values: readonly string[]) => <Fragments parts={values}/> },
+      { title: copy.measurement, width: 250, ellipsis: true, render: (_, evaluator) => <Code value={formatMeasurement(evaluator.measurement)}/> },
     ]}/></TableBlock>
     <TableBlock label={copy.metrics}><Table className="studio-table" sticky size="small" rowKey="metricId" pagination={false} scroll={{ x: 760 }} dataSource={[...detail.metrics]} locale={{ emptyText }} columns={[
-      { title: 'ID', dataIndex: 'metricId', width: 180 },
+      { title: 'ID', dataIndex: 'metricId', width: 180, ellipsis: true },
       { title: copy.valueType, dataIndex: 'valueType', width: 110 },
       { title: copy.scope, dataIndex: 'scope', width: 110 },
       { title: copy.direction, width: 150, render: (_, metric) => metric.direction ?? copy.notAvailable },
