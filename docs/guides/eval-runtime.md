@@ -140,7 +140,7 @@ An evaluation prepares samples, runs the versions under test, scores their outpu
 | `executor` | Your invocation code: it receives input and returns actual output. |
 | `evaluator` | The scoring method, such as exact match, retrieval metrics, or an LLM judge. |
 | `metric` | A reading's name and meaning, such as `correct` for exact equality. |
-| `comparison` | The control, candidate (`treatment`), and metrics to compare. |
+| `comparison` | Which variant is the control group, which is the treatment group, and the metrics to compare. |
 | `experiment` | Sample allocation, planned repetitions, and measurement seed. |
 | `analysis` | How readings become a mean, difference, or confidence interval. |
 | `decision` | An optional rule that draws a conclusion from an analysis; a scorer alone does not produce a release conclusion. |
@@ -503,7 +503,7 @@ The modes are intentionally named from actual trajectory to expected trajectory:
 
 Use `CustomEvaluator` when a built-in scorer cannot express a business rule, such as forbidden IDs, field formats, or output length. Each custom evaluator declares one or more metrics and computes them together in one callback per Sample × Variant × Trial attempt.
 
-The example counts JavaScript string length after trimming (UTF-16 code units; some emoji occupy two or more), also records whether the output is nonempty, then summarizes the candidate's mean length. Its lower-is-better direction demonstrates configuration, not overall answer quality. Replace the callback, metric declaration, and input schema with your own rule:
+The example counts JavaScript string length after trimming (UTF-16 code units; some emoji occupy two or more), also records whether the output is nonempty, then summarizes the treatment group's mean length. Its lower-is-better direction demonstrates configuration, not overall answer quality. Replace the callback, metric declaration, and input schema with your own rule:
 
 ```ts
 import { z } from 'zod';
@@ -606,7 +606,7 @@ Identity is explicit because OMK does not derive provenance from `Function#toStr
 
 A rubric is an explicit scoring guide. For open-ended answers with multiple valid phrasings, an LLM judge can assign 1–5 points against that guide rather than compare wording. You provide the criteria and model invocation; OMK constructs the scoring prompt, parses responses, and aggregates readings.
 
-This example uses one judge model, scores each actual output twice, averages those scores, and summarizes the candidate's mean. Replace `internalGateway` and `judge-model` with your real integration; judging adds model calls. Define each score band and calibrate against human-labeled examples before a formal evaluation.
+This example uses one judge model, scores each actual output twice, averages those scores, and summarizes the treatment group's mean. Replace `internalGateway` and `judge-model` with your real integration; judging adds model calls. Define each score band and calibrate against human-labeled examples before a formal evaluation.
 
 ```ts
 import { createRubricEvaluator, evaluate } from 'oh-my-knowledge';
@@ -752,7 +752,7 @@ if (assessment.comparabilityStatus !== 'compatible') {
 }
 ```
 
-The assessment never compares scores or decides whether the candidate improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. To assess results restored from another process, regain source authority first with `loadEvaluationResult()` from [Restore a stored result in a new process](#restore-stored-results), then call `assessComparability()`.
+The assessment never compares scores or decides whether the treatment improved. It checks whether the measurement design remained invariant after the declared subject change and whether both source chains have enough authenticated evidence. Preserve the exact result objects: a clone or deserialized artifact cannot retain the in-process Core source authority and fails closed. To assess results restored from another process, regain source authority first with `loadEvaluationResult()` from [Restore a stored result in a new process](#restore-stored-results), then call `assessComparability()`.
 
 </details>
 
