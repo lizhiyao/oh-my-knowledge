@@ -74,8 +74,29 @@ describe('measure react detail keeps every projected fact in the served document
   it('labels tables with headings and scoped column headers', () => {
     const html = runDetail(detail(), 'en');
     assert.ok(html.includes('scope="col"'), 'column headers stay programmatically associated');
-    for (const label of ['Targets', 'Evaluators', 'Metrics']) {
+    for (const label of ['Targets', 'Comparison', 'Evaluators', 'Metrics']) {
       assert.ok(html.includes(`<h3>${label}</h3>`), `table block needs its own heading: ${label}`);
+    }
+  });
+
+  it('names which side is the baseline and which is the candidate in both languages', () => {
+    // 报告页此前只列 targetId，读者得自己记住哪个是被对照的原版。角色取自
+    // plan.definition.comparisons，是只读投影，不改任何评分口径。
+    const zh = runDetail(detail(), 'zh');
+    assert.ok(zh.includes('<h3>比较条件</h3>'), 'comparison block needs its zh heading');
+    assert.ok(zh.includes('基准版') && zh.includes('候选版'), 'zh role labels must be readable');
+    assert.ok(!zh.includes('Baseline') && !zh.includes('Candidate'), 'zh page stays in zh');
+    const en = runDetail(detail(), 'en');
+    assert.ok(en.includes('<h3>Comparison</h3>'), 'comparison block needs its en heading');
+    assert.ok(en.includes('Baseline') && en.includes('Candidate'), 'en role labels must be readable');
+    for (const [html, heading] of [[zh, '<h3>比较条件</h3>'], [en, '<h3>Comparison</h3>']] as const) {
+      // 只在这张表自己的区间里找：target-1 在上面的被测版本表里也出现，整页 indexOf 证不了角色。
+      const start = html.indexOf(heading);
+      const end = html.indexOf('<h3>', start + heading.length);
+      const block = html.slice(start, end < 0 ? undefined : end);
+      assert.ok(start >= 0, `${heading} should be served`);
+      assert.ok(block.includes('target-1') && block.includes('target-2'), 'both sides render inside the comparison table');
+      assert.ok(block.includes('comparison-1'), 'the comparison identity renders in its own row');
     }
   });
 

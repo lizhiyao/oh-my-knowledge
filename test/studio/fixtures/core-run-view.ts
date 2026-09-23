@@ -66,6 +66,17 @@ export function detail(run: CoreStudioRunCard = card()): CoreStudioRunDetail {
       targetKind: 'prompt',
       protocolId: 'omk.invoke/v1',
       executorId: 'executor-1',
+    }, {
+      targetId: 'target-2',
+      targetKind: 'prompt',
+      protocolId: 'omk.invoke/v1',
+      executorId: 'executor-1',
+    }],
+    comparisons: [{
+      comparisonId: 'comparison-1',
+      controlTargetId: 'target-1',
+      treatmentTargetIds: ['target-2'],
+      metricIds: ['quality'],
     }],
     evaluators: [{
       evaluatorId: 'evaluator-1',

@@ -42,6 +42,7 @@ const COPY = {
     classification: '最高数据分级', reportId: '报告 ID', artifactSetDigest: '产物集摘要',
     identities: '产物身份', contractDigest: '运行契约摘要', reportDigest: '报告摘要', provenance: '来源',
     plan: '测量计划', dataset: '数据集', samples: '用例数', targets: '被测版本', target: '目标',
+    comparison: '比较条件', controlVersion: '基准版', candidateVersions: '候选版', comparisonId: '比较 ID',
     evaluators: '评估器', evaluator: '评估器', metrics: '指标', kind: '类型', protocol: '协议',
     implementation: '实现', executor: '执行器', measurement: '测量身份', valueType: '值类型',
     scope: '作用域', direction: '方向', unit: '单位', scale: '量尺',
@@ -68,6 +69,7 @@ const COPY = {
     classification: 'Maximum classification', reportId: 'Report ID', artifactSetDigest: 'Artifact set digest',
     identities: 'Artifact identities', contractDigest: 'Run contract digest', reportDigest: 'Report digest', provenance: 'Provenance',
     plan: 'Measurement plan', dataset: 'Dataset', samples: 'Samples', targets: 'Targets', target: 'Target',
+    comparison: 'Comparison', controlVersion: 'Baseline', candidateVersions: 'Candidate', comparisonId: 'Comparison ID',
     evaluators: 'Evaluators', evaluator: 'Evaluator', metrics: 'Metrics', kind: 'Kind', protocol: 'Protocol',
     implementation: 'Implementation', executor: 'Executor', measurement: 'Measurement identity', valueType: 'Value type',
     scope: 'Scope', direction: 'Direction', unit: 'Unit', scale: 'Scale',
@@ -218,6 +220,12 @@ function Plan({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) {
       { title: copy.kind, dataIndex: 'targetKind', width: 140 },
       { title: copy.protocol, dataIndex: 'protocolId', width: 150 },
       { title: copy.executor, dataIndex: 'executorId', width: 130 },
+    ]}/></TableBlock>
+    <TableBlock label={copy.comparison}><Table className="studio-table" size="small" rowKey="comparisonId" pagination={false} scroll={{ x: 780 }} dataSource={[...detail.comparisons]} locale={{ emptyText }} columns={[
+      { title: copy.comparisonId, dataIndex: 'comparisonId', width: 170 },
+      { title: copy.controlVersion, dataIndex: 'controlTargetId', width: 190, render: (targetId: string) => <Code value={targetId}/> },
+      { title: copy.candidateVersions, dataIndex: 'treatmentTargetIds', width: 210, render: (values: readonly string[]) => <Fragments parts={values}/> },
+      { title: copy.metrics, dataIndex: 'metricIds', render: (values: readonly string[]) => <Fragments parts={values}/> },
     ]}/></TableBlock>
     <TableBlock label={copy.evaluators}><Table className="studio-table" size="small" rowKey="evaluatorId" pagination={false} scroll={{ x: 820 }} dataSource={[...detail.evaluators]} locale={{ emptyText }} columns={[
       { title: 'ID', dataIndex: 'evaluatorId', width: 190 },

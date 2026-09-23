@@ -173,6 +173,30 @@ describe('Core Studio catalog', () => {
       digestCanonicalJson(source.manifest.documents),
     );
     assert.equal(detail.dataset.sampleCount, 2);
+    // 比较角色是从 plan.definition 原样读出来的，展示层不造事实：值要逐字对得上，
+    // 而且基准／候选都必须确实是本页已投影出来的被测版本，否则角色标签会指向不存在的行。
+    assert.ok(detail.comparisons.length > 0, 'scenario should carry at least one comparison');
+    assert.deepEqual(
+      detail.comparisons,
+      source.plan.definition.comparisons.map((comparison) => ({
+        comparisonId: comparison.comparisonId,
+        controlTargetId: comparison.controlTargetId,
+        treatmentTargetIds: [...comparison.treatmentTargetIds],
+        metricIds: [...comparison.metricIds],
+      })),
+    );
+    for (const comparison of detail.comparisons) {
+      assert.ok(
+        detail.targets.some((target) => target.targetId === comparison.controlTargetId),
+        '基准版必须是被投影出来的被测版本',
+      );
+      for (const treatment of comparison.treatmentTargetIds) {
+        assert.ok(
+          detail.targets.some((target) => target.targetId === treatment),
+          '候选版必须是被投影出来的被测版本',
+        );
+      }
+    }
     assert.equal(detail.lineage.length, 5);
     assert.equal(detail.stages.execution.records.length, 4);
     assert.equal(detail.stages.evaluation.records.length, 8);
