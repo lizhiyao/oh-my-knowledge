@@ -13,7 +13,7 @@ export function StudioUtilities({ lang }: { lang: Language }) {
       items: [{ key: 'settings', label: zh ? '全局设置' : 'Global settings' }, { key: 'help', label: zh ? '使用帮助' : 'Help' }],
       onClick: ({ key }) => key === 'settings' ? openSettings() : setHelp(true),
     }}><button className="studio-utilities-trigger" aria-label={zh ? '设置与帮助' : 'Settings and help'}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 3-.6 2.2-2 .9L4.4 5.5 2 9.5l1.6 1.6v1.8L2 14.5l2.4 4 2-.6 2 .9L9 21h6l.6-2.2 2-.9 2 .6 2.4-4-1.6-1.6v-1.8L22 9.5l-2.4-4-2 .6-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><g transform="translate(1.2 1.2) scale(0.9)"><path d="m9 3-.6 2.2-2 .9L4.4 5.5 2 9.5l1.6 1.6v1.8L2 14.5l2.4 4 2-.6 2 .9L9 21h6l.6-2.2 2-.9 2 .6 2.4-4-1.6-1.6v-1.8L22 9.5l-2.4-4-2 .6-2-.9L15 3Z"/><circle cx="12" cy="12" r="2.7"/></g></svg>
       <span>{zh ? '设置与帮助' : 'Settings and help'}</span>
     </button></Dropdown>}/>
     <Drawer title={zh ? '使用帮助' : 'Help'} open={help} onClose={() => setHelp(false)} size={440}>
