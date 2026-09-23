@@ -67,11 +67,16 @@ describe('Studio 页级标题尺度', () => {
     expect(cell, '找不到表格单元格规则').not.toBeNull();
     expect(cell![0], '表格单元格未启用等宽数字').toContain('font-variant-numeric:tabular-nums');
     expect(cell![0], '表格单元格又允许换行').toContain('white-space:nowrap');
-    // 吸顶表头刻意不钉在这条里：两次尝试（裸选择器与加 .ant-table 限定）都被 antd 自己的
-    // position: relative 压过，计算值量不到效果；而现网能纵向滚动的表格要真跑一次
-    // omk eval 才有数据可滚。补这条时走 antd 的 sticky 属性，并在能滚动的页面上验，
-    // 不在样式里留一条没人能证实生效的规则。
-    expect(css, '未生效的 sticky 规则又回到了样式里').not.toMatch(/ant-table-thead>tr>th\{[^}]*position:sticky/);
+    // 吸顶表头的锚点：卡片必须用 `overflow:clip`，不能用 `hidden`。真实页面上逐个清祖先的
+    // overflow 量过：`.studio-table`（圆角裁切）与 `.ant-table-content`（横向滚动）任一存在，
+    // 该层就变成滚动容器，sticky 的锚点被截到卡片内部——计算值是 sticky，滚动时表头照样走。
+    // `clip` 保留圆角裁切又不建立滚动容器；而让表头脱离横向滚动容器的是 antd 的 `sticky` 属性
+    // （它把表头拆成独立一层），由 test/studio/web/measure-react.test.tsx 钉住。
+    const card = css.match(/\.studio-table\{[^}]*\}/);
+    expect(card, '找不到表格卡片规则').not.toBeNull();
+    expect(card![0], '卡片用回 overflow:hidden：吸顶表头的锚点会被这一层截走').toContain('overflow:clip');
+    expect(css, '样式里又出现靠 th 自身吸顶的写法：它出不了横向滚动容器，是条量不到效果的死规则')
+      .not.toMatch(/ant-table-thead>tr>th\{[^}]*position:sticky/);
   });
 
   it('对话阅读正文取 15px/27px', () => {
