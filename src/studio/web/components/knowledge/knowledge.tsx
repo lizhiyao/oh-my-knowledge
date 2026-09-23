@@ -252,6 +252,8 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
 
       <KnowledgeSectionNav active="skills" lang={lang}/>
 
+      <div className="measure-heading"><h1>{zh ? '知识载体' : 'Knowledge artifacts'}</h1></div>
+
       <div><Link href={KNOWLEDGE_CANDIDATES_PATH}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</Link></div>
 
       <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识载体' : 'Search knowledge artifacts'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识载体' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>

@@ -22,12 +22,12 @@ colors:
 typography:
   body:
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
-  measure-page-title:
-    fontSize: "18px"
-    lineHeight: "26px"
+  page-title:
+    fontSize: "20px"
+    lineHeight: "28px"
   reader-body:
-    fontSize: "14px"
-    lineHeight: "1.8"
+    fontSize: "15px"
+    lineHeight: "27px"
   page-description:
     fontSize: "12px"
     lineHeight: "20px"
@@ -158,9 +158,11 @@ Studio 是知识工作的全屏操作界面，服务于真实工作观测、知�
 
 复用现有系统字体栈，保持中文优先。等宽字体用于代码、技术身份和原始记录，不把整段知识正文改为等宽排版。数字比较区使用等宽数字对齐，长标识仍需完整查看入口。
 
-frontmatter 中的字号按**实际角色**命名：`measure-page-title` 是评测页标题，`reader-body` 是对话正文，`page-description` 是评测页说明，`session-title` 是对话列表标题。它们不是统一全站的 display／headline 阶梯；缺乏明确来源的字重或字号不补默认值。
+frontmatter 中的字号按**实际角色**命名。页级标题原本记作 `measure-page-title`（只有评测页有它），现在四个区共用同一档，故改名 `page-title`；`page-description` 是页级说明，`session-title` 是对话列表标题。它们不是统一全站的 display／headline 阶梯；缺乏明确来源的字重或字号不补默认值。
 
-**待收敛：** Observe、Measure、候选页的标题尺度尚不统一；时间轴存在更小字号；对话文本目前有直接显示 Markdown 标记的路径。后续需要通过长中文标题、代码与长回复设计稿验证阅读层级。本版不把 22–24px 页标题、15px 长文等试稿建议写为已生效规范。
+**已接入运行时（#1060 第四批）**：页级标题统一到 20px/28px。此前它散成 8 条规则、四种字号（22／20／18／17）加两处窄屏降档（18→16、20→17），Agent 页还是 18px/26px——同一个应用里「页标题」有四种视觉重量。同时对话阅读正文从 14px/1.8 升到 15px/27px，知识首页补出此前缺失的 h1（文案沿用分区导航已有的「知识载体／Knowledge artifacts」，不新造词）。这条尺度由 `test/architecture/studio-type-scale.test.ts` 锁住：任何一条命中 h1 的规则出现非 20px/28px 的字号或行高都会变红。
+
+**仍然待收敛**：时间轴与部分计数存在 11px 这类更小字号（对比度已随配色批次达标，但字号本身没有角色）；对话文本仍有直接显示 Markdown 标记的路径（正文是 `white-space: pre-wrap` 纯文本，无渲染器）；`page-description` 与 `session-title` 尚未纳入统一尺度；字重仍随组件，未收敛成规范。间距、圆角、边界与断点也未接入运行时。
 
 ## Layout
 

@@ -17,7 +17,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 
 .studio-brand:hover,.studio-brand:focus,.studio-brand:active{color:#657085;text-decoration:none}
 .studio-sidebar nav a:not([aria-current]):hover,.observe-section-nav a:not([aria-current]):hover{color:#293348}
-.studio-content :where(a:hover),.ant-modal-root :where(a:hover),.ant-drawer :where(a:hover){color:var(--studio-action-hover);text-underline-offset:3px}.measure-heading h1{font-size:18px;line-height:26px;margin-bottom:2px}.measure-heading p{font-size:12px;line-height:20px}
+.studio-content :where(a:hover),.ant-modal-root :where(a:hover),.ant-drawer :where(a:hover){color:var(--studio-action-hover);text-underline-offset:3px}.measure-heading h1{font-size:20px;line-height:28px;margin-bottom:2px}.measure-heading p{font-size:12px;line-height:20px}
 
 .knowledge-table .ant-table-tbody>tr>td{height:56px}.knowledge-table th{white-space:nowrap}.knowledge-summary{margin-bottom:12px}.knowledge-table td a{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}.knowledge-observe-link{margin-top:12px}
 
@@ -40,7 +40,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .observe-detail-header{flex-shrink:0;display:flex;flex-direction:column;gap:8px;min-width:0;margin-bottom:12px}
 .observe-detail-header .ant-breadcrumb{font-size:12px;line-height:20px}
 .observe-detail-title{display:flex;align-items:center;gap:16px;min-width:0}
-.observe-detail-title h1{flex:1;min-width:0;margin:0;font-size:18px;font-weight:600;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.observe-detail-title h1{flex:1;min-width:0;margin:0;font-size:20px;font-weight:600;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .observe-detail-count{font-size:12px;color:#657085;white-space:nowrap}
 .observe-detail-meta{display:flex;align-items:center;gap:16px;font-size:12px;color:#657085;min-width:0;flex-wrap:wrap}
 .observe-detail-meta>span{white-space:nowrap}
@@ -146,12 +146,12 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 
 /* Knowledge review keeps the candidate, its source, and decisions visible together. */
 .knowledge-candidates{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;gap:12px;overflow:hidden}
-.candidate-heading,.candidate-workspace{display:flex;align-items:center;gap:12px;flex-shrink:0;min-width:0}.candidate-heading{justify-content:space-between}.candidate-heading h1{font-size:20px;margin:2px 0}.candidate-heading>div{min-width:0}.candidate-heading .ant-space{flex-shrink:0}.candidate-workspace>.ant-input{flex:1;min-width:0}
+.candidate-heading,.candidate-workspace{display:flex;align-items:center;gap:12px;flex-shrink:0;min-width:0}.candidate-heading{justify-content:space-between}.candidate-heading h1{font-size:20px;line-height:28px;margin:2px 0}.candidate-heading>div{min-width:0}.candidate-heading .ant-space{flex-shrink:0}.candidate-workspace>.ant-input{flex:1;min-width:0}
 .candidate-columns{display:grid;grid-template-columns:minmax(180px,240px) minmax(280px,1fr) minmax(260px,1fr);flex:1;min-height:0;min-width:0;gap:16px;overflow:hidden}
 .candidate-list{overflow:auto;overscroll-behavior:contain;min-width:0;border-right:1px solid #e2e6ee;padding-right:12px}.candidate-list>button{display:flex;flex-direction:column;justify-content:center;width:100%;min-height:56px;text-align:left;border:0;background:transparent;border-radius:6px;padding:8px 10px;cursor:pointer;color:inherit}.candidate-list>button.selected{background:var(--studio-selection-fill);box-shadow:inset 2px 0 0 var(--studio-action)}.candidate-list strong{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.candidate-list span{font-size:12px;color:#657085}.candidate-list>button:focus-visible{outline:2px solid var(--studio-action);outline-offset:-2px}
 .candidate-content,.candidate-evidence{display:flex;flex-direction:column;min-height:0;min-width:0;gap:10px;overflow:hidden}.candidate-content h2,.candidate-evidence h2{font-size:17px;margin:0}.candidate-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere;padding-right:6px}.candidate-statement{border-bottom:1px solid #e2e6ee;padding:14px 0}.candidate-statement h3{font-size:15px;line-height:1.6;margin:0 0 6px}.candidate-statement dt{color:#657085;font-size:12px;margin-top:6px}.candidate-statement dd{margin:0;font-size:13px}.candidate-actions{display:flex;flex-direction:column;gap:8px;flex-shrink:0;border-top:1px solid #e2e6ee;padding-top:10px}.candidate-evidence{background:#f7f9fc;border-radius:8px;padding:14px}.candidate-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:13px;line-height:1.8}.candidate-evidence mark{background:#fff1b8;color:#333}.candidate-form{display:flex;flex-direction:column;gap:16px}.candidate-form label{display:flex;flex-direction:column;gap:6px}.knowledge-candidates>.ant-alert{flex-shrink:0}
 @media(max-width:1000px){.candidate-columns{grid-template-columns:170px minmax(240px,1fr)}.candidate-evidence{grid-column:1/-1;min-height:0}.candidate-columns{grid-template-rows:minmax(0,1fr) minmax(160px,.7fr)}}
-@media(max-width:600px){.candidate-heading{align-items:flex-start;flex-wrap:wrap;gap:6px}.candidate-heading h1{font-size:17px}.candidate-columns{grid-template-columns:120px minmax(0,1fr);gap:8px}.candidate-list{padding-right:4px}.candidate-workspace{gap:6px}.candidate-heading .ant-btn{padding-inline:8px}}
+@media(max-width:600px){.candidate-heading{align-items:flex-start;flex-wrap:wrap;gap:6px}.candidate-heading h1{font-size:20px}.candidate-columns{grid-template-columns:120px minmax(0,1fr);gap:8px}.candidate-list{padding-right:4px}.candidate-workspace{gap:6px}.candidate-heading .ant-btn{padding-inline:8px}}
 .studio-lang{margin-left:auto;align-self:center;padding:4px 10px;border:1px solid #e2e6ee;border-radius:6px;color:#657085;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;background:none;font-family:inherit;cursor:pointer}
 .studio-lang:hover,.studio-lang:focus,.studio-lang:active{color:#657085;border-color:#c9d0dd;text-decoration:none}
 .studio-lang:disabled{opacity:.6;cursor:default}
@@ -227,21 +227,21 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .studio-help{line-height:1.8}.studio-help h3{margin-top:24px}
 .observe-workspace-main{position:relative;flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .observe-workspace-tools{display:flex;justify-content:flex-end;flex-shrink:0}.observe-workspace-tools:empty{display:none}
-.observe-project-header{padding:8px 0 14px}.observe-project-header h1,.observe-reader-header h1{font-size:22px;line-height:1.4;margin:0;color:#192236}.observe-project-header p{color:#657085;font-size:13px;margin:6px 0 0}
+.observe-project-header{padding:8px 0 14px}.observe-project-header h1,.observe-reader-header h1{font-size:20px;line-height:28px;margin:0;color:#192236}.observe-project-header p{color:#657085;font-size:13px;margin:6px 0 0}
 .observe-session-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
 .observe-session-row{display:flex;gap:24px;justify-content:space-between;padding:12px 8px;border-bottom:1px solid #e9ecf2;text-decoration:none;color:#293348}
 .observe-session-row:hover{background:#f0f1f8}.observe-session-row>div:first-child{min-width:0;flex:1}
 .observe-session-row strong,.observe-session-row p,.observe-session-row>div:first-child small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .observe-session-row strong{font-size:14px;font-weight:500}.observe-session-row p{color:#657085;font-size:12px;margin:4px 0}.observe-session-row small{color:var(--studio-ink-muted);font-size:11px}
 .observe-session-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;font-size:11px;color:var(--studio-ink-muted)}.observe-session-meta .observe-session-error{color:#657085}.observe-workspace-main>.ant-pagination{flex-shrink:0;padding:10px 0}
-.observe-reader-header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:8px 0 20px;border-bottom:1px solid #e2e6ee;flex-shrink:0}.observe-reader-header>div:first-child{min-width:0}.observe-reader-header h1{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.observe-reader-header p{font-size:12px;color:#657085;margin:0 0 6px}.observe-reader-header small{font-size:12px;color:#657085}.observe-reader-header .conversation-knowledge-actions{flex-shrink:0}
+.observe-reader-header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:8px 0 20px;border-bottom:1px solid #e2e6ee;flex-shrink:0}.observe-reader-header>div:first-child{min-width:0}.observe-reader-header h1{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.observe-reader-header p{font-size:12px;color:#657085;margin:0 0 6px}.observe-reader-header small{font-size:12px;color:#657085}.observe-reader-header .conversation-knowledge-actions{flex-shrink:0}
 .observe-conversation-reader{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:24px max(0px,calc((100% - 860px)/2));overflow-anchor:none;scroll-behavior:auto}
 .observe-reading-turn{padding:0 8px 28px;margin-bottom:24px;border-bottom:1px solid #e2e6ee}.observe-reading-turn:last-child{margin-bottom:0}.observe-reading-turn>header{display:flex;gap:16px;justify-content:space-between;align-items:center;font-size:12px;color:#657085;margin-bottom:24px}.observe-reading-turn>header a{white-space:nowrap}
-.observe-reading-message{margin:20px 0;line-height:1.8;font-size:14px;overflow-wrap:anywhere}/* 发送者标签 12px，且人类气泡自带浅底：#657085 压在 #eef0f6 上实测只有 4.38:1，
+.observe-reading-message{margin:20px 0;line-height:27px;font-size:15px;overflow-wrap:anywhere}/* 发送者标签 12px，且人类气泡自带浅底：#657085 压在 #eef0f6 上实测只有 4.38:1，
    落在着色表面上的小字取 ink-muted。 */
 .observe-reading-message>strong{display:block;font-size:12px;color:var(--studio-ink-muted);margin-bottom:6px}.observe-reading-message.human{background:var(--studio-message-human-fill);padding:14px 18px;border-radius:8px;margin-left:auto;max-width:85%;width:fit-content}.observe-message-text{white-space:pre-wrap}
 .observe-tool-summary{font-size:12px;color:#657085}.observe-tool-summary summary{cursor:pointer}.observe-tool-summary p{line-height:1.7}.observe-history-control{text-align:center;margin-bottom:20px}.observe-new-messages{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:2}
-@media(max-width:1100px){.studio-sidebar{width:220px}.observe-reader-header{flex-wrap:wrap;gap:10px}.observe-reader-header h1{font-size:16px}.observe-reading-turn>header{flex-wrap:wrap}.observe-session-row{gap:12px}}
+@media(max-width:1100px){.studio-sidebar{width:220px}.observe-reader-header{flex-wrap:wrap;gap:10px}.observe-reader-header h1{font-size:20px}.observe-reading-turn>header{flex-wrap:wrap}.observe-session-row{gap:12px}}
 @media(max-width:760px){.studio-app{flex-direction:column}.studio-mobile-bar{display:flex;align-items:center;gap:4px;height:52px;flex-shrink:0;padding:0 12px;background:white;border-bottom:1px solid #e2e6ee}.studio-sidebar{position:fixed;top:0;bottom:0;left:0;z-index:40;width:280px;transform:translateX(-105%);transition:transform .2s ease;padding-top:12px;box-shadow:0 0 24px rgba(25,34,54,.18)}.studio-app.sidebar-open .studio-sidebar{transform:none}.studio-app.sidebar-collapsed>.studio-sidebar{display:flex}.studio-sidebar-expand{display:none}.observe-workspace-tools{justify-content:flex-start;margin-bottom:8px}.observe-session-meta{max-width:100px}.observe-session-meta small{display:none}.observe-reading-message.human{max-width:95%}}
 /*
  * 宽表的横向滚动提示。macOS 默认把滚动条渲染成覆盖式、只在滚动的瞬间出现，所以一张声明了
@@ -267,7 +267,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
  * 否则第二张表在矮视口里直接被裁掉且没有任何可达路径。
  */
 .agents-page{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:24px}
-.agents-heading h1{font-size:18px;line-height:26px;margin:0 0 2px;overflow-wrap:anywhere}
+.agents-heading h1{font-size:20px;line-height:28px;margin:0 0 2px;overflow-wrap:anywhere}
 .agents-heading p{font-size:12px;line-height:20px;color:#657085;max-width:76ch;margin:0}
 .agents-page h2{font-size:15px;margin:8px 0 0}
 .agents-page>*{flex-shrink:0}
@@ -280,3 +280,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
    运行时注入、排在静态样式之后，同特异性会压过这里，实测覆写不生效。 */
 .studio-content .ant-pagination .ant-pagination-item-active{background:var(--studio-selection-fill);border-color:var(--studio-selection-edge)}
 .studio-content .ant-pagination .ant-pagination-item-active a,.studio-content .ant-pagination .ant-pagination-item-active:hover a{color:var(--studio-ink)}
+/* 表格空态里的下一步命令必须读得到：antd 的固定行容器带 overflow:hidden，
+   而描述里的 <code> 默认不换行，窄屏下整句会被裁掉且没有提示出口。 */
+.studio-content .ant-table-expanded-row-fixed .ant-empty-description,
+.studio-content .ant-table-expanded-row-fixed .ant-empty-description code{white-space:normal;overflow-wrap:anywhere}
