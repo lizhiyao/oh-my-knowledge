@@ -8,17 +8,18 @@
  * 落在应用底色只有 4.43:1、落在选中底只有 4.13:1，都不够小字的 4.5:1。这个区分一旦被人顺手
  * 改回一个值，无障碍结论就悄悄失效了，所以锁在门禁里而不是锁在 PR 描述里。
  *
- * 本门禁只查四件事：
+ * 本门禁只查五件事：
  *  1. 语义 token 在 `:root` 一处定义，且取值就是规范登记的那批；
  *  2. 主题主色与 `--studio-action` 同源，Ant Design 派生不出第二个品牌紫；
  *  3. 旧的品牌紫 `#5145cd` 不再出现在样式里——出现即说明有人绕过 token 写死；
- *  4. 「导航选中底」与「人类消息气泡底」是两个角色，历史上它们同值，容易被一次替换合并。
+ *  4. 「导航选中底」与「人类消息气泡底」是两个角色，历史上它们同值，容易被一次替换合并；
+ *  5. 「悬停档」与「选中档」也是两个角色，同理。
  *
  * 口径边界（刻意不查）：
  *  - 不查 `#657085` 这类尚未收敛到 token 的散落色值。它们仍是有意的现状，收敛是后续任务，
  *    由 DESIGN.md 的「待收敛」标注跟踪，不由这条门禁冒充已完成。
- *  - 不查悬停档与选中档是否该合并：现网多处悬停仍复用选中底 `#eef0f6`，这是规范里挂着的
- *    待评审项，本门禁只保证它被显式命名，不替评审者改值。
+ *  - 悬停档只保证「只有一个值」，不保证所有表面都该用悬停档；运行中行的 `#e2edff` 表达的是
+ *    活动性而非鼠标位置，按规范刻意排除在悬停收敛之外。
  *  - 不做像素或对比度计算。数值达标与否由 `design/studio/` 的取证脚本在真实渲染上量，
  *    这里只保证被量过的那批值没有被悄悄换掉。
  */
@@ -105,14 +106,40 @@ describe('Studio 配色 token 单一来源', () => {
     );
   });
 
-  it('链接悬停走 hover token，样式与主题里不再有旧品牌紫', () => {
-    const hover = css.match(/\.studio-content :where\(a:hover\)[^{]*\{[^}]*\}/);
-    expect(hover, '找不到正文链接悬停规则').not.toBeNull();
-    expect(hover![0]).toContain('var(--studio-action-hover)');
+  it('链接与按钮的悬停深色由主题给出，与 hover token 同源', () => {
+    // 实测教训（悬停态才看得见）：样式里 `.studio-content :where(a:hover)` 是域规则刻意留的
+    // 低优先级默认值——`:where()` 把特异性算作 0，好让自带悬停设计的组件压过它。代价是 antd
+    // 运行时注入的 `:where(.css-hash) a:hover`（(0,1,1)）也压过它，于是悬停文字取 antd 从
+    // colorLink 派生的浅紫 #AA90F5，压在悬停底上只有 2.42:1；主按钮同理，白字 14px 落在派生的
+    // #9D7DFF 上只有 3.08:1。两处都在主题层给出同一个深色，不改那条默认值的优先级。
+    expect(css, '正文链接悬停默认值规则被删掉了').toContain('.studio-content :where(a:hover)');
     expect(css, '仍出现旧 hover 值 #4235b5').not.toMatch(/#4235b5/i);
     expect(design, 'DESIGN.md 的 primary-hover 与样式不同源').toContain(
       `primary-hover: "${TARGET_TOKENS['--studio-action-hover']}"`,
     );
+    const linkHover = theme.match(/colorLinkHover:\s*'([^']+)'/);
+    expect(linkHover, 'theme.tsx 未声明 colorLinkHover，antd 会继续用派生浅紫').not.toBeNull();
+    expect(linkHover![1], 'colorLinkHover 应与 --studio-action-hover 同源').toBe(
+      TARGET_TOKENS['--studio-action-hover'],
+    );
+    // 主按钮的悬停底色取 colorPrimaryHover，只覆在 Button 作用域，不动 Input／Select 的悬停边框。
+    const buttonBlock = theme.match(/Button:\s*\{([^}]*)\}/);
+    expect(buttonBlock, 'theme.tsx 未覆写 Button 作用域').not.toBeNull();
+    const buttonHover = buttonBlock![1].match(/colorPrimaryHover:\s*'([^']+)'/);
+    expect(buttonHover, 'Button.colorPrimaryHover 缺失，白字主按钮悬停会掉到 3.08:1').not.toBeNull();
+    expect(buttonHover![1], 'Button.colorPrimaryHover 应与 --studio-action-hover 同源').toBe(
+      TARGET_TOKENS['--studio-action-hover'],
+    );
+  });
+
+  it('列表行悬停只加底色，文字保持墨色层级', () => {
+    // 规范里导航／列表行用墨色层级，正文链接才用品牌色层级。会话行本身没有悬停文字色时，
+    // 会继承 antd 的链接悬停色，所以这一档要显式给出，写法与其它侧栏行一致。
+    const row = css.match(/\.observe-session-row:hover\{[^}]*\}/);
+    expect(row, '找不到会话行悬停规则').not.toBeNull();
+    expect(row![0]).toContain('background:var(--studio-navigation-hover-fill)');
+    expect(row![0], '会话行悬停文字未收回墨色').toContain('color:#293348');
+    expect(row![0], '会话行悬停文字不应引用品牌紫').not.toMatch(/var\(--studio-action/);
   });
 
   it('分页选中态被显式收回墨色，且特异性高于 Ant Design 的派生规则', () => {
@@ -126,6 +153,22 @@ describe('Studio 配色 token 单一来源', () => {
     expect(text, '找不到分页选中项文字色覆写（需带 .ant-pagination 祖先）').not.toBeNull();
     expect(text![0]).toContain('color:var(--studio-ink)');
     expect(text![0], '分页选中文字仍引用品牌紫').not.toContain('var(--studio-action)');
+  });
+
+  it("悬停档与选中档是两个值，不许合并回同一个灰", () => {
+    // 历史上四处悬停直接复用选中底 #eef0f6，读者分不清「鼠标在这」和「你在这」。
+    const hover = css.match(/--studio-navigation-hover-fill:([^;]+);/);
+    const selected = css.match(/--studio-selection-fill:([^;]+);/);
+    expect(hover, "缺少悬停档 token").not.toBeNull();
+    expect(selected, "缺少选中档 token").not.toBeNull();
+    expect(hover![1]).not.toBe(selected![1]);
+    expect(hover![1]).toBe("#f4f6fa");
+    expect(css, "悬停规则又写回了硬编码底色").not.toMatch(/:hover[^{]*\{[^}]*background:#eef0f6/);
+    // 悬停档只许一个值：会话行曾另用 #f0f1f8。运行中行的 #e2edff 是「活动性」角色，不并入。
+    const otherHovers = [...css.matchAll(/[^{}]*:hover[^{}]*\{[^}]*background:#[0-9a-f]{3,6}[^}]*\}/g)]
+      .map((match) => match[0])
+      .filter((rule) => !/studio-running-row/.test(rule));
+    expect(otherHovers, "出现了第二个悬停底色").toEqual([]);
   });
 
   it('Ant Design 主题 token 与本目录 token 同源，页面不再出现 antd 默认蓝与默认灰', () => {

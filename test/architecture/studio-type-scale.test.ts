@@ -36,6 +36,15 @@ describe('Studio 页级标题尺度', () => {
     expect(offenders, 'h1 字号或行高出现了非 20px/28px 的特例').toEqual([]);
   });
 
+  it("圆角只有控件与容器两档，且都走 token", () => {
+    // 现状本来就是 6px（控件）与 8px（容器）两档，外加 50% 圆形品牌标记；
+    // 这里不新增形状，只是把已有两档钉成变量，防止后来者随手写第三个圆角。
+    expect(css).toContain("--studio-radius-control:6px");
+    expect(css).toContain("--studio-radius-container:8px");
+    const raw = [...css.matchAll(/border-radius:(?!var|50%)[^;}]+/g)].map((m) => m[0]);
+    expect(raw, "出现了未走 token 的圆角").toEqual([]);
+  });
+
   it('对话阅读正文取 15px/27px', () => {
     const reader = css.match(/\.observe-reading-message\{[^}]*\}/);
     expect(reader, '找不到对话阅读正文规则').not.toBeNull();
