@@ -141,6 +141,20 @@ describe('Studio 配色 token 单一来源', () => {
     );
   });
 
+  it('焦点环用实色品牌紫，且选择器带祖先限定压得过 Ant Design', () => {
+    // 实测缺口：antd 的 genFocusOutline 是 `lineWidthFocus solid colorPrimaryBorder`，
+    // 那个派生浅紫 #DECDFF 压在表面只有 1.27～1.45:1，不达焦点指示器要求的 3:1；
+    // 而本仓库那条 `a:focus-visible` 与它同特异性、又排在前面，所以链接一直没吃到自己的环。
+    // 不能改 colorPrimaryBorder 来治它——该别名被 slider／date-picker／notification 等 47 处共用。
+    const focus = css.match(/(^|})[^{}]*:focus-visible[^{}]*\{[^}]*outline:[^}]*\}/);
+    expect(focus, '找不到焦点环规则').not.toBeNull();
+    const selector = focus![0].replace(/^\}/, '').split('{')[0];
+    expect(focus![0], '焦点环规则必须走 --studio-action 实色').toContain('solid var(--studio-action)');
+    for (const scoped of ['.studio-app a:focus-visible', '.ant-modal-root a:focus-visible', '.ant-drawer a:focus-visible']) {
+      expect(selector, `焦点环缺少 ${scoped}：裸 a:focus-visible 会被 antd 同特异性压过`).toContain(scoped);
+    }
+  });
+
   it('列表行悬停只加底色，文字保持墨色层级', () => {
     // 规范里导航／列表行用墨色层级，正文链接才用品牌色层级。会话行本身没有悬停文字色时，
     // 会继承 antd 的链接悬停色，所以这一档要显式给出，写法与其它侧栏行一致。
