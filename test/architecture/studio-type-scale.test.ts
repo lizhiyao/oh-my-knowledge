@@ -27,6 +27,22 @@ function h1Rules(source: string): string[] {
   return [...source.matchAll(/[^{}]*h1[^{}]*\{[^{}]*\}/g)].map((match) => match[0].trim());
 }
 
+/**
+ * 按「一条声明一条」解析 `:root` 里的自定义属性，返回名字到取值的映射。
+ * 不用子串匹配：#1085 漏掉一个分号，`--studio-space-1:2px` 被吞进前一条
+ * `--managed-tone-muted` 的值里，`toContain` 照样命中，浏览器却认为它从未声明。
+ */
+function declaredCustomProperties(source: string): Map<string, string> {
+  const declared = new Map<string, string>();
+  for (const block of source.matchAll(/:root[^{]*\{([^{}]*)\}/g)) {
+    for (const declaration of block[1].split(';')) {
+      const pair = /^\s*(--[\w-]+)\s*:\s*(.+)$/.exec(declaration);
+      if (pair) declared.set(pair[1], pair[2].trim());
+    }
+  }
+  return declared;
+}
+
 describe('Studio 页级标题尺度', () => {
   it('每一条 h1 规则都取 20px/28px，不留单页特例', () => {
     const rules = h1Rules(css);
@@ -52,10 +68,14 @@ describe('Studio 页级标题尺度', () => {
     // 第八批把现网 80 条一次性值就近归档（同距向上），这条门禁随之从「阶梯值必须走 token」
     // 收紧成「padding／margin／gap 里不许出现任何字面 px」——归档会挪动整站元素，
     // 收紧才有意义；前后几何由真实页面逐元素对量，不是靠这条门禁自证。
+    const declared = declaredCustomProperties(css);
+    expect(declared.size, '没解析出任何 :root 自定义属性，检查抽取方式').toBeGreaterThan(20);
+    const swallowed = [...declared].filter(([, value]) => /--[\w-]+\s*:/.test(value));
+    expect(swallowed, '这些声明的值里嵌着另一条声明：前一条缺分号，后一条在浏览器里从未生效').toEqual([]);
     for (const [n, px] of [['1', 2], ['2', 4], ['3', 8], ['4', 12], ['5', 16], ['6', 20], ['7', 24], ['9', 32]] as const) {
-      expect(css, `缺少 --studio-space-${n}（${px}px）`).toContain(`--studio-space-${n}:${px}px`);
+      expect(declared.get(`--studio-space-${n}`), `缺少 --studio-space-${n}（${px}px）`).toBe(`${px}px`);
     }
-    expect(css, '折叠栏避让量应作为布局偏移单独命名').toContain('--studio-collapsed-rail-offset:52px');
+    expect(declared.get('--studio-collapsed-rail-offset'), '折叠栏避让量应作为布局偏移单独命名').toBe('52px');
     const offenders: string[] = [];
     for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       if (rule[1].includes(':root')) continue;
