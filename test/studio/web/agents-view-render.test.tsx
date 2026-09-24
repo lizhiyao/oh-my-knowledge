@@ -51,7 +51,7 @@ describe('本机 Agent 视图的双语呈现', () => {
     const zh = render('zh');
     assert.match(zh, /<h1>来源与采集<\/h1>/);
     assert.match(zh, /href="\/observe\?view=recent">返回对话<\/a>/);
-    assert.match(zh, /id="connection-guide">如何接入会话<\/h2>/);
+    assert.match(zh, /id="connection-guide">如何接入对话<\/h2>/);
     assert.match(zh, /登记表 3 个 · 已安装 2 个 · 来源会话日志 42 份/);
     assert.match(zh, /有日志根被容量上限截断/);
     assert.match(zh, /25 \/ 100/);

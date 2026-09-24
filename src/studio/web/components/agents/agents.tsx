@@ -19,7 +19,7 @@ const COPY = {
     intro: '识别本机装了哪些 Agent、采集了它们哪些来源会话日志。页面只读取 omk agents 落盘的报告，不会重新扫描这台机器。',
     detectedHeading: '识别结果',
     collectedHeading: '日志采集',
-    nextHeading: '如何接入会话',
+    nextHeading: '如何接入对话',
     commandHint: '命令在终端执行；本页只呈现结果，不代替你改动文件或调用模型。',
     agent: 'Agent',
     vendor: '厂商',
