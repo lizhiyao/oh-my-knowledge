@@ -227,13 +227,13 @@ function Plan({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) {
       { title: copy.comparisonId, dataIndex: 'comparisonId', width: 170, ellipsis: true },
       { title: copy.controlVersion, dataIndex: 'controlTargetId', width: 190, render: (targetId: string) => <Code value={targetId}/> },
       { title: copy.candidateVersions, dataIndex: 'treatmentTargetIds', width: 210, render: (values: readonly string[]) => <Fragments parts={values}/> },
-      { title: copy.metrics, dataIndex: 'metricIds', ellipsis: true, render: (values: readonly string[]) => <Fragments parts={values}/> },
+      { title: copy.metrics, dataIndex: 'metricIds', ellipsis: true, onCell: ({ metricIds }) => ({ title: metricIds.join(', ') }), render: (values: readonly string[]) => <Code value={values.join(', ') || '—'}/> },
     ]}/></TableBlock>
     <TableBlock label={copy.evaluators}><Table className="studio-table" sticky size="small" rowKey="evaluatorId" pagination={false} scroll={{ x: 820 }} dataSource={[...detail.evaluators]} locale={{ emptyText }} columns={[
       { title: 'ID', dataIndex: 'evaluatorId', width: 190, ellipsis: true },
       { title: copy.kind, dataIndex: 'evaluatorKind', width: 130 },
       { title: copy.implementation, dataIndex: 'implementationId', width: 190, ellipsis: true },
-      { title: copy.metrics, dataIndex: 'metricIds', ellipsis: true, render: (values: readonly string[]) => <Fragments parts={values}/> },
+      { title: copy.metrics, dataIndex: 'metricIds', ellipsis: true, onCell: ({ metricIds }) => ({ title: metricIds.join(', ') }), render: (values: readonly string[]) => <Code value={values.join(', ') || '—'}/> },
       { title: copy.measurement, width: 250, ellipsis: true, render: (_, evaluator) => <Code value={formatMeasurement(evaluator.measurement)}/> },
     ]}/></TableBlock>
     <TableBlock label={copy.metrics}><Table className="studio-table" sticky size="small" rowKey="metricId" pagination={false} scroll={{ x: 760 }} dataSource={[...detail.metrics]} locale={{ emptyText }} columns={[

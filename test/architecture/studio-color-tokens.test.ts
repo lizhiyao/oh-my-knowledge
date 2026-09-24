@@ -277,6 +277,8 @@ describe('Studio 配色 token 单一来源', () => {
     // 中性灰小字必须走 token；样式里再出现 #8893a5 就说明有人又写死了一个灰。
     expect(css, 'studio.css 仍写死 #8893a5').not.toMatch(/:#8893a5/i);
     expect(css).toContain('--studio-ink-muted:#5f6b7f');
+    // 候选决定状态也落在选中浅紫底上；旧 #657085 只有 4.38:1。
+    expect(css.match(/\.candidate-list span\{[^}]*\}/)?.[0]).toContain('color:var(--studio-ink-muted)');
   });
 
   it('状态色的浅底与边框被显式给出，不由暗基色派生', () => {
