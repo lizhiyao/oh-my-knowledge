@@ -21,7 +21,8 @@
  *    由 DESIGN.md 的「待收敛」标注跟踪，不由这条门禁冒充已完成。
  *  - 悬停档只保证「只有一个值」，不保证所有表面都该用悬停档；运行中行的 `#e2edff` 表达的是
  *    活动性而非鼠标位置，按规范刻意排除在悬停收敛之外。
- *  - 不做像素或对比度计算。数值达标与否由 `design/studio/` 的取证脚本在真实渲染上量，
+ *  - 不做像素或对比度计算。数值达标与否在真实渲染上量：#1060 期间由代表页原型的取证脚本量，
+ *    第七批改用真实评测产物在运行中的 Studio 上量，取证脚本随该 Issue 关闭退场（见 DESIGN.md）。
  *    这里只保证被量过的那批值没有被悄悄换掉。
  */
 
@@ -35,7 +36,7 @@ const CSS_FILE = join(REPO_ROOT, 'src', 'studio', 'web', 'app', 'studio.css');
 const THEME_FILE = join(REPO_ROOT, 'src', 'studio', 'web', 'components', 'layout', 'theme.tsx');
 const DESIGN_FILE = join(REPO_ROOT, 'DESIGN.md');
 
-/** 规范登记的目标值：改这里必须同时改 DESIGN.md 与 design/studio/tokens.css。 */
+/** 规范登记的目标值：改这里必须同时改 DESIGN.md，运行时取值与本表由下面的用例钉成同源。 */
 const TARGET_TOKENS: Record<string, string> = {
   '--studio-action': '#7753ff',
   '--studio-action-hover': '#6745eb',
