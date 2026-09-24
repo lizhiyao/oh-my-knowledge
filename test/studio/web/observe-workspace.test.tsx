@@ -38,6 +38,7 @@ it('opens a reader with in-place extraction and retains project navigation', () 
   expect(html).toContain('Example project'); expect(html).not.toContain('<table');
   expect(html).not.toContain('ant-pagination');
   expect(html).not.toContain('最近轮次优先');
+  expect(html).not.toContain('href="/agents"');
   expect(sidebarOf(html)).toContain('aria-current="page"');
   const header = html.slice(html.indexOf('class="observe-reader-header"'), html.indexOf('class="observe-conversation-reader"'));
   expect(header.indexOf('<h1')).toBeLessThan(header.indexOf('Example project'));
@@ -129,8 +130,8 @@ it('项目内会话超出视野时给出该项目全部会话的入口', () => {
 
 it('完全没有记录时说明记录从哪里来，而不是只说一句暂无', () => {
   const html = renderIndex([]);
-  expect(html).toContain('暂无对话记录。可查看数据来源，确认本机 Agent 的识别结果与日志采集情况。');
-  expect(html).toMatch(/href="\/agents">查看数据来源<\/a>/);
+  expect(html).toContain('暂无对话记录。了解如何接入本机 Agent 的会话，或检查日志采集情况。');
+  expect(html).toMatch(/href="\/agents#connection-guide">如何接入会话<\/a>/);
   expect(sidebarOf(html)).toContain('有项目归属的对话显示在上方项目下。');
   expect(sidebarOf(html)).toContain('>暂无</span>');
 });
@@ -139,4 +140,10 @@ it('进行中的入口与标题使用同一个名字', () => {
   const html = renderIndex([item]);
   expect(html).toContain('进行中的对话');
   expect(html).not.toContain('进行中的会话');
+});
+
+it('来源与采集只在列表提供辅助入口，侧栏无常驻二级导航', () => {
+  const html = renderIndex([item]);
+  expect(html).toMatch(/href="\/agents">来源与采集<\/a>/);
+  expect(sidebarOf(html)).not.toContain('href="/agents"');
 });

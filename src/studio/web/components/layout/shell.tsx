@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { StudioUtilities } from './utilities';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
-import { AGENTS_INDEX_PATH, KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { useStudioNavigation } from './navigation';
@@ -114,10 +114,6 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
           <Link href={MEASURE_INDEX_PATH} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
           <Link href={KNOWLEDGE_INDEX_PATH} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
         </nav>
-        {(active === 'observe' || active === 'agents') && <nav className="observe-secondary-nav" aria-label={zh ? '观测导航' : 'Observe navigation'}>
-          <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{zh ? '对话' : 'Conversations'}</Link>
-          <Link href={AGENTS_INDEX_PATH} aria-current={active === 'agents' ? 'page' : undefined}>{zh ? '数据来源' : 'Data sources'}</Link>
-        </nav>}
         {sidebar ? <div className="studio-sidebar-body">{sidebar}</div> : null}
         <StudioUtilities lang={lang}/>
       </aside>

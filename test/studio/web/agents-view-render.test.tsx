@@ -49,7 +49,9 @@ function render(lang: 'zh' | 'en', from = dir): string {
 describe('本机 Agent 视图的双语呈现', () => {
   it('中文界面呈现识别计数、截断告警与未识别事件比', () => {
     const zh = render('zh');
-    assert.match(zh, /<h1>数据来源<\/h1>/);
+    assert.match(zh, /<h1>来源与采集<\/h1>/);
+    assert.match(zh, /href="\/observe\?view=recent">返回对话<\/a>/);
+    assert.match(zh, /id="connection-guide">如何接入会话<\/h2>/);
     assert.match(zh, /登记表 3 个 · 已安装 2 个 · 来源会话日志 42 份/);
     assert.match(zh, /有日志根被容量上限截断/);
     assert.match(zh, /25 \/ 100/);
@@ -68,7 +70,7 @@ describe('本机 Agent 视图的双语呈现', () => {
 
   it('英文界面读同一批事实，不丢截断与未识别计数', () => {
     const en = render('en');
-    assert.match(en, /<h1>Data sources<\/h1>/);
+    assert.match(en, /<h1>Sources and collection<\/h1>/);
     assert.match(en, /3 registered · 2 installed · 42 session logs/);
     assert.match(en, /Some log roots hit a capacity ceiling/);
     assert.match(en, /25 \/ 100/);

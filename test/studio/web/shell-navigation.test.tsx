@@ -1,5 +1,5 @@
 /**
- * 壳层一级导航（#903 第三项）：三区入口与观测二级入口、品牌位的地址语义。
+ * 壳层一级导航（#903 第三项）：三区入口与品牌位的地址语义。
  *
  * 机制口径由 `test/architecture/studio-internal-navigation.test.ts` 守住（站内跳转只走 next/link，
  * 不再整文档重载）；这里锁用户实际读到的链接：地址不带语言参数（语言是本机设置，不进地址）、
@@ -21,15 +21,15 @@ function render(active: Zone | false, lang: 'zh' | 'en' = 'zh', withNavigation =
 }
 
 describe('壳层一级导航', () => {
-  it('三区入口和观测二级入口不带语言参数', () => {
+  it('三区入口不带语言参数，来源页归属观测', () => {
     const en = render('observe', 'en');
-    for (const path of ['/observe', '/measure', '/knowledge', '/agents']) {
+    for (const path of ['/observe', '/measure', '/knowledge']) {
       assert.ok(en.includes(`href="${path}"`), `${path} 缺导航链接`);
     }
     const primary = en.match(/<nav aria-label="Studio primary navigation">([\s\S]*?)<\/nav>/)![1];
     assert.doesNotMatch(primary, /href="\/agents"/);
-    assert.match(en, /aria-label="Observe navigation"/);
-    assert.match(en, />Data sources<\/a>/);
+    assert.doesNotMatch(en, /aria-label="Observe navigation"/);
+    assert.doesNotMatch(en, /href="\/agents"/);
     assert.doesNotMatch(render('knowledge'), /aria-label="观测导航"/);
     assert.doesNotMatch(render('agents', 'zh'), /href="[^"]*[?&]lang=/, '站内链接不出现语言参数');
   });
@@ -38,7 +38,6 @@ describe('壳层一级导航', () => {
     assert.match(render('measure'), /<a[^>]*aria-current="page"[^>]*href="\/measure"/);
     assert.doesNotMatch(render('measure'), /aria-current="page"[^>]*href="\/observe"/);
     assert.match(render('knowledge'), /<a[^>]*aria-current="page"[^>]*href="\/knowledge"/);
-    assert.match(render('agents'), /<a[^>]*aria-current="page"[^>]*href="\/agents"/);
     assert.match(render('agents'), /<a[^>]*aria-current="location"[^>]*href="\/observe"/);
     assert.doesNotMatch(render('agents'), /aria-current="page"[^>]*href="\/knowledge"/);
     assert.doesNotMatch(render(false), /aria-current/, '不属于任何一区时不谎报当前位置');
