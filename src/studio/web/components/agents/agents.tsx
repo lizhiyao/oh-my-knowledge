@@ -9,17 +9,17 @@ import type {
   DetectedAgent,
 } from '../../../../observability/agents/index';
 import type { AgentsPage } from '../../../http/pages/agents-page';
-import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
+import { KNOWLEDGE_CANDIDATES_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import { displayBytes, displayTime } from '../../../application/display/format';
 import type { Language } from '../layout/shell';
 
 const COPY = {
   zh: {
-    title: '数据来源',
+    title: '来源与采集',
     intro: '识别本机装了哪些 Agent、采集了它们哪些来源会话日志。页面只读取 omk agents 落盘的报告，不会重新扫描这台机器。',
     detectedHeading: '识别结果',
     collectedHeading: '日志采集',
-    nextHeading: '下一步',
+    nextHeading: '如何接入对话',
     commandHint: '命令在终端执行；本页只呈现结果，不代替你改动文件或调用模型。',
     agent: 'Agent',
     vendor: '厂商',
@@ -68,11 +68,11 @@ const COPY = {
     candidatesLink: '查看提炼出的候选知识',
   },
   en: {
-    title: 'Data sources',
+    title: 'Sources and collection',
     intro: 'Which agents this machine has, and which of their session logs OMK collected. The page reads the reports written by omk agents; it never rescans the machine.',
     detectedHeading: 'Detection',
     collectedHeading: 'Log collection',
-    nextHeading: 'Next steps',
+    nextHeading: 'How to connect conversations',
     commandHint: 'Commands run in a terminal. This page shows results instead of touching files or calling a model for you.',
     agent: 'Agent',
     vendor: 'Vendor',
@@ -305,6 +305,7 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
   return (
     <div className="agents-page">
       <div className="agents-heading">
+        <Link href={`${OBSERVE_INDEX_PATH}?view=recent`}>{lang === 'zh' ? '返回对话' : 'Back to conversations'}</Link>
         <h1>{c.title}</h1>
         <p>{c.intro}</p>
       </div>
@@ -354,7 +355,7 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
         </>
       ) : null}
 
-      <h2>{c.nextHeading}</h2>
+      <h2 id="connection-guide">{c.nextHeading}</h2>
       <Typography.Paragraph type="secondary">{c.commandHint}</Typography.Paragraph>
       <ul className="agents-next">
         {c.nextList.map((entry) => (

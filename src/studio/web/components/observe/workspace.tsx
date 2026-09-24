@@ -67,7 +67,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
     'no-match': { description: t('没有匹配的对话。搜索只匹配标题、路径与项目名，不检索消息正文。', 'No matching conversations. Search matches titles, paths and project names, not message bodies.'), action: t('清空搜索', 'Clear the search') },
     'no-running': { description: t('当前没有进行中的对话。已结束的工作记录仍在全部对话里。', 'Nothing is running right now. Finished work is still in All conversations.'), action: t('查看全部对话', 'View all conversations') },
     'unknown-project': { description: t('找不到这个项目，它可能已被移动或清理。', 'This project cannot be found; it may have been moved or cleaned up.'), action: t('查看全部对话', 'View all conversations') },
-    'no-data': { description: t('暂无对话记录。可查看数据来源，确认本机 Agent 的识别结果与日志采集情况。', 'No conversations yet. Check data sources for local agent detection and log collection status.') },
+    'no-data': { description: t('暂无对话记录。了解如何接入本机 Agent 的对话，或检查日志采集情况。', 'No conversations yet. Learn how to connect local agent conversations or check log collection.') },
   };
   function clearSearch() { setQuery(''); setCurrent(1); }
   return <StudioShell lang={lang} active="observe" sidebar={<div className="observe-sidebar" role="group" aria-label={t('项目与对话', 'Projects and conversations')}>
@@ -104,7 +104,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
     <div className="observe-workspace-main">
       <div className="observe-workspace-tools"><ActivityNotice activity={activity} lang={lang}/></div>
       {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang} title={conversationLabel(selected.title)} project={projectName(selected, zh)}/> : <>
-        <header className="observe-project-header"><h1>{heading}</h1><p>{t(`${rows.length} 个对话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开对话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
+        <header className="observe-project-header"><div className="observe-project-heading"><h1>{heading}</h1><Link className="observe-source-entry" href={AGENTS_INDEX_PATH}>{t('来源与采集', 'Sources and collection')}</Link></div><p>{t(`${rows.length} 个对话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开对话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
         <div className="observe-session-list">{listed.rows.map(item => {
           const label = conversationLabel(item.title);
           const lastTask = item.tasks.at(-1);
@@ -115,7 +115,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         </Link>;
         })}{!rows.length && <Empty description={emptyCopy[emptyState].description}>
           {emptyCopy[emptyState].action ? <Button onClick={() => { if (emptyState === 'no-match') clearSearch(); else choose('recent'); }}>{emptyCopy[emptyState].action}</Button> : null}
-          {emptyState === 'no-data' && <Link href={AGENTS_INDEX_PATH}>{t('查看数据来源', 'View data sources')}</Link>}
+          {emptyState === 'no-data' && <Link className="observe-connect-entry" href={`${AGENTS_INDEX_PATH}#connection-guide`}>{t('如何接入对话', 'How to connect conversations')}</Link>}
         </Empty>}</div>
         <Pagination current={listed.page} total={rows.length} pageSize={LIST_PAGE_SIZE} showSizeChanger={false} onChange={setCurrent}/>
       </>}
