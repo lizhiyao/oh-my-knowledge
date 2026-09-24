@@ -158,3 +158,26 @@ it('轮次尾部保留异常、工具报错与来源详情', () => {
   assert.match(html, /报错不等于最终工作失败/);
   assert.match(html, /执行详情/);
 });
+
+
+it('完整环境上下文默认折叠，原文可读且不冒充用户发言，同条请求仍展示', () => {
+  const context = '<environment_context>\n<timezone>Asia/Shanghai</timezone>\n</environment_context>';
+  const only = body(turn({}, { messages: [{ role: 'user', text: context }] }));
+  assert.match(only, /<details class="observe-context"><summary>环境上下文<\/summary>/);
+  assert.match(only, /&lt;timezone&gt;Asia\/Shanghai&lt;\/timezone&gt;/);
+  assert.doesNotMatch(only, / open|>你<|observe-reading-message human/);
+  const mixed = body(turn({}, { messages: [{ role: 'user', text: context + '\n\n请继续 **优化**' }] }));
+  assert.match(mixed, />你<\/strong>/);
+  assert.match(mixed, /请继续 <strong>优化<\/strong>/);
+  assert.ok(mixed.indexOf('</details>') < mixed.indexOf('请继续'));
+  assert.match(body(turn({}, { messages: [{ role: 'user', text: context }] }), 'en'), /Environment context/);
+});
+
+it('不折叠代码示例、助手引用和不完整的环境记录', () => {
+  for (const message of [
+    { role: 'user' as const, text: '```xml\n<environment_context>x</environment_context>\n```' },
+    { role: 'user' as const, text: '    <environment_context>x</environment_context>' },
+    { role: 'assistant' as const, text: '<environment_context>x</environment_context>' },
+    { role: 'user' as const, text: '<environment_context>incomplete' },
+  ]) assert.doesNotMatch(body(turn({}, { messages: [message] })), /<details/);
+});

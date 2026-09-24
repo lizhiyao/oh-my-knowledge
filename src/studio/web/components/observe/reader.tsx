@@ -35,14 +35,22 @@ export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId:
   const fallback = turnFallback(turn);
   const href = conversationPath(threadId, turn.task.sourceTurnId ?? turn.task.turnId);
   if (fallback === 'unreadable') return <Alert type="warning" title={t('这一轮的原始记录读不出来，其余轮次仍可阅读。', 'The raw record for this turn is unreadable. Other turns remain readable.')} action={<Link href={href}>{t('查看执行详情', 'Execution details')}</Link>}/>;
-  const groups: { role: string; messages: typeof messages }[] = [];
-  for (const message of messages) {
+  // Only collapse a complete leading context envelope; quoted/code examples and
+  // incomplete records remain ordinary message text. Original evidence is untouched.
+  const displayed = messages.flatMap(message => {
+    const context = message.role === 'user' && message.text.match(/^(<environment_context>[\s\S]*?<\/environment_context>)(?=\s|$)/);
+    if (!context) return [message];
+    const remainder = message.text.slice(context[0].length);
+    return [{ role: 'context', text: context[1] }, ...(remainder.trim() ? [{ ...message, text: remainder }] : [])];
+  });
+  const groups: { role: string; messages: { role: string; text: string }[] }[] = [];
+  for (const message of displayed) {
     const previous = groups.at(-1);
     // Group presentation only; parse each original message independently.
     if (message.role === 'assistant' && previous?.role === 'assistant') previous.messages.push(message);
     else groups.push({ role: message.role, messages: [message] });
   }
-  if (fallback === 'messages') return <>{groups.map((group, index) => <section className={`observe-reading-message ${group.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{group.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong>{group.messages.map((message, messageIndex) => <div className="observe-message-text" key={messageIndex}><Markdown remarkPlugins={[remarkGfm]} components={{
+  if (fallback === 'messages') return <>{groups.map((group, index) => group.role === 'context' ? <details className="observe-context" key={index}><summary>{t('环境上下文', 'Environment context')}</summary><pre tabIndex={0}>{group.messages[0].text}</pre></details> : <section className={`observe-reading-message ${group.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{group.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong>{group.messages.map((message, messageIndex) => <div className="observe-message-text" key={messageIndex}><Markdown remarkPlugins={[remarkGfm]} components={{
     a: ({ href, children }) => href ? <Link href={href} prefetch={false}>{children}</Link> : <span>{children}</span>,
     // Source images remain explicit links: reading a trace must not contact remote image hosts.
     img: ({ src, alt }) => typeof src === 'string' && src ? <Link href={src} prefetch={false}>{alt || t('图片', 'Image')}</Link> : <span>{alt}</span>,
@@ -66,7 +74,7 @@ export function ReaderTurnFooter({ turn, previousTimestamp, threadId, lang }: { 
       {task.status === 'completed' ? <span>{lang === 'zh' ? '已完成' : 'completed'}</span> : <Status status={task.status} lang={lang}/>}
       <time dateTime={timestamp} title={fullTime} aria-label={fullTime}>{displayTime(timestamp, sameDay ? 'clock' : 'full')}</time>
     </div>
-        {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
+    {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
     <Link href={conversationPath(threadId, task.sourceTurnId ?? task.turnId)}>{lang === 'zh' ? '执行详情' : 'Execution details'}</Link>
   </footer>;
 }
