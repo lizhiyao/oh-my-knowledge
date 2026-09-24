@@ -184,7 +184,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .studio-app.sidebar-collapsed .studio-content{padding-left:var(--studio-collapsed-rail-offset)}
 .studio-sidebar nav{display:flex;flex-direction:column;gap:var(--studio-space-1);padding-bottom:var(--studio-space-4)}
 .studio-sidebar nav a{display:flex;align-items:center;padding:var(--studio-space-2) var(--studio-space-4);min-height:32px;border-radius:var(--studio-radius-control);text-decoration:none;font-weight:600;color:#657085}
-.studio-sidebar nav a[aria-current]{color:#192236;background:var(--studio-selection-fill);box-shadow:inset 2px 0 0 var(--studio-action)}
+.studio-sidebar nav a[aria-current]{color:#192236;background:var(--studio-selection-fill)}
 .studio-sidebar nav a:not([aria-current]):hover{background:var(--studio-surface-hover)}
 .studio-sidebar-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-top:1px solid var(--studio-edge-default);padding-top:var(--studio-space-4)}
 .studio-scrim{display:none}.studio-mobile-bar{display:none}
