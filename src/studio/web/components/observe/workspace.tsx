@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Empty, Input, Pagination } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
-import { OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { AGENTS_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import { StudioShell, type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
@@ -67,7 +67,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
     'no-match': { description: t('没有匹配的对话。搜索只匹配标题、路径与项目名，不检索消息正文。', 'No matching conversations. Search matches titles, paths and project names, not message bodies.'), action: t('清空搜索', 'Clear the search') },
     'no-running': { description: t('当前没有进行中的对话。已结束的工作记录仍在全部对话里。', 'Nothing is running right now. Finished work is still in All conversations.'), action: t('查看全部对话', 'View all conversations') },
     'unknown-project': { description: t('找不到这个项目，它可能已被移动或清理。', 'This project cannot be found; it may have been moved or cleaned up.'), action: t('查看全部对话', 'View all conversations') },
-    'no-data': { description: t('暂无对话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。', 'No conversations yet. Records appear automatically once an agent has run; see “Settings and help” for guidance.') },
+    'no-data': { description: t('暂无对话记录。可查看数据来源，确认本机 Agent 的识别结果与日志采集情况。', 'No conversations yet. Check data sources for local agent detection and log collection status.') },
   };
   function clearSearch() { setQuery(''); setCurrent(1); }
   return <StudioShell lang={lang} active="observe" sidebar={<div className="observe-sidebar" role="group" aria-label={t('项目与对话', 'Projects and conversations')}>
@@ -115,6 +115,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         </Link>;
         })}{!rows.length && <Empty description={emptyCopy[emptyState].description}>
           {emptyCopy[emptyState].action ? <Button onClick={() => { if (emptyState === 'no-match') clearSearch(); else choose('recent'); }}>{emptyCopy[emptyState].action}</Button> : null}
+          {emptyState === 'no-data' && <Link href={AGENTS_INDEX_PATH}>{t('查看数据来源', 'View data sources')}</Link>}
         </Empty>}</div>
         <Pagination current={listed.page} total={rows.length} pageSize={LIST_PAGE_SIZE} showSizeChanger={false} onChange={setCurrent}/>
       </>}
