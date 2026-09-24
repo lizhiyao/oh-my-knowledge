@@ -1,6 +1,8 @@
 'use client';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Alert, Button, Empty } from 'antd';
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import type { ConversationReaderPage } from '../../../view-models/conversations/conversation-reader';
@@ -33,7 +35,13 @@ export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId:
   const fallback = turnFallback(turn);
   const href = conversationPath(threadId, turn.task.sourceTurnId ?? turn.task.turnId);
   if (fallback === 'unreadable') return <Alert type="warning" title={t('这一轮的原始记录读不出来，其余轮次仍可阅读。', 'The raw record for this turn is unreadable. Other turns remain readable.')} action={<Link href={href}>{t('查看执行详情', 'Execution details')}</Link>}/>;
-  if (fallback === 'messages') return <>{messages.map((message, index) => <section className={`observe-reading-message ${message.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{message.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong><div className="observe-message-text">{message.text}</div></section>)}</>;
+  if (fallback === 'messages') return <>{messages.map((message, index) => <section className={`observe-reading-message ${message.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{message.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong><div className="observe-message-text"><Markdown remarkPlugins={[remarkGfm]} components={{
+    a: ({ href, children }) => href ? <Link href={href} prefetch={false}>{children}</Link> : <span>{children}</span>,
+    // Source images remain explicit links: reading a trace must not contact remote image hosts.
+    img: ({ src, alt }) => typeof src === 'string' && src ? <Link href={src} prefetch={false}>{alt || t('图片', 'Image')}</Link> : <span>{alt}</span>,
+    table: ({ children }) => <div className="observe-message-table" tabIndex={0} role="region" aria-label={t('对话中的表格', 'Conversation table')}><table>{children}</table></div>,
+    pre: ({ children }) => <pre tabIndex={0}>{children}</pre>,
+  }}>{message.text}</Markdown></div></section>)}</>;
   return <p>{t('这一轮没有对话消息。', 'No conversation messages in this turn.')}</p>;
 }
 
