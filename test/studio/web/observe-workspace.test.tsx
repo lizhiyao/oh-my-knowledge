@@ -38,6 +38,10 @@ it('opens a reader with in-place extraction and retains project navigation', () 
   expect(html).toContain('Example project'); expect(html).not.toContain('<table');
   expect(html).not.toContain('ant-pagination');
   expect(html).not.toContain('最近轮次优先');
+  expect(sidebarOf(html)).toContain('aria-current="page"');
+  const header = html.slice(html.indexOf('class="observe-reader-header"'), html.indexOf('class="observe-conversation-reader"'));
+  expect(header.indexOf('<h1')).toBeLessThan(header.indexOf('Example project'));
+  expect(header).toContain('observe-reader-meta');
 });
 
 
@@ -126,7 +130,8 @@ it('项目内会话超出视野时给出该项目全部会话的入口', () => {
 it('完全没有记录时说明记录从哪里来，而不是只说一句暂无', () => {
   const html = renderIndex([]);
   expect(html).toContain('暂无对话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。');
-  expect(sidebarOf(html)).toContain('暂无独立对话。有项目归属的对话显示在上方项目下。');
+  expect(sidebarOf(html)).toContain('有项目归属的对话显示在上方项目下。');
+  expect(sidebarOf(html)).toContain('>暂无</span>');
 });
 
 it('进行中的入口与标题使用同一个名字', () => {

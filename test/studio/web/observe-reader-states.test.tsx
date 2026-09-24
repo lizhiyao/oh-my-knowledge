@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'vitest';
-import { ReaderEmptyState, ReaderTurnBody } from '../../../src/studio/web/components/observe/reader.js';
+import { ReaderEmptyState, ReaderTurnBody, ReaderTurnHeader } from '../../../src/studio/web/components/observe/reader.js';
 import type { ConversationReaderPage } from '../../../src/studio/view-models/conversations/conversation-reader.js';
 
 type Turn = ConversationReaderPage['turns'][number];
@@ -70,5 +70,33 @@ describe('单轮退路', () => {
   it('英文使用同一套退路文案', () => {
     assert.match(body(turn({}, { unavailable: true }), 'en'), /The raw record for this turn is unreadable\. Other turns remain readable\./);
     assert.match(body(turn({}, { messages: [] }), 'en'), /No conversation messages in this turn\./);
+  });
+});
+
+
+describe('紧凑轮次信息', () => {
+  const header = (timestamp?: string, previousTimestamp?: string, status = 'completed', lang: 'zh' | 'en' = 'zh') => renderToStaticMarkup(createElement(ReaderTurnHeader, {
+    turn: turn({ startTimestamp: timestamp, status: status as Turn['task']['status'], sourceTurnId: 'source/1' }), previousTimestamp, threadId: 'thread/a', lang,
+  }));
+  it('同日同区仅显示时刻，完整时间保留在可访问标签与提示中', () => {
+    const html = header('2026-09-18T06:40:35Z', '2026-09-18T06:39:32Z');
+    assert.match(html, /dateTime="2026-09-18T06:40:35Z"/);
+    assert.match(html, /aria-label="2026-09-18 06:40:35 UTC">06:40:35<\/time>/);
+    assert.match(html, /href="\/observe\/conversations\/thread%2Fa\/tasks\/source%2F1"/);
+    assert.match(html, />已完成<\/span>/);
+  });
+  it('首轮、跨日、时区变化和缺失时间不丢日期或冒充 UTC', () => {
+    for (const previous of [undefined, '2026-09-17T06:39:32Z', '2026-09-18T06:39:32+08:00']) {
+      assert.match(header('2026-09-18T06:40:35Z', previous), />2026-09-18 06:40:35 UTC<\/time>/);
+    }
+    assert.match(header(undefined), />—<\/time>/);
+    assert.match(header('2026-09-18T06:40:35+08:00'), />2026-09-18 06:40:35\+08:00<\/time>/);
+  });
+  it('异常状态保留可见文字与执行入口，英文可读', () => {
+    assert.match(header(undefined, undefined, 'failed'), /失败/);
+    assert.match(header(undefined, undefined, 'interrupted'), /已中断/);
+    const html = header(undefined, undefined, 'open', 'en');
+    assert.match(html, /studio-running-status/);
+    assert.match(html, /Execution details/);
   });
 });
