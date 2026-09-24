@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it } from 'vitest';
-import { ReaderEmptyState, ReaderTurnBody, ReaderTurnHeader } from '../../../src/studio/web/components/observe/reader.js';
+import { ReaderEmptyState, ReaderTurnBody, ReaderTurnFooter } from '../../../src/studio/web/components/observe/reader.js';
 import type { ConversationReaderPage } from '../../../src/studio/view-models/conversations/conversation-reader.js';
 
 type Turn = ConversationReaderPage['turns'][number];
@@ -75,7 +75,7 @@ describe('单轮退路', () => {
 
 
 describe('紧凑轮次信息', () => {
-  const header = (timestamp?: string, previousTimestamp?: string, status = 'completed', lang: 'zh' | 'en' = 'zh') => renderToStaticMarkup(createElement(ReaderTurnHeader, {
+  const header = (timestamp?: string, previousTimestamp?: string, status = 'completed', lang: 'zh' | 'en' = 'zh') => renderToStaticMarkup(createElement(ReaderTurnFooter, {
     turn: turn({ startTimestamp: timestamp, status: status as Turn['task']['status'], sourceTurnId: 'source/1' }), previousTimestamp, threadId: 'thread/a', lang,
   }));
   it('同日同区仅显示时刻，完整时间保留在可访问标签与提示中', () => {
@@ -129,4 +129,32 @@ describe('对话 Markdown 展示', () => {
     assert.match(html, /<strong>重点<\/strong>/);
     assert.match(html, /<code>\*\*literal\*\*<\/code>/);
   });
+});
+
+
+it('连续助手消息只标一次角色，切换角色重新分组且不跨消息解析 Markdown', () => {
+  const html = body(turn({}, { messages: [
+    { role: 'user', text: '继续' },
+    { role: 'assistant', text: '**第一段**' },
+    { role: 'assistant', text: '第二段' },
+    { role: 'user', text: '确认' },
+    { role: 'assistant', text: '**未闭合' },
+    { role: 'assistant', text: '下一条**' },
+  ] }));
+  assert.equal((html.match(/>助手<\/strong>/g) ?? []).length, 2);
+  assert.equal((html.match(/>你<\/strong>/g) ?? []).length, 2);
+  assert.match(html, /<strong>第一段<\/strong>/);
+  assert.match(html, /\*\*未闭合/);
+  assert.match(html, /下一条\*\*/);
+  assert.ok(html.indexOf('第二段') < html.indexOf('确认'));
+});
+
+it('轮次尾部保留异常、工具报错与来源详情', () => {
+  const html = renderToStaticMarkup(createElement(ReaderTurnFooter, { turn: turn({ status: 'failed', toolCallCount: 3, toolFailureCount: 1 }), threadId: 'thread/a', lang: 'zh' }));
+  assert.match(html, /^<footer/);
+  assert.match(html, /失败/);
+  assert.match(html, /3 次工具调用/);
+  assert.match(html, /1 次报错/);
+  assert.match(html, /报错不等于最终工作失败/);
+  assert.match(html, /执行详情/);
 });
