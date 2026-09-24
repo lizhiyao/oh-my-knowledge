@@ -143,10 +143,10 @@ describe('Studio 页级标题尺度', () => {
     expect(css, '遮罩在宽屏上也会显示：桌面态会被盖住').toContain('.studio-scrim{display:none}');
   });
 
-  it('对话阅读正文取 15px/27px', () => {
+  it('对话阅读正文取 16px 与 1.85 倍行高', () => {
     const reader = css.match(/\.observe-reading-message\{[^}]*\}/);
     expect(reader, '找不到对话阅读正文规则').not.toBeNull();
-    expect(reader![0]).toContain('font-size:15px');
-    expect(reader![0]).toContain('line-height:27px');
+    expect(reader![0]).toContain('font-size:16px');
+    expect(reader![0]).toContain('line-height:1.85');
   });
 });
