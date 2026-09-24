@@ -20,7 +20,7 @@ const TITLES = {
   knowledge: { zh: '知识载体', en: 'Knowledge artifacts' },
   candidates: { zh: '候选知识', en: 'Candidate knowledge' },
   managed: { zh: '受管决策史', en: 'Managed history' },
-  agents: { zh: '本机 Agent', en: 'Installed agents' },
+  agents: { zh: '数据来源', en: 'Data sources' },
 } as const;
 
 type StudioPageTitle = keyof typeof TITLES;

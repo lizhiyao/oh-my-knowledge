@@ -110,11 +110,14 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
           <button type="button" className="studio-sidebar-collapse" aria-label={zh ? '收起侧栏' : 'Collapse sidebar'} title={zh ? '收起侧栏' : 'Collapse sidebar'} onClick={toggleCollapsed}><PanelIcon direction="collapse"/></button>
         </div>
         <nav aria-label={zh ? 'Studio 一级导航' : 'Studio primary navigation'}>
-          <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
+          <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'agents' ? 'location' : active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
           <Link href={MEASURE_INDEX_PATH} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
           <Link href={KNOWLEDGE_INDEX_PATH} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
-          <Link href={AGENTS_INDEX_PATH} aria-current={active === 'agents' ? 'page' : undefined}>{zh ? 'Agent' : 'Agents'}</Link>
         </nav>
+        {(active === 'observe' || active === 'agents') && <nav className="observe-secondary-nav" aria-label={zh ? '观测导航' : 'Observe navigation'}>
+          <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'observe' ? 'page' : undefined}>{zh ? '对话' : 'Conversations'}</Link>
+          <Link href={AGENTS_INDEX_PATH} aria-current={active === 'agents' ? 'page' : undefined}>{zh ? '数据来源' : 'Data sources'}</Link>
+        </nav>}
         {sidebar ? <div className="studio-sidebar-body">{sidebar}</div> : null}
         <StudioUtilities lang={lang}/>
       </aside>

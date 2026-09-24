@@ -15,7 +15,7 @@ import type { Language } from '../layout/shell';
 
 const COPY = {
   zh: {
-    title: '本机 Agent',
+    title: '数据来源',
     intro: '识别本机装了哪些 Agent、采集了它们哪些来源会话日志。页面只读取 omk agents 落盘的报告，不会重新扫描这台机器。',
     detectedHeading: '识别结果',
     collectedHeading: '日志采集',
@@ -68,7 +68,7 @@ const COPY = {
     candidatesLink: '查看提炼出的候选知识',
   },
   en: {
-    title: 'Installed agents',
+    title: 'Data sources',
     intro: 'Which agents this machine has, and which of their session logs OMK collected. The page reads the reports written by omk agents; it never rescans the machine.',
     detectedHeading: 'Detection',
     collectedHeading: 'Log collection',

@@ -129,7 +129,8 @@ it('项目内会话超出视野时给出该项目全部会话的入口', () => {
 
 it('完全没有记录时说明记录从哪里来，而不是只说一句暂无', () => {
   const html = renderIndex([]);
-  expect(html).toContain('暂无对话记录。Agent 运行后记录会自动出现在这里，使用说明见“设置与帮助”。');
+  expect(html).toContain('暂无对话记录。可查看数据来源，确认本机 Agent 的识别结果与日志采集情况。');
+  expect(html).toMatch(/href="\/agents">查看数据来源<\/a>/);
   expect(sidebarOf(html)).toContain('有项目归属的对话显示在上方项目下。');
   expect(sidebarOf(html)).toContain('>暂无</span>');
 });

@@ -62,8 +62,8 @@ describe('Next 宿主的 /agents 路由', () => {
     const html = await response.text();
     // Next 产物在场才说明这是 App Router 渲染，而不是回落到别的手写 HTML 宿主。
     assert.match(html, /\/_next\/static\//);
-    assert.match(html, /<h1>本机 Agent<\/h1>/);
-    assert.match(html, /<title>OMK · 本机 Agent<\/title>/);
+    assert.match(html, /<h1>数据来源<\/h1>/);
+    assert.match(html, /<title>OMK · 数据来源<\/title>/);
     for (const fact of ['Codex', 'Cursor', 'OpenClaw', '/opt/homebrew/bin/codex', 'traces/codex/trace-1.json', '修复登录态丢失']) {
       assert.ok(html.includes(fact), `页面缺少事实：${fact}`);
     }
