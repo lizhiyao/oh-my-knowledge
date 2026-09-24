@@ -154,6 +154,8 @@
     "next": "16.3.5",
     "react": "19",
     "react-dom": "19",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "smol-toml": "^1.8.0",
     "zod": "^4.4.3"
   },

@@ -100,3 +100,33 @@ describe('紧凑轮次信息', () => {
     assert.match(html, /Execution details/);
   });
 });
+
+
+describe('对话 Markdown 展示', () => {
+  it('渲染强调、链接、列表、代码和实体，并解析转义标点', () => {
+    const html = body(turn({}, { messages: [{ role: 'assistant', text: '**已合并** [PR](https://example.com/pr) `main` &amp; &#x20;\n\n1. 第一步\n2. 第二步\n\n```ts\nconst x = "<tag>";\n```' }, { role: 'user', text: '\\#878 与 \\*字面星号\\*' }] }));
+    assert.match(html, /<strong>已合并<\/strong>/);
+    assert.match(html, /href="https:\/\/example.com\/pr"/);
+    assert.match(html, /<code>main<\/code>/);
+    assert.match(html, /<ol>/);
+    assert.match(html, /<li>第一步<\/li>/);
+    assert.match(html, /<pre tabindex="0"><code class="language-ts">/);
+    assert.match(html, /&lt;tag&gt;/);
+    assert.match(html, /#878 与 \*字面星号\*/);
+    assert.doesNotMatch(html, /&amp;#x20;/);
+  });
+  it('原始 HTML 保持文本，危险链接不可点击，图片不自动发起加载', () => {
+    const html = body(turn({}, { messages: [{ role: 'assistant', text: '<script>alert(1)</script>\n\n[bad](javascript:alert%281%29)\n\n![证据图](https://example.com/private.png)' }] }));
+    assert.doesNotMatch(html, /<script>|href="javascript:|<img/);
+    assert.match(html, /&lt;script&gt;/);
+    assert.match(html, /href="https:\/\/example.com\/private.png"/);
+    assert.match(html, /证据图/);
+  });
+  it('表格有独立可聚焦滚动区域，代码中的 Markdown 保持原样', () => {
+    const html = body(turn({}, { messages: [{ role: 'assistant', text: '| 列 A | 列 B |\n| --- | --- |\n| 内容 | **重点** |\n\n`**literal**`' }] }));
+    assert.match(html, /role="region" aria-label="对话中的表格"/);
+    assert.match(html, /<th>列 A<\/th>/);
+    assert.match(html, /<strong>重点<\/strong>/);
+    assert.match(html, /<code>\*\*literal\*\*<\/code>/);
+  });
+});
