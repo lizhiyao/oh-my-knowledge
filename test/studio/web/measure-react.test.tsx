@@ -92,6 +92,23 @@ describe('measure react detail keeps every projected fact in the served document
     }
   });
 
+  it('exposes the complete metric list on both ellipsed plan cells', () => {
+    const base = detail();
+    const metricIds = ['quality-groundedness', 'quality-completeness', 'latency-<p95>'];
+    const view = {
+      ...base,
+      comparisons: base.comparisons.map(row => ({ ...row, metricIds })),
+      evaluators: base.evaluators.map(row => ({ ...row, metricIds })),
+    };
+    for (const lang of ['zh', 'en'] as const) {
+      const html = runDetail(view, lang);
+      // 子 code 的 title 只能覆盖单个指标，必须在可见单元格上提供完整列表。
+      const cells = html.match(/<td\b[^>]*title="quality-groundedness, quality-completeness, latency-&lt;p95&gt;"[^>]*>/g) ?? [];
+      assert.equal(cells.length, 2, 'comparison and evaluator must each expose every associated metric');
+      assert.ok(cells.every(cell => cell.includes('ant-table-cell-ellipsis')), 'full-content exits belong to the clipped cells');
+    }
+  });
+
   it('names both sides with the CLI vocabulary in both languages', () => {
     // 报告页此前只列 targetId，读者得自己记住哪边是参照侧。角色取自
     // plan.definition.comparisons，是只读投影，不改任何评分口径。
