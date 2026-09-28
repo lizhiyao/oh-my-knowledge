@@ -6,6 +6,7 @@ import { ExecutionPortFailure } from '../../../eval-core/execution/index.js';
 import type { CustomEvaluator, CustomEvaluatorResult } from '../../../eval-runtime/custom-evaluator.js';
 import { spawnWithSigintPropagation, type SpawnHelperError } from '../../../executors/core/subprocess.js';
 import { LocalTaskAcceptanceSchema, LocalTaskOutputSchema, type LocalTaskDefinition, type TaskFile } from '../../inputs/contracts/local-task.js';
+import type { TaskAttemptDiagnostic } from './diagnostics.js';
 import { materializeTaskFiles, taskTreeDigest } from './files.js';
 import { assertIdentityFilesUnchanged, type CapturedIdentityFile } from '../adapters/shared/content-identity.js';
 
@@ -17,6 +18,7 @@ export function createTaskAcceptance(input: {
   requiredArtifacts: readonly string[];
   temporaryRoot: string;
   runtimeFiles: readonly CapturedIdentityFile[];
+  captureDiagnostic: (diagnostic: TaskAttemptDiagnostic) => Promise<void>;
 }): CustomEvaluator {
   const acceptanceDigest = taskTreeDigest(input.files);
   const evidence = (value: JsonValue) => ({ value, classification: 'sensitive' as const });
@@ -29,7 +31,7 @@ export function createTaskAcceptance(input: {
     metrics: [{ metricId: TASK_METRIC_ID, valueType: 'boolean', direction: 'higher-is-better', missingPolicyId: 'exclude/v1' }],
     bindings: [{ bindingId: 'actual', sourceKind: 'output', pointer: '' }],
     implementation: {
-      implementationId: 'omk.local-task-acceptance/v1', version: '1.0.0',
+      implementationId: 'omk.local-task-acceptance/v1', version: '1.1.0',
       schemas: {
         bindings: z.strictObject({ actual: LocalTaskOutputSchema }),
         values: { [TASK_METRIC_ID]: z.boolean() },
@@ -49,6 +51,10 @@ export function createTaskAcceptance(input: {
         signal.throwIfAborted();
         const root = await mkdtemp(join(input.temporaryRoot, 'acceptance-'));
         let result: CustomEvaluatorResult;
+        let stdout = '';
+        let stderr = '';
+        let processOutcome: TaskAttemptDiagnostic['processOutcome'] = null;
+        let failureCode: string | undefined;
         try {
           await assertIdentityFilesUnchanged(input.runtimeFiles, { adapterLabel: 'Local task acceptance',
             cancellationCode: 'TASK_ACCEPTANCE_CANCELLED', identityChangedCode: 'TASK_ACCEPTANCE_RUNTIME_CHANGED', signal });
@@ -65,21 +71,29 @@ export function createTaskAcceptance(input: {
           child.stdin?.on('error', () => { /* done owns subprocess failure reporting */ });
           child.stdin?.end(JSON.stringify({ sampleId: actual.source.sampleId }));
           const completed = await done;
+          stdout = completed.stdout;
+          stderr = completed.stderr;
+          processOutcome = { exitCode: completed.code, signal: completed.signal, failureKind: null };
           const acceptance = LocalTaskAcceptanceSchema.safeParse(JSON.parse(completed.stdout) as unknown);
-          if (!acceptance.success) result = missing('TASK_ACCEPTANCE_INVALID');
+          if (!acceptance.success) { failureCode = 'TASK_ACCEPTANCE_INVALID'; result = missing(failureCode); }
           else result = { resultKind: 'completed', results: [{
             metricId: TASK_METRIC_ID, resultKind: 'score', value: acceptance.data.passed,
             evidence: evidence({ acceptanceDigest, ...acceptance.data }),
           }] };
         } catch (error) {
           const failure = error as SpawnHelperError;
-          result = missing(signal.aborted ? 'TASK_ACCEPTANCE_CANCELLED'
+          stdout = failure.stdout ?? stdout;
+          stderr = failure.stderr ?? stderr;
+          if (failure.failureKind) processOutcome = { exitCode: failure.code ?? null, signal: failure.signal ?? null, failureKind: failure.failureKind };
+          failureCode = signal.aborted ? 'TASK_ACCEPTANCE_CANCELLED'
             : failure.killedByTimeout ? 'TASK_ACCEPTANCE_TIMEOUT'
               : error instanceof ExecutionPortFailure ? 'TASK_ACCEPTANCE_RUNTIME_CHANGED'
-                : error instanceof SyntaxError ? 'TASK_ACCEPTANCE_INVALID' : 'TASK_ACCEPTANCE_FAILED');
+                : error instanceof SyntaxError ? 'TASK_ACCEPTANCE_INVALID' : 'TASK_ACCEPTANCE_FAILED';
+          result = missing(failureCode);
         }
         try { await rm(root, { recursive: true, force: true }); }
-        catch { return missing('TASK_ACCEPTANCE_CLEANUP_FAILED'); }
+        catch { failureCode = 'TASK_ACCEPTANCE_CLEANUP_FAILED'; result = missing(failureCode); }
+        if (failureCode) await input.captureDiagnostic({ stage: 'acceptance', status: failureCode, output: actual, stdout, stderr, processOutcome });
         return result;
       },
     },

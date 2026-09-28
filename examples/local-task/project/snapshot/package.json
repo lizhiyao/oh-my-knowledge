@@ -1,0 +1,6 @@
+{
+  "name": "omk-cart-task",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@task/money": "file:vendor/money" }
+}

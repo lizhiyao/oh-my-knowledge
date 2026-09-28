@@ -1,11 +1,13 @@
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import yaml from 'js-yaml';
+import { runCli } from '../../helpers/cli-process.js';
 import { prepareLocalTask } from '../../../src/eval-workflows/hosts/local-task/application.js';
 import { LocalTaskDefinitionSchema, LocalTaskPathSchema } from '../../../src/eval-workflows/inputs/contracts/local-task.js';
 import { captureTaskFiles, collectTaskArtifacts, taskTreeDigest } from '../../../src/eval-workflows/hosts/local-task/files.js';
+import { createNodeCoreContentStore } from '../../../src/eval-workflows/artifact-store/node-content-store.js';
 import { projectCoreStudioRunDetail } from '../../../src/studio/application/measure/core-run-projection.js';
 
 const cleanupFailure = vi.hoisted(() => ({ prefix: '' }));
@@ -59,6 +61,17 @@ describe('local task outcomes', () => {
     expect(JSON.stringify(view)).not.toContain('contentBase64');
   });
 
+  it('keeps diagnostic references separated when one prepared application runs concurrently', async () => {
+    const app = await application();
+    const runs = await Promise.all([app.run(), app.run()]);
+    expect(runs[0].result.runId).not.toBe(runs[1].result.runId);
+    const store = createNodeCoreContentStore(join(root, 'reports/content'));
+    for (const run of runs) {
+      expect(run.diagnosticReferences).toHaveLength(2);
+      for (const reference of run.diagnosticReferences) expect((await store.resolve(reference)).value).toMatchObject({ runId: run.result.runId });
+    }
+  });
+
   it('runs a Node Codex launcher with private runtime state and independently verifies its files', async () => {
     const task = await load();
     const launcher = join(root, 'codex.mjs');
@@ -85,6 +98,7 @@ assert.ok(process.argv.includes('model_reasoning_effort="low"'));
 await writeFile('math.mjs', 'export function absolute(value) { return Math.abs(value); }');
 for (const event of [
   {type:'thread.started',thread_id:'fixture-thread'}, {type:'turn.started'},
+  {type:'error',message:'Reconnecting... 2/5 (request timed out)'},
   {type:'item.completed',item:{id:'answer',type:'agent_message',text:'fixed'}},
   {type:'turn.completed',usage:{input_tokens:5,output_tokens:2}}
 ]) console.log(JSON.stringify(event));
@@ -107,6 +121,27 @@ ${await readFile(verifier, 'utf8')}`);
     }
     expect(await readdir(join(root, 'temporary'))).toEqual([]);
     expect(await readFile(authenticationFile, 'utf8')).toBe('{"fixture":"non-secret-test"}');
+  });
+
+  it('runs a multi-file npm project with a copied local dependency and six independent checks', async () => {
+    const project = join(root, 'task/project');
+    await runCli(['ci', '--offline', '--install-links', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', join(root, 'npm-cache')], {
+      entry: join(dirname(process.execPath), 'npm'), cwd: join(project, 'snapshot'), env: { PATH: process.env.PATH, HOME: root }, timeout: 15000,
+    });
+    const app = await prepareLocalTask({ definitionPath: join(project, 'task.yaml'), temporaryRoot: join(root, 'temporary'), outputDirectory: join(root, 'reports') });
+    const { artifacts } = await app.run();
+    for (const record of artifacts.evaluation.records) {
+      expect(record.evaluationStatus).toBe('completed');
+      if (record.evaluationStatus === 'completed') {
+        expect(record.observations[0]).toMatchObject({ observationStatus: 'observed', value: record.targetId === 'treatment' });
+        expect(record.observations[0].evidence).toMatchObject({ value: { checks: expect.arrayContaining([
+          expect.objectContaining({ checkId: 'discount-before-tax', passed: record.targetId === 'treatment' }),
+          expect.objectContaining({ checkId: 'no-discount', passed: true }),
+        ]) } });
+      }
+    }
+    expect(await readFile(join(project, 'snapshot/src/cart.mjs'), 'utf8')).toContain('subtotal * (1 + taxRate) - discount');
+    expect(await readdir(join(root, 'temporary'))).toEqual([]);
   });
 
   it('rejects a repair introducing a regression and rescores without executing again', async () => {
@@ -156,7 +191,10 @@ ${await readFile(verifier, 'utf8')}`);
     task.acceptance.timeoutMs = reasonCode === 'TASK_ACCEPTANCE_TIMEOUT' ? 150 : 5000;
     await writeFile(definitionPath, JSON.stringify(task));
     await writeFile(join(root, 'task/acceptance/verify.mjs'), script);
-    const { artifacts } = await (await application()).run();
+    const { artifacts, diagnosticReferences } = await (await application()).run();
+    const store = createNodeCoreContentStore(join(root, 'reports/content'));
+    const diagnostics = await Promise.all(diagnosticReferences.map(async (reference) => (await store.resolve(reference)).value));
+    expect(diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ stage: 'acceptance', status: reasonCode })]));
     expect(artifacts.evaluation.records).toHaveLength(2);
     for (const record of artifacts.evaluation.records) {
       expect(record.evaluationStatus).toBe('completed');
@@ -176,27 +214,39 @@ ${await readFile(verifier, 'utf8')}`);
     await expect(app.rescore(first.result, task.acceptance, join(root, 'task'))).rejects.toThrow('TASK_RESCORE_EVIDENCE_MISSING');
   });
 
-  it('reports execution timeout and releases all workspaces', async () => {
+  it.each(['nonzero', 'timeout', 'cancel'])('retains modified files and partial streams on %s without scoring them', async (mode) => {
     const task = await load();
-    task.execution.timeoutMs = 100;
+    task.execution.timeoutMs = mode === 'timeout' ? 1000 : 10000;
     await writeFile(definitionPath, JSON.stringify(task));
-    await writeFile(join(root, 'task/fixture.mjs'), 'setTimeout(() => {}, 60000);');
-    const { artifacts } = await (await application()).run();
-    expect(artifacts.execution.records.every((record) => record.executionStatus === 'failed')).toBe(true);
-    expect(artifacts.evaluation.records.every((record) => record.evaluationStatus === 'not-evaluated')).toBe(true);
-    expect(await readdir(join(root, 'temporary'))).toEqual([]);
-  });
-
-  it('cancels a running task and persists its partial outcome', async () => {
-    await writeFile(join(root, 'task/fixture.mjs'), 'setTimeout(() => {}, 60000);');
+    const ready = join(root, 'ready');
+    await writeFile(join(root, 'task/fixture.mjs'), `import {writeFile} from 'node:fs/promises';
+await writeFile('math.mjs', 'export const partial = true;');
+console.log('partial stdout'); console.error('partial stderr');
+await writeFile(${JSON.stringify(ready)}, 'ready');
+${mode === 'nonzero' ? 'process.exit(3);' : 'setInterval(() => {}, 60000);'}`);
     const app = await application();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 100);
-    try {
-      const { result } = await app.run(controller.signal);
-      expect(result.status).toBe('cancelled');
-    } finally { clearTimeout(timeout); }
+    const running = app.run(controller.signal);
+    if (mode === 'cancel') {
+      await vi.waitFor(async () => expect(await readFile(ready, 'utf8')).toBe('ready'), { timeout: 5000 });
+      controller.abort();
+    }
+    const { result, artifacts, diagnosticReferences, diagnosticsDirectory } = await running;
+    expect(diagnosticReferences.length).toBeGreaterThan(0);
+    expect(artifacts.evaluation.records.every((record) => record.evaluationStatus === 'not-evaluated')).toBe(true);
+    expect(result.status).toBe(mode === 'cancel' ? 'cancelled' : 'completed');
+    const store = createNodeCoreContentStore(join(root, 'reports/content'));
+    for (const reference of diagnosticReferences) {
+      const { value } = await store.resolve(reference);
+      expect(value).toMatchObject({ runId: result.runId,
+        status: mode === 'cancel' ? 'TASK_CANCELLED' : mode === 'timeout' ? 'TASK_EXECUTION_TIMEOUT' : 'TASK_EXECUTION_FAILED',
+        stdout: 'partial stdout\n', stderr: 'partial stderr\n',
+        output: { files: [{ path: 'math.mjs', change: 'modified', contentBase64: Buffer.from('export const partial = true;').toString('base64') }] },
+      });
+    }
+    expect(await readdir(join(root, 'reports', diagnosticsDirectory))).toHaveLength(diagnosticReferences.length);
     expect(await readdir(join(root, 'temporary'))).toEqual([]);
+    expect(await readFile(join(root, 'task/snapshot/math.mjs'), 'utf8')).toContain('return value;');
   });
 
   it('preserves verifier cleanup failure as missing evidence', async () => {
@@ -205,6 +255,16 @@ ${await readFile(verifier, 'utf8')}`);
     for (const record of artifacts.evaluation.records) {
       if (record.evaluationStatus === 'completed') expect(record.observations[0]).toMatchObject({ observationStatus: 'missing', reasonCode: 'TASK_ACCEPTANCE_CLEANUP_FAILED' });
     }
+  });
+
+  it('fails closed when diagnostic storage is unavailable and still cleans workspaces', async () => {
+    await mkdir(join(root, 'reports'));
+    await writeFile(join(root, 'reports/task-diagnostics'), 'blocked');
+    const { artifacts } = await (await application()).run();
+    expect(artifacts.execution.records.every((record) => record.executionStatus === 'failed')).toBe(true);
+    expect(JSON.stringify(artifacts.execution)).toContain('TASK_DIAGNOSTIC_WRITE_FAILED');
+    expect(artifacts.evaluation.records.every((record) => record.evaluationStatus === 'not-evaluated')).toBe(true);
+    expect(await readdir(join(root, 'temporary'))).toEqual([]);
   });
 
   it('archives a workspace cleanup failure without reporting task success', async () => {

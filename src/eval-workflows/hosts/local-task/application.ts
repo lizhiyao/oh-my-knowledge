@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import yaml from 'js-yaml';
@@ -10,6 +11,7 @@ import { createNodeCoreContentStore, createNodeCoreRunArtifactStore, type Stored
 import { persistCoreArtifactSidecars } from '../../orchestration/artifact-graph-persistence.js';
 import { LocalTaskDefinitionSchema, LocalTaskOutputSchema, type LocalTaskDefinition, type TaskFile } from '../../inputs/contracts/local-task.js';
 import { captureTaskFiles, fileDigest, taskTreeDigest } from './files.js';
+import { createTaskDiagnostics } from './diagnostics.js';
 import { createTaskWorkspace } from './workspace.js';
 import { createTaskExecutor } from './executor.js';
 import { createTaskAcceptance, TASK_METRIC_ID } from './acceptance.js';
@@ -73,12 +75,13 @@ export async function prepareLocalTask(options: LocalTaskOptions) {
     } finally { await rm(probeHome, { recursive: true, force: true }); }
   }
   const workspace = createTaskWorkspace(snapshot, options.temporaryRoot);
-  const executor = createTaskExecutor({ definition: task, snapshot, provider: workspace.provider,
+  const contentStore = createNodeCoreContentStore(join(options.outputDirectory, 'content'));
+  const diagnostics = createTaskDiagnostics(contentStore, options.outputDirectory);
+  const executor = createTaskExecutor({ captureDiagnostic: diagnostics.capture, definition: task, snapshot, provider: workspace.provider,
     temporaryRoot: options.temporaryRoot, executable, executableDigest, version, identityFiles,
     ...(fixtureSource === undefined ? {} : { fixtureSource }),
     ...(options.authenticationFile === undefined ? {} : { authenticationFile: options.authenticationFile }),
   });
-  const contentStore = createNodeCoreContentStore(join(options.outputDirectory, 'content'));
   const store = createNodeCoreRunArtifactStore(options.outputDirectory, { contentResolver: contentStore });
   const declaration: EvaluateInput = {
     dataset: { datasetId: task.taskId, samples: task.samples.samples.map((sample) => ({
@@ -89,7 +92,7 @@ export async function prepareLocalTask(options: LocalTaskOptions) {
       variantId, artifact: { name: variantId, kind: 'skill', source: 'inline', content: variantId === 'control' ? control : treatment },
       execution: { executor, workspace: workspace.descriptor },
     })),
-    evaluators: [createTaskAcceptance({ definition: task.acceptance, files: acceptanceFiles,
+    evaluators: [createTaskAcceptance({ captureDiagnostic: diagnostics.capture, definition: task.acceptance, files: acceptanceFiles,
       requiredArtifacts: task.artifacts.files, temporaryRoot: options.temporaryRoot,
       runtimeFiles: identityFiles.filter((file) => file.facetId === 'node-runtime') })],
     comparisons: [{ comparisonId: 'task-ab', controlVariantId: 'control', treatmentVariantIds: ['treatment'], metricIds: [TASK_METRIC_ID] }],
@@ -121,6 +124,7 @@ export async function prepareLocalTask(options: LocalTaskOptions) {
     effort: execution.runtimeKind === 'codex' ? execution.effort : 'none',
     executionTimeoutMs: execution.timeoutMs, acceptanceTimeoutMs: task.acceptance.timeoutMs,
     toolPolicy: 'runtime-default', strongIsolation: false,
+    diagnosticsPolicy: 'attempt-snapshot/v1', maxStreamBytes: 10 * 1024 * 1024,
     runtimeFiles: identityFiles.map(({ facetId, digest, size }) => ({ facetId, digest, size })),
     snapshotDigest: taskTreeDigest(snapshot), acceptanceDigest: taskTreeDigest(acceptanceFiles),
     snapshotFiles: task.snapshot.files, artifactFiles: task.artifacts.files, maxArtifactBytes: task.artifacts.maxBytes,
@@ -135,14 +139,17 @@ export async function prepareLocalTask(options: LocalTaskOptions) {
     async run(signal?: AbortSignal) {
       const snapshotReference = await archiveFiles(snapshot, workspace.descriptor.mediaType);
       const acceptanceReference = await archiveFiles(acceptanceFiles, 'application/vnd.omk.local-task-verifier');
-      const result = await prepared.run({ signal, annotations: { ...preview, snapshotReference, acceptanceReference } });
+      const runId = `run-${randomUUID()}`;
+      const diagnosticsDirectory = `task-diagnostics/${runId}`;
+      const { value: result, references: diagnosticReferences } = await diagnostics.run(runId, () =>
+        prepared.run({ runId, signal, annotations: { ...preview, snapshotReference, acceptanceReference, diagnosticsDirectory } }));
       if (result.status === 'failed') {
         const value = JSON.parse(JSON.stringify(result)) as JsonValue;
         const failureReference = await contentStore.put({ value, digest: digestCanonicalJson(value), mediaType: 'application/json', classification: 'sensitive' });
         throw new Error(`TASK_RUN_FAILED:${result.error.code}:${failureReference.uri}`);
       }
       const reference = await saveEvaluationResult({ result, store: contentStore });
-      return { result, artifacts: await persist(result), reference };
+      return { result, artifacts: await persist(result), reference, diagnosticsDirectory, diagnosticReferences };
     },
     async rescore(source: EvaluationResult, acceptance: LocalTaskDefinition['acceptance'], root: string, signal?: AbortSignal) {
       const verifiedAcceptance = LocalTaskDefinitionSchema.shape.acceptance.parse(acceptance);
@@ -156,16 +163,19 @@ export async function prepareLocalTask(options: LocalTaskOptions) {
       }
       const files = await captureTaskFiles(resolve(root, verifiedAcceptance.root), verifiedAcceptance.files, 16 * 1024 * 1024);
       const nextInput: EvaluateInput = { ...declaration,
-        evaluators: [createTaskAcceptance({ definition: verifiedAcceptance, files, requiredArtifacts: task.artifacts.files,
+        evaluators: [createTaskAcceptance({ captureDiagnostic: diagnostics.capture, definition: verifiedAcceptance, files, requiredArtifacts: task.artifacts.files,
           temporaryRoot: options.temporaryRoot, runtimeFiles: identityFiles.filter((file) => file.facetId === 'node-runtime') })] };
       const acceptanceReference = await archiveFiles(files, 'application/vnd.omk.local-task-verifier');
-      const result = await rescore(nextInput, source, { signal, annotations: { ...preview,
+      const runId = `run-${randomUUID()}`;
+      const diagnosticsDirectory = `task-diagnostics/${runId}`;
+      const { value: result, references: diagnosticReferences } = await diagnostics.run(runId, () =>
+        rescore(nextInput, source, { runId, signal, annotations: { ...preview, diagnosticsDirectory,
         acceptanceDigest: taskTreeDigest(files), acceptanceTimeoutMs: verifiedAcceptance.timeoutMs,
-        acceptanceReference, postHocRescore: true, sourceRunId: source.runId } });
+        acceptanceReference, postHocRescore: true, sourceRunId: source.runId } }));
       // The existing run-artifact store requires a single run contract. A reused Execution
       // retains its original contract, so persist suffix runs through Runtime's result store.
       const reference = await saveEvaluationResult({ result, store: contentStore });
-      return { result, reference };
+      return { result, reference, diagnosticsDirectory, diagnosticReferences };
     },
   });
 }

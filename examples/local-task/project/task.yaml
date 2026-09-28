@@ -1,0 +1,30 @@
+schemaVersion: omk.local-task/v1
+taskId: cart-discount-tax
+trust: trusted-local
+samples:
+  schemaVersion: omk.eval-sample-set/v3
+  samples:
+    - sampleId: discount-before-tax
+      input:
+        inputKind: text
+        text: Fix cartTotal in src/cart.mjs. The fixed discount must reduce the subtotal before tax is calculated. Preserve quantity handling, zero defaults and final currency rounding. Save the repair in the source file.
+snapshot:
+  root: snapshot
+  files: [package.json, package-lock.json, src/cart.mjs, node_modules/@task/money/package.json, node_modules/@task/money/index.mjs]
+artifacts:
+  files: [package.json, package-lock.json, src/cart.mjs, node_modules/@task/money/package.json, node_modules/@task/money/index.mjs]
+  maxBytes: 262144
+variants:
+  control: control.md
+  treatment: treatment.md
+execution:
+  runtimeKind: fixture
+  script: fixture.mjs
+  timeoutMs: 10000
+acceptance:
+  root: acceptance
+  files: [verify.mjs]
+  entrypoint: verify.mjs
+  timeoutMs: 10000
+trials: 1
+seed: cart-project-v1

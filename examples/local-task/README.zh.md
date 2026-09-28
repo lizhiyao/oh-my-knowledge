@@ -74,3 +74,11 @@ try {
 2026-09-29（Asia/Shanghai），在 macOS arm64 上使用 Codex CLI 0.154.0、`gpt-6-astra`、low effort，一个 sample、一个 trial，执行时限 120,000 ms。Control 完成但未修复，负数检查失败，正数和零保持正常；treatment 超过执行时限，未进行验收。报告为证据不可解析、结论不确定，这是实际限制，不是成功的真实 A/B 比较。Control 报告输入 42,532 tokens、输出 149 tokens；treatment 用量和 USD 成本不可得。没有自动重试。
 
 源运行 ID 为 `run-381c102b-5024-49cd-b35b-ded118f1431d`；快照摘要为 `sha256:f5311bed1e2b773820d4c2c69a09bebabfa004b165ec5361da382bcb6ec44f3c`，验收程序摘要为 `sha256:af09894f74c5d3cf5851d226ae0328944ca4ad60697b46e1713d3e67224d7e17`。后续存储与投影修复另行验证；本次试跑只证明上述真实执行表现。
+
+## 失败现场与项目接入
+
+每次已开始的执行在清理前封存声明文件与有界 stdout／stderr，包括超时、取消和非零退出；验收基础设施失败也保存部分输出。诊断使用既有私有内容存储，CLI 返回 `diagnosticReferences` 与 `diagnosticsDirectory`，报告 annotations 记录同一目录。目录内索引提供 run、sample、variant、trial、attempt、阶段和内容引用；通过内容 URI 对应的 `content/content/<key>.content.json` 读取完整证据。索引目录属于报告输出目录。未开始的执行没有现场；采集错误明确留在证据中。
+
+诊断是失败现场，不是可评分的成功 output；运行记录的最终状态仍为权威依据，后续清理失败也不能被诊断中的完成状态覆盖。诊断写入失败会使执行失败。输出按 sensitive 处理，不在 Studio 直接显示原始日志，不能据此保证 Agent 输出绝不包含敏感数据。
+
+带本地 npm 依赖、多文件快照和六项回归验收的完整接入步骤见[购物车项目](./project/README.zh.md)。

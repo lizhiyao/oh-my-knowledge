@@ -1,0 +1,1 @@
+Implement the requested repair in src/cart.mjs. Preserve dependency files and exported interfaces. A fixed discount reduces the subtotal before tax is calculated. Keep final currency rounding and quantity handling intact. Do not finish with a description alone: save the code change.

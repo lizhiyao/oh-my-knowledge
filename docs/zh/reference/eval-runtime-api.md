@@ -369,3 +369,5 @@ const executor = await createCodexCliReferenceExecutor({
 ## 本地任务宿主应用
 
 包根还导出 `prepareLocalTask` 和 `LocalTaskOptions`。这个 Node 宿主应用组合快照物化、任务执行器、独立验收与 canonical Runtime 持久化，不向 Core 添加文件或进程副作用。共享 CLI/API 流程及证据限制见[本地任务](../guides/local-tasks.md)。
+
+本地任务宿主的 `run()`／`rescore()` 还返回 `diagnosticsDirectory` 与 `diagnosticReferences`，对应本次运行的私有诊断索引和内容引用。执行输出 Schema 与 canonical Runtime 状态语义不变；失败现场仅用于诊断，不作为重评分成功输入。
