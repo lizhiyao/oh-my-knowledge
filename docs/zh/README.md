@@ -49,3 +49,5 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 - [Core 设计](./specs/eval-core-vnext.md) · [评分等价性](./specs/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/cli-evaluation-input-compilation.md)
 - [知识领域模型（草案）](./specs/knowledge-domain-model.md) · [知识缺口信号](./specs/knowledge-gap-signal-spec.md) · [证据门控管理](./specs/evidence-gated-management.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [术语规范](./specs/terminology-spec.md)
+
+- [验证本地任务结果](./guides/local-tasks.md)

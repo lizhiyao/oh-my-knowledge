@@ -365,3 +365,7 @@ The evaluator uses one judge with a require-complete mean aggregation and reuses
 The executor supports string knowledge content and a no-knowledge baseline. Directory Skills, workspace overlays, native MCP, mock interception, per-trial tool allow-lists and runtime context are unsupported and fail closed. `executionContext` is task data, not a materialized working directory. Codex is stochastic and offers no seed control: paired evaluation must explicitly select `seedCoupling: 'uncontrolled'`. Provider revisions behind a model alias may still change; pinning a name does not guarantee exact server-side replay.
 
 `CODEX_CLI_MIN_SUPPORTED_VERSION` is the fixture-verified protocol floor, not a compatibility promise for every later release. `DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS` bounds assembly-time probing; Runtime policy owns execution timeouts, retries and budgets. `CODEX_CLI_REFERENCE_ADAPTER_VERSION` participates in the fingerprint and is now 1.1.0, so comparability with older adapter runs must be reassessed. Codex CLI USD cost remains unreported, never zero.
+
+## Local task host application
+
+The package root also exports `prepareLocalTask` and `LocalTaskOptions`. This Node host application composes snapshot materialization, a task executor, independent acceptance and canonical Runtime persistence. It does not add file or process effects to Core. See [local tasks](../guides/local-tasks.md) for the shared CLI/API workflow and evidence limits.

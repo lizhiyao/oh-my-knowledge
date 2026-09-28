@@ -247,6 +247,26 @@ omk eval gold validate <dir> [flags]
 
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 
+## omk eval task
+
+从固定快照执行可信本地任务 A/B，采集产物并独立验收。
+
+**用法:**
+
+```bash
+omk eval task <definition> [flags]
+```
+
+**参数:**
+
+- `definition`(必填):本地任务 YAML／JSON 定义。
+
+**Flags:**
+
+- `--dry-run` `boolean`:预览封存计划，不执行任务。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--output` `option` (默认 `.omk/eval`):报告输出目录。
+
 ## omk evolve
 
 自动迭代改进 skill:多轮 eval + skill 重写，直到达到 --target 或耗尽 --rounds。

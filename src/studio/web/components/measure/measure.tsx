@@ -50,7 +50,7 @@ const COPY = {
     bundleId: '产物包 ID', bundleDigest: '产物包摘要', parent: '父产物',
     executionRecords: '执行记录', evaluationRecords: '评价记录', sample: '用例', trial: '试次',
     trialId: '试次 ID', evaluationId: '评价 ID', runtime: '运行时', duration: '耗时', usage: '用量',
-    cache: '缓存', observations: '观测', reasons: '原因码',
+    cache: '缓存', observations: '观测', reasons: '原因码', taskEvidence: '任务产物与验收', passed: '通过', failed: '不通过', missing: '缺失',
     analysisResults: '分析结果', resultId: '结果 ID', node: '节点', mode: '模式', result: '结果',
     exclusionCount: '排除数', outputSchema: '输出 Schema', assumptions: '假设检查', recordDigest: '记录摘要',
     decision: '决策', policy: '策略', verdict: '判定', digest: '摘要', noDecision: '本次运行尚无判定。',
@@ -77,7 +77,7 @@ const COPY = {
     bundleId: 'Bundle ID', bundleDigest: 'Bundle digest', parent: 'Parent',
     executionRecords: 'Execution records', evaluationRecords: 'Evaluation records', sample: 'Sample', trial: 'Trial',
     trialId: 'Trial ID', evaluationId: 'Evaluation ID', runtime: 'Runtime', duration: 'Duration', usage: 'Usage',
-    cache: 'Cache', observations: 'Observations', reasons: 'Reason codes',
+    cache: 'Cache', observations: 'Observations', reasons: 'Reason codes', taskEvidence: 'Task artifacts and acceptance', passed: 'Passed', failed: 'Failed', missing: 'Missing',
     analysisResults: 'Analysis results', resultId: 'Result ID', node: 'Node', mode: 'Mode', result: 'Result',
     exclusionCount: 'Exclusions', outputSchema: 'Output schema', assumptions: 'Assumptions', recordDigest: 'Record digest',
     decision: 'Decision', policy: 'Policy', verdict: 'Verdict', digest: 'Digest', noDecision: 'This run has no decision yet.',
@@ -284,9 +284,32 @@ function DecisionPanel({ decision, copy, lang }: { decision: CoreStudioDecision 
   ]}/>;
 }
 
+export function TaskArtifactEvidence({ value, lang }: { value: NonNullable<CoreStudioExecutionRecord['taskArtifacts']>; lang: Language }) {
+  const copy = COPY[lang];
+  return <section aria-label={copy.taskEvidence}>
+    <p>{copy.taskEvidence}</p>
+    <p>{copy.digest}: <Code value={value.snapshotDigest}/></p>
+    <Fragments parts={value.files.map((file) => `${file.path} · ${file.change} · ${file.digest}`)}/>
+    <Fragments parts={value.missing.map((path) => `${copy.missing}: ${path}`)}/>
+    <Fragments parts={value.collectionErrors.map((error) => `${error.path}: ${error.code}`)}/>
+  </section>;
+}
+
+export function TaskAcceptanceEvidence({ value, lang }: { value: NonNullable<CoreStudioEvaluationRecord['observations'][number]['taskAcceptance']>; lang: Language }) {
+  const copy = COPY[lang];
+  return <section aria-label={copy.taskEvidence}>
+    <p>{copy.taskEvidence}: {value.passed ? copy.passed : copy.failed}</p>
+    <p>{copy.digest}: <Code value={value.acceptanceDigest}/></p>
+    <Fragments parts={value.checks.map((check) => `${check.checkId}: ${check.passed ? copy.passed : copy.failed}`)}/>
+  </section>;
+}
+
 function ExecutionRecords({ records, copy, lang }: { records: readonly CoreStudioExecutionRecord[]; copy: Copy; lang: Language }) {
   const emptyText = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/>;
-  return <Table className="studio-table" sticky size="small" rowKey="trialId" pagination={false} scroll={{ x: 1620 }} dataSource={[...records]} locale={{ emptyText }} columns={[
+  return <Table className="studio-table" sticky size="small" rowKey="trialId" pagination={false} scroll={{ x: 1620 }} dataSource={[...records]} locale={{ emptyText }} expandable={{
+    rowExpandable: (record) => record.taskArtifacts !== undefined,
+    expandedRowRender: (record) => <TaskArtifactEvidence value={record.taskArtifacts!} lang={lang}/>,
+  }} columns={[
     { title: copy.target, dataIndex: 'targetId', width: 140, ellipsis: true },
     { title: copy.sample, dataIndex: 'sampleId', width: 140, ellipsis: true },
     { title: copy.trial, dataIndex: 'trialIndex', width: 70 },
@@ -303,7 +326,10 @@ function ExecutionRecords({ records, copy, lang }: { records: readonly CoreStudi
 
 function EvaluationRecords({ records, copy, lang }: { records: readonly CoreStudioEvaluationRecord[]; copy: Copy; lang: Language }) {
   const emptyText = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={copy.none}/>;
-  return <Table className="studio-table" sticky size="small" rowKey="evaluationId" pagination={false} scroll={{ x: 1960 }} dataSource={[...records]} locale={{ emptyText }} columns={[
+  return <Table className="studio-table" sticky size="small" rowKey="evaluationId" pagination={false} scroll={{ x: 1960 }} dataSource={[...records]} locale={{ emptyText }} expandable={{
+    rowExpandable: (record) => record.observations.some((observation) => observation.taskAcceptance !== undefined),
+    expandedRowRender: (record) => <>{record.observations.filter((observation) => observation.taskAcceptance).map((observation) => <TaskAcceptanceEvidence key={observation.observationId} value={observation.taskAcceptance!} lang={lang}/>)}</>,
+  }} columns={[
     { title: copy.evaluationId, dataIndex: 'evaluationId', width: 180, ellipsis: true },
     { title: copy.target, dataIndex: 'targetId', width: 140, ellipsis: true },
     { title: copy.sample, dataIndex: 'sampleId', width: 140, ellipsis: true },

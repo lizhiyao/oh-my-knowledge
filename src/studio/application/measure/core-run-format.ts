@@ -103,7 +103,8 @@ export function formatMeasurement(measurement: CoreStudioEvaluationRecord['measu
 }
 
 export function formatObservation(observation: CoreStudioMetricObservation): string {
-  const value = observation.numericValue === undefined ? '' : `=${observation.numericValue}`;
+  const observedValue = observation.numericValue ?? observation.booleanValue;
+  const value = observedValue === undefined ? '' : `=${observedValue}`;
   const reason = observation.reasonCode === undefined ? '' : ` (${observation.reasonCode})`;
   return `${observation.metricId}:${observation.observationStatus}${value}${reason}`;
 }

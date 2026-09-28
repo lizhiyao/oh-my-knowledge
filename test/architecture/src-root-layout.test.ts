@@ -34,6 +34,7 @@ const PACKAGE_ENTRYPOINTS = new Set([
 const ALLOWED_ENTRYPOINT_EDGES = new Set([
   'index.ts → eval-runtime/index.ts',
   'index.ts → eval-workflows/hosts/reference-executors.ts',
+  'index.ts → eval-workflows/hosts/local-task/application.ts',
 ]);
 
 const EXPECTED_SHARED_FILES = [

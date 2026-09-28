@@ -72,6 +72,12 @@ export interface CoreStudioBudget {
 }
 
 export interface CoreStudioExecutionRecord {
+  readonly taskArtifacts?: {
+    readonly snapshotDigest: string;
+    readonly files: readonly { readonly path: string; readonly digest: string; readonly change: string }[];
+    readonly missing: readonly string[];
+    readonly collectionErrors: readonly { readonly path: string; readonly code: string }[];
+  };
   readonly targetId: string;
   readonly sampleId: string;
   readonly trialIndex: number;
@@ -87,6 +93,12 @@ export interface CoreStudioExecutionRecord {
 }
 
 export interface CoreStudioMetricObservation {
+  readonly booleanValue?: boolean;
+  readonly taskAcceptance?: {
+    readonly acceptanceDigest: string;
+    readonly passed: boolean;
+    readonly checks: readonly { readonly checkId: string; readonly passed: boolean }[];
+  };
   readonly observationId: string;
   readonly metricId: string;
   readonly observationStatus: 'observed' | 'missing' | 'invalid';
