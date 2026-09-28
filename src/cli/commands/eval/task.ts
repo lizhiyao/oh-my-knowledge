@@ -25,8 +25,8 @@ export default class EvalTask extends BaseCommand {
         });
         if (flags['dry-run']) { this.log(JSON.stringify(application.preview, null, 2)); return; }
         process.stderr.write(`${JSON.stringify(application.preview, null, 2)}\n`);
-        const { result, artifacts, reference } = await application.run(signal);
-        this.log(JSON.stringify({ runId: result.runId, outputDirectory: resolve(flags.output), reference, report: artifacts.report }, null, 2));
+        const { result, artifacts, reference, diagnosticsDirectory, diagnosticReferences } = await application.run(signal);
+        this.log(JSON.stringify({ runId: result.runId, outputDirectory: resolve(flags.output), reference, diagnosticsDirectory, diagnosticReferences, report: artifacts.report }, null, 2));
         if (result.status !== 'completed' || artifacts.execution.records.some((record) => record.executionStatus !== 'completed')
           || artifacts.evaluation.records.some((record) => record.evaluationStatus !== 'completed'
             || record.observations.some((observation) => observation.observationStatus !== 'observed'))) this.exit(1);

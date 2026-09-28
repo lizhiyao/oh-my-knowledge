@@ -74,3 +74,11 @@ Rescore accepts a canonical result retained in the same process and rejects insu
 On 2026-09-29 (Asia/Shanghai), Codex CLI 0.154.0, `gpt-6-astra`, low effort, one sample and one trial ran with a 120,000 ms execution limit on macOS arm64. Control completed, made no repair, and failed the negative-number check while preserving positive/zero behavior. Treatment exceeded the execution limit, so its acceptance was not evaluated. The report was inconclusive with unresolvable evidence; this is an observed limitation, not a successful live A/B comparison. Control reported 42,532 input and 149 output tokens; treatment usage and USD cost were unavailable. No run was retried automatically.
 
 The source run was `run-381c102b-5024-49cd-b35b-ded118f1431d`; snapshot digest `sha256:f5311bed1e2b773820d4c2c69a09bebabfa004b165ec5361da382bcb6ec44f3c`, verifier digest `sha256:af09894f74c5d3cf5851d226ae0328944ca4ad60697b46e1713d3e67224d7e17`. Subsequent storage/projection fixes require their own checks; this smoke run establishes only the stated live execution behavior.
+
+## Failure diagnostics and project integration
+
+Every started execution archives declared files and bounded stdout/stderr before cleanup, including timeout, cancellation and nonzero exit. Verifier infrastructure failures also retain partial output. Diagnostics reuse the private content store. The CLI returns `diagnosticReferences` and `diagnosticsDirectory`; report annotations identify the same directory. Its indexes carry run, sample, variant, trial, attempt, stage and content references. Read full evidence from `content/content/<key>.content.json` using the content URI key. The index directory is relative to the report output directory. Unstarted executions have no attempt snapshot; collection errors remain explicit.
+
+Diagnostics are failure observations, not scoreable successful output. Final Runtime records remain authoritative, including cleanup failures after capture. Diagnostic persistence failure fails execution. Logs are sensitive and are not directly shown in Studio; capture cannot guarantee Agent output contains no sensitive data.
+
+See the [cart project](./project/README.md) for actual npm dependency installation, a multi-file snapshot and six independent regression checks.

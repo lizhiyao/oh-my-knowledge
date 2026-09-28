@@ -9,6 +9,7 @@ import { spawnWithSigintPropagation, type SpawnHelperError } from '../../../exec
 import { buildCodexExecArguments } from '../../../executors/openai/codex/cli-arguments.js';
 import { parseCodexCliStream } from '../adapters/codex/cli-protocol.js';
 import { LocalTaskOutputSchema, type LocalTaskDefinition, type LocalTaskOutput, type TaskFile } from '../../inputs/contracts/local-task.js';
+import type { TaskAttemptDiagnostic } from './diagnostics.js';
 import { collectTaskArtifacts, taskTreeDigest } from './files.js';
 import { assertIdentityFilesUnchanged, type CapturedIdentityFile } from '../adapters/shared/content-identity.js';
 
@@ -23,11 +24,12 @@ export function createTaskExecutor(input: {
   identityFiles: readonly CapturedIdentityFile[];
   fixtureSource?: string;
   authenticationFile?: string;
+  captureDiagnostic: (diagnostic: TaskAttemptDiagnostic) => Promise<void>;
 }): Executor<JsonValue, undefined, LocalTaskOutput> {
   const { definition } = input;
   const snapshotDigest = taskTreeDigest(input.snapshot);
   return {
-    executorId: 'omk.local-task-executor/v1', version: '1.0.0',
+    executorId: 'omk.local-task-executor/v1', version: '1.1.0',
     schemas: { input: z.json(), output: LocalTaskOutputSchema, trace: z.json() },
     outputClassification: 'sensitive', traceClassification: 'sensitive',
     outputMediaType: 'application/vnd.omk.local-task-output+json',
@@ -38,6 +40,7 @@ export function createTaskExecutor(input: {
       seedControl: 'unsupported', telemetry: { trace: 'optional', usage: 'optional', providerCost: { reporting: 'unsupported' } },
     },
     fingerprintFacets: {
+      diagnosticsPolicy: 'attempt-snapshot/v1', maxStreamBytes: 10 * 1024 * 1024,
       outputSchema: 'omk.local-task-output/v1', runtimeKind: definition.execution.runtimeKind,
       implementationDigest: input.executableDigest, runtimeVersion: input.version,
       dependencies: input.identityFiles.map(({ facetId, digest, size }) => ({ facetId, digest, size })),
@@ -52,6 +55,18 @@ export function createTaskExecutor(input: {
       if (invocation.workspace === undefined) return { errorCode: 'TASK_WORKSPACE_MISSING' };
       invocation.signal.throwIfAborted();
       const privateRoot = await mkdtemp(join(input.temporaryRoot, 'executor-'));
+      let stdout = '';
+      let stderr = '';
+      let processOutcome: TaskAttemptDiagnostic['processOutcome'] = null;
+      let status = 'TASK_EXECUTION_FAILED';
+      let captured: LocalTaskOutput | undefined;
+      const collect = async (response: string): Promise<LocalTaskOutput> => ({
+        schemaVersion: 'omk.local-task-output/v1', response, snapshotDigest,
+        ...await collectTaskArtifacts({ root: invocation.workspace!.root, paths: definition.artifacts.files,
+          maxBytes: definition.artifacts.maxBytes, snapshot: input.snapshot }),
+        source: { sampleId: invocation.sampleId, variantId: invocation.variantId,
+          trialIndex: invocation.trialIndex, attemptNumber: invocation.attemptNumber },
+      });
       try {
         await assertIdentityFilesUnchanged(input.identityFiles, { adapterLabel: 'Local task',
           cancellationCode: 'TASK_CANCELLED', identityChangedCode: 'TASK_EXECUTOR_CHANGED', signal: invocation.signal });
@@ -88,25 +103,38 @@ export function createTaskExecutor(input: {
         child.stdin?.on('error', () => { /* done owns subprocess errors */ });
         child.stdin?.end(stdin);
         const completed = await done;
+        stdout = completed.stdout;
+        stderr = completed.stderr;
+        processOutcome = { exitCode: completed.code, signal: completed.signal, failureKind: null };
         const parsed = execution.runtimeKind === 'codex' ? parseCodexCliStream(completed.stdout) : undefined;
         if (parsed?.terminalStatus === 'failed') return { errorCode: 'TASK_EXECUTION_FAILED', ...(parsed.usage ? { usage: parsed.usage } : {}) };
-        const output: LocalTaskOutput = {
-          schemaVersion: 'omk.local-task-output/v1', response: parsed?.output ?? completed.stdout,
-          snapshotDigest,
-          ...await collectTaskArtifacts({ root: invocation.workspace.root, paths: definition.artifacts.files,
-            maxBytes: definition.artifacts.maxBytes, snapshot: input.snapshot }),
-          source: { sampleId: invocation.sampleId, variantId: invocation.variantId,
-            trialIndex: invocation.trialIndex, attemptNumber: invocation.attemptNumber },
-        };
+        const output = await collect(parsed?.output ?? completed.stdout);
+        captured = output;
+        status = 'completed';
         return { output, ...(parsed?.trace === undefined ? {} : { trace: parsed.trace }),
           ...(parsed?.usage === undefined ? {} : { usage: parsed.usage }) };
       } catch (error) {
+        const failure = error as SpawnHelperError;
+        stdout = failure.stdout ?? stdout;
+        stderr = failure.stderr ?? stderr;
+        if (failure.failureKind) processOutcome = { exitCode: failure.code ?? null, signal: failure.signal ?? null, failureKind: failure.failureKind };
+        status = failure.killedByTimeout || invocation.signal.reason === 'timeout' ? 'TASK_EXECUTION_TIMEOUT'
+          : invocation.signal.aborted ? 'TASK_CANCELLED'
+            : error instanceof ExecutionPortFailure ? error.evaluationError.code : 'TASK_EXECUTION_FAILED';
         if (invocation.signal.aborted) throw invocation.signal.reason;
         if (error instanceof ExecutionPortFailure) throw error;
-        return { errorCode: (error as SpawnHelperError).killedByTimeout ? 'TASK_EXECUTION_TIMEOUT' : 'TASK_EXECUTION_FAILED' };
+        return { errorCode: status };
       } finally {
-        // Propagate cleanup failure to Runtime; a completed answer cannot hide a leaked lease.
-        await rm(privateRoot, { recursive: true, force: true });
+        try {
+          if (invocation.signal.aborted) status = invocation.signal.reason === 'timeout' ? 'TASK_EXECUTION_TIMEOUT' : 'TASK_CANCELLED';
+          await input.captureDiagnostic({ stage: 'execution', status, output: captured ?? await collect(''), stdout, stderr, processOutcome });
+        } catch {
+          throw new ExecutionPortFailure({ code: 'TASK_DIAGNOSTIC_WRITE_FAILED', stage: 'infrastructure',
+            message: 'Local task diagnostic evidence could not be persisted.' });
+        } finally {
+          // Diagnostic persistence must not prevent private credential cleanup.
+          await rm(privateRoot, { recursive: true, force: true });
+        }
       }
     },
   };

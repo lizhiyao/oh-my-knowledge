@@ -369,3 +369,5 @@ The executor supports string knowledge content and a no-knowledge baseline. Dire
 ## Local task host application
 
 The package root also exports `prepareLocalTask` and `LocalTaskOptions`. This Node host application composes snapshot materialization, a task executor, independent acceptance and canonical Runtime persistence. It does not add file or process effects to Core. See [local tasks](../guides/local-tasks.md) for the shared CLI/API workflow and evidence limits.
+
+The local-task host `run()`/`rescore()` also return `diagnosticsDirectory` and `diagnosticReferences` for that run’s private diagnostic indexes and content references. The execution output schema and canonical Runtime status semantics are unchanged; failure snapshots are diagnostic evidence, not successful rescore input.

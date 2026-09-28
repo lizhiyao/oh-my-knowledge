@@ -8,10 +8,10 @@ import {
 import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 
 describe('Codex protocol normalization', () => {
-  it('accepts a recovered reconnect without erasing the event, but still rejects failed or incomplete turns', () => {
+  it.each(['stream disconnected before completion: tls handshake eof', 'request timed out'])('accepts a recovered reconnect (%s) without erasing the event, but still rejects failed or incomplete turns', (reason) => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },
-      { type: 'error', message: 'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)' },
+      { type: 'error', message: `Reconnecting... 2/5 (${reason})` },
       { type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: 'ALLOW' } },
       { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } },
     ];

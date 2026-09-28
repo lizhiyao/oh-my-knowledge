@@ -141,7 +141,7 @@ export function extractCodexFinalOutput(events: CodexEvent[]): string {
 /** Codex reports recoverable transport reconnects as error events before its final turn result. */
 export function isCodexReconnectNotice(event: CodexEvent): boolean {
   if (event.type !== 'error' || typeof event.message !== 'string') return false;
-  const match = /^Reconnecting\.\.\. ([1-9]\d*)\/([1-9]\d*) \(stream disconnected before completion: .+\)$/.exec(event.message);
+  const match = /^Reconnecting\.\.\. ([1-9]\d*)\/([1-9]\d*) \((?:stream disconnected before completion: .+|request timed out)\)$/.exec(event.message);
   return match !== null && Number.isSafeInteger(Number(match[1]))
     && Number.isSafeInteger(Number(match[2])) && Number(match[1]) <= Number(match[2]);
 }
