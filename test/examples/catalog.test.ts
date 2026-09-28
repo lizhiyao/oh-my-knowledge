@@ -15,6 +15,7 @@ const publicExamples = [
   'codex-task-trajectory',
   'custom-executor',
   'eval-runtime',
+  'local-task',
   'rag-eval',
   'skill-map-showcase',
 ] as const;

@@ -237,10 +237,12 @@ describe('published eval-runtime API allowlist', () => {
     for (const name of Object.keys(runtime)) expect(root[name]).toBe(runtime[name]);
     expect(Object.keys(root).sort()).toEqual([
       ...Object.values(PUBLIC_API).flatMap((contract) => [...contract.values]),
+      'prepareLocalTask',
     ].sort());
     expect(readFileSync(resolve('dist/index.d.ts'), 'utf8')).toContain(
       "export * from './eval-runtime/index.js';",
     );
+    expect(readFileSync(resolve('dist/index.d.ts'), 'utf8')).toContain('prepareLocalTask, type LocalTaskOptions');
   });
 
   for (const [subpath, contract] of Object.entries(PUBLIC_API)) {

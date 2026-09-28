@@ -365,3 +365,7 @@ const executor = await createCodexCliReferenceExecutor({
 执行器支持字符串知识内容和无知识 baseline；不支持目录 Skill、workspace overlay、原生 MCP、mock 拦截、逐 trial 工具 allow-list 或 runtime context。`executionContext` 是题设数据，不会物化为目录。声明不支持的能力会失败关闭。Codex 是随机执行器且不提供 seed control，配对评测必须显式采用 `seedCoupling: 'uncontrolled'`。模型别名背后的供应商版本仍可能变化；固定名称不承诺服务端完全可重放。
 
 `CODEX_CLI_MIN_SUPPORTED_VERSION` 是 fixture 验证的协议最低版本，不是所有后续版本的兼容保证。`DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS` 是创建阶段探测上限；执行超时、重试及预算由 Runtime policy 管理。`CODEX_CLI_REFERENCE_ADAPTER_VERSION` 随实现版本进入 fingerprint，本次为 1.1.0；与旧适配器运行的可比性须重新检查。Codex CLI 不报告 USD 成本，保持未报告状态，不记为零。
+
+## 本地任务宿主应用
+
+包根还导出 `prepareLocalTask` 和 `LocalTaskOptions`。这个 Node 宿主应用组合快照物化、任务执行器、独立验收与 canonical Runtime 持久化，不向 Core 添加文件或进程副作用。共享 CLI/API 流程及证据限制见[本地任务](../guides/local-tasks.md)。

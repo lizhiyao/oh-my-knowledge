@@ -28,7 +28,7 @@ describe('eval-workflows 与 executors 领域布局', () => {
   it('eval-workflows/hosts 同级目录按职责划分，运行环境留在对应实现中', () => {
     const entries = readdirSync(resolve('src/eval-workflows/hosts'), { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['adapters', 'composition', 'evaluators', 'input-resolution', 'resource-leases']);
+      .toEqual(['adapters', 'composition', 'evaluators', 'input-resolution', 'local-task', 'resource-leases']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual(['application.ts', 'reference-executors.ts', 'types.ts']);
   });

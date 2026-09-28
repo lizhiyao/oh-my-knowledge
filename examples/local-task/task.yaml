@@ -1,0 +1,30 @@
+schemaVersion: omk.local-task/v1
+taskId: absolute-regression
+trust: trusted-local
+samples:
+  schemaVersion: omk.eval-sample-set/v3
+  samples:
+    - sampleId: absolute
+      input:
+        inputKind: text
+        text: Fix absolute() in math.mjs so it handles negative numbers without breaking positive numbers or zero.
+snapshot:
+  root: snapshot
+  files: [math.mjs]
+artifacts:
+  files: [math.mjs]
+  maxBytes: 65536
+variants:
+  control: control.md
+  treatment: treatment.md
+execution:
+  runtimeKind: fixture
+  script: fixture.mjs
+  timeoutMs: 10000
+acceptance:
+  root: acceptance
+  files: [verify.mjs]
+  entrypoint: verify.mjs
+  timeoutMs: 10000
+trials: 1
+seed: absolute-example-v1

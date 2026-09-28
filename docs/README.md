@@ -49,3 +49,5 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Core design](./specs/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/cli-evaluation-input-compilation.md)
 - [Knowledge domain model (draft)](./specs/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/knowledge-gap-signal-spec.md) · [Evidence-gated management](./specs/evidence-gated-management.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
+
+- [Verify local task outcomes](./guides/local-tasks.md)

@@ -160,6 +160,7 @@ Core alone owns their scheduling, retry, timeout, budget and measurement contrac
 ```text
 eval-workflows/hosts/
 ├── composition/       # shared registration, binding, preflight and assembly
+├── local-task/          # Trusted local task application, collection and acceptance adapters
 ├── input-resolution/  # host request and content resolution
 ├── adapters/          # provider execution protocol bridges
 ├── evaluators/        # product judge factory wiring

@@ -22,6 +22,7 @@ test/cli/init-samples-i18n.test.ts
 test/cli/judge-models-validation.test.ts
 test/cli/list-render.test.ts
 test/cli/oclif-eval.test.ts
+test/cli/eval-task.test.ts
 test/cli/oclif-i18n.test.ts
 test/cli/oclif-observe.test.ts
 test/cli/oclif-parsers.test.ts
@@ -64,6 +65,7 @@ test/eval-workflows/hosts/adapters/shared/readonly-map-snapshot.test.ts
 test/eval-workflows/hosts/adapters/shared/content-identity.test.ts
 test/eval-workflows/hosts/adapters/shared/trial-lifecycle.test.ts
 test/eval-workflows/hosts/adapters/shared/trial-workspace.test.ts
+test/eval-workflows/hosts/local-task.test.ts
 test/eval-workflows/hosts/composition/judge-provider-identity.test.ts
 test/eval-workflows/hosts/input-resolution/content-materialization.test.ts
 test/eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.test.ts

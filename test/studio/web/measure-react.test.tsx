@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
-import { RunDetail, RunList, RunSidebar } from '../../../src/studio/web/components/measure/measure';
+import { RunDetail, RunList, RunSidebar, TaskArtifactEvidence, TaskAcceptanceEvidence } from '../../../src/studio/web/components/measure/measure';
 import type { CoreStudioRunCard, CoreStudioRunDetail } from '../../../src/studio/view-models/measure/core-runs.js';
 import { card, detail } from '../fixtures/core-run-view.js';
 import { reactText } from '../../helpers/react-ssr.js';
@@ -34,6 +34,23 @@ const LANGUAGE_INDEPENDENT_FACTS = [
 ];
 
 describe('measure react detail keeps every projected fact in the served document', () => {
+  it('renders task artifact identities, missing evidence and independent check outcomes safely', () => {
+    for (const lang of ['zh', 'en'] as const) {
+      const artifacts = renderToString(createElement(TaskArtifactEvidence, { lang, value: {
+        snapshotDigest: 'snapshot-digest', files: [{ path: '<script>.mjs', digest: 'file-digest', change: 'modified' }],
+        missing: ['absent.mjs'], collectionErrors: [{ path: 'large.mjs', code: 'TASK_FILE_LIMIT' }],
+      } }));
+      assert.ok(artifacts.includes('&lt;script&gt;.mjs') && !artifacts.includes('<script>'));
+      for (const fact of ['snapshot-digest', 'file-digest', 'absent.mjs', 'TASK_FILE_LIMIT']) assert.ok(artifacts.includes(fact));
+      const acceptance = renderToString(createElement(TaskAcceptanceEvidence, { lang, value: {
+        acceptanceDigest: 'verifier-digest', passed: false,
+        checks: [{ checkId: 'negative', passed: true }, { checkId: 'positive-regression', passed: false }],
+      } }));
+      assert.ok(acceptance.includes('verifier-digest'));
+      assert.ok(acceptance.includes(lang === 'zh' ? 'negative: 通过' : 'negative: Passed'));
+      assert.ok(acceptance.includes(lang === 'zh' ? 'positive-regression: 不通过' : 'positive-regression: Failed'));
+    }
+  });
   for (const lang of ['zh', 'en'] as const) {
     it(`renders the same facts for ${lang}`, () => {
       const html = runDetail(detail(), lang);

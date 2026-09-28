@@ -15,6 +15,7 @@ import {
   type StoredCoreRunArtifacts,
 } from '../../../eval-workflows/artifact-store/index.js';
 import { assertCoreProjectionSource } from '../../../eval-workflows/projections/source.js';
+import { projectLocalTaskOutput, projectLocalTaskAcceptance } from '../../../eval-workflows/projections/local-task.js';
 import {
   type CoreStudioAnalysisRecord,
   type CoreStudioBudget,
@@ -112,7 +113,9 @@ function budget(summary: BudgetSummary): CoreStudioBudget {
 }
 
 function executionRecord(record: ExecutionRecord): CoreStudioExecutionRecord {
+  const taskArtifacts = record.executionStatus === 'completed' ? projectLocalTaskOutput(record.output) : undefined;
   const base = {
+    ...(taskArtifacts === undefined ? {} : { taskArtifacts }),
     targetId: record.targetId,
     sampleId: record.sampleId,
     trialIndex: record.trialIndex,
@@ -140,7 +143,10 @@ function executionRecord(record: ExecutionRecord): CoreStudioExecutionRecord {
 }
 
 function metricObservation(observation: MetricObservation): CoreStudioMetricObservation {
+  const taskAcceptance = projectLocalTaskAcceptance(observation.evidence);
   return {
+    ...(taskAcceptance === undefined ? {} : { taskAcceptance }),
+    ...(observation.observationStatus === 'observed' && observation.valueType === 'boolean' ? { booleanValue: observation.value } : {}),
     observationId: observation.observationId,
     metricId: observation.metricId,
     observationStatus: observation.observationStatus,

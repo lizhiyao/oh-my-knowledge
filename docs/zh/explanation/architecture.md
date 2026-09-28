@@ -150,6 +150,7 @@ provider adapter 或资源租约；具体装配由独立的 `hosts` 子域负责
 ```text
 eval-workflows/hosts/
 ├── composition/       # 共用注册、绑定、运行前检查与装配
+├── local-task/          # 可信本地任务应用、采集与验收适配
 ├── input-resolution/  # 宿主侧请求与内容解析
 ├── adapters/          # provider 执行协议适配
 ├── evaluators/        # 产品评委工厂接线
