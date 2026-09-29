@@ -1,5 +1,20 @@
 # Verify local task outcomes
 
+As checked on 2026-09-29, this entry is implemented on main but is not included in npm `@next` version `1.0.0-beta.12`. The following is a source preview, not installation guidance for that release.
+
+## Preview from source
+
+Install dependencies and run `yarn build` as described in the [contributor guide](./contributing), then run from the repository root:
+
+```bash
+node dist/cli/index.js eval task examples/local-task/task.yaml --dry-run
+node dist/cli/index.js eval task examples/local-task/task.yaml --output /absolute/path/to/task-reports
+```
+
+This example defaults to an offline fixture and makes no model calls. It verifies wiring, not real agent performance. Before switching to Codex, inspect the model, credentials, file list, and cost boundaries in the runnable example below.
+
+## Tasks and evidence
+
 Use `omk eval task <definition> --dry-run` to inspect a trusted local task, then omit `--dry-run` to run control and treatment. A task combines existing sample v3 text input, an explicit file snapshot, two knowledge versions, a fixed executor configuration, a file collection list and an independent Node verifier. See the [runnable example and complete authoring contract](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task).
 
 The CLI previews model, snapshot and verifier identities, write boundaries, file lists, timeouts and unknown USD cost. Fresh writable copies isolate each Target × Sample × Trial. Attempts within a trial share state; the first version does not add retries. Relative file paths are explicit, without globs or traversal. Known credential paths, symbolic links and special files are rejected; declared source files must not contain credentials.

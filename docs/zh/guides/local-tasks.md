@@ -1,5 +1,20 @@
 # 验证本地任务结果
 
+截至 2026-09-29，此入口已在 main 实现，但 npm `@next` 的 `1.0.0-beta.12` 尚未包含它。以下为源码预览，不是该发布版本的安装教程。
+
+## 从源码预览
+
+按[贡献指南](./contributing)安装依赖并运行 `yarn build`，随后在仓库根目录执行：
+
+```bash
+node dist/cli/index.js eval task examples/local-task/task.yaml --dry-run
+node dist/cli/index.js eval task examples/local-task/task.yaml --output /absolute/path/to/task-reports
+```
+
+这个示例默认使用离线 fixture，不调用模型；它验证接线，不代表真实 Agent 表现。切换到 Codex 前核对模型、凭证、文件清单和成本边界，见下方可运行示例。
+
+## 任务与证据
+
 用 `omk eval task <definition> --dry-run` 预览可信本地任务，去掉 `--dry-run` 即可执行 control 和 treatment。任务组合已有 sample v3 文本输入、显式文件快照、两版知识、固定执行器配置、文件采集清单和独立 Node 验收程序。完整编写契约见[可运行示例](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task)。
 
 CLI 预览模型、快照与验收程序身份、写入边界、文件清单、超时及未知 USD 成本。每个 Target × Sample × Trial 从新可写副本执行。同一 Trial 的 attempts 共享状态，首期不新增重试。相对文件路径须显式列出，不支持 glob 或越界；拒绝已知凭证路径、符号链接和特殊文件，声明的源文件不得含有凭证。
