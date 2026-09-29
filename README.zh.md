@@ -37,7 +37,7 @@ OMK 是面向 AI 应用作者与维护者的知识观测、评测与改进工具
 | 把工作经验沉淀为知识 | [从日志提炼知识](docs/zh/guides/extract-knowledge.md) | 带来源和适用条件的候选知识，支持修订、保留和舍弃 |
 | 记录已确认的知识问题 | [MCP 主动反馈](docs/zh/guides/mcp-integration.md) | 待复核 observation；确认真实问题后再草拟用例 |
 | 判断一版改动是否值得采用 | [评测快速上手](docs/zh/quickstart-skill-eval.md) | 版本判定、不确定性、失败用例和评分依据 |
-| 验证 Agent 是否真正完成任务 | [本地任务验收（main 源码预览）](docs/zh/guides/local-tasks.md) | 修改文件、独立验收结果，以及失败／超时／取消后的现场证据 |
+| 验证 Agent 是否真正完成任务 | [本地任务验收](docs/zh/guides/local-tasks.md) | 修改文件、独立验收结果，以及失败／超时／取消后的现场证据 |
 | 自动尝试改进 skill | [迭代改进](docs/zh/guides/auto-improve-skills.md) | 经受控比较筛选的候选版本 |
 | 将评测接入服务或平台 | [Node.js 服务](docs/zh/guides/eval-runtime.md) · [平台宿主](docs/zh/guides/platform-host-integration.md) | 可组合的执行、评分与比较接口 |
 
@@ -49,7 +49,7 @@ OMK 是面向 AI 应用作者与维护者的知识观测、评测与改进工具
 npm i -g oh-my-knowledge@next
 ```
 
-截至 2026-09-29，npm `@next` 指向 `1.0.0-beta.12`。本页标为 **main 源码预览** 的本地任务入口尚未包含在该版本中；请按[源码预览指南](docs/zh/guides/local-tasks.md)构建，不要将合并到 main 当作已发版。
+本地任务验收需要 `1.0.0-beta.13` 或更新版本。安装后用 `omk --version` 核对版本，再按[本地任务指南](docs/zh/guides/local-tasks.md)运行可信示例。
 
 ### 先看已有任务
 
@@ -79,11 +79,11 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 [完整教程](docs/zh/quickstart-skill-eval.md)介绍模型选择、换成自己的 skill 和结果解读；[示例画廊](examples/README.zh.md)提供更多可运行场景。
 
-### 验证文件是否真的改对了（main 源码预览）
+### 验证文件是否真的改对了
 
 本地任务从声明的文件快照执行两版知识，采集文件并交给独立验收程序检查；失败、超时或取消也保存声明文件和部分日志。它测量明确提供知识内容后的效果，不测宿主原生 skill 发现。任务与验收程序必须可信，工作区副本不是安全沙箱。
 
-[带 npm 依赖的购物车案例](examples/local-task/project/README.zh.md)记录了一次真实 Codex 运行：treatment 修改目标源码并通过六项检查，要求不编辑的负对照通过三项。该案例证明执行与验收链路可用，不证明知识版本的普遍收益；模型、用量和耗时见案例记录。[本地任务指南](docs/zh/guides/local-tasks.md)提供源码预览、配置与证据读取入口。
+[带 npm 依赖的购物车案例](examples/local-task/project/README.zh.md)记录了一次真实 Codex 运行：treatment 修改目标源码并通过六项检查，要求不编辑的负对照通过三项。该案例证明执行与验收链路可用，不证明知识版本的普遍收益；模型、用量和耗时见案例记录。[本地任务指南](docs/zh/guides/local-tasks.md)提供安装、配置与证据读取入口。
 
 ## 在 Agent 与 DSH 中使用
 
@@ -161,7 +161,7 @@ dsh --profile web
 | 功能 | 风险 | 适用场景 |
 |------|------|----------|
 | **自定义断言**（`custom`） | 动态加载并执行用户指定的 `.mjs` 文件 | 仅使用自己编写或审查过的断言文件 |
-| **本地任务与验收程序**（main 源码预览） | 执行器与独立验收会运行本地代码，原始产物／日志可能含敏感信息 | 仅运行已审查的任务，核对文件清单与输出目录；副本不提供安全沙箱 |
+| **本地任务与验收程序** | 执行器与独立验收会运行本地代码，原始产物／日志可能含敏感信息 | 仅运行已审查的任务，核对文件清单与输出目录；副本不提供安全沙箱 |
 | **eval-samples.json** | 断言配置可引用外部文件路径 | 不要使用来源不明的用例文件 |
 
 **建议：**

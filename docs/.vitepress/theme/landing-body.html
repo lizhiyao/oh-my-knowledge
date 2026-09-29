@@ -7,7 +7,7 @@
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">复制 ⧉</span></span>
       <a class="lnk" href="/zh/quickstart-skill-eval">命令行评测 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/eval-runtime">Node.js 服务接入 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/observe-production">查看任务轨迹 <span class="ar">→</span></a>
     </div>
-    <p>版本核对（2026-09-29）：npm @next 为 1.0.0-beta.12；<a class="lnk" href="/zh/guides/local-tasks">本地任务验收为 main 源码预览</a>。</p>
+    <p>1.0 Beta：<a class="lnk" href="/zh/guides/local-tasks">本地任务验收需要 Beta.13 或更新版本</a>。</p>
     <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>固定模型与用例 · 控制并记录运行条件</span></div>
     <figure class="flow-hero">
       <picture>
@@ -60,10 +60,10 @@
 </section>
 <section class="band alt" id="task-evidence">
   <div class="wrap">
-    <div class="sec-head"><h2>验证 Agent 是否真的把任务做对了</h2><p class="lead">main 源码预览：从固定文件快照执行，采集修改并独立验收；失败、超时或取消也保留声明文件和部分日志。</p></div>
+    <div class="sec-head"><h2>验证 Agent 是否真的把任务做对了</h2><p class="lead">从固定文件快照执行，采集修改并独立验收；失败、超时或取消也保留声明文件和部分日志。</p></div>
     <p>带 npm 依赖的购物车案例中，真实 Codex treatment 只修改目标源码，六项验收全部通过；要求不编辑的负对照通过三项。案例记录了模型、用量、耗时与接入步骤。</p>
     <p>这是一次链路验证，不证明知识版本的普遍收益。任务与验收程序必须可信，工作区副本不是安全沙箱；原始产物和日志可能包含敏感内容。</p>
-    <p><a class="lnk" href="/zh/guides/local-tasks">查看源码预览与验收指南 <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">查看双语案例与实测记录 <span class="ar">→</span></a></p>
+    <p><a class="lnk" href="/zh/guides/local-tasks">查看任务验收指南 <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">查看双语案例与实测记录 <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band" id="workflow">

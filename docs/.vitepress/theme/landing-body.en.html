@@ -7,7 +7,7 @@
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">Copy ⧉</span></span>
       <a class="lnk" href="/quickstart-skill-eval">CLI evaluation <span class="ar">→</span></a><a class="lnk" href="/guides/eval-runtime">Node.js integration <span class="ar">→</span></a><a class="lnk" href="/guides/observe-production">Inspect task trajectories <span class="ar">→</span></a>
     </div>
-    <p>Version check (2026-09-29): npm @next is 1.0.0-beta.12; <a class="lnk" href="/guides/local-tasks">local task acceptance is a main source preview</a>.</p>
+    <p>1.0 Beta: <a class="lnk" href="/guides/local-tasks">local task acceptance requires Beta.13 or later</a>.</p>
     <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>Fixed models and cases · controlled, recorded conditions</span></div>
     <figure class="flow-hero">
       <picture>
@@ -60,10 +60,10 @@
 </section>
 <section class="band alt" id="task-evidence">
   <div class="wrap">
-    <div class="sec-head"><h2>Verify that the agent actually completed the task</h2><p class="lead">Main source preview: execute from fixed file snapshots, collect changes, and check them independently. Failures, timeouts, and cancellations retain declared files and partial logs.</p></div>
+    <div class="sec-head"><h2>Verify that the agent actually completed the task</h2><p class="lead">Execute from fixed file snapshots, collect changes, and check them independently. Failures, timeouts, and cancellations retain declared files and partial logs.</p></div>
     <p>In the cart example with an npm dependency, a real Codex treatment changed only the target source and passed all six checks. The negative control, instructed not to edit, passed three. The example records model settings, usage, durations, and setup steps.</p>
     <p>This is one execution-path verification, not evidence of general knowledge effectiveness. Tasks and verifiers must be trusted; workspace copies are not security sandboxes. Raw artifacts and logs may contain sensitive content.</p>
-    <p><a class="lnk" href="/guides/local-tasks">Read the source preview and acceptance guide <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">Read the bilingual example and measured run <span class="ar">→</span></a></p>
+    <p><a class="lnk" href="/guides/local-tasks">Read the task acceptance guide <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">Read the bilingual example and measured run <span class="ar">→</span></a></p>
   </div>
 </section>
 <section class="band" id="workflow">

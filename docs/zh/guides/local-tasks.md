@@ -1,8 +1,20 @@
 # 验证本地任务结果
 
-截至 2026-09-29，此入口已在 main 实现，但 npm `@next` 的 `1.0.0-beta.12` 尚未包含它。以下为源码预览，不是该发布版本的安装教程。
+本地任务验收需要 `1.0.0-beta.13` 或更新版本。安装后核对版本：
 
-## 从源码预览
+```bash
+npm i -g oh-my-knowledge@next
+omk --version
+```
+
+从仓库的 `examples/local-task` 获取可信示例并阅读其中的说明；在仓库根目录执行：
+
+```bash
+omk eval task examples/local-task/task.yaml --dry-run
+omk eval task examples/local-task/task.yaml --output /absolute/path/to/task-reports
+```
+
+## 从源码运行
 
 按[贡献指南](./contributing)安装依赖并运行 `yarn build`，随后在仓库根目录执行：
 
