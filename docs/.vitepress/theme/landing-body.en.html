@@ -7,15 +7,16 @@
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">Copy ⧉</span></span>
       <a class="lnk" href="/quickstart-skill-eval">CLI evaluation <span class="ar">→</span></a><a class="lnk" href="/guides/eval-runtime">Node.js integration <span class="ar">→</span></a><a class="lnk" href="/guides/observe-production">Inspect task trajectories <span class="ar">→</span></a>
     </div>
-    <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>Same model · same cases · only the artifact changes</span></div>
+    <p>Version check (2026-09-29): npm @next is 1.0.0-beta.12; <a class="lnk" href="/guides/local-tasks">local task acceptance is a main source preview</a>.</p>
+    <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>Fixed models and cases · controlled, recorded conditions</span></div>
     <figure class="flow-hero">
       <picture>
         <source media="(prefers-reduced-motion: reduce) and (max-width: 820px)" srcset="/omk-knowledge-flow-en-mobile.svg" type="image/svg+xml" />
         <source media="(prefers-reduced-motion: reduce)" srcset="/omk-knowledge-flow-en.png" type="image/png" />
         <source media="(max-width: 820px)" srcset="/omk-knowledge-flow-en-mobile.svg" type="image/svg+xml" />
-        <img src="/omk-knowledge-flow-en-animated.gif" alt="omk knowledge artifact evaluation loop: artifact, controlled eval, evidence report, release or iterate, production observation, observed gaps, sample upgrade" />
+        <img src="/omk-knowledge-flow-en-animated.gif" alt="OMK workflow illustration: observation, knowledge review, manual artifact changes, and controlled evaluation; complete automatic linking is not yet implemented" />
       </picture>
-      <figcaption>Compare versions under fixed conditions, then use real-world feedback to improve the next evaluation.</figcaption>
+      <figcaption>The diagram shows composable workflows. Review knowledge and prepare changes manually; complete linking and automation remain partly unimplemented.</figcaption>
     </figure>
 
   </div>
@@ -36,7 +37,7 @@
       </div>
       <div class="cap e">
         <div class="ic">03</div><h3>Validate artifact changes</h3>
-        <p>Fix the model, cases, and execution conditions; compare artifact versions with decisions, intervals, and failure evidence.</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
+        <p>Fix models and cases, record execution conditions, and compare artifact versions with decisions, intervals, and failure evidence.</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
         <p><a class="lnk" href="/quickstart-skill-eval">Preview your first comparison <span class="ar">→</span></a></p>
       </div>
       <div class="cap o">
@@ -57,10 +58,18 @@
     </div>
   </div>
 </section>
+<section class="band alt" id="task-evidence">
+  <div class="wrap">
+    <div class="sec-head"><h2>Verify that the agent actually completed the task</h2><p class="lead">Main source preview: execute from fixed file snapshots, collect changes, and check them independently. Failures, timeouts, and cancellations retain declared files and partial logs.</p></div>
+    <p>In the cart example with an npm dependency, a real Codex treatment changed only the target source and passed all six checks. The negative control, instructed not to edit, passed three. The example records model settings, usage, durations, and setup steps.</p>
+    <p>This is one execution-path verification, not evidence of general knowledge effectiveness. Tasks and verifiers must be trusted; workspace copies are not security sandboxes. Raw artifacts and logs may contain sensitive content.</p>
+    <p><a class="lnk" href="/guides/local-tasks">Read the source preview and acceptance guide <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">Read the bilingual example and measured run <span class="ar">→</span></a></p>
+  </div>
+</section>
 <section class="band" id="workflow">
   <div class="wrap">
-    <div class="sec-head"><h2>Connect evidence to changes, with explicit boundaries</h2><p class="lead">Knowledge items are facts, experiences, or methods; artifacts are the prompts, documents, or skills carrying them. Extraction produces content for review; evaluation follows when you prepare an artifact change.</p></div>
-    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>Inspect tasks, sources, and coverage.</p></div><div class="cap in"><h3>Measure</h3><p>Fix conditions and test whether a change helps.</p></div><div class="cap in"><h3>Know</h3><p>Preserve the evidence behind adoption, rollback, or further improvement.</p></div></div>
+    <div class="sec-head"><h2>Connect evidence to changes, with explicit boundaries</h2><p class="lead">Knowledge items are facts, experiences, or methods; artifacts are the prompts, documents, or skills carrying them. Extraction produces content for review; evaluation follows when you prepare an artifact change. Retaining knowledge, adopting changes, and releasing versions are separate decisions.</p></div>
+    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>Inspect tasks, sources, and coverage.</p></div><div class="cap in"><h3>Measure</h3><p>Control and record conditions; compare outcomes.</p></div><div class="cap in"><h3>Know</h3><p>Preserve the evidence behind adoption, rollback, or further improvement.</p></div></div>
     <p><a class="lnk" href="/explanation/knowledge">Understand knowledge items and artifacts <span class="ar">→</span></a></p>
   </div>
 </section>
@@ -70,7 +79,7 @@
     <div class="moat-list">
       <div class="mrow2"><span class="no">01</span><div class="fail"><div class="t">How large is the difference?</div></div><div class="fix2"><div class="name">Inspect differences and intervals</div><div class="d">Look beyond a point estimate at sample size, comparison families, and uncertainty.</div></div></div>
       <div class="mrow2"><span class="no">02</span><div class="fail"><div class="t">What supports the score?</div></div><div class="fix2"><div class="name">Inspect cases and scoring evidence</div><div class="d">Check criteria, coverage, and failures. Gold comparison can assess human/judge agreement.</div></div></div>
-      <div class="mrow2"><span class="no">03</span><div class="fail"><div class="t">Where does the conclusion apply?</div></div><div class="fix2"><div class="name">Keep measurement and observation distinct</div><div class="d">Conclusions depend on cases and conditions. Observation signals are not causal conclusions; generated cases need human review.</div></div></div>
+      <div class="mrow2"><span class="no">03</span><div class="fail"><div class="t">Where does the conclusion apply?</div></div><div class="fix2"><div class="name">Keep measurement and observation distinct</div><div class="d">Conclusions depend on cases and conditions; external services and reruns can vary. Observation does not prove causality; generated cases need review.</div></div></div>
     </div>
     <p class="moat-foot"><a class="lnk" href="/explanation/statistical-rigor">Statistical methods and limits <span class="ar">→</span></a></p>
     <p class="cmp-foot" id="cmp">Choosing a tool? <a class="lnk" href="/reference/comparison">Compare tools and their scope <span class="ar">→</span></a></p>

@@ -7,15 +7,16 @@
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">复制 ⧉</span></span>
       <a class="lnk" href="/zh/quickstart-skill-eval">命令行评测 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/eval-runtime">Node.js 服务接入 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/observe-production">查看任务轨迹 <span class="ar">→</span></a>
     </div>
-    <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>相同模型 · 相同用例 · 只改变知识载体</span></div>
+    <p>版本核对（2026-09-29）：npm @next 为 1.0.0-beta.12；<a class="lnk" href="/zh/guides/local-tasks">本地任务验收为 main 源码预览</a>。</p>
+    <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>固定模型与用例 · 控制并记录运行条件</span></div>
     <figure class="flow-hero">
       <picture>
         <source media="(prefers-reduced-motion: reduce) and (max-width: 820px)" srcset="/omk-knowledge-flow-mobile.svg" type="image/svg+xml" />
         <source media="(prefers-reduced-motion: reduce)" srcset="/omk-knowledge-flow.png" type="image/png" />
         <source media="(max-width: 820px)" srcset="/omk-knowledge-flow-mobile.svg" type="image/svg+xml" />
-        <img src="/omk-knowledge-flow-animated.gif" alt="omk 知识载体评测闭环：知识载体、受控评测、证据报告、发布或迭代、真实使用、观测沉淀、评测集升级" />
+        <img src="/omk-knowledge-flow-animated.gif" alt="OMK 工作路径示意：观测、知识复核、人工形成载体改动与受控评测，完整自动关联尚未实现" />
       </picture>
-      <figcaption>固定条件比较版本，再用真实使用反馈改进下一轮评测。</figcaption>
+      <figcaption>图示为可组合的工作路径。知识需复核并人工形成改动，完整关联与自动闭环仍有待实现部分。</figcaption>
     </figure>
 
   </div>
@@ -36,7 +37,7 @@
       </div>
       <div class="cap e">
         <div class="ic">03</div><h3>验证载体改动</h3>
-        <p>固定模型、用例与运行条件，比较两版载体，检查判定、置信区间与失败证据。</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
+        <p>固定模型与用例，记录运行条件，比较两版载体的判定、区间与失败证据。</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
         <p><a class="lnk" href="/zh/quickstart-skill-eval">预览第一次比较 <span class="ar">→</span></a></p>
       </div>
       <div class="cap o">
@@ -57,10 +58,18 @@
     </div>
   </div>
 </section>
+<section class="band alt" id="task-evidence">
+  <div class="wrap">
+    <div class="sec-head"><h2>验证 Agent 是否真的把任务做对了</h2><p class="lead">main 源码预览：从固定文件快照执行，采集修改并独立验收；失败、超时或取消也保留声明文件和部分日志。</p></div>
+    <p>带 npm 依赖的购物车案例中，真实 Codex treatment 只修改目标源码，六项验收全部通过；要求不编辑的负对照通过三项。案例记录了模型、用量、耗时与接入步骤。</p>
+    <p>这是一次链路验证，不证明知识版本的普遍收益。任务与验收程序必须可信，工作区副本不是安全沙箱；原始产物和日志可能包含敏感内容。</p>
+    <p><a class="lnk" href="/zh/guides/local-tasks">查看源码预览与验收指南 <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">查看双语案例与实测记录 <span class="ar">→</span></a></p>
+  </div>
+</section>
 <section class="band" id="workflow">
   <div class="wrap">
-    <div class="sec-head"><h2>从证据到改动，每一步都有边界</h2><p class="lead">知识内容是一条事实、经验或方法；知识载体是承载它们的 prompt、文档或 skill。提炼产生待复核内容，人工形成载体改动后再评测。</p></div>
-    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>看任务、核对来源与覆盖范围。</p></div><div class="cap in"><h3>Measure</h3><p>固定条件，验证改动是否有效。</p></div><div class="cap in"><h3>Know</h3><p>保留依据，决定采纳、回退或继续改进。</p></div></div>
+    <div class="sec-head"><h2>从证据到改动，每一步都有边界</h2><p class="lead">知识内容是一条事实、经验或方法；知识载体是承载它们的 prompt、文档或 skill。提炼产生待复核内容，人工形成载体改动后再评测；保留知识、采纳改动与发布版本是不同决定。</p></div>
+    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>看任务、核对来源与覆盖范围。</p></div><div class="cap in"><h3>Measure</h3><p>控制并记录条件，比较改动表现。</p></div><div class="cap in"><h3>Know</h3><p>保留依据，决定采纳、回退或继续改进。</p></div></div>
     <p><a class="lnk" href="/zh/explanation/knowledge">理解知识内容与载体 <span class="ar">→</span></a></p>
   </div>
 </section>
@@ -70,7 +79,7 @@
     <div class="moat-list">
       <div class="mrow2"><span class="no">01</span><div class="fail"><div class="t">差异有多大？</div></div><div class="fix2"><div class="name">查看差异与置信区间</div><div class="d">点估计之外，还要看样本量、比较家族和不确定性。</div></div></div>
       <div class="mrow2"><span class="no">02</span><div class="fail"><div class="t">评分依据是什么？</div></div><div class="fix2"><div class="name">下钻用例和评分证据</div><div class="d">检查准则、覆盖与失败原因；Gold comparison 可用于人工与评委的一致性评估。</div></div></div>
-      <div class="mrow2"><span class="no">03</span><div class="fail"><div class="t">结论能用于哪里？</div></div><div class="fix2"><div class="name">保留测量与观测的边界</div><div class="d">结论受用例和运行条件约束；观测信号不等于因果结论，生成用例需要人工复核。</div></div></div>
+      <div class="mrow2"><span class="no">03</span><div class="fail"><div class="t">结论能用于哪里？</div></div><div class="fix2"><div class="name">保留测量与观测的边界</div><div class="d">结论受用例和运行条件约束，外部服务与重跑仍可能变化；观测不证明因果，生成用例需复核。</div></div></div>
     </div>
     <p class="moat-foot"><a class="lnk" href="/zh/explanation/statistical-rigor">统计方法与限制 <span class="ar">→</span></a></p>
     <p class="cmp-foot" id="cmp">正在选择工具？ <a class="lnk" href="/zh/reference/comparison">查看工具对比与适用范围 <span class="ar">→</span></a></p>

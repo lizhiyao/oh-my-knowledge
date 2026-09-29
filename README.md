@@ -12,11 +12,13 @@
 
 OMK is a toolkit for observing, evaluating, and improving knowledge in AI applications. Inspect how real tasks ran, extract reviewable knowledge items from work logs, and measure changes to prompts, RAG, skills, agents, or workflows to inform adoption, rollback, and further improvement.
 
-**Observe** preserves real behavior and its sources. **Measure** compares knowledge artifacts with the same model, cases, and execution conditions. **Know** connects decisions back to evidence. If you already have two artifact versions, start directly with evaluation; logs are not a prerequisite.
+**Observe** preserves real behavior and its sources. **Measure** fixes models and cases, controls and records execution conditions, and compares knowledge artifacts. **Know** connects decisions back to evidence. If you already have two artifact versions, start directly with evaluation; logs are not a prerequisite.
 
 Version 1.0 is still **in Beta iteration**; APIs and storage contracts may change. Read the [migration guide](docs/guides/v1-preview-migration.md) before upgrading an older installation.
 
 ![OMK: from controlled evaluation to real-world feedback](./docs/public/omk-knowledge-flow-en-animated.gif)
+
+The diagram describes composable workflows: review knowledge and manually apply it to an artifact. Complete links across these stages and an automated end-to-end workflow remain partly unimplemented.
 
 ## Choose how to use OMK
 
@@ -35,6 +37,7 @@ Version 1.0 is still **in Beta iteration**; APIs and storage contracts may chang
 | Preserve knowledge from work | [Extract knowledge from logs](docs/guides/extract-knowledge.md) | Candidate knowledge with sources and conditions; revise, retain, or discard it |
 | Record a confirmed knowledge problem | [MCP feedback](docs/guides/mcp-integration.md) | An observation for review; draft a case after confirming a real issue |
 | Decide whether to adopt a change | [Evaluation quickstart](docs/quickstart-skill-eval.md) | A version decision, uncertainty, failed cases, and scoring evidence |
+| Verify that an agent completed a task | [Local task acceptance (main source preview)](docs/guides/local-tasks.md) | Modified files, independent checks, and diagnostics after failure, timeout, or cancellation |
 | Try improving a skill automatically | [Iterative improvement](docs/guides/auto-improve-skills.md) | Candidate versions screened through controlled comparisons |
 | Embed evaluation in a service or platform | [Node.js service](docs/guides/eval-runtime.md) · [Platform host](docs/guides/platform-host-integration.md) | Composable execution, scoring, and comparison interfaces |
 
@@ -45,6 +48,8 @@ Installation requires Node.js >=22. Model calls also require an authenticated ru
 ```bash
 npm i -g oh-my-knowledge@next
 ```
+
+As checked on 2026-09-29, npm `@next` points to `1.0.0-beta.12`. The local-task entry marked **main source preview** on this page is not included in that version. Follow the [source preview guide](docs/guides/local-tasks.md); merging into main does not mean a package has been released.
 
 ### Inspect an existing task
 
@@ -73,6 +78,12 @@ omk eval --control code-review-v1 --treatment code-review-v2
 The scaffold contains two skills and three cases. This small default set checks the workflow; `UNDERPOWERED` is expected. Starter cases are marked `llm-generated`. Even the full pack created with `omk init demo-full --samples 20` only meets the default heuristic evidence floor, not an a priori power plan or a release-evidence requirement. Review and replace starter cases with real domain cases before relying on the results.
 
 The [full walkthrough](docs/quickstart-skill-eval.md) covers runtime selection, your own skills, and interpreting results. The [example gallery](examples/README.md) offers more runnable scenarios.
+
+### Verify the actual file changes (main source preview)
+
+Local tasks run two knowledge variants from declared file snapshots, collect files, and check them with an independent verifier. Failures, timeouts, and cancellations also retain declared files and partial logs. This measures explicitly supplied knowledge content, not native skill discovery. Tasks and verifiers must be trusted; workspace copies are not security sandboxes.
+
+The [cart example with an npm dependency](examples/local-task/project/README.md) records one real Codex run: treatment changed the target source and passed six checks; the negative control, instructed not to edit, passed three. This establishes a working execution and acceptance path, not general knowledge effectiveness. Model settings, usage, and durations are recorded in the example. The [local-task guide](docs/guides/local-tasks.md) covers source preview, configuration, and evidence access.
 
 ## Use inside agents and DSH
 
@@ -116,9 +127,9 @@ A knowledge item is a reviewable fact, experience, or method. An artifact is a p
 
 These paths compose; they are not a mandatory linear state machine. Passing an evaluation does not mean knowledge has been written or a version published.
 
-Conclusions depend on the cases, scoring criteria, and execution environment. Observation signals are not causal conclusions, and generated cases are not an independent release-validation set. See [statistical rigor](docs/explanation/statistical-rigor.md) and the [three-stage workflow](docs/explanation/three-stage-workflow.md) for the method and limits.
+Fixed configuration cannot guarantee identical external model services or rerun outcomes. Conclusions depend on the cases, scoring criteria, and execution environment. Observation signals are not causal conclusions, and generated cases are not an independent release-validation set. See [statistical rigor](docs/explanation/statistical-rigor.md) and the [three-stage workflow](docs/explanation/three-stage-workflow.md) for the method and limits.
 
-Project evaluation and observation evidence lives under `.omk/`; machine-level state lives under `~/.oh-my-knowledge/`. Extracted knowledge items live in the explicitly selected knowledge workspace. The current version neither reads nor migrates the old storage layout. Back up before upgrading and follow the [migration guide](docs/guides/v1-preview-migration.md) to establish new evidence.
+Project evaluation and observation evidence lives under `.omk/`; local tasks default to `.omk/eval`, with `--output` selecting another report and diagnostic directory. Machine-level state lives under `~/.oh-my-knowledge/`. Extracted knowledge items live in the explicitly selected knowledge workspace. The current version neither reads nor migrates the old storage layout. Back up before upgrading and follow the [migration guide](docs/guides/v1-preview-migration.md) to establish new evidence.
 
 ## Documentation
 
@@ -150,6 +161,7 @@ This tool is designed for **local trusted environments** (dev machines, CI pipel
 | Feature | Risk | Scope |
 |---|---|---|
 | **Custom assertions** (`custom`) | dynamically loads and executes user-specified `.mjs` files | only use assertion files you authored or reviewed |
+| **Local tasks and verifiers** (main source preview) | Executors and independent verifiers run local code; raw artifacts / logs may contain sensitive information | Use reviewed tasks, inspect file lists and output directories; copies are not security sandboxes |
 | **eval-samples.json** | assertion configs can reference external file paths | don't use sample files from untrusted sources |
 
 **Recommendations:**
