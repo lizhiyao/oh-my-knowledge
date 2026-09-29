@@ -1,131 +1,81 @@
-# omk 与同类工具对比
+# OMK 与同类工具对比
 
-与 7 个 LLM 评测工具的事实性对比，数据截至 2026-04。欢迎 PR 修正——如果竞品新增了我们标 `✗` 的能力，请提 PR，我们会及时更新。
+核验日期：2026-09-29。本页帮助选择完成同一用户任务的工具，不按功能数量排名。竞品条目依据下列一手文档或项目 README；本轮未安装运行竞品，也未审计其全部实现。文档声明不等于运行验证，未核实不等于不支持。
 
-## 一句话总结
+## OMK 的定位与边界
 
-omk 的护城河是**[统计严谨性](../explanation/statistical-rigor)**：每条发布结论都能追溯到 sealed design、Bootstrap uncertainty、显式 Gold calibration、冻结评委 prompt 与失败关闭的 evidence coverage。
+OMK 服务于知识建设：从真实工作记录中整理有来源和适用条件的候选知识，再通过受控比较验证具体载体改动。已有[知识提炼与复核](../guides/extract-knowledge)、[受控评测](../explanation/three-stage-workflow)和本地 Studio；知识修订到载体改动的完整关联与自动闭环仍有待实现部分，见[领域设计](../specs/knowledge-domain-model)。保留候选不代表其内容已证实。
 
-需要**托管式 SaaS 看板**？选 LangSmith / Confident AI。
-要**本地快速 prompt 迭代不要统计层**？选 promptfoo。
-要**学术级 benchmark 覆盖**？选 lm-evaluation-harness。
-要**安全评测的 agent 沙箱**？选 inspect-ai。
-**要把 skill / prompt / RAG ship 到生产，且会被问"为什么应该相信这个数字"？选 omk。**
+OMK 的可检查特点包括明确的[测量契约](../explanation/statistical-rigor)、证据来源与版本身份、受证据条件约束的 Decision，以及本地 CLI／Node.js 接入／Studio。它们不证明行业独有，也不自动构成护城河。实际价值应以用户能否更省力地得到可解释的改动结论来验证。
 
-## 参与对比的工具
+## 比较口径
 
-| 工具 | 语言 | 定位 | License |
-|---|---|---|---|
-| [**omk**](https://github.com/lizhiyao/oh-my-knowledge) | TS / Node | 统计严谨的知识载体评测 + Codex / Claude 原生工作流 | MIT |
-| [promptfoo](https://github.com/promptfoo/promptfoo) | TS / Node | 本地 CLI、red-team 重点、被 OpenAI 收购 | MIT |
-| [DeepEval](https://github.com/confident-ai/deepeval) | Python | pytest 风格 metric 库，Confident AI 商业化引流 | Apache 2.0 |
-| [RAGAS](https://github.com/explodinggradients/ragas) | Python | RAG 专用 metric，statement-decomposition 实现 | Apache 2.0 |
-| [OpenAI Evals](https://github.com/openai/evals) | Python | benchmark 注册表，OpenAI 官方 | MIT |
-| [LangSmith](https://docs.smith.langchain.com/) | Python (LangChain) | 托管 SaaS，tracing + eval | 商业 |
-| [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | Python | 学术黄金标准，HuggingFace Open LLM Leaderboard 后端 | MIT |
-| [inspect-ai](https://github.com/UKGovernmentBEIS/inspect_ai) | Python | UK AISI 安全评测 | MIT |
+| 比较项 | 本页采用的含义 | 不能替代的证据 |
+|---|---|---|
+| 测量计算确定性 | 相同输入证据和契约产生相同计算结果 | 模型固定、seed、缓存或容器本身 |
+| 执行可复现性 | 控制并记录模型、工具、环境和随机性，说明重跑限制 | 仅对输入计算摘要 |
+| 评委版本身份 | 分别检查模型、prompt、rubric 和评分语义 | 仅固定模型名称 |
+| 失败证据与门禁 | 区分任务未通过、执行失败和证据缺失，并说明门禁策略 | 只有通过率或退出码 |
+| 轨迹采集 | 区分历史日志解析、SDK 埋点、实时遥测与回放 | 都有 trace 页面 |
+| 原始证据保留 | 明确原始记录、追加更正与派生视图的关系 | JSON 留盘、时间戳或摘要本身 |
+| 隔离 | 分别说明知识发现控制、工作区副本与进程／权限边界 | 空 cwd 或私有目录本身 |
+| 互操作 | 固定格式、身份映射、传输与接收端，完成接线验证 | 同名字段或双方都能导出 JSON |
 
-## 统计严谨性
+证据分为“官方文档说明”“项目 README 声明”“运行验证”“待核”。下表只采用前两类，不能据此比较实际效果或默认失败路径。OMK 专有术语是否出现在另一工具中，不是能力有无的判断依据。
 
-| | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
-|---|---|---|---|---|---|---|---|---|
-| Bootstrap CI（变量均值 + diff） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Krippendorff α（评委 ↔ 人工锚点） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Length-debias 评委 prompt（默认开） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 保留 missing／failed evidence + coverage gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 配对用例显著性检验 | ✓(bootstrap) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+## 按用户任务选择比较对象
 
-omk 一列以当前 Evaluation Core contract 与实现为锚。竞品列仍是本页顶部注明日期的对比快照。
+下表各行来源均于 2026-09-29 阅读；范围仅限该行描述。工具形态、库、平台及托管服务分别看待，不从实现语言推断支持的用户语言或框架。
 
-→ 这些不是营销话术——每一条都有文档和代码锚定：[统计严谨性](../explanation/statistical-rigor)、[评分公式](../specs/scoring)。
+| 用户任务／工具 | 已核实的说明与来源 | 与 OMK 比较时仍需验证 |
+|---|---|---|
+| skill 有无帮助：agent-skills-eval | 项目 README 描述同题 `with_skill`／`without_skill` 比较、评分及本地报告。[来源](https://github.com/darkrishabh/agent-skills-eval) | 直接替代部分 skill 效果比较需求；统计决策、失败处理和跨 runtime 行为待核 |
+| skill 任务验收：skill-optimizer | 当前项目 README 描述 Docker 工作台、用例／模型矩阵，以及在 Agent 执行后检查文件等产物的确定性验收。[来源](https://github.com/fastxyz/skill-optimizer) | 本行按当前 README 核对，不沿用旧版 action recall 描述；实际隔离、验收有效性及优化收益待核 |
+| 实验进入 CI：Langfuse | 官方文档提供 Python／JS/TS 实验与回归门禁指导，并要求缺失或无效证据导致门禁失败。[来源](https://langfuse.com/docs/evaluation/experiments/experiments-ci-cd) | 文档政策、示例代码与具体 SDK／Action 默认值须分别核对，不能把指导当作所有实验自动具备的保障 |
+| 应用观测：LangSmith | 官方文档列出 OpenAI、Anthropic、Vercel AI SDK 等多种集成，以及 SDK／框架接入、反馈与监控。[来源](https://docs.langchain.com/langsmith/observability) | 不能限定为“仅 LangChain”；其应用埋点与 OMK 本地历史日志解析不是同一接入方式 |
+| prompt／应用回归与红队：promptfoo | 官方介绍提供本地 CLI／库、输出比较、断言与指标、CI/CD 和红队入口。[来源](https://www.promptfoo.dev/docs/intro/) | 同一任务的配置成本、统计判断及安全测试覆盖需实测；不能简化为“没有统计层” |
+| Python 应用测试：DeepEval | 项目 README 提供评测指标、测试用例与 pytest 接入，也支持不经 pytest 执行。[来源](https://github.com/confident-ai/deepeval) | 开源库与托管服务能力分开核对；评委身份、失败策略和任务成本待核 |
+| 应用实验与 RAG 指标：Ragas | 官方介绍包括 experiments、自定义与内置指标以及用例生成。[来源](https://docs.ragas.io/en/stable/) | 不限定为只有 RAG；具体指标语义、版本比较和证据保存需按任务核对 |
+| Agent 沙箱执行：Inspect AI | 官方文档描述沙箱环境、Docker 配置及清理流程。[来源](https://inspect.aisi.org.uk/sandboxing.html) | 隔离取决于配置及代码实际执行位置；容器网络限制不覆盖宿主自定义工具、评委或模型提供方 |
+| 模型基准：lm-evaluation-harness | 项目 README 提供语言模型基准任务与执行框架。[来源](https://github.com/EleutherAI/lm-evaluation-harness) | 模型能力基准与私有知识改动决策的目标不同，不能按同一功能清单排名 |
+| 开源评测框架：OpenAI Evals | 项目 README 将仓库描述为评测框架与开源基准注册表。[来源](https://github.com/openai/evals) | 本行仅指开源仓库，不代表托管 Evals API／Dashboard 的能力或许可 |
 
-## 评分架构
+这是有边界的比较对象集合，不是全行业覆盖。未核实的工具、功能、许可证、价格、下载量及维护状态不作推断。需要采购或再分发时，另行核对具体版本和组件条款。
 
-| | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
-|---|---|---|---|---|---|---|---|---|
-| 三层独立评分（事实/行为/评委） | ✓ | ✗ | 部分 | ✗ | ✗ | ✗ | ✗ | ✗ |
-| layer-aware release gate + 显式 evidence coverage | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 用例隔离（per-variant skill 隔离 / construct validity） | ✓ 默认开 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 部分 |
-| 用例设计元数据 + 结构锚点（`covers`） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 已注册 Decision(PROGRESS / REGRESSION / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 知识缺口信号（严重度加权） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-Layer-aware release gate 与显式 coverage 能防止正向 composite 点估计掩盖 missing evidence，或绕过 treatment layer 的已注册阈值。
+## 需要纠正的判断
 
-**用例隔离**是一个 construct validity 维度：原生 coding-agent baseline 可能通过项目文件、skill registry、子代理或普通 cwd 读取拿到未声明的本地知识。omk 默认启用 `--strict-baseline`，为每次隐式 baseline 执行创建全新的空 cwd，并叠加 provider 控制：Codex CLI 忽略用户配置与 rules、采用 ephemeral session；Codex SDK 使用隔离 `CODEX_HOME`；Claude 阻断 skill 发现和子代理 `Skill` 工具。报告会持久化 runtime 与隔离指纹，避免不兼容运行伪装成只改变知识载体的比较。`--no-strict-baseline` 仍是显式逃生口。inspect-ai 可通过 per-sample solver wiring 达到相近隔离；promptfoo / DeepEval / OpenAI Evals 不直接处理这一维度。
+**证据失败关闭不是 OMK 独有原则。** Langfuse 的[官方 CI 指导](https://langfuse.com/docs/evaluation/experiments/experiments-ci-cd)明确要求缺失用例、重复 case ID、任务失败及缺失或无效评委结果使门禁失败，并要求审查已批准基线。该证据说明存在同类政策，不证明其他工具缺失此能力，也不证明各工具默认行为完全相同。
 
-## 评委
+**读取、使用与因果影响分开。** 工具调用或内容进入上下文是可观测信号，不足以证明知识导致任务成功。历史日志导入、实时埋点和受控重跑也不能相互替代，见 OMK 的[观测边界](../guides/observe-production)。
 
-| | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
-|---|---|---|---|---|---|---|---|---|
-| 多评委 ensemble（跨厂商） | ✓ Pearson + MAD | ✗ | ✗ | ✗ | ✗ | 部分 | ✗ | ✗ |
-| Judge-repeat 自一致性 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 评委 prompt hash 追溯 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 自动污染检测(gold annotator vs judge) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+**评委一致性不等于位置偏差控制。** 跨评委一致性、重复评分、交换候选顺序和多候选排名回答不同问题。本轮未核实各竞品的顺序交换默认值与不一致处理，不作能力排名，也不把不一致直接映射为 OMK 的 `NOISE` 或 `UNDERPOWERED`。
 
-## 专项 metric
+**内容身份不等于防篡改或合规认证。** 摘要可用于关联和完整性检查，不能防止内容与摘要一同被替换。证据可追溯也不构成 NIST 或其它标准的合规声明。
 
-| | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
-|---|---|---|---|---|---|---|---|---|
-| RAG: faithfulness / answer_relevancy / context_recall | ✓ length-debias 默认开启，模式进入指纹 | 部分 | ✓ | ✓（多步分解） | ✗ | 部分 | ✗ | ✗ |
-| ROUGE-N / Levenshtein / BLEU | ✓ 自实现零依赖 | ✓ | 部分 | ✗ | ✓ | ✗ | ✓ | ✗ |
-| 语义相似度（LLM 评分） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
-| 工具调用 / agent 断言 | ✓ 9 种 | ✗ | 部分 | ✗ | ✗ | 部分 | ✗ | ✓ 强 |
-| 自定义 JS / Python 断言 | ✓ JS | ✓ JS | ✓ Python | 部分 | ✓ Python | ✓ Python | ✓ Python | ✓ Python |
+**公司公告不等于已核实交割。** OpenAI 于 2026-03-09 发布[拟收购 Promptfoo 的公告](https://openai.com/index/openai-to-acquire-promptfoo/)。本页只核实该公告，不据此断言交割完成，也不由公司归属推断开源能力或数据存放位置。
 
-## 工作流
+## 如何判断 OMK 是否适合
 
-| | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
-|---|---|---|---|---|---|---|---|---|
-| 原生 agent skill 评测 | ✓ Codex / Claude Code | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 生产 session trace 解析(omk observe) | ✓ Codex / Claude Code / OpenClaw / markdown | ✗ | ✗ | ✗ | ✗ | ✓ 仅 LangChain | ✗ | ✗ |
-| 自迭代(`omk evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| eval.yaml(evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | 部分 | ✗ | 部分 | ✓ |
-| CI/CD `omk eval` 退出码路由 | ✓ Core Decision | ✓ 基础 | ✓ | ✗ | ✗ | 部分 | ✗ | ✓ |
-| 预算硬阈值（工作流级中止） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 中断恢复 | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 独立 run 的 Series 方差 | ✓ | ✗ | ✗ | ✗ | ✗ | 部分 | ✗ | ✗ |
+如果你维护 prompt、RAG、skill、agent 或 workflow，希望在明确模型和任务条件下比较知识载体改动，并追溯来源、版本、原始证据与 Decision，可以用 OMK 跑一个代表性案例。先阅读[评分契约](../specs/scoring)及所选执行器的边界，不将一次正向结果泛化为所有任务的改善。
 
-## 文档与社区
+[本地任务入口](../guides/local-tasks)已支持声明文件快照、两版知识内容、独立验收和失败现场保留。它测量明确提供内容后的效果，不测宿主原生 skill 安装或发现；工作区副本面向可信本地任务，不是恶意代码沙箱。产物重评分目前要求同一进程持有充分执行证据，不代表任意历史任务都可跨进程重放。
 
-| | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
-|---|---|---|---|---|---|---|---|---|
-| 完整中文文档 | ✓ | 部分（社区） | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 本地 Studio 报告视图 | ✓ EN/ZH | 部分 | ✗ | ✗ | ✗ | 部分 | ✗ | ✗ |
-| GitHub stars(2026-04) | 新生 | 9k+ | 12k+ | 9k+ | 16k+ | （商业） | 7.5k+ | 2k+ |
-| Cloud SaaS dashboard | ✗ | ✗ | ✓ Confident AI | ✗ | ✗ | ✓ | ✗ | ✗ |
+如果需求主要是托管协作、线上质量监控、攻击测试或不可信代码执行，应先核对相应平台或专用工具的实际能力与部署边界。OMK 当前重点是本地可信环境和 CI；这不是永久不做其它形态的产品承诺。
 
-## 什么场景选 omk
+Node.js、本地安装和中文界面可以作为体验选择因素，但不证明更低成本或更高质量。先比较完成同一任务所需的配置、人工步骤、时间、模型费用及后续维护。
 
-**研究 / 学术 / NIST AI 800-3 合规对齐**。统计架构用于回答结论能否经受重采样不确定性、评委校准、prompt identity 与不完整证据的检验。Core 产物保留审计所需的设计与 lineage。
+## 用同一案例验证选择
 
-**大厂 ML 平台团队**。当 skill / prompt 上线生产，组内会有人问"为什么我应该相信这个数字"，omk 的审计链（judge prompt hash + 三层得分 + bootstrap CI + gold α）给你一个能扛住事故复盘的答案。
+1. 固定用户目标、输入、验收条件和比较范围；两版知识都正常执行任务，仅改变预定因素。
+2. 对比用户当前做法、OMK 和一个适合该任务的替代工具；记录工具版本、模型、评委、配置与环境差异。
+3. 验收程序先验证已知正确解、错误解和回归解；保留执行失败与证据不足，不能只比较平均分。
+4. 记录首次得到可解释结论的时间、配置量、手工步骤、执行／评委费用和来源追溯完整性。
+5. 分开用于形成改动的案例与独立验证用例；单个案例不证明普遍效果、发布质量或用户留存。
 
-**中文 AI 工程团队**。omk 原生维护中文 README、CLI help、Studio 视图、术语、缺口信号与 RAG metric 文档。
-
-**Codex 与 Claude Code 用户**。omk 提供一份 agent-neutral skill，并为两类 runtime 提供原生执行器。Codex CLI 是隔离最完整的测量路径；当项目上下文或 SDK 事件流本身就是有意输入时，也可以使用 Codex SDK 或 Claude runtime。promptfoo / DeepEval 等通常需要 shim 一层自定义 executor，才能接近这种面向 artifact 的工作流。
-
-## 什么场景**不**选 omk
-
-**需要托管 SaaS 看板 + 团队账号 + 共享 dataset hub**。选 LangSmith 或 Confident AI。omk 刻意只做 CLI + 本地 Studio，不打算 ship SaaS。
-
-**做 red-team，需要攻击 prompt 库**。选 promptfoo，它有 67+ 个 red-team 插件；omk 是通用评测，不专攻攻击库。
-
-**对基础模型跑学术基准（HumanEval / MMLU 等）**。选 lm-evaluation-harness，它是事实上的 leaderboard 后端；omk 不为 benchmark 注册表场景优化。
-
-**安全场景需要 Docker / Kubernetes / Modal 紧密沙箱**。选 inspect-ai，UK AISI 就是为这场景做的。
-
-**只是一次性测 5 个 prompt**。写个一次性 Python 脚本就行。omk 的价值在反复跑 + 跨时间统计可比。
-
-## 共存模式
-
-omk 与其他工具天然兼容。常见组合：
-
-- **omk + LangSmith** — omk 做离线评测严谨性，LangSmith 做生产 tracing
-- **omk + RAGAS** — RAGAS 做细粒度 statement-decomposition faithfulness，omk 做跨版本回归 + 统计 CI
-- **omk + lm-eval-harness** — lm-eval 跑基础模型 leaderboard 分，omk 在 prompt / skill / RAG 层做工程评测
+不同工具可以承担不同环节，但互操作需要明确适配和实际验证。本页不宣称 OMK 与上述工具开箱即用兼容，也不把组合设想写成已完成集成。
 
 ## 更新与修正
 
-本页尽力保持准确，但竞品能力变化快（2025 年内 promptfoo 加了 `assert-set`，DeepEval 加了 agentic eval suite）。如发现过时或错误，请提 PR，我们会合并。
+修订比较结论时，请同时提供具体产品或组件、版本、能力定义、来源链接、核验日期和证据类型。报告负面结果还应说明测试条件与失败路径。未找到文档只能记为待核。
 
-最后核对：2026-04-25。
+本次重写替代了 2026-04 的勾选矩阵，撤回未逐项证实的缺失能力、独有性、行业排名、许可证及合规暗示。页面日期只表示本页列明来源的阅读日期，不表示完成了全行业审计或竞品运行验证。
