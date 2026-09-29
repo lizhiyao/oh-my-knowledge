@@ -1,8 +1,20 @@
 # Verify local task outcomes
 
-As checked on 2026-09-29, this entry is implemented on main but is not included in npm `@next` version `1.0.0-beta.12`. The following is a source preview, not installation guidance for that release.
+Local task acceptance requires `1.0.0-beta.13` or later. Install and check the version:
 
-## Preview from source
+```bash
+npm i -g oh-my-knowledge@next
+omk --version
+```
+
+Get the trusted example from the repository's `examples/local-task` directory and read its instructions, then run from the repository root:
+
+```bash
+omk eval task examples/local-task/task.yaml --dry-run
+omk eval task examples/local-task/task.yaml --output /absolute/path/to/task-reports
+```
+
+## Run from source
 
 Install dependencies and run `yarn build` as described in the [contributor guide](./contributing), then run from the repository root:
 

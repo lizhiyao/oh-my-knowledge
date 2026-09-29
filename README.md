@@ -37,7 +37,7 @@ The diagram describes composable workflows: review knowledge and manually apply 
 | Preserve knowledge from work | [Extract knowledge from logs](docs/guides/extract-knowledge.md) | Candidate knowledge with sources and conditions; revise, retain, or discard it |
 | Record a confirmed knowledge problem | [MCP feedback](docs/guides/mcp-integration.md) | An observation for review; draft a case after confirming a real issue |
 | Decide whether to adopt a change | [Evaluation quickstart](docs/quickstart-skill-eval.md) | A version decision, uncertainty, failed cases, and scoring evidence |
-| Verify that an agent completed a task | [Local task acceptance (main source preview)](docs/guides/local-tasks.md) | Modified files, independent checks, and diagnostics after failure, timeout, or cancellation |
+| Verify that an agent completed a task | [Local task acceptance](docs/guides/local-tasks.md) | Modified files, independent checks, and diagnostics after failure, timeout, or cancellation |
 | Try improving a skill automatically | [Iterative improvement](docs/guides/auto-improve-skills.md) | Candidate versions screened through controlled comparisons |
 | Embed evaluation in a service or platform | [Node.js service](docs/guides/eval-runtime.md) · [Platform host](docs/guides/platform-host-integration.md) | Composable execution, scoring, and comparison interfaces |
 
@@ -49,7 +49,7 @@ Installation requires Node.js >=22. Model calls also require an authenticated ru
 npm i -g oh-my-knowledge@next
 ```
 
-As checked on 2026-09-29, npm `@next` points to `1.0.0-beta.12`. The local-task entry marked **main source preview** on this page is not included in that version. Follow the [source preview guide](docs/guides/local-tasks.md); merging into main does not mean a package has been released.
+Local task acceptance requires `1.0.0-beta.13` or later. Check `omk --version` after installation, then follow the [local-task guide](docs/guides/local-tasks.md) to run a trusted example.
 
 ### Inspect an existing task
 
@@ -79,11 +79,11 @@ The scaffold contains two skills and three cases. This small default set checks 
 
 The [full walkthrough](docs/quickstart-skill-eval.md) covers runtime selection, your own skills, and interpreting results. The [example gallery](examples/README.md) offers more runnable scenarios.
 
-### Verify the actual file changes (main source preview)
+### Verify the actual file changes
 
 Local tasks run two knowledge variants from declared file snapshots, collect files, and check them with an independent verifier. Failures, timeouts, and cancellations also retain declared files and partial logs. This measures explicitly supplied knowledge content, not native skill discovery. Tasks and verifiers must be trusted; workspace copies are not security sandboxes.
 
-The [cart example with an npm dependency](examples/local-task/project/README.md) records one real Codex run: treatment changed the target source and passed six checks; the negative control, instructed not to edit, passed three. This establishes a working execution and acceptance path, not general knowledge effectiveness. Model settings, usage, and durations are recorded in the example. The [local-task guide](docs/guides/local-tasks.md) covers source preview, configuration, and evidence access.
+The [cart example with an npm dependency](examples/local-task/project/README.md) records one real Codex run: treatment changed the target source and passed six checks; the negative control, instructed not to edit, passed three. This establishes a working execution and acceptance path, not general knowledge effectiveness. Model settings, usage, and durations are recorded in the example. The [local-task guide](docs/guides/local-tasks.md) covers installation, configuration, and evidence access.
 
 ## Use inside agents and DSH
 
@@ -161,7 +161,7 @@ This tool is designed for **local trusted environments** (dev machines, CI pipel
 | Feature | Risk | Scope |
 |---|---|---|
 | **Custom assertions** (`custom`) | dynamically loads and executes user-specified `.mjs` files | only use assertion files you authored or reviewed |
-| **Local tasks and verifiers** (main source preview) | Executors and independent verifiers run local code; raw artifacts / logs may contain sensitive information | Use reviewed tasks, inspect file lists and output directories; copies are not security sandboxes |
+| **Local tasks and verifiers** | Executors and independent verifiers run local code; raw artifacts / logs may contain sensitive information | Use reviewed tasks, inspect file lists and output directories; copies are not security sandboxes |
 | **eval-samples.json** | assertion configs can reference external file paths | don't use sample files from untrusted sources |
 
 **Recommendations:**
