@@ -3,7 +3,7 @@
  *
  * 措辞口径由 test/studio/application/candidate-status.test.ts 锁；这里只断言页面真正渲染出的文字。
  */
-import { CandidateDecisionHeader, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
 import type { KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -21,6 +21,16 @@ const row = (choice: 'retain' | 'discard' | null, lang: 'zh' | 'en' = 'zh') =>
   renderToStaticMarkup(createElement(CandidateRowStatus, { choice, lang }));
 
 describe('candidate decision display', () => {
+  it('identifies the selected review view and the panel each switch controls in both languages', () => {
+    for (const lang of ['zh', 'en'] as const) {
+      for (const pane of ['candidate', 'evidence'] as const) {
+        const html = renderToStaticMarkup(createElement(CandidatePaneSwitch, { lang, pane, onChange() {} }));
+        expect(html).toContain(lang === 'zh' ? '候选内容' : 'Candidate content');
+        expect(html).toContain(lang === 'zh' ? '原始依据' : 'Source evidence');
+        expect(html).toMatch(new RegExp(`aria-pressed="true" aria-controls="candidate-${pane === 'candidate' ? 'content' : 'evidence'}"`));
+      }
+    }
+  });
   it('reports the decision the user made instead of a constant pending review tag', () => {
     expect(header(retained)).toContain('已保留');
     expect(header(retained)).not.toContain('待复核');
