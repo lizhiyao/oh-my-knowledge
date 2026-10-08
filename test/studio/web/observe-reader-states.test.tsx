@@ -181,3 +181,17 @@ it('不折叠代码示例、助手引用和不完整的环境记录', () => {
     { role: 'user' as const, text: '<environment_context>incomplete' },
   ]) assert.doesNotMatch(body(turn({}, { messages: [message] })), /<details/);
 });
+
+it('offers extraction alongside each readable turn and disables unavailable or empty sources', () => {
+  const renderFooter = (value: Turn, lang: 'zh' | 'en' = 'zh') => renderToStaticMarkup(createElement(ReaderTurnFooter, { turn: value, threadId: 't', lang }));
+  const readable = turn({ sourceTurnId: 'source/1' }, { messages: [{ role: 'user', text: 'fact' }, { role: 'assistant', text: 'reply' }] });
+  expectButton(renderFooter(readable), '提炼这轮', false);
+  expectButton(renderFooter(readable, 'en'), 'Extract this turn', false);
+  expectButton(renderFooter(turn()), '提炼这轮', true);
+  expectButton(renderFooter({ ...readable, unavailable: true }), '提炼这轮', true);
+});
+function expectButton(html: string, label: string, disabled: boolean) {
+  const button = html.match(new RegExp(`<button([^>]*)>[\\s\\S]*?<span>${label}</span></button>`));
+  assert.ok(button, html);
+  assert.equal(button[1].includes('disabled'), disabled);
+}
